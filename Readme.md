@@ -1,30 +1,63 @@
-# Projeto de Análise de Áudio com Flask
+# XfakeSong — UI com Gradio
 
-## Descrição
+Sistema XfakeSong para upload, extração de features, treinamento e inferência de detecção de deepfake de áudio com interface Gradio.
 
-Este projeto tem como objetivo realizar a extração de features de áudio, treinamento de um modelo de rede neural convolucional (CNN) e detecção de “fake” (áudio que não corresponde ao modelo treinado). A aplicação web, desenvolvida com Flask, oferece as seguintes funcionalidades:
-
-- **Upload de Dataset:** Permite o upload de um arquivo `.zip` contendo um dataset de áudios.
-- **Pitch Extract:** Processa os arquivos de áudio do dataset utilizando o script `Voice2data.py` para extrair features e gerar arquivos CSV.
-- **Train Model:** Treina um modelo CNN usando o script `TrainModel.py` com os dados extraídos. O modelo treinado será utilizado pelo `Predictor.py`.
-- **Fake Detector:** Permite o upload de uma amostra de voz, extrai suas features e realiza a predição para identificar se a voz corresponde ou não ao modelo treinado.
-
-## Estrutura do Projeto
-
-meu_projeto_flask/ ├── app.py # Aplicação Flask principal, com as rotas para upload, extração, treinamento e detecção ├── Voice2data.py # Processa arquivos de áudio e extrai features (Pitch Extract) ├── TrainModel.py # Define e treina o modelo CNN para classificação de áudio ├── Predictor.py # Realiza a predição utilizando o modelo treinado ├── requirements.txt # Lista de dependências do projeto ├── readme.md # Documentação detalhada do projeto ├── uploads/ # Diretório para armazenamento de arquivos enviados (dataset e amostras de voz) ├── dataset/ # Diretório para extração do conteúdo do arquivo .zip do dataset ├── features/ # Diretório para salvamento dos arquivos CSV com features extraídas └── templates/ # Diretório com os templates HTML da aplicação ├── index.html # Página inicial com as funções de upload, extração e treinamento └── fake_detector.html # Página para upload de amostra de voz e exibição do resultado da predição
-
-
-## Pré-requisitos
-
-- Python 3.x
-- (Opcional) Ambiente virtual para isolar as dependências
+## Requisitos
+- Python 3.11+
+- Pip atualizado (`python -m pip install --upgrade pip`)
+- Dependências do projeto: `requirements.txt`
 
 ## Instalação
+```bash
+# Dentro do diretório do projeto
+python -m venv .venv
+.venv\Scripts\activate  # Windows
+pip install -r requirements.txt
+```
 
-1. **Clone o repositório ou faça o download dos arquivos do projeto:**
-   ```bash
-   git clone <URL_do_repositorio>
-   cd meu_projeto_flask
-   python -m venv venv
+## Inicializar o Gradio
+```bash
+# Porta padrão 7860
+python main.py --gradio --gradio-port 7860
+```
+- Abra `http://127.0.0.1:7860/` no navegador.
+- Para compartilhar publicamente um link (Gradio share):
+```bash
+python main.py --gradio --gradio-port 7860 --gradio-share
+```
 
+## Dicas de uso
+- Aba "Análise Única": faça upload do áudio e selecione o modelo; a classificação e confiança são exibidas.
+- Aba "Treino/Modelos": crie modelos (DL) e treine com features segmentadas; resultados e gráficos são salvos em `app/results/`.
+- Aba "Resultados & Gráficos": lista JSONs e imagens gerados para inspeção.
 
+## Diretórios úteis
+- `app/models/` — artefatos de modelos.
+- `app/results/` — métricas, históricos e figuras.
+- Bootstrap rápido de diretórios:
+```bash
+python main.py --bootstrap-dirs
+```
+
+## Solução de problemas
+- `net::ERR_ABORTED ... /gradio_api/queue/data` no console:
+  - Em uso local, a UI roda sem fila; evite múltiplos cliques simultâneos.
+  - Se usar `--gradio-share`, a fila é habilitada; aguarde processamento dos callbacks.
+- "attempted relative import beyond top-level package":
+  - Já corrigido com imports absolutos das arquiteturas (`app.domain.models.architectures.*`). Caso persista, atualize o ambiente e recompile:
+```bash
+python -m compileall -q app main.py
+```
+- Portas ocupadas:
+  - Mude a porta: `--gradio-port 7861`.
+
+## Desenvolvimento
+- Validação rápida de sintaxe:
+```bash
+python -m compileall -q app main.py
+```
+- Logs:
+  - Console ativo por padrão; arquivo de log em `./logs/deepfake_app.log` se `enable_file_logging=True`.
+
+---
+Para dúvidas, abra a UI e confira os rótulos das abas e botões; eles refletem as operações disponíveis no sistema.

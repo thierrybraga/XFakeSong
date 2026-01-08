@@ -1,0 +1,21 @@
+{% extends "core/base.html" %}
+
+{% block title %}Dashboard - XfakeSong{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">System Dashboard</h1>
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title">Welcome to XfakeSong</h5>
+                <p class="card-text">The system is operational. Use the navigation bar to access analysis tools.</p>
+                <div class="d-grid gap-2 d-md-block">
+                    <a href="/gradio/" class="btn btn-primary">Go to Analysis Tools</a>
+                    <a href="/api/v1/system/bootstrap" class="btn btn-outline-secondary" target="_blank">Check System Status (API)</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

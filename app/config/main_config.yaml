@@ -1,0 +1,25 @@
+environment: development
+features:
+  cache_dir: features
+  default_extractors:
+  - mfcc
+  - spectral_centroid
+  normalize: true
+logging:
+  format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+  level: INFO
+models:
+  auto_download: true
+  cache_dir: models
+  default_architecture: aasist
+pipeline:
+  batch_size: 32
+  default_channels: 1
+  default_sample_rate: 16000
+  max_audio_length: 30.0
+  num_workers: 4
+plugins:
+  auto_load: true
+  enabled: true
+  plugins_dir: plugins
+version: 1.0.0
