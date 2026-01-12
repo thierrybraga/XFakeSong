@@ -3,45 +3,21 @@ version: '3.8'
 services:
   app:
     build: .
+    container_name: xfakesong_app
     ports:
-      - "4443:4443"
-    environment:
-      - FLASK_APP=run.py
-      - FLASK_ENV=development
-      - DATABASE_URL=postgresql://user:password@postgres_core:5432/deepfake_core
-      - REDIS_URL=redis://redis:6379/0
-    depends_on:
-      - postgres_core
-      - redis
+      - "7860:7860"
     volumes:
-      - .:/app
+      - .:/app  # Monta o diretório atual para desenvolvimento (hot-reload se implementado)
+      - ./app/models:/app/app/models # Persistência de modelos
+      - ./app/results:/app/app/results # Persistência de resultados
+      - ./logs:/app/logs # Persistência de logs
+    environment:
+      - DEEPFAKE_ENV=production
+      - GRADIO_SERVER_NAME=0.0.0.0
+    restart: unless-stopped
+    # Healthcheck básico verificando se a porta está aberta
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4443/api/v1/system/bootstrap"]
+      test: ["CMD", "curl", "-f", "http://localhost:7860/"]
       interval: 30s
       timeout: 10s
       retries: 3
-
-  postgres_core:
-    image: postgres:13
-    environment:
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=deepfake_core
-    volumes:
-      - postgres_core_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d deepfake_core"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:6
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  postgres_core_data:

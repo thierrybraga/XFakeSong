@@ -1,17 +1,17 @@
 from app.core.db_setup import init_db
 from gradio_app import demo as gradio_demo
-from app.routers import system, detection
+from app.routers import system, detection, features, training, history
 import gradio as gr
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Request
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from app.core.security import setup_security, limiter
 import os
 import sys
 from pathlib import Path
 
 # Adicionar raiz ao path
 sys.path.insert(0, str(Path(__file__).parent.parent))
-
 
 # Inicializar App
 app = FastAPI(
@@ -20,24 +20,21 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Configurar Segurança (CORS, TrustedHost, RateLimiting)
+setup_security(app)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 @app.on_event("startup")
 def on_startup():
     init_db()
 
-
-# Configurar CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # Incluir Routers
 app.include_router(system.router)
 app.include_router(detection.router)
+app.include_router(features.router)
+app.include_router(training.router)
+app.include_router(history.router)
 
 # Montar Gradio
 # O Gradio será servido na raiz "/" ou em "/ui" conforme preferência.

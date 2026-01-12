@@ -245,8 +245,9 @@ class ModelLoader:
                 logger.warning(f"Erro ao criar modelo {arch_name}: {e}")
 
     def get_available_models(self) -> List[str]:
-        """Retorna lista de modelos disponíveis."""
-        return list(self.loaded_models.keys())
+        """Retorna lista de modelos disponíveis (arquivos ou carregados)."""
+        # União de chaves de arquivos disponíveis e modelos já carregados (padrão)
+        return list(set(list(self.available_files.keys()) + list(self.loaded_models.keys())))
 
     def get_available_architectures(self) -> List[str]:
         """Retorna lista de arquiteturas disponíveis."""
@@ -254,21 +255,24 @@ class ModelLoader:
 
     def find_model(self, architecture: str,
                    variant: str = None) -> Optional[str]:
-        """Encontra um modelo carregado que corresponda à arquitetura e variante."""
+        """Encontra um modelo disponível que corresponda à arquitetura e variante."""
         arch_lower = architecture.lower()
         variant_lower = variant.lower() if variant else None
 
-        for name, info in self.loaded_models.items():
-            # Verificar arquitetura
-            if info.architecture.lower() == arch_lower:
-                # Se variante for especificada, verificar se está no nome do modelo
-                # Esta é uma heurística simples, já que variant não é
-                # explicitamente salvo no ModelInfo
+        # Verificar em todos os modelos disponíveis (arquivos + carregados)
+        all_models = self.get_available_models()
+
+        for name in all_models:
+            # Precisamos inferir a arquitetura se não estiver carregado
+            if name in self.loaded_models:
+                model_arch = self.loaded_models[name].architecture
+            else:
+                model_arch = self._infer_architecture_from_name(name)
+            
+            if model_arch.lower() == arch_lower:
                 if variant_lower:
                     if variant_lower in name.lower():
                         return name
                 else:
-                    # Se não especificou variante, retorna o primeiro da
-                    # arquitetura
                     return name
         return None

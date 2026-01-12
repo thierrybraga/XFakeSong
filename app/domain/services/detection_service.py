@@ -122,13 +122,15 @@ class DetectionService(IDetectionService):
             if model_name is None:
                 model_name = self.default_model
 
-            if model_name not in self.loaded_models:
+            # Usar get_model para carregamento Lazy
+            model_info = self.model_loader.get_model(model_name)
+            
+            if not model_info:
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
-                    errors=[f"Modelo '{model_name}' não encontrado."]
+                    errors=[f"Modelo '{model_name}' não encontrado ou falha ao carregar."]
                 )
 
-            model_info = self.loaded_models[model_name]
             try:
                 arch_info = get_architecture_info(model_info.architecture)
             except Exception:
@@ -252,13 +254,17 @@ class DetectionService(IDetectionService):
             import time
             if model_name is None:
                 model_name = self.default_model
-            if model_name not in self.loaded_models:
+            
+            # Usar get_model para carregamento Lazy
+            model_info = self.model_loader.get_model(model_name)
+            
+            if not model_info:
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
                     errors=[
-                        f"Modelo '{model_name}' não encontrado. Disponíveis: {list(self.loaded_models.keys())}"]
+                        f"Modelo '{model_name}' não encontrado ou falha ao carregar. Disponíveis: {self.model_loader.get_available_models()}"]
                 )
-            model_info = self.loaded_models[model_name]
+
             try:
                 arch_info = get_architecture_info(model_info.architecture)
             except Exception:

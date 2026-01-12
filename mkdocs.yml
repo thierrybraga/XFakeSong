@@ -1,0 +1,57 @@
+site_name: XfakeSong
+site_description: Documentação do sistema de detecção de deepfakes de áudio XfakeSong.
+site_author: XfakeSong Team
+repo_url: https://github.com/thier/TCC
+repo_name: thier/TCC
+
+theme:
+  name: material
+  language: pt-BR
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - toc.integrate
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Roboto
+    code: Roboto Mono
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - attr_list
+  - md_in_html
+
+nav:
+  - Home: index.md
+  - Introdução: 01_INTRODUCAO.md
+  - Instalação: 02_INSTALACAO_CONFIGURACAO.md
+  - Arquitetura: 03_ARQUITETURA.md
+  - Funcionalidades: 04_FUNCIONALIDADES_CORE.md
+  - Estrutura: 05_ESTRUTURA_PROJETO.md
+  - Desenvolvimento: 06_GUIA_DESENVOLVIMENTO.md
+  - API: 07_API_REFERENCE.md

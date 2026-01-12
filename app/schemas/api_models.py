@@ -30,3 +30,40 @@ class PredictionResult(BaseModel):
 class ErrorResponse(BaseModel):
     error: str
     details: Optional[str] = None
+
+
+class FeatureExtractionRequest(BaseModel):
+    feature_types: List[str]
+    normalize: bool = True
+    n_mfcc: int = 13
+    n_fft: int = 2048
+    hop_length: int = 512
+
+
+class FeatureExtractionResult(BaseModel):
+    features: Dict[str, List[List[float]]]  # Simplificado para JSON serializable
+    metadata: Dict[str, Any]
+
+
+class TrainingRequest(BaseModel):
+    architecture: str
+    dataset_path: str
+    model_name: str
+    parameters: Dict[str, Any] = {}
+    epochs: int = 10
+    batch_size: int = 32
+
+
+class TrainingResponse(BaseModel):
+    job_id: str
+    status: str
+    message: str
+
+
+class HistoryItem(BaseModel):
+    id: int
+    filename: str
+    is_fake: bool
+    confidence: float
+    model_name: str
+    created_at: str

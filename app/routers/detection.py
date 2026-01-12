@@ -1,20 +1,25 @@
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Request
 from typing import Optional, List
 import shutil
 import os
 import tempfile
+import uuid
 from pathlib import Path
 
 from app.schemas.api_models import PredictionResult, ErrorResponse
 from app.domain.services.detection_service import DetectionService
 from app.dependencies import get_detection_service
 from app.core.interfaces.base import ProcessingStatus
+from app.core.security import limiter, sanitize_filename
+from app.domain.services.upload_service import AudioUploadService
 
 router = APIRouter(prefix="/api/v1/detection", tags=["Detection"])
 
 
 @router.post("/analyze", response_model=PredictionResult)
+@limiter.limit("10/minute")
 async def analyze_audio(
+    request: Request,
     file: UploadFile = File(...),
     model_name: Optional[str] = Form(None),
     architecture: Optional[str] = Form(None),
@@ -42,9 +47,14 @@ async def analyze_audio(
             status_code=404,
             detail=f"Modelo '{selected_model_name}' não encontrado.")
 
-    # Salvar arquivo temporário
+    # Validar Extensão do Arquivo
+    if not file.filename.lower().endswith(tuple(AudioUploadService.SUPPORTED_FORMATS)):
+         raise HTTPException(status_code=400, detail="Formato de arquivo não suportado.")
+
+    # Salvar arquivo temporário com nome seguro e único
     temp_dir = tempfile.mkdtemp()
-    temp_path = Path(temp_dir) / file.filename
+    safe_name = f"{uuid.uuid4()}_{sanitize_filename(file.filename)}"
+    temp_path = Path(temp_dir) / safe_name
 
     try:
         with open(temp_path, "wb") as buffer:
