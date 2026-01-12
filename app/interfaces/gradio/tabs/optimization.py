@@ -1,18 +1,67 @@
 import gradio as gr
 from app.domain.models.architectures.registry import architecture_registry
-from app.interfaces.gradio.utils.hyperparameters import optimize_default, load_defaults
+from app.interfaces.gradio.utils.hyperparameters import (
+    optimize_default,
+    load_defaults
+)
+from app.domain.services.detection.utils import get_available_devices
+
+
+def update_device_settings(device_name):
+    """Atualiza o dispositivo de inferência no serviço."""
+    try:
+        # Importação tardia para evitar ciclo
+        from app.interfaces.gradio.tabs.detection import get_detection_service
+        ds = get_detection_service()
+        if ds:
+            ds.set_device(device_name)
+            return f"✅ Dispositivo alterado para: {device_name}"
+        return "❌ Erro: Serviço de detecção não inicializado."
+    except Exception as e:
+        return f"❌ Erro ao atualizar dispositivo: {str(e)}"
 
 
 def create_optimization_tab():
     with gr.Tab("Otimização de Hiperparâmetros"):
-        gr.Markdown("### ⚙️ Ajuste Fino de Hiperparâmetros")
+        gr.Markdown("### ⚙️ Ajuste Fino de Hiperparâmetros e Sistema")
+
+        # --- Seção de Hardware ---
+        with gr.Row():
+            with gr.Column():
+                gr.Markdown("#### 🖥️ Configuração de Hardware")
+                devices = get_available_devices()
+                default_dev = devices[0] if devices else "CPU"
+
+                with gr.Row():
+                    device_dropdown = gr.Dropdown(
+                        choices=devices,
+                        label="Dispositivo de Processamento",
+                        value=default_dev,
+                        interactive=True
+                    )
+                    apply_dev_btn = gr.Button(
+                        "Aplicar Configuração", variant="primary"
+                    )
+
+                dev_status = gr.Textbox(
+                    label="Status", value="", interactive=False
+                )
+
+                apply_dev_btn.click(
+                    update_device_settings,
+                    inputs=[device_dropdown],
+                    outputs=[dev_status]
+                )
+
+        gr.Markdown("---")  # Separator
 
         with gr.Row():
             with gr.Column(scale=1):
                 arch_choices = architecture_registry.list_architectures()
                 opt_arch = gr.Dropdown(
                     choices=arch_choices,
-                    label="Arquitetura", value=arch_choices[0] if arch_choices else "MultiscaleCNN"
+                    label="Arquitetura",
+                    value=arch_choices[0] if arch_choices else "MultiscaleCNN"
                 )
 
                 with gr.Group():
@@ -85,13 +134,14 @@ def create_optimization_tab():
 
         # Inputs list for optimize_default
         inputs_list = [
-            opt_arch, opt_batch, opt_epochs, opt_lr, opt_dropout, opt_l2, opt_val,
-            opt_d_model, opt_num_heads, opt_num_blocks, opt_patch, opt_ff_dim,
-            opt_filters, opt_kernel_sizes,
+            opt_arch, opt_batch, opt_epochs, opt_lr, opt_dropout, opt_l2,
+            opt_val, opt_d_model, opt_num_heads, opt_num_blocks, opt_patch,
+            opt_ff_dim, opt_filters, opt_kernel_sizes,
             opt_att_heads, opt_hid_dim, opt_n_layers, opt_conv_kernel,
             opt_hid_base, opt_n_layers_base,
-            opt_base_filters, opt_res_blocks, opt_trans_layers, opt_att_heads_h,
-            opt_conv_filters_raw, opt_gru_units, opt_dense_units
+            opt_base_filters, opt_res_blocks, opt_trans_layers,
+            opt_att_heads_h, opt_conv_filters_raw, opt_gru_units,
+            opt_dense_units
         ]
 
         # Outputs list (JSON + updates for all inputs)

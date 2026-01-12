@@ -3,7 +3,12 @@ from app.main_startup import create_app
 from app.extensions import db
 # Importar modelos para garantir que o SQLAlchemy os conheça antes do
 # create_all
-from app.domain.models import AnalysisResult, ArchitectureConfig, User
+from app.domain.models import (  # noqa: F401
+    AnalysisResult,
+    ArchitectureConfig,
+    User,
+    TrainingJob
+)
 
 logger = logging.getLogger(__name__)
 

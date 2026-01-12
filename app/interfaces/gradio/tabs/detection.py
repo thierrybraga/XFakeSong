@@ -7,7 +7,6 @@ import librosa.display
 import json
 import logging
 from pathlib import Path
-import sys
 
 from app.core.interfaces.audio import AudioData
 
@@ -17,26 +16,35 @@ logger = logging.getLogger("gradio_detection_tab")
 # Singleton para o serviço de detecção
 _detection_service_instance = None
 
+
 def get_detection_service():
     global _detection_service_instance
     if _detection_service_instance is None:
         try:
-            from app.domain.services.detection_service import DetectionService
+            from app.domain.services import detection_service as ds
             # Inicializa com diretório padrão 'models'
-            _detection_service_instance = DetectionService()
+            _detection_service_instance = ds.DetectionService()
         except Exception as e:
             logger.error(f"Failed to init detection service: {e}")
             return None
     return _detection_service_instance
 
+
 # Tentar importar serviços
 try:
-    from app.domain.services.detection_service import DetectionService
-    from app.domain.models.architectures.registry import get_architecture_info, get_available_architectures
+    from app.domain.services.detection_service import (  # noqa: F401
+        DetectionService
+    )
+    from app.domain.models.architectures.registry import (
+        get_architecture_info,
+        get_available_architectures
+    )
     MODELS_AVAILABLE = True
 except ImportError as e:
     logger.warning(
-        f"Aviso: Não foi possível importar serviços de detecção ({e}). Usando modo demonstração.")
+        f"Aviso: Não foi possível importar serviços de detecção ({e}). "
+        f"Usando modo demonstração."
+    )
     MODELS_AVAILABLE = False
 
 
@@ -125,27 +133,35 @@ def analyze_audio(audio_path, architecture, variant,
                 service = get_detection_service()
                 if not service:
                     raise Exception("Serviço de detecção não inicializado")
-                
+
                 model_name = None
 
                 # Seleção de Modelo
                 if advanced_enabled and architecture:
-                    # Tentar encontrar modelo compatível com a arquitetura/variante
-                    model_name = service.find_model(architecture, variant=variant)
+                    # Tentar encontrar modelo compatível com a
+                    # arquitetura/variante
+                    model_name = service.find_model(
+                        architecture, variant=variant
+                    )
                     if not model_name:
-                         # Fallback: Tentar qualquer modelo dessa arquitetura
+                        # Fallback: Tentar qualquer modelo dessa arquitetura
                         models = service.get_available_models()
                         for m in models:
-                            if architecture in m: # Heurística simples
+                            if architecture in m:  # Heurística simples
                                 model_name = m
                                 break
-                    
+
                     if not model_name:
-                         logger.warning(f"Nenhum modelo encontrado para {architecture}/{variant}")
-                         # Não falha aqui, deixa o service usar o default se passar None, 
-                         # ou retornará erro se não houver default.
+                        logger.warning(
+                            f"Nenhum modelo encontrado para "
+                            f"{architecture}/{variant}"
+                        )
+                        # Não falha aqui, deixa o service usar o default
+                        # se passar None, ou retornará erro se não houver
+                        # default.
                 else:
-                    # Modo simples: usa o default do service ou o primeiro disponível
+                    # Modo simples: usa o default do service ou
+                    # o primeiro disponível
                     model_name = service.default_model
                     if not model_name:
                         models = service.get_available_models()
@@ -153,12 +169,20 @@ def analyze_audio(audio_path, architecture, variant,
                             model_name = models[0]
 
                 if not model_name:
-                    return "MODELO NÃO ENCONTRADO", 0.0, fig_waveform, fig_prosody, fig_spectrogram, {"error": "Nenhum modelo treinado disponível. Treine um modelo na aba de Treinamento."}
+                    return (
+                        "MODELO NÃO ENCONTRADO",
+                        0.0,
+                        fig_waveform,
+                        fig_prosody,
+                        fig_spectrogram,
+                        {"error": "Nenhum modelo treinado disponível. "
+                                  "Treine um modelo na aba de Treinamento."}
+                    )
 
                 # Executar Detecção
                 result_proc = service.detect_from_file(
-                    audio_path, 
-                    model_name=model_name, 
+                    audio_path,
+                    model_name=model_name,
                     segmented=bool(segmented)
                 )
 
@@ -172,14 +196,19 @@ def analyze_audio(audio_path, architecture, variant,
                         "metadata": data.metadata,
                         "features_used": data.features_used
                     }
-                    
+
                     # Persistir Resultado (usando o serviço)
-                    filename = Path(audio_path).name if audio_path else "unknown.wav"
+                    filename = (
+                        Path(audio_path).name if audio_path else "unknown.wav"
+                    )
                     service.save_analysis_result(data, filename)
-                    
+
                 else:
                     details = {
-                        "error": result_proc.errors[0] if result_proc.errors else "Erro na inferência"
+                        "error": (
+                            result_proc.errors[0] if result_proc.errors
+                            else "Erro na inferência"
+                        )
                     }
                     logger.error(f"Erro na inferência: {details['error']}")
 
@@ -188,7 +217,8 @@ def analyze_audio(audio_path, architecture, variant,
                 details = {"erro_inferencia": str(e)}
 
         # Mock de fallback (apenas se realmente falhou tudo)
-        if result_label in ["MODELO NÃO ENCONTRADO", "DESCONHECIDO"] and not details.get("error"):
+        if (result_label in ["MODELO NÃO ENCONTRADO", "DESCONHECIDO"] and
+                not details.get("error")):
             result_label = "DEMO MODE (Sem Modelo)"
             confidence = 0.0
 
@@ -199,7 +229,14 @@ def analyze_audio(audio_path, architecture, variant,
             "rms_mean": float(np.mean(librosa.feature.rms(y=y)))
         }
 
-        return result_label, confidence, fig_waveform, fig_prosody, fig_spectrogram, json.dumps(details, indent=2)
+        return (
+            result_label,
+            confidence,
+            fig_waveform,
+            fig_prosody,
+            fig_spectrogram,
+            json.dumps(details, indent=2)
+        )
 
     except Exception as e:
         return f"Erro: {str(e)}", 0.0, None, None, None, {"error": str(e)}
@@ -212,14 +249,21 @@ def process_stream(new_chunk, state):
     """Processamento em tempo real do stream de áudio com detecção contínua."""
     try:
         if new_chunk is None:
-            return state, gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
+            return (
+                state,
+                gr.update(),
+                gr.update(),
+                gr.update(),
+                gr.update(),
+                gr.update()
+            )
 
         sr, data = new_chunk
 
         # Inicializar estado
         if state is None:
             state = {
-                "audio": np.array([], dtype=np.float32), 
+                "audio": np.array([], dtype=np.float32),
                 "sr": sr,
                 "last_update": 0
             }
@@ -237,26 +281,42 @@ def process_stream(new_chunk, state):
         # Acumular
         state["audio"] = np.concatenate((state["audio"], data))
 
-        # Otimização: Gerar plots apenas se tiver dados suficientes e não for muito frequente
+        # Otimização: Gerar plots apenas se tiver dados suficientes
+        # e não for muito frequente
         y = state["audio"]
 
         if len(y) < sr * 0.1:  # Menos de 0.1s
-            return state, gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
-            
+            return (
+                state,
+                gr.update(),
+                gr.update(),
+                gr.update(),
+                gr.update(),
+                gr.update()
+            )
+
         # Throttling: Atualizar visualização no máximo a cada 0.5s (2 FPS)
-        # Isso evita sobrecarregar a fila e o navegador (causa de AbortError)
+        # Isso evita sobrecarregar a fila e o navegador
+        # (causa de AbortError)
         import time
         current_time = time.time()
         if current_time - state.get("last_update", 0) < 0.5:
-            return state, gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
-            
+            return (
+                state,
+                gr.update(),
+                gr.update(),
+                gr.update(),
+                gr.update(),
+                gr.update()
+            )
+
         state["last_update"] = current_time
 
         # Gerar plots rápidos
         # 0. Forma de Onda (Janela deslizante de 5s)
         fig_wave = Figure(figsize=(10, 3))
         ax_wave = fig_wave.add_subplot(111)
-        
+
         # Limitar visualização aos últimos 5 segundos
         window_size = sr * 5
         if len(y) > window_size:
@@ -265,14 +325,18 @@ def process_stream(new_chunk, state):
         else:
             y_plot = y
             x_start = 0
-            
+
         # Downsample para plotagem rápida (máx 2000 pontos)
         step = max(1, len(y_plot) // 2000)
-        times_plot = np.linspace(x_start, x_start + len(y_plot)/sr, len(y_plot))[::step]
+        times_plot = np.linspace(
+            x_start,
+            x_start + len(y_plot)/sr,
+            len(y_plot)
+        )[::step]
         y_plot_ds = y_plot[::step]
-        
+
         ax_wave.plot(times_plot, y_plot_ds, alpha=0.8)
-        ax_wave.set_title(f"Forma de Onda (Tempo Real)")
+        ax_wave.set_title("Forma de Onda (Tempo Real)")
         ax_wave.set_ylim(-1.0, 1.0)
         fig_wave.tight_layout()
 
@@ -308,31 +372,39 @@ def process_stream(new_chunk, state):
         # Pitch (Estimativa rápida via Autocorrelação para Real-time)
         try:
             # Calcular autocorrelação apenas num frame recente para velocidade
-            frame_len = int(sr * 0.05) # 50ms
+            frame_len = int(sr * 0.05)  # 50ms
             if len(y) > frame_len:
                 y_frame = y[-frame_len:]
-                
+
                 # Autocorrelação normalizada
                 result = np.correlate(y_frame, y_frame, mode='full')
                 result = result[len(result)//2:]
-                
+
                 # Encontrar pico entre lags correspondentes a 50Hz e 1000Hz
                 min_lag = int(sr / 1000)
                 max_lag = int(sr / 50)
-                
+
                 if len(result) > max_lag:
                     relevant = result[min_lag:max_lag]
                     if len(relevant) > 0:
                         lag = np.argmax(relevant) + min_lag
-                        if result[lag] > 0.1 * result[0]: # Threshold de periodicidade
+                        # Threshold de periodicidade
+                        if result[lag] > 0.1 * result[0]:
                             f0_est = sr / lag
-                            # Plotar linha horizontal indicando F0 estimado atual
-                            ax_pros.axhline(y=f0_est/1000, color='b', linestyle='--', alpha=0.5, label=f'Pitch Est. ({int(f0_est)}Hz)')
+                            # Plotar linha horizontal indicando F0
+                            # estimado atual
+                            ax_pros.axhline(
+                                y=f0_est/1000,
+                                color='b',
+                                linestyle='--',
+                                alpha=0.5,
+                                label=f'Pitch Est. ({int(f0_est)}Hz)'
+                            )
         except Exception:
             pass
 
         ax_pros.legend(loc='upper right')
-        ax_pros.set_title(f"Análise Prosódica: Energia (Tempo Real)")
+        ax_pros.set_title("Análise Prosódica: Energia (Tempo Real)")
         ax_pros.set_xlabel("Tempo (s)")
         fig_pros.tight_layout()
 
@@ -351,7 +423,7 @@ def process_stream(new_chunk, state):
                         sample_rate=sr,
                         duration=float(len(y) / sr)
                     )
-                    
+
                     res = service.detect_single(audio_data)
                     if res.status.name == "SUCCESS":
                         data_res = res.data
@@ -359,9 +431,13 @@ def process_stream(new_chunk, state):
                         conf = float(data_res.confidence)
 
                         # Formato para Label output
-                        label_upd = {lbl: conf, ("REAL" if lbl == "DEEPFAKE" else "DEEPFAKE"): 1.0 - conf}
+                        label_upd = {
+                            lbl: conf,
+                            ("REAL" if lbl == "DEEPFAKE" else "DEEPFAKE"):
+                            1.0 - conf
+                        }
                         conf_upd = conf
-                except Exception as ex:
+                except Exception:
                     # Log menos verboso em stream
                     pass
 
@@ -369,14 +445,22 @@ def process_stream(new_chunk, state):
 
     except Exception as e:
         logger.error(f"Erro no stream: {e}")
-        return state, gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
+        return (
+            state,
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update()
+        )
 
 
 def create_detection_tab():
     with gr.Tab("Detecção (Inference)", id="tab_detection"):
         gr.Markdown("""
         ### 🕵️ Análise de Integridade de Áudio
-        Faça upload de um arquivo de áudio para verificar se ele é autêntico ou sintético (DeepFake).
+        Faça upload de um arquivo de áudio para verificar se ele é autêntico
+        ou sintético (DeepFake).
         """)
 
         with gr.Row():
@@ -389,9 +473,15 @@ def create_detection_tab():
                             "upload", "microphone"], streaming=True)
                     stream_state = gr.State()
 
-                    with gr.Accordion("⚙️ Configurações Avançadas", open=False):
+                    with gr.Accordion(
+                        "⚙️ Configurações Avançadas", open=False
+                    ):
 
-                        arch_choices = get_available_architectures() if MODELS_AVAILABLE else []
+                        if MODELS_AVAILABLE:
+                            arch_choices = get_available_architectures()
+                        else:
+                            arch_choices = []
+
                         arch_select = gr.Dropdown(
                             choices=arch_choices,
                             label="Arquitetura do Modelo",
@@ -400,7 +490,9 @@ def create_detection_tab():
                         variant_select = gr.Dropdown(
                             choices=[], label="Variante", value=None)
                         advanced_enabled = gr.Checkbox(
-                            label="Habilitar Parâmetros Customizados", value=False)
+                            label="Habilitar Parâmetros Customizados",
+                            value=False
+                        )
                         hyperparams_json = gr.Code(
                             label="Hiperparâmetros (JSON)",
                             language="json",
@@ -408,7 +500,9 @@ def create_detection_tab():
                             interactive=True,
                             lines=3)
                         segmented_chk = gr.Checkbox(
-                            label="Inferência Segmentada (Para áudios longos)", value=False)
+                            label="Inferência Segmentada (Para áudios longos)",
+                            value=False
+                        )
 
                     analyze_btn = gr.Button(
                         "🔍 Analisar Áudio", variant="primary", size="lg")
@@ -419,7 +513,10 @@ def create_detection_tab():
                     gr.Markdown("#### 📊 Resultado da Análise")
                     with gr.Row():
                         label_output = gr.Label(
-                            label="Classificação", num_top_classes=2, scale=2)
+                            label="Classificação",
+                            num_top_classes=2,
+                            scale=2
+                        )
                         confidence_output = gr.Number(
                             label="Confiança", scale=1)
 
@@ -427,9 +524,9 @@ def create_detection_tab():
 
         # Seção de Detalhes Visuais (Full Width)
         gr.Markdown("### 📈 Detalhes Forenses")
-        
+
         plot_waveform = gr.Plot(label="Forma de Onda")
-        
+
         with gr.Row():
             with gr.Column(min_width=400):
                 plot_spectrogram = gr.Plot(label="Espectrograma Mel")
@@ -446,12 +543,24 @@ def create_detection_tab():
                     info = get_architecture_info(arch_name)
 
                     # Buscar default params do DB para exibir no JSON
-                    from app.domain.models.architectures.registry import architecture_registry
+                    from app.domain.models.architectures.registry import (
+                        architecture_registry
+                    )
                     params = architecture_registry.get_active_config(
-                        arch_name, variant="default")
+                        arch_name, variant="default"
+                    )
 
-                    return gr.update(choices=info.supported_variants, value=(
-                        info.supported_variants[0] if info.supported_variants else None)), json.dumps(params, indent=2)
+                    default_var = (
+                        info.supported_variants[0]
+                        if info.supported_variants else None
+                    )
+                    return (
+                        gr.update(
+                            choices=info.supported_variants,
+                            value=default_var
+                        ),
+                        json.dumps(params, indent=2)
+                    )
             except Exception as e:
                 logger.error(f"Erro ao atualizar variantes: {e}")
                 pass
@@ -475,8 +584,15 @@ def create_detection_tab():
         )
 
         # Wrapper para lidar com upload vs stream
-        def handle_analysis(audio_path, stream_state, architecture,
-                            variant, advanced_enabled, hyperparams_json, segmented):
+        def handle_analysis(
+            audio_path,
+            stream_state,
+            architecture,
+            variant,
+            advanced_enabled,
+            hyperparams_json,
+            segmented
+        ):
             import tempfile
             import soundfile as sf
             import numpy as np
@@ -491,18 +607,26 @@ def create_detection_tab():
                     temp_file = tempfile.NamedTemporaryFile(
                         suffix=".wav", delete=False)
                     temp_file.close()
-                    
+
                     # Convert to float32 if needed
                     if data.dtype == np.int16:
                         data = data.astype(np.float32) / 32768.0
                     elif data.dtype == np.int32:
                         data = data.astype(np.float32) / 2147483648.0
-                        
+
                     sf.write(temp_file.name, data, sr)
                     final_path = temp_file.name
-                    logger.info(f"Áudio convertido de numpy para: {final_path}")
+                    logger.info(
+                        f"Áudio convertido de numpy para: {final_path}"
+                    )
                 except Exception as e:
-                    return f"Erro ao processar áudio: {str(e)}", 0.0, None, None, {"error": str(e)}
+                    return (
+                        f"Erro ao processar áudio: {str(e)}",
+                        0.0,
+                        None,
+                        None,
+                        {"error": str(e)}
+                    )
             elif isinstance(audio_path, str) and audio_path:
                 final_path = audio_path
 
@@ -524,8 +648,13 @@ def create_detection_tab():
                         f"Usando áudio do stream salvo em: {final_path}")
                 except Exception as e:
                     logger.error(f"Erro ao salvar stream para análise: {e}")
-                    return f"Erro ao processar gravação: {str(e)}", 0.0, None, None, {
-                        "error": str(e)}
+                    return (
+                        f"Erro ao processar gravação: {str(e)}",
+                        0.0,
+                        None,
+                        None,
+                        {"error": str(e)}
+                    )
 
             return analyze_audio(final_path, architecture, variant,
                                  advanced_enabled, hyperparams_json, segmented)

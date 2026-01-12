@@ -1,12 +1,14 @@
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Request
-from typing import Optional, List
+from fastapi import (
+    APIRouter, UploadFile, File, Form, Depends, HTTPException, Request
+)
+from typing import Optional
 import shutil
 import os
 import tempfile
 import uuid
 from pathlib import Path
 
-from app.schemas.api_models import PredictionResult, ErrorResponse
+from app.schemas.api_models import PredictionResult
 from app.domain.services.detection_service import DetectionService
 from app.dependencies import get_detection_service
 from app.core.interfaces.base import ProcessingStatus
@@ -37,19 +39,28 @@ async def analyze_audio(
             variant_msg = f" e variante '{variant}'" if variant else ""
             raise HTTPException(
                 status_code=404,
-                detail=f"O modelo nao existe treinado para a arquitetura '{architecture}'{variant_msg}."
+                detail=(
+                    f"O modelo nao existe treinado para a arquitetura "
+                    f"'{architecture}'{variant_msg}."
+                )
             )
         selected_model_name = found_model
 
     # Validar se o modelo selecionado (ou informado diretamente) existe
-    if selected_model_name and selected_model_name not in service.get_available_models():
+    if (selected_model_name and
+            selected_model_name not in service.get_available_models()):
         raise HTTPException(
             status_code=404,
-            detail=f"Modelo '{selected_model_name}' não encontrado.")
+            detail=f"Modelo '{selected_model_name}' não encontrado."
+        )
 
     # Validar Extensão do Arquivo
-    if not file.filename.lower().endswith(tuple(AudioUploadService.SUPPORTED_FORMATS)):
-         raise HTTPException(status_code=400, detail="Formato de arquivo não suportado.")
+    supported = tuple(AudioUploadService.SUPPORTED_FORMATS)
+    if not file.filename.lower().endswith(supported):
+        raise HTTPException(
+            status_code=400,
+            detail="Formato de arquivo não suportado."
+        )
 
     # Salvar arquivo temporário com nome seguro e único
     temp_dir = tempfile.mkdtemp()
@@ -80,7 +91,11 @@ async def analyze_audio(
         else:
             raise HTTPException(
                 status_code=400,
-                detail=result.errors[0] if result.errors else "Erro desconhecido na detecção")
+                detail=(
+                    result.errors[0] if result.errors
+                    else "Erro desconhecido na detecção"
+                )
+            )
 
     except HTTPException:
         raise

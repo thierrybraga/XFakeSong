@@ -22,11 +22,7 @@ from app.domain.models.architectures.layers import (
     AudioFeatureNormalization,
     AttentionLayer,
     GraphAttentionLayer,
-    SliceLayer,
-    apply_gru_block,
-    flatten_features_for_gru,
-    apply_reshape_for_cnn,
-    residual_block
+    SliceLayer
 )
 from app.domain.models.architectures.safe_normalization import SafeInstanceNormalization
 
@@ -81,6 +77,17 @@ class ModelLoader:
     def _load_single_model(self, model_path: Path):
         """Carrega um único modelo."""
         model_name = model_path.stem
+        metadata = {}
+        
+        # Tentar carregar metadados se existirem
+        config_path = model_path.parent / f"{model_name}_config.json"
+        if config_path.exists():
+            try:
+                import json
+                with open(config_path, 'r') as f:
+                    metadata = json.load(f)
+            except Exception as e:
+                logger.warning(f"Erro ao carregar config para {model_name}: {e}")
 
         try:
             if model_path.suffix == '.h5':
@@ -218,9 +225,11 @@ class ModelLoader:
                 arch_info = get_architecture_info(arch_name)
                 variant = None
                 if 'lite' in [
-                        v for v in arch_info.supported_variants if 'lite' in v]:
+                        v for v in arch_info.supported_variants if 'lite' in v
+                ]:
                     variant = [
-                        v for v in arch_info.supported_variants if 'lite' in v][0]
+                        v for v in arch_info.supported_variants if 'lite' in v
+                    ][0]
 
                 model = create_model_by_name(
                     arch_name,
@@ -246,8 +255,9 @@ class ModelLoader:
 
     def get_available_models(self) -> List[str]:
         """Retorna lista de modelos disponíveis (arquivos ou carregados)."""
-        # União de chaves de arquivos disponíveis e modelos já carregados (padrão)
-        return list(set(list(self.available_files.keys()) + list(self.loaded_models.keys())))
+        # União de chaves de arquivos disponíveis e modelos já carregados
+        # (padrão)
+        return list(self.loaded_models.keys())
 
     def get_available_architectures(self) -> List[str]:
         """Retorna lista de arquiteturas disponíveis."""
@@ -255,7 +265,7 @@ class ModelLoader:
 
     def find_model(self, architecture: str,
                    variant: str = None) -> Optional[str]:
-        """Encontra um modelo disponível que corresponda à arquitetura e variante."""
+        """Encontra um modelo disponível que corresponda à arquitetura."""
         arch_lower = architecture.lower()
         variant_lower = variant.lower() if variant else None
 

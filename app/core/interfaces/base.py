@@ -9,7 +9,7 @@ Este módulo define as interfaces fundamentais que garantem:
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Union, Generic, TypeVar
+from typing import Any, Dict, List, Optional, Generic, TypeVar
 from dataclasses import dataclass
 from enum import Enum
 
@@ -26,6 +26,13 @@ class ProcessingStatus(Enum):
     ERROR = "error"
     WARNING = "warning"
     CANCELLED = "cancelled"
+
+
+class DatasetType(Enum):
+    """Tipos de datasets suportados."""
+    TRAINING = "training"
+    VALIDATION = "validation"
+    TEST = "test"
 
 
 @dataclass
@@ -71,7 +78,8 @@ class ProcessingResult(Generic[T]):
 
     @classmethod
     def error(cls, error_message: str,
-              metadata: Dict[str, Any] = None, execution_time: float = None) -> 'ProcessingResult[T]':
+              metadata: Dict[str, Any] = None,
+              execution_time: float = None) -> 'ProcessingResult[T]':
         """Create an error processing result."""
         return cls(
             status=ProcessingStatus.ERROR,

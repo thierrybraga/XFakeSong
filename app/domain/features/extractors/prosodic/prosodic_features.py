@@ -65,7 +65,9 @@ class ProsodicFeatureExtractor(IFeatureExtractor):
 
         if hop_length > frame_length:
             warnings.warn(
-                "hop_length maior que frame_length pode causar perda de informação")
+                "hop_length maior que frame_length pode causar "
+                "perda de informação"
+            )
 
         self.sr = sr
         self.frame_length = frame_length
@@ -157,12 +159,13 @@ class ProsodicFeatureExtractor(IFeatureExtractor):
             'preemphasis': self.preemphasis
         }
 
-    def extract_features(self, y: np.ndarray) -> Dict:
+    def extract_features(self, y: np.ndarray, context: Any = None) -> Dict:
         """
         Extrai todas as características prosódicas.
 
         Args:
             y: Sinal de áudio
+            context: Contexto de processamento (opcional)
 
         Returns:
             Dicionário com características prosódicas
@@ -325,11 +328,12 @@ class ProsodicFeatureExtractor(IFeatureExtractor):
     def _get_default_prosodic_features(self) -> Dict:
         """Retorna características prosódicas padrão em caso de erro."""
         return {
-            'f0_mean': 0, 'f0_std': 0, 'f0_min': 0, 'f0_max': 0, 'f0_range': 0, 'f0_median': 0,
-            'f0_q25': 0, 'f0_q75': 0, 'f0_iqr': 0, 'f0_skewness': 0, 'f0_kurtosis': 0,
-            'f0_slope': 0, 'voicing_rate': 0, 'voicing_prob': 0, 'jitter': 0, 'shimmer': 0,
-            'hnr': 0, 'snr': 0, 'cpp': 0, 'rap': 0, 'ppq': 0, 'apq': 0, 'vf0': 0, 'shdb': 0, 'nhr': 0,
-            'vti': 0, 'spi': 0, 'dfa': 0
+            'f0_mean': 0, 'f0_std': 0, 'f0_min': 0, 'f0_max': 0,
+            'f0_range': 0, 'f0_median': 0, 'f0_q25': 0, 'f0_q75': 0,
+            'f0_iqr': 0, 'f0_skewness': 0, 'f0_kurtosis': 0, 'f0_slope': 0,
+            'voicing_rate': 0, 'voicing_prob': 0, 'jitter': 0, 'shimmer': 0,
+            'hnr': 0, 'snr': 0, 'cpp': 0, 'rap': 0, 'ppq': 0, 'apq': 0,
+            'vf0': 0, 'shdb': 0, 'nhr': 0, 'vti': 0, 'spi': 0, 'dfa': 0
         }
 
 

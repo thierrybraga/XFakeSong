@@ -331,9 +331,8 @@ class SecureTrainingPipeline:
         except Exception as e:
             self.logger.error(f"Erro na preparação dos dados: {str(e)}")
             return ProcessingResult(
-                success=False,
-                error=str(e),
-                status=ProcessingStatus.FAILED
+                status=ProcessingStatus.ERROR,
+                errors=[str(e)]
             )
 
     def get_scaler(self) -> SecureFeatureScaler:

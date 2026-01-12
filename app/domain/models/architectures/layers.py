@@ -6,14 +6,27 @@ from app.domain.models.architectures.safe_normalization import SafeInstanceNorma
 logger = logging.getLogger(__name__)
 
 def is_raw_audio(input_shape):
-    return len(input_shape) == 2 or (len(input_shape) == 3 and input_shape[-1] == 1)
+    """
+    Check if input shape corresponds to raw audio.
+    Assumes input_shape does not include batch dimension.
+    (Time,) -> Raw
+    (Time, 1) -> Raw
+    (Time, >1) -> Features (e.g. Spectrogram)
+    """
+    if len(input_shape) == 1:
+        return True
+    if len(input_shape) == 2:
+        return input_shape[-1] == 1
+    if len(input_shape) == 3:
+        return input_shape[-1] == 1 and input_shape[1] == 1 # Very specific case
+    return False
 
-def ensure_flat_input(x):
+def ensure_flat_input(x, input_shape=None):
     """Ensure input is (batch, time, 1) or (batch, time)."""
     if len(x.shape) == 3 and x.shape[-1] > 1:
         # If we have channels, we might want to take the first one or mean?
         # For now assume it's mono or we take mean
-        return tf.reduce_mean(x, axis=-1, keepdims=True)
+        return layers.Lambda(lambda t: tf.reduce_mean(t, axis=-1, keepdims=True), name="ensure_flat_mean")(x)
     return x
 
 def apply_gru_block(x, units, return_sequences=True, go_backwards=False, name=None):
@@ -329,8 +342,13 @@ class AttentionLayer(layers.Layer):
         return config
 
     def compute_output_shape(
-            self, input_shape: tf.TensorShape) -> tf.TensorShape:
-        return tf.TensorShape((input_shape[0], input_shape[-1]))
+            self, input_shape: tf.TensorShape):
+        output_shape = tf.TensorShape((input_shape[0], input_shape[-1]))
+        if self.return_attention:
+            # alphas shape: (batch, seq_len)
+            alphas_shape = tf.TensorShape((input_shape[0], input_shape[1]))
+            return [output_shape, alphas_shape]
+        return output_shape
 
 
 class SqueezeExciteBlock(layers.Layer):

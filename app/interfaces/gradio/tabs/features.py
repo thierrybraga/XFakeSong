@@ -3,10 +3,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import librosa
 import librosa.display
-import io
-import json
-from pathlib import Path
-from app.domain.services.feature_extraction_service import AudioFeatureExtractionService, ExtractionConfig
+from app.domain.services.feature_extraction_service import (
+    AudioFeatureExtractionService,
+    ExtractionConfig
+)
 from app.core.interfaces.audio import AudioData, FeatureType
 
 
@@ -69,11 +69,18 @@ def create_features_tab():
                 )
 
                 # 3. Extrair
-                result = service.extract_features(audio_data, config)
+                result = service.extract_features(
+                    audio_data, config
+                )
 
                 if result.status.name != "SUCCESS":
-                    return None, None, None, f"Erro na extração: {result.errors}", {
-                        "error": result.errors}
+                    return (
+                        None,
+                        None,
+                        None,
+                        f"Erro na extração: {result.errors}",
+                        {"error": result.errors}
+                    )
 
                 features = result.data.features
                 feature_data = features.features
@@ -94,7 +101,8 @@ def create_features_tab():
                     0] if feature_data else None
                 main_feature_array = None
 
-                if feature_type_str == "spectral" and "spectrogram" in feature_data:
+                if feature_type_str == "spectral" and (
+                        "spectrogram" in feature_data):
                     S_db = feature_data["spectrogram"]
                     main_feature_array = S_db
                     if S_db.ndim == 1:
@@ -102,7 +110,11 @@ def create_features_tab():
                         plt.title("Spectral Feature (Mean)")
                     else:
                         librosa.display.specshow(
-                            S_db, sr=audio_data.sample_rate, x_axis='time', y_axis='hz')
+                            S_db,
+                            sr=audio_data.sample_rate,
+                            x_axis='time',
+                            y_axis='hz'
+                        )
                         plt.colorbar(format='%+2.0f dB')
                         plt.title('Espectrograma')
                     plotted = True
@@ -199,8 +211,10 @@ def create_features_tab():
                             v_max = f"{np.max(v):.4f}"
                             v_mean = f"{np.mean(v):.4f}"
                             v_std = f"{np.std(v):.4f}"
-                            stats_md += f"| `{k}` | `{
-                                v.shape}` | {v_min} | {v_max} | {v_mean} | {v_std} |\n"
+                            stats_md += (
+                                f"| `{k}` | `{v.shape}` | "
+                                f"{v_min} | {v_max} | {v_mean} | {v_std} |\n"
+                            )
 
                             # Add to JSON
                             json_data[k] = {
@@ -213,7 +227,9 @@ def create_features_tab():
                                 "sample_values": v.flatten()[:20].tolist()
                             }
                         except Exception:
-                            stats_md += f"| `{k}` | `{v.shape}` | - | - | - | - |\n"
+                            stats_md += (
+                                f"| `{k}` | `{v.shape}` | - | - | - | - |\n"
+                            )
                             json_data[k] = str(v)
                     else:
                         json_data[k] = str(v)

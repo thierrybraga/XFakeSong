@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Dict, Any, Optional, Union, List
+from typing import Dict, Any, Optional
 
 from app.core.interfaces.audio import AudioData, FeatureType
 from app.core.interfaces.base import ProcessingStatus
@@ -24,18 +24,21 @@ class FeaturePreparer:
         try:
             # Casos de arquiteturas que operam em áudio bruto
             if arch_info and isinstance(
-                    arch_info.input_requirements, dict) and arch_info.input_requirements.get('type') == 'audio':
+                    arch_info.input_requirements, dict
+            ) and arch_info.input_requirements.get('type') == 'audio':
                 target_shape = model_info.input_shape
                 
                 # Determinar comprimento da sequência alvo
                 seq_len = None
-                if target_shape and len(target_shape) >= 1 and target_shape[0] is not None:
+                if target_shape and len(target_shape) >= 1 and target_shape[0]:
                     seq_len = target_shape[0]
                 
                 # Fallback: calcular via requisitos de duração
                 if not seq_len:
                     max_dur = arch_info.input_requirements.get('max_duration')
-                    req_sr = arch_info.input_requirements.get('sample_rate', 16000)
+                    req_sr = arch_info.input_requirements.get(
+                        'sample_rate', 16000
+                    )
                     if max_dur:
                         seq_len = int(max_dur * req_sr)
                 
@@ -43,7 +46,9 @@ class FeaturePreparer:
                 if not seq_len:
                     seq_len = len(audio_data.samples)
 
-                feat_dim = target_shape[1] if target_shape and len(target_shape) >= 2 else 1
+                feat_dim = target_shape[1] if target_shape and len(
+                    target_shape
+                ) >= 2 else 1
                 samples = np.asarray(audio_data.samples, dtype=np.float32)
                 
                 if samples.ndim > 1:
@@ -80,8 +85,11 @@ class FeaturePreparer:
                     from pathlib import Path
                     results_dir = Path(__file__).resolve(
                     ).parent.parent.parent.parent / "results"
-                    metadata['recommended_hyperparameters'] = load_hyperparameters_json(
-                        model_info.architecture, str(results_dir))
+                    metadata['recommended_hyperparameters'] = (
+                        load_hyperparameters_json(
+                            model_info.architecture, str(results_dir)
+                        )
+                    )
                 except Exception:
                     metadata['recommended_hyperparameters'] = {}
                 return {'status': 'ok', 'features': features,
@@ -99,10 +107,12 @@ class FeaturePreparer:
             aggregate_method = getattr(
                 model_info.model, 'aggregate_method', 'mean')
 
-            # Se a arquitetura exige tabular mas o modelo não define features (ex: carregado sem metadados),
-            # usar conjunto padrão robusto
+            # Se a arquitetura exige tabular mas o modelo não define features
+            # (ex: carregado sem metadados), usar conjunto padrão robusto
             if req_format == 'tabular' and not feature_types_used:
-                feature_types_used = ['spectral', 'cepstral', 'temporal', 'prosodic']
+                feature_types_used = [
+                    'spectral', 'cepstral', 'temporal', 'prosodic'
+                ]
 
             if feature_types_used:
                 # Converter strings para FeatureType enums
@@ -127,11 +137,14 @@ class FeaturePreparer:
 
                         # Obter features combinadas
                         if hasattr(audio_features, 'features') and isinstance(
-                                audio_features.features, dict):
+                            audio_features.features, dict
+                        ):
                             features = audio_features.features.get(
-                                'combined_features', np.array([]))
+                                'combined_features', np.array([])
+                            )
                             feature_names = audio_features.features.get(
-                                'feature_names', [])
+                                'feature_names', []
+                            )
                         else:
                             features = np.array([])
                             feature_names = []
@@ -140,13 +153,17 @@ class FeaturePreparer:
                         metadata = {
                             'feature_type': 'segmented_aggregated',
                             'feature_names': feature_names,
-                            'feature_shapes': {'combined_features': features.shape},
+                            'feature_shapes': {
+                                'combined_features': features.shape
+                            },
                             'feature_count_total': features.size,
                             'features_shape': features.shape,
                             'sample_rate': audio_data.sample_rate,
                             'duration_s': audio_data.duration,
                             'channels': audio_data.channels,
-                            'config_feature_types': [ft.value for ft in feature_enums],
+                            'config_feature_types': [
+                                ft.value for ft in feature_enums
+                            ],
                             'aggregate_method': aggregate_method
                         }
 
@@ -154,17 +171,25 @@ class FeaturePreparer:
                             from pathlib import Path
                             results_dir = Path(__file__).resolve(
                             ).parent.parent.parent.parent / "results"
-                            metadata['recommended_hyperparameters'] = load_hyperparameters_json(
-                                model_info.architecture, str(results_dir))
+                            metadata['recommended_hyperparameters'] = (
+                                load_hyperparameters_json(
+                                    model_info.architecture, str(results_dir)
+                                )
+                            )
                         except Exception:
                             metadata['recommended_hyperparameters'] = {}
 
-                        return {'status': 'ok', 'features': features.reshape(
-                            1, -1), 'metadata': metadata}
+                        return {
+                            'status': 'ok',
+                            'features': features.reshape(1, -1),
+                            'metadata': metadata
+                        }
 
                     except Exception as e:
-                        return {'status': 'error',
-                                'error': f"Erro na extração segmentada: {str(e)}"}
+                        return {
+                            'status': 'error',
+                            'error': f"Erro na extração segmentada: {str(e)}"
+                        }
 
             # Demais arquiteturas: extrair features conforme necessidade
             selected_feature_type = FeatureType.SPECTRAL
@@ -190,16 +215,19 @@ class FeaturePreparer:
             
             if features_result.status != ProcessingStatus.SUCCESS:
                 return {
-                    'status': 'error', 'error': features_result.errors[0] if features_result.errors else 'Erro desconhecido'}
+                    'status': 'error',
+                    'error': features_result.errors[0] if features_result.errors else 'Erro desconhecido'  # noqa: E501
+                }
 
             extraction_result = features_result.data
-            audio_features = extraction_result.features
+            audio_features = extraction_result
             feature_shapes_map = {}
             feature_names_list = []
             # Preparar estrutura apropriada
             if selected_feature_type == FeatureType.MEL_SPECTROGRAM:
                 if hasattr(audio_features, 'features') and isinstance(
-                        audio_features.features, dict):
+                    audio_features.features, dict
+                ):
                     if 'mel_spectrogram' in audio_features.features:
                         features = audio_features.features['mel_spectrogram']
                         feature_shapes_map['mel_spectrogram'] = features.shape
@@ -236,8 +264,11 @@ class FeaturePreparer:
                 from pathlib import Path
                 results_dir = Path(__file__).resolve(
                 ).parent.parent.parent.parent / "results"
-                metadata['recommended_hyperparameters'] = load_hyperparameters_json(
-                    model_info.architecture, str(results_dir))
+                metadata['recommended_hyperparameters'] = (
+                    load_hyperparameters_json(
+                        model_info.architecture, str(results_dir)
+                    )
+                )
             except Exception:
                 metadata['recommended_hyperparameters'] = {}
             return {'status': 'ok', 'features': features, 'metadata': metadata}

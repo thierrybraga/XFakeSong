@@ -1,57 +1,121 @@
 site_name: XfakeSong
-site_description: Documentação do sistema de detecção de deepfakes de áudio XfakeSong.
+site_description: Plataforma Open Source de Inteligência Artificial para detecção de deepfakes de áudio e forense digital.
 site_author: XfakeSong Team
-repo_url: https://github.com/thier/TCC
-repo_name: thier/TCC
+site_url: https://thierrybraga.github.io/XFakeSong/
+repo_url: https://github.com/thierrybraga/XFakeSong
+repo_name: thierrybraga/XFakeSong
+edit_uri: edit/main/docs/
 
 theme:
   name: material
   language: pt-BR
+  custom_dir: docs/overrides
   features:
     - navigation.tabs
+    - navigation.tabs.sticky
     - navigation.sections
     - navigation.expand
     - navigation.top
+    - navigation.tracking
+    - navigation.indexes
     - toc.integrate
+    - toc.follow
     - search.suggest
     - search.highlight
+    - search.share
+    - header.autohide
     - content.code.copy
+    - content.action.edit
+    - content.action.view
+    - content.tooltips
   palette:
     - scheme: default
       primary: indigo
       accent: deep purple
       toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
+        icon: material/weather-sunny
+        name: Mudar para modo escuro
     - scheme: slate
       primary: indigo
       accent: deep purple
       toggle:
-        icon: material/brightness-4
-        name: Switch to light mode
+        icon: material/weather-night
+        name: Mudar para modo claro
   font:
     text: Roboto
     code: Roboto Mono
+  favicon: assets/favicon.ico
+  logo: assets/logo.png
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/thier/TCC
+      name: XfakeSong no GitHub
+    - icon: fontawesome/brands/python
+      link: https://python.org
+      name: Python
+  generator: false
 
 markdown_extensions:
   - admonition
+  - abbr
+  - attr_list
+  - def_list
+  - footnotes
+  - meta
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.betterem
+  - pymdownx.caret
   - pymdownx.details
-  - pymdownx.superfences
   - pymdownx.highlight:
       anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
   - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
   - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
   - pymdownx.tasklist:
       custom_checkbox: true
-  - attr_list
-  - md_in_html
+  - pymdownx.tilde
+  - pymdownx.emoji:
+      emoji_index: !!python/name:materialx.emoji.twemoji
+      emoji_generator: !!python/name:materialx.emoji.to_svg
 
 nav:
   - Home: index.md
-  - Introdução: 01_INTRODUCAO.md
-  - Instalação: 02_INSTALACAO_CONFIGURACAO.md
-  - Arquitetura: 03_ARQUITETURA.md
-  - Funcionalidades: 04_FUNCIONALIDADES_CORE.md
-  - Estrutura: 05_ESTRUTURA_PROJETO.md
-  - Desenvolvimento: 06_GUIA_DESENVOLVIMENTO.md
-  - API: 07_API_REFERENCE.md
+  - Começando:
+    - Introdução: 01_INTRODUCAO.md
+    - Instalação e Configuração: 02_INSTALACAO_CONFIGURACAO.md
+    - Guia Google Colab: 14_GOOGLE_COLAB_GUIDE.md
+  - Arquitetura e Conceitos:
+    - Visão Geral: 03_ARQUITETURA.md
+    - Estrutura do Projeto: 05_ESTRUTURA_PROJETO.md
+    - Funcionalidades Core: 04_FUNCIONALIDADES_CORE.md
+  - Modelos e Features:
+    - Arquiteturas Detalhadas: 08_ARQUITETURAS_DETALHADAS.md
+    - Extração de Features: 09_FEATURES_DETALHADAS.md
+    - Inferência: 10_INFERENCIA_ARQUITETURAS.md
+    - Treinamento: 11_TREINAMENTO_ARQUITETURAS.md
+  - Dados:
+    - Datasets Públicos: 13_DATASETS_PUBLICOS.md
+  - Desenvolvimento e API:
+    - Guia de Contribuição: 06_GUIA_DESENVOLVIMENTO.md
+    - API Reference: 07_API_REFERENCE.md
+    - Testes: 07_TESTES.md
+  - Deploy:
+    - Hugging Face: 12_DEPLOY_HUGGINGFACE.md

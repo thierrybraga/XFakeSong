@@ -71,10 +71,10 @@ class ModelTrainer(IModelTrainer):
                 preparation_result = self.secure_pipeline.prepare_data(
                     X_train, y_train, metadata)
 
-                if not preparation_result.success:
+                if preparation_result.status != ProcessingStatus.SUCCESS:
                     raise ValueError(
                         f"Erro na preparação segura dos dados: {
-                            preparation_result.error}")
+                            preparation_result.errors}")
 
                 prepared_data = preparation_result.data
                 X_train = prepared_data["X_train"]
@@ -154,18 +154,16 @@ class ModelTrainer(IModelTrainer):
 
             self.logger.info("Treinamento concluído com sucesso")
             return ProcessingResult(
-                success=True,
-                data=result,
-                status=ProcessingStatus.COMPLETED
+                status=ProcessingStatus.SUCCESS,
+                data=result
             )
 
         except Exception as e:
             self.logger.error(f"Erro durante treinamento: {str(e)}")
             return ProcessingResult(
-                success=False,
-                error=str(e),
-                status=ProcessingStatus.FAILED
-            )
+                    status=ProcessingStatus.ERROR,
+                    errors=[str(e)]
+                )
 
     def get_scaler(self):
         """Retorna o scaler treinado para uso em predições."""
@@ -227,17 +225,15 @@ class ModelTrainer(IModelTrainer):
 
             self.logger.info(f"Artefatos de treinamento salvos em: {save_dir}")
             return ProcessingResult(
-                success=True,
-                data=artifacts,
-                status=ProcessingStatus.COMPLETED
+                status=ProcessingStatus.SUCCESS,
+                data=artifacts
             )
 
         except Exception as e:
             self.logger.error(f"Erro ao salvar artefatos: {str(e)}")
             return ProcessingResult(
-                success=False,
-                error=str(e),
-                status=ProcessingStatus.FAILED
+                status=ProcessingStatus.ERROR,
+                errors=[str(e)]
             )
 
     def evaluate(
@@ -288,17 +284,15 @@ class ModelTrainer(IModelTrainer):
 
             self.logger.info("Avaliação segura concluída com sucesso")
             return ProcessingResult(
-                success=True,
-                data=metrics,
-                status=ProcessingStatus.COMPLETED
+                status=ProcessingStatus.SUCCESS,
+                data=metrics
             )
 
         except Exception as e:
             self.logger.error(f"Erro durante avaliação: {str(e)}")
             return ProcessingResult(
-                success=False,
-                error=str(e),
-                status=ProcessingStatus.FAILED
+                status=ProcessingStatus.ERROR,
+                errors=[str(e)]
             )
 
     def save_model(
@@ -322,17 +316,15 @@ class ModelTrainer(IModelTrainer):
 
             self.logger.info(f"Modelo salvo em: {save_path}")
             return ProcessingResult(
-                success=True,
-                data=str(save_path),
-                status=ProcessingStatus.COMPLETED
+                status=ProcessingStatus.SUCCESS,
+                data=str(save_path)
             )
 
         except Exception as e:
             self.logger.error(f"Erro ao salvar modelo: {str(e)}")
             return ProcessingResult(
-                success=False,
-                error=str(e),
-                status=ProcessingStatus.FAILED
+                status=ProcessingStatus.ERROR,
+                errors=[str(e)]
             )
 
     def load_model(
@@ -351,17 +343,15 @@ class ModelTrainer(IModelTrainer):
 
             self.logger.info(f"Modelo carregado de: {model_path}")
             return ProcessingResult(
-                success=True,
-                data=model,
-                status=ProcessingStatus.COMPLETED
+                status=ProcessingStatus.SUCCESS,
+                data=model
             )
 
         except Exception as e:
             self.logger.error(f"Erro ao carregar modelo: {str(e)}")
             return ProcessingResult(
-                success=False,
-                error=str(e),
-                status=ProcessingStatus.FAILED
+                status=ProcessingStatus.ERROR,
+                errors=[str(e)]
             )
 
     def _prepare_callbacks(

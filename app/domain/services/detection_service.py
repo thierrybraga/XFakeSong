@@ -7,16 +7,19 @@ integrando todas as arquiteturas disponíveis ao pipeline.
 import logging
 import numpy as np
 from pathlib import Path
-from typing import List, Optional, Union, Dict, Any
+from typing import List, Optional, Union, Dict
 
 from ...core.interfaces.services import IDetectionService
-from ...core.interfaces.audio import AudioData, DeepfakeDetectionResult, FeatureType
+from ...core.interfaces.audio import (
+    AudioData, DeepfakeDetectionResult, FeatureType
+)
 from ...core.interfaces.base import ProcessingResult, ProcessingStatus
 from ..models.architectures.registry import get_architecture_info
 from .feature_extraction_service import AudioFeatureExtractionService
 from .detection.model_loader import ModelLoader, ModelInfo
 from .detection.feature_preparer import FeaturePreparer
 from .detection.predictor import Predictor
+from .detection.utils import get_available_devices
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +30,7 @@ class DetectionService(IDetectionService):
     def __init__(self, models_dir: Union[str, Path] = "models"):
         self.models_dir = Path(models_dir)
         self.feature_service = AudioFeatureExtractionService()
+        self.device = "CPU"  # Dispositivo padrão
 
         # Inicializar sub-serviços
         self.model_loader = ModelLoader(self.models_dir)
@@ -52,13 +56,23 @@ class DetectionService(IDetectionService):
         """Retorna lista de arquiteturas disponíveis."""
         return self.model_loader.get_available_architectures()
 
+    def get_available_devices(self) -> List[str]:
+        """Retorna lista de dispositivos de computação disponíveis."""
+        return get_available_devices()
+
+    def set_device(self, device: str):
+        """Define o dispositivo para inferência (ex: 'CPU', 'GPU:0')."""
+        self.device = device
+        logger.info(f"Dispositivo de inferência definido para: {device}")
+
     def find_model(self, architecture: str,
                    variant: str = None) -> Optional[str]:
         """Encontra modelo treinado por arquitetura e variante."""
         return self.model_loader.find_model(architecture, variant)
 
-    def detect_single(self, audio_data: AudioData,
-                      model_name: str = None) -> ProcessingResult[DeepfakeDetectionResult]:
+    def detect_single(
+        self, audio_data: AudioData, model_name: str = None
+    ) -> ProcessingResult[DeepfakeDetectionResult]:
         """Detecta deepfake em um único áudio."""
         try:
             # Usar modelo padrão se não especificado
@@ -69,7 +83,9 @@ class DetectionService(IDetectionService):
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
                     errors=[
-                        f"Modelo '{model_name}' não encontrado. Disponíveis: {list(self.loaded_models.keys())}"]
+                        f"Modelo '{model_name}' não encontrado. "
+                        f"Disponíveis: {list(self.loaded_models.keys())}"
+                    ]
                 )
 
             model_info = self.loaded_models[model_name]
@@ -87,10 +103,12 @@ class DetectionService(IDetectionService):
             features = prepared['features']
             extraction_info = prepared['metadata']
 
-            prediction_result = self.predictor.predict(model_info, features)
+            prediction_result = self.predictor.predict(
+                model_info, features, device=self.device)
             if prediction_result.status != ProcessingStatus.SUCCESS:
                 return prediction_result
             prediction = prediction_result.data
+
 
             result = DeepfakeDetectionResult(
                 is_fake=prediction['is_deepfake'],
@@ -112,23 +130,28 @@ class DetectionService(IDetectionService):
                 errors=[f"Erro na detecção: {str(e)}"]
             )
 
-    def detect_batch(self, audio_list: List[AudioData],
-                     model_name: str = None) -> ProcessingResult[List[DeepfakeDetectionResult]]:
+    def detect_batch(
+        self, audio_list: List[AudioData], model_name: str = None
+    ) -> ProcessingResult[List[DeepfakeDetectionResult]]:
         """Detecta deepfake em lote de forma otimizada."""
         try:
             if not audio_list:
-                return ProcessingResult(status=ProcessingStatus.SUCCESS, data=[])
+                return ProcessingResult(
+                    status=ProcessingStatus.SUCCESS, data=[])
 
             if model_name is None:
                 model_name = self.default_model
 
             # Usar get_model para carregamento Lazy
             model_info = self.model_loader.get_model(model_name)
-            
+
             if not model_info:
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
-                    errors=[f"Modelo '{model_name}' não encontrado ou falha ao carregar."]
+                    errors=[
+                        f"Modelo '{model_name}' não encontrado ou "
+                        "falha ao carregar."
+                    ]
                 )
 
             try:
@@ -163,7 +186,9 @@ class DetectionService(IDetectionService):
                 )
 
             # 2. Executar predição em lote
-            batch_result = self.predictor.predict_batch(model_info, prepared_features)
+            batch_result = self.predictor.predict_batch(
+                model_info, prepared_features, device=self.device
+            )
             
             if batch_result.status != ProcessingStatus.SUCCESS:
                 return ProcessingResult(status=ProcessingStatus.ERROR, errors=batch_result.errors)

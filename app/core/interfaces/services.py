@@ -39,18 +39,26 @@ class DatasetMetadata:
     """Metadados de dataset."""
     name: str
     dataset_type: DatasetType
-    total_samples: int
-    real_samples: int
-    fake_samples: int
-    created_at: datetime
-    updated_at: datetime
-    version: str = "1.0"
     description: str = ""
+    file_count: int = 0
+    total_size: int = 0
+    total_duration: float = 0.0
+    total_samples: int = 0
+    real_samples: int = 0
+    fake_samples: int = 0
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    version: str = "1.0"
     tags: List[str] = None
+    file_paths: List[str] = None
 
     def __post_init__(self):
         if self.tags is None:
             self.tags = []
+        if self.file_paths is None:
+            self.file_paths = []
+        if self.file_count > 0 and self.total_samples == 0:
+            self.total_samples = self.file_count
 
 
 @dataclass
@@ -59,19 +67,22 @@ class ModelMetadata:
     name: str
     architecture: str
     version: str
-    accuracy: float
-    precision: float
-    recall: float
-    f1_score: float
-    training_dataset: str
     created_at: datetime
     file_path: Path
-    file_size: int
+    accuracy: float = 0.0
+    precision: float = 0.0
+    recall: float = 0.0
+    f1_score: float = 0.0
+    training_dataset: str = ""
+    file_size: int = 0
     parameters: Dict[str, Any] = None
+    metrics: Dict[str, float] = None
 
     def __post_init__(self):
         if self.parameters is None:
             self.parameters = {}
+        if self.metrics is None:
+            self.metrics = {}
 
 
 class IAudioRepository(IRepository[AudioData]):

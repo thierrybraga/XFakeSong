@@ -1,5 +1,9 @@
 import numpy as np
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, List
+import tensorflow as tf
+import logging
+
+logger = logging.getLogger(__name__)
 
 def pad_or_truncate(data: np.ndarray, target_length: int, axis: int = 0, mode: str = 'constant', constant_values: float = 0.0) -> np.ndarray:
     """
@@ -23,7 +27,7 @@ def pad_or_truncate(data: np.ndarray, target_length: int, axis: int = 0, mode: s
     
     return np.pad(data, pad_width, mode=mode, constant_values=constant_values)
 
-def prepare_batch_for_model(features_list: list[np.ndarray], target_shape: Optional[Tuple] = None) -> np.ndarray:
+def prepare_batch_for_model(features_list: List[np.ndarray], target_shape: Optional[Tuple] = None) -> np.ndarray:
     """
     Prepara uma lista de features para processamento em lote.
     Garante que todos tenham o mesmo shape.
@@ -42,8 +46,28 @@ def prepare_batch_for_model(features_list: list[np.ndarray], target_shape: Optio
     processed = []
     for f in features_list:
         # Ajustar primeira dimensão
-        if len(target_shape) >= 1:
+        if len(target_shape) >= 1 and target_shape[0] is not None:
              f = pad_or_truncate(f, target_shape[0], axis=0)
         processed.append(f)
         
     return np.stack(processed)
+
+def get_available_devices() -> List[str]:
+    """Retorna lista de dispositivos disponíveis (CPU, GPU:0, etc)."""
+    devices = ["CPU"]
+    try:
+        gpus = tf.config.list_physical_devices('GPU')
+        if gpus:
+            devices.extend([f"GPU:{i}" for i in range(len(gpus))])
+    except Exception as e:
+        logger.warning(f"Erro ao listar dispositivos GPU: {e}")
+    return devices
+
+def set_memory_growth():
+    """Configura crescimento de memória para GPUs."""
+    try:
+        gpus = tf.config.list_physical_devices('GPU')
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+    except Exception as e:
+        logger.warning(f"Erro ao configurar memory growth: {e}")

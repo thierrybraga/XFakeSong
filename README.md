@@ -10,100 +10,107 @@ pinned: false
 license: mit
 ---
 
-# XfakeSong — Deepfake Audio Detection System
+# 🛡️ XfakeSong — Enterprise Deepfake Audio Detection
 
-> Sistema avançado para upload, extração de features, treinamento e inferência de detecção de deepfake de áudio com interface Gradio.
+> **Plataforma Open Source de Inteligência Artificial para Detecção de Áudio Sintético e Forense Digital.**
 
-![Python Version](https://img.shields.io/badge/python-3.11%2B-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
-![Status](https://img.shields.io/badge/status-development-orange)
+![Python Version](https://img.shields.io/badge/python-3.11%2B-blue?style=for-the-badge&logo=python)
+![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
+![Status](https://img.shields.io/badge/status-active_development-orange?style=for-the-badge)
+![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=for-the-badge)
+![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg?style=for-the-badge)
+[![CI](https://github.com/thierrybraga/XFakeSong/actions/workflows/ci.yml/badge.svg)](https://github.com/thierrybraga/XFakeSong/actions/workflows/ci.yml)
 
-## 📚 Documentação Completa
+## 🎯 Visão Geral
 
-A documentação detalhada do projeto foi organizada em módulos para facilitar o entendimento:
+O **XfakeSong** é uma solução robusta e modular projetada para combater a crescente ameaça de deepfakes de áudio. Utilizando arquiteturas de ponta (WavLM, HuBERT) e princípios de **Explainable AI (XAI)**, o sistema oferece ferramentas precisas para pesquisadores, analistas de segurança e desenvolvedores.
 
-- [**01 - Introdução e Visão Geral**](docs/01_INTRODUCAO.md): Entenda o propósito e as capacidades do sistema.
-- [**02 - Instalação e Configuração**](docs/02_INSTALACAO_CONFIGURACAO.md): Guia passo a passo para configurar o ambiente e variáveis `.env`.
-- [**03 - Arquitetura do Sistema**](docs/03_ARQUITETURA.md): Detalhes sobre a Clean Architecture e o padrão Pipeline utilizado.
-- [**04 - Funcionalidades Core**](docs/04_FUNCIONALIDADES_CORE.md): Explicação profunda sobre os algoritmos de extração de features (Cepstral, Complexity, etc).
-- [**05 - Estrutura do Projeto**](docs/05_ESTRUTURA_PROJETO.md): Mapa completo de arquivos e pastas.
-- [**06 - Guia de Desenvolvimento**](docs/06_GUIA_DESENVOLVIMENTO.md): Padrões de código e dicas para contribuidores.
-- [**07 - API Reference**](docs/07_API_REFERENCE.md): Documentação completa dos endpoints da API REST.
+### 🌟 Diferenciais
+*   **Arquitetura Híbrida**: Combina análise espectral clássica com Transformers modernos.
+*   **Interface Unificada**: GUI baseada em Gradio para inferência, treinamento e análise.
+*   **Pipeline Modular**: Facilidade para plugar novos modelos e extratores de features.
+*   **Foco em Privacidade**: Processamento local ou containerizado, sem dependência de APIs externas inseguras.
+*   **Open Source Ready**: Documentação extensiva e configurações de CI/CD prontas para uso.
 
 ---
 
-## 🚀 Quick Start
+## 📚 Documentação Oficial
+
+A documentação completa para desenvolvedores e usuários está disponível em nossa [Wiki / GitHub Pages](https://thierrybraga.github.io/XFakeSong/).
+
+### 🔹 Guias Iniciais
+- [**01 - Introdução e Visão Geral**](docs/01_INTRODUCAO.md): Propósito e capacidades.
+- [**02 - Instalação e Configuração**](docs/02_INSTALACAO_CONFIGURACAO.md): Setup do ambiente.
+- [**06 - Guia de Desenvolvimento**](docs/06_GUIA_DESENVOLVIMENTO.md): Padrões para contribuição.
+- [**07 - Testes e Qualidade**](docs/07_TESTES.md): Estrutura, execução e cobertura.
+
+### 🔹 Guias Técnicos Avançados
+- [**03 - Arquitetura do Sistema**](docs/03_ARQUITETURA.md): Clean Architecture e Design Patterns.
+- [**04 - Funcionalidades Core**](docs/04_FUNCIONALIDADES_CORE.md): Algoritmos e Features.
+- [**08 - Arquiteturas Detalhadas**](docs/08_ARQUITETURAS_DETALHADAS.md): Visão profunda dos modelos.
+- [**10 - Inferência de Arquiteturas**](docs/10_INFERENCIA_ARQUITETURAS.md): Fluxos de dados.
+- [**11 - Treinamento de Arquiteturas**](docs/11_TREINAMENTO_ARQUITURAS.md): Otimização e treinamento.
+- [**13 - Datasets Públicos de Áudio**](docs/13_DATASETS_PUBLICOS.md): Links, licenças e downloads.
+
+### 🔹 Deploy e Operação
+- [**14 - Guia Google Colab**](docs/14_GOOGLE_COLAB_GUIDE.md): Execução em nuvem com GPUs.
+- [**12 - Deploy Hugging Face**](docs/12_DEPLOY_HUGGINGFACE.md): Guia de deploy em nuvem.
+- [**07 - API Reference**](docs/07_API_REFERENCE.md): Endpoints REST.
+
+---
+
+## 🚀 Quick Start (Comece Agora)
 
 ### Pré-requisitos
 - Python 3.11+
-- Pip atualizado
+- Docker (Opcional, recomendado para produção)
 
-### Instalação Rápida
+### Instalação Local
 
 ```bash
-# 1. Clone e entre no diretório
-git clone <URL_REPO>
-cd TCC
+# 1. Clone o repositório
+git clone https://github.com/thierrybraga/XFakeSong.git
+cd XFakeSong
 
-# 2. Crie e ative o ambiente virtual
+# 2. Setup Automático (Windows)
+start.bat
+# Escolha a opção [1] para Teste Local ou [3] para Instalar Dependências
+
+# 3. Setup Manual (Linux/Mac)
 python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# Linux/Mac:
 source .venv/bin/activate
-
-# 3. Instale as dependências
 pip install -r requirements.txt
-
-# 4. Configure o ambiente
-# Windows: copy .env.example .env
-# Linux: cp .env.example .env
-```
-
-### Inicializando o Sistema
-
-Você pode iniciar o sistema via script (menu Opção 1) ou manualmente:
-
-Antes da primeira execução, crie a estrutura de pastas:
-```bash
 python main.py --bootstrap-dirs
+python main.py --gradio
 ```
 
-Inicie a interface web (Gradio):
-```bash
-python main.py --gradio --gradio-port 7860
-```
-Acesse: `http://127.0.0.1:7860/`
+Acesse a interface em: `http://localhost:7860`
 
 ---
 
-## 🛠️ Dicas de Uso
+## 🤝 Como Contribuir
 
-### Interface Web (Gradio)
-1. **Aba "Análise Única"**: Faça upload de um áudio e verifique se é Real ou Fake com o modelo carregado.
-2. **Aba "Treino/Modelos"**: Configure hiperparâmetros e inicie o treinamento de novos modelos usando os datasets em `datasets/`.
-3. **Aba "Resultados & Gráficos"**: Visualize métricas de performance e histórico de execuções.
+Este é um projeto **Open Source** e adoramos receber contribuições da comunidade!
 
-### Diretórios Importantes
-- `app/models/`: Onde os modelos treinados (.pth, .h5) são salvos.
-- `app/results/`: Onde gráficos e métricas JSON são armazenados.
-- `logs/`: Logs de execução para debugging.
+1.  Leia nosso [Guia de Contribuição](CONTRIBUTING.md).
+2.  Consulte o [Código de Conduta](CODE_OF_CONDUCT.md).
+3.  Veja as [Issues Abertas](https://github.com/thierrybraga/XFakeSong/issues) para encontrar onde ajudar.
 
----
-
-## 🔧 Solução de Problemas
-
-| Problema | Solução |
-|----------|---------|
-| `net::ERR_ABORTED` | Evite cliques múltiplos rápidos na UI local. Em modo `--gradio-share`, aguarde a fila. |
-| Erro de Importação | Execute sempre da raiz (`TCC/`) usando `python main.py ...`. |
-| Porta Ocupada | Use `--gradio-port 7861` (ou outra porta livre). |
-
-Para validação rápida de sintaxe em todo o projeto:
-```bash
-python -m compileall -q app main.py
-```
+### Roadmap 🗺️
+- [x] Detecção Baseada em Features Espectrais
+- [x] Integração com WavLM e HuBERT
+- [x] Documentação de Treinamento e Inferência
+- [x] CI/CD Pipeline (Linting & Tests)
+- [ ] API REST Completa com FastAPI (v2)
+- [ ] Suporte a Multi-GPU para Treinamento Distribuído
+- [ ] Dashboard de Monitoramento em Tempo Real
 
 ---
 
-*Para mais detalhes técnicos, consulte a [Documentação de Arquitetura](docs/03_ARQUITETURA.md).*
+## 🛡️ Segurança
+
+Levamos a segurança a sério. Consulte nossa [Política de Segurança](SECURITY.md) para saber como reportar vulnerabilidades de forma responsável.
+
+## 📄 Licença
+
+Este projeto está licenciado sob a Licença MIT - veja o arquivo [LICENSE](LICENSE) para detalhes.

@@ -2,7 +2,7 @@ import logging
 from typing import Dict, List, Optional, Any
 from app.core.interfaces.audio import FeatureType, IFeatureExtractor, AudioData, AudioFeatures
 from app.core.interfaces.base import ProcessingResult
-from app.domain.features.extractor_registry import ExtractorSpec
+from app.domain.features.extractor_registry import ExtractorSpec, ExtractorComplexity
 
 logger = logging.getLogger(__name__)
 
@@ -155,10 +155,12 @@ class ExtractorLoader:
                         description="Extrator de características espectrais",
                         extractor_class=SpectralFeatureExtractor,
                         feature_type="spectral",
+                        complexity=ExtractorComplexity.MEDIUM,
+                        default_params={},
+                        input_requirements={"sample_rate": 16000},
                         dependencies=[]
                     )
-                    self.extractor_registry.register_extractor(
-                        "spectral", spec)
+                    self.extractor_registry.register(spec)
                     self._extractor_specs["spectral"] = spec
                     self._extractor_cache["spectral"] = SpectralFeatureExtractor(
                     )
@@ -182,10 +184,12 @@ class ExtractorLoader:
                         description="Extrator de características temporais",
                         extractor_class=TemporalFeatureExtractor,
                         feature_type="temporal",
+                        complexity=ExtractorComplexity.LOW,
+                        default_params={},
+                        input_requirements={"sample_rate": 16000},
                         dependencies=[]
                     )
-                    self.extractor_registry.register_extractor(
-                        "temporal", spec)
+                    self.extractor_registry.register(spec)
                     self._extractor_specs["temporal"] = spec
                     self._extractor_cache["temporal"] = TemporalFeatureExtractor(
                     )
@@ -218,10 +222,12 @@ class ExtractorLoader:
                         description="Extrator de características prosódicas",
                         extractor_class=ProsodicFeatureExtractor,
                         feature_type="prosodic",
+                        complexity=ExtractorComplexity.HIGH,
+                        default_params={},
+                        input_requirements={"sample_rate": 16000},
                         dependencies=[]
                     )
-                    self.extractor_registry.register_extractor(
-                        "prosodic", spec)
+                    self.extractor_registry.register(spec)
                     self._extractor_specs["prosodic"] = spec
                     self._extractor_cache["prosodic"] = ProsodicFeatureExtractor(
                     )

@@ -8,7 +8,7 @@ incluindo energia, taxa de cruzamento por zero e outras métricas temporais.
 
 import numpy as np
 import warnings
-from typing import Dict
+from typing import Dict, Any
 
 from .components.energy import (
     compute_rms_energy, compute_short_time_energy, compute_energy_entropy,
@@ -25,9 +25,12 @@ from .components.statistics import (
 from .components.dynamics import (
     compute_amplitude_modulation, compute_tremolo_rate, extract_envelope_statistics
 )
+from app.domain.features.interfaces import IFeatureExtractor
+from app.core.interfaces.audio import AudioData, FeatureType
+from app.core.interfaces.base import ProcessingResult, ProcessingStatus
 
 
-class TemporalFeatureExtractor:
+class TemporalFeatureExtractor(IFeatureExtractor):
     """
     Extrator de características temporais de áudio.
     """
@@ -57,12 +60,60 @@ class TemporalFeatureExtractor:
         self.hop_length = hop_length
         self.window = window
 
-    def extract_features(self, y: np.ndarray) -> Dict:
+    def extract(self, audio_data: AudioData) -> ProcessingResult:
+        """
+        Extrai características temporais do áudio.
+
+        Args:
+            audio_data: Dados de áudio
+
+        Returns:
+            ProcessingResult com características temporais
+        """
+        try:
+            if audio_data.samples is None or len(audio_data.samples) == 0:
+                return ProcessingResult(
+                    status=ProcessingStatus.ERROR,
+                    errors=["Dados de áudio vazios"]
+                )
+
+            features = self.extract_features(audio_data.samples)
+            
+            return ProcessingResult(
+                status=ProcessingStatus.SUCCESS,
+                data=features
+            )
+        except Exception as e:
+            return ProcessingResult(
+                status=ProcessingStatus.ERROR,
+                errors=[str(e)]
+            )
+
+    def get_feature_type(self) -> FeatureType:
+        return FeatureType.TEMPORAL
+
+    def get_feature_names(self) -> list[str]:
+        # Lista aproximada de features retornadas
+        return [
+            "rms_energy", "zero_crossing_rate", "temporal_centroid",
+            "attack_time", "decay_time", "sustain_level"
+        ]
+
+    def get_extraction_params(self) -> Dict[str, Any]:
+        return {
+            "sr": self.sr,
+            "frame_length": self.frame_length,
+            "hop_length": self.hop_length,
+            "window": self.window
+        }
+
+    def extract_features(self, y: np.ndarray, context: Any = None) -> Dict:
         """
         Extrai todas as características temporais.
 
         Args:
             y: Sinal de áudio
+            context: Contexto de processamento (opcional)
 
         Returns:
             Dicionário com características temporais

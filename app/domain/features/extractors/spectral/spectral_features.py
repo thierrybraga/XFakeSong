@@ -8,7 +8,7 @@ Implementa extração de características do espectro de magnitude e contraste.
 import numpy as np
 import librosa
 import warnings
-from typing import Dict, Optional, Tuple, List, Any
+from typing import Dict, List, Any
 
 from app.domain.features.interfaces import IFeatureExtractor
 from .....core.interfaces.audio import AudioData, AudioFeatures, FeatureType
@@ -172,12 +172,13 @@ class SpectralFeatureExtractor(IFeatureExtractor):
             'preemphasis': self.preemphasis
         }
 
-    def extract_features(self, y: np.ndarray) -> Dict:
+    def extract_features(self, y: np.ndarray, context: Any = None) -> Dict:
         """
         Extrai todas as características espectrais do sinal.
 
         Args:
             y: Sinal de áudio
+            context: Contexto de processamento (opcional)
 
         Returns:
             Dicionário com características espectrais
@@ -280,8 +281,9 @@ class SpectralFeatureExtractor(IFeatureExtractor):
                 S, freqs)
 
             # Spectral Inharmonicity
-            features['spectral_inharmonicity'] = compute_spectral_inharmonicity(
-                S, freqs)
+            features['spectral_inharmonicity'] = (
+                compute_spectral_inharmonicity(S, freqs)
+            )
 
             # === MAPEAMENTO PARA NOMES ESPERADOS ===
             # Mapear spectral_rolloff_85 para spectral_rolloff (nome esperado)

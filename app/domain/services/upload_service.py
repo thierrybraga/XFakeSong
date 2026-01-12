@@ -3,17 +3,19 @@
 Implementa a lógica de negócio para upload e validação de arquivos de áudio.
 """
 
-import os
-import hashlib
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Union
 from dataclasses import dataclass
+import shutil
 
-from ...core.interfaces.base import IProcessor, ProcessingResult, ProcessingStatus
-from ...core.interfaces.audio import AudioData, AudioFormat
-from ...core.interfaces.services import IUploadService, DatasetMetadata, DatasetType
-from ...core.exceptions.base import ValidationError, FileError, AudioError
-from ...core.utils.helpers import ensure_directory, safe_filename, get_file_hash
+from ...core.interfaces.base import ProcessingResult, ProcessingStatus
+from ...core.interfaces.audio import AudioFormat
+from ...core.interfaces.services import (
+    IUploadService, DatasetMetadata, DatasetType
+)
+from ...core.utils.helpers import (
+    ensure_directory, safe_filename, get_file_hash
+)
 
 
 def ensure_directory_exists(path: str) -> None:
@@ -71,8 +73,10 @@ class AudioUploadService(IUploadService):
                 status=ProcessingStatus.SUCCESS,
                 data=upload_result,
                 metadata={
-                    "message": f"Arquivo {
-                        Path(file_path).name} enviado com sucesso"}
+                    "message": (
+                        f"Arquivo {Path(file_path).name} enviado com sucesso"
+                    )
+                }
             )
 
         except Exception as e:
@@ -83,7 +87,8 @@ class AudioUploadService(IUploadService):
             )
 
     def upload_batch(
-            self, file_paths: List[str], dataset_type: DatasetType) -> ProcessingResult:
+            self, file_paths: List[str],
+            dataset_type: DatasetType) -> ProcessingResult:
         """Upload em lote de arquivos de áudio"""
         results = []
         errors = []
@@ -93,46 +98,96 @@ class AudioUploadService(IUploadService):
             if result.status == ProcessingStatus.SUCCESS:
                 results.append(result.data)
             else:
-                errors.append(
-                    f"{Path(file_path).name}: {result.errors[0] if result.errors else 'Erro desconhecido'}")
+                msg = result.errors[0] if result.errors else 'Erro desconhecido'
+                errors.append(f"{Path(file_path).name}: {msg}")
 
         if errors:
+            status = (
+                ProcessingStatus.PARTIAL_SUCCESS if results
+                else ProcessingStatus.ERROR
+            )
             return ProcessingResult(
-                status=ProcessingStatus.PARTIAL_SUCCESS if results else ProcessingStatus.ERROR,
+                status=status,
                 data=results,
                 errors=errors,
                 metadata={
-                    "message": f"Upload concluído: {
-                        len(results)} sucessos, {
-                        len(errors)} erros"}
+                    "message": (
+                        f"Upload concluído: {len(results)} sucessos, "
+                        f"{len(errors)} erros"
+                    )
+                }
             )
 
         return ProcessingResult(
             status=ProcessingStatus.SUCCESS,
             data=results,
             metadata={
-                "message": f"Todos os {
-                    len(results)} arquivos enviados com sucesso"}
+                "message": (
+                    f"Todos os {len(results)} arquivos enviados com sucesso"
+                )
+            }
         )
 
-    def create_dataset(self, name: str, dataset_type: DatasetType,
-                       description: Optional[str] = None) -> DatasetMetadata:
+    def create_dataset(
+            self, name: str, dataset_type: DatasetType,
+            description: Optional[str] = None
+    ) -> ProcessingResult[DatasetMetadata]:
         """Criar novo dataset"""
-        dataset_dir = self.upload_directory / sanitize_filename(name)
-        ensure_directory_exists(str(dataset_dir))
+        try:
+            dataset_dir = (
+                self.upload_directory / dataset_type.value /
+                sanitize_filename(name)
+            )
+            ensure_directory_exists(str(dataset_dir))
 
-        metadata = DatasetMetadata(
-            name=name,
-            dataset_type=dataset_type,
-            description=description or f"Dataset {name}",
-            file_count=0,
-            total_size=0,
-            total_duration=0.0,
-            created_at=None,  # Será definido automaticamente
-            file_paths=[]
-        )
+            metadata = DatasetMetadata(
+                name=name,
+                # Pass enum directly if model supports it, or .value
+                dataset_type=dataset_type,
+                description=description or f"Dataset {name}",
+                file_count=0,
+                total_size=0,
+                total_duration=0.0,
+                created_at=None,
+                file_paths=[]
+            )
 
-        return metadata
+            return ProcessingResult(
+                status=ProcessingStatus.SUCCESS,
+                data=metadata,
+                metadata={"message": f"Dataset {name} criado com sucesso"}
+            )
+        except Exception as e:
+            return ProcessingResult(
+                status=ProcessingStatus.ERROR,
+                errors=[str(e)]
+            )
+
+    def delete_dataset(self, name: str,
+                       dataset_type: DatasetType) -> ProcessingResult:
+        """Excluir dataset existente"""
+        try:
+            dataset_dir = (
+                self.upload_directory / dataset_type.value /
+                sanitize_filename(name)
+            )
+            if not dataset_dir.exists():
+                return ProcessingResult(
+                    status=ProcessingStatus.ERROR,
+                    errors=[f"Dataset não encontrado: {name}"]
+                )
+
+            shutil.rmtree(dataset_dir)
+
+            return ProcessingResult(
+                status=ProcessingStatus.SUCCESS,
+                metadata={"message": f"Dataset {name} excluído com sucesso"}
+            )
+        except Exception as e:
+            return ProcessingResult(
+                status=ProcessingStatus.ERROR,
+                errors=[str(e)]
+            )
 
     def _validate_file(self, file_path: str) -> ProcessingResult:
         """Validar arquivo de áudio"""
@@ -158,10 +213,9 @@ class AudioUploadService(IUploadService):
             return ProcessingResult(
                 status=ProcessingStatus.ERROR,
                 errors=[
-                    f"Arquivo muito grande: {
-                        file_size /
-                        1024 /
-                        1024:.1f}MB"]
+                    f"Arquivo muito grande: "
+                    f"{file_size / 1024 / 1024:.1f}MB"
+                ]
             )
 
         # Validação adicional de áudio seria feita aqui
@@ -188,7 +242,6 @@ class AudioUploadService(IUploadService):
         destination_path = type_dir / destination_name
 
         # Copiar arquivo
-        import shutil
         shutil.copy2(source_path, destination_path)
 
         # Criar resultado
@@ -214,18 +267,19 @@ class AudioUploadService(IUploadService):
                 name=dataset_name,
                 dataset_type=DatasetType.TRAINING,
                 description=f"Dataset {dataset_name}",
-                file_count=0,
-                total_size=0,
-                total_duration=0.0,
+                total_samples=0,
+                real_samples=0,
+                fake_samples=0,
                 created_at=None,
-                file_paths=[]
+                updated_at=None
             )
 
             return ProcessingResult(
                 status=ProcessingStatus.SUCCESS,
                 data=metadata,
                 metadata={
-                    "message": f"Dataset {dataset_name} processado com sucesso"}
+                    "message": f"Dataset {dataset_name} processado com sucesso"
+                }
             )
 
         except Exception as e:

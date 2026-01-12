@@ -10,7 +10,7 @@ import inspect
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, Union, Callable
+from typing import Any, Dict, List, Optional, Type, Union
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 import json
@@ -19,10 +19,10 @@ from datetime import datetime
 
 from app.domain.interfaces.pipeline_interfaces import (
     IPluginManager, IPipelineComponent, ComponentType,
-    IFeatureExtractor, IArchitecture, PluginError
+    PluginError
 )
 from app.domain.models.architectures.factory import ArchitectureSpec
-from app.domain.features.extractor_registry import ExtractorSpec, FeatureType, ExtractorComplexity
+from app.domain.features.extractor_registry import ExtractorSpec
 
 logger = logging.getLogger(__name__)
 
@@ -228,8 +228,9 @@ class PluginManager(IPluginManager):
                     data = json.load(f)
 
                 for plugin_name, metadata_dict in data.items():
-                    self._metadata_cache[plugin_name] = PluginMetadata.from_dict(
-                        metadata_dict)
+                    self._metadata_cache[plugin_name] = (
+                        PluginMetadata.from_dict(metadata_dict)
+                    )
 
             except Exception as e:
                 logger.warning(f"Erro ao carregar cache de metadados: {e}")
@@ -237,8 +238,10 @@ class PluginManager(IPluginManager):
     def _save_metadata_cache(self) -> None:
         """Salva cache de metadados."""
         try:
-            data = {name: metadata.to_dict()
-                    for name, metadata in self._metadata_cache.items()}
+            data = {
+                name: metadata.to_dict()
+                for name, metadata in self._metadata_cache.items()
+            }
 
             with open(self.metadata_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
@@ -300,7 +303,8 @@ class PluginManager(IPluginManager):
             plugin_classes = []
             for name, obj in inspect.getmembers(module, inspect.isclass):
                 if (issubclass(obj, IPlugin) and
-                        obj not in [IPlugin, ArchitecturePlugin, ExtractorPlugin]):
+                        obj not in [IPlugin, ArchitecturePlugin,
+                                    ExtractorPlugin]):
                     plugin_classes.append(obj)
 
             if not plugin_classes:
@@ -344,13 +348,13 @@ class PluginManager(IPluginManager):
                     self._register_component(plugin_instance)
 
                     logger.info(
-                        f"Plugin {
-                            metadata.name} carregado com sucesso")
+                        f"Plugin {metadata.name} carregado com sucesso"
+                    )
 
                 except Exception as e:
                     logger.error(
-                        f"Erro ao carregar plugin {
-                            plugin_class.__name__}: {e}")
+                        f"Erro ao carregar plugin {plugin_class.__name__}: {e}"
+                    )
 
             # Salvar cache
             self._save_metadata_cache()
@@ -443,7 +447,9 @@ class PluginManager(IPluginManager):
         try:
             if isinstance(plugin, ArchitecturePlugin):
                 # Remover arquitetura
-                from app.domain.models.architectures.factory import architecture_factory_registry
+                from app.domain.models.architectures.factory import (
+                    architecture_factory_registry
+                )
 
                 architecture_factory_registry.unregister_architecture(
                     metadata.name)
@@ -451,7 +457,9 @@ class PluginManager(IPluginManager):
 
             elif isinstance(plugin, ExtractorPlugin):
                 # Remover extrator
-                from app.domain.features.extractor_registry import extractor_registry
+                from app.domain.features.extractor_registry import (
+                    extractor_registry
+                )
 
                 extractor_registry.unregister(metadata.name)
                 logger.info(f"Extrator {metadata.name} removido")

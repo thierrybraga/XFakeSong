@@ -208,9 +208,8 @@ class TemporalCrossValidator:
         except Exception as e:
             self.logger.error(f"Erro na validação cruzada temporal: {str(e)}")
             return ProcessingResult(
-                success=False,
-                error=str(e),
-                status=ProcessingStatus.FAILED
+                status=ProcessingStatus.ERROR,
+                errors=[str(e)]
             )
 
     def _calculate_fold_metrics(self, y_true: np.ndarray, y_pred: np.ndarray,

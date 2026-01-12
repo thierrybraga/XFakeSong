@@ -1,18 +1,66 @@
 {% extends "core/base.html" %}
 
-{% block title %}Dashboard - XfakeSong{% endblock %}
+{% block title %}XfakeSong - Dashboard{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-12">
-        <h1 class="mb-4">System Dashboard</h1>
-        <div class="card shadow-sm">
-            <div class="card-body">
-                <h5 class="card-title">Welcome to XfakeSong</h5>
-                <p class="card-text">The system is operational. Use the navigation bar to access analysis tools.</p>
-                <div class="d-grid gap-2 d-md-block">
-                    <a href="/gradio/" class="btn btn-primary">Go to Analysis Tools</a>
-                    <a href="/api/v1/system/bootstrap" class="btn btn-outline-secondary" target="_blank">Check System Status (API)</a>
+<div class="bg-light py-5 mb-5 border-bottom">
+    <div class="container text-center py-5">
+        <h1 class="display-3 fw-bold mb-3">XfakeSong</h1>
+        <p class="lead text-muted mb-4 mx-auto" style="max-width: 700px;">
+            Plataforma Enterprise de detecção de áudio sintético.
+            Analise, treine e monitore modelos de Deepfake com precisão forense.
+        </p>
+        <div class="d-flex justify-content-center gap-3">
+            <a href="/gradio/" class="btn btn-primary btn-lg px-4 shadow-sm">
+                <i class="fa-solid fa-play me-2"></i> Iniciar Análise
+            </a>
+            <a href="https://thier.github.io/TCC/" target="_blank" class="btn btn-outline-dark btn-lg px-4 shadow-sm">
+                <i class="fa-solid fa-book me-2"></i> Documentação
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="container mb-5">
+    <div class="row g-4">
+        <!-- Card 1: Analysis -->
+        <div class="col-md-4">
+            <div class="card h-100 border-0 shadow-sm hover-card">
+                <div class="card-body text-center p-4">
+                    <div class="icon-circle bg-primary bg-opacity-10 text-primary mb-3 mx-auto">
+                        <i class="fa-solid fa-wave-square fa-2x"></i>
+                    </div>
+                    <h4 class="card-title">Análise Forense</h4>
+                    <p class="card-text text-muted">Detecte manipulações em arquivos de áudio utilizando múltiplos modelos de IA.</p>
+                    <a href="/gradio/" class="stretched-link"></a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 2: Training -->
+        <div class="col-md-4">
+            <div class="card h-100 border-0 shadow-sm hover-card">
+                <div class="card-body text-center p-4">
+                    <div class="icon-circle bg-success bg-opacity-10 text-success mb-3 mx-auto">
+                        <i class="fa-solid fa-brain fa-2x"></i>
+                    </div>
+                    <h4 class="card-title">Treinamento</h4>
+                    <p class="card-text text-muted">Crie novos modelos personalizados com seus próprios datasets.</p>
+                    <a href="/gradio/" class="stretched-link"></a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 3: System Status -->
+        <div class="col-md-4">
+            <div class="card h-100 border-0 shadow-sm hover-card">
+                <div class="card-body text-center p-4">
+                    <div class="icon-circle bg-warning bg-opacity-10 text-warning mb-3 mx-auto">
+                        <i class="fa-solid fa-server fa-2x"></i>
+                    </div>
+                    <h4 class="card-title">Status do Sistema</h4>
+                    <p class="card-text text-muted">Verifique a saúde dos serviços e APIs do backend.</p>
+                    <a href="/api/v1/system/bootstrap" target="_blank" class="stretched-link"></a>
                 </div>
             </div>
         </div>

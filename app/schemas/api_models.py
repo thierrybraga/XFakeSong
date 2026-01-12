@@ -41,7 +41,8 @@ class FeatureExtractionRequest(BaseModel):
 
 
 class FeatureExtractionResult(BaseModel):
-    features: Dict[str, List[List[float]]]  # Simplificado para JSON serializable
+    # Simplificado para JSON serializable
+    features: Dict[str, List[List[float]]]
     metadata: Dict[str, Any]
 
 
@@ -58,6 +59,8 @@ class TrainingResponse(BaseModel):
     job_id: str
     status: str
     message: str
+    progress: int = 0
+    metrics: Optional[Dict[str, Any]] = None
 
 
 class HistoryItem(BaseModel):
@@ -67,3 +70,18 @@ class HistoryItem(BaseModel):
     confidence: float
     model_name: str
     created_at: str
+
+
+class DatasetMetadata(BaseModel):
+    name: str
+    dataset_type: str
+    description: str
+    file_count: int = 0
+    total_size: int = 0
+    total_duration: float = 0.0
+    created_at: Optional[str] = None
+    file_paths: List[str] = []
+
+    class Config:
+        from_attributes = True
+        orm_mode = True  # For Pydantic v1 compatibility

@@ -4,13 +4,12 @@ flask-migrate
 flask-login
 requests
 redis
-python-dotenv
 tensorflow
 numpy
 librosa
 soundfile
 pydantic
-gradio==4.19.2
+gradio
 joblib
 scikit-learn
 jsonschema
@@ -23,4 +22,7 @@ python-multipart
 httpx
 pytest
 slowapi
-python-dotenv
+PyWavelets
+huggingface_hub
+matplotlib
+a2wsgi

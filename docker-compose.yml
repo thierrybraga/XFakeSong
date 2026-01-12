@@ -7,17 +7,19 @@ services:
     ports:
       - "7860:7860"
     volumes:
-      - .:/app  # Monta o diretório atual para desenvolvimento (hot-reload se implementado)
+      # - .:/app  # Descomente para desenvolvimento (hot-reload), mas cuidado com permissoes
       - ./app/models:/app/app/models # Persistência de modelos
       - ./app/results:/app/app/results # Persistência de resultados
       - ./logs:/app/logs # Persistência de logs
+      - ./data:/app/data # Persistência de dados
     environment:
       - DEEPFAKE_ENV=production
       - GRADIO_SERVER_NAME=0.0.0.0
+      - GRADIO_SERVER_PORT=7860
     restart: unless-stopped
-    # Healthcheck básico verificando se a porta está aberta
+    # Healthcheck verificando a interface Gradio (segue redirects)
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7860/"]
+      test: ["CMD", "curl", "-f", "-L", "http://localhost:7860/gradio/"]
       interval: 30s
       timeout: 10s
       retries: 3

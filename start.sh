@@ -58,7 +58,29 @@ mode_prod() {
     echo "Construindo e subindo containers..."
     docker-compose up --build -d
     
-    echo -e "${GREEN}Aplicação iniciada!${NC}"
+    echo "Aguardando Health Check..."
+    while true; do
+        STATUS=$(docker inspect -f '{{.State.Health.Status}}' xfakesong_app 2>/dev/null)
+        if [ -z "$STATUS" ]; then
+             echo -e "${RED}Erro: Container não encontrado.${NC}"
+             break
+        fi
+        
+        echo "Status: $STATUS"
+        
+        if [ "$STATUS" == "healthy" ]; then
+            echo -e "${GREEN}Aplicação iniciada com sucesso!${NC}"
+            break
+        fi
+        
+        if [ "$STATUS" == "unhealthy" ] || [ "$STATUS" == "exited" ]; then
+             echo -e "${RED}Falha na inicialização! Verifique os logs.${NC}"
+             break
+        fi
+        
+        sleep 5
+    done
+
     echo "Acesse: http://localhost:7860"
     echo ""
     echo "Comandos úteis:"

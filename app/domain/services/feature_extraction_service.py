@@ -1,12 +1,12 @@
 """Serviço de Extração de Características de Áudio
 
-Implementa a lógica de negócio para extração de características de arquivos de áudio.
-Refatorado para utilizar sub-módulos em app/domain/services/feature_extraction/
+Implementa a lógica de negócio para extração de características de arquivos
+de áudio. Refatorado para utilizar sub-módulos em
+app/domain/services/feature_extraction/
 """
 
 import logging
-from typing import List, Dict, Any, Optional, Union
-import numpy as np
+from typing import List, Dict, Any, Optional
 
 from app.core.interfaces.base import ProcessingResult, ProcessingStatus
 from app.core.interfaces.audio import (
@@ -14,11 +14,17 @@ from app.core.interfaces.audio import (
 )
 from app.core.interfaces.services import IFeatureExtractionService
 
-from app.domain.services.feature_extraction.types import ExtractionConfig, ExtractionResult
-from app.domain.services.feature_extraction.extractor_loader import ExtractorLoader
-from app.domain.services.feature_extraction.validator import FeatureExtractionValidator
+from app.domain.services.feature_extraction.types import (
+    ExtractionConfig,
+    ExtractionResult
+)
+from app.domain.services.feature_extraction.extractor_loader import (
+    ExtractorLoader
+)
+from app.domain.services.feature_extraction.validator import (
+    FeatureExtractionValidator
+)
 from app.domain.services.feature_extraction.core import FeatureExtractorCore
-from app.domain.features.extractors.segmented_feature_extractor import SegmentedFeatureExtractor, SegmentedExtractionConfig
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +94,8 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
         return self.core.extract_features(audio_data, config)
 
     def extract_batch_with_config(
-            self, audio_files: List[AudioData], config: ExtractionConfig) -> ProcessingResult:
+        self, audio_files: List[AudioData], config: ExtractionConfig
+    ) -> ProcessingResult:
         """Extrair características de múltiplos arquivos (com config)"""
         results = []
         errors = []
@@ -104,15 +111,21 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
                 if result.data:
                     results.append(result.data)
             else:
-                errors.append(
-                    f"audio_data: {
-                        result.errors[0] if result.errors else 'Erro desconhecido'}")
+                msg = (
+                    result.errors[0] if result.errors
+                    else 'Erro desconhecido'
+                )
+                errors.append(f"audio_data: {msg}")
 
             progress.update(i + 1)
 
         if errors:
+            status = (
+                ProcessingStatus.PARTIAL_SUCCESS if results
+                else ProcessingStatus.ERROR
+            )
             return ProcessingResult(
-                status=ProcessingStatus.PARTIAL_SUCCESS if results else ProcessingStatus.ERROR,
+                status=status,
                 data=results,
                 errors=errors
             )
@@ -122,59 +135,9 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
             data=results
         )
 
-    def extract_segmented_features(self, audio_data: AudioData, config: ExtractionConfig) -> AudioFeatures:
-        """Extrai características segmentadas e agrega estatisticamente."""
-        try:
-            # Configuração
-            seg_config = SegmentedExtractionConfig(
-                target_sample_rate=audio_data.sample_rate if audio_data.sample_rate else 16000,
-                extract_spectral=FeatureType.SPECTRAL in config.feature_types,
-                extract_cepstral=FeatureType.CEPSTRAL in config.feature_types,
-                extract_temporal=FeatureType.TEMPORAL in config.feature_types,
-                extract_prosodic=FeatureType.PROSODIC in config.feature_types,
-                extract_formant=FeatureType.FORMANT in config.feature_types,
-                extract_voice_quality=FeatureType.VOICE_QUALITY in config.feature_types,
-                extract_perceptual=FeatureType.PERCEPTUAL in config.feature_types,
-                extract_complexity=FeatureType.COMPLEXITY in config.feature_types,
-                extract_transform=False,
-                extract_timefreq=False,
-                extract_predictive=False,
-                extract_speech=False
-            )
-
-            # Extração
-            extractor = SegmentedFeatureExtractor(seg_config)
-            result = extractor.extract(audio_data)
-
-            if result.status != ProcessingStatus.SUCCESS or not result.data:
-                # Retornar vazio em caso de falha ou sem dados
-                return AudioFeatures(features={'combined_features': np.array([])}, feature_type=FeatureType.ADVANCED)
-
-            segments = result.data  # List[SegmentedFeatures]
-            
-            # Agregar features
-            # Stack all combined_features: shape (n_segments, n_features)
-            feature_matrix = np.vstack([seg.combined_features for seg in segments])
-            
-            # Calcular estatísticas (média e desvio padrão)
-            means = np.mean(feature_matrix, axis=0)
-            stds = np.std(feature_matrix, axis=0)
-            
-            # Concatenar: [mean_1, ..., mean_n, std_1, ..., std_n]
-            aggregated_features = np.concatenate([means, stds])
-            
-            return AudioFeatures(
-                features={'combined_features': aggregated_features},
-                feature_type=FeatureType.ADVANCED,
-                extraction_params={'aggregated': True, 'stats': ['mean', 'std']}
-            )
-
-        except Exception as e:
-            logger.error(f"Erro na extração segmentada: {e}")
-            return AudioFeatures(features={'combined_features': np.array([])}, feature_type=FeatureType.ADVANCED)
-
-    def extract_single(self, audio_data: AudioData,
-                       feature_types: List[str]) -> ProcessingResult[Dict[str, AudioFeatures]]:
+    def extract_single(
+        self, audio_data: AudioData, feature_types: List[str]
+    ) -> ProcessingResult:
         """Extrai características de um áudio."""
         try:
             feature_type_enums = []
@@ -191,7 +154,10 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
                 return ProcessingResult(
                     status=ProcessingStatus.SUCCESS,
                     data={
-                        "features": result.data.features if result.data else None}
+                        "features": (
+                            result.data.features if result.data else None
+                        )
+                    }
                 )
             else:
                 return result
@@ -202,8 +168,9 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
                 errors=[str(e)]
             )
 
-    def extract_batch(self, audio_list: List[AudioData], feature_types: List[str]
-                      ) -> ProcessingResult[List[Dict[str, AudioFeatures]]]:
+    def extract_batch(
+        self, audio_list: List[AudioData], feature_types: List[str]
+    ) -> ProcessingResult:
         """Extrai características em lote."""
         try:
             results = []
@@ -263,8 +230,12 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
         self.loader.register_extractor(feature_type, extractor)
 
     def extract_segmented_features(
-            self, audio_data: AudioData, config: ExtractionConfig) -> AudioFeatures:
-        """Extrai features usando segmentação de áudio para compatibilidade com modelos treinados."""
+        self, audio_data: AudioData, config: ExtractionConfig
+    ) -> AudioFeatures:
+        """Extrai features usando segmentação de áudio.
+
+        Necessário para compatibilidade com modelos treinados.
+        """
         return self.core.extract_segmented_features(audio_data, config)
 
     # Métodos privados movidos para sub-módulos, mas mantidos se necessários por herança (improvável)

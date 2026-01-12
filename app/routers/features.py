@@ -1,17 +1,17 @@
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Request
-from typing import List, Optional
+from fastapi import (
+    APIRouter, UploadFile, File, Form, Depends, HTTPException, Request
+)
 import shutil
 import tempfile
 import os
 import json
 import uuid
-import numpy as np
 from pathlib import Path
 
 from app.schemas.api_models import FeatureExtractionResult
-from app.domain.services.feature_extraction_service import AudioFeatureExtractionService
+from app.domain.services.feature_extraction_service import \
+    AudioFeatureExtractionService
 from app.core.interfaces.base import ProcessingStatus
-from app.core.interfaces.audio import AudioData
 from app.core.security import limiter, sanitize_filename
 from app.domain.services.upload_service import AudioUploadService
 
@@ -35,10 +35,14 @@ async def extract_features(
         types_list = json.loads(feature_types)
     except json.JSONDecodeError:
         types_list = ["mfcc"]
-    
+
     # Validar Extensão
-    if not file.filename.lower().endswith(tuple(AudioUploadService.SUPPORTED_FORMATS)):
-         raise HTTPException(status_code=400, detail="Formato de arquivo não suportado.")
+    supported = tuple(AudioUploadService.SUPPORTED_FORMATS)
+    if not file.filename.lower().endswith(supported):
+        raise HTTPException(
+            status_code=400,
+            detail="Formato de arquivo não suportado."
+        )
 
     temp_dir = tempfile.mkdtemp()
     safe_name = f"{uuid.uuid4()}_{sanitize_filename(file.filename)}"
@@ -49,13 +53,16 @@ async def extract_features(
             shutil.copyfileobj(file.file, buffer)
 
         # 1. Carregar Áudio
-        from app.domain.services.audio_loading_service import AudioLoadingService
+        from app.domain.services.audio_loading_service import \
+            AudioLoadingService
         loader = AudioLoadingService()
         load_result = loader.load_audio(temp_path)
-        
+
         if load_result.status != ProcessingStatus.SUCCESS:
-             raise HTTPException(status_code=400, detail=load_result.errors[0])
-        
+            raise HTTPException(
+                status_code=400, detail=load_result.errors[0]
+            )
+
         audio_data = load_result.data
 
         # 2. Extrair Features
@@ -68,11 +75,14 @@ async def extract_features(
                 if hasattr(v.data, "tolist"):
                     serializable_features[k] = v.data.tolist()
                 else:
-                    serializable_features[k] = v.data # Fallback
+                    serializable_features[k] = v.data  # Fallback
 
             return FeatureExtractionResult(
                 features=serializable_features,
-                metadata={"duration": audio_data.duration, "sample_rate": audio_data.sample_rate}
+                metadata={
+                    "duration": audio_data.duration,
+                    "sample_rate": audio_data.sample_rate
+                }
             )
         else:
             raise HTTPException(status_code=500, detail=result.errors[0])
@@ -89,5 +99,12 @@ async def extract_features(
 @router.get("/types")
 async def list_feature_types():
     return {
-        "available_types": ["mfcc", "mel_spectrogram", "chroma", "spectral_contrast", "tonnetz", "raw"]
+        "available_types": [
+            "mfcc",
+            "mel_spectrogram",
+            "chroma",
+            "spectral_contrast",
+            "tonnetz",
+            "raw"
+        ]
     }

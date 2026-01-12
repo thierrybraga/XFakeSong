@@ -133,16 +133,12 @@ def retry_decorator(max_attempts: int = 3,
                     last_exception = e
                     if attempt < max_attempts - 1:
                         logging.warning(
-                            f"Tentativa {
-                                attempt +
-                                1} falhou para {
-                                func.__name__}: {e}. Tentando novamente em {current_delay}s")
+                            f"Tentativa {attempt + 1} falhou para {func.__name__}: {e}. Tentando novamente em {current_delay}s")
                         time.sleep(current_delay)
                         current_delay *= backoff
                     else:
                         logging.error(
-                            f"Todas as {max_attempts} tentativas falharam para {
-                                func.__name__}")
+                            f"Todas as {max_attempts} tentativas falharam para {func.__name__}")
 
             raise last_exception
         return wrapper

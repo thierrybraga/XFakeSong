@@ -17,7 +17,11 @@ class AuthService:
 
         try:
             # Verificar se já existe username ou email
-            if User.query.filter((User.username == username) | (User.email == email)).first():
+            existing_user = User.query.filter(
+                (User.username == username) | (User.email == email)
+            ).first()
+
+            if existing_user:
                 return False, "Usuário ou Email já cadastrados."
 
             new_user = User(
@@ -44,12 +48,19 @@ class AuthService:
         try:
             user = User.query.filter_by(email=email).first()
             if not user:
-                # Retornamos sucesso mesmo se não existir para evitar enumeração de usuários
-                return True, "Se o email estiver cadastrado, você receberá um link de recuperação."
-            
+                # Retornamos sucesso mesmo se não existir para evitar
+                # enumeração de usuários
+                return True, (
+                    "Se o email estiver cadastrado, você receberá um "
+                    "link de recuperação."
+                )
+
             # TODO: Implementar envio real de email
             logger.info(f"Solicitação de recuperação de senha para: {email}")
-            return True, "Email de recuperação enviado! Verifique sua caixa de entrada."
+            return True, (
+                "Email de recuperação enviado! "
+                "Verifique sua caixa de entrada."
+            )
         except Exception as e:
             logger.error(f"Erro na recuperação de senha: {e}")
             return False, "Erro ao processar solicitação."

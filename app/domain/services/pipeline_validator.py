@@ -5,16 +5,17 @@ sejam compatíveis entre si e funcionem corretamente em conjunto.
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union, Type
+from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 import numpy as np
-from pathlib import Path
 
+from app.core.interfaces.base import ProcessingStatus
 from app.domain.interfaces.pipeline_interfaces import (
     IPipelineComponent, IFeatureExtractor, IArchitecture,
-    ComponentType, ProcessingContext, ProcessingResult, ValidationError
+    ProcessingContext
 )
+from app.core.interfaces.audio import AudioData
 from app.domain.models.architectures.factory import ArchitectureSpec
 from app.domain.features.extractor_registry import ExtractorSpec
 
@@ -125,32 +126,44 @@ class ComponentValidator:
                 sample_rate = spec.input_requirements.get("sample_rate", 16000)
                 test_audio = np.random.randn(sample_rate)  # 1 segundo de áudio
 
-                context = ProcessingContext(
-                    session_id="validation_test",
-                    sample_rate=sample_rate
+                # Criar AudioData para teste
+                audio_data = AudioData(
+                    samples=test_audio,
+                    sample_rate=sample_rate,
+                    duration=len(test_audio)/sample_rate,
+                    metadata={}
                 )
 
-                # Tentar extrair features
-                extraction_result = extractor.extract_features(
-                    test_audio, context)
+                # Tentar extrair features usando o método principal extract
+                extraction_result = extractor.extract(audio_data)
 
-                if not extraction_result.success:
+                if extraction_result.status != ProcessingStatus.SUCCESS:
                     result.add_issue(
                         CompatibilityIssue.CONFIGURATION_ERROR,
                         spec.name,
-                        f"Falha na extração de teste: {
-                            extraction_result.errors}"
+                        f"Falha na extração de teste: "
+                        f"{extraction_result.errors}"
+                    )
+                elif not extraction_result.data:
+                    result.add_issue(
+                        CompatibilityIssue.CONFIGURATION_ERROR,
+                        spec.name,
+                        "Extração não retornou dados"
                     )
                 else:
-                    # Verificar shape de saída
-                    if spec.output_shape and extraction_result.data is not None:
-                        actual_shape = extraction_result.data.shape
-                        expected_shape = spec.output_shape
-
-                        if len(actual_shape) != len(expected_shape):
-                            result.add_warning(
-                                f"Shape de saída diferente do esperado: {actual_shape} vs {expected_shape}"
-                            )
+                    features = extraction_result.data.features
+                    if features is None:
+                        result.add_issue(
+                            CompatibilityIssue.CONFIGURATION_ERROR,
+                            spec.name,
+                            "Objeto AudioFeatures vazio"
+                        )
+                    elif len(features) == 0:
+                        result.add_issue(
+                            CompatibilityIssue.CONFIGURATION_ERROR,
+                            spec.name,
+                            "Dicionário de features vazio"
+                        )
 
             except Exception as e:
                 result.add_issue(
@@ -275,9 +288,11 @@ class PipelineValidator:
         self.validation_level = validation_level
         self.component_validator = ComponentValidator()
 
-    def validate_pipeline(self,
-                          extractors: List[Tuple[IFeatureExtractor, ExtractorSpec]],
-                          architectures: List[Tuple[IArchitecture, ArchitectureSpec]]) -> ValidationResult:
+    def validate_pipeline(
+        self,
+        extractors: List[Tuple[IFeatureExtractor, ExtractorSpec]],
+        architectures: List[Tuple[IArchitecture, ArchitectureSpec]]
+    ) -> ValidationResult:
         """Valida pipeline completo.
 
         Args:
@@ -329,9 +344,11 @@ class PipelineValidator:
 
         return result
 
-    def _validate_compatibility(self,
-                                extractors: List[Tuple[IFeatureExtractor, ExtractorSpec]],
-                                architectures: List[Tuple[IArchitecture, ArchitectureSpec]]) -> ValidationResult:
+    def _validate_compatibility(
+        self,
+        extractors: List[Tuple[IFeatureExtractor, ExtractorSpec]],
+        architectures: List[Tuple[IArchitecture, ArchitectureSpec]]
+    ) -> ValidationResult:
         """Valida compatibilidade entre componentes.
 
         Args:
@@ -438,9 +455,11 @@ class PipelineValidator:
 
         return conflicts
 
-    def _calculate_performance_score(self,
-                                     extractors: List[Tuple[IFeatureExtractor, ExtractorSpec]],
-                                     architectures: List[Tuple[IArchitecture, ArchitectureSpec]]) -> float:
+    def _calculate_performance_score(
+        self,
+        extractors: List[Tuple[IFeatureExtractor, ExtractorSpec]],
+        architectures: List[Tuple[IArchitecture, ArchitectureSpec]]
+    ) -> float:
         """Calcula score de performance do pipeline.
 
         Args:
@@ -508,7 +527,8 @@ class PipelineValidator:
                 )
             elif sample_rate < 8000 or sample_rate > 48000:
                 result.add_warning(
-                    f"Sample rate {sample_rate} pode não ser ideal (recomendado: 16000-44100)"
+                    f"Sample rate {sample_rate} pode não ser ideal "
+                    "(recomendado: 16000-44100)"
                 )
 
         # Verificar batch size
@@ -522,14 +542,17 @@ class PipelineValidator:
                 )
             elif batch_size > 128:
                 result.add_warning(
-                    f"Batch size {batch_size} pode ser muito alto para alguns sistemas"
+                    f"Batch size {batch_size} pode ser muito alto "
+                    "para alguns sistemas"
                 )
 
         return result
 
-    def suggest_optimizations(self,
-                              extractors: List[Tuple[IFeatureExtractor, ExtractorSpec]],
-                              architectures: List[Tuple[IArchitecture, ArchitectureSpec]]) -> List[str]:
+    def suggest_optimizations(
+        self,
+        extractors: List[Tuple[IFeatureExtractor, ExtractorSpec]],
+        architectures: List[Tuple[IArchitecture, ArchitectureSpec]]
+    ) -> List[str]:
         """Sugere otimizações para o pipeline.
 
         Args:
@@ -549,12 +572,14 @@ class PipelineValidator:
             )
 
         # Sugerir otimizações de complexidade
-        high_complexity = [spec.name for _, spec in extractors
-                           if spec.complexity.value in ["high", "very_high"]]
+        high_complexity = [
+            spec.name for _, spec in extractors
+            if spec.complexity.value in ["high", "very_high"]
+        ]
         if high_complexity:
             suggestions.append(
-                f"Considere alternativas mais eficientes para: {
-                    ', '.join(high_complexity)}"
+                f"Considere alternativas mais eficientes para: "
+                f"{', '.join(high_complexity)}"
             )
 
         # Sugerir cache de features
@@ -576,8 +601,10 @@ pipeline_validator = PipelineValidator()
 
 
 # Funções de conveniência
-def validate_pipeline(extractors: List[Tuple[IFeatureExtractor, ExtractorSpec]],
-                      architectures: List[Tuple[IArchitecture, ArchitectureSpec]]) -> ValidationResult:
+def validate_pipeline(
+    extractors: List[Tuple[IFeatureExtractor, ExtractorSpec]],
+    architectures: List[Tuple[IArchitecture, ArchitectureSpec]]
+) -> ValidationResult:
     """Função de conveniência para validar pipeline.
 
     Args:
@@ -602,8 +629,10 @@ def validate_config(config: Dict[str, Any]) -> ValidationResult:
     return pipeline_validator.validate_configuration(config)
 
 
-def suggest_optimizations(extractors: List[Tuple[IFeatureExtractor, ExtractorSpec]],
-                          architectures: List[Tuple[IArchitecture, ArchitectureSpec]]) -> List[str]:
+def suggest_optimizations(
+    extractors: List[Tuple[IFeatureExtractor, ExtractorSpec]],
+    architectures: List[Tuple[IArchitecture, ArchitectureSpec]]
+) -> List[str]:
     """Função de conveniência para sugerir otimizações.
 
     Args:
