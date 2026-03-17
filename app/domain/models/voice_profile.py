@@ -1,6 +1,6 @@
 """Modelo ORM para Perfis de Voz personalizados."""
 
-from sqlalchemy import Column, Float, Integer, JSON, String
+from sqlalchemy import JSON, Float, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.domain.models.base_model import BaseModel

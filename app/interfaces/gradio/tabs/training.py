@@ -688,8 +688,9 @@ def create_training_tab():
                             ax.set_facecolor(_FC)
                             ax.set_title(title, color=_TX, fontweight="600", fontsize=12, pad=10)
                             ax.tick_params(colors=_TX, labelsize=9)
-                            for l in (ax.xaxis.label, ax.yaxis.label):
-                                l.set_color(_TX); l.set_fontsize(10)
+                            for label in (ax.xaxis.label, ax.yaxis.label):
+                                label.set_color(_TX)
+                                label.set_fontsize(10)
                             for s in ax.spines.values():
                                 s.set_color(_GR)
                             ax.grid(True, color=_GR, alpha=0.3, linewidth=0.5)
@@ -699,7 +700,8 @@ def create_training_tab():
                         ax_r.plot(fpr, tpr, color='#f59e0b', lw=2,
                                   label=f'AUC = {roc_auc:.2f}')
                         ax_r.plot([0, 1], [0, 1], color=_GR, lw=1.5, linestyle='--')
-                        ax_r.set_xlim([0.0, 1.0]); ax_r.set_ylim([0.0, 1.05])
+                        ax_r.set_xlim([0.0, 1.0])
+                        ax_r.set_ylim([0.0, 1.05])
                         ax_r.set_xlabel('False Positive Rate')
                         ax_r.set_ylabel('True Positive Rate')
                         ax_r.legend(facecolor=_FC, edgecolor=_GR,
@@ -1083,8 +1085,9 @@ def create_training_tab():
                                 ax.set_facecolor(_FC2)
                                 ax.set_title(title, color=_TX2, fontweight="600", fontsize=12, pad=10)
                                 ax.tick_params(colors=_TX2, labelsize=9)
-                                for l in (ax.xaxis.label, ax.yaxis.label):
-                                    l.set_color(_TX2); l.set_fontsize(10)
+                                for label in (ax.xaxis.label, ax.yaxis.label):
+                                    label.set_color(_TX2)
+                                    label.set_fontsize(10)
                                 for s in ax.spines.values():
                                     s.set_color(_GR2)
                                 ax.grid(True, color=_GR2, alpha=0.3, linewidth=0.5)
@@ -1094,7 +1097,8 @@ def create_training_tab():
                             ax_r2.plot(fpr, tpr, color='#f59e0b', lw=2,
                                        label=f'AUC = {roc_auc:.2f}')
                             ax_r2.plot([0, 1], [0, 1], color=_GR2, lw=1.5, linestyle='--')
-                            ax_r2.set_xlim([0.0, 1.0]); ax_r2.set_ylim([0.0, 1.05])
+                            ax_r2.set_xlim([0.0, 1.0])
+                            ax_r2.set_ylim([0.0, 1.05])
                             ax_r2.set_xlabel('False Positive Rate')
                             ax_r2.set_ylabel('True Positive Rate')
                             ax_r2.legend(facecolor=_FC2, edgecolor=_GR2,

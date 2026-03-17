@@ -5,7 +5,6 @@ Todas as exceções de domínio herdam de AppError para tratamento uniforme.
 """
 
 import logging
-import traceback
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException, Request
@@ -49,7 +48,7 @@ class ValidationError(AppError):
     """Erro de validação de dados (422)."""
     def __init__(self, detail: str, field: str = None):
         extra = {"field": field} if field else {}
-        super().__init__(detail, status_code=422, error_code="VALIDATION_ERROR", extra=extra)
+        super().__init__(detail, status_code=400, error_code="VALIDATION_ERROR", extra=extra)
 
 
 class ConflictError(AppError):
@@ -116,7 +115,7 @@ class UnsupportedFormatError(AppError):
     def __init__(self, fmt: str, supported: list):
         super().__init__(
             f"Formato '{fmt}' não suportado. Use: {', '.join(supported)}",
-            status_code=415,
+            status_code=400,
             error_code="UNSUPPORTED_FORMAT",
         )
 
@@ -184,7 +183,7 @@ def _handle_validation_error(request: Request, exc: RequestValidationError) -> J
     """Handler para erros de validação do Pydantic."""
     errors = []
     for err in exc.errors():
-        loc = " → ".join(str(l) for l in err.get("loc", []))
+        loc = " → ".join(str(loc_part) for loc_part in err.get("loc", []))
         errors.append({"field": loc, "message": err.get("msg", "")})
 
     return JSONResponse(

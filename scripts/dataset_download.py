@@ -1,3 +1,14 @@
+#!/usr/bin/env python3
+"""
+Download de datasets de audio para o XFakeSong.
+
+NOTA: Para datasets em Portugues focados em deepfake detection, use:
+  python scripts/download_portuguese_datasets.py --all
+
+Este script baixa datasets genericos (Common Voice, FLEURS) como complemento.
+Para o pipeline completo de preparacao, use:
+  python scripts/preprocess_dataset.py --full
+"""
 
 import os
 import logging
@@ -10,19 +21,22 @@ from tqdm import tqdm
 from datasets import load_dataset
 import soundfile as sf
 import numpy as np
+import librosa
 
-# Configuração de logging
+# Configuracao de logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Configurações de Diretórios
+# Configuracoes de Diretorios
 BASE_DIR = Path(__file__).resolve().parent.parent
 APP_DIR = BASE_DIR / "app"
 DATASETS_DIR = APP_DIR / "datasets"
 REAL_DIR = DATASETS_DIR / "real"
 FAKE_DIR = DATASETS_DIR / "fake"
 
-# Configuração dos Datasets
+TARGET_SR = 16_000
+
+# Configuracao dos Datasets
 DATASETS_CONFIG = {
     "common_voice_pt": {
         "name": "mozilla-foundation/common_voice_11_0",
@@ -38,42 +52,56 @@ DATASETS_CONFIG = {
         "type": "real",
         "max_samples": 200
     },
-    "fake_voice_dataset": {
-        "url": "https://example.com/fake_dataset.tar.gz",  # Placeholder URL
-        "type": "fake"
-    }
 }
 
 def setup_directories():
-    """Cria a estrutura de diretórios necessária."""
-    dirs = [DATASETS_DIR, REAL_DIR, FAKE_DIR]
+    """Cria a estrutura de diretorios necessaria."""
+    dirs = [DATASETS_DIR, REAL_DIR, FAKE_DIR, DATASETS_DIR / "features",
+            DATASETS_DIR / "raw", DATASETS_DIR / "splits"]
     for d in dirs:
         d.mkdir(parents=True, exist_ok=True)
-    logger.info(f"Diretórios configurados em: {DATASETS_DIR}")
+    logger.info(f"Diretorios configurados em: {DATASETS_DIR}")
 
 def export_audio_from_hf_dataset(dataset_name, subset, split, output_dir, max_samples=None, prefix="hf"):
-    """Baixa e exporta áudio de um dataset do Hugging Face."""
+    """Baixa e exporta audio de um dataset do Hugging Face com normalizacao."""
     try:
         logger.info(f"Carregando dataset {dataset_name} ({subset})...")
-        # Removido trust_remote_code=True pois não é suportado em versões recentes para este dataset ou não é necessário
         dataset = load_dataset(dataset_name, subset, split=split, streaming=True)
-        
+
         count = 0
         for i, item in enumerate(dataset):
             if max_samples and count >= max_samples:
                 break
-                
+
             if "audio" in item:
-                audio_data = item["audio"]["array"]
+                audio_data = item["audio"]["array"].astype(np.float32)
                 sample_rate = item["audio"]["sampling_rate"]
-                
-                filename = f"{prefix}_{count:04d}.wav"
+
+                # Reamostrar para 16kHz se necessario
+                if sample_rate != TARGET_SR:
+                    audio_data = librosa.resample(
+                        audio_data, orig_sr=sample_rate, target_sr=TARGET_SR
+                    )
+
+                # Filtrar por duracao
+                duration = len(audio_data) / TARGET_SR
+                if duration < 1.0 or duration > 30.0:
+                    continue
+
+                # Normalizar amplitude
+                peak = np.max(np.abs(audio_data))
+                if peak > 0:
+                    audio_data = audio_data / peak * 0.95
+
+                filename = f"{prefix}_{count:05d}.wav"
                 filepath = output_dir / filename
-                
-                # Salvar como WAV
-                sf.write(filepath, audio_data, sample_rate)
+
+                sf.write(str(filepath), audio_data, TARGET_SR, subtype="PCM_16")
                 count += 1
-                
+
+                if count % 100 == 0:
+                    logger.info(f"  {count}/{max_samples} exportados...")
+
         logger.info(f"Exportados {count} arquivos de {dataset_name} para {output_dir}")
         return count
     except Exception as e:
@@ -85,7 +113,7 @@ def download_file(url, dest_path):
     response = requests.get(url, stream=True)
     total_size = int(response.headers.get('content-length', 0))
     block_size = 1024
-    
+
     with open(dest_path, 'wb') as file, tqdm(
         desc=dest_path.name,
         total=total_size,
@@ -97,19 +125,13 @@ def download_file(url, dest_path):
             size = file.write(data)
             bar.update(size)
 
-def process_direct_dataset(url, output_dir, type_name):
-    """Baixa e extrai um dataset direto de URL (exemplo)."""
-    # Implementação de exemplo para download direto
-    pass
-
 def main():
     setup_directories()
-    
-    # Processar datasets reais do Hugging Face
+
     total_real = 0
-    
-    # Common Voice
-    logger.info("Processando Common Voice...")
+
+    # Common Voice PT
+    logger.info("Processando Common Voice PT...")
     count = export_audio_from_hf_dataset(
         DATASETS_CONFIG["common_voice_pt"]["name"],
         DATASETS_CONFIG["common_voice_pt"]["subset"],
@@ -119,9 +141,9 @@ def main():
         prefix="cv"
     )
     total_real += count
-    
-    # FLEURS
-    logger.info("Processando FLEURS...")
+
+    # FLEURS PT-BR
+    logger.info("Processando FLEURS PT-BR...")
     count = export_audio_from_hf_dataset(
         DATASETS_CONFIG["fleurs_pt"]["name"],
         DATASETS_CONFIG["fleurs_pt"]["subset"],
@@ -131,15 +153,24 @@ def main():
         prefix="fleurs"
     )
     total_real += count
-    
-    logger.info(f"Total de áudios reais: {total_real}")
-    
-    # Verificar áudios fake (já devem estar lá via setup_fake_dataset.py ou manual)
+
+    logger.info(f"Total de audios reais: {total_real}")
+
+    # Verificar audios fake
     fake_count = len(list(FAKE_DIR.glob("*.wav")))
-    logger.info(f"Total de áudios fake existentes: {fake_count}")
-    
+    logger.info(f"Total de audios fake existentes: {fake_count}")
+
     if fake_count == 0:
-        logger.warning("Nenhum áudio fake encontrado. Execute scripts/setup_fake_dataset.py para gerar dados sintéticos.")
+        logger.warning(
+            "Nenhum audio fake encontrado. Execute:\n"
+            "  python scripts/download_portuguese_datasets.py --fake-voices\n"
+            "  ou: python scripts/setup_fake_dataset.py"
+        )
+
+    # Relatorio
+    real_total = len(list(REAL_DIR.glob("*.wav")))
+    fake_total = len(list(FAKE_DIR.glob("*.wav")))
+    logger.info(f"\nDataset final: {real_total} real + {fake_total} fake = {real_total + fake_total} total")
 
 if __name__ == "__main__":
     main()

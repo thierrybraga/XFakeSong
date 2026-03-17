@@ -8,6 +8,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.core.db_setup import init_db
+from app.core.exceptions import setup_exception_handlers
 from app.core.security import limiter, setup_security
 from app.routers import datasets, detection, features, history, system, training
 from gradio_app import demo as gradio_demo
@@ -24,6 +25,7 @@ app = FastAPI(
 
 # Configurar Segurança (CORS, TrustedHost, RateLimiting)
 setup_security(app)
+setup_exception_handlers(app)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 

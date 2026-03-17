@@ -12,7 +12,11 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 
-from app.core.exceptions import AudioProcessingError, UnsupportedFormatError, ValidationError
+from app.core.exceptions import (
+    AudioProcessingError,
+    UnsupportedFormatError,
+    ValidationError,
+)
 from app.core.interfaces.base import ProcessingStatus
 from app.core.security import limiter, sanitize_filename
 from app.domain.services.feature_extraction_service import AudioFeatureExtractionService
@@ -37,7 +41,7 @@ def get_feature_service():
 async def extract_features(
     request: Request,
     file: UploadFile = File(...),
-    feature_types: str = Form("['mfcc']"),
+    feature_types: str = Form('["mfcc"]'),
     normalize: bool = Form(True),
     service: AudioFeatureExtractionService = Depends(get_feature_service),
 ):

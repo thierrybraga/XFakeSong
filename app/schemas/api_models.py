@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-
 # ── System ─────────────────────────────────────────────────────────────
 
 class SystemStatus(BaseModel):
@@ -62,12 +61,22 @@ class FeatureExtractionResult(BaseModel):
 
 # ── Training ───────────────────────────────────────────────────────────
 
-VALID_ARCHITECTURES = {
-    "aasist", "conformer", "efficientnet_lstm", "ensemble",
-    "hubert", "multiscale_cnn", "rawgat_st", "rawnet2",
-    "sonic_sleuth", "spectrogram_transformer", "svm",
-    "random_forest", "wavlm", "hybrid_cnn_transformer",
-}
+def _get_valid_architectures() -> set:
+    """Carrega arquiteturas válidas dinamicamente do registry + ML clássico."""
+    try:
+        from app.domain.models.architectures.registry import get_valid_snake_names
+        return get_valid_snake_names() | {"svm", "random_forest"}
+    except Exception:
+        # Fallback estático caso o registry não esteja disponível
+        return {
+            "aasist", "conformer", "efficientnet_lstm", "ensemble",
+            "hubert", "multiscale_cnn", "rawgat_st", "rawnet2",
+            "sonic_sleuth", "spectrogram_transformer", "svm",
+            "random_forest", "wavlm", "hybrid_cnn_transformer",
+        }
+
+
+VALID_ARCHITECTURES = _get_valid_architectures()
 
 
 class TrainingRequest(BaseModel):
@@ -148,6 +157,17 @@ class ProfileCreate(BaseModel):
     description: Optional[str] = Field(None, max_length=500)
     architecture: str = Field("sonic_sleuth", max_length=100)
 
+    @field_validator("architecture")
+    @classmethod
+    def validate_architecture(cls, v):
+        v_lower = v.lower().strip().replace("-", "_").replace(" ", "_")
+        if v_lower not in VALID_ARCHITECTURES:
+            raise ValueError(
+                f"Arquitetura '{v}' inválida para perfil. "
+                f"Válidas: {', '.join(sorted(VALID_ARCHITECTURES))}"
+            )
+        return v_lower
+
     @field_validator("email")
     @classmethod
     def validate_email(cls, v):
@@ -176,6 +196,19 @@ class ProfileUpdate(BaseModel):
     email: Optional[str] = Field(None, max_length=120)
     description: Optional[str] = Field(None, max_length=500)
     architecture: Optional[str] = Field(None, max_length=100)
+
+    @field_validator("architecture")
+    @classmethod
+    def validate_architecture(cls, v):
+        if v is None:
+            return v
+        v_lower = v.lower().strip().replace("-", "_").replace(" ", "_")
+        if v_lower not in VALID_ARCHITECTURES:
+            raise ValueError(
+                f"Arquitetura '{v}' inválida. "
+                f"Válidas: {', '.join(sorted(VALID_ARCHITECTURES))}"
+            )
+        return v_lower
 
     @field_validator("email")
     @classmethod
@@ -209,6 +242,19 @@ class ProfileTrainRequest(BaseModel):
     epochs: int = Field(30, ge=5, le=500)
     batch_size: int = Field(16, ge=4, le=128)
     learning_rate: float = Field(0.001, gt=1e-6, le=0.1)
+
+    @field_validator("architecture")
+    @classmethod
+    def validate_architecture(cls, v):
+        if v is None:
+            return v
+        v_lower = v.lower().strip().replace("-", "_").replace(" ", "_")
+        if v_lower not in VALID_ARCHITECTURES:
+            raise ValueError(
+                f"Arquitetura '{v}' inválida. "
+                f"Válidas: {', '.join(sorted(VALID_ARCHITECTURES))}"
+            )
+        return v_lower
 
 
 class ProfileDetectionResult(BaseModel):

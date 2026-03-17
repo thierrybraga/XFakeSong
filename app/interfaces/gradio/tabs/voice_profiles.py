@@ -1,14 +1,21 @@
-"""Aba Gradio para gerenciamento de Perfis de Voz personalizados."""
+"""Aba Gradio para gerenciamento de Perfis de Voz personalizados.
 
-import json
+Melhorias v2:
+- Dropdowns de arquitetura carregados dinamicamente do registry
+- Suporte a todas as 12 arquiteturas DL + SVM + Random Forest
+- Validação de dataset antes do treino
+- Métricas avançadas (P, R, F1, EER) exibidas no treinamento
+- Plots de confusion matrix
+- Indicadores visuais de status do dataset
+"""
+
 import logging
-import os
-import tempfile
 from pathlib import Path
 
-import gradio as gr
 import numpy as np
 from matplotlib.figure import Figure
+
+import gradio as gr
 
 logger = logging.getLogger("gradio_voice_profiles_tab")
 
@@ -24,6 +31,35 @@ def _get_service():
     return _service_instance
 
 
+def _get_architecture_choices():
+    """Carrega arquiteturas dinamicamente do registry + ML clássico."""
+    try:
+        from app.domain.models.architectures.registry import get_architecture_choices
+        choices = get_architecture_choices()
+        # Adicionar ML clássico
+        choices.append(("SVM (classical ML)", "svm"))
+        choices.append(("Random Forest (classical ML)", "random_forest"))
+        return choices
+    except Exception:
+        # Fallback estático
+        return [
+            ("Sonic Sleuth (audio)", "sonic_sleuth"),
+            ("AASIST (audio)", "aasist"),
+            ("RawNet2 (audio)", "rawnet2"),
+            ("Conformer (features)", "conformer"),
+            ("EfficientNet-LSTM (audio)", "efficientnet_lstm"),
+            ("MultiscaleCNN (features)", "multiscale_cnn"),
+            ("Ensemble (audio)", "ensemble"),
+            ("RawGAT-ST (audio)", "rawgat_st"),
+            ("SpectrogramTransformer (features)", "spectrogram_transformer"),
+            ("WavLM (audio)", "wavlm"),
+            ("HuBERT (audio)", "hubert"),
+            ("Hybrid CNN-Transformer (audio)", "hybrid_cnn_transformer"),
+            ("SVM (classical ML)", "svm"),
+            ("Random Forest (classical ML)", "random_forest"),
+        ]
+
+
 def _format_duration(seconds: float) -> str:
     """Formata duração em mm:ss."""
     m, s = divmod(int(seconds), 60)
@@ -33,11 +69,16 @@ def _format_duration(seconds: float) -> str:
 def _profiles_to_table(profiles) -> list:
     """Converte lista de perfis para dados de tabela."""
     rows = []
+    status_icons = {
+        "created": "🆕", "collecting": "📥", "training": "⏳",
+        "ready": "✅", "error": "❌",
+    }
     for p in profiles:
+        icon = status_icons.get(p.status, "❓")
         rows.append([
             p.id,
             p.name,
-            p.status,
+            f"{icon} {p.status}",
             p.num_samples,
             _format_duration(p.total_duration_seconds),
             p.architecture or "—",
@@ -64,14 +105,38 @@ def _refresh_profiles_table():
     return table_data, gr.update(choices=choices), gr.update(choices=choices), gr.update(choices=choices)
 
 
+# Design tokens (dark theme) para plots
+_BG = "#0f172a"
+_FACE = "#1e293b"
+_TEXT = "#f1f5f9"
+_GRID = "#334155"
+
+
+def _style_ax(ax, fig, title):
+    """Aplica dark theme a um eixo matplotlib."""
+    fig.patch.set_facecolor(_BG)
+    ax.set_facecolor(_FACE)
+    ax.set_title(title, color=_TEXT, fontweight="600", fontsize=12, pad=10)
+    ax.tick_params(colors=_TEXT, labelsize=9)
+    for lbl in (ax.xaxis.label, ax.yaxis.label):
+        lbl.set_color(_TEXT)
+        lbl.set_fontsize(10)
+    for sp in ax.spines.values():
+        sp.set_color(_GRID)
+    ax.grid(True, color=_GRID, alpha=0.3, linewidth=0.5)
+
+
 def create_voice_profiles_tab():
     """Cria a aba 'Perfis de Voz' no Gradio."""
+
+    arch_choices = _get_architecture_choices()
+
     with gr.Tab("🎤 Perfis de Voz", id="tab_voice_profiles"):
         gr.Markdown(
             "### Perfis de Voz Personalizados\n"
-            "Crie perfis biométricos vocais com dados pessoais, faça upload de "
-            "amostras, treine modelos de detecção específicos e verifique "
-            "autenticidade com precisão individualizada."
+            "Crie perfis biométricos vocais, faça upload de amostras, "
+            "treine modelos com **14 arquiteturas** (12 DL + SVM + Random Forest) "
+            "e verifique autenticidade com precisão individualizada."
         )
 
         with gr.Tabs():
@@ -101,11 +166,7 @@ def create_voice_profiles_tab():
                         )
                         profile_arch = gr.Dropdown(
                             label="Arquitetura Padrão",
-                            choices=[
-                                "sonic_sleuth", "aasist", "rawnet2",
-                                "conformer", "efficientnet_lstm",
-                                "multiscale_cnn", "ensemble",
-                            ],
+                            choices=arch_choices,
                             value="sonic_sleuth",
                         )
                         create_btn = gr.Button(
@@ -167,6 +228,7 @@ def create_voice_profiles_tab():
 
                     with gr.Column(scale=2):
                         dataset_info = gr.Markdown("Selecione um perfil para ver o dataset.")
+                        dataset_validation = gr.Markdown("")
                         samples_table = gr.Dataframe(
                             headers=["Arquivo", "Duração (s)", "Taxa (Hz)", "Tamanho"],
                             datatype=["str", "number", "number", "str"],
@@ -195,25 +257,24 @@ def create_voice_profiles_tab():
                         )
                         train_arch = gr.Dropdown(
                             label="Arquitetura",
-                            choices=[
-                                "sonic_sleuth", "aasist", "rawnet2",
-                                "conformer", "efficientnet_lstm",
-                                "multiscale_cnn", "ensemble",
-                            ],
+                            choices=arch_choices,
                             value="sonic_sleuth",
+                            info="14 arquiteturas: 12 DL + SVM + Random Forest",
                         )
                         train_epochs = gr.Slider(
-                            label="Épocas", minimum=5, maximum=200,
+                            label="Épocas (DL)", minimum=5, maximum=200,
                             value=30, step=5,
+                            info="Ignorado para SVM/Random Forest",
                         )
                         train_batch = gr.Slider(
-                            label="Batch Size", minimum=4, maximum=64,
+                            label="Batch Size (DL)", minimum=4, maximum=64,
                             value=16, step=4,
                         )
                         train_lr = gr.Slider(
-                            label="Learning Rate", minimum=0.0001, maximum=0.01,
+                            label="Learning Rate (DL)", minimum=0.0001, maximum=0.01,
                             value=0.001, step=0.0001,
                         )
+                        train_validation_info = gr.Markdown("")
                         train_btn = gr.Button(
                             "🚀 Iniciar Treinamento", variant="primary"
                         )
@@ -228,9 +289,11 @@ def create_voice_profiles_tab():
                         with gr.Row():
                             train_loss_plot = gr.Plot(label="Loss")
                             train_acc_plot = gr.Plot(label="Accuracy")
-                        train_metrics_json = gr.JSON(
-                            label="Métricas Finais"
-                        )
+                        with gr.Row():
+                            train_cm_plot = gr.Plot(label="Confusion Matrix")
+                            train_metrics_json = gr.JSON(
+                                label="Métricas Finais"
+                            )
 
             # ============================================================ #
             #  Sub-tab 4: Verificar Voz                                     #
@@ -345,7 +408,7 @@ def create_voice_profiles_tab():
 
         def handle_load_dataset(profile_id):
             if not profile_id:
-                return "Selecione um perfil.", []
+                return "Selecione um perfil.", "", []
             svc = _get_service()
             info = svc.get_dataset_info(int(profile_id))
             rows = []
@@ -358,19 +421,33 @@ def create_voice_profiles_tab():
                 f"**Total de amostras:** {info['total_samples']}  \n"
                 f"**Duração total:** {_format_duration(info['total_duration'])}"
             )
-            return md, rows
+
+            # Validação do dataset
+            validation = svc.validate_dataset_for_training(int(profile_id))
+            val_parts = []
+            if validation["valid"]:
+                val_parts.append("✅ **Dataset pronto para treinamento**")
+            else:
+                val_parts.append("❌ **Dataset insuficiente para treinamento:**")
+                for err in validation["errors"]:
+                    val_parts.append(f"  - {err}")
+            for w in validation.get("warnings", []):
+                val_parts.append(f"⚠️ {w}")
+            val_md = "\n".join(val_parts)
+
+            return md, val_md, rows
 
         dataset_profile_dd.change(
             fn=handle_load_dataset,
             inputs=[dataset_profile_dd],
-            outputs=[dataset_info, samples_table],
+            outputs=[dataset_info, dataset_validation, samples_table],
         )
 
         def handle_upload_samples(profile_id, files):
             if not profile_id:
-                return "❌ Selecione um perfil primeiro.", gr.update(), gr.update()
+                return "❌ Selecione um perfil primeiro.", gr.update(), gr.update(), gr.update()
             if not files:
-                return "❌ Nenhum arquivo selecionado.", gr.update(), gr.update()
+                return "❌ Nenhum arquivo selecionado.", gr.update(), gr.update(), gr.update()
 
             svc = _get_service()
             audio_data = []
@@ -388,14 +465,14 @@ def create_voice_profiles_tab():
                     status += f" ({error_count} erros)"
 
                 # Recarregar dataset
-                md, rows = handle_load_dataset(profile_id)
-                return status, md, rows
-            return f"❌ {result.get('error', 'Erro')}", gr.update(), gr.update()
+                md, val_md, rows = handle_load_dataset(profile_id)
+                return status, md, val_md, rows
+            return f"❌ {result.get('error', 'Erro')}", gr.update(), gr.update(), gr.update()
 
         upload_btn.click(
             fn=handle_upload_samples,
             inputs=[dataset_profile_dd, audio_upload],
-            outputs=[upload_status, dataset_info, samples_table],
+            outputs=[upload_status, dataset_info, dataset_validation, samples_table],
         )
 
         def handle_remove_sample(profile_id, filename):
@@ -413,11 +490,39 @@ def create_voice_profiles_tab():
             outputs=[remove_status],
         )
 
+        # ── Training: validate on profile select ──
+
+        def handle_train_profile_select(profile_id):
+            """Valida dataset ao selecionar perfil para treino."""
+            if not profile_id:
+                return ""
+            svc = _get_service()
+            validation = svc.validate_dataset_for_training(int(profile_id))
+            parts = []
+            if validation["valid"]:
+                parts.append(
+                    f"✅ Dataset OK: {validation['num_samples']} amostras, "
+                    f"{_format_duration(validation['total_duration'])}"
+                )
+            else:
+                parts.append("❌ **Não é possível treinar:**")
+                for err in validation["errors"]:
+                    parts.append(f"  - {err}")
+            for w in validation.get("warnings", []):
+                parts.append(f"⚠️ {w}")
+            return "\n".join(parts)
+
+        train_profile_dd.change(
+            fn=handle_train_profile_select,
+            inputs=[train_profile_dd],
+            outputs=[train_validation_info],
+        )
+
         # ── Training handlers ──
 
         def handle_train(profile_id, arch, epochs, batch_size, lr):
             if not profile_id:
-                yield "❌ Selecione um perfil.", None, None, None
+                yield "❌ Selecione um perfil.", None, None, None, None
                 return
 
             svc = _get_service()
@@ -427,7 +532,8 @@ def create_voice_profiles_tab():
                 log_lines.append(msg)
 
             log_lines.append(f"Iniciando treinamento para perfil {profile_id}...")
-            yield "\n".join(log_lines), None, None, None
+            log_lines.append(f"Arquitetura: {arch}")
+            yield "\n".join(log_lines), None, None, None, None
 
             result = svc.train_profile_model(
                 profile_id=int(profile_id),
@@ -441,43 +547,30 @@ def create_voice_profiles_tab():
             if result.get("success"):
                 metrics = result.get("metrics", {})
                 history = metrics.get("history", {})
+
+                # Resumo de métricas avançadas
                 log_lines.append(
-                    f"\n✅ Treinamento concluído! "
-                    f"Val Accuracy: {metrics.get('val_accuracy', 0):.4f}"
+                    f"\n✅ Treinamento concluído!\n"
+                    f"  Val Accuracy: {metrics.get('val_accuracy', 0):.4f}\n"
+                    f"  Precision:    {metrics.get('precision', 0):.4f}\n"
+                    f"  Recall:       {metrics.get('recall', 0):.4f}\n"
+                    f"  F1-Score:     {metrics.get('f1_score', 0):.4f}\n"
+                    f"  EER:          {metrics.get('eer', 0):.4f}"
                 )
 
-                # Gerar plots
                 loss_fig = None
                 acc_fig = None
+                cm_fig = None
 
-                if history:
-                    try:
-                        import matplotlib
-                        matplotlib.use('Agg')
+                try:
+                    import matplotlib
+                    matplotlib.use('Agg')
 
-                        # Design tokens (dark theme)
-                        _BG = "#0f172a"
-                        _FACE = "#1e293b"
-                        _TEXT = "#f1f5f9"
-                        _GRID = "#334155"
-
-                        def _style(ax, fig, title):
-                            fig.patch.set_facecolor(_BG)
-                            ax.set_facecolor(_FACE)
-                            ax.set_title(title, color=_TEXT, fontweight="600",
-                                         fontsize=12, pad=10)
-                            ax.tick_params(colors=_TEXT, labelsize=9)
-                            for lbl in (ax.xaxis.label, ax.yaxis.label):
-                                lbl.set_color(_TEXT)
-                                lbl.set_fontsize(10)
-                            for sp in ax.spines.values():
-                                sp.set_color(_GRID)
-                            ax.grid(True, color=_GRID, alpha=0.3, linewidth=0.5)
-
-                        # Loss plot
+                    # Loss plot (só se houver history — DL only)
+                    if history and history.get("loss"):
                         loss_fig = Figure(figsize=(6, 4))
                         ax = loss_fig.add_subplot(111)
-                        _style(ax, loss_fig, "Loss por Época")
+                        _style_ax(ax, loss_fig, "Loss por Época")
                         ax.plot(history.get('loss', []), label='Train Loss',
                                 color='#3b82f6', linewidth=2)
                         ax.plot(history.get('val_loss', []), label='Val Loss',
@@ -491,7 +584,7 @@ def create_voice_profiles_tab():
                         # Accuracy plot
                         acc_fig = Figure(figsize=(6, 4))
                         ax2 = acc_fig.add_subplot(111)
-                        _style(ax2, acc_fig, "Accuracy por Época")
+                        _style_ax(ax2, acc_fig, "Accuracy por Época")
                         ax2.plot(history.get('accuracy', []), label='Train Acc',
                                  color='#10b981', linewidth=2)
                         ax2.plot(history.get('val_accuracy', []), label='Val Acc',
@@ -501,25 +594,59 @@ def create_voice_profiles_tab():
                         ax2.legend(facecolor=_FACE, edgecolor=_GRID,
                                    labelcolor=_TEXT, fontsize=9)
                         acc_fig.tight_layout()
-                    except Exception as e:
-                        log_lines.append(f"⚠️ Erro ao gerar gráficos: {e}")
+
+                    # Confusion Matrix plot
+                    cm = metrics.get("confusion_matrix")
+                    if cm:
+                        cm_fig = Figure(figsize=(5, 4))
+                        ax3 = cm_fig.add_subplot(111)
+                        cm_fig.patch.set_facecolor(_BG)
+                        ax3.set_facecolor(_FACE)
+                        cm_arr = np.array(cm)
+                        im = ax3.imshow(cm_arr, cmap='magma', interpolation='nearest')
+                        ax3.set_title("Confusion Matrix", color=_TEXT,
+                                      fontweight="600", fontsize=12, pad=10)
+                        labels = ["Real", "Fake"]
+                        ax3.set_xticks([0, 1])
+                        ax3.set_yticks([0, 1])
+                        ax3.set_xticklabels(labels, color=_TEXT, fontsize=10)
+                        ax3.set_yticklabels(labels, color=_TEXT, fontsize=10)
+                        ax3.set_xlabel("Predito", color=_TEXT, fontsize=10)
+                        ax3.set_ylabel("Real", color=_TEXT, fontsize=10)
+                        # Anotar valores
+                        for i in range(2):
+                            for j in range(2):
+                                color = _TEXT if cm_arr[i, j] < cm_arr.max() * 0.6 else _BG
+                                ax3.text(j, i, str(cm_arr[i, j]),
+                                         ha='center', va='center',
+                                         color=color, fontsize=16, fontweight='bold')
+                        for sp in ax3.spines.values():
+                            sp.set_color(_GRID)
+                        cm_fig.tight_layout()
+
+                except Exception as e:
+                    log_lines.append(f"⚠️ Erro ao gerar gráficos: {e}")
 
                 # Métricas sem history (muito grande para JSON view)
                 display_metrics = {
-                    k: v for k, v in metrics.items() if k != "history"
+                    k: v for k, v in metrics.items()
+                    if k not in ("history", "confusion_matrix")
                 }
 
-                yield "\n".join(log_lines), loss_fig, acc_fig, display_metrics
+                yield "\n".join(log_lines), loss_fig, acc_fig, cm_fig, display_metrics
             else:
                 log_lines.append(f"\n❌ Erro: {result.get('error', 'Falha desconhecida')}")
-                yield "\n".join(log_lines), None, None, None
+                warnings = result.get("warnings", [])
+                for w in warnings:
+                    log_lines.append(f"⚠️ {w}")
+                yield "\n".join(log_lines), None, None, None, None
 
         train_btn.click(
             fn=handle_train,
             inputs=[train_profile_dd, train_arch, train_epochs,
                     train_batch, train_lr],
             outputs=[train_log, train_loss_plot, train_acc_plot,
-                     train_metrics_json],
+                     train_cm_plot, train_metrics_json],
         )
 
         # ── Verify handlers ──
@@ -537,6 +664,14 @@ def create_voice_profiles_tab():
                 is_auth = result["is_authentic"]
                 conf = result["confidence"]
                 name = result["profile_name"]
+                details = result.get("details", {})
+
+                # Exibir métricas do modelo usado
+                train_metrics = details.get("training_metrics", {})
+                metrics_rows = ""
+                if train_metrics:
+                    for k, v in train_metrics.items():
+                        metrics_rows += f"| {k} | {v} |\n"
 
                 if is_auth:
                     md = (
@@ -544,6 +679,8 @@ def create_voice_profiles_tab():
                         f"O áudio **pertence** ao perfil **{name}**.\n\n"
                         f"| Métrica | Valor |\n|---|---|\n"
                         f"| Confiança | **{conf:.1f}%** |\n"
+                        f"| Arquitetura | {details.get('model_architecture', '—')} |\n"
+                        f"| Tipo Modelo | {details.get('model_type', '—')} |\n"
                         f"| Status | Autenticada |\n"
                     )
                 else:
@@ -553,10 +690,14 @@ def create_voice_profiles_tab():
                         f"ou é um **deepfake**.\n\n"
                         f"| Métrica | Valor |\n|---|---|\n"
                         f"| Confiança | **{conf:.1f}%** |\n"
+                        f"| Arquitetura | {details.get('model_architecture', '—')} |\n"
+                        f"| Tipo Modelo | {details.get('model_type', '—')} |\n"
                         f"| Status | Rejeitada |\n"
                     )
 
-                details = result.get("details", {})
+                if metrics_rows:
+                    md += f"\n### Métricas do Modelo\n| Métrica | Valor |\n|---|---|\n{metrics_rows}"
+
                 details["raw_score"] = result.get("raw_score")
                 return md, conf, details
             else:

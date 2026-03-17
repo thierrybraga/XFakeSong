@@ -8,7 +8,13 @@ import shutil
 from typing import List, Optional
 
 from fastapi import (
-    APIRouter, Depends, File, Form, Query, Request, UploadFile,
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Query,
+    Request,
+    UploadFile,
 )
 
 from app.core.auth.auth_handler import get_api_key

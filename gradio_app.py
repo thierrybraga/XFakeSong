@@ -345,6 +345,12 @@ except ImportError as e:
     logger.error(f"Erro ao importar voice profiles tab: {e}")
     create_voice_profiles_tab = _create_error_tab("Voice Profiles", str(e))
 
+try:
+    from app.interfaces.gradio.tabs.dataset_management import create_dataset_management_tab
+except ImportError as e:
+    logger.error(f"Erro ao importar dataset management tab: {e}")
+    create_dataset_management_tab = _create_error_tab("Dataset", str(e))
+
 
 # Configuração do Tema — Dark Mode Profissional
 theme = gr.themes.Base(
@@ -432,6 +438,9 @@ with gr.Blocks(
 
             # Aba de Perfis de Voz
             create_voice_profiles_tab()
+
+            # Aba de Gestão de Dataset
+            create_dataset_management_tab()
 
             # Aba de Histórico
             create_history_tab()

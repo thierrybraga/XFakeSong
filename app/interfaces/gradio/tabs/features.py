@@ -10,7 +10,6 @@ from app.domain.services.feature_extraction_service import (
     ExtractionConfig,
 )
 
-
 # ── Estilo dark para plots ─────────────────────────────────────
 _PLOT_BG = "#0f172a"
 _PLOT_FACE = "#1e293b"

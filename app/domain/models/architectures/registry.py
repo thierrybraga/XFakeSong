@@ -28,6 +28,23 @@ class ArchitectureInfo:
 class ArchitectureRegistry:
     """Registry centralizado de arquiteturas."""
 
+    # Mapeamento bidirecional: display_name ↔ snake_case
+    _DISPLAY_TO_SNAKE: Dict[str, str] = {
+        "AASIST": "aasist",
+        "RawGAT-ST": "rawgat_st",
+        "EfficientNet-LSTM": "efficientnet_lstm",
+        "MultiscaleCNN": "multiscale_cnn",
+        "SpectrogramTransformer": "spectrogram_transformer",
+        "Conformer": "conformer",
+        "Ensemble": "ensemble",
+        "Sonic Sleuth": "sonic_sleuth",
+        "RawNet2": "rawnet2",
+        "WavLM": "wavlm",
+        "HuBERT": "hubert",
+        "Hybrid CNN-Transformer": "hybrid_cnn_transformer",
+    }
+    _SNAKE_TO_DISPLAY: Dict[str, str] = {v: k for k, v in _DISPLAY_TO_SNAKE.items()}
+
     def __init__(self):
         self._architectures: Dict[str, ArchitectureInfo] = {}
         self._register_default_architectures()
@@ -458,6 +475,69 @@ class ArchitectureRegistry:
         """Retorna todas as arquiteturas registradas."""
         return self._architectures.copy()
 
+    # ── Name Mapping Layer ──────────────────────────────────────────────
+
+    @classmethod
+    def to_snake_case(cls, name: str) -> str:
+        """Converte display name → snake_case. Se já for snake, retorna como está."""
+        if name in cls._DISPLAY_TO_SNAKE:
+            return cls._DISPLAY_TO_SNAKE[name]
+        # Já é snake_case ou desconhecido
+        return name.lower().replace("-", "_").replace(" ", "_")
+
+    @classmethod
+    def to_display_name(cls, snake: str) -> str:
+        """Converte snake_case → display name para UI."""
+        if snake in cls._SNAKE_TO_DISPLAY:
+            return cls._SNAKE_TO_DISPLAY[snake]
+        return snake
+
+    @classmethod
+    def normalize_architecture_name(cls, name: str) -> str:
+        """Normaliza qualquer formato de nome para o display name do registry.
+
+        Aceita tanto 'sonic_sleuth' quanto 'Sonic Sleuth' e retorna
+        o display name canônico registrado no registry.
+        """
+        # Se já é um display name válido
+        if name in cls._DISPLAY_TO_SNAKE:
+            return name
+        # Tentar converter de snake_case
+        if name in cls._SNAKE_TO_DISPLAY:
+            return cls._SNAKE_TO_DISPLAY[name]
+        # Fallback: tentar case-insensitive
+        name_lower = name.lower().replace("-", "_").replace(" ", "_")
+        for snake, display in cls._SNAKE_TO_DISPLAY.items():
+            if snake == name_lower:
+                return display
+        raise ValueError(
+            f"Arquitetura '{name}' não encontrada. "
+            f"Disponíveis (snake): {list(cls._SNAKE_TO_DISPLAY.keys())}"
+        )
+
+    def get_architecture_by_any_name(self, name: str) -> ArchitectureInfo:
+        """Busca arquitetura aceitando display name OU snake_case."""
+        try:
+            return self.get_architecture(name)
+        except ValueError:
+            display = self.normalize_architecture_name(name)
+            return self.get_architecture(display)
+
+    def list_architectures_snake(self) -> List[str]:
+        """Lista todas as arquiteturas em snake_case (para dropdowns/API)."""
+        return [self.to_snake_case(name) for name in self._architectures.keys()]
+
+    def list_architecture_choices(self) -> List[Tuple[str, str]]:
+        """Retorna pares (display_label, snake_case) para dropdowns Gradio."""
+        choices = []
+        for display_name in self._architectures:
+            snake = self.to_snake_case(display_name)
+            info = self._architectures[display_name]
+            input_type = info.input_requirements.get("type", "unknown")
+            label = f"{display_name} ({input_type})"
+            choices.append((label, snake))
+        return choices
+
     def get_active_config(self, architecture_name: str,
                           variant: str = "default") -> Dict[str, Any]:
         """Obtém a configuração ativa do banco de dados (ou default se falhar)."""
@@ -691,6 +771,26 @@ def load_hyperparameters_json(
     return {}
 
 
+def get_architecture_choices() -> List[Tuple[str, str]]:
+    """Retorna pares (display_label, snake_case) para dropdowns."""
+    return architecture_registry.list_architecture_choices()
+
+
+def get_valid_snake_names() -> set:
+    """Retorna set de snake_case names válidos (para validação de schemas)."""
+    return set(architecture_registry.list_architectures_snake())
+
+
+def normalize_arch_name(name: str) -> str:
+    """Normaliza qualquer formato para display name canônico."""
+    return ArchitectureRegistry.normalize_architecture_name(name)
+
+
+def to_snake(name: str) -> str:
+    """Converte qualquer formato para snake_case."""
+    return ArchitectureRegistry.to_snake_case(name)
+
+
 # Exportar principais classes e funções
 __all__ = [
     "ArchitectureInfo",
@@ -701,5 +801,9 @@ __all__ = [
     "create_safe_model_by_name",
     "get_architecture_info",
     "validate_architecture_input",
-    "load_hyperparameters_json"
+    "load_hyperparameters_json",
+    "get_architecture_choices",
+    "get_valid_snake_names",
+    "normalize_arch_name",
+    "to_snake",
 ]

@@ -8,15 +8,22 @@ from pathlib import Path
 from typing import List
 
 from fastapi import (
-    APIRouter, Depends, File, Request, UploadFile,
+    APIRouter,
+    Depends,
+    File,
+    Request,
+    UploadFile,
 )
 
 from app.core.exceptions import ProfileNotFoundError, TrainingError, ValidationError
 from app.core.security import limiter
 from app.domain.services.voice_profile_service import VoiceProfileService
 from app.schemas.api_models import (
-    ProfileCreate, ProfileDetectionResult, ProfileResponse,
-    ProfileTrainRequest, ProfileUpdate,
+    ProfileCreate,
+    ProfileDetectionResult,
+    ProfileResponse,
+    ProfileTrainRequest,
+    ProfileUpdate,
 )
 
 router = APIRouter(prefix="/api/v1/profiles", tags=["Voice Profiles"])
