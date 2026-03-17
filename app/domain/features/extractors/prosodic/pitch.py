@@ -1,6 +1,8 @@
-import numpy as np
-import librosa
 from typing import Dict
+
+import librosa
+import numpy as np
+
 from .utils import find_peaks
 
 

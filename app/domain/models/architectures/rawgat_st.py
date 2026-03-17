@@ -5,29 +5,21 @@ from __future__ import annotations
 
 # Standard library imports
 import logging
-import os
-from datetime import datetime
-from typing import List, Tuple, Optional, Any, Dict, Callable
+from typing import Tuple
 
 # Third-party imports
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers, models, regularizers
-from tensorflow.keras.callbacks import (
-    EarlyStopping, ModelCheckpoint, ReduceLROnPlateau, TensorBoard, CSVLogger
-)
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
 
 from app.domain.models.architectures.layers import (
-    apply_gru_block,
-    flatten_features_for_gru,
-    AudioFeatureNormalization,
     AttentionLayer,
+    AudioFeatureNormalization,
     GraphAttentionLayer,
-    SliceLayer,
+    apply_gru_block,
     apply_reshape_for_cnn,
-    residual_block
+    flatten_features_for_gru,
+    residual_block,
 )
 
 # Configure logger for RawGAT-ST

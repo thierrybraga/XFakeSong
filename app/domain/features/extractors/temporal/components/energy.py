@@ -1,5 +1,5 @@
-import numpy as np
 import librosa
+import numpy as np
 
 
 def compute_rms_energy(y: np.ndarray, frame_length: int,

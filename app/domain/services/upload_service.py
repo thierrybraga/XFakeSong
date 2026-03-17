@@ -3,19 +3,15 @@
 Implementa a lógica de negócio para upload e validação de arquivos de áudio.
 """
 
-from pathlib import Path
-from typing import List, Optional, Dict, Any, Union
-from dataclasses import dataclass
 import shutil
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
-from ...core.interfaces.base import ProcessingResult, ProcessingStatus
 from ...core.interfaces.audio import AudioFormat
-from ...core.interfaces.services import (
-    IUploadService, DatasetMetadata, DatasetType
-)
-from ...core.utils.helpers import (
-    ensure_directory, safe_filename, get_file_hash
-)
+from ...core.interfaces.base import ProcessingResult, ProcessingStatus
+from ...core.interfaces.services import DatasetMetadata, DatasetType, IUploadService
+from ...core.utils.helpers import ensure_directory, get_file_hash, safe_filename
 
 
 def ensure_directory_exists(path: str) -> None:

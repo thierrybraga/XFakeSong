@@ -1,9 +1,12 @@
 import logging
 import time
+from typing import Any, Dict
+
 import numpy as np
-from typing import Dict, List, Any
-from app.core.interfaces.base import ProcessingResult, ProcessingStatus
+
 from app.core.interfaces.audio import AudioData, AudioFeatures, FeatureType
+from app.core.interfaces.base import ProcessingResult, ProcessingStatus
+
 from .types import ExtractionConfig, ExtractionResult
 
 logger = logging.getLogger(__name__)
@@ -216,7 +219,8 @@ class FeatureExtractorCore:
         """Extrai features usando segmentação de áudio para compatibilidade com modelos treinados."""
         try:
             from app.domain.features.extractors.segmented_feature_extractor import (
-                SegmentedFeatureExtractor, SegmentedExtractionConfig
+                SegmentedExtractionConfig,
+                SegmentedFeatureExtractor,
             )
 
             segmented_config = SegmentedExtractionConfig(

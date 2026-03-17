@@ -1,28 +1,68 @@
+from typing import Dict, Optional
+
 import numpy as np
-from typing import Optional, Dict
+from numba import njit, prange
+
+
+@njit(fastmath=True)
+def _phi_sampen_njit(y: np.ndarray, m: int, r_std: float) -> int:
+    N = len(y)
+    n_patterns = N - m + 1
+    count = 0
+
+    for i in range(n_patterns - 1):
+        pattern_i = y[i:i + m]
+        for j in range(i + 1, n_patterns):
+            max_dist = 0.0
+            for k in range(m):
+                dist = abs(pattern_i[k] - y[j + k])
+                if dist > max_dist:
+                    max_dist = dist
+
+            if max_dist <= r_std:
+                count += 1
+
+    return count
+
+
+@njit(parallel=True, fastmath=True)
+def _phi_sampen_parallel_njit(y: np.ndarray, m: int, r_std: float) -> int:
+    N = len(y)
+    n_patterns = N - m + 1
+
+    # Numba prange requires manual reduction for counts
+    counts = np.zeros(n_patterns - 1, dtype=np.int64)
+
+    for i in prange(n_patterns - 1):
+        pattern_i = y[i:i + m]
+        c = 0
+        for j in range(i + 1, n_patterns):
+            max_dist = 0.0
+            for k in range(m):
+                dist = abs(pattern_i[k] - y[j + k])
+                if dist > max_dist:
+                    max_dist = dist
+
+            if max_dist <= r_std:
+                c += 1
+        counts[i] = c
+
+    return np.sum(counts)
 
 
 def compute_sample_entropy(y: np.ndarray, m: int = 2, r: float = 0.2) -> float:
-    """Calcula a entropia de amostra (SampEn)."""
-    N = len(y)
+    """Calcula a entropia de amostra (SampEn) otimizada com Numba."""
+    if len(y) < m + 2:
+        return np.nan
 
-    def _maxdist(xi, xj, m):
-        return max([abs(ua - va) for ua, va in zip(xi, xj)])
+    r_std = r * np.std(y)
 
-    def _phi(m):
-        patterns = np.array([y[i:i + m] for i in range(N - m + 1)])
-        C = 0
-
-        for i in range(N - m):
-            template_i = patterns[i]
-            for j in range(i + 1, N - m + 1):
-                if _maxdist(template_i, patterns[j], m) <= r * np.std(y):
-                    C += 1
-
-        return C
-
-    A = _phi(m)
-    B = _phi(m + 1)
+    if len(y) > 500:
+        A = _phi_sampen_parallel_njit(y, m, r_std)
+        B = _phi_sampen_parallel_njit(y, m + 1, r_std)
+    else:
+        A = _phi_sampen_njit(y, m, r_std)
+        B = _phi_sampen_njit(y, m + 1, r_std)
 
     if A == 0 or B == 0:
         return np.inf

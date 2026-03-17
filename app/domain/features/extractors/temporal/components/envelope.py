@@ -1,5 +1,6 @@
-import numpy as np
 import librosa
+import numpy as np
+
 from .energy import compute_short_time_energy
 
 

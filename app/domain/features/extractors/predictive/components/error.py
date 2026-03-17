@@ -2,10 +2,12 @@
 Extração de características de erro de predição.
 """
 
+from typing import Dict
+
 import numpy as np
 import scipy.stats
-from typing import Dict
-from .utils import frame_signal, compute_prediction_error
+
+from .utils import compute_prediction_error, frame_signal
 
 
 def extract_prediction_error_features(

@@ -1,6 +1,8 @@
-import numpy as np
-import librosa
 import warnings
+
+import librosa
+import numpy as np
+
 from .mfcc import FeatureExtractor
 
 

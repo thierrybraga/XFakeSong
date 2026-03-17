@@ -7,12 +7,13 @@ incluindo LPC, LSF, PARCOR, coeficientes de reflexão e análise de erro de
 predição. Refatorado para usar sub-módulos.
 """
 
-import numpy as np
 from typing import Dict
 
-from .components.lpc import extract_lpc_features, extract_lsf_features
-from .components.coeffs import extract_reflection_features, extract_parcor_features
+import numpy as np
+
+from .components.coeffs import extract_parcor_features, extract_reflection_features
 from .components.error import extract_prediction_error_features
+from .components.lpc import extract_lpc_features, extract_lsf_features
 from .components.stability import extract_stability_features
 
 

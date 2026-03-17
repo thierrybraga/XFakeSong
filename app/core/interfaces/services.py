@@ -8,14 +8,14 @@ Este módulo define interfaces para:
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any, Optional, Union, Iterator
-from pathlib import Path
-from datetime import datetime
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
-from .base import IRepository, ProcessingResult, ProcessingStatus
 from .audio import AudioData, AudioFeatures, DeepfakeDetectionResult
+from .base import IRepository, ProcessingResult
 
 
 class DatasetType(Enum):

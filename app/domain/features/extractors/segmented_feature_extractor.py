@@ -7,30 +7,31 @@ Este módulo implementa a extração de características de áudio usando segmen
 O áudio é dividido em segmentos menores para análise mais detalhada.
 """
 
-import numpy as np
-from typing import List, Any, Optional
-from pathlib import Path
-import librosa
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, List, Optional
+
+import librosa
+import numpy as np
 
 # Importações do projeto
 from ....core.interfaces.audio import AudioData
 from ....core.interfaces.base import ProcessingResult, ProcessingStatus
 from ..models.segmented_features import SegmentedFeatures
+from .cepstral.cepstral_features import CepstralFeatureExtractor
+from .complexity.complexity_features import ComplexityFeatureExtractor
+from .formant.formant_features import FormantFeatureExtractor
+from .perceptual.perceptual_features import PerceptualFeatureExtractor
+from .predictive.predictive_features import PredictiveFeatureExtractor
+from .prosodic.prosodic_features import ProsodicFeatureExtractor
 
 # Importar extratores específicos
 from .spectral.spectral_features import SpectralFeatureExtractor
-from .cepstral.cepstral_features import CepstralFeatureExtractor
-from .temporal.temporal_features import TemporalFeatureExtractor
-from .prosodic.prosodic_features import ProsodicFeatureExtractor
-from .formant.formant_features import FormantFeatureExtractor
-from .voice_quality.voice_quality_features import VoiceQualityFeatureExtractor
-from .perceptual.perceptual_features import PerceptualFeatureExtractor
-from .complexity.complexity_features import ComplexityFeatureExtractor
-from .transform.transform_features import TransformFeatureExtractor
-from .timefreq.timefreq_features import TimeFrequencyFeatureExtractor
-from .predictive.predictive_features import PredictiveFeatureExtractor
 from .speech.speech_features import SpeechFeatureExtractor
+from .temporal.temporal_features import TemporalFeatureExtractor
+from .timefreq.timefreq_features import TimeFrequencyFeatureExtractor
+from .transform.transform_features import TransformFeatureExtractor
+from .voice_quality.voice_quality_features import VoiceQualityFeatureExtractor
 
 
 @dataclass

@@ -1,9 +1,9 @@
 """Módulo de Treinamento de Modelos"""
 
-from .trainer import ModelTrainer
+from .augmentation import AudioAugmenter
 from .metrics import MetricsCalculator
 from .optimization import OptimizerFactory
-from .augmentation import AudioAugmenter
+from .trainer import ModelTrainer
 
 __all__ = [
     "ModelTrainer",

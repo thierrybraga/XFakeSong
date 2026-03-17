@@ -1,6 +1,7 @@
-import numpy as np
 import librosa
-from .utils import extract_periods, extract_peak_amplitudes
+import numpy as np
+
+from .utils import extract_peak_amplitudes, extract_periods
 
 
 def compute_rap(y: np.ndarray, f0: np.ndarray, sr: int) -> float:

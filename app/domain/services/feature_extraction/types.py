@@ -1,6 +1,7 @@
 from dataclasses import dataclass
-from typing import List, Dict, Any, Optional
-from app.core.interfaces.audio import FeatureType, AudioFeatures
+from typing import Any, Dict, List
+
+from app.core.interfaces.audio import AudioFeatures, FeatureType
 
 
 @dataclass

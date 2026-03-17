@@ -7,13 +7,14 @@ Este módulo implementa a segmentação de arquivos de áudio em intervalos de 1
 para extração de features mais granular e consistente.
 """
 
-import numpy as np
-import librosa
-from pathlib import Path
-from typing import List, Tuple, Dict, Any, Optional, Iterator
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, Iterator, List, Tuple
+
+import librosa
+import numpy as np
 
 from app.core.interfaces.audio import AudioData
 from app.core.interfaces.base import ProcessingResult, ProcessingStatus
@@ -262,7 +263,7 @@ class AudioSegmentationService:
             'min_energy': np.min(energies),
             'max_energy': np.max(energies),
             'sample_rate': segments[0].sample_rate,
-            'unique_sources': len(set(seg.source_file for seg in segments))
+            'unique_sources': len({seg.source_file for seg in segments})
         }
 
         return stats
@@ -343,7 +344,7 @@ def main():
             if result.status == ProcessingStatus.SUCCESS:
                 total_segments = sum(len(segments)
                                      for segments in result.data.values())
-                print(f"\n✅ Segmentação concluída!")
+                print("\n✅ Segmentação concluída!")
                 print(f"   Total de segmentos: {total_segments}")
 
                 # Mostrar estatísticas por arquivo

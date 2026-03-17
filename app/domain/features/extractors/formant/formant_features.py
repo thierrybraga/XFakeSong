@@ -5,24 +5,25 @@ Extração de Características de Formantes
 Implementa extração de formantes F1-F4, larguras de banda e características derivadas.
 """
 
-import numpy as np
-import librosa
 import warnings
-from typing import Dict, Any
+from typing import Any, Dict
 
+import librosa
+import numpy as np
+
+from app.core.interfaces.audio import AudioData, AudioFeatures
+from app.core.interfaces.base import ProcessingResult, ProcessingStatus
 from app.domain.features.interfaces import IFeatureExtractor
 from app.domain.features.types import FeatureType
-from app.core.interfaces.audio import AudioData, AudioFeatures
-from app.core.interfaces.base import ProcessingStatus, ProcessingResult
 
-from .components.lpc import preemphasis, levinson_durbin_autocorr
 from .components.formants import find_formants_from_lpc
+from .components.lpc import levinson_durbin_autocorr, preemphasis
 from .components.metrics import (
+    compute_effective_f2,
+    compute_formant_dispersion,
+    compute_formant_ratios,
     compute_formant_trajectories,
     compute_vowel_space_area,
-    compute_formant_dispersion,
-    compute_effective_f2,
-    compute_formant_ratios
 )
 
 

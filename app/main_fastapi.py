@@ -1,16 +1,16 @@
-from app.core.db_setup import init_db
-from gradio_app import demo as gradio_demo
-from app.routers import (
-    system, detection, features, training, history, datasets
-)
+import os
+import sys
+from pathlib import Path
+
 import gradio as gr
 from fastapi import FastAPI
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from app.core.security import setup_security, limiter
-import os
-import sys
-from pathlib import Path
+
+from app.core.db_setup import init_db
+from app.core.security import limiter, setup_security
+from app.routers import datasets, detection, features, history, system, training
+from gradio_app import demo as gradio_demo
 
 # Adicionar raiz ao path
 sys.path.insert(0, str(Path(__file__).parent.parent))

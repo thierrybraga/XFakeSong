@@ -1,7 +1,5 @@
-flask
-flask-sqlalchemy
-flask-migrate
-flask-login
+sqlalchemy
+numba
 requests
 redis
 tensorflow
@@ -10,6 +8,7 @@ librosa
 soundfile
 pydantic
 gradio
+jinja2>=3.1.5
 joblib
 scikit-learn
 jsonschema

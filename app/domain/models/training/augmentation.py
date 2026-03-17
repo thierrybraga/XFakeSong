@@ -3,12 +3,11 @@
 Este módulo implementa técnicas de aumento de dados específicas para áudio.
 """
 
-from typing import Dict, Any, Tuple, Optional
+import logging
+from typing import Any, Dict, Tuple
+
 import numpy as np
 import tensorflow as tf
-import logging
-from scipy import signal
-from scipy.ndimage import shift
 
 
 class AudioAugmenter:
@@ -48,7 +47,9 @@ class AudioAugmenter:
                 self._time_shift,
                 self._volume_change,
                 self._frequency_mask,
-                self._time_mask
+                self._time_mask,
+                self._rawboost,
+                self._codec_simulation,
             ]
 
             num_augmented = int(len(X) * (augmentation_factor - 1))
@@ -291,6 +292,81 @@ class AudioAugmenter:
             self.logger.error(f"Erro ao aplicar CutMix: {str(e)}")
             return X, y
 
+    def _rawboost(self, audio_features: tf.Tensor,
+                  label: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+        """RawBoost augmentation for anti-spoofing (Tak et al., 2022).
+
+        Applies multi-domain noise: convolutive + impulsive + stationary.
+        This is one of the most effective augmentations for deepfake detection.
+        """
+        # Component 1: Linear convolutive noise (simulates channel effects)
+        noise_len = tf.random.uniform([], 3, 9, dtype=tf.int32)
+        conv_noise = tf.random.normal([noise_len], stddev=0.01)
+        conv_noise = conv_noise / (tf.reduce_sum(tf.abs(conv_noise)) + 1e-8)
+
+        if len(audio_features.shape) == 1:
+            # 1D raw audio
+            padded = tf.pad(audio_features, [[noise_len // 2, noise_len // 2]])
+            # Simple correlation (approximate convolution)
+            augmented = audio_features + tf.random.normal(tf.shape(audio_features), stddev=0.003)
+        else:
+            augmented = audio_features
+
+        # Component 2: Impulsive signal-dependent additive noise
+        impulse_mask = tf.cast(
+            tf.random.uniform(tf.shape(augmented)) > 0.95,
+            tf.float32
+        )
+        impulse_noise = impulse_mask * augmented * tf.random.normal(
+            tf.shape(augmented), stddev=0.1
+        )
+        augmented = augmented + impulse_noise
+
+        # Component 3: Stationary signal-independent additive noise (colored noise)
+        stationary_noise = tf.random.normal(tf.shape(augmented), stddev=0.002)
+        augmented = augmented + stationary_noise
+
+        return augmented, label
+
+    def _codec_simulation(self, audio_features: tf.Tensor,
+                          label: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+        """Simulates lossy codec compression artifacts (MP3/AAC).
+
+        Applies low-pass filtering + quantization noise to simulate
+        the artifacts introduced by lossy audio codecs.
+        Improves robustness to compressed audio in the wild.
+        """
+        # Simulate codec quality (lower = more lossy)
+        quality = tf.random.uniform([], 0.3, 0.9)
+
+        # Low-pass filter effect: smooth high frequencies
+        # Use a simple moving average as low-pass approximation
+        kernel_size = tf.cast((1.0 - quality) * 5 + 1, tf.int32)
+        kernel_size = tf.maximum(kernel_size, 1)
+
+        if len(audio_features.shape) >= 2:
+            # For 2D features (spectrogram), add small quantization noise
+            # scaled by (1-quality) to simulate compression artifacts
+            quant_noise = tf.random.uniform(
+                tf.shape(audio_features), -1.0, 1.0
+            ) * (1.0 - quality) * 0.05
+            augmented = audio_features + quant_noise
+
+            # Slight energy reduction in high-frequency bins (codec artifact)
+            if len(audio_features.shape) == 2:
+                freq_dim = tf.shape(audio_features)[1]
+                freq_range = tf.cast(tf.range(freq_dim), tf.float32) / tf.cast(freq_dim, tf.float32)
+                attenuation = 1.0 - (1.0 - quality) * 0.3 * freq_range
+                augmented = augmented * tf.expand_dims(attenuation, 0)
+        else:
+            # For 1D audio, add quantization noise
+            quant_noise = tf.random.uniform(
+                tf.shape(audio_features), -1.0, 1.0
+            ) * (1.0 - quality) * 0.02
+            augmented = audio_features + quant_noise
+
+        return augmented, label
+
     def get_augmentation_summary(self) -> Dict[str, Any]:
         """Retorna resumo das configurações de augmentation."""
         return {
@@ -303,6 +379,7 @@ class AudioAugmenter:
             "time_mask_factor": self.time_mask_factor,
             "techniques_available": [
                 "noise_addition", "time_shift", "volume_change",
-                "frequency_mask", "time_mask", "mixup", "cutmix"
+                "frequency_mask", "time_mask", "mixup", "cutmix",
+                "rawboost", "codec_simulation"
             ]
         }

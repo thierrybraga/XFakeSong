@@ -4,19 +4,17 @@ Este módulo implementa um pipeline de treinamento que previne vazamento de dado
 através de práticas seguras de divisão de dados e normalização.
 """
 
-import numpy as np
 import logging
-from typing import Dict, List, Any, Optional, Tuple, Union
-from pathlib import Path
 from dataclasses import dataclass
-from sklearn.model_selection import train_test_split, TimeSeriesSplit
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
-from sklearn.metrics import classification_report
-import tensorflow as tf
+from pathlib import Path
+from typing import Any, Dict, Optional, Tuple, Union
+
 import joblib
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 from app.core.interfaces.base import ProcessingResult, ProcessingStatus
-from app.core.interfaces.audio import AudioData
 
 logger = logging.getLogger(__name__)
 

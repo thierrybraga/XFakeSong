@@ -2,11 +2,17 @@
 Extração de características LPC e LSF.
 """
 
-import numpy as np
 from typing import Dict
+
+import numpy as np
+
 from .utils import (
-    frame_signal, compute_lpc, lpc_to_lsf,
-    lpc_to_frequency_response, compute_spectral_tilt, compute_spectral_flatness
+    compute_lpc,
+    compute_spectral_flatness,
+    compute_spectral_tilt,
+    frame_signal,
+    lpc_to_frequency_response,
+    lpc_to_lsf,
 )
 
 

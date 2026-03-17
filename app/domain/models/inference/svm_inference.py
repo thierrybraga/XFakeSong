@@ -3,10 +3,11 @@
 Inferência para modelo SVM de detecção de deepfake.
 """
 
+import logging
+from typing import Any, Dict
+
 import joblib
 import numpy as np
-from typing import Dict, Any, List
-import logging
 
 from .base_inference import BaseInference
 

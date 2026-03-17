@@ -1,47 +1,64 @@
-from fastapi import (
-    APIRouter, UploadFile, File, Form, Depends, HTTPException, Request
-)
+"""Endpoints de extração de features de áudio.
+
+Melhorias: validação de JSON, exceções de domínio, rate limiting.
+"""
+
+import json
+import os
 import shutil
 import tempfile
-import os
-import json
 import uuid
 from pathlib import Path
 
-from app.schemas.api_models import FeatureExtractionResult
-from app.domain.services.feature_extraction_service import \
-    AudioFeatureExtractionService
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+
+from app.core.exceptions import AudioProcessingError, UnsupportedFormatError, ValidationError
 from app.core.interfaces.base import ProcessingStatus
 from app.core.security import limiter, sanitize_filename
+from app.domain.services.feature_extraction_service import AudioFeatureExtractionService
 from app.domain.services.upload_service import AudioUploadService
+from app.schemas.api_models import FeatureExtractionResult
 
 router = APIRouter(prefix="/api/v1/features", tags=["Features"])
+
+SUPPORTED_FORMATS = list(AudioUploadService.SUPPORTED_FORMATS)
 
 
 def get_feature_service():
     return AudioFeatureExtractionService()
 
 
-@router.post("/extract", response_model=FeatureExtractionResult)
+@router.post(
+    "/extract",
+    response_model=FeatureExtractionResult,
+    summary="Extrai features de um arquivo de áudio",
+)
 @limiter.limit("10/minute")
 async def extract_features(
     request: Request,
     file: UploadFile = File(...),
-    feature_types: str = Form("['mfcc']"),  # Recebe como string JSON
+    feature_types: str = Form("['mfcc']"),
     normalize: bool = Form(True),
-    service: AudioFeatureExtractionService = Depends(get_feature_service)
+    service: AudioFeatureExtractionService = Depends(get_feature_service),
 ):
+    # Validar JSON de feature_types
     try:
         types_list = json.loads(feature_types)
-    except json.JSONDecodeError:
-        types_list = ["mfcc"]
+        if not isinstance(types_list, list) or not types_list:
+            raise ValueError
+    except (json.JSONDecodeError, ValueError):
+        raise ValidationError(
+            "feature_types deve ser uma lista JSON válida. Ex: ['mfcc', 'chroma']",
+            field="feature_types",
+        )
 
-    # Validar Extensão
-    supported = tuple(AudioUploadService.SUPPORTED_FORMATS)
-    if not file.filename.lower().endswith(supported):
-        raise HTTPException(
-            status_code=400,
-            detail="Formato de arquivo não suportado."
+    # Validar extensão do arquivo
+    if not file.filename or not file.filename.lower().endswith(
+        tuple(SUPPORTED_FORMATS)
+    ):
+        raise UnsupportedFormatError(
+            Path(file.filename or "").suffix,
+            SUPPORTED_FORMATS,
         )
 
     temp_dir = tempfile.mkdtemp()
@@ -52,59 +69,54 @@ async def extract_features(
         with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # 1. Carregar Áudio
-        from app.domain.services.audio_loading_service import \
-            AudioLoadingService
+        # Carregar áudio
+        from app.domain.services.audio_loading_service import AudioLoadingService
         loader = AudioLoadingService()
         load_result = loader.load_audio(temp_path)
 
         if load_result.status != ProcessingStatus.SUCCESS:
-            raise HTTPException(
-                status_code=400, detail=load_result.errors[0]
+            raise AudioProcessingError(
+                load_result.errors[0] if load_result.errors
+                else "Erro ao carregar áudio"
             )
 
         audio_data = load_result.data
 
-        # 2. Extrair Features
+        # Extrair features
         result = service.extract_single(audio_data, types_list)
 
         if result.status == ProcessingStatus.SUCCESS:
-            # Converter numpy arrays para listas para serialização JSON
             serializable_features = {}
             for k, v in result.data.items():
                 if hasattr(v.data, "tolist"):
                     serializable_features[k] = v.data.tolist()
                 else:
-                    serializable_features[k] = v.data  # Fallback
+                    serializable_features[k] = v.data
 
             return FeatureExtractionResult(
                 features=serializable_features,
                 metadata={
                     "duration": audio_data.duration,
-                    "sample_rate": audio_data.sample_rate
-                }
+                    "sample_rate": audio_data.sample_rate,
+                },
             )
         else:
-            raise HTTPException(status_code=500, detail=result.errors[0])
+            raise AudioProcessingError(
+                result.errors[0] if result.errors
+                else "Erro na extração de features"
+            )
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
     finally:
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
 
 
-@router.get("/types")
-async def list_feature_types():
+@router.get("/types", summary="Lista tipos de features disponíveis")
+@limiter.limit("30/minute")
+async def list_feature_types(request: Request):
     return {
         "available_types": [
-            "mfcc",
-            "mel_spectrogram",
-            "chroma",
-            "spectral_contrast",
-            "tonnetz",
-            "raw"
+            "mfcc", "mel_spectrogram", "chroma",
+            "spectral_contrast", "tonnetz", "raw",
         ]
     }

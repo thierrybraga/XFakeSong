@@ -1,8 +1,9 @@
 """
 Extração de características instantâneas via transformada de Hilbert.
 """
-import numpy as np
 from typing import Dict
+
+import numpy as np
 from scipy.signal import hilbert
 
 

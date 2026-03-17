@@ -1,7 +1,8 @@
-import numpy as np
-import librosa
 import warnings
-from typing import Dict, Any
+from typing import Any, Dict
+
+import librosa
+import numpy as np
 
 
 def extract_chroma_features(y: np.ndarray, sr: int,

@@ -1,8 +1,9 @@
 """
 Augmentations de mistura (Mixup, CutMix).
 """
-import tensorflow as tf
 from typing import Tuple
+
+import tensorflow as tf
 
 
 def mixup_augmentation(batch_x: tf.Tensor, batch_y: tf.Tensor,

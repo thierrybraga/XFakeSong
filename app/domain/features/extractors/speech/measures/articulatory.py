@@ -1,6 +1,8 @@
+from typing import Dict
+
 import numpy as np
 import scipy.stats
-from typing import Dict
+
 from . import common
 
 

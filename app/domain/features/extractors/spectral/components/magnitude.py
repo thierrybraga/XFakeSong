@@ -1,8 +1,8 @@
 """
 Extração de características de magnitude espectral.
 """
+
 import numpy as np
-from typing import List
 
 
 def compute_spectral_slope(S: np.ndarray, freqs: np.ndarray) -> np.ndarray:

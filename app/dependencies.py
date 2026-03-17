@@ -1,9 +1,10 @@
-from functools import lru_cache
-from app.domain.services.detection_service import DetectionService
-from app.domain.services.upload_service import AudioUploadService
-from app.domain.services.training_service import TrainingService
 import logging
 import os
+from functools import lru_cache
+
+from app.domain.services.detection_service import DetectionService
+from app.domain.services.training_service import TrainingService
+from app.domain.services.upload_service import AudioUploadService
 
 logger = logging.getLogger(__name__)
 

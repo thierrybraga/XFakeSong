@@ -1,10 +1,11 @@
 """
 Extração de características de qualidade perceptual (roughness, fluctuation, tonality).
 """
-import numpy as np
-import librosa
-import scipy.signal
 from typing import Dict
+
+import librosa
+import numpy as np
+import scipy.signal
 
 
 def extract_roughness_features(

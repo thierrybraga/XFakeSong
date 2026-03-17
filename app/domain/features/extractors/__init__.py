@@ -9,17 +9,18 @@ Pacote principal contendo todos os extratores de características organizados po
 """
 
 # Importar todos os extratores das subcategorias
-from .spectral import SpectralFeatureExtractor
 from .cepstral import CepstralFeatureExtractor
-from .prosodic import ProsodicFeatureExtractor
-from .temporal import TemporalFeatureExtractor
-from .perceptual import PerceptualFeatureExtractor
 from .complexity import ComplexityFeatureExtractor
 from .formant import FormantFeatureExtractor
+from .perceptual import PerceptualFeatureExtractor
 from .predictive import PredictiveFeatureExtractor
+from .prosodic import ProsodicFeatureExtractor
+from .spectral import SpectralFeatureExtractor
 from .speech import SpeechFeatureExtractor
-from .transform import TransformFeatureExtractor
+from .temporal import TemporalFeatureExtractor
 from .timefreq import TimeFrequencyFeatureExtractor
+from .transform import TransformFeatureExtractor
+from .voice_quality import VoiceQualityFeatureExtractor
 
 # Consolidar todos os extratores disponíveis
 __all__ = [
@@ -31,6 +32,7 @@ __all__ = [
     # Prosodic
     "ProsodicFeatureExtractor",
     "FormantFeatureExtractor",
+    "VoiceQualityFeatureExtractor",
     # Perceptual
     "PerceptualFeatureExtractor",
     # Advanced / Others

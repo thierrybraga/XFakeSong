@@ -5,31 +5,37 @@ complexidade, caos e análise não-linear para sinais de áudio.
 Versão otimizada para melhor performance.
 """
 
-import numpy as np
-from typing import Dict, Any, Optional, List
-import warnings
 import time
+import warnings
+from typing import Any, Dict, List, Optional
 
-from app.core.interfaces.audio import IFeatureExtractor, AudioData, AudioFeatures, FeatureType
-from app.core.interfaces.base import ProcessingResult, ProcessingStatus
+import numpy as np
+
+from app.core.interfaces.audio import (
+    AudioData,
+    AudioFeatures,
+    FeatureType,
+    IFeatureExtractor,
+)
+from app.core.interfaces.base import ProcessingResult
+from app.domain.features.extractors.complexity.measures.chaos import (
+    compute_correlation_dimension_optimized,
+    compute_lyapunov_exponent_optimized,
+    compute_rqa_features_optimized,
+)
 
 # Importações dos módulos refatorados
 from app.domain.features.extractors.complexity.measures.entropy import (
     compute_approximate_entropy_optimized,
-    compute_sample_entropy_optimized,
+    compute_multiscale_entropy_optimized,
     compute_permutation_entropy_optimized,
-    compute_multiscale_entropy_optimized
-)
-from app.domain.features.extractors.complexity.measures.chaos import (
-    compute_correlation_dimension_optimized,
-    compute_lyapunov_exponent_optimized,
-    compute_rqa_features_optimized
+    compute_sample_entropy_optimized,
 )
 from app.domain.features.extractors.complexity.measures.fractal import (
+    compute_dfa_exponent_optimized,
     compute_fractal_dimension_optimized,
-    compute_hurst_exponent_optimized,
     compute_higuchi_fractal_optimized,
-    compute_dfa_exponent_optimized
+    compute_hurst_exponent_optimized,
 )
 
 

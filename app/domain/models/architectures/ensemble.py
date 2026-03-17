@@ -1,521 +1,619 @@
-"""Ensemble Architecture Implementation"""
+"""Ensemble Architecture — Multi-Spectrogram Feature Fusion
 
-# Third-party imports
+Literature-based implementation combining:
+
+1. Pham et al. (2024) — "Deepfake Audio Detection Using Spectrogram-based Feature
+   and Ensemble of Deep Learning Models" (arXiv:2407.01777)
+   - Multiple spectrogram representations (STFT, CQT + Mel/Gammatone/Linear filters)
+   - CNN classifiers per representation
+   - Fusion of high-performing models achieves EER 0.03 on ASVspoof 2019
+
+2. ResNeXt + MLP Fusion (Knowledge-Based Systems, 2025)
+   - Three spectral features (LFCC, MFCC, CQCC) processed independently
+   - MLP-based fusion of embeddings
+   - EER 1.05% on ASVspoof 2019 LA
+
+Architecture (multi-feature ensemble):
+- Input: raw audio (16kHz)
+- Branch 1: Mel spectrogram (128 mels) -> CNN+SE -> embedding
+- Branch 2: LFCC (20 coefficients) -> CNN+SE -> embedding
+- Branch 3: CQT (84 bins) -> CNN+SE -> embedding
+- Branch 4: MFCC (20 coefficients) -> CNN+SE -> embedding
+- Cross-attention + gated fusion -> Dense(512) -> Dense(256) -> Dense(128) -> classification
+- Score-level fusion variant: learnable weighted average of branch predictions
+- Optimizer: AdamW(lr=5e-5, weight_decay=1e-5)
+"""
+
+import logging
+from typing import Tuple
+
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras import layers, models, Model
-from tensorflow.keras.applications import EfficientNetB0
-from typing import Tuple, List, Optional, Union, Dict, Any
-import logging
-from app.domain.models.architectures.layers import STFTLayer
+from tensorflow.keras import layers, models
 
-try:
-    # Importar as arquiteturas individuais
-    from .conformer import create_conformer_model
-    from .efficientnet_lstm import create_efficientnet_lstm_model
-    from .spectrogram_transformer import create_spectrogram_transformer_model
-    from .multiscale_cnn import create_multiscale_cnn_model
-except ImportError as e:
-    print(f"Warning: Could not import some architecture modules: {e}")
-    # Definir funções dummy para fallback
-
-    def create_conformer_model(*args, **kwargs):
-        raise ImportError("Conformer module not available")
-
-    def create_efficientnet_lstm_model(*args, **kwargs):
-        raise ImportError("EfficientNet-LSTM module not available")
-
-    def create_spectrogram_transformer_model(*args, **kwargs):
-        raise ImportError("Spectrogram Transformer module not available")
-
-    def create_multiscale_cnn_model(*args, **kwargs):
-        raise ImportError("Multi-Scale CNN module not available")
+from app.domain.models.architectures.layers import (
+    CrossAttentionFusionLayer,
+    GatedFusionLayer,
+    SqueezeExcitationBlock2D,
+    create_classification_head,
+    ensure_flat_input,
+    is_raw_audio,
+)
 
 logger = logging.getLogger(__name__)
 
 
-class EnsembleLayer(layers.Layer):
-    """Custom ensemble layer that combines predictions from multiple models."""
+# ============================ FEATURE EXTRACTION LAYERS ============================
 
-    def __init__(self, num_models: int,
-                 ensemble_method: str = 'weighted_average', **kwargs):
-        super(EnsembleLayer, self).__init__(**kwargs)
-        self.num_models = num_models
-        self.ensemble_method = ensemble_method
+class MelSpectrogramBranch(layers.Layer):
+    """Mel spectrogram extraction per Pham et al. (2024).
 
-        if ensemble_method == 'weighted_average':
-            # Learnable weights for each model
-            self.model_weights = self.add_weight(
-                name='model_weights',
-                shape=(num_models,),
-                initializer='uniform',
-                trainable=True
-            )
-        elif ensemble_method == 'attention':
-            # Attention mechanism for dynamic weighting
-            self.attention_dense = layers.Dense(
-                num_models, activation='softmax')
+    128 mel bins, 512 FFT, 160 hop (10ms at 16kHz), log-power.
+    """
+
+    def __init__(self, sample_rate=16000, n_fft=512, hop_length=160,
+                 n_mels=128, **kwargs):
+        super().__init__(**kwargs)
+        self.sample_rate = sample_rate
+        self.n_fft = n_fft
+        self.hop_length = hop_length
+        self.n_mels = n_mels
 
     def call(self, inputs):
-        # inputs is a list of predictions from different models
-        # Each input shape: (batch_size, num_classes)
-
-        if self.ensemble_method == 'simple_average':
-            # Simple average
-            stacked_predictions = tf.stack(
-                inputs, axis=-1)  # (batch, classes, models)
-            ensemble_output = tf.reduce_mean(stacked_predictions, axis=-1)
-
-        elif self.ensemble_method == 'weighted_average':
-            # Weighted average with learnable weights
-            weights = tf.nn.softmax(self.model_weights)  # Normalize weights
-            stacked_predictions = tf.stack(
-                inputs, axis=-1)  # (batch, classes, models)
-
-            # Apply weights
-            weighted_predictions = stacked_predictions * weights[None, None, :]
-            ensemble_output = tf.reduce_sum(weighted_predictions, axis=-1)
-
-        elif self.ensemble_method == 'attention':
-            # Attention-based ensemble
-            # Use average prediction as query for attention
-            avg_prediction = tf.reduce_mean(tf.stack(inputs, axis=-1), axis=-1)
-            attention_weights = self.attention_dense(
-                avg_prediction)  # (batch, num_models)
-
-            # Apply attention weights
-            stacked_predictions = tf.stack(
-                inputs, axis=1)  # (batch, models, classes)
-            attention_weights = tf.expand_dims(
-                attention_weights, axis=-1)  # (batch, models, 1)
-
-            ensemble_output = tf.reduce_sum(
-                stacked_predictions * attention_weights, axis=1)
-
-        elif self.ensemble_method == 'max_voting':
-            # Max voting (take max probability for each class)
-            stacked_predictions = tf.stack(
-                inputs, axis=-1)  # (batch, classes, models)
-            ensemble_output = tf.reduce_max(stacked_predictions, axis=-1)
-
-        else:
-            raise ValueError(
-                f"Unknown ensemble method: {
-                    self.ensemble_method}")
-
-        return ensemble_output
+        stft = tf.signal.stft(
+            inputs, frame_length=self.n_fft,
+            frame_step=self.hop_length, fft_length=self.n_fft
+        )
+        power = tf.square(tf.abs(stft))
+        mel_weight = tf.signal.linear_to_mel_weight_matrix(
+            num_mel_bins=self.n_mels,
+            num_spectrogram_bins=self.n_fft // 2 + 1,
+            sample_rate=self.sample_rate,
+            lower_edge_hertz=0.0,
+            upper_edge_hertz=self.sample_rate / 2.0
+        )
+        mel_spec = tf.matmul(power, mel_weight)
+        log_mel = tf.math.log(mel_spec + 1e-6)
+        # Add channel dim: (batch, time, mels, 1)
+        return tf.expand_dims(log_mel, axis=-1)
 
     def get_config(self):
         config = super().get_config()
         config.update({
-            'num_models': self.num_models,
-            'ensemble_method': self.ensemble_method
+            'sample_rate': self.sample_rate,
+            'n_fft': self.n_fft,
+            'hop_length': self.hop_length,
+            'n_mels': self.n_mels,
         })
         return config
 
 
-class AdaptiveFeatureFusion(layers.Layer):
-    """Adaptive feature fusion layer that combines features from different models."""
+class LFCCBranch(layers.Layer):
+    """Linear Frequency Cepstral Coefficients extraction.
 
-    def __init__(self, output_dim: int, **kwargs):
-        super(AdaptiveFeatureFusion, self).__init__(**kwargs)
-        self.output_dim = output_dim
+    LFCC provides superior spectral resolution at high frequencies
+    for capturing deepfake artifacts. Used in ResNeXt fusion paper.
+    20 linearly-spaced filters, 20 LFCC coefficients.
+    """
 
-        # Feature transformation layers
-        self.feature_transforms = []
-        self.attention_layers = []
+    def __init__(self, sample_rate=16000, n_fft=512, hop_length=160,
+                 n_filters=20, n_lfcc=20, **kwargs):
+        super().__init__(**kwargs)
+        self.sample_rate = sample_rate
+        self.n_fft = n_fft
+        self.hop_length = hop_length
+        self.n_filters = n_filters
+        self.n_lfcc = n_lfcc
 
     def build(self, input_shape):
-        # input_shape is a list of shapes from different models
-        num_models = len(input_shape)
-
-        for i in range(num_models):
-            # Transform each feature to common dimension
-            transform = layers.Dense(
-                self.output_dim,
-                activation='relu',
-                name=f'transform_{i}')
-            self.feature_transforms.append(transform)
-
-            # Attention for each feature
-            attention = layers.Dense(
-                1, activation='sigmoid', name=f'attention_{i}')
-            self.attention_layers.append(attention)
-
         super().build(input_shape)
+        num_bins = self.n_fft // 2 + 1
+        low_freq = 0.0
+        high_freq = self.sample_rate / 2.0
+        linear_points = np.linspace(low_freq, high_freq, self.n_filters + 2)
+        bin_points = np.round(linear_points * self.n_fft / self.sample_rate).astype(np.int32)
+
+        filters = np.zeros((num_bins, self.n_filters), dtype=np.float32)
+        for i in range(self.n_filters):
+            left, center, right = int(bin_points[i]), int(bin_points[i + 1]), int(bin_points[i + 2])
+            for j in range(left, center):
+                if center > left:
+                    filters[j, i] = (j - left) / (center - left)
+            for j in range(center, right):
+                if right > center:
+                    filters[j, i] = (right - j) / (right - center)
+        self.filter_bank = tf.constant(filters, dtype=tf.float32)
+
+        dct_matrix = np.zeros((self.n_filters, self.n_lfcc), dtype=np.float32)
+        for k in range(self.n_lfcc):
+            for n in range(self.n_filters):
+                dct_matrix[n, k] = np.cos(np.pi * k * (2 * n + 1) / (2 * self.n_filters))
+        dct_matrix[:, 0] *= 1.0 / np.sqrt(self.n_filters)
+        dct_matrix[:, 1:] *= np.sqrt(2.0 / self.n_filters)
+        self.dct_matrix = tf.constant(dct_matrix, dtype=tf.float32)
 
     def call(self, inputs):
-        # inputs is a list of feature vectors from different models
-        transformed_features = []
-        attention_weights = []
-
-        for i, (feature, transform, attention) in enumerate(
-                zip(inputs, self.feature_transforms, self.attention_layers)):
-            # Transform feature
-            transformed = transform(feature)
-            transformed_features.append(transformed)
-
-            # Compute attention weight
-            weight = attention(feature)
-            attention_weights.append(weight)
-
-        # Normalize attention weights
-        attention_weights = tf.nn.softmax(
-            tf.concat(attention_weights, axis=-1), axis=-1)
-
-        # Apply attention weights
-        weighted_features = []
-        for i, feature in enumerate(transformed_features):
-            weight = attention_weights[:, i:i + 1]  # (batch, 1)
-            weighted_feature = feature * weight
-            weighted_features.append(weighted_feature)
-
-        # Combine features
-        fused_features = tf.add_n(weighted_features)
-
-        return fused_features
+        stft = tf.signal.stft(
+            inputs, frame_length=self.n_fft,
+            frame_step=self.hop_length, fft_length=self.n_fft
+        )
+        power = tf.square(tf.abs(stft))
+        filtered = tf.matmul(power, self.filter_bank)
+        log_filtered = tf.math.log(filtered + 1e-6)
+        lfcc = tf.matmul(log_filtered, self.dct_matrix)
+        return tf.expand_dims(lfcc, axis=-1)
 
     def get_config(self):
         config = super().get_config()
-        config.update({'output_dim': self.output_dim})
+        config.update({
+            'sample_rate': self.sample_rate,
+            'n_fft': self.n_fft,
+            'hop_length': self.hop_length,
+            'n_filters': self.n_filters,
+            'n_lfcc': self.n_lfcc,
+        })
         return config
 
 
-def create_ensemble_model(
+class CQTBranch(layers.Layer):
+    """Constant-Q Transform feature extraction.
+
+    CQT provides logarithmic frequency resolution.
+    84 bins, 12 bins per octave (7 octaves from C1).
+    Approximated via STFT with log-spaced frequency binning.
+    """
+
+    def __init__(self, sample_rate=16000, n_fft=512, hop_length=160,
+                 n_bins=84, bins_per_octave=12, **kwargs):
+        super().__init__(**kwargs)
+        self.sample_rate = sample_rate
+        self.n_fft = n_fft
+        self.hop_length = hop_length
+        self.n_bins = n_bins
+        self.bins_per_octave = bins_per_octave
+
+    def build(self, input_shape):
+        super().build(input_shape)
+        num_stft_bins = self.n_fft // 2 + 1
+        fmin = 32.70  # C1
+        freqs = fmin * (2.0 ** (np.arange(self.n_bins) / self.bins_per_octave))
+        stft_freqs = np.linspace(0, self.sample_rate / 2, num_stft_bins)
+
+        cqt_filters = np.zeros((num_stft_bins, self.n_bins), dtype=np.float32)
+        for i, fc in enumerate(freqs):
+            bandwidth = fc * (2.0 ** (1.0 / self.bins_per_octave) - 1)
+            low = fc - bandwidth / 2
+            high = fc + bandwidth / 2
+            for j, sf in enumerate(stft_freqs):
+                if low <= sf <= high:
+                    if sf <= fc and fc > low:
+                        cqt_filters[j, i] = (sf - low) / (fc - low)
+                    elif sf > fc and high > fc:
+                        cqt_filters[j, i] = (high - sf) / (high - fc)
+        norms = np.sum(cqt_filters, axis=0, keepdims=True) + 1e-8
+        cqt_filters = cqt_filters / norms
+        self.cqt_filter_bank = tf.constant(cqt_filters, dtype=tf.float32)
+
+    def call(self, inputs):
+        stft = tf.signal.stft(
+            inputs, frame_length=self.n_fft,
+            frame_step=self.hop_length, fft_length=self.n_fft
+        )
+        magnitude = tf.abs(stft)
+        cqt = tf.matmul(magnitude, self.cqt_filter_bank)
+        log_cqt = tf.math.log(cqt + 1e-6)
+        return tf.expand_dims(log_cqt, axis=-1)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'sample_rate': self.sample_rate,
+            'n_fft': self.n_fft,
+            'hop_length': self.hop_length,
+            'n_bins': self.n_bins,
+            'bins_per_octave': self.bins_per_octave,
+        })
+        return config
+
+
+class MFCCBranch(layers.Layer):
+    """Mel-Frequency Cepstral Coefficients extraction.
+
+    MFCC uses mel-scale filter banks + DCT. Provides complementary
+    information to LFCC's linearly-spaced filters. 40 mel bins, 20 coefficients.
+    """
+
+    def __init__(self, sample_rate=16000, n_fft=512, hop_length=160,
+                 n_mels=40, n_mfcc=20, **kwargs):
+        super().__init__(**kwargs)
+        self.sample_rate = sample_rate
+        self.n_fft = n_fft
+        self.hop_length = hop_length
+        self.n_mels = n_mels
+        self.n_mfcc = n_mfcc
+
+    def build(self, input_shape):
+        super().build(input_shape)
+        dct_matrix = np.zeros((self.n_mels, self.n_mfcc), dtype=np.float32)
+        for k in range(self.n_mfcc):
+            for n in range(self.n_mels):
+                dct_matrix[n, k] = np.cos(np.pi * k * (2 * n + 1) / (2 * self.n_mels))
+        dct_matrix[:, 0] *= 1.0 / np.sqrt(self.n_mels)
+        dct_matrix[:, 1:] *= np.sqrt(2.0 / self.n_mels)
+        self.dct_matrix = tf.constant(dct_matrix, dtype=tf.float32)
+
+    def call(self, inputs):
+        stft = tf.signal.stft(
+            inputs, frame_length=self.n_fft,
+            frame_step=self.hop_length, fft_length=self.n_fft
+        )
+        power = tf.square(tf.abs(stft))
+        mel_weight = tf.signal.linear_to_mel_weight_matrix(
+            num_mel_bins=self.n_mels,
+            num_spectrogram_bins=self.n_fft // 2 + 1,
+            sample_rate=self.sample_rate,
+            lower_edge_hertz=0.0,
+            upper_edge_hertz=self.sample_rate / 2.0
+        )
+        mel_spec = tf.matmul(power, mel_weight)
+        log_mel = tf.math.log(mel_spec + 1e-6)
+        mfcc = tf.matmul(log_mel, self.dct_matrix)
+        # Add channel dim: (batch, time, coeffs, 1)
+        return tf.expand_dims(mfcc, axis=-1)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'sample_rate': self.sample_rate,
+            'n_fft': self.n_fft,
+            'hop_length': self.hop_length,
+            'n_mels': self.n_mels,
+            'n_mfcc': self.n_mfcc,
+        })
+        return config
+
+
+# ============================ CNN CLASSIFIER BRANCH ============================
+
+def _create_cnn_branch(x, branch_name, filters=None):
+    """Create a CNN branch with SE-blocks for feature classification.
+
+    Per Pham et al.: CNN classifier on spectrogram features.
+    4x Conv2D + BN + ReLU + SE + MaxPool -> GAP -> Dense(256) embedding.
+    """
+    if filters is None:
+        filters = [32, 64, 128, 256]
+
+    for i, f in enumerate(filters):
+        x = layers.Conv2D(
+            f, (3, 3), padding='same', use_bias=False,
+            name=f'{branch_name}_conv_{i}'
+        )(x)
+        x = layers.BatchNormalization(name=f'{branch_name}_bn_{i}')(x)
+        x = layers.ReLU(name=f'{branch_name}_relu_{i}')(x)
+        x = SqueezeExcitationBlock2D(reduction=16, name=f'{branch_name}_se_{i}')(x)
+        x = layers.MaxPooling2D((2, 2), name=f'{branch_name}_pool_{i}')(x)
+
+    x = layers.GlobalAveragePooling2D(name=f'{branch_name}_gap')(x)
+    x = layers.Dense(256, activation='relu', name=f'{branch_name}_embed')(x)
+    x = layers.Dropout(0.3, name=f'{branch_name}_dropout')(x)
+    return x
+
+
+# ============================ ENSEMBLE FUSION LAYERS ============================
+
+class ScoreFusionLayer(layers.Layer):
+    """Learnable weighted score-level fusion.
+
+    Per Pham et al.: fuse predictions from multiple branches
+    with softmax-normalized learnable weights.
+    """
+
+    def __init__(self, num_branches, **kwargs):
+        super().__init__(**kwargs)
+        self.num_branches = num_branches
+
+    def build(self, input_shape):
+        super().build(input_shape)
+        self.branch_weights = self.add_weight(
+            name='branch_weights',
+            shape=(self.num_branches,),
+            initializer='ones',
+            trainable=True
+        )
+
+    def call(self, inputs):
+        # inputs: list of (batch, num_classes) tensors
+        weights = tf.nn.softmax(self.branch_weights)
+        stacked = tf.stack(inputs, axis=-1)  # (batch, classes, branches)
+        weighted = stacked * weights[None, None, :]
+        return tf.reduce_sum(weighted, axis=-1)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({'num_branches': self.num_branches})
+        return config
+
+
+# ============================ MODEL BUILDERS ============================
+
+def _create_ensemble_feature_fusion(
     input_shape: Tuple[int, ...],
-    num_classes: int,
-    model_configs: Optional[Dict[str, Dict[str, Any]]] = None,
-    ensemble_method: str = 'weighted_average',
-    fusion_method: str = 'prediction_level',
+    num_classes: int = 1,
+    dropout_rate: float = 0.3,
     architecture: str = 'ensemble'
 ) -> models.Model:
+    """Create multi-feature ensemble with cross-attention + gated MLP fusion.
+
+    Architecture per Pham et al. (2024) + ResNeXt fusion paper:
+    1. Four parallel feature extraction branches (Mel, LFCC, CQT, MFCC)
+    2. CNN+SE classifier per branch -> 256-dim embeddings
+    3. Cross-attention fusion + gated fusion -> MLP fusion -> classification
+
+    This is the "feature-level fusion" approach from the literature.
     """
-    Create an ensemble model combining multiple state-of-the-art architectures.
+    inputs = layers.Input(shape=input_shape, name='audio_input')
 
-    Args:
-        input_shape: Shape of input features
-        num_classes: Number of output classes
-        model_configs: Configuration for individual models
-        ensemble_method: Method for combining predictions ('simple_average', 'weighted_average', 'attention', 'max_voting')
-        fusion_method: Level of fusion ('prediction_level', 'feature_level', 'hybrid')
-        architecture: Architecture name (for compatibility)
-
-    Returns:
-        Compiled Keras model
-    """
-    logger.info(
-        f"Creating Ensemble model with input_shape={input_shape}, num_classes={num_classes}")
-    logger.info(
-        f"Ensemble method: {ensemble_method}, Fusion method: {fusion_method}")
-
-    # Default model configurations (simplified to working architectures)
-    if model_configs is None:
-        model_configs = {
-            'conformer': {'d_model': 256, 'num_blocks': 6, 'num_heads': 8},
-            'efficientnet_lstm': {'lstm_units': 256, 'attention_units': 128}
-        }
-
-    # Input layer
-    inputs = layers.Input(shape=input_shape, name='ensemble_input')
-
-    # Create individual models
-    individual_models = {}
-    model_outputs = {}
-
-    # Conformer model
-    if 'conformer' in model_configs:
-        logger.info("Adding Conformer model to ensemble")
-        conformer_config = model_configs['conformer']
-
-        # Create a functional model that shares the same input
-        conformer_x = inputs
-
-        # Handle different input formats
-        if len(input_shape) == 1:
-            # Convert 1D to 2D spectrogram using custom layer
-            conformer_x = STFTLayer(name='conformer_stft', add_channel_dim=True)(conformer_x)
-        elif len(input_shape) == 2:
-            # Add channel dimension for 2D input
-            conformer_x = layers.Lambda(lambda x: tf.expand_dims(
-                x, axis=-1), name='conformer_expand_dims')(conformer_x)
-
-        # Conformer layers
-        conformer_x = layers.Conv2D(
-            64,
-            (3,
-             3),
-            activation='relu',
-            padding='same',
-            name='conformer_conv1')(conformer_x)
-        conformer_x = layers.BatchNormalization(
-            name='conformer_bn1')(conformer_x)
-        conformer_x = layers.MaxPooling2D(
-            (2, 2), name='conformer_pool1')(conformer_x)
-
-        conformer_x = layers.Conv2D(
-            128,
-            (3,
-             3),
-            activation='relu',
-            padding='same',
-            name='conformer_conv2')(conformer_x)
-        conformer_x = layers.BatchNormalization(
-            name='conformer_bn2')(conformer_x)
-        conformer_x = layers.GlobalAveragePooling2D(
-            name='conformer_gap')(conformer_x)
-
-        conformer_x = layers.Dense(
-            256,
-            activation='relu',
-            name='conformer_dense1')(conformer_x)
-        conformer_x = layers.Dropout(
-            0.3, name='conformer_dropout')(conformer_x)
-
-        if fusion_method == 'prediction_level':
-            conformer_output = layers.Dense(
-                num_classes,
-                activation='softmax',
-                name='conformer_output')(conformer_x)
-        else:
-            conformer_output = conformer_x  # Use features for feature-level fusion
-
-        model_outputs['conformer'] = conformer_output
-
-    # EfficientNet-LSTM model
-    if 'efficientnet_lstm' in model_configs:
-        logger.info("Adding EfficientNet-LSTM model to ensemble")
-        efficientnet_config = model_configs['efficientnet_lstm']
-
-        # Create a functional model that shares the same input
-        efficientnet_x = inputs
-
-        # Handle different input formats
-        if len(input_shape) == 1:
-            # Convert 1D to 2D spectrogram using custom layer
-            efficientnet_x = STFTLayer(
-                name='efficientnet_stft')(efficientnet_x)
-            # Resize to EfficientNet input size
-            efficientnet_x = layers.Lambda(lambda x: tf.image.resize(
-                x, [224, 224]), name='efficientnet_resize')(efficientnet_x)
-        elif len(input_shape) == 2:
-            # Add channel dimension for 2D input
-            efficientnet_x = layers.Lambda(lambda x: tf.expand_dims(
-                x, axis=-1), name='efficientnet_expand_dims')(efficientnet_x)
-
-        # EfficientNet-like layers (simplified)
-        efficientnet_x = layers.Conv2D(
-            32,
-            (3,
-             3),
-            activation='swish',
-            padding='same',
-            name='efficientnet_stem')(efficientnet_x)
-        efficientnet_x = layers.BatchNormalization(
-            name='efficientnet_bn1')(efficientnet_x)
-
-        efficientnet_x = layers.Conv2D(
-            64,
-            (3,
-             3),
-            activation='swish',
-            padding='same',
-            name='efficientnet_conv1')(efficientnet_x)
-        efficientnet_x = layers.BatchNormalization(
-            name='efficientnet_bn2')(efficientnet_x)
-        efficientnet_x = layers.MaxPooling2D(
-            (2, 2), name='efficientnet_pool1')(efficientnet_x)
-
-        efficientnet_x = layers.Conv2D(
-            128,
-            (3,
-             3),
-            activation='swish',
-            padding='same',
-            name='efficientnet_conv2')(efficientnet_x)
-        efficientnet_x = layers.BatchNormalization(
-            name='efficientnet_bn3')(efficientnet_x)
-        efficientnet_x = layers.GlobalAveragePooling2D(
-            name='efficientnet_gap')(efficientnet_x)
-
-        # LSTM-like processing
-        efficientnet_x = layers.Dense(
-            256,
-            activation='relu',
-            name='efficientnet_dense1')(efficientnet_x)
-        efficientnet_x = layers.Dropout(
-            0.3, name='efficientnet_dropout')(efficientnet_x)
-
-        if fusion_method == 'prediction_level':
-            efficientnet_output = layers.Dense(
-                num_classes,
-                activation='softmax',
-                name='efficientnet_output')(efficientnet_x)
-        else:
-            efficientnet_output = efficientnet_x  # Use features for feature-level fusion
-
-        model_outputs['efficientnet_lstm'] = efficientnet_output
-
-    # Combine outputs based on fusion method
-    if fusion_method == 'prediction_level':
-        # Prediction-level fusion
-        predictions = list(model_outputs.values())
-        ensemble_output = EnsembleLayer(
-            num_models=len(predictions),
-            ensemble_method=ensemble_method,
-            name='ensemble_layer'
-        )(predictions)
-
-    elif fusion_method == 'feature_level':
-        # Feature-level fusion
-        features = list(model_outputs.values())
-        fused_features = AdaptiveFeatureFusion(
-            output_dim=512,
-            name='feature_fusion'
-        )(features)
-
-        # Classification head
-        x = layers.Dense(
-            256,
-            activation='relu',
-            name='ensemble_dense1')(fused_features)
-        x = layers.BatchNormalization(name='ensemble_bn1')(x)
-        x = layers.Dropout(0.3, name='ensemble_dropout1')(x)
-
-        x = layers.Dense(128, activation='relu', name='ensemble_dense2')(x)
-        x = layers.Dropout(0.2, name='ensemble_dropout2')(x)
-
-        ensemble_output = layers.Dense(
-            num_classes,
-            activation='softmax',
-            name='ensemble_output')(x)
-
-    elif fusion_method == 'hybrid':
-        # Hybrid fusion: combine both feature-level and prediction-level
-        features = list(model_outputs.values())
-
-        # Feature-level fusion
-        fused_features = AdaptiveFeatureFusion(
-            output_dim=256,
-            name='feature_fusion'
-        )(features)
-
-        # Get predictions from fused features
-        feature_prediction = layers.Dense(
-            num_classes,
-            activation='softmax',
-            name='feature_prediction')(fused_features)
-
-        # Also get individual predictions (assuming we have them)
-        # For hybrid, we need to modify the individual models to output both features and predictions
-        # This is a simplified version
-        # Add individual predictions here if available
-        predictions = [feature_prediction]
-
-        ensemble_output = EnsembleLayer(
-            num_models=len(predictions),
-            ensemble_method=ensemble_method,
-            name='hybrid_ensemble'
-        )(predictions)
-
+    # Flatten to 1D audio if needed
+    if is_raw_audio(input_shape):
+        audio = ensure_flat_input(inputs, input_shape)
     else:
-        raise ValueError(f"Unknown fusion method: {fusion_method}")
+        # For pre-extracted features, use single-branch CNN
+        x = inputs
+        if len(input_shape) == 2:
+            x = layers.Reshape((*input_shape, 1), name='add_channel')(x)
+        x = _create_cnn_branch(x, 'single', filters=[32, 64, 128, 256])
+        outputs, loss = create_classification_head(
+            x, num_classes, dropout_rate=dropout_rate, hidden_dims=[256, 128]
+        )
+        model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
+        model.compile(
+            optimizer=tf.keras.optimizers.AdamW(learning_rate=5e-5, weight_decay=1e-5),
+            loss=loss, metrics=['accuracy']
+        )
+        return model
 
-    # Create the ensemble model
-    ensemble_model = models.Model(
-        inputs=inputs,
-        outputs=ensemble_output,
-        name='ensemble_model')
+    # ---------- Branch 1: Mel Spectrogram (128 mels) ----------
+    mel_features = MelSpectrogramBranch(
+        sample_rate=16000, n_fft=512, hop_length=160, n_mels=128,
+        name='mel_extraction'
+    )(audio)
+    mel_embedding = _create_cnn_branch(mel_features, 'mel', filters=[32, 64, 128, 256])
 
-    # Compile model
-    ensemble_model.compile(
+    # ---------- Branch 2: LFCC (20 coefficients) ----------
+    lfcc_features = LFCCBranch(
+        sample_rate=16000, n_fft=512, hop_length=160,
+        n_filters=20, n_lfcc=20, name='lfcc_extraction'
+    )(audio)
+    lfcc_embedding = _create_cnn_branch(lfcc_features, 'lfcc', filters=[32, 64, 128, 256])
+
+    # ---------- Branch 3: CQT (84 bins) ----------
+    cqt_features = CQTBranch(
+        sample_rate=16000, n_fft=512, hop_length=160,
+        n_bins=84, bins_per_octave=12, name='cqt_extraction'
+    )(audio)
+    cqt_embedding = _create_cnn_branch(cqt_features, 'cqt', filters=[32, 64, 128, 256])
+
+    # ---------- Branch 4: MFCC (20 coefficients) ----------
+    mfcc_features = MFCCBranch(
+        sample_rate=16000, n_fft=512, hop_length=160,
+        n_mels=40, n_mfcc=20, name='mfcc_extraction'
+    )(audio)
+    mfcc_embedding = _create_cnn_branch(mfcc_features, 'mfcc', filters=[32, 64, 128, 256])
+
+    # ---------- Cross-Attention + Gated Fusion ----------
+    branch_outputs = [mel_embedding, lfcc_embedding, cqt_embedding, mfcc_embedding]
+
+    # Cross-attention fusion
+    fused = CrossAttentionFusionLayer(
+        embed_dim=128, num_heads=4, name='cross_attn_fusion'
+    )(branch_outputs)
+
+    # Gated fusion
+    gated = GatedFusionLayer(name='gated_fusion')(branch_outputs)
+    fused = layers.Concatenate(name='fusion_concat')([fused, gated])
+
+    # MLP fusion head
+    fused = layers.Dense(512, activation='relu', name='fusion_dense_1')(fused)
+    fused = layers.BatchNormalization(name='fusion_bn_1')(fused)
+    fused = layers.Dropout(dropout_rate, name='fusion_dropout_1')(fused)
+    fused = layers.Dense(256, activation='relu', name='fusion_dense_2')(fused)
+    fused = layers.BatchNormalization(name='fusion_bn_2')(fused)
+    fused = layers.Dropout(dropout_rate * 0.67, name='fusion_dropout_2')(fused)
+    fused = layers.Dense(128, activation='relu', name='fusion_dense_3')(fused)
+    fused = layers.Dropout(dropout_rate * 0.5, name='fusion_dropout_3')(fused)
+
+    # Classification
+    if num_classes == 1 or num_classes == 2:
+        outputs = layers.Dense(1, activation='sigmoid', name='output')(fused)
+        loss = 'binary_crossentropy'
+    else:
+        outputs = layers.Dense(num_classes, activation='softmax', name='output')(fused)
+        loss = 'sparse_categorical_crossentropy'
+
+    model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
+
+    model.compile(
         optimizer=tf.keras.optimizers.AdamW(
-            learning_rate=5e-5,  # Lower learning rate for ensemble
-            weight_decay=1e-5,
-            beta_1=0.9,
-            beta_2=0.999
+            learning_rate=5e-5,
+            weight_decay=1e-5
         ),
-        loss='sparse_categorical_crossentropy',
-        metrics=['accuracy', 'precision', 'recall', 'f1_score']
+        loss=loss,
+        metrics=['accuracy']
     )
 
-    logger.info(
-        f"Ensemble model created successfully with {
-            ensemble_model.count_params()} parameters")
-    logger.info(f"Individual models in ensemble: {list(model_configs.keys())}")
-
-    return ensemble_model
+    logger.info(f"Ensemble (feature fusion) created: 4 branches (Mel+LFCC+CQT+MFCC), params={model.count_params()}")
+    return model
 
 
-def create_lightweight_ensemble(
+def _create_ensemble_score_fusion(
     input_shape: Tuple[int, ...],
-    num_classes: int,
+    num_classes: int = 1,
+    dropout_rate: float = 0.3,
+    architecture: str = 'ensemble_score'
+) -> models.Model:
+    """Create multi-feature ensemble with score-level fusion.
+
+    Architecture per Pham et al. (2024):
+    1. Three parallel branches (Mel, LFCC, CQT) each with own classifier
+    2. Learnable weighted average of branch predictions
+
+    Score-level fusion is simpler and often competitive with feature-level.
+    """
+    inputs = layers.Input(shape=input_shape, name='audio_input')
+
+    if is_raw_audio(input_shape):
+        audio = ensure_flat_input(inputs, input_shape)
+    else:
+        # Fallback for non-raw input
+        return _create_ensemble_feature_fusion(
+            input_shape, num_classes, dropout_rate, architecture
+        )
+
+    # Determine output activation and loss
+    if num_classes == 1 or num_classes == 2:
+        out_units = 1
+        out_activation = 'sigmoid'
+        loss = 'binary_crossentropy'
+    else:
+        out_units = num_classes
+        out_activation = 'softmax'
+        loss = 'sparse_categorical_crossentropy'
+
+    # ---------- Branch 1: Mel ----------
+    mel_features = MelSpectrogramBranch(
+        sample_rate=16000, n_fft=512, hop_length=160, n_mels=128,
+        name='mel_extraction'
+    )(audio)
+    mel_emb = _create_cnn_branch(mel_features, 'mel', filters=[32, 64, 128])
+    mel_pred = layers.Dense(out_units, activation=out_activation, name='mel_output')(mel_emb)
+
+    # ---------- Branch 2: LFCC ----------
+    lfcc_features = LFCCBranch(
+        sample_rate=16000, n_fft=512, hop_length=160,
+        n_filters=20, n_lfcc=20, name='lfcc_extraction'
+    )(audio)
+    lfcc_emb = _create_cnn_branch(lfcc_features, 'lfcc', filters=[32, 64, 128])
+    lfcc_pred = layers.Dense(out_units, activation=out_activation, name='lfcc_output')(lfcc_emb)
+
+    # ---------- Branch 3: CQT ----------
+    cqt_features = CQTBranch(
+        sample_rate=16000, n_fft=512, hop_length=160,
+        n_bins=84, bins_per_octave=12, name='cqt_extraction'
+    )(audio)
+    cqt_emb = _create_cnn_branch(cqt_features, 'cqt', filters=[32, 64, 128])
+    cqt_pred = layers.Dense(out_units, activation=out_activation, name='cqt_output')(cqt_emb)
+
+    # ---------- Score-level fusion ----------
+    outputs = ScoreFusionLayer(
+        num_branches=3, name='score_fusion'
+    )([mel_pred, lfcc_pred, cqt_pred])
+
+    model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
+
+    model.compile(
+        optimizer=tf.keras.optimizers.AdamW(
+            learning_rate=5e-5,
+            weight_decay=1e-5
+        ),
+        loss=loss,
+        metrics=['accuracy']
+    )
+
+    logger.info(f"Ensemble (score fusion) created: 3 branches (Mel+LFCC+CQT), params={model.count_params()}")
+    return model
+
+
+def _create_ensemble_lite(
+    input_shape: Tuple[int, ...],
+    num_classes: int = 1,
     architecture: str = 'ensemble_lite'
 ) -> models.Model:
-    """
-    Create a lightweight ensemble with fewer models for faster inference.
+    """Lightweight ensemble with 2 branches (Mel + LFCC) and smaller CNNs."""
+    inputs = layers.Input(shape=input_shape, name='audio_input')
 
-    Args:
-        input_shape: Shape of input features
-        num_classes: Number of output classes
-        architecture: Architecture name
+    if is_raw_audio(input_shape):
+        audio = ensure_flat_input(inputs, input_shape)
+    else:
+        x = inputs
+        if len(input_shape) == 2:
+            x = layers.Reshape((*input_shape, 1), name='add_channel')(x)
+        x = _create_cnn_branch(x, 'single', filters=[16, 32, 64])
+        outputs, loss = create_classification_head(
+            x, num_classes, dropout_rate=0.2, hidden_dims=[128]
+        )
+        model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
+        model.compile(
+            optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
+            loss=loss, metrics=['accuracy']
+        )
+        return model
 
-    Returns:
-        Compiled Keras model
-    """
-    # Use only the most effective models
-    lightweight_configs = {
-        'conformer': {'d_model': 128, 'num_blocks': 4, 'num_heads': 4},
-        'multiscale_cnn': {'base_filters': 32, 'num_blocks': 3}
-    }
+    # 2 branches only (lighter)
+    mel_features = MelSpectrogramBranch(
+        sample_rate=16000, n_fft=512, hop_length=160, n_mels=64,
+        name='mel_extraction'
+    )(audio)
+    mel_emb = _create_cnn_branch(mel_features, 'mel', filters=[16, 32, 64])
 
-    return create_ensemble_model(
-        input_shape=input_shape,
-        num_classes=num_classes,
-        model_configs=lightweight_configs,
-        ensemble_method='weighted_average',
-        fusion_method='prediction_level',
-        architecture=architecture
+    lfcc_features = LFCCBranch(
+        sample_rate=16000, n_fft=512, hop_length=160,
+        n_filters=20, n_lfcc=20, name='lfcc_extraction'
+    )(audio)
+    lfcc_emb = _create_cnn_branch(lfcc_features, 'lfcc', filters=[16, 32, 64])
+
+    fused = layers.Concatenate(name='feature_concat')([mel_emb, lfcc_emb])
+    fused = layers.Dense(128, activation='relu', name='fusion_dense')(fused)
+    fused = layers.Dropout(0.2, name='fusion_dropout')(fused)
+
+    if num_classes == 1 or num_classes == 2:
+        outputs = layers.Dense(1, activation='sigmoid', name='output')(fused)
+        loss = 'binary_crossentropy'
+    else:
+        outputs = layers.Dense(num_classes, activation='softmax', name='output')(fused)
+        loss = 'sparse_categorical_crossentropy'
+
+    model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
+        loss=loss, metrics=['accuracy']
     )
 
+    logger.info(f"Ensemble Lite created: 2 branches (Mel+LFCC), params={model.count_params()}")
+    return model
 
-def create_model(input_shape: Tuple[int, ...], num_classes: int,
-                 architecture: str = 'ensemble') -> models.Model:
+
+# ============================ FACTORY ============================
+
+def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
+                 architecture: str = 'ensemble', **kwargs) -> models.Model:
+    """Factory function for ensemble model variants.
+
+    Variants:
+        'ensemble': Feature-level fusion (Mel + LFCC + CQT -> MLP fusion)
+        'ensemble_score': Score-level fusion (learnable weighted average)
+        'ensemble_lite': Lightweight 2-branch (Mel + LFCC)
     """
-    Factory function to create ensemble models (for compatibility with existing code).
-
-    Args:
-        input_shape: Shape of input features
-        num_classes: Number of output classes
-        architecture: Architecture name
-
-    Returns:
-        Compiled Keras model
-    """
-    if architecture == 'ensemble':
-        return create_ensemble_model(
-            input_shape, num_classes, architecture=architecture)
-    elif architecture == 'ensemble_lite':
-        return create_lightweight_ensemble(
-            input_shape, num_classes, architecture=architecture)
-    elif architecture == 'ensemble_feature_fusion':
-        return create_ensemble_model(
-            input_shape, num_classes,
-            fusion_method='feature_level',
-            architecture=architecture
+    if architecture == 'ensemble_score':
+        return _create_ensemble_score_fusion(
+            input_shape, num_classes, architecture=architecture
         )
-    elif architecture == 'ensemble_hybrid':
-        return create_ensemble_model(
-            input_shape, num_classes,
-            fusion_method='hybrid',
-            architecture=architecture
+    elif architecture == 'ensemble_lite':
+        return _create_ensemble_lite(
+            input_shape, num_classes, architecture=architecture
         )
     else:
-        raise ValueError(
-            f"Unsupported architecture: {architecture}. Use 'ensemble', 'ensemble_lite', 'ensemble_feature_fusion', or 'ensemble_hybrid'")
+        return _create_ensemble_feature_fusion(
+            input_shape, num_classes, architecture=architecture,
+            **kwargs
+        )
 
 
-# Register custom layers for model loading
+# Register custom layers
 tf.keras.utils.get_custom_objects().update({
-    'EnsembleLayer': EnsembleLayer,
-    'AdaptiveFeatureFusion': AdaptiveFeatureFusion
+    'MelSpectrogramBranch': MelSpectrogramBranch,
+    'LFCCBranch': LFCCBranch,
+    'CQTBranch': CQTBranch,
+    'MFCCBranch': MFCCBranch,
+    'ScoreFusionLayer': ScoreFusionLayer,
 })

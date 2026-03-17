@@ -7,7 +7,8 @@ Define as estruturas de dados para features extraídas de segmentos de áudio.
 """
 
 from dataclasses import dataclass
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 import numpy as np
 
 

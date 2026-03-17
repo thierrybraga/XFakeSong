@@ -6,18 +6,19 @@ Este módulo implementa características baseadas em representações tempo-freq
 incluindo espectrograma, transformadas reassigned, EMD, VMD e outras técnicas avançadas.
 """
 
+from typing import Dict, Optional
+
 import numpy as np
 import scipy.signal
-from typing import Dict, Optional, List
 
 from .components import (
-    extract_spectrogram_features,
+    extract_emd_features,
+    extract_instantaneous_features,
     extract_phase_features,
     extract_reassigned_features,
+    extract_spectrogram_features,
     extract_synchrosqueezing_features,
-    extract_emd_features,
     extract_vmd_features,
-    extract_instantaneous_features
 )
 
 

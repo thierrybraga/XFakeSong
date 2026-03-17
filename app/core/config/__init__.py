@@ -1,9 +1,16 @@
 """Configurações do sistema"""
 
 from .settings import (
-    PathConfig, AudioConfig, FeatureConfig,
-    TrainingConfig, APIConfig, DatabaseConfig, LoggingConfig,
-    MonitoringConfig, SecurityConfig, SystemConfig
+    APIConfig,
+    AudioConfig,
+    DatabaseConfig,
+    FeatureConfig,
+    LoggingConfig,
+    MonitoringConfig,
+    PathConfig,
+    SecurityConfig,
+    SystemConfig,
+    TrainingConfig,
 )
 
 __all__ = [

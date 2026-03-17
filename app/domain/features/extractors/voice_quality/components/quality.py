@@ -1,10 +1,11 @@
 """
 Extração de características adicionais de qualidade (Spectral Tilt, Breathiness, etc).
 """
+from typing import Dict
+
+import librosa
 import numpy as np
 import scipy.stats
-import librosa
-from typing import Dict
 
 
 def compute_spectral_tilt(y: np.ndarray, sr: int = 22050) -> float:

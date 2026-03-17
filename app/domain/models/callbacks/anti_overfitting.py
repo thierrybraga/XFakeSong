@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Dict, List, Optional, Any
+from typing import List
 
+import numpy as np
 import tensorflow as tf
 from tensorflow.keras.callbacks import (
-    EarlyStopping, ModelCheckpoint, ReduceLROnPlateau,
-    TensorBoard, CSVLogger, Callback
+    Callback,
+    CSVLogger,
+    EarlyStopping,
+    ModelCheckpoint,
+    ReduceLROnPlateau,
+    TensorBoard,
 )
-import numpy as np
 
 logger = logging.getLogger(__name__)
 

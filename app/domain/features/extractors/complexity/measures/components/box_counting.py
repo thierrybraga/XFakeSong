@@ -1,5 +1,6 @@
+from typing import Dict, Optional
+
 import numpy as np
-from typing import Optional, Dict
 
 
 def compute_fractal_dimension(y: np.ndarray) -> float:

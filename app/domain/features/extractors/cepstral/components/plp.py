@@ -1,9 +1,11 @@
-import numpy as np
-import librosa
-import scipy.signal
 import warnings
 from typing import Dict
-from .lpc_utils import solve_yule_walker, lpc_to_cepstral
+
+import librosa
+import numpy as np
+import scipy.signal
+
+from .lpc_utils import lpc_to_cepstral, solve_yule_walker
 
 
 def apply_bark_scale(S: np.ndarray, sr: int, frame_length: int) -> np.ndarray:

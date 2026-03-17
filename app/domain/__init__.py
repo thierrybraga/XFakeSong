@@ -1,10 +1,11 @@
 """Camada de Domínio - Lógica de negócio e entidades"""
 
 # Importar serviços de domínio
-from .services.upload_service import AudioUploadService, UploadResult
 from .services.feature_extraction_service import (
-    AudioFeatureExtractionService, ExtractionConfig, ExtractionResult
+    AudioFeatureExtractionService,
+    ExtractionConfig,
 )
+from .services.upload_service import AudioUploadService, UploadResult
 
 __version__ = "1.0.0"
 
@@ -13,5 +14,5 @@ __all__ = [
     "AudioUploadService", "UploadResult",
 
     # Feature Extraction Services
-    "AudioFeatureExtractionService", "ExtractionConfig", "ExtractionResult"
+    "AudioFeatureExtractionService", "ExtractionConfig"
 ]

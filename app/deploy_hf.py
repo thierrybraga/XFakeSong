@@ -1,7 +1,7 @@
-import os
 import getpass
-from huggingface_hub import HfApi, login, create_repo
-from huggingface_hub.utils import HfHubHTTPError
+
+from huggingface_hub import HfApi, create_repo, login
+
 
 def deploy_interface():
     print("===============================================================================")
@@ -14,7 +14,7 @@ def deploy_interface():
     if not token:
         # Fallback para input visivel caso getpass falhe em alguns terminais
         token = input("Token (visivel): ").strip()
-    
+
     if not token:
         print("Token nao fornecido. Abortando.")
         return
@@ -39,14 +39,14 @@ def deploy_interface():
     repo_name = input(f"Nome do Space para deploy [{default_name}]: ").strip()
     if not repo_name:
         repo_name = default_name
-    
+
     if "/" not in repo_name:
         repo_name = f"{user}/{repo_name}"
 
-    print(f"\nConfiguracao:")
+    print("\nConfiguracao:")
     print(f"- Space: {repo_name}")
-    print(f"- SDK: Docker (baseado no Dockerfile existente)")
-    
+    print("- SDK: Docker (baseado no Dockerfile existente)")
+
     confirm = input("\nConfirmar deploy? [S/n]: ").lower()
     if confirm and confirm != 's':
         print("Cancelado.")
@@ -69,15 +69,15 @@ def deploy_interface():
             repo_id=repo_name,
             repo_type="space",
             ignore_patterns=[
-                ".git*", 
-                ".venv*", 
-                "__pycache__*", 
-                "logs*", 
-                "data/real/*", 
-                "data/fake/*", 
-                "*.pyc", 
-                "system.log", 
-                ".env", 
+                ".git*",
+                ".venv*",
+                "__pycache__*",
+                "logs*",
+                "data/real/*",
+                "data/fake/*",
+                "*.pyc",
+                "system.log",
+                ".env",
                 "tests*",
                 "start.bat"
             ]

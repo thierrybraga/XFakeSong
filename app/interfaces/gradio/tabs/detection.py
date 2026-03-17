@@ -1,13 +1,14 @@
-import gradio as gr
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
-import librosa
-import librosa.display
 import json
 import logging
 from pathlib import Path
 
+import librosa
+import librosa.display
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.figure import Figure
+
+import gradio as gr
 from app.core.interfaces.audio import AudioData
 
 # Configurar logging
@@ -32,13 +33,11 @@ def get_detection_service():
 
 # Tentar importar serviços
 try:
-    from app.domain.services.detection_service import (  # noqa: F401
-        DetectionService
-    )
     from app.domain.models.architectures.registry import (
         get_architecture_info,
-        get_available_architectures
+        get_available_architectures,
     )
+    from app.domain.services.detection_service import DetectionService  # noqa: F401
     MODELS_AVAILABLE = True
 except ImportError as e:
     logger.warning(
@@ -48,65 +47,82 @@ except ImportError as e:
     MODELS_AVAILABLE = False
 
 
+# ── Estilo dark para plots ───────────────────────────────────────
+_PLOT_BG = "#0f172a"
+_PLOT_FACE = "#1e293b"
+_PLOT_TEXT = "#f1f5f9"
+_PLOT_GRID = "#334155"
+_PLOT_ACCENT = "#3b82f6"
+_PLOT_ACCENT2 = "#06b6d4"
+_PLOT_DANGER = "#ef4444"
+
+
+def _style_ax(ax, fig, title=""):
+    """Aplica estilo dark consistente a um eixo matplotlib."""
+    fig.patch.set_facecolor(_PLOT_BG)
+    ax.set_facecolor(_PLOT_FACE)
+    ax.set_title(title, color=_PLOT_TEXT, fontweight="600", fontsize=12, pad=10)
+    ax.tick_params(colors=_PLOT_TEXT, labelsize=9)
+    for lbl in (ax.xaxis.label, ax.yaxis.label):
+        lbl.set_color(_PLOT_TEXT)
+        lbl.set_fontsize(10)
+    for spine in ax.spines.values():
+        spine.set_color(_PLOT_GRID)
+    ax.grid(True, color=_PLOT_GRID, alpha=0.3, linewidth=0.5)
+
+
 def get_waveform_plot(y, sr):
-    """Gera plot da forma de onda."""
-    plt.figure(figsize=(10, 3))
-    librosa.display.waveshow(y, sr=sr, alpha=0.8)
-    plt.title("Forma de Onda")
-    plt.tight_layout()
-    return plt.gcf()
+    """Gera plot da forma de onda em estilo dark."""
+    fig, ax = plt.subplots(figsize=(10, 3))
+    _style_ax(ax, fig, "Forma de Onda")
+    librosa.display.waveshow(y, sr=sr, alpha=0.85, color=_PLOT_ACCENT, ax=ax)
+    ax.set_xlabel("Tempo (s)")
+    ax.set_ylabel("Amplitude")
+    fig.tight_layout()
+    return fig
 
 
 def get_prosody_plot(y, sr):
-    """Gera plot de prosódia (F0 e Energia)."""
-    plt.figure(figsize=(10, 4))
+    """Gera plot de prosódia (F0 e Energia) em estilo dark."""
+    fig, ax = plt.subplots(figsize=(10, 4))
+    _style_ax(ax, fig, "Análise Prosódica: Energia e Pitch")
 
-    # Energia
     rms = librosa.feature.rms(y=y)[0]
     times = librosa.times_like(rms)
-    plt.plot(times, rms, label='Energia (RMS)', color='r', alpha=0.6)
+    ax.plot(times, rms, label='Energia (RMS)', color=_PLOT_DANGER, alpha=0.7, linewidth=1.5)
 
-    # F0 (Pitch)
     try:
         f0, voiced_flag, voiced_probs = librosa.pyin(
             y, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'))
         times_f0 = librosa.times_like(f0)
-
-        # Normalizar F0 para plotar junto
         if np.nanmax(f0) > 0:
             f0_norm = f0 / np.nanmax(f0)
-            plt.plot(
-                times_f0,
-                f0_norm,
-                label='Pitch (F0 Normalizado)',
-                color='b',
-                alpha=0.6)
+            ax.plot(times_f0, f0_norm, label='Pitch (F0 Norm.)',
+                    color=_PLOT_ACCENT2, alpha=0.7, linewidth=1.5)
     except Exception as e:
         logger.warning(f"Erro ao calcular Pitch: {e}")
 
-    plt.legend()
-    plt.title("Análise Prosódica: Energia e Pitch")
-    plt.xlabel("Tempo (s)")
-    plt.tight_layout()
-
-    return plt.gcf()
+    ax.legend(facecolor=_PLOT_FACE, edgecolor=_PLOT_GRID,
+              labelcolor=_PLOT_TEXT, fontsize=9)
+    ax.set_xlabel("Tempo (s)")
+    fig.tight_layout()
+    return fig
 
 
 def get_spectrogram_plot(y, sr):
-    """Gera espectrograma Mel."""
-    plt.figure(figsize=(10, 4))
+    """Gera espectrograma Mel em estilo dark."""
+    fig, ax = plt.subplots(figsize=(10, 4))
+    _style_ax(ax, fig, "Espectrograma Mel")
     S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128)
     S_dB = librosa.power_to_db(S, ref=np.max)
-    librosa.display.specshow(
-        S_dB,
-        x_axis='time',
-        y_axis='mel',
-        sr=sr,
-        fmax=8000)
-    plt.colorbar(format='%+2.0f dB')
-    plt.title("Espectrograma Mel")
-    plt.tight_layout()
-    return plt.gcf()
+    img = librosa.display.specshow(
+        S_dB, x_axis='time', y_axis='mel', sr=sr, fmax=8000,
+        ax=ax, cmap='magma')
+    cb = fig.colorbar(img, ax=ax, format='%+2.0f dB', pad=0.02)
+    cb.ax.tick_params(colors=_PLOT_TEXT, labelsize=8)
+    cb.outline.set_edgecolor(_PLOT_GRID)
+    fig.tight_layout()
+    return fig
 
 
 def analyze_audio(audio_path, architecture, variant,
@@ -239,10 +255,14 @@ def analyze_audio(audio_path, architecture, variant,
         )
 
     except Exception as e:
-        return f"Erro: {str(e)}", 0.0, None, None, None, {"error": str(e)}
-
-    except Exception as e:
-        return f"Erro: {str(e)}", 0.0, None, None, {"error": str(e)}
+        return (
+            f"Erro: {str(e)}",
+            0.0,
+            None,
+            None,
+            None,
+            json.dumps({"error": str(e)}, indent=2),
+        )
 
 
 def process_stream(new_chunk, state):
@@ -312,10 +332,10 @@ def process_stream(new_chunk, state):
 
         state["last_update"] = current_time
 
-        # Gerar plots rápidos
-        # 0. Forma de Onda (Janela deslizante de 5s)
+        # Gerar plots rápidos (dark theme)
         fig_wave = Figure(figsize=(10, 3))
         ax_wave = fig_wave.add_subplot(111)
+        _style_ax(ax_wave, fig_wave, "Forma de Onda (Tempo Real)")
 
         # Limitar visualização aos últimos 5 segundos
         window_size = sr * 5
@@ -335,39 +355,34 @@ def process_stream(new_chunk, state):
         )[::step]
         y_plot_ds = y_plot[::step]
 
-        ax_wave.plot(times_plot, y_plot_ds, alpha=0.8)
-        ax_wave.set_title("Forma de Onda (Tempo Real)")
+        ax_wave.plot(times_plot, y_plot_ds, alpha=0.85, color=_PLOT_ACCENT)
         ax_wave.set_ylim(-1.0, 1.0)
         fig_wave.tight_layout()
 
-        # 1. Espectrograma Mel (mais rápido que o completo)
+        # 1. Espectrograma Mel
         fig_spec = Figure(figsize=(10, 4))
         ax_spec = fig_spec.add_subplot(111)
+        _style_ax(ax_spec, fig_spec, f"Espectrograma Mel — {len(y) / sr:.1f}s")
 
-        # Usar n_fft menor para rapidez no stream?
         S = librosa.feature.melspectrogram(
             y=y, sr=sr, n_mels=64, hop_length=1024)
         S_dB = librosa.power_to_db(S, ref=np.max)
         img = librosa.display.specshow(
-            S_dB,
-            x_axis='time',
-            y_axis='mel',
-            sr=sr,
-            fmax=8000,
-            ax=ax_spec)
-        fig_spec.colorbar(img, ax=ax_spec, format='%+2.0f dB')
-        ax_spec.set_title(
-            f"Espectrograma Mel (Tempo Real) - {len(y) / sr:.1f}s")
+            S_dB, x_axis='time', y_axis='mel', sr=sr, fmax=8000,
+            ax=ax_spec, cmap='magma')
+        cb = fig_spec.colorbar(img, ax=ax_spec, format='%+2.0f dB', pad=0.02)
+        cb.ax.tick_params(colors=_PLOT_TEXT, labelsize=8)
+        cb.outline.set_edgecolor(_PLOT_GRID)
         fig_spec.tight_layout()
 
-        # 2. Prosódia (Energia + Pitch Simplificado)
+        # 2. Prosódia
         fig_pros = Figure(figsize=(10, 4))
         ax_pros = fig_pros.add_subplot(111)
+        _style_ax(ax_pros, fig_pros, "Análise Prosódica (Tempo Real)")
 
-        # Energia (RMS)
         rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=1024)[0]
         times = librosa.times_like(rms, sr=sr, hop_length=1024)
-        ax_pros.plot(times, rms, label='Energia (RMS)', color='r', alpha=0.6)
+        ax_pros.plot(times, rms, label='Energia (RMS)', color=_PLOT_DANGER, alpha=0.7, linewidth=1.5)
 
         # Pitch (Estimativa rápida via Autocorrelação para Real-time)
         try:
@@ -395,16 +410,16 @@ def process_stream(new_chunk, state):
                             # estimado atual
                             ax_pros.axhline(
                                 y=f0_est/1000,
-                                color='b',
+                                color=_PLOT_ACCENT2,
                                 linestyle='--',
-                                alpha=0.5,
+                                alpha=0.6,
                                 label=f'Pitch Est. ({int(f0_est)}Hz)'
                             )
         except Exception:
             pass
 
-        ax_pros.legend(loc='upper right')
-        ax_pros.set_title("Análise Prosódica: Energia (Tempo Real)")
+        ax_pros.legend(loc='upper right', facecolor=_PLOT_FACE,
+                       edgecolor=_PLOT_GRID, labelcolor=_PLOT_TEXT, fontsize=9)
         ax_pros.set_xlabel("Tempo (s)")
         fig_pros.tight_layout()
 
@@ -456,18 +471,19 @@ def process_stream(new_chunk, state):
 
 
 def create_detection_tab():
-    with gr.Tab("Detecção (Inference)", id="tab_detection"):
-        gr.Markdown("""
-        ### 🕵️ Análise de Integridade de Áudio
-        Faça upload de um arquivo de áudio para verificar se ele é autêntico
-        ou sintético (DeepFake).
-        """)
+    with gr.Tab("🕵️ Detecção", id="tab_detection"):
+        gr.Markdown(
+            "### Análise de Integridade de Áudio\n"
+            "Faça upload ou grave áudio em tempo real para verificar autenticidade. "
+            "O sistema analisa padrões espectrais, prosódicos e temporais "
+            "para identificar deepfakes."
+        )
 
         with gr.Row():
             # Coluna de Entrada (Esquerda/Topo)
             with gr.Column(scale=1, min_width=500):
                 with gr.Group():
-                    gr.Markdown("#### 📥 Entrada e Configuração")
+                    gr.Markdown("#### Entrada e Configuração")
                     audio_input = gr.Audio(
                         type="numpy", label="Arquivo de Áudio", sources=[
                             "upload", "microphone"], streaming=True)
@@ -510,7 +526,7 @@ def create_detection_tab():
             # Coluna de Saída (Direita/Baixo)
             with gr.Column(scale=1, min_width=500):
                 with gr.Group():
-                    gr.Markdown("#### 📊 Resultado da Análise")
+                    gr.Markdown("#### Resultado da Análise")
                     with gr.Row():
                         label_output = gr.Label(
                             label="Classificação",
@@ -523,7 +539,7 @@ def create_detection_tab():
         gr.Markdown("---")
 
         # Seção de Detalhes Visuais (Full Width)
-        gr.Markdown("### 📈 Detalhes Forenses")
+        gr.Markdown("### Visualização Forense")
 
         plot_waveform = gr.Plot(label="Forma de Onda")
 
@@ -534,7 +550,7 @@ def create_detection_tab():
                 plot_prosody = gr.Plot(
                     label="Análise Prosódica (Pitch/Energia)")
 
-        with gr.Accordion("📝 Metadados Técnicos (JSON)", open=False):
+        with gr.Accordion("Metadados Técnicos (JSON)", open=False):
             json_output = gr.JSON(label="Raw Output")
 
         def update_variants(arch_name):
@@ -544,7 +560,7 @@ def create_detection_tab():
 
                     # Buscar default params do DB para exibir no JSON
                     from app.domain.models.architectures.registry import (
-                        architecture_registry
+                        architecture_registry,
                     )
                     params = architecture_registry.get_active_config(
                         arch_name, variant="default"
@@ -594,8 +610,9 @@ def create_detection_tab():
             segmented
         ):
             import tempfile
-            import soundfile as sf
+
             import numpy as np
+            import soundfile as sf
 
             final_path = None
 

@@ -1,12 +1,16 @@
-import numpy as np
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
-from app.core.interfaces.base import ProcessingResult, ProcessingStatus
+import numpy as np
+
 from app.core.interfaces.audio import (
-    AudioData, AudioFeatures, FeatureType, IFeatureExtractor
+    AudioData,
+    AudioFeatures,
+    FeatureType,
+    IFeatureExtractor,
 )
+from app.core.interfaces.base import ProcessingResult, ProcessingStatus
 from app.domain.features.extractors.temporal.temporal_features import (
-    TemporalFeatureExtractor
+    TemporalFeatureExtractor,
 )
 
 

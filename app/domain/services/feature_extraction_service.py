@@ -6,25 +6,22 @@ app/domain/services/feature_extraction/
 """
 
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
-from app.core.interfaces.base import ProcessingResult, ProcessingStatus
 from app.core.interfaces.audio import (
-    AudioData, AudioFeatures, FeatureType, IFeatureExtractor
+    AudioData,
+    AudioFeatures,
+    FeatureType,
+    IFeatureExtractor,
 )
+from app.core.interfaces.base import ProcessingResult, ProcessingStatus
 from app.core.interfaces.services import IFeatureExtractionService
-
+from app.domain.services.feature_extraction.core import FeatureExtractorCore
+from app.domain.services.feature_extraction.extractor_loader import ExtractorLoader
 from app.domain.services.feature_extraction.types import (
     ExtractionConfig,
-    ExtractionResult
 )
-from app.domain.services.feature_extraction.extractor_loader import (
-    ExtractorLoader
-)
-from app.domain.services.feature_extraction.validator import (
-    FeatureExtractionValidator
-)
-from app.domain.services.feature_extraction.core import FeatureExtractorCore
+from app.domain.services.feature_extraction.validator import FeatureExtractionValidator
 
 logger = logging.getLogger(__name__)
 

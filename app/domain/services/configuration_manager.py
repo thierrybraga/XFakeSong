@@ -5,19 +5,22 @@ os componentes do pipeline, permitindo configuração flexível e validação.
 """
 
 import json
-import yaml
 import logging
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, Type
-from dataclasses import dataclass, field
-from enum import Enum
-import jsonschema
-from datetime import datetime
 import os
 from copy import deepcopy
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import jsonschema
+import yaml
 
 from app.domain.interfaces.pipeline_interfaces import (
-    IConfigurationManager, ComponentType, ConfigurationError
+    ComponentType,
+    ConfigurationError,
+    IConfigurationManager,
 )
 
 logger = logging.getLogger(__name__)

@@ -1,9 +1,10 @@
 """Safe Normalization Layers for Preventing Data Leakage"""
 
+import logging
+from typing import Any, Dict
+
 import tensorflow as tf
 from tensorflow.keras import layers
-from typing import Dict, Any
-import logging
 
 logger = logging.getLogger(__name__)
 

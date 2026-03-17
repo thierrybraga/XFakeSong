@@ -1,8 +1,9 @@
 """
 Extração de características de contraste espectral.
 """
-import numpy as np
 from typing import Dict
+
+import numpy as np
 
 
 def compute_subband_energy_ratios(S: np.ndarray, freqs: np.ndarray) -> Dict:

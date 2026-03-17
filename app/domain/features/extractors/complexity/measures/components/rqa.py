@@ -1,5 +1,6 @@
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
-from typing import Optional, Dict, List, Tuple
 
 
 def _find_diagonal_lines(

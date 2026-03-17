@@ -9,18 +9,18 @@ Agora integrado com features extraídas da pasta segmented.
 from __future__ import annotations
 
 import logging
-from typing import List, Tuple, Optional, Any, Dict
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-from sklearn.svm import SVC
-from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
 
 # Project imports
 from app.domain.models.architectures.classical_ml_helpers import (
     BaseClassicalModel,
+    evaluate_model,
     optimize_hyperparameters,
-    evaluate_model
 )
 
 # Configure logger for SVM
@@ -56,10 +56,10 @@ class SVMModel(BaseClassicalModel):
         self.gamma = gamma
         self.probability = probability
         self.random_state = random_state
-        
+
         # Initialize pipeline immediately
         self.pipeline = self._create_pipeline()
-        
+
         logger.info(
             f"SVM model initialized with kernel={kernel}, C={C}, gamma={gamma}")
 

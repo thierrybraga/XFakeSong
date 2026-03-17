@@ -4,27 +4,28 @@ Este módulo centraliza todas as configurações e callbacks otimizados
 para treinar modelos com máxima generalização e mínimo overfitting.
 """
 
+import logging
+from typing import Any, Dict, List, Optional, Tuple
+
 import tensorflow as tf
 from tensorflow.keras.callbacks import (
-    EarlyStopping, ReduceLROnPlateau, ModelCheckpoint,
-    LearningRateScheduler, TensorBoard
+    ModelCheckpoint,
+    ReduceLROnPlateau,
+    TensorBoard,
 )
-from typing import List, Dict, Any, Optional, Tuple
-import numpy as np
-import logging
+
+from ..augmentation.advanced_audio_augmentation import (
+    AdvancedAudioAugmentation,
+    create_augmentation_pipeline,
+    create_robust_dataset,
+)
 
 # Importar nossos callbacks customizados
 from ..callbacks.anti_overfitting import (
     AdvancedEarlyStopping,
     GradientClippingCallback,
     LossMonitoringCallback,
-    OverfittingDetectionCallback
-)
-from ..augmentation.advanced_audio_augmentation import (
-    AdvancedAudioAugmentation,
-    create_augmentation_pipeline,
-    create_adaptive_augmentation_layer,
-    create_robust_dataset
+    OverfittingDetectionCallback,
 )
 
 logger = logging.getLogger(__name__)
@@ -58,10 +59,10 @@ class OptimizedTrainingConfig:
             # Importação tardia para evitar ciclos
             from ..architectures.registry import ArchitectureRegistry
             registry = ArchitectureRegistry()
-            
+
             # Tenta obter config do banco (via registry) ou defaults do registry
             config = registry.get_active_config(self.model_name)
-            
+
             # Atualiza apenas se as chaves existirem no config retornado
             if "patience" in config:
                 self.patience = config["patience"]
@@ -71,7 +72,7 @@ class OptimizedTrainingConfig:
                 self.gradient_clip_value = config["gradient_clip"]
             if "augmentation_strength" in config:
                 self.augmentation_strength = config["augmentation_strength"]
-                
+
         except Exception as e:
             logger.warning(f"Erro ao carregar config da arquitetura {self.model_name}: {e}. Usando defaults fornecidos no init.")
 
@@ -328,9 +329,10 @@ def save_default_hyperparameters_json(
 
     Mantém a assinatura para compatibilidade, mas `output_dir` é ignorado.
     """
-    from app.core.db_setup import get_flask_app
+    from sqlalchemy.orm.attributes import flag_modified
+
+    from app.core.database import SessionLocal
     from app.domain.models.architecture_config import ArchitectureConfig
-    from app.extensions import db
 
     # Carrega defaults
     params = get_recommended_hyperparameters(model_name)
@@ -343,30 +345,33 @@ def save_default_hyperparameters_json(
         source = "recommended_default"
 
     try:
-        app = get_flask_app()
-        with app.app_context():
-            # Tenta encontrar existente
-            arch_config = ArchitectureConfig.query.filter_by(
-                architecture_name=model_name,
-                variant_name="default"
-            ).first()
+        db = SessionLocal()
+        try:
+            arch_config = (
+                db.query(ArchitectureConfig)
+                .filter_by(architecture_name=model_name, variant_name="default")
+                .first()
+            )
 
             if not arch_config:
                 arch_config = ArchitectureConfig(
                     architecture_name=model_name,
                     variant_name="default",
                     parameters=params,
-                    description=f"Configuração {source} para {model_name}"
+                    description=f"Configuração {source} para {model_name}",
                 )
-                db.session.add(arch_config)
+                db.add(arch_config)
             else:
                 arch_config.parameters = params
-                from sqlalchemy.orm.attributes import flag_modified
                 flag_modified(arch_config, "parameters")
 
-            db.session.commit()
-            logger.info(f"Hiperparâmetros para {model_name} salvos no banco de dados.")
+            db.commit()
+            logger.info(
+                f"Hiperparâmetros para {model_name} salvos no banco de dados."
+            )
             return "database"
+        finally:
+            db.close()
     except Exception as e:
         logger.error(f"Erro ao salvar hiperparâmetros no banco: {e}")
         # Fallback para arquivo se banco falhar (opcional, mas solicitado para remover JSON)
@@ -379,22 +384,26 @@ def load_hyperparameters_json(
 
     Mantém assinatura para compatibilidade, mas `search_dir` é ignorado.
     """
-    from app.core.db_setup import get_flask_app
+    from app.core.database import SessionLocal
     from app.domain.models.architecture_config import ArchitectureConfig
 
     default = get_recommended_hyperparameters(model_name)
 
     try:
-        app = get_flask_app()
-        with app.app_context():
-            arch_config = ArchitectureConfig.query.filter_by(
-                architecture_name=model_name,
-                variant_name="default"
-            ).first()
-
+        db = SessionLocal()
+        try:
+            arch_config = (
+                db.query(ArchitectureConfig)
+                .filter_by(architecture_name=model_name, variant_name="default")
+                .first()
+            )
             if arch_config and arch_config.parameters:
-                logger.info(f"Hiperparâmetros carregados do banco para {model_name}")
+                logger.info(
+                    f"Hiperparâmetros carregados do banco para {model_name}"
+                )
                 return arch_config.parameters
+        finally:
+            db.close()
     except Exception as e:
         logger.error(f"Erro ao carregar hiperparâmetros do banco: {e}")
 

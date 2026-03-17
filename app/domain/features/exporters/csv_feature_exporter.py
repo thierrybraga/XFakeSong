@@ -8,15 +8,15 @@ onde cada linha representa um segmento de 1 segundo e cada coluna uma caracterí
 """
 
 import csv
-import numpy as np
-from pathlib import Path
-from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
 import logging
-from datetime import datetime
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List
 
-from app.domain.features.models.segmented_features import SegmentedFeatures
+import numpy as np
+
 from app.core.interfaces.base import ProcessingResult, ProcessingStatus
+from app.domain.features.models.segmented_features import SegmentedFeatures
 
 logger = logging.getLogger(__name__)
 

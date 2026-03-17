@@ -3,14 +3,22 @@
 Este módulo implementa calculadoras de métricas para avaliação de modelos.
 """
 
-from typing import Dict, List, Any, Optional
+import logging
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
 from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score,
-    roc_auc_score, confusion_matrix, classification_report,
-    precision_recall_curve, roc_curve, auc
+    accuracy_score,
+    auc,
+    classification_report,
+    confusion_matrix,
+    f1_score,
+    precision_recall_curve,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+    roc_curve,
 )
-import logging
 
 
 class MetricsCalculator:
@@ -252,3 +260,74 @@ class MetricsCalculator:
                     str(e)}")
 
         return threshold_metrics
+
+    def calculate_eer(
+        self,
+        y_true: np.ndarray,
+        y_scores: np.ndarray
+    ) -> Tuple[float, float]:
+        """Calcula Equal Error Rate (EER).
+
+        Retorna (eer_value, eer_threshold).
+        EER é o ponto onde FPR == FNR na curva DET.
+        """
+        try:
+            fpr, tpr, thresholds = roc_curve(y_true, y_scores)
+            fnr = 1 - tpr
+
+            # Interpolação para encontrar interseção FPR = FNR
+            try:
+                from scipy.interpolate import interp1d
+                from scipy.optimize import brentq
+
+                fpr_interp = interp1d(thresholds[::-1], fpr[::-1],
+                                      bounds_error=False, fill_value=(1, 0))
+                fnr_interp = interp1d(thresholds[::-1], fnr[::-1],
+                                      bounds_error=False, fill_value=(0, 1))
+
+                # Encontrar threshold onde FPR(t) == FNR(t)
+                t_min, t_max = thresholds.min(), thresholds.max()
+                eer_threshold = brentq(
+                    lambda t: float(fpr_interp(t)) - float(fnr_interp(t)),
+                    t_min, t_max
+                )
+                eer = float(fpr_interp(eer_threshold))
+            except Exception:
+                # Fallback: ponto mais próximo onde |FPR - FNR| é mínimo
+                diff = np.abs(fpr - fnr)
+                eer_idx = np.argmin(diff)
+                eer = float((fpr[eer_idx] + fnr[eer_idx]) / 2)
+                eer_threshold = float(thresholds[eer_idx])
+
+            return eer, eer_threshold
+
+        except Exception as e:
+            self.logger.error(f"Erro ao calcular EER: {str(e)}")
+            return 0.5, 0.5
+
+    def get_det_curve_data(
+        self,
+        y_true: np.ndarray,
+        y_scores: np.ndarray
+    ) -> Dict[str, np.ndarray]:
+        """Retorna dados para plotagem da curva DET.
+
+        Returns:
+            Dict com 'fpr', 'fnr', 'thresholds' como np.ndarray.
+        """
+        try:
+            fpr, tpr, thresholds = roc_curve(y_true, y_scores)
+            fnr = 1 - tpr
+
+            return {
+                'fpr': fpr,
+                'fnr': fnr,
+                'thresholds': thresholds
+            }
+        except Exception as e:
+            self.logger.error(f"Erro ao gerar dados DET: {str(e)}")
+            return {
+                'fpr': np.array([0, 1]),
+                'fnr': np.array([1, 0]),
+                'thresholds': np.array([1, 0])
+            }

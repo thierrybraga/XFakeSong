@@ -1,26 +1,29 @@
 import logging
-from app.main_startup import create_app
-from app.extensions import db
+
+from app.core.database import Base, SessionLocal, engine
+
 # Importar modelos para garantir que o SQLAlchemy os conheça antes do
 # create_all
 from app.domain.models import (  # noqa: F401
     AnalysisResult,
     ArchitectureConfig,
+    TrainingJob,
     User,
-    TrainingJob
 )
+from app.domain.models.voice_profile import VoiceProfile  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
 
 def seed_architectures():
     """Popula o banco com as configurações padrão do registry se estiver vazio."""
+    db = SessionLocal()
     try:
         # Importação tardia para evitar ciclo com registry -> db_setup
         from app.domain.models.architectures.registry import architecture_registry
 
         # Verificar se já existem configs
-        if ArchitectureConfig.query.first():
+        if db.query(ArchitectureConfig).first():
             return
 
         logger.info(
@@ -37,35 +40,24 @@ def seed_architectures():
                 parameters=info.default_params,
                 is_active=True
             )
-            db.session.add(default_config)
+            db.add(default_config)
 
-            # Variantes (se houver, e se quisermos criar configs explícitas para elas)
-            # Por enquanto, vamos criar apenas a default baseada no registry.
-            # Se variants tiverem parâmetros diferentes hardcoded no código,
-            # o registry atual não expõe isso facilmente (apenas supported_variants list).
-            # Assumiremos que o usuário criará configs para variantes via UI
-            # depois.
-
-        db.session.commit()
+        db.commit()
         logger.info(f"{len(architectures)} arquiteturas semeadas com sucesso.")
 
     except Exception as e:
         logger.error(f"Erro ao semear arquiteturas: {e}")
-        db.session.rollback()
+        db.rollback()
+    finally:
+        db.close()
 
 
 def init_db():
     """Inicializa o banco de dados (Cria tabelas se não existirem)."""
-    app = create_app()
-    with app.app_context():
-        try:
-            db.create_all()
-            seed_architectures()
-            logger.info(
-                "Banco de dados SQLite inicializado e tabelas criadas.")
-        except Exception as e:
-            logger.error(f"Erro ao inicializar banco de dados: {e}")
-
-
-def get_flask_app():
-    return create_app()
+    try:
+        Base.metadata.create_all(bind=engine)
+        seed_architectures()
+        logger.info(
+            "Banco de dados SQLite inicializado e tabelas criadas.")
+    except Exception as e:
+        logger.error(f"Erro ao inicializar banco de dados: {e}")

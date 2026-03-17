@@ -2,9 +2,11 @@
 Extração de coeficientes de reflexão e PARCOR.
 """
 
-import numpy as np
 from typing import Dict
-from .utils import frame_signal, compute_reflection_coefficients
+
+import numpy as np
+
+from .utils import compute_reflection_coefficients, frame_signal
 
 
 def extract_reflection_features(

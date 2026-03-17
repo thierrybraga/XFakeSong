@@ -1,5 +1,6 @@
-import numpy as np
 from typing import List, Tuple
+
+import numpy as np
 
 
 def find_formants_from_lpc(lpc_coeffs: np.ndarray,

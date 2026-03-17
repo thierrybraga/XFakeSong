@@ -4,12 +4,12 @@ Este módulo centraliza todas as configurações seguindo o princípio DRY
 e facilita a manutenção e modificação de parâmetros do sistema.
 """
 
-import os
-from pathlib import Path
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Union, Any
 import json
+import os
+from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
 
 class Environment(Enum):

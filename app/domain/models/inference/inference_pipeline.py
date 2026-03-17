@@ -3,14 +3,15 @@
 Pipeline de inferência para detecção de deepfake.
 """
 
-import os
 import logging
+import os
 from pathlib import Path
-from typing import Dict, Any, List, Union, Optional
+from typing import Any, Dict, List
+
 import numpy as np
 
-from .svm_inference import SVMInference
 from .random_forest_inference import RandomForestInference
+from .svm_inference import SVMInference
 
 logger = logging.getLogger(__name__)
 

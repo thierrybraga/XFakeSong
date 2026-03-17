@@ -1,9 +1,10 @@
 """
 Extração de características de Empirical Mode Decomposition (EMD) simplificada.
 """
+from typing import Dict, List, Optional
+
 import numpy as np
 import scipy.signal
-from typing import Dict, Optional, List
 
 
 def simple_emd(y: np.ndarray, max_imfs: int = 5) -> List[np.ndarray]:

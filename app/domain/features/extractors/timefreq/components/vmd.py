@@ -1,9 +1,10 @@
 """
 Extração de características de Variational Mode Decomposition (VMD) simplificada.
 """
+from typing import Dict
+
 import numpy as np
 import scipy.signal
-from typing import Dict
 
 
 def extract_vmd_features(y: np.ndarray, sr: int) -> Dict:

@@ -3,15 +3,16 @@
 Este módulo contém funções utilitárias reutilizáveis em todo o sistema.
 """
 
-import os
-import json
 import hashlib
-import time
+import json
 import logging
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, Callable, TypeVar
+import os
+import time
 from datetime import datetime, timezone
 from functools import wraps
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+
 import numpy as np
 
 T = TypeVar('T')
@@ -254,6 +255,7 @@ def validate_audio_file(file_path: Union[str, Path]) -> bool:
 def get_system_info() -> Dict[str, Any]:
     """Retorna informações do sistema."""
     import platform
+
     import psutil
 
     return {

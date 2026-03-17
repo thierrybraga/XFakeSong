@@ -5,21 +5,20 @@ integrando todas as arquiteturas disponíveis ao pipeline.
 """
 
 import logging
-import numpy as np
 from pathlib import Path
-from typing import List, Optional, Union, Dict
+from typing import Dict, List, Optional, Union
 
-from ...core.interfaces.services import IDetectionService
-from ...core.interfaces.audio import (
-    AudioData, DeepfakeDetectionResult, FeatureType
-)
+import numpy as np
+
+from ...core.interfaces.audio import AudioData, DeepfakeDetectionResult, FeatureType
 from ...core.interfaces.base import ProcessingResult, ProcessingStatus
+from ...core.interfaces.services import IDetectionService
 from ..models.architectures.registry import get_architecture_info
-from .feature_extraction_service import AudioFeatureExtractionService
-from .detection.model_loader import ModelLoader, ModelInfo
 from .detection.feature_preparer import FeaturePreparer
+from .detection.model_loader import ModelInfo, ModelLoader
 from .detection.predictor import Predictor
 from .detection.utils import get_available_devices
+from .feature_extraction_service import AudioFeatureExtractionService
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +70,8 @@ class DetectionService(IDetectionService):
         return self.model_loader.find_model(architecture, variant)
 
     def detect_single(
-        self, audio_data: AudioData, model_name: str = None
+        self, audio_data: AudioData, model_name: str = None,
+        use_tta: bool = False
     ) -> ProcessingResult[DeepfakeDetectionResult]:
         """Detecta deepfake em um único áudio."""
         try:
@@ -104,11 +104,10 @@ class DetectionService(IDetectionService):
             extraction_info = prepared['metadata']
 
             prediction_result = self.predictor.predict(
-                model_info, features, device=self.device)
+                model_info, features, device=self.device, use_tta=use_tta)
             if prediction_result.status != ProcessingStatus.SUCCESS:
                 return prediction_result
             prediction = prediction_result.data
-
 
             result = DeepfakeDetectionResult(
                 is_fake=prediction['is_deepfake'],
@@ -189,7 +188,7 @@ class DetectionService(IDetectionService):
             batch_result = self.predictor.predict_batch(
                 model_info, prepared_features, device=self.device
             )
-            
+
             if batch_result.status != ProcessingStatus.SUCCESS:
                 return ProcessingResult(status=ProcessingStatus.ERROR, errors=batch_result.errors)
 
@@ -198,7 +197,7 @@ class DetectionService(IDetectionService):
             # 3. Reconstruir resultados
             final_results = []
             pred_idx = 0
-            
+
             for original_idx in range(len(audio_list)):
                 if original_idx in indices_with_error:
                     # Adicionar resultado de erro
@@ -276,13 +275,12 @@ class DetectionService(IDetectionService):
                             feature_types: List[Union[str, 'FeatureType']], normalize: bool = True,
                             segmented: bool = False) -> ProcessingResult[DeepfakeDetectionResult]:
         try:
-            import time
             if model_name is None:
                 model_name = self.default_model
-            
+
             # Usar get_model para carregamento Lazy
             model_info = self.model_loader.get_model(model_name)
-            
+
             if not model_info:
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
@@ -308,11 +306,11 @@ class DetectionService(IDetectionService):
                                         prepared.get('error')])
 
             features = prepared['features']
-            
+
             # Usar predict single para compatibilidade simples aqui
             prediction_result = self.predictor.predict(
                 model_info, features)
-            
+
             if prediction_result.status != ProcessingStatus.SUCCESS:
                 return prediction_result
 
@@ -340,7 +338,7 @@ class DetectionService(IDetectionService):
         try:
             target_shape = model_info.input_shape
             seq_len = target_shape[0] if len(target_shape) >= 1 else 0
-            
+
             # Se seq_len for 0 ou muito pequeno, não faz sentido segmentar por janelas de input
             if seq_len < 100:
                 # Tentar usar duração fixa de 3s se não tiver seq_len definido no input shape
@@ -349,7 +347,7 @@ class DetectionService(IDetectionService):
             samples = np.asarray(audio_data.samples, dtype=np.float32)
             if samples.ndim > 1:
                 samples = samples[:, 0]
-            
+
             if normalize:
                 max_abs = np.max(np.abs(samples)) or 1.0
                 samples = samples / max_abs
@@ -357,9 +355,9 @@ class DetectionService(IDetectionService):
             # Janelamento com sobreposição de 50%
             hop = max(seq_len // 2, 1)
             start = 0
-            
+
             windows = []
-            
+
             # Se o áudio for menor que uma janela, processa como único
             if samples.shape[0] < seq_len:
                 # Pad
@@ -370,14 +368,14 @@ class DetectionService(IDetectionService):
                 while start < samples.shape[0]:
                     end = start + seq_len
                     window = samples[start:end]
-                    
+
                     # Ignorar janelas muito pequenas no final (< 10%) ou fazer pad? Vamos fazer pad.
                     if window.shape[0] < seq_len:
                          window = np.pad(window, (0, seq_len - window.shape[0]), mode='constant')
-                    
+
                     features_win = window.reshape(seq_len, 1)
                     windows.append(features_win)
-                    
+
                     start += hop
 
             if not windows:
@@ -390,13 +388,13 @@ class DetectionService(IDetectionService):
             batch_result = self.predictor.predict_batch(model_info, windows)
             if batch_result.status != ProcessingStatus.SUCCESS:
                 return ProcessingResult(status=ProcessingStatus.ERROR, errors=batch_result.errors)
-            
+
             window_preds = [d['confidence'] for d in batch_result.data]
 
             # Média das confianças (Soft Voting)
             avg_conf = float(np.mean(window_preds))
             is_fake = avg_conf > 0.5
-            
+
             extraction_info = {
                 'feature_type': 'raw_segmented',
                 'windows_used': len(window_preds),
@@ -415,7 +413,7 @@ class DetectionService(IDetectionService):
             )
             return ProcessingResult(
                 status=ProcessingStatus.SUCCESS, data=result)
-        
+
         except Exception as e:
             return ProcessingResult(
                 status=ProcessingStatus.ERROR,
@@ -425,27 +423,24 @@ class DetectionService(IDetectionService):
     def save_analysis_result(self, result: DeepfakeDetectionResult, filename: str) -> bool:
         """Persiste o resultado da análise no banco de dados."""
         try:
-            from ...core.db_setup import get_flask_app
-            from ...domain.models import AnalysisResult
-            
-            flask_app = get_flask_app()
-            with flask_app.app_context():
-                analysis = AnalysisResult(
-                    filename=filename,
-                    is_fake=result.is_fake,
-                    confidence=result.confidence,
-                    model_name=result.model_name,
-                    duration_seconds=result.metadata.get('duration_s', 0.0),
-                    sample_rate=16000, # Padronizado
-                    details={
-                        "probabilities": result.probabilities,
-                        "metadata": result.metadata,
-                        "features_used": result.features_used
-                    }
-                )
-                analysis.save()
-                logger.info(f"Análise salva com sucesso: ID {analysis.id}")
-                return True
+            from ...domain.models.analysis import AnalysisResult
+
+            analysis = AnalysisResult(
+                filename=filename,
+                is_fake=result.is_fake,
+                confidence=result.confidence,
+                model_name=result.model_name,
+                duration_seconds=result.metadata.get('duration_s', 0.0),
+                sample_rate=16000, # Padronizado
+                details={
+                    "probabilities": result.probabilities,
+                    "metadata": result.metadata,
+                    "features_used": result.features_used
+                }
+            )
+            analysis.save()
+            logger.info(f"Análise salva com sucesso: ID {analysis.id}")
+            return True
         except Exception as e:
             logger.error(f"Falha ao salvar análise: {e}")
             return False

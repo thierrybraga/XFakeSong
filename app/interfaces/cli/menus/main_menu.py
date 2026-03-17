@@ -1,8 +1,8 @@
 from app.interfaces.cli.menus.base_menu import BaseMenu
 from app.interfaces.cli.menus.dataset_menu import DatasetMenu
-from app.interfaces.cli.menus.training_menu import TrainingMenu
 from app.interfaces.cli.menus.inference_menu import InferenceMenu
 from app.interfaces.cli.menus.other_menus import ResultsMenu, SettingsMenu
+from app.interfaces.cli.menus.training_menu import TrainingMenu
 
 
 class MainMenu(BaseMenu):

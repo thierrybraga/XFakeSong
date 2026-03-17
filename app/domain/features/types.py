@@ -1,8 +1,8 @@
 """Tipos e classes base para extração de características."""
 
-from enum import Enum
-from typing import Any, Dict, Optional, Generic, TypeVar
 from dataclasses import dataclass
+from enum import Enum
+from typing import Any, Dict, Generic, Optional, TypeVar
 
 T = TypeVar('T')
 

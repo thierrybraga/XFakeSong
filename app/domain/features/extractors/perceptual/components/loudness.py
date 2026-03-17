@@ -1,9 +1,11 @@
 """
 Extração de características de loudness e sharpness.
 """
-import numpy as np
-import librosa
 from typing import Dict
+
+import librosa
+import numpy as np
+
 from .utils import hz_to_bark
 
 

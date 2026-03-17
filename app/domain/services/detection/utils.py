@@ -1,7 +1,8 @@
-import numpy as np
-from typing import Optional, Tuple, Union, List
-import tensorflow as tf
 import logging
+from typing import List, Optional, Tuple
+
+import numpy as np
+import tensorflow as tf
 
 logger = logging.getLogger(__name__)
 
@@ -11,20 +12,20 @@ def pad_or_truncate(data: np.ndarray, target_length: int, axis: int = 0, mode: s
     Se for maior, trunca. Se for menor, preenche (padding).
     """
     current_length = data.shape[axis]
-    
+
     if current_length == target_length:
         return data
-    
+
     if current_length > target_length:
         # Truncar
         slices = [slice(None)] * data.ndim
         slices[axis] = slice(0, target_length)
         return data[tuple(slices)]
-    
+
     # Padding
     pad_width = [(0, 0)] * data.ndim
     pad_width[axis] = (0, target_length - current_length)
-    
+
     return np.pad(data, pad_width, mode=mode, constant_values=constant_values)
 
 def prepare_batch_for_model(features_list: List[np.ndarray], target_shape: Optional[Tuple] = None) -> np.ndarray:
@@ -34,7 +35,7 @@ def prepare_batch_for_model(features_list: List[np.ndarray], target_shape: Optio
     """
     if not features_list:
         return np.array([])
-        
+
     # Se target_shape não for fornecido, usar o shape do primeiro elemento ou o maior
     if target_shape is None:
         # Assumindo que queremos alinhar pela primeira dimensão (tempo/sequência)
@@ -42,14 +43,14 @@ def prepare_batch_for_model(features_list: List[np.ndarray], target_shape: Optio
         base_shape = list(features_list[0].shape)
         base_shape[0] = max_len
         target_shape = tuple(base_shape)
-        
+
     processed = []
     for f in features_list:
         # Ajustar primeira dimensão
         if len(target_shape) >= 1 and target_shape[0] is not None:
              f = pad_or_truncate(f, target_shape[0], axis=0)
         processed.append(f)
-        
+
     return np.stack(processed)
 
 def get_available_devices() -> List[str]:

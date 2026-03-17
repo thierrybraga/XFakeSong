@@ -5,15 +5,18 @@ Esta implementação segue uma arquitetura de dois estágios:
 2. Classificador: MLP para classificação binária (real vs deepfake)
 """
 
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers, models
-from typing import Tuple, Dict, Any, Optional
-from app.domain.models.architectures.layers import create_classification_head
-import numpy as np
 import logging
+from typing import Tuple
+
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras import layers, models
 
 from app.core.utils.audio_utils import normalize_audio
+from app.domain.models.architectures.layers import (
+    AttentionPoolingLayer,
+    create_classification_head,
+)
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -21,11 +24,11 @@ logger = logging.getLogger(__name__)
 
 # Tentar importar Transformers
 try:
-    from transformers import TFWav2Vec2Model, Wav2Vec2Processor
+    from transformers import TFWavLMModel, Wav2Vec2Processor
     HF_AVAILABLE = True
 except ImportError:
     HF_AVAILABLE = False
-    TFWav2Vec2Model = None
+    TFWavLMModel = None
     Wav2Vec2Processor = None
     logger.info("Transformers library not found. Using simplified WavLM implementation.")
 
@@ -38,22 +41,26 @@ class WavLMFeatureExtractor(layers.Layer):
         super(WavLMFeatureExtractor, self).__init__(**kwargs)
         self.model_name = model_name
         self.freeze_weights = freeze_weights
-        self.feature_dim = 768  # Dimensão padrão do WavLM base
+        self.feature_dim = 768 if "base" in model_name else 1024
 
         if HF_AVAILABLE:
             try:
                 # Carregar modelo WavLM pré-treinado
-                self.wavlm_model = TFWav2Vec2Model.from_pretrained(
+                self.wavlm_model = TFWavLMModel.from_pretrained(
                     model_name,
                     from_tf=True
                 )
-                self.processor = Wav2Vec2Processor.from_pretrained(model_name)
+
+                # Configurar para retornar todos os hidden states para weighted sum
+                self.num_layers = self.wavlm_model.config.num_hidden_layers + 1 # +1 para embedding inicial
+                from app.domain.models.architectures.layers import WeightedSumLayer
+                self.weighted_sum = WeightedSumLayer(num_layers=self.num_layers)
 
                 # Congelar pesos se especificado
                 if freeze_weights:
                     self.wavlm_model.trainable = False
 
-                logger.info(f"WavLM model {model_name} loaded successfully")
+                logger.info(f"WavLM model {model_name} loaded successfully with {self.num_layers} layers")
 
             except Exception as e:
                 logger.warning(
@@ -93,13 +100,12 @@ class WavLMFeatureExtractor(layers.Layer):
             x = inputs
 
             # Processar entrada baseado na dimensionalidade
-            if len(x.shape) == 3:  # (batch, time, freq) - espectrograma
-                # Achatar para (batch, time*freq) e depois expandir para Conv1D
+            if len(x.shape) == 3:  # (batch, time, freq)
                 batch_size = tf.shape(x)[0]
-                x = tf.reshape(x, [batch_size, -1])  # (batch, time*freq)
-                x = tf.expand_dims(x, axis=-1)  # (batch, time*freq, 1)
+                x = tf.reshape(x, [batch_size, -1])
+                x = tf.expand_dims(x, axis=-1)
             elif len(x.shape) == 2:  # (batch, features)
-                x = tf.expand_dims(x, axis=-1)  # (batch, features, 1)
+                x = tf.expand_dims(x, axis=-1)
 
             # Aplicar camadas convolucionais
             for layer in self.conv_layers:
@@ -107,15 +113,19 @@ class WavLMFeatureExtractor(layers.Layer):
 
             return x
         else:
-            # Usar modelo WavLM pré-treinado
-            # Normalizar entrada para o range esperado pelo WavLM
-            normalized_inputs = tf.nn.l2_normalize(inputs, axis=-1)
+            # WavLM espera (batch, sequence_length)
+            # Garantir formato correto
+            if len(inputs.shape) == 3:
+                inputs = tf.squeeze(inputs, axis=-1)
 
-            # Extrair características usando WavLM
-            outputs = self.wavlm_model(normalized_inputs, training=False)
+            # Extrair características usando WavLM com output_hidden_states=True
+            outputs = self.wavlm_model(inputs, output_hidden_states=True, training=False)
 
-            # Retornar hidden states
-            return outputs.last_hidden_state
+            # Weighted sum de todos os hidden states (Fidelidade ao paper para downstream tasks)
+            hidden_states = outputs.hidden_states
+            x = self.weighted_sum(list(hidden_states))
+
+            return x
 
     def get_config(self):
         config = super().get_config()
@@ -149,17 +159,17 @@ def preprocess(audio_data: np.ndarray, target_sr: int = 16000) -> np.ndarray:
     return audio_data
 
 
-def create_wavlm_model(input_shape: Tuple[int, ...],
-                       num_classes: int = 1,
-                       architecture: str = 'wavlm',
-                       wavlm_model: str = "microsoft/wavlm-base",
-                       freeze_wavlm: bool = True,
-                       classifier_units: list = [512, 256],
-                       dropout_rate: float = 0.3) -> models.Model:
-    """Cria modelo WavLM completo.
+def _create_wavlm_model(input_shape: Tuple[int, ...],
+                        num_classes: int = 1,
+                        architecture: str = 'wavlm',
+                        wavlm_model: str = "microsoft/wavlm-base",
+                        freeze_wavlm: bool = True,
+                        classifier_units: list = None,
+                        dropout_rate: float = 0.3) -> models.Model:
+    """Cria modelo WavLM completo fiel ao paper.
 
     Args:
-        input_shape: Formato da entrada (comprimento_audio,)
+        input_shape: Formato da entrada (samples,)
         num_classes: Número de classes (1 para classificação binária)
         architecture: Nome da arquitetura
         wavlm_model: Nome do modelo WavLM pré-treinado
@@ -170,74 +180,64 @@ def create_wavlm_model(input_shape: Tuple[int, ...],
     Returns:
         Modelo Keras compilado
     """
+    if classifier_units is None:
+        classifier_units = [1024, 512, 256]
+
     logger.info(
         f"Creating WavLM model with input_shape={input_shape}, num_classes={num_classes}")
 
-    # Entrada
+    # 1. Entrada (Raw Audio)
     inputs = layers.Input(shape=input_shape, name='audio_input')
 
-    # Estágio 1: Extrator de características WavLM
+    # 2. Extrator de características WavLM (Self-Supervised)
     feature_extractor = WavLMFeatureExtractor(
         model_name=wavlm_model,
         freeze_weights=freeze_wavlm,
         name='wavlm_feature_extractor'
     )
-    features = feature_extractor(inputs)
+    # x shape: (batch, sequence_length, feature_dim)
+    x = feature_extractor(inputs)
 
-    # Classification head
+    # 3. Temporal convolution block for richer representations
+    conv_out = layers.Conv1D(256, 3, padding='same', activation='relu', name='temporal_conv1')(x)
+    conv_out = layers.BatchNormalization(name='temporal_bn1')(conv_out)
+    conv_out2 = layers.Conv1D(256, 3, padding='same', activation='relu', name='temporal_conv2')(conv_out)
+    conv_out2 = layers.BatchNormalization(name='temporal_bn2')(conv_out2)
+    conv_out2 = conv_out2 + conv_out  # residual
+    conv_out3 = layers.Conv1D(256, 3, padding='same', activation='relu', name='temporal_conv3')(conv_out2)
+    conv_out3 = layers.BatchNormalization(name='temporal_bn3')(conv_out3)
+    conv_out3 = conv_out3 + conv_out2  # residual
+
+    # 4. Attention Pooling
+    mean_pool = AttentionPoolingLayer(name='attention_pool')(conv_out3)
+
+    # 4. Classification Head
     outputs, loss = create_classification_head(
-        features,
+        mean_pool,
         num_classes,
         dropout_rate=dropout_rate,
         hidden_dims=classifier_units
     )
 
-    # Create model
-    model = keras.Model(
+    # Criar modelo
+    model = models.Model(
         inputs=inputs,
         outputs=outputs,
         name=f'wavlm_{architecture}')
 
     # Compilar modelo
+    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
     model.compile(
-        optimizer=keras.optimizers.Adam(learning_rate=0.001),
+        optimizer=optimizer,
         loss=loss,
-        metrics=['accuracy', 'precision', 'recall']
+        metrics=['accuracy']
     )
 
-    # Log do número de parâmetros
-    total_params = model.count_params()
-    trainable_params = sum([tf.keras.backend.count_params(w)
-                           for w in model.trainable_weights])
-    logger.info(
-        f"WavLM model created successfully with {total_params} total parameters ({trainable_params} trainable)")
-
+    logger.info(f"WavLM model {architecture} created successfully")
     return model
 
 
-def create_wavlm_lite(input_shape: Tuple[int, ...],
-                      num_classes: int = 1,
-                      architecture: str = 'wavlm_lite') -> models.Model:
-    """Cria versão lite do modelo WavLM.
-
-    Args:
-        input_shape: Formato da entrada
-        num_classes: Número de classes
-        architecture: Nome da arquitetura
-
-    Returns:
-        Modelo Keras compilado
-    """
-    return create_wavlm_model(
-        input_shape=input_shape,
-        num_classes=num_classes,
-        architecture=architecture,
-        classifier_units=[256, 128],
-        dropout_rate=0.2
-    )
-
-
-def create_model(input_shape: Tuple[int, ...], num_classes: int,
+def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
                  architecture: str = 'wavlm', **kwargs) -> models.Model:
     """Função principal para criar modelos WavLM.
 
@@ -245,15 +245,27 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int,
         input_shape: Formato da entrada
         num_classes: Número de classes
         architecture: Tipo de arquitetura ('wavlm' ou 'wavlm_lite')
-        **kwargs: Parâmetros adicionais (ignorados para compatibilidade)
+        **kwargs: Parâmetros adicionais
 
     Returns:
         Modelo Keras compilado
     """
     if architecture == 'wavlm_lite':
-        return create_wavlm_lite(input_shape, num_classes, architecture)
+        return _create_wavlm_model(
+            input_shape=input_shape,
+            num_classes=num_classes,
+            architecture=architecture,
+            classifier_units=[256, 128],
+            dropout_rate=0.2,
+            **kwargs
+        )
     else:
-        return create_wavlm_model(input_shape, num_classes, architecture)
+        return _create_wavlm_model(
+            input_shape=input_shape,
+            num_classes=num_classes,
+            architecture=architecture,
+            **kwargs
+        )
 
 
 # Registrar objetos personalizados no Keras

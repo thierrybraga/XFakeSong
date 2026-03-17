@@ -1,27 +1,30 @@
-from app.extensions import db
-from datetime import datetime
-from sqlalchemy.ext.declarative import declared_attr
+from sqlalchemy import DateTime, Integer
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.sql import func
+
+from app.core.database import Base
 
 
-class BaseModel(db.Model):
+class BaseModel(Base):
     __abstract__ = True
 
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    created_at = db.Column(
-        db.DateTime,
-        default=datetime.utcnow,
-        nullable=False)
-    updated_at = db.Column(
-        db.DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
-        nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
 
-    def save(self):
-        db.session.add(self)
-        db.session.commit()
+    def save(self, db):
+        db.add(self)
+        db.commit()
+        db.refresh(self)
         return self
 
-    def delete(self):
-        db.session.delete(self)
-        db.session.commit()
+    def delete(self, db):
+        db.delete(self)
+        db.commit()

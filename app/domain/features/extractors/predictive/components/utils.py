@@ -2,10 +2,11 @@
 Utilitários para extração de características preditivas.
 """
 
+from typing import Optional, Tuple
+
 import numpy as np
-import scipy.signal
 import scipy.linalg
-from typing import Tuple, Optional
+import scipy.signal
 
 
 def frame_signal(y: np.ndarray, frame_length: int, hop_length: int) -> list:

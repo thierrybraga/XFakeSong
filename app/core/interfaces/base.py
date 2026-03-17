@@ -9,9 +9,9 @@ Este módulo define as interfaces fundamentais que garantem:
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Generic, TypeVar
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any, Dict, Generic, List, Optional, TypeVar
 
 # Type variables para generics
 T = TypeVar('T')

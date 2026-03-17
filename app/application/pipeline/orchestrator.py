@@ -4,15 +4,18 @@ de arquitetura limpa.
 
 
 import time
-from typing import List, Dict, Any, Optional, Union
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Union
 
-from core.interfaces.base import ProcessingStatus
 from core.interfaces.audio import AudioData, AudioFeatures
+from core.interfaces.base import ProcessingStatus
 from core.interfaces.services import (
-    IUploadService, IFeatureExtractionService, ITrainingService,
-    IDetectionService, DatasetType
+    DatasetType,
+    IDetectionService,
+    IFeatureExtractionService,
+    ITrainingService,
+    IUploadService,
 )
 
 
@@ -123,10 +126,8 @@ class FeatureExtractionStage(PipelineStage):
         start_time = time.time()
 
         try:
-            from domain.services.feature_extraction_service import (
-                ExtractionConfig
-            )
             from core.interfaces.audio import FeatureType
+            from domain.services.feature_extraction_service import ExtractionConfig
 
             # Converter strings para FeatureType
             feature_types = []

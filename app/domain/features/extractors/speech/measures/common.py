@@ -1,7 +1,8 @@
+from typing import List, Optional, Tuple
+
 import numpy as np
 import scipy.signal
 import scipy.stats
-from typing import List, Tuple, Optional
 
 
 def frame_signal(y: np.ndarray, frame_length: int,

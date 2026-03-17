@@ -1,35 +1,17 @@
-from flask import Flask
-# from app.core.config.settings import SystemConfig
-from app.extensions import db, migrate, login_manager
-from app.controllers.api_controller import api
-from app.controllers.auth_controller import auth
-from app.controllers.main_controller import main
-from app.domain.models.user import User
+from flask import Flask, jsonify, redirect
 
 
 def create_app(config=None):
+    # Flask app mantido apenas para compatibilidade se houver rotas legadas
+    # mas o banco agora é FastAPI nativo.
     app = Flask(__name__)
 
-    # Load config (basic setup for now)
-    # system_config = SystemConfig()
-    app.config['SECRET_KEY'] = 'dev-key'
-    # Use config from SystemConfig if available, or defaults
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    @app.get("/")
+    def home():
+        return redirect("/gradio/", code=302)
 
-    # Initialize extensions
-    db.init_app(app)
-    migrate.init_app(app, db)
-    login_manager.init_app(app)
-
-    # Register user loader
-    @login_manager.user_loader
-    def load_user(user_id):
-        return User.query.get(int(user_id))
-
-    # Register blueprints
-    app.register_blueprint(api)
-    app.register_blueprint(auth)
-    app.register_blueprint(main)
+    @app.get("/api/v1/system/bootstrap")
+    def bootstrap():
+        return jsonify({"status": "ok"})
 
     return app

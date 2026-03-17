@@ -2,9 +2,11 @@
 Extração de características de estabilidade.
 """
 
-import numpy as np
 from typing import Dict
-from .utils import frame_signal, compute_lpc, check_stability
+
+import numpy as np
+
+from .utils import check_stability, compute_lpc, frame_signal
 
 
 def extract_stability_features(

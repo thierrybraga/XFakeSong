@@ -10,14 +10,13 @@ Este módulo é responsável por:
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
-from typing import List, Tuple, Dict, Optional, Union
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -70,7 +69,7 @@ class SegmentedFeatureLoader:
         if invalid_types:
             raise ValueError(f"Invalid feature types: {invalid_types}")
 
-        logger.info(f"SegmentedFeatureLoader initialized")
+        logger.info("SegmentedFeatureLoader initialized")
         logger.info(f"Path: {self.segmented_path}")
         logger.info(f"Feature types: {self.feature_types}")
         logger.info(f"Normalize: {normalize}, Aggregate: {aggregate_method}")
@@ -190,8 +189,9 @@ class SegmentedFeatureLoader:
         combined_df = pd.concat(all_features, ignore_index=True)
         return self.aggregate_features(combined_df)
 
-    def load_dataset(self,
-                     classes: List[str] = ['real', 'fake']) -> Tuple[np.ndarray, np.ndarray, List[str]]:
+    def load_dataset(
+        self, classes: Optional[List[str]] = None
+    ) -> Tuple[np.ndarray, np.ndarray, List[str]]:
         """
         Carrega o dataset completo com features de todas as classes.
 
@@ -201,6 +201,9 @@ class SegmentedFeatureLoader:
         Returns:
             Tuple com (features, labels, feature_names)
         """
+        if classes is None:
+            classes = ["real", "fake"]
+
         logger.info(f"Loading dataset for classes: {classes}")
         logger.info(f"Feature types: {self.feature_types}")
 
@@ -281,7 +284,7 @@ class SegmentedFeatureLoader:
         # Codificar labels
         y_encoded = self.label_encoder.fit_transform(y)
 
-        logger.info(f"Dataset loaded successfully")
+        logger.info("Dataset loaded successfully")
         logger.info(f"Features shape: {X.shape}")
         logger.info(f"Labels shape: {y_encoded.shape}")
         logger.info(f"Classes: {self.label_encoder.classes_}")
@@ -289,9 +292,11 @@ class SegmentedFeatureLoader:
 
         return X, y_encoded, feature_names
 
-    def load_multiple_samples_per_class(self,
-                                        classes: List[str] = ['real', 'fake'],
-                                        max_samples_per_class: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray, List[str]]:
+    def load_multiple_samples_per_class(
+        self,
+        classes: Optional[List[str]] = None,
+        max_samples_per_class: Optional[int] = None,
+    ) -> Tuple[np.ndarray, np.ndarray, List[str]]:
         """
         Carrega múltiplas amostras por classe, tratando cada arquivo como uma amostra separada.
 
@@ -302,6 +307,9 @@ class SegmentedFeatureLoader:
         Returns:
             Tuple com (features, labels, feature_names)
         """
+        if classes is None:
+            classes = ["real", "fake"]
+
         logger.info(f"Loading multiple samples per class: {classes}")
         logger.info(f"Max samples per class: {max_samples_per_class}")
         logger.info(f"Feature types: {self.feature_types}")
@@ -336,7 +344,7 @@ class SegmentedFeatureLoader:
                             sample_id = parts[2]  # sample_XXX
                             sample_ids.add(sample_id)
 
-            sample_ids = sorted(list(sample_ids))
+            sample_ids = sorted(sample_ids)
             logger.info(f"Found {len(sample_ids)} samples for {class_name}")
 
             # Limitar número de amostras se especificado
@@ -450,7 +458,7 @@ class SegmentedFeatureLoader:
         # Codificar labels
         y_encoded = self.label_encoder.fit_transform(y)
 
-        logger.info(f"Multiple samples dataset loaded successfully")
+        logger.info("Multiple samples dataset loaded successfully")
         logger.info(f"Features shape: {X.shape}")
         logger.info(f"Labels shape: {y_encoded.shape}")
         logger.info(f"Classes: {self.label_encoder.classes_}")
@@ -491,7 +499,7 @@ class SegmentedFeatureLoader:
             X_train = self.scaler.fit_transform(X_train)
             X_test = self.scaler.transform(X_test)
 
-        logger.info(f"Train/test split completed")
+        logger.info("Train/test split completed")
         logger.info(
             f"Train shape: {
                 X_train.shape}, Test shape: {

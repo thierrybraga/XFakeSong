@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import logging
-from typing import Tuple, Optional, List, Callable, Union, Dict, Any
+from typing import Any, Dict, Optional, Tuple
 
 import tensorflow as tf
 from tensorflow.keras import layers
 
-from .components.time_domain import (
-    add_gaussian_noise, time_shift, time_stretch,
-    volume_perturbation, apply_smoothing
-)
+from .components.mixing import cutmix_augmentation, mixup_augmentation
 from .components.spectral import spectral_masking
-from .components.mixing import mixup_augmentation, cutmix_augmentation
+from .components.time_domain import (
+    add_gaussian_noise,
+    apply_smoothing,
+    time_shift,
+    time_stretch,
+    volume_perturbation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +111,7 @@ class AdvancedAudioAugmentation:
             x = self.time_shift(x)
             x = self.volume_perturbation(x)
             x = self.apply_smoothing(x)
-            # Time stretch é mais complexo em tensores puros, 
+            # Time stretch é mais complexo em tensores puros,
             # muitas vezes feito em CPU ou pré-processamento
             # Aqui omitimos para manter compatibilidade com grafo TF puro se necessário
             return x
@@ -127,16 +130,16 @@ def create_augmentation_pipeline(config: Optional[Dict[str, Any]] = None) -> Adv
 
 class AugmentationLayer(layers.Layer):
     """Keras Layer wrapper for AdvancedAudioAugmentation."""
-    
+
     def __init__(self, config: Optional[Dict[str, Any]] = None, **kwargs):
         super().__init__(**kwargs)
         self.aug = create_augmentation_pipeline(config)
-        
+
     def call(self, inputs, training=None):
         if training:
             return self.aug.apply_augmentations(inputs, is_spectrogram=False)
         return inputs
-        
+
     def get_config(self):
         config = super().get_config()
         # Aqui idealmente salvaríamos os parametros do self.aug
@@ -144,12 +147,12 @@ class AugmentationLayer(layers.Layer):
 
 
 def create_adaptive_augmentation_layer(
-    input_shape: Tuple[int, ...], 
+    input_shape: Tuple[int, ...],
     strength: float = 0.3
 ) -> layers.Layer:
     """
     Cria uma camada Keras que aplica augmentations durante o treinamento.
-    
+
     Args:
         input_shape: Shape da entrada.
         strength: Intensidade das augmentations (ajusta apply_probability).
@@ -159,7 +162,7 @@ def create_adaptive_augmentation_layer(
         'noise_factor': 0.005 * (1 + strength),
         'time_shift_factor': 0.1 * (1 + strength)
     }
-    
+
     return AugmentationLayer(config=config, name="adaptive_augmentation")
 
 
@@ -178,13 +181,13 @@ def create_robust_dataset(
     if augment:
         # Augmentation on CPU/GPU via map
         aug = create_augmentation_pipeline()
-        
+
         def augment_map(x, y):
             # Apply mixup/cutmix randomly could be done here or in batch
             # For simplicity, apply per-sample augmentations
             x_aug = aug.apply_augmentations(x)
             return x_aug, y
-            
+
         dataset = dataset.map(augment_map, num_parallel_calls=tf.data.AUTOTUNE)
 
     dataset = dataset.batch(batch_size)

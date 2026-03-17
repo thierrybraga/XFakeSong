@@ -6,30 +6,43 @@ Implementa extração de características de pitch/F0 e qualidade vocal.
 Refatorado para usar sub-módulos.
 """
 
-import numpy as np
-import librosa
 import warnings
-from typing import Dict, Any
+from typing import Any, Dict
+
+import librosa
+import numpy as np
 from scipy.stats import kurtosis, skew
 
+from app.core.interfaces.audio import AudioData, AudioFeatures
+from app.core.interfaces.base import ProcessingResult, ProcessingStatus
 from app.domain.features.interfaces import IFeatureExtractor
 from app.domain.features.types import FeatureType
-from app.core.interfaces.audio import AudioData, AudioFeatures
-from app.core.interfaces.base import ProcessingStatus, ProcessingResult
+
+from .advanced import (
+    compute_apq,
+    compute_dfa,
+    compute_nhr,
+    compute_ppq,
+    compute_rap,
+    compute_shdb,
+    compute_spi,
+    compute_vf0,
+    compute_vti,
+)
 
 # Importar sub-módulos refatorados
 from .pitch import (
-    compute_pitch_slope, compute_pitch_contour_features,
-    compute_voicing_probability, compute_pitch_strength
+    compute_pitch_contour_features,
+    compute_pitch_slope,
+    compute_pitch_strength,
+    compute_voicing_probability,
 )
 from .quality import (
-    compute_jitter, compute_shimmer, compute_hnr,
-    compute_snr, compute_cpp
-)
-from .advanced import (
-    compute_rap, compute_ppq, compute_apq, compute_vf0,
-    compute_shdb, compute_nhr, compute_vti, compute_spi,
-    compute_dfa
+    compute_cpp,
+    compute_hnr,
+    compute_jitter,
+    compute_shimmer,
+    compute_snr,
 )
 
 

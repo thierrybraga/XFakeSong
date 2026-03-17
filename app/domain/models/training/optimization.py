@@ -3,9 +3,10 @@
 Este módulo implementa factory para criação de otimizadores e configurações de otimização.
 """
 
-from typing import Dict, Any, Optional
-import tensorflow as tf
 import logging
+from typing import Any, Dict
+
+import tensorflow as tf
 
 
 class OptimizerFactory:
@@ -272,6 +273,137 @@ class LearningRateScheduler:
             staircase=staircase
         )
 
+    def create_warmup_cosine_decay(
+        self,
+        initial_learning_rate: float,
+        warmup_steps: int,
+        decay_steps: int,
+        alpha: float = 0.0
+    ):
+        """Linear warm-up followed by cosine decay.
+
+        Essential for Transformer-based models (Conformer, AST, etc.).
+        Warm-up prevents gradient instability in early training.
+        """
+        return WarmupCosineDecaySchedule(
+            initial_learning_rate=initial_learning_rate,
+            warmup_steps=warmup_steps,
+            decay_steps=decay_steps,
+            alpha=alpha
+        )
+
+    def create_cosine_annealing_warm_restarts(
+        self,
+        initial_learning_rate: float,
+        first_decay_steps: int,
+        t_mult: float = 2.0,
+        m_mult: float = 1.0,
+        alpha: float = 0.0
+    ):
+        """Cosine annealing with warm restarts (SGDR).
+
+        Reference: Loshchilov & Hutter, "SGDR: Stochastic Gradient Descent
+        with Warm Restarts", ICLR 2017
+        """
+        return CosineAnnealingWarmRestartsSchedule(
+            initial_learning_rate=initial_learning_rate,
+            first_decay_steps=first_decay_steps,
+            t_mult=t_mult,
+            m_mult=m_mult,
+            alpha=alpha
+        )
+
+
+class WarmupCosineDecaySchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
+    """Linear warm-up followed by cosine decay schedule."""
+
+    def __init__(self, initial_learning_rate, warmup_steps, decay_steps, alpha=0.0):
+        super().__init__()
+        self.initial_learning_rate = initial_learning_rate
+        self.warmup_steps = warmup_steps
+        self.decay_steps = decay_steps
+        self.alpha = alpha
+
+    def __call__(self, step):
+        step = tf.cast(step, tf.float32)
+        warmup_steps = tf.cast(self.warmup_steps, tf.float32)
+        decay_steps = tf.cast(self.decay_steps, tf.float32)
+
+        # Linear warm-up
+        warmup_lr = self.initial_learning_rate * (step / tf.maximum(warmup_steps, 1.0))
+
+        # Cosine decay after warm-up
+        progress = (step - warmup_steps) / tf.maximum(decay_steps - warmup_steps, 1.0)
+        progress = tf.clip_by_value(progress, 0.0, 1.0)
+        cosine_lr = self.alpha + (self.initial_learning_rate - self.alpha) * 0.5 * (
+            1.0 + tf.cos(tf.constant(3.14159265358979) * progress)
+        )
+
+        return tf.where(step < warmup_steps, warmup_lr, cosine_lr)
+
+    def get_config(self):
+        return {
+            'initial_learning_rate': self.initial_learning_rate,
+            'warmup_steps': self.warmup_steps,
+            'decay_steps': self.decay_steps,
+            'alpha': self.alpha,
+        }
+
+
+class CosineAnnealingWarmRestartsSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
+    """SGDR: Cosine annealing with warm restarts.
+
+    The learning rate follows cosine annealing within each restart cycle.
+    Each cycle can be longer than the previous (t_mult) and have a lower
+    peak LR (m_mult).
+    """
+
+    def __init__(self, initial_learning_rate, first_decay_steps, t_mult=2.0, m_mult=1.0, alpha=0.0):
+        super().__init__()
+        self.initial_learning_rate = initial_learning_rate
+        self.first_decay_steps = first_decay_steps
+        self.t_mult = t_mult
+        self.m_mult = m_mult
+        self.alpha = alpha
+
+    def __call__(self, step):
+        step = tf.cast(step, tf.float32)
+        first_decay_steps = tf.cast(self.first_decay_steps, tf.float32)
+
+        if self.t_mult == 1.0:
+            # Simple case: all cycles same length
+            cycle = tf.floor(step / first_decay_steps)
+            progress = (step - cycle * first_decay_steps) / first_decay_steps
+            max_lr = self.initial_learning_rate * (self.m_mult ** cycle)
+        else:
+            # Geometric cycle lengths
+            t_mult = tf.cast(self.t_mult, tf.float32)
+            # Find which cycle we're in
+            cycle = tf.floor(
+                tf.math.log(step / first_decay_steps * (t_mult - 1.0) + 1.0) /
+                tf.math.log(t_mult)
+            )
+            cycle = tf.maximum(cycle, 0.0)
+            # Start of current cycle
+            cycle_start = first_decay_steps * (t_mult ** cycle - 1.0) / (t_mult - 1.0)
+            cycle_length = first_decay_steps * (t_mult ** cycle)
+            progress = (step - cycle_start) / tf.maximum(cycle_length, 1.0)
+            max_lr = self.initial_learning_rate * (self.m_mult ** cycle)
+
+        progress = tf.clip_by_value(progress, 0.0, 1.0)
+        return self.alpha + (max_lr - self.alpha) * 0.5 * (
+            1.0 + tf.cos(tf.constant(3.14159265358979) * progress)
+        )
+
+    def get_config(self):
+        return {
+            'initial_learning_rate': self.initial_learning_rate,
+            'first_decay_steps': self.first_decay_steps,
+            't_mult': self.t_mult,
+            'm_mult': self.m_mult,
+            'alpha': self.alpha,
+        }
+
 
 class LossFactory:
     """Factory para criação de funções de perda."""
@@ -286,7 +418,10 @@ class LossFactory:
             'mae': tf.keras.losses.MeanAbsoluteError,
             'huber': tf.keras.losses.Huber,
             'focal': self._create_focal_loss,
-            'weighted_binary_crossentropy': self._create_weighted_binary_crossentropy
+            'weighted_binary_crossentropy': self._create_weighted_binary_crossentropy,
+            'am_softmax': self._create_am_softmax_loss,
+            'label_smoothing_crossentropy': self._create_label_smoothing_crossentropy,
+            'label_smoothing_binary': self._create_label_smoothing_binary,
         }
 
     def create_loss(
@@ -302,9 +437,14 @@ class LossFactory:
                 f"Função de perda '{loss_name}' não encontrada. Usando binary_crossentropy.")
             loss_name = 'binary_crossentropy'
 
+        custom_losses = [
+            'focal', 'weighted_binary_crossentropy', 'am_softmax',
+            'label_smoothing_crossentropy', 'label_smoothing_binary'
+        ]
+
         try:
             if callable(self._losses[loss_name]):
-                if loss_name in ['focal', 'weighted_binary_crossentropy']:
+                if loss_name in custom_losses:
                     return self._losses[loss_name](**kwargs)
                 else:
                     return self._losses[loss_name](**kwargs)
@@ -355,6 +495,39 @@ class LossFactory:
             return tf.reduce_mean(loss)
 
         return weighted_binary_crossentropy
+
+    def _create_am_softmax_loss(self, scale: float = 30.0, margin: float = 0.35, **kwargs):
+        """AM-Softmax loss for use with AMSoftmaxLayer.
+
+        The AMSoftmaxLayer already applies margin and scaling to logits.
+        This loss computes sparse categorical crossentropy from those logits.
+        """
+        def am_softmax_loss(y_true, y_pred):
+            return tf.keras.losses.sparse_categorical_crossentropy(
+                y_true, y_pred, from_logits=True
+            )
+        return am_softmax_loss
+
+    def _create_label_smoothing_crossentropy(self, smoothing: float = 0.1, **kwargs):
+        """Sparse categorical crossentropy with label smoothing.
+
+        Improves model calibration and reduces overconfidence.
+        """
+        def label_smoothing_loss(y_true, y_pred):
+            num_classes = tf.cast(tf.shape(y_pred)[-1], tf.float32)
+            y_true_int = tf.cast(y_true, tf.int32)
+            if len(y_true_int.shape) > 1:
+                y_true_int = tf.squeeze(y_true_int, axis=-1)
+            one_hot = tf.one_hot(y_true_int, tf.cast(num_classes, tf.int32))
+            smoothed = one_hot * (1.0 - smoothing) + smoothing / num_classes
+            return tf.reduce_mean(
+                tf.keras.losses.categorical_crossentropy(smoothed, y_pred)
+            )
+        return label_smoothing_loss
+
+    def _create_label_smoothing_binary(self, smoothing: float = 0.1, **kwargs):
+        """Binary crossentropy with label smoothing."""
+        return tf.keras.losses.BinaryCrossentropy(label_smoothing=smoothing)
 
     def get_available_losses(self) -> list:
         """Retorna lista de funções de perda disponíveis."""

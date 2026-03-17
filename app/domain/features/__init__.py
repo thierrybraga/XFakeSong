@@ -1,7 +1,19 @@
 """Módulo de Características de Áudio"""
 
-# Importar todos os extratores
-from .extractors import *
+from .extractors import (
+    CepstralFeatureExtractor,
+    ComplexityFeatureExtractor,
+    FormantFeatureExtractor,
+    PerceptualFeatureExtractor,
+    PredictiveFeatureExtractor,
+    ProsodicFeatureExtractor,
+    SpectralFeatureExtractor,
+    SpeechFeatureExtractor,
+    TemporalFeatureExtractor,
+    TimeFrequencyFeatureExtractor,
+    TransformFeatureExtractor,
+    VoiceQualityFeatureExtractor,
+)
 
 __all__ = [
     # Spectral

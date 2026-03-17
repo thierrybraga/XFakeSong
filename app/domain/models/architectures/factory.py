@@ -4,16 +4,14 @@ Este módulo implementa um factory pattern robusto para criação de arquitetura
 melhorando a modularidade e intercambiabilidade do sistema.
 """
 
-from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, Type, Callable, List, Union
-from dataclasses import dataclass
-import logging
 import importlib
 import inspect
-from pathlib import Path
+import logging
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Type
 
 import tensorflow as tf
-from tensorflow.keras import Model
 
 logger = logging.getLogger(__name__)
 

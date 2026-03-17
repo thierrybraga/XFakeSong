@@ -1,8 +1,8 @@
-import numpy as np
-import librosa
 import warnings
-from typing import Optional
 from abc import ABC, abstractmethod
+
+import librosa
+import numpy as np
 
 
 class FeatureExtractor(ABC):

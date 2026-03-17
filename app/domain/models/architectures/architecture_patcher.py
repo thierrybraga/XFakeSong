@@ -1,13 +1,14 @@
 """Architecture Patcher for Data Leakage Prevention"""
 
-import tensorflow as tf
-from tensorflow.keras import layers, models
-from typing import Dict, Any, List, Tuple
 import logging
+from typing import Any, Dict, List, Tuple
+
+from tensorflow.keras import layers, models
+
 from .safe_normalization import (
+    SafeGroupNormalization,
     SafeInstanceNormalization,
     SafeLayerNormalization,
-    SafeGroupNormalization
 )
 
 logger = logging.getLogger(__name__)

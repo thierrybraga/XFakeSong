@@ -1,9 +1,10 @@
 """
 Extração de características de synchrosqueezing (aproximação).
 """
+from typing import Dict
+
 import numpy as np
 import scipy.signal
-from typing import Dict
 
 
 def extract_synchrosqueezing_features(

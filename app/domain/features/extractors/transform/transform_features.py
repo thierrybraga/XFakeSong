@@ -17,17 +17,19 @@ Autor: Sistema de Detecção de DeepFake
 Data: 2024
 """
 
-import numpy as np
 import warnings
-from typing import Dict, Any
+from typing import Any, Dict
+
+import numpy as np
+
+from .components.auditory import extract_auditory_features
+from .components.chroma import extract_chroma_features
+from .components.cqt import extract_cqt_features
+from .components.mdct import extract_mdct_features
+from .components.tonnetz import extract_tonnetz_features
 
 # Imports dos componentes
 from .components.wavelet import extract_wavelet_features
-from .components.cqt import extract_cqt_features
-from .components.chroma import extract_chroma_features
-from .components.tonnetz import extract_tonnetz_features
-from .components.mdct import extract_mdct_features
-from .components.auditory import extract_auditory_features
 
 
 class TransformFeatureExtractor:

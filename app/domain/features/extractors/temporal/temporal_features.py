@@ -6,28 +6,44 @@ Este módulo implementa características baseadas no domínio temporal,
 incluindo energia, taxa de cruzamento por zero e outras métricas temporais.
 """
 
-import numpy as np
 import warnings
-from typing import Dict, Any
+from typing import Any, Dict
 
-from .components.energy import (
-    compute_rms_energy, compute_short_time_energy, compute_energy_entropy,
-    compute_teager_energy, compute_log_energy, compute_frame_energy_variance
-)
-from .components.envelope import (
-    compute_temporal_centroid, compute_temporal_rolloff, compute_temporal_flux,
-    compute_roughness, compute_attack_time, compute_decay_time, compute_sustain_level
-)
-from .components.statistics import (
-    compute_sign_change_rate, compute_mean_crossing_rate, compute_zcr,
-    compute_zcr_variance, extract_signal_statistics
-)
-from .components.dynamics import (
-    compute_amplitude_modulation, compute_tremolo_rate, extract_envelope_statistics
-)
-from app.domain.features.interfaces import IFeatureExtractor
+import numpy as np
+
 from app.core.interfaces.audio import AudioData, FeatureType
 from app.core.interfaces.base import ProcessingResult, ProcessingStatus
+from app.domain.features.interfaces import IFeatureExtractor
+
+from .components.dynamics import (
+    compute_amplitude_modulation,
+    compute_tremolo_rate,
+    extract_envelope_statistics,
+)
+from .components.energy import (
+    compute_energy_entropy,
+    compute_frame_energy_variance,
+    compute_log_energy,
+    compute_rms_energy,
+    compute_short_time_energy,
+    compute_teager_energy,
+)
+from .components.envelope import (
+    compute_attack_time,
+    compute_decay_time,
+    compute_roughness,
+    compute_sustain_level,
+    compute_temporal_centroid,
+    compute_temporal_flux,
+    compute_temporal_rolloff,
+)
+from .components.statistics import (
+    compute_mean_crossing_rate,
+    compute_sign_change_rate,
+    compute_zcr,
+    compute_zcr_variance,
+    extract_signal_statistics,
+)
 
 
 class TemporalFeatureExtractor(IFeatureExtractor):
@@ -78,7 +94,7 @@ class TemporalFeatureExtractor(IFeatureExtractor):
                 )
 
             features = self.extract_features(audio_data.samples)
-            
+
             return ProcessingResult(
                 status=ProcessingStatus.SUCCESS,
                 data=features

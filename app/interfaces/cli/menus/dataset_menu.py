@@ -1,11 +1,22 @@
 import json
 from datetime import datetime
 from pathlib import Path
+
+from app.domain.features.exporters.csv_feature_exporter import (
+    CSVExportConfig,
+    CSVFeatureExporter,
+)
+from app.domain.features.extractors.segmented_feature_extractor import (
+    SegmentedExtractionConfig,
+    SegmentedFeatureExtractor,
+)
+from app.domain.features.extractors.spectral.spectral_features import (
+    SpectralFeatureExtractor,
+)
+from app.domain.features.extractors.temporal.temporal_features import (
+    TemporalFeatureExtractor,
+)
 from app.interfaces.cli.menus.base_menu import BaseMenu
-from app.domain.features.extractors.segmented_feature_extractor import SegmentedFeatureExtractor, SegmentedExtractionConfig
-from app.domain.features.exporters.csv_feature_exporter import CSVExportConfig, CSVFeatureExporter
-from app.domain.features.extractors.spectral.spectral_features import SpectralFeatureExtractor
-from app.domain.features.extractors.temporal.temporal_features import TemporalFeatureExtractor
 
 
 class DatasetMenu(BaseMenu):
@@ -154,7 +165,7 @@ class DatasetMenu(BaseMenu):
                     }
                 }, f, indent=2)
 
-            print(f"✅ Extração segmentada concluída!")
+            print("✅ Extração segmentada concluída!")
             print(f"   Total de segmentos: {len(features_data)}")
             print(
                 f"   Dimensões das features: {len(features_data[0]) if features_data else 0}")
@@ -225,10 +236,10 @@ class DatasetMenu(BaseMenu):
             total_processed += self._process_directory_complete(
                 fake_dir, "fake", spectral_extractor, temporal_extractor, csv_exporter)
 
-            print(f"\n✅ Extração completa por categoria concluída!")
+            print("\n✅ Extração completa por categoria concluída!")
             print(f"   Total de arquivos processados: {total_processed}")
             print(
-                f"   Arquivos CSV organizados por categoria em: datasets/features/original/")
+                "   Arquivos CSV organizados por categoria em: datasets/features/original/")
 
         except Exception as e:
             print(f"❌ Erro ao extrair features: {e}")

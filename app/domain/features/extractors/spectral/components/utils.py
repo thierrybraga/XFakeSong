@@ -1,8 +1,9 @@
 """
 Funções utilitárias para extração de características espectrais.
 """
+from typing import Any, Dict
+
 import numpy as np
-from typing import Dict, Any
 
 
 def apply_preemphasis(y: np.ndarray, preemphasis: float = 0.97) -> np.ndarray:

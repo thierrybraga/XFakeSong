@@ -3,10 +3,11 @@
 Inferência para modelo Random Forest de detecção de deepfake.
 """
 
+import logging
+from typing import Any, Dict, List
+
 import joblib
 import numpy as np
-from typing import Dict, Any, List
-import logging
 
 from .base_inference import BaseInference
 

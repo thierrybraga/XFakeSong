@@ -1,18 +1,40 @@
-import gradio as gr
-import numpy as np
-import matplotlib.pyplot as plt
 import librosa
 import librosa.display
+import matplotlib.pyplot as plt
+import numpy as np
+
+import gradio as gr
+from app.core.interfaces.audio import AudioData, FeatureType
 from app.domain.services.feature_extraction_service import (
     AudioFeatureExtractionService,
-    ExtractionConfig
+    ExtractionConfig,
 )
-from app.core.interfaces.audio import AudioData, FeatureType
+
+
+# ── Estilo dark para plots ─────────────────────────────────────
+_PLOT_BG = "#0f172a"
+_PLOT_FACE = "#1e293b"
+_PLOT_TEXT = "#f1f5f9"
+_PLOT_GRID = "#334155"
+
+
+def _style_feat_ax(ax, fig, title=""):
+    """Aplica estilo dark a um eixo matplotlib."""
+    fig.patch.set_facecolor(_PLOT_BG)
+    ax.set_facecolor(_PLOT_FACE)
+    ax.set_title(title, color=_PLOT_TEXT, fontweight="600", fontsize=12, pad=10)
+    ax.tick_params(colors=_PLOT_TEXT, labelsize=9)
+    for lbl in (ax.xaxis.label, ax.yaxis.label):
+        lbl.set_color(_PLOT_TEXT)
+        lbl.set_fontsize(10)
+    for spine in ax.spines.values():
+        spine.set_color(_PLOT_GRID)
+    ax.grid(True, color=_PLOT_GRID, alpha=0.3, linewidth=0.5)
 
 
 def create_features_tab():
     with gr.Tab("Extração de Features"):
-        gr.Markdown("### 🔬 Visualizador de Features de Áudio")
+        gr.Markdown("### Visualizador de Features de Áudio")
 
         with gr.Row():
             with gr.Column(scale=1):
@@ -85,17 +107,19 @@ def create_features_tab():
                 features = result.data.features
                 feature_data = features.features
 
-                # --- Geração dos Gráficos ---
+                # --- Geração dos Gráficos (Dark Theme) ---
 
                 # 1. Plot Waveform
-                fig_wave = plt.figure(figsize=(10, 3))
+                fig_wave, ax_wave = plt.subplots(figsize=(10, 3))
+                _style_feat_ax(ax_wave, fig_wave, "Waveform (Time Domain)")
                 librosa.display.waveshow(
-                    audio_data.samples, sr=audio_data.sample_rate)
-                plt.title("Waveform (Time Domain)")
-                plt.tight_layout()
+                    audio_data.samples, sr=audio_data.sample_rate,
+                    ax=ax_wave, color="#3b82f6", alpha=0.85)
+                fig_wave.tight_layout()
 
                 # 2. Plot Feature Heatmap
-                fig_feat = plt.figure(figsize=(10, 6))
+                fig_feat, ax_feat = plt.subplots(figsize=(10, 6))
+                _style_feat_ax(ax_feat, fig_feat, "Feature Heatmap")
                 plotted = False
                 first_key = list(feature_data.keys())[
                     0] if feature_data else None
@@ -106,26 +130,33 @@ def create_features_tab():
                     S_db = feature_data["spectrogram"]
                     main_feature_array = S_db
                     if S_db.ndim == 1:
-                        plt.plot(S_db)
-                        plt.title("Spectral Feature (Mean)")
+                        ax_feat.plot(S_db, color="#3b82f6")
+                        ax_feat.set_title("Spectral Feature (Mean)",
+                                          color=_PLOT_TEXT, fontweight="600")
                     else:
-                        librosa.display.specshow(
-                            S_db,
-                            sr=audio_data.sample_rate,
-                            x_axis='time',
-                            y_axis='hz'
-                        )
-                        plt.colorbar(format='%+2.0f dB')
-                        plt.title('Espectrograma')
+                        img = librosa.display.specshow(
+                            S_db, sr=audio_data.sample_rate,
+                            x_axis='time', y_axis='hz', ax=ax_feat,
+                            cmap='magma')
+                        cb = fig_feat.colorbar(img, ax=ax_feat,
+                                               format='%+2.0f dB', pad=0.02)
+                        cb.ax.tick_params(colors=_PLOT_TEXT, labelsize=8)
+                        cb.outline.set_edgecolor(_PLOT_GRID)
+                        ax_feat.set_title("Espectrograma",
+                                          color=_PLOT_TEXT, fontweight="600")
                     plotted = True
 
                 elif feature_type_str == "cepstral" and "mfcc" in feature_data:
                     mfcc = feature_data["mfcc"]
                     main_feature_array = mfcc
                     if mfcc.ndim == 2:
-                        librosa.display.specshow(mfcc, x_axis='time')
-                        plt.colorbar()
-                        plt.title('MFCC')
+                        img = librosa.display.specshow(mfcc, x_axis='time',
+                                                       ax=ax_feat, cmap='viridis')
+                        cb = fig_feat.colorbar(img, ax=ax_feat, pad=0.02)
+                        cb.ax.tick_params(colors=_PLOT_TEXT, labelsize=8)
+                        cb.outline.set_edgecolor(_PLOT_GRID)
+                        ax_feat.set_title("MFCC",
+                                          color=_PLOT_TEXT, fontweight="600")
                         plotted = True
 
                 elif not plotted and first_key:
@@ -133,65 +164,47 @@ def create_features_tab():
                     if isinstance(arr, np.ndarray):
                         main_feature_array = arr
                         if arr.ndim == 2:
-                            plt.imshow(arr, aspect='auto', origin='lower')
-                            plt.colorbar()
+                            im = ax_feat.imshow(arr, aspect='auto',
+                                                origin='lower', cmap='viridis')
+                            cb = fig_feat.colorbar(im, ax=ax_feat, pad=0.02)
+                            cb.ax.tick_params(colors=_PLOT_TEXT, labelsize=8)
                         else:
-                            plt.plot(arr)
-                        plt.title(f"Feature: {first_key}")
+                            ax_feat.plot(arr, color="#06b6d4")
+                        ax_feat.set_title(f"Feature: {first_key}",
+                                          color=_PLOT_TEXT, fontweight="600")
                         plotted = True
 
                 if not plotted:
-                    plt.text(
-                        0.5,
-                        0.5,
-                        "Visualização não disponível",
-                        ha='center',
-                        va='center')
-                plt.tight_layout()
+                    ax_feat.text(0.5, 0.5, "Visualização não disponível",
+                                 ha='center', va='center', color=_PLOT_TEXT)
+                fig_feat.tight_layout()
 
                 # 3. Plot Histogram
-                fig_hist = plt.figure(figsize=(6, 4))
+                fig_hist, ax_hist = plt.subplots(figsize=(6, 4))
+                _style_feat_ax(ax_hist, fig_hist, "Distribuição de Valores")
                 if main_feature_array is not None and isinstance(
                         main_feature_array, np.ndarray):
                     flat_data = main_feature_array.flatten()
-                    plt.hist(
-                        flat_data,
-                        bins=50,
-                        color='skyblue',
-                        edgecolor='black',
-                        alpha=0.7)
-                    plt.title("Distribuição de Valores")
-                    plt.xlabel("Valor")
-                    plt.ylabel("Frequência")
-                    # Adicionar linhas de média e std
+                    ax_hist.hist(flat_data, bins=50, color='#3b82f6',
+                                 edgecolor='#1e293b', alpha=0.8)
+                    ax_hist.set_xlabel("Valor")
+                    ax_hist.set_ylabel("Frequência")
                     mean_val = np.mean(flat_data)
                     std_val = np.std(flat_data)
-                    plt.axvline(
-                        mean_val,
-                        color='r',
-                        linestyle='dashed',
-                        linewidth=1,
-                        label=f'Média: {
-                            mean_val:.2f}')
-                    plt.axvline(mean_val + std_val,
-                                color='g',
-                                linestyle='dashed',
-                                linewidth=1,
-                                label=f'+1 Std: {mean_val + std_val:.2f}')
-                    plt.axvline(mean_val - std_val,
-                                color='g',
-                                linestyle='dashed',
-                                linewidth=1,
-                                label=f'-1 Std: {mean_val - std_val:.2f}')
-                    plt.legend()
+                    ax_hist.axvline(mean_val, color='#ef4444', linestyle='dashed',
+                                    linewidth=1.5, label=f'Média: {mean_val:.2f}')
+                    ax_hist.axvline(mean_val + std_val, color='#10b981',
+                                    linestyle='dashed', linewidth=1,
+                                    label=f'+1σ: {mean_val + std_val:.2f}')
+                    ax_hist.axvline(mean_val - std_val, color='#10b981',
+                                    linestyle='dashed', linewidth=1,
+                                    label=f'-1σ: {mean_val - std_val:.2f}')
+                    ax_hist.legend(facecolor=_PLOT_FACE, edgecolor=_PLOT_GRID,
+                                   labelcolor=_PLOT_TEXT, fontsize=9)
                 else:
-                    plt.text(
-                        0.5,
-                        0.5,
-                        "Dados não numéricos",
-                        ha='center',
-                        va='center')
-                plt.tight_layout()
+                    ax_hist.text(0.5, 0.5, "Dados não numéricos",
+                                 ha='center', va='center', color=_PLOT_TEXT)
+                fig_hist.tight_layout()
 
                 # --- Estatísticas Detalhadas ---
                 stats_md = "### 📊 Estatísticas das Features\n\n"

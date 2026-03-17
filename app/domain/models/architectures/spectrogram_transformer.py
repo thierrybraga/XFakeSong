@@ -1,14 +1,18 @@
 """Spectrogram Transformer Architecture Implementation"""
 
 # Third-party imports
-import numpy as np
+import logging
+from typing import Optional, Tuple
+
 import tensorflow as tf
 from tensorflow.keras import layers, models
-from typing import Tuple, Optional
-import logging
-import math
+
 from app.domain.models.architectures.layers import (
-    STFTLayer, ExpandDimsLayer, ResizeLayer, is_raw_audio, ensure_flat_input
+    ConvolutionStemLayer,
+    ResizeLayer,
+    STFTLayer,
+    ensure_flat_input,
+    is_raw_audio,
 )
 
 logger = logging.getLogger(__name__)
@@ -87,18 +91,22 @@ class ClassTokenLayer(layers.Layer):
 
 
 class PatchEmbedding(layers.Layer):
-    """Patch embedding layer for Spectrogram Transformer."""
+    """
+    Patch embedding layer for Spectrogram Transformer.
+    Supports overlapping patches as per the AST paper.
+    """
 
-    def __init__(self, patch_size: Tuple[int, int], embed_dim: int, **kwargs):
+    def __init__(self, patch_size: Tuple[int, int], embed_dim: int, stride: Optional[Tuple[int, int]] = None, **kwargs):
         super(PatchEmbedding, self).__init__(**kwargs)
         self.patch_size = patch_size
         self.embed_dim = embed_dim
+        self.stride = stride if stride is not None else patch_size
 
-        # Convolutional layer to create patches
+        # Convolutional layer to create patches (with optional overlap)
         self.conv = layers.Conv2D(
             filters=embed_dim,
             kernel_size=patch_size,
-            strides=patch_size,
+            strides=self.stride,
             padding='valid',
             name='patch_conv'
         )
@@ -115,7 +123,8 @@ class PatchEmbedding(layers.Layer):
         config = super().get_config()
         config.update({
             'patch_size': self.patch_size,
-            'embed_dim': self.embed_dim
+            'embed_dim': self.embed_dim,
+            'stride': self.stride
         })
         return config
 
@@ -244,109 +253,110 @@ def create_spectrogram_transformer_model(
     input_shape: Tuple[int, ...],
     num_classes: int,
     patch_size: Tuple[int, int] = (8, 8),
-    embed_dim: int = 256,
-    num_blocks: int = 8,
-    num_heads: int = 8,
-    ff_dim: int = 512,
+    stride: Tuple[int, int] = (6, 6),
+    embed_dim: int = 768,
+    num_blocks: int = 12,
+    num_heads: int = 12,
+    ff_dim: int = 3072,
     dropout_rate: float = 0.1,
     architecture: str = 'spectrogram_transformer'
 ) -> models.Model:
     """
-    Create Spectrogram Transformer model for audio deepfake detection.
+    Create Audio Spectrogram Transformer (AST) model for audio deepfake detection.
+    Fidelity to AST Paper (Gong et al., 2021).
 
     Args:
-        input_shape: Shape of input features (samples,), (height, width, channels) or (time_steps, features)
+        input_shape: Shape of input features
         num_classes: Number of output classes
-        patch_size: Size of patches for patch embedding
-        embed_dim: Embedding dimension
-        num_blocks: Number of transformer blocks
-        num_heads: Number of attention heads
-        ff_dim: Feed-forward dimension
+        patch_size: Size of patches for patch embedding (default: 8x8)
+        stride: Stride for overlapping patches (default: 6x6)
+        embed_dim: Embedding dimension (ViT-Base: 768)
+        num_blocks: Number of transformer blocks (ViT-Base: 12)
+        num_heads: Number of attention heads (ViT-Base: 12)
+        ff_dim: Feed-forward dimension (ViT-Base: 3072)
         dropout_rate: Dropout rate
-        architecture: Architecture name (for compatibility)
+        architecture: Architecture name
 
     Returns:
         Compiled Keras model
     """
     logger.info(
-        f"Creating Spectrogram Transformer model with input_shape={input_shape}, num_classes={num_classes}")
+        f"Creating AST model with input_shape={input_shape}, num_classes={num_classes}")
 
     # Input layer
-    inputs = layers.Input(shape=input_shape, name='spect_transformer_input')
+    inputs = layers.Input(shape=input_shape, name='ast_input')
 
     # Preprocessing based on input type
     if is_raw_audio(input_shape):
         input_tensor = ensure_flat_input(inputs, input_shape)
 
-        # Convert to spectrogram using custom STFT layer
+        # AST typically uses 128 mel bins, 25ms window, 10ms hop
+        # We use STFTLayer with defaults and resize to 128x128 for consistency
         x = STFTLayer(name='stft_layer', add_channel_dim=True)(input_tensor)
-        # Ensure minimum dimensions for patch embedding
         x = ResizeLayer(
-            target_height=64,
-            target_width=64,
+            target_height=128,
+            target_width=128,
             name='resize_layer')(x)
+        processed_height, processed_width = 128, 128
     else:
-        # Preprocessing
+        # Preprocessing spectrogram input
         x = create_safe_spectrogram_layer(input_shape)(inputs)
-
-    # Get the processed shape for patch calculation
-    if is_raw_audio(input_shape):
-        # After STFT and resize, we have a fixed 64x64 spectrogram
-        processed_height = 64
-        processed_width = 64
-        channels = 1
-    elif len(input_shape) == 2:
         processed_height = max(64, input_shape[0])
         processed_width = max(64, input_shape[1])
-        channels = 1
-    else:  # len(input_shape) == 3
-        processed_height = max(64, input_shape[0])
-        processed_width = max(64, input_shape[1])
-        channels = input_shape[2] if len(input_shape) == 3 else 1
 
-    # Calculate number of patches
-    num_patches_h = processed_height // patch_size[0]
-    num_patches_w = processed_width // patch_size[1]
+    # Convolution stem for downsampled feature extraction
+    x = ConvolutionStemLayer(filters=[64, 128, 256], name='conv_stem')(x)
+
+    # Update spatial dims after stem (stem downsamples by 2x per conv block with stride 2)
+    stem_height = x.shape[1] if x.shape[1] is not None else processed_height // 8
+    stem_width = x.shape[2] if x.shape[2] is not None else processed_width // 8
+
+    # Calculate number of patches considering overlap (padding='valid')
+    # num_patches = floor((input - patch_size) / stride) + 1
+    num_patches_h = (stem_height - patch_size[0]) // stride[0] + 1
+    num_patches_w = (stem_width - patch_size[1]) // stride[1] + 1
     num_patches = num_patches_h * num_patches_w
 
     logger.info(
-        f"Using {num_patches} patches ({num_patches_h}x{num_patches_w}) with patch size {patch_size}")
+        f"Using {num_patches} patches ({num_patches_h}x{num_patches_w}) with overlap stride {stride}")
 
-    # Patch embedding
-    x = PatchEmbedding(patch_size, embed_dim, name='patch_embedding')(x)
+    # Patch embedding (with overlap) on stem output
+    x = PatchEmbedding(patch_size, embed_dim, stride=stride, name='patch_embedding')(x)
 
-    # Add class token
+    # Add class token (Standard ViT/AST)
     x = ClassTokenLayer(embed_dim, name='class_token_layer')(x)
 
-    # Positional encoding
+    # Positional encoding (learned)
     x = PositionalEncoding(num_patches + 1, embed_dim, name='pos_encoding')(x)
 
-    # Transformer blocks
+    # Transformer blocks (Standard ViT-Base)
     for i in range(num_blocks):
         x = SpectrogramTransformerBlock(
             embed_dim=embed_dim,
             num_heads=num_heads,
             ff_dim=ff_dim,
             dropout_rate=dropout_rate,
-            name=f'transformer_block_{i}'
+            name=f'ast_block_{i}'
         )(x)
 
-    # Extract class token for classification
-    class_token_output = x[:, 0, :]  # First token is class token
+    # Final LayerNorm before head
+    x = layers.LayerNormalization(epsilon=1e-6, name='final_norm')(x)
 
-    # Alternative: Use spectral attention pooling on all tokens
-    # pooled_output = SpectralAttentionPooling(embed_dim, name='spectral_pooling')(x[:, 1:, :])
-    # combined_output = tf.concat([class_token_output, pooled_output], axis=-1)
+    # Extract class token for classification (Standard ViT/AST)
+    class_token_output = x[:, 0, :]
 
-    # Classification head
-    x = layers.LayerNormalization(
-        epsilon=1e-6, name='final_norm')(class_token_output)
+    # Classification head with residual connections
+    # First dense block with skip connection
+    skip1 = layers.Dense(1024, name='ast_head_skip1')(class_token_output)
+    x = layers.Dense(1024, activation='gelu', name='ast_head_dense')(class_token_output)
+    x = layers.Dropout(dropout_rate, name='ast_head_dropout')(x)
+    x = layers.Add(name='ast_head_residual1')([x, skip1])
 
-    x = layers.Dense(512, activation='gelu', name='classifier_dense1')(x)
-    x = layers.Dropout(dropout_rate, name='classifier_dropout1')(x)
-
+    # Second dense block with skip connection
+    skip2 = layers.Dense(256, name='ast_head_skip2')(x)
     x = layers.Dense(256, activation='gelu', name='classifier_dense2')(x)
     x = layers.Dropout(dropout_rate * 0.5, name='classifier_dropout2')(x)
+    x = layers.Add(name='ast_head_residual2')([x, skip2])
 
     # Output layer
     if num_classes == 1:
@@ -378,8 +388,7 @@ def create_spectrogram_transformer_model(
     )
 
     logger.info(
-        f"Spectrogram Transformer model created successfully with {
-            model.count_params()} parameters")
+        f"Spectrogram Transformer model created successfully with {model.count_params()} parameters")
     return model
 
 

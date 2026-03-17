@@ -1,24 +1,32 @@
-import gradio as gr
+import io
+import logging
 import os
-from pathlib import Path
+import shutil
+
 # import json
 import time
-import logging
-import io
 import zipfile
-import shutil
+from pathlib import Path
+
 import requests
+
+import gradio as gr
 
 # Configurar logger para capturar logs de treinamento
 log_capture_string = io.StringIO()
 ch = logging.StreamHandler(log_capture_string)
 ch.setLevel(logging.INFO)
 logging.getLogger().addHandler(ch)
+logger = logging.getLogger(__name__)
 
 
 def create_training_tab():
     with gr.Tab("Treinamento"):
-        gr.Markdown("### 🏋️ Gestão de Datasets e Treinamento")
+        gr.Markdown(
+            "### Gestão de Datasets e Treinamento\n"
+            "Prepare datasets, extraia features e treine modelos de detecção "
+            "de deepfake com diferentes arquiteturas."
+        )
 
         with gr.Tabs():
             # --- TAB DATASET ---
@@ -281,7 +289,7 @@ def create_training_tab():
                     with gr.Column():
                         from app.domain.models.architectures.registry import (
                             architecture_registry,
-                            get_architecture_info
+                            get_architecture_info,
                         )
 
                         arch_choices = (
@@ -342,6 +350,15 @@ def create_training_tab():
                             dl_cm_plot = gr.Plot(label="Matriz de Confusão")
                             dl_pr_plot = gr.Plot(label="Curva Precisão-Recall")
 
+                        gr.Markdown("#### Analise Avancada de Treinamento")
+                        with gr.Row():
+                            dl_det_plot = gr.Plot(label="Curva DET / EER")
+                            dl_thresh_plot = gr.Plot(label="Otimizacao de Threshold")
+                        with gr.Row():
+                            dl_class_acc_plot = gr.Plot(label="Acuracia por Classe")
+                            dl_tsne_plot = gr.Plot(label="Embedding 2D (t-SNE)")
+                        dl_lr_plot = gr.Plot(label="Schedule de Learning Rate")
+
                 def update_arch_params(arch_name):
                     try:
                         from app.domain.models.training.optimized_training_config import (  # noqa
@@ -381,23 +398,25 @@ def create_training_tab():
 
                 def train_dl_wrapper(arch, dataset_path,
                                      epochs, batch_size, lr, model_params):
-                    yield "Iniciando...", "", None, None, None, None
+                    yield ("Iniciando...", "", None, None, None, None,
+                           None, None, None, None, None)
 
                     try:
-                        import tensorflow as tf
-                        from app.domain.models.architectures.registry import (
-                            create_model_by_name,
-                            get_architecture_info
-                        )
                         import matplotlib.pyplot as plt
+                        import numpy as np
+                        import seaborn as sns
+                        import tensorflow as tf
                         from sklearn.metrics import (
-                            roc_curve,
                             auc,
                             confusion_matrix,
-                            precision_recall_curve
+                            precision_recall_curve,
+                            roc_curve,
                         )
-                        import seaborn as sns
-                        import numpy as np
+
+                        from app.domain.models.architectures.registry import (
+                            create_model_by_name,
+                            get_architecture_info,
+                        )
 
                         # Limpar logs anteriores
                         log_capture_string.truncate(0)
@@ -408,7 +427,8 @@ def create_training_tab():
                             yield (
                                 "Erro",
                                 f"Dataset não encontrado: {dataset_path}",
-                                None, None, None, None
+                                None, None, None, None,
+                                None, None, None, None, None
                             )
                             return
 
@@ -426,7 +446,8 @@ def create_training_tab():
                             "Configurando Pipeline...",
                             f"Arquitetura: {arch}\n"
                             f"Tipo Entrada: {req_type} ({req_format})",
-                            None, None, None, None
+                            None, None, None, None,
+                            None, None, None, None, None
                         )
 
                         # Configurações de Áudio
@@ -465,7 +486,8 @@ def create_training_tab():
                             yield (
                                 "Erro Dataset",
                                 f"Falha ao carregar dataset: {str(e)}",
-                                None, None, None, None
+                                None, None, None, None,
+                                None, None, None, None, None
                             )
                             return
 
@@ -477,7 +499,8 @@ def create_training_tab():
                             yield (
                                 "Pré-processamento...",
                                 "Configurando extração de espectrogramas...",
-                                None, None, None, None
+                                None, None, None, None,
+                                None, None, None, None, None
                             )
 
                             # Função de transformação para Espectrograma
@@ -539,7 +562,8 @@ def create_training_tab():
                             "Criando Modelo...",
                             f"Instanciando {arch} com "
                             f"input_shape={input_shape}...",
-                            None, None, None, None
+                            None, None, None, None,
+                            None, None, None, None, None
                         )
 
                         try:
@@ -556,7 +580,8 @@ def create_training_tab():
                                 f"Falha ao criar modelo: {str(e)}\n"
                                 f"Verifique se a arquitetura suporta "
                                 f"o input shape {input_shape}",
-                                None, None, None, None
+                                None, None, None, None,
+                                None, None, None, None, None
                             )
                             return
 
@@ -582,19 +607,30 @@ def create_training_tab():
                                 )
                                 self.logs_hist.append(msg)
 
+                        class LRTrackingCallback(tf.keras.callbacks.Callback):
+                            def __init__(self):
+                                self.lr_history = []
+
+                            def on_epoch_end(self, epoch, logs=None):
+                                lr = float(
+                                    self.model.optimizer.learning_rate)
+                                self.lr_history.append(lr)
+
                         log_cb = LogCallback()
+                        lr_cb = LRTrackingCallback()
 
                         yield (
                             "Treinando...",
                             "Iniciando loop de treinamento...",
-                            None, None, None, None
+                            None, None, None, None,
+                            None, None, None, None, None
                         )
 
                         history = model.fit(
                             train_ds,
                             validation_data=val_ds,
                             epochs=epochs,
-                            callbacks=[log_cb]
+                            callbacks=[log_cb, lr_cb]
                         )
 
                         # Gerar gráfico de Loss/Acc
@@ -616,7 +652,8 @@ def create_training_tab():
                         yield (
                             "Avaliando...",
                             "Gerando gráficos de performance...",
-                            fig_hist, None, None, None
+                            fig_hist, None, None, None,
+                            None, None, None, None, None
                         )
 
                         y_true_all = []
@@ -642,46 +679,59 @@ def create_training_tab():
                         fpr, tpr, _ = roc_curve(y_true, y_scores)
                         roc_auc = auc(fpr, tpr)
 
-                        fig_roc = plt.figure(figsize=(8, 6))
-                        plt.plot(fpr, tpr, color='darkorange', lw=2,
-                                 label=f'ROC curve (area = {roc_auc:.2f})')
-                        plt.plot([0, 1], [0, 1], color='navy',
-                                 lw=2, linestyle='--')
-                        plt.xlim([0.0, 1.0])
-                        plt.ylim([0.0, 1.05])
-                        plt.xlabel('False Positive Rate')
-                        plt.ylabel('True Positive Rate')
-                        plt.title('Receiver Operating Characteristic (ROC)')
-                        plt.legend(loc="lower right")
+                        # Dark theme tokens
+                        _BG, _FC = "#0f172a", "#1e293b"
+                        _TX, _GR = "#f1f5f9", "#334155"
+
+                        def _dstyle(ax, fig, title):
+                            fig.patch.set_facecolor(_BG)
+                            ax.set_facecolor(_FC)
+                            ax.set_title(title, color=_TX, fontweight="600", fontsize=12, pad=10)
+                            ax.tick_params(colors=_TX, labelsize=9)
+                            for l in (ax.xaxis.label, ax.yaxis.label):
+                                l.set_color(_TX); l.set_fontsize(10)
+                            for s in ax.spines.values():
+                                s.set_color(_GR)
+                            ax.grid(True, color=_GR, alpha=0.3, linewidth=0.5)
+
+                        fig_roc, ax_r = plt.subplots(figsize=(8, 6))
+                        _dstyle(ax_r, fig_roc, "ROC Curve")
+                        ax_r.plot(fpr, tpr, color='#f59e0b', lw=2,
+                                  label=f'AUC = {roc_auc:.2f}')
+                        ax_r.plot([0, 1], [0, 1], color=_GR, lw=1.5, linestyle='--')
+                        ax_r.set_xlim([0.0, 1.0]); ax_r.set_ylim([0.0, 1.05])
+                        ax_r.set_xlabel('False Positive Rate')
+                        ax_r.set_ylabel('True Positive Rate')
+                        ax_r.legend(facecolor=_FC, edgecolor=_GR,
+                                    labelcolor=_TX, fontsize=9)
 
                         # 2. Matriz de Confusão
                         cm = confusion_matrix(y_true, y_pred_labels)
 
-                        fig_cm = plt.figure(figsize=(8, 6))
+                        fig_cm, ax_cm = plt.subplots(figsize=(8, 6))
+                        _dstyle(ax_cm, fig_cm, "Confusion Matrix")
                         sns.heatmap(
-                            cm,
-                            annot=True,
-                            fmt='d',
-                            cmap='Blues',
+                            cm, annot=True, fmt='d', cmap='Blues',
                             xticklabels=['Real', 'Fake'],
-                            yticklabels=['Real', 'Fake']
+                            yticklabels=['Real', 'Fake'], ax=ax_cm,
+                            annot_kws={"color": _TX}
                         )
-                        plt.ylabel('True label')
-                        plt.xlabel('Predicted label')
-                        plt.title('Confusion Matrix')
+                        ax_cm.set_ylabel('True label')
+                        ax_cm.set_xlabel('Predicted label')
                         plt.close(fig_cm)
 
                         # 3. Curva Precision-Recall
                         precision, recall, _ = precision_recall_curve(
                             y_true, y_scores)
 
-                        fig_pr = plt.figure(figsize=(8, 6))
-                        plt.plot(recall, precision, color='blue',
-                                 lw=2, label='Precision-Recall curve')
-                        plt.xlabel('Recall')
-                        plt.ylabel('Precision')
-                        plt.title('Precision-Recall Curve')
-                        plt.legend(loc="lower left")
+                        fig_pr, ax_pr = plt.subplots(figsize=(8, 6))
+                        _dstyle(ax_pr, fig_pr, "Precision-Recall Curve")
+                        ax_pr.plot(recall, precision, color='#06b6d4',
+                                   lw=2, label='Precision-Recall')
+                        ax_pr.set_xlabel('Recall')
+                        ax_pr.set_ylabel('Precision')
+                        ax_pr.legend(facecolor=_FC, edgecolor=_GR,
+                                     labelcolor=_TX, fontsize=9)
                         plt.close(fig_pr)
 
                         full_logs = "".join(log_cb.logs_hist)
@@ -694,10 +744,84 @@ def create_training_tab():
                         model_path = save_dir / f"{arch}_{int(time.time())}.h5"
                         model.save(model_path)
 
+                        # --- Gráficos Avançados ---
+                        fig_det = None
+                        fig_thresh = None
+                        fig_class_acc = None
+                        fig_tsne = None
+                        fig_lr = None
+
+                        try:
+                            from app.domain.services.forensic_visualization import (
+                                TrainingAnalyticsVisualizer,
+                            )
+                            tv = TrainingAnalyticsVisualizer()
+
+                            # DET Curve + EER
+                            fig_det, eer_val = tv.plot_det_curve_eer(
+                                y_true, y_scores)
+
+                            # Threshold optimization
+                            fig_thresh = tv.plot_threshold_optimization(
+                                y_true, y_scores)
+
+                            # Per-class accuracy (compute from history)
+                            real_accs = []
+                            fake_accs = []
+                            for x_b, y_b in val_ds:
+                                preds_b = model.predict_on_batch(x_b)
+                                pred_labels_b = np.argmax(preds_b, axis=1)
+                                y_np = y_b.numpy()
+                                real_mask = y_np == 0
+                                fake_mask = y_np == 1
+                                if np.sum(real_mask) > 0:
+                                    real_accs.append(
+                                        float(np.mean(
+                                            pred_labels_b[real_mask] == 0)))
+                                if np.sum(fake_mask) > 0:
+                                    fake_accs.append(
+                                        float(np.mean(
+                                            pred_labels_b[fake_mask] == 1)))
+                            if real_accs and fake_accs:
+                                fig_class_acc = tv.plot_per_class_accuracy(
+                                    real_accs, fake_accs)
+
+                            # t-SNE of penultimate layer
+                            try:
+                                # Get penultimate layer output
+                                penult_model = tf.keras.Model(
+                                    inputs=model.input,
+                                    outputs=model.layers[-2].output
+                                )
+                                embeddings = []
+                                labels_emb = []
+                                for x_b, y_b in val_ds:
+                                    emb = penult_model.predict_on_batch(x_b)
+                                    embeddings.append(emb)
+                                    labels_emb.extend(y_b.numpy())
+
+                                embeddings = np.concatenate(embeddings, axis=0)
+                                labels_emb = np.array(labels_emb)
+
+                                fig_tsne = tv.plot_embedding_2d(
+                                    embeddings, labels_emb, method="tsne")
+                            except Exception as e:
+                                logger.warning(f"t-SNE failed: {e}")
+
+                            # LR schedule
+                            if lr_cb.lr_history:
+                                fig_lr = tv.plot_lr_schedule(lr_cb.lr_history)
+
+                        except Exception as e:
+                            logger.warning(
+                                f"Advanced training plots failed: {e}")
+
                         yield (
                             "Concluído",
                             f"{full_logs}\nModelo salvo em: {model_path}",
-                            fig_hist, fig_roc, fig_cm, fig_pr
+                            fig_hist, fig_roc, fig_cm, fig_pr,
+                            fig_det, fig_thresh, fig_class_acc,
+                            fig_tsne, fig_lr
                         )
 
                     except Exception as e:
@@ -705,15 +829,8 @@ def create_training_tab():
                         yield (
                             "Erro Fatal",
                             f"{str(e)}\n{traceback.format_exc()}",
-                            None, None, None, None
-                        )
-
-                    except Exception as e:
-                        import traceback
-                        yield (
-                            "Erro Fatal",
-                            f"{str(e)}\n{traceback.format_exc()}",
-                            None, None, None, None
+                            None, None, None, None,
+                            None, None, None, None, None
                         )
 
                 dl_train_btn.click(
@@ -731,7 +848,12 @@ def create_training_tab():
                         dl_plot,
                         dl_roc_plot,
                         dl_cm_plot,
-                        dl_pr_plot]
+                        dl_pr_plot,
+                        dl_det_plot,
+                        dl_thresh_plot,
+                        dl_class_acc_plot,
+                        dl_tsne_plot,
+                        dl_lr_plot]
                 )
 
                 gr.Markdown("#### Progresso de Treinamento (API)")
@@ -952,48 +1074,59 @@ def create_training_tab():
                             fpr, tpr, _ = roc_curve(y_test, y_scores)
                             roc_auc = auc(fpr, tpr)
 
-                            fig_roc = plt.figure(figsize=(8, 6))
-                            plt.plot(fpr, tpr, color='darkorange', lw=2,
-                                     label=f'ROC curve (area = {roc_auc:.2f})')
-                            plt.plot([0, 1], [0, 1], color='navy',
-                                     lw=2, linestyle='--')
-                            plt.xlim([0.0, 1.0])
-                            plt.ylim([0.0, 1.05])
-                            plt.xlabel('False Positive Rate')
-                            plt.ylabel('True Positive Rate')
-                            plt.title(
-                                'Receiver Operating Characteristic (ROC)')
-                            plt.legend(loc="lower right")
+                            # Dark theme
+                            _BG2, _FC2 = "#0f172a", "#1e293b"
+                            _TX2, _GR2 = "#f1f5f9", "#334155"
+
+                            def _ds2(ax, fig, title):
+                                fig.patch.set_facecolor(_BG2)
+                                ax.set_facecolor(_FC2)
+                                ax.set_title(title, color=_TX2, fontweight="600", fontsize=12, pad=10)
+                                ax.tick_params(colors=_TX2, labelsize=9)
+                                for l in (ax.xaxis.label, ax.yaxis.label):
+                                    l.set_color(_TX2); l.set_fontsize(10)
+                                for s in ax.spines.values():
+                                    s.set_color(_GR2)
+                                ax.grid(True, color=_GR2, alpha=0.3, linewidth=0.5)
+
+                            fig_roc, ax_r2 = plt.subplots(figsize=(8, 6))
+                            _ds2(ax_r2, fig_roc, "ROC Curve")
+                            ax_r2.plot(fpr, tpr, color='#f59e0b', lw=2,
+                                       label=f'AUC = {roc_auc:.2f}')
+                            ax_r2.plot([0, 1], [0, 1], color=_GR2, lw=1.5, linestyle='--')
+                            ax_r2.set_xlim([0.0, 1.0]); ax_r2.set_ylim([0.0, 1.05])
+                            ax_r2.set_xlabel('False Positive Rate')
+                            ax_r2.set_ylabel('True Positive Rate')
+                            ax_r2.legend(facecolor=_FC2, edgecolor=_GR2,
+                                         labelcolor=_TX2, fontsize=9)
                             plt.close(fig_roc)
 
                             # 2. Matriz de Confusão
                             cm = np.array(results['confusion_matrix'])
                             classes = results.get('classes', ['Real', 'Fake'])
 
-                            fig_cm = plt.figure(figsize=(8, 6))
+                            fig_cm, ax_cm2 = plt.subplots(figsize=(8, 6))
+                            _ds2(ax_cm2, fig_cm, "Confusion Matrix")
                             sns.heatmap(
-                                cm,
-                                annot=True,
-                                fmt='d',
-                                cmap='Blues',
-                                xticklabels=classes,
-                                yticklabels=classes)
-                            plt.ylabel('True label')
-                            plt.xlabel('Predicted label')
-                            plt.title('Confusion Matrix')
+                                cm, annot=True, fmt='d', cmap='Blues',
+                                xticklabels=classes, yticklabels=classes,
+                                ax=ax_cm2, annot_kws={"color": _TX2})
+                            ax_cm2.set_ylabel('True label')
+                            ax_cm2.set_xlabel('Predicted label')
                             plt.close(fig_cm)
 
                             # 3. Curva Precision-Recall
                             precision, recall, _ = precision_recall_curve(
                                 y_test, y_scores)
 
-                            fig_pr = plt.figure(figsize=(8, 6))
-                            plt.plot(recall, precision, color='blue',
-                                     lw=2, label='Precision-Recall curve')
-                            plt.xlabel('Recall')
-                            plt.ylabel('Precision')
-                            plt.title('Precision-Recall Curve')
-                            plt.legend(loc="lower left")
+                            fig_pr, ax_pr2 = plt.subplots(figsize=(8, 6))
+                            _ds2(ax_pr2, fig_pr, "Precision-Recall Curve")
+                            ax_pr2.plot(recall, precision, color='#06b6d4',
+                                        lw=2, label='Precision-Recall')
+                            ax_pr2.set_xlabel('Recall')
+                            ax_pr2.set_ylabel('Precision')
+                            ax_pr2.legend(facecolor=_FC2, edgecolor=_GR2,
+                                          labelcolor=_TX2, fontsize=9)
                             plt.close(fig_pr)
 
                         return results, fig_roc, fig_cm, fig_pr

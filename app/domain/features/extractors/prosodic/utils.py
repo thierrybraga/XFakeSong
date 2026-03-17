@@ -1,5 +1,5 @@
-import numpy as np
 import librosa
+import numpy as np
 
 
 def extract_periods(y: np.ndarray, f0: np.ndarray, sr: int) -> np.ndarray:

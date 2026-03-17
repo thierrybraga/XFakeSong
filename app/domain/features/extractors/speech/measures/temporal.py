@@ -1,6 +1,8 @@
+from typing import Dict
+
 import numpy as np
 import scipy.signal
-from typing import Dict, List, Optional
+
 from . import common
 
 

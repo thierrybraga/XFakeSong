@@ -1,12 +1,12 @@
-from typing import Optional, Dict, Any, List
-from pathlib import Path
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
+from pathlib import Path
+from typing import List
 
 from app.core.config.settings import TrainingConfig
-from app.domain.services.feature_extraction_service import AudioFeatureExtractionService
-from app.domain.services.detection_service import DetectionService
 from app.domain.models.training.trainer import ModelTrainer
+from app.domain.services.detection_service import DetectionService
+from app.domain.services.feature_extraction_service import AudioFeatureExtractionService
 
 
 @dataclass

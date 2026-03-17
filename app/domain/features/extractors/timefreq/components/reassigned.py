@@ -1,9 +1,10 @@
 """
 Extração de características da transformada reassigned (aproximação).
 """
+from typing import Dict
+
 import numpy as np
 import scipy.signal
-from typing import Dict
 
 
 def extract_reassigned_features(

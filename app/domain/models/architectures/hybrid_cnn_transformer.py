@@ -1,416 +1,488 @@
-"""Hybrid CNN-Transformer Architecture Implementation
+"""Hybrid CNN-Transformer Architecture — Compact Convolutional Transformer (CCT)
 
-Este módulo implementa uma arquitetura híbrida que combina CNNs para extração
-de features espaciais com Transformers para modelagem temporal, especificamente
-desenhada para detecção de deepfakes em áudio.
+Literature-based implementation combining:
+
+1. Bartusiak & Delp (2022) — "Synthesized Speech Detection Using Convolutional
+   Transformer-Based Spectrogram Analysis" (arXiv:2205.01800, IEEE Asilomar 2021)
+   - CCT applied to spectrograms for synthesized speech detection
+   - Outperforms CNN, LSTM, and conventional approaches on ASVspoof 2019
+   - Convolutional tokenizer + Transformer encoder on spectrogram images
+
+2. Hassani et al. (2021) — "Escaping the Big Data Paradigm with Compact Transformers"
+   (arXiv:2104.05704)
+   - CCT architecture: Conv tokenizer replaces patch embedding
+   - Sequence pooling replaces CLS token
+   - Stochastic depth regularization
+   - 12x more parameter-efficient than ViT
+
+3. Kadam et al. (2025) — "Deepfake Audio Detection Using CNN-Transformer Hybrid
+   Model with Data Augmentation" (J. Propulsion Technology, Vol. 46 No. 3)
+   - CNN-Transformer hybrid on mel spectrogram (128 bins)
+   - 91.47% accuracy on ASVspoof 2019
+
+Architecture (CCT-2/3x2 adapted for audio):
+- Input: raw audio -> mel spectrogram (n_fft=1024, hop=160, n_mels=128)
+- Conv Tokenizer: 2x [Conv2D + ReLU + MaxPool(3, stride 2)]
+  - Layer 1: 64 filters, 3x3, stride 1
+  - Layer 2: 128 filters, 3x3, stride 1
+- Flatten spatial dims -> sequence of tokens
+- Learned positional embeddings (optional per CCT)
+- Transformer Encoder: 4 layers, 4 heads, 256 proj dim
+  - Pre-norm (LayerNorm before attention)
+  - FFN: Dense(128, GELU) -> Dense(128)
+  - Stochastic depth regularization
+- Sequence Pooling: attention-weighted sum (replaces CLS token)
+- Dense(num_classes) classification
+- Optimizer: AdamW(lr=0.001, weight_decay=0.0001)
 """
 
+import logging
+from typing import Tuple
+
+import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers, models
-from typing import Tuple, Optional, Dict, Any
-import logging
-from app.domain.models.architectures.layers import STFTLayer, ExpandDimsLayer
+
+from app.domain.models.architectures.layers import (
+    SqueezeExcitationBlock2D,
+    ensure_flat_input,
+    is_raw_audio,
+)
 
 logger = logging.getLogger(__name__)
 
 
-class ResidualBlock(layers.Layer):
-    """Bloco residual com Squeeze-and-Excitation."""
+# ============================ CUSTOM LAYERS ============================
 
-    def __init__(self, filters: int, dropout_rate: float = 0.1,
-                 use_se: bool = True, **kwargs):
+class MelSpectrogramLayer(layers.Layer):
+    """Mel spectrogram extraction for CNN-Transformer input.
+
+    Params per Kadam et al. (2025): 128 mel bins, 16kHz.
+    STFT params: 1024 FFT, 160 hop (10ms at 16kHz).
+    """
+
+    def __init__(self, sample_rate=16000, n_fft=1024, hop_length=160,
+                 n_mels=128, **kwargs):
         super().__init__(**kwargs)
-        self.filters = filters
-        self.dropout_rate = dropout_rate
-        self.use_se = use_se
+        self.sample_rate = sample_rate
+        self.n_fft = n_fft
+        self.hop_length = hop_length
+        self.n_mels = n_mels
 
-        # Camadas convolucionais
-        self.conv1 = layers.Conv2D(filters, 3, padding='same')
-        self.bn1 = layers.BatchNormalization()
-        self.conv2 = layers.Conv2D(filters, 3, padding='same')
-        self.bn2 = layers.BatchNormalization()
+    def call(self, inputs):
+        stft = tf.signal.stft(
+            inputs,
+            frame_length=self.n_fft,
+            frame_step=self.hop_length,
+            fft_length=self.n_fft
+        )
+        magnitude = tf.abs(stft)
+        mel_weight = tf.signal.linear_to_mel_weight_matrix(
+            num_mel_bins=self.n_mels,
+            num_spectrogram_bins=self.n_fft // 2 + 1,
+            sample_rate=self.sample_rate,
+            lower_edge_hertz=0.0,
+            upper_edge_hertz=self.sample_rate / 2.0
+        )
+        mel_spec = tf.matmul(tf.square(magnitude), mel_weight)
+        log_mel = tf.math.log(mel_spec + 1e-6)
+        return log_mel
 
-        # Squeeze-and-Excitation
-        if use_se:
-            self.se_global_pool = layers.GlobalAveragePooling2D()
-            self.se_dense1 = layers.Dense(filters // 16, activation='relu')
-            self.se_dense2 = layers.Dense(filters, activation='sigmoid')
-            self.se_reshape = layers.Reshape((1, 1, filters))
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'sample_rate': self.sample_rate,
+            'n_fft': self.n_fft,
+            'hop_length': self.hop_length,
+            'n_mels': self.n_mels,
+        })
+        return config
 
-        # Dropout
-        self.dropout = layers.Dropout(dropout_rate)
 
-        # Shortcut connection
-        self.shortcut = None
-        self.shortcut_bn = None
+class CCTTokenizer(layers.Layer):
+    """Convolutional Tokenizer per Hassani et al. (2021).
 
-    def build(self, input_shape):
-        super().build(input_shape)
+    Replaces ViT patch embedding with conv layers.
+    2x [Conv2D(k=3, s=1, ReLU) + MaxPool(3, stride 2)]
+    Filters: [64, 128]
 
-        # Criar shortcut se necessário
-        if input_shape[-1] != self.filters:
-            self.shortcut = layers.Conv2D(self.filters, 1, padding='same')
-            self.shortcut_bn = layers.BatchNormalization()
+    Output: (batch, seq_len, channels) where seq_len = flattened spatial dims.
+    """
 
-    def call(self, inputs, training=None):
-        # Primeira convolução
-        x = self.conv1(inputs)
-        x = self.bn1(x, training=training)
-        x = tf.nn.swish(x)
+    def __init__(self, num_output_channels=None, kernel_size=3, stride=1,
+                 pooling_kernel_size=3, pooling_stride=2, **kwargs):
+        super().__init__(**kwargs)
+        if num_output_channels is None:
+            num_output_channels = [64, 128]
+        self.num_output_channels = num_output_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.pooling_kernel_size = pooling_kernel_size
+        self.pooling_stride = pooling_stride
 
-        # Segunda convolução
-        x = self.conv2(x)
-        x = self.bn2(x, training=training)
+        self.conv_layers = []
+        for i, out_ch in enumerate(num_output_channels):
+            self.conv_layers.append(
+                layers.Conv2D(
+                    out_ch, kernel_size, strides=stride,
+                    padding='same', use_bias=False,
+                    activation='relu',
+                    kernel_initializer='he_normal',
+                    name=f'conv_{i}'
+                )
+            )
+            self.conv_layers.append(
+                SqueezeExcitationBlock2D(
+                    reduction=16,
+                    name=f'se_block_{i}'
+                )
+            )
+            self.conv_layers.append(
+                layers.MaxPooling2D(
+                    pool_size=pooling_kernel_size,
+                    strides=pooling_stride,
+                    padding='same',
+                    name=f'pool_{i}'
+                )
+            )
 
-        # Squeeze-and-Excitation
-        if self.use_se:
-            se = self.se_global_pool(x)
-            se = self.se_dense1(se)
-            se = self.se_dense2(se)
-            se = self.se_reshape(se)
-            x = layers.Multiply()([x, se])
-
-        # Dropout
-        x = self.dropout(x, training=training)
-
-        # Shortcut connection
-        shortcut = inputs
-        if self.shortcut is not None:
-            shortcut = self.shortcut(inputs)
-            shortcut = self.shortcut_bn(shortcut, training=training)
-
-        # Residual connection
-        x = layers.Add()([x, shortcut])
-        x = tf.nn.swish(x)
-
+    def call(self, inputs):
+        x = inputs
+        for layer in self.conv_layers:
+            x = layer(x)
+        # Flatten spatial dims -> (batch, seq_len, channels)
+        batch_size = tf.shape(x)[0]
+        seq_len = x.shape[1] * x.shape[2] if x.shape[1] is not None and x.shape[2] is not None else tf.shape(x)[1] * tf.shape(x)[2]
+        channels = x.shape[-1]
+        x = tf.reshape(x, [batch_size, -1, channels])
         return x
 
     def get_config(self):
         config = super().get_config()
         config.update({
-            'filters': self.filters,
-            'dropout_rate': self.dropout_rate,
-            'use_se': self.use_se
+            'num_output_channels': self.num_output_channels,
+            'kernel_size': self.kernel_size,
+            'stride': self.stride,
+            'pooling_kernel_size': self.pooling_kernel_size,
+            'pooling_stride': self.pooling_stride,
         })
         return config
 
 
-class MultiScaleAttention(layers.Layer):
-    """Atenção multi-escala para capturar features em diferentes resoluções."""
+class StochasticDepth(layers.Layer):
+    """Stochastic Depth regularization per Huang et al. (2016).
 
-    def __init__(self, filters: int, scales: list = [1, 3, 5], **kwargs):
+    During training, randomly drops the entire residual branch
+    with probability drop_prob.
+    """
+
+    def __init__(self, drop_prob=0.0, **kwargs):
         super().__init__(**kwargs)
-        self.filters = filters
-        self.scales = scales
-
-        # Convoluções para cada escala
-        self.scale_convs = []
-        for scale in scales:
-            conv = layers.Conv2D(
-                filters // len(scales),
-                kernel_size=scale,
-                padding='same',
-                activation='relu'
-            )
-            self.scale_convs.append(conv)
-
-        # Atenção global
-        self.global_pool = layers.GlobalAveragePooling2D()
-        self.attention_dense = layers.Dense(filters, activation='sigmoid')
-
-        # Convolução final
-        self.final_conv = layers.Conv2D(filters, 1, activation='relu')
-
-    def call(self, inputs):
-        # Processar cada escala
-        scale_outputs = []
-        for conv in self.scale_convs:
-            scale_out = conv(inputs)
-            scale_outputs.append(scale_out)
-
-        # Concatenar saídas das escalas
-        multi_scale = layers.Concatenate(axis=-1)(scale_outputs)
-
-        # Atenção global
-        attention_weights = self.global_pool(multi_scale)
-        attention_weights = self.attention_dense(attention_weights)
-        attention_weights = layers.Reshape(
-            (1, 1, self.filters))(attention_weights)
-
-        # Aplicar atenção
-        multi_scale = self.final_conv(multi_scale)
-        attended = layers.Multiply()([multi_scale, attention_weights])
-
-        return attended
-
-    def compute_output_shape(self, input_shape):
-        return (input_shape[0], input_shape[1], input_shape[2], self.filters)
-
-    def get_config(self):
-        config = super().get_config()
-        config.update({
-            'filters': self.filters,
-            'scales': self.scales
-        })
-        return config
-
-
-class TemporalAttention(layers.Layer):
-    """Atenção temporal para sequências de áudio."""
-
-    def __init__(self, units: int, num_heads: int = 8, **kwargs):
-        super().__init__(**kwargs)
-        self.units = units
-        self.num_heads = num_heads
-
-        # Multi-head attention
-        self.mha = layers.MultiHeadAttention(
-            num_heads=num_heads,
-            key_dim=units // num_heads,
-            dropout=0.1
-        )
-
-        # Layer normalization
-        self.layernorm1 = layers.LayerNormalization(epsilon=1e-6)
-        self.layernorm2 = layers.LayerNormalization(epsilon=1e-6)
-
-        # Feed forward network
-        self.ffn = tf.keras.Sequential([
-            layers.Dense(units * 4, activation='relu'),
-            layers.Dropout(0.1),
-            layers.Dense(units)
-        ])
-
-        # Dropout
-        self.dropout1 = layers.Dropout(0.1)
-        self.dropout2 = layers.Dropout(0.1)
+        self.drop_prob = drop_prob
 
     def call(self, inputs, training=None):
-        # Multi-head attention
-        attn_output = self.mha(inputs, inputs, training=training)
-        attn_output = self.dropout1(attn_output, training=training)
-        out1 = self.layernorm1(inputs + attn_output)
+        if training and self.drop_prob > 0:
+            keep_prob = 1 - self.drop_prob
+            shape = (tf.shape(inputs)[0],) + (1,) * (len(inputs.shape) - 1)
+            random_tensor = tf.random.uniform(shape, dtype=inputs.dtype)
+            random_tensor = tf.floor(random_tensor + keep_prob)
+            return (inputs / keep_prob) * random_tensor
+        return inputs
 
-        # Feed forward network
-        ffn_output = self.ffn(out1, training=training)
-        ffn_output = self.dropout2(ffn_output, training=training)
-        out2 = self.layernorm2(out1 + ffn_output)
+    def get_config(self):
+        config = super().get_config()
+        config.update({'drop_prob': self.drop_prob})
+        return config
 
-        return out2
+
+class TransformerBlock(layers.Layer):
+    """Pre-norm Transformer encoder block per CCT.
+
+    Architecture:
+    - LayerNorm -> MultiHeadAttention -> StochasticDepth -> Add
+    - LayerNorm -> FFN(GELU) -> StochasticDepth -> Add
+
+    FFN: Dense(proj_dim, GELU) -> Dropout -> Dense(proj_dim) -> Dropout
+    """
+
+    def __init__(self, projection_dim, num_heads=2, dropout_rate=0.1,
+                 stochastic_depth_rate=0.0, **kwargs):
+        super().__init__(**kwargs)
+        self.projection_dim = projection_dim
+        self.num_heads = num_heads
+        self.dropout_rate = dropout_rate
+        self.stochastic_depth_rate = stochastic_depth_rate
+
+        self.norm1 = layers.LayerNormalization(epsilon=1e-5)
+        self.attn = layers.MultiHeadAttention(
+            num_heads=num_heads,
+            key_dim=projection_dim // num_heads,
+            dropout=dropout_rate
+        )
+        self.stochastic_depth1 = StochasticDepth(stochastic_depth_rate)
+
+        self.norm2 = layers.LayerNormalization(epsilon=1e-5)
+        self.ffn_dense1 = layers.Dense(projection_dim, activation='gelu')
+        self.ffn_dropout1 = layers.Dropout(dropout_rate)
+        self.ffn_dense2 = layers.Dense(projection_dim)
+        self.ffn_dropout2 = layers.Dropout(dropout_rate)
+        self.stochastic_depth2 = StochasticDepth(stochastic_depth_rate)
+
+    def call(self, inputs, training=None):
+        # Pre-norm attention
+        x1 = self.norm1(inputs)
+        attn_out = self.attn(x1, x1, training=training)
+        attn_out = self.stochastic_depth1(attn_out, training=training)
+        x2 = inputs + attn_out
+
+        # Pre-norm FFN
+        x3 = self.norm2(x2)
+        x3 = self.ffn_dense1(x3)
+        x3 = self.ffn_dropout1(x3, training=training)
+        x3 = self.ffn_dense2(x3)
+        x3 = self.ffn_dropout2(x3, training=training)
+        x3 = self.stochastic_depth2(x3, training=training)
+        return x2 + x3
 
     def get_config(self):
         config = super().get_config()
         config.update({
-            'units': self.units,
-            'num_heads': self.num_heads
+            'projection_dim': self.projection_dim,
+            'num_heads': self.num_heads,
+            'dropout_rate': self.dropout_rate,
+            'stochastic_depth_rate': self.stochastic_depth_rate,
         })
         return config
 
 
-def create_hybrid_cnn_transformer_model(
+class PositionalEmbeddingLayer(layers.Layer):
+    """Learned positional embeddings per CCT (Hassani et al., 2021).
+
+    Adds trainable positional embeddings (Glorot uniform init)
+    to the token sequence. Handles dynamic sequence lengths.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def build(self, input_shape):
+        super().build(input_shape)
+        seq_len = input_shape[1]
+        feature_dim = input_shape[2]
+        if seq_len is not None:
+            self.pos_emb = self.add_weight(
+                name='pos_emb',
+                shape=(1, seq_len, feature_dim),
+                initializer='glorot_uniform',
+                trainable=True
+            )
+            self.static_seq_len = True
+        else:
+            self.static_seq_len = False
+
+    def call(self, inputs):
+        if self.static_seq_len:
+            return inputs + self.pos_emb
+        return inputs
+
+    def get_config(self):
+        return super().get_config()
+
+
+class SequencePooling(layers.Layer):
+    """Attention-weighted sequence pooling per Hassani et al. (2021).
+
+    Replaces CLS token with learned weighted sum:
+    - attention_weights = softmax(Dense(1)(x))
+    - output = sum(attention_weights * x)
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.attention_dense = layers.Dense(1)
+
+    def call(self, inputs):
+        attention_weights = tf.nn.softmax(self.attention_dense(inputs), axis=1)
+        # (batch, seq, 1)^T @ (batch, seq, dim) -> (batch, 1, dim)
+        weighted = tf.matmul(
+            tf.transpose(attention_weights, perm=[0, 2, 1]),
+            inputs
+        )
+        # (batch, dim)
+        return tf.squeeze(weighted, axis=1)
+
+    def get_config(self):
+        return super().get_config()
+
+
+# ============================ MODEL BUILDERS ============================
+
+def _create_cct_model(
     input_shape: Tuple[int, ...],
     num_classes: int = 1,
-    base_filters: int = 64,
-    num_residual_blocks: int = 3,
-    num_transformer_layers: int = 2,
-    attention_heads: int = 8,
+    projection_dim: int = 256,
+    num_heads: int = 4,
+    transformer_layers: int = 4,
+    conv_channels: list = None,
     dropout_rate: float = 0.1,
+    stochastic_depth_rate: float = 0.1,
+    use_positional_emb: bool = True,
     architecture: str = 'hybrid_cnn_transformer'
 ) -> models.Model:
+    """Create CCT model for audio deepfake detection.
+
+    Architecture per Hassani et al. (2021) adapted for audio per
+    Bartusiak & Delp (2022):
+    1. Mel spectrogram front-end (if raw audio)
+    2. CCT Tokenizer: 2x Conv2D([64,128], 3x3, ReLU) + MaxPool(3, stride 2)
+    3. Learned positional embeddings
+    4. Transformer Encoder: pre-norm, stochastic depth
+    5. Sequence Pooling (attention-weighted)
+    6. Dense classification
     """
-    Cria um modelo híbrido CNN-Transformer do zero.
+    if conv_channels is None:
+        conv_channels = [64, 128]
 
-    Args:
-        input_shape: Formato da entrada (height, width, channels)
-        num_classes: Número de classes (1 para classificação binária)
-        base_filters: Número base de filtros para CNN
-        num_residual_blocks: Número de blocos residuais
-        num_transformer_layers: Número de camadas Transformer
-        attention_heads: Número de cabeças de atenção
-        dropout_rate: Taxa de dropout
-        architecture: Nome da arquitetura
+    inputs = layers.Input(shape=input_shape, name='audio_input')
 
-    Returns:
-        Modelo Keras compilado
-    """
-    logger.info(
-        f"Criando modelo híbrido CNN-Transformer com input_shape={input_shape}"
-    )
-
-    # Entrada
-    inputs = layers.Input(shape=input_shape, name='hybrid_input')
-
-    # Tratar diferentes formatos de entrada
-    if len(input_shape) == 1 or (
-        len(input_shape) == 2 and input_shape[-1] == 1
-    ):
-        # Converter áudio raw para espectrograma usando STFT
-        input_tensor = inputs
-        if len(input_shape) == 2:
-            # Se for (samples, 1), remover dimensão extra para STFT funcionar
-            # corretamente
-            input_tensor = layers.Reshape((input_shape[0],))(inputs)
-
-        x = STFTLayer(
-            frame_length=512, frame_step=256, fft_length=512,
-            name='stft_layer'
-        )(input_tensor)
-        x = ExpandDimsLayer(axis=-1, name='expand_dims')(x)
-    elif len(input_shape) == 2:
-        # Entrada 2D (time, features) - adicionar dimensão de canal
-        x = ExpandDimsLayer(axis=-1, name='expand_dims_2d')(inputs)
+    # ---------- Front-end: audio -> spectrogram ----------
+    if is_raw_audio(input_shape):
+        audio = ensure_flat_input(inputs, input_shape)
+        # Mel spectrogram (128 bins per Kadam et al.)
+        x = MelSpectrogramLayer(
+            sample_rate=16000, n_fft=1024, hop_length=160, n_mels=128,
+            name='mel_spectrogram'
+        )(audio)
+        # Add channel dim: (batch, time, 128) -> (batch, time, 128, 1)
+        x = layers.Reshape(
+            target_shape=(x.shape[1], 128, 1) if x.shape[1] is not None
+            else (-1, 128, 1),
+            name='add_channel'
+        )(x) if x.shape[1] is not None else layers.Lambda(
+            lambda t: tf.expand_dims(t, axis=-1), name='add_channel'
+        )(x)
     else:
-        # Entrada já é 3D (time, features, channels)
         x = inputs
+        if len(input_shape) == 2:
+            # (time, features) -> (time, features, 1)
+            x = layers.Reshape((*input_shape, 1), name='add_channel')(x)
+        # Already 3D (time, features, channels) -> OK
 
-    # Branch CNN
-    cnn_branch = x
-    logger.info(f"Shape after input processing: {cnn_branch.shape}")
+    # ---------- CCT Tokenizer ----------
+    # 2x Conv2D + MaxPool per Hassani et al.
+    tokens = CCTTokenizer(
+        num_output_channels=conv_channels,
+        kernel_size=3, stride=1,
+        pooling_kernel_size=3, pooling_stride=2,
+        name='cct_tokenizer'
+    )(x)
 
-    # Camadas convolucionais iniciais
-    cnn_branch = layers.Conv2D(
-        base_filters,
-        3,
-        activation='relu',
-        padding='same')(cnn_branch)
-    cnn_branch = layers.BatchNormalization()(cnn_branch)
-    cnn_branch = layers.MaxPooling2D(2)(cnn_branch)
-    logger.info(f"Shape after initial conv/pool: {cnn_branch.shape}")
+    # ---------- Projection to transformer dim ----------
+    tokens = layers.Dense(projection_dim, name='token_projection')(tokens)
 
-    # Blocos residuais
-    for i in range(num_residual_blocks):
-        filters = base_filters * (2 ** i)
-        cnn_branch = ResidualBlock(
-            filters=filters,
-            dropout_rate=dropout_rate
-        )(cnn_branch)
+    # ---------- Positional embeddings ----------
+    if use_positional_emb:
+        tokens = PositionalEmbeddingLayer(name='positional_embedding')(tokens)
 
-        # MaxPooling entre blocos (exceto o último)
-        if i < num_residual_blocks - 1:
-            cnn_branch = layers.MaxPooling2D(2)(cnn_branch)
+    # ---------- Transformer Encoder ----------
+    # Stochastic depth: linear schedule from 0 to stochastic_depth_rate
+    dpr = np.linspace(0, stochastic_depth_rate, transformer_layers).tolist()
 
-        logger.info(f"Shape after residual block {i}: {cnn_branch.shape}")
+    for i in range(transformer_layers):
+        tokens = TransformerBlock(
+            projection_dim=projection_dim,
+            num_heads=num_heads,
+            dropout_rate=dropout_rate,
+            stochastic_depth_rate=dpr[i],
+            name=f'transformer_block_{i}'
+        )(tokens)
 
-    # Atenção multi-escala
-    cnn_branch = MultiScaleAttention(filters=cnn_branch.shape[-1])(cnn_branch)
+    # Final LayerNorm
+    tokens = layers.LayerNormalization(epsilon=1e-5, name='final_norm')(tokens)
 
-    # Converter para sequência para o Transformer
-    cnn_shape = cnn_branch.shape
-    sequence_length = cnn_shape[1] * cnn_shape[2]
-    feature_dim = cnn_shape[3]
+    # ---------- Sequence Pooling ----------
+    representation = SequencePooling(name='sequence_pooling')(tokens)
 
-    cnn_flattened = layers.Reshape((sequence_length, feature_dim))(cnn_branch)
+    # ---------- Classification ----------
+    representation = layers.Dropout(dropout_rate, name='head_dropout')(representation)
 
-    # Branch Transformer
-    transformer_branch = cnn_flattened
-
-    # Camadas de atenção temporal
-    for i in range(num_transformer_layers):
-        transformer_branch = TemporalAttention(
-            units=feature_dim,
-            num_heads=attention_heads
-        )(transformer_branch)
-
-    # Pooling e combinação
-    cnn_pooled = layers.GlobalAveragePooling2D()(cnn_branch)
-    transformer_pooled = layers.GlobalAveragePooling1D()(transformer_branch)
-
-    # Combinar branches
-    combined = layers.Concatenate()([cnn_pooled, transformer_pooled])
-
-    # Camadas finais
-    x = layers.Dense(512, activation='relu')(combined)
-    x = layers.Dropout(dropout_rate)(x)
-    x = layers.Dense(256, activation='relu')(x)
-    x = layers.Dropout(dropout_rate)(x)
-
-    # Camada de saída
-    if num_classes == 1:
-        outputs = layers.Dense(1, activation='sigmoid', name='output')(x)
+    if num_classes == 1 or num_classes == 2:
+        outputs = layers.Dense(1, activation='sigmoid', name='output')(representation)
+        loss = 'binary_crossentropy'
     else:
-        outputs = layers.Dense(
-            num_classes,
-            activation='softmax',
-            name='output')(x)
+        outputs = layers.Dense(num_classes, activation='softmax', name='output')(representation)
+        loss = 'sparse_categorical_crossentropy'
 
-    # Criar modelo
     model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
 
-    logger.info(f"Modelo híbrido criado com {model.count_params()} parâmetros")
+    # AdamW per CCT paper
+    model.compile(
+        optimizer=tf.keras.optimizers.AdamW(
+            learning_rate=1e-3,
+            weight_decay=1e-4
+        ),
+        loss=loss,
+        metrics=['accuracy']
+    )
 
+    logger.info(f"CCT model created: transformer_layers={transformer_layers}, heads={num_heads}, dim={projection_dim}, params={model.count_params()}")
     return model
 
 
-def create_lightweight_hybrid_cnn_transformer(
+def _create_cct_lite(
     input_shape: Tuple[int, ...],
     num_classes: int = 1,
     architecture: str = 'hybrid_cnn_transformer_lite'
 ) -> models.Model:
-    """
-    Cria uma versão leve do modelo híbrido para inferência rápida.
+    """Lightweight CCT variant.
 
-    Args:
-        input_shape: Formato da entrada
-        num_classes: Número de classes
-        architecture: Nome da arquitetura
-
-    Returns:
-        Modelo Keras compilado
+    Fewer conv filters, single transformer layer, smaller dim.
     """
-    return create_hybrid_cnn_transformer_model(
+    return _create_cct_model(
         input_shape=input_shape,
         num_classes=num_classes,
-        base_filters=32,
-        num_residual_blocks=2,
-        num_transformer_layers=1,
-        attention_heads=4,
-        dropout_rate=0.15,
+        projection_dim=64,
+        num_heads=2,
+        transformer_layers=1,
+        conv_channels=[32, 64],
+        dropout_rate=0.1,
+        stochastic_depth_rate=0.0,
+        use_positional_emb=True,
         architecture=architecture
     )
 
 
+# ============================ FACTORY ============================
+
 def create_model(
     input_shape: Tuple[int, ...],
     num_classes: int = 1,
-    architecture: str = 'hybrid_cnn_transformer'
+    architecture: str = 'hybrid_cnn_transformer',
+    **kwargs
 ) -> models.Model:
-    """
-    Função factory para criar modelos híbridos (compatibilidade com código existente).
+    """Factory function for CCT-based hybrid CNN-Transformer models.
 
-    Args:
-        input_shape: Formato da entrada
-        num_classes: Número de classes
-        architecture: Nome da arquitetura
-
-    Returns:
-        Modelo Keras compilado
+    Variants:
+        'hybrid_cnn_transformer': Full CCT (2x conv [64,128] + 2x Transformer)
+        'hybrid_cnn_transformer_lite': Lightweight (2x conv [32,64] + 1x Transformer)
     """
-    if architecture == 'hybrid_cnn_transformer':
-        return create_hybrid_cnn_transformer_model(
-            input_shape, num_classes, architecture=architecture)
-    elif architecture == 'hybrid_cnn_transformer_lite':
-        return create_lightweight_hybrid_cnn_transformer(
-            input_shape, num_classes, architecture=architecture)
+    if architecture == 'hybrid_cnn_transformer_lite':
+        return _create_cct_lite(input_shape, num_classes, architecture)
     else:
-        raise ValueError(
-            f"Arquitetura não suportada: {architecture}. Use 'hybrid_cnn_transformer' ou 'hybrid_cnn_transformer_lite'")
+        return _create_cct_model(
+            input_shape=input_shape,
+            num_classes=num_classes,
+            architecture=architecture,
+            **kwargs
+        )
 
 
-# Registrar camadas customizadas para carregamento de modelo
+# Register custom layers
 tf.keras.utils.get_custom_objects().update({
-    'ResidualBlock': ResidualBlock,
-    'MultiScaleAttention': MultiScaleAttention,
-    'TemporalAttention': TemporalAttention,
-    'STFTLayer': STFTLayer,
-    'ExpandDimsLayer': ExpandDimsLayer
+    'MelSpectrogramLayer': MelSpectrogramLayer,
+    'CCTTokenizer': CCTTokenizer,
+    'StochasticDepth': StochasticDepth,
+    'TransformerBlock': TransformerBlock,
+    'PositionalEmbeddingLayer': PositionalEmbeddingLayer,
+    'SequencePooling': SequencePooling,
 })
-
-# Exportar principais funções
-__all__ = [
-    'create_hybrid_cnn_transformer_model',
-    'create_lightweight_hybrid_cnn_transformer',
-    'create_model',
-    'ResidualBlock',
-    'MultiScaleAttention',
-    'TemporalAttention'
-]

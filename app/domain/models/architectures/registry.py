@@ -4,9 +4,10 @@ Este módulo centraliza o registro de todas as arquiteturas de deep learning
 disponíveis no sistema, facilitando a integração com o pipeline de detecção.
 """
 
-from typing import Dict, List, Callable, Any, Tuple
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
+from typing import Any, Dict, List, Tuple
+
 from .architecture_patcher import patch_architecture_for_safety, validate_model_safety
 
 logger = logging.getLogger(__name__)
@@ -53,9 +54,13 @@ class ArchitectureRegistry:
                     "l2_reg_strength": 0.0005,
                     "hidden_dim": 512,
                     "num_layers": 8,
+                    "sinc_filters": 128,
+                    "label_smoothing": 0.1,
+                    "use_am_softmax": True,
                     "use_early_stopping": True,
                     "use_gradient_clipping": True,
                     "use_advanced_augmentation": True,
+                    "scheduler": "cosine_restarts",
                     # Training params
                     "patience": 20,
                     "lr_patience": 10,
@@ -63,10 +68,11 @@ class ArchitectureRegistry:
                     "augmentation_strength": 0.25
                 },
                 input_requirements={
-                    "type": "features",
-                    "format": "spectrogram",
-                    "min_sequence_length": 100,
-                    "feature_dim": 80}
+                    "type": "audio",
+                    "format": "raw",
+                    "sample_rate": 16000,
+                    "max_duration": 4.0,
+                    "preprocessing": "normalize"}
             )
         )
 
@@ -76,7 +82,7 @@ class ArchitectureRegistry:
                 name="RawGAT-ST",
                 module_path="app.domain.models.architectures.rawgat_st",
                 function_name="create_model",
-                description="Raw Graph Attention Spatio-Temporal Network - configuração otimizada para reduzir overfitting",
+                description="Raw Graph Attention Spatio-Temporal Network - otimizado com HS-GAL 3 camadas e focal loss",
                 supported_variants=[
                     "default",
                     "cnn_baseline",
@@ -90,6 +96,10 @@ class ArchitectureRegistry:
                     "attention_heads": 8,
                     "hidden_dim": 512,
                     "num_layers": 6,
+                    "res_channels": [128, 128, 256, 256, 512, 512],
+                    "hsgal_layers": 3,
+                    "graph_pool_ratio": 0.7,
+                    "use_focal_loss": True,
                     "use_early_stopping": True,
                     "use_gradient_clipping": True,
                     "use_advanced_augmentation": True,
@@ -100,10 +110,11 @@ class ArchitectureRegistry:
                     "augmentation_strength": 0.3
                 },
                 input_requirements={
-                    "type": "features",
-                    "format": "spectrogram",
-                    "min_sequence_length": 100,
-                    "feature_dim": 80}
+                    "type": "audio",
+                    "format": "raw",
+                    "sample_rate": 16000,
+                    "max_duration": 4.0,
+                    "preprocessing": "normalize"}
             )
         )
 
@@ -118,9 +129,11 @@ class ArchitectureRegistry:
                     "efficientnet_lstm",
                     "efficientnet_lstm_lite"],
                 default_params={
-                    "lstm_units": 512,
-                    "attention_units": 256,
-                    "dropout_rate": 0.2,
+                    "lstm_units": [256, 128],
+                    "dropout_rate": 0.3,
+                    "n_mels": 128,
+                    "use_delta_features": True,
+                    "fine_tune_layers": 3,
                     # Training params
                     "patience": 15,
                     "lr_patience": 8,
@@ -128,29 +141,31 @@ class ArchitectureRegistry:
                     "augmentation_strength": 0.3
                 },
                 input_requirements={
-                    "type": "features",
-                    "format": "spectrogram",
-                    "min_sequence_length": 100,
-                    "feature_dim": 80}
+                    "type": "audio",
+                    "format": "raw",
+                    "sample_rate": 16000,
+                    "max_duration": 4.0,
+                    "preprocessing": "normalize",
+                    "supports_2d_input": True}
             )
         )
 
-        # MultiscaleCNN
+        # MultiscaleCNN (Res2Net — Gao et al., TPAMI 2021)
         self.register(
             ArchitectureInfo(
                 name="MultiscaleCNN",
                 module_path="app.domain.models.architectures.multiscale_cnn",
                 function_name="create_model",
-                description="Multi-Scale Convolutional Neural Network - configuração otimizada para reduzir overfitting",
+                description="Res2Net: Multi-scale backbone with hierarchical residual connections (Gao et al., TPAMI 2021). Res2Net-50 config: scale=4, baseWidth=26, [3,4,6,3] blocks.",
                 supported_variants=["multiscale_cnn", "multiscale_cnn_lite"],
                 default_params={
                     "architecture": "multiscale_cnn",
-                    "filters": [64, 128, 256, 512],
-                    "kernel_sizes": [3, 5, 7],
+                    "base_width": 26,
+                    "scale": 8,
+                    "input_size": 128,
+                    "use_se_blocks": True,
+                    "use_log_mel": True,
                     "dropout_rate": 0.2,
-                    "use_early_stopping": True,
-                    "use_gradient_clipping": True,
-                    "use_advanced_augmentation": True,
                     # Training params
                     "patience": 15,
                     "lr_patience": 8,
@@ -171,15 +186,20 @@ class ArchitectureRegistry:
                 name="SpectrogramTransformer",
                 module_path="app.domain.models.architectures.spectrogram_transformer",
                 function_name="create_model",
-                description="Transformer-based model for spectrogram analysis - configuração padrão para máxima acurácia",
+                description="Audio Spectrogram Transformer (AST) - ViT-Base with overlapping patches for audio deepfake detection",
                 supported_variants=[
                     "spectrogram_transformer",
                     "spectrogram_transformer_lite"],
                 default_params={
-                    "d_model": 512,
-                    "num_heads": 16,
+                    "patch_size": [8, 8],
+                    "stride": [6, 6],
+                    "embed_dim": 768,
                     "num_blocks": 12,
+                    "num_heads": 12,
+                    "ff_dim": 3072,
                     "dropout_rate": 0.1,
+                    "use_conv_stem": True,
+                    "scheduler": "warmup_cosine",
                     # Training params
                     "patience": 25,
                     "lr_patience": 12,
@@ -203,10 +223,14 @@ class ArchitectureRegistry:
                 description="Conformer: Convolution-augmented Transformer - configuração padrão para máxima acurácia",
                 supported_variants=["conformer", "conformer_lite"],
                 default_params={
-                    "d_model": 512,
-                    "num_blocks": 12,
-                    "num_heads": 16,
-                    "dropout_rate": 0.1,
+                    "d_model": 256,
+                    "num_blocks": 8,
+                    "num_heads": 4,
+                    "attn_dropout": 0.1,
+                    "ffn_dropout": 0.2,
+                    "conv_dropout": 0.1,
+                    "label_smoothing": 0.1,
+                    "scheduler": "warmup_cosine",
                     # Training params
                     "patience": 22,
                     "lr_patience": 11,
@@ -227,15 +251,18 @@ class ArchitectureRegistry:
                 name="Ensemble",
                 module_path="app.domain.models.architectures.ensemble",
                 function_name="create_model",
-                description="Ensemble of multiple architectures",
+                description="Multi-spectrogram ensemble (Mel+LFCC+CQT) with MLP fusion — Pham et al. 2024",
                 supported_variants=[
                     "ensemble",
-                    "ensemble_lite",
-                    "ensemble_feature_fusion",
-                    "ensemble_hybrid"],
+                    "ensemble_score",
+                    "ensemble_lite"],
                 default_params={
-                    "ensemble_method": "weighted_average",
-                    "fusion_method": "prediction_level",
+                    "dropout_rate": 0.3,
+                    "use_mfcc_branch": True,
+                    "use_cross_attention": True,
+                    "use_gated_fusion": True,
+                    "use_se_blocks": True,
+                    "aux_loss_weight": 0.3,
                     # Training params
                     "patience": 15,
                     "lr_patience": 8,
@@ -243,32 +270,31 @@ class ArchitectureRegistry:
                     "augmentation_strength": 0.3
                 },
                 input_requirements={
-                    "type": "features",
-                    "format": "spectrogram",
-                    "min_sequence_length": 100,
-                    "feature_dim": 80}
+                    "type": "audio",
+                    "format": "raw",
+                    "sample_rate": 16000,
+                    "max_duration": 4.0,
+                    "preprocessing": "normalize",
+                    "supports_2d_input": True}
             )
         )
 
-        # Sonic Sleuth
+        # Sonic Sleuth (Alshehri et al., MDPI Computers 2024)
         self.register(
             ArchitectureInfo(
                 name="Sonic Sleuth",
                 module_path="app.domain.models.architectures.sonic_sleuth",
                 function_name="create_model",
-                description="CNN especializada para detecção de deepfake usando espectrogramas de mel - configuração padrão para máxima acurácia",
-                supported_variants=["sonic_sleuth"],
+                description="Sonic Sleuth (Alshehri et al., 2024): LFCC/MFCC/CQT feature extraction + 3×Conv2D(32→64→128) + Dense(256→128) + Dropout(0.1). Best: LFCC 98.27% accuracy.",
+                supported_variants=["sonic_sleuth", "sonic_sleuth_mfcc", "sonic_sleuth_cqt", "sonic_sleuth_lfcc_cqt"],
                 default_params={
                     "sample_rate": 16000,
-                    "n_fft": 2048,
-                    "hop_length": 512,
-                    "n_mels": 256,
-                    "dropout_rate": 0.2,
-                    "filters": [
-                        64,
-                        128,
-                        256,
-                        512],
+                    "use_batch_norm": True,
+                    "num_conv_blocks": 5,
+                    "use_residual": True,
+                    "use_se_blocks": True,
+                    "use_gap_gmp": True,
+                    "dropout_rate": 0.3,
                     # Training params
                     "patience": 15,
                     "lr_patience": 8,
@@ -279,7 +305,8 @@ class ArchitectureRegistry:
                     "type": "audio",
                     "format": "raw",
                     "max_duration": 3.0,
-                    "sample_rate": 16000}
+                    "sample_rate": 16000,
+                    "preprocessing": "normalize"}
             )
         )
 
@@ -292,10 +319,13 @@ class ArchitectureRegistry:
                 description="Arquitetura de rede neural que opera diretamente no áudio bruto para detecção de deepfake - configuração padrão para máxima acurácia",
                 supported_variants=["rawnet2", "rawnet2_lite"],
                 default_params={
-                    "conv_filters": [128, 256, 512],
-                    "gru_units": 256,
-                    "dense_units": 128,
-                    "dropout_rate": 0.2,
+                    "sinc_filters": 128,
+                    "sinc_kernel_size": 1024,
+                    "res_filters": [128, 128, 256, 256, 256, 256],
+                    "gru_units": 512,
+                    "dense_units": 512,
+                    "use_pre_emphasis": True,
+                    "dropout_rate": 0.3,
                     # Training params
                     "patience": 15,
                     "lr_patience": 8,
@@ -324,6 +354,8 @@ class ArchitectureRegistry:
                     "wavlm_model": "microsoft/wavlm-large",
                     "freeze_wavlm": True,
                     "classifier_units": [1024, 512, 256],
+                    "use_attention_pooling": True,
+                    "use_temporal_conv": True,
                     "dropout_rate": 0.2,
                     # Training params
                     "patience": 15,
@@ -341,78 +373,25 @@ class ArchitectureRegistry:
             )
         )
 
-        # SVM
-        self.register(
-            ArchitectureInfo(
-                name="SVM",
-                module_path="app.domain.models.architectures.svm",
-                function_name="create_model",
-                description="Support Vector Machine para classificação de deepfake com kernel RBF - modelo clássico de machine learning",
-                supported_variants=[
-                    "svm", "svm_linear", "svm_poly", "svm_rbf"],
-                default_params={
-                    "kernel": "rbf",
-                    "C": 1.0,
-                    "gamma": "scale",
-                    "probability": True,
-                    "random_state": 42,
-                    # Training params (unused for SVM but kept for consistency)
-                    "patience": 15,
-                    "lr_patience": 8,
-                    "gradient_clip": 1.0,
-                    "augmentation_strength": 0.3
-                },
-                input_requirements={
-                    "type": "features",
-                    "format": "tabular",
-                    "preprocessing": "standardize"
-                }
-            )
-        )
-
-        # Random Forest
-        self.register(
-            ArchitectureInfo(
-                name="RandomForest",
-                module_path="app.domain.models.architectures.random_forest",
-                function_name="create_model",
-                description="Random Forest para classificação de deepfake com ensemble de árvores de decisão - modelo clássico de machine learning",
-                supported_variants=[
-                    "random_forest",
-                    "random_forest_balanced",
-                    "random_forest_entropy"],
-                default_params={
-                    "n_estimators": 100,
-                    "max_depth": None,
-                    "min_samples_split": 2,
-                    "min_samples_leaf": 1,
-                    "random_state": 42,
-                    "n_jobs": -1
-                },
-                input_requirements={
-                    "type": "features",
-                    "format": "tabular",
-                    "preprocessing": "normalize"
-                }
-            )
-        )
-
         # HuBERT
         self.register(
             ArchitectureInfo(
                 name="HuBERT",
                 module_path="app.domain.models.architectures.hubert",
                 function_name="create_model",
-                description="Arquitetura HuBERT padrão para detecção de deepfakes com extrator de características e classificador MLP em duas etapas com foco em acurácia",
+                description="Arquitetura baseada em HuBERT (Hidden-Unit BERT) para detecção de deepfakes em áudio bruto - fidelidade ao paper",
                 supported_variants=["hubert", "hubert_lite"],
                 default_params={
-                    "num_classes": 1,
-                    "architecture": "hubert",
-                    "hidden_size": 768,
-                    "num_attention_heads": 12,
-                    "num_hidden_layers": 12,
-                    "classifier_hidden_dim": 256,
-                    "dropout_rate": 0.3
+                    "model_name": "facebook/hubert-base-ls960",
+                    "freeze_hubert": True,
+                    "classifier_units": [512, 256, 128],
+                    "use_attention_pooling": True,
+                    "dropout_rate": 0.3,
+                    # Training params
+                    "patience": 15,
+                    "lr_patience": 8,
+                    "gradient_clip": 1.0,
+                    "augmentation_strength": 0.3
                 },
                 input_requirements={
                     "type": "audio",
@@ -430,17 +409,16 @@ class ArchitectureRegistry:
                 name="Hybrid CNN-Transformer",
                 module_path="app.domain.models.architectures.hybrid_cnn_transformer",
                 function_name="create_model",
-                description="Arquitetura híbrida que combina CNNs para extração de features espaciais com Transformers para modelagem temporal, otimizada para detecção de deepfakes em áudio",
+                description="CCT (Compact Convolutional Transformer) — Hassani et al. 2021, adapted for audio deepfake per Bartusiak & Delp 2022",
                 supported_variants=[
                     "hybrid_cnn_transformer",
                     "hybrid_cnn_transformer_lite"],
                 default_params={
-                    "num_classes": 1,
-                    "architecture": "hybrid_cnn_transformer",
-                    "base_filters": 64,
-                    "num_residual_blocks": 3,
-                    "num_transformer_layers": 2,
-                    "attention_heads": 8,
+                    "projection_dim": 256,
+                    "num_heads": 4,
+                    "transformer_layers": 4,
+                    "n_fft": 1024,
+                    "use_se_blocks": True,
                     "dropout_rate": 0.1,
                     # Training params
                     "patience": 15,
@@ -449,13 +427,12 @@ class ArchitectureRegistry:
                     "augmentation_strength": 0.3
                 },
                 input_requirements={
-                    "type": "features",
-                    "format": "spectrogram",
-                    "min_sequence_length": 100,
-                    "feature_dim": 80,
-                    "supports_1d_input": True,
-                    "supports_2d_input": True,
-                    "preprocessing": "spectrogram_or_raw"
+                    "type": "audio",
+                    "format": "raw",
+                    "sample_rate": 16000,
+                    "max_duration": 4.0,
+                    "preprocessing": "normalize",
+                    "supports_2d_input": True
                 }
             )
         )
@@ -464,16 +441,13 @@ class ArchitectureRegistry:
         """Registra uma nova arquitetura."""
         self._architectures[architecture_info.name] = architecture_info
         logger.info(
-            f"Arquitetura {
-                architecture_info.name} registrada com sucesso")
+            f"Arquitetura {architecture_info.name} registrada com sucesso")
 
     def get_architecture(self, name: str) -> ArchitectureInfo:
         """Obtém informações de uma arquitetura."""
         if name not in self._architectures:
             raise ValueError(
-                f"Arquitetura '{name}' não encontrada. Disponíveis: {
-                    list(
-                        self._architectures.keys())}")
+                f"Arquitetura '{name}' não encontrada. Disponíveis: {list(self._architectures.keys())}")
         return self._architectures[name]
 
     def list_architectures(self) -> List[str]:
@@ -488,34 +462,32 @@ class ArchitectureRegistry:
                           variant: str = "default") -> Dict[str, Any]:
         """Obtém a configuração ativa do banco de dados (ou default se falhar)."""
         try:
-            from app.domain.models import ArchitectureConfig
-            # from app.core.db_setup import get_flask_app  <-- Removido para evitar ciclo
+            from app.core.database import SessionLocal
+            from app.domain.models.architecture_config import ArchitectureConfig
 
-            # Precisamos de um contexto de aplicação se não estivermos em um
-            # Mas cuidado com criação excessiva de apps.
-            # Assumimos que quem chama já está em contexto ou podemos criar um leve.
-            # Se falhar import do db ou contexto, fallback para default_params
-            # do registry.
-
-            # Tentar buscar no DB
-            config = ArchitectureConfig.query.filter_by(
-                architecture_name=architecture_name,
-                variant_name=variant,
-                is_active=True
-            ).first()
-
-            if config:
-                return config.parameters
-
-            # Fallback se não encontrar variante específica: tentar default
-            if variant != "default":
-                config = ArchitectureConfig.query.filter_by(
+            db_session = SessionLocal()
+            try:
+                # Tentar buscar no DB usando SQLAlchemy nativo
+                config = db_session.query(ArchitectureConfig).filter_by(
                     architecture_name=architecture_name,
-                    variant_name="default",
+                    variant_name=variant,
                     is_active=True
                 ).first()
+
                 if config:
                     return config.parameters
+
+                # Fallback se não encontrar variante específica: tentar default
+                if variant != "default":
+                    config = db_session.query(ArchitectureConfig).filter_by(
+                        architecture_name=architecture_name,
+                        variant_name="default",
+                        is_active=True
+                    ).first()
+                    if config:
+                        return config.parameters
+            finally:
+                db_session.close()
 
         except Exception as e:
             logger.warning(
@@ -602,37 +574,36 @@ class ArchitectureRegistry:
     def sync_defaults_to_db(self):
         """Sincroniza os parâmetros padrão do registry para o banco de dados."""
         try:
-            from app.domain.models import ArchitectureConfig
-            from app.extensions import db
+            from app.core.database import SessionLocal
+            from app.domain.models.architecture_config import ArchitectureConfig
 
-            # Iterar sobre todas as arquiteturas registradas
-            for name, info in self._architectures.items():
-                # Verificar se já existe configuração default
-                config = ArchitectureConfig.query.filter_by(
-                    architecture_name=name,
-                    variant_name="default"
-                ).first()
-
-                if not config:
-                    logger.info(f"Criando configuração default no DB para {name}")
-                    new_config = ArchitectureConfig(
+            db_session = SessionLocal()
+            try:
+                # Iterar sobre todas as arquiteturas registradas
+                for name, info in self._architectures.items():
+                    # Verificar se já existe configuração default
+                    config = db_session.query(ArchitectureConfig).filter_by(
                         architecture_name=name,
-                        variant_name="default",
-                        description=info.description,
-                        parameters=info.default_params,
-                        is_active=True
-                    )
-                    db.session.add(new_config)
-                else:
-                    # Opcional: Atualizar se necessário, mas cuidado para não sobrescrever customizações
-                    # Por enquanto, mantemos o que está no banco se já existir
-                    pass
-            
-            db.session.commit()
-            logger.info("Sincronização de configurações padrão concluída.")
+                        variant_name="default"
+                    ).first()
+
+                    if not config:
+                        logger.info(f"Criando configuração default no DB para {name}")
+                        new_config = ArchitectureConfig(
+                            architecture_name=name,
+                            variant_name="default",
+                            description=info.description,
+                            parameters=info.default_params,
+                            is_active=True
+                        )
+                        db_session.add(new_config)
+
+                db_session.commit()
+                logger.info("Sincronização de configurações padrão concluída.")
+            finally:
+                db_session.close()
         except Exception as e:
             logger.error(f"Erro ao sincronizar defaults para o DB: {e}")
-            db.session.rollback()
 
 
 # Instância global do registry
@@ -692,8 +663,8 @@ def load_hyperparameters_json(
     Returns:
         Dict com hiperparâmetros ou dict vazio se não encontrar
     """
-    import os
     import json
+    import os
 
     # Normalizar nome para busca de arquivo (ex: "Random Forest" ->
     # "random_forest")

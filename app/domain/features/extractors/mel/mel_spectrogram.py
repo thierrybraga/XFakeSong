@@ -5,12 +5,17 @@ Extração de Mel Spectrograma
 Implementa extração de Mel Spectrograma para modelos de Deep Learning.
 """
 
-import numpy as np
-import librosa
-import warnings
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
-from .....core.interfaces.audio import AudioData, AudioFeatures, FeatureType, IFeatureExtractor
+import librosa
+import numpy as np
+
+from .....core.interfaces.audio import (
+    AudioData,
+    AudioFeatures,
+    FeatureType,
+    IFeatureExtractor,
+)
 from .....core.interfaces.base import ProcessingResult, ProcessingStatus
 
 

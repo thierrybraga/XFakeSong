@@ -5,11 +5,12 @@ garantindo intercambiabilidade e modularidade.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Union, Tuple, Protocol
 from dataclasses import dataclass
 from enum import Enum
-import numpy as np
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
+
+import numpy as np
 
 
 class ComponentType(Enum):
@@ -125,6 +126,7 @@ class IPipelineComponent(ABC):
         """
         return True
 
+    @abstractmethod
     def cleanup(self) -> None:
         """Limpa recursos do componente."""
         pass

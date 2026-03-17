@@ -7,19 +7,23 @@ incluindo escalas Bark, ERB, loudness, sharpness e outras medidas perceptuais.
 """
 
 # Third-party imports
-import numpy as np
 from typing import Dict
 
+import numpy as np
+
 from .components import (
-    hz_to_bark, bark_to_hz, hz_to_erb, erb_to_hz,
+    bark_to_hz,
+    erb_to_hz,
     extract_bark_features,
     extract_erb_features,
-    extract_loudness_features,
-    extract_sharpness_features,
-    extract_roughness_features,
     extract_fluctuation_features,
+    extract_loudness_features,
+    extract_masking_features,
+    extract_roughness_features,
+    extract_sharpness_features,
     extract_tonality_features,
-    extract_masking_features
+    hz_to_bark,
+    hz_to_erb,
 )
 
 

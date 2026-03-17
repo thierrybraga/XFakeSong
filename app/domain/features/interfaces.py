@@ -1,7 +1,8 @@
 """Interfaces para extratores de características."""
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List
+
 import numpy as np
 
 from app.domain.features.types import FeatureType, ProcessingResult

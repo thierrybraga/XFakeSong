@@ -9,14 +9,15 @@ from __future__ import annotations
 
 import logging
 import os
+from abc import ABC, abstractmethod
+from typing import Any, Dict, List, Optional, Tuple
+
 import joblib
 import numpy as np
-from abc import ABC, abstractmethod
-from typing import List, Tuple, Optional, Any, Dict, Union
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 
 from app.domain.features.segmented_feature_loader import create_feature_loader
 
@@ -60,12 +61,12 @@ class BaseClassicalModel(ABC):
 
         self.pipeline.fit(X, y)
         self.is_fitted = True
-        
+
         # Extract classes from the final estimator
         final_estimator = self.pipeline.steps[-1][1]
         if hasattr(final_estimator, 'classes_'):
             self.classes_ = final_estimator.classes_
-            
+
         # Extract feature importances if available
         if hasattr(final_estimator, 'feature_importances_'):
             self.feature_importances_ = final_estimator.feature_importances_
@@ -89,7 +90,7 @@ class BaseClassicalModel(ABC):
         """
         if not self.is_fitted:
             raise ValueError("Model must be fitted before making predictions")
-        
+
         # Check if the underlying model supports probability
         final_estimator = self.pipeline.steps[-1][1]
         if hasattr(final_estimator, 'predict_proba'):
@@ -133,20 +134,20 @@ class BaseClassicalModel(ABC):
             raise FileNotFoundError(f"Model file not found: {filepath}")
 
         pipeline = joblib.load(filepath)
-        
+
         # Extract parameters from the pipeline's final step
         final_step_name = pipeline.steps[-1][0]
         final_estimator = pipeline.steps[-1][1]
         params = final_estimator.get_params()
-        
+
         # Filter params to match __init__ arguments if possible, or just pass as kwargs
         # This part depends on how the subclass __init__ is structured.
         # Ideally, we reconstruct the object using the params.
-        
+
         instance = model_class(**params)
         instance.pipeline = pipeline
         instance.is_fitted = True
-        
+
         if hasattr(final_estimator, 'classes_'):
             instance.classes_ = final_estimator.classes_
         if hasattr(final_estimator, 'feature_importances_'):
@@ -191,10 +192,10 @@ class BaseClassicalModel(ABC):
         )
 
         self.fit(X_train, y_train)
-        
+
         train_score = self.score(X_train, y_train)
         test_score = self.score(X_test, y_test)
-        
+
         y_pred = self.predict(X_test)
         try:
             y_proba = self.predict_proba(X_test)
@@ -225,7 +226,7 @@ class BaseClassicalModel(ABC):
             'y_test': y_test.tolist(),
             'y_proba': y_proba.tolist() if y_proba is not None else []
         }
-        
+
         if feature_importance:
             results['feature_importance'] = feature_importance
             results['top_features'] = top_features
@@ -267,18 +268,18 @@ def optimize_hyperparameters(
     grid_search.fit(X_train, y_train)
 
     best_params = grid_search.best_params_
-    
+
     # Extract params for the model class
     model_params = {
-        k.replace(f'{step_name}__', ''): v 
-        for k, v in best_params.items() 
+        k.replace(f'{step_name}__', ''): v
+        for k, v in best_params.items()
         if k.startswith(f'{step_name}__')
     }
 
     optimized_model = model_class(**model_params)
     optimized_model.pipeline = grid_search.best_estimator_
     optimized_model.is_fitted = True
-    
+
     final_estimator = grid_search.best_estimator_.named_steps[step_name]
     if hasattr(final_estimator, 'classes_'):
         optimized_model.classes_ = final_estimator.classes_
@@ -321,7 +322,7 @@ def evaluate_model(
         'predictions': y_pred.tolist(),
         'probabilities': y_proba.tolist() if y_proba is not None else None
     }
-    
+
     if feature_importance:
         results['feature_importance'] = feature_importance
 
@@ -329,7 +330,7 @@ def evaluate_model(
         logger.info(f"{model.name} Evaluation Results:")
         logger.info(f"Accuracy: {accuracy:.4f}")
         logger.info(f"Confusion Matrix:\n{conf_matrix}")
-        
+
         if feature_importance:
             sorted_features = sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)
             logger.info("Top 10 Most Important Features:")

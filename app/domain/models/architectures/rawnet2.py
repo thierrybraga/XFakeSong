@@ -1,148 +1,101 @@
 """RawNet2 Architecture Implementation
 
-Arquitetura de rede neural que opera diretamente no áudio bruto (raw audio)
-para detecção de áudio deepfake. Baseada na arquitetura RawNet2 original.
+Paper-faithful implementation of RawNet2 for audio deepfake detection.
+Operates directly on raw audio waveforms.
+
+Reference: Jung et al., "Improved RawNet with Feature Map Scaling for
+Text-Independent Speaker Verification using Raw Waveforms", 2020
+
+Architecture:
+1. SincNet front-end (learnable bandpass filters)
+2. Residual blocks with Feature Map Scaling (FMS)
+3. GRU for temporal modeling
+4. Dense classifier
 """
 
 # Third-party imports
-import numpy as np
-import tensorflow as tf
-from typing import Tuple, Optional
 import logging
-from tensorflow.keras import layers, models, regularizers
+from typing import Tuple
+
+import tensorflow as tf
+from tensorflow.keras import layers, models
+
 from app.core.utils.audio_utils import preprocess_legacy as preprocess
-from app.domain.models.architectures.layers import create_classification_head
+from app.domain.models.architectures.layers import (
+    AudioNormalizationLayer,
+    FeatureMapScalingLayer,
+    MultiScaleConv1DBlock,
+    PreEmphasisLayer,
+    ResidualBlock1D,
+    SincNetLayer,
+    create_classification_head,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class AudioResamplingLayer(layers.Layer):
-    """Custom layer para reamostrar áudio para 16kHz."""
-
-    def __init__(self, target_sample_rate=16000, **kwargs):
-        super(AudioResamplingLayer, self).__init__(**kwargs)
-        self.target_sample_rate = target_sample_rate
-
-    def call(self, inputs):
-        # Para simplificação, assumimos que o áudio já está em 16kHz
-        # Em uma implementação real, seria necessário reamostrar
-        return inputs
-
-    def get_config(self):
-        config = super().get_config()
-        config.update({
-            'target_sample_rate': self.target_sample_rate
-        })
-        return config
-
-
-class AudioNormalizationLayer(layers.Layer):
-    """Custom layer para normalizar áudio com média zero e variância unitária."""
-
-    def __init__(self, **kwargs):
-        super(AudioNormalizationLayer, self).__init__(**kwargs)
+    def __init__(
+        self,
+        source_sample_rate: int = 16000,
+        target_sample_rate: int = 16000,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.source_sample_rate = int(source_sample_rate)
+        self.target_sample_rate = int(target_sample_rate)
 
     def call(self, inputs):
-        # Calcular média e desvio padrão ao longo do eixo temporal
-        mean = tf.reduce_mean(inputs, axis=-1, keepdims=True)
-        std = tf.math.reduce_std(inputs, axis=-1, keepdims=True)
+        x = inputs
+        squeezed = False
+        if x.shape.rank == 3 and x.shape[-1] == 1:
+            x = tf.squeeze(x, axis=-1)
+            squeezed = True
 
-        # Evitar divisão por zero
-        std = tf.maximum(std, 1e-8)
-
-        # Normalizar
-        normalized = (inputs - mean) / std
-
-        return normalized
-
-    def get_config(self):
-        config = super().get_config()
-        return config
-
-
-class MultiScaleConv1DBlock(layers.Layer):
-    """Bloco convolucional multi-escala para capturar características em diferentes escalas."""
-
-    def __init__(self, filters, kernel_sizes=[3, 5, 7], **kwargs):
-        super(MultiScaleConv1DBlock, self).__init__(**kwargs)
-        self.filters = int(filters)  # Garantir que seja inteiro
-        self.kernel_sizes = kernel_sizes
-
-    def build(self, input_shape):
-        super().build(input_shape)
-
-        # Criar camadas convolucionais para cada kernel size
-        self.conv_layers = []
-        self.bn_layers = []
-
-        for kernel_size in self.kernel_sizes:
-            conv = layers.Conv1D(
-                filters=self.filters,
-                kernel_size=kernel_size,
-                padding='same',
-                activation=None
+        if self.source_sample_rate == self.target_sample_rate:
+            y = x
+        else:
+            in_len = tf.shape(x)[-1]
+            ratio = tf.cast(self.target_sample_rate, tf.float32) / tf.cast(
+                self.source_sample_rate, tf.float32
             )
-            bn = layers.BatchNormalization()
+            target_len = tf.cast(tf.round(tf.cast(in_len, tf.float32) * ratio), tf.int32)
+            y = tf.signal.resample(x, target_len, axis=-1)
 
-            self.conv_layers.append(conv)
-            self.bn_layers.append(bn)
-
-        # Camada de concatenação
-        self.concat = layers.Concatenate(axis=-1)
-
-        # Camada de redução dimensional
-        self.reduction_conv = layers.Conv1D(
-            filters=self.filters,
-            kernel_size=1,
-            padding='same',
-            activation='relu'
-        )
-
-        self.final_bn = layers.BatchNormalization()
-
-    def call(self, inputs, training=None):
-        # Aplicar convoluções multi-escala
-        conv_outputs = []
-
-        for conv, bn in zip(self.conv_layers, self.bn_layers):
-            x = conv(inputs)
-            x = bn(x, training=training)
-            x = tf.nn.relu(x)
-            conv_outputs.append(x)
-
-        # Concatenar saídas
-        concatenated = self.concat(conv_outputs)
-
-        # Reduzir dimensionalidade
-        output = self.reduction_conv(concatenated)
-        output = self.final_bn(output, training=training)
-
-        return output
+        if squeezed:
+            y = tf.expand_dims(y, axis=-1)
+        return y
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'filters': self.filters,
-            'kernel_sizes': self.kernel_sizes
-        })
+        config.update(
+            {
+                "source_sample_rate": self.source_sample_rate,
+                "target_sample_rate": self.target_sample_rate,
+            }
+        )
         return config
 
 
-def create_rawnet2_model(
+def _create_rawnet2_model(
     input_shape: Tuple[int, ...],
     num_classes: int = 1,
-    conv_filters: list = [64, 128, 256],
-    gru_units: int = 128,
-    dense_units: int = 64,
-    dropout_rate: float = 0.25,
+    sinc_filters: int = 128,
+    sinc_kernel_size: int = 1024,
+    res_filters: list = None,
+    gru_units: int = 512,
+    dense_units: int = 1024,
+    dropout_rate: float = 0.3,
     architecture: str = 'rawnet2'
 ) -> models.Model:
-    """Criar modelo RawNet2.
+    """Criar modelo RawNet2 fiel ao paper 'Improved RawNet'.
 
     Args:
         input_shape: Formato da entrada (samples,)
         num_classes: Número de classes (1 para detecção binária)
-        conv_filters: Lista com número de filtros para cada bloco convolucional
+        sinc_filters: Filtros na camada SincNet
+        sinc_kernel_size: Tamanho do kernel na SincNet
+        res_filters: Lista com número de filtros para cada bloco residual
         gru_units: Número de unidades na camada GRU
         dense_units: Número de unidades na camada densa
         dropout_rate: Taxa de dropout
@@ -151,28 +104,37 @@ def create_rawnet2_model(
     Returns:
         Modelo Keras compilado
     """
+    if res_filters is None:
+        res_filters = [128, 128, 256, 256, 256, 256]
 
     # Input layer
     inputs = layers.Input(shape=input_shape, name='audio_input')
 
-    # Pré-processamento
-    x = AudioResamplingLayer(name='audio_resampling')(inputs)
+    # 1. Pré-processamento
+    x = PreEmphasisLayer(name='pre_emphasis')(inputs)
     x = AudioNormalizationLayer(name='audio_normalization')(x)
+    if len(x.shape) == 2:
+        x = layers.Reshape((-1, 1))(x)
 
-    # Expandir dimensões para Conv1D
-    x = layers.Reshape((-1, 1))(x)
+    # 2. SincNet Front-end
+    x = SincNetLayer(filters=sinc_filters, kernel_size=sinc_kernel_size, name='sincnet')(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.LeakyReLU(alpha=0.3)(x)
+    x = layers.MaxPooling1D(pool_size=3)(x)
 
-    # Blocos convolucionais multi-escala
-    for i, filters in enumerate(conv_filters):
-        x = MultiScaleConv1DBlock(
-            filters=filters,
-            name=f'multiscale_conv_block_{i + 1}'
-        )(x)
+    # 3. Residual Blocks + FMS
+    for i, filters in enumerate(res_filters):
+        x = ResidualBlock1D(out_channels=filters, name=f'res_block_{i + 1}')(x)
+        x = FeatureMapScalingLayer(name=f'fms_{i + 1}')(x)
 
-        # Max pooling para reduzir dimensionalidade temporal
-        x = layers.MaxPooling1D(pool_size=2, name=f'maxpool_{i + 1}')(x)
+        # Max pooling after some blocks to reduce temporal dimension
+        if i in [1, 3]:
+            x = layers.MaxPooling1D(pool_size=3)(x)
 
-    # Camadas GRU para capturar dependências temporais
+    # 4. Temporal Modeling (GRU)
+    x = layers.BatchNormalization()(x)
+    x = layers.LeakyReLU(alpha=0.3)(x)
+
     x = layers.GRU(
         units=gru_units,
         return_sequences=True,
@@ -180,12 +142,12 @@ def create_rawnet2_model(
     )(x)
 
     x = layers.GRU(
-        units=gru_units // 2,
+        units=gru_units,
         return_sequences=False,
         name='gru_2'
     )(x)
 
-    # Classification head using shared logic
+    # 5. Classification Head
     outputs, loss = create_classification_head(
         x,
         num_classes,
@@ -197,12 +159,14 @@ def create_rawnet2_model(
     model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
 
     # Compilar modelo
+    optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001)
     model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+        optimizer=optimizer,
         loss=loss,
         metrics=['accuracy']
     )
 
+    logger.info(f"Modelo {architecture} criado com sucesso (Fidelidade ao paper)")
     return model
 
 
@@ -212,11 +176,12 @@ def create_lightweight_rawnet2(
     architecture: str = 'rawnet2_lite'
 ) -> models.Model:
     """Criar versão leve do RawNet2."""
-
-    return create_rawnet2_model(
+    return _create_rawnet2_model(
         input_shape=input_shape,
         num_classes=num_classes,
-        conv_filters=[32, 64, 128],
+        sinc_filters=16,
+        sinc_kernel_size=512,
+        res_filters=[16, 16, 64, 64],
         gru_units=64,
         dense_units=32,
         dropout_rate=0.3,
@@ -224,16 +189,24 @@ def create_lightweight_rawnet2(
     )
 
 
-def create_model(input_shape: Tuple[int, ...], num_classes: int,
-                 architecture: str = 'rawnet2') -> models.Model:
-    """Função principal para criar modelos RawNet2."""
+def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
+                 architecture: str = 'rawnet2', **kwargs) -> models.Model:
+    """Função principal para criar modelos RawNet2.
 
+    Args:
+        input_shape: Formato da entrada (samples,)
+        num_classes: Número de classes
+        architecture: Tipo de arquitetura ('rawnet2' ou 'rawnet2_lite')
+        **kwargs: Parâmetros adicionais para _create_rawnet2_model
+
+    Returns:
+        Modelo Keras compilado
+    """
     if architecture == 'rawnet2_lite':
-        return create_lightweight_rawnet2(
-            input_shape, num_classes, architecture)
+        return create_lightweight_rawnet2(input_shape, num_classes, architecture)
     else:
-        return create_rawnet2_model(
-            input_shape, num_classes, architecture=architecture)
+        return _create_rawnet2_model(
+            input_shape, num_classes, architecture=architecture, **kwargs)
 
 
 # Registrar objetos personalizados no Keras
@@ -241,5 +214,9 @@ tf.keras.utils.get_custom_objects().update({
     'AudioResamplingLayer': AudioResamplingLayer,
     'AudioNormalizationLayer': AudioNormalizationLayer,
     'MultiScaleConv1DBlock': MultiScaleConv1DBlock,
+    'PreEmphasisLayer': PreEmphasisLayer,
+    'SincNetLayer': SincNetLayer,
+    'ResidualBlock1D': ResidualBlock1D,
+    'FeatureMapScalingLayer': FeatureMapScalingLayer,
     'preprocess': preprocess
 })

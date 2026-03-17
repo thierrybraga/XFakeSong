@@ -1,8 +1,14 @@
 import logging
-from typing import Dict, List, Optional, Any
-from app.core.interfaces.audio import FeatureType, IFeatureExtractor, AudioData, AudioFeatures
+from typing import Any, Dict, List, Optional
+
+from app.core.interfaces.audio import (
+    AudioData,
+    AudioFeatures,
+    FeatureType,
+    IFeatureExtractor,
+)
 from app.core.interfaces.base import ProcessingResult
-from app.domain.features.extractor_registry import ExtractorSpec, ExtractorComplexity
+from app.domain.features.extractor_registry import ExtractorComplexity, ExtractorSpec
 
 logger = logging.getLogger(__name__)
 
@@ -139,14 +145,18 @@ class ExtractorLoader:
         """Registrar extratores padrão"""
         # Importar e registrar extratores das diferentes categorias
         try:
-            from app.domain.features.extractors.spectral.spectral_features import SpectralFeatureExtractor
+            from app.domain.features.extractors.spectral.spectral_features import (
+                SpectralFeatureExtractor,
+            )
             self._extractors[FeatureType.SPECTRAL] = SpectralFeatureExtractor()
-            logger.debug(f"SpectralFeatureExtractor registrado com sucesso")
+            logger.debug("SpectralFeatureExtractor registrado com sucesso")
 
-            from app.domain.features.extractors.mel.mel_spectrogram import MelSpectrogramExtractor
+            from app.domain.features.extractors.mel.mel_spectrogram import (
+                MelSpectrogramExtractor,
+            )
             self._extractors[FeatureType.MEL_SPECTROGRAM] = MelSpectrogramExtractor(
             )
-            logger.debug(f"MelSpectrogramExtractor registrado com sucesso")
+            logger.debug("MelSpectrogramExtractor registrado com sucesso")
 
             if self._modular_enabled and self.extractor_registry:
                 try:
@@ -171,11 +181,15 @@ class ExtractorLoader:
             logger.warning(f"Could not import SpectralFeatureExtractor: {e}")
 
         try:
-            from app.domain.features.extractors.temporal.temporal_features import TemporalFeatureExtractor
-            from app.domain.features.adapters.temporal_adapter import TemporalExtractorWrapper
+            from app.domain.features.adapters.temporal_adapter import (
+                TemporalExtractorWrapper,
+            )
+            from app.domain.features.extractors.temporal.temporal_features import (
+                TemporalFeatureExtractor,
+            )
 
             self._extractors[FeatureType.TEMPORAL] = TemporalExtractorWrapper()
-            logger.debug(f"TemporalFeatureExtractor registrado com sucesso")
+            logger.debug("TemporalFeatureExtractor registrado com sucesso")
 
             if self._modular_enabled and self.extractor_registry:
                 try:
@@ -200,20 +214,28 @@ class ExtractorLoader:
             logger.warning(f"Could not import TemporalFeatureExtractor: {e}")
 
         try:
-            from app.domain.features.extractors.prosodic.prosodic_features import ProsodicFeatureExtractor
-            from app.domain.features.extractors.predictive.predictive_features import PredictiveFeatureExtractor
-            from app.domain.features.extractors.timefreq.timefreq_features import TimeFrequencyFeatureExtractor
-            from app.domain.features.adapters.prosodic_adapter import ProsodicExtractorWrapper
+            from app.domain.features.adapters.prosodic_adapter import (
+                ProsodicExtractorWrapper,
+            )
+            from app.domain.features.extractors.predictive.predictive_features import (
+                PredictiveFeatureExtractor,
+            )
+            from app.domain.features.extractors.prosodic.prosodic_features import (
+                ProsodicFeatureExtractor,
+            )
+            from app.domain.features.extractors.timefreq.timefreq_features import (
+                TimeFrequencyFeatureExtractor,
+            )
 
             self._extractors[FeatureType.PROSODIC] = ProsodicExtractorWrapper()
-            logger.debug(f"ProsodicFeatureExtractor registrado com sucesso")
+            logger.debug("ProsodicFeatureExtractor registrado com sucesso")
 
             self._extractors[FeatureType.ADVANCED] = PredictiveFeatureExtractor(
                 sr=22050)
             self._extractors[FeatureType.PERCEPTUAL] = TimeFrequencyFeatureExtractor(
                 sr=22050)
             logger.debug(
-                f"PredictiveFeatureExtractor e TimeFrequencyFeatureExtractor registrados com sucesso")
+                "PredictiveFeatureExtractor e TimeFrequencyFeatureExtractor registrados com sucesso")
 
             if self._modular_enabled and self.extractor_registry:
                 try:
@@ -234,12 +256,17 @@ class ExtractorLoader:
                 except Exception as e:
                     logger.warning(f"Erro ao registrar no novo sistema: {e}")
 
-            from app.domain.features.adapters.formant_adapter import FormantExtractorWrapper
+            from app.domain.features.adapters.formant_adapter import (
+                FormantExtractorWrapper,
+            )
             self.register_extractor("formant", FormantExtractorWrapper())
 
-            from app.domain.features.extractors.voice_quality.voice_quality_features import VoiceQualityFeatureExtractor
             import numpy as np
+
             from app.core.interfaces.base import ProcessingStatus
+            from app.domain.features.extractors.voice_quality.voice_quality_features import (
+                VoiceQualityFeatureExtractor,
+            )
 
             class VoiceQualityExtractorWrapper(IFeatureExtractor):
                 def __init__(self):
@@ -288,19 +315,29 @@ class ExtractorLoader:
             self.register_extractor(
                 "voice_quality", VoiceQualityExtractorWrapper())
 
-            from app.domain.features.adapters.perceptual_adapter import PerceptualExtractorWrapper
+            from app.domain.features.adapters.perceptual_adapter import (
+                PerceptualExtractorWrapper,
+            )
             self.register_extractor("perceptual", PerceptualExtractorWrapper())
 
-            from app.domain.features.adapters.complexity_adapter import ComplexityExtractorWrapper
+            from app.domain.features.adapters.complexity_adapter import (
+                ComplexityExtractorWrapper,
+            )
             self.register_extractor("complexity", ComplexityExtractorWrapper())
 
-            from app.domain.features.adapters.transform_adapter import TransformExtractorWrapper
+            from app.domain.features.adapters.transform_adapter import (
+                TransformExtractorWrapper,
+            )
             self.register_extractor("transform", TransformExtractorWrapper())
 
-            from app.domain.features.adapters.speech_adapter import SpeechExtractorWrapper
+            from app.domain.features.adapters.speech_adapter import (
+                SpeechExtractorWrapper,
+            )
             self.register_extractor("speech", SpeechExtractorWrapper())
 
-            from app.domain.features.extractors.cepstral.cepstral_features import CepstralFeatureExtractor
+            from app.domain.features.extractors.cepstral.cepstral_features import (
+                CepstralFeatureExtractor,
+            )
 
             class CepstralExtractorWrapper:
                 def __init__(self):
@@ -347,7 +384,9 @@ class ExtractorLoader:
                 FeatureType.ADVANCED,
                 PredictiveExtractorWrapper())
 
-            from app.domain.features.adapters.timefreq_adapter import TimeFreqExtractorWrapper
+            from app.domain.features.adapters.timefreq_adapter import (
+                TimeFreqExtractorWrapper,
+            )
             self.register_extractor(
                 FeatureType.PERCEPTUAL,
                 TimeFreqExtractorWrapper())

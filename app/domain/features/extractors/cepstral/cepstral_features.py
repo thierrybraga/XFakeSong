@@ -4,32 +4,29 @@ Implementação conservadora focada na fidelidade das características,
 seguindo princípios SOLID e clean code.
 """
 
-import numpy as np
-import librosa
 import warnings
-from typing import Dict, Tuple, Any, List
+from typing import Any, Dict, List, Tuple
+
+import librosa
+import numpy as np
 
 # Imports de interface
 try:
-    from .interfaces import (
-        FeatureExtractor, IFeatureExtractor
-    )
+    from .interfaces import IFeatureExtractor
 except ImportError:
     # Fallback para imports básicos
     from app.domain.features.interfaces import IFeatureExtractor
 
-from .....core.interfaces.audio import (
-    AudioData, AudioFeatures, FeatureType
-)
+from .....core.interfaces.audio import AudioData, AudioFeatures, FeatureType
 from .....core.interfaces.base import ProcessingResult, ProcessingStatus
+from .components.delta import DeltaFeaturesExtractor
+from .components.lpcc import extract_lpcc_features
+from .components.mel import MelSpectrogramExtractor
 
 # Imports dos componentes refatorados
 from .components.mfcc import MFCCExtractor
-from .components.mel import MelSpectrogramExtractor
-from .components.delta import DeltaFeaturesExtractor
-from .components.spectral import extract_spectral_features
 from .components.plp import extract_plp_features
-from .components.lpcc import extract_lpcc_features
+from .components.spectral import extract_spectral_features
 
 
 class CepstralFeatureExtractor(IFeatureExtractor):

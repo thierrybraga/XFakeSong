@@ -1,35 +1,35 @@
-import numpy as np
 import logging
-import librosa
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
 def normalize_audio(audio: np.ndarray, target_db: float = -20.0) -> np.ndarray:
     """
     Normalize audio to a target dB level.
-    
+
     Args:
         audio: Input audio array
         target_db: Target level in dB
-        
+
     Returns:
         Normalized audio array
     """
     rms = np.sqrt(np.mean(audio**2))
     if rms == 0:
         return audio
-        
+
     scalar = 10 ** (target_db / 20) / (rms + 1e-9)
     return audio * scalar
 
 def pad_or_truncate(audio: np.ndarray, max_len: int) -> np.ndarray:
     """
     Pad or truncate audio to a specific length.
-    
+
     Args:
         audio: Input audio array
         max_len: Maximum length in samples
-        
+
     Returns:
         Processed audio array
     """

@@ -1,11 +1,16 @@
-from typing import Dict, List, Any
+from typing import Any, Dict, List
+
 import numpy as np
+
 from app.core.interfaces.audio import (
-    AudioData, AudioFeatures, FeatureType, IFeatureExtractor
+    AudioData,
+    AudioFeatures,
+    FeatureType,
+    IFeatureExtractor,
 )
 from app.core.interfaces.base import ProcessingResult, ProcessingStatus
 from app.domain.features.extractors.transform.transform_features import (
-    TransformFeatureExtractor
+    TransformFeatureExtractor,
 )
 
 

@@ -1,11 +1,13 @@
-import numpy as np
-import librosa
 import warnings
-from typing import Dict, Any
+from typing import Any, Dict
+
+import librosa
+import numpy as np
+
 from .utils import (
+    compute_octave_energy,
     compute_spectral_centroid,
     compute_spectral_rolloff,
-    compute_octave_energy
 )
 
 

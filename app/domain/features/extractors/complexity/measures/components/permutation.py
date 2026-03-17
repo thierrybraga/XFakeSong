@@ -1,6 +1,7 @@
+from typing import Dict, Optional
+
 import numpy as np
 from scipy.stats import entropy
-from typing import Optional, Dict
 
 
 def compute_permutation_entropy(

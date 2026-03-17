@@ -3,37 +3,51 @@
 Este módulo implementa o treinador principal para modelos de detecção de deepfake.
 """
 
-from typing import Dict, List, Any, Optional, Tuple, Union
-from pathlib import Path
 import logging
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
+
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.callbacks import (
-    EarlyStopping, ModelCheckpoint, ReduceLROnPlateau,
-    TensorBoard, CSVLogger
+    CSVLogger,
+    EarlyStopping,
+    ModelCheckpoint,
+    ReduceLROnPlateau,
+    TensorBoard,
 )
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
-from datetime import datetime
 
+from app.core.config.settings import TrainingConfig
 from app.core.interfaces.audio import IModelTrainer
 from app.core.interfaces.base import ProcessingResult, ProcessingStatus
-from app.core.config.settings import TrainingConfig
-from app.core.training.secure_training_pipeline import SecureTrainingPipeline, SecureTrainingConfig
+from app.core.training.secure_training_pipeline import (
+    SecureTrainingConfig,
+    SecureTrainingPipeline,
+)
+
+from .augmentation import AudioAugmenter
 from .metrics import MetricsCalculator
 from .optimization import OptimizerFactory
-from .augmentation import AudioAugmenter
 
 
 class ModelTrainer(IModelTrainer):
     """Implementação do treinador de modelos com prevenção de data leakage."""
 
-    def __init__(self, config: TrainingConfig):
+    def __init__(self, config: TrainingConfig, use_mixed_precision: bool = False):
         self.config = config
         self.logger = logging.getLogger(__name__)
         self.metrics_calculator = MetricsCalculator()
         self.optimizer_factory = OptimizerFactory()
         self.augmenter = AudioAugmenter(config.augmentation_config)
+
+        # Mixed precision training — 2x faster, same accuracy
+        if use_mixed_precision:
+            try:
+                tf.keras.mixed_precision.set_global_policy('mixed_float16')
+                self.logger.info("Mixed precision training enabled (float16)")
+            except Exception as e:
+                self.logger.warning(f"Mixed precision not available: {e}")
 
         # Configurar pipeline seguro para prevenção de data leakage
         secure_config = SecureTrainingConfig(
@@ -204,13 +218,18 @@ class ModelTrainer(IModelTrainer):
                 scaler_path = save_dir / "scaler.pkl"
                 scaler.save_scaler(scaler_path)
 
-            # Salvar configuração
+            # Salvar configuração com input_contract para consistência train/inference
             config_path = save_dir / "training_config.json"
             import json
+
+            # Construir input_contract a partir do modelo treinado
+            input_contract = self._build_input_contract(model)
+
             config_dict = {
                 "model_config": self.config.__dict__,
                 "secure_pipeline_config": self.secure_pipeline.config.__dict__ if hasattr(self, 'secure_pipeline') else None,
-                "training_timestamp": datetime.now().isoformat()
+                "training_timestamp": datetime.now().isoformat(),
+                "input_contract": input_contract
             }
             with open(config_path, 'w') as f:
                 json.dump(config_dict, f, indent=2, default=str)
@@ -308,11 +327,15 @@ class ModelTrainer(IModelTrainer):
             # Salvar modelo
             model.save(str(save_path))
 
-            # Salvar configuração de treinamento
+            # Salvar configuração de treinamento com input_contract
             config_path = save_path.parent / f"{save_path.stem}_config.json"
             import json
+            config_data = {
+                **self.config.__dict__,
+                "input_contract": self._build_input_contract(model)
+            }
             with open(config_path, 'w') as f:
-                json.dump(self.config.__dict__, f, indent=2, default=str)
+                json.dump(config_data, f, indent=2, default=str)
 
             self.logger.info(f"Modelo salvo em: {save_path}")
             return ProcessingResult(
@@ -422,6 +445,101 @@ class ModelTrainer(IModelTrainer):
         return self.metrics_calculator.calculate_all_metrics(
             y_val, y_pred_classes, y_pred
         )
+
+    def _build_input_contract(
+        self,
+        model: tf.keras.Model,
+        metadata: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        """Constrói contrato de entrada para garantir consistência train/inference.
+
+        O input_contract é salvo junto ao modelo e lido pelo FeaturePreparer
+        na inferência para garantir que as mesmas features/formato sejam usados.
+        """
+        metadata = metadata or {}
+        model_input_shape = list(model.input_shape[1:]) if model.input_shape else None
+
+        # Determinar tipo de input a partir da arquitetura ou shape
+        architecture = metadata.get('architecture', '')
+        input_type = metadata.get('input_type', 'features')
+        input_format = metadata.get('input_format', 'tabular')
+
+        # Heurística: modelos com input (N, 1) provavelmente recebem áudio raw
+        if model_input_shape and len(model_input_shape) == 2 and model_input_shape[-1] == 1:
+            input_type = 'audio'
+            input_format = 'raw'
+        # Modelos com input (H, W) ou (H, W, C) provavelmente usam spectrogram
+        elif model_input_shape and len(model_input_shape) in (2, 3) and (
+            model_input_shape[-1] != 1 if len(model_input_shape) == 2 else True
+        ):
+            if any(dim and dim > 10 for dim in model_input_shape[:2]):
+                input_type = 'features'
+                input_format = 'spectrogram'
+
+        # Feature types se disponíveis
+        feature_types = metadata.get('feature_types', None)
+        if feature_types is None:
+            feature_types_attr = getattr(model, 'feature_types_used', None)
+            if feature_types_attr:
+                feature_types = list(feature_types_attr)
+
+        contract = {
+            "type": input_type,
+            "format": input_format,
+            "input_shape": model_input_shape,
+            "architecture": architecture,
+            "feature_types": feature_types,
+            "sample_rate": metadata.get('sample_rate', 16000),
+            "scaler_applied": self.get_scaler() is not None and self.get_scaler().scaler is not None
+        }
+        return contract
+
+    def predict_with_tta(
+        self,
+        model: tf.keras.Model,
+        X: np.ndarray,
+        n_augmentations: int = 5,
+        noise_std: float = 0.005,
+        shift_factor: float = 0.02,
+        volume_range: Tuple = (0.95, 1.05)
+    ) -> np.ndarray:
+        """Test-Time Augmentation: run multiple augmented copies and average predictions.
+
+        Typically improves accuracy by 1-3% without retraining.
+        Uses 5 versions: original + noise + neg_noise + time_shift + volume_change.
+        """
+        predictions = []
+
+        # Original prediction
+        predictions.append(model.predict(X, batch_size=self.config.batch_size))
+
+        if n_augmentations >= 2:
+            # Positive noise
+            X_noise = X + np.random.normal(0, noise_std, X.shape).astype(np.float32)
+            predictions.append(model.predict(X_noise, batch_size=self.config.batch_size))
+
+        if n_augmentations >= 3:
+            # Negative noise
+            X_noise_neg = X - np.random.normal(0, noise_std, X.shape).astype(np.float32)
+            predictions.append(model.predict(X_noise_neg, batch_size=self.config.batch_size))
+
+        if n_augmentations >= 4:
+            # Time shift (small circular shift along first feature axis)
+            shift_amount = max(1, int(X.shape[1] * shift_factor)) if len(X.shape) > 1 else 0
+            if shift_amount > 0:
+                X_shifted = np.roll(X, shift_amount, axis=1)
+                predictions.append(model.predict(X_shifted, batch_size=self.config.batch_size))
+
+        if n_augmentations >= 5:
+            # Volume change
+            vol_factor = np.random.uniform(volume_range[0], volume_range[1])
+            X_vol = X * vol_factor
+            predictions.append(model.predict(X_vol, batch_size=self.config.batch_size))
+
+        # Average all predictions
+        avg_prediction = np.mean(predictions, axis=0)
+        self.logger.info(f"TTA applied with {len(predictions)} augmentations")
+        return avg_prediction
 
     def _get_model_summary(self, model: tf.keras.Model) -> Dict[str, Any]:
         """Retorna resumo do modelo."""

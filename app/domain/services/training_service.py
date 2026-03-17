@@ -1,19 +1,25 @@
-import logging
-import numpy as np
-import importlib
-from typing import Dict, Any
-from pathlib import Path
-from datetime import datetime
+import importlib as _stdlib_importlib
 import json
+import logging
+import types
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict
 
-from app.core.interfaces.services import (
-    ITrainingService, ProcessingResult, ProcessingStatus, ModelMetadata
-)
-from app.domain.models.training.trainer import ModelTrainer
+import numpy as np
+
 from app.core.config.settings import TrainingConfig
+from app.core.interfaces.base import ProcessingStatus
+from app.core.interfaces.services import (
+    ITrainingService,
+    ModelMetadata,
+    ProcessingResult,
+)
 from app.domain.models.architectures.registry import get_architecture_info
+from app.domain.models.training.trainer import ModelTrainer
 
 logger = logging.getLogger(__name__)
+importlib = types.SimpleNamespace(import_module=_stdlib_importlib.import_module)
 
 
 class TrainingService(ITrainingService):

@@ -8,13 +8,14 @@ Este módulo define interfaces especializadas para:
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any, Optional, Union, Tuple
-from pathlib import Path
-import numpy as np
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Tuple, Union
 
-from .base import IProcessor, IExtractor, IValidator, ProcessingResult, ProcessingStatus
+import numpy as np
+
+from .base import IExtractor, IProcessor, IValidator, ProcessingResult
 
 
 class AudioFormat(Enum):

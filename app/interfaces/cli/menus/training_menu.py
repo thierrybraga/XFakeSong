@@ -1,10 +1,15 @@
 import json
 from datetime import datetime
-import numpy as np
+
 import joblib
-from app.interfaces.cli.menus.base_menu import BaseMenu
-from app.core.training.secure_training_pipeline import SecureTrainingPipeline, SecureTrainingConfig
+import numpy as np
+
+from app.core.training.secure_training_pipeline import (
+    SecureTrainingConfig,
+    SecureTrainingPipeline,
+)
 from app.domain.models.architectures.factory import BaseArchitectureFactory
+from app.interfaces.cli.menus.base_menu import BaseMenu
 
 
 class TrainingMenu(BaseMenu):
@@ -74,7 +79,7 @@ class TrainingMenu(BaseMenu):
             batch_size = int(
                 batch_size_input) if batch_size_input else self.context.training_config.batch_size
 
-            print(f"\n🔧 Configurações:")
+            print("\n🔧 Configurações:")
             print(f"   - Arquitetura: {selected_arch}")
             print(f"   - Épocas: {epochs}")
             print(f"   - Batch size: {batch_size}")
@@ -141,7 +146,7 @@ class TrainingMenu(BaseMenu):
                         f"{model_name}_scaler.pkl"
                     joblib.dump(pipeline.scaler, scaler_path)
 
-                print(f"\n✅ Modelo treinado com sucesso!")
+                print("\n✅ Modelo treinado com sucesso!")
                 print(f"📁 Salvo em: {model_path}")
                 print(
                     f"📊 Acurácia: {

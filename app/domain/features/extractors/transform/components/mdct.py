@@ -1,8 +1,10 @@
-import numpy as np
-import librosa
-import scipy.fft
 import warnings
-from typing import Dict, Any
+from typing import Any, Dict
+
+import librosa
+import numpy as np
+import scipy.fft
+
 from .utils import compute_spectral_centroid, compute_spectral_rolloff
 
 

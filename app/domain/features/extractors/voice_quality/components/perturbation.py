@@ -1,8 +1,10 @@
 """
 Extração de características de perturbação (Jitter, Shimmer, etc).
 """
+from typing import Dict
+
 import numpy as np
-from typing import Dict, Optional
+
 from .utils import extract_pitch_periods
 
 

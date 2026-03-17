@@ -5,24 +5,36 @@ Implementa características cepstrais avançadas incluindo PLP, RASTA-PLP,
 LPCC, Gammatone Cepstral Coefficients e outras variações especializadas.
 """
 
-import numpy as np
 import warnings
 from typing import Dict
 
-from .components.lpc_utils import (
-    solve_yule_walker, lpc_to_cepstral, compute_lpc, apply_preemphasis
+import numpy as np
+
+from .components.gammatone import (
+    apply_gammatone_filterbank,
+    erb_to_hz,
+    extract_gtcc_features,
+    hz_to_erb,
 )
-from .components.plp import (
-    extract_plp_features, extract_rasta_plp_features,
-    apply_bark_scale, apply_equal_loudness_curve, apply_rasta_filter
+from .components.lpc_utils import (
+    apply_preemphasis,
+    compute_lpc,
+    lpc_to_cepstral,
+    solve_yule_walker,
 )
 from .components.lpcc import extract_lpcc_features
-from .components.gammatone import (
-    extract_gtcc_features, apply_gammatone_filterbank, hz_to_erb, erb_to_hz
+from .components.plp import (
+    apply_bark_scale,
+    apply_equal_loudness_curve,
+    apply_rasta_filter,
+    extract_plp_features,
+    extract_rasta_plp_features,
 )
 from .components.pncc import (
-    extract_pncc_features, extract_mhec_features,
-    power_normalize, apply_harmonic_emphasis
+    apply_harmonic_emphasis,
+    extract_mhec_features,
+    extract_pncc_features,
+    power_normalize,
 )
 
 

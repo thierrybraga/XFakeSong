@@ -1,5 +1,6 @@
+from typing import Dict, Optional
+
 import numpy as np
-from typing import Optional, Dict
 
 
 def compute_higuchi_fractal(y: np.ndarray, k_max: int = 10) -> float:

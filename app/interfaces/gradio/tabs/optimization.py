@@ -1,10 +1,7 @@
 import gradio as gr
 from app.domain.models.architectures.registry import architecture_registry
-from app.interfaces.gradio.utils.hyperparameters import (
-    optimize_default,
-    load_defaults
-)
 from app.domain.services.detection.utils import get_available_devices
+from app.interfaces.gradio.utils.hyperparameters import load_defaults, optimize_default
 
 
 def update_device_settings(device_name):
@@ -22,8 +19,12 @@ def update_device_settings(device_name):
 
 
 def create_optimization_tab():
-    with gr.Tab("Otimização de Hiperparâmetros"):
-        gr.Markdown("### ⚙️ Ajuste Fino de Hiperparâmetros e Sistema")
+    with gr.Tab("Otimização"):
+        gr.Markdown(
+            "### Ajuste Fino de Hiperparâmetros\n"
+            "Configure hardware, arquiteturas e parâmetros de treinamento "
+            "para otimizar a detecção."
+        )
 
         # --- Seção de Hardware ---
         with gr.Row():

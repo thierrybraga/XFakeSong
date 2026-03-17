@@ -5,38 +5,36 @@ Extração de Características Espectrais
 Implementa extração de características do espectro de magnitude e contraste.
 """
 
-import numpy as np
-import librosa
 import warnings
-from typing import Dict, List, Any
+from typing import Any, Dict, List
+
+import librosa
+import numpy as np
 
 from app.domain.features.interfaces import IFeatureExtractor
+
 from .....core.interfaces.audio import AudioData, AudioFeatures, FeatureType
 from .....core.interfaces.base import ProcessingResult, ProcessingStatus
-
-from .components.magnitude import (
-    compute_spectral_slope,
-    compute_spectral_kurtosis,
-    compute_spectral_skewness,
-    compute_spectral_spread,
-    compute_spectral_entropy
-)
-from .components.contrast import (
-    compute_subband_energy_ratios,
-    compute_high_freq_content
-)
 from .components.advanced import (
-    compute_spectral_flux,
-    compute_spectral_decrease,
     compute_spectral_crest,
+    compute_spectral_decrease,
+    compute_spectral_flux,
+    compute_spectral_inharmonicity,
     compute_spectral_irregularity,
     compute_spectral_roughness,
-    compute_spectral_inharmonicity
 )
-from .components.utils import (
-    apply_preemphasis,
-    get_default_spectral_features
+from .components.contrast import (
+    compute_high_freq_content,
+    compute_subband_energy_ratios,
 )
+from .components.magnitude import (
+    compute_spectral_entropy,
+    compute_spectral_kurtosis,
+    compute_spectral_skewness,
+    compute_spectral_slope,
+    compute_spectral_spread,
+)
+from .components.utils import apply_preemphasis, get_default_spectral_features
 
 
 class SpectralFeatureExtractorCore:

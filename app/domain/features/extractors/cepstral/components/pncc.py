@@ -1,9 +1,10 @@
-import numpy as np
-import librosa
-import scipy.signal
-import scipy.fftpack
 import warnings
 from typing import Dict
+
+import librosa
+import numpy as np
+import scipy.fftpack
+import scipy.signal
 
 
 def power_normalize(spectrum: np.ndarray) -> np.ndarray:

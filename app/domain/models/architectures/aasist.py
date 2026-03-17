@@ -6,22 +6,27 @@ from __future__ import annotations
 
 # Standard library imports
 import logging
-import os
-from datetime import datetime
-from typing import List, Tuple, Optional, Any, Dict, Callable
+from typing import Tuple
 
 # Third-party imports
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers, models, regularizers
-from tensorflow.keras.callbacks import (
-    EarlyStopping, ModelCheckpoint, ReduceLROnPlateau, TensorBoard, CSVLogger
-)
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
+
 from app.domain.models.architectures.layers import (
-    apply_gru_block, flatten_features_for_gru, AudioFeatureNormalization, AttentionLayer,
-    GraphAttentionLayer, SliceLayer, apply_reshape_for_cnn, residual_block
+    AMSoftmaxLayer,
+    AttentionLayer,
+    AudioFeatureNormalization,
+    GATConvLayer,
+    GraphPoolLayer,
+    GraphReadoutLayer,
+    HSGALLayer,
+    ResidualBlock1D,
+    SincConvLayer,
+    apply_gru_block,
+    apply_reshape_for_cnn,
+    flatten_features_for_gru,
+    residual_block,
 )
 
 # Configure logger for AASIST
@@ -72,7 +77,7 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         x = apply_gru_block(
             x, 64, return_sequences=True, dropout_rate=dropout_rate, name="gru2"
         )
-        
+
         x = AttentionLayer(name="attention_layer")(x)
 
     elif architecture == "cnn_baseline":
@@ -203,63 +208,114 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         x = layers.GlobalAveragePooling1D(name="transformer_avg_pool")(x)
 
     elif architecture == "aasist":
-        # AASIST: Advanced Spectro-Temporal Graph Attention Network
-        # Multi-scale feature extraction with improved GAT
-        x = apply_reshape_for_cnn(x, input_shape)
+        # ================================================================
+        # AASIST: Audio Anti-Spoofing using Integrated Spectro-Temporal
+        # Graph Attention Networks (Jung et al., ICASSP 2022)
+        #
+        # Paper-faithful implementation with:
+        # - SincConv encoder (learnable bandpass filters on raw waveform)
+        # - Residual blocks with pre-activation (BN -> LeakyReLU -> Conv1D)
+        # - Dual-branch: spectral GAT + temporal GAT
+        # - HS-GAL: Heterogeneous Stacking Graph Attention Layer
+        # - Graph readout (max + attention)
+        # ================================================================
 
-        # Multi-scale convolutional feature extraction
-        # Scale 1: Fine-grained temporal features
-        conv1_1 = layers.Conv2D(
-            32, (1, 3), activation='relu', padding='same', name="aasist_conv1_1")(x)
-        conv1_1 = layers.BatchNormalization(name="aasist_bn1_1")(conv1_1)
+        # Ensure raw audio input is (batch, time, 1)
+        if len(input_shape) == 1:
+            x = layers.Reshape((-1, 1), name="aasist_reshape_raw")(x)
+        elif len(input_shape) == 2 and input_shape[-1] == 1:
+            pass  # Already (batch, time, 1)
+        else:
+            x = layers.Reshape((-1, 1), name="aasist_reshape_raw")(x)
 
-        # Scale 2: Medium temporal features
-        conv1_2 = layers.Conv2D(
-            32, (3, 3), activation='relu', padding='same', name="aasist_conv1_2")(x)
-        conv1_2 = layers.BatchNormalization(name="aasist_bn1_2")(conv1_2)
+        # --- 1. SincConv Encoder ---
+        # Learnable bandpass filters (128 filters, kernel=129)
+        x = SincConvLayer(
+            n_filters=128, kernel_size=129, sample_rate=16000,
+            name="sinc_conv")(x)
+        x = layers.Lambda(lambda t: tf.abs(t), name="sinc_abs")(x)
+        x = layers.BatchNormalization(name="sinc_bn")(x)
+        x = layers.LeakyReLU(negative_slope=0.3, name="sinc_lrelu")(x)
+        x = layers.MaxPooling1D(pool_size=3, name="sinc_pool")(x)
 
-        # Scale 3: Coarse temporal features
-        conv1_3 = layers.Conv2D(
-            32, (5, 3), activation='relu', padding='same', name="aasist_conv1_3")(x)
-        conv1_3 = layers.BatchNormalization(name="aasist_bn1_3")(conv1_3)
+        # --- 2. Residual Blocks Group 1 ---
+        x = ResidualBlock1D(out_channels=128, kernel_size=3, name="res_block_1a")(x)
+        x = ResidualBlock1D(out_channels=128, kernel_size=3, name="res_block_1b")(x)
+        x = layers.MaxPooling1D(pool_size=3, name="res_pool_1")(x)
 
-        # Concatenate multi-scale features
-        x = layers.Concatenate(
-            axis=-1, name="aasist_concat1")([conv1_1, conv1_2, conv1_3])
-        x = layers.MaxPooling2D((2, 2), name="aasist_pool1")(x)
-        x = layers.Dropout(dropout_rate, name="aasist_dropout1")(x)
+        # --- 3. Residual Blocks Group 2 ---
+        x = ResidualBlock1D(out_channels=256, kernel_size=3, name="res_block_2a")(x)
+        x = ResidualBlock1D(out_channels=256, kernel_size=3, name="res_block_2b")(x)
+        x = layers.MaxPooling1D(pool_size=3, name="res_pool_2")(x)
 
-        # Second multi-scale layer
-        conv2_1 = layers.Conv2D(
-            64, (1, 3), activation='relu', padding='same', name="aasist_conv2_1")(x)
-        conv2_1 = layers.BatchNormalization(name="aasist_bn2_1")(conv2_1)
+        # encoder_out: (batch, T_reduced, 256)
+        encoder_out = x
 
-        conv2_2 = layers.Conv2D(
-            64, (3, 3), activation='relu', padding='same', name="aasist_conv2_2")(x)
-        conv2_2 = layers.BatchNormalization(name="aasist_bn2_2")(conv2_2)
+        # --- 4. Spectral Branch ---
+        # Transpose: treat channels (256) as nodes, time steps as features
+        # spectral_nodes: (batch, 256, T_reduced)
+        spectral_nodes = layers.Permute((2, 1), name="spectral_transpose")(encoder_out)
 
-        x = layers.Concatenate(
-            axis=-1, name="aasist_concat2")([conv2_1, conv2_2])
-        x = layers.MaxPooling2D((2, 2), name="aasist_pool2")(x)
-        x = layers.Dropout(dropout_rate, name="aasist_dropout2")(x)
+        # --- 5. Temporal Branch ---
+        # temporal_nodes: (batch, T_reduced, 256) - as is
+        temporal_nodes = encoder_out
 
-        # Simplified approach - use standard attention instead of graph attention
-        # Global average pooling to reduce spatial dimensions
-        x = layers.GlobalAveragePooling2D(name="aasist_gap")(x)
+        # --- 6. GAT on each branch ---
+        spectral_nodes = GATConvLayer(
+            out_features=32, num_heads=4, dropout_rate=dropout_rate,
+            concat_heads=True, name="gat_spectral")(spectral_nodes)
+        temporal_nodes = GATConvLayer(
+            out_features=32, num_heads=4, dropout_rate=dropout_rate,
+            concat_heads=True, name="gat_temporal")(temporal_nodes)
 
-        # Multi-head self-attention layers
-        x = layers.Dense(512, activation='relu', name="aasist_dense1")(x)
-        x = layers.Dropout(dropout_rate, name="aasist_dropout3")(x)
+        # --- 7. HS-GAL: Heterogeneous Stacking Graph Attention ---
+        spectral_nodes, temporal_nodes = HSGALLayer(
+            out_features=32, num_heads=2, dropout_rate=dropout_rate,
+            name="hsgal_1")([spectral_nodes, temporal_nodes])
+        spectral_nodes, temporal_nodes = HSGALLayer(
+            out_features=32, num_heads=2, dropout_rate=dropout_rate,
+            name="hsgal_2")([spectral_nodes, temporal_nodes])
 
-        x = layers.Dense(256, activation='relu', name="aasist_dense2")(x)
-        x = layers.Dropout(dropout_rate, name="aasist_dropout4")(x)
+        # --- 8. Graph Pooling ---
+        spectral_nodes = GraphPoolLayer(
+            ratio=0.5, name="graph_pool_spectral")(spectral_nodes)
+        temporal_nodes = GraphPoolLayer(
+            ratio=0.5, name="graph_pool_temporal")(temporal_nodes)
 
-        # Final feature processing
-        x = layers.Dense(128, activation='relu', name="aasist_final_dense")(x)
+        # --- 9. Graph Readout (max + attention) ---
+        spec_readout = GraphReadoutLayer(name="readout_spectral")(spectral_nodes)
+        temp_readout = GraphReadoutLayer(name="readout_temporal")(temporal_nodes)
 
-        # Additional dense layer for feature refinement
-        x = layers.Dense(256, activation='relu', name="aasist_dense_refine")(x)
-        x = layers.Dropout(dropout_rate, name="aasist_dropout_refine")(x)
+        # --- 10. Concatenate and classify ---
+        x = layers.Concatenate(name="aasist_readout_concat")([spec_readout, temp_readout])
+        output_tensor = AMSoftmaxLayer(num_classes, scale=30.0, margin=0.35, name="output_layer")(x)
+
+        # Build complete model with paper-faithful architecture
+        model = models.Model(inputs=input_tensor, outputs=output_tensor)
+
+        # Label smoothing loss
+        def label_smoothing_loss(y_true, y_pred):
+            num_classes_f = tf.cast(tf.shape(y_pred)[-1], tf.float32)
+            y_true_int = tf.cast(y_true, tf.int32)
+            if len(y_true_int.shape) > 1:
+                y_true_int = tf.squeeze(y_true_int, axis=-1)
+            one_hot = tf.one_hot(y_true_int, tf.cast(num_classes_f, tf.int32))
+            smoothed = one_hot * 0.9 + 0.1 / num_classes_f
+            return tf.reduce_mean(tf.keras.losses.categorical_crossentropy(smoothed, y_pred))
+
+        optimizer = tf.keras.optimizers.AdamW(
+            learning_rate=0.0001,
+            weight_decay=0.01
+        )
+
+        model.compile(
+            optimizer=optimizer,
+            loss=label_smoothing_loss,
+            metrics=['accuracy']
+        )
+
+        logger.info("AASIST model created (paper-faithful: SincConv + GAT + HS-GAL)")
+        return model
 
     else:
         raise ValueError(

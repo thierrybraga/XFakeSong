@@ -4,16 +4,22 @@ Este módulo implementa validação cruzada temporal específica para dados de �
 sequenciais, garantindo que não haja vazamento temporal entre folds.
 """
 
-import numpy as np
 import logging
-from typing import Dict, List, Any, Optional, Tuple, Iterator, Union
 from dataclasses import dataclass
-from sklearn.model_selection import TimeSeriesSplit
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
-import tensorflow as tf
 from pathlib import Path
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
+import numpy as np
 from core.interfaces.base import ProcessingResult, ProcessingStatus
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
+from sklearn.model_selection import TimeSeriesSplit
+
 from .secure_training_pipeline import SecureFeatureScaler, SecureTrainingConfig
 
 logger = logging.getLogger(__name__)

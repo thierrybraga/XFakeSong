@@ -1,5 +1,6 @@
+from typing import Dict, Optional
+
 import numpy as np
-from typing import Optional, Dict
 
 
 def compute_lyapunov_exponent(y: np.ndarray) -> float:

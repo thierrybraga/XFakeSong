@@ -4,25 +4,27 @@ Este módulo implementa um sistema de plugins que permite carregamento dinâmico
 de arquiteturas e extratores de features personalizados.
 """
 
+import hashlib
 import importlib
 import importlib.util
 import inspect
+import json
 import logging
 import sys
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Type, Union
-from dataclasses import dataclass
-from abc import ABC, abstractmethod
-import json
-import hashlib
-from datetime import datetime
 
+from app.domain.features.extractor_registry import ExtractorSpec
 from app.domain.interfaces.pipeline_interfaces import (
-    IPluginManager, IPipelineComponent, ComponentType,
-    PluginError
+    ComponentType,
+    IPipelineComponent,
+    IPluginManager,
+    PluginError,
 )
 from app.domain.models.architectures.factory import ArchitectureSpec
-from app.domain.features.extractor_registry import ExtractorSpec
 
 logger = logging.getLogger(__name__)
 
@@ -375,7 +377,9 @@ class PluginManager(IPluginManager):
         try:
             if isinstance(plugin, ArchitecturePlugin):
                 # Registrar arquitetura
-                from app.domain.models.architectures.factory import architecture_factory_registry
+                from app.domain.models.architectures.factory import (
+                    architecture_factory_registry,
+                )
 
                 arch_spec = plugin.get_architecture_spec()
                 architecture_factory_registry.register_architecture(arch_spec)
@@ -448,7 +452,7 @@ class PluginManager(IPluginManager):
             if isinstance(plugin, ArchitecturePlugin):
                 # Remover arquitetura
                 from app.domain.models.architectures.factory import (
-                    architecture_factory_registry
+                    architecture_factory_registry,
                 )
 
                 architecture_factory_registry.unregister_architecture(
@@ -457,9 +461,7 @@ class PluginManager(IPluginManager):
 
             elif isinstance(plugin, ExtractorPlugin):
                 # Remover extrator
-                from app.domain.features.extractor_registry import (
-                    extractor_registry
-                )
+                from app.domain.features.extractor_registry import extractor_registry
 
                 extractor_registry.unregister(metadata.name)
                 logger.info(f"Extrator {metadata.name} removido")

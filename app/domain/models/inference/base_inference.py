@@ -3,11 +3,12 @@
 Interface base para inferência de modelos de detecção de deepfake.
 """
 
-from abc import ABC, abstractmethod
-from typing import Dict, Any, Union, List
-from pathlib import Path
-import numpy as np
 import logging
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Any, Dict, List
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,7 @@ class BaseInference(ABC):
 
         # Carregar áudio diretamente
         import librosa
+
         from app.core.interfaces.audio import AudioData
 
         samples, sr = librosa.load(audio_path, sr=16000)
@@ -100,11 +102,13 @@ class BaseInference(ABC):
             Array numpy com features extraídas (7180 dimensões)
         """
         import tempfile
-        import soundfile as sf
         from pathlib import Path
+
+        import soundfile as sf
+
         from app.domain.features.segmented_feature_loader import create_feature_loader
 
-        logger.info(f"=== INICIANDO EXTRAÇÃO DE FEATURES PARA INFERÊNCIA ===")
+        logger.info("=== INICIANDO EXTRAÇÃO DE FEATURES PARA INFERÊNCIA ===")
         logger.info(
             f"Áudio: {len(audio_data.samples)} amostras, {audio_data.sample_rate}Hz")
 
@@ -122,7 +126,8 @@ class BaseInference(ABC):
 
             # Extrair features usando o extrator segmentado
             from app.domain.features.extractors.segmented_feature_extractor import (
-                SegmentedFeatureExtractor, SegmentedExtractionConfig
+                SegmentedExtractionConfig,
+                SegmentedFeatureExtractor,
             )
 
             logger.info("Criando configuração de extração...")

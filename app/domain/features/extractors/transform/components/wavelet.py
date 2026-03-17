@@ -1,7 +1,8 @@
+import warnings
+from typing import Any, Dict
+
 import numpy as np
 import pywt
-import warnings
-from typing import Dict, Any
 
 
 def extract_wavelet_features(

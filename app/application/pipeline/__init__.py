@@ -1,8 +1,13 @@
 """Pipeline de processamento"""
 
 from .orchestrator import (
-    DeepfakePipelineOrchestrator, PipelineConfig, PipelineResult,
-    PipelineStage, UploadStage, FeatureExtractionStage, TrainingStage
+    DeepfakePipelineOrchestrator,
+    FeatureExtractionStage,
+    PipelineConfig,
+    PipelineResult,
+    PipelineStage,
+    TrainingStage,
+    UploadStage,
 )
 
 __all__ = [

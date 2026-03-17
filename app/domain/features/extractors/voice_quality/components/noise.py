@@ -1,10 +1,10 @@
 """
 Extração de características de ruído (NHR, VTI, SPI, DFA).
 """
-import numpy as np
-import scipy.signal
-import librosa
 from typing import Dict
+
+import librosa
+import numpy as np
 
 
 def compute_nhr(y: np.ndarray, f0: np.ndarray, sr: int = 22050) -> float:

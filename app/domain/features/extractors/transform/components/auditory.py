@@ -1,8 +1,14 @@
-import numpy as np
-import librosa
 import warnings
-from typing import Dict, Any
-from .utils import compute_spectral_centroid, compute_spectral_rolloff, compute_spectral_flux
+from typing import Any, Dict
+
+import librosa
+import numpy as np
+
+from .utils import (
+    compute_spectral_centroid,
+    compute_spectral_flux,
+    compute_spectral_rolloff,
+)
 
 
 def extract_auditory_features(

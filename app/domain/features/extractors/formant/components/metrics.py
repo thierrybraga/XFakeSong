@@ -1,5 +1,6 @@
-import numpy as np
 from typing import Dict
+
+import numpy as np
 
 
 def compute_formant_trajectories(formants_data: Dict, n_formants: int) -> Dict:

@@ -1,5 +1,7 @@
+from typing import Dict, Optional
+
 import numpy as np
-from typing import Optional, Dict
+
 from .sample import compute_sample_entropy, compute_sample_entropy_optimized
 
 

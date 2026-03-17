@@ -5,19 +5,21 @@ sejam compatíveis entre si e funcionem corretamente em conjunto.
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
 
-from app.core.interfaces.base import ProcessingStatus
-from app.domain.interfaces.pipeline_interfaces import (
-    IPipelineComponent, IFeatureExtractor, IArchitecture,
-    ProcessingContext
-)
 from app.core.interfaces.audio import AudioData
-from app.domain.models.architectures.factory import ArchitectureSpec
+from app.core.interfaces.base import ProcessingStatus
 from app.domain.features.extractor_registry import ExtractorSpec
+from app.domain.interfaces.pipeline_interfaces import (
+    IArchitecture,
+    IFeatureExtractor,
+    ProcessingContext,
+)
+from app.domain.models.architectures.factory import ArchitectureSpec
 
 logger = logging.getLogger(__name__)
 

@@ -6,14 +6,16 @@ Este módulo implementa características específicas para análise de fala,
 incluindo características linguísticas, articulatórias e temporais.
 """
 
-import numpy as np
 from typing import Dict
+
+import numpy as np
+
 from .measures import (
-    extract_linguistic_features,
     extract_articulatory_features,
-    extract_temporal_speech_features,
     extract_fluency_features,
-    extract_vocal_quality_features
+    extract_linguistic_features,
+    extract_temporal_speech_features,
+    extract_vocal_quality_features,
 )
 
 

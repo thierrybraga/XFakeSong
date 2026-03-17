@@ -1,5 +1,7 @@
+from typing import Dict
+
 import numpy as np
-from typing import Dict, List, Tuple, Optional
+
 from . import common
 
 

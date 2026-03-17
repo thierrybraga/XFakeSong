@@ -1,6 +1,7 @@
+from typing import Dict
+
 import numpy as np
 import scipy.signal
-from typing import Dict
 
 
 def compute_amplitude_modulation(y: np.ndarray) -> float:

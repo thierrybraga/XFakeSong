@@ -1,28 +1,29 @@
 import logging
-from pathlib import Path
-from typing import Dict, List, Optional, Union, Any
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
+import joblib
 import tensorflow as tf
 from sklearn.preprocessing import StandardScaler
-import joblib
 
-from app.domain.models.architectures.registry import (
-    get_available_architectures,
-    create_model_by_name,
-    get_architecture_info
+from app.domain.models.architectures.layers import (
+    AttentionLayer,
+    AudioFeatureNormalization,
+    GraphAttentionLayer,
+    SliceLayer,
 )
+
 # Importar custom layers para carregar modelos
 from app.domain.models.architectures.rawnet2 import (
-    AudioResamplingLayer,
     AudioNormalizationLayer,
-    MultiScaleConv1DBlock
+    AudioResamplingLayer,
+    MultiScaleConv1DBlock,
 )
-from app.domain.models.architectures.layers import (
-    AudioFeatureNormalization,
-    AttentionLayer,
-    GraphAttentionLayer,
-    SliceLayer
+from app.domain.models.architectures.registry import (
+    create_model_by_name,
+    get_architecture_info,
+    get_available_architectures,
 )
 from app.domain.models.architectures.safe_normalization import SafeInstanceNormalization
 
@@ -38,6 +39,7 @@ class ModelInfo:
     scaler: Optional[StandardScaler]
     input_shape: tuple
     model_type: str  # 'tensorflow' ou 'sklearn'
+    input_contract: Optional[Dict[str, Any]] = None  # Contrato train/inference
 
 
 class ModelLoader:
@@ -78,7 +80,7 @@ class ModelLoader:
         """Carrega um único modelo."""
         model_name = model_path.stem
         metadata = {}
-        
+
         # Tentar carregar metadados se existirem
         config_path = model_path.parent / f"{model_name}_config.json"
         if config_path.exists():
@@ -151,10 +153,13 @@ class ModelLoader:
                 architecture = metadata['architecture']
             else:
                 architecture = self._infer_architecture_from_name(model_name)
-            
+
             # Sobrescrever input_shape se definido nos metadados
             if 'input_shape' in metadata:
                 input_shape = tuple(metadata['input_shape'])
+
+            # Extrair input_contract dos metadados (salvo pelo trainer)
+            input_contract = metadata.get('input_contract', None)
 
             model_info = ModelInfo(
                 name=model_name,
@@ -162,7 +167,8 @@ class ModelLoader:
                 model=model,
                 scaler=scaler,
                 input_shape=input_shape,
-                model_type=model_type
+                model_type=model_type,
+                input_contract=input_contract
             )
 
             self.loaded_models[model_name] = model_info
@@ -278,7 +284,7 @@ class ModelLoader:
                 model_arch = self.loaded_models[name].architecture
             else:
                 model_arch = self._infer_architecture_from_name(name)
-            
+
             if model_arch.lower() == arch_lower:
                 if variant_lower:
                     if variant_lower in name.lower():

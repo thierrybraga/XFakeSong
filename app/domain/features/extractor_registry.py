@@ -4,13 +4,17 @@ Este módulo implementa um sistema de registry para extratores de features,
 permitindo registro dinâmico e descoberta de diferentes tipos de extratores.
 """
 
-from typing import Dict, List, Optional, Type, Any
+import logging
 from dataclasses import dataclass
 from enum import Enum
-import logging
+from typing import Any, Dict, List, Optional, Type
 
-# Import da interface
-from app.domain.features.interfaces import IFeatureExtractor
+from app.domain.features.extractors.cepstral.cepstral_features import (
+    CepstralFeatureExtractor,
+)
+from app.domain.features.extractors.prosodic.prosodic_features import (
+    ProsodicFeatureExtractor,
+)
 
 # Imports dos extratores existentes (comentados temporariamente)
 # from app.domain.models.features.spectral.cepstral_features import (
@@ -33,17 +37,14 @@ from app.domain.features.interfaces import IFeatureExtractor
 #     ZeroCrossingRateExtractor,
 #     ChromaExtractor
 # )
-
 # Imports dos novos extratores implementados
 from app.domain.features.extractors.spectral.spectral_features import (
     SpectralFeatureExtractor,
 )
-from app.domain.features.extractors.cepstral.cepstral_features import (
-    CepstralFeatureExtractor,
-)
-from app.domain.features.extractors.prosodic.prosodic_features import (
-    ProsodicFeatureExtractor,
-)
+
+# Import da interface
+from app.domain.features.interfaces import IFeatureExtractor
+
 # from app.domain.features.extractors.prosodic.formant_features import (
 #     FormantFeatureExtractor
 # )

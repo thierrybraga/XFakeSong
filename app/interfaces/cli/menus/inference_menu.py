@@ -1,4 +1,5 @@
 from pathlib import Path
+
 from app.interfaces.cli.menus.base_menu import BaseMenu
 
 
@@ -69,18 +70,18 @@ class InferenceMenu(BaseMenu):
                     confidence = prediction.get('confidence', 0)
                     is_fake = prediction.get('is_deepfake', False)
 
-                    print(f"\n📊 Resultado da Análise:")
+                    print("\n📊 Resultado da Análise:")
                     print(
                         f"   🎯 Classificação: {
                             '🚨 DEEPFAKE' if is_fake else '✅ REAL'}")
                     print(f"   📈 Confiança: {confidence:.2%}")
 
                     if confidence > 0.8:
-                        print(f"   ✅ Alta confiança")
+                        print("   ✅ Alta confiança")
                     elif confidence > 0.6:
-                        print(f"   ⚠️  Confiança moderada")
+                        print("   ⚠️  Confiança moderada")
                     else:
-                        print(f"   ❌ Baixa confiança")
+                        print("   ❌ Baixa confiança")
                 else:
                     print(f"❌ Erro na análise: {result.message}")
 

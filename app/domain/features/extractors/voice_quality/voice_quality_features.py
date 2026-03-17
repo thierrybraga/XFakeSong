@@ -1,14 +1,22 @@
 """
 Extrator de características de qualidade vocal.
 """
-import numpy as np
 import warnings
+from typing import Dict, List
+
 import librosa
-from typing import Dict, List, Optional
+import numpy as np
+
+from app.core.interfaces.audio import (
+    AudioData,
+    AudioFeatures,
+    FeatureType,
+    IFeatureExtractor,
+)
 from app.core.interfaces.base import ProcessingResult, ProcessingStatus
-from app.core.interfaces.audio import IFeatureExtractor, AudioFeatures, AudioData, FeatureType
-from .components.perturbation import extract_perturbation_features
+
 from .components.noise import extract_noise_features
+from .components.perturbation import extract_perturbation_features
 from .components.quality import extract_additional_quality_features
 from .components.utils import get_default_voice_quality_features
 

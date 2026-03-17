@@ -1,7 +1,8 @@
-import numpy as np
-import librosa
-from scipy.stats import kurtosis, skew
 from typing import Dict
+
+import librosa
+import numpy as np
+from scipy.stats import kurtosis, skew
 
 
 def compute_sign_change_rate(y: np.ndarray) -> float:

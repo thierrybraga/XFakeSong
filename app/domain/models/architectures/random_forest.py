@@ -8,18 +8,18 @@ mas utiliza sklearn para o modelo Random Forest clássico.
 from __future__ import annotations
 
 import logging
-from typing import List, Tuple, Optional, Any, Dict
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
 # Project imports
 from app.domain.models.architectures.classical_ml_helpers import (
     BaseClassicalModel,
+    evaluate_model,
     optimize_hyperparameters,
-    evaluate_model
 )
 
 # Configure logger for Random Forest
@@ -61,10 +61,10 @@ class RandomForestModel(BaseClassicalModel):
         self.bootstrap = bootstrap
         self.random_state = random_state
         self.n_jobs = n_jobs
-        
+
         # Initialize pipeline immediately
         self.pipeline = self._create_pipeline()
-        
+
         logger.info(
             f"Random Forest model initialized with {n_estimators} estimators, max_depth={max_depth}")
 
@@ -251,5 +251,5 @@ def analyze_feature_importance(
         f"Top feature: {top_features[0][0]} "
         f"(importance: {top_features[0][1]:.4f})"
     )
-            
+
     return analysis

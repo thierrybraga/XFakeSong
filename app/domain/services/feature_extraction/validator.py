@@ -1,5 +1,6 @@
 import logging
-from typing import Dict, Any, List
+from typing import Any, Dict
+
 try:
     from app.domain.services.pipeline_validator import validate_pipeline
 except ImportError:

@@ -1,20 +1,42 @@
 """Interfaces do sistema"""
 
-from .base import (
-    ProcessingStatus, ProcessingResult, IProcessor, IValidator,
-    IExtractor, IRepository, IConfigurable, ILoggable, IMonitorable
-)
 from .audio import (
-    AudioFormat, FeatureType, AudioData, AudioFeatures,
-    DeepfakeDetectionResult, IAudioLoader, IFeatureExtractor,
-    IModelArchitecture, IDeepfakeDetector
+    AudioData,
+    AudioFeatures,
+    AudioFormat,
+    DeepfakeDetectionResult,
+    FeatureType,
+    IAudioLoader,
+    IDeepfakeDetector,
+    IFeatureExtractor,
+    IModelArchitecture,
+)
+from .base import (
+    IConfigurable,
+    IExtractor,
+    ILoggable,
+    IMonitorable,
+    IProcessor,
+    IRepository,
+    IValidator,
+    ProcessingResult,
+    ProcessingStatus,
 )
 from .services import (
-    DatasetType, StorageType, DatasetMetadata, ModelMetadata,
-    IAudioRepository, IFeatureRepository, IModelRepository,
-    IDatasetRepository, IUploadService, IFeatureExtractionService,
-    ITrainingService, IDetectionService, INotificationService,
-    IMonitoringService
+    DatasetMetadata,
+    DatasetType,
+    IAudioRepository,
+    IDatasetRepository,
+    IDetectionService,
+    IFeatureExtractionService,
+    IFeatureRepository,
+    IModelRepository,
+    IMonitoringService,
+    INotificationService,
+    ITrainingService,
+    IUploadService,
+    ModelMetadata,
+    StorageType,
 )
 
 __all__ = [

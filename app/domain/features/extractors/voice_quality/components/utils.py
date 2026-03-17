@@ -1,8 +1,9 @@
 """
 Funções utilitárias para extração de características de qualidade vocal.
 """
+from typing import Dict
+
 import numpy as np
-from typing import Dict, Any
 
 
 def get_default_voice_quality_features() -> Dict[str, float]:
