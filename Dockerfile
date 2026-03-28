@@ -28,10 +28,10 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Instalar dependências Python
-# torch CPU-only instalado antes do requirements.txt (torchcodec depende de torch)
+# torch + torchcodec CPU-only instalados antes do requirements.txt
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir \
-        torch torchaudio \
+        torch torchaudio torchcodec \
         --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir -r requirements.txt
 
