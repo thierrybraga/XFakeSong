@@ -38,8 +38,9 @@ logger = logging.getLogger("PTDatasetDownloader")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATASETS_DIR = BASE_DIR / "app" / "datasets"
-REAL_DIR = DATASETS_DIR / "real"
-FAKE_DIR = DATASETS_DIR / "fake"
+PROCESSED_DIR = DATASETS_DIR / "processed"
+REAL_DIR = PROCESSED_DIR / "real"
+FAKE_DIR = PROCESSED_DIR / "fake"
 RAW_DIR = DATASETS_DIR / "raw"
 
 TARGET_SR = 16_000
@@ -50,6 +51,7 @@ MAX_DURATION = 30.0
 def setup_dirs():
     for d in [REAL_DIR, FAKE_DIR, RAW_DIR]:
         d.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Diretório de saída: {PROCESSED_DIR}")
 
 
 def process_audio(audio_array, sample_rate):

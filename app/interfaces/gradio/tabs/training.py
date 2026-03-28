@@ -422,11 +422,57 @@ def create_training_tab():
                         log_capture_string.truncate(0)
                         log_capture_string.seek(0)
 
-                        base_path = Path(dataset_path)
-                        if not base_path.exists():
+                        # Resolver caminho do dataset (relativo ou absoluto)
+                        def _resolve_dataset_path(raw_path: str) -> Path | None:
+                            """Tenta múltiplos candidatos e retorna o primeiro
+                            que contenha subpastas real/ e fake/."""
+                            candidates = [Path(raw_path)]
+                            # Raiz do projeto (/app ou diretório do arquivo)
+                            app_root = Path(__file__).resolve().parents[4]
+                            candidates.append(app_root / raw_path)
+                            # Também tenta /app/<caminho> fixo no container
+                            candidates.append(Path("/app") / raw_path)
+                            for p in candidates:
+                                try:
+                                    p = p.resolve()
+                                    if (p.is_dir()
+                                            and (p / "real").is_dir()
+                                            and (p / "fake").is_dir()):
+                                        return p
+                                except Exception:
+                                    continue
+                            # Último recurso: retorna o caminho existente
+                            # mesmo sem a estrutura correta
+                            for p in candidates:
+                                try:
+                                    if p.resolve().is_dir():
+                                        return p.resolve()
+                                except Exception:
+                                    continue
+                            return None
+
+                        base_path = _resolve_dataset_path(dataset_path)
+                        if base_path is None:
                             yield (
                                 "Erro",
-                                f"Dataset não encontrado: {dataset_path}",
+                                f"Dataset não encontrado: {dataset_path}\n"
+                                "Certifique-se de que o caminho existe e "
+                                "contém subpastas 'real' e 'fake'.\n"
+                                "Execute o script de download:\n"
+                                "  python scripts/download_pt_datasets_v2.py "
+                                "--all --max-samples 1000",
+                                None, None, None, None,
+                                None, None, None, None, None
+                            )
+                            return
+
+                        if not (base_path / "real").is_dir() or \
+                                not (base_path / "fake").is_dir():
+                            yield (
+                                "Erro",
+                                f"Dataset em '{base_path}' não tem a estrutura "
+                                "esperada.\nCrie subpastas 'real' e 'fake' com "
+                                "arquivos .wav dentro.",
                                 None, None, None, None,
                                 None, None, None, None, None
                             )
