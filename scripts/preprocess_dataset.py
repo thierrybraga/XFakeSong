@@ -43,8 +43,9 @@ logger = logging.getLogger("DatasetPreprocessor")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATASETS_DIR = BASE_DIR / "app" / "datasets"
-REAL_DIR = DATASETS_DIR / "real"
-FAKE_DIR = DATASETS_DIR / "fake"
+PROCESSED_DIR = DATASETS_DIR / "processed"
+REAL_DIR = PROCESSED_DIR / "real"
+FAKE_DIR = PROCESSED_DIR / "fake"
 SPLITS_DIR = DATASETS_DIR / "splits"
 
 TARGET_SR = 16_000
@@ -244,16 +245,49 @@ def create_splits(train_ratio=0.8, val_ratio=0.1, test_ratio=0.1):
         logger.error("Muito poucos arquivos para criar splits!")
         return
 
-    # Primeiro split: train vs (val+test)
-    sss1 = StratifiedShuffleSplit(n_splits=1, test_size=(val_ratio + test_ratio), random_state=42)
-    train_idx, temp_idx = next(sss1.split(files, labels))
+    # Verificar se cada classe tem amostras suficientes para split estratificado
+    # StratifiedShuffleSplit requer pelo menos ceil(1/test_size) amostras por classe
+    min_per_class = int(np.ceil(1.0 / (val_ratio + test_ratio))) + 1
+    counts = {c: int(np.sum(labels == c)) for c in np.unique(labels)}
+    use_stratify = all(n >= min_per_class for n in counts.values())
+    if not use_stratify:
+        logger.warning(
+            f"Algumas classes têm poucos exemplos {counts}. "
+            "Usando split aleatório simples (sem estratificação)."
+        )
 
-    # Segundo split: val vs test
-    val_test_ratio = test_ratio / (val_ratio + test_ratio)
-    sss2 = StratifiedShuffleSplit(n_splits=1, test_size=val_test_ratio, random_state=42)
-    val_idx_local, test_idx_local = next(sss2.split(files[temp_idx], labels[temp_idx]))
-    val_idx = temp_idx[val_idx_local]
-    test_idx = temp_idx[test_idx_local]
+    rng = np.random.RandomState(42)
+    if use_stratify:
+        # Primeiro split: train vs (val+test)
+        sss1 = StratifiedShuffleSplit(
+            n_splits=1, test_size=(val_ratio + test_ratio), random_state=42)
+        train_idx, temp_idx = next(sss1.split(files, labels))
+
+        # Segundo split: val vs test
+        val_test_ratio = test_ratio / (val_ratio + test_ratio)
+        # Guard: temp needs enough per-class samples for second split
+        temp_counts = {c: int(np.sum(labels[temp_idx] == c)) for c in np.unique(labels)}
+        min_temp = int(np.ceil(1.0 / val_test_ratio)) + 1
+        if all(n >= min_temp for n in temp_counts.values()):
+            sss2 = StratifiedShuffleSplit(
+                n_splits=1, test_size=val_test_ratio, random_state=42)
+            val_idx_local, test_idx_local = next(
+                sss2.split(files[temp_idx], labels[temp_idx]))
+        else:
+            perm = rng.permutation(len(temp_idx))
+            cut = max(1, int(len(temp_idx) * val_test_ratio))
+            test_idx_local = perm[:cut]
+            val_idx_local = perm[cut:]
+        val_idx = temp_idx[val_idx_local]
+        test_idx = temp_idx[test_idx_local]
+    else:
+        perm = rng.permutation(len(files))
+        n_temp = max(2, int(len(files) * (val_ratio + test_ratio)))
+        train_idx = perm[n_temp:]
+        temp_idx = perm[:n_temp]
+        cut = max(1, int(n_temp * (test_ratio / (val_ratio + test_ratio))))
+        test_idx = temp_idx[:cut]
+        val_idx = temp_idx[cut:]
 
     # Criar diretórios e copiar
     for split_name, indices in [("train", train_idx), ("val", val_idx), ("test", test_idx)]:
