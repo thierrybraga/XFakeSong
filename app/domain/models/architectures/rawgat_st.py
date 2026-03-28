@@ -64,12 +64,12 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         x = layers.Conv2D(32, (3, 3), activation='relu',
                           padding='same', name="conv1")(x)
         x = layers.BatchNormalization(name="bn1")(x)
-        x = layers.MaxPooling2D((2, 2), name="pool1")(x)
+        x = layers.MaxPooling2D((2, 2), padding='same', name="pool1")(x)
         x = layers.Dropout(dropout_rate, name="classifier_dropout1")(x)
         x = layers.Conv2D(64, (3, 3), activation='relu',
                           padding='same', name="conv2")(x)
         x = layers.BatchNormalization(name="bn2")(x)
-        x = layers.MaxPooling2D((2, 2), name="pool2")(x)
+        x = layers.MaxPooling2D((2, 2), padding='same', name="pool2")(x)
         x = layers.Dropout(dropout_rate, name="classifier_dropout2")(x)
         x = flatten_features_for_gru(x, name="reshape_for_gru")
         # Apply GRU blocks (Standardized for CPU/GPU)
@@ -86,12 +86,12 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         x = layers.Conv2D(32, (5, 5), activation='relu',
                           padding='same', name="conv_b1")(x)
         x = layers.BatchNormalization(name="bn_b1")(x)
-        x = layers.MaxPooling2D((2, 2), name="pool_b1")(x)
+        x = layers.MaxPooling2D((2, 2), padding='same', name="pool_b1")(x)
         x = layers.Dropout(dropout_rate, name="dropout_b1")(x)
         x = layers.Conv2D(64, (5, 5), activation='relu',
                           padding='same', name="conv_b2")(x)
         x = layers.BatchNormalization(name="bn_b2")(x)
-        x = layers.MaxPooling2D((2, 2), name="pool_b2")(x)
+        x = layers.MaxPooling2D((2, 2), padding='same', name="pool_b2")(x)
         x = layers.Dropout(dropout_rate, name="dropout_b2")(x)
         x = layers.Flatten(name="flatten")(x)
 
@@ -146,12 +146,12 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         x = layers.Conv2D(32, (3, 3), activation='relu',
                           padding='same', name="resnet_conv_init")(x)
         x = layers.BatchNormalization(name="resnet_bn_init")(x)
-        x = layers.MaxPooling2D((2, 2), name="resnet_pool_init")(x)
+        x = layers.MaxPooling2D((2, 2), padding='same', name="resnet_pool_init")(x)
         x = residual_block(x, 64, (3, 3), stage='a')
-        x = layers.MaxPooling2D((2, 2), name="resnet_pool_a")(x)
+        x = layers.MaxPooling2D((2, 2), padding='same', name="resnet_pool_a")(x)
         x = layers.Dropout(dropout_rate, name="resnet_dropout_a")(x)
         x = residual_block(x, 128, (3, 3), stage='b')
-        x = layers.MaxPooling2D((2, 2), name="resnet_pool_b")(x)
+        x = layers.MaxPooling2D((2, 2), padding='same', name="resnet_pool_b")(x)
         x = layers.Dropout(dropout_rate, name="resnet_dropout_b")(x)
         x = flatten_features_for_gru(x, name="resnet_reshape_for_gru")
         x = apply_gru_block(
@@ -236,14 +236,14 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         # Combine multi-resolution features
         x = layers.Concatenate(
             axis=-1, name="rawgat_concat_sincnet")([sincnet_low, sincnet_mid, sincnet_high])
-        x = layers.MaxPooling2D((1, 2), name="rawgat_pool_sincnet")(x)
+        x = layers.MaxPooling2D((1, 2), padding='same', name="rawgat_pool_sincnet")(x)
         x = layers.Dropout(dropout_rate, name="rawgat_dropout_sincnet")(x)
 
         # Additional convolutional layer for feature refinement
         x = layers.Conv2D(128, (3, 3), activation='relu',
                           padding='same', name="rawgat_conv_refine")(x)
         x = layers.BatchNormalization(name="rawgat_bn_refine")(x)
-        x = layers.MaxPooling2D((2, 2), name="rawgat_pool_refine")(x)
+        x = layers.MaxPooling2D((2, 2), padding='same', name="rawgat_pool_refine")(x)
         x = layers.Dropout(dropout_rate, name="rawgat_dropout_refine")(x)
 
         # Reshape para aplicar Graph Attention
