@@ -24,4 +24,6 @@ slowapi
 PyWavelets
 huggingface_hub
 matplotlib
+seaborn
+pandas
 a2wsgi
