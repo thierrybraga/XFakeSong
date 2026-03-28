@@ -124,8 +124,13 @@ def download_brspeech(max_samples=1000):
                 split="train",
                 streaming=True,
             )
-            # Desabilita decodificacao automatica (evita dependencia de torchcodec/torch)
-            ds = ds.cast_column("audio", Audio(decode=False))
+            # Desabilita decodificacao automatica (evita dependencia de torchcodec/torch).
+            # spoof split tem coluna extra "model" que causa mismatch no cast; ignora o erro
+            # pois o streaming retorna bytes brutos mesmo sem o cast.
+            try:
+                ds = ds.cast_column("audio", Audio(decode=False))
+            except Exception as cast_err:
+                logger.debug(f"  cast_column ignorado para {data_dir}: {cast_err}")
             for item in ds:
                 if target_count >= samples_per_class:
                     break
@@ -313,80 +318,102 @@ def download_fake_voices(max_speakers=20, max_per_speaker=100):
 # 3. FLEURS PT-BR (parquet)
 # ---------------------------------------------------------------------------
 def download_fleurs(max_samples=500):
-    """Baixa FLEURS PT-BR como fonte de fala real."""
+    """Baixa FLEURS PT-BR como fonte de fala real via parquet direto.
+
+    datasets>=4.0 removeu suporte a scripts legados (fleurs.py), entao
+    usamos HfApi + hf_hub_download para baixar os parquet files diretamente,
+    o mesmo padrao do fallback do BRSpeech-DF.
+    """
     logger.info("=" * 60)
     logger.info("FLEURS PT-BR (fala real)")
     logger.info("=" * 60)
-
-    try:
-        from datasets import load_dataset, Audio
-    except ImportError:
-        logger.error("pip install datasets")
-        return
 
     existing = count_wavs(REAL_DIR, "fleurs")
     if existing >= max_samples:
         logger.info(f"Ja existem {existing} amostras FLEURS. Pulando.")
         return
 
-    count = existing
     try:
-        # FLEURS em parquet nao usa script
-        ds = load_dataset(
-            "google/fleurs",
-            "pt_br",
-            split="train",
-            streaming=True,
-            trust_remote_code=False,
-        )
-    except Exception:
-        # Fallback: baixar parquet diretamente
-        logger.info("Tentando via parquet direto...")
-        try:
-            ds = load_dataset(
-                "google/fleurs",
-                "pt_br",
-                split="train",
-                streaming=True,
-            )
-        except Exception as e:
-            logger.error(f"FLEURS indisponivel: {e}")
-            logger.info("Use --brspeech para obter amostras reais do BRSpeech-DF bonafide/")
-            return
+        from huggingface_hub import HfApi, hf_hub_download
+        import pandas as pd
+    except ImportError:
+        logger.error("pip install huggingface_hub pandas")
+        return
 
-    # Desabilita decodificacao automatica (evita dependencia de torchcodec/torch)
-    ds = ds.cast_column("audio", Audio(decode=False))
+    api = HfApi()
+    try:
+        all_files = api.list_repo_files("google/fleurs", repo_type="dataset")
+    except Exception as e:
+        logger.error(f"FLEURS indisponivel: {e}")
+        return
 
-    for item in ds:
+    # Parquet files do split pt_br/train ficam em data/pt_br/train-*.parquet
+    parquet_files = [
+        f for f in all_files
+        if "pt_br" in f and f.endswith(".parquet") and "train" in f
+    ]
+
+    if not parquet_files:
+        logger.error("Nenhum parquet FLEURS PT-BR encontrado no repositorio.")
+        return
+
+    logger.info(f"Encontrados {len(parquet_files)} parquet files FLEURS PT-BR")
+
+    count = existing
+    for pf in parquet_files:
         if count >= max_samples:
             break
-        if "audio" not in item:
-            continue
 
-        audio_entry = item["audio"]
-        audio_bytes = audio_entry.get("bytes") or audio_entry.get("path")
-        if not audio_bytes:
-            continue
         try:
-            if isinstance(audio_bytes, (bytes, bytearray)):
-                audio_data, sr = sf.read(io.BytesIO(audio_bytes))
-            else:
-                audio_data, sr = sf.read(audio_bytes)
-        except Exception:
+            local_path = hf_hub_download(
+                "google/fleurs",
+                pf,
+                repo_type="dataset",
+                cache_dir=str(RAW_DIR / "fleurs_cache"),
+            )
+
+            df = pd.read_parquet(local_path)
+
+            for _, row in df.iterrows():
+                if count >= max_samples:
+                    break
+
+                audio_info = row.get("audio", {})
+                if not isinstance(audio_info, dict):
+                    continue
+
+                audio_bytes = audio_info.get("bytes")
+                if not audio_bytes:
+                    audio_path = audio_info.get("path")
+                    if not audio_path:
+                        continue
+                    try:
+                        audio_data, sr = sf.read(audio_path)
+                    except Exception:
+                        continue
+                else:
+                    try:
+                        audio_data, sr = sf.read(io.BytesIO(audio_bytes))
+                    except Exception:
+                        continue
+
+                if audio_data.ndim > 1:
+                    audio_data = audio_data.mean(axis=1)
+
+                audio, ok = process_audio(audio_data.astype(np.float32), sr)
+                if not ok:
+                    continue
+
+                out = REAL_DIR / f"fleurs_{count:05d}.wav"
+                sf.write(str(out), audio, TARGET_SR, subtype="PCM_16")
+                count += 1
+
+                if count % 50 == 0:
+                    logger.info(f"  FLEURS: {count}/{max_samples}")
+
+        except Exception as e:
+            logger.warning(f"  Erro no parquet {pf}: {e}")
             continue
-        if audio_data.ndim > 1:
-            audio_data = audio_data.mean(axis=1)
-
-        audio, ok = process_audio(audio_data.astype(np.float32), sr)
-        if not ok:
-            continue
-
-        out = REAL_DIR / f"fleurs_{count:05d}.wav"
-        sf.write(str(out), audio, TARGET_SR, subtype="PCM_16")
-        count += 1
-
-        if count % 50 == 0:
-            logger.info(f"  FLEURS: {count}/{max_samples}")
 
     logger.info(f"FLEURS: {count} amostras reais")
 
