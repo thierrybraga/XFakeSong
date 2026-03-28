@@ -537,6 +537,11 @@ def create_training_tab():
                             )
                             return
 
+                        # Capturar class_names antes de qualquer .map()
+                        # (após .map() o atributo deixa de existir)
+                        class_names = train_ds.class_names
+                        num_classes = len(class_names)
+
                         # 2. Pré-processamento On-the-Fly (se necessário)
                         input_shape = (AUDIO_LEN, 1)
 
@@ -598,9 +603,6 @@ def create_training_tab():
                             train_ds = train_ds.map(ensure_channel)
                             val_ds = val_ds.map(ensure_channel)
                             input_shape = (AUDIO_LEN, 1)
-
-                        # Detectar número real de classes do dataset
-                        num_classes = len(train_ds.class_names)
 
                         # Otimizar performance
                         train_ds = train_ds.cache().prefetch(tf.data.AUTOTUNE)
