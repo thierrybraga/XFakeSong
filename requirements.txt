@@ -27,3 +27,4 @@ matplotlib
 a2wsgi
 python-dotenv
 datasets
+seaborn
