@@ -72,10 +72,10 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
 
         # Apply GRU blocks (Standardized for CPU/GPU)
         x = apply_gru_block(
-            x, 128, return_sequences=True, dropout_rate=dropout_rate, name="gru1"
+            x, 128, return_sequences=True, name="gru1"
         )
         x = apply_gru_block(
-            x, 64, return_sequences=True, dropout_rate=dropout_rate, name="gru2"
+            x, 64, return_sequences=True, name="gru2"
         )
 
         x = AttentionLayer(name="attention_layer")(x)

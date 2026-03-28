@@ -1644,8 +1644,11 @@ class CrossAttentionFusionLayer(layers.Layer):
         attn_out = self.layer_norm(attn_out + sequence)
 
         # Flatten: (batch, num_branches * embed_dim)
-        batch_size = tf.shape(attn_out)[0]
-        fused = tf.reshape(attn_out, [batch_size, -1])
+        static_size = attn_out.shape[1] * attn_out.shape[2]
+        if static_size is not None:
+            fused = tf.reshape(attn_out, [tf.shape(attn_out)[0], int(static_size)])
+        else:
+            fused = tf.reshape(attn_out, [tf.shape(attn_out)[0], -1])
         return fused
 
     def get_config(self):

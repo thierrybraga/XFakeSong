@@ -82,22 +82,17 @@ def count_wavs(directory, prefix=""):
 # ---------------------------------------------------------------------------
 def download_brspeech(max_samples=1000):
     """
-    Baixa BRSpeech-DF via streaming de parquet.
+    Baixa BRSpeech-DF via parquet direto (HuggingFace Hub).
     bonafide/ -> real, spoof/ -> fake.
+    Usa parquet diretamente pois o streaming requer torchcodec (PyTorch)
+    e o split spoof tem schema com coluna extra 'model' incompativel.
     """
     logger.info("=" * 60)
     logger.info("BRSPEECH-DF (bonafide + spoof)")
     logger.info("=" * 60)
 
-    try:
-        from datasets import load_dataset
-    except ImportError:
-        logger.error("pip install datasets")
-        return
-
     samples_per_class = max_samples // 2
 
-    # Carregar dataset completo (bonafide + spoof juntos) via streaming
     real_count = count_wavs(REAL_DIR, "brspeech")
     fake_count = count_wavs(FAKE_DIR, "brspeech")
 
@@ -107,57 +102,21 @@ def download_brspeech(max_samples=1000):
 
     logger.info(f"Baixando BRSpeech-DF... ja tem {real_count} real + {fake_count} fake")
 
-    # Tentar carregar cada split separadamente
-    for data_dir, label_name, is_real in [("bonafide", "real", True), ("spoof", "fake", False)]:
+    for data_dir, is_real in [("bonafide", True), ("spoof", False)]:
         target_count = real_count if is_real else fake_count
         target_dir = REAL_DIR if is_real else FAKE_DIR
-        prefix = "brspeech"
 
         if target_count >= samples_per_class:
             continue
 
         logger.info(f"  Processando {data_dir}...")
-        try:
-            ds = load_dataset(
-                "AKCIT-Deepfake/BRSpeech-DF",
-                data_dir=data_dir,
-                split="train",
-                streaming=True,
-            )
-            for item in ds:
-                if target_count >= samples_per_class:
-                    break
-                if "audio" not in item:
-                    continue
-
-                audio, ok = process_audio(
-                    item["audio"]["array"], item["audio"]["sampling_rate"]
-                )
-                if not ok:
-                    continue
-
-                out = target_dir / f"{prefix}_{target_count:05d}.wav"
-                sf.write(str(out), audio, TARGET_SR, subtype="PCM_16")
-                target_count += 1
-
-                if target_count % 50 == 0:
-                    logger.info(f"    {data_dir}: {target_count}/{samples_per_class}")
-
-            if is_real:
-                real_count = target_count
-            else:
-                fake_count = target_count
-
-        except Exception as e:
-            logger.warning(f"  Erro com data_dir={data_dir}: {e}")
-            logger.info(f"  Tentando via download direto de parquet...")
-            target_count = _download_brspeech_parquet(
-                data_dir, target_dir, prefix, target_count, samples_per_class
-            )
-            if is_real:
-                real_count = target_count
-            else:
-                fake_count = target_count
+        target_count = _download_brspeech_parquet(
+            data_dir, target_dir, "brspeech", target_count, samples_per_class
+        )
+        if is_real:
+            real_count = target_count
+        else:
+            fake_count = target_count
 
     logger.info(f"BRSpeech-DF: {real_count} real + {fake_count} fake")
 

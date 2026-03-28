@@ -46,8 +46,7 @@ class SpeechExtractorWrapper(IFeatureExtractor):
             return ProcessingResult(
                 status=ProcessingStatus.ERROR,
                 errors=[
-                    f"Erro na extração de características de fala: {
-                        str(e)}"]
+                    f"Erro na extração de características de fala: {str(e)}"]
             )
 
     def extract_features(

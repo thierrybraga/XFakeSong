@@ -137,14 +137,12 @@ class SegmentedFeatureLoader:
             result = np.concatenate([mean_vals, std_vals, min_vals, max_vals])
         else:
             raise ValueError(
-                f"Unknown aggregate method: {
-                    self.aggregate_method}")
+                f"Unknown aggregate method: {self.aggregate_method}")
 
         # Verificar se ainda há NaN e substituir por 0
         if np.isnan(result).any():
             logger.warning(
-                f"Found {
-                    np.isnan(result).sum()} NaN values, replacing with 0")
+                f"Found {np.isnan(result).sum()} NaN values, replacing with 0")
             result = np.nan_to_num(result, nan=0.0)
 
         return result
@@ -243,8 +241,7 @@ class SegmentedFeatureLoader:
                         else:
                             for i in range(len(sample_features)):
                                 feature_names.append(
-                                    f"{feature_type}_{i}_{
-                                        self.aggregate_method}")
+                                    f"{feature_type}_{i}_{self.aggregate_method}")
 
             # Combinar features de todos os tipos para esta classe
             if class_features_by_type:
@@ -258,8 +255,7 @@ class SegmentedFeatureLoader:
                 all_labels.append(class_name)
 
                 logger.info(
-                    f"Loaded {
-                        len(combined_features)} features for class {class_name}")
+                    f"Loaded {len(combined_features)} features for class {class_name}")
 
         if not all_features:
             raise ValueError(
@@ -270,8 +266,7 @@ class SegmentedFeatureLoader:
             feature_lengths = [len(f) for f in all_features]
             if len(set(feature_lengths)) > 1:
                 logger.warning(
-                    f"Features have different lengths: {
-                        set(feature_lengths)}")
+                    f"Features have different lengths: {set(feature_lengths)}")
                 # Usar o tamanho mínimo para padronizar
                 min_length = min(feature_lengths)
                 all_features = [f[:min_length] for f in all_features]
@@ -351,8 +346,7 @@ class SegmentedFeatureLoader:
             if max_samples_per_class:
                 sample_ids = sample_ids[:max_samples_per_class]
                 logger.info(
-                    f"Limited to {
-                        len(sample_ids)} samples for {class_name}")
+                    f"Limited to {len(sample_ids)} samples for {class_name}")
 
             # Carregar features para cada amostra
             for sample_id in sample_ids:
@@ -417,8 +411,7 @@ class SegmentedFeatureLoader:
                         # Padronizar tamanho se necessário
                         if len(combined_features) != reference_length:
                             logger.warning(
-                                f"Feature length mismatch: {
-                                    len(combined_features)} vs {reference_length}")
+                                f"Feature length mismatch: {len(combined_features)} vs {reference_length}")
                             min_length = min(
                                 len(combined_features), reference_length)
                             combined_features = combined_features[:min_length]
@@ -443,8 +436,7 @@ class SegmentedFeatureLoader:
             feature_lengths = [len(f) for f in all_features]
             if len(set(feature_lengths)) > 1:
                 logger.warning(
-                    f"Features have different lengths: {
-                        set(feature_lengths)}")
+                    f"Features have different lengths: {set(feature_lengths)}")
                 # Usar o tamanho mínimo para padronizar
                 min_length = min(feature_lengths)
                 all_features = [f[:min_length] for f in all_features]
@@ -501,9 +493,7 @@ class SegmentedFeatureLoader:
 
         logger.info("Train/test split completed")
         logger.info(
-            f"Train shape: {
-                X_train.shape}, Test shape: {
-                X_test.shape}")
+            f"Train shape: {X_train.shape}, Test shape: {X_test.shape}")
 
         return X_train, X_test, y_train, y_test
 
@@ -533,8 +523,7 @@ class SegmentedFeatureLoader:
             else:
                 for i in range(base_count):
                     feature_names.append(
-                        f"{feature_type}_{i}_{
-                            self.aggregate_method}")
+                        f"{feature_type}_{i}_{self.aggregate_method}")
 
         return feature_names
 

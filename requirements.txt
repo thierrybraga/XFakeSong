@@ -25,3 +25,5 @@ PyWavelets
 huggingface_hub
 matplotlib
 a2wsgi
+python-dotenv
+datasets

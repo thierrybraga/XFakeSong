@@ -60,6 +60,8 @@ class MelSpectrogramBranch(layers.Layer):
         self.n_mels = n_mels
 
     def call(self, inputs):
+        if len(inputs.shape) == 3 and inputs.shape[-1] == 1:
+            inputs = tf.squeeze(inputs, axis=-1)
         stft = tf.signal.stft(
             inputs, frame_length=self.n_fft,
             frame_step=self.hop_length, fft_length=self.n_fft
@@ -133,6 +135,8 @@ class LFCCBranch(layers.Layer):
         self.dct_matrix = tf.constant(dct_matrix, dtype=tf.float32)
 
     def call(self, inputs):
+        if len(inputs.shape) == 3 and inputs.shape[-1] == 1:
+            inputs = tf.squeeze(inputs, axis=-1)
         stft = tf.signal.stft(
             inputs, frame_length=self.n_fft,
             frame_step=self.hop_length, fft_length=self.n_fft
@@ -195,6 +199,8 @@ class CQTBranch(layers.Layer):
         self.cqt_filter_bank = tf.constant(cqt_filters, dtype=tf.float32)
 
     def call(self, inputs):
+        if len(inputs.shape) == 3 and inputs.shape[-1] == 1:
+            inputs = tf.squeeze(inputs, axis=-1)
         stft = tf.signal.stft(
             inputs, frame_length=self.n_fft,
             frame_step=self.hop_length, fft_length=self.n_fft
@@ -243,6 +249,8 @@ class MFCCBranch(layers.Layer):
         self.dct_matrix = tf.constant(dct_matrix, dtype=tf.float32)
 
     def call(self, inputs):
+        if len(inputs.shape) == 3 and inputs.shape[-1] == 1:
+            inputs = tf.squeeze(inputs, axis=-1)
         stft = tf.signal.stft(
             inputs, frame_length=self.n_fft,
             frame_step=self.hop_length, fft_length=self.n_fft
@@ -424,7 +432,7 @@ def _create_ensemble_feature_fusion(
     fused = layers.Dropout(dropout_rate * 0.5, name='fusion_dropout_3')(fused)
 
     # Classification
-    if num_classes == 1 or num_classes == 2:
+    if num_classes == 1:
         outputs = layers.Dense(1, activation='sigmoid', name='output')(fused)
         loss = 'binary_crossentropy'
     else:
@@ -471,7 +479,7 @@ def _create_ensemble_score_fusion(
         )
 
     # Determine output activation and loss
-    if num_classes == 1 or num_classes == 2:
+    if num_classes == 1:
         out_units = 1
         out_activation = 'sigmoid'
         loss = 'binary_crossentropy'
@@ -566,7 +574,7 @@ def _create_ensemble_lite(
     fused = layers.Dense(128, activation='relu', name='fusion_dense')(fused)
     fused = layers.Dropout(0.2, name='fusion_dropout')(fused)
 
-    if num_classes == 1 or num_classes == 2:
+    if num_classes == 1:
         outputs = layers.Dense(1, activation='sigmoid', name='output')(fused)
         loss = 'binary_crossentropy'
     else:

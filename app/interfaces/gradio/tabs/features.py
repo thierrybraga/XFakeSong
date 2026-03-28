@@ -207,8 +207,7 @@ def create_features_tab():
 
                 # --- Estatísticas Detalhadas ---
                 stats_md = "### 📊 Estatísticas das Features\n\n"
-                stats_md += f"**Duração do Áudio:** {
-                    audio_data.duration:.2f}s\n"
+                stats_md += f"**Duração do Áudio:** {audio_data.duration:.2f}s\n"
                 stats_md += f"**Sample Rate:** {audio_data.sample_rate} Hz\n\n"
 
                 stats_md += "| Feature | Shape | Min | Max | Mean | Std |\n"
@@ -251,8 +250,7 @@ def create_features_tab():
             except Exception as e:
                 import traceback
                 traceback.print_exc()
-                return None, None, None, f"Erro Fatal: {str(e)}", {
-                    "error": str(e)}
+                return None, None, None, f"Erro Fatal: {str(e)}", {"error": str(e)}
 
         extract_btn.click(
             extract_and_plot,

@@ -87,8 +87,7 @@ class ModelTrainer(IModelTrainer):
 
                 if preparation_result.status != ProcessingStatus.SUCCESS:
                     raise ValueError(
-                        f"Erro na preparação segura dos dados: {
-                            preparation_result.errors}")
+                        f"Erro na preparação segura dos dados: {preparation_result.errors}")
 
                 prepared_data = preparation_result.data
                 X_train = prepared_data["X_train"]
@@ -103,12 +102,9 @@ class ModelTrainer(IModelTrainer):
 
                 validation_data = (X_val, y_val)
 
+                n_test = len(self._test_data[0])
                 self.logger.info(
-                    f"Dados preparados com segurança - Train: {
-                        len(X_train)}, Val: {
-                        len(X_val)}, Test: {
-                        len(
-                            self._test_data[0])}")
+                    f"Dados preparados com segurança - Train: {len(X_train)}, Val: {len(X_val)}, Test: {n_test}")
             else:
                 self.logger.warning(
                     "Dados de validação fornecidos externamente - pipeline seguro não aplicado")

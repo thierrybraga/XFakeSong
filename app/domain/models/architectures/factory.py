@@ -94,8 +94,7 @@ class BaseArchitectureFactory(IArchitectureFactory):
         """Cria modelo da arquitetura."""
         if not self.validate_input_shape(input_shape):
             raise ValueError(
-                f"Invalid input shape {input_shape} for {
-                    self.spec.name}")
+                f"Invalid input shape {input_shape} for {self.spec.name}")
 
         if variant not in self.spec.supported_variants:
             logger.warning(f"Variant {variant} not supported, using default")

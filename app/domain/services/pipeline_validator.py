@@ -245,8 +245,7 @@ class ComponentValidator:
 
                         if not prediction_result.success:
                             result.add_warning(
-                                f"Falha na predição de teste: {
-                                    prediction_result.errors}"
+                                f"Falha na predição de teste: {prediction_result.errors}"
                             )
 
                 except Exception as e:
@@ -387,9 +386,7 @@ class PipelineValidator:
                         result.add_issue(
                             CompatibilityIssue.SHAPE_MISMATCH,
                             f"{ext_spec.name} -> {arch_spec.name}",
-                            f"Shapes incompatíveis: {
-                                ext_spec.output_shape} -> {
-                                arch_spec.input_shape}"
+                            f"Shapes incompatíveis: {ext_spec.output_shape} -> {arch_spec.input_shape}"
                         )
 
         # Verificar dependências conflitantes

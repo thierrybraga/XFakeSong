@@ -70,6 +70,8 @@ class MelSpectrogramLayer(layers.Layer):
         self.n_mels = n_mels
 
     def call(self, inputs):
+        if len(inputs.shape) == 3 and inputs.shape[-1] == 1:
+            inputs = tf.squeeze(inputs, axis=-1)
         stft = tf.signal.stft(
             inputs,
             frame_length=self.n_fft,
@@ -406,7 +408,7 @@ def _create_cct_model(
     # ---------- Classification ----------
     representation = layers.Dropout(dropout_rate, name='head_dropout')(representation)
 
-    if num_classes == 1 or num_classes == 2:
+    if num_classes == 1:
         outputs = layers.Dense(1, activation='sigmoid', name='output')(representation)
         loss = 'binary_crossentropy'
     else:

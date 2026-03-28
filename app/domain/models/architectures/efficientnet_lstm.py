@@ -69,6 +69,8 @@ class MelSpectrogramFrontEnd(layers.Layer):
         self.n_mels = n_mels
 
     def call(self, inputs):
+        if len(inputs.shape) == 3 and inputs.shape[-1] == 1:
+            inputs = tf.squeeze(inputs, axis=-1)
         # STFT with Hamming window (paper specifies Hamming)
         window = tf.signal.hamming_window(self.n_fft)
         stft = tf.signal.stft(

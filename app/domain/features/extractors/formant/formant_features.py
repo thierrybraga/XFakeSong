@@ -194,8 +194,7 @@ class FormantFeatureExtractor(IFeatureExtractor):
         min_length = self.frame_length
         if len(y) < min_length:
             warnings.warn(
-                f"Sinal muito curto ({
-                    len(y)} samples), fazendo padding para {min_length}")
+                f"Sinal muito curto ({len(y)} samples), fazendo padding para {min_length}")
             y = np.pad(y, (0, min_length - len(y)), mode='constant')
 
         # Normalizar sinal

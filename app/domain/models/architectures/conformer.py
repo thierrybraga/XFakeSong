@@ -279,9 +279,14 @@ class ConvSubsampling(layers.Layer):
         x = self.conv2(x)   # (batch, time//4, freq//4, d_model)
 
         # Flatten freq and channel dims: (batch, time//4, freq//4 * d_model)
-        batch_size = tf.shape(x)[0]
-        time_steps = tf.shape(x)[1]
-        x = tf.reshape(x, (batch_size, time_steps, -1))
+        # Use static freq_ch so Dense layer can infer weight shape at build time
+        freq_ch = x.shape[2] * x.shape[3]
+        if freq_ch is not None:
+            x = tf.reshape(x, (tf.shape(x)[0], tf.shape(x)[1], int(freq_ch)))
+        else:
+            batch_size = tf.shape(x)[0]
+            time_steps = tf.shape(x)[1]
+            x = tf.reshape(x, (batch_size, time_steps, -1))
 
         # Project to d_model
         x = self.linear(x)

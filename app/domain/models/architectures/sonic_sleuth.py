@@ -295,7 +295,7 @@ class ConvBlock(layers.Layer):
         )
         self.bn = layers.BatchNormalization()
         self.relu = layers.ReLU()
-        self.maxpool = layers.MaxPooling2D(pool_size=(2, 2))
+        self.maxpool = layers.MaxPooling2D(pool_size=(2, 2), padding='same')
         self.dropout = layers.Dropout(dropout_rate)
 
     def call(self, inputs, training=None):
@@ -440,21 +440,21 @@ def _create_sonic_sleuth_paper(input_shape, num_classes=1, feature_type='lfcc',
 
     # Block 3: 128 filters (residual with 1x1 projection 64→128)
     shortcut_3 = layers.Conv2D(128, (1, 1), padding='same', use_bias=False, name='res_proj_3')(x)
-    shortcut_3 = layers.MaxPooling2D((2, 2), name='res_pool_3')(shortcut_3)
+    shortcut_3 = layers.MaxPooling2D((2, 2), padding='same', name='res_pool_3')(shortcut_3)
     x = ConvBlock(filters=128, kernel_size=(3, 3), dropout_rate=0.3, name='conv_block_3')(x)
     x = layers.Add(name='res_add_3')([x, shortcut_3])
     x = SqueezeExcitationBlock2D(reduction=16, name='se_block_3')(x)
 
     # Block 4: 256 filters (residual with 1x1 projection 128→256)
     shortcut_4 = layers.Conv2D(256, (1, 1), padding='same', use_bias=False, name='res_proj_4')(x)
-    shortcut_4 = layers.MaxPooling2D((2, 2), name='res_pool_4')(shortcut_4)
+    shortcut_4 = layers.MaxPooling2D((2, 2), padding='same', name='res_pool_4')(shortcut_4)
     x = ConvBlock(filters=256, kernel_size=(3, 3), dropout_rate=0.3, name='conv_block_4')(x)
     x = layers.Add(name='res_add_4')([x, shortcut_4])
     x = SqueezeExcitationBlock2D(reduction=16, name='se_block_4')(x)
 
     # Block 5: 512 filters (residual with 1x1 projection 256→512)
     shortcut_5 = layers.Conv2D(512, (1, 1), padding='same', use_bias=False, name='res_proj_5')(x)
-    shortcut_5 = layers.MaxPooling2D((2, 2), name='res_pool_5')(shortcut_5)
+    shortcut_5 = layers.MaxPooling2D((2, 2), padding='same', name='res_pool_5')(shortcut_5)
     x = ConvBlock(filters=512, kernel_size=(3, 3), dropout_rate=0.3, name='conv_block_5')(x)
     x = layers.Add(name='res_add_5')([x, shortcut_5])
     x = SqueezeExcitationBlock2D(reduction=16, name='se_block_5')(x)
@@ -469,7 +469,7 @@ def _create_sonic_sleuth_paper(input_shape, num_classes=1, feature_type='lfcc',
     x = layers.Dropout(0.3, name='classifier_dropout')(x)
 
     # Paper uses binary classification (real/fake) with sigmoid
-    if num_classes == 1 or num_classes == 2:
+    if num_classes == 1:
         outputs = layers.Dense(1, activation='sigmoid', name='output')(x)
         loss = 'binary_crossentropy'
     else:

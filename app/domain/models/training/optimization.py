@@ -191,8 +191,7 @@ class OptimizerFactory:
             return optimizer.get_config()
         except Exception as e:
             self.logger.error(
-                f"Erro ao obter configuração do otimizador: {
-                    str(e)}")
+                f"Erro ao obter configuração do otimizador: {str(e)}")
             return {}
 
 

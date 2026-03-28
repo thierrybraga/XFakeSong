@@ -306,7 +306,7 @@ def create_training_tab():
                                 "Caminho do Dataset (Raiz com pastas "
                                 "'real' e 'fake')"
                             ),
-                            value="app/datasets"
+                            value="app/datasets/processed"
                         )
                         with gr.Row():
                             dl_epochs = gr.Slider(
@@ -553,6 +553,9 @@ def create_training_tab():
                             val_ds = val_ds.map(ensure_channel)
                             input_shape = (AUDIO_LEN, 1)
 
+                        # Detectar número real de classes do dataset
+                        num_classes = len(train_ds.class_names)
+
                         # Otimizar performance
                         train_ds = train_ds.cache().prefetch(tf.data.AUTOTUNE)
                         val_ds = val_ds.cache().prefetch(tf.data.AUTOTUNE)
@@ -561,7 +564,9 @@ def create_training_tab():
                         yield (
                             "Criando Modelo...",
                             f"Instanciando {arch} com "
-                            f"input_shape={input_shape}...",
+                            f"input_shape={input_shape}, "
+                            f"num_classes={num_classes} "
+                            f"({train_ds.class_names})...",
                             None, None, None, None,
                             None, None, None, None, None
                         )
@@ -571,7 +576,7 @@ def create_training_tab():
                             model = create_model_by_name(
                                 arch,
                                 input_shape=input_shape,
-                                num_classes=2,
+                                num_classes=num_classes,
                                 **model_params
                             )
                         except Exception as e:

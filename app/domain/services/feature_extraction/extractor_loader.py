@@ -117,8 +117,7 @@ class ExtractorLoader:
                     'extractor')
                 for plugin in extractor_plugins:
                     logger.info(
-                        f"Plugin de extrator carregado: {
-                            plugin.metadata.name}")
+                        f"Plugin de extrator carregado: {plugin.metadata.name}")
 
                 for plugin in extractor_plugins:
                     if hasattr(plugin, 'get_extractors'):
@@ -127,8 +126,7 @@ class ExtractorLoader:
                             if not self.extractor_registry.is_registered(name):
                                 spec = ExtractorSpec(
                                     name=name,
-                                    description=f"Extrator de plugin: {
-                                        plugin.metadata.name}",
+                                    description=f"Extrator de plugin: {plugin.metadata.name}",
                                     extractor_class=extractor_class,
                                     feature_type=plugin.metadata.feature_types[
                                         0] if plugin.metadata.feature_types else "unknown",

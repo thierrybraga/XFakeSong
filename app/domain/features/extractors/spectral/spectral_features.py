@@ -192,8 +192,7 @@ class SpectralFeatureExtractor(IFeatureExtractor):
 
         if len(y) < self.frame_length:
             warnings.warn(
-                f"Sinal muito curto ({
-                    len(y)} samples), padding será aplicado")
+                f"Sinal muito curto ({len(y)} samples), padding será aplicado")
 
         # Normalizar sinal para evitar overflow
         y_norm = y / (np.max(np.abs(y)) + 1e-10)

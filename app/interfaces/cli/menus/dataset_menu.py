@@ -181,9 +181,7 @@ class DatasetMenu(BaseMenu):
         if directory.exists():
             files = list(directory.glob("*.wav"))
             print(
-                f"📁 Processando {
-                    len(files)} arquivos {
-                    'reais' if label == 0 else 'falsos'}...")
+                f"📁 Processando {len(files)} arquivos {'reais' if label == 0 else 'falsos'}...")
 
             for audio_file in files:
                 print(f"Processando: {audio_file.name}")
@@ -193,8 +191,7 @@ class DatasetMenu(BaseMenu):
                 if result.status.name in ["SUCCESS", "PARTIAL_SUCCESS"]:
                     segments_features = result.data
                     print(
-                        f"   🔍 Segmentos processados: {
-                            len(segments_features)}")
+                        f"   🔍 Segmentos processados: {len(segments_features)}")
 
                     for segment_feature in segments_features:
                         if len(segment_feature.combined_features) > 0:
@@ -203,9 +200,7 @@ class DatasetMenu(BaseMenu):
                             labels.append(label)
                 else:
                     print(
-                        f"⚠️ Erro ao extrair features de {
-                            audio_file.name}: {
-                            result.errors}")
+                        f"⚠️ Erro ao extrair features de {audio_file.name}: {result.errors}")
 
     def _extract_features_complete(self):
         """Extrai features do áudio completo sem segmentação."""
@@ -282,9 +277,7 @@ class DatasetMenu(BaseMenu):
                         print(f"✅ {audio_file.name}: Exportado")
                     else:
                         print(
-                            f"⚠️ Erro ao exportar {
-                                audio_file.name}: {
-                                result.errors}")
+                            f"⚠️ Erro ao exportar {audio_file.name}: {result.errors}")
 
                 except Exception as e:
                     print(f"⚠️ Erro ao processar {audio_file.name}: {e}")

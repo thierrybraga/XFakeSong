@@ -280,9 +280,7 @@ def test_complexity_features():
         if isinstance(feature, np.ndarray):
             if feature.ndim == 1:
                 print(
-                    f"  {name}: shape {
-                        feature.shape}, mean {
-                        np.mean(feature):.4f}")
+                    f"  {name}: shape {feature.shape}, mean {np.mean(feature):.4f}")
             else:
                 print(f"  {name}: shape {feature.shape}")
         elif isinstance(feature, (int, float)) and not np.isnan(feature):
