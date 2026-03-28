@@ -240,13 +240,11 @@ class ArchitectureFactoryRegistry:
                 "transformer",
                 "aasist"],
             default_params={
+                # create_model params: dropout_rate, l2_reg_strength, hidden_dim, num_layers
                 "dropout_rate": 0.2,
                 "l2_reg_strength": 0.0005,
                 "hidden_dim": 512,
                 "num_layers": 8,
-                "use_early_stopping": True,
-                "use_gradient_clipping": True,
-                "use_advanced_augmentation": True
             },
             input_requirements={"min_sequence_length": 100, "feature_dim": 80},
             output_requirements={
@@ -268,14 +266,12 @@ class ArchitectureFactoryRegistry:
                 "transformer",
                 "rawgat_st"],
             default_params={
+                # create_model params: dropout_rate, l2_reg_strength, attention_heads, hidden_dim, num_layers
                 "dropout_rate": 0.2,
                 "l2_reg_strength": 0.0005,
                 "attention_heads": 8,
                 "hidden_dim": 512,
                 "num_layers": 6,
-                "use_early_stopping": True,
-                "use_gradient_clipping": True,
-                "use_advanced_augmentation": True
             },
             input_requirements={"min_sequence_length": 100, "feature_dim": 80},
             output_requirements={
@@ -291,9 +287,10 @@ class ArchitectureFactoryRegistry:
             description="EfficientNet with LSTM for temporal modeling",
             supported_variants=["efficientnet_lstm", "efficientnet_lstm_lite"],
             default_params={
-                "lstm_units": 512,
-                "attention_units": 256,
-                "dropout_rate": 0.2},
+                # create_model params: lstm_units (int), dropout_rate
+                "lstm_units": 256,
+                "dropout_rate": 0.3,
+            },
             input_requirements={"min_sequence_length": 100, "feature_dim": 80},
             output_requirements={
                 "type": "classification",
@@ -308,13 +305,10 @@ class ArchitectureFactoryRegistry:
             description="Multi-Scale Convolutional Neural Network",
             supported_variants=["multiscale_cnn", "multiscale_cnn_lite"],
             default_params={
-                "architecture": "multiscale_cnn",
-                "filters": [64, 128, 256, 512],
-                "kernel_sizes": [3, 5, 7],
+                # create_model params: base_width, scale, layer_config, dropout_rate
+                "base_width": 26,
+                "scale": 8,
                 "dropout_rate": 0.2,
-                "use_early_stopping": True,
-                "use_gradient_clipping": True,
-                "use_advanced_augmentation": True
             },
             input_requirements={"min_sequence_length": 100, "feature_dim": 80},
             output_requirements={
@@ -332,10 +326,8 @@ class ArchitectureFactoryRegistry:
                 "spectrogram_transformer",
                 "spectrogram_transformer_lite"],
             default_params={
-                "d_model": 512,
-                "num_heads": 16,
-                "num_blocks": 12,
-                "dropout_rate": 0.1},
+                # create_model params: architecture only (no model hyperparams accepted)
+            },
             input_requirements={"min_sequence_length": 100, "feature_dim": 80},
             output_requirements={
                 "type": "classification",
@@ -350,10 +342,8 @@ class ArchitectureFactoryRegistry:
             description="Conformer: Convolution-augmented Transformer",
             supported_variants=["conformer", "conformer_lite"],
             default_params={
-                "d_model": 512,
-                "num_blocks": 12,
-                "num_heads": 16,
-                "dropout_rate": 0.1},
+                # create_model params: architecture only (no model hyperparams accepted)
+            },
             input_requirements={"min_sequence_length": 100, "feature_dim": 80},
             output_requirements={
                 "type": "classification",
@@ -405,10 +395,13 @@ class ArchitectureFactoryRegistry:
             description="Arquitetura de rede neural que opera diretamente no áudio bruto",
             supported_variants=["rawnet2", "rawnet2_lite"],
             default_params={
-                "conv_filters": [128, 256, 512],
-                "gru_units": 256,
-                "dense_units": 128,
-                "dropout_rate": 0.2
+                # create_model params: sinc_filters, sinc_kernel_size, res_filters, gru_units, dense_units, dropout_rate
+                "sinc_filters": 128,
+                "sinc_kernel_size": 1024,
+                "res_filters": [128, 128, 256, 256, 256, 256],
+                "gru_units": 512,
+                "dense_units": 512,
+                "dropout_rate": 0.3,
             },
             input_requirements={
                 "type": "audio", "format": "raw", "sample_rate": 16000,
@@ -449,9 +442,11 @@ class ArchitectureFactoryRegistry:
             description="Arquitetura HuBERT padrão para detecção de deepfakes",
             supported_variants=["hubert", "hubert_lite"],
             default_params={
-                "num_classes": 1, "architecture": "hubert", "hidden_size": 768,
-                "num_attention_heads": 12, "num_hidden_layers": 12,
-                "classifier_hidden_dim": 256, "dropout_rate": 0.3
+                # create_model params: model_name, freeze_hubert, classifier_hidden_dim, dropout_rate
+                "model_name": "facebook/hubert-base-ls960",
+                "freeze_hubert": True,
+                "classifier_hidden_dim": 256,
+                "dropout_rate": 0.3,
             },
             input_requirements={
                 "type": "audio", "format": "raw", "sample_rate": 16000,
@@ -472,9 +467,15 @@ class ArchitectureFactoryRegistry:
                 "hybrid_cnn_transformer",
                 "hybrid_cnn_transformer_lite"],
             default_params={
-                "num_classes": 1, "architecture": "hybrid_cnn_transformer",
-                "base_filters": 64, "num_residual_blocks": 3,
-                "num_transformer_layers": 2, "attention_heads": 8, "dropout_rate": 0.1
+                # create_model params: projection_dim, num_heads, transformer_layers,
+                #   conv_channels, dropout_rate, stochastic_depth_rate, use_positional_emb
+                "projection_dim": 256,
+                "num_heads": 4,
+                "transformer_layers": 4,
+                "conv_channels": [64, 128],
+                "dropout_rate": 0.1,
+                "stochastic_depth_rate": 0.1,
+                "use_positional_emb": True,
             },
             input_requirements={
                 "min_sequence_length": 100, "feature_dim": 80,
