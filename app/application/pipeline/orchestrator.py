@@ -185,8 +185,7 @@ class TrainingStage(PipelineStage):
             return self._create_result(
                 status=ProcessingStatus.SUCCESS,
                 data={"model_path": "models/trained_model.pth"},
-                message=f"Modelo treinado com sucesso em {
-                    execution_time:.2f}s",
+                message=f"Modelo treinado com sucesso em {execution_time:.2f}s",
                 execution_time=execution_time
             )
 

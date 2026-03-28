@@ -242,8 +242,7 @@ class ConfigurationManager(IConfigurationManager):
                     config = json.load(f)
                 else:
                     raise ConfigurationError(
-                        f"Formato não suportado: {
-                            config_path.suffix}")
+                        f"Formato não suportado: {config_path.suffix}")
 
             # Aplicar variáveis de ambiente
             config = self._apply_env_variables(config)
@@ -278,8 +277,7 @@ class ConfigurationManager(IConfigurationManager):
                     json.dump(config, f, indent=2, ensure_ascii=False)
                 else:
                     raise ConfigurationError(
-                        f"Formato não suportado: {
-                            config_path.suffix}")
+                        f"Formato não suportado: {config_path.suffix}")
 
             logger.info(f"Configuração salva em {config_path}")
             return True

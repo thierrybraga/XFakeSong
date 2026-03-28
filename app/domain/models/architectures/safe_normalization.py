@@ -148,8 +148,7 @@ class SafeGroupNormalization(layers.Layer):
 
         if channels % self.groups != 0:
             raise ValueError(
-                f"Number of channels ({channels}) must be divisible by groups ({
-                    self.groups})"
+                f"Number of channels ({channels}) must be divisible by groups ({self.groups})"
             )
 
         self.gamma = self.add_weight(

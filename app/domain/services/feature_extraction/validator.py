@@ -48,8 +48,7 @@ class FeatureExtractionValidator:
                 if hasattr(
                         validation_result, 'performance_score') and validation_result.performance_score is not None:
                     logger.info(
-                        f"Score de performance: {
-                            validation_result.performance_score:.1f}/100")
+                        f"Score de performance: {validation_result.performance_score:.1f}/100")
 
         except Exception as e:
             logger.error(f"Erro na validação do pipeline: {e}")

@@ -4,6 +4,7 @@ Este módulo centraliza o registro de todas as arquiteturas de deep learning
 disponíveis no sistema, facilitando a integração com o pipeline de detecção.
 """
 
+import inspect
 import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
@@ -67,18 +68,12 @@ class ArchitectureRegistry:
                     "transformer",
                     "aasist"],
                 default_params={
+                    # create_model params: dropout_rate, l2_reg_strength, hidden_dim, num_layers
                     "dropout_rate": 0.2,
                     "l2_reg_strength": 0.0005,
                     "hidden_dim": 512,
                     "num_layers": 8,
-                    "sinc_filters": 128,
-                    "label_smoothing": 0.1,
-                    "use_am_softmax": True,
-                    "use_early_stopping": True,
-                    "use_gradient_clipping": True,
-                    "use_advanced_augmentation": True,
-                    "scheduler": "cosine_restarts",
-                    # Training params
+                    # Training params (used by pipeline, not by create_model)
                     "patience": 20,
                     "lr_patience": 10,
                     "gradient_clip": 1.0,
@@ -108,19 +103,13 @@ class ArchitectureRegistry:
                     "transformer",
                     "rawgat_st"],
                 default_params={
+                    # create_model params: dropout_rate, l2_reg_strength, attention_heads, hidden_dim, num_layers
                     "dropout_rate": 0.2,
                     "l2_reg_strength": 0.0005,
                     "attention_heads": 8,
                     "hidden_dim": 512,
                     "num_layers": 6,
-                    "res_channels": [128, 128, 256, 256, 512, 512],
-                    "hsgal_layers": 3,
-                    "graph_pool_ratio": 0.7,
-                    "use_focal_loss": True,
-                    "use_early_stopping": True,
-                    "use_gradient_clipping": True,
-                    "use_advanced_augmentation": True,
-                    # Training params
+                    # Training params (used by pipeline, not by create_model)
                     "patience": 18,
                     "lr_patience": 9,
                     "gradient_clip": 0.8,
@@ -146,12 +135,10 @@ class ArchitectureRegistry:
                     "efficientnet_lstm",
                     "efficientnet_lstm_lite"],
                 default_params={
-                    "lstm_units": [256, 128],
+                    # create_model params: lstm_units (int), dropout_rate
+                    "lstm_units": 256,
                     "dropout_rate": 0.3,
-                    "n_mels": 128,
-                    "use_delta_features": True,
-                    "fine_tune_layers": 3,
-                    # Training params
+                    # Training params (used by pipeline, not by create_model)
                     "patience": 15,
                     "lr_patience": 8,
                     "gradient_clip": 1.0,
@@ -176,14 +163,11 @@ class ArchitectureRegistry:
                 description="Res2Net: Multi-scale backbone with hierarchical residual connections (Gao et al., TPAMI 2021). Res2Net-50 config: scale=4, baseWidth=26, [3,4,6,3] blocks.",
                 supported_variants=["multiscale_cnn", "multiscale_cnn_lite"],
                 default_params={
-                    "architecture": "multiscale_cnn",
+                    # create_model params: base_width, scale, layer_config, dropout_rate
                     "base_width": 26,
                     "scale": 8,
-                    "input_size": 128,
-                    "use_se_blocks": True,
-                    "use_log_mel": True,
                     "dropout_rate": 0.2,
-                    # Training params
+                    # Training params (used by pipeline, not by create_model)
                     "patience": 15,
                     "lr_patience": 8,
                     "gradient_clip": 1.2,
@@ -208,16 +192,8 @@ class ArchitectureRegistry:
                     "spectrogram_transformer",
                     "spectrogram_transformer_lite"],
                 default_params={
-                    "patch_size": [8, 8],
-                    "stride": [6, 6],
-                    "embed_dim": 768,
-                    "num_blocks": 12,
-                    "num_heads": 12,
-                    "ff_dim": 3072,
-                    "dropout_rate": 0.1,
-                    "use_conv_stem": True,
-                    "scheduler": "warmup_cosine",
-                    # Training params
+                    # create_model params: architecture only (no model hyperparams accepted)
+                    # Training params (used by pipeline, not by create_model)
                     "patience": 25,
                     "lr_patience": 12,
                     "gradient_clip": 0.5,
@@ -240,15 +216,8 @@ class ArchitectureRegistry:
                 description="Conformer: Convolution-augmented Transformer - configuração padrão para máxima acurácia",
                 supported_variants=["conformer", "conformer_lite"],
                 default_params={
-                    "d_model": 256,
-                    "num_blocks": 8,
-                    "num_heads": 4,
-                    "attn_dropout": 0.1,
-                    "ffn_dropout": 0.2,
-                    "conv_dropout": 0.1,
-                    "label_smoothing": 0.1,
-                    "scheduler": "warmup_cosine",
-                    # Training params
+                    # create_model params: architecture only (no model hyperparams accepted)
+                    # Training params (used by pipeline, not by create_model)
                     "patience": 22,
                     "lr_patience": 11,
                     "gradient_clip": 0.6,
@@ -336,14 +305,14 @@ class ArchitectureRegistry:
                 description="Arquitetura de rede neural que opera diretamente no áudio bruto para detecção de deepfake - configuração padrão para máxima acurácia",
                 supported_variants=["rawnet2", "rawnet2_lite"],
                 default_params={
+                    # create_model params: sinc_filters, sinc_kernel_size, res_filters, gru_units, dense_units, dropout_rate
                     "sinc_filters": 128,
                     "sinc_kernel_size": 1024,
                     "res_filters": [128, 128, 256, 256, 256, 256],
                     "gru_units": 512,
                     "dense_units": 512,
-                    "use_pre_emphasis": True,
                     "dropout_rate": 0.3,
-                    # Training params
+                    # Training params (used by pipeline, not by create_model)
                     "patience": 15,
                     "lr_patience": 8,
                     "gradient_clip": 1.0,
@@ -368,13 +337,12 @@ class ArchitectureRegistry:
                 description="Arquitetura de dois estágios com WavLM pré-treinado como extrator de características e classificador MLP - configuração padrão para máxima acurácia",
                 supported_variants=["wavlm", "wavlm_lite"],
                 default_params={
+                    # create_model params: wavlm_model, freeze_wavlm, classifier_units, dropout_rate
                     "wavlm_model": "microsoft/wavlm-large",
                     "freeze_wavlm": True,
                     "classifier_units": [1024, 512, 256],
-                    "use_attention_pooling": True,
-                    "use_temporal_conv": True,
                     "dropout_rate": 0.2,
-                    # Training params
+                    # Training params (used by pipeline, not by create_model)
                     "patience": 15,
                     "lr_patience": 8,
                     "gradient_clip": 1.0,
@@ -399,12 +367,12 @@ class ArchitectureRegistry:
                 description="Arquitetura baseada em HuBERT (Hidden-Unit BERT) para detecção de deepfakes em áudio bruto - fidelidade ao paper",
                 supported_variants=["hubert", "hubert_lite"],
                 default_params={
+                    # create_model params: model_name, freeze_hubert, classifier_hidden_dim, dropout_rate
                     "model_name": "facebook/hubert-base-ls960",
                     "freeze_hubert": True,
-                    "classifier_units": [512, 256, 128],
-                    "use_attention_pooling": True,
+                    "classifier_hidden_dim": 256,
                     "dropout_rate": 0.3,
-                    # Training params
+                    # Training params (used by pipeline, not by create_model)
                     "patience": 15,
                     "lr_patience": 8,
                     "gradient_clip": 1.0,
@@ -431,13 +399,16 @@ class ArchitectureRegistry:
                     "hybrid_cnn_transformer",
                     "hybrid_cnn_transformer_lite"],
                 default_params={
+                    # create_model params: projection_dim, num_heads, transformer_layers,
+                    #   conv_channels, dropout_rate, stochastic_depth_rate, use_positional_emb
                     "projection_dim": 256,
                     "num_heads": 4,
                     "transformer_layers": 4,
-                    "n_fft": 1024,
-                    "use_se_blocks": True,
+                    "conv_channels": [64, 128],
                     "dropout_rate": 0.1,
-                    # Training params
+                    "stochastic_depth_rate": 0.1,
+                    "use_positional_emb": True,
+                    # Training params (used by pipeline, not by create_model)
                     "patience": 15,
                     "lr_patience": 8,
                     "gradient_clip": 1.0,
@@ -612,6 +583,19 @@ class ArchitectureRegistry:
 
         # Adicionar kwargs do usuário
         params.update(kwargs)
+
+        # Filtrar params para apenas os aceitos pela função (quando não há **kwargs)
+        sig = inspect.signature(create_model_func)
+        has_var_keyword = any(
+            p.kind == inspect.Parameter.VAR_KEYWORD
+            for p in sig.parameters.values()
+        )
+        if not has_var_keyword:
+            accepted = set(sig.parameters.keys())
+            filtered_out = [k for k in params if k not in accepted]
+            if filtered_out:
+                logger.debug(f"{architecture_name}: ignoring unsupported params: {filtered_out}")
+            params = {k: v for k, v in params.items() if k in accepted}
 
         # Criar modelo
         model = create_model_func(input_shape, num_classes, **params)

@@ -116,10 +116,7 @@ class AudioSegmentationService:
                 )
 
             self.logger.info(
-                f"Arquivo {
-                    file_path.name} segmentado em {
-                    len(segments)} segmentos de {
-                    self.config.segment_duration}s"
+                f"Arquivo {file_path.name} segmentado em {len(segments)} segmentos de {self.config.segment_duration}s"
             )
 
             return ProcessingResult(
@@ -242,8 +239,7 @@ class AudioSegmentationService:
                     yield file_path, segment
             else:
                 self.logger.warning(
-                    f"Falha ao segmentar {file_path}: {
-                        result.errors}")
+                    f"Falha ao segmentar {file_path}: {result.errors}")
 
     def get_statistics(self, segments: List[AudioSegment]) -> Dict[str, Any]:
         """Calcula estatísticas dos segmentos"""

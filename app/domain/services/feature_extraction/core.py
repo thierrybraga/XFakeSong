@@ -144,8 +144,7 @@ class FeatureExtractorCore:
                         features_dict[name] = features
                 else:
                     logger.debug(
-                        f"Erro na extração de {feature_type}: {
-                            result.errors}")
+                        f"Erro na extração de {feature_type}: {result.errors}")
             else:
                 logger.debug(f"Extrator não encontrado para {feature_type}")
 

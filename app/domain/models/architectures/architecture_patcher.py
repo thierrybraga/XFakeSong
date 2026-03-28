@@ -338,8 +338,7 @@ def validate_model_safety(model: models.Model) -> Tuple[bool, List[str]]:
         # Verifica camadas customizadas problemáticas
         elif layer_class == 'AudioFeatureNormalization':
             issues.append(
-                f"AudioFeatureNormalization problemática: {
-                    layer.name}")
+                f"AudioFeatureNormalization problemática: {layer.name}")
 
         # Verifica camadas Lambda suspeitas
         elif layer_class == 'Lambda':

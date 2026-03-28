@@ -58,8 +58,7 @@ class InferencePipeline:
                 logger.info("Modelo SVM carregado")
             else:
                 logger.warning(
-                    f"Modelo SVM não encontrado: {
-                        self.svm_model_path}")
+                    f"Modelo SVM não encontrado: {self.svm_model_path}")
 
         if 'rf' in models:
             if os.path.exists(self.rf_model_path):
@@ -68,8 +67,7 @@ class InferencePipeline:
                 logger.info("Modelo Random Forest carregado")
             else:
                 logger.warning(
-                    f"Modelo Random Forest não encontrado: {
-                        self.rf_model_path}")
+                    f"Modelo Random Forest não encontrado: {self.rf_model_path}")
 
         self.models_loaded = True
 
@@ -111,9 +109,7 @@ class InferencePipeline:
                     audio_path, feature_types)
                 results['predictions']['svm'] = svm_result
                 logger.info(
-                    f"SVM: {
-                        svm_result['prediction']} ({
-                        svm_result['confidence']:.3f})")
+                    f"SVM: {svm_result['prediction']} ({svm_result['confidence']:.3f})")
             except Exception as e:
                 logger.error(f"Erro na predição SVM: {e}")
                 results['predictions']['svm'] = {'error': str(e)}
@@ -125,9 +121,7 @@ class InferencePipeline:
                     audio_path, feature_types)
                 results['predictions']['rf'] = rf_result
                 logger.info(
-                    f"Random Forest: {
-                        rf_result['prediction']} ({
-                        rf_result['confidence']:.3f})")
+                    f"Random Forest: {rf_result['prediction']} ({rf_result['confidence']:.3f})")
             except Exception as e:
                 logger.error(f"Erro na predição Random Forest: {e}")
                 results['predictions']['rf'] = {'error': str(e)}

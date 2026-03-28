@@ -80,10 +80,7 @@ class SecureDataSplitter:
         y_test = y_sorted[test_split_idx:]
 
         self.logger.info(
-            f"Divisão temporal: Train={
-                len(X_train)}, Val={
-                len(X_val)}, Test={
-                len(X_test)}")
+            f"Divisão temporal: Train={len(X_train)}, Val={len(X_val)}, Test={len(X_test)}")
         return X_train, X_val, X_test, y_train, y_val, y_test
 
     def _stratified_split(self, X: np.ndarray,
@@ -104,10 +101,7 @@ class SecureDataSplitter:
         )
 
         self.logger.info(
-            f"Divisão estratificada: Train={
-                len(X_train)}, Val={
-                len(X_val)}, Test={
-                len(X_test)}")
+            f"Divisão estratificada: Train={len(X_train)}, Val={len(X_val)}, Test={len(X_test)}")
         return X_train, X_val, X_test, y_train, y_val, y_test
 
 
@@ -126,8 +120,7 @@ class SecureFeatureScaler:
             self.scaler = MinMaxScaler()
         else:
             raise ValueError(
-                f"Tipo de scaler não suportado: {
-                    config.scaler_type}")
+                f"Tipo de scaler não suportado: {config.scaler_type}")
 
     def fit_transform_train(self, X_train: np.ndarray) -> np.ndarray:
         """Ajusta o scaler APENAS nos dados de treino e transforma.
@@ -144,11 +137,7 @@ class SecureFeatureScaler:
         X_train_scaled = self.scaler.fit_transform(X_train)
 
         self.logger.info(
-            f"Scaler ajustado. Média: {
-                self.scaler.mean_[
-                    :5] if hasattr(
-                    self.scaler,
-                    'mean_') else 'N/A'}")
+            f"Scaler ajustado. Média: {self.scaler.mean_[:5] if hasattr(self.scaler, 'mean_') else 'N/A'}")
         return X_train_scaled
 
     def transform_validation(self, X_val: np.ndarray) -> np.ndarray:

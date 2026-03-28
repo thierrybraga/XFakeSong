@@ -169,16 +169,13 @@ class PluginValidator:
                     metadata = instance.get_metadata()
                     if not metadata.name:
                         errors.append(
-                            f"Plugin {
-                                plugin_class.__name__} deve ter nome")
+                            f"Plugin {plugin_class.__name__} deve ter nome")
                     if not metadata.version:
                         errors.append(
-                            f"Plugin {
-                                plugin_class.__name__} deve ter versão")
+                            f"Plugin {plugin_class.__name__} deve ter versão")
                 except Exception as e:
                     errors.append(
-                        f"Erro ao obter metadados de {
-                            plugin_class.__name__}: {e}")
+                        f"Erro ao obter metadados de {plugin_class.__name__}: {e}")
 
         except Exception as e:
             errors.append(f"Erro ao validar plugin: {e}")
@@ -325,8 +322,7 @@ class PluginManager(IPluginManager):
                         metadata.dependencies)
                     if missing_deps:
                         logger.error(
-                            f"Dependências não encontradas para {
-                                metadata.name}: {missing_deps}")
+                            f"Dependências não encontradas para {metadata.name}: {missing_deps}")
                         continue
 
                     # Atualizar metadados com informações do arquivo
@@ -337,8 +333,7 @@ class PluginManager(IPluginManager):
                     # Inicializar plugin
                     if not plugin_instance.initialize({}):
                         logger.error(
-                            f"Falha ao inicializar plugin {
-                                metadata.name}")
+                            f"Falha ao inicializar plugin {metadata.name}")
                         continue
 
                     # Registrar plugin

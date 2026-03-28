@@ -102,8 +102,7 @@ def find_files_by_extension(directory: Union[str, Path],
     """Encontra arquivos por extensão em um diretório"""
     directory = Path(directory)
     extensions = [
-        ext.lower() if ext.startswith('.') else f'.{
-            ext.lower()}' for ext in extensions]
+        ext.lower() if ext.startswith('.') else f'.{ext.lower()}' for ext in extensions]
 
     files = []
 
@@ -233,13 +232,10 @@ def extract_archive(archive_path: Union[str, Path],
 
         else:
             raise ValueError(
-                f"Formato de arquivo não suportado: {
-                    archive_path.suffix}")
+                f"Formato de arquivo não suportado: {archive_path.suffix}")
 
         logger.info(
-            f"Extraídos {
-                len(extracted_files)} arquivos de {
-                archive_path.name}")
+            f"Extraídos {len(extracted_files)} arquivos de {archive_path.name}")
         return extracted_files
 
     except zipfile.BadZipFile:

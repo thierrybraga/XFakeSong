@@ -111,8 +111,7 @@ class MetricsCalculator:
 
         except Exception as e:
             self.logger.warning(
-                f"Erro ao calcular métricas de probabilidade: {
-                    str(e)}")
+                f"Erro ao calcular métricas de probabilidade: {str(e)}")
 
         return metrics
 
@@ -156,8 +155,7 @@ class MetricsCalculator:
 
         except Exception as e:
             self.logger.warning(
-                f"Erro ao calcular métricas de confusão: {
-                    str(e)}")
+                f"Erro ao calcular métricas de confusão: {str(e)}")
 
         return metrics
 
@@ -176,8 +174,7 @@ class MetricsCalculator:
             )
         except Exception as e:
             self.logger.error(
-                f"Erro ao gerar relatório de classificação: {
-                    str(e)}")
+                f"Erro ao gerar relatório de classificação: {str(e)}")
             return ""
 
     def get_confusion_matrix(
@@ -223,8 +220,7 @@ class MetricsCalculator:
 
         except Exception as e:
             self.logger.error(
-                f"Erro ao calcular métricas por classe: {
-                    str(e)}")
+                f"Erro ao calcular métricas por classe: {str(e)}")
 
         return metrics_per_class
 
@@ -256,8 +252,7 @@ class MetricsCalculator:
 
         except Exception as e:
             self.logger.error(
-                f"Erro ao calcular métricas por threshold: {
-                    str(e)}")
+                f"Erro ao calcular métricas por threshold: {str(e)}")
 
         return threshold_metrics
 

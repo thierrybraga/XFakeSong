@@ -245,27 +245,19 @@ class SegmentedFeatureExtractor:
                     print(f"DEBUG: Tamanho do segmento: {len(segment)}")
                     features = extractor.extract_features(segment)
                     print(
-                        f"DEBUG: Features {category} extraídas: {
-                            len(features) if features else 0}")
+                        f"DEBUG: Features {category} extraídas: {len(features) if features else 0}")
                     if features:
                         print(
-                            f"DEBUG: Primeiras 5 features {category}: {
-                                list(
-                                    features.keys())[
-                                    :5]}")
+                            f"DEBUG: Primeiras 5 features {category}: {list(features.keys())[:5]}")
                 elif category == 'cepstral':
                     print(
                         f"DEBUG: Extraindo features de cepstral para segmento {segment_idx}")
                     features = extractor.extract_features_internal(segment)
                     print(
-                        f"DEBUG: Features cepstral extraídas: {
-                            len(features) if features else 0}")
+                        f"DEBUG: Features cepstral extraídas: {len(features) if features else 0}")
                     if features:
                         print(
-                            f"DEBUG: Primeiras 5 features cepstral: {
-                                list(
-                                    features.keys())[
-                                    :5]}")
+                            f"DEBUG: Primeiras 5 features cepstral: {list(features.keys())[:5]}")
                 elif hasattr(extractor, 'extract'):
                     # Verificar se o extrator precisa de metadados
                     if category == 'transform':
@@ -283,18 +275,13 @@ class SegmentedFeatureExtractor:
                         if result.status == ProcessingStatus.SUCCESS:
                             features = result.data.features
                             print(
-                                f"DEBUG: Features {category} extraídas: {
-                                    len(features) if features else 0}")
+                                f"DEBUG: Features {category} extraídas: {len(features) if features else 0}")
                             if features:
                                 print(
-                                    f"DEBUG: Primeiras 5 features {category}: {
-                                        list(
-                                            features.keys())[
-                                            :5]}")
+                                    f"DEBUG: Primeiras 5 features {category}: {list(features.keys())[:5]}")
                         else:
                             print(
-                                f"Erro no extrator {category}: {
-                                    result.errors}")
+                                f"Erro no extrator {category}: {result.errors}")
                             features = {}
                     elif category in ['temporal']:
                         features = extractor.extract(segment, sr)
@@ -465,8 +452,7 @@ class SegmentedFeatureExtractor:
                     f"✅ CSV exportado para {filename}: {len(result.data)} arquivos criados")
             else:
                 print(
-                    f"⚠️ Erro ao exportar CSV para {filename}: {
-                        result.errors}")
+                    f"⚠️ Erro ao exportar CSV para {filename}: {result.errors}")
 
         except Exception as e:
             print(f"⚠️ Erro na exportação individual de CSV: {e}")
