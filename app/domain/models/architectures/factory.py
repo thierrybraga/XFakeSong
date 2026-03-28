@@ -114,6 +114,18 @@ class BaseArchitectureFactory(IArchitectureFactory):
             elif 'architecture' in sig.parameters:
                 params['architecture'] = variant
 
+        # Filtrar params para apenas os aceitos pela função (quando não há **kwargs)
+        has_var_keyword = any(
+            p.kind == inspect.Parameter.VAR_KEYWORD
+            for p in sig.parameters.values()
+        )
+        if not has_var_keyword:
+            accepted = set(sig.parameters.keys())
+            filtered_out = [k for k in params if k not in accepted]
+            if filtered_out:
+                logger.debug(f"{self.spec.name}: ignoring unsupported params: {filtered_out}")
+            params = {k: v for k, v in params.items() if k in accepted}
+
         try:
             model = self._factory_function(**params)
             logger.info(f"Model created: {self.spec.name} ({variant})")
