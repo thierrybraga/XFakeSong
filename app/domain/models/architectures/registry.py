@@ -4,6 +4,7 @@ Este módulo centraliza o registro de todas as arquiteturas de deep learning
 disponíveis no sistema, facilitando a integração com o pipeline de detecção.
 """
 
+import inspect
 import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
@@ -612,6 +613,26 @@ class ArchitectureRegistry:
 
         # Adicionar kwargs do usuário
         params.update(kwargs)
+
+        # Filtrar params para apenas os aceitos pela função
+        # (evita TypeError para arquiteturas sem **kwargs)
+        try:
+            sig = inspect.signature(create_model_func)
+            has_var_kw = any(
+                p.kind == inspect.Parameter.VAR_KEYWORD
+                for p in sig.parameters.values()
+            )
+            if not has_var_kw:
+                accepted = set(sig.parameters.keys())
+                skipped = {k for k in params if k not in accepted}
+                if skipped:
+                    logger.debug(
+                        f"{architecture_name}: ignorando parâmetros "
+                        f"não suportados: {skipped}"
+                    )
+                params = {k: v for k, v in params.items() if k in accepted}
+        except (ValueError, TypeError):
+            pass  # fallback: tentar passar tudo
 
         # Criar modelo
         model = create_model_func(input_shape, num_classes, **params)
