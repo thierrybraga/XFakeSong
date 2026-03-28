@@ -23,6 +23,7 @@ pytest
 slowapi
 PyWavelets
 huggingface_hub
+datasets
 matplotlib
 seaborn
 pandas
