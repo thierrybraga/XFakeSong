@@ -207,8 +207,7 @@ def create_features_tab():
 
                 # --- Estatísticas Detalhadas ---
                 stats_md = "### 📊 Estatísticas das Features\n\n"
-                stats_md += f"**Duração do Áudio:** {
-                    audio_data.duration:.2f}s\n"
+                stats_md += f"**Duração do Áudio:** {audio_data.duration:.2f}s\n"
                 stats_md += f"**Sample Rate:** {audio_data.sample_rate} Hz\n\n"
 
                 stats_md += "| Feature | Shape | Min | Max | Mean | Std |\n"

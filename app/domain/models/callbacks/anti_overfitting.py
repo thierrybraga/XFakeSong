@@ -65,9 +65,7 @@ class AdvancedEarlyStopping(EarlyStopping):
             recent_val = np.mean(self.val_losses[-5:])
             if recent_val - recent_train > self.overfitting_threshold:
                 logger.warning(
-                    f"Overfitting detectado: train_loss={
-                        recent_train:.4f}, val_loss={
-                        recent_val:.4f}")
+                    f"Overfitting detectado: train_loss={recent_train:.4f}, val_loss={recent_val:.4f}")
 
 
 class LossMonitoringCallback(Callback):
@@ -125,15 +123,11 @@ class OverfittingDetectionCallback(Callback):
             if loss_diff > self.threshold:
                 self.overfitting_epochs += 1
                 logger.info(
-                    f"Epoch {
-                        epoch +
-                        1}: Possível overfitting detectado (diff: {
-                        loss_diff:.4f})")
+                    f"Epoch {epoch + 1}: Possível overfitting detectado (diff: {loss_diff:.4f})")
 
                 if self.overfitting_epochs >= self.patience:
                     logger.warning(
-                        f"Overfitting persistente por {
-                            self.overfitting_epochs} epochs")
+                        f"Overfitting persistente por {self.overfitting_epochs} epochs")
                     self.model.stop_training = True
             else:
                 self.overfitting_epochs = 0
@@ -162,18 +156,12 @@ class ValidationLossMonitor(Callback):
             self.best_loss = current_loss
             self.wait = 0
             logger.info(
-                f"Epoch {
-                    epoch +
-                    1}: Validation loss improved to {
-                    current_loss:.6f}")
+                f"Epoch {epoch + 1}: Validation loss improved to {current_loss:.6f}")
         else:
             self.wait += 1
             if self.wait >= self.patience:
                 logger.warning(
-                    f"Epoch {
-                        epoch +
-                        1}: Early stopping triggered. No improvement for {
-                        self.patience} epochs.")
+                    f"Epoch {epoch + 1}: Early stopping triggered. No improvement for {self.patience} epochs.")
                 self.model.stop_training = True
 
 
@@ -276,8 +264,7 @@ def create_anti_overfitting_callbacks(
     callbacks.append(csv_logger)
 
     logger.info(
-        f"Criados {
-            len(callbacks)} callbacks anti-overfitting para {model_name}")
+        f"Criados {len(callbacks)} callbacks anti-overfitting para {model_name}")
     return callbacks
 
 

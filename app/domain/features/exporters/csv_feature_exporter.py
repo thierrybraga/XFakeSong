@@ -368,9 +368,7 @@ class CSVFeatureExporter:
 
                 exported_files.append(str(csv_path))
                 self.logger.info(
-                    f"Features {category_name} exportadas para: {csv_path} ({
-                        len(
-                            category_features['data'])} segmentos)")
+                    f"Features {category_name} exportadas para: {csv_path} ({len(category_features['data'])} segmentos)")
 
             return ProcessingResult(
                 status=ProcessingStatus.SUCCESS,

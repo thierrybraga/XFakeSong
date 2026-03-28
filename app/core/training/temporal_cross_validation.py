@@ -100,8 +100,7 @@ class TemporalCrossValidator:
         """
         try:
             self.logger.info(
-                f"Iniciando validação cruzada temporal com {
-                    self.config.n_splits} folds")
+                f"Iniciando validação cruzada temporal com {self.config.n_splits} folds")
 
             # Parâmetros padrão
             compile_params = compile_params or {
@@ -174,10 +173,7 @@ class TemporalCrossValidator:
                 fold_true_labels.extend(y_test_fold)
 
                 self.logger.info(
-                    f"Fold {
-                        fold_idx + 1} - Accuracy: {
-                        fold_metrics['accuracy']:.4f}, F1: {
-                        fold_metrics['f1']:.4f}")
+                    f"Fold {fold_idx + 1} - Accuracy: {fold_metrics['accuracy']:.4f}, F1: {fold_metrics['f1']:.4f}")
 
             # Calcular métricas agregadas
             aggregated_metrics = self._calculate_aggregated_metrics(
@@ -201,9 +197,7 @@ class TemporalCrossValidator:
             }
 
             self.logger.info(
-                f"Validação cruzada concluída. Accuracy média: {
-                    aggregated_metrics['accuracy']['mean']:.4f} ± {
-                    aggregated_metrics['accuracy']['std']:.4f}")
+                f"Validação cruzada concluída. Accuracy média: {aggregated_metrics['accuracy']['mean']:.4f} ± {aggregated_metrics['accuracy']['std']:.4f}")
 
             return ProcessingResult(
                 success=True,

@@ -169,8 +169,7 @@ class TransformFeatureExtractor:
 
         except Exception as e:
             warnings.warn(
-                f"Erro na extração de características de transformadas: {
-                    str(e)}")
+                f"Erro na extração de características de transformadas: {str(e)}")
             return self._get_default_features()
 
         return features

@@ -72,8 +72,7 @@ class InferenceMenu(BaseMenu):
 
                     print("\n📊 Resultado da Análise:")
                     print(
-                        f"   🎯 Classificação: {
-                            '🚨 DEEPFAKE' if is_fake else '✅ REAL'}")
+                        f"   🎯 Classificação: {'🚨 DEEPFAKE' if is_fake else '✅ REAL'}")
                     print(f"   📈 Confiança: {confidence:.2%}")
 
                     if confidence > 0.8:

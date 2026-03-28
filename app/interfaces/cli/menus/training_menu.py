@@ -68,14 +68,12 @@ class TrainingMenu(BaseMenu):
             print(f"\n✅ Arquitetura selecionada: {selected_arch}")
 
             epochs_input = input(
-                f"Número de épocas (padrão: {
-                    self.context.training_config.epochs}): ").strip()
+                f"Número de épocas (padrão: {self.context.training_config.epochs}): ").strip()
             epochs = int(
                 epochs_input) if epochs_input else self.context.training_config.epochs
 
             batch_size_input = input(
-                f"Tamanho do batch (padrão: {
-                    self.context.training_config.batch_size}): ").strip()
+                f"Tamanho do batch (padrão: {self.context.training_config.batch_size}): ").strip()
             batch_size = int(
                 batch_size_input) if batch_size_input else self.context.training_config.batch_size
 
@@ -113,8 +111,7 @@ class TrainingMenu(BaseMenu):
             train_result = pipeline.prepare_data(X, y)
             if train_result.status.name != "SUCCESS":
                 print(
-                    f"❌ Erro na preparação dos dados: {
-                        train_result.message}")
+                    f"❌ Erro na preparação dos dados: {train_result.message}")
                 return
 
             factory = BaseArchitectureFactory()
@@ -149,10 +146,7 @@ class TrainingMenu(BaseMenu):
                 print("\n✅ Modelo treinado com sucesso!")
                 print(f"📁 Salvo em: {model_path}")
                 print(
-                    f"📊 Acurácia: {
-                        training_result.data.get(
-                            'accuracy',
-                            'N/A')}")
+                    f"📊 Acurácia: {training_result.data.get('accuracy', 'N/A')}")
 
                 report_path = self.context.results_dir / \
                     f"training_report_{model_name}.json"

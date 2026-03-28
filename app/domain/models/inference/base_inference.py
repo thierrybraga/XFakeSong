@@ -166,29 +166,21 @@ class BaseInference(ABC):
                 raise extraction_error
 
             logger.info(
-                f"Resultado da extração: status={
-                    result.status.name if result.status else 'None'}")
+                f"Resultado da extração: status={result.status.name if result.status else 'None'}")
             logger.info(
-                f"Dados disponíveis: {
-                    result.data is not None if hasattr(
-                        result,
-                        'data') else 'No data attr'}")
+                f"Dados disponíveis: {result.data is not None if hasattr(result, 'data') else 'No data attr'}")
 
             # Debug detalhado do resultado
             if hasattr(result, 'status'):
                 logger.info(f"Status detalhado: {result.status}")
                 logger.info(
-                    f"Status é SUCCESS? {
-                        result.status.name == 'SUCCESS' if result.status else False}")
+                    f"Status é SUCCESS? {result.status.name == 'SUCCESS' if result.status else False}")
             if hasattr(result, 'data'):
                 logger.info(f"Tipo de dados: {type(result.data)}")
                 if result.data:
                     logger.info(f"Quantidade de dados: {len(result.data)}")
                     logger.info(
-                        f"Primeiro item: {
-                            type(
-                                result.data[0]) if len(
-                                result.data) > 0 else 'Lista vazia'}")
+                        f"Primeiro item: {type(result.data[0]) if len(result.data) > 0 else 'Lista vazia'}")
                 else:
                     logger.warning("Dados estão vazios ou None")
 
@@ -239,8 +231,7 @@ class BaseInference(ABC):
                         # Primeira (e única) amostra
                         aggregated_features = X[0]
                         logger.info(
-                            f"Features carregadas via loader: {
-                                aggregated_features.shape}")
+                            f"Features carregadas via loader: {aggregated_features.shape}")
                         return aggregated_features.reshape(1, -1)
                     else:
                         logger.warning("Nenhuma feature carregada pelo loader")
@@ -258,10 +249,7 @@ class BaseInference(ABC):
                     return np.array([[]])
             else:
                 logger.error(
-                    f"Erro na extração: {
-                        result.errors if hasattr(
-                            result,
-                            'errors') else 'Erro desconhecido'}")
+                    f"Erro na extração: {result.errors if hasattr(result, 'errors') else 'Erro desconhecido'}")
                 # Limpar arquivos temporários
                 try:
                     import os
@@ -318,14 +306,12 @@ class BaseInference(ABC):
                 features_df.to_csv(csv_path, index=False)
                 saved_count += 1
                 logger.info(
-                    f"Features do segmento {i} salvas em {csv_path} ({
-                        len(features_dict)} features)")
+                    f"Features do segmento {i} salvas em {csv_path} ({len(features_dict)} features)")
             else:
                 logger.warning(f"Segmento {i} não tem features válidas")
                 if hasattr(segment, 'combined_features'):
                     logger.warning(
-                        f"  combined_features: {
-                            segment.combined_features}")
+                        f"  combined_features: {segment.combined_features}")
                 if hasattr(segment, 'feature_names'):
                     logger.warning(
                         f"  feature_names: {len(segment.feature_names) if segment.feature_names else 0} nomes")

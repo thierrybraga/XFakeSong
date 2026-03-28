@@ -37,8 +37,7 @@ class RandomForestInference(BaseInference):
         """
         try:
             logger.info(
-                f"Carregando modelo Random Forest de: {
-                    self.model_path}")
+                f"Carregando modelo Random Forest de: {self.model_path}")
 
             # Carregar modelo
             model_data = joblib.load(self.model_path)
@@ -49,9 +48,7 @@ class RandomForestInference(BaseInference):
                 self.feature_names = model_data.get('feature_names')
                 self.scaler = model_data.get('scaler')
                 logger.info(
-                    f"Modelo carregado com metadados: {
-                        list(
-                            model_data.keys())}")
+                    f"Modelo carregado com metadados: {list(model_data.keys())}")
             else:
                 # Se apenas o modelo foi salvo
                 self.model = model_data
@@ -118,8 +115,7 @@ class RandomForestInference(BaseInference):
             }
 
             logger.info(
-                f"Predição Random Forest: {prediction_label} (confiança: {
-                    confidence:.3f})")
+                f"Predição Random Forest: {prediction_label} (confiança: {confidence:.3f})")
             return result
 
         except Exception as e:

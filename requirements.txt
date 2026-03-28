@@ -26,4 +26,5 @@ huggingface_hub
 matplotlib
 seaborn
 pandas
+python-dotenv
 a2wsgi

@@ -46,9 +46,7 @@ class SegmentedFeatures:
         if len(self.combined_features) != len(self.feature_names):
             raise ValueError(
                 f"Número de features ({len(self.combined_features)}) "
-                f"não corresponde ao número de nomes ({
-                    len(
-                        self.feature_names)})"
+                f"não corresponde ao número de nomes ({len(self.feature_names)})"
             )
 
     @property

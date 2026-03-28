@@ -143,8 +143,7 @@ class TemporalFeatureExtractor(IFeatureExtractor):
 
         if len(y) < self.frame_length:
             warnings.warn(
-                f"Sinal muito curto ({
-                    len(y)} samples), padding será aplicado")
+                f"Sinal muito curto ({len(y)} samples), padding será aplicado")
 
         # Normalizar sinal
         y_norm = y / (np.max(np.abs(y)) + 1e-10)
@@ -170,8 +169,7 @@ class TemporalFeatureExtractor(IFeatureExtractor):
 
         except Exception as e:
             warnings.warn(
-                f"Erro na extração de características temporais: {
-                    str(e)}")
+                f"Erro na extração de características temporais: {str(e)}")
             features = self._get_default_temporal_features()
 
         return features
