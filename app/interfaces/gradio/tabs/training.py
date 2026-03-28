@@ -614,7 +614,7 @@ def create_training_tab():
                             f"Instanciando {arch} com "
                             f"input_shape={input_shape}, "
                             f"num_classes={num_classes} "
-                            f"({train_ds.class_names})...",
+                            f"({class_names})...",
                             None, None, None, None,
                             None, None, None, None, None
                         )
