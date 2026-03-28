@@ -90,7 +90,7 @@ def download_brspeech(max_samples=1000):
     logger.info("=" * 60)
 
     try:
-        from datasets import load_dataset
+        from datasets import load_dataset, Audio
     except ImportError:
         logger.error("pip install datasets")
         return
@@ -124,15 +124,29 @@ def download_brspeech(max_samples=1000):
                 split="train",
                 streaming=True,
             )
+            # Desabilita decodificacao automatica (evita dependencia de torchcodec/torch)
+            ds = ds.cast_column("audio", Audio(decode=False))
             for item in ds:
                 if target_count >= samples_per_class:
                     break
                 if "audio" not in item:
                     continue
 
-                audio, ok = process_audio(
-                    item["audio"]["array"], item["audio"]["sampling_rate"]
-                )
+                audio_entry = item["audio"]
+                audio_bytes = audio_entry.get("bytes") or audio_entry.get("path")
+                if not audio_bytes:
+                    continue
+                try:
+                    if isinstance(audio_bytes, (bytes, bytearray)):
+                        audio_data, sr = sf.read(io.BytesIO(audio_bytes))
+                    else:
+                        audio_data, sr = sf.read(audio_bytes)
+                except Exception:
+                    continue
+                if audio_data.ndim > 1:
+                    audio_data = audio_data.mean(axis=1)
+
+                audio, ok = process_audio(audio_data.astype(np.float32), sr)
                 if not ok:
                     continue
 
@@ -305,7 +319,7 @@ def download_fleurs(max_samples=500):
     logger.info("=" * 60)
 
     try:
-        from datasets import load_dataset
+        from datasets import load_dataset, Audio
     except ImportError:
         logger.error("pip install datasets")
         return
@@ -340,15 +354,30 @@ def download_fleurs(max_samples=500):
             logger.info("Use --brspeech para obter amostras reais do BRSpeech-DF bonafide/")
             return
 
+    # Desabilita decodificacao automatica (evita dependencia de torchcodec/torch)
+    ds = ds.cast_column("audio", Audio(decode=False))
+
     for item in ds:
         if count >= max_samples:
             break
         if "audio" not in item:
             continue
 
-        audio, ok = process_audio(
-            item["audio"]["array"], item["audio"]["sampling_rate"]
-        )
+        audio_entry = item["audio"]
+        audio_bytes = audio_entry.get("bytes") or audio_entry.get("path")
+        if not audio_bytes:
+            continue
+        try:
+            if isinstance(audio_bytes, (bytes, bytearray)):
+                audio_data, sr = sf.read(io.BytesIO(audio_bytes))
+            else:
+                audio_data, sr = sf.read(audio_bytes)
+        except Exception:
+            continue
+        if audio_data.ndim > 1:
+            audio_data = audio_data.mean(axis=1)
+
+        audio, ok = process_audio(audio_data.astype(np.float32), sr)
         if not ok:
             continue
 
