@@ -338,6 +338,48 @@ def save_dataset_config(target_per_class: int, train_r: float, val_r: float, tes
     return config_path
 
 
+def build(
+    target_per_class: int = 1000,
+    train_ratio: float = 0.70,
+    val_ratio: float = 0.15,
+    test_ratio: float = 0.15,
+    skip_download: bool = False,
+    skip_real_cv: bool = True,
+) -> bool:
+    """Funcao importavel para construir o dataset a partir de outros scripts.
+
+    Equivalente a:
+      python build_dataset.py --target N [--skip-real-cv] [--skip-download]
+
+    Usa os mesmos diretorios que a aba Dataset do Gradio
+    (app/datasets/real/, app/datasets/fake/, app/datasets/splits/).
+
+    Returns:
+        True se bem-sucedido, False caso contrario.
+    """
+    logger.info(
+        f"build(): target={target_per_class}/classe, "
+        f"split={int(train_ratio*100)}/{int(val_ratio*100)}/{int(test_ratio*100)}, "
+        f"skip_download={skip_download}, skip_real_cv={skip_real_cv}"
+    )
+
+    if not skip_download:
+        step_download(target_per_class, skip_real_cv=skip_real_cv)
+
+    step_balance(target_per_class)
+    step_preprocess(train_ratio, val_ratio, test_ratio)
+    save_dataset_config(target_per_class, train_ratio, val_ratio, test_ratio)
+    real_total, fake_total = print_status()
+
+    ok = (real_total >= target_per_class * 0.5 and fake_total >= target_per_class * 0.5)
+    if not ok:
+        logger.warning(
+            f"build(): resultado abaixo do esperado "
+            f"({real_total} real + {fake_total} fake vs meta {target_per_class} por classe)"
+        )
+    return ok
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Orquestrador de dataset PT-BR para deepfake detection (Fase 1 TCC)"

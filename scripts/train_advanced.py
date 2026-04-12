@@ -40,7 +40,7 @@ sys.path.insert(0, str(BASE_DIR))
 
 SAMPLE_RATE = 16_000
 MAX_AUDIO_SAMPLES_CPU = 16_000   # 1s @ 16kHz — CPU training
-MAX_AUDIO_SAMPLES_GPU = 80_000   # 5s @ 16kHz — GPU training (raw-audio models)
+MAX_AUDIO_SAMPLES_GPU = 48_000   # 3s @ 16kHz — GPU training (raw-audio models)
 MAX_AUDIO_SAMPLES     = MAX_AUDIO_SAMPLES_CPU   # updated by setup_gpu()
 RESULTS_DIR = BASE_DIR / "results"
 
@@ -155,32 +155,58 @@ def load_split(split_dir: Path, max_per_class: int = None) -> tuple:
     return np.array(X, dtype=np.float32), np.array(y, dtype=np.int32)
 
 
-def prepare_splits(splits_dir: Path, datasets_dir: Path) -> bool:
-    """Cria splits se nao existirem."""
-    if (splits_dir / "train" / "real").exists() and \
-       len(list((splits_dir / "train" / "real").glob("*.wav"))) > 0:
+def prepare_splits(splits_dir: Path, datasets_dir: Path, min_per_class: int = 100) -> bool:
+    """Garante que splits existem com amostras suficientes.
+
+    Ordem de prioridade:
+    1. Splits já existem com >= min_per_class amostras por classe → usa diretamente
+       (inclui dados baixados pela aba Dataset do Gradio)
+    2. Dados brutos em real/ + fake/ existem → regenera splits via preprocess_dataset.py
+    3. Dados insuficientes → loga instrução e retorna False
+    """
+    import subprocess
+
+    train_real = len(list((splits_dir / "train" / "real").glob("*.wav")))
+    train_fake = len(list((splits_dir / "train" / "fake").glob("*.wav")))
+
+    if train_real >= min_per_class and train_fake >= min_per_class:
+        val_real  = len(list((splits_dir / "val"  / "real").glob("*.wav")))
+        val_fake  = len(list((splits_dir / "val"  / "fake").glob("*.wav")))
+        test_real = len(list((splits_dir / "test" / "real").glob("*.wav")))
+        test_fake = len(list((splits_dir / "test" / "fake").glob("*.wav")))
+        logger.info(
+            f"Splits encontrados (train {train_real}+{train_fake} | "
+            f"val {val_real}+{val_fake} | test {test_real}+{test_fake}). "
+            "Usando dados existentes."
+        )
         return True
 
-    logger.info("Splits nao encontrados. Criando a partir de app/datasets/...")
-    real_count = len(list((datasets_dir / "real").glob("*.wav")))
-    fake_count = len(list((datasets_dir / "fake").glob("*.wav")))
+    # Splits insuficientes — verificar dados brutos
+    real_raw = len(list((datasets_dir / "real").glob("*.wav")))
+    fake_raw = len(list((datasets_dir / "fake").glob("*.wav")))
 
-    if real_count == 0 or fake_count == 0:
-        logger.error(
-            f"Dataset vazio! real={real_count}, fake={fake_count}. "
-            "Execute primeiro: python scripts/build_dataset.py"
+    if real_raw >= min_per_class and fake_raw >= min_per_class:
+        logger.info(
+            f"Dados brutos encontrados ({real_raw} real + {fake_raw} fake). "
+            "Recriando splits..."
         )
-        return False
+        result = subprocess.run(
+            [sys.executable, str(BASE_DIR / "scripts" / "preprocess_dataset.py"),
+             "--full", "--train-ratio", "0.70", "--val-ratio", "0.15", "--test-ratio", "0.15"],
+            cwd=str(BASE_DIR),
+        )
+        return result.returncode == 0
 
-    logger.info(f"Dataset disponivel: {real_count} real + {fake_count} fake")
-
-    import subprocess
-    result = subprocess.run(
-        [sys.executable, str(BASE_DIR / "scripts" / "preprocess_dataset.py"),
-         "--full", "--train-ratio", "0.70", "--val-ratio", "0.15", "--test-ratio", "0.15"],
-        cwd=str(BASE_DIR),
+    # Dados insuficientes
+    logger.error(
+        f"Dados insuficientes: {real_raw} real + {fake_raw} fake "
+        f"(minimo {min_per_class} por classe). "
+        "Opcoes:\n"
+        "  1. Use a aba 'Dataset' no Gradio para baixar dados\n"
+        "  2. Execute: python scripts/build_dataset.py --target 500 --skip-real-cv\n"
+        "  3. Execute este script com: --build-dataset"
     )
-    return result.returncode == 0
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -540,6 +566,22 @@ def main():
         ),
     )
     parser.add_argument(
+        "--build-dataset", action="store_true",
+        help=(
+            "Baixar/atualizar o dataset antes de treinar "
+            "(BRSpeech-DF + Fake Voices; equivalente a build_dataset.py --skip-real-cv). "
+            "Usa os mesmos dados da aba Dataset do Gradio."
+        ),
+    )
+    parser.add_argument(
+        "--min-samples", type=int, default=100,
+        help="Minimo de amostras por classe no split de treino (default: 100)",
+    )
+    parser.add_argument(
+        "--robustness", action="store_true",
+        help="Executar teste de robustez (AWGN) automaticamente apos o treinamento",
+    )
+    parser.add_argument(
         "--output", type=str,
         default=str(RESULTS_DIR / "training_metrics.json"),
         help="Arquivo de saida JSON com metricas",
@@ -548,6 +590,23 @@ def main():
 
     # ── GPU setup (must happen before any TF op) ──────────────────────────
     setup_gpu()
+
+    # ── Dataset build (optional, before loading splits) ───────────────────
+    if args.build_dataset:
+        import subprocess as _sp
+        logger.info("\n>>> ETAPA 0: BUILD DATASET (--build-dataset)")
+        logger.info(
+            "Baixando BRSpeech-DF + Fake Voices — mesmos dados da aba Dataset do Gradio"
+        )
+        ret = _sp.run(
+            [sys.executable,
+             str(BASE_DIR / "scripts" / "build_dataset.py"),
+             "--skip-real-cv",          # usa apenas BRSpeech + FakeVoices (mais rapido)
+             "--target", "1000"],        # 1000 por classe = 2000 amostras total
+            cwd=str(BASE_DIR),
+        ).returncode
+        if ret != 0:
+            logger.warning("build_dataset.py retornou erro. Tentando continuar com dados existentes.")
 
     if args.quick:
         args.epochs = 20
@@ -572,28 +631,39 @@ def main():
     splits_dir   = BASE_DIR / "app" / "datasets" / "splits"
     datasets_dir = BASE_DIR / "app" / "datasets"
 
-    # Garantir splits existem
-    if not prepare_splits(splits_dir, datasets_dir):
-        logger.error("Nao foi possivel criar/encontrar splits. Abortando.")
+    # Garantir splits existem com amostras suficientes
+    if not prepare_splits(splits_dir, datasets_dir, min_per_class=args.min_samples):
+        logger.error(
+            "Nao foi possivel criar/encontrar splits suficientes. "
+            "Use --build-dataset para baixar dados automaticamente."
+        )
         sys.exit(1)
 
     # Verificar tamanho do dataset
     real_train = len(list((splits_dir / "train" / "real").glob("*.wav")))
     fake_train = len(list((splits_dir / "train" / "fake").glob("*.wav")))
-    logger.info(f"Dataset de treino: {real_train} real + {fake_train} fake")
+    real_val   = len(list((splits_dir / "val"   / "real").glob("*.wav")))
+    fake_val   = len(list((splits_dir / "val"   / "fake").glob("*.wav")))
+    real_test  = len(list((splits_dir / "test"  / "real").glob("*.wav")))
+    fake_test  = len(list((splits_dir / "test"  / "fake").glob("*.wav")))
+    logger.info(
+        f"Dataset: train {real_train}+{fake_train} | "
+        f"val {real_val}+{fake_val} | test {real_test}+{fake_test} "
+        f"(total={real_train+fake_train+real_val+fake_val+real_test+fake_test})"
+    )
 
     if real_train + fake_train < 20:
         logger.error(
             "Dataset muito pequeno para treinamento serio. "
-            "Execute: python scripts/build_dataset.py"
+            "Execute com --build-dataset ou use a aba Dataset do Gradio."
         )
         sys.exit(1)
 
     if real_train + fake_train < 200:
         logger.warning(
-            f"AVISO: Dataset pequeno ({real_train + fake_train} amostras de treino). "
-            "Metricas serao validas para este subconjunto. "
-            "Para resultados definitivos do TCC, baixe o dataset completo."
+            f"Dataset pequeno ({real_train + fake_train} amostras de treino). "
+            "Para resultados definitivos, baixe mais dados via --build-dataset "
+            "ou pela aba Dataset no Gradio."
         )
 
     # Carregar splits
@@ -686,9 +756,19 @@ def main():
     print_table3(all_results)
 
     logger.info(f"\nMetricas salvas em: {output_path}")
-    logger.info("\nProximo passo (Fase 4):")
-    logger.info("  python scripts/run_shap_analysis.py")
-    logger.info("  python scripts/robustness_test.py")
+
+    # ── Robustness test (opcional) ─────────────────────────────────────────
+    if args.robustness:
+        import subprocess as _sp
+        logger.info("\n>>> ETAPA ROBUSTEZ: Testando modelos com AWGN (SNR 10/20/30 dB)")
+        _sp.run(
+            [sys.executable, str(BASE_DIR / "scripts" / "robustness_test.py")],
+            cwd=str(BASE_DIR),
+        )
+    else:
+        logger.info("\nProximos passos:")
+        logger.info("  python scripts/robustness_test.py   # Tabela 5 (robustez AWGN)")
+        logger.info("  python scripts/run_shap_analysis.py # Analise SHAP")
 
 
 if __name__ == "__main__":
