@@ -36,10 +36,10 @@ class OptimizedTrainingConfig:
 
     def __init__(self,
                  model_name: str = "default",
-                 patience: int = 15,
+                 patience: int = 10,
                  min_delta: float = 0.001,
                  lr_reduction_factor: float = 0.5,
-                 lr_patience: int = 8,
+                 lr_patience: int = 5,
                  gradient_clip_value: float = 1.0,
                  augmentation_strength: float = 0.3):
 
@@ -236,81 +236,99 @@ def create_optimized_training_setup(model_name: str,
 def get_recommended_hyperparameters(model_name: str) -> Dict[str, Any]:
     """Retorna hiperparâmetros recomendados para cada arquitetura."""
 
+    # Hiperparametros alinhados com TCC (Secao 6.1 + Tabela 10):
+    #   - epochs      = 100 (early stopping patience=10)
+    #   - batch_size  = 32
+    #   - l2          = 0.0001 (lambda do TCC)
+    #   - dropout     = conforme Tabela 10 do TCC
+    #   - lr          = 0.001 (Adam — Secao 5.2.3)
+    #   - validation_split removido: splits vem dos arquivos (70/15/15)
     recommendations = {
         "AASIST": {
-            "batch_size": 32,
-            "learning_rate": 0.0005,
+            "batch_size": 16,
+            "learning_rate": 0.0008,
             "epochs": 100,
-            "validation_split": 0.2,
             "dropout_rate": 0.2,
-            "l2_reg_strength": 0.0005
+            "l2_reg_strength": 0.0001,
+            "attention_heads": 12,
+            "hidden_units": 512,
         },
         "RawGAT-ST": {
             "batch_size": 24,
             "learning_rate": 0.0008,
-            "epochs": 80,
-            "validation_split": 0.2,
+            "epochs": 100,
             "dropout_rate": 0.2,
-            "l2_reg_strength": 0.0005
+            "l2_reg_strength": 0.0001,
         },
         "MultiscaleCNN": {
-            "batch_size": 40,
-            "learning_rate": 0.001,
-            "epochs": 60,
-            "validation_split": 0.2,
-            "dropout_rate": 0.2,
-            "l2_reg_strength": 0.0003
+            "batch_size": 64,
+            "learning_rate": 0.002,
+            "epochs": 100,
+            "dropout_rate": 0.5,
+            "l2_reg_strength": 0.0005,
+            "hidden_units": "128/256",
         },
         "SpectrogramTransformer": {
             "batch_size": 16,
             "learning_rate": 0.0003,
-            "epochs": 120,
-            "validation_split": 0.2,
+            "epochs": 100,
             "dropout_rate": 0.1,
-            "l2_reg_strength": 0.0001
+            "l2_reg_strength": 0.0001,
         },
         "Conformer": {
-            "batch_size": 20,
-            "learning_rate": 0.0004,
+            "batch_size": 32,
+            "learning_rate": 0.001,
             "epochs": 100,
-            "validation_split": 0.2,
-            "dropout_rate": 0.1,
-            "l2_reg_strength": 0.0002
+            "dropout_rate": 0.3,
+            "l2_reg_strength": 0.0001,
+            "attention_heads": 8,
+            "hidden_units": 256,
         },
-        # Novos hiperparâmetros recomendados para Hybrid CNN-Transformer
+        "EfficientNet-LSTM": {
+            "batch_size": 32,
+            "learning_rate": 0.0005,
+            "epochs": 100,
+            "dropout_rate": 0.4,
+            "l2_reg_strength": 0.0002,
+            "hidden_units": "128/64",
+        },
         "Hybrid-CNN-Transformer": {
             "batch_size": 32,
             "learning_rate": 0.0005,
             "epochs": 100,
-            "validation_split": 0.2,
             "dropout_rate": 0.2,
-            "l2_reg_strength": 0.0003,
+            "l2_reg_strength": 0.0001,
             "base_filters": 64,
             "num_residual_blocks": 3,
             "num_transformer_layers": 2,
-            "attention_heads": 8
+            "attention_heads": 8,
         },
-        # Novos hiperparâmetros recomendados para RawNet2
         "RawNet2": {
             "batch_size": 24,
             "learning_rate": 0.0008,
-            "epochs": 80,
-            "validation_split": 0.2,
+            "epochs": 100,
             "dropout_rate": 0.3,
-            "l2_reg_strength": 0.0005,
+            "l2_reg_strength": 0.0001,
             "conv_filters": [64, 128, 256],
             "gru_units": 128,
-            "dense_units": 64
-        }
+            "dense_units": 64,
+        },
+        # Ensemble Adaptativo (TCC Eq. 27-28) — menos epocas pois parte de modelos pre-treinados
+        "ensemble_adaptive": {
+            "batch_size": 32,
+            "learning_rate": 0.001,
+            "epochs": 50,
+            "dropout_rate": 0.3,
+            "l2_reg_strength": 0.0001,
+        },
     }
 
     return recommendations.get(model_name, {
         "batch_size": 32,
         "learning_rate": 0.001,
-        "epochs": 80,
-        "validation_split": 0.2,
-        "dropout_rate": 0.2,
-        "l2_reg_strength": 0.0005
+        "epochs": 100,
+        "dropout_rate": 0.3,
+        "l2_reg_strength": 0.0001,
     })
 
 

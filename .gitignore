@@ -1,3 +1,13 @@
+# Node
+node_modules/
+
+# Trained model weights (too large for git)
+results/models/
+*.h5
+
+# Claude Code internal
+.claude/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

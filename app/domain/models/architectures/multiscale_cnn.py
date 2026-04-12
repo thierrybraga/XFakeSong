@@ -287,17 +287,20 @@ def _create_res2net_model(input_shape, num_classes=1, base_width=26, scale=8,
         audio = ensure_flat_input(inputs, input_shape)
         # STFT -> magnitude spectrogram (batch, time, freq, 1)
         x = STFTLayer(name='stft_layer', add_channel_dim=False)(audio)
-        # Log-mel spectrogram: apply mel filterbank then log scaling
-        mel_weight = tf.signal.linear_to_mel_weight_matrix(
-            num_mel_bins=128,
-            num_spectrogram_bins=1025,  # default fft_length=2048 -> 1025 bins
-            sample_rate=16000,
-            lower_edge_hertz=0.0,
-            upper_edge_hertz=8000.0
-        )
-        x = tf.matmul(x, mel_weight)  # (batch, time, 128)
-        x = tf.math.log(x + 1e-6)     # log-mel
-        x = tf.expand_dims(x, axis=-1) # (batch, time, 128, 1)
+        # Log-mel spectrogram: apply mel filterbank then log scaling via Lambda
+        def apply_log_mel(mag):
+            mel_w = tf.signal.linear_to_mel_weight_matrix(
+                num_mel_bins=128,
+                num_spectrogram_bins=1025,
+                sample_rate=16000,
+                lower_edge_hertz=0.0,
+                upper_edge_hertz=8000.0,
+            )
+            mel = tf.matmul(mag, mel_w)       # (batch, time, 128)
+            log_mel = tf.math.log(mel + 1e-6)
+            return tf.expand_dims(log_mel, axis=-1)  # (batch, time, 128, 1)
+
+        x = layers.Lambda(apply_log_mel, name='log_mel')(x)
         x = ResizeLayer(target_height=128, target_width=128, name='resize_layer')(x)
     else:
         x = SafeInputReshapeLayer(input_shape, name='safe_input_reshape')(inputs)
