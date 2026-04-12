@@ -192,9 +192,12 @@ def build_model(arch_name: str, input_shape: tuple, num_classes: int = 1):
     import importlib
     module_path, variant = ARCHITECTURES[arch_name]
     mod = importlib.import_module(module_path)
+    # AASIST uses AMSoftmax which needs 2 weight vectors for binary real/fake
+    # detection — with num_classes=1 the cosine loss is flat and cannot learn.
+    nc = 2 if arch_name == "aasist" else num_classes
     return mod.create_model(
         input_shape=input_shape,
-        num_classes=num_classes,
+        num_classes=nc,
         architecture=variant,
     )
 
@@ -231,7 +234,12 @@ def compute_metrics(model, X_test: np.ndarray, y_test: np.ndarray) -> dict:
     from sklearn.metrics import roc_auc_score, roc_curve
 
     preds_raw = model.predict(X_test, verbose=0)
-    scores = preds_raw.ravel().astype(float)
+    # 2-class softmax output (e.g. AASIST): take P(fake) = column 1.
+    # Binary sigmoid output: flatten to 1-D score vector.
+    if preds_raw.ndim == 2 and preds_raw.shape[1] == 2:
+        scores = preds_raw[:, 1].astype(float)
+    else:
+        scores = preds_raw.ravel().astype(float)
     preds = (scores > 0.5).astype(int)
 
     accuracy = float(np.mean(preds == y_test))
@@ -350,13 +358,25 @@ def train_model(
     try:
         with STRATEGY.scope():
             model = build_model(arch_name, input_shape, num_classes=1)
-            model.compile(
-                optimizer=tf.keras.optimizers.Adam(
-                    learning_rate=lr, beta_1=0.9, beta_2=0.999, epsilon=1e-7
-                ),
-                loss=tf.keras.losses.BinaryCrossentropy(),
-                metrics=["accuracy"],
-            )
+            out_dim = model.output_shape[-1]   # 2 for AASIST, 1 for others
+            if out_dim == 2:
+                # AASIST: 2-class AMSoftmax + softmax output.
+                # Use AdamW (paper-specified) + SparseCategoricalCrossentropy.
+                model.compile(
+                    optimizer=tf.keras.optimizers.AdamW(
+                        learning_rate=lr, weight_decay=0.01
+                    ),
+                    loss=tf.keras.losses.SparseCategoricalCrossentropy(),
+                    metrics=["accuracy"],
+                )
+            else:
+                model.compile(
+                    optimizer=tf.keras.optimizers.Adam(
+                        learning_rate=lr, beta_1=0.9, beta_2=0.999, epsilon=1e-7
+                    ),
+                    loss=tf.keras.losses.BinaryCrossentropy(),
+                    metrics=["accuracy"],
+                )
     except Exception as e:
         logger.error(f"Falha ao criar {arch_name}: {e}")
         return {"error": str(e)}

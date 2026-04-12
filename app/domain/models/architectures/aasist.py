@@ -287,10 +287,13 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         temp_readout = GraphReadoutLayer(name="readout_temporal")(temporal_nodes)
 
         # --- 10. Concatenate and classify ---
+        # AMSoftmax requires 2 weight vectors for binary real/fake detection.
+        # num_classes=1 would produce a single cosine similarity logit with no
+        # contrastive signal — always use 2 for binary classification.
         x = layers.Concatenate(name="aasist_readout_concat")([spec_readout, temp_readout])
-        output_tensor = AMSoftmaxLayer(num_classes, scale=30.0, margin=0.35, name="output_layer")(x)
-        # Explicit float32 cast so mixed_float16 policy doesn't produce float16 logits
-        output_tensor = layers.Activation('linear', dtype='float32', name='output_cast')(output_tensor)
+        logits = AMSoftmaxLayer(2, scale=30.0, margin=0.35, name="output_layer")(x)
+        # Softmax over the 2-class logits — float32 for mixed-precision safety.
+        output_tensor = layers.Softmax(dtype='float32', name='output_softmax')(logits)
 
         # Build complete model with paper-faithful architecture
         _gpu = bool(tf.config.list_physical_devices("GPU"))
@@ -298,28 +301,24 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
             logger.info("GPU detectada: AASIST será treinado com aceleração GPU (mixed precision).")
         model = models.Model(inputs=input_tensor, outputs=output_tensor)
 
-        # Label smoothing loss
+        # Label smoothing loss (2-class).
+        # y_pred is already softmax probabilities; y_true is 0 or 1.
         def label_smoothing_loss(y_true, y_pred):
-            num_classes_f = tf.cast(tf.shape(y_pred)[-1], tf.float32)
-            y_true_int = tf.cast(y_true, tf.int32)
-            if len(y_true_int.shape) > 1:
-                y_true_int = tf.squeeze(y_true_int, axis=-1)
-            one_hot = tf.one_hot(y_true_int, tf.cast(num_classes_f, tf.int32))
-            smoothed = one_hot * 0.9 + 0.1 / num_classes_f
-            return tf.reduce_mean(tf.keras.losses.categorical_crossentropy(smoothed, y_pred))
-
-        optimizer = tf.keras.optimizers.AdamW(
-            learning_rate=0.0001,
-            weight_decay=0.01
-        )
+            y_true_int = tf.cast(tf.reshape(y_true, [-1]), tf.int32)
+            one_hot = tf.one_hot(y_true_int, 2)              # (batch, 2)
+            smoothed = one_hot * 0.9 + 0.05                  # ε=0.05 per class
+            y_pred = tf.cast(y_pred, tf.float32)
+            return tf.reduce_mean(
+                tf.keras.losses.categorical_crossentropy(smoothed, y_pred)
+            )
 
         model.compile(
-            optimizer=optimizer,
+            optimizer=tf.keras.optimizers.AdamW(learning_rate=0.0001, weight_decay=0.01),
             loss=label_smoothing_loss,
             metrics=['accuracy']
         )
 
-        logger.info("AASIST model created (paper-faithful: SincConv + GAT + HS-GAL)")
+        logger.info("AASIST model created (paper-faithful: SincConv + GAT + HS-GAL, 2-class AMSoftmax)")
         return model
 
     else:
