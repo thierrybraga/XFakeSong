@@ -249,6 +249,7 @@ class ConvSubsampling(layers.Layer):
         self.d_model = d_model
 
     def build(self, input_shape):
+        import math
         # Two Conv2D layers with stride 2 for 4x subsampling
         self.conv1 = layers.Conv2D(
             filters=self.d_model, kernel_size=(3, 3), strides=(2, 2),
@@ -260,6 +261,13 @@ class ConvSubsampling(layers.Layer):
         # Linear projection to d_model after flattening freq * channels
         self.linear = layers.Dense(self.d_model, name=self.name + "_linear")
         self.dropout = layers.Dropout(0.1)
+
+        # Pre-build Dense with static shape so Keras can trace output dimensions
+        freq_dim = input_shape[-1] if len(input_shape) >= 3 else None
+        if freq_dim is not None:
+            freq_out = math.ceil(math.ceil(freq_dim / 2) / 2)
+            flat_dim = freq_out * self.d_model
+            self.linear.build((None, None, flat_dim))
 
         super(ConvSubsampling, self).build(input_shape)
 
@@ -278,16 +286,31 @@ class ConvSubsampling(layers.Layer):
         x = self.conv1(x)   # (batch, time//2, freq//2, d_model)
         x = self.conv2(x)   # (batch, time//4, freq//4, d_model)
 
-        # Flatten freq and channel dims: (batch, time//4, freq//4 * d_model)
+        # Flatten freq and channel dims using static shape where possible
+        static = x.shape.as_list()  # [None, None, freq//4, d_model]
         batch_size = tf.shape(x)[0]
         time_steps = tf.shape(x)[1]
-        x = tf.reshape(x, (batch_size, time_steps, -1))
+        if static[2] is not None and static[3] is not None:
+            flat_dim = static[2] * static[3]
+            x = tf.reshape(x, [batch_size, time_steps, flat_dim])
+        else:
+            x = tf.reshape(x, [batch_size, time_steps, -1])
 
         # Project to d_model
         x = self.linear(x)
         x = self.dropout(x, training=training)
 
         return x
+
+    def compute_output_shape(self, input_shape):
+        import math
+        batch = input_shape[0]
+        time = input_shape[1] if len(input_shape) > 1 else None
+        if time is not None:
+            time_out = math.ceil(math.ceil(time / 2) / 2)
+        else:
+            time_out = None
+        return (batch, time_out, self.d_model)
 
     def get_config(self):
         config = super(ConvSubsampling, self).get_config()
@@ -649,7 +672,38 @@ def create_conformer_model(input_shape, num_classes=2, d_model=256, d_ff=1024,
     inputs = layers.Input(shape=input_shape)
 
     # Handle different input shapes
-    if len(input_shape) == 3 and input_shape[-1] == 1:
+    if len(input_shape) == 1 or (len(input_shape) == 2 and input_shape[-1] == 1):
+        # Raw audio input: convert to log-mel spectrogram
+        # STFT params: 25ms window, 10ms hop → ~500 frames for 5s audio
+        if len(input_shape) == 2:
+            raw = layers.Reshape((input_shape[0],))(inputs)
+        else:
+            raw = inputs
+
+        # Lambda layer: raw audio → log-mel spectrogram (batch, time, n_mels)
+        def compute_log_mel(audio):
+            import tensorflow as tf
+            # STFT
+            stft = tf.signal.stft(audio, frame_length=512, frame_step=128,
+                                  fft_length=512, pad_end=True)
+            magnitude = tf.abs(stft)  # (batch, time_frames, freq_bins)
+            # Mel filterbank: 512//2+1=257 freq bins → 80 mel bins
+            n_fft_bins = 257
+            n_mel = 80
+            sample_rate = 16000.0
+            low_hz = 0.0
+            high_hz = sample_rate / 2.0
+            linear_to_mel = tf.signal.linear_to_mel_weight_matrix(
+                n_mel, n_fft_bins, sample_rate, low_hz, high_hz)
+            mel = tf.tensordot(magnitude, linear_to_mel, 1)
+            mel.set_shape(magnitude.shape[:-1].concatenate(tf.TensorShape([n_mel])))
+            log_mel = tf.math.log(mel + 1e-6)
+            return log_mel
+
+        x = layers.Lambda(compute_log_mel, name="log_mel_spectrogram")(raw)
+        # x shape: (batch, ~625, 80)
+
+    elif len(input_shape) == 3 and input_shape[-1] == 1:
         # Input is (time, freq, 1) - reshape to (time, freq)
         x = layers.Reshape((input_shape[0], input_shape[1]))(inputs)
     elif len(input_shape) == 2:

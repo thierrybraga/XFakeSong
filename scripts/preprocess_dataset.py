@@ -217,7 +217,7 @@ def remove_duplicates():
 # ---------------------------------------------------------------------------
 # Criar splits train/val/test
 # ---------------------------------------------------------------------------
-def create_splits(train_ratio=0.8, val_ratio=0.1, test_ratio=0.1):
+def create_splits(train_ratio=0.70, val_ratio=0.15, test_ratio=0.15):
     """Cria splits estratificados train/val/test."""
     logger.info("=" * 60)
     logger.info("CRIANDO SPLITS TRAIN/VAL/TEST")
@@ -340,6 +340,18 @@ def main():
     parser.add_argument("--create-splits", action="store_true", help="Criar splits train/val/test")
     parser.add_argument("--create-zip", action="store_true", help="Criar ZIP para upload na UI")
     parser.add_argument("--full", action="store_true", help="Executar pipeline completo")
+    parser.add_argument(
+        "--train-ratio", type=float, default=0.70,
+        help="Proporcao de treino (default: 0.70 — alinhado com TCC)",
+    )
+    parser.add_argument(
+        "--val-ratio", type=float, default=0.15,
+        help="Proporcao de validacao (default: 0.15 — alinhado com TCC)",
+    )
+    parser.add_argument(
+        "--test-ratio", type=float, default=0.15,
+        help="Proporcao de teste (default: 0.15 — alinhado com TCC)",
+    )
 
     args = parser.parse_args()
 
@@ -347,6 +359,12 @@ def main():
                 args.create_splits, args.create_zip, args.full]):
         parser.print_help()
         return
+
+    # Validar ratios
+    total = args.train_ratio + args.val_ratio + args.test_ratio
+    if abs(total - 1.0) > 0.001:
+        logger.error(f"Soma dos ratios deve ser 1.0 (atual: {total:.3f})")
+        sys.exit(1)
 
     if args.full or args.validate:
         validate_dataset()
@@ -358,7 +376,11 @@ def main():
         remove_duplicates()
 
     if args.full or args.create_splits:
-        create_splits()
+        create_splits(
+            train_ratio=args.train_ratio,
+            val_ratio=args.val_ratio,
+            test_ratio=args.test_ratio,
+        )
 
     if args.create_zip:
         create_training_zip()

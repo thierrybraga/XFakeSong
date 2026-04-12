@@ -1,0 +1,58 @@
+{
+  "experiment": {
+    "test_samples": 90,
+    "snr_levels_db": [
+      10,
+      20,
+      30
+    ],
+    "noise_type": "AWGN (white gaussian noise)",
+    "audio_input_s": 1.0
+  },
+  "results": {
+    "multiscale_cnn": {
+      "clean": {
+        "accuracy_pct": 97.78,
+        "eer_pct": 2.22,
+        "auc_roc": 0.997
+      },
+      "snr_10db": {
+        "accuracy_pct": 58.89,
+        "eer_pct": 41.11,
+        "auc_roc": 0.652
+      },
+      "snr_20db": {
+        "accuracy_pct": 72.22,
+        "eer_pct": 27.78,
+        "auc_roc": 0.808
+      },
+      "snr_30db": {
+        "accuracy_pct": 71.11,
+        "eer_pct": 28.89,
+        "auc_roc": 0.994
+      }
+    },
+    "ensemble_adaptive": {
+      "clean": {
+        "accuracy_pct": 87.78,
+        "eer_pct": 12.22,
+        "auc_roc": 0.966
+      },
+      "snr_10db": {
+        "accuracy_pct": 50.0,
+        "eer_pct": 50.0,
+        "auc_roc": 0.714
+      },
+      "snr_20db": {
+        "accuracy_pct": 50.0,
+        "eer_pct": 50.0,
+        "auc_roc": 0.748
+      },
+      "snr_30db": {
+        "accuracy_pct": 74.44,
+        "eer_pct": 25.56,
+        "auc_roc": 0.923
+      }
+    }
+  }
+}

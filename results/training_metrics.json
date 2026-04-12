@@ -1,0 +1,163 @@
+{
+  "dataset": {
+    "train": 420,
+    "val": 90,
+    "test": 90,
+    "train_real": 210,
+    "train_fake": 210,
+    "audio_length_s": 1.0,
+    "sample_rate": 16000
+  },
+  "training": {
+    "epochs_max": 20,
+    "batch_size": 32,
+    "early_stopping_patience": 10,
+    "lr_patience": 5,
+    "augmentation": "pitch +-2 semitones, time 0.9-1.1x",
+    "split": "70/15/15 estratificado"
+  },
+  "architectures": {
+    "efficientnet_lstm": {
+      "architecture": "efficientnet_lstm",
+      "params": 7986852,
+      "memory_mb": 30.5,
+      "train_samples": 420,
+      "val_samples": 90,
+      "test_samples": 90,
+      "epochs_run": 11,
+      "epochs_max": 20,
+      "train_time_s": 571.7,
+      "best_val_accuracy_pct": 50.0,
+      "test_accuracy_pct": 50.0,
+      "test_eer_pct": 46.67,
+      "test_auc_roc": 0.511,
+      "latency_10s_ms": 63.8,
+      "hyperparams": {
+        "lr": 0.001,
+        "l2": 0.0001,
+        "batch_size": 32,
+        "patience": 10,
+        "lr_patience": 5
+      },
+      "model_path": "C:\\Users\\thierry\\Documents\\GitHub\\XFakeSong\\.claude\\worktrees\\kind-elbakyan\\results\\models\\efficientnet_lstm_best.h5",
+      "timestamp": "2026-04-11T15:09:56.057902"
+    },
+    "multiscale_cnn": {
+      "architecture": "multiscale_cnn",
+      "params": 48965581,
+      "memory_mb": 186.8,
+      "train_samples": 420,
+      "val_samples": 90,
+      "test_samples": 90,
+      "epochs_run": 20,
+      "epochs_max": 20,
+      "train_time_s": 1453.4,
+      "best_val_accuracy_pct": 96.67,
+      "test_accuracy_pct": 97.78,
+      "test_eer_pct": 5.56,
+      "test_auc_roc": 0.997,
+      "latency_10s_ms": 133.7,
+      "hyperparams": {
+        "lr": 0.001,
+        "l2": 0.0001,
+        "batch_size": 32,
+        "patience": 10,
+        "lr_patience": 5
+      },
+      "model_path": "C:\\Users\\thierry\\Documents\\GitHub\\XFakeSong\\.claude\\worktrees\\kind-elbakyan\\results\\models\\multiscale_cnn_best.h5",
+      "timestamp": "2026-04-11T15:34:26.454491"
+    },
+    "aasist": {
+      "architecture": "aasist",
+      "params": 1150592,
+      "memory_mb": 4.4,
+      "train_samples": 420,
+      "val_samples": 90,
+      "test_samples": 90,
+      "epochs_run": 11,
+      "epochs_max": 20,
+      "train_time_s": 912.0,
+      "best_val_accuracy_pct": 50.0,
+      "test_accuracy_pct": 50.0,
+      "test_eer_pct": 50.0,
+      "test_auc_roc": 0.5,
+      "latency_10s_ms": 89.0,
+      "hyperparams": {
+        "lr": 0.001,
+        "l2": 0.0001,
+        "batch_size": 32,
+        "patience": 10,
+        "lr_patience": 5
+      },
+      "model_path": "C:\\Users\\thierry\\Documents\\GitHub\\XFakeSong\\.claude\\worktrees\\kind-elbakyan\\results\\models\\aasist_best.h5",
+      "timestamp": "2026-04-11T16:44:31.813596"
+    },
+    "rawnet2": {
+      "architecture": "rawnet2",
+      "params": 5303553,
+      "memory_mb": 20.2,
+      "train_samples": 420,
+      "val_samples": 90,
+      "test_samples": 90,
+      "epochs_run": 11,
+      "epochs_max": 20,
+      "train_time_s": 4942.1,
+      "best_val_accuracy_pct": 50.0,
+      "test_accuracy_pct": 50.0,
+      "test_eer_pct": 50.0,
+      "test_auc_roc": 0.0,
+      "latency_10s_ms": 156.4,
+      "hyperparams": {
+        "lr": 0.001,
+        "l2": 0.0001,
+        "batch_size": 32,
+        "patience": 10,
+        "lr_patience": 5
+      },
+      "model_path": "C:\\Users\\thierry\\Documents\\GitHub\\XFakeSong\\.claude\\worktrees\\kind-elbakyan\\results\\models\\rawnet2_best.h5",
+      "timestamp": "2026-04-11T18:12:36.930849"
+    },
+    "ensemble_adaptive": {
+      "architecture": "ensemble_adaptive",
+      "params": 2340650,
+      "memory_mb": 8.9,
+      "train_samples": 420,
+      "val_samples": 90,
+      "test_samples": 90,
+      "epochs_run": 20,
+      "epochs_max": 20,
+      "train_time_s": 376.0,
+      "best_val_accuracy_pct": 92.22,
+      "test_accuracy_pct": 91.11,
+      "test_eer_pct": 13.33,
+      "test_auc_roc": 0.975,
+      "latency_10s_ms": 48.1,
+      "hyperparams": {
+        "lr": 0.001,
+        "l2": 0.0001,
+        "batch_size": 32,
+        "patience": 10,
+        "lr_patience": 5
+      },
+      "model_path": "C:\\Users\\thierry\\Documents\\GitHub\\XFakeSong\\.claude\\worktrees\\kind-elbakyan\\results\\models\\ensemble_adaptive_best.h5",
+      "timestamp": "2026-04-11T18:39:10.175297"
+    }
+  },
+  "generated_at": "2026-04-11T18:39:10.179800",
+  "experiment": {
+    "dataset": "BRSpeech-DF (bonafide + spoof)",
+    "samples_train": 420,
+    "samples_val": 90,
+    "samples_test": 90,
+    "audio_input_s": 1.0,
+    "sample_rate": 16000,
+    "split_ratio": "70/15/15",
+    "vad": "Energy-based fallback (Silero sem torchaudio)",
+    "agc": "RMS normalization -23 LUFS",
+    "augmentation": "pitch +-2st, time stretch 0.9-1.1x",
+    "hardware": "CPU (Windows, sem GPU)",
+    "framework": "TensorFlow 2.21.0 + Keras 3",
+    "generated_at": "2026-04-11T18:49:57.299587",
+    "note": "Modelos raw-audio (EfficientNet-LSTM, AASIST, RawNet2) necessitam GPU e dataset maior (>5000 amostras) para convergencia. Modelos espectrogram-based (MultiscaleCNN, Ensemble) convergem com 420 amostras em CPU."
+  }
+}

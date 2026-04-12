@@ -1,0 +1,1894 @@
+\documentclass[12pt,a4paper]{article}
+
+% =====================================================================
+%  PACOTES ESSENCIAIS
+% =====================================================================
+\usepackage[brazil]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{cite}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{indentfirst}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usepackage{tcolorbox}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{pgfplots}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{microtype}
+\usepackage{url}
+\usepackage{hyperref}
+
+% =====================================================================
+%  CONFIGURACAO PGFPLOTS / TIKZ
+% =====================================================================
+\pgfplotsset{compat=1.18}
+\usetikzlibrary{shapes.geometric, arrows, positioning, fit}
+
+% =====================================================================
+%  CORES
+% =====================================================================
+\definecolor{primaryblue}{RGB}{41, 128, 185}
+\definecolor{accentblue}{RGB}{52, 152, 219}
+\definecolor{successgreen}{RGB}{39, 174, 96}
+\definecolor{warningorange}{RGB}{243, 156, 18}
+\definecolor{dangerred}{RGB}{231, 76, 60}
+\definecolor{lightgray}{RGB}{236, 240, 241}
+\definecolor{mediumgray}{RGB}{189, 195, 199}
+\definecolor{darkgray}{RGB}{44, 62, 80}
+\definecolor{purpleaccent}{RGB}{142, 68, 173}
+\definecolor{deepblue}{RGB}{25, 42, 86}
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.97,0.97,0.97}
+
+% =====================================================================
+%  LAYOUT
+% =====================================================================
+\geometry{a4paper,left=3cm,right=2cm,top=3cm,bottom=2cm}
+
+% =====================================================================
+%  CABECALHO E RODAPE
+% =====================================================================
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\textcolor{darkgray}{Detec\c{c}\~{a}o de \textit{deepfakes} de voz}}
+\fancyhead[R]{\small\textcolor{darkgray}{T.~G.~Braga}}
+\fancyfoot[C]{\textcolor{darkgray}{\thepage}}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% =====================================================================
+%  TITULOS
+% =====================================================================
+\titleformat{\section}
+  {\Large\bfseries\color{deepblue}}{\thesection}{1em}{}
+\titleformat{\subsection}
+  {\large\bfseries\color{darkgray}}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}
+  {\normalsize\bfseries\color{darkgray}}{\thesubsubsection}{1em}{}
+
+% =====================================================================
+%  CAIXAS INFORMATIVAS
+% =====================================================================
+\tcbuselibrary{skins,breakable}
+
+\newtcolorbox{infobox}[1]{
+    colback=primaryblue!5, colframe=primaryblue,
+    coltitle=white, fonttitle=\bfseries,
+    title=#1, rounded corners, breakable}
+
+\newtcolorbox{warningbox}[1]{
+    colback=warningorange!10, colframe=warningorange,
+    coltitle=white, fonttitle=\bfseries,
+    title=#1, rounded corners}
+
+\newtcolorbox{successbox}[1]{
+    colback=successgreen!10, colframe=successgreen,
+    coltitle=white, fonttitle=\bfseries,
+    title=#1, rounded corners}
+
+% =====================================================================
+%  LISTAS
+% =====================================================================
+\setlist[itemize]{label=\textcolor{primaryblue}{\textbullet}, leftmargin=1.5em}
+\setlist[enumerate]{label=\textcolor{primaryblue}{\arabic*.}, leftmargin=1.5em}
+
+% =====================================================================
+%  CODIGO
+% =====================================================================
+\lstdefinestyle{modernstyle}{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{purpleaccent}\bfseries,
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=8pt,
+    showstringspaces=false,
+    tabsize=2,
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{mediumgray}
+}
+\lstset{style=modernstyle}
+
+% =====================================================================
+%  HYPERLINKS
+% =====================================================================
+\hypersetup{
+    colorlinks=true,
+    linkcolor=primaryblue,
+    filecolor=purpleaccent,
+    urlcolor=primaryblue,
+    citecolor=primaryblue,
+    bookmarksopen=true,
+    pdfstartview=FitH,
+    pdftitle={Pipeline Modular para Detecção de Áudio Sintético},
+    pdfauthor={Thierry Gonçalves Braga},
+    pdfsubject={Trabalho de Conclusão de Curso},
+    pdfkeywords={deepfake, áudio, detecção, machine learning}
+}
+
+% =====================================================================
+%  ESTILOS TIKZ
+% =====================================================================
+\tikzset{
+  block/.style={rectangle, rounded corners=5pt, minimum width=3.2cm,
+    minimum height=1cm, text centered, draw=primaryblue, line width=1.2pt,
+    fill=primaryblue!10, font=\small\sffamily},
+  decision/.style={diamond, minimum width=2.5cm, minimum height=1cm,
+    text centered, draw=warningorange, line width=1.2pt,
+    fill=warningorange!15, font=\small\sffamily},
+  startend/.style={rectangle, rounded corners=8pt, minimum width=3cm,
+    minimum height=0.9cm, text centered, draw=successgreen, line width=1.5pt,
+    fill=successgreen!20, font=\small\sffamily\bfseries},
+  modelnode/.style={rectangle, rounded corners=6pt, minimum width=2.8cm,
+    minimum height=0.9cm, text centered, draw=purpleaccent, line width=1.5pt,
+    fill=purpleaccent!15, font=\small\sffamily\bfseries},
+  resultreal/.style={rectangle, rounded corners=6pt, minimum width=2.5cm,
+    minimum height=0.9cm, text centered, draw=successgreen, line width=1.5pt,
+    fill=successgreen!25, font=\small\sffamily\bfseries},
+  resultfake/.style={rectangle, rounded corners=6pt, minimum width=2.5cm,
+    minimum height=0.9cm, text centered, draw=dangerred, line width=1.5pt,
+    fill=dangerred!25, font=\small\sffamily\bfseries},
+  arrow/.style={thick,->,>=stealth,color=darkgray,line width=1.3pt}
+}
+
+% =====================================================================
+%  DOCUMENTO
+% =====================================================================
+\begin{document}
+\pagestyle{empty}
+
+% ------------------------------------------------------------------
+%  PAGINA DE TITULO (NBR 14724:2011)
+% ------------------------------------------------------------------
+\begin{center}
+{\large UNIVERSIDADE FEDERAL DE S\~{A}O JO\~{A}O DEL-REI}\\
+{\normalsize Departamento de Ci\^{e}ncia da Computa\c{c}\~{a}o}\\[2.0cm]
+
+{\Large\bfseries
+PIPELINE MODULAR PARA DETEC\c{C}\~{A}O DE \'{A}UDIO SINT\'{E}TICO\\[0.3cm]
+USANDO ARQUITETURAS NEURAIS H\'{I}BRIDAS E\\[0.3cm]
+AN\'{A}LISE EMP\'{I}RICA DE CARACTER\'{I}STICAS}\\[2.0cm]
+
+{\large Thierry Gon\c{c}alves Braga}\\[0.5cm]
+
+{\normalsize
+Trabalho de Conclus\~{a}o de Curso apresentado \`{a} Universidade\\
+Federal de S\~{a}o Jo\~{a}o del-Rei}\\[0.5cm]
+
+{\normalsize Orientadora: Prof.\textsuperscript{a}\ Ana Claudia}\\[3.0cm]
+
+{\normalsize S\~{a}o Jo\~{a}o del-Rei --- MG\\
+2026}
+\end{center}
+
+\newpage
+
+% ------------------------------------------------------------------
+%  FOLHA DE APROVAÇÃO
+% ------------------------------------------------------------------
+\begin{center}
+\textbf{FOLHA DE APROVA\c{C}\~{A}O}
+\end{center}
+
+\vspace{1.5cm}
+\noindent
+Trabalho de Conclus\~{a}o de Curso defendido e aprovado em \underline{\hspace{4cm}},
+como requisito parcial para obten\c{c}\~{a}o do t\'{i}tulo de Bacharel em
+Ci\^{e}ncia da Computa\c{c}\~{a}o.
+
+\vspace{2cm}
+\noindent\textbf{Banca Examinadora:}
+
+\vspace{1cm}
+\noindent\rule{10cm}{0.4pt}\\
+Prof.\textsuperscript{a}\ Ana Claudia (Orientadora)\\
+Universidade Federal de S\~{a}o Jo\~{a}o del-Rei
+
+\vspace{0.8cm}
+\noindent\rule{10cm}{0.4pt}\\
+Prof.\ [Nome do Membro 1]\\
+[Institui\c{c}\~{a}o]
+
+\vspace{0.8cm}
+\noindent\rule{10cm}{0.4pt}\\
+Prof.\ [Nome do Membro 2]\\
+[Institui\c{c}\~{a}o]
+
+\newpage
+
+% ------------------------------------------------------------------
+%  DEDICATÓRIA
+% ------------------------------------------------------------------
+\begin{center}\textit{Dedicat\'{o}ria}\end{center}
+\vfill
+\begin{flushright}
+\textit{\`{A} minha fam\'{i}lia, pelo apoio incondicional.}
+\end{flushright}
+\vfill
+\newpage
+
+% ------------------------------------------------------------------
+%  AGRADECIMENTOS
+% ------------------------------------------------------------------
+\begin{center}\textbf{AGRADECIMENTOS}\end{center}
+\noindent
+Agrade\c{c}o \`{a} minha orientadora, Prof.\textsuperscript{a}\ Ana Claudia,
+pela orienta\c{c}\~{a}o t\'{e}cnica e cient\'{i}fica.
+Aos colegas do laborat\'{o}rio, pelas discuss\~{o}es enriquecedoras.
+\`{A} UFSJ, pela infraestrutura.
+\newpage
+
+% ------------------------------------------------------------------
+%  RESUMO (NBR 6028:2021)
+% ------------------------------------------------------------------
+\begin{center}\textbf{RESUMO}\end{center}
+
+\noindent
+Este trabalho apresenta o desenvolvimento de um \textit{pipeline} modular e de
+c\'{o}digo aberto para detec\c{c}\~{a}o de \'{a}udio sint\'{e}tico, abordando
+o desafio crescente da prolifera\c{c}\~{a}o de \textit{deepfakes} de voz.
+A metodologia integra pr\'{e}-processamento robusto com detec\c{c}\~{a}o de
+atividade de voz (VAD) e normaliza\c{c}\~{a}o autom\'{a}tica de ganho (AGC),
+extra\c{c}\~{a}o emp\'{i}rica de caracter\'{i}sticas ac\'{u}sticas ranqueadas
+por desempenho discriminativo e classifica\c{c}\~{a}o por meio de cinco
+fam\'{i}lias de arquiteturas neurais implementadas em TensorFlow~2.21/Keras~3.
+Um \textit{survey} sistem\'{a}tico das gera\c{c}\~{o}es de m\'{e}todos de
+detec\c{c}\~{a}o contextualiza o posicionamento do sistema.
+Os experimentos foram conduzidos em CPU (sem GPU) sobre um \textit{dataset}
+balanceado de 600 amostras de fala portuguesas (BRSpeech-DF), com divis\~{a}o
+70/15/15.
+Os resultados revelam uma importante dicotomia pr\'{a}tica: arquiteturas
+baseadas em espectrograma convergiram com sucesso, enquanto modelos de
+an\'{a}lise direta de forma de onda (raw-audio) n\~{a}o convergiram nas
+condi\c{c}\~{o}es experimentais, resultado consistente com os requisitos
+computacionais documentados na literatura.
+A MultiscaleCNN (Res2Net-50) alcan\c{c}ou 97,78\% de acur\'{a}cia e EER de
+5,56\%, com AUC-ROC de 0,997.
+O Ensemble Adaptativo obteve 91,11\% de acur\'{a}cia, EER de 13,33\% e
+lat\^{e}ncia de 48,1\,ms.
+Os testes de robustez sob ru\'{i}do AWGN revelaram degrada\c{c}\~{a}o
+substancial abaixo de SNR~30\,dB, evidenciando a necessidade de
+\textit{data augmentation} com ru\'{i}do para uso em campo.
+O sistema \'{e} integralmente constru\'{i}do sobre tecnologias livres
+(TensorFlow, Keras, Librosa), garantindo reprodutibilidade e extensibilidade.
+
+\vspace{0.4cm}
+\noindent\textbf{Palavras-chave:} \textit{deepfake} de \'{a}udio.
+\textit{pipeline} modular. Arquiteturas neurais h\'{i}bridas.
+MultiscaleCNN. Ensemble adaptativo. Robustez a ru\'{i}do. C\'{o}digo aberto.
+
+\vspace{1cm}
+\begin{center}\textbf{ABSTRACT}\end{center}
+
+\noindent
+This work presents the development of a modular open-source pipeline for
+synthetic audio detection, addressing the growing challenge of voice deepfake
+proliferation.
+The methodology integrates robust preprocessing with Voice Activity Detection
+(VAD) and Automatic Gain Control (AGC), empirical acoustic feature extraction
+ranked by discriminative performance, and classification through five families
+of neural architectures implemented in TensorFlow~2.21/Keras~3.
+Experiments were conducted on CPU (no GPU) over a balanced 600-sample
+Portuguese speech dataset (BRSpeech-DF), with 70/15/15 stratified split.
+Results reveal an important practical dichotomy: spectrogram-based architectures
+converged successfully, while direct raw-waveform models did not converge
+under the experimental conditions, a result consistent with computational
+requirements documented in the literature.
+The MultiscaleCNN (Res2Net-50) achieved 97.78\% accuracy and 5.56\% EER,
+with AUC-ROC of 0.997.
+The Adaptive Ensemble achieved 91.11\% accuracy, 13.33\% EER, and 48.1\,ms
+latency.
+Robustness tests under AWGN noise revealed substantial degradation below
+SNR~30\,dB, highlighting the need for noise-based data augmentation for
+deployment.
+The system is fully built on open-source technologies (TensorFlow, Keras,
+Librosa), ensuring reproducibility and extensibility.
+
+\vspace{0.4cm}
+\noindent\textbf{Keywords:} Audio deepfake. Modular pipeline.
+Hybrid neural architectures. MultiscaleCNN. Adaptive ensemble.
+Noise robustness. Open-source.
+
+\newpage
+\pagestyle{fancy}
+\tableofcontents
+\newpage
+
+% =====================================================================
+%  1. INTRODUCAO
+% =====================================================================
+\section{Introdu\c{c}\~{a}o}
+
+A crescente democratiza\c{c}\~{a}o de tecnologias de s\'{i}ntese de \'{a}udio
+baseadas em intelig\^{e}ncia artificial tem facilitado a cria\c{c}\~{a}o de
+\textit{deepfakes} de \'{a}udio com qualidade cada vez mais pr\'{o}xima \`{a}
+voz humana natural \cite{muller2022warning, heidari2024deepfake}.
+T\'{e}cnicas modernas como RVC (\textit{Retrieval-based Voice Conversion})
+\cite{bird2023realtime}, Tacotron~2 \cite{shen2018natural} e WaveNet
+\cite{oord2016wavenet} permitem a gera\c{c}\~{a}o de conte\'{u}do sint\'{e}tico
+realista com apenas alguns minutos de \'{a}udio original.
+
+Esta evolu\c{c}\~{a}o tecnol\'{o}gica, embora ben\'{e}fica para aplica\c{c}\~{o}es
+leg\'{i}timas como assistentes virtuais e dublagem automatizada, tem sido
+explorada maliciosamente em fraudes financeiras, manipula\c{c}\~{a}o pol\'{i}tica
+e chantagem \cite{pindrop2025, dfrlab2024}.
+No contexto brasileiro, foram documentados 79 casos de conte\'{u}do sint\'{e}tico
+relacionado a candidatos durante as elei\c{c}\~{o}es municipais de 2024
+\cite{farrugia2024}, evidenciando a necessidade urgente de sistemas de
+detec\c{c}\~{a}o robustos.
+
+Estudos perceptuais indicam que humanos identificam corretamente
+\textit{deepfakes} de \'{a}udio em apenas 73\% dos casos, taxa que decresce
+para 51\% com \'{a}udios de alta qualidade \cite{muller2022warning}.
+Isso evidencia a necessidade de sistemas automatizados robustos e explica o
+surgimento dos \textit{benchmarks} padronizados ASVspoof como eixo central de
+avalia\c{c}\~{a}o \cite{todisco2019asvspoof, yamagishi2021asvspoof,
+wang2024asvspoof5}.
+
+\subsection{Objetivos}
+
+\subsubsection{Objetivo Geral}
+Desenvolver um \textit{pipeline} modular, de c\'{o}digo aberto e extens\'{i}vel
+para detec\c{c}\~{a}o de \'{a}udio sint\'{e}tico que integre m\'{u}ltiplas
+arquiteturas neurais especializadas e permita an\'{a}lise emp\'{i}rica
+sistem\'{a}tica de caracter\'{i}sticas ac\'{u}sticas.
+
+\subsubsection{Objetivos Espec\'{i}ficos}
+\begin{itemize}
+    \item Realizar um \textit{survey} das gera\c{c}\~{o}es de m\'{e}todos de
+    detec\c{c}\~{a}o de \'{a}udio sint\'{e}tico.
+    \item Implementar pr\'{e}-processamento com VAD e AGC.
+    \item Ranquear caracter\'{i}sticas ac\'{u}sticas por capacidade
+    discriminativa, ancorado na literatura consolidada.
+    \item Implementar e comparar cinco arquiteturas neurais especializadas
+    sobre um \textit{dataset} brasileiro balanceado.
+    \item Avaliar robustez sob ru\'{i}do AWGN com m\'{u}ltiplos n\'{i}veis
+    de SNR.
+    \item Propor um \textit{pipeline} reprodut\'{i}vel com tecnologias de
+    c\'{o}digo aberto.
+\end{itemize}
+
+% =====================================================================
+%  2. FUNDAMENTACAO TEORICA
+% =====================================================================
+\section{Fundamenta\c{c}\~{a}o Te\'{o}rica}
+\label{sec:fundamentacao}
+
+\subsection{Tecnologias de S\'{i}ntese de Voz}
+
+\subsubsection{Clonagem de Voz}
+
+A clonagem de voz (\textit{voice cloning}) consiste em criar um modelo capaz de
+replicar as caracter\'{i}sticas ac\'{u}sticas e pros\'{o}dicas de um falante
+espec\'{i}fico a partir de amostras limitadas \cite{muller2022warning}.
+Modelos como VALL-E \cite{wang2023vall} utilizam abordagem \textit{few-shot}
+baseada em codificadores neurais de \'{a}udio, atingindo qualidade quase
+indistingu\'{i}vel com apenas 3 segundos de \'{a}udio.
+O processo pode ser formalizado como:
+
+\begin{equation}
+\mathbf{y}_{clone} = f_{\theta}(\mathbf{x}_{text},\; \mathbf{z}_{speaker})
+\end{equation}
+
+onde $\mathbf{y}_{clone}$ \'{e} o \'{a}udio sint\'{e}tico gerado,
+$\mathbf{x}_{text}$ \'{e} o texto de entrada, $\mathbf{z}_{speaker}$ \'{e} o
+vetor de caracter\'{i}sticas do falante e $f_{\theta}$ \'{e} o modelo neural
+treinado.
+
+\begin{infobox}{Clonagem de Voz em Contextos Maliciosos}
+A clonagem de voz foi documentada em fraudes financeiras, com casos reportados
+em 2024 onde \'{a}udios sint\'{e}ticos imitando executivos induziram
+funcion\'{a}rios a realizar transfer\^{e}ncias de alto valor. A acessibilidade
+de ferramentas de c\'{o}digo aberto amplifica significativamente esse risco
+\cite{pindrop2025}.
+\end{infobox}
+
+\subsubsection{Convers\~{a}o de Voz}
+
+A convers\~{a}o de voz (\textit{voice conversion}, VC) transforma a voz de um
+falante para soar como a de outro, preservando o conte\'{u}do lingu\'{i}stico
+original \cite{bird2023realtime}.
+A t\'{e}cnica RVC emprega bancos de dados de vozes e extratores de
+caracter\'{i}sticas para mapear o falante de origem ao alvo:
+
+\begin{equation}
+\mathbf{y}_{conv} = g_{\phi}(\mathbf{x}_{source},\; \mathbf{z}_{target})
+\end{equation}
+
+Modelos como StarGAN-VC \cite{kameoka2018stargan} utilizam redes adversariais
+para aprender mapeamentos muitos-para-muitos entre vozes com lat\^{e}ncia
+reduzida.
+A VC \'{e} desafiadora para detec\c{c}\~{a}o, pois preserva o conte\'{u}do
+lingu\'{i}stico, mascarando artefatos e levando detectores baseados em
+caracter\'{i}sticas espectrais a EERs de at\'{e} 15\%
+\cite{wang2024asvspoof5}.
+
+\begin{infobox}{Convers\~{a}o de Voz nas Elei\c{c}\~{o}es Brasileiras de 2024}
+Durante as elei\c{c}\~{o}es municipais brasileiras de 2024, a convers\~{a}o de
+voz foi identificada em casos de manipula\c{c}\~{a}o de discursos de
+candidatos, onde trechos de \'{a}udio foram alterados para simular falas
+comprometedoras \cite{farrugia2024}.
+\end{infobox}
+
+\subsubsection{S\'{i}ntese de Fala (\textit{Text-to-Speech})}
+
+O Tacotron~2 \cite{shen2018natural} estabeleceu arquiteturas
+\textit{sequence-to-sequence} para mapear texto em espectrogramas mel,
+convertidos em \'{a}udio por um vocoder como WaveNet \cite{oord2016wavenet}:
+
+\begin{equation}
+\mathbf{s}_{mel} = h_{\psi}(\mathbf{t}_{text}), \qquad
+\mathbf{y}_{audio} = v_{\omega}(\mathbf{s}_{mel})
+\end{equation}
+
+A WaveNet modela diretamente a forma de onda bruta, alcan\c{c}ando qualidade
+pr\'{o}xima \`{a} humana \cite{oord2016wavenet}. Sistemas TTS avan\c{c}ados
+dificultam a detec\c{c}\~{a}o por m\'{e}todos tradicionais baseados em MFCCs
+devido \`{a} alta naturalidade dos \'{a}udios gerados.
+
+\subsubsection{Manipula\c{c}\~{a}o em Tempo Real}
+
+A manipula\c{c}\~{a}o em tempo real permite alterar \'{a}udios durante
+conversas ao vivo com lat\^{e}ncia inferior a 200\,ms, tornando-a
+impercept\'{i}vel para humanos \cite{pindrop2025}.
+Sistemas como RVC~v2 otimizam a convers\~{a}o para baixa lat\^{e}ncia
+utilizando redes convolucionais 1D leves \cite{bird2023realtime}:
+
+\begin{equation}
+\mathbf{y}_{rt} = r_{\xi}(\mathbf{x}_{input},\; \mathbf{z}_{target},\; t)
+\end{equation}
+
+\begin{warningbox}{Riscos do \textit{vishing} em Tempo Real}
+Casos de \textit{vishing} em 2025 usaram manipula\c{c}\~{a}o em tempo real
+para imitar vozes de familiares, enganando v\'{i}timas em transfer\^{e}ncias
+financeiras de emerg\^{e}ncia \cite{pindrop2025}. A lat\^{e}ncia m\'{e}dia
+desses sistemas \'{e} inferior a 200\,ms.
+\end{warningbox}
+
+% ------------------------------------------------------------------
+\subsection{Gera\c{c}\~{o}es de M\'{e}todos de Detec\c{c}\~{a}o}
+% ------------------------------------------------------------------
+
+\subsubsection{Primeira Gera\c{c}\~{a}o --- Caracter\'{i}sticas Manuais e
+Estat\'{i}stica Cl\'{a}ssica}
+
+At\'{e} o ASVspoof 2015 \cite{todisco2019asvspoof}, o padr\~{a}o envolvia
+extra\c{c}\~{a}o manual de MFCC, LFCC e CQCC seguida por classificadores
+GMM-UBM e SVM.
+Sahidullah et al.\ \cite{sahidullah2015comparison} demonstraram que o LFCC
+supera o MFCC como \textit{front-end} para detec\c{c}\~{a}o de
+\textit{spoofing}, enquanto Todisco et al.\ \cite{todisco2016new} introduziram
+o CQCC como caracter\'{i}stica de refer\^{e}ncia para a \'{a}rea.
+Embora computacionalmente leves, essas arquiteturas falham gravemente com
+m\'{e}todos de s\'{i}ntese neural modernos por n\~{a}o generalizarem entre
+\textit{datasets} (EER $>$ 20\% em cen\'{a}rios \textit{cross-dataset}).
+
+\subsubsection{Segunda Gera\c{c}\~{a}o --- CNNs e RNNs em Espectrogramas}
+
+A partir do ASVspoof 2019 \cite{todisco2019asvspoof}, CNNs (como ResNet e
+Res2Net \cite{gao2021res2net}) e LSTMs processando espectrogramas mel tornaram-se
+dominantes.
+Sistemas como o LCNN (\textit{Light CNN}) reduziram drasticamente os EERs ao
+explorar artefatos visuais de alta frequ\^{e}ncia deixados por
+\textit{vocoders}. Abordagens h\'{i}bridas CNN-LSTM reportam acur\'{a}cias
+superiores a 90\% \cite{kurnaz2024hybrid}.
+
+\subsubsection{Terceira Gera\c{c}\~{a}o --- An\'{a}lise Direta de Forma de
+Onda e Grafos}
+
+A introdu\c{c}\~{a}o de RawNet2 \cite{tak2021rawnet2} e AASIST
+\cite{jung2022aasist} marcou o processamento \textit{end-to-end}.
+O RawNet2 utiliza \textit{Sinc-Convolutions} para processar diretamente a
+forma de onda PCM 1D.
+O AASIST implementa Redes de Aten\c{c}\~{a}o em Grafos (GATs) para modelar
+depend\^{e}ncias temporais e espectrais simultaneamente, alcan\c{c}ando EER
+inferior a 1\% em \textit{datasets} controlados.
+
+\begin{warningbox}{Requisitos Computacionais da 3\textordfeminine\ Gera\c{c}\~{a}o}
+Modelos \textit{raw-audio} como RawNet2 e AASIST exigem GPU dedicada e
+\textit{datasets} com mais de 5.000 amostras para convergir. Em CPU, mesmo
+com 420 amostras de treino, esses modelos n\~{a}o ultrapassam acur\'{a}cia de
+acaso (50\%), conforme observado empiricamente neste trabalho e reportado na
+literatura \cite{tak2021rawnet2, jung2022aasist}.
+\end{warningbox}
+
+\subsubsection{Quarta Gera\c{c}\~{a}o --- Modelos \textit{Foundation} e SSL}
+
+Com o ASVspoof 5 \cite{wang2024asvspoof5} e avalia\c{c}\~{o}es recentes de
+modelos autossupervisionados, o padr\~{a}o ouro consolidou-se em torno de
+WavLM \cite{chen2022wavlm} e HuBERT \cite{hsu2021hubert}.
+Pr\'{e}-treinados em dezenas de milhares de horas de \'{a}udio n\~{a}o
+rotulado, esses modelos s\~{a}o ajustados (\textit{fine-tuned}) para
+\textit{anti-spoofing}, oferecendo resist\^{e}ncia superior a ataques
+adversariais e dados \textit{crowdsourced}.
+O Audio Spectrogram Transformer (AST) \cite{gong2021ast} emerge como
+alternativa promissora, processando espectrogramas como sequ\^{e}ncias de
+\textit{patches} sem convolu\c{c}\~{o}es.
+
+A Tabela~\ref{tab:survey_geracoes} consolida as quatro gera\c{c}\~{o}es de
+m\'{e}todos.
+
+\begin{table}[H]
+\centering
+\caption{\textit{Survey} das Gera\c{c}\~{o}es de M\'{e}todos de Detec\c{c}\~{a}o
+de \'{A}udio Sint\'{e}tico}
+\label{tab:survey_geracoes}
+\small
+\begin{tabular}{p{2.0cm}p{3.0cm}p{3.0cm}p{3.0cm}p{2.5cm}}
+\toprule
+\textbf{Gera\c{c}\~{a}o} & \textbf{Representa\c{c}\~{a}o} &
+\textbf{Classificador} & \textbf{Pontos Fortes} & \textbf{Limita\c{c}\~{o}es} \\
+\midrule
+1\textordfeminine\ (at\'{e} 2015)
+  & MFCC, LFCC, CQCC & GMM-UBM, SVM
+  & Leveza computacional & Baixa generaliza\c{c}\~{a}o \\
+\addlinespace
+2\textordfeminine\ (2019)
+  & Espectrograma mel & CNN, LSTM, LCNN
+  & Robustez a artefatos de vocoder
+  & Sens\'{i}vel a geradores n\~{a}o vistos \\
+\addlinespace
+3\textordfeminine\ (2021)
+  & Forma de onda bruta, grafos & RawNet2, AASIST
+  & EER $<$ 1\% controlado & GPU + $>$5.000 amostras \\
+\addlinespace
+4\textordfeminine\ (2024+)
+  & Representa\c{c}\~{a}o SSL & WavLM, HuBERT + MLP
+  & Generaliza\c{c}\~{a}o \textit{cross-dataset}
+  & Depend\^{e}ncia de GPUs potentes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% =====================================================================
+%  3. METODOLOGIA
+% =====================================================================
+\section{Metodologia}
+\label{sec:metodologia}
+
+\subsection{Vis\~{a}o Geral do Pipeline}
+
+O sistema proposto opera em duas fases: \textbf{treinamento} e
+\textbf{predi\c{c}\~{a}o}.
+Durante o treinamento, o modelo aprende a distinguir caracter\'{i}sticas de
+voz real e sint\'{e}tica.
+Na predi\c{c}\~{a}o, processa novos \'{a}udios e fornece classifica\c{c}\~{a}o
+bin\'{a}ria (Real/Fake) com \textit{score} de confian\c{c}a.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=1.5cm, scale=0.85, transform shape,
+                    every node/.append style={font=\footnotesize}]
+
+% === FASE PREDICAO (esquerda) ===
+\draw[primaryblue, line width=1.5pt, rounded corners=6pt, fill=primaryblue!4]
+  (-6.8,6.8) rectangle (-0.5,-8.2);
+\node[font=\footnotesize\bfseries, color=primaryblue] at (-3.65,6.3)
+  {PREDI\c{C}\~{A}O};
+
+\node (audio)   [startend]  at (-3.65, 5.5) {\'{A}udio de Entrada};
+\node (vad)     [block, below=of audio]  {VAD + AGC};
+\node (feat)    [block, below=of vad]    {Extra\c{c}\~{a}o de Features};
+\node (norm)    [block, below=of feat]   {Normaliza\c{c}\~{a}o};
+\node (inf)     [modelnode, below=of norm] {Infer\^{e}ncia};
+\node (score)   [block, below=of inf]    {Score 0--1};
+\node (dec)     [decision, below=of score, yshift=-0.3cm] {$> 0{,}5$?};
+\node (real)    [resultreal, below left=1.2cm and 1.0cm of dec]  {REAL};
+\node (fake)    [resultfake, below right=1.2cm and 1.0cm of dec] {FAKE};
+
+\draw[arrow,color=primaryblue] (audio) -- (vad);
+\draw[arrow,color=primaryblue] (vad)   -- (feat);
+\draw[arrow,color=primaryblue] (feat)  -- (norm);
+\draw[arrow,color=primaryblue] (norm)  -- (inf);
+\draw[arrow,color=primaryblue] (inf)   -- (score);
+\draw[arrow,color=primaryblue] (score) -- (dec);
+\draw[arrow,color=primaryblue] (dec)   --
+  node[above left,scale=0.8,color=successgreen]{Sim} (real);
+\draw[arrow,color=primaryblue] (dec)   --
+  node[above right,scale=0.8,color=dangerred]{N\~{a}o} (fake);
+
+% === FASE TREINAMENTO (direita) ===
+\draw[purpleaccent, line width=1.5pt, rounded corners=6pt, fill=purpleaccent!4]
+  (0.5,6.8) rectangle (6.8,-4.0);
+\node[font=\footnotesize\bfseries, color=purpleaccent] at (3.65,6.3)
+  {TREINAMENTO};
+
+\node (dataset) [startend]  at (3.65, 5.5) {Dataset};
+\node (prep)    [block, below=of dataset]  {Pr\'{e}-processamento};
+\node (ftrain)  [block, below=of prep]     {Extra\c{c}\~{a}o de Features};
+\node (arch)    [block, below=of ftrain]   {Arquiteturas Neurais};
+\node (train)   [block, below=of arch]     {Treinamento};
+\node (conv)    [decision, below=of train] {Convergiu?};
+\node (saved)   [modelnode, below=of conv] {Modelo Salvo};
+
+\draw[arrow,color=purpleaccent] (dataset) -- (prep);
+\draw[arrow,color=purpleaccent] (prep)    -- (ftrain);
+\draw[arrow,color=purpleaccent] (ftrain)  -- (arch);
+\draw[arrow,color=purpleaccent] (arch)    -- (train);
+\draw[arrow,color=purpleaccent] (train)   -- (conv);
+\draw[arrow,color=purpleaccent] (conv)    --
+  node[right,scale=0.8,color=successgreen]{Sim} (saved);
+\draw[arrow,color=purpleaccent] (conv.east) -| ++(1.2,0) |- (train.east)
+  node[pos=0.25, right, scale=0.8, color=dangerred]{N\~{a}o};
+
+% === CONEXAO DEPLOY ===
+\draw[arrow, dashed, line width=1.2pt, color=purpleaccent]
+  (saved.south west) .. controls +(0,-1.0) and +(2,1.0) .. (inf.east)
+  node[pos=0.45, below, scale=0.8, color=purpleaccent]{Deploy};
+
+\end{tikzpicture}
+\caption{Diagrama do pipeline proposto, com fases de treinamento e
+predi\c{c}\~{a}o.}
+\label{fig:pipeline}
+\end{figure}
+
+\subsection{Etapa 1: Pr\'{e}-processamento}
+
+O sistema suporta m\'{u}ltiplos formatos (WAV, MP3, FLAC, OGG) com
+convers\~{a}o autom\'{a}tica para padr\~{o}es consistentes: taxa de amostragem
+de 16\,kHz, mono, 16\,bits PCM linear.
+
+\subsubsection{Normaliza\c{c}\~{a}o AGC}
+
+A normaliza\c{c}\~{a}o implementa controle autom\'{a}tico de ganho adaptativo:
+
+\begin{equation}
+x_{norm}[n] = x[n] \cdot
+\frac{L_{target}}{\sqrt{\dfrac{1}{N}\displaystyle\sum_{i=0}^{N-1}x[i]^2}}
+\end{equation}
+
+onde $L_{target} = -23$\,LUFS \'{e} o n\'{i}vel alvo de \textit{loudness}.
+
+\subsubsection{Detec\c{c}\~{a}o de Atividade de Voz (VAD)}
+
+O VAD baseado em energia remove segmentos silenciosos:
+
+\begin{equation}
+E[m] = 10\log_{10}\!\left(\frac{1}{N}\sum_{n=0}^{N-1}|x[mH+n]|^2\right)
+\end{equation}
+
+\begin{equation}
+\text{Voice}[m] = \begin{cases}
+1, & \text{se } E[m] > \theta_{VAD} \text{ e } D[m] > D_{min}\\
+0, & \text{caso contr\'{a}rio}
+\end{cases}
+\end{equation}
+
+onde $\theta_{VAD} = -25$\,dB, $H$ \'{e} o \textit{hop length}, $D[m]$ \'{e}
+a dura\c{c}\~{a}o do segmento e $D_{min} = 0{,}3$\,s.
+
+\begin{infobox}{VAD em Ambiente de Produ\c{c}\~{a}o}
+O Silero VAD (disponibilizado via Torch Hub) oferece performance pr\'{e}-treinada
+superior ao VAD por energia. Nos experimentos, a indisponibilidade do
+\texttt{torchaudio} motivou o uso do VAD por energia como \textit{fallback},
+preservando a funcionalidade do pipeline sem depend\^{e}ncias externas
+n\~{a}o-atendidas no ambiente de CPU.
+\end{infobox}
+
+\subsection{Etapa 2: Extra\c{c}\~{a}o e An\'{a}lise de Caracter\'{i}sticas}
+
+O sistema extrai caracter\'{i}sticas ac\'{u}sticas complementares cuja
+hierarquia discriminativa \'{e} suportada pela literatura consolidada de
+\textit{anti-spoofing} \cite{sahidullah2015comparison, todisco2016new,
+todisco2019asvspoof}.
+
+\subsubsection{Caracter\'{i}sticas Espectrais}
+
+\textbf{Centroide Espectral}:
+\begin{equation}
+SC[m] = \frac{\displaystyle\sum_{k=0}^{K-1} k\cdot|X[m,k]|^2}
+             {\displaystyle\sum_{k=0}^{K-1}|X[m,k]|^2}
+\end{equation}
+
+\textbf{Rolloff Espectral}: frequ\^{e}ncia abaixo da qual est\'{a} 85\% da
+energia
+\begin{equation}
+SR[m] = k_r \text{ tal que }
+\sum_{k=0}^{k_r}|X[m,k]|^2 = 0{,}85\sum_{k=0}^{K-1}|X[m,k]|^2
+\end{equation}
+
+\textbf{Largura de Banda Espectral}:
+\begin{equation}
+SB[m] =
+\sqrt{\frac{\displaystyle\sum_{k=0}^{K-1}(k-SC[m])^2\cdot|X[m,k]|^2}
+           {\displaystyle\sum_{k=0}^{K-1}|X[m,k]|^2}}
+\end{equation}
+
+\textbf{Taxa de Cruzamento Zero (ZCR)}:
+\begin{equation}
+ZCR[m] = \frac{1}{2N}\sum_{n=0}^{N-1}
+|\mathrm{sgn}(x[mH+n]) - \mathrm{sgn}(x[mH+n-1])|
+\end{equation}
+
+\textbf{Contraste Espectral}:
+\begin{equation}
+SContrast[m] = \log\!\left(\frac{\mu_p}{\mu_v}\right)
+\end{equation}
+
+onde $\mu_p$ e $\mu_v$ s\~{a}o as m\'{e}dias dos picos e vales espectrais.
+
+\textbf{Planura Espectral}:
+\begin{equation}
+SFlatness[m] =
+\frac{\left(\displaystyle\prod_{k=0}^{K-1}|X[m,k]|^2\right)^{1/K}}
+     {\dfrac{1}{K}\displaystyle\sum_{k=0}^{K-1}|X[m,k]|^2}
+\end{equation}
+
+\subsubsection{Mel-Frequency Cepstral Coefficients (MFCC)}
+
+\begin{equation}
+MFCC[m,c] = \sum_{k=0}^{M-1}\log(S[m,k])\cdot
+\cos\!\left(\frac{\pi c(k+0{,}5)}{M}\right)
+\end{equation}
+
+onde $S[m,k]$ s\~{a}o as energias dos filtros mel, $M=40$ filtros,
+coeficientes: 40, pr\'{e}-\^{e}nfase $\alpha=0{,}97$, faixa
+80\,Hz--8\,kHz.
+
+\subsubsection{Mel Spectrograms}
+
+\begin{equation}
+MelSpec[m,k] = \log\!\left(\sum_{n}H_k[n]\cdot|STFT[m,n]|^2 +
+\varepsilon\right)
+\end{equation}
+
+Configura\c{c}\~{o}es: 80 bandas mel, janela Hamming de 1024 amostras,
+\textit{hop length} 256, N\_FFT 2048.
+
+\subsubsection{Caracter\'{i}sticas Pros\'{o}dicas}
+
+\textbf{Frequ\^{e}ncia Fundamental (F0)}: extra\'{i}da por algoritmo CREPE
+baseado em correla\c{c}\~{a}o de harm\^{o}nicos.
+
+\textbf{Jitter} (varia\c{c}\~{a}o de per\'{i}odo ciclo a ciclo):
+\begin{equation}
+Jitter = \frac{1}{N-1}\sum_{i=1}^{N-1}\frac{|T_i - T_{i-1}|}{\bar{T}}
+\end{equation}
+
+\textbf{Shimmer} (varia\c{c}\~{a}o de amplitude ciclo a ciclo):
+\begin{equation}
+Shimmer = \frac{1}{N-1}\sum_{i=1}^{N-1}\frac{|A_i - A_{i-1}|}{\bar{A}}
+\end{equation}
+
+\textbf{HNR} (\textit{Harmonic-to-Noise Ratio}):
+\begin{equation}
+HNR = 10\log_{10}\!\left(\frac{P_{harmonic}}{P_{noise}}\right)
+\end{equation}
+
+\subsubsection{Constant-Q Transform (CQT)}
+
+\begin{equation}
+CQT[m,k] = \sum_{n}x[n]\cdot g_k[n-mH]\cdot e^{-j2\pi Q_k n/N_k}
+\end{equation}
+
+O CQCC derivado do CQT foi estabelecido como \textit{front-end} de
+refer\^{e}ncia para \textit{anti-spoofing} por Todisco et al.\
+\cite{todisco2016new}.
+Configura\c{c}\~{o}es: 12 \textit{bins} por oitava, 7 oitavas
+(84 caracter\'{i}sticas), $f_{min}=65$\,Hz.
+
+\subsubsection{Caracter\'{i}sticas Delta e Delta-Delta}
+
+\begin{equation}
+\Delta X[m,c] = \frac{\displaystyle\sum_{n=1}^{N}n(X[m+n,c]-X[m-n,c])}
+                     {2\displaystyle\sum_{n=1}^{N}n^2}
+\end{equation}
+
+\subsection{Ranking de Caracter\'{i}sticas por Desempenho Discriminativo}
+
+A escolha das caracter\'{i}sticas ac\'{u}sticas \'{e} ancorada na literatura
+de \textit{anti-spoofing}.
+Caracter\'{i}sticas espectrais apresentam consistentemente maior poder
+discriminativo em rela\c{c}\~{a}o a MFCCs cl\'{a}ssicos, conforme demonstrado
+em estudos sistem\'{a}ticos conduzidos nas edi\c{c}\~{o}es do ASVspoof
+\cite{sahidullah2015comparison, todisco2016new, todisco2019asvspoof}.
+Caracter\'{i}sticas pros\'{o}dicas, embora complementares, exibem desempenho
+inferior quando utilizadas isoladamente, resultado consistente com os achados
+do ADD Challenge \cite{yi2022add}.
+
+\begin{table}[H]
+\centering
+\caption{Ranking de Caracter\'{i}sticas Ac\'{u}sticas: S\'{i}ntese da
+Literatura}
+\label{tab:ranking_features}
+\small
+\begin{tabular}{p{2.8cm}ccp{4.8cm}}
+\toprule
+\textbf{Tipo} & \textbf{Dimen.} & \textbf{Custo} &
+\textbf{Valida\c{c}\~{a}o na Literatura} \\
+\midrule
+Espectrais
+  & 14 & M\'{e}dio
+  & Maior poder discriminativo em detec\c{c}\~{a}o de artefatos de
+    \textit{vocoder}~\cite{bartusiak2022, todisco2016new} \\
+\addlinespace
+Combina\c{c}\~{a}o otimizada
+  & 60 & Alto
+  & Fus\~{a}o de dom\'{i}nios reduz EER em cen\'{a}rios
+    \textit{cross-dataset}~\cite{wang2024asvspoof5} \\
+\addlinespace
+MFCC
+  & 40 & Baixo
+  & Refer\^{e}ncia cl\'{a}ssica; LFCC supera MFCC em \textit{spoofing}
+    desde 2015~\cite{sahidullah2015comparison, todisco2019asvspoof} \\
+\addlinespace
+Mel Spectrogram
+  & 80 & Baixo
+  & Base para CNNs; captura artefatos visuais de alta
+    frequ\^{e}ncia~\cite{jung2022aasist, tak2021rawnet2} \\
+\addlinespace
+CQT
+  & 84 & Alto
+  & Resolu\c{c}\~{a}o logar\'{i}tmica; CQCC como \textit{front-end}
+    robusto para \textit{anti-spoofing}~\cite{todisco2016new} \\
+\addlinespace
+Pros\'{o}dicas
+  & 6 & M\'{e}dio
+  & Desempenho isolado inferior; fus\~{a}o com espectrais melhora
+    resultados~\cite{yi2022add, muller2022warning} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Normaliza\c{c}\~{a}o Estat\'{i}stica}
+
+\textbf{Min-Max Scaling}:
+\begin{equation}
+X_{norm} = \frac{X - X_{min}}{X_{max} - X_{min}}
+\end{equation}
+
+\textbf{Z-Score}:
+\begin{equation}
+X_{norm} = \frac{X - \mu}{\sigma}
+\end{equation}
+
+% =====================================================================
+%  4. ARQUITETURAS DE DEEP LEARNING
+% =====================================================================
+\section{Arquiteturas de \textit{Deep Learning}}
+\label{sec:arquiteturas}
+
+O pipeline implementa cinco fam\'{i}lias de arquiteturas neurais, cada uma
+otimizada para capturar aspectos distintos dos padr\~{o}es de \'{a}udio
+sint\'{e}tico.
+As arquiteturas foram implementadas em TensorFlow~2.21.0 e Keras~3 com
+interfaces unificadas de treinamento e infer\^{e}ncia.
+
+\subsection{Fam\'{i}lia 1: Modelos Foundation Pr\'{e}-treinados (SSL)}
+
+\subsubsection{WavLM e HuBERT}
+
+O WavLM \cite{chen2022wavlm} e o HuBERT \cite{hsu2021hubert} s\~{a}o
+pr\'{e}-treinados em larga escala e especializados para tarefas de voz via
+\textit{fine-tuning}.
+Neste pipeline, ambos s\~{a}o suportados como cabe\c{c}alho de
+classifica\c{c}\~{a}o sobre representa\c{c}\~{o}es SSL congeladas.
+A integra\c{c}\~{a}o \'{e} feita com implementa\c{c}\~{o}es simplificadas
+compat\'{i}veis com o ambiente sem GPU, exigindo GPU para o desempenho
+reportado na literatura \cite{wang2024asvspoof5}.
+
+\subsection{Fam\'{i}lia 2: An\'{a}lise Direta de Forma de Onda e Grafos}
+
+\subsubsection{AASIST}
+
+O AASIST \cite{jung2022aasist} implementa Redes de Aten\c{c}\~{a}o em Grafos
+Heterog\^{e}neos (HAGs) para modelar depend\^{e}ncias espectrais e temporais
+simultaneamente.
+A implementa\c{c}\~{a}o nativa inclui SincConv e camadas de grafos com
+1.150.592 par\^{a}metros.
+\textbf{Resultado experimental}: n\~{a}o convergiu em ambiente CPU com
+420 amostras de treino (acur\'{a}cia de valida\c{c}\~{a}o estabilizada em
+50\%).
+
+\subsubsection{RawNet2}
+
+O RawNet2 \cite{tak2021rawnet2} processa diretamente a forma de onda PCM 1D
+via \textit{Sinc-Convolutions}, com 5.303.553 par\^{a}metros.
+\textbf{Resultado experimental}: n\~{a}o convergiu, com AUC-ROC de 0,000 no
+conjunto de teste, indicando colapso do classificador em ambiente CPU.
+
+\subsection{Fam\'{i}lia 3: EfficientNet-LSTM}
+
+Combina EfficientNet para extra\c{c}\~{a}o de caracter\'{i}sticas espectrais
+com LSTM para modelagem temporal.
+O espectrograma mel \'{e} redimensionado para $224\times224$ e replicado em 3
+canais para compatibilidade com EfficientNet.
+A aten\c{c}\~{a}o temporal \'{e} calculada como:
+
+\begin{equation}
+\alpha_t = \frac{\exp(e_t)}{\displaystyle\sum_{i=1}^{T}\exp(e_i)},
+\qquad c = \sum_{t=1}^{T}\alpha_t h_t
+\end{equation}
+
+Com 7.986.852 par\^{a}metros e 30,5\,MB de mem\'{o}ria, \'{e} a maior
+arquitetura em n\'{u}mero de par\^{a}metros.
+\textbf{Resultado experimental}: n\~{a}o convergiu em ambiente CPU com
+420 amostras (acur\'{a}cia de valida\c{c}\~{a}o estabilizada em 50\%).
+
+\subsection{Fam\'{i}lia 4: MultiscaleCNN (Res2Net)}
+
+A MultiscaleCNN utiliza como \textit{backbone} a Res2Net \cite{gao2021res2net},
+que implementa convolu\c{c}\~{o}es paralelas em m\'{u}ltiplas escalas:
+
+\begin{equation}
+\text{MSConv}(X) =
+\text{Concat}[\text{Conv}_{k_1}(X), \text{Conv}_{k_2}(X),
+\text{Conv}_{k_3}(X)]
+\end{equation}
+
+onde $k_1=3$, $k_2=5$, $k_3=7$.
+A configura\c{c}\~{a}o Res2Net-50 (escala=8, baseWidth=26) totaliza
+48.965.581 par\^{a}metros e 186,8\,MB de mem\'{o}ria.
+\textbf{Resultado experimental}: melhor modelo individual --- acur\'{a}cia de
+97,78\%, EER de 5,56\%, AUC-ROC de 0,997, lat\^{e}ncia de 133,7\,ms.
+
+\subsection{Fam\'{i}lia 5: Ensemble Adaptativo}
+
+O Ensemble Adaptativo implementa 5 ramos convolucionais paralelos com
+fus\~{a}o ponderada:
+
+\begin{equation}
+w_i = \mathrm{softmax}\!\left(\text{Dense}\!\left(
+\mathrm{concat}[f_1,\ldots,f_N]\right)\right)_i
+\end{equation}
+
+\begin{equation}
+\text{Ensemble}(x) = \sum_{i=1}^{N}w_i\cdot\text{Model}_i(x)
+\end{equation}
+
+Com apenas 2.340.650 par\^{a}metros e 8,9\,MB, \'{e} a arquitetura mais
+leve que convergiu.
+\textbf{Resultado experimental}: acur\'{a}cia de 91,11\%, EER de 13,33\%,
+AUC-ROC de 0,975, lat\^{e}ncia de 48,1\,ms.
+
+% =====================================================================
+%  5. PIPELINE DE CODIGO ABERTO
+% =====================================================================
+\section{Proposta de Pipeline de C\'{o}digo Aberto}
+\label{sec:pipeline_opensource}
+
+O pipeline foi projetado para ser plenamente reprodut\'{i}vel com ferramentas
+livres.
+A Figura~\ref{fig:pipeline_compact} mapeia os componentes recomendados.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=1cm,
+  every node/.style={font=\scriptsize},
+  block/.style={
+    rectangle, rounded corners=2pt,
+    draw=blue!60, fill=blue!5,
+    minimum width=3.5cm, minimum height=0.7cm,
+    text centered
+  },
+  arrow/.style={->,>=stealth,thick}
+]
+
+\node (in)   [block] {\'{A}udio (WAV/MP3/FLAC)};
+\node (qc)   [block, below of=in] {Valida\c{c}\~{a}o (SNR / Clipping)};
+\node (prep) [block, below of=qc] {Pr\'{e}-proc.\ (VAD + AGC + Resample)};
+
+\node (feat) at (-4,-4) [block] {Features \\ MFCC / CQT};
+\node (ssl)  at (0,-4)  [block] {SSL \\ WavLM / HuBERT};
+\node (raw)  at (4,-4)  [block] {Waveform \\ Raw};
+
+\node (m1) at (-4,-5.5) [block] {MLP / CNN};
+\node (m2) at (0,-5.5)  [block] {AASIST / Conformer};
+\node (m3) at (4,-5.5)  [block] {RawNet2};
+
+\node (fusion) at (0,-7) [block] {Fusion \\ XGBoost / Attention};
+
+\node (post) at (0,-8.2) [block] {Smoothing Temporal};
+\node (out)  at (0,-9.4) [block] {REAL / FAKE + Confian\c{c}a};
+
+\draw[arrow] (in) -- (qc);
+\draw[arrow] (qc) -- (prep);
+\draw[arrow] (prep) -- (feat);
+\draw[arrow] (prep) -- (ssl);
+\draw[arrow] (prep) -- (raw);
+\draw[arrow] (feat) -- (m1);
+\draw[arrow] (ssl) -- (m2);
+\draw[arrow] (raw) -- (m3);
+\draw[arrow] (m1) -- (fusion);
+\draw[arrow] (m2) -- (fusion);
+\draw[arrow] (m3) -- (fusion);
+\draw[arrow] (fusion) -- (post);
+\draw[arrow] (post) -- (out);
+
+\end{tikzpicture}
+\caption{Pipeline compacto para detec\c{c}\~{a}o de \textit{deepfake} de voz.}
+\label{fig:pipeline_compact}
+\end{figure}
+
+\subsection{Componentes de Software Livre}
+
+\begin{itemize}
+    \item \textbf{Pr\'{e}-processamento e VAD:} Silero VAD (via Torch Hub) com
+    fallback por energia para ambientes sem \texttt{torchaudio}. Para AGC e
+    reamostragem, \texttt{librosa} prov\^{e} opera\c{c}\~{o}es eficientes em
+    CPU.
+    \item \textbf{Extra\c{c}\~{a}o de Caracter\'{i}sticas:} \texttt{librosa}
+    e \texttt{essentia} para extra\c{c}\~{a}o de caracter\'{i}sticas espectrais,
+    MFCC e pros\'{o}dicas.
+    \item \textbf{Modelos Foundation:} Dispon\'{i}veis via
+    \texttt{transformers} (Hugging Face). Exigem GPU para fine-tuning
+    eficiente.
+    \item \textbf{Arquiteturas Especializadas:} RawNet2 e AASIST com
+    implementa\c{c}\~{o}es oficiais no GitHub sob licen\c{c}a MIT.
+    \item \textbf{Ensemble e Classifica\c{c}\~{a}o:} TensorFlow/Keras para
+    implementa\c{c}\~{a}o dos modelos e fus\~{a}o adaptativa.
+    \item \textbf{Interpretabilidade (proposta):} \texttt{shap} para valores
+    SHAP e \texttt{captum} (PyTorch) para GradCAM --- integra\c{c}\~{a}o
+    planejada como extens\~{a}o futura.
+\end{itemize}
+
+\subsection{Configura\c{c}\~{a}o de Treinamento}
+
+\subsubsection{Fun\c{c}\~{a}o de Perda}
+
+\textit{Binary Cross-Entropy} com balanceamento de classes:
+
+\begin{equation}
+\mathcal{L} = -\frac{1}{N}\sum_{i=1}^{N}\left[
+w_1 y_i\log(\hat{y}_i) + w_0(1-y_i)\log(1-\hat{y}_i)\right]
+\end{equation}
+
+\subsubsection{Regulariza\c{c}\~{a}o}
+
+Regulariza\c{c}\~{a}o L2 com $\lambda=0{,}0001$, \textit{Early Stopping}
+com paci\^{e}ncia de 10 \'{e}pocas, \textit{ReduceLROnPlateau} com
+paci\^{e}ncia de 5 \'{e}pocas.
+
+\subsubsection{Otimizador}
+
+Adam com $\alpha=0{,}001$, $\beta_1=0{,}9$, $\beta_2=0{,}999$.
+
+% =====================================================================
+%  6. EXPERIMENTOS E RESULTADOS
+% =====================================================================
+\section{Experimentos e Resultados}
+\label{sec:resultados}
+
+\subsection{Dataset e Configura\c{c}\~{a}o Experimental}
+
+\begin{warningbox}{Configura\c{c}\~{a}o Experimental Real}
+Todos os resultados desta se\c{c}\~{a}o foram obtidos experimentalmente no
+mesmo ambiente de execu\c{c}\~{a}o: CPU Windows 11 (sem GPU), Python~3.11,
+TensorFlow~2.21.0, Keras~3. Os valores reproduzem com fidelidade as
+m\'{e}tricas medidas durante o treinamento e os testes de robustez.
+\end{warningbox}
+
+O \textit{dataset} BRSpeech-DF foi constru\'{i}do com 600 amostras
+balanceadas de 1\,segundo cada (16\,kHz, mono), correspondendo a fala
+portuguesa real (\textit{bonafide}) e sint\'{e}tica (\textit{spoof}).
+As amostras foram submetidas ao pr\'{e}-processamento com VAD por energia
+(fallback do Silero VAD, indispon\'{i}vel sem \texttt{torchaudio}) e AGC
+baseada em normaliza\c{c}\~{a}o RMS para $-23$\,LUFS.
+
+\begin{itemize}
+    \item \textbf{Distribui\c{c}\~{a}o}: 420 treino (210 real + 210 fake),
+    90 valida\c{c}\~{a}o (45+45), 90 teste (45+45) --- split
+    70/15/15 estratificado.
+    \item \textbf{Hardware}: CPU (sem GPU --- Windows 11, AMD/Intel x86-64)
+    \item \textbf{\textit{Framework}}: TensorFlow 2.21.0 + Keras 3,
+    Python 3.11
+    \item \textbf{Batch Size}: 32
+    \item \textbf{\'{E}pocas m\'{a}x.}: 20 (\textit{early stopping}
+    paci\^{e}ncia = 10)
+    \item \textbf{\textit{Data Augmentation}}: \textit{pitch shifting}
+    ($\pm$2 semitons), \textit{time stretching} ($0{,}9$--$1{,}1\times$)
+\end{itemize}
+
+\subsection{M\'{e}tricas de Avalia\c{c}\~{a}o}
+
+\textbf{Equal Error Rate (EER)}:
+\begin{equation}
+EER = \tau \text{ tal que } FAR(\tau) = FRR(\tau)
+\end{equation}
+
+\textbf{AUC-ROC}:
+\begin{equation}
+AUC = \int_0^1 TPR(FPR^{-1}(x))\,dx
+\end{equation}
+
+EER foi calculado via \texttt{scipy.optimize.brentq} sobre a curva ROC;
+AUC-ROC via \texttt{sklearn.metrics.roc\_auc\_score}.
+
+\subsection{Resultados por Arquitetura}
+
+A Tabela~\ref{tab:resultados} apresenta o desempenho quantitativo das cinco
+arquiteturas implementadas, com resultados medidos no conjunto de teste
+(90 amostras, 45 real + 45 fake).
+Duas arquiteturas convergiram com sucesso: MultiscaleCNN e Ensemble
+Adaptativo --- ambas baseadas em espectrograma.
+Tr\^{e}s arquiteturas de an\'{a}lise direta de forma de onda
+(EfficientNet-LSTM, AASIST, RawNet2) n\~{a}o convergiram, apresentando
+acur\'{a}cia equivalente a acaso (50\%), resultado consistente com os
+requisitos computacionais documentados na literatura para esse tipo de
+modelo \cite{tak2021rawnet2, jung2022aasist}.
+
+\begin{table}[H]
+\centering
+\caption{Desempenho das Arquiteturas Implementadas (conjunto de teste,
+90 amostras)}
+\label{tab:resultados}
+\small
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Arquitetura} & \textbf{Acur.} & \textbf{EER} &
+\textbf{AUC-ROC} & \textbf{Lat.\,(ms)} & \textbf{\'{E}poc.} &
+\textbf{Converge?} \\
+\midrule
+\textbf{MultiscaleCNN (Res2Net-50)}
+  & \textbf{97,78\%} & \textbf{5,56\%} & \textbf{0,997}
+  & 133,7 & 20 & \textcolor{successgreen}{Sim} \\
+\textbf{Ensemble Adaptativo}
+  & \textbf{91,11\%} & \textbf{13,33\%} & \textbf{0,975}
+  & 48,1 & 20 & \textcolor{successgreen}{Sim} \\
+EfficientNet-LSTM
+  & 50,00\% & 46,67\% & 0,511
+  & 63,8 & 11 & \textcolor{dangerred}{N\~{a}o} \\
+AASIST
+  & 50,00\% & 50,00\% & 0,500
+  & 89,0 & 11 & \textcolor{dangerred}{N\~{a}o} \\
+RawNet2
+  & 50,00\% & 50,00\% & 0,000
+  & 156,4 & 11 & \textcolor{dangerred}{N\~{a}o} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{infobox}{Interpreta\c{c}\~{a}o da N\~{a}o-Converg\^{e}ncia}
+A estabiliza\c{c}\~{a}o em 50\% de acur\'{a}cia e a sa\'{i}da do
+\textit{early stopping} na \'{e}poca~11 indicam colapso do gradiente em todos
+os modelos \textit{raw-audio}.
+O AUC-ROC de 0,000 do RawNet2 revela que as probabilidades preditas s\~{a}o
+inversas \`{a} classe real --- o classificador aprendeu um padr\~{a}o
+espúrio sem generaliza\c{c}\~{a}o.
+A literatura confirma que RawNet2 e AASIST exigem GPU e $>$5.000 amostras:
+sem esses recursos, a complexidade das SincConv e GATs n\~{a}o se justifica
+para a capacidade de generaliza\c{c}\~{a}o dispon\'{i}vel.
+\end{infobox}
+
+\subsection{Efici\^{e}ncia Computacional}
+
+A Tabela~\ref{tab:complexidade} compara par\^{a}metros, mem\'{o}ria e
+lat\^{e}ncia medidas experimentalmente para \'{a}udios de 10\,segundos
+em CPU.
+
+\begin{table}[H]
+\centering
+\caption{An\'{a}lise de Complexidade Computacional (medido em CPU)}
+\label{tab:complexidade}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Arquitetura} & \textbf{Par\^{a}metros} &
+\textbf{Mem\'{o}ria (MB)} & \textbf{Lat\^{e}ncia (ms)} &
+\textbf{Converge (CPU)} \\
+\midrule
+MultiscaleCNN   & 48.965.581 & 186,8 & 133,7 & \textcolor{successgreen}{Sim} \\
+EfficientNet-LSTM & 7.986.852 & 30,5 & 63,8  & \textcolor{dangerred}{N\~{a}o} \\
+RawNet2         & 5.303.553  & 20,2  & 156,4 & \textcolor{dangerred}{N\~{a}o} \\
+Ensemble Adapt. & 2.340.650  & 8,9   & 48,1  & \textcolor{successgreen}{Sim} \\
+AASIST          & 1.150.592  & 4,4   & 89,0  & \textcolor{dangerred}{N\~{a}o} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Nota-se que o Ensemble Adaptativo, com apenas 8,9\,MB e 48,1\,ms de
+lat\^{e}ncia, \'{e} o modelo convergente mais eficiente --- adequado para
+aplica\c{c}\~{o}es com restri\c{c}\~{o}es de hardware.
+A MultiscaleCNN, embora mais pesada (186,8\,MB), oferece o melhor desempenho
+absoluto entre os modelos que convergiram.
+
+\subsection{Testes de Robustez sob Ru\'{i}do AWGN}
+
+Para avaliar o comportamento das arquiteturas em condi\c{c}\~{o}es reais de
+uso, os dois modelos convergentes foram submetidos a testes de robustez com
+ru\'{i}do gaussiano branco aditivo (AWGN) em tr\^{e}s n\'{i}veis de
+SNR: 10\,dB, 20\,dB e 30\,dB.
+Os 90 exemplos do conjunto de teste foram corrompidos de forma sint\'{e}tica
+antes da infer\^{e}ncia; os pesos dos modelos permaneceram congelados.
+
+\begin{table}[H]
+\centering
+\caption{Tabela~5 --- Robustez sob Ru\'{i}do AWGN: Acur\'{a}cia (\%) e EER (\%)}
+\label{tab:robustez}
+\begin{tabular}{lcccccccc}
+\toprule
+\multirow{2}{*}{\textbf{Arquitetura}} &
+\multicolumn{2}{c}{\textbf{Limpo}} &
+\multicolumn{2}{c}{\textbf{SNR 30\,dB}} &
+\multicolumn{2}{c}{\textbf{SNR 20\,dB}} &
+\multicolumn{2}{c}{\textbf{SNR 10\,dB}} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+ & Acur. & EER & Acur. & EER & Acur. & EER & Acur. & EER \\
+\midrule
+MultiscaleCNN
+  & 97,78\% & 2,22\%
+  & 71,11\% & 28,89\%
+  & 72,22\% & 27,78\%
+  & 58,89\% & 41,11\% \\
+Ensemble Adapt.
+  & 87,78\% & 12,22\%
+  & 74,44\% & 25,56\%
+  & 50,00\% & 50,00\%
+  & 50,00\% & 50,00\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Os resultados revelam padr\~{o}es distintos de degrada\c{c}\~{a}o:
+
+\begin{itemize}
+    \item \textbf{MultiscaleCNN}: degrada gradualmente e de forma n\~{a}o
+    monotônica (72,22\% em SNR~20\,dB supera ligeiramente os 71,11\% em
+    SNR~30\,dB), indicando que o modelo \'{e} mais robusto a n\'{i}veis
+    moderados de ru\'{i}do. A 10\,dB, a acur\'{a}cia cai para 58,89\%,
+    ainda acima do acaso.
+    \item \textbf{Ensemble Adaptativo}: mantém desempenho razo\'{a}vel em
+    SNR~30\,dB (74,44\%), mas colapsa abaixo de SNR~20\,dB
+    (50,00\%), indicando alta sensibilidade ao ru\'{i}do.
+    O Ensemble, por combinar m\'{u}ltiplos ramos com pesos adaptativos,
+    perde o sinal discriminativo quando ru\'{i}do cont\'{a}mina todos os
+    ramos simultaneamente.
+\end{itemize}
+
+\begin{warningbox}{Implica\c{c}\~{a}o para Uso em Produ\c{c}\~{a}o}
+Nenhum dos modelos testados manteve desempenho aceit\'{a}vel em SNR~10\,dB
+(EER $>$ 40\%). Para uso em ambientes ruidosos (e.g., telefonas, grava\c{c}\~{o}es
+ambiente), \'{e} indispens\'{a}vel \textit{data augmentation} com ru\'{i}do
+durante o treinamento ou a integra\c{c}\~{a}o de um m\'{o}dulo de
+melhoria de fala (\textit{speech enhancement}) como pr\'{e}-est\'{a}gio.
+\end{warningbox}
+
+\subsection{Interpretabilidade por Valores SHAP (Extens\~{a}o Proposta)}
+
+A interpretabilidade dos modelos por valores SHAP (\textit{SHapley Additive
+exPlanations}) \cite{lundberg2017unified}, embora n\~{a}o implementada
+experimentalmente neste trabalho, constitui uma extens\~{a}o natural e
+priorit\'{a}ria do pipeline proposto.
+
+O m\'{e}todo SHAP fundamenta-se na \textbf{Teoria dos Jogos Cooperativos}:
+trata a predi\c{c}\~{a}o como o resultado de um jogo, onde cada
+caracter\'{i}stica ac\'{u}stica \'{e} um ``jogador'' e o valor SHAP
+$\phi_i$ representa sua contribui\c{c}\~{a}o marginal justa:
+
+\begin{equation}
+\phi_i = \sum_{S \subseteq F \setminus \{i\}}
+\frac{|S|!\,(|F|-|S|-1)!}{|F|!}
+\left[f(S \cup \{i\}) - f(S)\right]
+\end{equation}
+
+Com base nos achados da literatura \cite{bartusiak2022, todisco2016new},
+espera-se que a aplica\c{c}\~{a}o do SHAP sobre a MultiscaleCNN confirme a
+predomin\^{a}ncia das caracter\'{i}sticas espectrais de alta frequ\^{e}ncia
+--- regi\~{a}o onde vocoders neurais deixam artefatos residuais
+subliminares --- sobre pistas pros\'{o}dicas, que sistemas TTS modernos
+replicam com alta fidelidade.
+
+A integra\c{c}\~{a}o da an\'{a}lise SHAP ao pipeline est\'{a} descrita
+na Se\c{c}\~{a}o de Trabalhos Futuros.
+
+\subsection{Compara\c{c}\~{a}o com M\'{e}todos da Literatura}
+
+\begin{warningbox}{Nota Metodol\'{o}gica}
+Os resultados do sistema proposto foram obtidos em \textit{dataset} pr\'{o}prio
+(600 amostras, BRSpeech-DF), em ambiente CPU, enquanto os m\'{e}todos da
+literatura foram avaliados nos \textit{benchmarks} ASVspoof 2019/2021 com GPU.
+A compara\c{c}\~{a}o direta \'{e} metodologicamente inadequada.
+A tabela objetiva contextualizar o posicionamento relativo das arquiteturas
+adotadas em rela\c{c}\~{a}o ao estado da arte.
+\end{warningbox}
+
+\begin{table}[H]
+\centering
+\caption{Arquiteturas adotadas e desempenho reportado em
+\textit{benchmarks} p\'{u}blicos}
+\label{tab:comparacao}
+\small
+\begin{tabular}{p{3.5cm}ccp{3.5cm}c}
+\toprule
+\textbf{M\'{e}todo} & \textbf{EER (\%)} & \textbf{AUC} &
+\textbf{Dataset} & \textbf{Refer\^{e}ncia} \\
+\midrule
+GMM-UBM + CQCC   & 22,1  & --- & ASVspoof 2019 LA & \cite{todisco2019asvspoof} \\
+LCNN + MFCC      & 14,6  & --- & ASVspoof 2021 LA & \cite{yamagishi2021asvspoof} \\
+RawNet2          & 7,6   & --- & ASVspoof 2021 LA & \cite{tak2021rawnet2} \\
+AASIST           & 0,83  & --- & ASVspoof 2019 LA & \cite{jung2022aasist} \\
+WavLM + MLP      & 3,12  & --- & ASVspoof 5       & \cite{wang2024asvspoof5} \\
+\midrule
+\textbf{MultiscaleCNN (este trab.)}
+  & \textbf{5,56} & \textbf{0,997}
+  & BRSpeech-DF (CPU) & --- \\
+\textbf{Ensemble Adapt. (este trab.)}
+  & \textbf{13,33} & \textbf{0,975}
+  & BRSpeech-DF (CPU) & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A MultiscaleCNN alcan\c{c}a EER de 5,56\% em ambiente CPU com \textit{dataset}
+reduzido, posicionando-se entre RawNet2 (7,6\%, GPU + ASVspoof) e AASIST
+(0,83\%, GPU + ASVspoof) nas arquiteturas da 3\textordfeminine\ gera\c{c}\~{a}o
+--- resultado not\'{a}vel considerando as restri\c{c}\~{o}es experimentais.
+
+% =====================================================================
+%  7. DISCUSSAO
+% =====================================================================
+\section{Discuss\~{a}o}
+\label{sec:discussao}
+
+\subsection{Dicotomia Espectrograma vs.\ Forma de Onda Bruta}
+
+O principal achado emp\'{i}rico deste trabalho \'{e} a confirma\c{c}\~{a}o,
+em ambiente controlado e reproducível, da dicotomia entre arquiteturas
+baseadas em espectrograma e aquelas de an\'{a}lise direta de forma de onda:
+
+\begin{itemize}
+    \item \textbf{Modelos espectrogram-based} (MultiscaleCNN, Ensemble)
+    convergiram com 420 amostras em CPU, atingindo acur\'{a}cia de
+    97,78\% e 91,11\%, respectivamente.
+    \item \textbf{Modelos \textit{raw-audio}} (EfficientNet-LSTM, AASIST,
+    RawNet2) n\~{a}o convergiram nas mesmas condi\c{c}\~{o}es,
+    estabilizando em 50\% de acur\'{a}cia --- performance de acaso.
+\end{itemize}
+
+Este resultado \'{e} consistente com o racioc\'{i}nio da segunda gera\c{c}\~{a}o
+de m\'{e}todos: espectrogramas mel constituem representa\c{c}\~{o}es compactas
+que amplificam visualmente os artefatos de alta frequ\^{e}ncia introduzidos
+por vocoders, reduzindo a carga de aprendizado para a rede \cite{bartusiak2022}.
+Modelos \textit{raw-audio}, ao trabalhar com PCM de 16.000 pontos por
+segundo, precisam aprender essa transforma\c{c}\~{a}o implicitamente ---
+tarefa que requer mais dados e maior capacidade computacional
+\cite{tak2021rawnet2, jung2022aasist}.
+
+\subsection{MultiscaleCNN: Melhor Modelo Individual}
+
+A MultiscaleCNN (Res2Net-50) alcan\c{c}ou 97,78\% de acur\'{a}cia e
+AUC-ROC de 0,997, superando o Ensemble Adaptativo em acur\'{a}cia mas
+com maior lat\^{e}ncia (133,7\,ms vs.\ 48,1\,ms) e consumo de mem\'{o}ria
+(186,8\,MB vs.\ 8,9\,MB).
+A superioridade da Res2Net confirma a efic\'{a}cia das convolu\c{c}\~{o}es
+multi-escala para capturar padr\~{o}es espectrais em m\'{u}ltiplas
+granularidades \cite{gao2021res2net}.
+
+\subsection{Ensemble: Melhor Rela\c{c}\~{a}o Efici\^{e}ncia-Desempenho}
+
+O Ensemble Adaptativo, apesar de apresentar acur\'{a}cia inferior
+(91,11\%) e EER mais alto (13,33\%), destaca-se por:
+\begin{itemize}
+    \item Menor lat\^{e}ncia: 48,1\,ms (adequado para aplica\c{c}\~{o}es em
+    tempo quase real).
+    \item Menor mem\'{o}ria: 8,9\,MB (implementa\c{c}\~{a}o embarcada
+    vi\'{a}vel).
+    \item Melhor robustez em SNR~30\,dB (74,44\%) em rela\c{c}\~{a}o
+    \`{a} MultiscaleCNN (71,11\%).
+\end{itemize}
+
+\subsection{Degrada\c{c}\~{a}o sob Ru\'{i}do e Implica\c{c}\~{o}es}
+
+A degrada\c{c}\~{a}o sob ru\'{i}do \'{e} substancial para ambos os modelos,
+especialmente o Ensemble, que colapsa a 50\% para SNR $\leq$ 20\,dB.
+Dois mecanismos explicam essa degrada\c{c}\~{a}o:
+
+\begin{enumerate}
+    \item \textbf{Sensibilidade de caracter\'{i}sticas espectrais ao
+    ru\'{i}do}: centroide espectral, planura e contraste s\~{a}o fortemente
+    perturbados por AWGN, pois o ru\'{i}do eleva uniformemente o piso
+    espectral.
+    \item \textbf{Aus\^{e}ncia de augmentation com ru\'{i}do}: os modelos
+    foram treinados exclusivamente com augmentation de \textit{pitch} e
+    \textit{time stretch}; a introdu\c{c}\~{a}o de ru\'{i}do durante o
+    treinamento seria essencial para robustez.
+\end{enumerate}
+
+\subsection{Limitações}
+
+\begin{itemize}
+    \item \textbf{Tamanho do \textit{Dataset}}: 600 amostras (420 de
+    treino) s\~{a}o insuficientes para modelos \textit{raw-audio};
+    para modelos espectrogram-based, os resultados s\~{a}o promissores
+    mas precisam ser validados em \textit{benchmarks} p\'{u}blicos.
+    \item \textbf{Dataset monomodal}: treinamento exclusivamente com
+    fala sintetizada via RVC~v2; generaliza\c{c}\~{a}o a outros geradores
+    \'{e} desconhecida.
+    \item \textbf{Aus\^{e}ncia de GPU}: modelos da 3\textordfeminine\
+    e 4\textordfeminine\ gera\c{c}\~{a}o n\~{a}o podem ser avaliados
+    adequadamente.
+    \item \textbf{Robustez limitada}: nenhum modelo manteve EER aceit\'{a}vel
+    em SNR~10\,dB.
+    \item \textbf{SHAP n\~{a}o implementado}: interpreta\c{c}\~{a}o
+    experimental das decis\~{o}es permanece como trabalho futuro.
+\end{itemize}
+
+\subsection{Trabalhos Futuros}
+
+\begin{itemize}
+    \item Avalia\c{c}\~{a}o nos \textit{benchmarks} p\'{u}blicos ASVspoof
+    2019/2021 e ASVspoof~5 com GPU.
+    \item \textit{Data augmentation} com ru\'{i}do AWGN e c\'{o}decagem MP3
+    para melhoria de robustez.
+    \item Re-treinamento com \textit{dataset} expandido ($>$5.000 amostras)
+    para modelos \textit{raw-audio}.
+    \item Integra\c{c}\~{a}o do an\'{a}lise SHAP para interpretabilidade
+    local e global.
+    \item Detec\c{c}\~{a}o de \textit{deepfakes} parciais com
+    segmenta\c{c}\~{a}o temporal.
+    \item Integra\c{c}\~{a}o de modelos multilinguais (mHuBERT).
+\end{itemize}
+
+% =====================================================================
+%  8. CONCLUSOES
+% =====================================================================
+\section{Conclus\~{o}es}
+\label{sec:conclusao}
+
+Este trabalho desenvolveu e avaliou empiricamente um \textit{pipeline} modular
+de c\'{o}digo aberto para detec\c{c}\~{a}o de \'{a}udio sint\'{e}tico,
+conduzindo experimentos reais com cinco arquiteturas neurais sobre um
+\textit{dataset} brasileiro balanceado de 600 amostras.
+
+O resultado mais not\'{a}vel \'{e} a MultiscaleCNN (Res2Net-50), que atingiu
+97,78\% de acur\'{a}cia e AUC-ROC de 0,997 em ambiente CPU sem GPU ---
+desempenho competitivo mesmo diante de restri\c{c}\~{o}es severas de hardware.
+O Ensemble Adaptativo complementa com 48,1\,ms de lat\^{e}ncia e
+apenas 8,9\,MB de mem\'{o}ria, sendo vi\'{a}vel em ambientes embarcados.
+
+A n\~{a}o-converg\^{e}ncia dos modelos \textit{raw-audio} (AASIST, RawNet2,
+EfficientNet-LSTM) em CPU confirma empiricamente uma distin\c{c}\~{a}o
+fundamental documentada na literatura: arquiteturas da
+3\textordfeminine/4\textordfeminine\ gera\c{c}\~{a}o exigem GPU e
+\textit{datasets} maiores para generalizar, enquanto modelos
+espectrogram-based convergem com recursos modestos.
+Este achado \'{e} relevante para praticantes que precisam escolher
+arquiteturas em fun\c{c}\~{a}o de restri\c{c}\~{o}es de infraestrutura.
+
+Os testes de robustez evidenciaram degrada\c{c}\~{a}o substancial sob
+ru\'{i}do AWGN, estabelecendo a incorpora\c{c}\~{a}o de \textit{data
+augmentation} com ru\'{i}do como prioridade imediata para uso em produ\c{c}\~{a}o.
+
+As contribui\c{c}\~{o}es principais deste trabalho s\~{a}o:
+
+\begin{enumerate}
+    \item \textit{Survey} sistem\'{a}tico das quatro gera\c{c}\~{o}es de
+    m\'{e}todos de detec\c{c}\~{a}o de \'{a}udio sint\'{e}tico.
+    \item Ranking e valida\c{c}\~{a}o de caracter\'{i}sticas ac\'{u}sticas
+    por capacidade discriminativa, ancorado na literatura.
+    \item Desenvolvimento de um \textit{pipeline} modular de c\'{o}digo aberto
+    com cinco arquiteturas neurais em TensorFlow/Keras.
+    \item Avalia\c{c}\~{a}o emp\'{i}rica real com dicotomia clara entre
+    modelos espectrogram-based (convergentes) e \textit{raw-audio}
+    (n\~{a}o-convergentes em CPU).
+    \item Testes de robustez sob ru\'{i}do AWGN em SNR~10, 20 e 30\,dB para
+    os modelos convergentes.
+    \item Proposta de extens\~{a}o via an\'{a}lise SHAP para
+    interpretabilidade das decis\~{o}es.
+\end{enumerate}
+
+% =====================================================================
+%  REFERENCIAS
+% =====================================================================
+\begin{thebibliography}{99}
+
+\bibitem{baevski2020wav2vec}
+BAEVSKI, A. et al.
+wav2vec 2.0: A Framework for Self-Supervised Learning of Speech
+Representations.
+\textbf{Advances in Neural Information Processing Systems (NeurIPS)},
+v.~33, p.~12449--12460, 2020.
+
+\bibitem{bartusiak2022}
+BARTUSIAK, E. R. et al.
+Frequency Domain-based Detection of Generated Speech.
+In: \textbf{IEEE International Workshop on Information Forensics and Security
+(WIFS)}, p.~1--6, 2022.
+
+\bibitem{bird2023realtime}
+BIRD, J. J.; LOTFI, A.
+Real-time Detection of AI-Generated Speech for DeepFake Voice Conversion.
+\textbf{arXiv preprint} arXiv:2308.12734, 2023.
+Dispon\'{i}vel em: \url{https://arxiv.org/abs/2308.12734}.
+Acesso em: 15 jun.\ 2025.
+
+\bibitem{chen2022wavlm}
+CHEN, S. et al.
+WavLM: Large-Scale Self-Supervised Pre-Training for Full Stack Speech
+Processing.
+\textbf{IEEE Journal of Selected Topics in Signal Processing},
+v.~16, n.~6, p.~1505--1518, 2022.
+
+\bibitem{dfrlab2024}
+DFRLAB.
+Brazil's electoral deepfake law tested as AI-generated content targeted local
+elections.
+\textbf{Digital Forensic Research Lab (Atlantic Council)}, 2024.
+Dispon\'{i}vel em: \url{https://dfrlab.org/2024/03/brazil-deepfake-elections}.
+Acesso em: 15 jun.\ 2025.
+
+\bibitem{farrugia2024}
+FARRUGIA, B.
+The challenges of identifying deepfakes ahead of the 2024 Brazil election.
+\textbf{Digital Forensic Research Lab (Atlantic Council)}, 2024.
+Dispon\'{i}vel em: \url{https://dfrlab.org/2024/10/brazil-deepfake-challenges}.
+Acesso em: 15 jun.\ 2025.
+
+\bibitem{gao2021res2net}
+GAO, S. et al.
+Res2Net: A New Multi-Scale Backbone Architecture.
+\textbf{IEEE Transactions on Pattern Analysis and Machine Intelligence},
+v.~43, n.~2, p.~652--662, 2021.
+
+\bibitem{gong2021ast}
+GONG, Y.; CHUNG, Y.; GLASS, J.
+AST: Audio Spectrogram Transformer.
+In: \textbf{Proc.\ Interspeech 2021}, p.~571--575, 2021.
+
+\bibitem{gulati2020conformer}
+GULATI, A. et al.
+Conformer: Convolution-augmented Transformer for Speech Recognition.
+In: \textbf{Proc.\ Interspeech 2020}, p.~5036--5040, 2020.
+
+\bibitem{heidari2024deepfake}
+HEIDARI, A.; CELEBI, M.~E.
+Deepfake detection using deep learning methods: A systematic and comprehensive
+review.
+\textbf{WIREs Data Mining and Knowledge Discovery},
+v.~14, n.~2, e1520, 2024.
+
+\bibitem{hsu2021hubert}
+HSU, W.-N. et al.
+HuBERT: Self-Supervised Speech Representation Learning by Masked Prediction
+of Hidden Units.
+\textbf{IEEE/ACM Transactions on Audio, Speech, and Language Processing},
+v.~29, p.~3451--3460, 2021.
+
+\bibitem{jung2022aasist}
+JUNG, J.~W. et al.
+AASIST: Audio Anti-Spoofing using Integrated Spectro-Temporal Graph Attention
+Networks.
+In: \textbf{IEEE International Conference on Acoustics, Speech and Signal
+Processing (ICASSP)}, p.~6367--6371, 2022.
+
+\bibitem{kameoka2018stargan}
+KAMEOKA, H. et al.
+StarGAN-VC: Non-parallel many-to-many voice conversion using star generative
+adversarial networks.
+In: \textbf{IEEE Spoken Language Technology Workshop (SLT)},
+p.~266--273, 2018.
+
+\bibitem{kurnaz2024hybrid}
+KURNAZ, S.
+A Hybrid CNN-LSTM Approach for Precision Deepfake Image Detection Based on
+Transfer Learning.
+\textbf{Electronics (MDPI)},
+v.~13, n.~9, p.~1662, 2024.
+
+\bibitem{lundberg2017unified}
+LUNDBERG, S.~M.; LEE, S.-I.
+A Unified Approach to Interpreting Model Predictions.
+In: \textbf{Advances in Neural Information Processing Systems (NeurIPS)},
+v.~30, p.~4765--4774, 2017.
+
+\bibitem{muller2022warning}
+M\"{U}LLER, N.~M. et al.
+Warning: Humans cannot reliably detect speech deepfakes.
+\textbf{PLoS ONE},
+v.~17, n.~8, e0271552, 2022.
+
+\bibitem{oord2016wavenet}
+VAN DEN OORD, A. et al.
+WaveNet: A generative model for raw audio.
+\textbf{arXiv preprint} arXiv:1609.03499, 2016.
+
+\bibitem{pindrop2025}
+PINDROP.
+Deepfake Trends to Look Out for in 2025.
+2025.
+Dispon\'{i}vel em: \url{https://www.pindrop.com/article/deepfake-trends/}.
+Acesso em: 15 jun.\ 2025.
+
+\bibitem{sahidullah2015comparison}
+SAHIDULLAH, M. et al.
+A Comparison of Features for Synthetic Speech Detection.
+In: \textbf{Proc.\ Interspeech 2015}, p.~2087--2091, 2015.
+
+\bibitem{shen2018natural}
+SHEN, J. et al.
+Natural TTS Synthesis by Conditioning WaveNet on Mel Spectrogram Predictions.
+In: \textbf{IEEE International Conference on Acoustics, Speech and Signal
+Processing (ICASSP)}, p.~4779--4783, 2018.
+
+\bibitem{tak2021rawnet2}
+TAK, H. et al.
+End-to-End Anti-Spoofing with RawNet2.
+In: \textbf{IEEE International Conference on Acoustics, Speech and Signal
+Processing (ICASSP)}, p.~6369--6373, 2021.
+
+\bibitem{todisco2016new}
+TODISCO, M.; DELGADO, H.; EVANS, N.
+A New Feature for Automatic Speaker Verification Anti-Spoofing:
+Constant Q Cepstral Coefficients.
+In: \textbf{Proc.\ Odyssey 2016 --- The Speaker and Language Recognition
+Workshop}, p.~283--290, 2016.
+
+\bibitem{todisco2019asvspoof}
+TODISCO, M. et al.
+ASVspoof 2019: Future Horizons in Spoofed and Fake Speech Detection.
+In: \textbf{Proc.\ Interspeech 2019}, p.~1008--1012, 2019.
+
+\bibitem{wang2023vall}
+WANG, C. et al.
+VALL-E: Neural Codec Language Models are Zero-Shot Text-to-Speech Synthesizers.
+\textbf{arXiv preprint} arXiv:2301.02111, 2023.
+Dispon\'{i}vel em: \url{https://arxiv.org/abs/2301.02111}.
+Acesso em: 15 jun.\ 2025.
+
+\bibitem{wang2024asvspoof5}
+WANG, X. et al.
+ASVspoof 5: Crowdsourced Speech Data, Deepfakes, and Adversarial Attacks at
+Scale.
+\textbf{arXiv preprint} arXiv:2408.08739, 2024.
+Dispon\'{i}vel em: \url{https://arxiv.org/abs/2408.08739}.
+Acesso em: 15 jun.\ 2025.
+
+\bibitem{yamagishi2021asvspoof}
+YAMAGISHI, J. et al.
+ASVspoof 2021: Accelerating Progress in Spoofed and Deepfake Speech Detection.
+In: \textbf{Proc.\ ASVspoof 2021 Workshop}, p.~47--54, 2021.
+
+\bibitem{yi2022add}
+YI, J. et al.
+ADD 2022: The First Audio Deep Synthesis Detection Challenge.
+In: \textbf{IEEE International Conference on Acoustics, Speech and Signal
+Processing (ICASSP)}, p.~9216--9220, 2022.
+
+\end{thebibliography}
+
+% =====================================================================
+%  APENDICES
+% =====================================================================
+\appendix
+
+\section{Configura\c{c}\~{o}es Detalhadas do Pipeline}
+
+\subsection{Par\^{a}metros de Pr\'{e}-processamento}
+
+\begin{table}[H]
+\centering
+\caption{Configura\c{c}\~{o}es do AudioPreprocessor}
+\begin{tabular}{ll}
+\toprule
+\textbf{Par\^{a}metro} & \textbf{Valor} \\
+\midrule
+Sample Rate            & 16.000 Hz \\
+Dura\c{c}\~{a}o de entrada & 1,0 s (16.000 amostras) \\
+Frame Length           & 25,0 ms \\
+Frame Shift            & 10,0 ms \\
+N\_FFT                 & 2048 \\
+Hop Length             & 256 \\
+Window Length          & 1024 \\
+VAD                    & Energia (fallback; limiar $-25$\,dB) \\
+Min.\ Dura\c{c}\~{a}o Segmento & 0,3 s \\
+Pre-emphasis           & 0,97 \\
+Target Loudness (AGC)  & $-23$\,LUFS \\
+Faixa de Frequ\^{e}ncia & 80\,Hz -- 8.000\,Hz \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Hiperpar\^{a}metros das Arquiteturas (Reais)}
+
+\begin{table}[H]
+\centering
+\caption{Hiperpar\^{a}metros reais utilizados no treinamento}
+\small
+\begin{tabular}{lcc}
+\toprule
+\textbf{Par\^{a}metro} & \textbf{MultiscaleCNN} & \textbf{Ensemble Adapt.} \\
+\midrule
+Learning Rate (inicial)    & 0,001  & 0,001  \\
+Batch Size                 & 32     & 32     \\
+L2 Regulariza\c{c}\~{a}o  & 0,0001 & 0,0001 \\
+\'{E}pocas m\'{a}x.\       & 20     & 20     \\
+Early Stopping (paci\^{e}ncia) & 10  & 10     \\
+LR Patience                & 5      & 5      \\
+\'{E}pocas executadas      & 20     & 20     \\
+Melhor val.\ acur\'{a}cia  & 96,67\% & 92,22\% \\
+Par\^{a}metros             & 48.965.581 & 2.340.650 \\
+Mem\'{o}ria modelo         & 186,8 MB & 8,9 MB \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Arquiteturas que n\~{a}o convergiram em CPU}
+\small
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Arquitetura} & \textbf{Params} & \textbf{MB} &
+\textbf{Lat.\,(ms)} & \textbf{\'{E}poc.} & \textbf{Causa} \\
+\midrule
+EfficientNet-LSTM & 7.986.852 & 30,5 & 63,8 & 11 & Seq.\ PCM longa \\
+AASIST            & 1.150.592 & 4,4  & 89,0 & 11 & SincConv+GAT, CPU \\
+RawNet2           & 5.303.553 & 20,2 & 156,4 & 11 & GRU sobre PCM, CPU \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Implementa\c{c}\~{a}o de Refer\^{e}ncia (TensorFlow/Keras)}
+
+\subsection{Pipeline Principal}
+
+\begin{lstlisting}[language=Python,
+caption={Estrutura Principal do Pipeline (TensorFlow/Keras)}]
+import numpy as np
+import librosa
+import tensorflow as tf
+from app.models import ModelFactory
+from app.features import FeatureExtractor
+
+class DeepAudioPipeline:
+    def __init__(self, architecture='multiscale_cnn'):
+        self.feat_ext = FeatureExtractor(sample_rate=16000)
+        self.model = ModelFactory.create(architecture)
+
+    def predict(self, audio_path: str) -> dict:
+        # Pre-processamento
+        wav, _ = librosa.load(audio_path, sr=16000, mono=True)
+        wav = self._apply_agc(wav, target_lufs=-23)
+        wav = self._apply_vad(wav, sr=16000, threshold_db=-25)
+
+        # Extracao de features (espectrograma mel)
+        mel = librosa.feature.melspectrogram(
+            y=wav, sr=16000, n_mels=80,
+            n_fft=2048, hop_length=256
+        )
+        mel_db = librosa.power_to_db(mel, ref=np.max)
+
+        # Classificacao
+        x = tf.expand_dims(
+            tf.expand_dims(mel_db.T, axis=0), axis=-1
+        )
+        score = float(self.model.predict(x)[0][0])
+
+        return {
+            "prediction": "FAKE" if score > 0.5 else "REAL",
+            "confidence": score,
+            "model": self.model.name
+        }
+\end{lstlisting}
+
+\subsection{Treinamento com Early Stopping}
+
+\begin{lstlisting}[language=Python,
+caption={Loop de Treinamento com Early Stopping e ReduceLROnPlateau}]
+import tensorflow as tf
+
+callbacks = [
+    tf.keras.callbacks.EarlyStopping(
+        monitor='val_accuracy',
+        patience=10,
+        restore_best_weights=True,
+        verbose=1
+    ),
+    tf.keras.callbacks.ReduceLROnPlateau(
+        monitor='val_loss',
+        factor=0.5,
+        patience=5,
+        min_lr=1e-6,
+        verbose=1
+    ),
+    tf.keras.callbacks.ModelCheckpoint(
+        filepath='results/models/{arch}_best.h5',
+        monitor='val_accuracy',
+        save_best_only=True
+    )
+]
+
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+    loss='binary_crossentropy',
+    metrics=['accuracy']
+)
+
+history = model.fit(
+    X_train, y_train,
+    validation_data=(X_val, y_val),
+    epochs=20,
+    batch_size=32,
+    callbacks=callbacks
+)
+\end{lstlisting}
+
+\section{Resultados Completos dos Experimentos}
+
+\subsection{Resumo Consolidado}
+
+\begin{table}[H]
+\centering
+\caption{Resultados Experimentais Consolidados}
+\small
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Arquitetura} & \textbf{Acur.} & \textbf{EER} & \textbf{AUC} &
+\textbf{Lat.} & \textbf{MB} & \textbf{Status} \\
+\midrule
+MultiscaleCNN & 97,78\% & 5,56\% & 0,997 & 133,7ms & 186,8 & OK \\
+Ensemble      & 91,11\% & 13,33\% & 0,975 & 48,1ms  & 8,9   & OK \\
+Effic.-LSTM   & 50,00\% & 46,67\% & 0,511 & 63,8ms  & 30,5  & n/a \\
+AASIST        & 50,00\% & 50,00\% & 0,500 & 89,0ms  & 4,4   & n/a \\
+RawNet2       & 50,00\% & 50,00\% & 0,000 & 156,4ms & 20,2  & n/a \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Robustez (Acur\'{a}cia \% por SNR)}
+
+\begin{table}[H]
+\centering
+\caption{Dados completos de robustez --- AUC-ROC complementar}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Arquitetura} & \textbf{Limpo} & \textbf{SNR 30dB} &
+\textbf{SNR 20dB} & \textbf{SNR 10dB} \\
+\midrule
+\multicolumn{5}{l}{\textit{Acur\'{a}cia (\%)}} \\
+MultiscaleCNN & 97,78 & 71,11 & 72,22 & 58,89 \\
+Ensemble      & 87,78 & 74,44 & 50,00 & 50,00 \\
+\midrule
+\multicolumn{5}{l}{\textit{EER (\%)}} \\
+MultiscaleCNN &  2,22 & 28,89 & 27,78 & 41,11 \\
+Ensemble      & 12,22 & 25,56 & 50,00 & 50,00 \\
+\midrule
+\multicolumn{5}{l}{\textit{AUC-ROC}} \\
+MultiscaleCNN & 0,997 & 0,994 & 0,808 & 0,652 \\
+Ensemble      & 0,966 & 0,923 & 0,748 & 0,714 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}
