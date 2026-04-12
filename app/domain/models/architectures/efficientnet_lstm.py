@@ -192,16 +192,28 @@ def _create_efficientnet_lstm_model(
     temporal_features = TemporalPoolingLayer(name='temporal_pool')(feature_maps)
 
     # ---------- Bidirectional LSTM ----------
-    # BiLSTM with [256, 128] units
-    lstm_out = layers.Bidirectional(
-        layers.LSTM(lstm_units, return_sequences=True, dropout=dropout_rate),
-        name='bilstm_1'
-    )(temporal_features)
-
-    lstm_out = layers.Bidirectional(
-        layers.LSTM(lstm_units // 2, return_sequences=True, dropout=dropout_rate),
-        name='bilstm_2'
-    )(lstm_out)
+    # Use CuDNN-accelerated LSTM on GPU (no dropout in recurrent kernel,
+    # which is the constraint for CuDNN).  On CPU fall back to standard LSTM.
+    _gpu = bool(tf.config.list_physical_devices("GPU"))
+    if _gpu:
+        logger.info("GPU detectada: usando LSTM otimizado (CuDNN path).")
+        lstm_out = layers.Bidirectional(
+            layers.LSTM(lstm_units, return_sequences=True),
+            name='bilstm_1'
+        )(temporal_features)
+        lstm_out = layers.Bidirectional(
+            layers.LSTM(lstm_units // 2, return_sequences=True),
+            name='bilstm_2'
+        )(lstm_out)
+    else:
+        lstm_out = layers.Bidirectional(
+            layers.LSTM(lstm_units, return_sequences=True, dropout=dropout_rate),
+            name='bilstm_1'
+        )(temporal_features)
+        lstm_out = layers.Bidirectional(
+            layers.LSTM(lstm_units // 2, return_sequences=True, dropout=dropout_rate),
+            name='bilstm_2'
+        )(lstm_out)
 
     # ---------- Attention ----------
     attended, _ = AttentionLayer(
@@ -210,11 +222,16 @@ def _create_efficientnet_lstm_model(
 
     # ---------- Classification head ----------
     # Dense(256) -> Dropout(0.3) -> output
-    outputs, loss = create_classification_head(
-        attended, num_classes,
-        dropout_rate=dropout_rate,
-        hidden_dims=[256]
-    )
+    # Cast to float32 explicitly so mixed-precision (float16 compute) does not
+    # affect the final sigmoid output (required by Keras mixed_precision policy).
+    x_head = layers.Dense(256, activation='relu', name='fc1')(attended)
+    x_head = layers.Dropout(dropout_rate, name='fc1_drop')(x_head)
+    if num_classes == 1:
+        outputs = layers.Dense(1, activation='sigmoid', dtype='float32', name='output')(x_head)
+        loss = tf.keras.losses.BinaryCrossentropy()
+    else:
+        outputs = layers.Dense(num_classes, activation='softmax', dtype='float32', name='output')(x_head)
+        loss = tf.keras.losses.SparseCategoricalCrossentropy()
 
     model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
 

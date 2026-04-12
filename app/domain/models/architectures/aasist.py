@@ -289,8 +289,13 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         # --- 10. Concatenate and classify ---
         x = layers.Concatenate(name="aasist_readout_concat")([spec_readout, temp_readout])
         output_tensor = AMSoftmaxLayer(num_classes, scale=30.0, margin=0.35, name="output_layer")(x)
+        # Explicit float32 cast so mixed_float16 policy doesn't produce float16 logits
+        output_tensor = layers.Activation('linear', dtype='float32', name='output_cast')(output_tensor)
 
         # Build complete model with paper-faithful architecture
+        _gpu = bool(tf.config.list_physical_devices("GPU"))
+        if _gpu:
+            logger.info("GPU detectada: AASIST será treinado com aceleração GPU (mixed precision).")
         model = models.Model(inputs=input_tensor, outputs=output_tensor)
 
         # Label smoothing loss

@@ -132,41 +132,50 @@ def _create_rawnet2_model(
             x = layers.MaxPooling1D(pool_size=3)(x)
 
     # 4. Temporal Modeling (GRU)
+    # On GPU use the CuDNN-optimized GRU kernel (no recurrent_dropout, which
+    # disables the CuDNN path).  On CPU fall back to the portable GRU kernel.
     x = layers.BatchNormalization()(x)
     x = layers.LeakyReLU(alpha=0.3)(x)
 
-    x = layers.GRU(
-        units=gru_units,
-        return_sequences=True,
-        name='gru_1'
-    )(x)
-
-    x = layers.GRU(
-        units=gru_units,
-        return_sequences=False,
-        name='gru_2'
-    )(x)
+    _gpu = bool(tf.config.list_physical_devices("GPU"))
+    if _gpu:
+        logger.info("GPU detectada: usando GRU otimizado (CuDNN path) para RawNet2.")
+        x = layers.GRU(units=gru_units, return_sequences=True, name='gru_1')(x)
+        x = layers.GRU(units=gru_units, return_sequences=False, name='gru_2')(x)
+    else:
+        x = layers.GRU(
+            units=gru_units, return_sequences=True,
+            dropout=dropout_rate, recurrent_dropout=0.0,
+            name='gru_1'
+        )(x)
+        x = layers.GRU(
+            units=gru_units, return_sequences=False,
+            dropout=dropout_rate, recurrent_dropout=0.0,
+            name='gru_2'
+        )(x)
 
     # 5. Classification Head
-    outputs, loss = create_classification_head(
-        x,
-        num_classes,
-        dropout_rate=dropout_rate,
-        hidden_dims=[dense_units]
-    )
+    # Dense head with explicit float32 output to be safe under mixed precision.
+    x = layers.Dense(dense_units, activation='relu', name='fc1')(x)
+    x = layers.Dropout(dropout_rate, name='fc1_drop')(x)
+    if num_classes == 1:
+        outputs = layers.Dense(1, activation='sigmoid', dtype='float32', name='output')(x)
+        loss = tf.keras.losses.BinaryCrossentropy()
+    else:
+        outputs = layers.Dense(num_classes, activation='softmax', dtype='float32', name='output')(x)
+        loss = tf.keras.losses.SparseCategoricalCrossentropy()
 
     # Criar modelo
     model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
 
-    # Compilar modelo
     optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001)
-    model.compile(
-        optimizer=optimizer,
-        loss=loss,
-        metrics=['accuracy']
-    )
+    model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
 
-    logger.info(f"Modelo {architecture} criado com sucesso (Fidelidade ao paper)")
+    logger.info(
+        f"Modelo {architecture} criado: gru_units={gru_units}, "
+        f"sinc_filters={sinc_filters}, params={model.count_params()}, "
+        f"device={'GPU (CuDNN)' if _gpu else 'CPU'}"
+    )
     return model
 
 

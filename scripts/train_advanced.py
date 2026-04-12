@@ -39,11 +39,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
 SAMPLE_RATE = 16_000
-MAX_AUDIO_SAMPLES = 16_000   # 1s @ 16kHz — reduced for CPU training feasibility
+MAX_AUDIO_SAMPLES_CPU = 16_000   # 1s @ 16kHz — CPU training
+MAX_AUDIO_SAMPLES_GPU = 80_000   # 5s @ 16kHz — GPU training (raw-audio models)
+MAX_AUDIO_SAMPLES     = MAX_AUDIO_SAMPLES_CPU   # updated by setup_gpu()
 RESULTS_DIR = BASE_DIR / "results"
 
+# Arquiteturas que exigem GPU para convergir (raw-audio / heavy backbones)
+RAW_AUDIO_ARCHS = {"efficientnet_lstm", "aasist", "rawnet2"}
+
 # Arquiteturas a treinar (nome -> modulo, variante)
-# Nota: conformer desativado — incompatibilidade com Keras 3 (raw audio 80k steps)
 ARCHITECTURES = {
     "efficientnet_lstm": ("app.domain.models.architectures.efficientnet_lstm", "efficientnet_lstm"),
     "multiscale_cnn":    ("app.domain.models.architectures.multiscale_cnn",    "multiscale_cnn"),
@@ -52,13 +56,65 @@ ARCHITECTURES = {
     "ensemble_adaptive": ("app.domain.models.architectures.ensemble",          "ensemble_adaptive"),
 }
 
+# GPU state — set by setup_gpu()
+GPU_AVAILABLE: bool = False
+STRATEGY = None
+
+
+def setup_gpu() -> "tf.distribute.Strategy":
+    """Detect GPU, enable memory growth and mixed precision.
+
+    Returns a tf.distribute.Strategy suitable for the available hardware:
+    - MirroredStrategy  (multi-GPU)
+    - OneDeviceStrategy('/GPU:0')  (single GPU)
+    - default Strategy  (CPU-only)
+    """
+    global GPU_AVAILABLE, STRATEGY, MAX_AUDIO_SAMPLES
+    import tensorflow as tf
+
+    gpus = tf.config.list_physical_devices("GPU")
+    if gpus:
+        try:
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+            # Mixed precision: float16 compute, float32 weights → ~2× speedup on
+            # Tensor Cores (Volta / Turing / Ampere).  Output layers must be cast
+            # to float32 explicitly (handled in each architecture).
+            tf.keras.mixed_precision.set_global_policy("mixed_float16")
+            logger.info(
+                f"GPU detectada: {len(gpus)} dispositivo(s). "
+                "Mixed precision (float16) ativado."
+            )
+            GPU_AVAILABLE = True
+            MAX_AUDIO_SAMPLES = MAX_AUDIO_SAMPLES_GPU
+            STRATEGY = (
+                tf.distribute.MirroredStrategy()
+                if len(gpus) > 1
+                else tf.distribute.OneDeviceStrategy("/GPU:0")
+            )
+        except Exception as exc:
+            logger.warning(f"Erro ao configurar GPU: {exc}")
+            STRATEGY = tf.distribute.get_strategy()
+    else:
+        logger.info("Nenhuma GPU detectada. CPU sera usada.")
+        STRATEGY = tf.distribute.get_strategy()
+
+    return STRATEGY
+
 
 # ---------------------------------------------------------------------------
 # Carregamento de dados
 # ---------------------------------------------------------------------------
 
-def load_audio(path: Path, max_samples: int = MAX_AUDIO_SAMPLES) -> np.ndarray:
-    """Carrega WAV, aplica VAD+AGC e padeia/trunca para max_samples."""
+def load_audio(path: Path, max_samples: int = None) -> np.ndarray:
+    """Carrega WAV, aplica VAD+AGC e padeia/trunca para max_samples.
+
+    max_samples defaults to the global MAX_AUDIO_SAMPLES (16 k on CPU,
+    80 k on GPU) so callers can override when needed.
+    """
+    if max_samples is None:
+        max_samples = MAX_AUDIO_SAMPLES
+
     import librosa
     from app.core.utils.silero_vad import preprocess_audio
 
@@ -256,42 +312,56 @@ def train_model(
     epochs: int = 100,
     batch_size: int = 32,
     models_dir: Path = None,
+    force_cpu: bool = False,
 ) -> dict:
     """Treina uma arquitetura e retorna metricas completas."""
     import tensorflow as tf
 
+    # Raw-audio models require GPU to converge. Skip gracefully when unavailable.
+    is_raw_audio = arch_name in RAW_AUDIO_ARCHS
+    if is_raw_audio and not GPU_AVAILABLE and not force_cpu:
+        msg = (
+            f"{arch_name} nao convergiu em CPU (requer GPU + >5.000 amostras). "
+            "Use --force-cpu para treinar mesmo assim ou conecte uma GPU."
+        )
+        logger.warning(msg)
+        return {"skipped": True, "reason": msg}
+
+    device_label = "GPU" if (is_raw_audio and GPU_AVAILABLE) else "CPU"
     logger.info(f"\n{'='*60}")
-    logger.info(f"TREINANDO: {arch_name.upper()}")
+    logger.info(f"TREINANDO: {arch_name.upper()} [{device_label}]")
     logger.info(f"  Train : {len(X_train)} | Val: {len(X_val)} | Test: {len(X_test)}")
     logger.info(f"  Epochs: {epochs} | Batch: {batch_size} | Patience: 10")
+    if is_raw_audio and GPU_AVAILABLE:
+        logger.info(f"  Mixed precision: float16 | Audio: {MAX_AUDIO_SAMPLES/SAMPLE_RATE:.0f}s segments")
     logger.info(f"{'='*60}")
 
     input_shape = (X_train.shape[1],)
     model_path = (models_dir or RESULTS_DIR / "models") / f"{arch_name}_best.h5"
     model_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Criar modelo
-    try:
-        model = build_model(arch_name, input_shape, num_classes=1)
-    except Exception as e:
-        logger.error(f"Falha ao criar {arch_name}: {e}")
-        return {"error": str(e)}
-
-    # Recompilar com Adam + BCE (alinhado com TCC Sec 5.2)
     from app.domain.models.training.optimized_training_config import get_recommended_hyperparameters
     hp = get_recommended_hyperparameters(arch_name.replace("_", "-").title())
     lr = hp.get("learning_rate", 0.001)
     l2 = hp.get("l2_reg_strength", 0.0001)
 
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(
-            learning_rate=lr, beta_1=0.9, beta_2=0.999, epsilon=1e-7
-        ),
-        loss=tf.keras.losses.BinaryCrossentropy(),
-        metrics=["accuracy"],
-    )
+    # Build + compile inside strategy scope (enables GPU distribution and
+    # mixed-precision variable casting automatically).
+    try:
+        with STRATEGY.scope():
+            model = build_model(arch_name, input_shape, num_classes=1)
+            model.compile(
+                optimizer=tf.keras.optimizers.Adam(
+                    learning_rate=lr, beta_1=0.9, beta_2=0.999, epsilon=1e-7
+                ),
+                loss=tf.keras.losses.BinaryCrossentropy(),
+                metrics=["accuracy"],
+            )
+    except Exception as e:
+        logger.error(f"Falha ao criar {arch_name}: {e}")
+        return {"error": str(e)}
 
-    # Class weights para balancear (caso dataset desbalanceado)
+    # ── class weights ────────────────────────────────────────────────────────
     n_real = int(np.sum(y_train == 0))
     n_fake = int(np.sum(y_train == 1))
     total = n_real + n_fake
@@ -302,7 +372,9 @@ def train_model(
 
     callbacks = get_callbacks(model_path, patience=10, lr_patience=5)
 
-    # Datasets tf.data com augmentation
+    # ── tf.data pipeline ─────────────────────────────────────────────────────
+    n_samples = X_train.shape[1]  # actual length after load (may be 16k or 80k)
+
     def make_dataset(X, y, augment=False, shuffle=False):
         ds = tf.data.Dataset.from_tensor_slices((X, y.astype(np.float32)))
         if shuffle:
@@ -314,7 +386,7 @@ def train_model(
                     [xb], tf.float32,
                 )
                 # Restore static shape so model layers can use shape info
-                augmented = tf.ensure_shape(augmented, [None, MAX_AUDIO_SAMPLES])
+                augmented = tf.ensure_shape(augmented, [None, n_samples])
                 return augmented, yb
             ds = ds.batch(batch_size).map(
                 augment_map,
@@ -355,6 +427,8 @@ def train_model(
 
     result = {
         "architecture": arch_name,
+        "device": device_label,
+        "audio_length_s": round(n_samples / SAMPLE_RATE, 1),
         "params": params,
         "memory_mb": round(params * 4 / 1024**2, 1),
         "train_samples": int(len(X_train)),
@@ -438,15 +512,38 @@ def main():
         help="Modo rapido: 20 epocas, sem augmentation (debug)",
     )
     parser.add_argument(
+        "--force-cpu", action="store_true",
+        help=(
+            "Treine modelos raw-audio mesmo sem GPU. "
+            "NAO e recomendado — eles nao convergem em CPU. "
+            "Util apenas para testar o pipeline."
+        ),
+    )
+    parser.add_argument(
         "--output", type=str,
         default=str(RESULTS_DIR / "training_metrics.json"),
         help="Arquivo de saida JSON com metricas",
     )
     args = parser.parse_args()
 
+    # ── GPU setup (must happen before any TF op) ──────────────────────────
+    setup_gpu()
+
     if args.quick:
         args.epochs = 20
         logger.info("MODO RAPIDO: 20 epocas")
+
+    if GPU_AVAILABLE:
+        logger.info(
+            f"Modelos raw-audio ({', '.join(sorted(RAW_AUDIO_ARCHS))}) "
+            f"serao treinados com {MAX_AUDIO_SAMPLES // SAMPLE_RATE}s de audio em GPU."
+        )
+    else:
+        skippable = sorted(RAW_AUDIO_ARCHS)
+        logger.warning(
+            f"Sem GPU: modelos {skippable} serao ignorados. "
+            "Use --force-cpu para treinar mesmo assim (sem garantia de convergencia)."
+        )
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     models_dir = RESULTS_DIR / "models"
@@ -530,6 +627,7 @@ def main():
             epochs=args.epochs,
             batch_size=args.batch_size,
             models_dir=models_dir,
+            force_cpu=args.force_cpu,
         )
         all_results[arch_name] = result
 
@@ -541,8 +639,14 @@ def main():
                 "test": len(X_test),
                 "train_real": int(np.sum(y_train == 0)),
                 "train_fake": int(np.sum(y_train == 1)),
-                "audio_length_s": MAX_AUDIO_SAMPLES / SAMPLE_RATE,
+                "audio_length_s_cpu": MAX_AUDIO_SAMPLES_CPU / SAMPLE_RATE,
+                "audio_length_s_gpu": MAX_AUDIO_SAMPLES_GPU / SAMPLE_RATE,
                 "sample_rate": SAMPLE_RATE,
+            },
+            "hardware": {
+                "gpu_available": GPU_AVAILABLE,
+                "device": "GPU" if GPU_AVAILABLE else "CPU",
+                "mixed_precision": GPU_AVAILABLE,
             },
             "training": {
                 "epochs_max": args.epochs,
