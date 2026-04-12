@@ -1161,6 +1161,7 @@ modelo \cite{tak2021rawnet2, jung2022aasist}.
 \textbf{AUC-ROC} & \textbf{Lat.\,(ms)} & \textbf{\'{E}poc.} &
 \textbf{Converge?} \\
 \midrule
+%% AUTOGEN_BEGIN:tab_resultados
 \textbf{MultiscaleCNN (Res2Net-50)}
   & \textbf{97,78\%} & \textbf{5,56\%} & \textbf{0,997}
   & 133,7 & 20 & \textcolor{successgreen}{Sim} \\
@@ -1176,6 +1177,7 @@ AASIST
 RawNet2
   & 50,00\% & 50,00\% & 0,000
   & 156,4 & 11 & \textcolor{dangerred}{N\~{a}o} \\
+%% AUTOGEN_END:tab_resultados
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1208,11 +1210,13 @@ em CPU.
 \textbf{Mem\'{o}ria (MB)} & \textbf{Lat\^{e}ncia (ms)} &
 \textbf{Converge (CPU)} \\
 \midrule
-MultiscaleCNN   & 48.965.581 & 186,8 & 133,7 & \textcolor{successgreen}{Sim} \\
-EfficientNet-LSTM & 7.986.852 & 30,5 & 63,8  & \textcolor{dangerred}{N\~{a}o} \\
-RawNet2         & 5.303.553  & 20,2  & 156,4 & \textcolor{dangerred}{N\~{a}o} \\
-Ensemble Adapt. & 2.340.650  & 8,9   & 48,1  & \textcolor{successgreen}{Sim} \\
-AASIST          & 1.150.592  & 4,4   & 89,0  & \textcolor{dangerred}{N\~{a}o} \\
+%% AUTOGEN_BEGIN:tab_complexidade
+MultiscaleCNN & 48.965.581 & 186,8 & 133,7 & \textcolor{successgreen}{Sim} \\
+Effic.-LSTM & 7.986.852 & 30,5 & 63,8 & \textcolor{dangerred}{N\~{a}o} \\
+RawNet2 & 5.303.553 & 20,2 & 156,4 & \textcolor{dangerred}{N\~{a}o} \\
+Ensemble Adapt. & 2.340.650 & 8,9 & 48,1 & \textcolor{successgreen}{Sim} \\
+AASIST & 1.150.592 & 4,4 & 89,0 & \textcolor{dangerred}{N\~{a}o} \\
+%% AUTOGEN_END:tab_complexidade
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1246,6 +1250,7 @@ antes da infer\^{e}ncia; os pesos dos modelos permaneceram congelados.
 \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
  & Acur. & EER & Acur. & EER & Acur. & EER & Acur. & EER \\
 \midrule
+%% AUTOGEN_BEGIN:tab_robustez
 MultiscaleCNN
   & 97,78\% & 2,22\%
   & 71,11\% & 28,89\%
@@ -1256,6 +1261,7 @@ Ensemble Adapt.
   & 74,44\% & 25,56\%
   & 50,00\% & 50,00\%
   & 50,00\% & 50,00\% \\
+%% AUTOGEN_END:tab_robustez
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1340,12 +1346,14 @@ RawNet2          & 7,6   & --- & ASVspoof 2021 LA & \cite{tak2021rawnet2} \\
 AASIST           & 0,83  & --- & ASVspoof 2019 LA & \cite{jung2022aasist} \\
 WavLM + MLP      & 3,12  & --- & ASVspoof 5       & \cite{wang2024asvspoof5} \\
 \midrule
+%% AUTOGEN_BEGIN:tab_comparacao_our
 \textbf{MultiscaleCNN (este trab.)}
   & \textbf{5,56} & \textbf{0,997}
   & BRSpeech-DF (CPU) & --- \\
 \textbf{Ensemble Adapt. (este trab.)}
   & \textbf{13,33} & \textbf{0,975}
   & BRSpeech-DF (CPU) & --- \\
+%% AUTOGEN_END:tab_comparacao_our
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1729,16 +1737,18 @@ Faixa de Frequ\^{e}ncia & 80\,Hz -- 8.000\,Hz \\
 \toprule
 \textbf{Par\^{a}metro} & \textbf{MultiscaleCNN} & \textbf{Ensemble Adapt.} \\
 \midrule
-Learning Rate (inicial)    & 0,001  & 0,001  \\
-Batch Size                 & 32     & 32     \\
-L2 Regulariza\c{c}\~{a}o  & 0,0001 & 0,0001 \\
-\'{E}pocas m\'{a}x.\       & 20     & 20     \\
-Early Stopping (paci\^{e}ncia) & 10  & 10     \\
-LR Patience                & 5      & 5      \\
-\'{E}pocas executadas      & 20     & 20     \\
-Melhor val.\ acur\'{a}cia  & 96,67\% & 92,22\% \\
-Par\^{a}metros             & 48.965.581 & 2.340.650 \\
-Mem\'{o}ria modelo         & 186,8 MB & 8,9 MB \\
+%% AUTOGEN_BEGIN:tab_hyperparams
+Learning Rate (inicial)        & 0,001 & 0,001 \\
+Batch Size                     & 32 & 32 \\
+L2 Regulariza\c{c}\~{a}o      & 0,0001 & 0,0001 \\
+\'{E}pocas m\'{a}x.\           & 20 & 20 \\
+Early Stopping (paci\^{e}ncia) & 10 & 10 \\
+LR Patience                    & 5 & 5 \\
+\'{E}pocas executadas          & 20 & 20 \\
+Melhor val.\ acur\'{a}cia      & 96,67\% & 92,22\% \\
+Par\^{a}metros                 & 48.965.581 & 2.340.650 \\
+Mem\'{o}ria modelo             & 186,8 MB & 8,9 MB \\
+%% AUTOGEN_END:tab_hyperparams
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1752,9 +1762,11 @@ Mem\'{o}ria modelo         & 186,8 MB & 8,9 MB \\
 \textbf{Arquitetura} & \textbf{Params} & \textbf{MB} &
 \textbf{Lat.\,(ms)} & \textbf{\'{E}poc.} & \textbf{Causa} \\
 \midrule
+%% AUTOGEN_BEGIN:tab_nao_convergiu
 EfficientNet-LSTM & 7.986.852 & 30,5 & 63,8 & 11 & Seq.\ PCM longa \\
-AASIST            & 1.150.592 & 4,4  & 89,0 & 11 & SincConv+GAT, CPU \\
-RawNet2           & 5.303.553 & 20,2 & 156,4 & 11 & GRU sobre PCM, CPU \\
+AASIST & 1.150.592 & 4,4 & 89,0 & 11 & SincConv+GAT, CPU \\
+RawNet2 & 5.303.553 & 20,2 & 156,4 & 11 & GRU sobre PCM, CPU \\
+%% AUTOGEN_END:tab_nao_convergiu
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1857,11 +1869,13 @@ history = model.fit(
 \textbf{Arquitetura} & \textbf{Acur.} & \textbf{EER} & \textbf{AUC} &
 \textbf{Lat.} & \textbf{MB} & \textbf{Status} \\
 \midrule
+%% AUTOGEN_BEGIN:tab_consolidado
 MultiscaleCNN & 97,78\% & 5,56\% & 0,997 & 133,7ms & 186,8 & OK \\
-Ensemble      & 91,11\% & 13,33\% & 0,975 & 48,1ms  & 8,9   & OK \\
-Effic.-LSTM   & 50,00\% & 46,67\% & 0,511 & 63,8ms  & 30,5  & n/a \\
-AASIST        & 50,00\% & 50,00\% & 0,500 & 89,0ms  & 4,4   & n/a \\
-RawNet2       & 50,00\% & 50,00\% & 0,000 & 156,4ms & 20,2  & n/a \\
+Ensemble Adapt. & 91,11\% & 13,33\% & 0,975 & 48,1ms & 8,9 & OK \\
+Effic.-LSTM & 50,00\% & 46,67\% & 0,511 & 63,8ms & 30,5 & n/a \\
+AASIST & 50,00\% & 50,00\% & 0,500 & 89,0ms & 4,4 & n/a \\
+RawNet2 & 50,00\% & 50,00\% & 0,000 & 156,4ms & 20,2 & n/a \\
+%% AUTOGEN_END:tab_consolidado
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1876,17 +1890,19 @@ RawNet2       & 50,00\% & 50,00\% & 0,000 & 156,4ms & 20,2  & n/a \\
 \textbf{Arquitetura} & \textbf{Limpo} & \textbf{SNR 30dB} &
 \textbf{SNR 20dB} & \textbf{SNR 10dB} \\
 \midrule
+%% AUTOGEN_BEGIN:tab_robustez_completo
 \multicolumn{5}{l}{\textit{Acur\'{a}cia (\%)}} \\
 MultiscaleCNN & 97,78 & 71,11 & 72,22 & 58,89 \\
-Ensemble      & 87,78 & 74,44 & 50,00 & 50,00 \\
+Ensemble Adapt. & 87,78 & 74,44 & 50,00 & 50,00 \\
 \midrule
 \multicolumn{5}{l}{\textit{EER (\%)}} \\
-MultiscaleCNN &  2,22 & 28,89 & 27,78 & 41,11 \\
-Ensemble      & 12,22 & 25,56 & 50,00 & 50,00 \\
+MultiscaleCNN & 2,22 & 28,89 & 27,78 & 41,11 \\
+Ensemble Adapt. & 12,22 & 25,56 & 50,00 & 50,00 \\
 \midrule
 \multicolumn{5}{l}{\textit{AUC-ROC}} \\
 MultiscaleCNN & 0,997 & 0,994 & 0,808 & 0,652 \\
-Ensemble      & 0,966 & 0,923 & 0,748 & 0,714 \\
+Ensemble Adapt. & 0,966 & 0,923 & 0,748 & 0,714 \\
+%% AUTOGEN_END:tab_robustez_completo
 \bottomrule
 \end{tabular}
 \end{table}
