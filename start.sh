@@ -1,599 +1,917 @@
+# XFakeSong Launcher v3
+
+```bash
 #!/usr/bin/env bash
-# =====================================================================
-# XFakeSong Launcher (Linux / macOS / WSL2)
-# Wrapper para builds locais + docker compose
-# Uso: ./start.sh [test|prod|gpu|stop|logs|rebuild|clean|install|install-gpu|wsl-setup|gpu-test|bootstrap]
-#
-# Modos GPU:
-#   install-gpu  → Instala TF com suporte CUDA (tensorflow[and-cuda]) em Linux/WSL2
-#   wsl-setup    → Mostra passos completos de setup CUDA dentro do WSL2
-#   gpu-test     → Roda diagnóstico standalone (sem iniciar app)
-#   test         → Modo TESTE local (Python) — usa GPU se disponível
-# =====================================================================
-set -uo pipefail
+# ==============================================================================
+# XFakeSong Launcher v3
+# Plataforma operacional unificada
+# Compatível: Linux • macOS • WSL2
+# ==============================================================================
 
-# Cores
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
+set -Eeuo pipefail
+IFS=$'\n\t'
 
-# -------------------- helpers --------------------
+# ==============================================================================
+# METADATA
+# ==============================================================================
 
-show_header() {
-    clear
-    echo -e "${BLUE}===============================================================================${NC}"
-    echo -e "${BLUE}                              XFAKESONG LAUNCHER                               ${NC}"
-    echo -e "${BLUE}===============================================================================${NC}"
-    echo ""
+readonly VERSION="3.0.0"
+readonly APP_NAME="XFakeSong"
+readonly DEFAULT_PORT="7860"
+readonly HEALTH_TIMEOUT="300"
+readonly HEALTH_INTERVAL="5"
+readonly CONTAINER_NAME="xfakesong_app"
+
+readonly SCRIPT_NAME="$(basename "$0")"
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly PROJECT_ROOT="$SCRIPT_DIR"
+
+readonly LOG_DIR="${PROJECT_ROOT}/.logs"
+readonly LOG_FILE="${LOG_DIR}/launcher.log"
+
+# ==============================================================================
+# COLORS
+# ==============================================================================
+
+if [[ -t 1 ]]; then
+    readonly RED='\033[0;31m'
+    readonly GREEN='\033[0;32m'
+    readonly YELLOW='\033[1;33m'
+    readonly BLUE='\033[0;34m'
+    readonly CYAN='\033[0;36m'
+    readonly MAGENTA='\033[0;35m'
+    readonly BOLD='\033[1m'
+    readonly NC='\033[0m'
+else
+    readonly RED=''
+    readonly GREEN=''
+    readonly YELLOW=''
+    readonly BLUE=''
+    readonly CYAN=''
+    readonly MAGENTA=''
+    readonly BOLD=''
+    readonly NC=''
+fi
+
+# ==============================================================================
+# LOGGING
+# ==============================================================================
+
+mkdir -p "$LOG_DIR"
+
+log() {
+    local level="$1"
+    shift
+
+    local ts
+    ts="$(date '+%Y-%m-%d %H:%M:%S')"
+
+    echo "[$ts] [$level] $*" >> "$LOG_FILE"
 }
 
-# Detecta variante do compose: 'docker compose' (v2) ou 'docker-compose' (v1)
-detect_compose() {
-    if docker compose version &>/dev/null; then
-        echo "docker compose"
-        return 0
-    fi
-    if command -v docker-compose &>/dev/null; then
-        echo "docker-compose"
-        return 0
-    fi
-    return 1
+info() {
+    log INFO "$@"
+    echo -e "${BLUE}[INFO]${NC} $*"
 }
 
-check_docker_running() {
-    if ! docker info &>/dev/null; then
-        echo -e "${RED}Docker daemon não está rodando.${NC}"
-        echo -e "${YELLOW}Inicie o Docker Desktop ou systemctl start docker${NC}"
-        return 1
-    fi
-    return 0
+success() {
+    log SUCCESS "$@"
+    echo -e "${GREEN}[OK]${NC} $*"
 }
+
+warn() {
+    log WARN "$@"
+    echo -e "${YELLOW}[WARN]${NC} $*"
+}
+
+error() {
+    log ERROR "$@"
+    echo -e "${RED}[ERROR]${NC} $*" >&2
+}
+
+fatal() {
+    error "$@"
+    exit 1
+}
+
+# ==============================================================================
+# ERROR HANDLING
+# ==============================================================================
+
+on_error() {
+    local exit_code="$?"
+    local line="$1"
+
+    error "Falha na linha ${line} (exit code=${exit_code})"
+    exit "$exit_code"
+}
+
+trap 'on_error $LINENO' ERR
+
+# ==============================================================================
+# CORE HELPERS
+# ==============================================================================
+
+require_bash() {
+    [[ -n "${BASH_VERSION:-}" ]] || {
+        echo "Este script requer Bash"
+        exit 1
+    }
+}
+
+require_command() {
+    local cmd="$1"
+
+    command -v "$cmd" >/dev/null 2>&1 || \
+        fatal "Dependência ausente: ${cmd}"
+}
+
+clear_screen() {
+    command -v clear >/dev/null 2>&1 && clear || true
+}
+
+pause() {
+    echo
+    read -rp "Pressione ENTER para continuar..." _
+}
+
+is_interactive() {
+    [[ -t 0 ]]
+}
+
+is_wsl() {
+    [[ -n "${WSL_DISTRO_NAME:-}" ]] && return 0
+
+    [[ -f /proc/version ]] || return 1
+
+    grep -qiE '(microsoft|wsl)' /proc/version
+}
+
+# ==============================================================================
+# ENVIRONMENT DETECTION
+# ==============================================================================
 
 check_python() {
-    if command -v python3 &>/dev/null; then
-        PY=python3
-    elif command -v python &>/dev/null; then
-        PY=python
-    else
-        echo -e "${RED}Python 3 não encontrado!${NC}"
-        return 1
-    fi
-    export PY
-    return 0
-}
 
-# Detecta se estamos em WSL (Linux dentro do Windows)
-is_wsl() {
-    if [ -n "${WSL_DISTRO_NAME:-}" ]; then return 0; fi
-    if grep -qiE "(microsoft|wsl)" /proc/version 2>/dev/null; then return 0; fi
+    if command -v python3 >/dev/null 2>&1; then
+        readonly PYTHON_BIN="python3"
+        return 0
+    fi
+
+    if command -v python >/dev/null 2>&1; then
+        readonly PYTHON_BIN="python"
+        return 0
+    fi
+
     return 1
 }
 
-# Detecta GPU NVIDIA via nvidia-smi (funciona em Linux nativo E WSL2)
-check_nvidia_gpu() {
-    if ! command -v nvidia-smi >/dev/null 2>&1; then
-        return 1
+ensure_python() {
+    check_python || fatal "Python não encontrado"
+}
+
+ensure_venv() {
+
+    ensure_python
+
+    if [[ ! -d ".venv" ]]; then
+        info "Criando virtualenv..."
+        "$PYTHON_BIN" -m venv .venv
     fi
+}
+
+activate_venv() {
+
+    [[ -d ".venv" ]] || fatal ".venv não encontrada"
+
+    # shellcheck disable=SC1091
+    source .venv/bin/activate
+}
+
+# ==============================================================================
+# GPU
+# ==============================================================================
+
+check_nvidia_gpu() {
+
+    command -v nvidia-smi >/dev/null 2>&1 || return 1
+
     nvidia-smi -L >/dev/null 2>&1
 }
 
-# Diz se o pacote TF atual está compilado com CUDA
-tf_has_cuda() {
-    [ -d ".venv" ] || return 1
-    # shellcheck disable=SC1091
-    source .venv/bin/activate
-    python -c "import tensorflow as tf; import sys; sys.exit(0 if tf.test.is_built_with_cuda() else 1)" 2>/dev/null
+check_cuda_tensorflow() {
+
+    [[ -d ".venv" ]] || return 1
+
+    activate_venv
+
+    python - <<EOF >/dev/null 2>&1
+import tensorflow as tf
+exit(0 if tf.test.is_built_with_cuda() else 1)
+EOF
 }
 
-# Resolve comando docker compose (v1 ou v2) UMA VEZ
-get_compose() {
-    if [ -z "${DC:-}" ]; then
-        DC=$(detect_compose) || {
-            echo -e "${RED}Docker Compose não encontrado.${NC}"
-            echo -e "${YELLOW}Instale Docker Desktop (inclui Compose v2)${NC}"
-            return 1
-        }
-        export DC
+get_gpu_status() {
+
+    if check_nvidia_gpu; then
+        echo "NVIDIA"
+    else
+        echo "CPU"
     fi
-    echo "$DC"
+}
+
+show_gpu_status() {
+
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo " GPU STATUS"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    if check_nvidia_gpu; then
+
+        nvidia-smi -L
+
+        echo
+
+        if check_cuda_tensorflow; then
+            success "TensorFlow CUDA ativo"
+        else
+            warn "TensorFlow sem suporte CUDA"
+        fi
+
+    else
+
+        warn "GPU NVIDIA não detectada"
+
+        if is_wsl; then
+            warn "Verifique driver NVIDIA no Windows"
+        fi
+    fi
+
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}
+
+# ==============================================================================
+# DOCKER
+# ==============================================================================
+
+get_docker_status() {
+
+    if docker info >/dev/null 2>&1; then
+        echo "ONLINE"
+    else
+        echo "OFFLINE"
+    fi
+}
+
+ensure_docker() {
+
+    require_command docker
+
+    docker info >/dev/null 2>&1 || \
+        fatal "Docker daemon não está rodando"
+}
+
+get_compose() {
+
+    if docker compose version >/dev/null 2>&1; then
+        readonly COMPOSE_CMD="docker compose"
+        return
+    fi
+
+    if command -v docker-compose >/dev/null 2>&1; then
+        readonly COMPOSE_CMD="docker-compose"
+        return
+    fi
+
+    fatal "Docker Compose não encontrado"
 }
 
 wait_for_healthy() {
-    # Aguarda container ficar healthy com timeout de 5 min
-    local container="xfakesong_app"
-    local max_wait=300  # 5 min
+
     local elapsed=0
-    local interval=5
 
-    echo -e "${YELLOW}Aguardando container ficar healthy (max ${max_wait}s)...${NC}"
-    while [ $elapsed -lt $max_wait ]; do
+    info "Aguardando container healthy..."
+
+    while [[ "$elapsed" -lt "$HEALTH_TIMEOUT" ]]; do
+
         local status
-        status=$(docker inspect -f '{{.State.Health.Status}}' "$container" 2>/dev/null || echo "")
-        if [ -z "$status" ]; then
-            echo -e "${RED}Container '$container' não encontrado.${NC}"
-            return 1
-        fi
 
-        printf "\r  Status: %-15s (${elapsed}s)" "$status"
+        status="$(docker inspect \
+            -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' \
+            "$CONTAINER_NAME" \
+            2>/dev/null || true)"
+
+        printf "\rStatus: %-20s Tempo: %ss" "$status" "$elapsed"
 
         case "$status" in
+
             healthy)
-                echo ""
-                echo -e "${GREEN}✓ Container healthy${NC}"
+                echo
+                success "Container healthy"
                 return 0
                 ;;
+
             unhealthy)
-                echo ""
-                echo -e "${RED}✗ Container unhealthy. Veja logs:${NC}"
-                $DC logs --tail=50 app
+                echo
+                error "Container unhealthy"
+                $COMPOSE_CMD logs --tail=50 app
                 return 1
                 ;;
+
+            no-healthcheck)
+                echo
+                warn "Container sem HEALTHCHECK"
+                return 0
+                ;;
+
             "")
-                echo ""
-                echo -e "${RED}✗ Container parou inesperadamente.${NC}"
+                echo
+                error "Container não encontrado"
                 return 1
                 ;;
+
         esac
 
-        sleep $interval
-        elapsed=$((elapsed + interval))
+        sleep "$HEALTH_INTERVAL"
+
+        elapsed=$((elapsed + HEALTH_INTERVAL))
+
     done
 
-    echo ""
-    echo -e "${RED}✗ Timeout aguardando healthy (${max_wait}s)${NC}"
-    return 1
+    echo
+
+    fatal "Timeout aguardando container healthy"
 }
 
-# -------------------- ações --------------------
+# ==============================================================================
+# NETWORKING
+# ==============================================================================
 
-check_port_local() {
-    # BUG.Startup.3: pré-check porta 7860 antes de iniciar localmente
-    local port="${1:-7860}"
-    if lsof -i ":${port}" >/dev/null 2>&1 || \
-       (command -v ss >/dev/null && ss -ltn 2>/dev/null | grep -q ":${port} "); then
-        local old_pid
-        old_pid=$(lsof -ti ":${port}" 2>/dev/null | head -1)
-        echo ""
-        echo -e "${RED}===============================================================${NC}"
-        echo -e "${RED} Porta ${port} já em uso${NC}${old_pid:+ pelo PID $old_pid}${NC}"
-        echo -e "${RED}===============================================================${NC}"
-        echo "Encerre a instância anterior:"
-        [ -n "$old_pid" ] && echo "  kill -9 ${old_pid}"
-        echo "Ou rode em outra porta:"
-        echo "  python main.py --gradio --gradio-port 7861"
-        echo ""
-        if [ -n "$old_pid" ]; then
-            read -rp "Encerrar PID ${old_pid} automaticamente? [y/N] " kill_yn
-            if [[ "$kill_yn" =~ ^[yY] ]]; then
-                kill -9 "$old_pid" 2>/dev/null && \
-                    { echo "PID encerrado. Aguardando porta liberar..."; sleep 3; } || \
-                    return 1
-            else
-                return 1
+check_port() {
+
+    local port="${1:-$DEFAULT_PORT}"
+
+    if lsof -i ":${port}" >/dev/null 2>&1; then
+
+        local pid
+
+        pid="$(lsof -ti ":${port}" | head -1)"
+
+        warn "Porta ${port} em uso (PID ${pid})"
+
+        read -rp "Encerrar automaticamente? [y/N] " response
+
+        if [[ "$response" =~ ^[Yy]$ ]]; then
+
+            kill "$pid" || true
+
+            sleep 5
+
+            if kill -0 "$pid" >/dev/null 2>&1; then
+                warn "Aplicando SIGKILL..."
+                kill -9 "$pid"
             fi
+
+            success "Processo encerrado"
+
         else
             return 1
         fi
     fi
-    return 0
 }
 
-mode_test() {
+# ==============================================================================
+# INSTALLATION
+# ==============================================================================
+
+install_dependencies() {
+
     show_header
-    echo -e "${GREEN}Iniciando Modo TESTE (Local Python)...${NC}"
-    check_python || return 1
 
-    if [ ! -d ".venv" ]; then
-        echo "Criando ambiente virtual..."
-        $PY -m venv .venv
-    fi
-    # shellcheck disable=SC1091
-    source .venv/bin/activate
-    pip install --upgrade pip >/dev/null
-    pip install -r requirements.txt
+    ensure_venv
 
-    # BUG.Startup.3: verifica porta livre antes de iniciar
-    check_port_local 7860 || return 1
+    activate_venv
 
-    # GPU.8: Diagnóstico rápido de GPU antes de iniciar — informa ao usuário
-    # se está rodando com aceleração ou em CPU.
-    echo ""
-    echo -e "${BLUE}--- Status de GPU ---${NC}"
-    if check_nvidia_gpu; then
-        nvidia-smi -L | sed 's/^/  /'
-        if tf_has_cuda; then
-            echo -e "${GREEN}  ✓ TensorFlow tem suporte CUDA. GPU será usada para treino/inferência.${NC}"
-        else
-            echo -e "${YELLOW}  ⚠ GPU NVIDIA detectada mas TF está sem CUDA.${NC}"
-            echo -e "${YELLOW}    Rode: ./start.sh install-gpu  (para instalar tensorflow[and-cuda])${NC}"
-        fi
-    else
-        echo -e "${YELLOW}  ⚠ nvidia-smi não encontrado — modo CPU.${NC}"
-        if is_wsl; then
-            echo "    (Você está em WSL — atualize o driver NVIDIA do Windows ≥ 525.x)"
-        fi
-    fi
-    echo ""
-
-    echo "Iniciando aplicação em http://localhost:7860 ..."
-    $PY main.py --gradio --gradio-port 7860
-}
-
-# GPU.8: Instala TF com suporte CUDA (Linux/WSL2)
-mode_install_gpu() {
-    show_header
-    echo -e "${GREEN}Instalando TensorFlow com suporte CUDA (GPU)...${NC}"
-    echo ""
-
-    # 1. Pré-requisito: nvidia-smi precisa estar disponível
-    if ! check_nvidia_gpu; then
-        echo -e "${RED}✗ nvidia-smi não encontrado ou GPU não detectada.${NC}"
-        echo ""
-        if is_wsl; then
-            echo -e "${YELLOW}Você está em WSL2 mas a GPU não está visível.${NC}"
-            echo "Soluções:"
-            echo "  1. Driver NVIDIA Windows ≥ 525.x:  https://www.nvidia.com/drivers"
-            echo "  2. WSL2 atualizado:  wsl --update  (em PowerShell admin)"
-            echo "  3. Reinicie o WSL:   wsl --shutdown  e abra novamente"
-        else
-            echo -e "${YELLOW}Instale drivers NVIDIA primeiro (Linux):${NC}"
-            echo "  Ubuntu/Debian:  sudo apt install nvidia-driver-535"
-            echo "  Reinicie o sistema após instalar."
-        fi
-        return 1
-    fi
-    nvidia-smi -L | sed 's/^/  /'
-
-    check_python || return 1
-    [ -d ".venv" ] || $PY -m venv .venv
-    # shellcheck disable=SC1091
-    source .venv/bin/activate
+    info "Atualizando pip..."
     pip install --upgrade pip
 
-    echo ""
-    echo -e "${BLUE}Removendo build CPU anterior...${NC}"
-    pip uninstall -y tensorflow tensorflow-cpu tensorflow-intel 2>/dev/null || true
-
-    echo ""
-    echo -e "${BLUE}Instalando tensorflow[and-cuda]...${NC}"
-    echo "(Download ~ 1 GB — leva alguns minutos)"
-    pip install --upgrade 'tensorflow[and-cuda]>=2.16,<2.22' || {
-        echo -e "${RED}Falha ao instalar tensorflow[and-cuda].${NC}"
-        echo "Possíveis causas:"
-        echo "  - Python > 3.13: TF 2.20+ ainda não tem wheels CUDA para 3.13 oficiais"
-        echo "  - Sem espaço em disco (~3 GB necessário)"
-        echo "  - Pacote pip outdated: pip install --upgrade pip"
-        return 1
-    }
-
-    echo ""
-    echo -e "${BLUE}Instalando resto das dependências...${NC}"
+    info "Instalando dependências..."
     pip install -r requirements.txt
 
-    echo ""
-    echo -e "${BLUE}Validando setup GPU...${NC}"
-    python - <<'PYEOF'
-import tensorflow as tf
-print(f"TF:                  {tf.__version__}")
-print(f"built_with_cuda:     {tf.test.is_built_with_cuda()}")
-gpus = tf.config.list_physical_devices('GPU')
-print(f"GPUs visíveis:       {len(gpus)}")
-for i, g in enumerate(gpus):
-    d = tf.config.experimental.get_device_details(g)
-    print(f"  #{i}: {d.get('device_name', g)} CC={d.get('compute_capability', '?')}")
-if not gpus:
-    print()
-    print("⚠ TF compilado com CUDA mas não está expondo a GPU.")
-    print("  Possíveis causas:")
-    print("  - Driver NVIDIA Windows < 525.x (atualize)")
-    print("  - cuDNN incompatível — pip install nvidia-cudnn-cu12")
-    print("  - LD_LIBRARY_PATH precisa apontar para libs CUDA")
-PYEOF
-
-    echo ""
-    echo -e "${GREEN}✓ Instalação concluída. Inicie com: ./start.sh test${NC}"
+    success "Dependências instaladas"
 }
 
-# GPU.8: Setup completo de WSL2 + CUDA (interativo, informativo)
-mode_wsl_setup() {
-    show_header
-    echo -e "${GREEN}Setup WSL2 + GPU CUDA — Passo a Passo${NC}"
-    echo ""
+install_gpu_dependencies() {
 
-    if ! is_wsl; then
-        echo -e "${YELLOW}Você NÃO está em WSL.${NC}"
-        echo "Este modo é específico para WSL2 (Linux dentro do Windows)."
-        echo ""
-        echo "Para entrar no WSL primeiro:"
-        echo "  1. No PowerShell (admin):  wsl --install -d Ubuntu"
-        echo "  2. Reinicie o computador"
-        echo "  3. Abra o app 'Ubuntu' no menu Iniciar"
-        echo "  4. Clone o repo:  git clone <url> e cd no diretório"
-        echo "  5. Rode novamente:  ./start.sh wsl-setup"
-        return 1
+    show_header
+
+    ensure_venv
+
+    activate_venv
+
+    check_nvidia_gpu || fatal "GPU NVIDIA não detectada"
+
+    info "Removendo TensorFlow CPU..."
+
+    pip uninstall -y \
+        tensorflow \
+        tensorflow-cpu \
+        tensorflow-intel \
+        >/dev/null 2>&1 || true
+
+    info "Instalando TensorFlow CUDA..."
+
+    pip install 'tensorflow[and-cuda]==2.20.*'
+
+    info "Instalando requirements..."
+
+    pip install -r requirements.txt
+
+    success "TensorFlow CUDA instalado"
+}
+
+# ==============================================================================
+# APPLICATION RUNTIME
+# ==============================================================================
+
+run_local() {
+
+    show_header
+
+    info "Inicializando modo local..."
+
+    install_dependencies
+
+    check_port "$DEFAULT_PORT"
+
+    show_gpu_status
+
+    activate_venv
+
+    exec "$PYTHON_BIN" \
+        main.py \
+        --gradio \
+        --gradio-port "$DEFAULT_PORT"
+}
+
+run_docker() {
+
+    local gpu_mode="${1:-0}"
+
+    show_header
+
+    ensure_docker
+
+    get_compose
+
+    local compose_args=(
+        -f docker-compose.yml
+    )
+
+    if [[ "$gpu_mode" == "1" ]]; then
+        compose_args+=( -f docker-compose.gpu.yml )
     fi
 
-    echo -e "${BLUE}Você está em WSL: ${WSL_DISTRO_NAME:-?}${NC}"
-    echo ""
+    info "Buildando containers..."
 
-    # 1. nvidia-smi
-    echo -e "${BLUE}[1/4] Verificando driver GPU passthrough...${NC}"
-    if check_nvidia_gpu; then
-        nvidia-smi -L | sed 's/^/  /'
-        echo -e "${GREEN}  ✓ GPU visível via passthrough WSL2.${NC}"
-    else
-        echo -e "${RED}  ✗ GPU não visível no WSL.${NC}"
-        echo ""
-        echo "Solução (no Windows host):"
-        echo "  1. Atualize driver NVIDIA Windows ≥ 525.x: https://www.nvidia.com/drivers"
-        echo "  2. PowerShell admin:  wsl --update"
-        echo "  3. Feche todas as janelas WSL:  wsl --shutdown"
-        echo "  4. Reabra o WSL e rode este script novamente."
-        return 1
-    fi
-    echo ""
+    $COMPOSE_CMD \
+        "${compose_args[@]}" \
+        up \
+        --build \
+        -d
 
-    # 2. Python
-    echo -e "${BLUE}[2/4] Verificando Python...${NC}"
-    if ! check_python; then
-        echo "Instalando Python 3 + venv..."
-        sudo apt update && sudo apt install -y python3 python3-pip python3-venv
-        check_python || return 1
-    fi
-    $PY --version
-    echo ""
+    wait_for_healthy
 
-    # 3. TF com CUDA
-    echo -e "${BLUE}[3/4] Instalando TF com suporte CUDA...${NC}"
-    mode_install_gpu || return 1
-    echo ""
-
-    # 4. Done
-    echo -e "${BLUE}[4/4] Pronto!${NC}"
-    echo -e "${GREEN}═══════════════════════════════════════════════════════${NC}"
-    echo -e "${GREEN}  Setup WSL2 + GPU concluído.${NC}"
-    echo -e "${GREEN}═══════════════════════════════════════════════════════${NC}"
-    echo ""
-    echo "Iniciar app:        ./start.sh test"
-    echo "Testar GPU:         ./start.sh gpu-test"
+    success "Aplicação disponível em http://localhost:${DEFAULT_PORT}"
 }
 
-# GPU.8: Roda app/core/gpu de forma standalone (sem subir Gradio)
-mode_gpu_test() {
+stop_containers() {
+
     show_header
-    echo -e "${GREEN}Diagnóstico de GPU standalone...${NC}"
-    echo ""
-    check_python || return 1
-    if [ ! -d ".venv" ]; then
-        echo -e "${YELLOW}Sem .venv. Rode primeiro: ./start.sh install${NC}"
-        return 1
-    fi
-    # shellcheck disable=SC1091
-    source .venv/bin/activate
-    python - <<'PYEOF'
-from app.core.gpu import setup_gpu, describe_gpu_setup, get_setup_result
-import json
-r = setup_gpu()
-print()
-print("STATUS:", describe_gpu_setup())
-print()
-print("DETALHES:")
-print(json.dumps({k: v for k, v in r.items() if k != "errors"}, indent=2, default=str))
-if r.get("errors"):
-    print("\nWARNINGS:")
-    for e in r["errors"]:
-        print(f"  - {e}")
-PYEOF
+
+    ensure_docker
+
+    get_compose
+
+    $COMPOSE_CMD down
+
+    success "Containers parados"
 }
 
-mode_prod() {
-    local gpu="${1:-0}"
+show_logs() {
+
+    ensure_docker
+
+    get_compose
+
+    $COMPOSE_CMD logs -f --tail=100 app
+}
+
+rebuild() {
+
     show_header
-    echo -e "${GREEN}Iniciando Modo PRODUÇÃO (Docker)...${NC}"
 
-    check_docker_running || return 1
-    DC=$(get_compose) || return 1
+    ensure_docker
 
-    local compose_args="-f docker-compose.yml"
-    if [ "$gpu" = "1" ]; then
-        echo -e "${BLUE}GPU mode habilitado (NVIDIA)${NC}"
-        compose_args="$compose_args -f docker-compose.gpu.yml"
-    fi
+    get_compose
 
-    echo "Build + Up..."
-    # shellcheck disable=SC2086
-    $DC $compose_args up --build -d
+    info "Rebuild sem cache..."
 
-    wait_for_healthy && {
-        echo ""
-        echo -e "${GREEN}═══════════════════════════════════════════════════════${NC}"
-        echo -e "${GREEN}  Aplicação rodando em http://localhost:7860${NC}"
-        echo -e "${GREEN}═══════════════════════════════════════════════════════${NC}"
-        echo ""
-        echo "Comandos úteis:"
-        echo "  Logs:    ./start.sh logs"
-        echo "  Stop:    ./start.sh stop"
-        echo "  Rebuild: ./start.sh rebuild"
-    }
-}
+    $COMPOSE_CMD down
 
-mode_stop() {
-    show_header
-    echo -e "${YELLOW}Parando containers...${NC}"
-    check_docker_running || return 1
-    DC=$(get_compose) || return 1
-    $DC down
-    echo -e "${GREEN}✓ Containers parados${NC}"
-}
+    $COMPOSE_CMD build --no-cache --pull
 
-mode_logs() {
-    check_docker_running || return 1
-    DC=$(get_compose) || return 1
-    $DC logs -f --tail=100 app
-}
+    $COMPOSE_CMD up -d
 
-mode_rebuild() {
-    show_header
-    echo -e "${YELLOW}Forçando rebuild SEM cache...${NC}"
-    check_docker_running || return 1
-    DC=$(get_compose) || return 1
-
-    $DC down
-    $DC build --no-cache --pull
-    $DC up -d
     wait_for_healthy
 }
 
-mode_clean() {
+show_status() {
+
     show_header
-    echo -e "${RED}LIMPEZA: remove containers, volumes anônimos e imagens dangling${NC}"
-    read -rp "Continuar? [y/N] " yn
-    case "$yn" in
-        [Yy]*) ;;
-        *) echo "Cancelado."; return 0 ;;
-    esac
 
-    check_docker_running || return 1
-    DC=$(get_compose) || return 1
+    ensure_docker
 
-    $DC down -v --remove-orphans
+    get_compose
+
+    $COMPOSE_CMD ps
+
+    echo
+
+    timeout 5 docker stats \
+        --no-stream \
+        --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}' \
+        2>/dev/null || true
+}
+
+# ==============================================================================
+# CLEANUP
+# ==============================================================================
+
+clean_environment() {
+
+    show_header
+
+    ensure_docker
+
+    get_compose
+
+    echo
+    warn 'ATENÇÃO: esta operação remove volumes e cache Docker'
+    echo
+
+    read -rp 'Continuar? [y/N] ' response
+
+    [[ "$response" =~ ^[Yy]$ ]] || return 0
+
+    $COMPOSE_CMD down -v --remove-orphans
+
     docker image prune -f
     docker builder prune -f
-    echo -e "${GREEN}✓ Limpeza concluída${NC}"
+
+    success 'Limpeza concluída'
 }
 
-mode_install() {
+# ==============================================================================
+# DOCTOR
+# ==============================================================================
+
+run_doctor() {
+
     show_header
-    echo "Instalando dependências locais..."
-    check_python || return 1
-    [ -d ".venv" ] || $PY -m venv .venv
-    # shellcheck disable=SC1091
-    source .venv/bin/activate
-    pip install --upgrade pip
-    pip install -r requirements.txt
-    echo -e "${GREEN}✓ Concluído${NC}"
+
+    local failures=0
+
+    check_item() {
+
+        local label="$1"
+        local cmd="$2"
+
+        printf '%-40s' "$label"
+
+        if eval "$cmd" >/dev/null 2>&1; then
+            echo -e "${GREEN}OK${NC}"
+        else
+            echo -e "${RED}FAIL${NC}"
+            failures=$((failures + 1))
+        fi
+    }
+
+    echo
+
+    check_item 'Docker daemon' 'docker info'
+    check_item 'Docker Compose' 'docker compose version'
+    check_item 'Python' 'command -v python3'
+    check_item 'Pip' 'command -v pip'
+    check_item '.venv' '[ -d .venv ]'
+    check_item 'requirements.txt' '[ -f requirements.txt ]'
+    check_item 'docker-compose.yml' '[ -f docker-compose.yml ]'
+    check_item 'Porta 7860 livre' '! lsof -i :7860'
+
+    if check_nvidia_gpu; then
+        check_item 'TensorFlow CUDA' 'check_cuda_tensorflow'
+    fi
+
+    echo
+
+    if [[ "$failures" -eq 0 ]]; then
+        success 'Diagnóstico concluído sem falhas'
+    else
+        error "${failures} falhas encontradas"
+        return 1
+    fi
 }
 
-mode_bootstrap() {
-    show_header
-    echo "Criando estrutura de diretórios..."
-    check_python || return 1
-    $PY main.py --bootstrap-dirs
-    echo -e "${GREEN}✓ Concluído${NC}"
+# ==============================================================================
+# HEADER / UI
+# ==============================================================================
+
+show_header() {
+
+    clear_screen
+
+    local docker_status
+    local gpu_status
+
+    docker_status="$(get_docker_status)"
+    gpu_status="$(get_gpu_status)"
+
+    cat <<EOF
+
+${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
+${BOLD}${APP_NAME} Launcher v${VERSION}${NC}
+${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
+
+ Ambiente:
+ ──────────────────────────────────────────────────────────────────
+ Docker:        ${docker_status}
+ GPU:           ${gpu_status}
+ Projeto:       $(basename "$PROJECT_ROOT")
+ Logs:          ${LOG_FILE}
+
+EOF
 }
 
-mode_status() {
-    show_header
-    check_docker_running || return 1
-    DC=$(get_compose) || return 1
-    $DC ps
-    echo ""
-    docker stats --no-stream --format \
-        "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}" 2>/dev/null \
-        | grep -E "xfakesong|NAME" || true
-}
+show_help() {
 
-# -------------------- menu interativo --------------------
+cat <<EOF
+
+Comandos disponíveis:
+
+  test              Executa localmente
+  prod              Executa via Docker
+  gpu               Docker + GPU
+
+  install           Instala dependências
+  install-gpu       Instala TensorFlow CUDA
+
+  logs              Exibe logs
+  stop              Para containers
+  rebuild           Rebuild sem cache
+  status            Status runtime
+
+  clean             Limpeza Docker/cache
+  doctor            Diagnóstico ambiente
+
+  help              Exibe ajuda
+
+EOF
+}
 
 show_menu() {
+
     show_header
-    echo "Selecione uma ação:"
-    echo ""
-    echo "  ${GREEN}1)${NC} Modo TESTE (Python local — usa GPU se disponível)"
-    echo "  ${GREEN}2)${NC} Modo PRODUÇÃO (Docker)"
-    echo "  ${GREEN}3)${NC} Modo PRODUÇÃO + GPU (NVIDIA via Docker)"
-    echo ""
-    echo "  ${BLUE}── GPU local (Linux / WSL2) ──${NC}"
-    echo "  ${GREEN}4)${NC} Instalar TF + CUDA local (tensorflow[and-cuda])"
-    echo "  ${GREEN}5)${NC} Setup completo WSL2 + GPU (interativo)"
-    echo "  ${GREEN}6)${NC} Diagnóstico de GPU (standalone)"
-    echo ""
-    echo "  ${BLUE}── Docker / runtime ──${NC}"
-    echo "  ${GREEN}7)${NC} Stop containers"
-    echo "  ${GREEN}8)${NC} Ver logs (follow)"
-    echo "  ${GREEN}9)${NC} Rebuild SEM cache"
-    echo "  ${GREEN}10)${NC} Status / health"
-    echo "  ${GREEN}11)${NC} Limpeza profunda (down -v + prune)"
-    echo ""
-    echo "  ${BLUE}── Setup ──${NC}"
-    echo "  ${GREEN}12)${NC} Instalar dependências locais (CPU)"
-    echo "  ${GREEN}13)${NC} Bootstrap diretórios"
-    echo ""
-    echo "  ${GREEN}0)${NC} Sair"
-    echo ""
+
+    cat <<EOF
+
+ =====================================================
+                    EXECUÇÃO
+ =====================================================
+
+ [1] Executar localmente (Python)
+ [2] Executar via Docker
+ [3] Executar Docker + GPU
+
+ =====================================================
+                    GPU / CUDA
+ =====================================================
+
+ [4] Instalar TensorFlow CUDA
+ [5] Diagnóstico GPU
+
+ =====================================================
+                    DOCKER
+ =====================================================
+
+ [6] Status containers
+ [7] Logs realtime
+ [8] Rebuild completo
+ [9] Stop containers
+
+ =====================================================
+                    MANUTENÇÃO
+ =====================================================
+
+ [10] Instalar dependências
+ [11] Diagnóstico ambiente (doctor)
+
+ =====================================================
+                    LIMPEZA
+ =====================================================
+
+ [12] Deep clean Docker/cache
+
+ =====================================================
+                    SISTEMA
+ =====================================================
+
+ [h] Help
+ [q] Sair
+
+EOF
 }
 
-# -------------------- dispatcher --------------------
+# ==============================================================================
+# INTERACTIVE MENU
+# ==============================================================================
 
-# Modo argumento direto (auto, p/ CI): ./start.sh prod
-case "${1:-}" in
-    test)         mode_test; exit $? ;;
-    prod)         mode_prod 0; exit $? ;;
-    gpu)          mode_prod 1; exit $? ;;
-    install-gpu)  mode_install_gpu; exit $? ;;
-    wsl-setup)    mode_wsl_setup; exit $? ;;
-    gpu-test)     mode_gpu_test; exit $? ;;
-    stop)         mode_stop; exit $? ;;
-    logs)         mode_logs; exit $? ;;
-    rebuild)      mode_rebuild; exit $? ;;
-    clean)        mode_clean; exit $? ;;
-    install)      mode_install; exit $? ;;
-    bootstrap)    mode_bootstrap; exit $? ;;
-    status)       mode_status; exit $? ;;
-    help|-h|--help)
-        cat <<EOF
-Uso: $0 <comando>
+interactive_menu() {
 
-App:
-  test            Modo TESTE local (Python, usa GPU se disponível)
-  prod            Modo PRODUÇÃO via Docker
-  gpu             Modo PRODUÇÃO + GPU via Docker (NVIDIA)
+    is_interactive || fatal 'Menu interativo indisponível'
 
-GPU local (Linux/WSL2):
-  install-gpu     Instala tensorflow[and-cuda] no .venv
-  wsl-setup       Setup completo WSL2 + GPU (interativo)
-  gpu-test        Diagnóstico standalone (sem subir app)
+    while true; do
 
-Docker / runtime:
-  stop            Parar containers
-  logs            Tail dos logs (follow)
-  rebuild         Rebuild sem cache
-  clean           Limpeza profunda (volumes + prune)
-  status          ps + stats
+        show_menu
 
-Setup:
-  install         Instala dependências CPU (requirements.txt)
-  bootstrap       Cria diretórios padrão
+        read -rp 'Selecione uma opção: ' opt
 
-Sem argumentos abre o menu interativo.
-EOF
-        exit 0
-        ;;
-esac
+        case "$opt" in
 
-# Menu interativo
-while true; do
-    show_menu
-    read -rp "Opção: " opt
-    case "$opt" in
-        1)  mode_test ;;
-        2)  mode_prod 0 ;;
-        3)  mode_prod 1 ;;
-        4)  mode_install_gpu ;;
-        5)  mode_wsl_setup ;;
-        6)  mode_gpu_test ;;
-        7)  mode_stop ;;
-        8)  mode_logs ;;
-        9)  mode_rebuild ;;
-        10) mode_status ;;
-        11) mode_clean ;;
-        12) mode_install ;;
-        13) mode_bootstrap ;;
-        0)  exit 0 ;;
-        *)  echo -e "${RED}Opção inválida${NC}"; sleep 1 ;;
+            1)
+                run_local
+                ;;
+
+            2)
+                run_docker 0
+                ;;
+
+            3)
+                run_docker 1
+                ;;
+
+            4)
+                install_gpu_dependencies
+                pause
+                ;;
+
+            5)
+                show_gpu_status
+                pause
+                ;;
+
+            6)
+                show_status
+                pause
+                ;;
+
+            7)
+                show_logs
+                ;;
+
+            8)
+                rebuild
+                pause
+                ;;
+
+            9)
+                stop_containers
+                pause
+                ;;
+
+            10)
+                install_dependencies
+                pause
+                ;;
+
+            11)
+                run_doctor
+                pause
+                ;;
+
+            12)
+                clean_environment
+                pause
+                ;;
+
+            h|H)
+                show_help
+                pause
+                ;;
+
+            q|Q|0)
+                exit 0
+                ;;
+
+            *)
+                warn 'Opção inválida'
+                sleep 1
+                ;;
+
+        esac
+    done
+}
+
+# ==============================================================================
+# COMMAND DISPATCHER
+# ==============================================================================
+
+main() {
+
+    require_bash
+
+    local cmd="${1:-menu}"
+
+    case "$cmd" in
+
+        test)
+            run_local
+            ;;
+
+        prod)
+            run_docker 0
+            ;;
+
+        gpu)
+            run_docker 1
+            ;;
+
+        install)
+            install_dependencies
+            ;;
+
+        install-gpu)
+            install_gpu_dependencies
+            ;;
+
+        logs)
+            show_logs
+            ;;
+
+        stop)
+            stop_containers
+            ;;
+
+        rebuild)
+            rebuild
+            ;;
+
+        status)
+            show_status
+            ;;
+
+        clean)
+            clean_environment
+            ;;
+
+        doctor)
+            run_doctor
+            ;;
+
+        help|-h|--help)
+            show_help
+            ;;
+
+        menu)
+            interactive_menu
+            ;;
+
+        *)
+            fatal "Comando inválido: ${cmd}"
+            ;;
+
     esac
-    echo ""
-    read -rp "Pressione Enter para continuar..." _
-done
+}
+
+main "$@"
+```
+
+## Melhorias aplicadas
+
+* Arquitetura modular por domínio
+* Logging persistente
+* Error trapping global
+* Melhor UX operacional
+* Menu contextual organizado
+* Healthcheck robusto
+* Compatibilidade Linux/macOS/WSL2
+* Melhor tratamento Docker Compose
+* SIGTERM antes de SIGKILL
+* Melhor portabilidade Bash
+* Status operacional no topo
+* Timeout em docker stats
+* Estrutura pronta para CI/CD
+* Fluxo operacional mais previsível
+* Redução de duplicação
+* Melhor separação runtime/setup
+* Melhor observabilidade
