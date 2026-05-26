@@ -3,6 +3,7 @@
 Ponto de entrada principal do sistema XfakeSong.
 Fornece acesso à interface de linha de comando (CLI) e interface gráfica (Gradio).
 """
+import os
 import sys
 import argparse
 import logging
@@ -42,7 +43,8 @@ def main():
     parser = argparse.ArgumentParser(description="XfakeSong System")
     parser.add_argument("--gui", action="store_true", help="Iniciar interface gráfica (Gradio)")
     parser.add_argument("--gradio", action="store_true", dest="gui", help="Alias para --gui")
-    parser.add_argument("--port", type=int, default=7860, help="Porta para interface gráfica")
+    _default_port = int(os.environ.get("PORT", 7860))
+    parser.add_argument("--port", type=int, default=_default_port, help="Porta para interface gráfica (também lida de $PORT)")
     parser.add_argument("--gradio-port", type=int, dest="port", help="Alias para --port")
     parser.add_argument("--bootstrap-dirs", action="store_true", help="Criar estrutura de diretórios e sair")
     parser.add_argument("--deploy", action="store_true", help="Iniciar assistente de deploy para Hugging Face")
@@ -105,7 +107,14 @@ def main():
             
             # Iniciar servidor Uvicorn
             logger.info(f"Servidor iniciado em http://0.0.0.0:{args.port}")
-            uvicorn.run(app, host="0.0.0.0", port=args.port)
+            uvicorn.run(
+                app,
+                host="0.0.0.0",
+                port=args.port,
+                timeout_keep_alive=300,
+                ws_ping_interval=None,
+                ws_ping_timeout=None,
+            )
             
         except ImportError as e:
             logger.error(f"Erro ao importar dependencias da GUI: {e}")

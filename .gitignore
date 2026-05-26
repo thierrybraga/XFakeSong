@@ -175,3 +175,14 @@ temp/
 !app/models/.gitkeep
 !app/results/.gitkeep
 !logs/.gitkeep
+
+# Runtime artifacts
+app.db
+app.db-shm
+app.db-wal
+*.log
+system.log
+test_output.txt
+
+# SQLAlchemy / Flask instance DB
+instance/
