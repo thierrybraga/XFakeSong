@@ -36,26 +36,27 @@ O **XfakeSong** é uma solução robusta e modular projetada para combater a cre
 
 ## 📚 Documentação Oficial
 
-A documentação completa para desenvolvedores e usuários está disponível em nossa [Wiki / GitHub Pages](https://thierrybraga.github.io/XFakeSong/).
+A documentação completa está disponível em nossa [GitHub Pages](https://thierrybraga.github.io/XFakeSong/).
 
-### 🔹 Guias Iniciais
-- [**01 - Introdução e Visão Geral**](docs/01_INTRODUCAO.md): Propósito e capacidades.
-- [**02 - Instalação e Configuração**](docs/02_INSTALACAO_CONFIGURACAO.md): Setup do ambiente.
-- [**06 - Guia de Desenvolvimento**](docs/06_GUIA_DESENVOLVIMENTO.md): Padrões para contribuição.
-- [**07 - Testes e Qualidade**](docs/07_TESTES.md): Estrutura, execução e cobertura.
+### 🔹 Primeiros Passos
+- [**Introdução e Visão Geral**](docs/01_INTRODUCAO.md)
+- [**Instalação e Configuração**](docs/02_INSTALACAO_CONFIGURACAO.md)
+- [**Guia Google Colab**](docs/13_COLAB_GUIDE.md)
 
-### 🔹 Guias Técnicos Avançados
-- [**03 - Arquitetura do Sistema**](docs/03_ARQUITETURA.md): Clean Architecture e Design Patterns.
-- [**04 - Funcionalidades Core**](docs/04_FUNCIONALIDADES_CORE.md): Algoritmos e Features.
-- [**08 - Arquiteturas Detalhadas**](docs/08_ARQUITETURAS_DETALHADAS.md): Visão profunda dos modelos.
-- [**10 - Inferência de Arquiteturas**](docs/10_INFERENCIA_ARQUITETURAS.md): Fluxos de dados.
-- [**11 - Treinamento de Arquiteturas**](docs/11_TREINAMENTO_ARQUITURAS.md): Otimização e treinamento.
-- [**13 - Datasets Públicos de Áudio**](docs/13_DATASETS_PUBLICOS.md): Links, licenças e downloads.
+### 🔹 Arquitetura e Conceitos
+- [**Arquitetura do Sistema**](docs/03_ARQUITETURA.md): Clean Architecture, pipeline e estrutura de pastas.
+- [**Features de Áudio**](docs/04_FEATURES.md): Todos os tipos de características e como adicionar novos extratores.
+- [**Arquiteturas Neurais**](docs/08_ARQUITETURAS.md): WavLM, HuBERT, Conformer, AASIST, RawNet2 e outros.
 
-### 🔹 Deploy e Operação
-- [**14 - Guia Google Colab**](docs/14_GOOGLE_COLAB_GUIDE.md): Execução em nuvem com GPUs.
-- [**12 - Deploy Hugging Face**](docs/12_DEPLOY_HUGGINGFACE.md): Guia de deploy em nuvem.
-- [**07 - API Reference**](docs/07_API_REFERENCE.md): Endpoints REST.
+### 🔹 Referência Técnica
+- [**Inferência**](docs/09_INFERENCIA.md): Fluxos de dados e inputs por arquitetura.
+- [**Treinamento**](docs/10_TREINAMENTO.md): Otimizadores, callbacks e hiperparâmetros.
+- [**API Reference**](docs/07_API_REFERENCE.md): Endpoints REST.
+- [**Testes e Qualidade**](docs/06_TESTES.md): Estrutura de testes e CI/CD.
+
+### 🔹 Deploy e Dados
+- [**Deploy Hugging Face**](docs/11_DEPLOY_HUGGINGFACE.md)
+- [**Datasets Públicos**](docs/12_DATASETS.md): ASVspoof, WaveFake, In-the-Wild e outros.
 
 ---
 
