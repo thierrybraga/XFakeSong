@@ -8,9 +8,11 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Union
 
-from core.interfaces.audio import AudioData, AudioFeatures
-from core.interfaces.base import ProcessingStatus
-from core.interfaces.services import (
+import numpy as np
+
+from app.core.interfaces.audio import AudioData, AudioFeatures
+from app.core.interfaces.base import ProcessingStatus
+from app.core.interfaces.services import (
     DatasetType,
     IDetectionService,
     IFeatureExtractionService,
@@ -126,8 +128,8 @@ class FeatureExtractionStage(PipelineStage):
         start_time = time.time()
 
         try:
-            from core.interfaces.audio import FeatureType
-            from domain.services.feature_extraction_service import ExtractionConfig
+            from app.core.interfaces.audio import FeatureType
+            from app.domain.services.feature_extraction.types import ExtractionConfig
 
             # Converter strings para FeatureType
             feature_types = []
@@ -313,11 +315,11 @@ class DeepfakePipelineOrchestrator:
             # Simular carregamento de áudio
             # Em uma implementação real, usaria librosa ou similar
             audio_data = AudioData(
-                data=None,  # Seria carregado do arquivo
+                samples=np.zeros(0, dtype=np.float32),  # placeholder; carregar do arquivo
                 sample_rate=16000,
                 duration=0.0,
                 channels=1,
-                file_path=getattr(upload_result, 'file_path', None)
+                metadata={"source": getattr(upload_result, 'file_path', None)}
             )
             audio_data_list.append(audio_data)
 

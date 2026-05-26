@@ -4,6 +4,7 @@ Usa schemas centralizados de app.schemas.api_models e exceções de domínio.
 """
 
 import tempfile
+from functools import lru_cache
 from pathlib import Path
 from typing import List
 
@@ -15,7 +16,15 @@ from fastapi import (
     UploadFile,
 )
 
-from app.core.exceptions import ProfileNotFoundError, TrainingError, ValidationError
+# API.1 FIX CRÍTICO: AudioProcessingError era importado no FINAL do arquivo
+# (linha 240), depois de ser usado em detect_with_profile (linha 233).
+# Em runtime causa NameError. Movido para o topo.
+from app.core.exceptions import (
+    AudioProcessingError,
+    ProfileNotFoundError,
+    TrainingError,
+    ValidationError,
+)
 from app.core.security import limiter
 from app.domain.services.voice_profile_service import VoiceProfileService
 from app.schemas.api_models import (
@@ -29,8 +38,11 @@ from app.schemas.api_models import (
 router = APIRouter(prefix="/api/v1/profiles", tags=["Voice Profiles"])
 
 
-# ── Singleton ──────────────────────────────────────────────────────────
+# ── Singleton (API.2) ───────────────────────────────────────────────────
+# Antes: get_voice_profile_service() criava nova instância A CADA request,
+# abrindo nova sessão DB. @lru_cache garante singleton thread-safe.
 
+@lru_cache()
 def get_voice_profile_service() -> VoiceProfileService:
     return VoiceProfileService()
 
@@ -234,7 +246,3 @@ async def detect_with_profile(
         return result
     finally:
         Path(tmp_path).unlink(missing_ok=True)
-
-
-# Import necessário para o handler de detect
-from app.core.exceptions import AudioProcessingError  # noqa: E402

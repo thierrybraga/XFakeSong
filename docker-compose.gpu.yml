@@ -1,0 +1,31 @@
+# =====================================================================
+# XFakeSong — docker-compose GPU override
+# =====================================================================
+# Use junto com o compose base para habilitar GPU NVIDIA:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# Pré-requisitos:
+#   - Windows 11 + WSL2 + Docker Desktop 4.x+
+#   - NVIDIA Container Toolkit (Linux nativo) OU
+#     NVIDIA driver instalado no Windows + WSL2 GPU support habilitado
+#   - tensorflow[and-cuda] no requirements.txt OU usar imagem base CUDA
+#
+# Validar:  docker compose -f docker-compose.yml -f docker-compose.gpu.yml run --rm app \
+#             python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
+# =====================================================================
+
+services:
+  app:
+    environment:
+      # Permite TF usar GPU; mantém allow_growth para não alocar toda VRAM
+      TF_FORCE_GPU_ALLOW_GROWTH: "true"
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${NVIDIA_GPU_COUNT:-all}
+              capabilities: [gpu, compute, utility]

@@ -84,9 +84,14 @@ class MetricsCalculator:
 
         try:
             # Para classificação binária
-            if y_pred_proba.shape[1] == 2 or len(y_pred_proba.shape) == 1:
-                y_proba = y_pred_proba[:, 1] if len(
-                    y_pred_proba.shape) > 1 else y_pred_proba
+            # Suporta saídas: (N,) sigmoid 1D, (N,1) sigmoid binário, (N,2) softmax
+            if y_pred_proba.ndim == 1 or (y_pred_proba.ndim > 1 and y_pred_proba.shape[1] <= 2):
+                if y_pred_proba.ndim == 1:
+                    y_proba = y_pred_proba                      # já é P(classe=1)
+                elif y_pred_proba.shape[1] == 2:
+                    y_proba = y_pred_proba[:, 1]                # softmax: coluna 1
+                else:
+                    y_proba = y_pred_proba[:, 0]                # sigmoid (N,1): coluna 0
 
                 # ROC AUC
                 metrics["roc_auc"] = float(roc_auc_score(y_true, y_proba))

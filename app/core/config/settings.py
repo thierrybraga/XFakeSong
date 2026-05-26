@@ -167,6 +167,46 @@ class TrainingConfig:
         "pitch_shift_steps": 2
     })
 
+    # Class weighting automático (Sprint 1.3)
+    # Compensa datasets desbalanceados (típico em ASVspoof, In-the-Wild).
+    # Calcula pesos via sklearn.utils.class_weight.compute_class_weight('balanced').
+    use_class_weighting: bool = True
+
+    # Calibração automática de temperatura (Sprint 1.4)
+    # Após o treinamento, busca o valor ótimo de T (post-hoc temperature scaling,
+    # Guo et al., ICML 2017) que minimiza NLL no conjunto de validação. O valor
+    # é salvo no input_contract e aplicado automaticamente na inferência para
+    # produzir confidências melhor calibradas (que correspondem à acurácia real).
+    auto_calibrate_temperature: bool = True
+    calibration_min_samples: int = 50  # mínimo de amostras de val para calibrar
+
+    # SWA — Stochastic Weight Averaging (Sprint 2.3)
+    # Mantém média móvel dos pesos nas últimas ~20% épocas. Pesquisa empírica:
+    # +0.5–1.5% accuracy em diversas tarefas (Izmailov et al., UAI 2018).
+    # swa_start_epoch = -1 → 80% do total de épocas (auto)
+    use_swa: bool = False  # opt-in: pode aumentar tempo de treino + memória
+    swa_start_epoch: int = -1
+    swa_freq: int = 1
+
+    # Mixup data augmentation (Sprint 2.4)
+    # Interpola pares de amostras: x_mix = λ*x_i + (1-λ)*x_j, y_mix idem.
+    # Lambda ~ Beta(alpha, alpha). Eficaz em CNNs/Transformers.
+    use_mixup: bool = False  # opt-in (precisa loss compatível com soft labels)
+    mixup_alpha: float = 0.2
+
+    # OOD detection via energy score (Sprint 2.5)
+    # Calibra threshold no val set (95% quantile). Predicts com energia abaixo
+    # do threshold são marcadas como OOD (out-of-distribution).
+    compute_ood_threshold: bool = True
+    ood_quantile: float = 0.95
+
+    # ONNX export (Sprint 3.4)
+    # Exporta automaticamente FP32 e/ou INT8 quantizado após o treinamento.
+    # Requer `pip install tf2onnx onnxruntime`. Falhas são silenciosas
+    # (não bloqueiam save do modelo Keras).
+    export_onnx: bool = False
+    export_onnx_int8: bool = False  # INT8 quantization automática (deploy CPU)
+
 
 @dataclass
 class APIConfig:

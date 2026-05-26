@@ -42,12 +42,18 @@ def setup_security(app: FastAPI):
         allow_headers=["*"],
     )
 
-    # 2. Trusted Host — protege contra DNS Rebinding
+    # 2. Trusted Host — protege contra DNS Rebinding.
+    # PROD.6: SEMPRE inclui 127.0.0.1/localhost para o healthcheck do Docker
+    # funcionar (HEALTHCHECK `curl http://127.0.0.1:...` precisa passar pelo
+    # Host validation). Caso contrário fica unhealthy mesmo com app saudável.
     allowed_hosts = os.getenv("ALLOWED_HOSTS", "*")
     if allowed_hosts != "*":
+        hosts = {h.strip() for h in allowed_hosts.split(",") if h.strip()}
+        # Garante interfaces locais (healthcheck, debug local)
+        hosts.update({"127.0.0.1", "localhost", "::1"})
         app.add_middleware(
             TrustedHostMiddleware,
-            allowed_hosts=[h.strip() for h in allowed_hosts.split(",")]
+            allowed_hosts=sorted(hosts),
         )
 
     # 3. Rate Limiting

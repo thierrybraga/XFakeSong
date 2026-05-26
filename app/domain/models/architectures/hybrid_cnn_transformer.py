@@ -415,17 +415,24 @@ def _create_cct_model(
 
     model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
 
-    # AdamW per CCT paper
-    model.compile(
-        optimizer=tf.keras.optimizers.AdamW(
-            learning_rate=1e-3,
-            weight_decay=1e-4
-        ),
-        loss=loss,
-        metrics=['accuracy']
+    # Sprint 2.2: WarmupCosineDecay default para Transformers.
+    # CCT tem self-attention pesada — warmup é crítico para estabilidade.
+    from app.domain.models.training.optimization import create_warmup_cosine_optimizer
+    optimizer = create_warmup_cosine_optimizer(
+        initial_learning_rate=1e-3,
+        warmup_steps=1500,
+        decay_steps=50000,
+        weight_decay=1e-4,
+        alpha=1e-7,
     )
 
-    logger.info(f"CCT model created: transformer_layers={transformer_layers}, heads={num_heads}, dim={projection_dim}, params={model.count_params()}")
+    model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
+
+    logger.info(
+        f"CCT model created: transformer_layers={transformer_layers}, heads={num_heads}, "
+        f"dim={projection_dim}, params={model.count_params()} "
+        f"(WarmupCosineDecay: warmup=1500, decay=50000)"
+    )
     return model
 
 

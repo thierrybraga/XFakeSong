@@ -108,9 +108,15 @@ class AudioAugmenter:
         """Aplica deslocamento temporal."""
         # Para features 2D (tempo, frequência)
         if len(audio_features.shape) == 2:
-            max_shift = int(
-                tf.shape(audio_features)[0] *
-                self.time_shift_factor)
+            # Usa ops TF para compatibilidade com graph mode / tf.data.map
+            max_shift = tf.maximum(
+                tf.cast(
+                    tf.cast(tf.shape(audio_features)[0], tf.float32) *
+                    self.time_shift_factor,
+                    tf.int32
+                ),
+                1
+            )
             shift_amount = tf.random.uniform(
                 [], -max_shift, max_shift, dtype=tf.int32)
 
@@ -139,21 +145,21 @@ class AudioAugmenter:
         # Para features 2D (tempo, frequência)
         if len(audio_features.shape) == 2:
             freq_dim = tf.shape(audio_features)[1]
+            time_dim = tf.shape(audio_features)[0]
             mask_size = tf.cast(
-                tf.cast(
-                    freq_dim,
-                    tf.float32) *
-                self.frequency_mask_factor,
+                tf.cast(freq_dim, tf.float32) * self.frequency_mask_factor,
                 tf.int32)
+            # Garante mask_size >= 1 e < freq_dim para evitar range inválido
+            mask_size = tf.maximum(tf.minimum(mask_size, freq_dim - 1), 1)
             mask_start = tf.random.uniform(
                 [], 0, freq_dim - mask_size, dtype=tf.int32)
 
-            # Criar máscara
+            # Criar máscara — usa tf.stack para shape totalmente dinâmico
             mask = tf.ones_like(audio_features)
             indices = tf.range(mask_start, mask_start + mask_size)
-            updates = tf.zeros((mask_size, tf.shape(audio_features)[0]))
+            updates = tf.zeros(tf.stack([mask_size, time_dim]))
 
-            # Aplicar máscara
+            # Aplicar máscara (opera na dimensão de frequência transposta)
             mask = tf.tensor_scatter_nd_update(
                 tf.transpose(mask),
                 tf.expand_dims(indices, 1),
@@ -173,19 +179,19 @@ class AudioAugmenter:
         # Para features 2D (tempo, frequência)
         if len(audio_features.shape) == 2:
             time_dim = tf.shape(audio_features)[0]
+            freq_dim = tf.shape(audio_features)[1]
             mask_size = tf.cast(
-                tf.cast(
-                    time_dim,
-                    tf.float32) *
-                self.time_mask_factor,
+                tf.cast(time_dim, tf.float32) * self.time_mask_factor,
                 tf.int32)
+            # Garante mask_size >= 1 e < time_dim para evitar range inválido
+            mask_size = tf.maximum(tf.minimum(mask_size, time_dim - 1), 1)
             mask_start = tf.random.uniform(
                 [], 0, time_dim - mask_size, dtype=tf.int32)
 
-            # Criar máscara
+            # Criar máscara — usa tf.stack para shape totalmente dinâmico
             mask = tf.ones_like(audio_features)
             indices = tf.range(mask_start, mask_start + mask_size)
-            updates = tf.zeros((mask_size, tf.shape(audio_features)[1]))
+            updates = tf.zeros(tf.stack([mask_size, freq_dim]))
 
             # Aplicar máscara
             mask = tf.tensor_scatter_nd_update(
@@ -199,6 +205,64 @@ class AudioAugmenter:
             augmented_features = audio_features
 
         return augmented_features, label
+
+    @staticmethod
+    def apply_mixup_to_dataset(
+        dataset: tf.data.Dataset,
+        alpha: float = 0.2,
+        num_classes: int = 2,
+    ) -> tf.data.Dataset:
+        """Aplica Mixup em um tf.data.Dataset já batch-ado.
+
+        Sprint 2.4: Mixup integrado ao pipeline tf.data. Para cada batch,
+        amostra λ ~ Beta(α, α) e interpola pares de amostras dentro do batch:
+            x_mix = λ * x + (1-λ) * x_shuffled
+            y_mix = λ * y + (1-λ) * y_shuffled  (após one-hot)
+
+        Espera batches já formados; labels são automaticamente convertidos
+        para one-hot se forem inteiros.
+
+        Args:
+            dataset: tf.data.Dataset retornando (X_batch, y_batch)
+            alpha: parâmetro da distribuição Beta (típico 0.1–0.4)
+            num_classes: número de classes (para converter y a one-hot)
+
+        Returns:
+            Dataset transformado com mixup aplicado.
+        """
+        if alpha <= 0:
+            return dataset
+
+        def _mixup_batch(x, y):
+            batch_size = tf.shape(x)[0]
+            # Sample λ ~ Beta(alpha, alpha) per-batch (não per-sample,
+            # conforme paper original Zhang et al. 2018)
+            # Beta(α,α) via duas Gamma(α,1): λ = G1 / (G1 + G2)
+            g1 = tf.random.gamma(shape=[], alpha=alpha)
+            g2 = tf.random.gamma(shape=[], alpha=alpha)
+            lam = g1 / (g1 + g2 + 1e-8)
+
+            # Permuta o batch
+            indices = tf.random.shuffle(tf.range(batch_size))
+            x_shuffled = tf.gather(x, indices)
+
+            # Converte y para one-hot se for sparse
+            y_float = tf.cast(y, tf.float32)
+            if y_float.shape.rank is None or y_float.shape.rank == 1:
+                y_onehot = tf.one_hot(tf.cast(y, tf.int32), depth=num_classes)
+            elif y_float.shape[-1] == 1:
+                # binary (N, 1) — mantém como soft label
+                y_onehot = y_float
+            else:
+                y_onehot = y_float
+
+            y_shuffled = tf.gather(y_onehot, indices)
+
+            x_mix = lam * x + (1.0 - lam) * x_shuffled
+            y_mix = lam * y_onehot + (1.0 - lam) * y_shuffled
+            return x_mix, y_mix
+
+        return dataset.map(_mixup_batch, num_parallel_calls=tf.data.AUTOTUNE)
 
     def apply_mixup(
         self,

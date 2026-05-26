@@ -102,15 +102,15 @@ O **XfakeSong** não é apenas mais um classificador. É um ecossistema completo
     {: .card-link }
     Entenda os princípios de Clean Architecture que guiam o projeto.
 
--   [**Testes e Qualidade**](07_TESTES.md)
+-   [**Testes e Qualidade**](06_TESTES.md)
     {: .card-link }
     Rode a suíte de testes e acompanhe cobertura de código.
 
--   [**Treinando Modelos**](11_TREINAMENTO_ARQUITETURAS.md)
+-   [**Treinando Modelos**](10_TREINAMENTO.md)
     {: .card-link }
     Aprenda a criar e refinar seus próprios detectores de deepfake.
 
--   [**Contribua**](06_GUIA_DESENVOLVIMENTO.md)
+-   [**Contribua**](05_GUIA_DEV.md)
     {: .card-link }
     Junte-se à nossa comunidade e ajude a combater a desinformação.
 

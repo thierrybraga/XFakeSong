@@ -313,6 +313,44 @@ class LearningRateScheduler:
         )
 
 
+def create_warmup_cosine_optimizer(
+    initial_learning_rate: float = 1e-3,
+    warmup_steps: int = 1000,
+    decay_steps: int = 50000,
+    weight_decay: float = 0.01,
+    alpha: float = 1e-7,
+) -> tf.keras.optimizers.Optimizer:
+    """Helper Sprint 2.2: cria AdamW + WarmupCosineDecaySchedule.
+
+    Ideal para Transformers (SpectrogramTransformer, Conformer, Hybrid CNN-T).
+    Warmup linear nos primeiros `warmup_steps` (estabiliza gradientes da atenção)
+    seguido de decaimento cosseno até `alpha * initial_lr`.
+
+    Args:
+        initial_learning_rate: LR pico (após warmup)
+        warmup_steps: passos de warmup linear (típico: 1k-4k)
+        decay_steps: total de passos até atingir lr=alpha (típico: epochs * steps/epoch)
+        weight_decay: weight decay do AdamW
+        alpha: LR mínimo como fração do inicial
+
+    Returns:
+        AdamW com schedule integrado.
+    """
+    schedule = WarmupCosineDecaySchedule(
+        initial_learning_rate=initial_learning_rate,
+        warmup_steps=warmup_steps,
+        decay_steps=decay_steps,
+        alpha=alpha,
+    )
+    return tf.keras.optimizers.AdamW(
+        learning_rate=schedule,
+        weight_decay=weight_decay,
+        beta_1=0.9,
+        beta_2=0.999,
+        epsilon=1e-7,
+    )
+
+
 class WarmupCosineDecaySchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
     """Linear warm-up followed by cosine decay schedule."""
 

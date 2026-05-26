@@ -43,12 +43,51 @@ from app.domain.models.architectures.layers import (
 logger = logging.getLogger(__name__)
 
 
+# ============================ SHARED STFT CACHE (Sprint 2.1) ============================
+
+class SharedSTFTLayer(layers.Layer):
+    """Computa STFT 1× e devolve magnitude e power para todas as branches.
+
+    Antes do Sprint 2.1, cada branch (Mel/LFCC/CQT/MFCC) chamava
+    `tf.signal.stft` independentemente, replicando o cálculo 4×. Esta camada
+    centraliza o STFT — todas as branches passam a operar sobre o output
+    dela, economizando ~3× compute (e o equivalente em memória).
+
+    Returns:
+        Dict com 'magnitude' (|STFT|) e 'power' (|STFT|^2), shapes
+        (batch, time_frames, n_fft // 2 + 1).
+    """
+
+    def __init__(self, n_fft=512, hop_length=160, **kwargs):
+        super().__init__(**kwargs)
+        self.n_fft = n_fft
+        self.hop_length = hop_length
+
+    def call(self, inputs):
+        stft = tf.signal.stft(
+            inputs, frame_length=self.n_fft,
+            frame_step=self.hop_length, fft_length=self.n_fft
+        )
+        magnitude = tf.abs(stft)
+        power = tf.square(magnitude)
+        return {'magnitude': magnitude, 'power': power}
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({'n_fft': self.n_fft, 'hop_length': self.hop_length})
+        return config
+
+
 # ============================ FEATURE EXTRACTION LAYERS ============================
 
 class MelSpectrogramBranch(layers.Layer):
     """Mel spectrogram extraction per Pham et al. (2024).
 
     128 mel bins, 512 FFT, 160 hop (10ms at 16kHz), log-power.
+
+    Sprint 2.1: aceita STFT pré-computado via `call(inputs, stft_cache=...)`
+    para evitar recálculo. Se `stft_cache` for None, faz STFT do áudio raw
+    (compatibilidade retroativa com uso standalone).
     """
 
     def __init__(self, sample_rate=16000, n_fft=512, hop_length=160,
@@ -59,22 +98,32 @@ class MelSpectrogramBranch(layers.Layer):
         self.hop_length = hop_length
         self.n_mels = n_mels
 
-    def call(self, inputs):
-        stft = tf.signal.stft(
-            inputs, frame_length=self.n_fft,
-            frame_step=self.hop_length, fft_length=self.n_fft
+    def build(self, input_shape):
+        super().build(input_shape)
+        # Pre-compute mel weight matrix (não muda durante o treinamento)
+        self.mel_weight = tf.constant(
+            tf.signal.linear_to_mel_weight_matrix(
+                num_mel_bins=self.n_mels,
+                num_spectrogram_bins=self.n_fft // 2 + 1,
+                sample_rate=self.sample_rate,
+                lower_edge_hertz=0.0,
+                upper_edge_hertz=self.sample_rate / 2.0,
+            ),
+            dtype=tf.float32,
         )
-        power = tf.square(tf.abs(stft))
-        mel_weight = tf.signal.linear_to_mel_weight_matrix(
-            num_mel_bins=self.n_mels,
-            num_spectrogram_bins=self.n_fft // 2 + 1,
-            sample_rate=self.sample_rate,
-            lower_edge_hertz=0.0,
-            upper_edge_hertz=self.sample_rate / 2.0
-        )
-        mel_spec = tf.matmul(power, mel_weight)
+
+    def call(self, inputs, stft_cache=None):
+        # Reuso de STFT compartilhado quando disponível
+        if stft_cache is not None and 'power' in stft_cache:
+            power = stft_cache['power']
+        else:
+            stft = tf.signal.stft(
+                inputs, frame_length=self.n_fft,
+                frame_step=self.hop_length, fft_length=self.n_fft
+            )
+            power = tf.square(tf.abs(stft))
+        mel_spec = tf.matmul(power, self.mel_weight)
         log_mel = tf.math.log(mel_spec + 1e-6)
-        # Add channel dim: (batch, time, mels, 1)
         return tf.expand_dims(log_mel, axis=-1)
 
     def get_config(self):
@@ -132,12 +181,16 @@ class LFCCBranch(layers.Layer):
         dct_matrix[:, 1:] *= np.sqrt(2.0 / self.n_filters)
         self.dct_matrix = tf.constant(dct_matrix, dtype=tf.float32)
 
-    def call(self, inputs):
-        stft = tf.signal.stft(
-            inputs, frame_length=self.n_fft,
-            frame_step=self.hop_length, fft_length=self.n_fft
-        )
-        power = tf.square(tf.abs(stft))
+    def call(self, inputs, stft_cache=None):
+        # Sprint 2.1: reusa STFT compartilhado quando disponível
+        if stft_cache is not None and 'power' in stft_cache:
+            power = stft_cache['power']
+        else:
+            stft = tf.signal.stft(
+                inputs, frame_length=self.n_fft,
+                frame_step=self.hop_length, fft_length=self.n_fft
+            )
+            power = tf.square(tf.abs(stft))
         filtered = tf.matmul(power, self.filter_bank)
         log_filtered = tf.math.log(filtered + 1e-6)
         lfcc = tf.matmul(log_filtered, self.dct_matrix)
@@ -194,12 +247,16 @@ class CQTBranch(layers.Layer):
         cqt_filters = cqt_filters / norms
         self.cqt_filter_bank = tf.constant(cqt_filters, dtype=tf.float32)
 
-    def call(self, inputs):
-        stft = tf.signal.stft(
-            inputs, frame_length=self.n_fft,
-            frame_step=self.hop_length, fft_length=self.n_fft
-        )
-        magnitude = tf.abs(stft)
+    def call(self, inputs, stft_cache=None):
+        # Sprint 2.1: reusa STFT compartilhado (magnitude) quando disponível
+        if stft_cache is not None and 'magnitude' in stft_cache:
+            magnitude = stft_cache['magnitude']
+        else:
+            stft = tf.signal.stft(
+                inputs, frame_length=self.n_fft,
+                frame_step=self.hop_length, fft_length=self.n_fft
+            )
+            magnitude = tf.abs(stft)
         cqt = tf.matmul(magnitude, self.cqt_filter_bank)
         log_cqt = tf.math.log(cqt + 1e-6)
         return tf.expand_dims(log_cqt, axis=-1)
@@ -242,23 +299,31 @@ class MFCCBranch(layers.Layer):
         dct_matrix[:, 1:] *= np.sqrt(2.0 / self.n_mels)
         self.dct_matrix = tf.constant(dct_matrix, dtype=tf.float32)
 
-    def call(self, inputs):
-        stft = tf.signal.stft(
-            inputs, frame_length=self.n_fft,
-            frame_step=self.hop_length, fft_length=self.n_fft
+        # Sprint 2.1: pre-compute mel weight matrix
+        self.mel_weight = tf.constant(
+            tf.signal.linear_to_mel_weight_matrix(
+                num_mel_bins=self.n_mels,
+                num_spectrogram_bins=self.n_fft // 2 + 1,
+                sample_rate=self.sample_rate,
+                lower_edge_hertz=0.0,
+                upper_edge_hertz=self.sample_rate / 2.0,
+            ),
+            dtype=tf.float32,
         )
-        power = tf.square(tf.abs(stft))
-        mel_weight = tf.signal.linear_to_mel_weight_matrix(
-            num_mel_bins=self.n_mels,
-            num_spectrogram_bins=self.n_fft // 2 + 1,
-            sample_rate=self.sample_rate,
-            lower_edge_hertz=0.0,
-            upper_edge_hertz=self.sample_rate / 2.0
-        )
-        mel_spec = tf.matmul(power, mel_weight)
+
+    def call(self, inputs, stft_cache=None):
+        # Sprint 2.1: reusa STFT compartilhado quando disponível
+        if stft_cache is not None and 'power' in stft_cache:
+            power = stft_cache['power']
+        else:
+            stft = tf.signal.stft(
+                inputs, frame_length=self.n_fft,
+                frame_step=self.hop_length, fft_length=self.n_fft
+            )
+            power = tf.square(tf.abs(stft))
+        mel_spec = tf.matmul(power, self.mel_weight)
         log_mel = tf.math.log(mel_spec + 1e-6)
         mfcc = tf.matmul(log_mel, self.dct_matrix)
-        # Add channel dim: (batch, time, coeffs, 1)
         return tf.expand_dims(mfcc, axis=-1)
 
     def get_config(self):
@@ -373,32 +438,37 @@ def _create_ensemble_feature_fusion(
         )
         return model
 
+    # ---------- Sprint 2.1: STFT compartilhado (computado 1× para 4 branches) ----------
+    # Antes: cada branch chamava tf.signal.stft (4× compute).
+    # Agora: SharedSTFTLayer fornece magnitude/power a todas as branches.
+    stft_cache = SharedSTFTLayer(n_fft=512, hop_length=160, name='shared_stft')(audio)
+
     # ---------- Branch 1: Mel Spectrogram (128 mels) ----------
     mel_features = MelSpectrogramBranch(
         sample_rate=16000, n_fft=512, hop_length=160, n_mels=128,
         name='mel_extraction'
-    )(audio)
+    )(audio, stft_cache=stft_cache)
     mel_embedding = _create_cnn_branch(mel_features, 'mel', filters=[32, 64, 128, 256])
 
     # ---------- Branch 2: LFCC (20 coefficients) ----------
     lfcc_features = LFCCBranch(
         sample_rate=16000, n_fft=512, hop_length=160,
         n_filters=20, n_lfcc=20, name='lfcc_extraction'
-    )(audio)
+    )(audio, stft_cache=stft_cache)
     lfcc_embedding = _create_cnn_branch(lfcc_features, 'lfcc', filters=[32, 64, 128, 256])
 
     # ---------- Branch 3: CQT (84 bins) ----------
     cqt_features = CQTBranch(
         sample_rate=16000, n_fft=512, hop_length=160,
         n_bins=84, bins_per_octave=12, name='cqt_extraction'
-    )(audio)
+    )(audio, stft_cache=stft_cache)
     cqt_embedding = _create_cnn_branch(cqt_features, 'cqt', filters=[32, 64, 128, 256])
 
     # ---------- Branch 4: MFCC (20 coefficients) ----------
     mfcc_features = MFCCBranch(
         sample_rate=16000, n_fft=512, hop_length=160,
         n_mels=40, n_mfcc=20, name='mfcc_extraction'
-    )(audio)
+    )(audio, stft_cache=stft_cache)
     mfcc_embedding = _create_cnn_branch(mfcc_features, 'mfcc', filters=[32, 64, 128, 256])
 
     # ---------- Cross-Attention + Gated Fusion ----------
@@ -480,11 +550,14 @@ def _create_ensemble_score_fusion(
         out_activation = 'softmax'
         loss = 'sparse_categorical_crossentropy'
 
+    # ---------- Sprint 2.1: STFT compartilhado (3 branches) ----------
+    stft_cache = SharedSTFTLayer(n_fft=512, hop_length=160, name='shared_stft')(audio)
+
     # ---------- Branch 1: Mel ----------
     mel_features = MelSpectrogramBranch(
         sample_rate=16000, n_fft=512, hop_length=160, n_mels=128,
         name='mel_extraction'
-    )(audio)
+    )(audio, stft_cache=stft_cache)
     mel_emb = _create_cnn_branch(mel_features, 'mel', filters=[32, 64, 128])
     mel_pred = layers.Dense(out_units, activation=out_activation, name='mel_output')(mel_emb)
 
@@ -492,7 +565,7 @@ def _create_ensemble_score_fusion(
     lfcc_features = LFCCBranch(
         sample_rate=16000, n_fft=512, hop_length=160,
         n_filters=20, n_lfcc=20, name='lfcc_extraction'
-    )(audio)
+    )(audio, stft_cache=stft_cache)
     lfcc_emb = _create_cnn_branch(lfcc_features, 'lfcc', filters=[32, 64, 128])
     lfcc_pred = layers.Dense(out_units, activation=out_activation, name='lfcc_output')(lfcc_emb)
 
@@ -500,7 +573,7 @@ def _create_ensemble_score_fusion(
     cqt_features = CQTBranch(
         sample_rate=16000, n_fft=512, hop_length=160,
         n_bins=84, bins_per_octave=12, name='cqt_extraction'
-    )(audio)
+    )(audio, stft_cache=stft_cache)
     cqt_emb = _create_cnn_branch(cqt_features, 'cqt', filters=[32, 64, 128])
     cqt_pred = layers.Dense(out_units, activation=out_activation, name='cqt_output')(cqt_emb)
 
@@ -549,17 +622,20 @@ def _create_ensemble_lite(
         )
         return model
 
+    # Sprint 2.1: STFT compartilhado também na variante lite (2 branches)
+    stft_cache = SharedSTFTLayer(n_fft=512, hop_length=160, name='shared_stft')(audio)
+
     # 2 branches only (lighter)
     mel_features = MelSpectrogramBranch(
         sample_rate=16000, n_fft=512, hop_length=160, n_mels=64,
         name='mel_extraction'
-    )(audio)
+    )(audio, stft_cache=stft_cache)
     mel_emb = _create_cnn_branch(mel_features, 'mel', filters=[16, 32, 64])
 
     lfcc_features = LFCCBranch(
         sample_rate=16000, n_fft=512, hop_length=160,
         n_filters=20, n_lfcc=20, name='lfcc_extraction'
-    )(audio)
+    )(audio, stft_cache=stft_cache)
     lfcc_emb = _create_cnn_branch(lfcc_features, 'lfcc', filters=[16, 32, 64])
 
     fused = layers.Concatenate(name='feature_concat')([mel_emb, lfcc_emb])
@@ -651,20 +727,28 @@ def _create_ensemble_adaptive(
     out_activation = 'sigmoid' if out_units == 1 else 'softmax'
     loss = 'binary_crossentropy' if out_units == 1 else 'sparse_categorical_crossentropy'
 
+    # ---------- Sprint 2.1: STFT compartilhado para os 4 branches de n_fft=512 ----------
+    # O branch 'mel2' usa n_fft=1024 (resolução temporal diferente) e mantém seu STFT próprio.
+    stft_cache_512 = SharedSTFTLayer(n_fft=512, hop_length=160, name='shared_stft_512')(audio)
+
     # ---------- 5 Ramos espectrais (simulando 5 arquiteturas do TCC) ----------
+    # Tupla: (nome, layer, filters, usa_stft_cache_512)
     branch_defs = [
-        ('mel',   MelSpectrogramBranch(16000, 512, 160, n_mels=128, name='mel_ext'),   [32, 64, 128, 256]),
-        ('lfcc',  LFCCBranch(16000, 512, 160, n_filters=20, n_lfcc=20, name='lfcc_ext'), [32, 64, 128, 256]),
-        ('cqt',   CQTBranch(16000, 512, 160, n_bins=84, bins_per_octave=12, name='cqt_ext'), [32, 64, 128, 256]),
-        ('mfcc',  MFCCBranch(16000, 512, 160, n_mels=40, n_mfcc=20, name='mfcc_ext'), [32, 64, 128, 256]),
-        ('mel2',  MelSpectrogramBranch(16000, 1024, 256, n_mels=80, name='mel2_ext'),  [32, 64, 128, 256]),
+        ('mel',   MelSpectrogramBranch(16000, 512, 160, n_mels=128, name='mel_ext'),   [32, 64, 128, 256], True),
+        ('lfcc',  LFCCBranch(16000, 512, 160, n_filters=20, n_lfcc=20, name='lfcc_ext'), [32, 64, 128, 256], True),
+        ('cqt',   CQTBranch(16000, 512, 160, n_bins=84, bins_per_octave=12, name='cqt_ext'), [32, 64, 128, 256], True),
+        ('mfcc',  MFCCBranch(16000, 512, 160, n_mels=40, n_mfcc=20, name='mfcc_ext'), [32, 64, 128, 256], True),
+        ('mel2',  MelSpectrogramBranch(16000, 1024, 256, n_mels=80, name='mel2_ext'),  [32, 64, 128, 256], False),
     ]
 
     embeddings = []
     scores = []
 
-    for name, feature_layer, filters in branch_defs:
-        feat = feature_layer(audio)
+    for name, feature_layer, filters, use_cache in branch_defs:
+        if use_cache:
+            feat = feature_layer(audio, stft_cache=stft_cache_512)
+        else:
+            feat = feature_layer(audio)
         emb = _create_cnn_branch(feat, name, filters=filters)          # (batch, 256)
         score = layers.Dense(out_units, activation=out_activation,
                              name=f'{name}_score')(emb)                # (batch, 1)

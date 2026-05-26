@@ -53,7 +53,7 @@ extra_css:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/thier/TCC
+      link: https://github.com/thierrybraga/XFakeSong
       name: XfakeSong no GitHub
     - icon: fontawesome/brands/python
       link: https://python.org
@@ -101,21 +101,19 @@ nav:
   - Começando:
     - Introdução: 01_INTRODUCAO.md
     - Instalação e Configuração: 02_INSTALACAO_CONFIGURACAO.md
-    - Guia Google Colab: 14_GOOGLE_COLAB_GUIDE.md
-  - Arquitetura e Conceitos:
-    - Visão Geral: 03_ARQUITETURA.md
-    - Estrutura do Projeto: 05_ESTRUTURA_PROJETO.md
-    - Funcionalidades Core: 04_FUNCIONALIDADES_CORE.md
-  - Modelos e Features:
-    - Arquiteturas Detalhadas: 08_ARQUITETURAS_DETALHADAS.md
-    - Extração de Features: 09_FEATURES_DETALHADAS.md
-    - Inferência: 10_INFERENCIA_ARQUITETURAS.md
-    - Treinamento: 11_TREINAMENTO_ARQUITETURAS.md
-  - Dados:
-    - Datasets Públicos: 13_DATASETS_PUBLICOS.md
-  - Desenvolvimento e API:
-    - Guia de Contribuição: 06_GUIA_DESENVOLVIMENTO.md
+    - Guia Google Colab: 12_COLAB_GUIDE.md
+  - Arquitetura:
+    - Visão Geral e Estrutura: 03_ARQUITETURA.md
+    - Features de Áudio: 04_FEATURES.md
+  - Modelos:
+    - Arquiteturas Neurais: 08_ARQUITETURAS.md
+    - Fluxos de Inferência: 09_INFERENCIA.md
+    - Treinamento: 10_TREINAMENTO.md
+  - Desenvolvimento:
+    - Guia do Desenvolvedor: 05_GUIA_DEV.md
+    - Testes e Qualidade: 06_TESTES.md
     - API Reference: 07_API_REFERENCE.md
-    - Testes: 07_TESTES.md
+  - Dados:
+    - Datasets Públicos: 12_DATASETS.md
   - Deploy:
-    - Hugging Face: 12_DEPLOY_HUGGINGFACE.md
+    - Hugging Face Spaces: 11_DEPLOY_HUGGINGFACE.md

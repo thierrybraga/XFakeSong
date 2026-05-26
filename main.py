@@ -8,6 +8,18 @@ import argparse
 import logging
 from pathlib import Path
 
+# === Compatibilidade huggingface_hub ===
+# HfFolder foi removido em versoes >= 0.16. Criar shim ANTES de qualquer
+# import que possa transitivamente precisar de HfFolder.
+try:
+    from huggingface_hub import HfFolder  # noqa: F401
+except ImportError:
+    import huggingface_hub
+    class _HfFolder:
+        """Shim para HfFolder removido em huggingface_hub >= 0.16."""
+        pass
+    huggingface_hub.HfFolder = _HfFolder
+
 # Adicionar diretório raiz ao PYTHONPATH
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -38,6 +50,18 @@ def main():
 
     setup_logging()
     logger = logging.getLogger("Main")
+
+    # GPU.9: Setup TF/GPU ANTES de qualquer import de tabs Gradio ou serviços
+    # de domínio. `memory_growth` + `mixed_precision` precisam ser aplicados
+    # ANTES de qualquer alocação GPU (primeiro forward/fit). Idempotente.
+    # Pulamos quando o user só quer bootstrap-dirs ou deploy (sem TF necessário).
+    if args.gui or not (args.bootstrap_dirs or args.deploy):
+        try:
+            from app.core.gpu import setup_gpu, describe_gpu_setup
+            setup_gpu()
+            logger.info(f"GPU: {describe_gpu_setup()}")
+        except Exception as e:
+            logger.warning(f"setup_gpu falhou (ignorado): {e}")
 
     if args.deploy:
         try:

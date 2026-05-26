@@ -1,6 +1,56 @@
+# =====================================================================
+# Git LFS — modelos e binários grandes
+# =====================================================================
 *.pth filter=lfs diff=lfs merge=lfs -text
 *.h5 filter=lfs diff=lfs merge=lfs -text
+*.keras filter=lfs diff=lfs merge=lfs -text
 *.bin filter=lfs diff=lfs merge=lfs -text
 *.onnx filter=lfs diff=lfs merge=lfs -text
+*.tflite filter=lfs diff=lfs merge=lfs -text
+*.pkl filter=lfs diff=lfs merge=lfs -text
+*.npz filter=lfs diff=lfs merge=lfs -text
 app/models/** filter=lfs diff=lfs merge=lfs -text
 datasets/** filter=lfs diff=lfs merge=lfs -text
+
+# =====================================================================
+# Line endings — crítico para scripts shell em Docker no Windows
+# =====================================================================
+# Default: deixe Git decidir, mas converta no checkout
+* text=auto
+
+# Scripts shell SEMPRE com LF (caso contrário quebram dentro do container)
+*.sh text eol=lf
+docker-entrypoint.sh text eol=lf
+Dockerfile text eol=lf
+Dockerfile.* text eol=lf
+docker-compose*.yml text eol=lf
+Makefile text eol=lf
+
+# Batch SEMPRE com CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Código Python — LF (consistente cross-platform)
+*.py text eol=lf
+*.pyi text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+
+# Binários (não tratar como texto)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.wav binary
+*.mp3 binary
+*.flac binary
+*.ogg binary
+*.zip binary
+*.tar binary
+*.gz binary
+*.7z binary

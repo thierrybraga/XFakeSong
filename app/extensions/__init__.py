@@ -1,7 +1,2 @@
-from flask_login import LoginManager
-from flask_migrate import Migrate
-from flask_sqlalchemy import SQLAlchemy
-
-db = SQLAlchemy()
-migrate = Migrate()
-login_manager = LoginManager()
+# Legacy Flask extensions — replaced by FastAPI + SQLAlchemy direct integration.
+# Kept as empty module to avoid import errors from any remaining legacy references.

@@ -128,8 +128,9 @@ def _scan_dataset() -> Dict[str, Any]:
             try:
                 info = sf.info(str(wf))
                 durations.append(info.duration)
-            except Exception:
-                pass
+            except Exception as e:
+                # FE.7: log em debug para não inundar console em datasets grandes
+                logger.debug(f"sf.info falhou em {wf.name}: {e}")
 
         data[f"durations_{label}"] = durations
         if durations:
@@ -143,8 +144,9 @@ def _scan_dataset() -> Dict[str, Any]:
             with open(meta_path) as f:
                 data["splits_metadata"] = json.load(f)
             data["splits_exist"] = True
-        except Exception:
-            pass
+        except Exception as e:
+            # FE.7: log do erro real ao invés de silenciar
+            logger.warning(f"Falha ao ler splits_metadata.json: {e}")
 
     return data
 
@@ -269,7 +271,9 @@ def _analyze_compatibility(data: Dict) -> Tuple[List[List], str]:
     try:
         from app.domain.models.architectures.registry import ArchitectureRegistry
         registry = ArchitectureRegistry()
-    except Exception:
+    except Exception as e:
+        # FE.7: log do motivo da falha (útil para debug)
+        logger.warning(f"ArchitectureRegistry indisponível: {e}")
         registry = None
 
     total = data["real_count"] + data["fake_count"]
@@ -336,8 +340,9 @@ def _analyze_compatibility(data: Dict) -> Tuple[List[List], str]:
                     if "sample_rate" in req and req["sample_rate"] != 16000:
                         issues.append(f"SR esperado: {req['sample_rate']}")
                         recs.append(f"Arquitetura espera {req['sample_rate']}Hz, dataset esta em 16kHz")
-            except Exception:
-                pass
+            except Exception as e:
+                # FE.7: log do nome da arquitetura para facilitar debug
+                logger.debug(f"Falha ao ler input_requirements de {display_name}: {e}")
 
         status = "OK" if not issues else " | ".join(issues)
         status_icon = "✅" if not issues else ("⚠️" if "Desbalanceado" in status else "❌")

@@ -45,18 +45,32 @@ logger.setLevel(logging.INFO)
 # ============================ FUNÇÕES DE CONSTRUÇÃO DE MODELOS ==========
 
 
-def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architecture: str = "default",
+def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architecture: str = "aasist",
                  dropout_rate: float = 0.2, l2_reg_strength: float = 0.0005,
                  hidden_dim: int = 512, num_layers: int = 8) -> models.Model:
     """
     Cria e compila um modelo Keras baseado na arquitetura especificada.
+
+    Variantes suportadas:
+        - "aasist" (DEFAULT): Paper-faithful (SincConv + GAT + HS-GAL + AM-Softmax)
+        - "cnn_gru_simple" / "default" (alias legado): CNN 2D + Bi-GRU + Attention
+        - "cnn_baseline": CNN 2D simples + flatten
+        - "bidirectional_gru": Bi-GRU + Attention (sem CNN)
+        - "resnet_gru": ResNet blocks + GRU + Attention
+        - "transformer": Multi-head Self-Attention + FF
     """
     input_tensor = layers.Input(shape=input_shape)
     x = input_tensor
 
     x = AudioFeatureNormalization(axis=-1, name="audio_norm_layer")(x)
 
+    # Alias "default" -> "aasist" (paper-faithful) para que usuários recebam
+    # a versão correta por padrão via factory/registry. O comportamento antigo
+    # (CNN+Bi-GRU) ainda está disponível via "cnn_gru_simple".
     if architecture == "default":
+        architecture = "aasist"
+
+    if architecture in ("cnn_gru_simple",):
         x = apply_reshape_for_cnn(x, input_shape)
         x = layers.Conv2D(32, (3, 3), activation='relu',
                           padding='same', name="conv1")(x)
@@ -109,35 +123,12 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         else:
             raise ValueError(
                 f"Input shape {input_shape} not suitable for 'bidirectional_gru' architecture.")
-        if tf.config.list_physical_devices('GPU'):
-            logger.info("Usando CuDNNGRU Bidirecional para otimização de GPU.")
-            x = layers.Bidirectional(
-                layers.CuDNNGRU(
-                    128,
-                    return_sequences=True),
-                name="bi_gru1")(x)
-            x = layers.Bidirectional(
-                layers.CuDNNGRU(
-                    64,
-                    return_sequences=True),
-                name="bi_gru2")(x)
-        else:
-            logger.info(
-                "Usando GRU Bidirecional (CPU/compatível com GPU sem CuDNN).")
-            x = layers.Bidirectional(
-                layers.GRU(
-                    128,
-                    return_sequences=True,
-                    dropout=dropout_rate,
-                    recurrent_dropout=dropout_rate),
-                name="bi_gru1")(x)
-            x = layers.Bidirectional(
-                layers.GRU(
-                    64,
-                    return_sequences=True,
-                    dropout=dropout_rate,
-                    recurrent_dropout=dropout_rate),
-                name="bi_gru2")(x)
+        x = layers.Bidirectional(
+            layers.GRU(128, return_sequences=True, dropout=dropout_rate),
+            name="bi_gru1")(x)
+        x = layers.Bidirectional(
+            layers.GRU(64, return_sequences=True, dropout=dropout_rate),
+            name="bi_gru2")(x)
         x = AttentionLayer(name="attention_layer")(x)
 
     elif architecture == "resnet_gru":
@@ -153,18 +144,7 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         x = layers.MaxPooling2D((2, 2), name="resnet_pool_b")(x)
         x = layers.Dropout(dropout_rate, name="resnet_dropout_b")(x)
         x = flatten_features_for_gru(x, name="resnet_reshape_for_gru")
-        if tf.config.list_physical_devices('GPU'):
-            x = layers.CuDNNGRU(
-                128,
-                return_sequences=True,
-                name="resnet_gru1")(x)
-        else:
-            x = layers.GRU(
-                128,
-                return_sequences=True,
-                dropout=dropout_rate,
-                recurrent_dropout=dropout_rate,
-                name="resnet_gru1")(x)
+        x = layers.GRU(128, return_sequences=True, dropout=dropout_rate, name="resnet_gru1")(x)
         x = AttentionLayer(name="attention_layer_resnet")(x)
 
     elif architecture == "transformer":
@@ -338,14 +318,14 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
                      kernel_regularizer=regularizers.l2(l2_reg_strength),
                      bias_regularizer=regularizers.l2(l2_reg_strength / 2), name="dense2")(x)
     x = layers.BatchNormalization(name="bn_dense2")(x)
-    x = layers.Dropout(dropout_rate * 1.5, name="final_dropout2")(x)
+    x = layers.Dropout(min(dropout_rate * 1.5, 0.9), name="final_dropout2")(x)
 
     # Camada final antes da saída
     x = layers.Dense(128, activation='relu',
                      kernel_regularizer=regularizers.l2(l2_reg_strength),
                      bias_regularizer=regularizers.l2(l2_reg_strength / 2), name="dense3")(x)
     x = layers.BatchNormalization(name="bn_dense3")(x)
-    x = layers.Dropout(dropout_rate * 2, name="dropout_final")(x)
+    x = layers.Dropout(min(dropout_rate * 2, 0.9), name="dropout_final")(x)
 
     # Camada de saída com regularização
     output_tensor = layers.Dense(num_classes, activation='softmax',

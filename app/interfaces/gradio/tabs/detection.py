@@ -1,33 +1,72 @@
 import json
 import logging
+import threading
 from pathlib import Path
 
-import librosa
-import librosa.display
-import matplotlib.pyplot as plt
-import numpy as np
-from matplotlib.figure import Figure
+# FE.2 + FE.8: importa helpers compartilhados ANTES de matplotlib.pyplot.
+# `plotting` força backend Agg (necessário em ambiente Gradio threaded).
+from app.interfaces.gradio.utils.plotting import (
+    PLOT_ACCENT,
+    PLOT_ACCENT2,
+    PLOT_DANGER,
+    PLOT_FACE,
+    PLOT_GRID,
+    PLOT_TEXT,
+    close_fig,
+    get_service_lock,
+    notify_error,
+    notify_info,
+    safe_tight_layout,
+    style_ax,
+)
 
-import gradio as gr
-from app.core.interfaces.audio import AudioData
+# Aliases legados para minimizar diff em código existente
+_PLOT_BG = PLOT_FACE
+_PLOT_FACE = PLOT_FACE
+_PLOT_TEXT = PLOT_TEXT
+_PLOT_GRID = PLOT_GRID
+_PLOT_ACCENT = PLOT_ACCENT
+_PLOT_ACCENT2 = PLOT_ACCENT2
+_PLOT_DANGER = PLOT_DANGER
+_style_ax = style_ax
+
+import librosa  # noqa: E402
+import librosa.display  # noqa: E402
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+from matplotlib.figure import Figure  # noqa: E402
+
+import gradio as gr  # noqa: E402
+from app.core.interfaces.audio import AudioData  # noqa: E402
 
 # Configurar logging
 logger = logging.getLogger("gradio_detection_tab")
 
-# Singleton para o serviço de detecção
+# FE.3: Singleton com lock thread-safe (Gradio queue tem 20 workers)
 _detection_service_instance = None
+_service_lock = get_service_lock("detection_service")
+
+# FE.4: limite de buffer de streaming (máx 30s de áudio acumulado)
+_STREAM_MAX_BUFFER_SECONDS = 30
+# Áudios mais longos que isto fazem prosody/pitch ser pulado por performance (FE.5)
+_PROSODY_PYIN_MAX_DURATION_S = 15
 
 
 def get_detection_service():
+    """Retorna o singleton de DetectionService, criando-o sob lock."""
     global _detection_service_instance
-    if _detection_service_instance is None:
-        try:
-            from app.domain.services import detection_service as ds
-            # Inicializa com diretório padrão 'models'
-            _detection_service_instance = ds.DetectionService()
-        except Exception as e:
-            logger.error(f"Failed to init detection service: {e}")
-            return None
+    if _detection_service_instance is not None:
+        return _detection_service_instance
+    with _service_lock:
+        # Double-checked locking — outro thread pode ter criado entre
+        # o check e o acquire do lock.
+        if _detection_service_instance is None:
+            try:
+                from app.domain.services import detection_service as ds
+                _detection_service_instance = ds.DetectionService()
+            except Exception as e:
+                logger.error(f"Failed to init detection service: {e}")
+                return None
     return _detection_service_instance
 
 
@@ -72,40 +111,77 @@ def _style_ax(ax, fig, title=""):
 
 
 def get_waveform_plot(y, sr):
-    """Gera plot da forma de onda em estilo dark."""
+    """Gera plot da forma de onda em estilo dark.
+
+    Para áudios longos (>60s), faz downsample para evitar render lento.
+    """
     fig, ax = plt.subplots(figsize=(10, 3))
     _style_ax(ax, fig, "Forma de Onda")
-    librosa.display.waveshow(y, sr=sr, alpha=0.85, color=_PLOT_ACCENT, ax=ax)
+
+    # FE.5: downsample defensivo para áudios longos (>1 min)
+    max_points = 200_000  # ~12s a 16kHz nas waveshow padrão
+    if len(y) > max_points:
+        step = len(y) // max_points
+        y_plot = y[::step]
+        # waveshow recalcula seu próprio tempo — passamos hop_length compatível
+        librosa.display.waveshow(y_plot, sr=sr // step, alpha=0.85,
+                                 color=_PLOT_ACCENT, ax=ax)
+    else:
+        librosa.display.waveshow(y, sr=sr, alpha=0.85, color=_PLOT_ACCENT, ax=ax)
     ax.set_xlabel("Tempo (s)")
     ax.set_ylabel("Amplitude")
-    fig.tight_layout()
+    safe_tight_layout(fig)
     return fig
 
 
 def get_prosody_plot(y, sr):
-    """Gera plot de prosódia (F0 e Energia) em estilo dark."""
+    """Gera plot de prosódia (F0 e Energia) em estilo dark.
+
+    FE.5: librosa.pyin é MUITO lento (segundos por minuto de áudio). Pulamos
+    para áudios > _PROSODY_PYIN_MAX_DURATION_S e usamos apenas RMS energy.
+    """
     fig, ax = plt.subplots(figsize=(10, 4))
     _style_ax(ax, fig, "Análise Prosódica: Energia e Pitch")
+
+    duration_s = len(y) / sr if sr > 0 else 0.0
 
     rms = librosa.feature.rms(y=y)[0]
     times = librosa.times_like(rms)
     ax.plot(times, rms, label='Energia (RMS)', color=_PLOT_DANGER, alpha=0.7, linewidth=1.5)
 
-    try:
-        f0, voiced_flag, voiced_probs = librosa.pyin(
-            y, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'))
-        times_f0 = librosa.times_like(f0)
-        if np.nanmax(f0) > 0:
-            f0_norm = f0 / np.nanmax(f0)
-            ax.plot(times_f0, f0_norm, label='Pitch (F0 Norm.)',
-                    color=_PLOT_ACCENT2, alpha=0.7, linewidth=1.5)
-    except Exception as e:
-        logger.warning(f"Erro ao calcular Pitch: {e}")
+    # F0 via pyin é o gargalo — só roda em áudios curtos
+    if duration_s <= _PROSODY_PYIN_MAX_DURATION_S:
+        try:
+            f0, _voiced_flag, _voiced_probs = librosa.pyin(
+                y,
+                fmin=librosa.note_to_hz('C2'),
+                fmax=librosa.note_to_hz('C7'),
+            )
+            times_f0 = librosa.times_like(f0)
+            max_f0 = float(np.nanmax(f0)) if np.any(~np.isnan(f0)) else 0.0
+            if max_f0 > 0:
+                f0_norm = f0 / max_f0
+                ax.plot(times_f0, f0_norm, label='Pitch (F0 Norm.)',
+                        color=_PLOT_ACCENT2, alpha=0.7, linewidth=1.5)
+        except Exception as e:
+            logger.warning(f"Erro ao calcular Pitch: {e}")
+    else:
+        logger.info(
+            f"pyin pulado (duração={duration_s:.1f}s > "
+            f"{_PROSODY_PYIN_MAX_DURATION_S}s)"
+        )
+        ax.text(
+            0.02, 0.95,
+            f"Pitch detection pulado (>{_PROSODY_PYIN_MAX_DURATION_S}s)",
+            transform=ax.transAxes,
+            color=_PLOT_TEXT, fontsize=9, alpha=0.6,
+            verticalalignment='top',
+        )
 
     ax.legend(facecolor=_PLOT_FACE, edgecolor=_PLOT_GRID,
               labelcolor=_PLOT_TEXT, fontsize=9)
     ax.set_xlabel("Tempo (s)")
-    fig.tight_layout()
+    safe_tight_layout(fig)
     return fig
 
 
@@ -121,14 +197,51 @@ def get_spectrogram_plot(y, sr):
     cb = fig.colorbar(img, ax=ax, format='%+2.0f dB', pad=0.02)
     cb.ax.tick_params(colors=_PLOT_TEXT, labelsize=8)
     cb.outline.set_edgecolor(_PLOT_GRID)
-    fig.tight_layout()
+    safe_tight_layout(fig)
     return fig
+
+
+def _empty_analysis_result(
+    error_msg: str = "Nenhum áudio fornecido.",
+    *,
+    hint: str = None,
+    error_code: str = None,
+):
+    """Retorna a tupla de 6 elementos esperada por analyze_btn.click outputs.
+
+    FE.1: Garante que TODOS os paths de retorno tenham o mesmo arity.
+    FE.9 + Notify.5: emite notificação com hint acionável (quando aplicável).
+    Ordem: (label, confidence, waveform, prosody, spectrogram, json)
+    """
+    # Notify.5: notificação estruturada com hint
+    notify_error(
+        error_msg,
+        hint=hint or "Verifique o arquivo de áudio e tente novamente.",
+        error_code=error_code or "ANALYSIS_FAILED",
+    )
+    payload = {"error": error_msg}
+    if hint:
+        payload["hint"] = hint
+    if error_code:
+        payload["error_code"] = error_code
+    return (
+        f"Erro: {error_msg}",
+        0.0,
+        None,    # plot_waveform
+        None,    # plot_prosody
+        None,    # plot_spectrogram
+        json.dumps(payload, indent=2),
+    )
 
 
 def analyze_audio(audio_path, architecture, variant,
                   advanced_enabled, hyperparams_json, segmented):
     if not audio_path:
-        return "Erro: Nenhum áudio fornecido.", 0.0, None, None, {}
+        return _empty_analysis_result(
+            "Nenhum áudio fornecido.",
+            hint="Arraste um arquivo .wav/.mp3 ou grave via microfone.",
+            error_code="NO_AUDIO",
+        )
 
     try:
         # Carregar áudio para visualização
@@ -255,14 +368,8 @@ def analyze_audio(audio_path, architecture, variant,
         )
 
     except Exception as e:
-        return (
-            f"Erro: {str(e)}",
-            0.0,
-            None,
-            None,
-            None,
-            json.dumps({"error": str(e)}, indent=2),
-        )
+        logger.error(f"Erro em analyze_audio: {e}", exc_info=True)
+        return _empty_analysis_result(str(e))
 
 
 def process_stream(new_chunk, state):
@@ -298,8 +405,13 @@ def process_stream(new_chunk, state):
         if data.ndim > 1:
             data = np.mean(data, axis=1)
 
-        # Acumular
+        # Acumular — FE.4: cap em _STREAM_MAX_BUFFER_SECONDS para evitar
+        # crescimento ilimitado (gravação infinita = vazamento RAM).
         state["audio"] = np.concatenate((state["audio"], data))
+        max_samples = _STREAM_MAX_BUFFER_SECONDS * (state.get("sr", sr) or sr)
+        if len(state["audio"]) > max_samples:
+            # Descarta os samples mais antigos (rolling window)
+            state["audio"] = state["audio"][-max_samples:]
 
         # Otimização: Gerar plots apenas se tiver dados suficientes
         # e não for muito frequente
@@ -415,8 +527,9 @@ def process_stream(new_chunk, state):
                                 alpha=0.6,
                                 label=f'Pitch Est. ({int(f0_est)}Hz)'
                             )
-        except Exception:
-            pass
+        except Exception as e:
+            # FE.7: pitch estimation é best-effort; log em debug
+            logger.debug(f"Pitch estimation pulado: {e}")
 
         ax_pros.legend(loc='upper right', facecolor=_PLOT_FACE,
                        edgecolor=_PLOT_GRID, labelcolor=_PLOT_TEXT, fontsize=9)
@@ -452,9 +565,9 @@ def process_stream(new_chunk, state):
                             1.0 - conf
                         }
                         conf_upd = conf
-                except Exception:
-                    # Log menos verboso em stream
-                    pass
+                except Exception as e:
+                    # FE.7: stream detection é best-effort; log em debug
+                    logger.debug(f"Stream detection pulada: {e}")
 
         return state, fig_wave, fig_pros, fig_spec, label_upd, conf_upd
 
@@ -504,10 +617,13 @@ def create_detection_tab():
                             value=arch_choices[0] if arch_choices else None,
                         )
                         variant_select = gr.Dropdown(
-                            choices=[], label="Variante", value=None)
+                            choices=[], label="Variante", value=None,
+                            info="Subvariante da arquitetura (paper-faithful, lite, etc.)",
+                        )
                         advanced_enabled = gr.Checkbox(
                             label="Habilitar Parâmetros Customizados",
-                            value=False
+                            value=False,
+                            info="Sobrescreve config padrão por hiperparâmetros JSON",
                         )
                         hyperparams_json = gr.Code(
                             label="Hiperparâmetros (JSON)",
@@ -517,7 +633,11 @@ def create_detection_tab():
                             lines=3)
                         segmented_chk = gr.Checkbox(
                             label="Inferência Segmentada (Para áudios longos)",
-                            value=False
+                            value=False,
+                            info=(
+                                "Divide o áudio em janelas e faz soft voting. "
+                                "Use para áudios > 30s."
+                            ),
                         )
 
                     analyze_btn = gr.Button(
@@ -534,7 +654,13 @@ def create_detection_tab():
                             scale=2
                         )
                         confidence_output = gr.Number(
-                            label="Confiança", scale=1)
+                            label="Confiança",
+                            scale=1,
+                            info=(
+                                "Probabilidade da classe predita. Já calibrada "
+                                "via temperature scaling (Sprint 1.4)."
+                            ),
+                        )
 
         gr.Markdown("---")
 
@@ -637,13 +763,9 @@ def create_detection_tab():
                         f"Áudio convertido de numpy para: {final_path}"
                     )
                 except Exception as e:
-                    return (
-                        f"Erro ao processar áudio: {str(e)}",
-                        0.0,
-                        None,
-                        None,
-                        {"error": str(e)}
-                    )
+                    logger.error(f"Erro convertendo áudio numpy: {e}")
+                    # FE.1: retorna 6 valores (arity correta)
+                    return _empty_analysis_result(f"processar áudio: {e}")
             elif isinstance(audio_path, str) and audio_path:
                 final_path = audio_path
 
@@ -651,27 +773,25 @@ def create_detection_tab():
             if not final_path and stream_state is not None and len(
                     stream_state.get("audio", [])) > 0:
                 try:
-                    # Salvar áudio do estado em arquivo temporário
                     temp_file = tempfile.NamedTemporaryFile(
                         suffix=".wav", delete=False)
                     temp_file.close()
-
                     sr = stream_state.get("sr", 16000)
                     audio_data = stream_state["audio"]
-
                     sf.write(temp_file.name, audio_data, sr)
                     final_path = temp_file.name
                     logger.info(
                         f"Usando áudio do stream salvo em: {final_path}")
                 except Exception as e:
                     logger.error(f"Erro ao salvar stream para análise: {e}")
-                    return (
-                        f"Erro ao processar gravação: {str(e)}",
-                        0.0,
-                        None,
-                        None,
-                        {"error": str(e)}
-                    )
+                    # FE.1: retorna 6 valores
+                    return _empty_analysis_result(f"processar gravação: {e}")
+
+            if not final_path:
+                # FE.1: nada para analisar
+                return _empty_analysis_result(
+                    "Nenhum áudio detectado (upload ou gravação)."
+                )
 
             return analyze_audio(final_path, architecture, variant,
                                  advanced_enabled, hyperparams_json, segmented)

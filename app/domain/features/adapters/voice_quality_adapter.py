@@ -34,7 +34,7 @@ class VoiceQualityExtractorWrapper(IFeatureExtractor):
 
             audio_features = AudioFeatures(
                 features=normalized_features,
-                feature_type=FeatureType.PROSODIC,
+                feature_type=FeatureType.VOICE_QUALITY,
                 extraction_params=self.get_extraction_params(),
                 audio_metadata={"extractor": "voice_quality"}
             )
@@ -53,7 +53,7 @@ class VoiceQualityExtractorWrapper(IFeatureExtractor):
         return self.extract(audio_data)
 
     def get_feature_type(self) -> FeatureType:
-        return FeatureType.PROSODIC
+        return FeatureType.VOICE_QUALITY
 
     def get_feature_names(self) -> List[str]:
         return self.extractor.get_feature_names()

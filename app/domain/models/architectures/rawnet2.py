@@ -132,27 +132,22 @@ def _create_rawnet2_model(
             x = layers.MaxPooling1D(pool_size=3)(x)
 
     # 4. Temporal Modeling (GRU)
-    # On GPU use the CuDNN-optimized GRU kernel (no recurrent_dropout, which
-    # disables the CuDNN path).  On CPU fall back to the portable GRU kernel.
+    # Em Keras 3 o layers.GRU usa cuDNN automaticamente quando as condições
+    # são atendidas (recurrent_dropout=0, ativações padrão, sem mask).
+    # Não há mais necessidade do branch GPU/CPU manual.
     x = layers.BatchNormalization()(x)
     x = layers.LeakyReLU(alpha=0.3)(x)
 
-    _gpu = bool(tf.config.list_physical_devices("GPU"))
-    if _gpu:
-        logger.info("GPU detectada: usando GRU otimizado (CuDNN path) para RawNet2.")
-        x = layers.GRU(units=gru_units, return_sequences=True, name='gru_1')(x)
-        x = layers.GRU(units=gru_units, return_sequences=False, name='gru_2')(x)
-    else:
-        x = layers.GRU(
-            units=gru_units, return_sequences=True,
-            dropout=dropout_rate, recurrent_dropout=0.0,
-            name='gru_1'
-        )(x)
-        x = layers.GRU(
-            units=gru_units, return_sequences=False,
-            dropout=dropout_rate, recurrent_dropout=0.0,
-            name='gru_2'
-        )(x)
+    x = layers.GRU(
+        units=gru_units, return_sequences=True,
+        dropout=dropout_rate, recurrent_dropout=0.0,
+        name='gru_1'
+    )(x)
+    x = layers.GRU(
+        units=gru_units, return_sequences=False,
+        dropout=dropout_rate, recurrent_dropout=0.0,
+        name='gru_2'
+    )(x)
 
     # 5. Classification Head
     # Dense head with explicit float32 output to be safe under mixed precision.
@@ -173,8 +168,7 @@ def _create_rawnet2_model(
 
     logger.info(
         f"Modelo {architecture} criado: gru_units={gru_units}, "
-        f"sinc_filters={sinc_filters}, params={model.count_params()}, "
-        f"device={'GPU (CuDNN)' if _gpu else 'CPU'}"
+        f"sinc_filters={sinc_filters}, params={model.count_params()}"
     )
     return model
 

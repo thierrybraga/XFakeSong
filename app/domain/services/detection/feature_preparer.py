@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Dict, Optional
 
 import numpy as np
@@ -11,7 +12,15 @@ from app.domain.services.feature_extraction_service import (
     ExtractionConfig,
 )
 
+from .audio_preprocessing import (
+    DEFAULT_N_FFT,
+    DEFAULT_N_MELS,
+    DEFAULT_HOP,
+    prepare_audio_for_model,
+)
 from .model_loader import ModelInfo
+
+logger = logging.getLogger(__name__)
 
 
 class FeaturePreparer:
@@ -61,6 +70,81 @@ class FeaturePreparer:
         try:
             # Resolver requisitos de input: contrato do treinamento > registry
             input_req = self._resolve_input_requirements(model_info, arch_info)
+
+            # ────────────────────────────────────────────────────────────
+            # PATH UNIFICADO (input_type): bate exatamente com o
+            # pipeline de treino do training_wizard, usando tf.signal.
+            # Cobre os 12 modelos TensorFlow registrados.
+            # ────────────────────────────────────────────────────────────
+            input_type = input_req.get('input_type')
+            if input_type in ('raw_audio', 'spectrogram'):
+                target_shape = model_info.input_shape or ()
+                # STFT params do contrato se existirem (treinos futuros podem
+                # gravar; default = mesmos do wizard)
+                n_fft = int(
+                    (model_info.input_contract or {}).get('n_fft', DEFAULT_N_FFT)
+                ) if isinstance(model_info.input_contract, dict) else DEFAULT_N_FFT
+                hop = int(
+                    (model_info.input_contract or {}).get('hop_length', DEFAULT_HOP)
+                ) if isinstance(model_info.input_contract, dict) else DEFAULT_HOP
+                n_mels = int(
+                    (model_info.input_contract or {}).get('n_mels', DEFAULT_N_MELS)
+                ) if isinstance(model_info.input_contract, dict) else DEFAULT_N_MELS
+
+                features = prepare_audio_for_model(
+                    np.asarray(audio_data.samples, dtype=np.float32),
+                    input_type=input_type,
+                    input_shape=tuple(target_shape),
+                    sample_rate=input_req.get(
+                        'sample_rate', audio_data.sample_rate or 16000
+                    ),
+                    normalize=True,
+                    n_fft=n_fft,
+                    hop_length=hop,
+                    n_mels=n_mels,
+                )
+                metadata = {
+                    'feature_type': 'raw' if input_type == 'raw_audio' else 'log_mel_spectrogram',
+                    'feature_names': (
+                        ['waveform'] if input_type == 'raw_audio' else ['log_mel_spectrogram']
+                    ),
+                    'feature_shapes': {
+                        ('waveform' if input_type == 'raw_audio' else 'log_mel_spectrogram'): features.shape
+                    },
+                    'features_shape': features.shape,
+                    'feature_count_total': int(features.size),
+                    'sample_rate': audio_data.sample_rate,
+                    'duration_s': audio_data.duration,
+                    'channels': audio_data.channels,
+                    'config_feature_types': (
+                        ['raw'] if input_type == 'raw_audio'
+                        else ['log_mel_spectrogram']
+                    ),
+                    'input_type': input_type,
+                    'stft_params': {
+                        'n_fft': n_fft, 'hop_length': hop, 'n_mels': n_mels,
+                    } if input_type == 'spectrogram' else None,
+                }
+                try:
+                    from pathlib import Path
+                    results_dir = (
+                        Path(__file__).resolve().parent.parent.parent.parent
+                        / "results"
+                    )
+                    metadata['recommended_hyperparameters'] = (
+                        load_hyperparameters_json(
+                            model_info.architecture, str(results_dir)
+                        )
+                    )
+                except Exception:
+                    metadata['recommended_hyperparameters'] = {}
+                return {'status': 'ok', 'features': features, 'metadata': metadata}
+
+            # ────────────────────────────────────────────────────────────
+            # Legacy paths abaixo: input_req sem input_type (modelos antigos
+            # ou tabular). Mantém compat com SVM/Random Forest e contratos
+            # de modelos antigos.
+            # ────────────────────────────────────────────────────────────
 
             # Casos de arquiteturas que operam em áudio bruto
             if input_req.get('type') == 'audio':

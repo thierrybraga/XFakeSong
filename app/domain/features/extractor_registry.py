@@ -9,61 +9,18 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Type
 
+from app.core.interfaces.audio import FeatureType, IFeatureExtractor  # noqa: F401
 from app.domain.features.extractors.cepstral.cepstral_features import (
     CepstralFeatureExtractor,
 )
 from app.domain.features.extractors.prosodic.prosodic_features import (
     ProsodicFeatureExtractor,
 )
-
-# Imports dos extratores existentes (comentados temporariamente)
-# from app.domain.models.features.spectral.cepstral_features import (
-#     MFCCExtractor
-# )
-# from app.domain.models.features.spectral.transform_features import (
-#     SpectralPhaseExtractor,
-#     WaveletTransformExtractor,
-#     DCTExtractor,
-#     HilbertTransformExtractor
-# )
-# from app.domain.models.features.advanced.prosodic_features import (
-#     PitchExtractor,
-#     EnergyExtractor,
-#     FormantExtractor
-# )
-# from app.domain.models.features.advanced.perceptual_features import (
-#     SpectralCentroidExtractor,
-#     SpectralRolloffExtractor,
-#     ZeroCrossingRateExtractor,
-#     ChromaExtractor
-# )
-# Imports dos novos extratores implementados
 from app.domain.features.extractors.spectral.spectral_features import (
     SpectralFeatureExtractor,
 )
 
-# Import da interface
-from app.domain.features.interfaces import IFeatureExtractor
-
-# from app.domain.features.extractors.prosodic.formant_features import (
-#     FormantFeatureExtractor
-# )
-# from app.domain.features.extractors.prosodic.voice_quality_features import (
-#     VoiceQualityFeatureExtractor
-# )
-
 logger = logging.getLogger(__name__)
-
-
-class FeatureType(Enum):
-    """Tipos de features suportados."""
-    SPECTRAL = "spectral"
-    CEPSTRAL = "cepstral"
-    PROSODIC = "prosodic"
-    PERCEPTUAL = "perceptual"
-    TEMPORAL = "temporal"
-    ADVANCED = "advanced"
-    CUSTOM = "custom"
 
 
 class ExtractorComplexity(Enum):

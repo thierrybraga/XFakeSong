@@ -25,7 +25,7 @@ def mount_drive(mount_path: str = '/content/drive'):
         )
 
 
-def setup_colab_env(repo_path: str = '/content/TCC'):
+def setup_colab_env(repo_path: str = '/content/XFakeSong'):
     """Configura o ambiente do Colab (paths, dependências)."""
     if is_colab():
         if repo_path not in sys.path:

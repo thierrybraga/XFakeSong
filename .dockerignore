@@ -1,0 +1,109 @@
+# ============================================================
+# Docker build context exclusions (XFakeSong)
+# Reduz tamanho do build context em ~95% e evita layer cache miss
+# ============================================================
+
+# --- VCS ---
+.git/
+.gitignore
+.gitattributes
+.github/
+.gitlab-ci.yml
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+.python-version
+*.egg-info/
+*.egg
+.eggs/
+build/
+dist/
+pip-wheel-metadata/
+
+# --- Caches / Test artifacts ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+.hypothesis/
+nosetests.xml
+coverage.xml
+*.cover
+.cache/
+
+# --- IDE / Editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# --- Logs / Temp ---
+logs/
+*.log
+tmp/
+temp/
+
+# --- Data e modelos pesados (volumes montados em runtime) ---
+data/
+datasets/
+app/datasets/
+app/models/*.keras
+app/models/*.h5
+app/models/*.pkl
+app/models/*.onnx
+app/models/*.tflite
+app/models/optuna_trials/
+app/results/
+
+# --- Dev / docs (não necessários em produção) ---
+docs/
+mkdocs.yml
+site/
+notebooks/
+*.ipynb
+.ipynb_checkpoints/
+
+# --- Claude / IA assist (memory local) ---
+.claude/
+CLAUDE.md
+
+# --- Docker próprios ---
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# --- Env / secrets ---
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# --- OS ---
+.AppleDouble
+.LSOverride
+Icon?
+
+# --- Misc ---
+*.bak
+*.tmp
+*.zip
+*.tar.gz
+*.7z
+mlruns/
+.mlflow/
+wandb/
