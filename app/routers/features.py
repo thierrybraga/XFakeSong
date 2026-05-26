@@ -17,8 +17,10 @@ from app.core.exceptions import (
     UnsupportedFormatError,
     ValidationError,
 )
+from app.core.interfaces.audio import FeatureType
 from app.core.interfaces.base import ProcessingStatus
 from app.core.security import limiter, sanitize_filename
+from app.dependencies import get_feature_extraction_service
 from app.domain.services.feature_extraction_service import AudioFeatureExtractionService
 from app.domain.services.upload_service import AudioUploadService
 from app.schemas.api_models import FeatureExtractionResult
@@ -26,10 +28,7 @@ from app.schemas.api_models import FeatureExtractionResult
 router = APIRouter(prefix="/api/v1/features", tags=["Features"])
 
 SUPPORTED_FORMATS = list(AudioUploadService.SUPPORTED_FORMATS)
-
-
-def get_feature_service():
-    return AudioFeatureExtractionService()
+VALID_FEATURE_TYPES = {ft.value for ft in FeatureType}
 
 
 @router.post(
@@ -41,9 +40,9 @@ def get_feature_service():
 async def extract_features(
     request: Request,
     file: UploadFile = File(...),
-    feature_types: str = Form('["mfcc"]'),
+    feature_types: str = Form('["spectral"]'),
     normalize: bool = Form(True),
-    service: AudioFeatureExtractionService = Depends(get_feature_service),
+    service: AudioFeatureExtractionService = Depends(get_feature_extraction_service),
 ):
     # Validar JSON de feature_types
     try:
@@ -52,7 +51,17 @@ async def extract_features(
             raise ValueError
     except (json.JSONDecodeError, ValueError):
         raise ValidationError(
-            "feature_types deve ser uma lista JSON válida. Ex: ['mfcc', 'chroma']",
+            f"feature_types deve ser uma lista JSON válida. "
+            f"Ex: {list(VALID_FEATURE_TYPES)[:3]}",
+            field="feature_types",
+        )
+
+    # Rejeitar tipos completamente desconhecidos antes de chamar o serviço
+    unknown = [t for t in types_list if t not in VALID_FEATURE_TYPES]
+    if unknown and len(unknown) == len(types_list):
+        raise ValidationError(
+            f"Tipos de feature não reconhecidos: {unknown}. "
+            f"Válidos: {sorted(VALID_FEATURE_TYPES)}",
             field="feature_types",
         )
 
@@ -90,19 +99,26 @@ async def extract_features(
         result = service.extract_single(audio_data, types_list)
 
         if result.status == ProcessingStatus.SUCCESS:
-            serializable_features = {}
-            for k, v in result.data.items():
-                if hasattr(v.data, "tolist"):
-                    serializable_features[k] = v.data.tolist()
+            raw_features = (result.data or {}).get("features") or {}
+            serializable_features: dict = {}
+            for k, v in raw_features.items():
+                if hasattr(v, "tolist"):
+                    serializable_features[k] = v.tolist()
+                elif isinstance(v, (list, dict, str, int, float, bool, type(None))):
+                    serializable_features[k] = v
                 else:
-                    serializable_features[k] = v.data
+                    serializable_features[k] = str(v)
+
+            meta: dict = {
+                "duration": audio_data.duration,
+                "sample_rate": audio_data.sample_rate,
+            }
+            if result.warnings:
+                meta["warnings"] = result.warnings
 
             return FeatureExtractionResult(
                 features=serializable_features,
-                metadata={
-                    "duration": audio_data.duration,
-                    "sample_rate": audio_data.sample_rate,
-                },
+                metadata=meta,
             )
         else:
             raise AudioProcessingError(
@@ -119,8 +135,6 @@ async def extract_features(
 @limiter.limit("30/minute")
 async def list_feature_types(request: Request):
     return {
-        "available_types": [
-            "mfcc", "mel_spectrogram", "chroma",
-            "spectral_contrast", "tonnetz", "raw",
-        ]
+        "available_types": sorted(VALID_FEATURE_TYPES),
+        "active_extractors": ["spectral", "cepstral", "prosodic"],
     }

@@ -12,22 +12,31 @@ Melhorias v2:
 import logging
 from pathlib import Path
 
-import numpy as np
-from matplotlib.figure import Figure
+# FE.8: helpers compartilhados (força backend Agg para matplotlib)
+from app.interfaces.gradio.utils.plotting import get_service_lock  # noqa: F401
 
-import gradio as gr
+import numpy as np  # noqa: E402
+from matplotlib.figure import Figure  # noqa: E402
+
+import gradio as gr  # noqa: E402
 
 logger = logging.getLogger("gradio_voice_profiles_tab")
 
-# Singleton do serviço
+# FE.3: Singleton do serviço com lock thread-safe
 _service_instance = None
+_service_lock = get_service_lock("voice_profiles_service")
 
 
 def _get_service():
+    """Retorna singleton VoiceProfileService — FE.3: thread-safe."""
     global _service_instance
-    if _service_instance is None:
-        from app.domain.services.voice_profile_service import VoiceProfileService
-        _service_instance = VoiceProfileService()
+    if _service_instance is not None:
+        return _service_instance
+    with _service_lock:
+        # Double-checked locking
+        if _service_instance is None:
+            from app.domain.services.voice_profile_service import VoiceProfileService
+            _service_instance = VoiceProfileService()
     return _service_instance
 
 
@@ -40,8 +49,11 @@ def _get_architecture_choices():
         choices.append(("SVM (classical ML)", "svm"))
         choices.append(("Random Forest (classical ML)", "random_forest"))
         return choices
-    except Exception:
-        # Fallback estático
+    except Exception as e:
+        # FE.7: registry pode não estar disponível em ambientes mínimos
+        logger.warning(
+            f"registry indisponível, usando lista estática de arquiteturas: {e}"
+        )
         return [
             ("Sonic Sleuth (audio)", "sonic_sleuth"),
             ("AASIST (audio)", "aasist"),

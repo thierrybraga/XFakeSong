@@ -34,20 +34,34 @@ from .optimization import OptimizerFactory
 class ModelTrainer(IModelTrainer):
     """Implementação do treinador de modelos com prevenção de data leakage."""
 
-    def __init__(self, config: TrainingConfig, use_mixed_precision: bool = False):
+    def __init__(self, config: TrainingConfig, use_mixed_precision: Optional[bool] = None):
+        """
+        Args:
+            config: configuração de treinamento
+            use_mixed_precision: Sprint 3.2 — Se None (default), auto-detecta:
+                habilita mixed_float16 se houver GPU com Compute Capability >= 7.0
+                (Volta+, RTX 20xx+). Setar True/False para forçar.
+        """
         self.config = config
         self.logger = logging.getLogger(__name__)
         self.metrics_calculator = MetricsCalculator()
         self.optimizer_factory = OptimizerFactory()
         self.augmenter = AudioAugmenter(config.augmentation_config)
 
-        # Mixed precision training — 2x faster, same accuracy
+        # Sprint 3.2: Mixed precision (float16) auto-detect em GPU
+        # 2× speedup + metade da VRAM em GPUs Tensor Core (CC >= 7.0).
+        if use_mixed_precision is None:
+            use_mixed_precision = self._should_enable_mixed_precision()
+
         if use_mixed_precision:
             try:
                 tf.keras.mixed_precision.set_global_policy('mixed_float16')
-                self.logger.info("Mixed precision training enabled (float16)")
+                self.logger.info(
+                    "Mixed precision training habilitado (mixed_float16): "
+                    "~2× speedup + ~50% menos VRAM"
+                )
             except Exception as e:
-                self.logger.warning(f"Mixed precision not available: {e}")
+                self.logger.warning(f"Mixed precision indisponível: {e}")
 
         # Configurar pipeline seguro para prevenção de data leakage
         secure_config = SecureTrainingConfig(
@@ -136,9 +150,43 @@ class ModelTrainer(IModelTrainer):
                 train_dataset = train_dataset.batch(self.config.batch_size)
                 steps_per_epoch = None
 
+            # Sprint 2.4: Mixup data augmentation (opt-in).
+            # IMPORTANTE: Mixup produz soft labels, então é incompatível com
+            # losses sparse (sparse_categorical_crossentropy). Quando habilitado,
+            # converte y para one-hot e usa categorical_crossentropy automaticamente.
+            if getattr(self.config, 'use_mixup', False):
+                try:
+                    num_classes = int(self._infer_num_classes(y_train))
+                    alpha = float(getattr(self.config, 'mixup_alpha', 0.2))
+                    train_dataset = self.augmenter.apply_mixup_to_dataset(
+                        train_dataset, alpha=alpha, num_classes=num_classes
+                    )
+                    # Class weighting é incompatível com soft labels do mixup
+                    # (Keras espera int classes em class_weight dict)
+                    self._mixup_enabled = True
+                    self.logger.info(
+                        f"Mixup habilitado: α={alpha}, num_classes={num_classes}"
+                    )
+                except Exception as e:
+                    self.logger.warning(f"Falha ao habilitar Mixup: {e}")
+                    self._mixup_enabled = False
+            else:
+                self._mixup_enabled = False
+
             # Preparar dados de validação
             val_dataset = tf.data.Dataset.from_tensor_slices(validation_data)
             val_dataset = val_dataset.batch(self.config.batch_size)
+
+            # Class weighting automático para datasets desbalanceados
+            # Desabilita quando Mixup está ativo (soft labels não são compatíveis
+            # com class_weight dict de Keras)
+            if self._mixup_enabled:
+                class_weight = None
+                self.logger.info(
+                    "Class weighting pulado (incompatível com Mixup soft labels)"
+                )
+            else:
+                class_weight = self._compute_class_weights(y_train)
 
             # Treinar modelo
             history = model.fit(
@@ -147,8 +195,22 @@ class ModelTrainer(IModelTrainer):
                 validation_data=val_dataset,
                 callbacks=callbacks,
                 steps_per_epoch=steps_per_epoch,
+                class_weight=class_weight,
                 verbose=1
             )
+
+            # Calibração automática de temperatura (post-hoc)
+            self._calibrated_temperature = self._auto_calibrate_temperature(
+                model, validation_data)
+
+            # Sprint 2.5: Calibra threshold de OOD detection no val set
+            self._ood_threshold = self._compute_ood_threshold(
+                model, validation_data, self._calibrated_temperature)
+
+            # Sprint 4.5: Calibra threshold EER (Equal Error Rate) no val set
+            # Habilita threshold adaptativo por modelo na inferência (em vez de 0.5)
+            self._eer_threshold, self._eer_value = self._compute_eer_threshold(
+                model, validation_data, self._calibrated_temperature)
 
             # Calcular métricas finais
             final_metrics = self._calculate_final_metrics(
@@ -202,8 +264,8 @@ class ModelTrainer(IModelTrainer):
             save_dir = Path(save_dir)
             save_dir.mkdir(parents=True, exist_ok=True)
 
-            # Salvar modelo
-            model_path = save_dir / "model.h5"
+            # Salvar modelo no formato nativo Keras 3 (.keras)
+            model_path = save_dir / "model.keras"
             model.save(str(model_path))
 
             # Salvar scaler se disponível
@@ -236,6 +298,11 @@ class ModelTrainer(IModelTrainer):
 
             if scaler_path:
                 artifacts["scaler_path"] = str(scaler_path)
+
+            # Sprint 3.4: ONNX export opcional
+            if getattr(self.config, 'export_onnx', False):
+                onnx_paths = self._export_onnx_artifacts(model, save_dir)
+                artifacts.update(onnx_paths)
 
             self.logger.info(f"Artefatos de treinamento salvos em: {save_dir}")
             return ProcessingResult(
@@ -280,9 +347,12 @@ class ModelTrainer(IModelTrainer):
 
             # Predições para métricas detalhadas
             y_pred = model.predict(X_test, batch_size=self.config.batch_size)
-            y_pred_classes = np.argmax(
-                y_pred, axis=1) if y_pred.shape[1] > 1 else (
-                y_pred > 0.5).astype(int)
+            # Suporta saídas (N,1) sigmoid e (N,K) softmax
+            y_pred_classes = (
+                np.argmax(y_pred, axis=1)
+                if (y_pred.ndim > 1 and y_pred.shape[-1] > 1)
+                else (y_pred.ravel() > 0.5).astype(int)
+            )
 
             # Calcular métricas detalhadas
             detailed_metrics = self.metrics_calculator.calculate_all_metrics(
@@ -377,6 +447,25 @@ class ModelTrainer(IModelTrainer):
         """Prepara callbacks para treinamento."""
         callbacks = []
 
+        # Termina o treinamento imediatamente se NaN/Inf aparecer na loss
+        callbacks.append(tf.keras.callbacks.TerminateOnNaN())
+
+        # Sprint 2.3: Stochastic Weight Averaging (opt-in via TrainingConfig)
+        if getattr(self.config, 'use_swa', False):
+            try:
+                from app.domain.models.training.swa_callback import SWACallback
+                swa_cb = SWACallback(
+                    start_epoch=getattr(self.config, 'swa_start_epoch', -1),
+                    swa_freq=getattr(self.config, 'swa_freq', 1),
+                    bn_update_data=kwargs.get('bn_update_data', None),
+                    verbose=1,
+                )
+                callbacks.append(swa_cb)
+                self._swa_callback = swa_cb  # acessível depois do treino
+                self.logger.info("SWA habilitado")
+            except Exception as e:
+                self.logger.warning(f"Falha ao adicionar SWA callback: {e}")
+
         # Early stopping
         callbacks.append(EarlyStopping(
             monitor='val_loss',
@@ -422,6 +511,197 @@ class ModelTrainer(IModelTrainer):
 
         return callbacks
 
+    @staticmethod
+    def _should_enable_mixed_precision() -> bool:
+        """Sprint 3.2: auto-detecta se mixed precision deve ser habilitado.
+
+        Critério: existe ao menos uma GPU com Compute Capability >= 7.0
+        (Volta+, ou seja: V100, T4, RTX 20xx, RTX 30xx, RTX 40xx, A100, H100).
+        GPUs anteriores (Pascal/Maxwell) não têm Tensor Cores e mixed precision
+        pode até reduzir performance ou causar overflow numérico.
+
+        Retorna False se não houver GPU, ou se a detecção falhar.
+        """
+        try:
+            gpus = tf.config.list_physical_devices('GPU')
+            if not gpus:
+                return False
+            # Inspeciona compute capability via details (TF 2.6+)
+            for gpu in gpus:
+                try:
+                    details = tf.config.experimental.get_device_details(gpu)
+                    cc = details.get('compute_capability')
+                    if cc is not None:
+                        major = cc[0] if isinstance(cc, (list, tuple)) else int(str(cc).split('.')[0])
+                        if major >= 7:
+                            return True
+                except Exception:
+                    # Detalhes não disponíveis — assume seguro habilitar se há GPU
+                    return True
+            return False
+        except Exception:
+            return False
+
+    def _infer_num_classes(self, y: np.ndarray) -> int:
+        """Inferência de num_classes a partir de y (suporta sparse e one-hot)."""
+        y_arr = np.asarray(y)
+        if y_arr.ndim > 1 and y_arr.shape[-1] > 1:
+            return int(y_arr.shape[-1])
+        return max(int(np.unique(y_arr).size), 2)
+
+    def _compute_class_weights(
+        self,
+        y_train: np.ndarray
+    ) -> Optional[Dict[int, float]]:
+        """Calcula pesos por classe para compensar desbalanceamento.
+
+        Usa `sklearn.utils.class_weight.compute_class_weight('balanced')`,
+        equivalente a `n_samples / (n_classes * np.bincount(y))`.
+
+        Returns:
+            Dict {class_idx: weight} ou None se desabilitado/inválido.
+        """
+        if not getattr(self.config, 'use_class_weighting', True):
+            return None
+
+        try:
+            from sklearn.utils.class_weight import compute_class_weight
+
+            # Suporta y one-hot (N, C) e categórico (N,) ou (N, 1)
+            y_arr = np.asarray(y_train)
+            if y_arr.ndim > 1 and y_arr.shape[-1] > 1:
+                y_for_weights = np.argmax(y_arr, axis=-1)
+            else:
+                y_for_weights = y_arr.ravel().astype(int)
+
+            unique_classes = np.unique(y_for_weights)
+            if len(unique_classes) < 2:
+                self.logger.warning(
+                    "Class weighting pulado: apenas 1 classe presente em y_train"
+                )
+                return None
+
+            weights_array = compute_class_weight(
+                'balanced', classes=unique_classes, y=y_for_weights
+            )
+            class_weight = {
+                int(c): float(w)
+                for c, w in zip(unique_classes, weights_array)
+            }
+
+            # Log: contagem por classe + pesos
+            counts = {int(c): int((y_for_weights == c).sum()) for c in unique_classes}
+            self.logger.info(
+                f"Class weighting habilitado | counts={counts} | weights={class_weight}"
+            )
+            return class_weight
+
+        except Exception as e:
+            self.logger.warning(f"Erro ao calcular class weights: {e}")
+            return None
+
+    def _auto_calibrate_temperature(
+        self,
+        model: tf.keras.Model,
+        validation_data: Tuple[np.ndarray, np.ndarray]
+    ) -> float:
+        """Calibração post-hoc de temperatura via grid search no conjunto de validação.
+
+        Implementa Temperature Scaling (Guo et al., ICML 2017): busca o T que
+        minimiza NLL nas predições do val set. O valor é salvo no input_contract
+        e aplicado automaticamente pelo Predictor na inferência.
+
+        Returns:
+            Temperatura calibrada (1.0 se desabilitado/falhar).
+        """
+        default_t = 1.0
+        if not getattr(self.config, 'auto_calibrate_temperature', True):
+            return default_t
+
+        try:
+            X_val, y_val = validation_data
+            min_samples = getattr(self.config, 'calibration_min_samples', 50)
+            if len(X_val) < min_samples:
+                self.logger.info(
+                    f"Calibração de temperatura pulada: val set tem "
+                    f"{len(X_val)} amostras (mínimo {min_samples})"
+                )
+                return default_t
+
+            # Converte y para índices de classe (compatível com calibrate())
+            y_for_calib = np.asarray(y_val)
+            if y_for_calib.ndim > 1 and y_for_calib.shape[-1] > 1:
+                y_for_calib = np.argmax(y_for_calib, axis=-1)
+            else:
+                y_for_calib = y_for_calib.ravel().astype(int)
+
+            # Importação tardia para evitar ciclo (predictor importa do trainer)
+            from app.domain.services.detection.predictor import TemperatureScaler
+
+            scaler = TemperatureScaler()
+            scaler.calibrate(model, X_val, y_for_calib)
+            temperature = float(scaler.temperature)
+            self.logger.info(
+                f"Temperatura calibrada: T={temperature:.3f} "
+                f"({len(X_val)} amostras de val)"
+            )
+            return temperature
+
+        except Exception as e:
+            self.logger.warning(f"Erro na calibração de temperatura: {e}")
+            return default_t
+
+    def _compute_ood_threshold(
+        self,
+        model: tf.keras.Model,
+        validation_data: Tuple[np.ndarray, np.ndarray],
+        temperature: float = 1.0,
+    ) -> Optional[float]:
+        """Sprint 2.5: Calibra threshold de OOD detection no val set.
+
+        Computa energy scores para todas as amostras de validação (que são
+        consideradas in-distribution por construção) e usa o quantil
+        (1 - ood_quantile) como threshold. Amostras com energy score abaixo
+        desse threshold serão flagged como OOD na inferência.
+
+        Args:
+            model: modelo treinado
+            validation_data: (X_val, y_val)
+            temperature: T calibrado (para consistência com energia)
+
+        Returns:
+            Threshold (float) ou None se desabilitado/falhar.
+        """
+        if not getattr(self.config, 'compute_ood_threshold', True):
+            return None
+
+        try:
+            from app.domain.services.detection.predictor import (
+                apply_temperature_scaling,
+                compute_energy_score,
+            )
+
+            X_val, _ = validation_data
+            predictions = model.predict(X_val, batch_size=self.config.batch_size, verbose=0)
+            # Aplica mesma temperatura que será usada em inferência
+            predictions = apply_temperature_scaling(predictions, temperature)
+            energy_scores = compute_energy_score(predictions, temperature=temperature)
+
+            # Threshold = quantil inferior. ood_quantile=0.95 → 5% das amostras
+            # in-distribution com menores energy scores serão falsos positivos OOD.
+            q = 1.0 - float(getattr(self.config, 'ood_quantile', 0.95))
+            threshold = float(np.quantile(energy_scores, q))
+            self.logger.info(
+                f"OOD threshold calibrado: {threshold:.4f} "
+                f"(quantile {q:.2f} de {len(energy_scores)} amostras val | "
+                f"range=[{energy_scores.min():.3f}, {energy_scores.max():.3f}])"
+            )
+            return threshold
+
+        except Exception as e:
+            self.logger.warning(f"Erro ao calibrar OOD threshold: {e}")
+            return None
+
     def _calculate_final_metrics(
         self,
         model: tf.keras.Model,
@@ -432,14 +712,120 @@ class ModelTrainer(IModelTrainer):
 
         # Predições
         y_pred = model.predict(X_val, batch_size=self.config.batch_size)
-        y_pred_classes = np.argmax(
-            y_pred, axis=1) if y_pred.shape[1] > 1 else (
-            y_pred > 0.5).astype(int)
+        # Suporta saídas (N,1) sigmoid e (N,K) softmax
+        y_pred_classes = (
+            np.argmax(y_pred, axis=1)
+            if (y_pred.ndim > 1 and y_pred.shape[-1] > 1)
+            else (y_pred.ravel() > 0.5).astype(int)
+        )
 
         # Calcular métricas
         return self.metrics_calculator.calculate_all_metrics(
             y_val, y_pred_classes, y_pred
         )
+
+    def _compute_eer_threshold(
+        self,
+        model: tf.keras.Model,
+        validation_data: Tuple[np.ndarray, np.ndarray],
+        temperature: float = 1.0,
+    ) -> Tuple[Optional[float], Optional[float]]:
+        """Sprint 4.5: Calibra Equal Error Rate threshold no val set.
+
+        EER é o ponto onde FPR == FNR — métrica padrão em anti-spoofing
+        (ASVspoof). O threshold associado é frequentemente mais informativo
+        que o 0.5 fixo, pois balanceia falsos positivos e falsos negativos.
+
+        Args:
+            model: modelo treinado
+            validation_data: (X_val, y_val)
+            temperature: T calibrado (Sprint 1.4) para consistência
+
+        Returns:
+            (eer_threshold, eer_value), ambos float ou None se falhar.
+            - eer_threshold: score acima do qual classificar como fake
+            - eer_value: valor de EER (taxa de erro no ponto FPR=FNR)
+        """
+        try:
+            from app.domain.services.detection.predictor import apply_temperature_scaling
+
+            X_val, y_val = validation_data
+            predictions = model.predict(X_val, batch_size=self.config.batch_size, verbose=0)
+            predictions = apply_temperature_scaling(predictions, temperature)
+
+            # Extrai score de probabilidade da classe "fake" (índice 1)
+            if predictions.ndim > 1 and predictions.shape[-1] > 1:
+                scores = predictions[:, 1]
+            elif predictions.ndim > 1 and predictions.shape[-1] == 1:
+                scores = predictions[:, 0]
+            else:
+                scores = predictions.ravel()
+
+            # y_val pode ser sparse ou one-hot
+            y_arr = np.asarray(y_val)
+            if y_arr.ndim > 1 and y_arr.shape[-1] > 1:
+                y_true = np.argmax(y_arr, axis=-1)
+            else:
+                y_true = y_arr.ravel().astype(int)
+
+            # Usa MetricsCalculator.calculate_eer (já existente)
+            eer_value, eer_threshold = self.metrics_calculator.calculate_eer(
+                y_true, scores
+            )
+            self.logger.info(
+                f"EER threshold calibrado: T={eer_threshold:.4f}, EER={eer_value:.4f} "
+                f"({len(scores)} amostras val) — alternativa ao threshold 0.5"
+            )
+            return float(eer_threshold), float(eer_value)
+
+        except Exception as e:
+            self.logger.warning(f"Erro ao calibrar EER threshold: {e}")
+            return None, None
+
+    def _export_onnx_artifacts(
+        self,
+        model: tf.keras.Model,
+        save_dir: Path,
+    ) -> Dict[str, str]:
+        """Sprint 3.4: Export ONNX FP32 e INT8 (opcional).
+
+        Degrada graciosamente se tf2onnx/onnxruntime não estão instalados —
+        retorna dict vazio sem levantar exceção (NÃO bloqueia save do .keras).
+        """
+        artifacts: Dict[str, str] = {}
+        try:
+            from app.domain.models.inference.onnx_export import (
+                export_to_onnx,
+                is_onnx_available,
+                quantize_int8,
+            )
+            if not is_onnx_available():
+                self.logger.info(
+                    "ONNX export pulado: tf2onnx/onnxruntime não instalados. "
+                    "Instale com: pip install tf2onnx onnxruntime"
+                )
+                return artifacts
+
+            onnx_path = save_dir / "model.onnx"
+            result = export_to_onnx(model, onnx_path)
+            if result is not None:
+                artifacts["onnx_path"] = str(result)
+
+                # INT8 quantization opcional
+                if getattr(self.config, 'export_onnx_int8', False):
+                    int8_path = save_dir / "model_int8.onnx"
+                    # Usa val set como calibração se disponível
+                    calib_data = None
+                    if hasattr(self, '_test_data'):
+                        X_test, _ = self._test_data
+                        # Pega até 100 amostras para calibração estática
+                        calib_data = X_test[:100].astype(np.float32)
+                    int8_result = quantize_int8(result, int8_path, calib_data)
+                    if int8_result is not None:
+                        artifacts["onnx_int8_path"] = str(int8_result)
+        except Exception as e:
+            self.logger.warning(f"ONNX export falhou (não-crítico): {e}")
+        return artifacts
 
     def _build_input_contract(
         self,
@@ -485,8 +871,23 @@ class ModelTrainer(IModelTrainer):
             "architecture": architecture,
             "feature_types": feature_types,
             "sample_rate": metadata.get('sample_rate', 16000),
-            "scaler_applied": self.get_scaler() is not None and self.get_scaler().scaler is not None
+            "scaler_applied": self.get_scaler() is not None and self.get_scaler().scaler is not None,
+            # Temperatura calibrada (Sprint 1.4) — aplicada na inferência pelo Predictor
+            "temperature": float(getattr(self, '_calibrated_temperature', 1.0)),
         }
+        # Sprint 2.5: OOD threshold (energy-based). None se desabilitado/falhou.
+        ood_t = getattr(self, '_ood_threshold', None)
+        if ood_t is not None:
+            contract["ood_threshold"] = float(ood_t)
+
+        # Sprint 4.5: EER threshold (Equal Error Rate) — alternativa adaptativa
+        # ao threshold 0.5 fixo. Predictor pode usar via flag use_eer_threshold.
+        eer_t = getattr(self, '_eer_threshold', None)
+        eer_v = getattr(self, '_eer_value', None)
+        if eer_t is not None:
+            contract["eer_threshold"] = float(eer_t)
+        if eer_v is not None:
+            contract["eer_value"] = float(eer_v)
         return contract
 
     def predict_with_tta(

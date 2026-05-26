@@ -1,0 +1,64 @@
+# =====================================================================
+# XFakeSong — Build CPU-only (~250MB menor que padrão)
+# =====================================================================
+# Usar:
+#   pip install -r requirements-cpu.txt
+# OU no Dockerfile (override):
+#   ARG TF_VARIANT=cpu
+#   COPY requirements-${TF_VARIANT:-}.txt requirements.txt
+#
+# Compatível com tudo do requirements.txt EXCETO substitui tensorflow
+# pela variante CPU-only (sem CUDA libs).
+# =====================================================================
+
+# Forçar variante CPU.
+# BUG.Install: TF 2.16-2.19 não tem wheels Python 3.13; 2.20+ tem. Subido para <2.22.
+tensorflow-cpu>=2.16,<2.22
+
+# Demais dependências idênticas a requirements.txt
+keras>=3.0,<4.0
+scikit-learn>=1.3,<2.0
+# numba >=0.60 para suporte Python 3.13
+numba>=0.60
+joblib>=1.3
+
+librosa>=0.10
+soundfile>=0.12
+PyWavelets>=1.4
+
+# HuggingFace datasets (scripts de download)
+datasets>=2.14
+
+# numpy: TF 2.20+ requer >=1.26 e aceita 2.x
+numpy>=1.24,<2.3
+pandas>=2.0
+matplotlib>=3.7
+seaborn>=0.13
+
+# BUG.Render.1: pin de versão idêntico ao requirements.txt — evita erro
+# "unhashable type: dict" causado por incompatibilidade gradio<4.31 +
+# starlette>=0.36. Mantenha sincronizado com requirements.txt.
+gradio>=4.31,<5.0
+fastapi>=0.110,<0.116
+starlette>=0.36,<0.42
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9
+httpx>=0.27
+jinja2>=3.1.5
+slowapi>=0.1.9
+a2wsgi>=1.10
+
+sqlalchemy>=2.0
+pydantic>=2.5
+python-dotenv>=1.0
+pyyaml>=6.0
+jsonschema>=4.20
+redis>=5.0
+
+huggingface_hub>=0.20
+requests>=2.31
+
+mkdocs>=1.5
+mkdocs-material>=9.5
+
+pytest>=7.4

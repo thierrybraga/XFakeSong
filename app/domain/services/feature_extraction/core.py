@@ -113,7 +113,7 @@ class FeatureExtractorCore:
 
                 if result.status == ProcessingStatus.SUCCESS:
                     features = result.data
-                    if isinstance(features, AudioFeatures):
+                    if features is not None and isinstance(features, AudioFeatures):
                         if features.features:
                             for key, feature_array in features.features.items():
                                 if isinstance(feature_array, np.ndarray):
@@ -147,52 +147,6 @@ class FeatureExtractorCore:
                         f"Erro na extração de {feature_type}: {result.errors}")
             else:
                 logger.debug(f"Extrator não encontrado para {feature_type}")
-
-        # Extrair features dos extratores do sistema antigo (strings)
-        legacy_extractors = [
-            'formant',
-            'voice_quality',
-            'perceptual',
-            'complexity',
-            'transform',
-            'speech',
-            'cepstral']
-        for extractor_name in legacy_extractors:
-            if extractor_name in self.extractors:
-                extractor = self.extractors[extractor_name]
-                try:
-                    result = extractor.extract(audio_data)
-                    if result.status == ProcessingStatus.SUCCESS:
-                        features = result.data
-                        if isinstance(features, AudioFeatures):
-                            if features.features:
-                                for key, feature_array in features.features.items():
-                                    if isinstance(feature_array, np.ndarray):
-                                        if feature_array.ndim > 1:
-                                            all_features.append(
-                                                feature_array.flatten())
-                                        else:
-                                            all_features.append(feature_array)
-                                    else:
-                                        all_features.append(
-                                            np.array([feature_array]))
-                                    name = f"{extractor_name}_{key}"
-                                    feature_names.append(name)
-                                    features_dict[name] = feature_array
-                        else:
-                            if isinstance(features, np.ndarray):
-                                if features.ndim > 1:
-                                    all_features.append(features.flatten())
-                                else:
-                                    all_features.append(features)
-                            else:
-                                all_features.append(np.array([features]))
-                            all_features.append(features)
-                            feature_names.append(extractor_name)
-                            features_dict[extractor_name] = features
-                except Exception as e:
-                    logger.debug(
-                        f"Exceção na extração de {extractor_name}: {e}")
 
         if all_features:
             try:

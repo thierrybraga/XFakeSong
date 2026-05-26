@@ -40,6 +40,21 @@ class ModelInfo:
     input_shape: tuple
     model_type: str  # 'tensorflow' ou 'sklearn'
     input_contract: Optional[Dict[str, Any]] = None  # Contrato train/inference
+    # Sprint 1.4: temperatura calibrada (post-hoc temperature scaling).
+    # T=1.0 significa sem calibração. T>1.0 reduz a confiança (modelo overconfident),
+    # T<1.0 aumenta a confiança (modelo underconfident).
+    temperature: float = 1.0
+    # Sprint 3.1: função tf.function(jit_compile=True) cacheada para predict
+    # rápida. Construída sob demanda pelo Predictor (lazy).
+    jit_predict_fn: Optional[Any] = None
+    # Sprint 3.3: flag indicando se warm-up já foi feito (1 forward pass de
+    # dummy data para forçar JIT/compile no load)
+    warmed_up: bool = False
+    # Sprint 4.5: EER threshold calibrado no val set durante o treino.
+    # Se != 0.5, predictor pode usar via flag use_eer_threshold para
+    # classificação adaptativa (FAR=FRR ótimo). None = não calibrado.
+    eer_threshold: Optional[float] = None
+    eer_value: Optional[float] = None
 
 
 class ModelLoader:
@@ -55,9 +70,12 @@ class ModelLoader:
         """Carrega todos os modelos disponíveis."""
         logger.info("Carregando modelos disponíveis...")
 
-        # Tentar carregar modelos salvos
-        model_files = list(self.models_dir.glob("*.h5")) + \
+        # Tentar carregar modelos salvos (suporta .keras, .h5 e .pkl)
+        model_files = (
+            list(self.models_dir.glob("*.keras")) +
+            list(self.models_dir.glob("*.h5")) +
             list(self.models_dir.glob("*.pkl"))
+        )
 
         for model_file in model_files:
             try:
@@ -92,10 +110,8 @@ class ModelLoader:
                 logger.warning(f"Erro ao carregar config para {model_name}: {e}")
 
         try:
-            if model_path.suffix == '.h5':
-                # Modelo TensorFlow
-                # Definir custom objects para arquiteturas específicas (ex:
-                # RawNet2)
+            if model_path.suffix in ('.h5', '.keras'):
+                # Modelo TensorFlow/Keras — suporta ambos os formatos
                 custom_objects = {
                     'AudioResamplingLayer': AudioResamplingLayer,
                     'AudioNormalizationLayer': AudioNormalizationLayer,
@@ -161,6 +177,31 @@ class ModelLoader:
             # Extrair input_contract dos metadados (salvo pelo trainer)
             input_contract = metadata.get('input_contract', None)
 
+            # Sprint 1.4: extrair temperatura calibrada do input_contract.
+            # Default 1.0 (sem calibração) se o modelo é legado ou não foi calibrado.
+            temperature = 1.0
+            # Sprint 4.5: EER threshold calibrado (None se modelo legado)
+            eer_threshold: Optional[float] = None
+            eer_value: Optional[float] = None
+            if input_contract and isinstance(input_contract, dict):
+                try:
+                    temperature = float(input_contract.get('temperature', 1.0))
+                except (TypeError, ValueError):
+                    temperature = 1.0
+                # EER fields (Sprint 4.5)
+                eer_t_raw = input_contract.get('eer_threshold')
+                if eer_t_raw is not None:
+                    try:
+                        eer_threshold = float(eer_t_raw)
+                    except (TypeError, ValueError):
+                        pass
+                eer_v_raw = input_contract.get('eer_value')
+                if eer_v_raw is not None:
+                    try:
+                        eer_value = float(eer_v_raw)
+                    except (TypeError, ValueError):
+                        pass
+
             model_info = ModelInfo(
                 name=model_name,
                 architecture=architecture,
@@ -168,16 +209,60 @@ class ModelLoader:
                 scaler=scaler,
                 input_shape=input_shape,
                 model_type=model_type,
-                input_contract=input_contract
+                input_contract=input_contract,
+                temperature=temperature,
+                eer_threshold=eer_threshold,
+                eer_value=eer_value,
             )
 
+            # Sprint 3.3: warm-up do modelo (1 forward pass com zeros) para
+            # forçar JIT compile / layer init / GPU memory allocation.
+            # Primeira inferência fica ~10× mais rápida.
+            if model_type == 'tensorflow':
+                self._warmup_model(model_info)
+
             self.loaded_models[model_name] = model_info
+            calib_str = (
+                f" | T={temperature:.3f} (calibrado)" if temperature != 1.0 else ""
+            )
+            warmup_str = " | warmed-up" if model_info.warmed_up else ""
             logger.info(
-                f"Modelo {model_name} carregado com sucesso ({model_type})")
+                f"Modelo {model_name} carregado com sucesso "
+                f"({model_type}){calib_str}{warmup_str}")
 
         except Exception as e:
             logger.error(f"Erro ao carregar modelo {model_path}: {e}")
             raise
+
+    def _warmup_model(self, model_info: 'ModelInfo') -> None:
+        """Sprint 3.3: warm-up com 1 forward pass de zeros.
+
+        Força:
+        - Alocação de memória GPU (lazy em TF)
+        - Compilação inicial do grafo
+        - JIT compile (se tf.function for usado depois)
+        - Initialização de layers preguiçosas
+
+        Resultado: primeira inferência real fica ~5–10× mais rápida.
+        Falhas são silenciosas (apenas warning) — não afetam o carregamento.
+        """
+        if model_info.input_shape is None:
+            return
+        try:
+            import numpy as np
+            # Cria tensor de zeros no shape esperado pelo modelo
+            shape = (1,) + tuple(
+                int(d) if d is not None else 1 for d in model_info.input_shape
+            )
+            dummy = np.zeros(shape, dtype=np.float32)
+            # Forward pass silencioso
+            _ = model_info.model.predict(dummy, verbose=0, batch_size=1)
+            model_info.warmed_up = True
+            logger.debug(f"Warm-up OK para {model_info.name} (shape={shape})")
+        except Exception as e:
+            # Não-crítico: warm-up é otimização, não correctness
+            logger.debug(f"Warm-up falhou para {model_info.name}: {e}")
+            model_info.warmed_up = False
 
     def _infer_architecture_from_name(self, model_name: str) -> str:
         """Infere a arquitetura baseada no nome do modelo."""
@@ -258,6 +343,29 @@ class ModelLoader:
 
             except Exception as e:
                 logger.warning(f"Erro ao criar modelo {arch_name}: {e}")
+
+    def get_model(self, model_name: str) -> Optional['ModelInfo']:
+        """Retorna ModelInfo por nome com carregamento lazy.
+
+        Primeiro verifica o cache de modelos carregados. Se não encontrado,
+        tenta localizar e carregar o arquivo correspondente no models_dir.
+        """
+        if model_name in self.loaded_models:
+            return self.loaded_models[model_name]
+
+        # Lazy loading: busca nos formatos suportados (ordem de preferência)
+        for suffix in ('.keras', '.h5', '.pkl'):
+            model_file = self.models_dir / f"{model_name}{suffix}"
+            if model_file.exists():
+                try:
+                    self._load_single_model(model_file)
+                    return self.loaded_models.get(model_name)
+                except Exception as e:
+                    logger.warning(
+                        f"Falha ao carregar modelo '{model_name}' de {model_file}: {e}")
+
+        logger.warning(f"Modelo '{model_name}' não encontrado em {self.models_dir}")
+        return None
 
     def get_available_models(self) -> List[str]:
         """Retorna lista de modelos disponíveis (arquivos ou carregados)."""

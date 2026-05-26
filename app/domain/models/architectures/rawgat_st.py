@@ -38,7 +38,7 @@ logger.setLevel(logging.INFO)
 # ============================ FUNÇÕES DE CONSTRUÇÃO DE MODELOS ==========
 
 
-def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architecture: str = "default",
+def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architecture: str = "rawgat_st",
                  dropout_rate: float = 0.2, l2_reg_strength: float = 0.0005,
                  attention_heads: int = 8, hidden_dim: int = 512, num_layers: int = 6) -> models.Model:
     """
@@ -47,9 +47,12 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
     Args:
         input_shape: A forma dos dados de entrada (e.g., (frames, features_dim, 1) para CNN).
         num_classes: Número de classes de saída (padrão é 2 para REAL/FAKE).
-        architecture: O tipo de arquitetura ("default", "cnn_baseline", "bidirectional_gru", "resnet_gru", "transformer", "rawgat_st").
-        dropout_rate: Taxa de dropout.
-        l2_reg_strength: Força da regularização L2.
+        architecture: O tipo de arquitetura.
+
+    Variantes suportadas:
+        - "rawgat_st" (DEFAULT): Paper-faithful (SincNet + GAT spectro-temporal)
+        - "cnn_gru_simple" / "default" (alias legado): CNN 2D + Bi-GRU + Attention
+        - "cnn_baseline" | "bidirectional_gru" | "resnet_gru" | "transformer"
 
     Returns:
         Um modelo Keras compilado.
@@ -59,7 +62,12 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
 
     x = AudioFeatureNormalization(axis=-1, name="audio_norm_layer")(x)
 
+    # Alias "default" -> "rawgat_st" (paper-faithful) por consistência com aasist.
+    # O comportamento antigo (CNN+Bi-GRU) está disponível via "cnn_gru_simple".
     if architecture == "default":
+        architecture = "rawgat_st"
+
+    if architecture == "cnn_gru_simple":
         x = apply_reshape_for_cnn(x, input_shape)
         x = layers.Conv2D(32, (3, 3), activation='relu',
                           padding='same', name="conv1")(x)
@@ -110,35 +118,12 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         else:
             raise ValueError(
                 f"Input shape {input_shape} not suitable for 'bidirectional_gru' architecture.")
-        if tf.config.list_physical_devices('GPU'):
-            logger.info("Usando CuDNNGRU Bidirecional para otimização de GPU.")
-            x = layers.Bidirectional(
-                layers.CuDNNGRU(
-                    128,
-                    return_sequences=True),
-                name="bi_gru1")(x)
-            x = layers.Bidirectional(
-                layers.CuDNNGRU(
-                    64,
-                    return_sequences=True),
-                name="bi_gru2")(x)
-        else:
-            logger.info(
-                "Usando GRU Bidirecional (CPU/compatível com GPU sem CuDNN).")
-            x = layers.Bidirectional(
-                layers.GRU(
-                    128,
-                    return_sequences=True,
-                    dropout=dropout_rate,
-                    recurrent_dropout=dropout_rate),
-                name="bi_gru1")(x)
-            x = layers.Bidirectional(
-                layers.GRU(
-                    64,
-                    return_sequences=True,
-                    dropout=dropout_rate,
-                    recurrent_dropout=dropout_rate),
-                name="bi_gru2")(x)
+        x = layers.Bidirectional(
+            layers.GRU(128, return_sequences=True, dropout=dropout_rate),
+            name="bi_gru1")(x)
+        x = layers.Bidirectional(
+            layers.GRU(64, return_sequences=True, dropout=dropout_rate),
+            name="bi_gru2")(x)
         x = AttentionLayer(name="attention_layer")(x)
 
     elif architecture == "resnet_gru":
@@ -249,13 +234,19 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         # Reshape para aplicar Graph Attention
         # Convertemos a saída da CNN para um formato adequado para GAT
         # Tratamos cada posição espacial como um nó no grafo
+        # NOTA: Em Keras 3, `tf.shape(x)` em KerasTensor levanta exceção; usamos
+        # apenas x.shape (estático) — o batch_size dinâmico não é necessário aqui
+        # porque Reshape lida com batch implicitamente.
         shape_before_gat = x.shape
-        batch_size = tf.shape(x)[0]
-        height, width, channels = shape_before_gat[1], shape_before_gat[2], shape_before_gat[3]
+        height, width, channels = (
+            shape_before_gat[1],
+            shape_before_gat[2],
+            shape_before_gat[3],
+        )
 
         # Reshape para (batch, nodes, features)
         # Cada posição espacial (h,w) se torna um nó com 'channels' features
-        num_nodes = height * width
+        num_nodes = int(height) * int(width)
         x_reshaped = layers.Reshape(
             (num_nodes, channels), name="rawgat_reshape_for_gat")(x)
 
@@ -303,14 +294,14 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
                      kernel_regularizer=regularizers.l2(l2_reg_strength),
                      bias_regularizer=regularizers.l2(l2_reg_strength / 2), name="dense2")(x)
     x = layers.BatchNormalization(name="bn_dense2")(x)
-    x = layers.Dropout(dropout_rate * 1.5, name="final_dropout2")(x)
+    x = layers.Dropout(min(dropout_rate * 1.5, 0.9), name="final_dropout2")(x)
 
     # Camada final antes da saída
     x = layers.Dense(128, activation='relu',
                      kernel_regularizer=regularizers.l2(l2_reg_strength),
                      bias_regularizer=regularizers.l2(l2_reg_strength / 2), name="dense3")(x)
     x = layers.BatchNormalization(name="bn_dense3")(x)
-    x = layers.Dropout(dropout_rate * 2, name="dropout_final")(x)
+    x = layers.Dropout(min(dropout_rate * 2, 0.9), name="dropout_final")(x)
 
     # Camada de saída com regularização
     output_tensor = layers.Dense(num_classes, activation='softmax',

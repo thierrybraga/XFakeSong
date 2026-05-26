@@ -141,19 +141,65 @@ class BaseArchitectureFactory(IArchitectureFactory):
         return self.spec.default_params.copy()
 
     def validate_input_shape(self, input_shape: tuple) -> bool:
-        """Valida formato de entrada."""
+        """Valida formato de entrada.
+
+        Notas:
+        - `input_type` define a família esperada do tensor:
+            * "raw_audio"     → (T, 1) ou (T,) — T >= min_sequence_length
+            * "spectrogram"   → (T, F) ou (T, F, 1) — feature_dim valida F
+            * "any" (default) → não valida shape rigorosamente
+        - Constraints legadas (`feature_dim`, `min_sequence_length`)
+          continuam funcionando para compat.
+        """
         requirements = self.spec.input_requirements
+        input_type = requirements.get("input_type", "any")
 
-        if 'min_sequence_length' in requirements:
-            if len(
-                    input_shape) >= 2 and input_shape[0] < requirements['min_sequence_length']:
+        # --- Validações por input_type ---
+        if input_type == "raw_audio":
+            # Aceita (T, 1) ou (T,) — só checa o min length se especificado
+            if len(input_shape) == 0:
                 return False
+            T = input_shape[0]
+            if "min_sequence_length" in requirements:
+                if T < requirements["min_sequence_length"]:
+                    return False
+            # Se for (T, C), C deve ser 1
+            if len(input_shape) >= 2 and input_shape[-1] != 1:
+                # Permitir (T, 1) ou (T,), rejeitar (T, K>1) para raw audio
+                if len(input_shape) == 2:
+                    return False
+            return True
 
-        if 'feature_dim' in requirements:
-            if len(
-                    input_shape) >= 2 and input_shape[1] != requirements['feature_dim']:
+        if input_type == "spectrogram":
+            # Aceita (T, F) ou (T, F, 1)
+            if len(input_shape) < 2:
                 return False
+            T = input_shape[0]
+            F = input_shape[1]
+            if "min_sequence_length" in requirements:
+                if T < requirements["min_sequence_length"]:
+                    return False
+            if "feature_dim" in requirements:
+                if F != requirements["feature_dim"]:
+                    return False
+            # (T, F, 1) — terceira dim deve ser 1
+            if len(input_shape) == 3 and input_shape[2] != 1:
+                return False
+            return True
 
+        # --- Caminho legado (compat com specs sem input_type) ---
+        if "min_sequence_length" in requirements:
+            if (
+                len(input_shape) >= 2
+                and input_shape[0] < requirements["min_sequence_length"]
+            ):
+                return False
+        if "feature_dim" in requirements:
+            if (
+                len(input_shape) >= 2
+                and input_shape[1] != requirements["feature_dim"]
+            ):
+                return False
         return True
 
     def get_input_requirements(self) -> Dict[str, Any]:
@@ -227,18 +273,22 @@ class ArchitectureFactoryRegistry:
         """Registra arquiteturas padrão do sistema."""
 
         # AASIST
+        # Nota: variant "default" agora é alias para "aasist" (paper-faithful).
+        # Para o comportamento antigo (CNN+Bi-GRU), use "cnn_gru_simple".
+        # O default opera em áudio bruto (T, 1); variantes legadas em espectrograma.
         self.register_factory(ArchitectureSpec(
             name="AASIST",
             module_path="app.domain.models.architectures.aasist",
             factory_function="create_model",
-            description="Anti-spoofing Audio Spoofing and Deepfake Detection",
+            description="Anti-spoofing Audio Spoofing and Deepfake Detection (SincConv + GAT + HS-GAL)",
             supported_variants=[
-                "default",
+                "aasist",            # paper-faithful (default)
+                "default",           # alias -> aasist
+                "cnn_gru_simple",    # CNN 2D + Bi-GRU + Attention (legado)
                 "cnn_baseline",
                 "bidirectional_gru",
                 "resnet_gru",
-                "transformer",
-                "aasist"],
+                "transformer"],
             default_params={
                 # create_model params: dropout_rate, l2_reg_strength, hidden_dim, num_layers
                 "dropout_rate": 0.2,
@@ -246,25 +296,35 @@ class ArchitectureFactoryRegistry:
                 "hidden_dim": 512,
                 "num_layers": 8,
             },
-            input_requirements={"min_sequence_length": 100, "feature_dim": 80},
+            input_requirements={
+                "input_type": "raw_audio",
+                "min_sequence_length": 16000,  # >=1s @ 16kHz
+                "sample_rate": 16000,
+            },
             output_requirements={
                 "type": "classification",
                 "activation": "sigmoid"}
         ))
 
         # RawGAT-ST
+        # Nota: A implementação atual de "rawgat_st" usa Conv2D + GAT operando em
+        # espectrograma (apesar do nome sugerir áudio bruto). Para áudio bruto
+        # paper-faithful (SincNet+GAT spectro-temporal), use a variante "aasist"
+        # da arquitetura AASIST como proxy.
+        # Variant "default" é alias para "rawgat_st" (CNN2D+GAT).
         self.register_factory(ArchitectureSpec(
             name="RawGAT-ST",
             module_path="app.domain.models.architectures.rawgat_st",
             factory_function="create_model",
-            description="Raw Graph Attention Spatio-Temporal Network",
+            description="Graph Attention Spatio-Temporal (Conv2D + GAT em espectrograma)",
             supported_variants=[
-                "default",
+                "rawgat_st",         # CNN2D + GAT em espectrograma (default)
+                "default",           # alias -> rawgat_st
+                "cnn_gru_simple",    # CNN 2D + Bi-GRU + Attention (legado)
                 "cnn_baseline",
                 "bidirectional_gru",
                 "resnet_gru",
-                "transformer",
-                "rawgat_st"],
+                "transformer"],
             default_params={
                 # create_model params: dropout_rate, l2_reg_strength, attention_heads, hidden_dim, num_layers
                 "dropout_rate": 0.2,
@@ -273,7 +333,11 @@ class ArchitectureFactoryRegistry:
                 "hidden_dim": 512,
                 "num_layers": 6,
             },
-            input_requirements={"min_sequence_length": 100, "feature_dim": 80},
+            input_requirements={
+                "input_type": "spectrogram",
+                "min_sequence_length": 100,
+                "feature_dim": 80,
+            },
             output_requirements={
                 "type": "classification",
                 "activation": "sigmoid"}
@@ -291,7 +355,11 @@ class ArchitectureFactoryRegistry:
                 "lstm_units": 256,
                 "dropout_rate": 0.3,
             },
-            input_requirements={"min_sequence_length": 100, "feature_dim": 80},
+            input_requirements={
+                "input_type": "spectrogram",
+                "min_sequence_length": 100,
+                "feature_dim": 80,
+            },
             output_requirements={
                 "type": "classification",
                 "activation": "sigmoid"}
@@ -310,7 +378,11 @@ class ArchitectureFactoryRegistry:
                 "scale": 8,
                 "dropout_rate": 0.2,
             },
-            input_requirements={"min_sequence_length": 100, "feature_dim": 80},
+            input_requirements={
+                "input_type": "spectrogram",
+                "min_sequence_length": 100,
+                "feature_dim": 80,
+            },
             output_requirements={
                 "type": "classification",
                 "activation": "sigmoid"}
@@ -324,11 +396,16 @@ class ArchitectureFactoryRegistry:
             description="Transformer-based model for spectrogram analysis",
             supported_variants=[
                 "spectrogram_transformer",
+                "default",           # alias -> spectrogram_transformer
                 "spectrogram_transformer_lite"],
             default_params={
                 # create_model params: architecture only (no model hyperparams accepted)
             },
-            input_requirements={"min_sequence_length": 100, "feature_dim": 80},
+            input_requirements={
+                "input_type": "spectrogram",
+                "min_sequence_length": 100,
+                "feature_dim": 80,
+            },
             output_requirements={
                 "type": "classification",
                 "activation": "sigmoid"}
@@ -340,11 +417,18 @@ class ArchitectureFactoryRegistry:
             module_path="app.domain.models.architectures.conformer",
             factory_function="create_model",
             description="Conformer: Convolution-augmented Transformer",
-            supported_variants=["conformer", "conformer_lite"],
+            supported_variants=[
+                "conformer",
+                "default",           # alias -> conformer
+                "conformer_lite"],
             default_params={
                 # create_model params: architecture only (no model hyperparams accepted)
             },
-            input_requirements={"min_sequence_length": 100, "feature_dim": 80},
+            input_requirements={
+                "input_type": "spectrogram",
+                "min_sequence_length": 100,
+                "feature_dim": 80,
+            },
             output_requirements={
                 "type": "classification",
                 "activation": "sigmoid"}
@@ -358,13 +442,15 @@ class ArchitectureFactoryRegistry:
             description="Ensemble of multiple architectures",
             supported_variants=[
                 "ensemble",
+                "ensemble_score",
                 "ensemble_lite",
-                "ensemble_feature_fusion",
-                "ensemble_hybrid"],
-            default_params={
-                "ensemble_method": "weighted_average",
-                "fusion_method": "prediction_level"},
-            input_requirements={"min_sequence_length": 100, "feature_dim": 80},
+                "ensemble_adaptive"],
+            default_params={},
+            input_requirements={
+                "input_type": "spectrogram",
+                "min_sequence_length": 100,
+                "feature_dim": 80,
+            },
             output_requirements={
                 "type": "classification",
                 "activation": "sigmoid"}
@@ -376,12 +462,17 @@ class ArchitectureFactoryRegistry:
             module_path="app.domain.models.architectures.sonic_sleuth",
             factory_function="create_model",
             description="CNN especializada para detecção de deepfake usando espectrogramas de mel",
-            supported_variants=["sonic_sleuth"],
+            supported_variants=["sonic_sleuth", "default"],
             default_params={
                 "sample_rate": 16000, "n_fft": 2048, "hop_length": 512,
                 "n_mels": 256, "dropout_rate": 0.2, "filters": [64, 128, 256, 512]
             },
-            input_requirements={"max_duration": 3.0, "sample_rate": 16000},
+            input_requirements={
+                "input_type": "spectrogram",
+                "max_duration": 3.0,
+                "sample_rate": 16000,
+                # Aceita (T, F, 1) ou (T, F); F deve casar com n_mels via param
+            },
             output_requirements={
                 "type": "classification",
                 "activation": "sigmoid"}
@@ -393,7 +484,7 @@ class ArchitectureFactoryRegistry:
             module_path="app.domain.models.architectures.rawnet2",
             factory_function="create_model",
             description="Arquitetura de rede neural que opera diretamente no áudio bruto",
-            supported_variants=["rawnet2", "rawnet2_lite"],
+            supported_variants=["rawnet2", "rawnet2_lite", "default"],
             default_params={
                 # create_model params: sinc_filters, sinc_kernel_size, res_filters, gru_units, dense_units, dropout_rate
                 "sinc_filters": 128,
@@ -404,8 +495,11 @@ class ArchitectureFactoryRegistry:
                 "dropout_rate": 0.3,
             },
             input_requirements={
-                "type": "audio", "format": "raw", "sample_rate": 16000,
-                "max_duration": 5.0, "preprocessing": "normalize"
+                "input_type": "raw_audio",
+                "min_sequence_length": 16000,
+                "sample_rate": 16000,
+                "max_duration": 5.0,
+                "preprocessing": "normalize",
             },
             output_requirements={
                 "type": "classification",
@@ -418,7 +512,7 @@ class ArchitectureFactoryRegistry:
             module_path="app.domain.models.architectures.wavlm",
             factory_function="create_model",
             description="Arquitetura de dois estágios com WavLM pré-treinado",
-            supported_variants=["wavlm", "wavlm_lite"],
+            supported_variants=["wavlm", "wavlm_lite", "default"],
             default_params={
                 "wavlm_model": "microsoft/wavlm-large",
                 "freeze_wavlm": True,
@@ -426,8 +520,11 @@ class ArchitectureFactoryRegistry:
                 "dropout_rate": 0.2
             },
             input_requirements={
-                "type": "audio", "format": "raw", "sample_rate": 16000,
-                "max_duration": 10.0, "preprocessing": "normalize"
+                "input_type": "raw_audio",
+                "min_sequence_length": 16000,
+                "sample_rate": 16000,
+                "max_duration": 10.0,
+                "preprocessing": "normalize",
             },
             output_requirements={
                 "type": "classification",
@@ -440,7 +537,7 @@ class ArchitectureFactoryRegistry:
             module_path="app.domain.models.architectures.hubert",
             factory_function="create_model",
             description="Arquitetura HuBERT padrão para detecção de deepfakes",
-            supported_variants=["hubert", "hubert_lite"],
+            supported_variants=["hubert", "hubert_lite", "default"],
             default_params={
                 # create_model params: model_name, freeze_hubert, classifier_hidden_dim, dropout_rate
                 "model_name": "facebook/hubert-base-ls960",
@@ -449,8 +546,11 @@ class ArchitectureFactoryRegistry:
                 "dropout_rate": 0.3,
             },
             input_requirements={
-                "type": "audio", "format": "raw", "sample_rate": 16000,
-                "max_duration": 10.0, "preprocessing": "normalize"
+                "input_type": "raw_audio",
+                "min_sequence_length": 16000,
+                "sample_rate": 16000,
+                "max_duration": 10.0,
+                "preprocessing": "normalize",
             },
             output_requirements={
                 "type": "classification",
@@ -465,6 +565,7 @@ class ArchitectureFactoryRegistry:
             description="Arquitetura híbrida que combina CNNs com Transformers",
             supported_variants=[
                 "hybrid_cnn_transformer",
+                "default",  # alias -> hybrid_cnn_transformer
                 "hybrid_cnn_transformer_lite"],
             default_params={
                 # create_model params: projection_dim, num_heads, transformer_layers,
@@ -478,9 +579,12 @@ class ArchitectureFactoryRegistry:
                 "use_positional_emb": True,
             },
             input_requirements={
-                "min_sequence_length": 100, "feature_dim": 80,
-                "supports_1d_input": True, "supports_2d_input": True,
-                "preprocessing": "spectrogram_or_raw"
+                "input_type": "spectrogram",
+                "min_sequence_length": 100,
+                "feature_dim": 80,
+                "supports_1d_input": True,
+                "supports_2d_input": True,
+                "preprocessing": "spectrogram_or_raw",
             },
             output_requirements={
                 "type": "classification",

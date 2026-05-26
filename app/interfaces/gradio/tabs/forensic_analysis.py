@@ -96,7 +96,11 @@ def run_forensic_analysis(audio_path):
                             segment_confidences.append(conf)
                             segment_times.append(
                                 (start + segment_samples / 2) / sr)
-                    except Exception:
+                    except Exception as e:
+                        # FE.7: log do segmento que falhou (útil em loops grandes)
+                        logger.debug(
+                            f"Segmento [{start}:{start+segment_samples}] falhou: {e}"
+                        )
                         segment_confidences.append(0.5)
                         segment_times.append(
                             (start + segment_samples / 2) / sr)
@@ -319,8 +323,9 @@ def export_batch_report(files):
                             'duration': float(len(y) / sr)
                         })
                         continue
-            except Exception:
-                pass
+            except Exception as e:
+                # FE.7: log do nome do arquivo que falhou para debug
+                logger.debug(f"Detection batch falhou em {filename}: {e}")
             results.append({
                 'filename': filename,
                 'is_fake': False,

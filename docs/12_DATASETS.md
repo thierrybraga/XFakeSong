@@ -78,13 +78,44 @@ pa = load_dataset("LanceaKing/asvspoof2019", "PA")
 - Licença/Obtenção: Disponível via Kaggle; requer login e aceite dos termos.
 - Observação: Verifique integridade e balanceamento antes de uso em produção.
 
-## Organização Sugerida no Projeto
-- Armazene datasets sob `datasets/` com subpastas por nome e split:
-  - `datasets/<nome>/train`, `datasets/<nome>/dev`, `datasets/<nome>/test`
-- Para datasets multimodais, crie pastas separadas:
-  - `datasets/<nome>/audio/...`, `datasets/<nome>/video/...`
-- Mantenha um `metadata.json` com:
-  - fonte (URL), licença, data de obtenção, comandos de pré-processamento.
+## Organização no Projeto
+
+O XFakeSong usa uma estrutura de dois estágios em `app/datasets/`:
+
+```
+app/datasets/
+├── real/           # Áudios genuínos (após download/exportação)
+├── fake/           # Áudios sintéticos/deepfake
+├── splits/         # Gerado por scripts/preprocess_dataset.py --create-splits
+│   ├── train/
+│   │   ├── real/
+│   │   └── fake/
+│   ├── val/
+│   │   ├── real/
+│   │   └── fake/
+│   └── test/
+│       ├── real/
+│       └── fake/
+├── features/       # Features extraídas (numpy/JSON)
+├── raw/            # Arquivos brutos antes de normalização
+└── splits_metadata.json
+```
+
+**Passos típicos:**
+1. Baixar dados: `python scripts/dataset_download.py` → exporta para `real/`
+2. Dados fake: `python scripts/setup_fake_dataset.py` ou coloque em `fake/`
+3. Pré-processar: `python scripts/preprocess_dataset.py --full`
+4. Splits prontos em `app/datasets/splits/`
+
+Para datasets multimodais, crie subpastas separadas:
+```
+app/datasets/
+└── <nome>/
+    ├── audio/
+    └── video/
+```
+
+Mantenha um `metadata.json` por dataset com: fonte (URL), licença, data de obtenção, comandos de pré-processamento.
 
 ## Referências
 - ASVspoof 2019 — DataShare: https://datashare.ed.ac.uk/handle/10283/3336 [fonte]

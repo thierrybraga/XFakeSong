@@ -134,11 +134,31 @@ Modelos baseados em `scikit-learn` encapsulados para seguir a interface do proje
 | **HuBERT** | Áudio Bruto | `(batch, samples, 1)` | Resampling 16kHz |
 | **WavLM** | Áudio Bruto | `(batch, samples, 1)` | Resampling 16kHz |
 | **Conformer** | Features | `(batch, time, freq)` | Positional Encoding (Interno) |
+| **Sonic Sleuth** | Áudio Bruto | `(batch, samples,)` | LFCC/MFCC/CQT extraído no modelo |
+| **EfficientNet-LSTM** | Áudio Bruto / Espectrograma | `(batch, samples,)` | Mel + Delta (interno) → resize 224×224 |
+| **MultiscaleCNN** | Áudio Bruto / Espectrograma | `(batch, time, freq)` | STFT + log-mel (interno) |
+| **SpectrogramTransformer** | Áudio Bruto / Espectrograma | `(batch, time, freq)` | STFT + ConvStem (interno) |
+| **Ensemble** | Áudio Bruto | `(batch, samples,)` | Mel/LFCC/CQT/MFCC extraído no modelo |
+| **Hybrid CNN-Transformer** | Áudio Bruto / Espectrograma | `(batch, samples,)` | Mel + CCT Tokenizer (interno) |
 | **SVM** | Features (Flat) | `(batch, n_features)` | Scaling (Interno no Pipeline) |
-| **RandomForest**| Features (Flat) | `(batch, n_features)` | N/A |
+| **RandomForest** | Features (Flat) | `(batch, n_features)` | N/A |
 
 ## Considerações de Implementação
 
 *   **Batching:** Todos os modelos esperam a primeira dimensão como o tamanho do lote (`batch_size`). Para inferência de uma única amostra, deve-se expandir a dimensão: `input[np.newaxis, ...]`.
-*   **GPU vs CPU:** As arquiteturas Deep Learning (Keras) detectam automaticamente a presença de GPU. Algumas camadas (como GRU) possuem implementações condicionais (`CuDNNGRU` vs `GRU`) para otimizar desempenho em cada hardware.
+*   **GPU vs CPU:** As arquiteturas Deep Learning (Keras) detectam automaticamente a presença de GPU. A camada `GRU` padrão já utiliza o kernel cuDNN automaticamente quando as condições são atendidas (ativações padrão, sem `recurrent_dropout`). `CuDNNGRU` foi removido nas versões recentes do Keras/TF e não é mais necessário.
 *   **Segurança:** O carregamento de pesos utiliza `safe_normalization` e verificações de integridade para evitar execução de código malicioso em arquivos `.h5` ou `.keras`.
+
+## Otimizações de Performance (Sprint 3)
+
+*   **XLA JIT (Sprint 3.1):** O `Predictor` envolve cada modelo Keras em `tf.function(jit_compile=True, reduce_retracing=True)` cacheada em `ModelInfo.jit_predict_fn`. 1.5–3× speedup em arquiteturas suportadas (MultiscaleCNN, EfficientNet-LSTM, Conformer, CCT, SpectrogramTransformer, RawNet2). Arquiteturas com STFT in-graph ou graph attention dinâmico (Sonic Sleuth, Ensemble, WavLM, HuBERT, AASIST, RawGAT-ST) usam predict padrão (fallback automático).
+*   **Model warm-up (Sprint 3.3):** Ao carregar um modelo TensorFlow, o `ModelLoader` faz 1 forward pass com tensor de zeros — força alocação de memória GPU, JIT compile, layer init. A primeira inferência real fica 5–10× mais rápida. Flag `model_info.warmed_up=True` indica sucesso.
+*   **ONNX export (Sprint 3.4):** Modelos podem ser exportados para `.onnx` (FP32) e `.onnx INT8` durante o treino (flags `export_onnx`, `export_onnx_int8` em `TrainingConfig`). Use `OnnxInferenceSession` para deploy 2–3× mais rápido em CPU e 4× menor footprint. Requer `pip install tf2onnx onnxruntime`.
+
+```python
+# Inferência via ONNX Runtime (sem TensorFlow no deploy)
+from app.domain.models.inference.onnx_export import OnnxInferenceSession
+
+with OnnxInferenceSession('app/models/model_int8.onnx') as session:
+    predictions = session.predict(features)  # (N, K)
+```

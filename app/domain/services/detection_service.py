@@ -29,7 +29,28 @@ class DetectionService(IDetectionService):
     def __init__(self, models_dir: Union[str, Path] = "models"):
         self.models_dir = Path(models_dir)
         self.feature_service = AudioFeatureExtractionService()
-        self.device = "CPU"  # Dispositivo padrão
+
+        # GPU.11: Dispositivo padrão = GPU se TF detectou GPU física, senão CPU.
+        # Override via env DEEPFAKE_DEVICE ("CPU" | "GPU:0" | "/GPU:1" etc).
+        import os
+        env_dev = os.environ.get("DEEPFAKE_DEVICE", "").strip()
+        if env_dev:
+            self.device = env_dev
+        else:
+            try:
+                # Usa app.core.gpu (já configurado em main.py / gradio_app.py)
+                from app.core.gpu import is_gpu_available
+                self.device = "GPU:0" if is_gpu_available() else "CPU"
+            except Exception:
+                # Fallback: detecção direta sem efeitos colaterais
+                try:
+                    import tensorflow as tf
+                    self.device = (
+                        "GPU:0" if tf.config.list_physical_devices("GPU") else "CPU"
+                    )
+                except Exception:
+                    self.device = "CPU"
+        logger.info(f"DetectionService device default: {self.device}")
 
         # Inicializar sub-serviços
         self.model_loader = ModelLoader(self.models_dir)
@@ -109,15 +130,39 @@ class DetectionService(IDetectionService):
                 return prediction_result
             prediction = prediction_result.data
 
+            # Sempre reporta p_fake/p_real (chaves novas) ou deriva de
+            # confidence (caminho legado). Garante consistência mesmo se o
+            # predictor for substituído por outro.
+            p_fake = prediction.get('p_fake')
+            p_real = prediction.get('p_real')
+            if p_fake is None or p_real is None:
+                conf = float(prediction.get('confidence', 0.5))
+                if prediction.get('is_deepfake', False):
+                    p_fake, p_real = conf, 1.0 - conf
+                else:
+                    p_real, p_fake = conf, 1.0 - conf
+
+            # Propaga metadados de calibração/OOD/threshold quando presentes
+            extra_meta = {
+                k: v for k, v in prediction.items()
+                if k in ('temperature_applied', 'ood_score', 'is_ood',
+                         'ood_threshold', 'classification_threshold',
+                         'epistemic_uncertainty', 'predictive_entropy',
+                         'is_uncertain', 'n_mc_samples')
+            }
+            metadata_combined = dict(extraction_info)
+            metadata_combined.update(extra_meta)
+
             result = DeepfakeDetectionResult(
                 is_fake=prediction['is_deepfake'],
-                confidence=prediction['confidence'],
+                confidence=float(prediction['confidence']),
                 probabilities={
-                    'fake': prediction['confidence'],
-                    'real': 1.0 - prediction['confidence']},
+                    'fake': float(p_fake),
+                    'real': float(p_real),
+                },
                 model_name=model_name,
                 features_used=extraction_info.get('config_feature_types', []),
-                metadata=extraction_info
+                metadata=metadata_combined,
             )
             return ProcessingResult(
                 status=ProcessingStatus.SUCCESS, data=result)
@@ -418,6 +463,152 @@ class DetectionService(IDetectionService):
             return ProcessingResult(
                 status=ProcessingStatus.ERROR,
                 errors=[f"Erro na segmentação: {str(e)}"]
+            )
+
+    def detect_multi_model(
+        self,
+        audio_data: AudioData,
+        model_names: List[str],
+        fusion: str = 'weighted_avg',
+        weights: Optional[List[float]] = None,
+        use_tta: bool = False,
+    ) -> ProcessingResult[DeepfakeDetectionResult]:
+        """Sprint 4.4: detecção via fusão de múltiplos modelos.
+
+        Executa cada modelo no áudio e combina as predições. Útil para
+        aumentar accuracy via ensemble heterogêneo (ex: AASIST + Conformer + RawNet2).
+
+        Args:
+            audio_data: AudioData a ser analisada
+            model_names: lista de nomes de modelos a usar
+            fusion: estratégia de fusão:
+                - 'weighted_avg' (default): média ponderada das confidences
+                - 'majority_vote': voto majoritário (>=ceil(N/2) modelos)
+                - 'max_conf': pega resultado do modelo mais confiante
+                - 'soft_voting': média simples das probabilidades fake
+            weights: pesos por modelo (default: uniforme). Aplicável só em 'weighted_avg'.
+            use_tta: se True, aplica TTA em cada modelo individual
+
+        Returns:
+            ProcessingResult[DeepfakeDetectionResult] com:
+                - confidence/is_fake do consenso
+                - metadata['per_model']: dict com resultado de cada modelo
+                - metadata['fusion']: estratégia utilizada
+                - metadata['model_agreement']: float [0,1]
+        """
+        try:
+            if not model_names:
+                return ProcessingResult(
+                    status=ProcessingStatus.ERROR,
+                    errors=["Lista de modelos vazia"],
+                )
+
+            valid_fusions = {'weighted_avg', 'majority_vote', 'max_conf', 'soft_voting'}
+            if fusion not in valid_fusions:
+                return ProcessingResult(
+                    status=ProcessingStatus.ERROR,
+                    errors=[f"Fusion '{fusion}' inválida. Use: {valid_fusions}"],
+                )
+
+            # Pesos default: uniforme
+            if weights is None:
+                weights = [1.0 / len(model_names)] * len(model_names)
+            else:
+                if len(weights) != len(model_names):
+                    return ProcessingResult(
+                        status=ProcessingStatus.ERROR,
+                        errors=[
+                            f"Tamanho de weights ({len(weights)}) != "
+                            f"model_names ({len(model_names)})"
+                        ],
+                    )
+                # Normaliza pesos
+                w_sum = sum(weights)
+                weights = [w / w_sum for w in weights] if w_sum > 0 else \
+                          [1.0 / len(weights)] * len(weights)
+
+            # Executa cada modelo
+            per_model_results: List[Dict] = []
+            for name in model_names:
+                single_result = self.detect_single(
+                    audio_data, model_name=name, use_tta=use_tta
+                )
+                if single_result.status == ProcessingStatus.SUCCESS:
+                    r = single_result.data
+                    per_model_results.append({
+                        'model': name,
+                        'is_fake': bool(r.is_fake),
+                        'confidence': float(r.confidence),
+                        'fake_prob': float(r.probabilities.get('fake', r.confidence)),
+                        'metadata': r.metadata,
+                    })
+                else:
+                    logger.warning(
+                        f"Modelo '{name}' falhou: {single_result.errors}"
+                    )
+
+            if not per_model_results:
+                return ProcessingResult(
+                    status=ProcessingStatus.ERROR,
+                    errors=["Todos os modelos falharam"],
+                )
+
+            # Aplica estratégia de fusão
+            fake_probs = np.array([r['fake_prob'] for r in per_model_results])
+            valid_weights = np.array(weights[:len(per_model_results)])
+            valid_weights = valid_weights / valid_weights.sum()  # re-normaliza
+
+            if fusion == 'weighted_avg':
+                fused_prob = float(np.sum(fake_probs * valid_weights))
+            elif fusion == 'soft_voting':
+                fused_prob = float(np.mean(fake_probs))
+            elif fusion == 'majority_vote':
+                votes_fake = sum(1 for r in per_model_results if r['is_fake'])
+                fused_prob = votes_fake / len(per_model_results)
+                # Confidence = max distância de 0.5
+                fused_prob = 1.0 if votes_fake > len(per_model_results) / 2 else 0.0
+                # Use mean fake_prob como confidence interno
+                if 0.4 < np.mean(fake_probs) < 0.6:
+                    fused_prob = float(np.mean(fake_probs))
+            elif fusion == 'max_conf':
+                # Pega resultado do modelo mais "confiante" (distância de 0.5)
+                distances = np.abs(fake_probs - 0.5)
+                max_idx = int(np.argmax(distances))
+                fused_prob = float(fake_probs[max_idx])
+
+            fused_is_fake = fused_prob > 0.5
+
+            # Métricas auxiliares
+            fake_votes = sum(1 for r in per_model_results if r['is_fake'])
+            agreement = max(fake_votes, len(per_model_results) - fake_votes) / len(per_model_results)
+
+            fused_result = DeepfakeDetectionResult(
+                is_fake=fused_is_fake,
+                confidence=float(fused_prob),
+                probabilities={
+                    'fake': float(fused_prob),
+                    'real': float(1.0 - fused_prob),
+                },
+                model_name=f"multi[{','.join(model_names)}]",
+                features_used=['multi_model'],
+                metadata={
+                    'fusion': fusion,
+                    'weights': list(map(float, valid_weights.tolist())),
+                    'per_model': per_model_results,
+                    'model_agreement': float(agreement),
+                    'n_models': len(per_model_results),
+                    'fake_votes': int(fake_votes),
+                },
+            )
+            return ProcessingResult(
+                status=ProcessingStatus.SUCCESS, data=fused_result
+            )
+
+        except Exception as e:
+            logger.error(f"Erro em detect_multi_model: {e}")
+            return ProcessingResult(
+                status=ProcessingStatus.ERROR,
+                errors=[f"Erro em fusão multi-modelo: {str(e)}"],
             )
 
     def save_analysis_result(self, result: DeepfakeDetectionResult, filename: str) -> bool:

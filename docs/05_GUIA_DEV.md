@@ -35,12 +35,26 @@ O sistema gera artefatos durante a execução:
 
 ## Adicionando Dependências
 
-Se instalar um novo pacote pip, lembre-se de atualizar o `requirements.txt`:
+Adicione o pacote com versão mínima diretamente ao `requirements.txt`. Não use `pip freeze` — ele congela versões transitivas desnecessárias.
 
 ```bash
-pip freeze > requirements.txt
+# Adicionar manualmente ao requirements.txt:
+# nome-do-pacote>=X.Y
+
+# Depois instalar:
+pip install -r requirements.txt
 ```
 
-## Testes (Recomendação)
+## Testes
 
-Embora o sistema atual foque em implementação funcional, recomenda-se criar testes unitários para novos extratores em `tests/` (a ser criado), espelhando a estrutura de `app/`.
+Crie testes em `tests/`, espelhando a estrutura de `app/`:
+
+```
+tests/
+├── unit/         # Componentes isolados (extratores, serviços)
+├── integration/  # Fluxos entre módulos (pipeline completo)
+├── api/          # Endpoints HTTP (status, payloads)
+└── functional/   # Fluxos de usuário end-to-end
+```
+
+Rode os testes com `pytest tests/` (ver [`06_TESTES.md`](06_TESTES.md)).

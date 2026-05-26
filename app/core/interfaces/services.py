@@ -15,15 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from .audio import AudioData, AudioFeatures, DeepfakeDetectionResult
-from .base import IRepository, ProcessingResult
-
-
-class DatasetType(Enum):
-    """Tipos de dataset."""
-    TRAINING = "training"
-    VALIDATION = "validation"
-    TEST = "test"
-    PRODUCTION = "production"
+from .base import DatasetType, IRepository, ProcessingResult
 
 
 class StorageType(Enum):

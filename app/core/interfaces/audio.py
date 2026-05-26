@@ -38,6 +38,7 @@ class FeatureType(Enum):
     FORMANT = "formant"
     VOICE_QUALITY = "voice_quality"
     COMPLEXITY = "complexity"
+    CUSTOM = "custom"
 
 
 @dataclass

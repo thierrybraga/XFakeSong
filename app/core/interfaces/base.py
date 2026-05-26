@@ -23,6 +23,7 @@ class ProcessingStatus(Enum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     SUCCESS = "success"
+    PARTIAL_SUCCESS = "partial_success"
     ERROR = "error"
     WARNING = "warning"
     CANCELLED = "cancelled"
@@ -33,6 +34,7 @@ class DatasetType(Enum):
     TRAINING = "training"
     VALIDATION = "validation"
     TEST = "test"
+    PRODUCTION = "production"
 
 
 @dataclass

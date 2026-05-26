@@ -375,20 +375,23 @@ def create_spectrogram_transformer_model(
         outputs=outputs,
         name='spectrogram_transformer_model')
 
-    # Compile model
-    model.compile(
-        optimizer=tf.keras.optimizers.AdamW(
-            learning_rate=1e-4,
-            weight_decay=1e-5,
-            beta_1=0.9,
-            beta_2=0.999
-        ),
-        loss=loss,
-        metrics=['accuracy']
+    # Sprint 2.2: WarmupCosineDecay default para Transformers.
+    # Warmup linear estabiliza Self-Attention nas primeiras épocas
+    # (gradientes grandes) e cosine decay melhora convergência final.
+    from app.domain.models.training.optimization import create_warmup_cosine_optimizer
+    optimizer = create_warmup_cosine_optimizer(
+        initial_learning_rate=1e-4,
+        warmup_steps=1000,
+        decay_steps=50000,
+        weight_decay=1e-5,
+        alpha=1e-7,
     )
 
+    model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
+
     logger.info(
-        f"Spectrogram Transformer model created successfully with {model.count_params()} parameters")
+        f"Spectrogram Transformer model created successfully with {model.count_params()} parameters "
+        f"(WarmupCosineDecay: warmup=1000, decay=50000)")
     return model
 
 
@@ -434,6 +437,10 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int,
     Returns:
         Compiled Keras model
     """
+    # Alias "default" → variante paper-faithful (consistente com AASIST/RawGAT-ST)
+    if architecture == 'default':
+        architecture = 'spectrogram_transformer'
+
     if architecture == 'spectrogram_transformer':
         return create_spectrogram_transformer_model(
             input_shape, num_classes, architecture=architecture)

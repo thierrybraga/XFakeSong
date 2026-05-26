@@ -18,7 +18,7 @@ from fastapi import (
 )
 
 from app.core.auth.auth_handler import get_api_key
-from app.core.exceptions import DatasetNotFoundError, ValidationError
+from app.core.exceptions import AudioProcessingError, DatasetNotFoundError, ValidationError
 from app.core.interfaces.base import DatasetType, ProcessingStatus
 from app.core.security import limiter, sanitize_filename
 from app.dependencies import get_upload_service
@@ -111,8 +111,13 @@ async def create_dataset(
     service: AudioUploadService = Depends(get_upload_service),
 ):
     dataset_type = _validate_dataset_type(type)
-    metadata = service.create_dataset(name, dataset_type, description)
-    return metadata
+    result = service.create_dataset(name, dataset_type, description)
+    if result.status == ProcessingStatus.ERROR:
+        raise ValidationError(
+            result.errors[0] if result.errors else "Erro ao criar dataset",
+            field="name",
+        )
+    return result.data
 
 
 @router.post(
@@ -134,12 +139,14 @@ async def upload_to_dataset(
     if not dataset_dir.exists():
         raise DatasetNotFoundError(name)
 
-    # Sanitizar filename antes de salvar
-    safe_name = sanitize_filename(file.filename or "upload.wav")
+    safe_name = sanitize_filename(file.filename or "upload.wav") or "upload.wav"
     dest_path = dataset_dir / safe_name
 
-    with open(dest_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    try:
+        with open(dest_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except OSError as exc:
+        raise AudioProcessingError(f"Erro ao salvar arquivo: {exc}")
 
     return {
         "status": "success",

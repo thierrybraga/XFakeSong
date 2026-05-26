@@ -31,7 +31,7 @@ Módulo dedicado ao treinamento de modelos de Deep Learning, com validação cru
 - **Linguagem**: Python 3.11+
 - **Interface**: Gradio
 - **Processamento de Áudio**: Librosa, NumPy, SciPy
-- **Machine Learning**: PyTorch / TensorFlow (a verificar na implementação final)
+- **Machine Learning**: Keras 3 / TensorFlow, scikit-learn
 - **Arquitetura**: Clean Architecture, Pipeline Pattern
 
 ## Próximos Passos

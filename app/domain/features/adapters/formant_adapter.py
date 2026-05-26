@@ -34,7 +34,7 @@ class FormantExtractorWrapper(IFeatureExtractor):
 
             audio_features = AudioFeatures(
                 features=normalized_features,
-                feature_type=FeatureType.PROSODIC,
+                feature_type=FeatureType.FORMANT,
                 extraction_params=self.get_extraction_params(),
                 audio_metadata={"extractor": "formant"}
             )
@@ -53,7 +53,7 @@ class FormantExtractorWrapper(IFeatureExtractor):
         return self.extract(audio_data)
 
     def get_feature_type(self) -> FeatureType:
-        return FeatureType.PROSODIC
+        return FeatureType.FORMANT
 
     def get_feature_names(self) -> List[str]:
         return self.extractor.get_feature_names()

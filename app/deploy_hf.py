@@ -2,6 +2,15 @@ import getpass
 
 from huggingface_hub import HfApi, create_repo, login
 
+# Compatibilidade: HfFolder foi removido em huggingface_hub >= 0.16
+# Criar um shim para evitar erros de import transitive
+try:
+    from huggingface_hub import HfFolder  # noqa: F401
+except ImportError:
+    class HfFolder:
+        """Shim para HfFolder removido em versoes recentes de huggingface_hub."""
+        pass
+
 
 def deploy_interface():
     print("===============================================================================")

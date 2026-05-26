@@ -32,19 +32,17 @@ def ensure_flat_input(x, input_shape=None):
         return layers.Lambda(lambda t: tf.reduce_mean(t, axis=-1, keepdims=True), name="ensure_flat_mean")(x)
     return x
 
-def apply_gru_block(x, units, return_sequences=True, go_backwards=False, name=None):
+def apply_gru_block(x, units, return_sequences=True, go_backwards=False, dropout_rate=0.0, name=None):
     """
     Apply GRU block compatible with both CPU and GPU.
-    Uses CuDNNGRU if available (via standard GRU with default activation),
-    otherwise standard GRU.
+    Standard GRU automatically uses the cuDNN kernel when conditions are met
+    (default activations, no recurrent_dropout, unroll=False).
     """
-    # In TensorFlow 2.x, layers.GRU will use CuDNN implementation automatically
-    # if activation='tanh' and recurrent_activation='sigmoid' (defaults)
-    # and unroll=False, use_bias=True.
     return layers.GRU(
         units,
         return_sequences=return_sequences,
         go_backwards=go_backwards,
+        dropout=dropout_rate,
         name=name
     )(x)
 
@@ -61,11 +59,11 @@ def flatten_features_for_gru(x, name=None):
              shape_before_gru[2] *
              shape_before_gru[3]), name=name)(x)
     else:
-        # Dynamic shape
-        shape_tensor = tf.shape(x)
-        # We want to keep time dimension (1) and flatten the rest (2 and 3)
-        # Reshape to (batch, time, -1)
-        x = layers.Reshape((shape_tensor[1], -1), name=name)(x)
+        # Dynamic shape: Lambda avoids Reshape receiving a tensor in the shape tuple
+        x = layers.Lambda(
+            lambda t: tf.reshape(t, [tf.shape(t)[0], tf.shape(t)[1], -1]),
+            name=name
+        )(x)
     return x
 
 def apply_reshape_for_cnn(tensor, target_shape):
@@ -638,7 +636,7 @@ class WeightedSumLayer(layers.Layer):
     def build(self, input_shape):
         # input_shape should be a list of tensors [layer1, layer2, ..., layerN]
         # each with shape (batch, time, feature_dim)
-        self.weights = self.add_weight(
+        self._layer_weights = self.add_weight(
             name='layer_weights',
             shape=(self.num_layers,),
             initializer='zeros',
@@ -652,7 +650,7 @@ class WeightedSumLayer(layers.Layer):
             return inputs
 
         # Softmax to ensure weights sum to 1
-        normalized_weights = tf.nn.softmax(self.weights)
+        normalized_weights = tf.nn.softmax(self._layer_weights)
 
         # Weighted sum
         weighted_inputs = []

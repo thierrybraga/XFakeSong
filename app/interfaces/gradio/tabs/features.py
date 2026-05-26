@@ -1,34 +1,43 @@
-import librosa
-import librosa.display
-import matplotlib.pyplot as plt
-import numpy as np
+import logging
 
-import gradio as gr
-from app.core.interfaces.audio import AudioData, FeatureType
-from app.domain.services.feature_extraction_service import (
+# FE.8: helpers compartilhados (configura matplotlib Agg + paleta dark)
+from app.interfaces.gradio.utils.plotting import (
+    PLOT_BG,
+    PLOT_FACE,
+    PLOT_GRID,
+    PLOT_TEXT,
+    safe_tight_layout,
+    style_ax,
+)
+
+import librosa  # noqa: E402
+import librosa.display  # noqa: E402
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+
+import gradio as gr  # noqa: E402
+from app.core.interfaces.audio import AudioData, FeatureType  # noqa: E402
+from app.domain.services.feature_extraction_service import (  # noqa: E402
     AudioFeatureExtractionService,
     ExtractionConfig,
 )
 
-# ── Estilo dark para plots ─────────────────────────────────────
-_PLOT_BG = "#0f172a"
-_PLOT_FACE = "#1e293b"
-_PLOT_TEXT = "#f1f5f9"
-_PLOT_GRID = "#334155"
+logger = logging.getLogger("gradio_features_tab")
+
+# Aliases legados (compatibilidade com código abaixo)
+_PLOT_BG = PLOT_BG
+_PLOT_FACE = PLOT_FACE
+_PLOT_TEXT = PLOT_TEXT
+_PLOT_GRID = PLOT_GRID
 
 
 def _style_feat_ax(ax, fig, title=""):
-    """Aplica estilo dark a um eixo matplotlib."""
-    fig.patch.set_facecolor(_PLOT_BG)
-    ax.set_facecolor(_PLOT_FACE)
-    ax.set_title(title, color=_PLOT_TEXT, fontweight="600", fontsize=12, pad=10)
-    ax.tick_params(colors=_PLOT_TEXT, labelsize=9)
-    for lbl in (ax.xaxis.label, ax.yaxis.label):
-        lbl.set_color(_PLOT_TEXT)
-        lbl.set_fontsize(10)
-    for spine in ax.spines.values():
-        spine.set_color(_PLOT_GRID)
-    ax.grid(True, color=_PLOT_GRID, alpha=0.3, linewidth=0.5)
+    """Aplica estilo dark a um eixo matplotlib.
+
+    Wrapper sobre style_ax compartilhado (FE.8) — mantida por
+    compatibilidade com chamadas existentes neste módulo.
+    """
+    style_ax(ax, fig, title=title)
 
 
 def create_features_tab():
@@ -237,7 +246,11 @@ def create_features_tab():
                                 # Amostra pequena
                                 "sample_values": v.flatten()[:20].tolist()
                             }
-                        except Exception:
+                        except Exception as e:
+                            # FE.7: log do feature que falhou para debug
+                            logger.debug(
+                                f"Stats falhou para feature '{k}' shape={v.shape}: {e}"
+                            )
                             stats_md += (
                                 f"| `{k}` | `{v.shape}` | - | - | - | - |\n"
                             )

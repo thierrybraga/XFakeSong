@@ -138,14 +138,31 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
         """Extrai características de um áudio."""
         try:
             feature_type_enums = []
+            invalid_types = []
             for ft_str in feature_types:
                 try:
                     feature_type_enums.append(FeatureType(ft_str))
                 except ValueError:
-                    continue
+                    invalid_types.append(ft_str)
+
+            if not feature_type_enums:
+                valid_values = [ft.value for ft in FeatureType]
+                return ProcessingResult(
+                    status=ProcessingStatus.ERROR,
+                    errors=[
+                        f"Nenhum tipo de feature válido fornecido. "
+                        f"Tipos inválidos: {invalid_types}. "
+                        f"Válidos: {valid_values}"
+                    ],
+                )
 
             config = ExtractionConfig(feature_types=feature_type_enums)
             result = self.extract_features(audio_data, config)
+
+            warnings = (
+                [f"Tipos ignorados (não reconhecidos): {', '.join(invalid_types)}"]
+                if invalid_types else []
+            )
 
             if result.status == ProcessingStatus.SUCCESS:
                 return ProcessingResult(
@@ -154,7 +171,8 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
                         "features": (
                             result.data.features if result.data else None
                         )
-                    }
+                    },
+                    warnings=warnings,
                 )
             else:
                 return result

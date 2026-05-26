@@ -1,17 +1,9 @@
-from flask import Flask, jsonify, redirect
+# Legacy Flask startup — superseded by app/main_fastapi.py (FastAPI + Gradio).
+# Retained as a thin compatibility shim so existing imports do not break.
+
+from app.main_fastapi import app
 
 
 def create_app(config=None):
-    # Flask app mantido apenas para compatibilidade se houver rotas legadas
-    # mas o banco agora é FastAPI nativo.
-    app = Flask(__name__)
-
-    @app.get("/")
-    def home():
-        return redirect("/gradio/", code=302)
-
-    @app.get("/api/v1/system/bootstrap")
-    def bootstrap():
-        return jsonify({"status": "ok"})
-
+    """Compatibility shim — returns the FastAPI application instance."""
     return app

@@ -436,7 +436,11 @@ def create_training_tab():
                         try:
                             arch_info = get_architecture_info(arch)
                             input_reqs = arch_info.input_requirements
-                        except Exception:
+                        except Exception as e:
+                            # FE.7: log do nome da arch para debug
+                            logger.debug(
+                                f"input_requirements indisponível para {arch}: {e}"
+                            )
                             input_reqs = {}
 
                         req_type = input_reqs.get("type", "audio")
@@ -490,6 +494,87 @@ def create_training_tab():
                                 None, None, None, None, None
                             )
                             return
+
+                        # BUG.Training.4: binariza labels (real vs fake).
+                        # audio_dataset_from_directory enumera subdiretórios:
+                        #   data/bonafide/   -> label 0
+                        #   data/spoof_a05/  -> label 1
+                        #   data/spoof_a06/  -> label 2  ← BUG: model com num_classes=2 rejeita
+                        #   data/spoof_a07/  -> label 3  ← BUG
+                        # Solução: classifica pelo NOME do diretório (real vs fake)
+                        # via heurística + remapeamento via dataset.map(...).
+                        import re
+
+                        _REAL_PATTERNS = re.compile(
+                            r"^(real|bonafide|genuine|original|authentic|natural)",
+                            re.IGNORECASE,
+                        )
+
+                        def _is_real_dirname(name: str) -> bool:
+                            return bool(_REAL_PATTERNS.match(name.strip()))
+
+                        class_names = list(getattr(train_ds, "class_names", []))
+                        if not class_names:
+                            class_names = ["class0", "class1"]
+
+                        # Mapa: índice original (do diretório) -> binário (0=real, 1=fake)
+                        binary_map = {}
+                        for idx, name in enumerate(class_names):
+                            binary_map[idx] = 0 if _is_real_dirname(name) else 1
+
+                        n_real = sum(1 for v in binary_map.values() if v == 0)
+                        n_fake = sum(1 for v in binary_map.values() if v == 1)
+
+                        # Log informativo
+                        mapping_repr = ", ".join(
+                            f"{class_names[i]}({i})->{binary_map[i]}"
+                            for i in range(len(class_names))
+                        )
+                        logger.info(
+                            f"Dataset com {len(class_names)} subdiretórios. "
+                            f"Mapeamento real/fake: {mapping_repr} "
+                            f"({n_real} real, {n_fake} fake)"
+                        )
+
+                        if n_real == 0 or n_fake == 0:
+                            yield (
+                                "Erro Dataset",
+                                f"Não foi possível identificar classes real/fake.\n"
+                                f"Subdiretórios encontrados: {class_names}\n"
+                                f"Esperado: ao menos 1 nome iniciando com "
+                                f"'real|bonafide|genuine' E 1 outro (spoof/fake/...).\n"
+                                f"Exemplo válido:\n"
+                                f"  data/real/audio1.wav\n"
+                                f"  data/fake/audio2.wav\n"
+                                f"OU:\n"
+                                f"  data/bonafide/...\n"
+                                f"  data/spoof_a05/...",
+                                None, None, None, None,
+                                None, None, None, None, None
+                            )
+                            return
+
+                        # Tabela tf.constant para remapeamento eficiente in-graph
+                        _bin_table = tf.constant(
+                            [binary_map[i] for i in range(len(class_names))],
+                            dtype=tf.int32,
+                        )
+
+                        def _binarize_labels(audio, label):
+                            return audio, tf.gather(_bin_table, label)
+
+                        train_ds = train_ds.map(
+                            _binarize_labels,
+                            num_parallel_calls=tf.data.AUTOTUNE,
+                        )
+                        val_ds = val_ds.map(
+                            _binarize_labels,
+                            num_parallel_calls=tf.data.AUTOTUNE,
+                        )
+
+                        # Guarda metadata para usar adiante (logs, plots)
+                        dataset_class_names = class_names
+                        dataset_binary_map = binary_map
 
                         # 2. Pré-processamento On-the-Fly (se necessário)
                         input_shape = (AUDIO_LEN, 1)

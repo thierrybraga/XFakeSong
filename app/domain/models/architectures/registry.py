@@ -241,7 +241,8 @@ class ArchitectureRegistry:
                 supported_variants=[
                     "ensemble",
                     "ensemble_score",
-                    "ensemble_lite"],
+                    "ensemble_lite",
+                    "ensemble_adaptive"],
                 default_params={
                     "dropout_rate": 0.3,
                     "use_mfcc_branch": True,

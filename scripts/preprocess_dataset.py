@@ -342,15 +342,15 @@ def main():
     parser.add_argument("--full", action="store_true", help="Executar pipeline completo")
     parser.add_argument(
         "--train-ratio", type=float, default=0.70,
-        help="Proporcao de treino (default: 0.70 — alinhado com TCC)",
+        help="Proporção de treino (default: 0.70)",
     )
     parser.add_argument(
         "--val-ratio", type=float, default=0.15,
-        help="Proporcao de validacao (default: 0.15 — alinhado com TCC)",
+        help="Proporção de validação (default: 0.15)",
     )
     parser.add_argument(
         "--test-ratio", type=float, default=0.15,
-        help="Proporcao de teste (default: 0.15 — alinhado com TCC)",
+        help="Proporção de teste (default: 0.15)",
     )
 
     args = parser.parse_args()

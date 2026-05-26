@@ -50,8 +50,18 @@ class RelativePositionalEncoding(layers.Layer):
         pe[:, 0::2] = np.sin(position * div_term)
         pe[:, 1::2] = np.cos(position * div_term)
 
-        # Shape: (1, max_len, d_model) - non-trainable
-        self.pe = tf.constant(pe[np.newaxis, :, :], dtype=tf.float32)
+        # Shape: (1, max_len, d_model) - registered as non-trainable weight
+        # Em Keras 3, tensores criados em build() via tf.constant ficam "out of
+        # scope" no call() do modelo funcional. Usar add_weight com
+        # trainable=False resolve, pois o tensor passa a ser uma Variable
+        # rastreável pelo grafo.
+        self.pe = self.add_weight(
+            name="pe",
+            shape=(1, self.max_len, self.d_model),
+            initializer=tf.keras.initializers.Constant(pe[np.newaxis, :, :]),
+            trainable=False,
+            dtype="float32",
+        )
 
         super(RelativePositionalEncoding, self).build(input_shape)
 
@@ -64,6 +74,7 @@ class RelativePositionalEncoding(layers.Layer):
         Returns:
             pos_enc: (1, seq_len, d_model) - positional encoding
         """
+        # Keras 3 prefere keras.ops.shape para evitar "tf.shape on KerasTensor"
         seq_len = tf.shape(inputs)[1]
         # Return encodings reversed (from seq_len-1 to 0) for relative attention
         return self.pe[:, :seq_len, :]
@@ -774,6 +785,10 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int,
     Returns:
         Compiled Keras model
     """
+    # Alias "default" → variante paper-faithful (consistente com AASIST/RawGAT-ST)
+    if architecture == 'default':
+        architecture = 'conformer'
+
     if architecture == 'conformer':
         # Conformer optimized for anti-spoofing
         return create_conformer_model(

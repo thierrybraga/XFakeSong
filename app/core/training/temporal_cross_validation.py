@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
-from core.interfaces.base import ProcessingResult, ProcessingStatus
+from app.core.interfaces.base import ProcessingResult, ProcessingStatus
 from sklearn.metrics import (
     accuracy_score,
     f1_score,
@@ -200,16 +200,15 @@ class TemporalCrossValidator:
                 f"Validação cruzada concluída. Accuracy média: {aggregated_metrics['accuracy']['mean']:.4f} ± {aggregated_metrics['accuracy']['std']:.4f}")
 
             return ProcessingResult(
-                success=True,
+                status=ProcessingStatus.SUCCESS,
                 data=results,
-                status=ProcessingStatus.COMPLETED
             )
 
         except Exception as e:
             self.logger.error(f"Erro na validação cruzada temporal: {str(e)}")
             return ProcessingResult(
                 status=ProcessingStatus.ERROR,
-                errors=[str(e)]
+                errors=[str(e)],
             )
 
     def _calculate_fold_metrics(self, y_true: np.ndarray, y_pred: np.ndarray,
@@ -429,7 +428,7 @@ def run_temporal_cross_validation(model_factory, X: np.ndarray, y: np.ndarray,
     # Executar validação
     cv_result = validator.validate_model(model_factory, X, y, timestamps)
 
-    if not cv_result.success:
+    if not cv_result.is_success:
         return cv_result
 
     # Analisar resultados
@@ -446,7 +445,6 @@ def run_temporal_cross_validation(model_factory, X: np.ndarray, y: np.ndarray,
         validator.save_cv_results(cv_results, results_path)
 
     return ProcessingResult(
-        success=True,
+        status=ProcessingStatus.SUCCESS,
         data=cv_results,
-        status=ProcessingStatus.COMPLETED
     )

@@ -1,52 +1,155 @@
-# Usar imagem oficial leve do Python
-FROM python:3.11-slim
+# syntax=docker/dockerfile:1.7
+# =====================================================================
+# XFakeSong — Multi-stage Dockerfile
+# =====================================================================
+# Stage 1 (builder): instala dependências de compilação e gera wheels
+# Stage 2 (runtime): imagem slim com apenas runtime libs + wheels
+# Resultado: ~60% menor que single-stage, sem gcc/dev libs em produção
+# =====================================================================
 
-# Definir variáveis de ambiente para evitar arquivos .pyc e logs em buffer
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+ARG PYTHON_VERSION=3.11
+# PROD.7: TF_VARIANT controla qual requirements usar.
+#   - "" (default): requirements.txt — TF com CUDA libs (~700MB)
+#   - "cpu": requirements-cpu.txt — tensorflow-cpu, ~450MB menor.
+# Build:  docker build --build-arg TF_VARIANT=cpu .
+ARG TF_VARIANT=""
 
-# Instalar dependências de sistema necessárias
-# ffmpeg é crucial para processamento de áudio (librosa)
-# curl é necessário para o healthcheck
-# gosu para downgrade de privilégios no entrypoint
-RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    libsndfile1 \
-    gcc \
-    curl \
-    gosu \
-    && apt-get clean \
+# ---------- Stage 1: BUILDER ----------
+FROM python:${PYTHON_VERSION}-slim AS builder
+
+ARG TF_VARIANT
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_DEFAULT_TIMEOUT=120
+
+# Dependências de COMPILAÇÃO (só no builder, não na imagem final)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        gcc \
+        g++ \
+        libsndfile1-dev \
+        libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Criar usuário não-privilegiado
-RUN useradd -m -u 1000 appuser
+WORKDIR /build
 
-# Definir diretório de trabalho
+# Aproveita cache de layer: requirements raramente muda comparado ao código.
+# PROD.7: copia ambos os requirements; seleciona qual instalar via TF_VARIANT.
+COPY requirements.txt requirements-cpu.txt* ./
+
+# Cria virtualenv isolado e instala dependências
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+RUN pip install --upgrade pip setuptools wheel && \
+    if [ "${TF_VARIANT}" = "cpu" ] && [ -f requirements-cpu.txt ]; then \
+        echo "[Dockerfile] Usando requirements-cpu.txt (tensorflow-cpu)"; \
+        pip install -r requirements-cpu.txt; \
+    else \
+        echo "[Dockerfile] Usando requirements.txt (tensorflow padrão)"; \
+        pip install -r requirements.txt; \
+    fi
+
+# =====================================================================
+# ---------- Stage 2: RUNTIME ----------
+FROM python:${PYTHON_VERSION}-slim AS runtime
+
+# Metadata OCI — útil para registries (GHCR, Docker Hub, etc.)
+LABEL org.opencontainers.image.title="XFakeSong" \
+      org.opencontainers.image.description="Deepfake audio detection platform" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.source="https://github.com/XFakeSong/XFakeSong" \
+      org.opencontainers.image.documentation="https://github.com/XFakeSong/XFakeSong/tree/main/docs"
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONHASHSEED=random \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    # TF: evita logs verbose, usa só CPU por default (override em runtime)
+    TF_CPP_MIN_LOG_LEVEL=2 \
+    TF_FORCE_GPU_ALLOW_GROWTH=true \
+    # Gradio (PROD.1): desabilita telemetria — evita timeout em ambientes
+    # sem internet de saída + acelera boot.
+    GRADIO_ANALYTICS_ENABLED=False \
+    # PROD.4: temp dir explícito (default /tmp/gradio pode estar em tmpfs cheio)
+    GRADIO_TEMP_DIR=/tmp/gradio \
+    # Escuta em todas as interfaces
+    GRADIO_SERVER_NAME=0.0.0.0 \
+    GRADIO_SERVER_PORT=7860 \
+    # Numba/librosa cache em diretório writable
+    NUMBA_CACHE_DIR=/tmp/numba_cache \
+    MPLCONFIGDIR=/tmp/matplotlib \
+    HF_HOME=/tmp/huggingface \
+    # Backend matplotlib não-interativo (Docker headless)
+    MPLBACKEND=Agg \
+    PATH="/opt/venv/bin:$PATH"
+
+# Apenas RUNTIME libs (sem gcc/dev) — imagem final menor
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        libsndfile1 \
+        libgomp1 \
+        curl \
+        tini \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
+
+# Cria usuário não-root ANTES de criar diretórios
+ARG APP_UID=1000
+ARG APP_GID=1000
+RUN groupadd --system --gid ${APP_GID} appuser && \
+    useradd --system --uid ${APP_UID} --gid appuser --shell /bin/bash --create-home appuser
+
+# Copia venv pronto do builder (sem precisar reinstalar)
+COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
+
 WORKDIR /app
 
-# Copiar arquivo de dependências
-COPY requirements.txt .
+# Cria estrutura de diretórios com permissão correta UMA VEZ
+# PROD.4: /tmp/gradio também aqui (Gradio cria sob demanda mas pode falhar
+# em ambientes com /tmp restritivo).
+RUN mkdir -p \
+        /app/logs \
+        /app/app/models \
+        /app/app/results \
+        /app/data/fake \
+        /app/data/real \
+        /tmp/numba_cache \
+        /tmp/matplotlib \
+        /tmp/huggingface \
+        /tmp/gradio \
+    && chown -R appuser:appuser \
+        /app \
+        /tmp/numba_cache /tmp/matplotlib /tmp/huggingface /tmp/gradio
 
-# Instalar dependências Python
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
-
-# Copiar script de entrypoint e dar permissão de execução
-COPY docker-entrypoint.sh /usr/local/bin/
+# Entrypoint
+COPY --chown=appuser:appuser docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Copiar o restante do código da aplicação
-COPY . .
+# Código da aplicação (em layer separada do venv para cache eficiente)
+COPY --chown=appuser:appuser . .
 
-# Criar diretórios necessários e ajustar permissões
-RUN mkdir -p logs app/models app/results data/fake data/real && \
-    chown -R appuser:appuser /app
+# Drop para usuário não-privilegiado (sem gosu)
+USER appuser
 
-# Expor a porta do Gradio
 EXPOSE 7860
 
-# Definir Entrypoint
-ENTRYPOINT ["docker-entrypoint.sh"]
+# Healthcheck no Dockerfile (PROD.2 + PROD.9):
+# - Usa /api/v1/system/health (responde rápido SEM precisar do Gradio carregado)
+# - Fallback para raiz / (Gradio HTML)
+# - start_period 180s permite TF + Keras + load de modelos terminar
+HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=5 \
+    CMD curl -fsSL -o /dev/null --max-time 5 \
+            http://127.0.0.1:7860/api/v1/system/health \
+        || curl -fsSL -o /dev/null --max-time 5 \
+            http://127.0.0.1:7860/ \
+        || exit 1
 
-# Comando padrão
+# tini como PID 1 — handle correto de signals (SIGTERM, SIGINT)
+ENTRYPOINT ["tini", "--", "docker-entrypoint.sh"]
+
 CMD ["python", "main.py", "--gradio", "--gradio-port", "7860"]
