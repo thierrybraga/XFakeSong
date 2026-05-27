@@ -1,10 +1,7 @@
 import logging
 from typing import Any, Dict
 
-try:
-    from app.domain.services.pipeline_validator import validate_pipeline
-except ImportError:
-    validate_pipeline = None
+validate_pipeline = None  # pipeline_validator removido — validação modular desabilitada
 
 logger = logging.getLogger(__name__)
 
