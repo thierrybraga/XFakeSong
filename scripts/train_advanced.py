@@ -41,7 +41,7 @@ sys.path.insert(0, str(BASE_DIR))
 SAMPLE_RATE = 16_000
 MAX_AUDIO_SAMPLES_CPU = 16_000   # 1s @ 16kHz — CPU training
 MAX_AUDIO_SAMPLES_GPU = 80_000   # 5s @ 16kHz — GPU training (raw-audio models)
-MAX_AUDIO_SAMPLES     = MAX_AUDIO_SAMPLES_CPU   # updated by setup_gpu()
+MAX_AUDIO_SAMPLES     = MAX_AUDIO_SAMPLES_CPU   # updated in main() after GPU setup
 RESULTS_DIR = BASE_DIR / "results"
 
 # Arquiteturas que exigem GPU para convergir (raw-audio / heavy backbones)
@@ -56,50 +56,9 @@ ARCHITECTURES = {
     "ensemble_adaptive": ("app.domain.models.architectures.ensemble",          "ensemble_adaptive"),
 }
 
-# GPU state — set by setup_gpu()
+# GPU state — set in main() via app.core.gpu
 GPU_AVAILABLE: bool = False
 STRATEGY = None
-
-
-def setup_gpu() -> "tf.distribute.Strategy":
-    """Detect GPU, enable memory growth and mixed precision.
-
-    Returns a tf.distribute.Strategy suitable for the available hardware:
-    - MirroredStrategy  (multi-GPU)
-    - OneDeviceStrategy('/GPU:0')  (single GPU)
-    - default Strategy  (CPU-only)
-    """
-    global GPU_AVAILABLE, STRATEGY, MAX_AUDIO_SAMPLES
-    import tensorflow as tf
-
-    gpus = tf.config.list_physical_devices("GPU")
-    if gpus:
-        try:
-            for gpu in gpus:
-                tf.config.experimental.set_memory_growth(gpu, True)
-            # Mixed precision: float16 compute, float32 weights → ~2× speedup on
-            # Tensor Cores (Volta / Turing / Ampere).  Output layers must be cast
-            # to float32 explicitly (handled in each architecture).
-            tf.keras.mixed_precision.set_global_policy("mixed_float16")
-            logger.info(
-                f"GPU detectada: {len(gpus)} dispositivo(s). "
-                "Mixed precision (float16) ativado."
-            )
-            GPU_AVAILABLE = True
-            MAX_AUDIO_SAMPLES = MAX_AUDIO_SAMPLES_GPU
-            STRATEGY = (
-                tf.distribute.MirroredStrategy()
-                if len(gpus) > 1
-                else tf.distribute.OneDeviceStrategy("/GPU:0")
-            )
-        except Exception as exc:
-            logger.warning(f"Erro ao configurar GPU: {exc}")
-            STRATEGY = tf.distribute.get_strategy()
-    else:
-        logger.info("Nenhuma GPU detectada. CPU sera usada.")
-        STRATEGY = tf.distribute.get_strategy()
-
-    return STRATEGY
 
 
 # ---------------------------------------------------------------------------
@@ -527,12 +486,26 @@ def main():
     args = parser.parse_args()
 
     # ── GPU setup (must happen before any TF op) ──────────────────────────
+    from app.core.gpu import setup_gpu, is_gpu_available
+    import tensorflow as tf
+
     setup_gpu()
+    global GPU_AVAILABLE, STRATEGY, MAX_AUDIO_SAMPLES  # noqa: PLW0603
+    if is_gpu_available():
+        gpus = tf.config.list_physical_devices("GPU")
+        STRATEGY = (
+            tf.distribute.MirroredStrategy() if len(gpus) > 1
+            else tf.distribute.OneDeviceStrategy("/GPU:0")
+        )
+        MAX_AUDIO_SAMPLES = MAX_AUDIO_SAMPLES_GPU
+    else:
+        STRATEGY = tf.distribute.get_strategy()
 
     if args.quick:
         args.epochs = 20
         logger.info("MODO RAPIDO: 20 epocas")
 
+    GPU_AVAILABLE = is_gpu_available()  # noqa: PLW0603 (set above via global)
     if GPU_AVAILABLE:
         logger.info(
             f"Modelos raw-audio ({', '.join(sorted(RAW_AUDIO_ARCHS))}) "

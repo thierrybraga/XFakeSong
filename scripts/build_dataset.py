@@ -55,7 +55,7 @@ COMPOSITION = {
                 "type": "real",
                 "target": 1000,
                 "file_prefix": "brspeech",
-                "script": "download_pt_datasets_v2.py",
+                "script": "download_datasets.py",
                 "args": ["--brspeech"],
             },
             {
@@ -64,7 +64,7 @@ COMPOSITION = {
                 "type": "real",
                 "target": 1000,
                 "file_prefix": "cetuc|fleurs",
-                "script": "download_portuguese_datasets.py",
+                "script": "download_datasets.py",
                 "args": ["--cetuc"],
             },
         ],
@@ -75,7 +75,7 @@ COMPOSITION = {
                 "type": "fake",
                 "target": 1000,
                 "file_prefix": "brspeech",
-                "script": "download_pt_datasets_v2.py",
+                "script": "download_datasets.py",
                 "args": ["--brspeech"],
             },
             {
@@ -83,8 +83,8 @@ COMPOSITION = {
                 "hf_repo": "unfake/fake_voices",
                 "type": "fake",
                 "target": 1000,
-                "file_prefix": "fkvoice|fakevoice",
-                "script": "download_pt_datasets_v2.py",
+                "file_prefix": "fkvoice",
+                "script": "download_datasets.py",
                 "args": ["--fake-voices"],
             },
         ],
@@ -154,7 +154,7 @@ def step_download(target_per_class: int, skip_real_cv: bool = False):
 
     if brspeech_needed > 0:
         run(
-            [sys.executable, str(SCRIPTS_DIR / "download_pt_datasets_v2.py"),
+            [sys.executable, str(SCRIPTS_DIR / "download_datasets.py"),
              "--brspeech", "--max-samples", str(half * 2)],
             f"BRSpeech-DF bonafide + spoof ({half} por classe)",
         )
@@ -166,7 +166,7 @@ def step_download(target_per_class: int, skip_real_cv: bool = False):
         cv_real = count_wavs(REAL_DIR, ["cetuc", "cv", "fleurs"])
         if cv_real < half:
             run(
-                [sys.executable, str(SCRIPTS_DIR / "download_portuguese_datasets.py"),
+                [sys.executable, str(SCRIPTS_DIR / "download_datasets.py"),
                  "--cetuc", "--max-samples", str(half)],
                 f"CommonVoice PT + FLEURS PT-BR (meta: {half} reais)",
             )
@@ -179,7 +179,7 @@ def step_download(target_per_class: int, skip_real_cv: bool = False):
         # max_speakers * max_per_speaker ~= half
         max_speakers = max(10, half // 50)
         run(
-            [sys.executable, str(SCRIPTS_DIR / "download_pt_datasets_v2.py"),
+            [sys.executable, str(SCRIPTS_DIR / "download_datasets.py"),
              "--fake-voices", "--max-speakers", str(max_speakers)],
             f"Fake Voices XTTS (meta: {half} fakes, {max_speakers} falantes)",
         )
@@ -427,6 +427,7 @@ def main():
     logger.info(f"  Config : app/datasets/dataset_config.json")
     logger.info("\nProximo passo (Fase 2):")
     logger.info("  python scripts/train_advanced.py --model conformer --epochs 100")
+    logger.info("  (ou use a interface Gradio: python main.py --gradio)")
 
 
 if __name__ == "__main__":
