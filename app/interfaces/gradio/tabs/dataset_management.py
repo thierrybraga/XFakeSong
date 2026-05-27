@@ -483,12 +483,14 @@ def create_dataset_management_tab():
                     "| **BRSpeech-DF** | Real + Fake | 459K arquivos, bonafide/spoof, 24kHz→16kHz |\n"
                     "| **Fake Voices** | Fake | ~140h XTTS, 101 falantes, MIT |\n"
                     "| **FLEURS** | Real | Google, PT-BR, acesso publico |\n"
+                    "| **CETUC** | Real | Corpus de fala PT-BR (OpenSLR/CommonVoice fallback) |\n"
+                    "| **MLAAD-PT** | Fake | Multi-Language Audio Anti-Spoofing, subset PT |\n"
                 )
 
                 with gr.Row():
                     with gr.Column(scale=1):
                         dl_source = gr.Dropdown(
-                            choices=["Todos", "BRSpeech-DF", "Fake Voices", "FLEURS"],
+                            choices=["Todos", "BRSpeech-DF", "Fake Voices", "FLEURS", "CETUC", "MLAAD-PT"],
                             value="Todos",
                             label="Fonte",
                         )
@@ -520,10 +522,15 @@ def create_dataset_management_tab():
 
                 def handle_download(source, max_samples, max_speakers):
                     """Generator que executa download e streama logs."""
+                    # BUG FIX: módulo renomeado de download_pt_datasets_v2 para
+                    # download_datasets na consolidação dos scripts de download.
                     try:
-                        import scripts.download_pt_datasets_v2 as dl_mod
-                    except ImportError:
-                        yield "Erro: nao foi possivel importar scripts/download_pt_datasets_v2.py", "❌ Erro de importacao"
+                        import scripts.download_datasets as dl_mod
+                    except ImportError as exc:
+                        yield (
+                            f"Erro: nao foi possivel importar scripts/download_datasets.py\n{exc}",
+                            "❌ Erro de importacao",
+                        )
                         return
 
                     capture = _LogCapture()
@@ -547,6 +554,14 @@ def create_dataset_management_tab():
                         if source in ("FLEURS", "Todos"):
                             dl_mod.download_fleurs(max_s)
                             yield capture.text(), "⏳ FLEURS concluido..."
+
+                        if source in ("CETUC", "Todos"):
+                            dl_mod.download_cetuc(max_s)
+                            yield capture.text(), "⏳ CETUC concluido..."
+
+                        if source in ("MLAAD-PT", "Todos"):
+                            dl_mod.download_mlaad_pt(max_s)
+                            yield capture.text(), "⏳ MLAAD-PT concluido..."
 
                         # Report final
                         data = _scan_dataset()
