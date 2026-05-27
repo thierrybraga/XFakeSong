@@ -4,8 +4,8 @@ Objetivo: descobrir qual input_shape cada modelo realmente aceita e quais quebra
 com a chamada padrão `create_model_by_name(arch, input_shape=(48000, 1), num_classes=2)`.
 
 Uso:
-    python scripts/test_all_architectures.py
-    python scripts/test_all_architectures.py --models AASIST,Sonic Sleuth
+    python scripts/tests/test_all_architectures.py
+    python scripts/tests/test_all_architectures.py --models AASIST,Sonic Sleuth
 """
 
 from __future__ import annotations
@@ -20,9 +20,9 @@ os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 
 import numpy as np  # noqa: E402
 
-# Path do projeto
+# Path do projeto (scripts/tests/ → scripts/ → raiz)
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(THIS_DIR)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(THIS_DIR))
 sys.path.insert(0, PROJECT_ROOT)
 
 # Carrega o módulo factory diretamente, evitando que app/domain/__init__
