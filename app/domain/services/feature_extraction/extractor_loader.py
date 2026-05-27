@@ -12,12 +12,9 @@ from app.domain.features.extractor_registry import ExtractorComplexity, Extracto
 
 logger = logging.getLogger(__name__)
 
-try:
-    from app.domain.features.extractor_registry import get_extractor_registry
-    from app.domain.services.plugin_system import get_plugin_manager
-    MODULAR_COMPONENTS_AVAILABLE = True
-except ImportError:
-    MODULAR_COMPONENTS_AVAILABLE = False
+from app.domain.features.extractor_registry import get_extractor_registry
+
+MODULAR_COMPONENTS_AVAILABLE = False  # plugin_system removido — plugins desabilitados
 
 
 class ExtractorLoader:
