@@ -122,6 +122,26 @@ class SecureFeatureScaler:
             raise ValueError(
                 f"Tipo de scaler não suportado: {config.scaler_type}")
 
+    @staticmethod
+    def _sanitize(X: np.ndarray, tag: str, logger) -> np.ndarray:
+        """Substitui NaN/Inf por 0.0 e loga se encontrado.
+
+        BUG FIX: StandardScaler propaga NaN/Inf diretamente para os pesos do
+        modelo, causando loss: nan na 1ª época. Fontes comuns: arquivos de
+        áudio corrompidos, silêncio puro, clipping extremo, ou spectrogramas
+        com valores indefinidos (log de 0 não protegido por epsilon).
+        """
+        nan_count = int(np.sum(np.isnan(X)))
+        inf_count = int(np.sum(np.isinf(X)))
+        if nan_count > 0 or inf_count > 0:
+            logger.warning(
+                f"[sanitize/{tag}] {nan_count} NaN e {inf_count} Inf "
+                f"encontrados em {X.shape} — substituídos por 0.0. "
+                "Verifique os arquivos de áudio do dataset."
+            )
+            X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+        return X
+
     def fit_transform_train(self, X_train: np.ndarray) -> np.ndarray:
         """Ajusta o scaler APENAS nos dados de treino e transforma.
 
@@ -129,12 +149,16 @@ class SecureFeatureScaler:
         """
         self.logger.info("Ajustando scaler apenas nos dados de treino")
 
-        # Verificar se os dados não estão vazios
         if len(X_train) == 0:
             raise ValueError("Dados de treino não podem estar vazios")
 
-        # Ajustar e transformar dados de treino
+        # BUG FIX: sanitizar antes de fit — NaN/Inf no input corrompem o scaler
+        X_train = self._sanitize(X_train, "train", self.logger)
+
         X_train_scaled = self.scaler.fit_transform(X_train)
+
+        # Sanitizar pós-escala (StandardScaler pode produzir NaN se std=0)
+        X_train_scaled = self._sanitize(X_train_scaled, "train_scaled", self.logger)
 
         self.logger.info(
             f"Scaler ajustado. Média: {self.scaler.mean_[:5] if hasattr(self.scaler, 'mean_') else 'N/A'}")
@@ -147,7 +171,9 @@ class SecureFeatureScaler:
                 "Scaler deve ser ajustado primeiro com dados de treino")
 
         self.logger.info("Transformando dados de validação")
-        return self.scaler.transform(X_val)
+        X_val = self._sanitize(X_val, "val", self.logger)
+        result = self.scaler.transform(X_val)
+        return self._sanitize(result, "val_scaled", self.logger)
 
     def transform_test(self, X_test: np.ndarray) -> np.ndarray:
         """Transforma dados de teste usando scaler já ajustado."""
@@ -156,7 +182,9 @@ class SecureFeatureScaler:
                 "Scaler deve ser ajustado primeiro com dados de treino")
 
         self.logger.info("Transformando dados de teste")
-        return self.scaler.transform(X_test)
+        X_test = self._sanitize(X_test, "test", self.logger)
+        result = self.scaler.transform(X_test)
+        return self._sanitize(result, "test_scaled", self.logger)
 
     def save_scaler(self, path: Union[str, Path]) -> None:
         """Salva o scaler para uso futuro."""

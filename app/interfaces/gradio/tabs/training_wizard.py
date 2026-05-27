@@ -366,6 +366,10 @@ def _run_training(
             # audio: (B, T) ou (B, T, 1) → squeeze
             if audio.shape.rank == 3:
                 audio = tf.squeeze(audio, axis=-1)
+            # BUG FIX: substituir NaN/Inf em áudio ANTES do STFT.
+            # Arquivos corrompidos (silêncio clipped, NaN em WAV/MP3 corrompido)
+            # propagam NaN por todo o pipeline → loss: nan na 1ª época.
+            audio = tf.where(tf.math.is_finite(audio), audio, tf.zeros_like(audio))
             stft = tf.signal.stft(
                 audio, frame_length=N_FFT, frame_step=HOP, fft_length=N_FFT,
                 window_fn=tf.signal.hann_window, pad_end=True,
@@ -373,6 +377,8 @@ def _run_training(
             mag = tf.abs(stft)  # (B, T_frames, n_freq)
             mel = tf.tensordot(mag, mel_w, axes=1)  # (B, T_frames, n_mels)
             log_mel = tf.math.log(mel + 1e-6)
+            # Sanitizar pós-log (mel=0 exato é raro mas possível em silêncio total)
+            log_mel = tf.where(tf.math.is_finite(log_mel), log_mel, tf.zeros_like(log_mel))
             return tf.expand_dims(log_mel, axis=-1)  # (B, T_frames, n_mels, 1)
 
         def _prep_raw(audio, label):
@@ -419,7 +425,11 @@ def _run_training(
         if out_units == 1:
             chosen_loss = "binary_crossentropy"
             chosen_metric = "binary_accuracy"
-            # Labels precisam ser float para BCE
+            # BUG FIX: labels float32 para BCE são corretos, MAS Keras's
+            # class_weight não funciona com labels float (exige int para indexar
+            # o dict {class_id: weight}). Marcamos para desativar class_weight
+            # quando BCE + float labels forem usados (ver abaixo).
+            _bce_float_labels = True
             train_ds = train_ds.map(
                 lambda x, y: (x, tf.cast(y, tf.float32)),
                 num_parallel_calls=tf.data.AUTOTUNE,
@@ -431,11 +441,47 @@ def _run_training(
         else:
             chosen_loss = "sparse_categorical_crossentropy"
             chosen_metric = "accuracy"
+            _bce_float_labels = False
+
+        # BUG FIX: LR padrão 1e-3 é alto demais para Transformers sem warmup.
+        # Architectures com atenção (Conformer, CCT, SpectrogramTransformer,
+        # AASIST) precisam de LR ≤ 1e-4 na 1ª época — com lr=1e-3 e float16,
+        # os gradientes explodem para inf/NaN imediatamente.
+        _TRANSFORMER_ARCHS = {
+            "conformer", "spectrogram_transformer", "hybrid_cnn_transformer",
+            "aasist", "rawgat_st",
+        }
+        effective_lr = lr
+        if arch.lower() in _TRANSFORMER_ARCHS and lr > 1e-4:
+            effective_lr = min(lr, 1e-4)
+            logger.warning(
+                f"LR ajustado de {lr:.2e} → {effective_lr:.2e} para {arch} "
+                "(Transformers requerem LR ≤ 1e-4 para estabilidade numérica)"
+            )
+
+        # BUG FIX: mixed_float16 sem LossScaleOptimizer → NaN na 1ª época.
+        # Com a política global ativa, gradientes float16 fazem underflow→0
+        # (vanishing) ou overflow→inf/NaN. LossScaleOptimizer escala a loss
+        # dinamicamente para manter os gradientes na faixa float16 válida.
+        base_optimizer = tf.keras.optimizers.Adam(
+            learning_rate=effective_lr,
+            global_clipnorm=1.0,  # previne explosão de gradiente
+        )
+        try:
+            policy = tf.keras.mixed_precision.global_policy()
+            if policy.name == "mixed_float16":
+                optimizer = tf.keras.mixed_precision.LossScaleOptimizer(
+                    base_optimizer)
+                logger.info("LossScaleOptimizer habilitado (mixed_float16 ativo)")
+            else:
+                optimizer = base_optimizer
+        except Exception:
+            optimizer = base_optimizer
 
         # Re-compile se necessário (algumas archs pré-compilam)
         try:
             model.compile(
-                optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
+                optimizer=optimizer,
                 loss=chosen_loss,
                 metrics=[chosen_metric],
             )
@@ -462,15 +508,40 @@ def _run_training(
                 log_lines.append(line)
                 progress(pct, desc=line[:60])
 
+        class _NaNDiagnosticCb(tf.keras.callbacks.Callback):
+            """Callback que dá diagnóstico detalhado quando TerminateOnNaN dispara."""
+            def on_epoch_end(self, epoch, logs=None):
+                logs = logs or {}
+                loss_val = logs.get("loss", 0.0)
+                if loss_val != loss_val:  # NaN check (NaN != NaN é sempre True)
+                    logger.error(
+                        f"[NaN] loss=NaN detectado na época {epoch + 1}.\n"
+                        "Causas prováveis:\n"
+                        "  1. LR muito alto para esta arquitetura\n"
+                        "  2. mixed_float16 ativo sem LossScaleOptimizer\n"
+                        "  3. Arquivos de áudio corrompidos no dataset\n"
+                        "  4. Gradientes explodindo (verifique clipnorm)\n"
+                        "Sugestões: reduza o LR, verifique o dataset, ou "
+                        "desative mixed precision (GPU.1)."
+                    )
+
         log_cb = _ProgressCb()
+        nan_diag_cb = _NaNDiagnosticCb()
         callbacks = [
             log_cb,
+            nan_diag_cb,
             tf.keras.callbacks.TerminateOnNaN(),
         ]
 
+        # BUG FIX: class_weight com BCE + labels float32 é incompatível.
+        # Keras aplica class_weight indexando o dict {int_class: weight} com
+        # as labels. Quando labels são float32 (0.0/1.0 para BCE), o índice
+        # float→int pode produzir comportamento incorreto em algumas versões
+        # de TF, causando pesos errados ou NaN na loss ponderada.
+        # Solução: desabilitar class_weight quando BCE + float labels são usados.
         # Class weighting (Sprint 1.3)
         class_weight = None
-        if use_class_weighting:
+        if use_class_weighting and not _bce_float_labels:
             try:
                 from sklearn.utils.class_weight import compute_class_weight
                 ys = np.concatenate([y.numpy() for _, y in train_ds.unbatch()])
@@ -480,6 +551,12 @@ def _run_training(
                 class_weight = {int(c): float(w) for c, w in enumerate(cw)}
             except Exception as e:
                 logger.warning(f"class_weighting falhou: {e}")
+        elif use_class_weighting and _bce_float_labels:
+            logger.info(
+                "class_weight desabilitado: BCE com labels float32 é incompatível "
+                "com class_weight em Keras (use sparse_categorical_crossentropy "
+                "para habilitar ponderação de classes)."
+            )
 
         # GPU.10: Escolhe device explícito. Quando TF detectou GPU,
         # força fit() em /GPU:0 (evita silenciosamente cair em CPU se houver
