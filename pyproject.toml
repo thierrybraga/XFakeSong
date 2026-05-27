@@ -34,11 +34,16 @@ line_length = 88
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "-ra -q --ignore=data --ignore=logs"
+# Exclui smoke tests do run padrão (lentos, precisam de TF real).
+# Para rodar smoke: pytest -m smoke tests/smoke/
+addopts = "-ra -q --ignore=data --ignore=logs -m 'not smoke'"
 testpaths = [
     "tests",
 ]
 python_files = ["test_*.py", "*_test.py"]
+markers = [
+    "smoke: smoke tests pesados com TF real — execute com: pytest -m smoke tests/smoke/",
+]
 
 [tool.ruff]
 # Configurações para o linter Ruff (substituto rápido para Flake8)
