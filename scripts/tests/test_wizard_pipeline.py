@@ -8,8 +8,8 @@ para validar que:
 - Modelo aceita o shape e treina 1 epoch sem erro
 
 Uso:
-    python scripts/test_wizard_pipeline.py
-    python scripts/test_wizard_pipeline.py --models AASIST,Conformer
+    python scripts/tests/test_wizard_pipeline.py
+    python scripts/tests/test_wizard_pipeline.py --models AASIST,Conformer
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 import numpy as np  # noqa: E402
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(THIS_DIR)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(THIS_DIR))  # scripts/tests/ → scripts/ → raiz
 sys.path.insert(0, PROJECT_ROOT)
 
 # Fake packages para evitar app/__init__ chain (sqlalchemy)
