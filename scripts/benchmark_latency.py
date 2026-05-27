@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
 """
-benchmark_latency.py — Benchmark de Latencia de Inferencia por Arquitetura.
+benchmark_latency.py — Benchmark de Latência de Inferência por Arquitetura.
 
-Mede o tempo de inferencia para audio de 10 segundos por arquitetura,
-gerando a Tabela 7 do TCC (Analise de Complexidade Computacional).
-
-Metricas medidas:
-  - Latencia media (ms) para audio de 10s (N=50 repeticoes)
-  - Parametros totais do modelo
-  - Memoria estimada (MB)
-  - Throughput (audios/s)
+Mede o tempo de inferência para áudio sintético de duração configurável em cada
+arquitetura registrada na factory, reportando:
+  - Parâmetros totais
+  - Memória estimada (MB)
+  - Latência média ± desvio (ms)
+  - P50 / P95 (ms)
+  - Throughput (áudios/s)
 
 Uso:
-  python scripts/benchmark_latency.py                    # todas as arquiteturas
-  python scripts/benchmark_latency.py --model conformer  # apenas uma
-  python scripts/benchmark_latency.py --duration 10      # duracao do audio (s)
-  python scripts/benchmark_latency.py --n-runs 50        # repeticoes
+  python scripts/benchmark_latency.py                     # todas as arquiteturas
+  python scripts/benchmark_latency.py --model Conformer   # apenas uma
+  python scripts/benchmark_latency.py --duration 10       # duração do áudio (s)
+  python scripts/benchmark_latency.py --n-runs 50         # repetições
   python scripts/benchmark_latency.py --output results/latency.json
 """
 
@@ -39,276 +38,180 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
 SAMPLE_RATE = 16_000
-
-# Mapeamento nome -> (modulo, funcao_create_model, input_shape_fn)
-ARCHITECTURE_MAP = {
-    "conformer": {
-        "module": "app.domain.models.architectures.conformer",
-        "input_type": "raw_audio",
-    },
-    "efficientnet_lstm": {
-        "module": "app.domain.models.architectures.efficientnet_lstm",
-        "input_type": "raw_audio",
-    },
-    "multiscale_cnn": {
-        "module": "app.domain.models.architectures.multiscale_cnn",
-        "input_type": "raw_audio",
-    },
-    "aasist": {
-        "module": "app.domain.models.architectures.aasist",
-        "input_type": "raw_audio",
-    },
-    "rawnet2": {
-        "module": "app.domain.models.architectures.rawnet2",
-        "input_type": "raw_audio",
-    },
-    "ensemble_adaptive": {
-        "module": "app.domain.models.architectures.ensemble",
-        "input_type": "raw_audio",
-        "variant": "ensemble_adaptive",
-    },
-}
+N_FFT = 512
+HOP = 128
+N_MELS = 80
 
 
-def generate_dummy_audio(duration_s: float = 10.0, sample_rate: int = SAMPLE_RATE) -> np.ndarray:
-    """Gera audio sintetico (ruido branco) para benchmark."""
-    n_samples = int(duration_s * sample_rate)
-    audio = np.random.randn(n_samples).astype(np.float32)
-    # Normalizar
-    audio = audio / (np.max(np.abs(audio)) + 1e-8) * 0.9
-    return audio
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-
-def load_model(arch_name: str, duration_s: float):
-    """Carrega o modelo para a arquitetura especificada."""
-    import importlib
-
-    cfg = ARCHITECTURE_MAP[arch_name]
+def _make_input(input_type: str, duration_s: float) -> np.ndarray:
+    """Gera input sintético (batch=1) para o tipo de entrada da arquitetura."""
     n_samples = int(duration_s * SAMPLE_RATE)
-    input_shape = (n_samples,)
+    audio = np.random.randn(n_samples).astype(np.float32) * 0.1
 
+    if input_type == "raw_audio":
+        return audio.reshape(1, n_samples, 1)
+
+    # spectrogram — log-mel
+    import tensorflow as tf
+    audio_t = tf.constant(audio[np.newaxis])
+    n_freq = N_FFT // 2 + 1
+    mel_w = tf.signal.linear_to_mel_weight_matrix(
+        N_MELS, n_freq, SAMPLE_RATE, 0.0, SAMPLE_RATE / 2
+    )
+    stft = tf.signal.stft(audio_t, N_FFT, HOP, fft_length=N_FFT,
+                          window_fn=tf.signal.hann_window, pad_end=True)
+    mel = tf.math.log(tf.abs(tf.tensordot(tf.abs(stft), mel_w, axes=1)) + 1e-6)
+    return tf.expand_dims(mel, axis=-1).numpy()  # (1, T, N_MELS, 1)
+
+
+def _count_params(model) -> int:
     try:
-        module = importlib.import_module(cfg["module"])
-        variant = cfg.get("variant", arch_name)
-        model = module.create_model(
-            input_shape=input_shape,
-            num_classes=1,
-            architecture=variant,
-        )
-        return model, input_shape
-    except Exception as e:
-        logger.error(f"Falha ao carregar {arch_name}: {e}")
-        return None, None
-
-
-def count_params(model) -> int:
-    """Conta parametros totais do modelo."""
-    try:
-        return model.count_params()
+        return int(model.count_params())
     except Exception:
+        return 0
+
+
+def _benchmark(model, dummy_input: np.ndarray, n_runs: int = 30, warmup: int = 5) -> dict:
+    """Executa benchmark de latência, retorna estatísticas em ms."""
+    for _ in range(warmup):
         try:
-            return sum(p.numel() for p in model.parameters())
+            model.predict(dummy_input, verbose=0)
         except Exception:
-            return 0
+            break
 
-
-def estimate_memory_mb(model) -> float:
-    """Estima memoria do modelo em MB (parametros * 4 bytes float32)."""
-    params = count_params(model)
-    return params * 4 / (1024 * 1024)
-
-
-def benchmark_model(
-    model,
-    input_shape: tuple,
-    duration_s: float = 10.0,
-    n_runs: int = 50,
-    warmup_runs: int = 5,
-) -> dict:
-    """
-    Executa benchmark de latencia de inferencia.
-
-    Args:
-        model: modelo carregado
-        input_shape: shape do input (n_samples,)
-        duration_s: duracao do audio de teste
-        n_runs: numero de medicoes
-        warmup_runs: runs de aquecimento (nao contam)
-
-    Returns:
-        dict com estatisticas de latencia
-    """
-    audio = generate_dummy_audio(duration_s)
-    batch = audio.reshape(1, -1)  # (1, n_samples)
-
-    latencies_ms = []
-
-    # Aquecimento
-    for _ in range(warmup_runs):
-        try:
-            model.predict(batch, verbose=0)
-        except Exception:
-            try:
-                import torch
-                with torch.no_grad():
-                    t = torch.FloatTensor(batch)
-                    model(t)
-            except Exception:
-                pass
-
-    # Medicao
+    latencies = []
     for _ in range(n_runs):
         t0 = time.perf_counter()
         try:
-            model.predict(batch, verbose=0)
-        except Exception:
-            try:
-                import torch
-                with torch.no_grad():
-                    t = torch.FloatTensor(batch)
-                    model(t)
-            except Exception as e:
-                logger.warning(f"Inferencia falhou: {e}")
-                continue
-        t1 = time.perf_counter()
-        latencies_ms.append((t1 - t0) * 1000)
+            model.predict(dummy_input, verbose=0)
+        except Exception as e:
+            logger.warning(f"Inferência falhou: {e}")
+            continue
+        latencies.append((time.perf_counter() - t0) * 1000)
 
-    if not latencies_ms:
-        return {"error": "Todas as inferencias falharam"}
+    if not latencies:
+        return {"error": "Todas as inferências falharam"}
 
-    latencies = np.array(latencies_ms)
+    arr = np.array(latencies)
     return {
-        "mean_ms": round(float(np.mean(latencies)), 1),
-        "std_ms": round(float(np.std(latencies)), 1),
-        "min_ms": round(float(np.min(latencies)), 1),
-        "max_ms": round(float(np.max(latencies)), 1),
-        "p50_ms": round(float(np.percentile(latencies, 50)), 1),
-        "p95_ms": round(float(np.percentile(latencies, 95)), 1),
-        "throughput_audios_per_s": round(1000.0 / float(np.mean(latencies)), 2),
-        "n_runs": len(latencies_ms),
-        "audio_duration_s": duration_s,
+        "mean_ms":   round(float(np.mean(arr)), 1),
+        "std_ms":    round(float(np.std(arr)), 1),
+        "min_ms":    round(float(np.min(arr)), 1),
+        "p50_ms":    round(float(np.percentile(arr, 50)), 1),
+        "p95_ms":    round(float(np.percentile(arr, 95)), 1),
+        "throughput": round(1000.0 / float(np.mean(arr)), 2),
+        "n_runs":    len(latencies),
     }
 
 
-def print_table7(results: dict):
-    """Imprime a Tabela 7 do TCC (Analise de Complexidade Computacional)."""
-    logger.info("\n" + "=" * 75)
-    logger.info("TABELA 7 — Analise de Complexidade Computacional")
-    logger.info("=" * 75)
-    logger.info(
-        f"  {'Arquitetura':<22} {'Parametros':>12} {'Memoria(MB)':>12} "
-        f"{'Latencia(ms)':>14} {'Throughput':>12}"
-    )
-    logger.info("  " + "-" * 72)
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
-    for arch, info in results.items():
-        if "error" in info:
-            logger.info(f"  {arch:<22} {'ERRO':>12}")
-            continue
-        bench = info.get("benchmark", {})
-        logger.info(
-            f"  {arch:<22} "
-            f"{info.get('params', 0):>12,d} "
-            f"{info.get('memory_mb', 0):>11.1f} "
-            f"{bench.get('mean_ms', 0):>13.1f} "
-            f"{bench.get('throughput_audios_per_s', 0):>10.1f} aud/s"
-        )
-    logger.info("=" * 75)
-    logger.info("  * Latencia medida para audio de 10s, CPU (sem GPU)")
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Benchmark de latencia de inferencia — Tabela 7 do TCC"
-    )
-    parser.add_argument(
-        "--model", type=str, default=None,
-        choices=list(ARCHITECTURE_MAP.keys()),
-        help="Arquitetura especifica (default: todas)",
-    )
-    parser.add_argument(
-        "--duration", type=float, default=10.0,
-        help="Duracao do audio de teste em segundos (default: 10.0)",
-    )
-    parser.add_argument(
-        "--n-runs", type=int, default=50,
-        help="Numero de medicoes por modelo (default: 50)",
-    )
-    parser.add_argument(
-        "--output", type=str, default=None,
-        help="Salvar resultados em JSON (ex: results/latency.json)",
-    )
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--model", type=str, default=None,
+                        help="Arquitetura específica (default: todas)")
+    parser.add_argument("--duration", type=float, default=10.0,
+                        help="Duração do áudio de teste em segundos (default: 10.0)")
+    parser.add_argument("--n-runs", type=int, default=30,
+                        help="Número de medições por modelo (default: 30)")
+    parser.add_argument("--output", type=str, default=None,
+                        help="Salvar resultados em JSON (ex: results/latency.json)")
     args = parser.parse_args()
 
-    archs_to_test = [args.model] if args.model else list(ARCHITECTURE_MAP.keys())
+    from app.domain.models.architectures.factory import (
+        architecture_factory_registry,
+        create_model_by_name,
+    )
 
-    logger.info("=" * 60)
-    logger.info("BENCHMARK DE LATENCIA — TCC UFSJ 2026")
-    logger.info("=" * 60)
-    logger.info(f"  Arquiteturas : {archs_to_test}")
-    logger.info(f"  Audio        : {args.duration}s @ {SAMPLE_RATE}Hz")
-    logger.info(f"  Repeticoes   : {args.n_runs}")
+    available = architecture_factory_registry.list_architectures()
+    targets = [args.model] if args.model else available
 
-    all_results = {}
+    unknown = [m for m in targets if m not in available]
+    if unknown:
+        logger.error(f"Arquiteturas desconhecidas: {unknown}. Disponíveis: {available}")
+        sys.exit(1)
 
-    for arch_name in archs_to_test:
-        logger.info(f"\n--- {arch_name.upper()} ---")
+    logger.info("=" * 65)
+    logger.info("BENCHMARK DE LATÊNCIA DE INFERÊNCIA")
+    logger.info("=" * 65)
+    logger.info(f"  Arquiteturas : {len(targets)}")
+    logger.info(f"  Áudio        : {args.duration}s @ {SAMPLE_RATE}Hz")
+    logger.info(f"  Repetições   : {args.n_runs}")
+    logger.info("")
 
-        model, input_shape = load_model(arch_name, args.duration)
-        if model is None:
-            all_results[arch_name] = {"error": "Falha ao carregar modelo"}
+    all_results: dict = {}
+
+    for arch_name in targets:
+        logger.info(f"--- {arch_name} ---")
+        try:
+            spec = architecture_factory_registry.get_architecture_info(arch_name)
+            input_type = spec.input_requirements.get("input_type", "spectrogram") if spec else "spectrogram"
+
+            dummy = _make_input(input_type, args.duration)
+            input_shape = tuple(dummy.shape[1:])
+
+            model = create_model_by_name(arch_name, input_shape=input_shape, num_classes=2)
+            params = _count_params(model)
+            mem_mb = round(params * 4 / (1024 ** 2), 1)
+
+            logger.info(f"  input_type : {input_type}")
+            logger.info(f"  input_shape: {input_shape}")
+            logger.info(f"  parâmetros : {params:,}")
+            logger.info(f"  memória    : {mem_mb} MB")
+
+            bench = _benchmark(model, dummy, n_runs=args.n_runs)
+            if "error" not in bench:
+                logger.info(
+                    f"  latência   : {bench['mean_ms']} ± {bench['std_ms']} ms  "
+                    f"(p95={bench['p95_ms']} ms, {bench['throughput']} áudios/s)"
+                )
+            else:
+                logger.error(f"  {bench['error']}")
+
+            all_results[arch_name] = {
+                "input_type": input_type,
+                "input_shape": list(input_shape),
+                "params": params,
+                "memory_mb": mem_mb,
+                "benchmark": bench,
+            }
+        except Exception as e:
+            logger.error(f"  FALHA: {type(e).__name__}: {e}")
+            all_results[arch_name] = {"error": str(e)}
+        logger.info("")
+
+    # ── Tabela resumo ────────────────────────────────────────────────
+    logger.info("=" * 75)
+    logger.info(f"  {'Arquitetura':<28} {'Parâmetros':>12} {'Mem(MB)':>9} {'Lat(ms)':>10} {'Throughput':>12}")
+    logger.info("  " + "-" * 72)
+    for arch, info in all_results.items():
+        if "error" in info and "benchmark" not in info:
+            logger.info(f"  {arch:<28} {'ERRO':>44}")
             continue
-
-        params = count_params(model)
-        memory_mb = estimate_memory_mb(model)
-        logger.info(f"  Parametros  : {params:,}")
-        logger.info(f"  Memoria     : {memory_mb:.1f} MB")
-
-        logger.info(f"  Iniciando {args.n_runs} medicoes...")
-        bench = benchmark_model(
-            model, input_shape,
-            duration_s=args.duration,
-            n_runs=args.n_runs,
-        )
-
-        logger.info(
-            f"  Latencia    : {bench.get('mean_ms', '?')} ms "
-            f"(+/- {bench.get('std_ms', '?')} ms)"
-        )
-        logger.info(
-            f"  Throughput  : {bench.get('throughput_audios_per_s', '?')} audios/s"
-        )
-
-        all_results[arch_name] = {
-            "params": params,
-            "memory_mb": round(memory_mb, 1),
-            "benchmark": bench,
-        }
-
-    # Tabela final
-    print_table7(all_results)
-
-    # Salvar JSON
-    if args.output:
-        output_path = Path(args.output)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(all_results, f, indent=2, ensure_ascii=False)
-        logger.info(f"\nResultados salvos em: {output_path}")
-
-    # Aviso se latencia do Ensemble > 100ms (meta do TCC)
-    if "ensemble_adaptive" in all_results:
-        ens = all_results["ensemble_adaptive"].get("benchmark", {})
-        lat = ens.get("mean_ms", 999)
-        if lat <= 100:
-            logger.info(
-                f"\nMETA TCC ATINGIDA: Ensemble latencia = {lat}ms <= 100ms"
-            )
+        bench = info.get("benchmark", {})
+        if "error" in bench:
+            logger.info(f"  {arch:<28} {info.get('params', 0):>12,} {info.get('memory_mb', 0):>8.1f}  {'FALHOU':>10}")
         else:
-            logger.warning(
-                f"\nATENCAO: Ensemble latencia = {lat}ms > 100ms (meta TCC). "
-                "Considere otimizacao ou GPU."
+            logger.info(
+                f"  {arch:<28} {info.get('params', 0):>12,} {info.get('memory_mb', 0):>8.1f}"
+                f" {bench.get('mean_ms', 0):>9.1f}  {bench.get('throughput', 0):>9.1f} /s"
             )
+    logger.info("=" * 75)
+    logger.info(f"  * Latência medida para áudio de {args.duration}s")
+
+    if args.output:
+        out = Path(args.output)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with open(out, "w", encoding="utf-8") as f:
+            json.dump(all_results, f, indent=2, ensure_ascii=False)
+        logger.info(f"\nResultados salvos em: {out}")
 
 
 if __name__ == "__main__":
