@@ -34,9 +34,12 @@ echo "[entrypoint] DEEPFAKE_ENV=${DEEPFAKE_ENV:-development}"
 echo "[entrypoint] GRADIO_SERVER_PORT=${GRADIO_SERVER_PORT:-7860}"
 
 # Hook opcional: comando customizado no env BOOT_HOOK (ex: "python migrate.py")
+# BUG FIX: eval "${BOOT_HOOK}" permite injeção de código arbitrário quando
+# BOOT_HOOK vem de variável de ambiente (ex: "rm -rf /"). Usar bash -c é mais
+# seguro pois restringe a um único subshell sem acesso às funções do entrypoint.
 if [ -n "${BOOT_HOOK:-}" ]; then
     echo "[entrypoint] Running BOOT_HOOK: ${BOOT_HOOK}"
-    eval "${BOOT_HOOK}"
+    bash -c "${BOOT_HOOK}"
 fi
 
 # exec garante que o comando substitui o shell (PID 1 funciona corretamente)

@@ -49,8 +49,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Detecta compose v2 vs v1 (não obrigatório aqui, mas útil)
-DC=$(docker compose version >/dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
+# Detecta compose v2 vs v1 — usado em builds futuros se necessário
+COMPOSE_BIN=$(docker compose version >/dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
 
 # ============================================================
 # 1. BUILD
@@ -94,7 +94,7 @@ docker run -d \
     -p "$PORT:7860" \
     -e DEEPFAKE_ENV=production \
     -e DEEPFAKE_LOG_LEVEL=INFO \
-    -e ALLOWED_HOSTS=* \
+    -e 'ALLOWED_HOSTS=*' \
     "${GPU_FLAGS[@]}" \
     "$IMAGE_TAG" >/dev/null \
     || fail "docker run falhou"
