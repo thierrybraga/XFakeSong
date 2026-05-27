@@ -3,11 +3,13 @@
 Objetivo: descobrir qual input_shape cada modelo realmente aceita e quais quebram
 com a chamada padrão `create_model_by_name(arch, input_shape=(48000, 1), num_classes=2)`.
 
-Uso:
-    python scripts/tests/test_all_architectures.py
-    python scripts/tests/test_all_architectures.py --models AASIST,Sonic Sleuth
-"""
+Uso standalone:
+    python tests/smoke/test_all_architectures.py
+    python tests/smoke/test_all_architectures.py --models AASIST,"Sonic Sleuth"
 
+Uso via pytest (inclui mark smoke):
+    pytest -m smoke tests/smoke/test_all_architectures.py
+"""
 from __future__ import annotations
 
 import argparse
@@ -15,12 +17,11 @@ import os
 import sys
 import traceback
 
-# Evita warnings excessivos do TF
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 
 import numpy as np  # noqa: E402
 
-# Path do projeto (scripts/tests/ → scripts/ → raiz)
+# tests/smoke/ → tests/ → raiz
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(os.path.dirname(THIS_DIR))
 sys.path.insert(0, PROJECT_ROOT)
@@ -31,32 +32,27 @@ sys.path.insert(0, PROJECT_ROOT)
 import importlib.util  # noqa: E402
 import types  # noqa: E402
 
-for fake_pkg in [
+for _fake_pkg in [
     "app", "app.domain", "app.domain.models", "app.domain.models.architectures",
 ]:
-    if fake_pkg not in sys.modules:
-        m = types.ModuleType(fake_pkg)
-        m.__path__ = [os.path.join(PROJECT_ROOT, *fake_pkg.split("."))]
-        sys.modules[fake_pkg] = m
+    if _fake_pkg not in sys.modules:
+        _m = types.ModuleType(_fake_pkg)
+        _m.__path__ = [os.path.join(PROJECT_ROOT, *_fake_pkg.split("."))]
+        sys.modules[_fake_pkg] = _m
 
 SAMPLE_RATE = 16000
 DURATION_SEC = 3
 RAW_AUDIO_LEN = SAMPLE_RATE * DURATION_SEC  # 48000
 
-# Spectrograms tipicamente são (T_frames, n_mels) ou (T_frames, n_mels, 1)
-# T_frames ≈ duration * SR / hop_length (com hop=512 e 3s @ 16kHz: ~94 frames)
 SPEC_FRAMES = 128
 SPEC_MELS = 80
 
-# Tabela de inputs candidatos por modelo. Tentamos vários até um funcionar.
-CANDIDATE_INPUTS = {
-    # Modelos raw-audio (paper-faithful)
+CANDIDATE_INPUTS: dict[str, list[tuple]] = {
     "AASIST":                  [(RAW_AUDIO_LEN, 1), (RAW_AUDIO_LEN,)],
     "RawGAT-ST":               [(SPEC_FRAMES, SPEC_MELS, 1), (RAW_AUDIO_LEN, 1), (RAW_AUDIO_LEN,)],
     "RawNet2":                 [(RAW_AUDIO_LEN, 1), (RAW_AUDIO_LEN,)],
     "WavLM":                   [(RAW_AUDIO_LEN, 1), (RAW_AUDIO_LEN,)],
     "HuBERT":                  [(RAW_AUDIO_LEN, 1), (RAW_AUDIO_LEN,)],
-    # Modelos espectrograma
     "Sonic Sleuth":            [(SPEC_FRAMES, SPEC_MELS, 1), (SPEC_FRAMES, SPEC_MELS)],
     "EfficientNet-LSTM":       [(SPEC_FRAMES, SPEC_MELS, 1), (SPEC_FRAMES, SPEC_MELS)],
     "MultiscaleCNN":           [(SPEC_FRAMES, SPEC_MELS, 1), (SPEC_FRAMES, SPEC_MELS)],
@@ -69,20 +65,12 @@ CANDIDATE_INPUTS = {
 
 def _try_create(arch: str, input_shape: tuple) -> tuple[bool, str, object]:
     """Tenta criar um modelo. Returns (ok, message, model_or_None)."""
-    # Import direto do módulo factory sem passar pelo app/__init__ chain
-    # (que importa sqlalchemy em domain/models/analysis.py).
     import importlib
-    factory_mod = importlib.import_module(
-        "app.domain.models.architectures.factory"
-    )
+    factory_mod = importlib.import_module("app.domain.models.architectures.factory")
     create_model_by_name = factory_mod.create_model_by_name
 
     try:
-        model = create_model_by_name(
-            arch, input_shape=input_shape, num_classes=2,
-        )
-        # Forward pass com 1 sample
-        import tensorflow as tf
+        model = create_model_by_name(arch, input_shape=input_shape, num_classes=2)
         x = np.zeros((1, *input_shape), dtype=np.float32)
         y = model(x, training=False)
         out_shape = tuple(y.shape) if hasattr(y, "shape") else None
@@ -104,23 +92,15 @@ def test_architecture(arch: str) -> dict:
             success = shape
             break
 
-    return {
-        "arch": arch,
-        "ok": success is not None,
-        "winning_shape": success,
-        "attempts": attempts,
-    }
+    return {"arch": arch, "ok": success is not None, "winning_shape": success, "attempts": attempts}
 
 
-def main():
-    parser = argparse.ArgumentParser()
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--models", default="", help="CSV de modelos a testar (vazio = todos)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    if args.models:
-        targets = [m.strip() for m in args.models.split(",")]
-    else:
-        targets = list(CANDIDATE_INPUTS.keys())
+    targets = [m.strip() for m in args.models.split(",")] if args.models else list(CANDIDATE_INPUTS.keys())
 
     print("=" * 80)
     print("Smoke test — 14 arquiteturas XFakeSong")
@@ -135,13 +115,11 @@ def main():
             status = "[OK]" if a["ok"] else "[FAIL]"
             print(f"  {status} {a['msg']}")
 
-    # Sumário
     print("\n" + "=" * 80)
     print("SUMÁRIO")
     print("=" * 80)
     ok_count = sum(1 for r in results if r["ok"])
-    print(f"OK: {ok_count}/{len(results)}")
-    print()
+    print(f"OK: {ok_count}/{len(results)}\n")
     for r in results:
         status = "OK  " if r["ok"] else "FAIL"
         shape = r["winning_shape"] or "—"
@@ -150,5 +128,17 @@ def main():
     return 0 if ok_count == len(results) else 1
 
 
+# ── pytest integration ────────────────────────────────────────────────────────
+import pytest  # noqa: E402
+
+
+@pytest.mark.smoke
+def test_smoke_all_architectures() -> None:
+    """Cria e faz forward pass em todas as 14 arquiteturas."""
+    rc = main(argv=[])
+    assert rc == 0, "Uma ou mais arquiteturas falharam — veja saída acima"
+
+
+# ── standalone ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     sys.exit(main())
