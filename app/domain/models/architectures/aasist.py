@@ -228,6 +228,14 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         x = ResidualBlock1D(out_channels=256, kernel_size=3, name="res_block_2b")(x)
         x = layers.MaxPooling1D(pool_size=3, name="res_pool_2")(x)
 
+        # --- 4. Residual Blocks Group 3 (paridade com o paper) ---
+        # O encoder do AASIST segue o RawNet2: 6 blocos residuais no total
+        # ([128,128,256,256,256,256]). Antes havia só 4 — adicionamos o 3º
+        # grupo (mais 2 blocos de 256) para casar com a profundidade do paper.
+        x = ResidualBlock1D(out_channels=256, kernel_size=3, name="res_block_3a")(x)
+        x = ResidualBlock1D(out_channels=256, kernel_size=3, name="res_block_3b")(x)
+        x = layers.MaxPooling1D(pool_size=3, name="res_pool_3")(x)
+
         # encoder_out: (batch, T_reduced, 256)
         encoder_out = x
 

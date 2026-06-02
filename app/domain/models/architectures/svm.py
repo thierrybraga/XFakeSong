@@ -21,6 +21,7 @@ from app.domain.models.architectures.classical_ml_helpers import (
     BaseClassicalModel,
     evaluate_model,
     optimize_hyperparameters,
+    wrap_calibration,
 )
 
 # Configure logger for SVM
@@ -46,16 +47,23 @@ class SVMModel(BaseClassicalModel):
                  gamma: str = 'scale',
                  probability: bool = True,
                  random_state: int = 42,
+                 calibrate: bool = False,
                  **kwargs):
         """
         Inicializa o modelo SVM.
         """
-        super().__init__(name="SVM", probability=probability, **kwargs)
+        # NÃO repassar `probability`/`calibrate` ao super: a base armazena tudo
+        # em self.kwargs, e _create_pipeline já passa probability=self.probability
+        # explicitamente ao SVC → repassar aqui causaria "got multiple values
+        # for keyword argument 'probability'" no fit. (Mesmo padrão do RF.)
+        super().__init__(name="SVM", **kwargs)
         self.kernel = kernel
         self.C = C
         self.gamma = gamma
         self.probability = probability
         self.random_state = random_state
+        # Calibração isotônica opcional (CalibratedClassifierCV) — default off.
+        self.calibrate = calibrate
 
         # Initialize pipeline immediately
         self.pipeline = self._create_pipeline()
@@ -64,16 +72,18 @@ class SVMModel(BaseClassicalModel):
             f"SVM model initialized with kernel={kernel}, C={C}, gamma={gamma}")
 
     def _create_pipeline(self) -> Pipeline:
+        clf = SVC(
+            kernel=self.kernel,
+            C=self.C,
+            gamma=self.gamma,
+            probability=self.probability,
+            random_state=self.random_state,
+            **self.kwargs
+        )
+        clf = wrap_calibration(clf, self.calibrate)
         return Pipeline([
             ('scaler', StandardScaler()),
-            ('svm', SVC(
-                kernel=self.kernel,
-                C=self.C,
-                gamma=self.gamma,
-                probability=self.probability,
-                random_state=self.random_state,
-                **self.kwargs
-            ))
+            ('svm', clf),
         ])
 
     def get_params(self) -> Dict[str, Any]:

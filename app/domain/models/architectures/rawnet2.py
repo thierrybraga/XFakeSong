@@ -83,7 +83,7 @@ def _create_rawnet2_model(
     sinc_filters: int = 128,
     sinc_kernel_size: int = 1024,
     res_filters: list = None,
-    gru_units: int = 512,
+    gru_units: int = 1024,  # paridade com o paper (Improved RawNet usa GRU 1024)
     dense_units: int = 1024,
     dropout_rate: float = 0.3,
     architecture: str = 'rawnet2'

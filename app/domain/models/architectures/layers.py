@@ -1439,6 +1439,66 @@ class AMSoftmaxLayer(layers.Layer):
         return config
 
 
+class OCSoftmaxLayer(layers.Layer):
+    """One-Class Softmax (OC-Softmax) — Zhang et al., 2021.
+
+    Objetivo *one-class* para anti-spoofing: aprende UM vetor-centro e produz
+    um score escalar de "bonafide-ness" `s = ŵ·x̂` (cosseno, maior = mais
+    bonafide). Treinado com `oc_softmax_loss`, compacta os embeddings bonafide
+    e afasta os spoof — generaliza melhor a **ataques não vistos** que a
+    entropia cruzada binária.
+
+    Saída: `(batch, 1)` (score em [-1, 1]). É uma alternativa OPCIONAL à cabeça
+    de 2 unidades softmax (não é default — requer `oc_softmax_loss` e tratamento
+    do score escalar na inferência).
+    """
+
+    def __init__(self, feat_dim=None, **kwargs):
+        super(OCSoftmaxLayer, self).__init__(**kwargs)
+        self.feat_dim = feat_dim
+
+    def build(self, input_shape):
+        self.w = self.add_weight(
+            name="oc_center",
+            shape=(input_shape[-1], 1),
+            initializer="glorot_uniform",
+            trainable=True,
+        )
+        super(OCSoftmaxLayer, self).build(input_shape)
+
+    def call(self, inputs):
+        # NaN-safety (mesma proteção do AMSoftmax)
+        inputs = tf.where(tf.math.is_finite(inputs), inputs, tf.zeros_like(inputs))
+        x = tf.nn.l2_normalize(inputs, axis=-1)
+        w = tf.nn.l2_normalize(self.w, axis=0)
+        s = tf.matmul(x, w)  # (batch, 1) — similaridade cosseno com o centro
+        return tf.clip_by_value(s, -1.0, 1.0)
+
+    def get_config(self):
+        config = super(OCSoftmaxLayer, self).get_config()
+        config.update({"feat_dim": self.feat_dim})
+        return config
+
+
+def oc_softmax_loss(m0: float = 0.9, m1: float = 0.2, alpha: float = 20.0):
+    """Loss do OC-Softmax (Zhang et al., 2021). `m0 > m1`.
+
+    Convenção de rótulos do XFakeSong: **0 = real/bonafide** (target, deve ter
+    score ≥ m0) e **1 = fake/spoof** (deve ter score ≤ m1).
+
+    `y_pred`: score escalar (batch, 1) da `OCSoftmaxLayer`.
+    Forma numericamente estável via `softplus` = log(1 + exp(z)).
+    """
+    def _loss(y_true, y_pred):
+        y = tf.cast(tf.reshape(y_true, (-1,)), tf.float32)
+        s = tf.reshape(tf.cast(y_pred, tf.float32), (-1,))
+        margin = tf.where(tf.equal(y, 0.0), m0, m1)          # margem por classe
+        sign = tf.where(tf.equal(y, 0.0), 1.0, -1.0)         # (-1)^y
+        z = alpha * (margin - s) * sign
+        return tf.reduce_mean(tf.math.softplus(z))
+    return _loss
+
+
 class AttentionPoolingLayer(layers.Layer):
     """Attention-weighted temporal pooling.
 
@@ -1721,6 +1781,7 @@ tf.keras.utils.get_custom_objects().update({
     'GraphReadoutLayer': GraphReadoutLayer,
     'HSGALLayer': HSGALLayer,
     'AMSoftmaxLayer': AMSoftmaxLayer,
+    'OCSoftmaxLayer': OCSoftmaxLayer,
     'AttentionPoolingLayer': AttentionPoolingLayer,
     'ConvolutionStemLayer': ConvolutionStemLayer,
     'PreEmphasisLayer': PreEmphasisLayer,

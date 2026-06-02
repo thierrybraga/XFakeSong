@@ -100,6 +100,17 @@ class MetricsCalculator:
                 precision, recall, _ = precision_recall_curve(y_true, y_proba)
                 metrics["pr_auc"] = float(auc(recall, precision))
 
+                # Métricas primárias de anti-spoofing (protocolo ASVspoof):
+                # EER + min t-DCF normalizado. y_proba = P(classe=1=fake/spoof).
+                try:
+                    eer, eer_thr = self.calculate_eer(y_true, y_proba)
+                    metrics["eer"] = float(eer)
+                    metrics["eer_threshold"] = float(eer_thr)
+                    min_tdcf, _ = self.calculate_min_tdcf(y_true, y_proba)
+                    metrics["min_tdcf"] = float(min_tdcf)
+                except Exception as e:
+                    self.logger.debug(f"EER/min-tDCF indisponível: {e}")
+
             # Para classificação multiclasse
             else:
                 # ROC AUC multiclasse
@@ -304,6 +315,80 @@ class MetricsCalculator:
         except Exception as e:
             self.logger.error(f"Erro ao calcular EER: {str(e)}")
             return 0.5, 0.5
+
+    @staticmethod
+    def _det_curve(target_scores: np.ndarray, nontarget_scores: np.ndarray):
+        """Curva DET (Pmiss, Pfa, thresholds) — algoritmo oficial ASVspoof.
+
+        `target_scores` = scores da classe BONAFIDE (maior = mais bonafide);
+        `nontarget_scores` = scores da classe SPOOF.
+        """
+        n = target_scores.size + nontarget_scores.size
+        all_scores = np.concatenate((target_scores, nontarget_scores))
+        labels = np.concatenate(
+            (np.ones(target_scores.size), np.zeros(nontarget_scores.size))
+        )
+        idx = np.argsort(all_scores, kind="mergesort")
+        labels = labels[idx]
+        tar_sums = np.cumsum(labels)
+        nontar_sums = nontarget_scores.size - (np.arange(1, n + 1) - tar_sums)
+        pmiss = np.concatenate((np.atleast_1d(0), tar_sums / target_scores.size))
+        pfa = np.concatenate((np.atleast_1d(1), nontar_sums / nontarget_scores.size))
+        thr = np.concatenate(
+            (np.atleast_1d(all_scores[idx[0]] - 1e-3), all_scores[idx])
+        )
+        return pmiss, pfa, thr
+
+    def calculate_min_tdcf(
+        self,
+        y_true: np.ndarray,
+        y_scores: np.ndarray,
+        *,
+        p_target: float = 0.9405,
+        p_nontarget: float = 0.0095,
+        p_spoof: float = 0.05,
+        c_miss: float = 1.0,
+        c_fa: float = 10.0,
+        pfa_asv: float = 0.0524,
+        pmiss_asv: float = 0.0104,
+        pmiss_spoof_asv: float = 0.0058,
+    ) -> Tuple[float, float]:
+        """min t-DCF normalizado (Kinnunen et al., 2018 — protocolo ASVspoof2019).
+
+        Métrica PRIMÁRIA de anti-spoofing. Versão **CM-only**: o sistema ASV é
+        fixado num ponto de operação por meio das constantes (`pfa_asv`,
+        `pmiss_asv`, `pmiss_spoof_asv` = defaults da partição LA do ASVspoof2019),
+        tornando a métrica comparável entre execuções sem precisar de scores ASV.
+
+        Args:
+            y_true: 1 = fake/spoof, 0 = real/bonafide.
+            y_scores: score de FAKE/spoof (ex.: p_fake). Internamente é invertido
+                para a convenção do t-DCF (maior = mais bonafide).
+
+        Returns:
+            (min_tdcf, threshold). `min_tdcf` ~0 = ótimo; ~1 = sem poder de detecção.
+        """
+        y_true = np.asarray(y_true).astype(int).reshape(-1)
+        y_scores = np.asarray(y_scores, dtype=float).reshape(-1)
+        # Convenção t-DCF: score maior ⇒ mais BONAFIDE. Aqui score = p_fake → inverte.
+        cm = -y_scores
+        bona = cm[y_true == 0]
+        spoof = cm[y_true == 1]
+        if bona.size == 0 or spoof.size == 0:
+            return 1.0, 0.0
+
+        pmiss_cm, pfa_cm, thr = self._det_curve(bona, spoof)
+
+        # Modelo de custo padrão do ASVspoof2019 (Cmiss_asv = Cmiss_cm = c_miss).
+        c1 = p_target * (c_miss - c_miss * pmiss_asv) - p_nontarget * c_fa * pfa_asv
+        c2 = c_fa * p_spoof * (1.0 - pmiss_spoof_asv)
+        tdcf = c1 * pmiss_cm + c2 * pfa_cm
+        denom = min(c1, c2)
+        if denom <= 0:
+            return 1.0, 0.0
+        tdcf_norm = tdcf / denom
+        min_idx = int(np.argmin(tdcf_norm))
+        return float(tdcf_norm[min_idx]), float(thr[min_idx])
 
     def get_det_curve_data(
         self,
