@@ -54,9 +54,10 @@ Python, sem overhead de Docker. TF ≥ 2.11 **não suporta GPU em Windows nativo
 :: 1. No Windows (PowerShell admin) — instala WSL2 + Ubuntu
 wsl --install -d Ubuntu
 
-:: 2. Atualize driver NVIDIA Windows >= 525.x:
+:: 2. Atualize o driver NVIDIA no WINDOWS host >= 535
 ::    https://www.nvidia.com/drivers
-::    (Suporta CUDA via passthrough WSL2)
+::    (NÃO instale driver dentro do WSL — o WSL2 herda a GPU via passthrough.
+::     TF 2.16+ embute CUDA 12.x, que exige driver >= 535)
 ```
 
 Após reiniciar, abra o Ubuntu pelo menu Iniciar e:
@@ -68,19 +69,23 @@ git clone https://github.com/XFakeSong/XFakeSong.git
 cd XFakeSong
 chmod +x start.sh
 
-# 4. Setup completo automatizado (driver + CUDA TF + deps):
-./start.sh wsl-setup
+# 4. Instala TensorFlow com CUDA embutido (tensorflow[and-cuda]) + deps:
+./start.sh cuda
 
-# 5. Inicie a app (usa GPU automaticamente):
-./start.sh test
+# 5. (opcional) Valida que a GPU está visível ao TensorFlow:
+./start.sh gpu-config
+
+# 6. Inicia a app usando a GPU:
+./start.sh gpu-local
 ```
 
-O launcher fará:
-1. Verifica `nvidia-smi` (driver Windows passthrough)
-2. Cria `.venv`, instala `tensorflow[and-cuda]`
+O `./start.sh cuda` fará:
+1. Verifica `nvidia-smi` (driver Windows via passthrough WSL2)
+2. Cria `.venv` e instala `tensorflow[and-cuda]` (CUDA/cuDNN embutidos no wheel)
 3. Instala `requirements.txt`
-4. Valida que TF expõe a GPU
-5. Inicia o app em `http://localhost:7860`
+
+E `./start.sh gpu-local` valida o CUDA e inicia o app em `http://localhost:7860`
+(usando a GPU automaticamente).
 
 Performance esperada (RTX 3060 12 GB):
 - Treino AASIST (10 epochs, 4600 amostras): **~3 min** (vs ~30 min CPU)
@@ -118,9 +123,10 @@ make down               # para containers
 | `test` | Roda Python local em `.venv` — usa GPU se disponível |
 | `prod` | Sobe Docker em modo produção |
 | `gpu` | Sobe Docker + GPU (NVIDIA) |
-| `install-gpu` | Instala `tensorflow[and-cuda]` em `.venv` local (Linux/WSL2) |
-| `wsl-setup` | Setup WSL2 + GPU passo-a-passo (interativo) |
-| `gpu-test` | Diagnóstico de GPU standalone (sem subir app) |
+| `cuda` / `install-gpu` | Instala `tensorflow[and-cuda]` + deps em `.venv` (Linux/WSL2) |
+| `gpu-local` (`wsl-gpu`) | Roda local usando a GPU (instala TF CUDA se faltar) |
+| `gpu-config` | Reconhece a placa e valida se o TF enxerga a GPU |
+| `nvidia-driver` | Instala driver NVIDIA no Linux (no WSL2, instale no Windows host) |
 | `stop` | Para containers |
 | `logs` | Tail dos logs do container (`-f`) |
 | `rebuild` | Force rebuild sem cache |

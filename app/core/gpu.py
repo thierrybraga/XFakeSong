@@ -293,7 +293,7 @@ def _diagnose_gpu_situation(
                 ),
                 "hints": [
                     "Instale TF com suporte CUDA: `pip install tensorflow[and-cuda]`",
-                    "Verifique driver NVIDIA Windows ≥ 525.x para WSL2 CUDA",
+                    "Driver NVIDIA no Windows host ≥ 535 (TF 2.16+ usa CUDA 12.x)",
                 ],
                 "severity": "warning",
             }

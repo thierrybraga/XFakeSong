@@ -658,7 +658,7 @@ install_gpu_dependencies() {
     pip uninstall -y tensorflow tensorflow-cpu tensorflow-intel 2>/dev/null || true
 
     info "Instalando TensorFlow com suporte CUDA nativo (CUDA embutido)..."
-    pip install 'tensorflow[and-cuda]>=2.16,<3.0'
+    pip install 'tensorflow[and-cuda]>=2.16,<2.22'
 
     info "Sincronizando requirements restantes..."
     pip install -r requirements.txt
@@ -719,7 +719,7 @@ run_gpu_local() {
     if ! check_cuda_tensorflow; then
         info "TensorFlow CUDA não detectado — instalando..."
         pip uninstall -y tensorflow tensorflow-cpu 2>/dev/null || true
-        pip install 'tensorflow[and-cuda]>=2.16,<3.0'
+        pip install 'tensorflow[and-cuda]>=2.16,<2.22'
     else
         success "TensorFlow CUDA já instalado"
     fi
