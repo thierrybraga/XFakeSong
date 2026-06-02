@@ -306,21 +306,20 @@ class ArchitectureFactoryRegistry:
                 "activation": "sigmoid"}
         ))
 
-        # RawGAT-ST
-        # Nota: A implementação atual de "rawgat_st" usa Conv2D + GAT operando em
-        # espectrograma (apesar do nome sugerir áudio bruto). Para áudio bruto
-        # paper-faithful (SincNet+GAT spectro-temporal), use a variante "aasist"
-        # da arquitetura AASIST como proxy.
-        # Variant "default" é alias para "rawgat_st" (CNN2D+GAT).
+        # RawGAT-ST — reescrito fiel ao paper (Tak et al., 2021): SincNet sobre
+        # ÁUDIO BRUTO + grafo espectral (Gs) e temporal (Gt) com fusão
+        # element-wise. (Antes usava Conv2D em espectrograma — divergia do paper.)
+        # As variantes legadas (cnn_gru_simple etc.) ainda existem em create_model
+        # para espectrograma, mas a default "rawgat_st" opera em raw audio.
         self.register_factory(ArchitectureSpec(
             name="RawGAT-ST",
             module_path="app.domain.models.architectures.rawgat_st",
             factory_function="create_model",
-            description="Graph Attention Spatio-Temporal (Conv2D + GAT em espectrograma)",
+            description="End-to-End Spectro-Temporal Graph Attention (SincNet + Gs/Gt GAT, áudio bruto)",
             supported_variants=[
-                "rawgat_st",         # CNN2D + GAT em espectrograma (default)
+                "rawgat_st",         # paper-faithful: SincNet + grafo Gs/Gt (default)
                 "default",           # alias -> rawgat_st
-                "cnn_gru_simple",    # CNN 2D + Bi-GRU + Attention (legado)
+                "cnn_gru_simple",    # CNN 2D + Bi-GRU + Attention (legado, espectro)
                 "cnn_baseline",
                 "bidirectional_gru",
                 "resnet_gru",
@@ -334,13 +333,13 @@ class ArchitectureFactoryRegistry:
                 "num_layers": 6,
             },
             input_requirements={
-                "input_type": "spectrogram",
-                "min_sequence_length": 100,
-                "feature_dim": 80,
+                "input_type": "raw_audio",
+                "sample_rate": 16000,
+                "min_sequence_length": 16000,
             },
             output_requirements={
                 "type": "classification",
-                "activation": "sigmoid"}
+                "activation": "softmax"}
         ))
 
         # EfficientNet-LSTM

@@ -18,6 +18,14 @@ pipeline:
   default_sample_rate: 16000
   max_audio_length: 30.0
   num_workers: 4
+performance:
+  cpu_threads: auto
+  inter_op_threads: auto
+  enable_onednn: true
+  enable_xla: true
+  cuda_malloc_async: true
+  gpu_memory_growth: true
+  gpu_memory_limit_mb: null
 plugins:
   auto_load: true
   enabled: true

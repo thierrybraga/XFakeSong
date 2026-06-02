@@ -13,9 +13,9 @@ from app.domain.services.feature_extraction_service import (
 )
 
 from .audio_preprocessing import (
+    DEFAULT_HOP,
     DEFAULT_N_FFT,
     DEFAULT_N_MELS,
-    DEFAULT_HOP,
     prepare_audio_for_model,
 )
 from .model_loader import ModelInfo
@@ -31,7 +31,7 @@ class FeaturePreparer:
 
     @staticmethod
     def _resolve_input_requirements(
-        model_info: 'ModelInfo', arch_info: Optional[Any]
+        model_info: "ModelInfo", arch_info: Optional[Any]
     ) -> Dict[str, Any]:
         """Resolve requisitos de input priorizando input_contract do treinamento.
 
@@ -46,18 +46,43 @@ class FeaturePreparer:
             base_req = dict(arch_info.input_requirements)
 
         # Override com input_contract se presente
-        contract = getattr(model_info, 'input_contract', None)
+        contract = getattr(model_info, "input_contract", None)
         if contract and isinstance(contract, dict):
             # O contrato tem prioridade sobre o registry
-            for key in ('type', 'format', 'input_shape', 'feature_types',
-                        'sample_rate', 'scaler_applied'):
+            for key in (
+                "input_type",
+                "type",
+                "format",
+                "input_shape",
+                "feature_types",
+                "sample_rate",
+                "scaler_applied",
+            ):
                 if key in contract and contract[key] is not None:
                     base_req[key] = contract[key]
 
+        # Compatibilidade com modelos legados salvos sem input_contract.
+        # Quando o shape real do modelo é espectrograma, ele deve prevalecer
+        # sobre o fallback genérico da arquitetura (ex.: AASIST antigo salvo
+        # como (None, 80)).
+        if not contract:
+            shape = getattr(model_info, "input_shape", None) or ()
+            if len(shape) >= 2:
+                freq_dim = shape[1]
+                channel_dim = shape[2] if len(shape) >= 3 else None
+                if freq_dim not in (None, 1) and channel_dim in (None, 1):
+                    base_req["input_type"] = "spectrogram"
+                    base_req["type"] = "features"
+                    base_req["format"] = "spectrogram"
+                    base_req["feature_dim"] = int(freq_dim)
+                elif freq_dim == 1:
+                    base_req.setdefault("input_type", "raw_audio")
+
         return base_req
 
-    def prepare_input(self, audio_data: AudioData, model_info: ModelInfo,
-                      arch_info: Optional[Any]) -> Dict[str, Any]:
+    def prepare_input(
+        self, audio_data: AudioData, model_info: ModelInfo, arch_info: Optional[Any]
+    ) -> Dict[str, Any]:
         """
         Prepara a entrada de acordo com o tipo de arquitetura.
 
@@ -76,69 +101,100 @@ class FeaturePreparer:
             # pipeline de treino do training_wizard, usando tf.signal.
             # Cobre os 12 modelos TensorFlow registrados.
             # ────────────────────────────────────────────────────────────
-            input_type = input_req.get('input_type')
-            if input_type in ('raw_audio', 'spectrogram'):
+            input_type = input_req.get("input_type")
+            if input_type in ("raw_audio", "spectrogram"):
                 target_shape = model_info.input_shape or ()
                 # STFT params do contrato se existirem (treinos futuros podem
                 # gravar; default = mesmos do wizard)
-                n_fft = int(
-                    (model_info.input_contract or {}).get('n_fft', DEFAULT_N_FFT)
-                ) if isinstance(model_info.input_contract, dict) else DEFAULT_N_FFT
-                hop = int(
-                    (model_info.input_contract or {}).get('hop_length', DEFAULT_HOP)
-                ) if isinstance(model_info.input_contract, dict) else DEFAULT_HOP
-                n_mels = int(
-                    (model_info.input_contract or {}).get('n_mels', DEFAULT_N_MELS)
-                ) if isinstance(model_info.input_contract, dict) else DEFAULT_N_MELS
+                n_fft = (
+                    int((model_info.input_contract or {}).get("n_fft", DEFAULT_N_FFT))
+                    if isinstance(model_info.input_contract, dict)
+                    else DEFAULT_N_FFT
+                )
+                hop = (
+                    int(
+                        (model_info.input_contract or {}).get("hop_length", DEFAULT_HOP)
+                    )
+                    if isinstance(model_info.input_contract, dict)
+                    else DEFAULT_HOP
+                )
+                n_mels = (
+                    int((model_info.input_contract or {}).get("n_mels", DEFAULT_N_MELS))
+                    if isinstance(model_info.input_contract, dict)
+                    else DEFAULT_N_MELS
+                )
+                # Front-end espectral gravado no treino. Default "logmel" para
+                # modelos LEGADOS (sem o campo) — preserva a paridade original.
+                # Modelos treinados após a melhoria P0 gravam "lfcc".
+                _contract = (
+                    model_info.input_contract
+                    if isinstance(model_info.input_contract, dict)
+                    else {}
+                )
+                feature_frontend = _contract.get("feature_frontend", "logmel")
+                n_lfcc = int(_contract.get("n_lfcc", n_mels))
 
                 features = prepare_audio_for_model(
                     np.asarray(audio_data.samples, dtype=np.float32),
                     input_type=input_type,
                     input_shape=tuple(target_shape),
                     sample_rate=input_req.get(
-                        'sample_rate', audio_data.sample_rate or 16000
+                        "sample_rate", audio_data.sample_rate or 16000
                     ),
                     normalize=True,
                     n_fft=n_fft,
                     hop_length=hop,
                     n_mels=n_mels,
+                    feature_frontend=feature_frontend,
+                    n_lfcc=n_lfcc,
                 )
                 metadata = {
-                    'feature_type': 'raw' if input_type == 'raw_audio' else 'log_mel_spectrogram',
-                    'feature_names': (
-                        ['waveform'] if input_type == 'raw_audio' else ['log_mel_spectrogram']
+                    "feature_type": "raw"
+                    if input_type == "raw_audio"
+                    else "log_mel_spectrogram",
+                    "feature_names": (
+                        ["waveform"]
+                        if input_type == "raw_audio"
+                        else ["log_mel_spectrogram"]
                     ),
-                    'feature_shapes': {
-                        ('waveform' if input_type == 'raw_audio' else 'log_mel_spectrogram'): features.shape
+                    "feature_shapes": {
+                        (
+                            "waveform"
+                            if input_type == "raw_audio"
+                            else "log_mel_spectrogram"
+                        ): features.shape
                     },
-                    'features_shape': features.shape,
-                    'feature_count_total': int(features.size),
-                    'sample_rate': audio_data.sample_rate,
-                    'duration_s': audio_data.duration,
-                    'channels': audio_data.channels,
-                    'config_feature_types': (
-                        ['raw'] if input_type == 'raw_audio'
-                        else ['log_mel_spectrogram']
+                    "features_shape": features.shape,
+                    "feature_count_total": int(features.size),
+                    "sample_rate": audio_data.sample_rate,
+                    "duration_s": audio_data.duration,
+                    "channels": audio_data.channels,
+                    "config_feature_types": (
+                        ["raw"]
+                        if input_type == "raw_audio"
+                        else ["log_mel_spectrogram"]
                     ),
-                    'input_type': input_type,
-                    'stft_params': {
-                        'n_fft': n_fft, 'hop_length': hop, 'n_mels': n_mels,
-                    } if input_type == 'spectrogram' else None,
+                    "input_type": input_type,
+                    "stft_params": {
+                        "n_fft": n_fft,
+                        "hop_length": hop,
+                        "n_mels": n_mels,
+                    }
+                    if input_type == "spectrogram"
+                    else None,
                 }
                 try:
                     from pathlib import Path
+
                     results_dir = (
-                        Path(__file__).resolve().parent.parent.parent.parent
-                        / "results"
+                        Path(__file__).resolve().parent.parent.parent.parent / "results"
                     )
-                    metadata['recommended_hyperparameters'] = (
-                        load_hyperparameters_json(
-                            model_info.architecture, str(results_dir)
-                        )
+                    metadata["recommended_hyperparameters"] = load_hyperparameters_json(
+                        model_info.architecture, str(results_dir)
                     )
                 except Exception:
-                    metadata['recommended_hyperparameters'] = {}
-                return {'status': 'ok', 'features': features, 'metadata': metadata}
+                    metadata["recommended_hyperparameters"] = {}
+                return {"status": "ok", "features": features, "metadata": metadata}
 
             # ────────────────────────────────────────────────────────────
             # Legacy paths abaixo: input_req sem input_type (modelos antigos
@@ -147,7 +203,7 @@ class FeaturePreparer:
             # ────────────────────────────────────────────────────────────
 
             # Casos de arquiteturas que operam em áudio bruto
-            if input_req.get('type') == 'audio':
+            if input_req.get("type") == "audio":
                 target_shape = model_info.input_shape
 
                 # Determinar comprimento da sequência alvo
@@ -157,8 +213,8 @@ class FeaturePreparer:
 
                 # Fallback: calcular via requisitos de duração
                 if not seq_len:
-                    max_dur = input_req.get('max_duration')
-                    req_sr = input_req.get('sample_rate', 16000)
+                    max_dur = input_req.get("max_duration")
+                    req_sr = input_req.get("sample_rate", 16000)
                     if max_dur:
                         seq_len = int(max_dur * req_sr)
 
@@ -166,12 +222,14 @@ class FeaturePreparer:
                 if not seq_len:
                     seq_len = len(audio_data.samples)
 
-                feat_dim = target_shape[1] if target_shape and len(
-                    target_shape
-                ) >= 2 else 1
+                feat_dim = (
+                    target_shape[1] if target_shape and len(target_shape) >= 2 else 1
+                )
                 if feat_dim and int(feat_dim) > 1:
                     extractor = MelSpectrogramExtractor(
-                        sr=input_req.get("sample_rate", audio_data.sample_rate or 16000),
+                        sr=input_req.get(
+                            "sample_rate", audio_data.sample_rate or 16000
+                        ),
                         n_mels=int(feat_dim),
                     )
                     features_result = extractor.extract(audio_data)
@@ -211,8 +269,10 @@ class FeaturePreparer:
                             Path(__file__).resolve().parent.parent.parent.parent
                             / "results"
                         )
-                        metadata["recommended_hyperparameters"] = load_hyperparameters_json(
-                            model_info.architecture, str(results_dir)
+                        metadata["recommended_hyperparameters"] = (
+                            load_hyperparameters_json(
+                                model_info.architecture, str(results_dir)
+                            )
                         )
                     except Exception:
                         metadata["recommended_hyperparameters"] = {}
@@ -224,7 +284,7 @@ class FeaturePreparer:
                     samples = samples[:, 0]
 
                 # Normalização simples se requerido
-                if input_req.get('preprocessing') == 'normalize':
+                if input_req.get("preprocessing") == "normalize":
                     max_abs = np.max(np.abs(samples)) or 1.0
                     samples = samples / max_abs
 
@@ -232,57 +292,56 @@ class FeaturePreparer:
                 if samples.shape[0] > seq_len:
                     mid = samples.shape[0] // 2
                     start = max(0, mid - seq_len // 2)
-                    samples = samples[start:start + seq_len]
+                    samples = samples[start : start + seq_len]
                 elif samples.shape[0] < seq_len:
                     pad = seq_len - samples.shape[0]
-                    samples = np.pad(samples, (0, pad), mode='constant')
+                    samples = np.pad(samples, (0, pad), mode="constant")
 
                 features = samples.reshape(seq_len, 1)
                 metadata = {
-                    'feature_type': 'raw',
-                    'feature_names': ['waveform'],
-                    'feature_shapes': {'waveform': (seq_len,)},
-                    'feature_count_total': int(seq_len),
-                    'features_shape': (seq_len, feat_dim),
-                    'sample_rate': audio_data.sample_rate,
-                    'duration_s': audio_data.duration,
-                    'channels': audio_data.channels,
-                    'config_feature_types': ['raw']
+                    "feature_type": "raw",
+                    "feature_names": ["waveform"],
+                    "feature_shapes": {"waveform": (seq_len,)},
+                    "feature_count_total": int(seq_len),
+                    "features_shape": (seq_len, feat_dim),
+                    "sample_rate": audio_data.sample_rate,
+                    "duration_s": audio_data.duration,
+                    "channels": audio_data.channels,
+                    "config_feature_types": ["raw"],
                 }
                 try:
                     from pathlib import Path
-                    results_dir = Path(__file__).resolve(
-                    ).parent.parent.parent.parent / "results"
-                    metadata['recommended_hyperparameters'] = (
-                        load_hyperparameters_json(
-                            model_info.architecture, str(results_dir)
-                        )
+
+                    results_dir = (
+                        Path(__file__).resolve().parent.parent.parent.parent / "results"
+                    )
+                    metadata["recommended_hyperparameters"] = load_hyperparameters_json(
+                        model_info.architecture, str(results_dir)
                     )
                 except Exception:
-                    metadata['recommended_hyperparameters'] = {}
-                return {'status': 'ok', 'features': features,
-                        'metadata': metadata}
+                    metadata["recommended_hyperparameters"] = {}
+                return {"status": "ok", "features": features, "metadata": metadata}
 
             # Verificar requisitos da arquitetura
-            req_format = input_req.get('format')
+            req_format = input_req.get("format")
 
             # Verificar se o modelo tem requisitos específicos de features
             # Prioridade: input_contract > atributo do modelo > fallback
             feature_types_used = None
-            if model_info.input_contract and model_info.input_contract.get('feature_types'):
-                feature_types_used = model_info.input_contract['feature_types']
+            if model_info.input_contract and model_info.input_contract.get(
+                "feature_types"
+            ):
+                feature_types_used = model_info.input_contract["feature_types"]
             if not feature_types_used:
                 feature_types_used = getattr(
-                    model_info.model, 'feature_types_used', None)
-            aggregate_method = getattr(
-                model_info.model, 'aggregate_method', 'mean')
+                    model_info.model, "feature_types_used", None
+                )
+            aggregate_method = getattr(model_info.model, "aggregate_method", "mean")
 
             # Se a arquitetura exige tabular mas o modelo não define features
             # (ex: carregado sem metadados), usar conjunto padrão robusto
-            if req_format == 'tabular' and not feature_types_used:
-                feature_types_used = [
-                    'spectral', 'cepstral', 'temporal', 'prosodic'
-                ]
+            if req_format == "tabular" and not feature_types_used:
+                feature_types_used = ["spectral", "cepstral", "temporal", "prosodic"]
 
             if feature_types_used:
                 # Converter strings para FeatureType enums
@@ -297,23 +356,26 @@ class FeaturePreparer:
                     config = ExtractionConfig(
                         feature_types=feature_enums,
                         normalize=True,
-                        aggregate_method=aggregate_method
+                        aggregate_method=aggregate_method,
                     )
 
                     try:
                         # Usar extração segmentada
-                        audio_features = self.feature_service.extract_segmented_features(
-                            audio_data, config)
+                        audio_features = (
+                            self.feature_service.extract_segmented_features(
+                                audio_data, config
+                            )
+                        )
 
                         # Obter features combinadas
-                        if hasattr(audio_features, 'features') and isinstance(
+                        if hasattr(audio_features, "features") and isinstance(
                             audio_features.features, dict
                         ):
                             features = audio_features.features.get(
-                                'combined_features', np.array([])
+                                "combined_features", np.array([])
                             )
                             feature_names = audio_features.features.get(
-                                'feature_names', []
+                                "feature_names", []
                             )
                         else:
                             features = np.array([])
@@ -321,44 +383,43 @@ class FeaturePreparer:
 
                         # Metadados
                         metadata = {
-                            'feature_type': 'segmented_aggregated',
-                            'feature_names': feature_names,
-                            'feature_shapes': {
-                                'combined_features': features.shape
-                            },
-                            'feature_count_total': features.size,
-                            'features_shape': features.shape,
-                            'sample_rate': audio_data.sample_rate,
-                            'duration_s': audio_data.duration,
-                            'channels': audio_data.channels,
-                            'config_feature_types': [
-                                ft.value for ft in feature_enums
-                            ],
-                            'aggregate_method': aggregate_method
+                            "feature_type": "segmented_aggregated",
+                            "feature_names": feature_names,
+                            "feature_shapes": {"combined_features": features.shape},
+                            "feature_count_total": features.size,
+                            "features_shape": features.shape,
+                            "sample_rate": audio_data.sample_rate,
+                            "duration_s": audio_data.duration,
+                            "channels": audio_data.channels,
+                            "config_feature_types": [ft.value for ft in feature_enums],
+                            "aggregate_method": aggregate_method,
                         }
 
                         try:
                             from pathlib import Path
-                            results_dir = Path(__file__).resolve(
-                            ).parent.parent.parent.parent / "results"
-                            metadata['recommended_hyperparameters'] = (
+
+                            results_dir = (
+                                Path(__file__).resolve().parent.parent.parent.parent
+                                / "results"
+                            )
+                            metadata["recommended_hyperparameters"] = (
                                 load_hyperparameters_json(
                                     model_info.architecture, str(results_dir)
                                 )
                             )
                         except Exception:
-                            metadata['recommended_hyperparameters'] = {}
+                            metadata["recommended_hyperparameters"] = {}
 
                         return {
-                            'status': 'ok',
-                            'features': features.reshape(1, -1),
-                            'metadata': metadata
+                            "status": "ok",
+                            "features": features.reshape(1, -1),
+                            "metadata": metadata,
                         }
 
                     except Exception as e:
                         return {
-                            'status': 'error',
-                            'error': f"Erro na extração segmentada: {str(e)}"
+                            "status": "error",
+                            "error": f"Erro na extração segmentada: {str(e)}",
                         }
 
             # Demais arquiteturas: extrair features conforme necessidade
@@ -366,11 +427,11 @@ class FeaturePreparer:
             features_result = None
 
             if input_req:
-                req_type = input_req.get('type')
-                req_format = input_req.get('format')
-                feature_dim = input_req.get('feature_dim')
+                req_type = input_req.get("type")
+                req_format = input_req.get("format")
+                feature_dim = input_req.get("feature_dim")
 
-                if req_type == 'features' and req_format == 'spectrogram':
+                if req_type == "features" and req_format == "spectrogram":
                     selected_feature_type = FeatureType.MEL_SPECTROGRAM
                     n_mels = feature_dim if feature_dim else 128
                     # Usar extrator específico para garantir dimensão correta
@@ -379,14 +440,18 @@ class FeaturePreparer:
 
             if features_result is None:
                 config = ExtractionConfig(
-                    feature_types=[selected_feature_type], normalize=True)
+                    feature_types=[selected_feature_type], normalize=True
+                )
                 features_result = self.feature_service.extract_features(
-                    audio_data, config)
+                    audio_data, config
+                )
 
             if features_result.status != ProcessingStatus.SUCCESS:
                 return {
-                    'status': 'error',
-                    'error': features_result.errors[0] if features_result.errors else 'Erro desconhecido'  # noqa: E501
+                    "status": "error",
+                    "error": features_result.errors[0]
+                    if features_result.errors
+                    else "Erro desconhecido",  # noqa: E501
                 }
 
             extraction_result = features_result.data
@@ -395,52 +460,65 @@ class FeaturePreparer:
             feature_names_list = []
             # Preparar estrutura apropriada
             if selected_feature_type == FeatureType.MEL_SPECTROGRAM:
-                if hasattr(audio_features, 'features') and isinstance(
+                if hasattr(audio_features, "features") and isinstance(
                     audio_features.features, dict
                 ):
-                    if 'mel_spectrogram' in audio_features.features:
-                        features = audio_features.features['mel_spectrogram']
-                        feature_shapes_map['mel_spectrogram'] = features.shape
-                        feature_names_list = ['mel_spectrogram']
+                    if "mel_spectrogram" in audio_features.features:
+                        features = audio_features.features["mel_spectrogram"]
+                        feature_shapes_map["mel_spectrogram"] = features.shape
+                        feature_names_list = ["mel_spectrogram"]
                         # Ajustar canais conforme input_shape
                         target_shape = model_info.input_shape
                         if len(target_shape) == 3 and features.ndim == 2:
                             features = np.expand_dims(features, axis=-1)
             else:
                 feature_arrays = []
-                if hasattr(audio_features, 'features') and isinstance(
-                        audio_features.features, dict):
+                if hasattr(audio_features, "features") and isinstance(
+                    audio_features.features, dict
+                ):
                     for feature_name, feature_array in audio_features.features.items():
                         if isinstance(feature_array, np.ndarray):
                             feature_arrays.append(feature_array.flatten())
                             feature_shapes_map[feature_name] = tuple(
-                                feature_array.shape)
+                                feature_array.shape
+                            )
                             feature_names_list.append(feature_name)
-                features = np.concatenate(
-                    feature_arrays) if feature_arrays else np.array([])
+                features = (
+                    np.concatenate(feature_arrays) if feature_arrays else np.array([])
+                )
 
             metadata = {
-                'feature_type': audio_features.feature_type.value if hasattr(audio_features, 'feature_type') else None,
-                'feature_names': feature_names_list,
-                'feature_shapes': feature_shapes_map,
-                'feature_count_total': int(features.size) if isinstance(features, np.ndarray) and features.ndim == 1 else (features.shape[0] * features.shape[1] if isinstance(features, np.ndarray) and features.ndim >= 2 else 0),
-                'features_shape': extraction_result.feature_shape if hasattr(extraction_result, 'feature_shape') else (features.shape if hasattr(features, 'shape') else None),
-                'sample_rate': audio_data.sample_rate,
-                'duration_s': audio_data.duration,
-                'channels': audio_data.channels,
-                'config_feature_types': [selected_feature_type.value]
+                "feature_type": audio_features.feature_type.value
+                if hasattr(audio_features, "feature_type")
+                else None,
+                "feature_names": feature_names_list,
+                "feature_shapes": feature_shapes_map,
+                "feature_count_total": int(features.size)
+                if isinstance(features, np.ndarray) and features.ndim == 1
+                else (
+                    features.shape[0] * features.shape[1]
+                    if isinstance(features, np.ndarray) and features.ndim >= 2
+                    else 0
+                ),
+                "features_shape": extraction_result.feature_shape
+                if hasattr(extraction_result, "feature_shape")
+                else (features.shape if hasattr(features, "shape") else None),
+                "sample_rate": audio_data.sample_rate,
+                "duration_s": audio_data.duration,
+                "channels": audio_data.channels,
+                "config_feature_types": [selected_feature_type.value],
             }
             try:
                 from pathlib import Path
-                results_dir = Path(__file__).resolve(
-                ).parent.parent.parent.parent / "results"
-                metadata['recommended_hyperparameters'] = (
-                    load_hyperparameters_json(
-                        model_info.architecture, str(results_dir)
-                    )
+
+                results_dir = (
+                    Path(__file__).resolve().parent.parent.parent.parent / "results"
+                )
+                metadata["recommended_hyperparameters"] = load_hyperparameters_json(
+                    model_info.architecture, str(results_dir)
                 )
             except Exception:
-                metadata['recommended_hyperparameters'] = {}
-            return {'status': 'ok', 'features': features, 'metadata': metadata}
+                metadata["recommended_hyperparameters"] = {}
+            return {"status": "ok", "features": features, "metadata": metadata}
         except Exception as e:
-            return {'status': 'error', 'error': str(e)}
+            return {"status": "error", "error": str(e)}

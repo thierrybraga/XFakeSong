@@ -406,7 +406,8 @@ def _create_cct_model(
     # ---------- Classification ----------
     representation = layers.Dropout(dropout_rate, name='head_dropout')(representation)
 
-    if num_classes == 1 or num_classes == 2:
+    # Cabeça PADRONIZADA: num_classes>=2 → softmax N-unidades (convenção única).
+    if num_classes == 1:
         outputs = layers.Dense(1, activation='sigmoid', name='output')(representation)
         loss = 'binary_crossentropy'
     else:

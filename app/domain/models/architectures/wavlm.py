@@ -37,10 +37,14 @@ class WavLMFeatureExtractor(layers.Layer):
     """Extrator de características usando modelo WavLM pré-treinado."""
 
     def __init__(self, model_name: str = "microsoft/wavlm-base",
-                 freeze_weights: bool = True, **kwargs):
+                 freeze_weights: bool = True, n_trainable_layers: int = 0,
+                 **kwargs):
         super(WavLMFeatureExtractor, self).__init__(**kwargs)
         self.model_name = model_name
         self.freeze_weights = freeze_weights
+        # Fine-tuning parcial: nº de camadas do encoder a descongelar (do topo).
+        # >0 ativa o fine-tune recomendado (Tak et al. 2022); 0 = congelado.
+        self.n_trainable_layers = int(n_trainable_layers)
         self.feature_dim = 768 if "base" in model_name else 1024
 
         if HF_AVAILABLE:
@@ -56,11 +60,18 @@ class WavLMFeatureExtractor(layers.Layer):
                 from app.domain.models.architectures.layers import WeightedSumLayer
                 self.weighted_sum = WeightedSumLayer(num_layers=self.num_layers)
 
-                # Congelar pesos se especificado
-                if freeze_weights:
-                    self.wavlm_model.trainable = False
+                # Trainability do backbone (congelado | fine-tune parcial | total)
+                from app.domain.models.architectures.ssl_utils import (
+                    set_ssl_backbone_trainability,
+                )
+                _mode = set_ssl_backbone_trainability(
+                    self.wavlm_model, freeze_weights, self.n_trainable_layers
+                )
 
-                logger.info(f"WavLM model {model_name} loaded successfully with {self.num_layers} layers")
+                logger.info(
+                    f"WavLM model {model_name} carregado ({self.num_layers} "
+                    f"camadas) — backbone: {_mode}"
+                )
 
             except Exception as e:
                 logger.warning(
@@ -132,6 +143,7 @@ class WavLMFeatureExtractor(layers.Layer):
         config.update({
             'model_name': self.model_name,
             'freeze_weights': self.freeze_weights,
+            'n_trainable_layers': self.n_trainable_layers,
             'feature_dim': self.feature_dim
         })
         return config
@@ -164,6 +176,8 @@ def _create_wavlm_model(input_shape: Tuple[int, ...],
                         architecture: str = 'wavlm',
                         wavlm_model: str = "microsoft/wavlm-base",
                         freeze_wavlm: bool = True,
+                        n_trainable_layers: int = 3,
+                        backend: str = "conv",
                         classifier_units: list = None,
                         dropout_rate: float = 0.3) -> models.Model:
     """Cria modelo WavLM completo fiel ao paper.
@@ -193,27 +207,35 @@ def _create_wavlm_model(input_shape: Tuple[int, ...],
     feature_extractor = WavLMFeatureExtractor(
         model_name=wavlm_model,
         freeze_weights=freeze_wavlm,
+        n_trainable_layers=n_trainable_layers,
         name='wavlm_feature_extractor'
     )
     # x shape: (batch, sequence_length, feature_dim)
     x = feature_extractor(inputs)
 
-    # 3. Temporal convolution block for richer representations
-    conv_out = layers.Conv1D(256, 3, padding='same', activation='relu', name='temporal_conv1')(x)
-    conv_out = layers.BatchNormalization(name='temporal_bn1')(conv_out)
-    conv_out2 = layers.Conv1D(256, 3, padding='same', activation='relu', name='temporal_conv2')(conv_out)
-    conv_out2 = layers.BatchNormalization(name='temporal_bn2')(conv_out2)
-    conv_out2 = conv_out2 + conv_out  # residual
-    conv_out3 = layers.Conv1D(256, 3, padding='same', activation='relu', name='temporal_conv3')(conv_out2)
-    conv_out3 = layers.BatchNormalization(name='temporal_bn3')(conv_out3)
-    conv_out3 = conv_out3 + conv_out2  # residual
+    if backend == "aasist":
+        # Back-end de grafo AASIST (receita SOTA: WavLM → grafo espectro-temporal)
+        from app.domain.models.architectures.ssl_utils import (
+            build_ssl_aasist_backend,
+        )
+        pooled = build_ssl_aasist_backend(
+            x, dropout_rate=dropout_rate, name="wavlm_aasist"
+        )
+    else:
+        # Back-end raso (conv 1D + attention pooling)
+        conv_out = layers.Conv1D(256, 3, padding='same', activation='relu', name='temporal_conv1')(x)
+        conv_out = layers.BatchNormalization(name='temporal_bn1')(conv_out)
+        conv_out2 = layers.Conv1D(256, 3, padding='same', activation='relu', name='temporal_conv2')(conv_out)
+        conv_out2 = layers.BatchNormalization(name='temporal_bn2')(conv_out2)
+        conv_out2 = conv_out2 + conv_out  # residual
+        conv_out3 = layers.Conv1D(256, 3, padding='same', activation='relu', name='temporal_conv3')(conv_out2)
+        conv_out3 = layers.BatchNormalization(name='temporal_bn3')(conv_out3)
+        conv_out3 = conv_out3 + conv_out2  # residual
+        pooled = AttentionPoolingLayer(name='attention_pool')(conv_out3)
 
-    # 4. Attention Pooling
-    mean_pool = AttentionPoolingLayer(name='attention_pool')(conv_out3)
-
-    # 4. Classification Head
+    # Classification Head
     outputs, loss = create_classification_head(
-        mean_pool,
+        pooled,
         num_classes,
         dropout_rate=dropout_rate,
         hidden_dims=classifier_units
@@ -225,15 +247,21 @@ def _create_wavlm_model(input_shape: Tuple[int, ...],
         outputs=outputs,
         name=f'wavlm_{architecture}')
 
-    # Compilar modelo
-    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
+    # Compilar modelo. Em fine-tuning parcial (backbone SSL descongelado) usa-se
+    # LR baixo (1e-5) para evitar esquecimento catastrófico dos pesos pré-treinados;
+    # com backbone congelado, LR padrão (1e-4) para o classificador.
+    lr = 1e-5 if n_trainable_layers and n_trainable_layers > 0 else 1e-4
+    optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
     model.compile(
         optimizer=optimizer,
         loss=loss,
         metrics=['accuracy']
     )
 
-    logger.info(f"WavLM model {architecture} created successfully")
+    logger.info(
+        f"WavLM model {architecture} criado (lr={lr}, "
+        f"n_trainable_layers={n_trainable_layers})"
+    )
     return model
 
 
@@ -250,6 +278,10 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
     Returns:
         Modelo Keras compilado
     """
+    # Variante 'wavlm_aasist' → back-end de grafo AASIST (receita SOTA).
+    if "aasist" in architecture and "backend" not in kwargs:
+        kwargs["backend"] = "aasist"
+
     if architecture == 'wavlm_lite':
         return _create_wavlm_model(
             input_shape=input_shape,

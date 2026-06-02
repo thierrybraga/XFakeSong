@@ -198,10 +198,14 @@ def clear_all_history():
 
 
 def create_history_tab():
-    with gr.TabItem("📜 Histórico", id="tab_history"):
-        gr.Markdown(
-            "### Histórico de Detecções\n"
-            "Consulte, filtre e exporte os resultados de todas as análises realizadas."
+    with gr.Tab("📜 Histórico", id="tab_history"):
+        from app.interfaces.gradio.utils.components import page_header
+
+        page_header(
+            "📜",
+            "Histórico de Detecções",
+            "Consulte, filtre e exporte os resultados de todas as análises "
+            "realizadas.",
         )
 
         with gr.Row():

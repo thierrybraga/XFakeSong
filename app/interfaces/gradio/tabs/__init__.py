@@ -12,6 +12,20 @@ from __future__ import annotations
 import logging
 from typing import Callable
 
+# === Compatibilidade huggingface_hub ===
+# Gradio v4 ainda importa HfFolder, removido em huggingface_hub recente.
+try:
+    from huggingface_hub import HfFolder  # noqa: F401
+except ImportError:
+    import huggingface_hub
+
+    class _HfFolder:
+        """Shim para HfFolder removido em huggingface_hub >= 0.16."""
+
+        pass
+
+    huggingface_hub.HfFolder = _HfFolder
+
 import gradio as gr
 
 logger = logging.getLogger(__name__)

@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ArchitectureInfo:
     """Informações sobre uma arquitetura."""
+
     name: str
     module_path: str
     function_name: str
@@ -66,7 +67,8 @@ class ArchitectureRegistry:
                     "bidirectional_gru",
                     "resnet_gru",
                     "transformer",
-                    "aasist"],
+                    "aasist",
+                ],
                 default_params={
                     # create_model params: dropout_rate, l2_reg_strength, hidden_dim, num_layers
                     "dropout_rate": 0.2,
@@ -77,14 +79,17 @@ class ArchitectureRegistry:
                     "patience": 20,
                     "lr_patience": 10,
                     "gradient_clip": 1.0,
-                    "augmentation_strength": 0.25
+                    "augmentation_strength": 0.25,
                 },
                 input_requirements={
+                    "input_type": "raw_audio",
                     "type": "audio",
                     "format": "raw",
                     "sample_rate": 16000,
+                    "min_sequence_length": 16000,
                     "max_duration": 4.0,
-                    "preprocessing": "normalize"}
+                    "preprocessing": "normalize",
+                },
             )
         )
 
@@ -94,14 +99,15 @@ class ArchitectureRegistry:
                 name="RawGAT-ST",
                 module_path="app.domain.models.architectures.rawgat_st",
                 function_name="create_model",
-                description="Raw Graph Attention Spatio-Temporal Network - otimizado com HS-GAL 3 camadas e focal loss",
+                description="End-to-End Spectro-Temporal Graph Attention (Tak et al., 2021) — SincNet sobre áudio bruto + grafo espectral (Gs) e temporal (Gt) com fusão element-wise",
                 supported_variants=[
                     "default",
                     "cnn_baseline",
                     "bidirectional_gru",
                     "resnet_gru",
                     "transformer",
-                    "rawgat_st"],
+                    "rawgat_st",
+                ],
                 default_params={
                     # create_model params: dropout_rate, l2_reg_strength, attention_heads, hidden_dim, num_layers
                     "dropout_rate": 0.2,
@@ -113,14 +119,19 @@ class ArchitectureRegistry:
                     "patience": 18,
                     "lr_patience": 9,
                     "gradient_clip": 0.8,
-                    "augmentation_strength": 0.3
+                    "augmentation_strength": 0.3,
                 },
                 input_requirements={
+                    # Paper-faithful: opera sobre ÁUDIO BRUTO (SincNet front-end),
+                    # igual ao AASIST. (Antes estava 'spectrogram', divergindo do paper.)
+                    "input_type": "raw_audio",
                     "type": "audio",
                     "format": "raw",
                     "sample_rate": 16000,
+                    "min_sequence_length": 16000,
                     "max_duration": 4.0,
-                    "preprocessing": "normalize"}
+                    "preprocessing": "normalize",
+                },
             )
         )
 
@@ -131,9 +142,7 @@ class ArchitectureRegistry:
                 module_path="app.domain.models.architectures.efficientnet_lstm",
                 function_name="create_model",
                 description="EfficientNet with LSTM for temporal modeling - configuração padrão para máxima acurácia",
-                supported_variants=[
-                    "efficientnet_lstm",
-                    "efficientnet_lstm_lite"],
+                supported_variants=["efficientnet_lstm", "efficientnet_lstm_lite"],
                 default_params={
                     # create_model params: lstm_units (int), dropout_rate
                     "lstm_units": 256,
@@ -142,15 +151,15 @@ class ArchitectureRegistry:
                     "patience": 15,
                     "lr_patience": 8,
                     "gradient_clip": 1.0,
-                    "augmentation_strength": 0.3
+                    "augmentation_strength": 0.3,
                 },
                 input_requirements={
-                    "type": "audio",
-                    "format": "raw",
-                    "sample_rate": 16000,
-                    "max_duration": 4.0,
-                    "preprocessing": "normalize",
-                    "supports_2d_input": True}
+                    "input_type": "spectrogram",
+                    "type": "features",
+                    "format": "spectrogram",
+                    "min_sequence_length": 100,
+                    "feature_dim": 80,
+                },
             )
         )
 
@@ -171,13 +180,15 @@ class ArchitectureRegistry:
                     "patience": 15,
                     "lr_patience": 8,
                     "gradient_clip": 1.2,
-                    "augmentation_strength": 0.35
+                    "augmentation_strength": 0.35,
                 },
                 input_requirements={
+                    "input_type": "spectrogram",
                     "type": "features",
                     "format": "spectrogram",
                     "min_sequence_length": 100,
-                    "feature_dim": 80}
+                    "feature_dim": 80,
+                },
             )
         )
 
@@ -190,20 +201,23 @@ class ArchitectureRegistry:
                 description="Audio Spectrogram Transformer (AST) - ViT-Base with overlapping patches for audio deepfake detection",
                 supported_variants=[
                     "spectrogram_transformer",
-                    "spectrogram_transformer_lite"],
+                    "spectrogram_transformer_lite",
+                ],
                 default_params={
                     # create_model params: architecture only (no model hyperparams accepted)
                     # Training params (used by pipeline, not by create_model)
                     "patience": 25,
                     "lr_patience": 12,
                     "gradient_clip": 0.5,
-                    "augmentation_strength": 0.2
+                    "augmentation_strength": 0.2,
                 },
                 input_requirements={
+                    "input_type": "spectrogram",
                     "type": "features",
                     "format": "spectrogram",
                     "min_sequence_length": 100,
-                    "feature_dim": 80}
+                    "feature_dim": 80,
+                },
             )
         )
 
@@ -221,13 +235,15 @@ class ArchitectureRegistry:
                     "patience": 22,
                     "lr_patience": 11,
                     "gradient_clip": 0.6,
-                    "augmentation_strength": 0.25
+                    "augmentation_strength": 0.25,
                 },
                 input_requirements={
+                    "input_type": "spectrogram",
                     "type": "features",
                     "format": "spectrogram",
                     "min_sequence_length": 100,
-                    "feature_dim": 80}
+                    "feature_dim": 80,
+                },
             )
         )
 
@@ -242,7 +258,8 @@ class ArchitectureRegistry:
                     "ensemble",
                     "ensemble_score",
                     "ensemble_lite",
-                    "ensemble_adaptive"],
+                    "ensemble_adaptive",
+                ],
                 default_params={
                     "dropout_rate": 0.3,
                     "use_mfcc_branch": True,
@@ -254,15 +271,15 @@ class ArchitectureRegistry:
                     "patience": 15,
                     "lr_patience": 8,
                     "gradient_clip": 1.0,
-                    "augmentation_strength": 0.3
+                    "augmentation_strength": 0.3,
                 },
                 input_requirements={
-                    "type": "audio",
-                    "format": "raw",
-                    "sample_rate": 16000,
-                    "max_duration": 4.0,
-                    "preprocessing": "normalize",
-                    "supports_2d_input": True}
+                    "input_type": "spectrogram",
+                    "type": "features",
+                    "format": "spectrogram",
+                    "min_sequence_length": 100,
+                    "feature_dim": 80,
+                },
             )
         )
 
@@ -273,7 +290,12 @@ class ArchitectureRegistry:
                 module_path="app.domain.models.architectures.sonic_sleuth",
                 function_name="create_model",
                 description="Sonic Sleuth (Alshehri et al., 2024): LFCC/MFCC/CQT feature extraction + 3×Conv2D(32→64→128) + Dense(256→128) + Dropout(0.1). Best: LFCC 98.27% accuracy.",
-                supported_variants=["sonic_sleuth", "sonic_sleuth_mfcc", "sonic_sleuth_cqt", "sonic_sleuth_lfcc_cqt"],
+                supported_variants=[
+                    "sonic_sleuth",
+                    "sonic_sleuth_mfcc",
+                    "sonic_sleuth_cqt",
+                    "sonic_sleuth_lfcc_cqt",
+                ],
                 default_params={
                     "sample_rate": 16000,
                     "use_batch_norm": True,
@@ -286,14 +308,16 @@ class ArchitectureRegistry:
                     "patience": 15,
                     "lr_patience": 8,
                     "gradient_clip": 1.0,
-                    "augmentation_strength": 0.3
+                    "augmentation_strength": 0.3,
                 },
                 input_requirements={
-                    "type": "audio",
-                    "format": "raw",
+                    "input_type": "spectrogram",
+                    "type": "features",
+                    "format": "spectrogram",
                     "max_duration": 3.0,
                     "sample_rate": 16000,
-                    "preprocessing": "normalize"}
+                    "preprocessing": "log_mel",
+                },
             )
         )
 
@@ -317,15 +341,16 @@ class ArchitectureRegistry:
                     "patience": 15,
                     "lr_patience": 8,
                     "gradient_clip": 1.0,
-                    "augmentation_strength": 0.3
+                    "augmentation_strength": 0.3,
                 },
                 input_requirements={
+                    "input_type": "raw_audio",
                     "type": "audio",
                     "format": "raw",
                     "sample_rate": 16000,
                     "max_duration": 5.0,
-                    "preprocessing": "normalize"
-                }
+                    "preprocessing": "normalize",
+                },
             )
         )
 
@@ -336,7 +361,7 @@ class ArchitectureRegistry:
                 module_path="app.domain.models.architectures.wavlm",
                 function_name="create_model",
                 description="Arquitetura de dois estágios com WavLM pré-treinado como extrator de características e classificador MLP - configuração padrão para máxima acurácia",
-                supported_variants=["wavlm", "wavlm_lite"],
+                supported_variants=["wavlm", "wavlm_lite", "wavlm_aasist"],
                 default_params={
                     # create_model params: wavlm_model, freeze_wavlm, classifier_units, dropout_rate
                     "wavlm_model": "microsoft/wavlm-large",
@@ -347,15 +372,16 @@ class ArchitectureRegistry:
                     "patience": 15,
                     "lr_patience": 8,
                     "gradient_clip": 1.0,
-                    "augmentation_strength": 0.3
+                    "augmentation_strength": 0.3,
                 },
                 input_requirements={
+                    "input_type": "raw_audio",
                     "type": "audio",
                     "format": "raw",
                     "sample_rate": 16000,
-                    "max_duration": 5.0,
-                    "preprocessing": "normalize"
-                }
+                    "max_duration": 10.0,
+                    "preprocessing": "normalize",
+                },
             )
         )
 
@@ -366,7 +392,7 @@ class ArchitectureRegistry:
                 module_path="app.domain.models.architectures.hubert",
                 function_name="create_model",
                 description="Arquitetura baseada em HuBERT (Hidden-Unit BERT) para detecção de deepfakes em áudio bruto - fidelidade ao paper",
-                supported_variants=["hubert", "hubert_lite"],
+                supported_variants=["hubert", "hubert_lite", "hubert_aasist"],
                 default_params={
                     # create_model params: model_name, freeze_hubert, classifier_hidden_dim, dropout_rate
                     "model_name": "facebook/hubert-base-ls960",
@@ -377,15 +403,16 @@ class ArchitectureRegistry:
                     "patience": 15,
                     "lr_patience": 8,
                     "gradient_clip": 1.0,
-                    "augmentation_strength": 0.3
+                    "augmentation_strength": 0.3,
                 },
                 input_requirements={
+                    "input_type": "raw_audio",
                     "type": "audio",
                     "format": "raw",
                     "sample_rate": 16000,
                     "max_duration": 10.0,
-                    "preprocessing": "normalize"
-                }
+                    "preprocessing": "normalize",
+                },
             )
         )
 
@@ -398,7 +425,8 @@ class ArchitectureRegistry:
                 description="CCT (Compact Convolutional Transformer) — Hassani et al. 2021, adapted for audio deepfake per Bartusiak & Delp 2022",
                 supported_variants=[
                     "hybrid_cnn_transformer",
-                    "hybrid_cnn_transformer_lite"],
+                    "hybrid_cnn_transformer_lite",
+                ],
                 default_params={
                     # create_model params: projection_dim, num_heads, transformer_layers,
                     #   conv_channels, dropout_rate, stochastic_depth_rate, use_positional_emb
@@ -413,30 +441,34 @@ class ArchitectureRegistry:
                     "patience": 15,
                     "lr_patience": 8,
                     "gradient_clip": 1.0,
-                    "augmentation_strength": 0.3
+                    "augmentation_strength": 0.3,
                 },
                 input_requirements={
-                    "type": "audio",
-                    "format": "raw",
+                    "input_type": "spectrogram",
+                    "type": "features",
+                    "format": "spectrogram",
+                    "min_sequence_length": 100,
+                    "feature_dim": 80,
                     "sample_rate": 16000,
                     "max_duration": 4.0,
-                    "preprocessing": "normalize",
-                    "supports_2d_input": True
-                }
+                    "preprocessing": "spectrogram_or_raw",
+                    "supports_1d_input": True,
+                    "supports_2d_input": True,
+                },
             )
         )
 
     def register(self, architecture_info: ArchitectureInfo):
         """Registra uma nova arquitetura."""
         self._architectures[architecture_info.name] = architecture_info
-        logger.info(
-            f"Arquitetura {architecture_info.name} registrada com sucesso")
+        logger.info(f"Arquitetura {architecture_info.name} registrada com sucesso")
 
     def get_architecture(self, name: str) -> ArchitectureInfo:
         """Obtém informações de uma arquitetura."""
         if name not in self._architectures:
             raise ValueError(
-                f"Arquitetura '{name}' não encontrada. Disponíveis: {list(self._architectures.keys())}")
+                f"Arquitetura '{name}' não encontrada. Disponíveis: {list(self._architectures.keys())}"
+            )
         return self._architectures[name]
 
     def list_architectures(self) -> List[str]:
@@ -510,8 +542,9 @@ class ArchitectureRegistry:
             choices.append((label, snake))
         return choices
 
-    def get_active_config(self, architecture_name: str,
-                          variant: str = "default") -> Dict[str, Any]:
+    def get_active_config(
+        self, architecture_name: str, variant: str = "default"
+    ) -> Dict[str, Any]:
         """Obtém a configuração ativa do banco de dados (ou default se falhar)."""
         try:
             from app.core.database import SessionLocal
@@ -520,22 +553,30 @@ class ArchitectureRegistry:
             db_session = SessionLocal()
             try:
                 # Tentar buscar no DB usando SQLAlchemy nativo
-                config = db_session.query(ArchitectureConfig).filter_by(
-                    architecture_name=architecture_name,
-                    variant_name=variant,
-                    is_active=True
-                ).first()
+                config = (
+                    db_session.query(ArchitectureConfig)
+                    .filter_by(
+                        architecture_name=architecture_name,
+                        variant_name=variant,
+                        is_active=True,
+                    )
+                    .first()
+                )
 
                 if config:
                     return config.parameters
 
                 # Fallback se não encontrar variante específica: tentar default
                 if variant != "default":
-                    config = db_session.query(ArchitectureConfig).filter_by(
-                        architecture_name=architecture_name,
-                        variant_name="default",
-                        is_active=True
-                    ).first()
+                    config = (
+                        db_session.query(ArchitectureConfig)
+                        .filter_by(
+                            architecture_name=architecture_name,
+                            variant_name="default",
+                            is_active=True,
+                        )
+                        .first()
+                    )
                     if config:
                         return config.parameters
             finally:
@@ -543,13 +584,21 @@ class ArchitectureRegistry:
 
         except Exception as e:
             logger.warning(
-                f"Não foi possível carregar config do DB para {architecture_name}: {e}. Usando hardcoded.")
+                f"Não foi possível carregar config do DB para {architecture_name}: {e}. Usando hardcoded."
+            )
 
         # Fallback final: Hardcoded
         return self.get_architecture(architecture_name).default_params
 
-    def create_model(self, architecture_name: str, input_shape: Tuple[int, ...],
-                     num_classes: int = 2, variant: str = None, safe_mode: bool = True, **kwargs):
+    def create_model(
+        self,
+        architecture_name: str,
+        input_shape: Tuple[int, ...],
+        num_classes: int = 2,
+        variant: str = None,
+        safe_mode: bool = True,
+        **kwargs,
+    ):
         """Cria um modelo usando a arquitetura especificada.
 
         Args:
@@ -563,9 +612,7 @@ class ArchitectureRegistry:
         arch_info = self.get_architecture(architecture_name)
 
         # Importar dinamicamente o módulo
-        module = __import__(
-            arch_info.module_path, fromlist=[
-                arch_info.function_name])
+        module = __import__(arch_info.module_path, fromlist=[arch_info.function_name])
         create_model_func = getattr(module, arch_info.function_name)
 
         # Preparar parâmetros básicos
@@ -574,13 +621,15 @@ class ArchitectureRegistry:
         # Adicionar variant se especificado
         if variant:
             if variant not in arch_info.supported_variants:
-                raise ValueError(f"Variant '{variant}' não suportada para {architecture_name}. "
-                                 f"Disponíveis: {arch_info.supported_variants}")
-            params['architecture'] = variant
+                raise ValueError(
+                    f"Variant '{variant}' não suportada para {architecture_name}. "
+                    f"Disponíveis: {arch_info.supported_variants}"
+                )
+            params["architecture"] = variant
         else:
             # Usar primeira variante como padrão
             if arch_info.supported_variants:
-                params['architecture'] = arch_info.supported_variants[0]
+                params["architecture"] = arch_info.supported_variants[0]
 
         # Adicionar kwargs do usuário
         params.update(kwargs)
@@ -588,14 +637,15 @@ class ArchitectureRegistry:
         # Filtrar params para apenas os aceitos pela função (quando não há **kwargs)
         sig = inspect.signature(create_model_func)
         has_var_keyword = any(
-            p.kind == inspect.Parameter.VAR_KEYWORD
-            for p in sig.parameters.values()
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
         )
         if not has_var_keyword:
             accepted = set(sig.parameters.keys())
             filtered_out = [k for k in params if k not in accepted]
             if filtered_out:
-                logger.debug(f"{architecture_name}: ignoring unsupported params: {filtered_out}")
+                logger.debug(
+                    f"{architecture_name}: ignoring unsupported params: {filtered_out}"
+                )
             params = {k: v for k, v in params.items() if k in accepted}
 
         # Criar modelo
@@ -606,18 +656,19 @@ class ArchitectureRegistry:
             is_safe, issues = validate_model_safety(model)
             if not is_safe:
                 logger.warning(
-                    f"Modelo {architecture_name} possui problemas de data leakage: {issues}")
+                    f"Modelo {architecture_name} possui problemas de data leakage: {issues}"
+                )
                 logger.info("Aplicando correções automáticas...")
-                model = patch_architecture_for_safety(
-                    model, normalization_type='layer')
+                model = patch_architecture_for_safety(model, normalization_type="layer")
                 logger.info("Correções aplicadas com sucesso")
             else:
                 logger.info(f"Modelo {architecture_name} já está seguro")
 
         return model
 
-    def validate_input_shape(self, architecture_name: str,
-                             input_shape: Tuple[int, ...]) -> bool:
+    def validate_input_shape(
+        self, architecture_name: str, input_shape: Tuple[int, ...]
+    ) -> bool:
         """Valida se o input_shape é compatível com a arquitetura."""
         arch_info = self.get_architecture(architecture_name)
         requirements = arch_info.input_requirements
@@ -647,10 +698,11 @@ class ArchitectureRegistry:
                 # Iterar sobre todas as arquiteturas registradas
                 for name, info in self._architectures.items():
                     # Verificar se já existe configuração default
-                    config = db_session.query(ArchitectureConfig).filter_by(
-                        architecture_name=name,
-                        variant_name="default"
-                    ).first()
+                    config = (
+                        db_session.query(ArchitectureConfig)
+                        .filter_by(architecture_name=name, variant_name="default")
+                        .first()
+                    )
 
                     if not config:
                         logger.info(f"Criando configuração default no DB para {name}")
@@ -659,7 +711,7 @@ class ArchitectureRegistry:
                             variant_name="default",
                             description=info.description,
                             parameters=info.default_params,
-                            is_active=True
+                            is_active=True,
                         )
                         db_session.add(new_config)
 
@@ -682,8 +734,14 @@ def get_available_architectures() -> List[str]:
     return architecture_registry.list_architectures()
 
 
-def create_model_by_name(architecture_name: str, input_shape: Tuple[int, ...],
-                         num_classes: int = 2, variant: str = None, safe_mode: bool = True, **kwargs):
+def create_model_by_name(
+    architecture_name: str,
+    input_shape: Tuple[int, ...],
+    num_classes: int = 2,
+    variant: str = None,
+    safe_mode: bool = True,
+    **kwargs,
+):
     """Cria um modelo pela nome da arquitetura.
 
     Args:
@@ -695,14 +753,21 @@ def create_model_by_name(architecture_name: str, input_shape: Tuple[int, ...],
         **kwargs: Parâmetros adicionais
     """
     return architecture_registry.create_model(
-        architecture_name, input_shape, num_classes, variant, safe_mode, **kwargs)
+        architecture_name, input_shape, num_classes, variant, safe_mode, **kwargs
+    )
 
 
-def create_safe_model_by_name(architecture_name: str, input_shape: Tuple[int, ...],
-                              num_classes: int = 2, variant: str = None, **kwargs):
+def create_safe_model_by_name(
+    architecture_name: str,
+    input_shape: Tuple[int, ...],
+    num_classes: int = 2,
+    variant: str = None,
+    **kwargs,
+):
     """Cria um modelo seguro (sem data leakage) pela nome da arquitetura."""
     return create_model_by_name(
-        architecture_name, input_shape, num_classes, variant, safe_mode=True, **kwargs)
+        architecture_name, input_shape, num_classes, variant, safe_mode=True, **kwargs
+    )
 
 
 def get_architecture_info(architecture_name: str) -> ArchitectureInfo:
@@ -711,14 +776,15 @@ def get_architecture_info(architecture_name: str) -> ArchitectureInfo:
 
 
 def validate_architecture_input(
-        architecture_name: str, input_shape: Tuple[int, ...]) -> bool:
+    architecture_name: str, input_shape: Tuple[int, ...]
+) -> bool:
     """Valida input para uma arquitetura."""
-    return architecture_registry.validate_input_shape(
-        architecture_name, input_shape)
+    return architecture_registry.validate_input_shape(architecture_name, input_shape)
 
 
 def load_hyperparameters_json(
-        architecture_name: str, results_dir: str) -> Dict[str, Any]:
+    architecture_name: str, results_dir: str
+) -> Dict[str, Any]:
     """Carrega hiperparâmetros recomendados de um arquivo JSON.
 
     Args:
@@ -739,18 +805,17 @@ def load_hyperparameters_json(
     possible_files = [
         f"{safe_name}_hyperparameters.json",
         f"{safe_name}_params.json",
-        f"{safe_name}.json"
+        f"{safe_name}.json",
     ]
 
     for filename in possible_files:
         file_path = os.path.join(results_dir, filename)
         if os.path.exists(file_path):
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, "r", encoding="utf-8") as f:
                     return json.load(f)
             except Exception as e:
-                logger.warning(
-                    f"Erro ao ler hiperparâmetros de {file_path}: {e}")
+                logger.warning(f"Erro ao ler hiperparâmetros de {file_path}: {e}")
                 return {}
 
     return {}

@@ -144,11 +144,14 @@ def create_voice_profiles_tab():
     arch_choices = _get_architecture_choices()
 
     with gr.Tab("🎤 Perfis de Voz", id="tab_voice_profiles"):
-        gr.Markdown(
-            "### Perfis de Voz Personalizados\n"
-            "Crie perfis biométricos vocais, faça upload de amostras, "
-            "treine modelos com **14 arquiteturas** (12 DL + SVM + Random Forest) "
-            "e verifique autenticidade com precisão individualizada."
+        from app.interfaces.gradio.utils.components import page_header
+
+        page_header(
+            "🎤",
+            "Perfis de Voz Personalizados",
+            "Crie perfis biométricos vocais, envie amostras, treine modelos "
+            "com 14 arquiteturas (12 DL + SVM + Random Forest) e verifique "
+            "autenticidade com precisão individualizada.",
         )
 
         with gr.Tabs():

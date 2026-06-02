@@ -46,12 +46,31 @@ class SafeInstanceNormalization(layers.Layer):
         super(SafeInstanceNormalization, self).build(input_shape)
 
     def call(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:
-        # Calcula média e variância apenas para cada instância
-        axes_to_reduce = [i for i in range(1, len(inputs.shape))
-                          if i != self.axis or self.axis == -1]
+        # Calcula média e variância apenas para cada instância (sem leakage).
+        #
+        # Lógica de axes_to_reduce para axis=-1:
+        #   - rank 2 (batch, time):             reduz sobre [1] (todo o tempo)
+        #   - rank 3 (batch, time, channels):   reduz sobre [1] (tempo; mantém canal)
+        #   - rank 4 (batch, T, F, channels):   reduz sobre [1, 2] (tempo+freq)
+        #
+        # BUG FIX: a implementação anterior produzia axes_to_reduce=[] para rank-2,
+        # resultando em mean=inputs e variance=0 → output = 0/(sqrt(eps)) = 0.
+        # Tensores all-zero chegavam ao AASIST/SincConv e propagavam zeros até o
+        # AMSoftmaxLayer onde l2_normalize(0) = NaN → loss NaN na época 1.
+        n_dims = len(inputs.shape)
 
         if self.axis == -1:
-            axes_to_reduce = list(range(1, len(inputs.shape) - 1))
+            # Reduce over ALL non-batch dimensions EXCEPT the last channel axis.
+            # For rank-2 (no channel dim), reduce over all non-batch dims = [1].
+            if n_dims == 2:
+                # (batch, time) — raw 1D audio: normalize the full time series
+                axes_to_reduce = [1]
+            else:
+                # (batch, ..., channels): normalize over spatial/temporal dims
+                axes_to_reduce = list(range(1, n_dims - 1))
+        else:
+            # For explicit non-(-1) axis: reduce over all other non-batch dims
+            axes_to_reduce = [i for i in range(1, n_dims) if i != self.axis]
 
         mean = tf.reduce_mean(inputs, axis=axes_to_reduce, keepdims=True)
         variance = tf.math.reduce_variance(

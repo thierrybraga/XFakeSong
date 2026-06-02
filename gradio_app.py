@@ -3,12 +3,17 @@ import os
 import sys
 from pathlib import Path
 
+from app.core.performance import configure_runtime_environment
+
+configure_runtime_environment()
+
 # Adicionar diretório app ao path ANTES de imports do projeto
 sys.path.insert(0, str(Path(__file__).parent))
 
 # === Patch para compatibilidade Pydantic v2 + Gradio v4 ===
 # Deve ser ANTES de qualquer import de gradio ou pydantic
-from app.gradio_schema_patch import patch_gradio_schema_validator
+from app.gradio_schema_patch import patch_gradio_schema_validator  # noqa: E402
+
 patch_gradio_schema_validator()
 
 # === Compatibilidade huggingface_hub ===
@@ -18,11 +23,12 @@ try:
     from huggingface_hub import HfFolder  # noqa: F401
 except ImportError:
     import huggingface_hub
-    
+
     class _HfFolder:
         """Shim para HfFolder removido em huggingface_hub >= 0.16."""
+
         pass
-    
+
     huggingface_hub.HfFolder = _HfFolder
 
 # FE.2: força backend matplotlib não-interativo ANTES de qualquer
@@ -36,10 +42,9 @@ if not os.environ.get("MPLBACKEND"):
 import gradio as gr  # noqa: E402
 
 # Configurar logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+from app.core.feedback import configure_logging  # noqa: E402
+
+configure_logging(level=logging.INFO, log_file="system.log", force=False)
 logger = logging.getLogger("gradio_app")
 
 # Imports de Autenticação e DB
@@ -835,6 +840,146 @@ body[data-theme="light"] .status-pill .dot {
     font-size: 0.82rem;
     line-height: 1.4;
 }
+
+/* ===== Painel de treino ao vivo (Wizard Step 4) ===== */
+.train-live {
+    background: var(--xf-surface);
+    border: 1px solid var(--xf-border);
+    border-radius: var(--xf-radius-lg);
+    padding: 16px 20px;
+    margin-bottom: 12px;
+}
+.train-live .tl-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+.train-live .tl-head-title {
+    font-weight: 700;
+    font-size: 1.05rem;
+}
+.train-live .tl-head-meta {
+    color: var(--xf-text-muted);
+    font-family: var(--xf-mono);
+    font-size: 0.8rem;
+}
+.train-live .tl-bar-track {
+    width: 100%;
+    height: 10px;
+    background: var(--xf-bg);
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--xf-border);
+}
+.train-live .tl-bar-fill {
+    height: 100%;
+    border-radius: 6px;
+    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+}
+.train-live .tl-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+    margin-top: 14px;
+}
+.train-live .tl-card {
+    background: var(--xf-bg);
+    border: 1px solid var(--xf-border);
+    border-radius: var(--xf-radius);
+    padding: 10px 12px;
+    text-align: center;
+}
+.train-live .tl-card-label {
+    color: var(--xf-text-muted);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+}
+.train-live .tl-card-value {
+    font-family: var(--xf-mono);
+    font-size: 1.3rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+.train-live .tl-note {
+    margin-top: 12px;
+    padding: 8px 12px;
+    background: rgba(6, 182, 212, 0.08);
+    border-left: 3px solid var(--xf-accent);
+    border-radius: 6px;
+    color: var(--xf-text);
+    font-size: 0.85rem;
+    line-height: 1.45;
+}
+
+/* ===== Cabeçalho de página padronizado (page_header component) ===== */
+.page-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 18px;
+    margin: 4px 0 18px 0;
+    background: var(--xf-surface);
+    border: 1px solid var(--xf-border);
+    border-left: 4px solid var(--xf-primary);
+    border-radius: var(--xf-radius);
+    box-shadow: var(--xf-shadow);
+}
+.page-header .ph-icon {
+    font-size: 1.9rem;
+    line-height: 1;
+    flex: 0 0 auto;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.25));
+}
+.page-header .ph-text { min-width: 0; }
+.page-header .ph-title {
+    margin: 0 !important;
+    font-size: 1.3rem !important;
+    font-weight: 700 !important;
+    color: var(--xf-text) !important;
+    letter-spacing: -0.02em !important;
+    line-height: 1.2 !important;
+}
+.page-header .ph-subtitle {
+    margin: 4px 0 0 0;
+    color: var(--xf-text-muted);
+    font-size: 0.9rem;
+    line-height: 1.45;
+}
+
+/* Divisor de seção sutil (section_divider component) */
+.xf-divider {
+    height: 1px;
+    background: var(--xf-border);
+    border: none;
+    margin: 18px 0;
+    opacity: 0.8;
+}
+
+/* Callout contextual (info_callout component) */
+.xf-callout {
+    padding: 10px 14px;
+    border-radius: var(--xf-radius);
+    border-left: 3px solid var(--xf-accent);
+    background: rgba(6, 182, 212, 0.08);
+    color: var(--xf-text);
+    font-size: 0.88rem;
+    line-height: 1.5;
+    margin: 6px 0;
+}
+.xf-callout-info    { border-left-color: var(--xf-accent);  background: rgba(6, 182, 212, 0.08); }
+.xf-callout-success { border-left-color: var(--xf-success); background: rgba(16, 185, 129, 0.08); }
+.xf-callout-warning { border-left-color: var(--xf-warning); background: rgba(245, 158, 11, 0.08); }
+.xf-callout-accent  { border-left-color: var(--xf-primary); background: rgba(59, 130, 246, 0.08); }
+.xf-callout a { color: var(--xf-primary); font-weight: 600; text-decoration: none; }
+.xf-callout a:hover { text-decoration: underline; }
 """
 
 
@@ -856,7 +1001,6 @@ from app.interfaces.gradio.tabs import (  # noqa: E402
     create_training_wizard_tab,
     create_voice_profiles_tab,
 )
-
 
 # Configuração do Tema — Dark Mode Profissional
 theme = gr.themes.Base(
@@ -916,6 +1060,7 @@ theme = gr.themes.Base(
 # UI Fase 1: Status bar global (sempre visível no topo)
 # =====================================================================
 
+
 def _render_status_bar() -> str:
     """HTML do status bar global com counts e versão.
 
@@ -923,16 +1068,34 @@ def _render_status_bar() -> str:
     """
     try:
         from app.interfaces.gradio.tabs.dashboard import (
-            _count_models, _count_profiles, _gpu_status,
+            _count_models,
+            _count_profiles,
+            _gpu_status,
         )
+
         models = _count_models()
         profiles = _count_profiles()
         gpu = _gpu_status()
     except Exception:
         models, profiles, gpu = 0, 0, "?"
 
+    try:
+        from app.core.feedback import get_feedback_summary
+
+        feedback = get_feedback_summary()
+        unread = int(feedback.get("unread", 0))
+        counts = feedback.get("counts", {})
+        warning_count = int(counts.get("warning", 0))
+        error_count = int(counts.get("error", 0)) + int(counts.get("critical", 0))
+    except Exception:
+        unread, warning_count, error_count = 0, 0, 0
+
     gpu_ok = gpu.startswith("✓")
     gpu_short = "GPU ✓" if gpu_ok else ("GPU ✗" if gpu.startswith("✗") else "GPU ?")
+    feedback_color = (
+        "#ef4444" if error_count else ("#f59e0b" if warning_count else "#94a3b8")
+    )
+    unread_html = f'<span class="notif-badge">{unread}</span>' if unread else ""
     return f"""
     <div id="status_bar_inner" style="display:flex;align-items:center;
         gap:24px;padding:8px 16px;background:#1e293b;
@@ -949,7 +1112,7 @@ def _render_status_bar() -> str:
                      box-shadow:0 0 6px #10b981;"></span>
         <span style="color:#f1f5f9;font-weight:500;">Online</span>
       </span>
-      <span class="status-pill" style="color:{'#10b981' if gpu_ok else '#94a3b8'}">
+      <span class="status-pill" style="color:{"#10b981" if gpu_ok else "#94a3b8"}">
         {gpu_short}
       </span>
       <span class="status-pill" style="color:#94a3b8">
@@ -958,8 +1121,39 @@ def _render_status_bar() -> str:
       <span class="status-pill" style="color:#94a3b8">
         <span style="color:#f1f5f9;font-weight:500;">{profiles}</span> perfis
       </span>
+      <span class="status-pill" style="color:{feedback_color}">
+        Notificações {unread_html}
+        <span style="color:#94a3b8">warn:{warning_count} err:{error_count}</span>
+      </span>
     </div>
     """
+
+
+def _render_feedback_panel() -> str:
+    from app.interfaces.gradio.utils.notifications import (
+        render_notification_center_html,
+    )
+
+    return render_notification_center_html(limit=20)
+
+
+def _refresh_global_feedback():
+    return _render_status_bar(), _render_feedback_panel()
+
+
+def _mark_feedback_read_ui():
+    from app.interfaces.gradio.utils.notifications import mark_all_read
+
+    mark_all_read()
+    return _render_status_bar(), _render_feedback_panel()
+
+
+def _clear_feedback_ui():
+    from app.interfaces.gradio.utils.notifications import clear_history, notify_info
+
+    removed = clear_history()
+    notify_info(f"Historico de feedback limpo ({removed} eventos removidos)")
+    return _render_status_bar(), _render_feedback_panel()
 
 
 # =====================================================================
@@ -972,7 +1166,6 @@ with gr.Blocks(
     css=_CUSTOM_CSS,
     head=_HEAD_HTML,
 ) as demo:
-
     # Estado de Login (Fixo como True para bypass)
     is_logged_in = gr.State(True)
 
@@ -1000,72 +1193,94 @@ with gr.Blocks(
                         scale=0,
                     )
 
-        # Tabs role-based (UI Fase 1: Dashboard / Detectar / Investigar / Treinar / Admin)
+        with gr.Accordion("🔔 Notificações pendentes", open=False):
+            feedback_html = gr.HTML(
+                _render_feedback_panel(),
+                elem_id="global_feedback_center",
+            )
+            with gr.Row():
+                feedback_refresh_btn = gr.Button("🔄 Atualizar", size="sm", scale=0)
+                feedback_read_btn = gr.Button("Marcar lidas", size="sm", scale=0)
+                feedback_clear_btn = gr.Button("Limpar histórico", size="sm", scale=0)
+
+        # Navbar consolidada (5 seções role-based):
+        # 🏠 Painel · 🎯 Detectar · 🔬 Investigar · 🎓 Treinar · 🗂️ Gerenciar
         with gr.Tabs() as main_tabs:
-            # 🏠 Dashboard — landing page com KPIs + quick actions
+            # 🏠 Painel — landing page com KPIs, status e atividade recente
+            # (a aba define seu próprio rótulo top-level "🏠 Painel")
             create_dashboard_tab()
 
-            # 🎯 Detectar — consolida detecção e verificação de perfil
+            # 🎯 Detectar — análise de áudio (single + lote) e perfis de voz
             with gr.Tab("🎯 Detectar", id="tab_detect"):
                 with gr.Tabs():
                     create_detection_tab()
                     create_voice_profiles_tab()
 
-            # 🔬 Investigar — análise forense detalhada
+            # 🔬 Investigar — análise forense + explicabilidade (a aba define
+            # seu próprio rótulo top-level "🔬 Investigar")
             create_forensic_analysis_tab()
 
-            # 🎓 Treinar — Wizard linear (UI Fase 2)
+            # 🎓 Treinar — assistente linear + otimização
             with gr.Tab("🎓 Treinar", id="tab_train"):
                 with gr.Tabs():
                     create_training_wizard_tab()
                     create_optimization_tab()
 
-            # ⚙ Admin — gestão de datasets, modelos, histórico, features
-            with gr.Tab("⚙ Admin", id="tab_admin"):
+            # 🗂️ Gerenciar — datasets, features e histórico
+            with gr.Tab("🗂️ Gerenciar", id="tab_admin"):
                 with gr.Tabs():
                     create_dataset_management_tab()
-                    create_history_tab()
                     create_features_tab()
+                    create_history_tab()
 
         # Auto-refresh do status bar a cada 60s
         try:
-            _sb_timer = gr.Timer(60.0)
+            _sb_timer = gr.Timer(15.0)
             _sb_timer.tick(
-                fn=_render_status_bar,
+                fn=_refresh_global_feedback,
                 inputs=[],
-                outputs=[status_bar_html],
+                outputs=[status_bar_html, feedback_html],
             )
         except Exception:
             # gr.Timer não disponível em versões antigas — degradação graciosa
             pass
+
+        feedback_refresh_btn.click(
+            fn=_refresh_global_feedback,
+            inputs=[],
+            outputs=[status_bar_html, feedback_html],
+        )
+        feedback_read_btn.click(
+            fn=_mark_feedback_read_ui,
+            inputs=[],
+            outputs=[status_bar_html, feedback_html],
+        )
+        feedback_clear_btn.click(
+            fn=_clear_feedback_ui,
+            inputs=[],
+            outputs=[status_bar_html, feedback_html],
+        )
 
         # ───── UI Fase 3: Tema + Idioma ─────
         # Estados em memória do servidor (resetam ao recarregar página)
         theme_state = gr.State("dark")
         lang_state = gr.State("pt")
 
-        def _toggle_theme(current_theme: str):
-            """Alterna entre dark e light. Aplica via JS no body[data-theme]."""
-            new_theme = "light" if current_theme == "dark" else "dark"
-            new_label = "☀" if new_theme == "light" else "🌙"
-            # JS para aplicar imediatamente no DOM (Gradio CSS reage ao atributo)
-            js = f"""
-            () => {{
-                document.body.setAttribute('data-theme', '{new_theme}');
-                try {{ localStorage.setItem('xf_theme', '{new_theme}'); }} catch(e) {{}}
-                return null;
-            }}
-            """
-            return new_theme, gr.update(value=new_label), js
+        # NOTE: o toggle de tema usa um lambda inline com `js=` no .click()
+        # abaixo (aplica data-theme no DOM + persiste em localStorage). Não há
+        # função Python dedicada — a antiga `_toggle_theme` foi removida por ser
+        # código morto (nunca era chamada).
 
         def _toggle_lang(current_lang: str):
             """Alterna PT <-> EN. Atualiza estado global do i18n."""
             from app.interfaces.gradio.utils.i18n import set_language
+
             new_lang = "en" if current_lang == "pt" else "pt"
             set_language(new_lang)
             new_label = "🇺🇸 EN" if new_lang == "en" else "🇧🇷 PT"
             try:
                 from app.interfaces.gradio.utils import notify_info
+
                 notify_info(
                     "Language: English (some tabs will keep Portuguese — full i18n WIP)"
                     if new_lang == "en"
@@ -1094,8 +1309,10 @@ with gr.Blocks(
         except TypeError:
             # Versões mais antigas de Gradio não aceitam js= em click
             theme_toggle_btn.click(
-                fn=lambda t: ("light" if t == "dark" else "dark",
-                              gr.update(value="☀" if t == "dark" else "🌙")),
+                fn=lambda t: (
+                    "light" if t == "dark" else "dark",
+                    gr.update(value="☀" if t == "dark" else "🌙"),
+                ),
                 inputs=[theme_state],
                 outputs=[theme_state, theme_toggle_btn],
             )
@@ -1133,19 +1350,28 @@ demo.queue(default_concurrency_limit=20, max_size=100)
 
 def create_unified_app(port: int):
     from fastapi import FastAPI
-    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.requests import Request
+    from fastapi.responses import HTMLResponse
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.templating import Jinja2Templates
+    from slowapi import _rate_limit_exceeded_handler
+    from slowapi.errors import RateLimitExceeded
+
     from app.core.db_setup import init_db
     from app.core.exceptions import setup_exception_handlers
-    from app.core.gpu import setup_gpu, describe_gpu_setup
+    from app.core.gpu import describe_gpu_setup, setup_gpu
     from app.core.middleware import setup_middleware
+    from app.core.security import limiter, setup_security
     from app.core.version_check import check_versions
     from app.routers import (
-        system, detection, features, training, history, datasets,
+        datasets,
+        detection,
+        features,
+        history,
+        system,
+        training,
         voice_profiles,
     )
-    from app.core.security import setup_security, limiter
-    from slowapi.errors import RateLimitExceeded
-    from slowapi import _rate_limit_exceeded_handler
 
     # BUG.Render.2: detecta incompatibilidades de versão (ex.: gradio<4.31 +
     # starlette>=0.36 → TypeError em runtime). Loga warning claro.
@@ -1178,6 +1404,27 @@ def create_unified_app(port: int):
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+    app.mount(
+        "/static",
+        StaticFiles(directory="app/static"),
+        name="static",
+    )
+    templates = Jinja2Templates(directory="app/templates")
+
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    async def index(request: Request):
+        return templates.TemplateResponse(
+            "index.html",
+            {"request": request},
+        )
+
+    @app.get("/loading", response_class=HTMLResponse, include_in_schema=False)
+    async def loading(request: Request):
+        return templates.TemplateResponse(
+            "pages/loading.html",
+            {"request": request},
+        )
+
     # Incluir Routers
     app.include_router(system.router)
     app.include_router(detection.router)
@@ -1201,12 +1448,10 @@ def create_unified_app(port: int):
     # Diretórios podem não existir em dev local — Gradio ignora os ausentes
     # mas não falha por isso.
 
-    # Montar Gradio na raiz "/" para manter a experiência do usuário
-    # Se quiser em "/gradio", mude o path abaixo.
     app = gr.mount_gradio_app(
         app,
         demo,
-        path="/",
+        path="/gradio",
         allowed_paths=allowed_paths,
     )
 
@@ -1215,21 +1460,16 @@ def create_unified_app(port: int):
 
 if __name__ == "__main__":
     import uvicorn
+
     chosen_port = int(os.getenv("GRADIO_SERVER_PORT", "7860"))
     app = create_unified_app(chosen_port)
-    logger.info(
-        "================================================================"
-    )
+    logger.info("================================================================")
     logger.info(
         f"SERVIDOR UNIFICADO INICIADO! ACESSE EM: http://localhost:{chosen_port}"  # noqa: E501
     )
-    logger.info(
-        f" - Interface Gradio: http://localhost:{chosen_port}/gradio/"
-    )
+    logger.info(f" - Interface Gradio: http://localhost:{chosen_port}/gradio/")
     logger.info(
         f" - API Backend:      http://localhost:{chosen_port}/api/v1/system/bootstrap"  # noqa: E501
     )
-    logger.info(
-        "================================================================"
-    )
+    logger.info("================================================================")
     uvicorn.run(app, host="0.0.0.0", port=chosen_port)

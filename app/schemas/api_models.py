@@ -189,6 +189,25 @@ class CrossValidationResult(BaseModel):
 
 # ── ONNX Export (Sprint 3.4 — API.7) ───────────────────────────────────
 
+class OnnxExportRequest(BaseModel):
+    """Configuração para exportar um modelo carregado para ONNX."""
+    model_name: str = Field(
+        ..., min_length=1, max_length=200,
+        description="Nome de um modelo já carregado (ver /detection/models)",
+    )
+    quantize_int8: bool = Field(
+        False,
+        description="Se True, gera também uma versão INT8 (dynamic quantization)",
+    )
+    opset: int = Field(
+        13, ge=9, le=20,
+        description="Versão do ONNX opset (13 = compatível com onnxruntime 1.7+)",
+    )
+    dynamic_batch: bool = Field(
+        True, description="Batch dimension dinâmica (None) no grafo exportado"
+    )
+
+
 class OnnxExportResponse(BaseModel):
     """Resposta do export ONNX."""
     success: bool
@@ -224,7 +243,12 @@ class FeatureExtractionRequest(BaseModel):
 
 
 class FeatureExtractionResult(BaseModel):
-    features: Dict[str, List[List[float]]]
+    # Os valores de feature variam em forma conforme o tipo: escalares
+    # (ex.: spectral_slope), séries 1D (ex.: spectral_centroid no tempo) e
+    # matrizes 2D (ex.: espectrograma, MFCC). `Any` aceita todas as formas
+    # válidas — o schema antigo `Dict[str, List[List[float]]]` rejeitava
+    # features 1D/escalares (1800+ erros de validação no /features/extract).
+    features: Dict[str, Any]
     metadata: Dict[str, Any]
 
 

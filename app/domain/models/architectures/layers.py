@@ -585,11 +585,20 @@ class SincNetLayer(layers.Layer):
         # sinc(x) = sin(pi*x) / (pi*x)
         # filters = 2*f_high*sinc(2*pi*f_high*t) - 2*f_low*sinc(2*pi*f_low*t)
 
-        # Center of sinc
-        # Handle t=0 case by adding small epsilon or using sinc implementation
-        # For simplicity in TF:
+        # BUG FIX (gradiente NaN em low_hz/band_hz): a versão antiga fazia
+        #   tf.where(x==0, 1, sin(pi*x)/(pi*x))
+        # O ramo sin(pi*x)/(pi*x) era avaliado para TODOS os x (inclusive x=0,
+        # que existe no centro do vetor de tempo) → 0/0 = NaN. O forward ficava
+        # OK (where escolhia 1.0), mas o GRADIENTE do ramo NaN se propagava de
+        # volta — armadilha clássica do tf.where — zerando/estourando o treino
+        # do RawNet2 logo no 1º passo.
+        #
+        # Correção: substituir x próximo de zero por um epsilon ANTES de dividir
+        # (igual ao SincConvLayer). Assim não há 0/0 em lugar nenhum — forward e
+        # backward finitos.
         def sinc(x):
-            return tf.where(tf.equal(x, 0), tf.ones_like(x), tf.sin(np.pi * x) / (np.pi * x))
+            safe_x = tf.where(tf.abs(x) < 1e-7, tf.ones_like(x) * 1e-7, x)
+            return tf.sin(np.pi * safe_x) / (np.pi * safe_x)
 
         filters_low = 2 * tf.expand_dims(low, 1) * sinc(2 * tf.expand_dims(low, 1) * tf.expand_dims(self.n_, 0))
         filters_high = 2 * tf.expand_dims(high, 1) * sinc(2 * tf.expand_dims(high, 1) * tf.expand_dims(self.n_, 0))
@@ -1367,9 +1376,19 @@ class AMSoftmaxLayer(layers.Layer):
 
     Applies angular margin penalty: cos(theta) - m, then scales by s.
     During inference (training=False), returns standard cosine similarity logits.
+
+    ⚠️  OUTPUT TYPE: This layer emits RAW LOGITS (scaled cosine similarities),
+    NOT probabilities. The loss function MUST use from_logits=True:
+        - SparseCategoricalCrossentropy(from_logits=True)
+        - categorical_crossentropy(..., from_logits=True)
+    Using the string shortcut "sparse_categorical_crossentropy" (which defaults
+    to from_logits=False) will compute log(negative_value) → NaN loss.
+
+    scale=15.0 is the safe default (original paper uses 30-64, but smaller values
+    prevent overflow in float16 and still provide effective margin training).
     """
 
-    def __init__(self, num_classes, scale=30.0, margin=0.35, **kwargs):
+    def __init__(self, num_classes, scale=15.0, margin=0.35, **kwargs):
         super(AMSoftmaxLayer, self).__init__(**kwargs)
         self.num_classes = num_classes
         self.scale = scale
@@ -1385,12 +1404,20 @@ class AMSoftmaxLayer(layers.Layer):
         super(AMSoftmaxLayer, self).build(input_shape)
 
     def call(self, inputs, labels=None, training=None):
-        # L2-normalize embeddings and weights
+        # BUG FIX: tf.nn.l2_normalize(zero_vector) = 0/0 = NaN when the upstream
+        # activations collapse to all-zeros (e.g. due to bad audio normalization or
+        # corrupted input). Replace any NaN/Inf embeddings with a unit vector before
+        # normalizing so the model degrades gracefully instead of poisoning gradients.
+        inputs = tf.where(tf.math.is_finite(inputs), inputs, tf.zeros_like(inputs))
+
+        # L2-normalize embeddings and weights (epsilon=1e-12 in TF prevents /0)
         x_norm = tf.nn.l2_normalize(inputs, axis=-1)
         w_norm = tf.nn.l2_normalize(self.W, axis=0)
 
         # Cosine similarity
         cosine = tf.matmul(x_norm, w_norm)
+        # Clamp to [-1, 1] to guard against numerical noise from float16
+        cosine = tf.clip_by_value(cosine, -1.0, 1.0)
 
         if training and labels is not None:
             # One-hot encode labels

@@ -15,7 +15,11 @@ from tensorflow.keras import layers, models, regularizers
 from app.domain.models.architectures.layers import (
     AttentionLayer,
     AudioFeatureNormalization,
-    GraphAttentionLayer,
+    GATConvLayer,
+    GraphPoolLayer,
+    GraphReadoutLayer,
+    ResidualBlock1D,
+    SincConvLayer,
     apply_gru_block,
     apply_reshape_for_cnn,
     flatten_features_for_gru,
@@ -189,94 +193,99 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         x = layers.GlobalAveragePooling1D(name="transformer_avg_pool")(x)
 
     elif architecture == "rawgat_st":
-        # RawGAT-ST: Enhanced Raw audio Graph Attention with Spectro-Temporal modeling
-        # Multi-resolution SincNet + Graph Attention Networks
-        x = apply_reshape_for_cnn(x, input_shape)
+        # ================================================================
+        # RawGAT-ST: End-to-End Spectro-Temporal Graph Attention Networks
+        # (Tak et al., 2021) — IMPLEMENTAÇÃO FIEL AO PAPER.
+        #
+        # Antes: recebia ESPECTROGRAMA, simulava SincNet com Conv2D (kernels
+        # 1×15/1×9/1×5) e aplicava GAT genérico — divergia do paper.
+        #
+        # Agora: opera sobre ÁUDIO BRUTO via SincConv (filtros passa-banda
+        # aprendíveis), encoder residual, e DOIS grafos — espectral (Gs, canais
+        # como nós) e temporal (Gt, tempo como nós) — fundidos por multiplicação
+        # element-wise (a "graph combination" do paper).
+        # ================================================================
+        if len(input_shape) == 1:
+            x = layers.Reshape((-1, 1), name="rawgat_reshape_raw")(x)
+        elif len(input_shape) == 2 and input_shape[-1] == 1:
+            pass  # já (batch, time, 1)
+        else:
+            x = layers.Reshape((-1, 1), name="rawgat_reshape_raw")(x)
 
-        # Multi-resolution SincNet-inspired layers
-        # Low-frequency band (0-2kHz equivalent)
-        sincnet_low = layers.Conv2D(32, (1, 15), activation='relu', padding='same',
-                                    kernel_regularizer=tf.keras.regularizers.l2(
-                                        0.001),
-                                    name="rawgat_sincnet_low")(x)
-        sincnet_low = layers.BatchNormalization(
-            name="rawgat_bn_low")(sincnet_low)
+        # --- 1. SincNet front-end (filtros passa-banda aprendíveis) ---
+        x = SincConvLayer(
+            n_filters=70, kernel_size=129, sample_rate=16000,
+            name="rawgat_sinc")(x)
+        x = layers.Lambda(lambda t: tf.abs(t), name="rawgat_sinc_abs")(x)
+        x = layers.BatchNormalization(name="rawgat_sinc_bn")(x)
+        x = layers.LeakyReLU(negative_slope=0.3, name="rawgat_sinc_lrelu")(x)
+        x = layers.MaxPooling1D(pool_size=3, name="rawgat_sinc_pool")(x)
 
-        # Mid-frequency band (2-4kHz equivalent)
-        sincnet_mid = layers.Conv2D(32, (1, 9), activation='relu', padding='same',
-                                    kernel_regularizer=tf.keras.regularizers.l2(
-                                        0.001),
-                                    name="rawgat_sincnet_mid")(x)
-        sincnet_mid = layers.BatchNormalization(
-            name="rawgat_bn_mid")(sincnet_mid)
+        # --- 2. Encoder residual (estilo RawNet2) ---
+        x = ResidualBlock1D(out_channels=64, kernel_size=3, name="rawgat_res1")(x)
+        x = layers.MaxPooling1D(pool_size=3, name="rawgat_res_pool1")(x)
+        x = ResidualBlock1D(out_channels=128, kernel_size=3, name="rawgat_res2")(x)
+        x = layers.MaxPooling1D(pool_size=3, name="rawgat_res_pool2")(x)
+        encoder_out = x  # (batch, T_reduced, 128)
 
-        # High-frequency band (4-8kHz equivalent)
-        sincnet_high = layers.Conv2D(32, (1, 5), activation='relu', padding='same',
-                                     kernel_regularizer=tf.keras.regularizers.l2(
-                                         0.001),
-                                     name="rawgat_sincnet_high")(x)
-        sincnet_high = layers.BatchNormalization(
-            name="rawgat_bn_high")(sincnet_high)
+        # --- 3. Dois grafos: espectral (canais como nós) e temporal (tempo) ---
+        spectral_nodes = layers.Permute(
+            (2, 1), name="rawgat_spectral_transpose")(encoder_out)  # (B, 128, T')
+        temporal_nodes = encoder_out                                # (B, T', 128)
 
-        # Combine multi-resolution features
-        x = layers.Concatenate(
-            axis=-1, name="rawgat_concat_sincnet")([sincnet_low, sincnet_mid, sincnet_high])
-        x = layers.MaxPooling2D((1, 2), name="rawgat_pool_sincnet")(x)
-        x = layers.Dropout(dropout_rate, name="rawgat_dropout_sincnet")(x)
+        # --- 4. Graph Attention em cada grafo ---
+        spectral_nodes = GATConvLayer(
+            out_features=32, num_heads=attention_heads // 2 or 4,
+            dropout_rate=dropout_rate, concat_heads=True,
+            name="rawgat_gat_spectral")(spectral_nodes)
+        temporal_nodes = GATConvLayer(
+            out_features=32, num_heads=attention_heads // 2 or 4,
+            dropout_rate=dropout_rate, concat_heads=True,
+            name="rawgat_gat_temporal")(temporal_nodes)
 
-        # Additional convolutional layer for feature refinement
-        x = layers.Conv2D(128, (3, 3), activation='relu',
-                          padding='same', name="rawgat_conv_refine")(x)
-        x = layers.BatchNormalization(name="rawgat_bn_refine")(x)
-        x = layers.MaxPooling2D((2, 2), name="rawgat_pool_refine")(x)
-        x = layers.Dropout(dropout_rate, name="rawgat_dropout_refine")(x)
+        # --- 5. Graph pooling (top-k) ---
+        spectral_nodes = GraphPoolLayer(
+            ratio=0.5, name="rawgat_pool_spectral")(spectral_nodes)
+        temporal_nodes = GraphPoolLayer(
+            ratio=0.5, name="rawgat_pool_temporal")(temporal_nodes)
 
-        # Reshape para aplicar Graph Attention
-        # Convertemos a saída da CNN para um formato adequado para GAT
-        # Tratamos cada posição espacial como um nó no grafo
-        # NOTA: Em Keras 3, `tf.shape(x)` em KerasTensor levanta exceção; usamos
-        # apenas x.shape (estático) — o batch_size dinâmico não é necessário aqui
-        # porque Reshape lida com batch implicitamente.
-        shape_before_gat = x.shape
-        height, width, channels = (
-            shape_before_gat[1],
-            shape_before_gat[2],
-            shape_before_gat[3],
+        # --- 6. Readout (max + atenção) por grafo → vetor (B, 2*F) ---
+        spec_readout = GraphReadoutLayer(
+            name="rawgat_readout_spectral")(spectral_nodes)
+        temp_readout = GraphReadoutLayer(
+            name="rawgat_readout_temporal")(temporal_nodes)
+
+        # --- 7. Fusão espectro-temporal: multiplicação element-wise ---
+        # (assinatura do RawGAT-ST). Concatena também os readouts individuais
+        # para estabilidade numérica (evita perda de info quando o produto ≈ 0).
+        fused = layers.Multiply(name="rawgat_graph_fusion")(
+            [spec_readout, temp_readout])
+        x = layers.Concatenate(name="rawgat_fusion_concat")(
+            [fused, spec_readout, temp_readout])
+
+        # --- 8. Classificador ---
+        x = layers.Dense(128, activation="relu", name="rawgat_fc")(x)
+        x = layers.Dropout(dropout_rate, name="rawgat_fc_drop")(x)
+        output_tensor = layers.Dense(
+            num_classes, activation="softmax", dtype="float32",
+            name="output_layer")(x)
+
+        model = models.Model(inputs=input_tensor, outputs=output_tensor)
+        optimizer = tf.keras.optimizers.AdamW(
+            learning_rate=0.0001,
+            weight_decay=l2_reg_strength,
+            global_clipnorm=1.0,  # estabilidade (grafos + SincConv)
         )
-
-        # Reshape para (batch, nodes, features)
-        # Cada posição espacial (h,w) se torna um nó com 'channels' features
-        num_nodes = int(height) * int(width)
-        x_reshaped = layers.Reshape(
-            (num_nodes, channels), name="rawgat_reshape_for_gat")(x)
-
-        # Criar matriz de adjacência implícita (será calculada dentro da camada GAT)
-        # Aplicar múltiplas camadas GAT em sequência
-        gat_dim = 64  # Dimensão de saída por cabeça de atenção
-
-        # Primeira camada GAT
-        x_gat = GraphAttentionLayer(output_dim=gat_dim, num_heads=attention_heads,
-                                    dropout_rate=dropout_rate, name="rawgat_gat1")(x_reshaped)
-        x_gat = layers.BatchNormalization(name="rawgat_bn_gat1")(x_gat)
-        x_gat = layers.Dropout(dropout_rate, name="rawgat_dropout_gat1")(x_gat)
-
-        # Segunda camada GAT
-        x_gat = GraphAttentionLayer(output_dim=gat_dim, num_heads=attention_heads // 2,
-                                    dropout_rate=dropout_rate, name="rawgat_gat2")(x_gat)
-        x_gat = layers.BatchNormalization(name="rawgat_bn_gat2")(x_gat)
-        x_gat = layers.Dropout(dropout_rate, name="rawgat_dropout_gat2")(x_gat)
-
-        # Aplicar camada de atenção para agregar informações dos nós
-        x_att = AttentionLayer(name="rawgat_node_attention")(x_gat)
-
-        # Camadas densas para classificação
-        x = layers.Dense(512, activation='relu', name="rawgat_dense1")(x_att)
-        x = layers.BatchNormalization(name="rawgat_bn_dense1")(x)
-        x = layers.Dropout(dropout_rate, name="rawgat_dropout_dense1")(x)
-
-        x = layers.Dense(256, activation='relu', name="rawgat_dense2")(x)
-        x = layers.BatchNormalization(name="rawgat_bn_dense2")(x)
-        x = layers.Dropout(dropout_rate, name="rawgat_dropout_dense2")(x)
+        model.compile(
+            optimizer=optimizer,
+            loss="sparse_categorical_crossentropy",
+            metrics=["accuracy"],
+        )
+        logger.info(
+            "RawGAT-ST model created (paper-faithful: SincNet + Gs/Gt GAT + "
+            "fusão element-wise)"
+        )
+        return model
 
     else:
         raise ValueError(
@@ -332,14 +341,21 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
 
 def simple_audio_augmenter(X_train: np.ndarray,
                            y_train: np.ndarray) -> tf.data.Dataset:
+    """Augmentation RawBoost (Tak et al., 2022) para áudio bruto.
+
+    Substitui o antigo placeholder de ruído gaussiano fixo (ver aasist.py).
+    """
+    from app.domain.models.training.rawboost import rawboost_tf
+
     def _augment(audio_features, label):
-        noise = tf.random.normal(
-            shape=tf.shape(audio_features),
-            mean=0.0,
-            stddev=0.01,
-            dtype=tf.float32)
-        augmented_audio_features = audio_features + noise
-        return augmented_audio_features, label
+        rank = audio_features.shape.rank
+        a = audio_features
+        if rank == 2 and audio_features.shape[-1] == 1:
+            a = tf.squeeze(a, axis=-1)
+        a = rawboost_tf(a, sr=16000, algo=4, p=0.8)
+        if rank == 2:
+            a = tf.expand_dims(a, axis=-1)
+        return a, label
     dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
     dataset = dataset.map(_augment, num_parallel_calls=tf.data.AUTOTUNE)
     return dataset

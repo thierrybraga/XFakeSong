@@ -36,24 +36,33 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Deque, List, Literal, Optional
+from html import escape
+from typing import Deque, List, Literal, Optional
+
+from app.core.feedback import (
+    clear_feedback_events,
+    get_feedback_events,
+    get_feedback_unread_count,
+    mark_feedback_read,
+    publish_feedback,
+)
 
 logger = logging.getLogger(__name__)
 
 NotifyLevel = Literal["success", "info", "warning", "error", "critical"]
 
 _LEVEL_ICONS = {
-    "success":  "✓",
-    "info":     "ℹ",
-    "warning":  "⚠",
-    "error":    "✗",
+    "success": "✓",
+    "info": "ℹ",
+    "warning": "⚠",
+    "error": "✗",
     "critical": "⛔",
 }
 _LEVEL_COLORS = {
-    "success":  "#10b981",
-    "info":     "#06b6d4",
-    "warning":  "#f59e0b",
-    "error":    "#ef4444",
+    "success": "#10b981",
+    "info": "#06b6d4",
+    "warning": "#f59e0b",
+    "error": "#ef4444",
     "critical": "#dc2626",
 }
 
@@ -67,16 +76,18 @@ _unread_count: int = 0
 # Modelos
 # =====================================================================
 
+
 @dataclass
 class Notification:
     """Uma notificação no sistema."""
+
     level: NotifyLevel
     title: str
     message: str = ""
     timestamp: float = field(default_factory=time.time)
     error_code: Optional[str] = None
-    hint: Optional[str] = None         # sugestão de fix (para erros)
-    link: Optional[str] = None         # URL opcional (ex: /api/docs)
+    hint: Optional[str] = None  # sugestão de fix (para erros)
+    link: Optional[str] = None  # URL opcional (ex: /api/docs)
     actions: List[dict] = field(default_factory=list)  # botões inline (futuro)
 
     @property
@@ -103,6 +114,7 @@ class Notification:
 @dataclass
 class ActionableError:
     """Erro com sugestão de fix — separado de Notification para reutilização."""
+
     title: str
     message: str
     hint: str
@@ -124,6 +136,7 @@ class ActionableError:
 # Erros comuns pré-definidos (acionáveis)
 # =====================================================================
 
+
 class CommonErrors:
     """Catálogo de erros frequentes com hint pronto.
 
@@ -136,7 +149,8 @@ class CommonErrors:
             title="Modelo não encontrado",
             message=(
                 f"O modelo '{model_name}' não está carregado."
-                if model_name else "Nenhum modelo treinado disponível."
+                if model_name
+                else "Nenhum modelo treinado disponível."
             ),
             hint=(
                 "Treine um modelo na aba 🎓 Treinar (Wizard) ou importe um "
@@ -218,6 +232,7 @@ class CommonErrors:
 # API pública
 # =====================================================================
 
+
 def notify(
     level: NotifyLevel,
     title: str,
@@ -242,33 +257,16 @@ def notify(
     Returns:
         Notification criada.
     """
-    note = Notification(
-        level=level,
-        title=title,
-        message=message,
+    note = publish_feedback(
+        level,
+        title,
+        message,
+        source="app.interfaces.gradio",
+        category="notification",
         hint=hint,
         error_code=error_code,
         link=link,
     )
-
-    # Adiciona ao histórico
-    global _unread_count
-    with _history_lock:
-        _history.append(note)
-        _unread_count += 1
-
-    # Loga (importante: critical/error → ERROR; warning → WARNING; resto → INFO)
-    log_msg = f"[{note.icon} {level.upper()}] {title}"
-    if message:
-        log_msg += f" — {message}"
-    if hint:
-        log_msg += f" (hint: {hint})"
-    if level in ("error", "critical"):
-        logger.error(log_msg)
-    elif level == "warning":
-        logger.warning(log_msg)
-    else:
-        logger.info(log_msg)
 
     # Emite toast no Gradio (com fallback gracioso)
     if not silent:
@@ -303,11 +301,14 @@ def _emit_toast(note: Notification) -> None:
 
 # ── Helpers convenientes (por nível) ─────────────────────────────────
 
+
 def notify_success(title: str, message: str = "", **kwargs) -> Notification:
     return notify("success", title, message, **kwargs)
 
 
-def notify_info(message: str = "", title: str = "", *, log_info: bool = False, **kwargs) -> Notification:
+def notify_info(
+    message: str = "", title: str = "", *, log_info: bool = False, **kwargs
+) -> Notification:
     """Compatível com a antiga assinatura `notify_info(message)`.
 
     Se chamado com 1 argumento posicional, usa-o como TÍTULO para ser
@@ -347,8 +348,12 @@ def notify_error(
         title = message or "Erro"
         message = ""
     return notify(
-        "error", title, message,
-        hint=hint, error_code=error_code, **kwargs,
+        "error",
+        title,
+        message,
+        hint=hint,
+        error_code=error_code,
+        **kwargs,
     )
 
 
@@ -356,7 +361,9 @@ def notify_critical(title: str, message: str = "", **kwargs) -> Notification:
     return notify("critical", title, message, **kwargs)
 
 
-def notify_from_actionable(err: ActionableError, *, silent: bool = False) -> Notification:
+def notify_from_actionable(
+    err: ActionableError, *, silent: bool = False
+) -> Notification:
     """Atalho: emite notificação a partir de um ActionableError."""
     return notify(
         "error",
@@ -371,36 +378,29 @@ def notify_from_actionable(err: ActionableError, *, silent: bool = False) -> Not
 
 # ── Histórico / Notification Center ──────────────────────────────────
 
+
 def get_history(limit: int = 10) -> List[Notification]:
     """Retorna as últimas N notificações (mais recentes primeiro)."""
-    with _history_lock:
-        items = list(_history)
-    items.reverse()
-    return items[:limit]
+    return get_feedback_events(limit=limit)
 
 
 def clear_history() -> int:
     """Limpa o histórico e retorna quantas notificações foram removidas."""
-    global _unread_count
-    with _history_lock:
-        count = len(_history)
-        _history.clear()
-        _unread_count = 0
-    return count
+    return clear_feedback_events()
 
 
 def get_unread_count() -> int:
     """Conta de notificações não lidas (resetado por mark_all_read)."""
-    return _unread_count
+    return get_feedback_unread_count()
 
 
 def mark_all_read() -> None:
     """Marca todas como lidas (zera o counter, mantém histórico)."""
-    global _unread_count
-    _unread_count = 0
+    mark_feedback_read()
 
 
 # ── Render HTML para Notification Center ─────────────────────────────
+
 
 def render_notification_center_html(limit: int = 10) -> str:
     """HTML do painel de notificações (para gr.HTML no Dashboard / dropdown)."""
@@ -409,30 +409,33 @@ def render_notification_center_html(limit: int = 10) -> str:
         return (
             '<div class="notif-empty">'
             '<div style="font-size:2rem">📭</div>'
-            '<div>Nenhuma notificação ainda</div>'
-            '</div>'
+            "<div>Nenhuma notificação ainda</div>"
+            "</div>"
         )
 
     items_html = ""
     for n in notes:
-        hint_html = (
-            f'<div class="notif-hint">💡 {n.hint}</div>'
-            if n.hint else ""
-        )
+        title = escape(str(n.title))
+        message = escape(str(n.message)) if n.message else ""
+        hint = escape(str(n.hint)) if n.hint else ""
+        error_code = escape(str(n.error_code)) if n.error_code else ""
+        source = escape(str(getattr(n, "source", "")))
+        hint_html = f'<div class="notif-hint">💡 {hint}</div>' if n.hint else ""
         code_html = (
-            f'<span class="notif-code">{n.error_code}</span>'
-            if n.error_code else ""
+            f'<span class="notif-code">{error_code}</span>' if n.error_code else ""
         )
+        source_html = f'<span class="notif-code">{source}</span>' if source else ""
         items_html += f"""
         <div class="notif-item notif-{n.level}">
             <div class="notif-icon" style="color:{n.color}">{n.icon}</div>
             <div class="notif-body">
                 <div class="notif-header">
-                    <span class="notif-title">{n.title}</span>
+                    <span class="notif-title">{title}</span>
                     {code_html}
+                    {source_html}
                     <span class="notif-ago">{n.ago}</span>
                 </div>
-                {f'<div class="notif-msg">{n.message}</div>' if n.message else ""}
+                {f'<div class="notif-msg">{message}</div>' if n.message else ""}
                 {hint_html}
             </div>
         </div>

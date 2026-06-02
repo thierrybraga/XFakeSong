@@ -23,13 +23,19 @@ A função é idempotente — múltiplas chamadas não causam efeito colateral.
 from __future__ import annotations
 
 import logging
-import os
 import platform
 import shutil
 import subprocess
 import sys
 import threading
 from typing import Any, Dict, List, Optional
+
+from app.core.performance import (
+    configure_gpu_memory,
+    configure_tensorflow_runtime,
+    get_resource_snapshot,
+    get_runtime_performance_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +49,12 @@ _setup_result: Dict[str, Any] = {}
 # Helpers internos
 # =====================================================================
 
+
 def _gpu_compute_capability(gpu_device) -> Optional[tuple]:
     """Retorna (major, minor) da CC ou None."""
     try:
         import tensorflow as tf
+
         details = tf.config.experimental.get_device_details(gpu_device)
         cc = details.get("compute_capability")
         if cc is None:
@@ -68,6 +76,7 @@ def _gpu_name(gpu_device) -> str:
     """Nome legível da GPU (ou device_name TF)."""
     try:
         import tensorflow as tf
+
         details = tf.config.experimental.get_device_details(gpu_device)
         return details.get("device_name", str(gpu_device))
     except Exception:
@@ -111,13 +120,15 @@ def _detect_nvidia_via_smi() -> List[Dict[str, Any]]:
         for line in result.stdout.strip().splitlines():
             parts = [p.strip() for p in line.split(",")]
             if len(parts) >= 5:
-                gpus.append({
-                    "index": int(parts[0]),
-                    "name": parts[1],
-                    "uuid": parts[2],
-                    "memory_total_mb": int(parts[3]),
-                    "driver_version": parts[4],
-                })
+                gpus.append(
+                    {
+                        "index": int(parts[0]),
+                        "name": parts[1],
+                        "uuid": parts[2],
+                        "memory_total_mb": int(parts[3]),
+                        "driver_version": parts[4],
+                    }
+                )
         return gpus
     except Exception as e:
         logger.debug(f"nvidia-smi falhou: {e}")
@@ -128,6 +139,7 @@ def _detect_nvidia_via_pynvml() -> List[Dict[str, Any]]:
     """Detecta GPUs NVIDIA via pynvml (fallback alternativo)."""
     try:
         import pynvml
+
         pynvml.nvmlInit()
         n = pynvml.nvmlDeviceGetCount()
         gpus = []
@@ -137,11 +149,13 @@ def _detect_nvidia_via_pynvml() -> List[Dict[str, Any]]:
             if isinstance(name, bytes):
                 name = name.decode("utf-8", errors="ignore")
             mem = pynvml.nvmlDeviceGetMemoryInfo(h)
-            gpus.append({
-                "index": i,
-                "name": name,
-                "memory_total_mb": int(mem.total // (1024 * 1024)),
-            })
+            gpus.append(
+                {
+                    "index": i,
+                    "name": name,
+                    "memory_total_mb": int(mem.total // (1024 * 1024)),
+                }
+            )
         pynvml.nvmlShutdown()
         return gpus
     except Exception:
@@ -164,6 +178,7 @@ def _detect_directml_plugin() -> bool:
     """
     try:
         import tensorflow_directml_plugin  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -185,6 +200,7 @@ def _tf_built_with_cuda() -> bool:
     """True se a instalação atual de TF foi compilada com suporte CUDA."""
     try:
         import tensorflow as tf
+
         return bool(tf.test.is_built_with_cuda())
     except Exception:
         return False
@@ -248,6 +264,7 @@ def _diagnose_gpu_situation(
             tf_ver = "?"
             try:
                 import tensorflow as tf
+
                 tf_ver = tf.__version__
             except Exception:
                 pass
@@ -285,9 +302,7 @@ def _diagnose_gpu_situation(
         if not tf_has_cuda:
             return {
                 "diagnosis": "tf_no_cuda",
-                "message": (
-                    f"{hw_name} presente mas TF não foi compilado com CUDA."
-                ),
+                "message": (f"{hw_name} presente mas TF não foi compilado com CUDA."),
                 "hints": [
                     "Reinstale: `pip install tensorflow[and-cuda]` "
                     "ou use `tensorflow-gpu` em versões antigas",
@@ -323,6 +338,7 @@ def _diagnose_gpu_situation(
 # API pública
 # =====================================================================
 
+
 def setup_gpu(
     *,
     memory_growth: bool = True,
@@ -351,11 +367,11 @@ def setup_gpu(
 
         result: Dict[str, Any] = {
             "tf_available": False,
-            "gpus_detected": [],          # GPUs que TF está expondo
-            "nvidia_hardware": [],        # GPUs físicas via nvidia-smi/pynvml
+            "gpus_detected": [],  # GPUs que TF está expondo
+            "nvidia_hardware": [],  # GPUs físicas via nvidia-smi/pynvml
             "memory_growth_applied": False,
             "mixed_precision_enabled": False,
-            "device_policy": "cpu",       # "cpu" | "gpu"
+            "device_policy": "cpu",  # "cpu" | "gpu"
             "tensor_core_capable": False,
             "errors": [],
             "platform": {
@@ -366,12 +382,13 @@ def setup_gpu(
             },
             "tf_built_with_cuda": False,
             "directml_installed": _detect_directml_plugin(),
-            "diagnosis": None,            # preenchido ao final
+            "diagnosis": None,  # preenchido ao final
         }
 
         # Coleta o hardware NVIDIA cedo (independente de TF) — assim mesmo
         # quando TF é CPU-only sabemos se há GPU física disponível.
         result["nvidia_hardware"] = _detect_nvidia_hardware()
+        result["runtime"] = get_resource_snapshot()
 
         try:
             import tensorflow as tf
@@ -389,6 +406,7 @@ def setup_gpu(
 
         result["tf_available"] = True
         result["tf_built_with_cuda"] = _tf_built_with_cuda()
+        configure_tensorflow_runtime(tf)
 
         # === Detecta GPUs ===
         try:
@@ -422,22 +440,12 @@ def setup_gpu(
 
         # === Memory growth (deve ser feito ANTES de qualquer operação) ===
         if memory_growth:
-            for g in gpus:
-                try:
-                    tf.config.experimental.set_memory_growth(g, True)
-                    result["memory_growth_applied"] = True
-                except RuntimeError as e:
-                    # Pode falhar se TF já inicializou — não-fatal
-                    msg = (
-                        f"memory_growth não pôde ser aplicado em {g} "
-                        f"(TF já inicializado?): {e}"
-                    )
-                    logger.warning(msg)
-                    result["errors"].append(msg)
-                except Exception as e:
-                    msg = f"Erro inesperado em memory_growth: {e}"
-                    logger.warning(msg)
-                    result["errors"].append(msg)
+            memory_result = configure_gpu_memory(tf, gpus)
+            result["memory_growth_applied"] = bool(
+                memory_result.get("memory_growth_applied")
+            )
+            result["gpu_memory_limit_mb"] = memory_result.get("memory_limit_mb")
+            result["errors"].extend(memory_result.get("errors") or [])
 
         # === Coleta info de cada GPU ===
         any_tensor_core = False
@@ -447,14 +455,14 @@ def setup_gpu(
             tc = _is_tensor_core_capable(cc[0] if cc else None)
             if tc:
                 any_tensor_core = True
-            result["gpus_detected"].append({
-                "index": idx,
-                "name": name,
-                "compute_capability": (
-                    f"{cc[0]}.{cc[1]}" if cc else "unknown"
-                ),
-                "tensor_core": tc,
-            })
+            result["gpus_detected"].append(
+                {
+                    "index": idx,
+                    "name": name,
+                    "compute_capability": (f"{cc[0]}.{cc[1]}" if cc else "unknown"),
+                    "tensor_core": tc,
+                }
+            )
 
         result["device_policy"] = "gpu"
         result["tensor_core_capable"] = any_tensor_core
@@ -494,8 +502,18 @@ def setup_gpu(
                 f"tensor_core={info['tensor_core']})",
             )
 
-        # Hint para XLA (Sprint 3.1) — não-obrigatório, mas ajuda no JIT
-        os.environ.setdefault("TF_XLA_FLAGS", "--tf_xla_auto_jit=1")
+        perf_cfg = get_runtime_performance_config()
+        logger.log(
+            log_level,
+            "[PERF] CPU threads intra=%s inter=%s workers=%s · XLA=%s · "
+            "cuda_malloc_async=%s · vram_limit_mb=%s",
+            perf_cfg.intra_op_threads,
+            perf_cfg.inter_op_threads,
+            perf_cfg.max_parallel_workers,
+            perf_cfg.enable_xla,
+            perf_cfg.cuda_malloc_async,
+            perf_cfg.gpu_memory_limit_mb or "auto-growth",
+        )
 
         # Diagnose final (deve dar "ok" no happy path)
         result["diagnosis"] = _diagnose_gpu_situation(
@@ -518,6 +536,7 @@ def is_gpu_available() -> bool:
         # Tenta uma detecção rápida sem alterar config global
         try:
             import tensorflow as tf
+
             return len(tf.config.list_physical_devices("GPU")) > 0
         except Exception:
             return False
@@ -538,6 +557,7 @@ def describe_gpu_setup() -> str:
         # Setup ainda não rodou — fast path
         try:
             import tensorflow as tf
+
             gpus = tf.config.list_physical_devices("GPU")
             if not gpus:
                 # Tenta detectar hardware mesmo se TF não vê
@@ -572,7 +592,9 @@ def describe_gpu_setup() -> str:
             if d == "windows_dml_installed_but_invisible":
                 return f"⚠ {hw_name} (DirectML instalado — reinicie processo)"
             if d == "wsl_no_cuda":
-                return f"⚠ {hw_name} (WSL sem CUDA — `pip install tensorflow[and-cuda]`)"
+                return (
+                    f"⚠ {hw_name} (WSL sem CUDA — `pip install tensorflow[and-cuda]`)"
+                )
             if d == "tf_no_cuda":
                 return f"⚠ {hw_name} (TF sem CUDA — reinstale com [and-cuda])"
             if d == "cuda_present_gpu_hidden":

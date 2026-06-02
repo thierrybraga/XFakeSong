@@ -17,6 +17,7 @@ from app.domain.services.forensic_visualization import (
     AudioForensicVisualizer,
     BatchAnalysisVisualizer,
 )
+from app.interfaces.gradio.utils.components import page_header
 
 logger = logging.getLogger("gradio_forensic_tab")
 
@@ -170,11 +171,11 @@ def run_forensic_analysis(audio_path):
         # Info summary
         duration = len(y) / sr
         info = (
-            f"**Audio:** {Path(audio_path).name}\n"
-            f"**Duracao:** {duration:.2f}s | "
+            f"**Áudio:** {Path(audio_path).name}\n"
+            f"**Duração:** {duration:.2f}s | "
             f"**Sample Rate:** {sr} Hz | "
             f"**Amostras:** {len(y):,}\n"
-            f"**RMS Medio:** {float(np.sqrt(np.mean(y**2))):.4f} | "
+            f"**RMS Médio:** {float(np.sqrt(np.mean(y**2))):.4f} | "
             f"**Max Amplitude:** {float(np.max(np.abs(y))):.4f}"
         )
 
@@ -274,14 +275,14 @@ def run_batch_analysis(files):
             ])
 
         df = pd.DataFrame(table_data, columns=[
-            'Arquivo', 'Resultado', 'Confianca', 'Modelo', 'Duracao'
+            'Arquivo', 'Resultado', 'Confiança', 'Modelo', 'Duração'
         ])
 
         summary = (
             f"**Total analisado:** {len(results)}\n"
             f"**Fake:** {n_fake} ({n_fake/len(results)*100:.1f}%) | "
             f"**Real:** {n_real} ({n_real/len(results)*100:.1f}%)\n"
-            f"**Confianca media:** {float(np.mean(confidences)):.4f}"
+            f"**Confiança média:** {float(np.mean(confidences)):.4f}"
         )
 
         return fig_pie, fig_conf, df, summary
@@ -342,7 +343,7 @@ def export_batch_report(files):
             encoding='utf-8')
         writer = csv.writer(tmp)
         writer.writerow([
-            'Arquivo', 'Resultado', 'Confianca', 'Modelo', 'Duracao(s)'
+            'Arquivo', 'Resultado', 'Confiança', 'Modelo', 'Duração(s)'
         ])
         for r in results:
             writer.writerow([
@@ -359,8 +360,8 @@ def export_batch_report(files):
         writer.writerow(['Fake', report['total_fake']])
         writer.writerow(['Real', report['total_real']])
         writer.writerow(['% Fake', f"{report['fake_percentage']:.2f}%"])
-        writer.writerow(['Confianca Media', f"{report['confidence_mean']:.6f}"])
-        writer.writerow(['Confianca Std', f"{report['confidence_std']:.6f}"])
+        writer.writerow(['Confiança Média', f"{report['confidence_mean']:.6f}"])
+        writer.writerow(['Confiança Std', f"{report['confidence_std']:.6f}"])
         tmp.close()
 
         return tmp.name
@@ -373,12 +374,13 @@ def export_batch_report(files):
 def create_forensic_analysis_tab():
     """Cria a aba de Analise Forense no Gradio."""
 
-    with gr.Tab("🔬 Análise Forense", id="tab_forensic"):
-        gr.Markdown(
-            "### Análise Forense de Áudio\n"
-            "Sistema completo de visualização gráfica para perícia em áudios digitais. "
-            "Gera espectrogramas, análises de fase, formantes, jitter/shimmer, "
-            "HNR e muito mais."
+    with gr.Tab("🔬 Investigar", id="tab_forensic"):
+        page_header(
+            "🔬",
+            "Investigar",
+            "Análise forense completa para perícia em áudios digitais: "
+            "espectrogramas, fase, formantes, jitter/shimmer, HNR e "
+            "explicabilidade do modelo.",
         )
 
         # ===== Input Section =====
@@ -386,7 +388,7 @@ def create_forensic_analysis_tab():
             with gr.Column(scale=1):
                 audio_input = gr.Audio(
                     type="filepath",
-                    label="Arquivo de Audio para Analise",
+                    label="Arquivo de Áudio para Análise",
                     sources=["upload"]
                 )
                 analyze_btn = gr.Button(
@@ -395,8 +397,8 @@ def create_forensic_analysis_tab():
                 )
             with gr.Column(scale=2):
                 info_output = gr.Markdown(
-                    label="Informacoes do Audio",
-                    value="*Faca upload de um arquivo de audio para iniciar.*"
+                    label="Informações do Áudio",
+                    value="*Faça upload de um arquivo de áudio para iniciar.*"
                 )
 
         gr.Markdown("---")
@@ -453,10 +455,12 @@ def create_forensic_analysis_tab():
             with gr.Tab("🎵 Análise de Pitch"):
                 gr.Markdown("#### Análise Detalhada de F0")
                 plot_f0 = gr.Plot(
-                    label="Contorno de pitch com confianca e vibrato")
+                    label="Contorno de pitch com confiança e vibrato")
 
-            # --- Tab: Análise de Detecção ---
-            with gr.Tab("🎯 Análise de Detecção"):
+            # --- Tab: Explicabilidade (XAI) ---
+            # (renomeada de "Análise de Detecção" — são visualizações de
+            # explicabilidade do modelo, não um detector duplicado)
+            with gr.Tab("🧠 Explicabilidade (XAI)"):
                 gr.Markdown(
                     "#### Visualizações baseadas no modelo de detecção\n"
                     "*Requer modelo treinado carregado.*"
@@ -464,54 +468,18 @@ def create_forensic_analysis_tab():
                 with gr.Row():
                     with gr.Column():
                         plot_radar = gr.Plot(
-                            label="Importancia Relativa de Features")
+                            label="Importância Relativa de Features")
                     with gr.Column():
                         plot_anomaly = gr.Plot(
                             label="Heatmap de Anomalias sobre Espectrograma")
-                gr.Markdown("#### Confianca por Segmento Temporal")
+                gr.Markdown("#### Confiança por Segmento Temporal")
                 plot_confidence = gr.Plot(
-                    label="Score de confianca ao longo do audio")
-
-            # --- Tab: Análise em Lote ---
-            with gr.Tab("📦 Análise em Lote"):
-                gr.Markdown(
-                    "#### Análise de Múltiplos Arquivos\n"
-                    "Faça upload de vários arquivos de áudio para análise em lote "
-                    "com relatório exportável em CSV."
-                )
-
-                batch_files = gr.Files(
-                    label="Upload de Arquivos de Audio",
-                    file_types=["audio"]
-                )
-                with gr.Row():
-                    batch_btn = gr.Button(
-                        "Analisar Lote", variant="primary")
-                    export_btn = gr.Button(
-                        "Exportar Relatorio CSV", variant="secondary")
-
-                batch_summary = gr.Markdown(
-                    value="*Faca upload de arquivos para analise em lote.*")
-
-                with gr.Row():
-                    with gr.Column():
-                        plot_pie = gr.Plot(
-                            label="Distribuicao de Resultados")
-                    with gr.Column():
-                        plot_conf_dist = gr.Plot(
-                            label="Distribuicao de Confianca")
-
-                batch_table = gr.Dataframe(
-                    label="Resultados por Arquivo",
-                    headers=['Arquivo', 'Resultado', 'Confianca',
-                             'Modelo', 'Duracao'],
-                    interactive=False
-                )
-
-                report_file = gr.File(
-                    label="Download Relatorio", visible=True)
+                    label="Score de confiança ao longo do áudio")
 
         # ===== Event Handlers =====
+        # NOTA: a análise em lote foi movida para a aba 🎯 Detectar →
+        # 📦 Análise em Lote. As funções run_batch_analysis/export_batch_report
+        # permanecem neste módulo e são importadas lá.
 
         # Single file analysis
         analyze_btn.click(
@@ -524,18 +492,4 @@ def create_forensic_analysis_tab():
                 plot_radar, plot_anomaly, plot_confidence,
                 info_output
             ]
-        )
-
-        # Batch analysis
-        batch_btn.click(
-            fn=run_batch_analysis,
-            inputs=[batch_files],
-            outputs=[plot_pie, plot_conf_dist, batch_table, batch_summary]
-        )
-
-        # Export report
-        export_btn.click(
-            fn=export_batch_report,
-            inputs=[batch_files],
-            outputs=[report_file]
         )

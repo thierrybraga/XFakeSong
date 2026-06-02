@@ -1,6 +1,6 @@
 """Dashboard — landing page do XFakeSong (UI Fase 1).
 
-Mostra KPIs do sistema, quick actions e atividade recente.
+Mostra KPIs do sistema, atividade recente, status e notificações.
 Todos os service calls têm fallback gracioso para não quebrar a UI quando
 algum subsistema (DB, modelos, etc.) está indisponível.
 """
@@ -15,11 +15,6 @@ from pathlib import Path
 
 import gradio as gr
 
-from app.interfaces.gradio.utils.notifications import (
-    notify_info,
-    render_notification_center_html,
-)
-
 logger = logging.getLogger("gradio_dashboard")
 
 
@@ -27,10 +22,12 @@ logger = logging.getLogger("gradio_dashboard")
 # Data collectors (todos com fallback)
 # =====================================================================
 
+
 def _count_models() -> int:
     """Conta modelos carregados pelo DetectionService."""
     try:
         from app.dependencies import get_detection_service
+
         svc = get_detection_service()
         return len(svc.get_available_models() or [])
     except Exception as e:
@@ -42,6 +39,7 @@ def _count_profiles() -> int:
     """Conta perfis de voz cadastrados."""
     try:
         from app.domain.services.voice_profile_service import VoiceProfileService
+
         return len(VoiceProfileService().list_profiles() or [])
     except Exception as e:
         logger.debug(f"count_profiles fallback: {e}")
@@ -52,14 +50,17 @@ def _count_analyses_24h() -> int:
     """Conta análises das últimas 24h no histórico."""
     try:
         from sqlalchemy import func
+
         from app.core.database import SessionLocal
         from app.domain.models.analysis import AnalysisResult
 
         with SessionLocal() as db:
             cutoff = datetime.now() - timedelta(hours=24)
-            count = db.query(func.count(AnalysisResult.id)).filter(
-                AnalysisResult.created_at >= cutoff
-            ).scalar()
+            count = (
+                db.query(func.count(AnalysisResult.id))
+                .filter(AnalysisResult.created_at >= cutoff)
+                .scalar()
+            )
             return int(count or 0)
     except Exception as e:
         logger.debug(f"count_analyses_24h fallback: {e}")
@@ -78,7 +79,7 @@ def _datasets_size_gb() -> float:
                     total += p.stat().st_size
         except Exception as e:
             logger.debug(f"datasets_size erro em {d}: {e}")
-    return round(total / (1024 ** 3), 2)
+    return round(total / (1024**3), 2)
 
 
 def _recent_analyses(limit: int = 5) -> list:
@@ -112,13 +113,15 @@ def _recent_analyses(limit: int = 5) -> list:
                     pass
                 label = "FAKE" if r.is_fake else "REAL"
                 icon = "⚠" if r.is_fake else "✓"
-                out.append([
-                    f"{icon} {label}",
-                    r.filename or "unknown",
-                    f"{r.confidence:.2f}" if r.confidence is not None else "—",
-                    r.model_name or "—",
-                    ago,
-                ])
+                out.append(
+                    [
+                        f"{icon} {label}",
+                        r.filename or "unknown",
+                        f"{r.confidence:.2f}" if r.confidence is not None else "—",
+                        r.model_name or "—",
+                        ago,
+                    ]
+                )
             return out
     except Exception as e:
         logger.debug(f"recent_analyses fallback: {e}")
@@ -132,12 +135,14 @@ def _gpu_status() -> str:
     """
     try:
         from app.core.gpu import describe_gpu_setup
+
         return describe_gpu_setup()
     except Exception as e:
         logger.debug(f"_gpu_status fallback: {e}")
         # Fallback antigo
         try:
             import tensorflow as tf
+
             gpus = tf.config.list_physical_devices("GPU")
             if not gpus:
                 return "✗ CPU only"
@@ -161,6 +166,7 @@ def _system_status() -> dict:
     }
     try:
         from app.core.database import check_database_health
+
         status["db_ok"] = bool(check_database_health())
     except Exception:
         pass
@@ -171,7 +177,10 @@ def _system_status() -> dict:
 # HTML builders (componentes visuais)
 # =====================================================================
 
-def _kpi_card(icon: str, value: str, label: str, color_class: str = "kpi-primary") -> str:
+
+def _kpi_card(
+    icon: str, value: str, label: str, color_class: str = "kpi-primary"
+) -> str:
     """Renderiza um KPI card em HTML."""
     return f"""
     <div class="kpi-card {color_class}">
@@ -281,54 +290,41 @@ def _render_recent_table() -> str:
 # Build tab
 # =====================================================================
 
+
 def create_dashboard_tab():
     """Constrói a aba 🏠 Dashboard."""
-    with gr.Tab("🏠 Dashboard", id="tab_dashboard"):
+    with gr.Tab("🏠 Painel", id="tab_dashboard"):
+        from app.interfaces.gradio.utils.components import page_header
+
+        page_header(
+            "🏠",
+            "Painel",
+            "Visão geral do sistema — modelos, perfis, hardware e "
+            "atividade recente.",
+        )
         # KPI cards no topo
         kpi_html = gr.HTML(_render_kpi_row(), elem_id="dashboard_kpis")
-
-        # Quick actions
-        gr.Markdown("### Ações Rápidas")
-        with gr.Row():
-            quick_detect_btn = gr.Button(
-                "🎯  Analisar áudio",
-                variant="primary",
-                size="lg",
-                scale=1,
-            )
-            quick_train_btn = gr.Button(
-                "🎓  Treinar modelo",
-                variant="secondary",
-                size="lg",
-                scale=1,
-            )
-            quick_datasets_btn = gr.Button(
-                "📦  Gerenciar datasets",
-                variant="secondary",
-                size="lg",
-                scale=1,
-            )
-            refresh_btn = gr.Button(
-                "🔄  Atualizar",
-                variant="secondary",
-                size="lg",
-                scale=0,
-            )
 
         # 2 colunas: histórico recente + status do sistema
         with gr.Row():
             with gr.Column(scale=2):
                 gr.Markdown("### Últimas Análises")
-                recent_html = gr.HTML(_render_recent_table(), elem_id="dashboard_recent")
+                recent_html = gr.HTML(
+                    _render_recent_table(), elem_id="dashboard_recent"
+                )
 
             with gr.Column(scale=1):
                 gr.Markdown("### Status do Sistema")
-                status_html = gr.HTML(_render_system_status(), elem_id="dashboard_status")
+                status_html = gr.HTML(
+                    _render_system_status(), elem_id="dashboard_status"
+                )
 
         # ─────────────── GPU Diagnóstico (acionável) ───────────────
         # Abre automaticamente quando há mismatch (hardware NVIDIA presente
         # mas TF não está vendo). Caso happy path (TF OK) fica fechado.
-        from app.core.gpu import get_diagnosis_html, get_setup_result as _gpu_get
+        from app.core.gpu import get_diagnosis_html
+        from app.core.gpu import get_setup_result as _gpu_get
+
         try:
             _gpu_diag = (_gpu_get() or {}).get("diagnosis") or {}
             _open_gpu = _gpu_diag.get("severity") in ("warning", "error")
@@ -343,36 +339,21 @@ def create_dashboard_tab():
                 elem_id="dashboard_gpu_diag",
             )
             refresh_gpu_btn = gr.Button(
-                "🔄 Re-detectar GPU", size="sm", scale=0,
+                "🔄 Re-detectar GPU",
+                size="sm",
+                scale=0,
             )
-
-        # Notification Center — histórico das últimas notificações do sistema
-        with gr.Accordion("🔔 Notificações Recentes", open=False) as notif_accordion:
-            notif_html = gr.HTML(
-                render_notification_center_html(limit=10),
-                elem_id="dashboard_notifications",
-            )
-            with gr.Row():
-                clear_notif_btn = gr.Button("Limpar histórico", size="sm", scale=0)
-                refresh_notif_btn = gr.Button("🔄 Atualizar", size="sm", scale=0)
 
         # ────────────────────────── Handlers ──────────────────────────
 
         def refresh_dashboard():
-            """Re-renderiza todos os componentes (incluindo notif + GPU diag)."""
+            """Re-renderiza os componentes do Dashboard."""
             return (
                 _render_kpi_row(),
                 _render_recent_table(),
                 _render_system_status(),
-                render_notification_center_html(limit=10),
                 get_diagnosis_html(),
             )
-
-        refresh_btn.click(
-            fn=refresh_dashboard,
-            inputs=[],
-            outputs=[kpi_html, recent_html, status_html, notif_html, gpu_diag_html],
-        )
 
         # Re-detectar GPU sem reiniciar app (útil após instalar pynvml/DML plugin)
         def _redetect_gpu():
@@ -380,10 +361,12 @@ def create_dashboard_tab():
             # essa chamada é idempotente; para forçar nova detecção, resetamos
             # a flag explicitamente.
             from app.core import gpu as _gpu_mod
+
             _gpu_mod._setup_done = False
             _gpu_mod._setup_result = {}
             _gpu_mod.setup_gpu(log_level=40)  # WARNING+
             from app.interfaces.gradio.utils.notifications import notify_info
+
             notify_info("Detecção de GPU re-executada")
             return get_diagnosis_html()
 
@@ -393,48 +376,13 @@ def create_dashboard_tab():
             outputs=[gpu_diag_html],
         )
 
-        # Handlers do Notification Center
-        def _clear_history():
-            from app.interfaces.gradio.utils.notifications import (
-                clear_history, notify_info,
-            )
-            n = clear_history()
-            notify_info(f"Histórico limpo ({n} notificações removidas)")
-            return render_notification_center_html(limit=10)
-
-        clear_notif_btn.click(
-            fn=_clear_history,
-            inputs=[],
-            outputs=[notif_html],
-        )
-        refresh_notif_btn.click(
-            fn=lambda: render_notification_center_html(limit=10),
-            inputs=[],
-            outputs=[notif_html],
-        )
-
-        # Quick actions disparam toasts (re-routing real para outras abas
-        # requer JS — fica para próxima iteração; por ora, informa onde ir)
-        def _goto_detect():
-            notify_info("Abra a aba '🎯 Detectar' no topo")
-
-        def _goto_train():
-            notify_info("Abra a aba '🎓 Treinar' no topo")
-
-        def _goto_datasets():
-            notify_info("Abra a aba '⚙ Admin → Datasets'")
-
-        quick_detect_btn.click(fn=_goto_detect, inputs=[], outputs=[])
-        quick_train_btn.click(fn=_goto_train, inputs=[], outputs=[])
-        quick_datasets_btn.click(fn=_goto_datasets, inputs=[], outputs=[])
-
         # Auto-refresh a cada 30s via Timer (Gradio 4.31+)
         try:
             timer = gr.Timer(30.0)
             timer.tick(
                 fn=refresh_dashboard,
                 inputs=[],
-                outputs=[kpi_html, recent_html, status_html, notif_html, gpu_diag_html],
+                outputs=[kpi_html, recent_html, status_html, gpu_diag_html],
             )
         except Exception as e:
             # gr.Timer só existe em versões recentes — degradação graciosa

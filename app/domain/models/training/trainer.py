@@ -21,6 +21,7 @@ from tensorflow.keras.callbacks import (
 from app.core.config.settings import TrainingConfig
 from app.core.interfaces.audio import IModelTrainer
 from app.core.interfaces.base import ProcessingResult, ProcessingStatus
+from app.core.performance import optimize_tf_dataset
 from app.core.training.secure_training_pipeline import (
     SecureTrainingConfig,
     SecureTrainingPipeline,
@@ -34,7 +35,9 @@ from .optimization import OptimizerFactory
 class ModelTrainer(IModelTrainer):
     """Implementação do treinador de modelos com prevenção de data leakage."""
 
-    def __init__(self, config: TrainingConfig, use_mixed_precision: Optional[bool] = None):
+    def __init__(
+        self, config: TrainingConfig, use_mixed_precision: Optional[bool] = None
+    ):
         """
         Args:
             config: configuração de treinamento
@@ -55,7 +58,7 @@ class ModelTrainer(IModelTrainer):
 
         if use_mixed_precision:
             try:
-                tf.keras.mixed_precision.set_global_policy('mixed_float16')
+                tf.keras.mixed_precision.set_global_policy("mixed_float16")
                 self.logger.info(
                     "Mixed precision training habilitado (mixed_float16): "
                     "~2× speedup + ~50% menos VRAM"
@@ -65,13 +68,13 @@ class ModelTrainer(IModelTrainer):
 
         # Configurar pipeline seguro para prevenção de data leakage
         secure_config = SecureTrainingConfig(
-            test_size=getattr(config, 'test_size', 0.2),
-            validation_size=getattr(config, 'validation_split', 0.2),
+            test_size=getattr(config, "test_size", 0.2),
+            validation_size=getattr(config, "validation_split", 0.2),
             random_state=42,
-            use_temporal_split=getattr(config, 'use_temporal_split', True),
-            scaler_type=getattr(config, 'scaler_type', 'standard'),
+            use_temporal_split=getattr(config, "use_temporal_split", True),
+            scaler_type=getattr(config, "scaler_type", "standard"),
             save_scaler=True,
-            validate_no_leakage=True
+            validate_no_leakage=True,
         )
         self.secure_pipeline = SecureTrainingPipeline(secure_config)
 
@@ -81,7 +84,7 @@ class ModelTrainer(IModelTrainer):
         train_data: Tuple[np.ndarray, np.ndarray],
         validation_data: Optional[Tuple[np.ndarray, np.ndarray]] = None,
         metadata: Optional[Dict] = None,
-        **kwargs
+        **kwargs,
     ) -> ProcessingResult[Dict[str, Any]]:
         """Treina modelo com pipeline seguro para prevenção de data leakage."""
         try:
@@ -93,15 +96,18 @@ class ModelTrainer(IModelTrainer):
             # fornecida
             if validation_data is None:
                 self.logger.info(
-                    "Aplicando pipeline seguro para divisão e normalização dos dados")
+                    "Aplicando pipeline seguro para divisão e normalização dos dados"
+                )
 
                 # Preparar dados usando pipeline seguro
                 preparation_result = self.secure_pipeline.prepare_data(
-                    X_train, y_train, metadata)
+                    X_train, y_train, metadata
+                )
 
                 if preparation_result.status != ProcessingStatus.SUCCESS:
                     raise ValueError(
-                        f"Erro na preparação segura dos dados: {preparation_result.errors}")
+                        f"Erro na preparação segura dos dados: {preparation_result.errors}"
+                    )
 
                 prepared_data = preparation_result.data
                 X_train = prepared_data["X_train"]
@@ -110,29 +116,28 @@ class ModelTrainer(IModelTrainer):
                 y_val = prepared_data["y_val"]
 
                 # Armazenar dados de teste para avaliação posterior
-                self._test_data = (
-                    prepared_data["X_test"],
-                    prepared_data["y_test"])
+                self._test_data = (prepared_data["X_test"], prepared_data["y_test"])
 
                 validation_data = (X_val, y_val)
 
                 self.logger.info(
-                    f"Dados preparados com segurança - Train: {len(X_train)}, Val: {len(X_val)}, Test: {len(self._test_data[0])}")
+                    f"Dados preparados com segurança - Train: {len(X_train)}, Val: {len(X_val)}, Test: {len(self._test_data[0])}"
+                )
             else:
                 self.logger.warning(
-                    "Dados de validação fornecidos externamente - pipeline seguro não aplicado")
+                    "Dados de validação fornecidos externamente - pipeline seguro não aplicado"
+                )
 
             # Configurar otimizador
             optimizer = self.optimizer_factory.create_optimizer(
-                self.config.optimizer,
-                learning_rate=self.config.learning_rate
+                self.config.optimizer, learning_rate=self.config.learning_rate
             )
 
             # Compilar modelo
             model.compile(
                 optimizer=optimizer,
                 loss=self.config.loss_function,
-                metrics=self.config.metrics
+                metrics=self.config.metrics,
             )
 
             # Preparar callbacks
@@ -145,19 +150,21 @@ class ModelTrainer(IModelTrainer):
                 )
                 steps_per_epoch = len(X_train) // self.config.batch_size
             else:
-                train_dataset = tf.data.Dataset.from_tensor_slices(
-                    (X_train, y_train))
+                train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
                 train_dataset = train_dataset.batch(self.config.batch_size)
                 steps_per_epoch = None
+            train_dataset = optimize_tf_dataset(
+                train_dataset, cache=False, prefetch=True
+            )
 
             # Sprint 2.4: Mixup data augmentation (opt-in).
             # IMPORTANTE: Mixup produz soft labels, então é incompatível com
             # losses sparse (sparse_categorical_crossentropy). Quando habilitado,
             # converte y para one-hot e usa categorical_crossentropy automaticamente.
-            if getattr(self.config, 'use_mixup', False):
+            if getattr(self.config, "use_mixup", False):
                 try:
                     num_classes = int(self._infer_num_classes(y_train))
-                    alpha = float(getattr(self.config, 'mixup_alpha', 0.2))
+                    alpha = float(getattr(self.config, "mixup_alpha", 0.2))
                     train_dataset = self.augmenter.apply_mixup_to_dataset(
                         train_dataset, alpha=alpha, num_classes=num_classes
                     )
@@ -176,6 +183,7 @@ class ModelTrainer(IModelTrainer):
             # Preparar dados de validação
             val_dataset = tf.data.Dataset.from_tensor_slices(validation_data)
             val_dataset = val_dataset.batch(self.config.batch_size)
+            val_dataset = optimize_tf_dataset(val_dataset, cache=False, prefetch=True)
 
             # Class weighting automático para datasets desbalanceados
             # Desabilita quando Mixup está ativo (soft labels não são compatíveis
@@ -196,69 +204,64 @@ class ModelTrainer(IModelTrainer):
                 callbacks=callbacks,
                 steps_per_epoch=steps_per_epoch,
                 class_weight=class_weight,
-                verbose=1
+                verbose=1,
             )
 
             # Calibração automática de temperatura (post-hoc)
             self._calibrated_temperature = self._auto_calibrate_temperature(
-                model, validation_data)
+                model, validation_data
+            )
 
             # Sprint 2.5: Calibra threshold de OOD detection no val set
             self._ood_threshold = self._compute_ood_threshold(
-                model, validation_data, self._calibrated_temperature)
+                model, validation_data, self._calibrated_temperature
+            )
 
             # Sprint 4.5: Calibra threshold EER (Equal Error Rate) no val set
             # Habilita threshold adaptativo por modelo na inferência (em vez de 0.5)
             self._eer_threshold, self._eer_value = self._compute_eer_threshold(
-                model, validation_data, self._calibrated_temperature)
+                model, validation_data, self._calibrated_temperature
+            )
 
             # Calcular métricas finais
-            final_metrics = self._calculate_final_metrics(
-                model, validation_data)
+            final_metrics = self._calculate_final_metrics(model, validation_data)
 
             result = {
                 "history": history.history,
                 "final_metrics": final_metrics,
                 "model_summary": self._get_model_summary(model),
-                "training_config": self.config.__dict__
+                "training_config": self.config.__dict__,
             }
 
             self.logger.info("Treinamento concluído com sucesso")
-            return ProcessingResult(
-                status=ProcessingStatus.SUCCESS,
-                data=result
-            )
+            return ProcessingResult(status=ProcessingStatus.SUCCESS, data=result)
 
         except Exception as e:
             self.logger.error(f"Erro durante treinamento: {str(e)}")
-            return ProcessingResult(
-                    status=ProcessingStatus.ERROR,
-                    errors=[str(e)]
-                )
+            return ProcessingResult(status=ProcessingStatus.ERROR, errors=[str(e)])
 
     def get_scaler(self):
         """Retorna o scaler treinado para uso em predições."""
-        if hasattr(self, 'secure_pipeline'):
+        if hasattr(self, "secure_pipeline"):
             return self.secure_pipeline.get_scaler()
         else:
             self.logger.warning("Pipeline seguro não inicializado")
             return None
 
-    def predict_with_scaler(self, model: tf.keras.Model,
-                            X: np.ndarray) -> np.ndarray:
+    def predict_with_scaler(self, model: tf.keras.Model, X: np.ndarray) -> np.ndarray:
         """Faz predição aplicando o mesmo scaler usado no treinamento."""
         scaler = self.get_scaler()
         if scaler is None or scaler.scaler is None:
-            self.logger.warning(
-                "Scaler não disponível - usando dados sem normalização")
+            self.logger.warning("Scaler não disponível - usando dados sem normalização")
             return model.predict(X)
 
         # Aplicar mesma normalização usada no treinamento
         X_scaled = scaler.transform_test(X)
         return model.predict(X_scaled)
 
-    def save_training_artifacts(self, model: tf.keras.Model,
-                                save_dir: Union[str, Path]) -> ProcessingResult[Dict[str, str]]:
+    def save_training_artifacts(
+        self, model: tf.keras.Model, save_dir: Union[str, Path]
+    ) -> ProcessingResult[Dict[str, str]]:
         """Salva modelo e artefatos de treinamento (incluindo scaler)."""
         try:
             save_dir = Path(save_dir)
@@ -284,65 +287,56 @@ class ModelTrainer(IModelTrainer):
 
             config_dict = {
                 "model_config": self.config.__dict__,
-                "secure_pipeline_config": self.secure_pipeline.config.__dict__ if hasattr(self, 'secure_pipeline') else None,
+                "secure_pipeline_config": self.secure_pipeline.config.__dict__
+                if hasattr(self, "secure_pipeline")
+                else None,
                 "training_timestamp": datetime.now().isoformat(),
-                "input_contract": input_contract
+                "input_contract": input_contract,
             }
-            with open(config_path, 'w') as f:
+            with open(config_path, "w") as f:
                 json.dump(config_dict, f, indent=2, default=str)
 
-            artifacts = {
-                "model_path": str(model_path),
-                "config_path": str(config_path)
-            }
+            artifacts = {"model_path": str(model_path), "config_path": str(config_path)}
 
             if scaler_path:
                 artifacts["scaler_path"] = str(scaler_path)
 
             # Sprint 3.4: ONNX export opcional
-            if getattr(self.config, 'export_onnx', False):
+            if getattr(self.config, "export_onnx", False):
                 onnx_paths = self._export_onnx_artifacts(model, save_dir)
                 artifacts.update(onnx_paths)
 
             self.logger.info(f"Artefatos de treinamento salvos em: {save_dir}")
-            return ProcessingResult(
-                status=ProcessingStatus.SUCCESS,
-                data=artifacts
-            )
+            return ProcessingResult(status=ProcessingStatus.SUCCESS, data=artifacts)
 
         except Exception as e:
             self.logger.error(f"Erro ao salvar artefatos: {str(e)}")
-            return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=[str(e)]
-            )
+            return ProcessingResult(status=ProcessingStatus.ERROR, errors=[str(e)])
 
     def evaluate(
         self,
         model: tf.keras.Model,
-        test_data: Optional[Tuple[np.ndarray, np.ndarray]] = None
+        test_data: Optional[Tuple[np.ndarray, np.ndarray]] = None,
     ) -> ProcessingResult[Dict[str, float]]:
         """Avalia modelo usando dados de teste seguros."""
         try:
             self.logger.info("Iniciando avaliação segura do modelo")
 
             # Usar dados de teste do pipeline seguro se disponíveis
-            if test_data is None and hasattr(self, '_test_data'):
+            if test_data is None and hasattr(self, "_test_data"):
                 X_test, y_test = self._test_data
                 self.logger.info("Usando dados de teste do pipeline seguro")
             elif test_data is not None:
                 X_test, y_test = test_data
-                self.logger.warning(
-                    "Usando dados de teste fornecidos externamente")
+                self.logger.warning("Usando dados de teste fornecidos externamente")
             else:
                 raise ValueError(
-                    "Nenhum dado de teste disponível. Execute o treinamento primeiro ou forneça test_data.")
+                    "Nenhum dado de teste disponível. Execute o treinamento primeiro ou forneça test_data."
+                )
 
             # Avaliação básica
             test_loss, *test_metrics = model.evaluate(
-                X_test, y_test,
-                batch_size=self.config.batch_size,
-                verbose=0
+                X_test, y_test, batch_size=self.config.batch_size, verbose=0
             )
 
             # Predições para métricas detalhadas
@@ -362,27 +356,22 @@ class ModelTrainer(IModelTrainer):
             # Combinar métricas
             metrics = {
                 "test_loss": float(test_loss),
-                **{f"test_{metric}": float(value) for metric, value in zip(self.config.metrics, test_metrics)},
-                **detailed_metrics
+                **{
+                    f"test_{metric}": float(value)
+                    for metric, value in zip(self.config.metrics, test_metrics)
+                },
+                **detailed_metrics,
             }
 
             self.logger.info("Avaliação segura concluída com sucesso")
-            return ProcessingResult(
-                status=ProcessingStatus.SUCCESS,
-                data=metrics
-            )
+            return ProcessingResult(status=ProcessingStatus.SUCCESS, data=metrics)
 
         except Exception as e:
             self.logger.error(f"Erro durante avaliação: {str(e)}")
-            return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=[str(e)]
-            )
+            return ProcessingResult(status=ProcessingStatus.ERROR, errors=[str(e)])
 
     def save_model(
-        self,
-        model: tf.keras.Model,
-        save_path: Union[str, Path]
+        self, model: tf.keras.Model, save_path: Union[str, Path]
     ) -> ProcessingResult[str]:
         """Salva modelo treinado."""
         try:
@@ -395,29 +384,25 @@ class ModelTrainer(IModelTrainer):
             # Salvar configuração de treinamento com input_contract
             config_path = save_path.parent / f"{save_path.stem}_config.json"
             import json
+
             config_data = {
                 **self.config.__dict__,
-                "input_contract": self._build_input_contract(model)
+                "input_contract": self._build_input_contract(model),
             }
-            with open(config_path, 'w') as f:
+            with open(config_path, "w") as f:
                 json.dump(config_data, f, indent=2, default=str)
 
             self.logger.info(f"Modelo salvo em: {save_path}")
             return ProcessingResult(
-                status=ProcessingStatus.SUCCESS,
-                data=str(save_path)
+                status=ProcessingStatus.SUCCESS, data=str(save_path)
             )
 
         except Exception as e:
             self.logger.error(f"Erro ao salvar modelo: {str(e)}")
-            return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=[str(e)]
-            )
+            return ProcessingResult(status=ProcessingStatus.ERROR, errors=[str(e)])
 
     def load_model(
-        self,
-        model_path: Union[str, Path]
+        self, model_path: Union[str, Path]
     ) -> ProcessingResult[tf.keras.Model]:
         """Carrega modelo salvo."""
         try:
@@ -430,20 +415,13 @@ class ModelTrainer(IModelTrainer):
             model = tf.keras.models.load_model(str(model_path))
 
             self.logger.info(f"Modelo carregado de: {model_path}")
-            return ProcessingResult(
-                status=ProcessingStatus.SUCCESS,
-                data=model
-            )
+            return ProcessingResult(status=ProcessingStatus.SUCCESS, data=model)
 
         except Exception as e:
             self.logger.error(f"Erro ao carregar modelo: {str(e)}")
-            return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=[str(e)]
-            )
+            return ProcessingResult(status=ProcessingStatus.ERROR, errors=[str(e)])
 
-    def _prepare_callbacks(
-            self, **kwargs) -> List[tf.keras.callbacks.Callback]:
+    def _prepare_callbacks(self, **kwargs) -> List[tf.keras.callbacks.Callback]:
         """Prepara callbacks para treinamento."""
         callbacks = []
 
@@ -451,13 +429,14 @@ class ModelTrainer(IModelTrainer):
         callbacks.append(tf.keras.callbacks.TerminateOnNaN())
 
         # Sprint 2.3: Stochastic Weight Averaging (opt-in via TrainingConfig)
-        if getattr(self.config, 'use_swa', False):
+        if getattr(self.config, "use_swa", False):
             try:
                 from app.domain.models.training.swa_callback import SWACallback
+
                 swa_cb = SWACallback(
-                    start_epoch=getattr(self.config, 'swa_start_epoch', -1),
-                    swa_freq=getattr(self.config, 'swa_freq', 1),
-                    bn_update_data=kwargs.get('bn_update_data', None),
+                    start_epoch=getattr(self.config, "swa_start_epoch", -1),
+                    swa_freq=getattr(self.config, "swa_freq", 1),
+                    bn_update_data=kwargs.get("bn_update_data", None),
                     verbose=1,
                 )
                 callbacks.append(swa_cb)
@@ -467,47 +446,52 @@ class ModelTrainer(IModelTrainer):
                 self.logger.warning(f"Falha ao adicionar SWA callback: {e}")
 
         # Early stopping
-        callbacks.append(EarlyStopping(
-            monitor='val_loss',
-            patience=self.config.early_stopping_patience,
-            restore_best_weights=True,
-            verbose=1
-        ))
+        callbacks.append(
+            EarlyStopping(
+                monitor="val_loss",
+                patience=self.config.early_stopping_patience,
+                restore_best_weights=True,
+                verbose=1,
+            )
+        )
 
         # Reduce learning rate
-        callbacks.append(ReduceLROnPlateau(
-            monitor='val_loss',
-            factor=0.5,
-            patience=self.config.reduce_lr_patience,
-            min_lr=1e-7,
-            verbose=1
-        ))
+        callbacks.append(
+            ReduceLROnPlateau(
+                monitor="val_loss",
+                factor=0.5,
+                patience=self.config.reduce_lr_patience,
+                min_lr=1e-7,
+                verbose=1,
+            )
+        )
 
         # Model checkpoint
-        if 'checkpoint_path' in kwargs:
-            callbacks.append(ModelCheckpoint(
-                filepath=kwargs['checkpoint_path'],
-                monitor='val_loss',
-                save_best_only=True,
-                save_weights_only=False,
-                verbose=1
-            ))
+        if "checkpoint_path" in kwargs:
+            callbacks.append(
+                ModelCheckpoint(
+                    filepath=kwargs["checkpoint_path"],
+                    monitor="val_loss",
+                    save_best_only=True,
+                    save_weights_only=False,
+                    verbose=1,
+                )
+            )
 
         # TensorBoard
-        if 'tensorboard_dir' in kwargs:
-            callbacks.append(TensorBoard(
-                log_dir=kwargs['tensorboard_dir'],
-                histogram_freq=1,
-                write_graph=True,
-                write_images=True
-            ))
+        if "tensorboard_dir" in kwargs:
+            callbacks.append(
+                TensorBoard(
+                    log_dir=kwargs["tensorboard_dir"],
+                    histogram_freq=1,
+                    write_graph=True,
+                    write_images=True,
+                )
+            )
 
         # CSV Logger
-        if 'csv_log_path' in kwargs:
-            callbacks.append(CSVLogger(
-                filename=kwargs['csv_log_path'],
-                append=True
-            ))
+        if "csv_log_path" in kwargs:
+            callbacks.append(CSVLogger(filename=kwargs["csv_log_path"], append=True))
 
         return callbacks
 
@@ -523,16 +507,20 @@ class ModelTrainer(IModelTrainer):
         Retorna False se não houver GPU, ou se a detecção falhar.
         """
         try:
-            gpus = tf.config.list_physical_devices('GPU')
+            gpus = tf.config.list_physical_devices("GPU")
             if not gpus:
                 return False
             # Inspeciona compute capability via details (TF 2.6+)
             for gpu in gpus:
                 try:
                     details = tf.config.experimental.get_device_details(gpu)
-                    cc = details.get('compute_capability')
+                    cc = details.get("compute_capability")
                     if cc is not None:
-                        major = cc[0] if isinstance(cc, (list, tuple)) else int(str(cc).split('.')[0])
+                        major = (
+                            cc[0]
+                            if isinstance(cc, (list, tuple))
+                            else int(str(cc).split(".")[0])
+                        )
                         if major >= 7:
                             return True
                 except Exception:
@@ -549,10 +537,7 @@ class ModelTrainer(IModelTrainer):
             return int(y_arr.shape[-1])
         return max(int(np.unique(y_arr).size), 2)
 
-    def _compute_class_weights(
-        self,
-        y_train: np.ndarray
-    ) -> Optional[Dict[int, float]]:
+    def _compute_class_weights(self, y_train: np.ndarray) -> Optional[Dict[int, float]]:
         """Calcula pesos por classe para compensar desbalanceamento.
 
         Usa `sklearn.utils.class_weight.compute_class_weight('balanced')`,
@@ -561,7 +546,7 @@ class ModelTrainer(IModelTrainer):
         Returns:
             Dict {class_idx: weight} ou None se desabilitado/inválido.
         """
-        if not getattr(self.config, 'use_class_weighting', True):
+        if not getattr(self.config, "use_class_weighting", True):
             return None
 
         try:
@@ -582,11 +567,10 @@ class ModelTrainer(IModelTrainer):
                 return None
 
             weights_array = compute_class_weight(
-                'balanced', classes=unique_classes, y=y_for_weights
+                "balanced", classes=unique_classes, y=y_for_weights
             )
             class_weight = {
-                int(c): float(w)
-                for c, w in zip(unique_classes, weights_array)
+                int(c): float(w) for c, w in zip(unique_classes, weights_array)
             }
 
             # Log: contagem por classe + pesos
@@ -601,9 +585,7 @@ class ModelTrainer(IModelTrainer):
             return None
 
     def _auto_calibrate_temperature(
-        self,
-        model: tf.keras.Model,
-        validation_data: Tuple[np.ndarray, np.ndarray]
+        self, model: tf.keras.Model, validation_data: Tuple[np.ndarray, np.ndarray]
     ) -> float:
         """Calibração post-hoc de temperatura via grid search no conjunto de validação.
 
@@ -615,12 +597,12 @@ class ModelTrainer(IModelTrainer):
             Temperatura calibrada (1.0 se desabilitado/falhar).
         """
         default_t = 1.0
-        if not getattr(self.config, 'auto_calibrate_temperature', True):
+        if not getattr(self.config, "auto_calibrate_temperature", True):
             return default_t
 
         try:
             X_val, y_val = validation_data
-            min_samples = getattr(self.config, 'calibration_min_samples', 50)
+            min_samples = getattr(self.config, "calibration_min_samples", 50)
             if len(X_val) < min_samples:
                 self.logger.info(
                     f"Calibração de temperatura pulada: val set tem "
@@ -672,7 +654,7 @@ class ModelTrainer(IModelTrainer):
         Returns:
             Threshold (float) ou None se desabilitado/falhar.
         """
-        if not getattr(self.config, 'compute_ood_threshold', True):
+        if not getattr(self.config, "compute_ood_threshold", True):
             return None
 
         try:
@@ -682,14 +664,16 @@ class ModelTrainer(IModelTrainer):
             )
 
             X_val, _ = validation_data
-            predictions = model.predict(X_val, batch_size=self.config.batch_size, verbose=0)
+            predictions = model.predict(
+                X_val, batch_size=self.config.batch_size, verbose=0
+            )
             # Aplica mesma temperatura que será usada em inferência
             predictions = apply_temperature_scaling(predictions, temperature)
             energy_scores = compute_energy_score(predictions, temperature=temperature)
 
             # Threshold = quantil inferior. ood_quantile=0.95 → 5% das amostras
             # in-distribution com menores energy scores serão falsos positivos OOD.
-            q = 1.0 - float(getattr(self.config, 'ood_quantile', 0.95))
+            q = 1.0 - float(getattr(self.config, "ood_quantile", 0.95))
             threshold = float(np.quantile(energy_scores, q))
             self.logger.info(
                 f"OOD threshold calibrado: {threshold:.4f} "
@@ -703,9 +687,7 @@ class ModelTrainer(IModelTrainer):
             return None
 
     def _calculate_final_metrics(
-        self,
-        model: tf.keras.Model,
-        validation_data: Tuple[np.ndarray, np.ndarray]
+        self, model: tf.keras.Model, validation_data: Tuple[np.ndarray, np.ndarray]
     ) -> Dict[str, float]:
         """Calcula métricas finais do modelo."""
         X_val, y_val = validation_data
@@ -747,10 +729,14 @@ class ModelTrainer(IModelTrainer):
             - eer_value: valor de EER (taxa de erro no ponto FPR=FNR)
         """
         try:
-            from app.domain.services.detection.predictor import apply_temperature_scaling
+            from app.domain.services.detection.predictor import (
+                apply_temperature_scaling,
+            )
 
             X_val, y_val = validation_data
-            predictions = model.predict(X_val, batch_size=self.config.batch_size, verbose=0)
+            predictions = model.predict(
+                X_val, batch_size=self.config.batch_size, verbose=0
+            )
             predictions = apply_temperature_scaling(predictions, temperature)
 
             # Extrai score de probabilidade da classe "fake" (índice 1)
@@ -799,6 +785,7 @@ class ModelTrainer(IModelTrainer):
                 is_onnx_available,
                 quantize_int8,
             )
+
             if not is_onnx_available():
                 self.logger.info(
                     "ONNX export pulado: tf2onnx/onnxruntime não instalados. "
@@ -812,11 +799,11 @@ class ModelTrainer(IModelTrainer):
                 artifacts["onnx_path"] = str(result)
 
                 # INT8 quantization opcional
-                if getattr(self.config, 'export_onnx_int8', False):
+                if getattr(self.config, "export_onnx_int8", False):
                     int8_path = save_dir / "model_int8.onnx"
                     # Usa val set como calibração se disponível
                     calib_data = None
-                    if hasattr(self, '_test_data'):
+                    if hasattr(self, "_test_data"):
                         X_test, _ = self._test_data
                         # Pega até 100 amostras para calibração estática
                         calib_data = X_test[:100].astype(np.float32)
@@ -828,9 +815,7 @@ class ModelTrainer(IModelTrainer):
         return artifacts
 
     def _build_input_contract(
-        self,
-        model: tf.keras.Model,
-        metadata: Optional[Dict] = None
+        self, model: tf.keras.Model, metadata: Optional[Dict] = None
     ) -> Dict[str, Any]:
         """Constrói contrato de entrada para garantir consistência train/inference.
 
@@ -841,26 +826,32 @@ class ModelTrainer(IModelTrainer):
         model_input_shape = list(model.input_shape[1:]) if model.input_shape else None
 
         # Determinar tipo de input a partir da arquitetura ou shape
-        architecture = metadata.get('architecture', '')
-        input_type = metadata.get('input_type', 'features')
-        input_format = metadata.get('input_format', 'tabular')
+        architecture = metadata.get("architecture", "")
+        input_type = metadata.get("input_type", "features")
+        input_format = metadata.get("input_format", "tabular")
 
         # Heurística: modelos com input (N, 1) provavelmente recebem áudio raw
-        if model_input_shape and len(model_input_shape) == 2 and model_input_shape[-1] == 1:
-            input_type = 'audio'
-            input_format = 'raw'
+        if (
+            model_input_shape
+            and len(model_input_shape) == 2
+            and model_input_shape[-1] == 1
+        ):
+            input_type = "audio"
+            input_format = "raw"
         # Modelos com input (H, W) ou (H, W, C) provavelmente usam spectrogram
-        elif model_input_shape and len(model_input_shape) in (2, 3) and (
-            model_input_shape[-1] != 1 if len(model_input_shape) == 2 else True
+        elif (
+            model_input_shape
+            and len(model_input_shape) in (2, 3)
+            and (model_input_shape[-1] != 1 if len(model_input_shape) == 2 else True)
         ):
             if any(dim and dim > 10 for dim in model_input_shape[:2]):
-                input_type = 'features'
-                input_format = 'spectrogram'
+                input_type = "features"
+                input_format = "spectrogram"
 
         # Feature types se disponíveis
-        feature_types = metadata.get('feature_types', None)
+        feature_types = metadata.get("feature_types", None)
         if feature_types is None:
-            feature_types_attr = getattr(model, 'feature_types_used', None)
+            feature_types_attr = getattr(model, "feature_types_used", None)
             if feature_types_attr:
                 feature_types = list(feature_types_attr)
 
@@ -870,20 +861,21 @@ class ModelTrainer(IModelTrainer):
             "input_shape": model_input_shape,
             "architecture": architecture,
             "feature_types": feature_types,
-            "sample_rate": metadata.get('sample_rate', 16000),
-            "scaler_applied": self.get_scaler() is not None and self.get_scaler().scaler is not None,
+            "sample_rate": metadata.get("sample_rate", 16000),
+            "scaler_applied": self.get_scaler() is not None
+            and self.get_scaler().scaler is not None,
             # Temperatura calibrada (Sprint 1.4) — aplicada na inferência pelo Predictor
-            "temperature": float(getattr(self, '_calibrated_temperature', 1.0)),
+            "temperature": float(getattr(self, "_calibrated_temperature", 1.0)),
         }
         # Sprint 2.5: OOD threshold (energy-based). None se desabilitado/falhou.
-        ood_t = getattr(self, '_ood_threshold', None)
+        ood_t = getattr(self, "_ood_threshold", None)
         if ood_t is not None:
             contract["ood_threshold"] = float(ood_t)
 
         # Sprint 4.5: EER threshold (Equal Error Rate) — alternativa adaptativa
         # ao threshold 0.5 fixo. Predictor pode usar via flag use_eer_threshold.
-        eer_t = getattr(self, '_eer_threshold', None)
-        eer_v = getattr(self, '_eer_value', None)
+        eer_t = getattr(self, "_eer_threshold", None)
+        eer_v = getattr(self, "_eer_value", None)
         if eer_t is not None:
             contract["eer_threshold"] = float(eer_t)
         if eer_v is not None:
@@ -897,7 +889,7 @@ class ModelTrainer(IModelTrainer):
         n_augmentations: int = 5,
         noise_std: float = 0.005,
         shift_factor: float = 0.02,
-        volume_range: Tuple = (0.95, 1.05)
+        volume_range: Tuple = (0.95, 1.05),
     ) -> np.ndarray:
         """Test-Time Augmentation: run multiple augmented copies and average predictions.
 
@@ -912,19 +904,27 @@ class ModelTrainer(IModelTrainer):
         if n_augmentations >= 2:
             # Positive noise
             X_noise = X + np.random.normal(0, noise_std, X.shape).astype(np.float32)
-            predictions.append(model.predict(X_noise, batch_size=self.config.batch_size))
+            predictions.append(
+                model.predict(X_noise, batch_size=self.config.batch_size)
+            )
 
         if n_augmentations >= 3:
             # Negative noise
             X_noise_neg = X - np.random.normal(0, noise_std, X.shape).astype(np.float32)
-            predictions.append(model.predict(X_noise_neg, batch_size=self.config.batch_size))
+            predictions.append(
+                model.predict(X_noise_neg, batch_size=self.config.batch_size)
+            )
 
         if n_augmentations >= 4:
             # Time shift (small circular shift along first feature axis)
-            shift_amount = max(1, int(X.shape[1] * shift_factor)) if len(X.shape) > 1 else 0
+            shift_amount = (
+                max(1, int(X.shape[1] * shift_factor)) if len(X.shape) > 1 else 0
+            )
             if shift_amount > 0:
                 X_shifted = np.roll(X, shift_amount, axis=1)
-                predictions.append(model.predict(X_shifted, batch_size=self.config.batch_size))
+                predictions.append(
+                    model.predict(X_shifted, batch_size=self.config.batch_size)
+                )
 
         if n_augmentations >= 5:
             # Volume change
@@ -941,9 +941,13 @@ class ModelTrainer(IModelTrainer):
         """Retorna resumo do modelo."""
         return {
             "total_params": model.count_params(),
-            "trainable_params": sum([tf.keras.backend.count_params(w) for w in model.trainable_weights]),
-            "non_trainable_params": sum([tf.keras.backend.count_params(w) for w in model.non_trainable_weights]),
+            "trainable_params": sum(
+                [tf.keras.backend.count_params(w) for w in model.trainable_weights]
+            ),
+            "non_trainable_params": sum(
+                [tf.keras.backend.count_params(w) for w in model.non_trainable_weights]
+            ),
             "layers_count": len(model.layers),
             "input_shape": model.input_shape,
-            "output_shape": model.output_shape
+            "output_shape": model.output_shape,
         }

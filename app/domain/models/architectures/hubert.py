@@ -49,6 +49,7 @@ class HuBERTFeatureExtractor(layers.Layer):
                  num_attention_heads: int = 12,
                  num_hidden_layers: int = 12,
                  freeze_weights: bool = True,
+                 n_trainable_layers: int = 0,
                  **kwargs):
         super().__init__(**kwargs)
         self.model_name = model_name
@@ -56,6 +57,8 @@ class HuBERTFeatureExtractor(layers.Layer):
         self.num_attention_heads = num_attention_heads
         self.num_hidden_layers = num_hidden_layers
         self.freeze_weights = freeze_weights
+        # Fine-tuning parcial: nº de camadas do encoder a descongelar (do topo).
+        self.n_trainable_layers = int(n_trainable_layers)
 
         if HF_AVAILABLE:
             try:
@@ -71,11 +74,18 @@ class HuBERTFeatureExtractor(layers.Layer):
                 from app.domain.models.architectures.layers import WeightedSumLayer
                 self.weighted_sum = WeightedSumLayer(num_layers=self.actual_num_layers)
 
-                # Congelar pesos se especificado
-                if freeze_weights:
-                    self.hubert_model.trainable = False
+                # Trainability do backbone (congelado | fine-tune parcial | total)
+                from app.domain.models.architectures.ssl_utils import (
+                    set_ssl_backbone_trainability,
+                )
+                _mode = set_ssl_backbone_trainability(
+                    self.hubert_model, freeze_weights, self.n_trainable_layers
+                )
 
-                logger.info(f"HuBERT model {model_name} loaded successfully with {self.actual_num_layers} layers")
+                logger.info(
+                    f"HuBERT model {model_name} carregado "
+                    f"({self.actual_num_layers} camadas) — backbone: {_mode}"
+                )
 
             except Exception as e:
                 logger.warning(
@@ -174,7 +184,8 @@ class HuBERTFeatureExtractor(layers.Layer):
             'hidden_size': self.hidden_size,
             'num_attention_heads': self.num_attention_heads,
             'num_hidden_layers': self.num_hidden_layers,
-            'freeze_weights': self.freeze_weights
+            'freeze_weights': self.freeze_weights,
+            'n_trainable_layers': self.n_trainable_layers
         })
         return config
 
@@ -210,6 +221,8 @@ def _create_hubert_model(input_shape: Tuple[int, ...],
                          architecture: str = 'hubert',
                          model_name: str = "facebook/hubert-base-ls960",
                          freeze_hubert: bool = True,
+                         n_trainable_layers: int = 3,
+                         backend: str = "conv",
                          classifier_hidden_dim: int = 256,
                          dropout_rate: float = 0.3,
                          **kwargs) -> keras.Model:
@@ -238,6 +251,7 @@ def _create_hubert_model(input_shape: Tuple[int, ...],
     feature_extractor = HuBERTFeatureExtractor(
         model_name=model_name,
         freeze_weights=freeze_hubert,
+        n_trainable_layers=n_trainable_layers,
         hidden_size=kwargs.get('hidden_size', 768),
         num_attention_heads=kwargs.get('num_attention_heads', 12),
         num_hidden_layers=kwargs.get('num_hidden_layers', 12),
@@ -246,19 +260,26 @@ def _create_hubert_model(input_shape: Tuple[int, ...],
     # x shape: (batch, sequence_length, hidden_size)
     x = feature_extractor(inputs)
 
-    # 3. Temporal convolution block for richer representations
-    conv_out = layers.Conv1D(256, 3, padding='same', activation='relu', name='temporal_conv1')(x)
-    conv_out = layers.BatchNormalization(name='temporal_bn1')(conv_out)
-    conv_out2 = layers.Conv1D(256, 3, padding='same', activation='relu', name='temporal_conv2')(conv_out)
-    conv_out2 = layers.BatchNormalization(name='temporal_bn2')(conv_out2)
-    conv_out2 = conv_out2 + conv_out  # residual
+    if backend == "aasist":
+        # Back-end de grafo AASIST (receita SOTA: HuBERT → grafo espectro-temporal)
+        from app.domain.models.architectures.ssl_utils import (
+            build_ssl_aasist_backend,
+        )
+        pooled = build_ssl_aasist_backend(
+            x, dropout_rate=dropout_rate, name="hubert_aasist"
+        )
+    else:
+        # Back-end raso (conv 1D + attention pooling)
+        conv_out = layers.Conv1D(256, 3, padding='same', activation='relu', name='temporal_conv1')(x)
+        conv_out = layers.BatchNormalization(name='temporal_bn1')(conv_out)
+        conv_out2 = layers.Conv1D(256, 3, padding='same', activation='relu', name='temporal_conv2')(conv_out)
+        conv_out2 = layers.BatchNormalization(name='temporal_bn2')(conv_out2)
+        conv_out2 = conv_out2 + conv_out  # residual
+        pooled = AttentionPoolingLayer(name='attention_pool')(conv_out2)
 
-    # 4. Attention Pooling
-    x = AttentionPoolingLayer(name='attention_pool')(conv_out2)
-
-    # 5. Classification Head
+    # Classification Head
     outputs, loss = create_classification_head(
-        x,
+        pooled,
         num_classes,
         dropout_rate=dropout_rate,
         hidden_dims=[512, 256, 128]
@@ -270,15 +291,20 @@ def _create_hubert_model(input_shape: Tuple[int, ...],
         outputs=outputs,
         name=f"hubert_{architecture}")
 
-    # Compilar modelo
-    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
+    # Compilar modelo. Fine-tuning parcial → LR baixo (1e-5) p/ não esquecer
+    # os pesos pré-treinados; backbone congelado → LR padrão (1e-4).
+    lr = 1e-5 if n_trainable_layers and n_trainable_layers > 0 else 1e-4
+    optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
     model.compile(
         optimizer=optimizer,
         loss=loss,
         metrics=['accuracy']
     )
 
-    logger.info(f"HuBERT model {architecture} created successfully")
+    logger.info(
+        f"HuBERT model {architecture} criado (lr={lr}, "
+        f"n_trainable_layers={n_trainable_layers})"
+    )
     return model
 
 
@@ -297,6 +323,10 @@ def create_model(input_shape: Tuple[int, ...],
     Returns:
         Modelo Keras compilado
     """
+    # Variante 'hubert_aasist' → back-end de grafo AASIST (receita SOTA).
+    if "aasist" in architecture and "backend" not in kwargs:
+        kwargs["backend"] = "aasist"
+
     if architecture == 'hubert_lite':
         return _create_hubert_model(
             input_shape=input_shape,

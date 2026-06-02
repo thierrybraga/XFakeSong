@@ -7,12 +7,18 @@ Este módulo implementa a extração de características de áudio usando segmen
 O áudio é dividido em segmentos menores para análise mais detalhada.
 """
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Optional
 
 import librosa
 import numpy as np
+
+# Logger dedicado — substitui os print() de DEBUG que poluíam o stdout
+# (geravam MBs de saída por treino/extração). Silenciosos por padrão (nível
+# INFO); ative DEBUG para ver os detalhes de extração por segmento.
+logger = logging.getLogger(__name__)
 
 # Importações do projeto
 from ....core.interfaces.audio import AudioData
@@ -233,30 +239,30 @@ class SegmentedFeatureExtractor:
         category_features = {}
 
         # Extrair features de cada categoria ativa
-        print(f"DEBUG: Extratores disponíveis: {list(self.extractors.keys())}")
+        logger.debug(f"DEBUG: Extratores disponíveis: {list(self.extractors.keys())}")
         for category, extractor in self.extractors.items():
-            print(f"DEBUG: Processando categoria {category}")
+            logger.debug(f"DEBUG: Processando categoria {category}")
             try:
                 # Verificar primeiro categorias especiais que usam
                 # extract_features
                 if category in ['speech', 'temporal', 'perceptual']:
-                    print(
+                    logger.debug(
                         f"DEBUG: Extraindo features de {category} para segmento {segment_idx}")
-                    print(f"DEBUG: Tamanho do segmento: {len(segment)}")
+                    logger.debug(f"DEBUG: Tamanho do segmento: {len(segment)}")
                     features = extractor.extract_features(segment)
-                    print(
+                    logger.debug(
                         f"DEBUG: Features {category} extraídas: {len(features) if features else 0}")
                     if features:
-                        print(
+                        logger.debug(
                             f"DEBUG: Primeiras 5 features {category}: {list(features.keys())[:5]}")
                 elif category == 'cepstral':
-                    print(
+                    logger.debug(
                         f"DEBUG: Extraindo features de cepstral para segmento {segment_idx}")
                     features = extractor.extract_features_internal(segment)
-                    print(
+                    logger.debug(
                         f"DEBUG: Features cepstral extraídas: {len(features) if features else 0}")
                     if features:
-                        print(
+                        logger.debug(
                             f"DEBUG: Primeiras 5 features cepstral: {list(features.keys())[:5]}")
                 elif hasattr(extractor, 'extract'):
                     # Verificar se o extrator precisa de metadados
@@ -266,21 +272,21 @@ class SegmentedFeatureExtractor:
                         features = extractor.extract(segment, metadata)
                     elif category in ['spectral', 'cepstral', 'prosodic', 'formant', 'voice_quality', 'perceptual', 'complexity']:
                         # Estes extratores esperam AudioData
-                        print(
+                        logger.debug(
                             f"DEBUG: Extraindo features de {category} para segmento {segment_idx}")
-                        print(f"DEBUG: Tamanho do segmento: {len(segment)}")
+                        logger.debug(f"DEBUG: Tamanho do segmento: {len(segment)}")
                         audio_data = AudioData(
                             samples=segment, sample_rate=sr, duration=len(segment) / sr)
                         result = extractor.extract(audio_data)
                         if result.status == ProcessingStatus.SUCCESS:
                             features = result.data.features
-                            print(
+                            logger.debug(
                                 f"DEBUG: Features {category} extraídas: {len(features) if features else 0}")
                             if features:
-                                print(
+                                logger.debug(
                                     f"DEBUG: Primeiras 5 features {category}: {list(features.keys())[:5]}")
                         else:
-                            print(
+                            logger.debug(
                                 f"Erro no extrator {category}: {result.errors}")
                             features = {}
                     elif category in ['temporal']:
@@ -288,7 +294,7 @@ class SegmentedFeatureExtractor:
                     else:
                         features = extractor.extract(segment)
                 else:
-                    print(
+                    logger.debug(
                         f"ERRO: Extrator {category} não tem método extract nem extract_features")
                     features = {}
 
@@ -328,7 +334,7 @@ class SegmentedFeatureExtractor:
                         category_features[category] = [features]
 
             except Exception as e:
-                print(f"Erro ao extrair features {category}: {e}")
+                logger.debug(f"Erro ao extrair features {category}: {e}")
                 import traceback
                 traceback.print_exc()
                 continue
@@ -448,11 +454,11 @@ class SegmentedFeatureExtractor:
             )
 
             if result.status == ProcessingStatus.SUCCESS:
-                print(
+                logger.debug(
                     f"✅ CSV exportado para {filename}: {len(result.data)} arquivos criados")
             else:
-                print(
+                logger.debug(
                     f"⚠️ Erro ao exportar CSV para {filename}: {result.errors}")
 
         except Exception as e:
-            print(f"⚠️ Erro na exportação individual de CSV: {e}")
+            logger.debug(f"⚠️ Erro na exportação individual de CSV: {e}")

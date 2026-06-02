@@ -41,8 +41,15 @@ def _style_feat_ax(ax, fig, title=""):
 
 
 def create_features_tab():
-    with gr.Tab("Extração de Features"):
-        gr.Markdown("### Visualizador de Features de Áudio")
+    with gr.Tab("🎼 Features"):
+        from app.interfaces.gradio.utils.components import page_header
+
+        page_header(
+            "🎼",
+            "Extração de Features",
+            "Visualize features espectrais, cepstrais, prosódicas e temporais "
+            "extraídas de um arquivo de áudio.",
+        )
 
         with gr.Row():
             with gr.Column(scale=1):
