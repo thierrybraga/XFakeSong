@@ -80,6 +80,40 @@ class FeaturePreparer:
 
         return base_req
 
+    @staticmethod
+    def _ensure_sample_rate(audio_data: AudioData, target_sr: int) -> AudioData:
+        """Reamostra o áudio para `target_sr` se a taxa atual divergir.
+
+        Garante que o front-end (STFT/mel/LFCC/SincConv) opere na MESMA taxa do
+        treino. Idempotente: se já estiver na taxa alvo, retorna o objeto original.
+        """
+        try:
+            src_sr = int(getattr(audio_data, "sample_rate", 0) or 0)
+        except (TypeError, ValueError):
+            src_sr = 0
+        if not src_sr or src_sr == int(target_sr):
+            return audio_data
+
+        import dataclasses
+
+        import librosa
+
+        y = np.asarray(audio_data.samples, dtype=np.float32)
+        if y.ndim > 1:  # downmix para mono antes de reamostrar
+            y = y.mean(axis=-1) if y.shape[-1] > 1 else y.reshape(-1)
+        y = librosa.resample(y, orig_sr=src_sr, target_sr=int(target_sr))
+        logger.info(
+            "Áudio reamostrado %d Hz → %d Hz para casar com o front-end do modelo.",
+            src_sr,
+            int(target_sr),
+        )
+        return dataclasses.replace(
+            audio_data,
+            samples=y.astype(np.float32),
+            sample_rate=int(target_sr),
+            duration=float(len(y) / int(target_sr)) if target_sr else 0.0,
+        )
+
     def prepare_input(
         self, audio_data: AudioData, model_info: ModelInfo, arch_info: Optional[Any]
     ) -> Dict[str, Any]:
@@ -95,6 +129,17 @@ class FeaturePreparer:
         try:
             # Resolver requisitos de input: contrato do treinamento > registry
             input_req = self._resolve_input_requirements(model_info, arch_info)
+
+            # SAMPLE-RATE SAFETY NET: todo o pré-processamento (STFT/mel/LFCC,
+            # SincConv, comprimento de janela) assume a taxa do TREINO (16 kHz
+            # por padrão, ou a do input_contract). Se o áudio chegar em outra
+            # taxa (ex.: 44.1 kHz de um upload), o resultado seria silenciosamente
+            # errado (filtros mel/Sinc desalinhados, janela com duração errada).
+            # `detect_from_file` já resampla via AudioData.from_file, mas
+            # `detect_single` recebe AudioData arbitrário — reamostramos aqui
+            # para cobrir TODOS os caminhos (raw, espectrograma e tabular).
+            _target_sr = int(input_req.get("sample_rate", 16000) or 16000)
+            audio_data = self._ensure_sample_rate(audio_data, _target_sr)
 
             # ────────────────────────────────────────────────────────────
             # PATH UNIFICADO (input_type): bate exatamente com o
