@@ -3,27 +3,26 @@
 {% block title %}XfakeSong - Dashboard{% endblock %}
 
 {% block content %}
-<div class="bg-light py-5 mb-5 border-bottom">
+<section class="hero-section bg-light py-5 mb-5 border-bottom">
     <div class="container text-center py-5">
         <h1 class="display-3 fw-bold mb-3">XfakeSong</h1>
-        <p class="lead text-muted mb-4 mx-auto" style="max-width: 700px;">
+        <p class="hero-copy lead text-muted mb-4 mx-auto">
             Plataforma Enterprise de detecção de áudio sintético.
             Analise, treine e monitore modelos de Deepfake com precisão forense.
         </p>
-        <div class="d-flex justify-content-center gap-3">
+        <div class="hero-actions d-flex justify-content-center gap-3">
             <a href="/gradio/" class="btn btn-primary btn-lg px-4 shadow-sm">
                 <i class="fa-solid fa-play me-2"></i> Iniciar Análise
             </a>
-            <a href="https://thier.github.io/TCC/" target="_blank" class="btn btn-outline-dark btn-lg px-4 shadow-sm">
+            <a href="https://thier.github.io/TCC/" target="_blank" rel="noopener noreferrer" class="btn btn-outline-dark btn-lg px-4 shadow-sm">
                 <i class="fa-solid fa-book me-2"></i> Documentação
             </a>
         </div>
     </div>
-</div>
+</section>
 
-<div class="container mb-5">
+<section class="container mb-5" aria-label="Recursos principais">
     <div class="row g-4">
-        <!-- Card 1: Analysis -->
         <div class="col-md-4">
             <div class="card h-100 border-0 shadow-sm hover-card">
                 <div class="card-body text-center p-4">
@@ -37,7 +36,6 @@
             </div>
         </div>
 
-        <!-- Card 2: Training -->
         <div class="col-md-4">
             <div class="card h-100 border-0 shadow-sm hover-card">
                 <div class="card-body text-center p-4">
@@ -51,7 +49,6 @@
             </div>
         </div>
 
-        <!-- Card 3: System Status -->
         <div class="col-md-4">
             <div class="card h-100 border-0 shadow-sm hover-card">
                 <div class="card-body text-center p-4">
@@ -65,5 +62,5 @@
             </div>
         </div>
     </div>
-</div>
+</section>
 {% endblock %}

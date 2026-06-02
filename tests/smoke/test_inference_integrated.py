@@ -63,7 +63,7 @@ def make_audio(kind: str = "real") -> np.ndarray:
     )
 
 
-def test_arch_integrated(arch: str) -> dict:
+def _run_arch_integrated(arch: str) -> dict:
     import importlib
     import traceback
 
@@ -192,7 +192,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n>>> {arch}")
         try:
             t0 = time.time()
-            r = test_arch_integrated(arch)
+            r = _run_arch_integrated(arch)
             r["elapsed"] = time.time() - t0
             results.append(r)
             if r["ok"]:

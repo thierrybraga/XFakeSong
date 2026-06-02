@@ -1,132 +1,256 @@
 # Datasets Públicos de Deepfake de Áudio
 
-Este guia reúne os principais datasets públicos para pesquisa em detecção de deepfakes de áudio. As informações estão em português, com links oficiais, licenças, tamanhos e instruções de obtenção. Use estes recursos para treinar, validar e comparar modelos de detecção.
+Este guia reúne os principais datasets públicos para detecção de deepfakes de áudio e documenta **como baixá-los e balanceá-los** no XFakeSong, tanto pela interface Gradio quanto pela linha de comando.
 
 ## Boas Práticas
 - Respeite as licenças e termos de uso de cada dataset.
 - Não redistribua arquivos quando a licença proibir.
 - Mantenha separação clara entre splits de treino, validação e teste.
 - Documente pré-processamentos (resample, normalização, duração, canais).
+- **Balanceie as classes** (`real` ≈ `fake`) — o ratio ideal fica entre 0.8 e 1.25.
 
-## Lista de Datasets
+---
 
-### ASVspoof 2019 (LA/PA)
-- Descrição: Base pública de referência para anti-spoofing com cenários de Logical Access (síntese/voice conversion) e Physical Access (replay).
-- Download oficial: University of Edinburgh DataShare (DOI) [ASVspoof 2019](https://datashare.ed.ac.uk/handle/10283/3336) [fonte]
-- Licença: Disponível via cadastro/aceite; consulte a página do DataShare.
-- Tamanho/Formato: FLAC/PCM; múltiplos splits (train/dev/eval).
-- Uso recomendado: Treino e validação de detectores; generalização para ataques conhecidos e desconhecidos.
-- Referências:
-  - Paper: [ASVspoof 2019](https://arxiv.org/abs/1911.01601) [fonte]
-- Observação: Alguns espelhos em Hugging Face existem para conveniência, mas verifique compatibilidade e licença.
+## Download via XFakeSong
 
-### ASVspoof 2021 (Speech Deepfake)
-- Descrição: Sub-desafio focado em detecção de deepfakes de fala em condições desconhecidas.
-- Site oficial: [ASVspoof 2021](https://www.asvspoof.org/index2021.html) [fonte]
-- Plano de avaliação: [Evaluation Plan (PDF)](https://www.asvspoof.org/asvspoof2021/asvspoof2021_evaluation_plan.pdf) [fonte]
-- Licença/Obtenção: Requer registro e concordância com regras; avaliação libera novos dados (train/dev derivados de 2019).
-- Uso recomendado: Benchmark de robustez e generalização em deepfake de fala.
+O XFakeSong oferece **dois caminhos** para popular `app/datasets/real/` e `app/datasets/fake/`:
 
-### WaveFake (NeurIPS 2021)
-- Descrição: Dataset de deepfakes de áudio com múltiplas arquiteturas (MelGAN, PWG, HiFi-GAN, WaveGlow etc.); 175 horas de áudio gerado.
-- Repositório: [GitHub — WaveFake](https://github.com/RUB-SysSec/WaveFake) [fonte]
-- Download: Zenodo [WaveFake 1.2.0](https://zenodo.org/records/5642694) (generated_audio.zip ~28.9 GB) [fonte]
-- Licença: CC BY-SA 4.0 [fonte]
-- Idiomas: Inglês e Japonês (LJSpeech/JSUT).
-- Exemplo de download:
+### 1. Interface Gradio (recomendado) — Download balanceado
+
+Abra a interface (`python main.py --gradio`) → aba **Dataset → Download**.
+
+O sistema é **balance-aware**: você define um *alvo por classe* e seleciona as fontes; o XFakeSong calcula automaticamente quantas amostras baixar de cada fonte para chegar a um dataset equilibrado.
+
+Fluxo:
+1. **Barra de balanço** no topo mostra o estado atual (real vs fake, ratio, badge ✅/⚠️/❌).
+2. Escolha um **preset** (ex.: "PT-BR Completo", "Internacional Padrão") ou marque fontes manualmente.
+3. Ajuste o **alvo por classe** (slider, 100–10 000). O plano de download recalcula automaticamente.
+4. A tabela **Plano de Download** mostra quantas amostras `real`/`fake` virão de cada fonte e o ratio estimado pós-download.
+5. O painel **Prontidão para Treinamento** indica quais dos 14 modelos ficarão habilitados (Clássico ≥300, CNN Leve ≥1 000, CNN/RNN ≥2 000, Transformer ≥4 000, Ensemble ≥6 000 por classe).
+6. Clique em **Iniciar Download Balanceado**. A barra e a prontidão atualizam ao vivo após cada fonte.
+
+**Presets disponíveis:**
+
+| Preset | Fontes | Uso |
+|--------|--------|-----|
+| PT-BR Rápido | BRSpeech-DF + Fake Voices | Começar rápido em português |
+| PT-BR Completo | + CETUC + MLAAD-PT | Cobertura PT-BR completa |
+| Internacional Padrão | ASVspoof 2019 + WaveFake + In-the-Wild | Benchmark anti-spoofing |
+| Máxima Cobertura | PT-BR + Internacional | Máxima diversidade |
+| Só Reforçar Real | FLEURS + CETUC + Common Voice PT | Corrigir déficit de reais |
+| Só Reforçar Fake | Fake Voices + MLAAD-PT + WaveFake + ASVspoof 5 | Corrigir déficit de fakes |
+
+> **Dica:** combine sempre ≥1 fonte `both` (BRSpeech-DF, ASVspoof 2019) com fontes especializadas (Fake Voices para fakes, CETUC para reais) para diversidade máxima.
+
+### 2. Linha de comando — `scripts/download_datasets.py`
 
 ```bash
-wget "https://zenodo.org/records/5642694/files/generated_audio.zip?download=1" -O wavefake_generated_audio.zip
-unzip wavefake_generated_audio.zip -d datasets/wavefake
+# Atalhos
+python scripts/download_datasets.py --all --max-samples 2000        # PT-BR (brspeech+cetuc+fake-voices)
+python scripts/download_datasets.py --all-intl --max-samples 2000   # Internacional (asvspoof2019+wavefake+in-the-wild)
+
+# Fontes individuais
+python scripts/download_datasets.py --brspeech --max-samples 1000
+python scripts/download_datasets.py --cetuc --max-samples 1000
+python scripts/download_datasets.py --fake-voices --max-speakers 20
+python scripts/download_datasets.py --fleurs --max-samples 500
+python scripts/download_datasets.py --mlaad-pt --max-samples 500
+python scripts/download_datasets.py --common-voice-pt --max-samples 1000
+python scripts/download_datasets.py --asvspoof2019 --max-samples 2000
+python scripts/download_datasets.py --wavefake --max-samples 2000
+python scripts/download_datasets.py --in-the-wild --max-samples 1000
+python scripts/download_datasets.py --asvspoof5 --max-samples 2000
 ```
 
-### FakeAVCeleb (Áudio-Video multimodal)
-- Descrição: Dataset multimodal com deepfakes de vídeo e áudios clonados sincronizados (lip-sync). Útil para pesquisa conjunta áudio+vídeo.
-- Repositório: [GitHub — FakeAVCeleb](https://github.com/DASH-Lab/FakeAVCeleb) [fonte]
-- Site: [Dataset Site / Download](https://sites.google.com/view/fakeavcelebdash-lab/) [fonte]
-- Licença/Obtenção: Acesso via formulário de solicitação (Google Form) e script fornecido pelos autores.
-- Uso recomendado: Estudos multimodais; avaliação de detectores em cenários realistas e vieses.
+| Flag | Tipo | Prefixo arquivo | Licença |
+|------|:----:|-----------------|---------|
+| `--brspeech` | both | `brspeech_` | ODC-BY |
+| `--fake-voices` | fake | `fkvoice_` | MIT |
+| `--cetuc` | real | `cetuc_` | livre |
+| `--fleurs` | real | `fleurs_` | CC BY 4.0 |
+| `--mlaad-pt` | fake | `mlaad_` | CC-BY-NC 4.0 |
+| `--common-voice-pt` | real | `cvpt_` | CC0 |
+| `--asvspoof2019` | both | `asv2019_` | ODC-BY |
+| `--wavefake` | fake | `wavefake_` | MIT |
+| `--in-the-wild` | both | `itw_` | CC BY 4.0 |
+| `--asvspoof5` | both | `asv5_` | CC BY 4.0 |
+
+**Parâmetros:**
+- `--max-samples N` — máximo **por classe** (fontes `both` dividem em N/2 real + N/2 fake).
+- `--max-speakers N` — só para Fake Voices (≈80 amostras/falante).
+
+**Garantias do pipeline de download** (`process_audio` + `safe_write_wav`):
+- Reamostragem para 16 kHz mono.
+- Sanitização de **NaN/Inf** (arquivos corrompidos são descartados, não salvos).
+- Rejeição de áudios silenciosos (peak < 1e-6) e fora de duração (1–30 s).
+- Rejeição de magnitudes absurdas (int16 não-normalizado).
+- Normalização de pico para 0.95 (evita clipping).
+- Indexação livre de colisão (`next_index` — não sobrescreve arquivos existentes ao re-rodar).
+
+---
+
+## Pós-download: validação e splits
+
+Sempre rode o pré-processamento **antes de treinar**:
+
+```bash
+python scripts/preprocess_dataset.py --validate         # relatório de integridade
+python scripts/preprocess_dataset.py --normalize        # reamostra/normaliza + remove corrompidos
+python scripts/preprocess_dataset.py --remove-duplicates # MD5
+python scripts/preprocess_dataset.py --create-splits    # train/val/test estratificado
+python scripts/preprocess_dataset.py --full             # tudo acima
+```
+
+Pela UI: aba **Dataset → Preprocessamento → Pipeline Completo**.
+
+> **`--validate` agora detecta NaN/Inf** explicitamente. Se aparecer a linha
+> `NaN/Inf (graves): N — REMOVA antes de treinar!`, rode `--normalize` (que
+> sanitiza ou remove esses arquivos) antes de iniciar o treino — caso contrário
+> o treino falha com `loss: nan` na 1ª época.
+
+---
+
+## Solução de Problemas (Download)
+
+Os scripts agora dão **mensagens acionáveis**. Os erros mais comuns:
+
+### "requer AUTENTICAÇÃO no HuggingFace" (401)
+```bash
+# 1. Crie um token: https://huggingface.co/settings/tokens
+# 2. Autentique:
+huggingface-cli login
+# 3. Tente novamente.
+```
+Afeta: Common Voice PT, ASVspoof 5 (e qualquer dataset privado).
+
+### "é GATED — você precisa aceitar os termos" (403)
+1. Acesse a página do dataset no HuggingFace (o link aparece no erro).
+2. Clique em **"Agree and access repository"**.
+3. `huggingface-cli login` e tente novamente.
+
+Afeta principalmente: `mozilla-foundation/common_voice_*`.
+
+### "falha de REDE"
+- Verifique sua conexão.
+- HuggingFace/Zenodo podem estar instáveis — aguarde e tente de novo.
+- Atrás de proxy corporativo? Configure `HF_ENDPOINT` ou `HTTPS_PROXY`.
+
+### "Dependências faltando"
+```bash
+pip install datasets>=4.0 huggingface_hub pandas requests tqdm
+# ou simplesmente:
+pip install -r requirements.txt
+```
+
+### "To support decoding audio data, please install 'torchcodec'"
+A partir de `datasets` >= 4.0, o decode automático de áudio em streaming passou a
+exigir o pacote `torchcodec` (que depende de torch + FFmpeg e é problemático no
+Windows). **Você NÃO precisa instalar torchcodec** — o XFakeSong desativa o decode
+automático (`Audio(decode=False)`) e decodifica os bytes com `soundfile`
+internamente. Se ainda vir esse erro, atualize o repositório para a versão com a
+correção (`cast_no_decode` / `extract_audio` em `scripts/download_datasets.py`).
+
+### MLAAD demora muito / não encontra PT
+MLAAD é multilíngue (~160 K amostras). O script tem um **cap de iterações**; se
+houver poucos exemplos PT, ele avisa e para. Prefira WaveFake/Fake Voices para
+fakes se precisar de volume rapidamente.
+
+---
+
+## Lista de Datasets (Referência)
+
+### ASVspoof 2019 (LA/PA)
+- Descrição: Base de referência para anti-spoofing — Logical Access (síntese/VC) e Physical Access (replay).
+- Download oficial: [Edinburgh DataShare](https://datashare.ed.ac.uk/handle/10283/3336)
+- Mirror HF (usado pelo script): [LanceaKing/asvspoof2019](https://huggingface.co/datasets/LanceaKing/asvspoof2019) — ODC-BY 1.0
+- Paper: [arXiv:1911.01601](https://arxiv.org/abs/1911.01601)
+
+### ASVspoof 2021 (Speech Deepfake)
+- Descrição: Sub-desafio focado em deepfakes de fala em condições desconhecidas.
+- Site: [asvspoof.org/index2021](https://www.asvspoof.org/index2021.html)
+- Plano: [Evaluation Plan (PDF)](https://www.asvspoof.org/asvspoof2021/asvspoof2021_evaluation_plan.pdf)
+
+### ASVspoof 5 (2024)
+- Descrição: Edição mais recente; 20+ tipos de ataque, incluindo TTS/VC com LLMs de voz.
+- Mirror HF: [jungjee/asvspoof5](https://huggingface.co/datasets/jungjee/asvspoof5) — CC BY 4.0 (requer login)
+
+### WaveFake (NeurIPS 2021)
+- Descrição: Deepfakes de áudio com 6 vocoders (MelGAN, PWG, HiFi-GAN, WaveGlow, MB-MelGAN, FB-MelGAN); ~175 h.
+- Repositório: [GitHub — WaveFake](https://github.com/RUB-SysSec/WaveFake)
+- Download: [Zenodo 5642694](https://zenodo.org/records/5642694) (~28.9 GB) — MIT/CC BY-SA 4.0
+- Idiomas: Inglês e Japonês (LJSpeech/JSUT).
+- O script tenta espelhos HF primeiro e cai para o Zenodo automaticamente.
 
 ### In-the-Wild (Deepfake de Áudio)
-- Descrição: Coleta de deepfakes e áudios autênticos de figuras públicas, visando generalização a cenários realistas.
-- Página oficial: [In-the-Wild Dataset](https://deepfake-total.com/in_the_wild) [fonte]
-- Licença: Apache 2.0 [fonte]
-- Tamanho: ~20.8h (bonafide) e ~17.2h (spoof).
-- Uso recomendado: Testes de generalização em condições reais fora de laboratório.
+- Descrição: Deepfakes e áudios autênticos de figuras públicas; foco em generalização realista.
+- Página: [deepfake-total.com/in_the_wild](https://deepfake-total.com/in_the_wild) — CC BY 4.0
+- Tamanho: ~20.8 h bonafide + ~17.2 h spoof.
 
-### SWAN-DF (Áudio-Video deepfakes)
-- Descrição: Dataset público de alta fidelidade com faces e vozes clonadas; também inclui amostras de áudio-only (LibriTTS-DF).
-- Site: [SWAN-DF](https://swan-df.github.io/) [fonte]
-- Uso recomendado: Pesquisa conjunta de vulnerabilidades em reconhecimento de identidade e detecção AV.
-- Observação: Verifique política de acesso e citação conforme instruções dos autores.
+### BRSpeech-DF (PT-BR)
+- Descrição: Corpus PT-BR com bonafide + spoof (459 K arquivos). Principal fonte em português.
+- Mirror HF: [AKCIT-Deepfake/BRSpeech-DF](https://huggingface.co/datasets/AKCIT-Deepfake/BRSpeech-DF) — ODC-BY
 
-### ASVspoof 2019 (mirror em Hugging Face)
-- Descrição: Espelho comunitário do ASVspoof 2019 (LA/PA) para carga via `datasets`.
-- Link: [Hugging Face — asvspoof2019](https://huggingface.co/datasets/LanceaKing/asvspoof2019) [fonte]
-- Licença (mirror): ODC BY 1.0 (segundo card do mirror) [fonte]
-- Exemplo (Python):
+### Fake Voices (XTTS, PT-BR)
+- Descrição: ~140 h geradas por XTTS, 101 falantes; ZIPs por falante.
+- Mirror HF: [unfake/fake_voices](https://huggingface.co/datasets/unfake/fake_voices) — MIT
 
-```python
-from datasets import load_dataset
-la = load_dataset("LanceaKing/asvspoof2019", "LA")
-pa = load_dataset("LanceaKing/asvspoof2019", "PA")
-```
+### MLAAD v9 (subset PT)
+- Descrição: Multi-Language Anti-spoofing; o script filtra o subconjunto PT (fake only).
+- Mirror HF: [OU-CSAIL/MLAAD](https://huggingface.co/datasets/OU-CSAIL/MLAAD) — CC-BY-NC 4.0
+
+### FLEURS / CETUC / Common Voice PT (reais PT-BR)
+- FLEURS: [google/fleurs](https://huggingface.co/datasets/google/fleurs) (`pt_br`) — CC BY 4.0
+- CETUC: via Common Voice/OpenSLR 132 (fallback em cascata) — livre
+- Common Voice PT: [mozilla-foundation/common_voice_17_0](https://huggingface.co/datasets/mozilla-foundation/common_voice_17_0) (`pt`) — CC0 (requer login/aceite)
+
+### FakeAVCeleb (Áudio-Vídeo)
+- Descrição: Multimodal (vídeo + áudio clonado sincronizado). Acesso via formulário dos autores.
+- Site: [fakeavcelebdash-lab](https://sites.google.com/view/fakeavcelebdash-lab/)
 
 ### Fake-or-Real (FoR) — Kaggle
-- Descrição: Conjunto focado em detecção de deepfakes de voz; útil como fonte adicional de avaliação.
-- Link: Kaggle — Fake-or-Real (FoR) [The Fake-or-Real Dataset](https://www.kaggle.com/datasets/mohammedabdeldayem/the-fake-or-real-dataset) [fonte]
-- Licença/Obtenção: Disponível via Kaggle; requer login e aceite dos termos.
-- Observação: Verifique integridade e balanceamento antes de uso em produção.
+- Descrição: Detecção de deepfakes de voz; fonte adicional de avaliação.
+- Link: [Kaggle — FoR](https://www.kaggle.com/datasets/mohammedabdeldayem/the-fake-or-real-dataset) (requer login Kaggle)
+
+---
 
 ## Organização no Projeto
 
-O XFakeSong usa uma estrutura de dois estágios em `app/datasets/`:
+O XFakeSong usa estrutura de dois estágios em `app/datasets/`:
 
 ```
 app/datasets/
-├── real/           # Áudios genuínos (após download/exportação)
+├── real/           # Áudios genuínos (16 kHz mono PCM-16)
 ├── fake/           # Áudios sintéticos/deepfake
-├── splits/         # Gerado por scripts/preprocess_dataset.py --create-splits
-│   ├── train/
-│   │   ├── real/
-│   │   └── fake/
-│   ├── val/
-│   │   ├── real/
-│   │   └── fake/
-│   └── test/
-│       ├── real/
-│       └── fake/
-├── features/       # Features extraídas (numpy/JSON)
-├── raw/            # Arquivos brutos antes de normalização
-└── splits_metadata.json
+├── raw/            # Caches de download (ZIPs, parquet) antes da normalização
+├── splits/         # Gerado por preprocess_dataset.py --create-splits
+│   ├── train/{real,fake}/
+│   ├── val/{real,fake}/
+│   ├── test/{real,fake}/
+│   └── splits_metadata.json
+└── features/       # Features extraídas (numpy/JSON)
 ```
 
-**Passos típicos:**
-1. Baixar dados: `python scripts/dataset_download.py` → exporta para `real/`
-2. Dados fake: `python scripts/setup_fake_dataset.py` ou coloque em `fake/`
-3. Pré-processar: `python scripts/preprocess_dataset.py --full`
-4. Splits prontos em `app/datasets/splits/`
+**Fluxo recomendado de ponta a ponta:**
+1. **Baixar** (balanceado): UI **Dataset → Download** ou `python scripts/download_datasets.py --all --max-samples 2000`
+2. **Validar + normalizar + splits**: `python scripts/preprocess_dataset.py --full`
+3. **Treinar**: UI **Treinar** (wizard) — escolha um modelo compatível com o tamanho do seu dataset.
 
-Para datasets multimodais, crie subpastas separadas:
-```
-app/datasets/
-└── <nome>/
-    ├── audio/
-    └── video/
-```
+Mantenha um `metadata.json` por dataset externo com: fonte (URL), licença, data de obtenção e comandos de pré-processamento.
 
-Mantenha um `metadata.json` por dataset com: fonte (URL), licença, data de obtenção, comandos de pré-processamento.
+---
 
 ## Referências
-- ASVspoof 2019 — DataShare: https://datashare.ed.ac.uk/handle/10283/3336 [fonte]
-- ASVspoof 2019 — Paper: https://arxiv.org/abs/1911.01601 [fonte]
-- ASVspoof 2021 — Site: https://www.asvspoof.org/index2021.html [fonte]
-- ASVspoof 2021 — Evaluation Plan: https://www.asvspoof.org/asvspoof2021/asvspoof2021_evaluation_plan.pdf [fonte]
-- WaveFake — GitHub: https://github.com/RUB-SysSec/WaveFake [fonte]
-- WaveFake — Zenodo: https://zenodo.org/records/5642694 [fonte]
-- FakeAVCeleb — GitHub: https://github.com/DASH-Lab/FakeAVCeleb [fonte]
-- FakeAVCeleb — Site: https://sites.google.com/view/fakeavcelebdash-lab/ [fonte]
-- In-the-Wild — Dataset: https://deepfake-total.com/in_the_wild [fonte]
-- SWAN-DF — Site: https://swan-df.github.io/ [fonte]
-- ASVspoof 2019 — Mirror: https://huggingface.co/datasets/LanceaKing/asvspoof2019 [fonte]
-
+- ASVspoof 2019 — DataShare: https://datashare.ed.ac.uk/handle/10283/3336
+- ASVspoof 2019 — Paper: https://arxiv.org/abs/1911.01601
+- ASVspoof 2021 — Site: https://www.asvspoof.org/index2021.html
+- ASVspoof 5 — HF: https://huggingface.co/datasets/jungjee/asvspoof5
+- WaveFake — GitHub: https://github.com/RUB-SysSec/WaveFake
+- WaveFake — Zenodo: https://zenodo.org/records/5642694
+- In-the-Wild — Dataset: https://deepfake-total.com/in_the_wild
+- BRSpeech-DF — HF: https://huggingface.co/datasets/AKCIT-Deepfake/BRSpeech-DF
+- Fake Voices — HF: https://huggingface.co/datasets/unfake/fake_voices
+- MLAAD — HF: https://huggingface.co/datasets/OU-CSAIL/MLAAD
+- FLEURS — HF: https://huggingface.co/datasets/google/fleurs
+- Common Voice — HF: https://huggingface.co/datasets/mozilla-foundation/common_voice_17_0
+- FakeAVCeleb — Site: https://sites.google.com/view/fakeavcelebdash-lab/
+- Fake-or-Real — Kaggle: https://www.kaggle.com/datasets/mohammedabdeldayem/the-fake-or-real-dataset

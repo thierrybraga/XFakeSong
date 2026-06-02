@@ -494,7 +494,7 @@ def _create_ensemble_feature_fusion(
     fused = layers.Dropout(dropout_rate * 0.5, name='fusion_dropout_3')(fused)
 
     # Classification
-    if num_classes == 1 or num_classes == 2:
+    if num_classes == 1:  # PADRONIZADO: num_classes>=2 usa softmax N-unidades
         outputs = layers.Dense(1, activation='sigmoid', name='output')(fused)
         loss = 'binary_crossentropy'
     else:
@@ -541,7 +541,7 @@ def _create_ensemble_score_fusion(
         )
 
     # Determine output activation and loss
-    if num_classes == 1 or num_classes == 2:
+    if num_classes == 1:  # PADRONIZADO: num_classes>=2 usa softmax N-unidades
         out_units = 1
         out_activation = 'sigmoid'
         loss = 'binary_crossentropy'
@@ -642,7 +642,7 @@ def _create_ensemble_lite(
     fused = layers.Dense(128, activation='relu', name='fusion_dense')(fused)
     fused = layers.Dropout(0.2, name='fusion_dropout')(fused)
 
-    if num_classes == 1 or num_classes == 2:
+    if num_classes == 1:  # PADRONIZADO: num_classes>=2 usa softmax N-unidades
         outputs = layers.Dense(1, activation='sigmoid', name='output')(fused)
         loss = 'binary_crossentropy'
     else:

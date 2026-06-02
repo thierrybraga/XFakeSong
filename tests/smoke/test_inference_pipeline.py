@@ -68,7 +68,7 @@ def make_fake_audio() -> np.ndarray:
     )
 
 
-def test_inference_for_arch(arch: str) -> dict:
+def _run_inference_for_arch(arch: str) -> dict:
     """Testa o pipeline de inferência direto para uma arquitetura."""
     import importlib
     factory_mod = importlib.import_module("app.domain.models.architectures.factory")
@@ -134,7 +134,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n>>> {arch}")
         try:
             t0 = time.time()
-            r = test_inference_for_arch(arch)
+            r = _run_inference_for_arch(arch)
             r["elapsed"] = time.time() - t0
             results.append(r)
             status = "[OK]" if r["ok"] else "[FAIL]"

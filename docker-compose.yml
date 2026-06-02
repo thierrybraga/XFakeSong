@@ -14,8 +14,6 @@ services:
       dockerfile: Dockerfile
       args:
         PYTHON_VERSION: "3.11"
-      cache_from:
-        - xfakesong:latest
     image: xfakesong:latest
     container_name: xfakesong_app
     hostname: xfakesong

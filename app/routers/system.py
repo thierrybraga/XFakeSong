@@ -13,6 +13,13 @@ from functools import lru_cache
 from fastapi import APIRouter, Request
 
 from app.core.database import check_database_health
+from app.core.feedback import (
+    clear_feedback_events,
+    get_feedback_events,
+    get_feedback_summary,
+    mark_feedback_read,
+)
+from app.core.performance import get_resource_snapshot
 from app.core.security import limiter
 from app.schemas.api_models import (
     HealthCheckResponse,
@@ -32,10 +39,15 @@ _start_time = time.monotonic()
 def _get_git_sha() -> str:
     """Retorna o SHA curto do commit atual ou 'unknown'."""
     try:
-        out = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            stderr=subprocess.DEVNULL, timeout=2,
-        ).decode().strip()
+        out = (
+            subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                stderr=subprocess.DEVNULL,
+                timeout=2,
+            )
+            .decode()
+            .strip()
+        )
         return out or "unknown"
     except Exception:
         return "unknown"
@@ -45,6 +57,7 @@ def _safe_pkg_version(pkg_name: str) -> str | None:
     """Tenta obter a versão instalada de um pacote sem importar tudo dele."""
     try:
         from importlib.metadata import PackageNotFoundError, version
+
         try:
             return version(pkg_name)
         except PackageNotFoundError:
@@ -65,8 +78,11 @@ async def get_system_status(request: Request):
         message="System is running correctly",
         version="1.1.0",
         active_services=[
-            "detection", "features", "training",
-            "voice_profiles", "forensic_analysis",
+            "detection",
+            "features",
+            "training",
+            "voice_profiles",
+            "forensic_analysis",
         ],
     )
 
@@ -85,6 +101,7 @@ async def health_check(request: Request):
     models_count = 0
     try:
         from app.dependencies import get_detection_service
+
         svc = get_detection_service()
         models_count = len(svc.get_available_models())
     except Exception as e:
@@ -93,6 +110,7 @@ async def health_check(request: Request):
 
     # Verificar storage
     from pathlib import Path
+
     storage_ok = Path("app/models").exists() or Path("models").exists()
 
     uptime = time.monotonic() - _start_time
@@ -113,7 +131,53 @@ async def bootstrap(request: Request):
     return {"status": "ok"}
 
 
+@router.get(
+    "/feedback",
+    summary="Eventos recentes de feedback, logs e notificações",
+)
+@limiter.limit("60/minute")
+async def get_feedback(request: Request, limit: int = 50, mark_read: bool = False):
+    """Retorna o buffer central de feedback usado por terminal, API e UI."""
+
+    safe_limit = min(max(limit, 1), 200)
+    events = [event.as_dict() for event in get_feedback_events(limit=safe_limit)]
+    summary = get_feedback_summary()
+    if mark_read:
+        mark_feedback_read()
+        summary = get_feedback_summary()
+    return {
+        "status": "ok",
+        "summary": summary,
+        "events": events,
+    }
+
+
+@router.post(
+    "/feedback/read",
+    summary="Marca todos os eventos de feedback como lidos",
+)
+@limiter.limit("30/minute")
+async def mark_feedback_as_read(request: Request):
+    mark_feedback_read()
+    return {"status": "ok", "summary": get_feedback_summary()}
+
+
+@router.post(
+    "/feedback/clear",
+    summary="Limpa o histórico em memória de feedback",
+)
+@limiter.limit("10/minute")
+async def clear_feedback(request: Request):
+    removed = clear_feedback_events()
+    return {
+        "status": "ok",
+        "removed": removed,
+        "summary": get_feedback_summary(),
+    }
+
+
 # ── API.10: Versão + info ──────────────────────────────────────────────
+
 
 @router.get(
     "/version",
@@ -152,6 +216,7 @@ async def get_info(request: Request):
     default_model = None
     try:
         from app.dependencies import get_detection_service
+
         svc = get_detection_service()
         models_count = len(svc.get_available_models())
         architectures = svc.get_available_architectures()
@@ -178,5 +243,8 @@ async def get_info(request: Request):
             "docs": "/api/docs",
             "redoc": "/api/redoc",
             "openapi": "/api/openapi.json",
+            "feedback": "/api/v1/system/feedback",
         },
+        "feedback": get_feedback_summary(),
+        "performance": get_resource_snapshot(),
     }

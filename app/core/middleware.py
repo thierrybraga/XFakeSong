@@ -1,98 +1,205 @@
-"""Middleware centralizado para a API XFakeSong.
+"""Middleware centralizado e leve para a API XFakeSong.
 
-Inclui:
-- Request ID tracking para rastreabilidade
-- Error handling padronizado (RFC 7807 Problem Details)
-- Logging estruturado de requests
-- Limites de tamanho de upload
+O middleware combina em uma passagem:
+- Request ID tracking via contextvars
+- Limite de upload por Content-Length
+- Header X-Request-ID em toda resposta
+- Logging estruturado com filtro de ruído para assets/filas da UI
 """
 
+from __future__ import annotations
+
 import logging
+import os
 import time
 import uuid
 from contextvars import ContextVar
-from typing import Optional
+from typing import Any, Callable, Optional
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi import FastAPI
+from starlette.datastructures import MutableHeaders
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
 
-# Context var para Request ID (acessível em qualquer lugar da request)
 request_id_ctx: ContextVar[Optional[str]] = ContextVar("request_id", default=None)
+
+_DEFAULT_NOISY_PREFIXES = (
+    "/static/",
+    "/assets/",
+    "/favicon",
+    "/gradio/queue/",
+    "/gradio/file=",
+    "/api/v1/system/bootstrap",
+    "/api/v1/system/feedback",
+)
 
 
 def get_request_id() -> Optional[str]:
-    """Retorna o request ID da request atual (thread-safe via contextvars)."""
+    """Retorna o request ID da request atual."""
+
     return request_id_ctx.get()
 
 
-class RequestIDMiddleware(BaseHTTPMiddleware):
-    """Adiciona X-Request-ID a cada request para rastreabilidade."""
-
-    async def dispatch(self, request: Request, call_next):
-        # Aceitar request ID do cliente ou gerar novo
-        req_id = request.headers.get("X-Request-ID", str(uuid.uuid4())[:12])
-        request_id_ctx.set(req_id)
-        request.state.request_id = req_id
-
-        response = await call_next(request)
-        response.headers["X-Request-ID"] = req_id
-        return response
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
-class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    """Loga cada request com métricas de tempo."""
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
 
-    async def dispatch(self, request: Request, call_next):
+
+def _client_host(scope: Scope) -> str:
+    client = scope.get("client")
+    if isinstance(client, tuple) and client:
+        return str(client[0])
+    return "unknown"
+
+
+def _header_value(scope: Scope, name: bytes) -> Optional[str]:
+    for key, value in scope.get("headers") or []:
+        if key.lower() == name:
+            return value.decode("latin-1", errors="ignore")
+    return None
+
+
+def _should_log_request(path: str, status: int, elapsed_ms: float) -> bool:
+    if _env_bool("XFAKE_LOG_EVERY_REQUEST", False):
+        return True
+    if status >= 400:
+        return True
+    slow_ms = _env_int("XFAKE_SLOW_REQUEST_MS", 1500)
+    if elapsed_ms >= slow_ms:
+        return True
+    if path.startswith("/api/") and not any(
+        path.startswith(prefix) for prefix in _DEFAULT_NOISY_PREFIXES
+    ):
+        return True
+    return False
+
+
+class SystemASGIMiddleware:
+    """ASGI middleware único para reduzir overhead por request."""
+
+    def __init__(self, app: ASGIApp, max_size_mb: int = 100):
+        self.app = app
+        self.max_size = max_size_mb * 1024 * 1024
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        req_id = _header_value(scope, b"x-request-id") or str(uuid.uuid4())[:12]
+        token = request_id_ctx.set(req_id)
         start = time.perf_counter()
-        response = await call_next(request)
-        elapsed_ms = (time.perf_counter() - start) * 1000
+        status_code = 500
+        path = str(scope.get("path") or "")
+        method = str(scope.get("method") or "")
 
-        req_id = getattr(request.state, "request_id", "?")
-        logger.info(
+        content_length = _header_value(scope, b"content-length")
+        if content_length:
+            try:
+                if int(content_length) > self.max_size:
+                    await self._send_payload_too_large(send, req_id)
+                    self._log_request(
+                        req_id=req_id,
+                        method=method,
+                        path=path,
+                        status=413,
+                        elapsed_ms=(time.perf_counter() - start) * 1000,
+                        scope=scope,
+                    )
+                    request_id_ctx.reset(token)
+                    return
+            except ValueError:
+                pass
+
+        async def send_wrapper(message: Message) -> None:
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = int(message.get("status", 500))
+                headers = MutableHeaders(scope=message)
+                headers["X-Request-ID"] = req_id
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        finally:
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            self._log_request(
+                req_id=req_id,
+                method=method,
+                path=path,
+                status=status_code,
+                elapsed_ms=elapsed_ms,
+                scope=scope,
+            )
+            request_id_ctx.reset(token)
+
+    async def _send_payload_too_large(self, send: Send, req_id: str) -> None:
+        body = (
+            b'{"type":"about:blank","title":"Payload Too Large",'
+            b'"status":413,"detail":"Upload excede o limite configurado."}'
+        )
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 413,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"x-request-id", req_id.encode("latin-1")),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": body})
+
+    def _log_request(
+        self,
+        *,
+        req_id: str,
+        method: str,
+        path: str,
+        status: int,
+        elapsed_ms: float,
+        scope: Scope,
+    ) -> None:
+        elapsed = round(elapsed_ms, 2)
+        if not _should_log_request(path, status, elapsed):
+            return
+        log_fn: Callable[..., Any] = logger.info
+        if status >= 500:
+            log_fn = logger.error
+        elif status >= 400:
+            log_fn = logger.warning
+        log_fn(
             "request_completed",
             extra={
                 "request_id": req_id,
-                "method": request.method,
-                "path": request.url.path,
-                "status": response.status_code,
-                "elapsed_ms": round(elapsed_ms, 2),
-                "client": request.client.host if request.client else "unknown",
+                "method": method,
+                "path": path,
+                "status": status,
+                "elapsed_ms": elapsed,
+                "client": _client_host(scope),
             },
         )
-        return response
 
 
-class MaxUploadSizeMiddleware(BaseHTTPMiddleware):
-    """Rejeita uploads que excedam o limite configurado."""
+def setup_middleware(app: FastAPI) -> None:
+    """Registra middleware de sistema.
 
-    def __init__(self, app, max_size_mb: int = 100):
-        super().__init__(app)
-        self.max_size = max_size_mb * 1024 * 1024
+    Ordem importa: o último adicionado pelo Starlette roda primeiro. Mantemos
+    este middleware como camada única para reduzir overhead e ruído.
+    """
 
-    async def dispatch(self, request: Request, call_next):
-        content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > self.max_size:
-            return JSONResponse(
-                status_code=413,
-                content={
-                    "type": "about:blank",
-                    "title": "Payload Too Large",
-                    "status": 413,
-                    "detail": (
-                        f"Upload excede o limite de "
-                        f"{self.max_size // (1024 * 1024)}MB."
-                    ),
-                },
-            )
-        return await call_next(request)
+    max_upload_mb = _env_int("XFAKE_MAX_UPLOAD_MB", 100)
+    app.add_middleware(SystemASGIMiddleware, max_size_mb=max_upload_mb)
 
 
-def setup_middleware(app: FastAPI):
-    """Registra todos os middlewares na aplicação."""
-    # Ordem importa: último adicionado = primeiro executado
-    app.add_middleware(RequestLoggingMiddleware)
-    app.add_middleware(RequestIDMiddleware)
-    app.add_middleware(MaxUploadSizeMiddleware, max_size_mb=100)
+__all__ = ["SystemASGIMiddleware", "get_request_id", "setup_middleware"]

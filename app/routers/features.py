@@ -17,7 +17,7 @@ from app.core.exceptions import (
     UnsupportedFormatError,
     ValidationError,
 )
-from app.core.interfaces.audio import FeatureType
+from app.core.interfaces.audio import AudioData, FeatureType
 from app.core.interfaces.base import ProcessingStatus
 from app.core.security import limiter, sanitize_filename
 from app.dependencies import get_feature_extraction_service
@@ -28,7 +28,11 @@ from app.schemas.api_models import FeatureExtractionResult
 router = APIRouter(prefix="/api/v1/features", tags=["Features"])
 
 SUPPORTED_FORMATS = list(AudioUploadService.SUPPORTED_FORMATS)
+FEATURE_TYPE_ALIASES = {
+    "mfcc": "cepstral",
+}
 VALID_FEATURE_TYPES = {ft.value for ft in FeatureType}
+PUBLIC_FEATURE_TYPES = VALID_FEATURE_TYPES | set(FEATURE_TYPE_ALIASES)
 
 
 @router.post(
@@ -57,11 +61,12 @@ async def extract_features(
         )
 
     # Rejeitar tipos completamente desconhecidos antes de chamar o serviço
-    unknown = [t for t in types_list if t not in VALID_FEATURE_TYPES]
+    normalized_types = [FEATURE_TYPE_ALIASES.get(t, t) for t in types_list]
+    unknown = [t for t in normalized_types if t not in VALID_FEATURE_TYPES]
     if unknown and len(unknown) == len(types_list):
         raise ValidationError(
             f"Tipos de feature não reconhecidos: {unknown}. "
-            f"Válidos: {sorted(VALID_FEATURE_TYPES)}",
+            f"Válidos: {sorted(PUBLIC_FEATURE_TYPES)}",
             field="feature_types",
         )
 
@@ -82,24 +87,30 @@ async def extract_features(
         with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # Carregar áudio
-        from app.domain.services.audio_loading_service import AudioLoadingService
-        loader = AudioLoadingService()
-        load_result = loader.load_audio(temp_path)
-
-        if load_result.status != ProcessingStatus.SUCCESS:
-            raise AudioProcessingError(
-                load_result.errors[0] if load_result.errors
-                else "Erro ao carregar áudio"
-            )
-
-        audio_data = load_result.data
+        # Carregar áudio. AudioData.from_file é o loader canônico (mesmo usado
+        # em detection.py e no endpoint multi-model). O antigo
+        # `app.domain.services.audio_loading_service` NÃO existe — importá-lo
+        # causava ModuleNotFoundError → 500 em toda extração bem-sucedida.
+        try:
+            audio_data = AudioData.from_file(temp_path)
+        except Exception as exc:
+            raise AudioProcessingError(f"Erro ao carregar áudio: {exc}")
 
         # Extrair features
-        result = service.extract_single(audio_data, types_list)
+        result = service.extract_single(audio_data, normalized_types)
 
         if result.status == ProcessingStatus.SUCCESS:
-            raw_features = (result.data or {}).get("features") or {}
+            # extract_single retorna {"features": <AudioFeatures>} — um dataclass
+            # cujo atributo .features é o dict real {nome: array}. Desembrulha
+            # com segurança (aceita também dict direto, p/ robustez futura).
+            # Sem isto, `.items()` abaixo estoura AttributeError em runtime.
+            raw_obj = (result.data or {}).get("features")
+            if hasattr(raw_obj, "features"):
+                raw_features = raw_obj.features or {}
+            elif isinstance(raw_obj, dict):
+                raw_features = raw_obj
+            else:
+                raw_features = {}
             serializable_features: dict = {}
             for k, v in raw_features.items():
                 if hasattr(v, "tolist"):
@@ -135,6 +146,6 @@ async def extract_features(
 @limiter.limit("30/minute")
 async def list_feature_types(request: Request):
     return {
-        "available_types": sorted(VALID_FEATURE_TYPES),
+        "available_types": sorted(PUBLIC_FEATURE_TYPES),
         "active_extractors": ["spectral", "cepstral", "prosodic"],
     }

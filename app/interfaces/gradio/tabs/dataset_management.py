@@ -7,6 +7,7 @@ compatibilidade dos datasets de áudio para detecção de deepfake.
 
 import json
 import logging
+import math
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -48,14 +49,289 @@ _SUCCESS = "#22c55e"
 _WARNING = "#f59e0b"
 
 _SOURCE_COLORS = {
-    "BRSpeech-DF": "#3b82f6",
-    "Fake Voices": "#8b5cf6",
-    "FLEURS": "#06b6d4",
-    "Common Voice": "#f59e0b",
-    "CETUC": "#10b981",
-    "Synthetic": "#6b7280",
-    "Outros": "#94a3b8",
+    "BRSpeech-DF":   "#3b82f6",
+    "Fake Voices":   "#8b5cf6",
+    "FLEURS":        "#06b6d4",
+    "Common Voice":  "#f59e0b",
+    "CETUC":         "#10b981",
+    "MLAAD":         "#e879f9",
+    "ASVspoof 2019": "#f97316",
+    "ASVspoof 5":    "#fb923c",
+    "WaveFake":      "#a855f7",
+    "In-the-Wild":   "#14b8a6",
+    "Synthetic":     "#6b7280",
+    "Outros":        "#94a3b8",
 }
+
+# ---------------------------------------------------------------------------
+# Balance-aware download helpers
+# ---------------------------------------------------------------------------
+
+# Classifica cada fonte quanto ao tipo de áudio que produz
+_SOURCE_TYPE: Dict[str, str] = {
+    "BRSpeech-DF":     "both",   # bonafide=real + spoof=fake
+    "Fake Voices":     "fake",   # XTTS sintético apenas
+    "FLEURS":          "real",   # fala real PT-BR apenas
+    "CETUC":           "real",   # fala real PT-BR apenas
+    "MLAAD-PT":        "fake",   # TTS multi-idioma, apenas fake
+    "Common Voice PT": "real",   # Mozilla CC0, real apenas
+    "ASVspoof 2019":   "both",   # benchmark: bonafide + 19 ataques
+    "WaveFake":        "fake",   # 6 vocoders, apenas fake
+    "In-the-Wild":     "both",   # celebridades: real + deepfake
+    "ASVspoof 5":      "both",   # challenge 2024: bonafide + 20+ ataques
+}
+
+# Estimativa de amostras por falante para Fake Voices (max_per_speaker=100 padrão)
+_FAKE_VOICES_SAMPLES_PER_SPEAKER = 80   # conservador para evitar overcount
+
+# Combinações pré-definidas para facilitar o uso
+_PRESET_SELECTIONS: Dict[str, List[str]] = {
+    "PT-BR Rápido":          ["BRSpeech-DF", "Fake Voices"],
+    "PT-BR Completo":        ["BRSpeech-DF", "Fake Voices", "CETUC", "MLAAD-PT"],
+    "Internacional Padrão":  ["ASVspoof 2019", "WaveFake", "In-the-Wild"],
+    "Máxima Cobertura":      ["BRSpeech-DF", "Fake Voices", "CETUC", "MLAAD-PT",
+                              "ASVspoof 2019", "WaveFake", "In-the-Wild"],
+    "Só Reforçar Real":      ["FLEURS", "CETUC", "Common Voice PT"],
+    "Só Reforçar Fake":      ["Fake Voices", "MLAAD-PT", "WaveFake", "ASVspoof 5"],
+}
+
+
+def _compute_download_plan(
+    selected: List[str],
+    current_real: int,
+    current_fake: int,
+    target: int,
+) -> Tuple[Dict[str, Dict], int, int]:
+    """Calcula alocação balanceada entre as fontes selecionadas.
+
+    Algoritmo:
+    - Calcula gap = max(0, target - atual) para cada classe
+    - Distribui o gap proporcionalmente entre as fontes que produzem essa classe
+    - Fontes "both" participam de ambos os pools
+    - Retorna plano {source: {max_samples, real_alloc, fake_alloc, type}}
+
+    Returns:
+        (plan, real_needed, fake_needed)
+    """
+    real_needed = max(0, target - current_real)
+    fake_needed = max(0, target - current_fake)
+
+    real_providers = [s for s in selected if _SOURCE_TYPE.get(s) in ("real", "both")]
+    fake_providers = [s for s in selected if _SOURCE_TYPE.get(s) in ("fake", "both")]
+
+    plan: Dict[str, Dict] = {}
+    for source in selected:
+        src_type = _SOURCE_TYPE.get(source, "both")
+        real_alloc = 0
+        fake_alloc = 0
+
+        if src_type in ("real", "both") and real_providers and real_needed > 0:
+            real_alloc = max(1, real_needed // len(real_providers))
+
+        if src_type in ("fake", "both") and fake_providers and fake_needed > 0:
+            fake_alloc = max(1, fake_needed // len(fake_providers))
+
+        # max_samples a passar para cada função de download:
+        # • fontes "real":  max_samples = real_alloc  (total real a baixar)
+        # • fontes "fake":  max_samples = fake_alloc  (total fake a baixar)
+        # • fontes "both":  usam max_samples // 2 por classe internamente,
+        #                   então passamos 2 * max(alloc_real, alloc_fake)
+        if src_type == "real":
+            max_s = real_alloc
+        elif src_type == "fake":
+            max_s = fake_alloc
+        else:
+            # garante que ambas as classes atinjam suas alocações
+            max_s = max(real_alloc, fake_alloc) * 2
+
+        plan[source] = {
+            "max_samples": max_s,
+            "real_alloc":  real_alloc,
+            "fake_alloc":  fake_alloc,
+            "type":        src_type,
+        }
+
+    return plan, real_needed, fake_needed
+
+
+def _format_plan_md(
+    plan: Dict,
+    real_needed: int,
+    fake_needed: int,
+    current_real: int,
+    current_fake: int,
+    target: int,
+) -> str:
+    """Formata o plano de download como markdown com tabela e estimativa final."""
+    lines = [
+        "#### Plano de Download Balanceado",
+        "",
+        f"**Estado atual:** {current_real:,} real · {current_fake:,} fake  ",
+        f"**Alvo por classe:** {target:,}  ",
+        f"**Gap a preencher:** +{real_needed:,} real · +{fake_needed:,} fake",
+        "",
+        "| Fonte | Tipo | Real (+) | Fake (+) | max_samples |",
+        "|-------|:----:|:--------:|:--------:|:-----------:|",
+    ]
+
+    total_r = 0
+    total_f = 0
+    for source, info in plan.items():
+        r = info["real_alloc"]
+        f = info["fake_alloc"]
+        total_r += r
+        total_f += f
+        if info["max_samples"] <= 0:
+            lines.append(f"| {source} | {info['type']} | ⏭ 0 | ⏭ 0 | 0 |")
+        else:
+            lines.append(
+                f"| **{source}** | `{info['type']}` | +{r:,} | +{f:,} | {info['max_samples']:,} |"
+            )
+
+    exp_real  = current_real  + total_r
+    exp_fake  = current_fake  + total_f
+    exp_ratio = exp_real / max(exp_fake, 1)
+
+    if 0.8 <= exp_ratio <= 1.25:
+        bal_tag = "✅ Balanceado"
+    elif 0.5 <= exp_ratio <= 2.0:
+        bal_tag = "⚠️ Aceitável (class_weight compensará)"
+    else:
+        bal_tag = "❌ Desbalanceado — considere adicionar mais fontes"
+
+    lines += [
+        "",
+        f"**Resultado esperado:** ~{exp_real:,} real · ~{exp_fake:,} fake  ",
+        f"**Ratio estimado:** {exp_ratio:.2f} — {bal_tag}",
+        "",
+        "> ℹ️ Fontes `both` baixam real **e** fake. Eventual excesso não prejudica o treino "
+        "— class_weight balanceia automaticamente.",
+    ]
+    return "\n".join(lines)
+
+
+def _balance_bar_html(real_count: int, fake_count: int) -> str:
+    """Gera HTML com barra de balanço real/fake e KPIs."""
+    total = max(real_count + fake_count, 1)
+    real_pct = real_count / total * 100
+    fake_pct = 100.0 - real_pct
+    ratio = real_count / max(fake_count, 1)
+
+    if real_count == 0 and fake_count == 0:
+        badge, bcolor = "📭 Dataset vazio", "#94a3b8"
+    elif 0.8 <= ratio <= 1.25:
+        badge, bcolor = "✅ Balanceado", _SUCCESS
+    elif 0.5 <= ratio <= 2.0:
+        badge, bcolor = "⚠️ Aceitável", _WARNING
+    else:
+        badge, bcolor = "❌ Desbalanceado", _DANGER
+
+    return (
+        f'<div style="background:{_FACE};border:1px solid {_GRID};border-radius:8px;'
+        f'padding:12px 14px;font-family:monospace;">'
+        f'<div style="display:flex;justify-content:space-between;margin-bottom:8px;">'
+        f'<span style="color:{_TEXT};font-weight:bold;font-size:13px;">Estado do Dataset</span>'
+        f'<span style="color:{bcolor};font-weight:bold;font-size:13px;">{badge}</span>'
+        f'</div>'
+        f'<div style="background:{_BG};border-radius:4px;height:16px;overflow:hidden;'
+        f'display:flex;margin-bottom:8px;">'
+        f'<div style="width:{real_pct:.1f}%;background:{_SUCCESS};transition:width .4s;"></div>'
+        f'<div style="width:{fake_pct:.1f}%;background:{_DANGER};transition:width .4s;"></div>'
+        f'</div>'
+        f'<div style="display:flex;justify-content:space-between;'
+        f'color:{_TEXT};font-size:12px;">'
+        f'<span>🟢 Real: <b>{real_count:,}</b> ({real_pct:.0f}%)</span>'
+        f'<span style="color:{_GRID};">Ratio: <b style="color:{bcolor};">{ratio:.2f}</b></span>'
+        f'<span>🔴 Fake: <b>{fake_count:,}</b> ({fake_pct:.0f}%)</span>'
+        f'</div>'
+        f'</div>'
+    )
+
+
+def _assess_training_readiness(real_count: int, fake_count: int) -> str:
+    """Avalia prontidão do dataset para cada tier de modelo e retorna markdown.
+
+    Thresholds empíricos baseados em literatura anti-spoofing (ASVspoof):
+    - ML clássico:  300+ por classe
+    - CNN leve:    1 000+ por classe
+    - CNN/RNN:     2 000+ por classe
+    - Transformer: 4 000+ por classe (underfitting severo abaixo disso)
+    - Ensemble:    6 000+ por classe (4 branches)
+    """
+    per_class = min(real_count, fake_count)
+    total     = real_count + fake_count
+    ratio     = real_count / max(fake_count, 1)
+
+    lines: List[str] = ["#### Prontidão para Treinamento", ""]
+
+    if per_class == 0:
+        return "\n".join(lines + [
+            "❌ **Dataset vazio.** Inicie um download para continuar.",
+        ])
+
+    # ── Diagnóstico de balanceamento ──────────────────────────────────
+    if real_count == 0 or fake_count == 0:
+        lines.append("❌ **Uma das classes está vazia** — impossível treinar.")
+    elif ratio < 0.5 or ratio > 2.0:
+        deficit_cls = "real" if real_count < fake_count else "fake"
+        diff = abs(real_count - fake_count)
+        lines.append(
+            f"❌ **Desbalanceamento severo** (ratio={ratio:.2f}) — faltam {diff:,} "
+            f"amostras `{deficit_cls}`. Corrija antes de usar modelos DL."
+        )
+    elif 0.8 <= ratio <= 1.25:
+        lines.append(f"✅ **Balanceamento ideal** (ratio={ratio:.2f}) — pronto para qualquer modelo.")
+    else:
+        lines.append(
+            f"⚠️ **Balanceamento aceitável** (ratio={ratio:.2f}) — "
+            "`class_weight=balanced` será aplicado automaticamente no treino."
+        )
+
+    lines.append("")
+    lines.append("| Tier | Modelos | Mín/classe | Status |")
+    lines.append("|------|---------|:----------:|:------:|")
+
+    _TIERS = [
+        ("Clássico",    "SVM, Random Forest",                              300),
+        ("CNN Leve",    "RawNet2, Sonic Sleuth, MultiscaleCNN",            1_000),
+        ("CNN/RNN",     "WavLM, HuBERT, EfficientNet-LSTM, RawGAT-ST",   2_000),
+        ("Transformer", "Conformer, AASIST, SpectrogramTransformer",      4_000),
+        ("Ensemble",    "Ensemble, Hybrid CNN-Transformer",               6_000),
+    ]
+
+    for tier_name, models, required in _TIERS:
+        if per_class >= required:
+            icon = "✅"
+            note = f"Pronto ({per_class:,}/{required:,})"
+        else:
+            needed = required - per_class
+            pct = per_class / required * 100
+            icon = "🔶" if pct >= 50 else "❌"
+            note = f"+{needed:,} necessários ({pct:.0f}%)"
+        lines.append(f"| {icon} **{tier_name}** | {models} | {required:,} | {note} |")
+
+    lines += [
+        "",
+        f"**Resumo:** {per_class:,} amostras/classe · {total:,} total "
+        f"· ~{total * 3 / 3600:.1f}h estimado (avg 3s/amostra)",
+    ]
+
+    # ── Próximo passo recomendado ─────────────────────────────────────
+    if per_class < 300:
+        rec = "⚡ Baixe pelo menos 300/classe antes de treinar qualquer modelo."
+    elif per_class < 1_000:
+        rec = "📈 Você pode treinar SVM/RF agora. Baixe mais 1 000/classe para CNNs."
+    elif per_class < 2_000:
+        rec = "📈 CNNs leves estão prontas. +1 000/classe desbloqueia WavLM/HuBERT."
+    elif per_class < 4_000:
+        rec = "📈 CNN/RNN prontos. +2 000/classe para performance máxima em Transformers."
+    elif per_class < 6_000:
+        rec = "📈 Transformers habilitados. +2 000/classe para Ensemble completo."
+    else:
+        rec = "🚀 Dataset completo — todos os 14 modelos habilitados."
+    lines += ["", f"> {rec}"]
+
+    return "\n".join(lines)
 
 
 def _style_ax(ax):
@@ -74,8 +350,14 @@ def _style_ax(ax):
 # ---------------------------------------------------------------------------
 # Dataset Scanner
 # ---------------------------------------------------------------------------
-def _scan_dataset() -> Dict[str, Any]:
-    """Escaneia o dataset e retorna estatísticas completas."""
+def _scan_dataset(light: bool = False) -> Dict[str, Any]:
+    """Escaneia o dataset e retorna estatísticas.
+
+    Args:
+        light: Se True, pula amostragem de durações (sf.info em 150 arquivos
+               por classe). Use durante loops de download/progresso onde só os
+               contadores importam — evita centenas de leituras de disco.
+    """
     import soundfile as sf
 
     data: Dict[str, Any] = {
@@ -95,8 +377,14 @@ def _scan_dataset() -> Dict[str, Any]:
         "brspeech": "BRSpeech-DF",
         "fkvoice": "Fake Voices",
         "fleurs": "FLEURS",
+        "cvpt": "Common Voice",
         "cv": "Common Voice",
         "cetuc": "CETUC",
+        "mlaad": "MLAAD",
+        "asv2019": "ASVspoof 2019",
+        "asv5": "ASVspoof 5",
+        "wavefake": "WaveFake",
+        "itw": "In-the-Wild",
         "synthetic": "Synthetic",
     }
 
@@ -121,7 +409,9 @@ def _scan_dataset() -> Dict[str, Any]:
                 key = f"Outros ({label})"
                 data["sources"][key] = data["sources"].get(key, 0) + 1
 
-        # Amostrar durações (max 150 arquivos)
+        # Amostrar durações (max 150 arquivos) — pulado no modo light
+        if light:
+            continue
         sample_files = wav_files[:150]
         durations = []
         for wf in sample_files:
@@ -181,7 +471,7 @@ def _build_class_distribution(data: Dict) -> plt.Figure:
             fontweight="bold",
         )
     ax.set_ylabel("Amostras")
-    ax.set_title("Distribuicao por Classe")
+    ax.set_title("Distribuição por Classe")
     fig.tight_layout()
     return fig
 
@@ -237,9 +527,9 @@ def _build_duration_histogram(data: Dict) -> plt.Figure:
     if df:
         ax.hist(df, bins=30, alpha=0.6, color=_DANGER, label=f"Fake (n={len(df)})", edgecolor=_GRID, linewidth=0.3)
 
-    ax.set_xlabel("Duracao (s)")
+    ax.set_xlabel("Duração (s)")
     ax.set_ylabel("Frequencia")
-    ax.set_title("Distribuicao de Duracoes")
+    ax.set_title("Distribuição de Durações")
     ax.legend(facecolor=_FACE, edgecolor=_GRID, labelcolor=_TEXT, fontsize=8)
     fig.tight_layout()
     return fig
@@ -321,7 +611,7 @@ def _analyze_compatibility(data: Dict) -> Tuple[List[List], str]:
         # Splits
         if not has_splits:
             issues.append("Sem splits")
-            recs.append("Execute 'Criar Splits' na aba Preprocessamento")
+            recs.append("Execute 'Criar Splits' na aba Pré-processamento")
 
         # Sample rate (todos esperam 16kHz — já garantido pelo pipeline)
         # Duração (verificar se há amostras muito curtas)
@@ -385,30 +675,34 @@ def _analyze_compatibility(data: Dict) -> Tuple[List[List], str]:
 def create_dataset_management_tab():
     """Cria a aba de Gestao de Dataset."""
 
-    with gr.Tab("Dataset", id="tab_dataset_mgmt"):
-        gr.Markdown(
-            "### Gestao de Dataset\n"
-            "Visualize, baixe, preprocesse e analise a compatibilidade dos datasets de audio."
+    with gr.Tab("📁 Datasets", id="tab_dataset_mgmt"):
+        from app.interfaces.gradio.utils.components import page_header
+
+        page_header(
+            "📁",
+            "Gestão de Datasets",
+            "Visualize, baixe, pré-processe e analise a compatibilidade dos "
+            "datasets de áudio.",
         )
 
         with gr.Tabs():
             # ===========================================================
-            # SUB-TAB 1: VISAO GERAL
+            # SUB-TAB 1: VISÃO GERAL
             # ===========================================================
-            with gr.Tab("Visao Geral", id="tab_ds_overview"):
+            with gr.Tab("Visão Geral", id="tab_ds_overview"):
 
                 with gr.Row():
                     kpi_md = gr.Markdown("*Clique em Atualizar para carregar...*")
 
                 with gr.Row():
                     with gr.Column(scale=1):
-                        plot_class = gr.Plot(label="Distribuicao por Classe")
+                        plot_class = gr.Plot(label="Distribuição por Classe")
                     with gr.Column(scale=1):
                         plot_source = gr.Plot(label="Fontes de Dados")
 
                 with gr.Row():
                     with gr.Column(scale=1):
-                        plot_duration = gr.Plot(label="Distribuicao de Duracoes")
+                        plot_duration = gr.Plot(label="Distribuição de Durações")
                     with gr.Column(scale=1):
                         splits_df = gr.Dataframe(
                             headers=["Split", "Real", "Fake", "Total"],
@@ -440,9 +734,9 @@ def create_dataset_management_tab():
                         f"| Amostras Reais | **{real_c:,}** |\n"
                         f"| Amostras Fake | **{fake_c:,}** |\n"
                         f"| Ratio Real/Fake | **{ratio:.2f}** |\n"
-                        f"| Duracao Real | **{real_h:.1f}h** |\n"
-                        f"| Duracao Fake | **{fake_h:.1f}h** |\n"
-                        f"| Duracao Total | **{real_h + fake_h:.1f}h** |\n"
+                        f"| Duração Real | **{real_h:.1f}h** |\n"
+                        f"| Duração Fake | **{fake_h:.1f}h** |\n"
+                        f"| Duração Total | **{real_h + fake_h:.1f}h** |\n"
                         f"| Splits Criados | **{splits_ok}** |\n"
                         f"| Sample Rate | **16 kHz** |\n"
                         f"| Formato | **WAV PCM 16-bit mono** |"
@@ -472,64 +766,218 @@ def create_dataset_management_tab():
                 )
 
             # ===========================================================
-            # SUB-TAB 2: DOWNLOAD
+            # SUB-TAB 2: DOWNLOAD (balance-aware)
             # ===========================================================
             with gr.Tab("Download", id="tab_ds_download"):
 
-                gr.Markdown(
-                    "### Download de Datasets PT-BR\n\n"
-                    "| Dataset | Tipo | Descricao |\n"
-                    "|---------|------|-----------|\n"
-                    "| **BRSpeech-DF** | Real + Fake | 459K arquivos, bonafide/spoof, 24kHz→16kHz |\n"
-                    "| **Fake Voices** | Fake | ~140h XTTS, 101 falantes, MIT |\n"
-                    "| **FLEURS** | Real | Google, PT-BR, acesso publico |\n"
-                    "| **CETUC** | Real | Corpus de fala PT-BR (OpenSLR/CommonVoice fallback) |\n"
-                    "| **MLAAD-PT** | Fake | Multi-Language Audio Anti-Spoofing, subset PT |\n"
-                )
+                gr.Markdown("### Download e Balanceamento de Datasets")
+
+                # ── Barra de balanço em tempo real ─────────────────────
+                with gr.Row():
+                    with gr.Column(scale=4):
+                        dl_balance_html = gr.HTML(value=_balance_bar_html(0, 0))
+                    with gr.Column(scale=1, min_width=120):
+                        dl_bal_refresh = gr.Button("↻ Atualizar", size="sm")
 
                 with gr.Row():
+                    # ── Painel de configuração (esquerda) ───────────────
                     with gr.Column(scale=1):
-                        dl_source = gr.Dropdown(
-                            choices=["Todos", "BRSpeech-DF", "Fake Voices", "FLEURS", "CETUC", "MLAAD-PT"],
-                            value="Todos",
-                            label="Fonte",
-                        )
-                        dl_max_samples = gr.Slider(
-                            minimum=50, maximum=5000, value=500, step=50,
-                            label="Max amostras por classe",
-                        )
-                        dl_max_speakers = gr.Slider(
-                            minimum=5, maximum=50, value=15, step=5,
-                            label="Max falantes (Fake Voices)",
-                            visible=True,
-                        )
-                        dl_btn = gr.Button("Iniciar Download", variant="primary")
 
+                        with gr.Group():
+                            gr.Markdown("**1. Selecionar Fontes**")
+                            dl_preset = gr.Dropdown(
+                                choices=["— preset —"] + list(_PRESET_SELECTIONS.keys()),
+                                value="— preset —",
+                                label="Preset",
+                                container=False,
+                            )
+                            dl_sources = gr.CheckboxGroup(
+                                choices=list(_SOURCE_TYPE.keys()),
+                                value=["BRSpeech-DF", "Fake Voices"],
+                                label="Fontes de dados",
+                            )
+
+                        with gr.Group():
+                            gr.Markdown("**2. Configurar Alvo de Balanceamento**")
+                            dl_target = gr.Slider(
+                                minimum=100,
+                                maximum=10_000,
+                                value=1_000,
+                                step=100,
+                                label="Alvo por classe (real e fake)",
+                                info="Mínimo de amostras reais E fakes desejado após o download",
+                            )
+                            dl_speakers_override = gr.Slider(
+                                minimum=0,
+                                maximum=50,
+                                value=0,
+                                step=5,
+                                label="Max falantes Fake Voices (0 = auto calculado pelo alvo)",
+                                visible=True,
+                            )
+
+                        gr.Markdown("---")
+                        dl_plan_btn = gr.Button("📋 Calcular Plano", variant="secondary", size="sm")
+                        dl_btn      = gr.Button("⬇️ Iniciar Download Balanceado", variant="primary")
+
+                    # ── Plano + readiness + log (direita) ──────────────
                     with gr.Column(scale=2):
+                        dl_plan_md = gr.Markdown(
+                            "*Selecione as fontes e clique em **Calcular Plano** para ver a "
+                            "distribuição balanceada antes de baixar.*"
+                        )
+                        dl_readiness_md = gr.Markdown(
+                            "*Aguardando análise...*",
+                            label="Prontidão para Treinamento",
+                        )
                         dl_log = gr.Textbox(
                             label="Log de Download",
-                            lines=18,
-                            max_lines=25,
+                            lines=10,
+                            max_lines=18,
                             interactive=False,
                         )
                         dl_status = gr.Markdown("*Aguardando...*")
 
-                def toggle_speakers(source):
-                    visible = source in ("Fake Voices", "Todos")
-                    return gr.update(visible=visible)
+                with gr.Accordion("Referência de Datasets", open=False):
+                    gr.Markdown(
+                        "**PT-BR**\n\n"
+                        "| Dataset | Tipo | Descrição | Licença |\n"
+                        "|---------|:----:|-----------|---------|\n"
+                        "| **BRSpeech-DF** | both | 459K arquivos bonafide+spoof PT-BR | ODC-BY |\n"
+                        "| **Fake Voices** | fake | ~140h XTTS, 101 falantes | MIT |\n"
+                        "| **FLEURS** | real | Google PT-BR, acesso público | CC BY 4.0 |\n"
+                        "| **CETUC** | real | Corpus PT-BR (CommonVoice/OpenSLR) | livre |\n"
+                        "| **MLAAD-PT** | fake | Multi-Language ASV, subset PT | CC-BY-NC |\n"
+                        "| **Common Voice PT** | real | Mozilla CC0 (requer login HF) | CC0 |\n\n"
+                        "**Internacionais**\n\n"
+                        "| Dataset | Tipo | Descrição | Licença |\n"
+                        "|---------|:----:|-----------|---------|\n"
+                        "| **ASVspoof 2019** | both | Benchmark LA, 19 ataques TTS/VC | ODC-BY |\n"
+                        "| **WaveFake** | fake | 6 vocoders (MelGAN/HiFi-GAN/WaveGlow...) | MIT |\n"
+                        "| **In-the-Wild** | both | 58 celebridades deepfake de redes sociais | CC 4.0 |\n"
+                        "| **ASVspoof 5** | both | Challenge 2024, 20+ ataques LLM | CC 4.0 |\n\n"
+                        "> **Dica de balanceamento:** combine sempre pelo menos 1 fonte `both` "
+                        "(BRSpeech-DF, ASVspoof 2019) com fontes especializadas "
+                        "(Fake Voices para fakes, CETUC para reais) para máxima diversidade."
+                    )
 
-                dl_source.change(fn=toggle_speakers, inputs=[dl_source], outputs=[dl_max_speakers])
+                # ── Handlers ───────────────────────────────────────────
 
-                def handle_download(source, max_samples, max_speakers):
-                    """Generator que executa download e streama logs."""
-                    # BUG FIX: módulo renomeado de download_pt_datasets_v2 para
-                    # download_datasets na consolidação dos scripts de download.
+                def _dl_refresh_balance():
+                    data = _scan_dataset()
+                    return (
+                        _balance_bar_html(data["real_count"], data["fake_count"]),
+                        _assess_training_readiness(data["real_count"], data["fake_count"]),
+                    )
+
+                def _dl_apply_preset(preset_name: str):
+                    if preset_name in _PRESET_SELECTIONS:
+                        return gr.update(value=_PRESET_SELECTIONS[preset_name])
+                    return gr.update()
+
+                def _dl_on_sources_change(selected_sources, target):
+                    """Handler único disparado quando as fontes mudam (manual OU via preset).
+
+                    Atualiza: visibilidade do slider de falantes + barra de balanço +
+                    plano + prontidão. Assim o usuário vê o plano recalculado sem
+                    precisar clicar em "Calcular Plano" manualmente.
+                    """
+                    show_speakers = gr.update(
+                        visible="Fake Voices" in (selected_sources or [])
+                    )
+                    # light=True: só precisamos dos contadores, não das durações
+                    data = _scan_dataset(light=True)
+                    bar = _balance_bar_html(data["real_count"], data["fake_count"])
+
+                    if not selected_sources:
+                        return (
+                            show_speakers,
+                            bar,
+                            "*Selecione fontes para ver o plano balanceado.*",
+                            _assess_training_readiness(
+                                data["real_count"], data["fake_count"]
+                            ),
+                        )
+
+                    plan, rn, fn = _compute_download_plan(
+                        selected_sources,
+                        data["real_count"], data["fake_count"],
+                        int(target),
+                    )
+                    plan_text = _format_plan_md(
+                        plan, rn, fn,
+                        data["real_count"], data["fake_count"], int(target),
+                    )
+                    exp_real = data["real_count"] + sum(v["real_alloc"] for v in plan.values())
+                    exp_fake = data["fake_count"] + sum(v["fake_alloc"] for v in plan.values())
+                    readiness = (
+                        "**Após este download (estimado):**\n\n"
+                        + _assess_training_readiness(exp_real, exp_fake)
+                    )
+                    return show_speakers, bar, plan_text, readiness
+
+                def _dl_compute_plan(selected_sources, target):
+                    data = _scan_dataset()
+                    readiness = _assess_training_readiness(
+                        data["real_count"], data["fake_count"]
+                    )
+                    bar = _balance_bar_html(data["real_count"], data["fake_count"])
+
+                    if not selected_sources:
+                        return (
+                            bar,
+                            "*⚠️ Selecione pelo menos uma fonte.*",
+                            readiness,
+                        )
+
+                    plan, rn, fn = _compute_download_plan(
+                        selected_sources,
+                        data["real_count"],
+                        data["fake_count"],
+                        int(target),
+                    )
+                    plan_text = _format_plan_md(
+                        plan, rn, fn,
+                        data["real_count"], data["fake_count"],
+                        int(target),
+                    )
+                    # Readiness pós-download estimado
+                    exp_real = data["real_count"] + sum(
+                        v["real_alloc"] for v in plan.values()
+                    )
+                    exp_fake = data["fake_count"] + sum(
+                        v["fake_alloc"] for v in plan.values()
+                    )
+                    readiness_after = _assess_training_readiness(exp_real, exp_fake)
+                    combined_readiness = (
+                        "**Atual:**\n\n" + readiness +
+                        "\n\n---\n\n**Após este download:**\n\n" + readiness_after
+                    )
+                    return bar, plan_text, combined_readiness
+
+                def handle_download(selected_sources, target, speakers_override):
+                    """Generator: download balanceado com streaming de log e barra de progresso."""
+                    data = _scan_dataset()
+
+                    if not selected_sources:
+                        yield (
+                            _balance_bar_html(data["real_count"], data["fake_count"]),
+                            "*⚠️ Selecione pelo menos uma fonte.*",
+                            _assess_training_readiness(data["real_count"], data["fake_count"]),
+                            "",
+                            "❌ Nenhuma fonte selecionada",
+                        )
+                        return
+
                     try:
                         import scripts.download_datasets as dl_mod
                     except ImportError as exc:
                         yield (
-                            f"Erro: nao foi possivel importar scripts/download_datasets.py\n{exc}",
-                            "❌ Erro de importacao",
+                            _balance_bar_html(data["real_count"], data["fake_count"]),
+                            "",
+                            _assess_training_readiness(data["real_count"], data["fake_count"]),
+                            f"Erro de importação:\n{exc}",
+                            "❌ Não foi possível importar scripts/download_datasets.py",
                         )
                         return
 
@@ -537,67 +985,216 @@ def create_dataset_management_tab():
                     dl_mod.logger.addHandler(capture)
                     dl_mod.setup_dirs()
 
-                    max_s = int(max_samples)
-                    max_sp = int(max_speakers)
-
                     try:
-                        yield capture.text() + "\nIniciando download...", "⏳ Baixando..."
-
-                        if source in ("BRSpeech-DF", "Todos"):
-                            dl_mod.download_brspeech(max_s)
-                            yield capture.text(), "⏳ BRSpeech-DF concluido..."
-
-                        if source in ("Fake Voices", "Todos"):
-                            dl_mod.download_fake_voices(max_sp)
-                            yield capture.text(), "⏳ Fake Voices concluido..."
-
-                        if source in ("FLEURS", "Todos"):
-                            dl_mod.download_fleurs(max_s)
-                            yield capture.text(), "⏳ FLEURS concluido..."
-
-                        if source in ("CETUC", "Todos"):
-                            dl_mod.download_cetuc(max_s)
-                            yield capture.text(), "⏳ CETUC concluido..."
-
-                        if source in ("MLAAD-PT", "Todos"):
-                            dl_mod.download_mlaad_pt(max_s)
-                            yield capture.text(), "⏳ MLAAD-PT concluido..."
-
-                        # Report final
-                        data = _scan_dataset()
-                        final = (
-                            f"✅ **Download concluido!**\n\n"
-                            f"- Real: {data['real_count']} amostras (~{data['real_duration_h']:.1f}h)\n"
-                            f"- Fake: {data['fake_count']} amostras (~{data['fake_duration_h']:.1f}h)\n"
-                            f"- Total: {data['real_count'] + data['fake_count']}"
+                        # ── Estado inicial e plano ──────────────────────
+                        plan, real_needed, fake_needed = _compute_download_plan(
+                            selected_sources,
+                            data["real_count"],
+                            data["fake_count"],
+                            int(target),
                         )
-                        yield capture.text(), final
+                        plan_text = _format_plan_md(
+                            plan, real_needed, fake_needed,
+                            data["real_count"], data["fake_count"],
+                            int(target),
+                        )
+
+                        yield (
+                            _balance_bar_html(data["real_count"], data["fake_count"]),
+                            plan_text,
+                            _assess_training_readiness(data["real_count"], data["fake_count"]),
+                            "Iniciando download balanceado...",
+                            "⏳ Preparando...",
+                        )
+
+                        # ── Executar cada fonte com alocação calculada ──
+                        for i, source in enumerate(selected_sources):
+                            info    = plan.get(source, {})
+                            max_s   = info.get("max_samples", 0)
+                            f_alloc = info.get("fake_alloc", 0)
+
+                            if max_s <= 0:
+                                capture.records.append(
+                                    f"[INFO] {source}: alvo já atingido — pulando."
+                                )
+                                yield (
+                                    _balance_bar_html(data["real_count"], data["fake_count"]),
+                                    plan_text,
+                                    _assess_training_readiness(data["real_count"], data["fake_count"]),
+                                    capture.text(),
+                                    f"⏳ [{i+1}/{len(selected_sources)}] {source}: já OK",
+                                )
+                                continue
+
+                            capture.records.append(
+                                f"[INFO] ── [{i+1}/{len(selected_sources)}] {source} "
+                                f"(max_samples={max_s}) ──"
+                            )
+                            yield (
+                                _balance_bar_html(data["real_count"], data["fake_count"]),
+                                plan_text,
+                                _assess_training_readiness(data["real_count"], data["fake_count"]),
+                                capture.text(),
+                                f"⏳ [{i+1}/{len(selected_sources)}] Baixando {source}...",
+                            )
+
+                            # ── Dispatch ───────────────────────────────
+                            if source == "BRSpeech-DF":
+                                dl_mod.download_brspeech(max_s)
+
+                            elif source == "Fake Voices":
+                                spk_override = int(speakers_override or 0)
+                                if spk_override > 0:
+                                    max_spk = spk_override
+                                else:
+                                    max_spk = max(5, min(50, math.ceil(
+                                        f_alloc / _FAKE_VOICES_SAMPLES_PER_SPEAKER
+                                    )))
+                                capture.records.append(
+                                    f"[INFO]   Fake Voices: {max_spk} falantes "
+                                    f"(~{max_spk * _FAKE_VOICES_SAMPLES_PER_SPEAKER} amostras)"
+                                )
+                                dl_mod.download_fake_voices(max_speakers=max_spk)
+
+                            elif source == "FLEURS":
+                                dl_mod.download_fleurs(max_s)
+
+                            elif source == "CETUC":
+                                dl_mod.download_cetuc(max_s)
+
+                            elif source == "MLAAD-PT":
+                                dl_mod.download_mlaad_pt(max_s)
+
+                            elif source == "Common Voice PT":
+                                dl_mod.download_common_voice_pt(max_s)
+
+                            elif source == "ASVspoof 2019":
+                                dl_mod.download_asvspoof2019(max_s)
+
+                            elif source == "WaveFake":
+                                dl_mod.download_wavefake(max_s)
+
+                            elif source == "In-the-Wild":
+                                dl_mod.download_in_the_wild(max_s)
+
+                            elif source == "ASVspoof 5":
+                                dl_mod.download_asvspoof5(max_s)
+
+                            # ── Atualiza barra e readiness após cada fonte ─
+                            # light=True: só contadores (evita 300 sf.info/scan)
+                            data = _scan_dataset(light=True)
+                            yield (
+                                _balance_bar_html(data["real_count"], data["fake_count"]),
+                                plan_text,
+                                _assess_training_readiness(data["real_count"], data["fake_count"]),
+                                capture.text(),
+                                f"⏳ [{i+1}/{len(selected_sources)}] {source} concluído.",
+                            )
+
+                        # ── Relatório final (scan completo p/ durações) ─
+                        data   = _scan_dataset()
+                        rc, fc = data["real_count"], data["fake_count"]
+                        ratio  = rc / max(fc, 1)
+                        rh, fh = data["real_duration_h"], data["fake_duration_h"]
+
+                        if 0.8 <= ratio <= 1.25:
+                            bal_line = f"✅ Dataset balanceado (ratio={ratio:.2f})"
+                        elif 0.5 <= ratio <= 2.0:
+                            bal_line = (
+                                f"⚠️ Aceitável (ratio={ratio:.2f}) — "
+                                "class_weight=balanced será aplicado no treino"
+                            )
+                        else:
+                            menor = "real" if rc < fc else "fake"
+                            diff  = abs(rc - fc)
+                            bal_line = (
+                                f"❌ Desbalanceado (ratio={ratio:.2f}) — "
+                                f"faltam ~{diff:,} amostras `{menor}`. "
+                                f"Use preset **Só Reforçar {menor.title()}** para corrigir."
+                            )
+
+                        final_status = (
+                            f"✅ **Download concluído!**\n\n"
+                            f"| Classe | Amostras | Duração |\n"
+                            f"|--------|:--------:|:-------:|\n"
+                            f"| Real   | **{rc:,}** | ~{rh:.1f}h |\n"
+                            f"| Fake   | **{fc:,}** | ~{fh:.1f}h |\n"
+                            f"| Total  | **{rc+fc:,}** | ~{rh+fh:.1f}h |\n\n"
+                            f"{bal_line}\n\n"
+                            f"**Próximo passo:** Aba **Pré-processamento → Pipeline Completo**"
+                        )
+
+                        yield (
+                            _balance_bar_html(rc, fc),
+                            plan_text,
+                            _assess_training_readiness(rc, fc),
+                            capture.text(),
+                            final_status,
+                        )
 
                     except Exception as e:
-                        yield capture.text() + f"\n\nERRO: {e}", f"❌ Erro: {e}"
+                        data = _scan_dataset()
+                        yield (
+                            _balance_bar_html(data["real_count"], data["fake_count"]),
+                            "",
+                            _assess_training_readiness(data["real_count"], data["fake_count"]),
+                            capture.text() + f"\n\nERRO: {e}",
+                            f"❌ Erro: {e}",
+                        )
                     finally:
                         dl_mod.logger.removeHandler(capture)
 
+                # Wire events
+                dl_bal_refresh.click(
+                    fn=_dl_refresh_balance,
+                    outputs=[dl_balance_html, dl_readiness_md],
+                )
+                # Preset → atualiza sources; o .change de sources cascateia
+                # para recalcular o plano automaticamente (sem clicar em Calcular).
+                dl_preset.change(
+                    fn=_dl_apply_preset,
+                    inputs=[dl_preset],
+                    outputs=[dl_sources],
+                )
+                # Handler único: toggle falantes + barra + plano + prontidão.
+                dl_sources.change(
+                    fn=_dl_on_sources_change,
+                    inputs=[dl_sources, dl_target],
+                    outputs=[dl_speakers_override, dl_balance_html,
+                             dl_plan_md, dl_readiness_md],
+                )
+                # Mudar o alvo também recalcula o plano.
+                dl_target.release(
+                    fn=_dl_on_sources_change,
+                    inputs=[dl_sources, dl_target],
+                    outputs=[dl_speakers_override, dl_balance_html,
+                             dl_plan_md, dl_readiness_md],
+                )
+                dl_plan_btn.click(
+                    fn=_dl_compute_plan,
+                    inputs=[dl_sources, dl_target],
+                    outputs=[dl_balance_html, dl_plan_md, dl_readiness_md],
+                )
                 dl_btn.click(
                     fn=handle_download,
-                    inputs=[dl_source, dl_max_samples, dl_max_speakers],
-                    outputs=[dl_log, dl_status],
+                    inputs=[dl_sources, dl_target, dl_speakers_override],
+                    outputs=[dl_balance_html, dl_plan_md, dl_readiness_md, dl_log, dl_status],
                 )
 
             # ===========================================================
             # SUB-TAB 3: PREPROCESSAMENTO
             # ===========================================================
-            with gr.Tab("Preprocessamento", id="tab_ds_preprocess"):
+            with gr.Tab("Pré-processamento", id="tab_ds_preprocess"):
 
                 gr.Markdown(
-                    "### Pipeline de Preprocessamento\n"
+                    "### Pipeline de Pré-processamento\n"
                     "Valide, normalize, remova duplicatas e crie splits train/val/test."
                 )
 
                 with gr.Row():
                     with gr.Column(scale=1):
                         pp_validate_btn = gr.Button("Validar Dataset", variant="secondary")
-                        pp_normalize_btn = gr.Button("Normalizar Audio", variant="secondary")
+                        pp_normalize_btn = gr.Button("Normalizar Áudio", variant="secondary")
                         pp_dedup_btn = gr.Button("Remover Duplicatas", variant="secondary")
                         gr.Markdown("---")
                         pp_train_ratio = gr.Slider(0.6, 0.9, value=0.8, step=0.05, label="Train ratio")
@@ -776,7 +1373,7 @@ def create_dataset_management_tab():
                 )
 
                 with gr.Accordion("Recomendacoes Detalhadas", open=False):
-                    compat_details = gr.Markdown("*Execute a analise para ver recomendacoes...*")
+                    compat_details = gr.Markdown("*Execute a análise para ver recomendações...*")
 
                 # Resumo geral
                 compat_summary = gr.Markdown("")

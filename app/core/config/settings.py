@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Union
 
 class Environment(Enum):
     """Ambientes de execução."""
+
     DEVELOPMENT = "development"
     TESTING = "testing"
     PRODUCTION = "production"
@@ -21,6 +22,7 @@ class Environment(Enum):
 
 class LogLevel(Enum):
     """Níveis de log."""
+
     DEBUG = "DEBUG"
     INFO = "INFO"
     WARNING = "WARNING"
@@ -31,29 +33,30 @@ class LogLevel(Enum):
 @dataclass
 class PathConfig:
     """Configurações de caminhos."""
+
     base_dir: Path = field(default_factory=lambda: Path("."))
     data_dir: Path = field(default_factory=lambda: Path("./app/datasets"))
     logs_dir: Path = field(default_factory=lambda: Path("./app/logs"))
     temp_dir: Path = field(default_factory=lambda: Path("./app/temp"))
-    models_dir: Path = field(
-        default_factory=lambda: Path("./app/artifacts/models"))
+    models_dir: Path = field(default_factory=lambda: Path("./app/artifacts/models"))
 
     # Subdiretórios de dados
     datasets_dir: Path = field(default_factory=lambda: Path("./app/datasets"))
-    features_dir: Path = field(
-        default_factory=lambda: Path("./app/datasets/features"))
+    features_dir: Path = field(default_factory=lambda: Path("./app/datasets/features"))
     samples_dir: Path = field(default_factory=lambda: Path("./app/datasets"))
 
     # Diretórios de upload
     uploads_dir: Path = field(default_factory=lambda: Path("./app/uploads"))
     upload_training_dir: Path = field(
-        default_factory=lambda: Path("./app/uploads/training"))
+        default_factory=lambda: Path("./app/uploads/training")
+    )
     upload_validation_dir: Path = field(
-        default_factory=lambda: Path("./app/uploads/validation"))
-    upload_test_dir: Path = field(
-        default_factory=lambda: Path("./app/uploads/test"))
+        default_factory=lambda: Path("./app/uploads/validation")
+    )
+    upload_test_dir: Path = field(default_factory=lambda: Path("./app/uploads/test"))
     upload_production_dir: Path = field(
-        default_factory=lambda: Path("./app/uploads/production"))
+        default_factory=lambda: Path("./app/uploads/production")
+    )
 
     def __post_init__(self):
         """Ajusta caminhos relativos ao base_dir."""
@@ -75,8 +78,14 @@ class PathConfig:
     def create_directories(self):
         """Cria todos os diretórios necessários."""
         directories = [
-            self.base_dir, self.data_dir, self.logs_dir, self.temp_dir,
-            self.models_dir, self.datasets_dir, self.features_dir, self.samples_dir
+            self.base_dir,
+            self.data_dir,
+            self.logs_dir,
+            self.temp_dir,
+            self.models_dir,
+            self.datasets_dir,
+            self.features_dir,
+            self.samples_dir,
         ]
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)
@@ -85,16 +94,17 @@ class PathConfig:
 @dataclass
 class AudioConfig:
     """Configurações de processamento de áudio."""
+
     sample_rate: int = 16000
     frame_length: int = 2048
     hop_length: int = 512
     n_mels: int = 128
     n_fft: int = 2048
     max_duration: float = 30.0  # segundos
-    min_duration: float = 1.0   # segundos
+    min_duration: float = 1.0  # segundos
     allowed_formats: List[str] = field(
-        default_factory=lambda: [
-            ".wav", ".mp3", ".flac", ".m4a"])
+        default_factory=lambda: [".wav", ".mp3", ".flac", ".m4a"]
+    )
     normalize: bool = True
     remove_silence: bool = True
 
@@ -102,12 +112,10 @@ class AudioConfig:
 @dataclass
 class FeatureConfig:
     """Configurações de extração de características."""
+
     feature_groups: List[str] = field(
-        default_factory=lambda: [
-            "spectral",
-            "temporal",
-            "prosodic",
-            "perceptual"])
+        default_factory=lambda: ["spectral", "temporal", "prosodic", "perceptual"]
+    )
     save_formats: List[str] = field(default_factory=lambda: ["json", "npy"])
     parallel_processing: bool = True
     max_workers: int = 4
@@ -115,26 +123,23 @@ class FeatureConfig:
     cache_features: bool = True
 
     # Configurações específicas por tipo
-    spectral_config: Dict[str, Any] = field(default_factory=lambda: {
-        "n_mfcc": 13,
-        "n_chroma": 12,
-        "n_contrast": 7
-    })
+    spectral_config: Dict[str, Any] = field(
+        default_factory=lambda: {"n_mfcc": 13, "n_chroma": 12, "n_contrast": 7}
+    )
 
-    temporal_config: Dict[str, Any] = field(default_factory=lambda: {
-        "window_size": 1024,
-        "overlap": 0.5
-    })
+    temporal_config: Dict[str, Any] = field(
+        default_factory=lambda: {"window_size": 1024, "overlap": 0.5}
+    )
 
-    prosodic_config: Dict[str, Any] = field(default_factory=lambda: {
-        "f0_min": 75,
-        "f0_max": 400
-    })
+    prosodic_config: Dict[str, Any] = field(
+        default_factory=lambda: {"f0_min": 75, "f0_max": 400}
+    )
 
 
 @dataclass
 class TrainingConfig:
     """Configurações de treinamento."""
+
     batch_size: int = 32
     epochs: int = 100
     learning_rate: float = 0.001
@@ -144,28 +149,34 @@ class TrainingConfig:
     reduce_lr_patience: int = 5
 
     # Arquiteturas disponíveis
-    available_architectures: List[str] = field(default_factory=lambda: [
-        "aasist", "conformer", "efficientnet_lstm", "ensemble",
-        "multiscale_cnn", "rawgat_st", "spectrogram_transformer"
-    ])
+    available_architectures: List[str] = field(
+        default_factory=lambda: [
+            "aasist",
+            "conformer",
+            "efficientnet_lstm",
+            "ensemble",
+            "multiscale_cnn",
+            "rawgat_st",
+            "spectrogram_transformer",
+        ]
+    )
 
     # Configurações de otimização
     optimizer: str = "adam"
     loss_function: str = "binary_crossentropy"
     metrics: List[str] = field(
-        default_factory=lambda: [
-            "accuracy",
-            "precision",
-            "recall",
-            "f1"])
+        default_factory=lambda: ["accuracy", "precision", "recall", "f1"]
+    )
 
     # Data augmentation
     use_augmentation: bool = True
-    augmentation_config: Dict[str, Any] = field(default_factory=lambda: {
-        "noise_factor": 0.1,
-        "time_stretch_factor": 0.1,
-        "pitch_shift_steps": 2
-    })
+    augmentation_config: Dict[str, Any] = field(
+        default_factory=lambda: {
+            "noise_factor": 0.1,
+            "time_stretch_factor": 0.1,
+            "pitch_shift_steps": 2,
+        }
+    )
 
     # Class weighting automático (Sprint 1.3)
     # Compensa datasets desbalanceados (típico em ASVspoof, In-the-Wild).
@@ -211,6 +222,7 @@ class TrainingConfig:
 @dataclass
 class APIConfig:
     """Configurações da API."""
+
     host: str = "0.0.0.0"
     port: int = 8000
     debug: bool = False
@@ -233,6 +245,7 @@ class APIConfig:
 @dataclass
 class DatabaseConfig:
     """Configurações de banco de dados."""
+
     type: str = "sqlite"  # sqlite, postgresql, mysql
     host: str = "localhost"
     port: int = 5432
@@ -241,8 +254,7 @@ class DatabaseConfig:
     password: Optional[str] = None
 
     # SQLite específico
-    sqlite_path: Path = field(
-        default_factory=lambda: Path("./data/database.db"))
+    sqlite_path: Path = field(default_factory=lambda: Path("./data/database.db"))
 
     # Pool de conexões
     pool_size: int = 5
@@ -253,8 +265,11 @@ class DatabaseConfig:
 @dataclass
 class LoggingConfig:
     """Configurações de logging."""
+
     level: LogLevel = LogLevel.INFO
-    format: str = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}"
+    format: str = (
+        "{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}"
+    )
     rotation: str = "1 day"
     retention: str = "30 days"
     compression: str = "gz"
@@ -265,17 +280,20 @@ class LoggingConfig:
     enable_json_logging: bool = False
 
     # Configurações por módulo
-    module_levels: Dict[str, str] = field(default_factory=lambda: {
-        "upload": "INFO",
-        "feature_extraction": "INFO",
-        "training": "INFO",
-        "api": "WARNING"
-    })
+    module_levels: Dict[str, str] = field(
+        default_factory=lambda: {
+            "upload": "INFO",
+            "feature_extraction": "INFO",
+            "training": "INFO",
+            "api": "WARNING",
+        }
+    )
 
 
 @dataclass
 class MonitoringConfig:
     """Configurações de monitoramento."""
+
     enable_metrics: bool = True
     metrics_port: int = 9090
     enable_health_checks: bool = True
@@ -293,13 +311,31 @@ class MonitoringConfig:
 
 
 @dataclass
+class PerformanceConfig:
+    """Configurações de runtime para CPU, GPU, RAM e VRAM."""
+
+    cpu_threads: Optional[int] = None
+    inter_op_threads: Optional[int] = None
+    max_parallel_workers: Optional[int] = None
+    enable_onednn: bool = True
+    enable_xla: bool = True
+    cuda_malloc_async: bool = True
+    gpu_memory_growth: bool = True
+    gpu_memory_limit_mb: Optional[int] = None
+    max_upload_mb: int = 100
+    slow_request_ms: int = 1500
+    log_every_request: bool = False
+
+
+@dataclass
 class SecurityConfig:
     """Configurações de segurança."""
+
     enable_file_validation: bool = True
     max_file_size: int = 100 * 1024 * 1024  # 100MB
-    allowed_mime_types: List[str] = field(default_factory=lambda: [
-        "audio/wav", "audio/mpeg", "audio/flac", "audio/mp4"
-    ])
+    allowed_mime_types: List[str] = field(
+        default_factory=lambda: ["audio/wav", "audio/mpeg", "audio/flac", "audio/mp4"]
+    )
 
     # Sanitização
     sanitize_filenames: bool = True
@@ -313,6 +349,7 @@ class SecurityConfig:
 @dataclass
 class SystemConfig:
     """Configuração principal do sistema."""
+
     environment: Environment = Environment.DEVELOPMENT
     debug: bool = True
     version: str = "1.0.0"
@@ -326,6 +363,7 @@ class SystemConfig:
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     monitoring: MonitoringConfig = field(default_factory=MonitoringConfig)
+    performance: PerformanceConfig = field(default_factory=PerformanceConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
 
     def __post_init__(self):
@@ -340,14 +378,15 @@ class SystemConfig:
         self.paths.create_directories()
 
     @classmethod
-    def from_file(cls, config_path: Union[str, Path]) -> 'SystemConfig':
+    def from_file(cls, config_path: Union[str, Path]) -> "SystemConfig":
         """Carrega configuração de arquivo JSON."""
         config_path = Path(config_path)
         if not config_path.exists():
             raise FileNotFoundError(
-                f"Arquivo de configuração não encontrado: {config_path}")
+                f"Arquivo de configuração não encontrado: {config_path}"
+            )
 
-        with open(config_path, 'r', encoding='utf-8') as f:
+        with open(config_path, "r", encoding="utf-8") as f:
             config_data = json.load(f)
 
         return cls(**config_data)
@@ -360,17 +399,18 @@ class SystemConfig:
         # Converter para dicionário serializável
         config_dict = self._to_serializable_dict()
 
-        with open(config_path, 'w', encoding='utf-8') as f:
+        with open(config_path, "w", encoding="utf-8") as f:
             json.dump(config_dict, f, indent=2, ensure_ascii=False)
 
     def _to_serializable_dict(self) -> Dict[str, Any]:
         """Converte configuração para dicionário serializável."""
+
         def convert_value(value):
             if isinstance(value, Path):
                 return str(value)
             elif isinstance(value, Enum):
                 return value.value
-            elif hasattr(value, '__dict__'):
+            elif hasattr(value, "__dict__"):
                 return {k: convert_value(v) for k, v in value.__dict__.items()}
             elif isinstance(value, (list, tuple)):
                 return [convert_value(item) for item in value]
@@ -382,22 +422,35 @@ class SystemConfig:
         return convert_value(self)
 
     @classmethod
-    def from_env(cls) -> 'SystemConfig':
+    def from_env(cls) -> "SystemConfig":
         """Carrega configuração de variáveis de ambiente."""
         config = cls()
 
         # Sobrescrever com variáveis de ambiente se existirem
-        if os.getenv('DEEPFAKE_ENV'):
-            config.environment = Environment(os.getenv('DEEPFAKE_ENV'))
+        if os.getenv("DEEPFAKE_ENV"):
+            config.environment = Environment(os.getenv("DEEPFAKE_ENV"))
 
-        if os.getenv('DEEPFAKE_DEBUG'):
-            config.debug = os.getenv('DEEPFAKE_DEBUG').lower() == 'true'
+        if os.getenv("DEEPFAKE_DEBUG"):
+            config.debug = os.getenv("DEEPFAKE_DEBUG").lower() == "true"
 
-        if os.getenv('DEEPFAKE_API_HOST'):
-            config.api.host = os.getenv('DEEPFAKE_API_HOST')
+        if os.getenv("DEEPFAKE_API_HOST"):
+            config.api.host = os.getenv("DEEPFAKE_API_HOST")
 
-        if os.getenv('DEEPFAKE_API_PORT'):
-            config.api.port = int(os.getenv('DEEPFAKE_API_PORT'))
+        if os.getenv("DEEPFAKE_API_PORT"):
+            config.api.port = int(os.getenv("DEEPFAKE_API_PORT"))
+
+        if os.getenv("XFAKE_TF_INTRA_OP_THREADS"):
+            config.performance.cpu_threads = int(os.getenv("XFAKE_TF_INTRA_OP_THREADS"))
+
+        if os.getenv("XFAKE_TF_INTER_OP_THREADS"):
+            config.performance.inter_op_threads = int(
+                os.getenv("XFAKE_TF_INTER_OP_THREADS")
+            )
+
+        if os.getenv("XFAKE_GPU_MEMORY_LIMIT_MB"):
+            config.performance.gpu_memory_limit_mb = int(
+                os.getenv("XFAKE_GPU_MEMORY_LIMIT_MB")
+            )
 
         return config
 

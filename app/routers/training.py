@@ -8,7 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.core.auth.auth_handler import get_api_key
 from app.core.database import get_background_db, get_db
-from app.core.exceptions import ServiceUnavailableError, ValidationError
+from app.core.exceptions import (
+    ModelNotFoundError,
+    ServiceUnavailableError,
+    ValidationError,
+)
 from app.core.interfaces.base import ProcessingStatus
 from app.core.security import limiter
 from app.dependencies import get_detection_service, get_training_service
@@ -18,6 +22,8 @@ from app.domain.services.training_service import TrainingService
 from app.schemas.api_models import (
     CrossValidationRequest,
     CrossValidationResult,
+    OnnxExportRequest,
+    OnnxExportResponse,
     TrainingRequest,
     TrainingResponse,
 )
@@ -397,4 +403,97 @@ async def get_cv_result(
         best_fold=int(metrics.get("best_fold", -1)),
         aggregated=aggregated,
         per_fold=[],  # detalhes per_fold ficam apenas no log do task
+    )
+
+
+# ── API.7 (Sprint 3.4): Export ONNX + INT8 quantization ─────────────────
+
+
+@router.post(
+    "/export-onnx",
+    response_model=OnnxExportResponse,
+    dependencies=[Depends(get_api_key)],
+    summary="Exporta um modelo carregado para ONNX (+ INT8 opcional)",
+    description=(
+        "Converte um modelo TensorFlow/Keras já carregado para o formato ONNX "
+        "(Sprint 3.4). Com quantize_int8=True, também gera uma versão INT8 via "
+        "dynamic quantization. Modelos sklearn (SVM/Random Forest) não são "
+        "suportados. Requer tf2onnx + onnxruntime instalados."
+    ),
+)
+@limiter.limit("5/minute")
+async def export_model_onnx(
+    request: Request,
+    body: OnnxExportRequest,
+    service: DetectionService = Depends(get_detection_service),
+):
+    from app.domain.models.inference.onnx_export import (
+        export_to_onnx,
+        is_onnx_available,
+        quantize_int8,
+    )
+
+    # 1) Dependências disponíveis?
+    if not is_onnx_available():
+        raise ServiceUnavailableError(
+            "onnx_export (instale: pip install tf2onnx onnxruntime)"
+        )
+
+    # 2) Modelo existe e está carregado?
+    model_info = service.loaded_models.get(body.model_name)
+    if model_info is None:
+        raise ModelNotFoundError(body.model_name)
+
+    # 3) Apenas modelos TensorFlow/Keras podem ser exportados via tf2onnx
+    if getattr(model_info, "model_type", None) != "tensorflow":
+        raise ValidationError(
+            f"Export ONNX só suporta modelos TensorFlow/Keras. "
+            f"'{body.model_name}' é '{model_info.model_type}'.",
+            field="model_name",
+        )
+
+    out_dir = service.models_dir / "onnx"
+    onnx_path = out_dir / f"{body.model_name}.onnx"
+
+    # 4) Export FP32
+    result_path = export_to_onnx(
+        model_info.model,
+        onnx_path,
+        opset=body.opset,
+        dynamic_batch=body.dynamic_batch,
+    )
+    if result_path is None:
+        return OnnxExportResponse(
+            success=False,
+            message=(
+                "Falha ao exportar para ONNX. Verifique os logs do servidor "
+                "(arquitetura pode usar camadas não conversíveis por tf2onnx)."
+            ),
+        )
+
+    size_mb = round(result_path.stat().st_size / (1024 * 1024), 3)
+    int8_path = None
+    size_int8_mb = None
+
+    # 5) Quantização INT8 opcional
+    if body.quantize_int8:
+        int8_out = out_dir / f"{body.model_name}_int8.onnx"
+        int8_result = quantize_int8(result_path, int8_out)
+        if int8_result is not None:
+            int8_path = str(int8_result)
+            size_int8_mb = round(int8_result.stat().st_size / (1024 * 1024), 3)
+
+    msg = f"Modelo '{body.model_name}' exportado para ONNX (opset={body.opset})."
+    if body.quantize_int8 and int8_path is None:
+        msg += " Quantização INT8 falhou (ver logs)."
+    elif int8_path is not None:
+        msg += f" INT8 gerado ({size_int8_mb} MB)."
+
+    return OnnxExportResponse(
+        success=True,
+        onnx_path=str(result_path),
+        onnx_int8_path=int8_path,
+        size_mb=size_mb,
+        size_int8_mb=size_int8_mb,
+        message=msg,
     )

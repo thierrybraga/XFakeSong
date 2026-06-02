@@ -468,8 +468,9 @@ def _create_sonic_sleuth_paper(input_shape, num_classes=1, feature_type='lfcc',
     x = layers.Dense(128, activation='relu', name='dense_2')(x)
     x = layers.Dropout(0.3, name='classifier_dropout')(x)
 
-    # Paper uses binary classification (real/fake) with sigmoid
-    if num_classes == 1 or num_classes == 2:
+    # Cabeça de saída PADRONIZADA: num_classes>=2 → softmax N-unidades
+    # (convenção única do projeto). Só num_classes==1 usa sigmoid 1-unidade.
+    if num_classes == 1:
         outputs = layers.Dense(1, activation='sigmoid', name='output')(x)
         loss = 'binary_crossentropy'
     else:

@@ -62,7 +62,8 @@ def validate_dataset():
     logger.info("VALIDACAO DO DATASET")
     logger.info("=" * 60)
 
-    issues = {"corrupted": [], "too_short": [], "too_long": [], "silent": [], "wrong_sr": [], "stereo": []}
+    issues = {"corrupted": [], "too_short": [], "too_long": [], "silent": [],
+              "wrong_sr": [], "stereo": [], "nan_inf": []}
     stats = {"real": {"count": 0, "total_duration": 0.0, "durations": []},
              "fake": {"count": 0, "total_duration": 0.0, "durations": []}}
 
@@ -91,8 +92,17 @@ def validate_dataset():
                     issues["too_long"].append((str(wav_path), duration))
                     continue
 
-                # Checar silêncio
+                # Carregar amostra para checagens de conteúdo
                 y, _ = librosa.load(str(wav_path), sr=TARGET_SR, duration=5.0)
+
+                # BUG FIX: detectar NaN/Inf — arquivos corrompidos que passariam
+                # silenciosamente (NaN < threshold é sempre False → contado válido!)
+                # e depois causariam loss:nan no treino.
+                if not np.all(np.isfinite(y)):
+                    issues["nan_inf"].append(str(wav_path))
+                    continue
+
+                # Checar silêncio
                 rms = np.sqrt(np.mean(y**2))
                 if rms < 10 ** (SILENCE_THRESHOLD_DB / 20):
                     issues["silent"].append(str(wav_path))
@@ -126,6 +136,8 @@ def validate_dataset():
         logger.warning(f"\n  Problemas encontrados: {total_issues}")
         if issues["corrupted"]:
             logger.warning(f"    Corrompidos    : {len(issues['corrupted'])}")
+        if issues["nan_inf"]:
+            logger.warning(f"    NaN/Inf (graves): {len(issues['nan_inf'])} — REMOVA antes de treinar!")
         if issues["too_short"]:
             logger.warning(f"    Muito curtos   : {len(issues['too_short'])}")
         if issues["too_long"]:
@@ -162,6 +174,19 @@ def normalize_all():
             try:
                 y, sr = librosa.load(str(wav_path), sr=TARGET_SR, mono=True)
 
+                # BUG FIX: sanitizar NaN/Inf ANTES de qualquer cálculo numérico.
+                # Sem isso: np.max(np.abs(NaN))=NaN → y/NaN=NaN → arquivo salvo
+                # como NaN → wizard de treino lê e gera loss:nan na 1ª época.
+                if not np.all(np.isfinite(y)):
+                    finite = np.isfinite(y)
+                    if finite.sum() < y.size * 0.5:
+                        logger.warning(f"  Removendo (NaN/Inf >50%): {wav_path.name}")
+                        wav_path.unlink()
+                        removed += 1
+                        continue
+                    # Substitui NaN/Inf locais por silêncio, preserva o resto
+                    y = np.where(finite, y, 0.0).astype(np.float32)
+
                 duration = len(y) / TARGET_SR
                 if duration < MIN_DURATION or duration > MAX_DURATION:
                     wav_path.unlink()
@@ -170,22 +195,36 @@ def normalize_all():
 
                 # Checar silêncio
                 rms = np.sqrt(np.mean(y**2))
-                if rms < 10 ** (SILENCE_THRESHOLD_DB / 20):
+                if not np.isfinite(rms) or rms < 10 ** (SILENCE_THRESHOLD_DB / 20):
                     wav_path.unlink()
                     removed += 1
                     continue
 
-                # Normalizar amplitude
-                peak = np.max(np.abs(y))
-                if peak > 0:
-                    y = y / peak * 0.95
+                # Normalizar amplitude (peak já garantido finito acima)
+                peak = float(np.max(np.abs(y)))
+                if peak > 1e-6:
+                    y = (y / peak * 0.95).astype(np.float32)
+                else:
+                    wav_path.unlink()
+                    removed += 1
+                    continue
+
+                # Validação final antes de gravar (defesa em profundidade)
+                if not np.all(np.isfinite(y)):
+                    logger.warning(f"  Removendo (NaN pós-normalização): {wav_path.name}")
+                    wav_path.unlink()
+                    removed += 1
+                    continue
 
                 sf.write(str(wav_path), y, TARGET_SR, subtype="PCM_16")
                 fixed += 1
 
             except Exception as e:
                 logger.warning(f"  Removendo arquivo corrompido: {wav_path.name} ({e})")
-                wav_path.unlink()
+                try:
+                    wav_path.unlink()
+                except OSError:
+                    pass
                 removed += 1
 
     logger.info(f"\nNormalizacao completa: {fixed} normalizados, {removed} removidos")

@@ -1,5 +1,10 @@
 """Utilitários compartilhados pelos tabs Gradio."""
 
+from app.interfaces.gradio.utils.components import (
+    info_callout,
+    page_header,
+    section_divider,
+)
 from app.interfaces.gradio.utils.i18n import (
     get_language,
     set_language,
@@ -46,6 +51,10 @@ from app.interfaces.gradio.utils.plotting import (
 )
 
 __all__ = [
+    # Componentes de UI compartilhados
+    "page_header",
+    "section_divider",
+    "info_callout",
     # Plotting
     "PLOT_ACCENT",
     "PLOT_ACCENT2",

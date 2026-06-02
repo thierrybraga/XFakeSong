@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import pytest
 
-
 # ────────────────────────────────────────────────────────────────────────
 # Registro de rotas
 # ────────────────────────────────────────────────────────────────────────
@@ -29,12 +28,15 @@ EXPECTED_ROUTES = [
     ("GET", "/api/v1/system/bootstrap"),
     ("GET", "/api/v1/system/version"),
     ("GET", "/api/v1/system/info"),
+    ("GET", "/api/v1/system/feedback"),
+    ("POST", "/api/v1/system/feedback/read"),
+    ("POST", "/api/v1/system/feedback/clear"),
     # detection
     ("POST", "/api/v1/detection/analyze"),
     ("GET", "/api/v1/detection/models"),
     ("GET", "/api/v1/detection/architectures"),
-    ("POST", "/api/v1/detection/multi-model"),   # API.5 (Sprint 4.4)
-    ("POST", "/api/v1/detection/uncertainty"),   # API.6 (Sprint 5.4)
+    ("POST", "/api/v1/detection/multi-model"),  # API.5 (Sprint 4.4)
+    ("POST", "/api/v1/detection/uncertainty"),  # API.6 (Sprint 5.4)
     # features
     ("POST", "/api/v1/features/extract"),
     ("GET", "/api/v1/features/types"),
@@ -42,8 +44,9 @@ EXPECTED_ROUTES = [
     ("POST", "/api/v1/training/start"),
     ("GET", "/api/v1/training/status/{job_id}"),
     ("GET", "/api/v1/training/architectures"),
-    ("POST", "/api/v1/training/cross-validate"),         # API.7 (Sprint 4.1)
+    ("POST", "/api/v1/training/cross-validate"),  # API.7 (Sprint 4.1)
     ("GET", "/api/v1/training/cross-validate/{job_id}"),
+    ("POST", "/api/v1/training/export-onnx"),  # API.7 (Sprint 3.4)
     # history
     ("GET", "/api/v1/history/"),
     ("GET", "/api/v1/history/{analysis_id}"),
@@ -83,16 +86,15 @@ def test_all_expected_routes_registered(client):
             missing.append(f"{method} {path}")
 
     assert not missing, (
-        f"Rotas faltando: {missing}\n"
-        f"Registradas: {sorted(registered)[:10]}..."
+        f"Rotas faltando: {missing}\nRegistradas: {sorted(registered)[:10]}..."
     )
 
 
 def test_openapi_schema_is_valid(client):
     """OpenAPI schema deve ser gerável sem erros."""
-    resp = client.get("/api/openapi.json") if hasattr(
-        client.app, "openapi_url"
-    ) else None
+    resp = (
+        client.get("/api/openapi.json") if hasattr(client.app, "openapi_url") else None
+    )
     # Se app foi montado com openapi_url, testa via HTTP; senão chama direto
     if resp is None or resp.status_code == 404:
         schema = client.app.openapi()
@@ -107,6 +109,7 @@ def test_openapi_schema_is_valid(client):
 # ────────────────────────────────────────────────────────────────────────
 # Endpoints triviais (system)
 # ────────────────────────────────────────────────────────────────────────
+
 
 def test_system_status_ok(client):
     resp = client.get("/api/v1/system/status")
@@ -145,6 +148,8 @@ def test_system_info_ok(client):
     assert "models" in body
     assert "endpoints" in body
     assert body["endpoints"]["docs"] == "/api/docs"
+    assert body["endpoints"]["feedback"] == "/api/v1/system/feedback"
+    assert "feedback" in body
 
 
 def test_system_bootstrap_ok(client):
@@ -153,9 +158,23 @@ def test_system_bootstrap_ok(client):
     assert resp.json() == {"status": "ok"}
 
 
+def test_system_feedback_ok(client):
+    import logging
+
+    logging.getLogger("tests.feedback").warning("feedback smoke event")
+    resp = client.get("/api/v1/system/feedback?limit=5&mark_read=true")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert "summary" in body
+    assert "events" in body
+    assert isinstance(body["events"], list)
+
+
 # ────────────────────────────────────────────────────────────────────────
 # Detection (sem upload — só endpoints GET)
 # ────────────────────────────────────────────────────────────────────────
+
 
 def test_detection_models_ok(client):
     resp = client.get("/api/v1/detection/models")
@@ -178,6 +197,7 @@ def test_detection_architectures_ok(client):
 # Features
 # ────────────────────────────────────────────────────────────────────────
 
+
 def test_features_types_ok(client):
     resp = client.get("/api/v1/features/types")
     assert resp.status_code == 200
@@ -190,6 +210,7 @@ def test_features_types_ok(client):
 # ────────────────────────────────────────────────────────────────────────
 # Training (architectures GET é seguro de testar)
 # ────────────────────────────────────────────────────────────────────────
+
 
 def test_training_architectures_ok(client):
     resp = client.get("/api/v1/training/architectures")
@@ -210,9 +231,11 @@ def test_training_status_not_found_returns_proper_response(client):
 # Schemas — campos novos preservados (API.4)
 # ────────────────────────────────────────────────────────────────────────
 
+
 def test_prediction_result_exposes_new_fields():
     """PredictionResult deve aceitar (mas não exigir) campos Sprint 1.4/2.5/4.5."""
     from app.schemas.api_models import PredictionResult
+
     p = PredictionResult(
         is_fake=True,
         confidence=0.85,
@@ -235,6 +258,7 @@ def test_prediction_result_exposes_new_fields():
 def test_prediction_result_backward_compatible():
     """Clientes antigos sem os campos novos continuam funcionando."""
     from app.schemas.api_models import PredictionResult
+
     p = PredictionResult(
         is_fake=False,
         confidence=0.3,
@@ -250,21 +274,19 @@ def test_prediction_result_backward_compatible():
 def test_multi_model_request_validates_fusion():
     """MultiModelDetectionRequest deve rejeitar fusion inválido."""
     from app.schemas.api_models import MultiModelDetectionRequest
+
     with pytest.raises(Exception):
-        MultiModelDetectionRequest(
-            model_names=["a", "b"], fusion="unknown_strategy"
-        )
+        MultiModelDetectionRequest(model_names=["a", "b"], fusion="unknown_strategy")
 
     # Caso válido
-    req = MultiModelDetectionRequest(
-        model_names=["a", "b"], fusion="weighted_avg"
-    )
+    req = MultiModelDetectionRequest(model_names=["a", "b"], fusion="weighted_avg")
     assert req.fusion == "weighted_avg"
 
 
 def test_multi_model_request_min_2_models():
     """multi-model exige ≥2 modelos."""
     from app.schemas.api_models import MultiModelDetectionRequest
+
     with pytest.raises(Exception):
         MultiModelDetectionRequest(model_names=["only_one"])
 
@@ -272,6 +294,7 @@ def test_multi_model_request_min_2_models():
 def test_uncertainty_request_n_samples_bounds():
     """UncertaintyRequest valida n_samples ∈ [5, 200]."""
     from app.schemas.api_models import UncertaintyRequest
+
     req = UncertaintyRequest(n_samples=20)
     assert req.n_samples == 20
 
@@ -284,6 +307,7 @@ def test_uncertainty_request_n_samples_bounds():
 def test_cross_validation_request_validates_n_folds():
     """CrossValidationRequest valida n_folds ∈ [2, 20] e architecture."""
     from app.schemas.api_models import CrossValidationRequest
+
     req = CrossValidationRequest(
         architecture="aasist",
         dataset_path="data/test.npz",
@@ -293,12 +317,35 @@ def test_cross_validation_request_validates_n_folds():
     assert req.architecture == "aasist"
 
     with pytest.raises(Exception):
-        CrossValidationRequest(
-            architecture="aasist", dataset_path="x.npz", n_folds=1
-        )
+        CrossValidationRequest(architecture="aasist", dataset_path="x.npz", n_folds=1)
 
     with pytest.raises(Exception):
         CrossValidationRequest(
             architecture="invalid_arch_xyz",
             dataset_path="x.npz",
         )
+
+
+def test_onnx_export_request_validates_opset():
+    """OnnxExportRequest valida opset ∈ [9, 20] e exige model_name."""
+    from app.schemas.api_models import OnnxExportRequest
+
+    req = OnnxExportRequest(model_name="AASIST_v1", quantize_int8=True)
+    assert req.opset == 13  # default
+    assert req.dynamic_batch is True
+
+    with pytest.raises(Exception):
+        OnnxExportRequest(model_name="m", opset=99)  # > 20
+    with pytest.raises(Exception):
+        OnnxExportRequest(model_name="")  # vazio
+
+
+def test_onnx_export_response_optional_int8():
+    """OnnxExportResponse aceita resultado só FP32 (sem INT8)."""
+    from app.schemas.api_models import OnnxExportResponse
+
+    r = OnnxExportResponse(
+        success=True, onnx_path="x.onnx", size_mb=4.2, message="ok"
+    )
+    assert r.onnx_int8_path is None
+    assert r.size_int8_mb is None

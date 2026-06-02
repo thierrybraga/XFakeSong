@@ -176,22 +176,34 @@ class FeatureExtractorCore:
                 SegmentedFeatureExtractor,
             )
 
+            # BUG FIX: honra config.feature_types em vez de extrair SEMPRE as ~13
+            # categorias. Antes, pedir [spectral,cepstral,temporal] mesmo assim
+            # computava prosodic/formant/voice_quality (pyin/LPC — lentos) e
+            # inflava o vetor. Agora só extrai o que foi pedido.
+            # Se feature_types vier vazio → extrai tudo (compat retroativa).
+            req = {ft.value for ft in (config.feature_types or [])}
+            extract_all = len(req) == 0
+
+            def _on(name: str) -> bool:
+                return extract_all or (name in req)
+
             segmented_config = SegmentedExtractionConfig(
                 segment_duration=1.0,
                 overlap_ratio=0.0,
                 target_sample_rate=audio_data.sample_rate,
-                extract_spectral=True,
-                extract_cepstral=True,
-                extract_temporal=True,
-                extract_prosodic=True,
-                extract_formant=True,
-                extract_voice_quality=True,
-                extract_perceptual=True,
-                extract_complexity=True,
-                extract_transform=True,
-                extract_timefreq=True,
-                extract_predictive=True,
-                extract_speech=True,
+                extract_spectral=_on("spectral"),
+                extract_cepstral=_on("cepstral"),
+                extract_temporal=_on("temporal"),
+                extract_prosodic=_on("prosodic"),
+                extract_formant=_on("formant"),
+                extract_voice_quality=_on("voice_quality"),
+                extract_perceptual=_on("perceptual"),
+                extract_complexity=_on("complexity"),
+                # Sub-categorias sem FeatureType próprio: só quando "tudo".
+                extract_transform=extract_all or ("advanced" in req),
+                extract_timefreq=extract_all,
+                extract_predictive=extract_all,
+                extract_speech=extract_all,
                 normalize_segments=True,
                 remove_silence=False,
                 export_csv=False

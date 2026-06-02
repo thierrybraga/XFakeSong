@@ -207,16 +207,21 @@ def get_jit_predict_fn(model_info: ModelInfo, use_xla: bool = True):
     Returns:
         Função callable(input_tensor) -> output_tensor
     """
-    if model_info.jit_predict_fn is not None:
-        return model_info.jit_predict_fn
-
     keras_model = model_info.model
+    if not isinstance(keras_model, tf.keras.Model):
+        raise TypeError("JIT requer uma instância tf.keras.Model")
+
+    if getattr(model_info, "jit_predict_fn", None) is not None:
+        return model_info.jit_predict_fn
 
     @tf.function(jit_compile=use_xla, reduce_retracing=True)
     def _jit_predict(x):
         return keras_model(x, training=False)
 
-    model_info.jit_predict_fn = _jit_predict
+    try:
+        model_info.jit_predict_fn = _jit_predict
+    except Exception:
+        pass
     logger.debug(
         f"JIT predict function compiled for {model_info.name} "
         f"(use_xla={use_xla})"
@@ -394,6 +399,21 @@ def apply_temperature_scaling(
         return 1.0 / (1.0 + np.exp(-logits))
 
 
+def _get_numeric_attr(obj: Any, name: str, default: float) -> float:
+    value = getattr(obj, name, None)
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        value = float(value)
+        if np.isfinite(value):
+            return value
+    return float(default)
+
+
+def _as_probability(value: Any) -> float:
+    prob = float(np.asarray(value).reshape(-1)[0])
+    prob = float(np.clip(prob, 0.0, 1.0))
+    return round(prob, 6)
+
+
 class Predictor:
     """Responsável por realizar predições com modelos."""
 
@@ -475,8 +495,7 @@ class Predictor:
             calibrated_mean = apply_temperature_scaling(mean_pred_norm, model_temp)
 
             # Determina is_deepfake usando classification threshold (EER ou 0.5)
-            eer_t = getattr(model_info, 'eer_threshold', None)
-            fake_threshold = float(eer_t) if eer_t is not None else 0.5
+            fake_threshold = _get_numeric_attr(model_info, 'eer_threshold', 0.5)
 
             results = []
             for i in range(len(calibrated_mean)):
@@ -617,8 +636,7 @@ class Predictor:
             # Sprint 4.5: Threshold de classificação adaptativo per-model.
             # Se model_info.eer_threshold disponível → usa EER threshold,
             # caso contrário → 0.5 fixo (comportamento legado).
-            eer_t = getattr(model_info, 'eer_threshold', None)
-            fake_threshold = float(eer_t) if eer_t is not None else 0.5
+            fake_threshold = _get_numeric_attr(model_info, 'eer_threshold', 0.5)
 
             results = []
             for i in range(len(predictions)):
@@ -629,14 +647,16 @@ class Predictor:
                 # de FAKE, independente do tipo de output. Para sigmoid 1-unit,
                 # é o valor direto. Para softmax 2-unit, é p[1].
                 # (Convenção: índice 0 = real, índice 1 = fake.)
-                if pred.shape[-1] == 1:
+                if np.ndim(pred) == 0 or pred.shape[-1] == 1:
                     # Sigmoid binário: pred[0] já é p(fake)
-                    p_fake = float(pred[0] if pred.ndim > 0 else pred)
-                    p_real = 1.0 - p_fake
+                    p_fake = _as_probability(
+                        pred[0] if np.ndim(pred) > 0 else pred
+                    )
+                    p_real = _as_probability(1.0 - p_fake)
                 else:
                     # Softmax: pred[1] = p(fake), pred[0] = p(real)
-                    p_fake = float(pred[1])
-                    p_real = float(pred[0])
+                    p_fake = _as_probability(pred[1])
+                    p_real = _as_probability(pred[0])
 
                 # Decisão usa threshold adaptativo (EER se disponível, senão 0.5)
                 is_deepfake = bool(p_fake > fake_threshold)
@@ -644,7 +664,7 @@ class Predictor:
                 # (mais intuitivo para o usuário: "estou 87% confiante de FAKE"
                 # ou "estou 87% confiante de REAL", em vez de sempre reportar
                 # p_fake mesmo quando a decisão foi "real").
-                confidence = p_fake if is_deepfake else p_real
+                confidence = _as_probability(p_fake if is_deepfake else p_real)
 
                 # OOD flag: True se energy score abaixo do threshold (= não in-distribution)
                 is_ood = (

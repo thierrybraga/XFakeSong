@@ -20,6 +20,13 @@ from app.interfaces.gradio.utils.plotting import (
     style_ax,
 )
 
+# Componentes de UI compartilhados (cabeçalho padronizado, callout, divisor)
+from app.interfaces.gradio.utils.components import (  # noqa: E402
+    info_callout,
+    page_header,
+    section_divider,
+)
+
 # Aliases legados para minimizar diff em código existente
 _PLOT_BG = PLOT_FACE
 _PLOT_FACE = PLOT_FACE
@@ -584,12 +591,13 @@ def process_stream(new_chunk, state):
 
 
 def create_detection_tab():
-    with gr.Tab("🕵️ Detecção", id="tab_detection"):
-        gr.Markdown(
-            "### Análise de Integridade de Áudio\n"
-            "Faça upload ou grave áudio em tempo real para verificar autenticidade. "
-            "O sistema analisa padrões espectrais, prosódicos e temporais "
-            "para identificar deepfakes."
+    with gr.Tab("🎙️ Análise de Áudio", id="tab_detection"):
+        page_header(
+            "🎙️",
+            "Análise de Áudio",
+            "Faça upload ou grave áudio em tempo real para verificar "
+            "autenticidade — o sistema analisa padrões espectrais, "
+            "prosódicos e temporais para identificar deepfakes.",
         )
 
         with gr.Row():
@@ -662,22 +670,31 @@ def create_detection_tab():
                             ),
                         )
 
-        gr.Markdown("---")
+        section_divider()
 
-        # Seção de Detalhes Visuais (Full Width)
-        gr.Markdown("### Visualização Forense")
+        # Pré-visualização forense (recolhida por padrão) + atalho para a aba
+        # Investigar, que concentra a análise forense completa. Os componentes
+        # de Plot permanecem (apenas mudam de container) — a aridade do handler
+        # `handle_analysis` (6 saídas) é preservada (lição do bug FE.1).
+        info_callout(
+            "Para análise forense detalhada (fase, formantes, jitter/shimmer, "
+            "HNR e explicabilidade do modelo), abra a aba "
+            "<b>🔬 Investigar</b>.",
+            variant="accent",
+        )
 
-        plot_waveform = gr.Plot(label="Forma de Onda")
+        with gr.Accordion("🔬 Pré-visualização forense", open=False):
+            plot_waveform = gr.Plot(label="Forma de Onda")
 
-        with gr.Row():
-            with gr.Column(min_width=400):
-                plot_spectrogram = gr.Plot(label="Espectrograma Mel")
-            with gr.Column(min_width=400):
-                plot_prosody = gr.Plot(
-                    label="Análise Prosódica (Pitch/Energia)")
+            with gr.Row():
+                with gr.Column(min_width=400):
+                    plot_spectrogram = gr.Plot(label="Espectrograma Mel")
+                with gr.Column(min_width=400):
+                    plot_prosody = gr.Plot(
+                        label="Análise Prosódica (Pitch/Energia)")
 
-        with gr.Accordion("Metadados Técnicos (JSON)", open=False):
-            json_output = gr.JSON(label="Raw Output")
+            with gr.Accordion("Metadados Técnicos (JSON)", open=False):
+                json_output = gr.JSON(label="Raw Output")
 
         def update_variants(arch_name):
             try:
@@ -822,4 +839,59 @@ def create_detection_tab():
             outputs=[stream_state, plot_waveform, plot_prosody,
                      plot_spectrogram, label_output, confidence_output],
             show_progress="hidden"
+        )
+
+    # ── 📦 Análise em Lote (sub-aba irmã, movida da antiga aba Forense) ──
+    # Reaproveita os handlers de lote definidos em forensic_analysis.py
+    # (funções de módulo puras, sem ciclo de import). Import tardio mantém
+    # detection.py desacoplado da ordem de carga dos tabs.
+    with gr.Tab("📦 Análise em Lote", id="tab_detection_batch"):
+        from app.interfaces.gradio.tabs.forensic_analysis import (
+            export_batch_report,
+            run_batch_analysis,
+        )
+
+        page_header(
+            "📦",
+            "Análise em Lote",
+            "Envie vários arquivos de áudio de uma vez e receba um resumo "
+            "agregado + relatório exportável em CSV.",
+        )
+
+        batch_files = gr.Files(
+            label="Arquivos de Áudio",
+            file_types=["audio"],
+        )
+        with gr.Row():
+            batch_btn = gr.Button(
+                "🔍 Analisar Lote", variant="primary", size="lg")
+            export_btn = gr.Button(
+                "⬇ Exportar Relatório CSV", variant="secondary")
+
+        batch_summary = gr.Markdown(
+            value="*Envie arquivos para iniciar a análise em lote.*")
+
+        with gr.Row():
+            with gr.Column():
+                plot_pie = gr.Plot(label="Distribuição de Resultados")
+            with gr.Column():
+                plot_conf_dist = gr.Plot(label="Distribuição de Confiança")
+
+        batch_table = gr.Dataframe(
+            label="Resultados por Arquivo",
+            headers=["Arquivo", "Resultado", "Confiança", "Modelo", "Duração"],
+            interactive=False,
+        )
+
+        report_file = gr.File(label="Download do Relatório", visible=True)
+
+        batch_btn.click(
+            fn=run_batch_analysis,
+            inputs=[batch_files],
+            outputs=[plot_pie, plot_conf_dist, batch_table, batch_summary],
+        )
+        export_btn.click(
+            fn=export_batch_report,
+            inputs=[batch_files],
+            outputs=[report_file],
         )

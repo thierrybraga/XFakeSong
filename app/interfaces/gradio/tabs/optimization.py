@@ -19,11 +19,14 @@ def update_device_settings(device_name):
 
 
 def create_optimization_tab():
-    with gr.Tab("Otimização"):
-        gr.Markdown(
-            "### Ajuste Fino de Hiperparâmetros\n"
+    with gr.Tab("⚡ Otimização"):
+        from app.interfaces.gradio.utils.components import page_header
+
+        page_header(
+            "⚡",
+            "Otimização",
             "Configure hardware, arquiteturas e parâmetros de treinamento "
-            "para otimizar a detecção."
+            "para otimizar a detecção.",
         )
 
         # --- Seção de Hardware ---

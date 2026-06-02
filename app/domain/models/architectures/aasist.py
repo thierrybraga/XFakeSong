@@ -268,7 +268,10 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
 
         # --- 10. Concatenate and classify ---
         x = layers.Concatenate(name="aasist_readout_concat")([spec_readout, temp_readout])
-        output_tensor = AMSoftmaxLayer(num_classes, scale=30.0, margin=0.35, name="output_layer")(x)
+        # AMSoftmaxLayer output: scaled cosine logits (range ≈ [-15, 15]).
+        # scale=15 (reduced from 30) keeps logit magnitudes within a numerically
+        # safe range for float16/float32 while still providing discriminative margins.
+        output_tensor = AMSoftmaxLayer(num_classes, scale=15.0, margin=0.35, name="output_layer")(x)
         # Explicit float32 cast so mixed_float16 policy doesn't produce float16 logits
         output_tensor = layers.Activation('linear', dtype='float32', name='output_cast')(output_tensor)
 
@@ -278,7 +281,11 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
             logger.info("GPU detectada: AASIST será treinado com aceleração GPU (mixed precision).")
         model = models.Model(inputs=input_tensor, outputs=output_tensor)
 
-        # Label smoothing loss
+        # BUG FIX: AMSoftmaxLayer emite logits brutos — NÃO probabilidades.
+        # categorical_crossentropy(from_logits=False) faz log(y_pred) e
+        # y_pred ∈ [-15, 15] → log(valor_negativo) = NaN → loss NaN na época 1.
+        # Solução: from_logits=True aplica softmax interno via log-sum-exp numericamente
+        # estável ANTES de calcular o log, evitando log de valores negativos.
         def label_smoothing_loss(y_true, y_pred):
             num_classes_f = tf.cast(tf.shape(y_pred)[-1], tf.float32)
             y_true_int = tf.cast(y_true, tf.int32)
@@ -286,11 +293,15 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
                 y_true_int = tf.squeeze(y_true_int, axis=-1)
             one_hot = tf.one_hot(y_true_int, tf.cast(num_classes_f, tf.int32))
             smoothed = one_hot * 0.9 + 0.1 / num_classes_f
-            return tf.reduce_mean(tf.keras.losses.categorical_crossentropy(smoothed, y_pred))
+            # from_logits=True: y_pred are raw logits, softmax applied internally
+            return tf.reduce_mean(
+                tf.keras.losses.categorical_crossentropy(smoothed, y_pred, from_logits=True)
+            )
 
         optimizer = tf.keras.optimizers.AdamW(
             learning_rate=0.0001,
-            weight_decay=0.01
+            weight_decay=0.01,
+            global_clipnorm=1.0,  # previne gradientes explosivos
         )
 
         model.compile(
@@ -361,18 +372,24 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
 
 def simple_audio_augmenter(X_train: np.ndarray,
                            y_train: np.ndarray) -> tf.data.Dataset:
+    """Augmentation RawBoost (Tak et al., 2022) para áudio bruto.
+
+    Substitui o antigo placeholder de ruído gaussiano fixo. Aplica as três
+    famílias de distorção do RawBoost (convolutiva linear+não-linear,
+    impulsiva dependente do sinal e estacionária colorida) — a augmentation
+    que mais melhora a generalização para ataques de spoofing não vistos.
     """
-    Função de placeholder para aumento de dados de áudio.
-    Adicione técnicas de aumento de dados reais aqui (e.g., ruído, pitch shift, time stretch).
-    """
+    from app.domain.models.training.rawboost import rawboost_tf
+
     def _augment(audio_features, label):
-        noise = tf.random.normal(
-            shape=tf.shape(audio_features),
-            mean=0.0,
-            stddev=0.01,
-            dtype=tf.float32)
-        augmented_audio_features = audio_features + noise
-        return augmented_audio_features, label
+        rank = audio_features.shape.rank
+        a = audio_features
+        if rank == 2 and audio_features.shape[-1] == 1:
+            a = tf.squeeze(a, axis=-1)  # (T, 1) -> (T,)
+        a = rawboost_tf(a, sr=16000, algo=4, p=0.8)
+        if rank == 2:
+            a = tf.expand_dims(a, axis=-1)  # de volta a (T, 1)
+        return a, label
 
     dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
     dataset = dataset.map(_augment, num_parallel_calls=tf.data.AUTOTUNE)

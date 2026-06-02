@@ -39,17 +39,25 @@ def mock_upload_service():
     mock.upload_directory = MagicMock()
     mock.upload_directory.exists.return_value = True
 
-    # Mock create_dataset return
+    # Mock create_dataset return.
+    # O serviço REAL retorna ProcessingResult[DatasetMetadata] (não o
+    # DatasetMetadata cru), e o router faz result.status / result.data.
+    # O mock precisa espelhar esse contrato senão result.status estoura
+    # AttributeError.
     def side_effect_create(name, type, desc):
-        return DatasetMetadata(
-            name=name,
-            dataset_type=type,
-            description=desc or "",
-            file_count=0,
-            total_size=0,
-            total_duration=0.0,
-            created_at=None,
-            file_paths=[]
+        return ProcessingResult(
+            status=ProcessingStatus.SUCCESS,
+            data=DatasetMetadata(
+                name=name,
+                dataset_type=type,
+                description=desc or "",
+                file_count=0,
+                total_size=0,
+                total_duration=0.0,
+                created_at=None,
+                file_paths=[]
+            ),
+            metadata={"message": f"Dataset {name} criado com sucesso"},
         )
     mock.create_dataset.side_effect = side_effect_create
 
