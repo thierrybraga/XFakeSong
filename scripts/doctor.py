@@ -37,6 +37,12 @@ try:
 except Exception:
     pass
 
+# O doctor roda de `scripts/` — garante a raiz do projeto no sys.path para que
+# `import app.core...` (GPU, database) funcione mesmo invocado por caminho.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
 
 # ───────────────────────────── helpers ─────────────────────────────
 
@@ -111,22 +117,25 @@ def check_virtualenv() -> Tuple[bool, List[str]]:
 def check_critical_deps() -> Tuple[bool, List[str]]:
     """Dependências críticas instaladas?"""
     section("Dependências")
+    # (import_name, pip_name, desc) — `import X` usa import_name; pip_name é o
+    # nome no requirements. Alguns DIFEREM: scikit-learn→sklearn, PyYAML→yaml.
+    # Usar o nome errado aqui gerava falsos "AUSENTE" (críticos) em todo SO.
     critical = [
-        ("tensorflow", "ML framework", True),
-        ("keras", "ML high-level", True),
-        ("librosa", "Áudio", True),
-        ("soundfile", "Áudio I/O", True),
-        ("numpy", "Numérico", True),
-        ("scikit-learn", "ML clássico", True),
-        ("gradio", "UI", True),
-        ("fastapi", "API", True),
-        ("starlette", "API base", True),
-        ("uvicorn", "ASGI server", True),
-        ("sqlalchemy", "DB", True),
-        ("pydantic", "Schemas", True),
-        ("requests", "HTTP client", True),
-        ("pyyaml", "YAML", True),
-        ("matplotlib", "Plots", True),
+        ("tensorflow", "tensorflow", "ML framework"),
+        ("keras", "keras", "ML high-level"),
+        ("librosa", "librosa", "Áudio"),
+        ("soundfile", "soundfile", "Áudio I/O"),
+        ("numpy", "numpy", "Numérico"),
+        ("sklearn", "scikit-learn", "ML clássico"),
+        ("gradio", "gradio", "UI"),
+        ("fastapi", "fastapi", "API"),
+        ("starlette", "starlette", "API base"),
+        ("uvicorn", "uvicorn", "ASGI server"),
+        ("sqlalchemy", "SQLAlchemy", "DB"),
+        ("pydantic", "pydantic", "Schemas"),
+        ("requests", "requests", "HTTP client"),
+        ("yaml", "PyYAML", "YAML"),
+        ("matplotlib", "matplotlib", "Plots"),
     ]
     optional = [
         ("datasets", "HF datasets (scripts download)"),
@@ -137,22 +146,48 @@ def check_critical_deps() -> Tuple[bool, List[str]]:
         ("tensorflow_model_optimization", "QAT (Sprint 5.2)"),
     ]
 
-    errors = []
-    missing_critical = []
-    for pkg, desc, _ in critical:
+    errors: List[str] = []
+    missing_critical: List[str] = []
+    broken: List[Tuple[str, str]] = []
+    for import_name, pip_name, desc in critical:
         try:
-            mod = importlib.import_module(pkg)
+            mod = importlib.import_module(import_name)
             version = getattr(mod, "__version__", "?")
-            ok(f"{pkg:<22} {version:<12} {Color.DIM}({desc}){Color.END}")
-        except ImportError:
-            err(f"{pkg:<22} {'AUSENTE':<12} {Color.DIM}({desc}){Color.END}")
-            errors.append(f"missing_dep:{pkg}")
-            missing_critical.append(pkg)
+            ok(f"{pip_name:<22} {version:<12} {Color.DIM}({desc}){Color.END}")
+        except ModuleNotFoundError as e:
+            top = (getattr(e, "name", "") or "").split(".")[0]
+            if top == import_name:
+                # O próprio pacote está ausente
+                err(f"{pip_name:<22} {'AUSENTE':<14} {Color.DIM}({desc}){Color.END}")
+                errors.append(f"missing_dep:{pip_name}")
+                missing_critical.append(pip_name)
+            else:
+                # Pacote presente, mas uma sub-dependência dele falta
+                err(f"{pip_name:<22} {'IMPORT QUEBRADO':<14} {Color.DIM}(falta '{top}'){Color.END}")
+                errors.append(f"broken_import:{pip_name}")
+                broken.append((pip_name, f"dependência ausente: {top}"))
+        except ImportError as e:
+            # Presente, mas import falha (ex.: API removida numa sub-dependência —
+            # típico de gradio×huggingface_hub incompatíveis: 'cannot import HfFolder')
+            err(f"{pip_name:<22} {'IMPORT QUEBRADO':<14} {Color.DIM}({desc}){Color.END}")
+            errors.append(f"broken_import:{pip_name}")
+            broken.append((pip_name, str(e).splitlines()[0][:80]))
 
     if missing_critical:
         print()
         err(f"FALTAM {len(missing_critical)} deps críticas: {', '.join(missing_critical)}")
         print(f"  {Color.BOLD}Fix:{Color.END}  pip install -r requirements.txt")
+
+    if broken:
+        print()
+        err(f"{len(broken)} dep(s) com IMPORT QUEBRADO (instalada, mas falha ao importar):")
+        for name, detail in broken:
+            print(f"    • {name}: {detail}")
+        print(
+            f"  {Color.BOLD}Causa comum:{Color.END} versão de uma sub-dependência "
+            f"incompatível (ex.: huggingface_hub 1.x quebra gradio 4.x)."
+        )
+        print(f"  {Color.BOLD}Fix:{Color.END}  pip install -r requirements.txt --upgrade")
 
     print()
     print(f"  {Color.DIM}Opcionais (não bloqueiam startup):{Color.END}")
@@ -187,6 +222,7 @@ def check_version_compatibility() -> Tuple[bool, List[str]]:
 
     g = safe("gradio")
     s = safe("starlette")
+    hub = safe("huggingface_hub") or safe("huggingface-hub")
 
     errors = []
     if g and s:
@@ -201,7 +237,86 @@ def check_version_compatibility() -> Tuple[bool, List[str]]:
             ok(f"gradio={g}, starlette={s} (compatíveis)")
     elif g:
         ok(f"gradio={g}")
+
+    # gradio 4.x importa `HfFolder`, removido no huggingface_hub 1.0 → ImportError
+    # que quebra TODA a UI. Pin correto: huggingface_hub>=0.20,<1.0.
+    if g and hub:
+        if parse(g) < (5, 0, 0) and parse(hub) >= (1, 0, 0):
+            err(
+                f"INCOMPATIBILIDADE: gradio=={g} + huggingface_hub=={hub}\n"
+                f"  → ImportError: cannot import name 'HfFolder' — a UI não sobe.\n"
+                f"  Fix: pip install 'huggingface_hub>=0.20,<1.0'"
+            )
+            errors.append("gradio_hfhub_incompat")
+        else:
+            ok(f"gradio={g}, huggingface_hub={hub} (compatíveis)")
+
     return not errors, errors
+
+
+def check_gpu() -> Tuple[bool, List[str]]:
+    """Diagnóstico GPU/CUDA (read-only). GPU é opcional — CPU é suportado.
+
+    Reusa `app.core.gpu.probe_gpu_status()` para mostrar o MESMO diagnóstico
+    acionável do app/dashboard, sem alterar o runtime do TensorFlow.
+    """
+    section("GPU / CUDA")
+    try:
+        from app.core.gpu import probe_gpu_status
+    except Exception as e:
+        warn(f"Módulo de GPU indisponível ({type(e).__name__}: {e}) — pulando")
+        return True, []
+
+    try:
+        st = probe_gpu_status()
+    except Exception as e:
+        warn(f"Falha ao sondar GPU: {type(e).__name__}: {e}")
+        return True, []
+
+    plat = f"{st.get('system', '?')} {st.get('release', '')}".strip()
+    if st.get("is_wsl"):
+        plat += " (WSL2)"
+    print(f"  Plataforma     : {plat}")
+    print(
+        f"  TensorFlow     : disponível={st.get('tf_available')} "
+        f"· com CUDA={st.get('tf_built_with_cuda')}"
+    )
+
+    hw = st.get("nvidia_hardware", [])
+    if hw:
+        for g in hw:
+            drv = f" · driver {g['driver_version']}" if g.get("driver_version") else ""
+            print(
+                f"  Hardware NVIDIA: {g.get('name', '?')} "
+                f"({g.get('memory_total_mb', '?')} MB){drv}"
+            )
+    elif st.get("nvidia_pci_present"):
+        print("  Hardware NVIDIA: visível no PCI, porém SEM driver")
+    else:
+        print("  Hardware NVIDIA: nenhum")
+
+    tf_gpus = st.get("tf_gpus", [])
+    diag = st.get("diagnosis", {}) or {}
+    code = diag.get("diagnosis", "")
+
+    if tf_gpus:
+        names = ", ".join(
+            f"{g['name']} (CC {g['compute_capability']}"
+            f"{', Tensor Cores' if g.get('tensor_core') else ''})"
+            for g in tf_gpus
+        )
+        ok(f"TensorFlow enxerga {len(tf_gpus)} GPU(s): {names}")
+        return True, []
+
+    if code == "no_gpu":
+        ok("Sem GPU NVIDIA — modo CPU (suportado; treino/inferência mais lentos)")
+        return True, []
+
+    # Há GPU (ou hardware no PCI) mas o TF não a está usando → warning acionável
+    warn(st.get("summary", "GPU presente mas o TensorFlow não a utiliza"))
+    for h in diag.get("hints", []):
+        print(f"    {Color.BOLD}->{Color.END} {h}")
+    return False, [f"gpu:{code or 'not_visible'}"]
 
 
 def check_port(port: int = 7860) -> Tuple[bool, List[str]]:
@@ -304,6 +419,7 @@ def main() -> int:
         ("venv", check_virtualenv, False),
         ("deps", check_critical_deps, True),
         ("compat", check_version_compatibility, True),
+        ("gpu", check_gpu, False),
         ("port", lambda: check_port(args.port), False),
         ("dirs", check_writable_dirs, False),
         ("db", check_db_init, False),

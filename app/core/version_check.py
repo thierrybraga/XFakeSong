@@ -71,6 +71,7 @@ def check_versions(strict: bool = False) -> List[str]:
     starlette_v = _safe_version("starlette")
     fastapi_v = _safe_version("fastapi")
     jinja_v = _safe_version("jinja2")
+    hub_v = _safe_version("huggingface_hub") or _safe_version("huggingface-hub")
 
     if gradio_v:
         g = _parse_version(gradio_v)
@@ -86,6 +87,17 @@ def check_versions(strict: bool = False) -> List[str]:
                     f"FIX: pip install 'gradio>=4.31,<5.0'"
                 )
 
+        # Gradio 4.x importa `HfFolder`, removido no huggingface_hub 1.0.
+        # Resultado: `ImportError: cannot import name 'HfFolder'` no import do
+        # gradio — derruba TODA a UI no boot, antes de qualquer request.
+        if g < (5, 0, 0) and hub_v and _parse_version(hub_v) >= (1, 0, 0):
+            issues.append(
+                f"INCOMPATIBILIDADE CRÍTICA: gradio=={gradio_v} importa "
+                f"`HfFolder`, removido no huggingface_hub=={hub_v} (>=1.0). "
+                f"O import do gradio falha com ImportError e a UI não sobe. "
+                f"FIX: pip install 'huggingface_hub>=0.25,<1.0'"
+            )
+
     # Aviso geral de versões inesperadas
     if jinja_v and _parse_version(jinja_v) < (3, 1, 0):
         issues.append(
@@ -95,8 +107,10 @@ def check_versions(strict: bool = False) -> List[str]:
 
     # Log das versões detectadas (útil para diagnóstico)
     logger.info(
-        "Version check: gradio=%s, starlette=%s, fastapi=%s, jinja2=%s",
+        "Version check: gradio=%s, starlette=%s, fastapi=%s, jinja2=%s, "
+        "huggingface_hub=%s",
         gradio_v or "?", starlette_v or "?", fastapi_v or "?", jinja_v or "?",
+        hub_v or "?",
     )
 
     if issues:

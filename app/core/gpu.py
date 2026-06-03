@@ -163,11 +163,98 @@ def _detect_nvidia_via_pynvml() -> List[Dict[str, Any]]:
 
 
 def _detect_nvidia_hardware() -> List[Dict[str, Any]]:
-    """Combina nvidia-smi + pynvml para inventário do hardware NVIDIA."""
+    """Combina nvidia-smi + pynvml para inventário do hardware NVIDIA.
+
+    Ambos os métodos exigem o DRIVER instalado. Para detectar o hardware
+    mesmo sem driver (Linux bare-metal recém-montado), veja
+    `_detect_nvidia_pci_only()`.
+    """
     gpus = _detect_nvidia_via_smi()
     if not gpus:
         gpus = _detect_nvidia_via_pynvml()
     return gpus
+
+
+# PCI vendor ID da NVIDIA (hex) — usado para detectar a placa via barramento
+# PCI mesmo SEM driver carregado (nvidia-smi/pynvml ainda não funcionam).
+_NVIDIA_PCI_VENDOR = "10de"
+
+
+def _detect_nvidia_via_lspci() -> List[str]:
+    """Detecta controladores NVIDIA via `lspci` (não exige driver).
+
+    Retorna a lista de descrições ("NVIDIA Corporation GA102 [RTX 3090]" …)
+    das entradas VGA/3D/Display controllers do fabricante NVIDIA. Lista vazia
+    se `lspci` não existe (ex.: Windows) ou nenhuma placa for vista.
+    """
+    if not shutil.which("lspci"):
+        return []
+    try:
+        result = subprocess.run(
+            ["lspci", "-nn"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return []
+        names: List[str] = []
+        for line in result.stdout.splitlines():
+            low = line.lower()
+            # Apenas controladores gráficos (evita ponte/áudio HDMI da GPU)
+            is_gfx = any(
+                k in low
+                for k in ("vga compatible controller", "3d controller", "display controller")
+            )
+            if is_gfx and (f"[{_NVIDIA_PCI_VENDOR}:" in low or "nvidia" in low):
+                # Texto após o primeiro ':' costuma ser a descrição da placa
+                names.append(line.split(":", 2)[-1].strip() or line.strip())
+        return names
+    except Exception as e:
+        logger.debug(f"lspci falhou: {e}")
+        return []
+
+
+def _detect_nvidia_via_sysfs() -> int:
+    """Conta dispositivos PCI NVIDIA via sysfs (Linux puro, sem lspci/driver).
+
+    Lê `/sys/bus/pci/devices/*/vendor` procurando o vendor 0x10de. Funciona em
+    qualquer Linux (inclusive containers mínimos sem `lspci`) e não depende do
+    driver. Retorna 0 em não-Linux ou quando nada é encontrado.
+    """
+    if platform.system() != "Linux":
+        return 0
+    import glob
+
+    count = 0
+    try:
+        for vendor_file in glob.glob("/sys/bus/pci/devices/*/vendor"):
+            try:
+                with open(vendor_file, "r") as f:
+                    if f.read().strip().lower().lstrip("0x") == _NVIDIA_PCI_VENDOR:
+                        # Confirma que é controlador de display (class 0x03xxxx)
+                        class_file = vendor_file.rsplit("/", 1)[0] + "/class"
+                        try:
+                            with open(class_file, "r") as cf:
+                                if cf.read().strip().lower().startswith("0x03"):
+                                    count += 1
+                        except OSError:
+                            count += 1  # sem class file → conta mesmo assim
+            except OSError:
+                continue
+    except Exception as e:
+        logger.debug(f"sysfs PCI scan falhou: {e}")
+    return count
+
+
+def _detect_nvidia_pci_only() -> bool:
+    """True se há GPU NVIDIA visível no barramento PCI (mesmo sem driver).
+
+    Usado para distinguir "máquina sem GPU" de "GPU presente mas sem driver
+    instalado" — caso clássico em Linux bare-metal recém-provisionado, onde a
+    ação correta é instalar o driver (`./start.sh nvidia-driver`).
+    """
+    return bool(_detect_nvidia_via_lspci()) or _detect_nvidia_via_sysfs() > 0
 
 
 def _detect_directml_plugin() -> bool:
@@ -209,8 +296,15 @@ def _tf_built_with_cuda() -> bool:
 def _diagnose_gpu_situation(
     nvidia_hw: List[Dict[str, Any]],
     tf_gpus_count: int,
+    pci_present: bool = False,
 ) -> Dict[str, Any]:
     """Diagnostica por que TF não está vendo a GPU NVIDIA presente.
+
+    Args:
+        nvidia_hw: GPUs detectadas via nvidia-smi/pynvml (exigem driver).
+        tf_gpus_count: quantas GPUs o TensorFlow está expondo.
+        pci_present: True se há GPU NVIDIA no barramento PCI (detecção que
+            NÃO exige driver — distingue "sem GPU" de "GPU sem driver").
 
     Returns dict com keys:
         diagnosis: str — categoria do problema
@@ -220,11 +314,29 @@ def _diagnose_gpu_situation(
     """
     has_nvidia = bool(nvidia_hw)
     is_windows = platform.system() == "Windows"
+    is_linux = platform.system() == "Linux"
     is_wsl = _is_wsl()
     tf_has_cuda = _tf_built_with_cuda()
     has_dml = _detect_directml_plugin()
 
     if not has_nvidia and tf_gpus_count == 0:
+        # GPU física presente no PCI mas sem driver (nvidia-smi indisponível):
+        # caso clássico de Linux bare-metal recém-provisionado.
+        if pci_present and is_linux and not is_wsl:
+            return {
+                "diagnosis": "driver_missing",
+                "message": (
+                    "GPU NVIDIA detectada no barramento PCI, mas sem driver "
+                    "(nvidia-smi indisponível)."
+                ),
+                "hints": [
+                    "Instale o driver NVIDIA: `./start.sh nvidia-driver` (Ubuntu/Debian) "
+                    "e reinicie",
+                    "Manual: `sudo ubuntu-drivers autoinstall && sudo reboot`",
+                    "Após o reboot valide com: `./start.sh gpu-config`",
+                ],
+                "severity": "warning",
+            }
         return {
             "diagnosis": "no_gpu",
             "message": "Sem GPU NVIDIA detectada — usando CPU.",
@@ -382,12 +494,19 @@ def setup_gpu(
             },
             "tf_built_with_cuda": False,
             "directml_installed": _detect_directml_plugin(),
+            "nvidia_pci_present": False,  # GPU vista no PCI (mesmo sem driver)
             "diagnosis": None,  # preenchido ao final
         }
 
         # Coleta o hardware NVIDIA cedo (independente de TF) — assim mesmo
         # quando TF é CPU-only sabemos se há GPU física disponível.
         result["nvidia_hardware"] = _detect_nvidia_hardware()
+        # Se o driver já responde (smi/pynvml), a placa obviamente está no PCI;
+        # senão, faz a varredura PCI direta (lspci/sysfs) para flagrar "GPU sem
+        # driver". Evita o subprocess extra no happy path.
+        result["nvidia_pci_present"] = (
+            True if result["nvidia_hardware"] else _detect_nvidia_pci_only()
+        )
         result["runtime"] = get_resource_snapshot()
 
         try:
@@ -398,7 +517,9 @@ def setup_gpu(
             result["errors"].append(msg)
             # Diagnose mesmo sem TF — usuário sabe se hardware existe
             result["diagnosis"] = _diagnose_gpu_situation(
-                result["nvidia_hardware"], tf_gpus_count=0
+                result["nvidia_hardware"],
+                tf_gpus_count=0,
+                pci_present=result["nvidia_pci_present"],
             )
             _setup_done = True
             _setup_result = result
@@ -421,7 +542,9 @@ def setup_gpu(
             result["device_policy"] = "cpu"
             # Diagnose: hardware NVIDIA presente vs TF cego
             result["diagnosis"] = _diagnose_gpu_situation(
-                result["nvidia_hardware"], tf_gpus_count=0
+                result["nvidia_hardware"],
+                tf_gpus_count=0,
+                pci_present=result["nvidia_pci_present"],
             )
             diag = result["diagnosis"]
             if result["nvidia_hardware"]:
@@ -517,7 +640,9 @@ def setup_gpu(
 
         # Diagnose final (deve dar "ok" no happy path)
         result["diagnosis"] = _diagnose_gpu_situation(
-            result["nvidia_hardware"], tf_gpus_count=len(gpus)
+            result["nvidia_hardware"],
+            tf_gpus_count=len(gpus),
+            pci_present=result["nvidia_pci_present"],
         )
 
         _setup_done = True
@@ -528,6 +653,101 @@ def setup_gpu(
 def get_setup_result() -> Dict[str, Any]:
     """Retorna a config aplicada (vazio se setup_gpu ainda não foi chamado)."""
     return dict(_setup_result)
+
+
+def probe_gpu_status() -> Dict[str, Any]:
+    """Sonda o estado da GPU de forma READ-ONLY (sem efeitos colaterais).
+
+    Diferente de `setup_gpu()`, NÃO altera estado global do TensorFlow
+    (não aplica memory growth nem mixed precision) — pensado para
+    diagnósticos como o `scripts/doctor.py`, que não devem mexer no runtime.
+
+    Se `setup_gpu()` já rodou, reaproveita o resultado em cache; senão faz
+    uma detecção leve na hora.
+
+    Returns:
+        dict com keys: system, release, python, is_wsl, tf_available,
+        tf_built_with_cuda, directml_installed, nvidia_hardware,
+        nvidia_pci_present, tf_gpus, diagnosis, summary.
+    """
+    if _setup_done and _setup_result:
+        r = _setup_result
+        return {
+            "system": r["platform"]["system"],
+            "release": r["platform"].get("release", ""),
+            "python": r["platform"].get("python", ""),
+            "is_wsl": r["platform"].get("is_wsl", False),
+            "tf_available": r.get("tf_available", False),
+            "tf_built_with_cuda": r.get("tf_built_with_cuda", False),
+            "directml_installed": r.get("directml_installed", False),
+            "nvidia_hardware": r.get("nvidia_hardware", []),
+            "nvidia_pci_present": r.get("nvidia_pci_present", False),
+            "tf_gpus": r.get("gpus_detected", []),
+            "diagnosis": r.get("diagnosis") or {},
+            "summary": describe_gpu_setup(),
+        }
+
+    # Sonda fresca, sem mutar o runtime
+    nvidia_hw = _detect_nvidia_hardware()
+    pci_present = True if nvidia_hw else _detect_nvidia_pci_only()
+    tf_available = False
+    tf_cuda = False
+    tf_gpus: List[Dict[str, Any]] = []
+    tf_gpu_count = 0
+    try:
+        import tensorflow as tf
+
+        tf_available = True
+        tf_cuda = _tf_built_with_cuda()
+        physical = tf.config.list_physical_devices("GPU")  # read-only
+        tf_gpu_count = len(physical)
+        for idx, g in enumerate(physical):
+            cc = _gpu_compute_capability(g)
+            tf_gpus.append(
+                {
+                    "index": idx,
+                    "name": _gpu_name(g),
+                    "compute_capability": (f"{cc[0]}.{cc[1]}" if cc else "unknown"),
+                    "tensor_core": _is_tensor_core_capable(cc[0] if cc else None),
+                }
+            )
+    except Exception as e:
+        logger.debug(f"probe_gpu_status: TF indisponível/erro: {e}")
+
+    diagnosis = _diagnose_gpu_situation(
+        nvidia_hw, tf_gpus_count=tf_gpu_count, pci_present=pci_present
+    )
+
+    # Sumário curto (sem depender de _setup_result)
+    if tf_gpu_count > 0 and tf_gpus:
+        first = tf_gpus[0]
+        parts = [first["name"]]
+        if first["compute_capability"] != "unknown":
+            parts.append(f"CC {first['compute_capability']}")
+        if first.get("tensor_core"):
+            parts.append("Tensor Cores")
+        summary = "✓ " + " · ".join(parts)
+    elif diagnosis.get("diagnosis") == "driver_missing":
+        summary = "⚠ GPU NVIDIA sem driver (rode `./start.sh nvidia-driver`)"
+    elif nvidia_hw:
+        summary = f"⚠ {nvidia_hw[0].get('name', 'NVIDIA GPU')} (TF não vê — modo CPU)"
+    else:
+        summary = "✗ CPU only (sem GPU detectada)"
+
+    return {
+        "system": platform.system(),
+        "release": platform.release(),
+        "python": sys.version.split()[0],
+        "is_wsl": _is_wsl(),
+        "tf_available": tf_available,
+        "tf_built_with_cuda": tf_cuda,
+        "directml_installed": _detect_directml_plugin(),
+        "nvidia_hardware": nvidia_hw,
+        "nvidia_pci_present": pci_present,
+        "tf_gpus": tf_gpus,
+        "diagnosis": diagnosis,
+        "summary": summary,
+    }
 
 
 def is_gpu_available() -> bool:
@@ -600,6 +820,9 @@ def describe_gpu_setup() -> str:
             if d == "cuda_present_gpu_hidden":
                 return f"⚠ {hw_name} (CUDA presente mas GPU oculta — checar versões)"
             return f"⚠ {hw_name} (TF não vê — modo CPU)"
+        # Sem hardware via driver — mas pode haver GPU no PCI sem driver
+        if (diag.get("diagnosis") == "driver_missing") or r.get("nvidia_pci_present"):
+            return "⚠ GPU NVIDIA sem driver (rode `./start.sh nvidia-driver`)"
         return "✗ CPU only (sem GPU detectada)"
 
     # GPU detectada e em uso pelo TF
@@ -659,6 +882,11 @@ def get_diagnosis_html() -> str:
             if g.get("driver_version"):
                 line += f" — driver {g['driver_version']}"
             rows.append(line)
+    elif r.get("nvidia_pci_present"):
+        rows.append(
+            "<b>Hardware NVIDIA:</b> GPU vista no barramento PCI, "
+            "mas <b>sem driver</b> (nvidia-smi indisponível)"
+        )
     else:
         rows.append("<b>Hardware NVIDIA:</b> nenhum (ou nvidia-smi indisponível)")
 
@@ -683,6 +911,7 @@ def get_diagnosis_html() -> str:
 __all__ = [
     "setup_gpu",
     "get_setup_result",
+    "probe_gpu_status",
     "is_gpu_available",
     "describe_gpu_setup",
     "get_diagnosis_html",

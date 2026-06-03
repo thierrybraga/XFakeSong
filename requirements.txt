@@ -71,7 +71,12 @@ jsonschema>=4.20
 redis>=5.0
 
 # --- Hugging Face / deploy ---
-huggingface_hub>=0.20
+# BUG.HFHub: gradio 4.x importa `HfFolder`, REMOVIDO no huggingface_hub 1.0 →
+# `ImportError: cannot import name 'HfFolder'` derruba TODA a UI no boot. O pin
+# `>=0.20` (sem teto) puxava 1.x e quebrava em qualquer install novo (Linux
+# incl.). Teto firme `<1.0`. Piso 0.25 = exigência do `datasets` (>=0.25,<2.0),
+# então a faixa 0.25–0.36 satisfaz gradio E datasets simultaneamente.
+huggingface_hub>=0.25,<1.0
 requests>=2.31
 
 # --- Documentação ---
