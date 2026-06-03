@@ -186,3 +186,6 @@ test_output.txt
 
 # SQLAlchemy / Flask instance DB
 instance/
+
+# Logs de runtime (launcher.log, diagnósticos pytest, etc.)
+.logs/
