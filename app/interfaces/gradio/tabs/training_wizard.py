@@ -179,6 +179,57 @@ def _metric_card(label: str, value, kind: str = "neutral", fmt: str = "{:.4f}") 
     )
 
 
+def _history_figure(train_loss, val_loss, train_acc, val_acc):
+    """Figura canônica das curvas de treino (Loss | Accuracy).
+
+    Usada tanto no plot AO VIVO quanto no FINAL, para garantir consistência:
+    - Eixo X em épocas 1-based ("Época"), com ticks inteiros em treinos curtos.
+    - Curva de validação só aparece quando há dados (evita legenda 'val' vazia
+      e linha fantasma).
+    - Eixo Y de accuracy fixado em [0, 1.02] — a acurácia é uma fração, então a
+      auto-escala fazia variações minúsculas parecerem enormes.
+
+    Retorna a `Figure` (o chamador fecha com close_fig para evitar leak).
+    """
+    import matplotlib.pyplot as plt
+
+    def _clean(seq):
+        return [v for v in (seq or []) if v is not None]
+
+    tl, vl = _clean(train_loss), _clean(val_loss)
+    ta, va = _clean(train_acc), _clean(val_acc)
+
+    fig, ax = plt.subplots(1, 2, figsize=(12, 4))
+
+    # ── Loss ──
+    style_ax(ax[0], fig, "Loss")
+    ax[0].plot(range(1, len(tl) + 1), tl, label="treino",
+               color=PLOT_ACCENT, marker="o", ms=3)
+    if vl:
+        ax[0].plot(range(1, len(vl) + 1), vl, label="validação",
+                   color=PLOT_DANGER, marker="o", ms=3)
+    ax[0].set_xlabel("Época")
+    if 1 <= len(tl) <= 20:
+        ax[0].set_xticks(list(range(1, len(tl) + 1)))
+    ax[0].legend()
+
+    # ── Accuracy ──
+    style_ax(ax[1], fig, "Accuracy")
+    ax[1].plot(range(1, len(ta) + 1), ta, label="treino",
+               color=PLOT_ACCENT, marker="o", ms=3)
+    if va:
+        ax[1].plot(range(1, len(va) + 1), va, label="validação",
+                   color=PLOT_DANGER, marker="o", ms=3)
+    ax[1].set_xlabel("Época")
+    ax[1].set_ylim(0.0, 1.02)
+    if 1 <= len(ta) <= 20:
+        ax[1].set_xticks(list(range(1, len(ta) + 1)))
+    ax[1].legend()
+
+    safe_tight_layout(fig)
+    return fig
+
+
 def _train_status_html(
     arch: str,
     device: str,
@@ -1464,37 +1515,9 @@ def _run_training(
 
             # Plot ao vivo (fecha o anterior p/ evitar leak de memória)
             close_fig(_live_fig)
-            _live_fig, ax = plt.subplots(1, 2, figsize=(12, 4))
-            xs = list(range(1, len(hist["loss"]) + 1))
-            style_ax(ax[0], _live_fig, "Loss")
-            ax[0].plot(
-                xs, hist["loss"], label="train", color=PLOT_ACCENT, marker="o", ms=3
+            _live_fig = _history_figure(
+                hist["loss"], hist["val_loss"], hist["acc"], hist["val_acc"]
             )
-            if any(v is not None for v in hist["val_loss"]):
-                ax[0].plot(
-                    xs,
-                    hist["val_loss"],
-                    label="val",
-                    color=PLOT_DANGER,
-                    marker="o",
-                    ms=3,
-                )
-            ax[0].legend()
-            style_ax(ax[1], _live_fig, "Accuracy")
-            ax[1].plot(
-                xs, hist["acc"], label="train", color=PLOT_ACCENT, marker="o", ms=3
-            )
-            if any(v is not None for v in hist["val_acc"]):
-                ax[1].plot(
-                    xs,
-                    hist["val_acc"],
-                    label="val",
-                    color=PLOT_DANGER,
-                    marker="o",
-                    ms=3,
-                )
-            ax[1].legend()
-            safe_tight_layout(_live_fig)
 
             yield (
                 _train_status_html(
@@ -1526,41 +1549,29 @@ def _run_training(
                     break
 
         close_fig(_live_fig)
-        fig, ax = plt.subplots(1, 2, figsize=(12, 4))
-        style_ax(ax[0], fig, "Loss")
-        ax[0].plot(
-            history.history["loss"], label="train", color=PLOT_ACCENT, marker="o", ms=3
+        fig = _history_figure(
+            history.history.get("loss"),
+            history.history.get("val_loss"),
+            history.history.get(train_acc_key),
+            history.history.get(val_acc_key),
         )
-        ax[0].plot(
-            history.history.get("val_loss", []),
-            label="val",
-            color=PLOT_DANGER,
-            marker="o",
-            ms=3,
-        )
-        ax[0].legend()
-        style_ax(ax[1], fig, "Accuracy")
-        ax[1].plot(
-            history.history.get(train_acc_key, []),
-            label="train",
-            color=PLOT_ACCENT,
-            marker="o",
-            ms=3,
-        )
-        ax[1].plot(
-            history.history.get(val_acc_key, []),
-            label="val",
-            color=PLOT_DANGER,
-            marker="o",
-            ms=3,
-        )
-        ax[1].legend()
-        safe_tight_layout(fig)
 
         progress(1.0, desc="Concluído!")
 
-        final_acc = history.history.get(val_acc_key, [0])[-1]
-        final_loss = history.history.get("val_loss", [0])[-1]
+        # Última métrica VÁLIDA (ignora None). Cai para a métrica de treino se
+        # não houver validação, e para NaN se nada existir — em vez de reportar
+        # um '0.0' enganoso (o que acontecia com .get(key, [0])[-1]).
+        def _last_metric(primary: str, fallback: str = None) -> float:
+            for key in (primary, fallback):
+                if not key:
+                    continue
+                seq = [v for v in (history.history.get(key) or []) if v is not None]
+                if seq:
+                    return float(seq[-1])
+            return float("nan")
+
+        final_acc = _last_metric(val_acc_key, train_acc_key)
+        final_loss = _last_metric("val_loss", "loss")
         notify_success(
             f"Treino de {arch} concluído",
             message=f"val_acc={final_acc:.4f}, val_loss={final_loss:.4f}",
@@ -1932,15 +1943,21 @@ def _run_classical_training(arch: str, dataset_path: str, progress):
         ax[0].set_yticklabels(["real", "fake"])
         ax[0].set_xlabel("Predito")
         ax[0].set_ylabel("Verdadeiro")
+        cm_max = int(cm.max()) if cm.size and cm.max() > 0 else 1
         for r in range(2):
             for c in range(2):
+                # Contraste por célula: texto CLARO nas células escuras (contagem
+                # alta) e ESCURO nas claras (contagem baixa). Antes era sempre
+                # claro → o número ficava invisível nas células de baixa contagem
+                # do colormap Blues.
+                txt_color = "#f1f5f9" if cm[r, c] > cm_max / 2 else "#0f172a"
                 ax[0].text(
                     c,
                     r,
                     str(cm[r, c]),
                     ha="center",
                     va="center",
-                    color="#f1f5f9",
+                    color=txt_color,
                     fontweight="bold",
                 )
         if is_rf and hasattr(est, "feature_importances_"):
