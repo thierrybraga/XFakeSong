@@ -133,11 +133,15 @@ class ModelTrainer(IModelTrainer):
                 self.config.optimizer, learning_rate=self.config.learning_rate
             )
 
-            # Compilar modelo
+            # Compilar modelo — a loss é resolvida conforme a SAÍDA real do
+            # modelo + o formato dos labels, evitando o rank mismatch
+            # "target and output must have the same rank" (ex.: softmax de 2
+            # unidades + labels esparsos com binary_crossentropy default).
+            resolved_loss = self._resolve_loss(model, y_train)
             model.compile(
                 optimizer=optimizer,
-                loss=self.config.loss_function,
-                metrics=self.config.metrics,
+                loss=resolved_loss,
+                metrics=self._resolve_metrics(),
             )
 
             # Preparar callbacks
@@ -529,6 +533,71 @@ class ModelTrainer(IModelTrainer):
             return False
         except Exception:
             return False
+
+    def _resolve_metrics(self) -> List[Any]:
+        """Métricas seguras para o `compile` (só as nativas do Keras).
+
+        O default do TrainingConfig inclui 'f1' — que NÃO é métrica nativa do
+        Keras (`Could not interpret metric identifier: f1`). Além disso,
+        Precision/Recall/AUC como classes podem quebrar com saída softmax de 2
+        unidades + labels esparsos (esperam binário). Como F1, EER, precision e
+        recall já são calculados post-hoc pelo MetricsCalculator
+        (`calculate_all_metrics`), no `compile` usamos APENAS 'accuracy', que é
+        robusta para binário/multiclasse e labels esparsos/one-hot.
+        """
+        return ["accuracy"]
+
+    def _resolve_loss(self, model: tf.keras.Model, y_train: np.ndarray):
+        """Escolhe a loss compatível com a saída do modelo e o formato dos labels.
+
+        O `loss_function` default do TrainingConfig é `binary_crossentropy`
+        (assume sigmoid de 1 unidade). Mas o TrainingService instancia modelos
+        com `num_classes` detectado (2 para binário) → saída softmax de 2
+        unidades. Compilar com binary_crossentropy nesse caso quebra o fit com
+        "target and output must have the same rank". Aqui auto-corrigimos:
+
+        - saída 1 unidade  → binary_crossentropy (labels esparsos ou (N,1))
+        - saída K>1 + labels esparsos (N,)   → sparse_categorical_crossentropy
+        - saída K>1 + labels one-hot (N,K)   → categorical_crossentropy
+
+        Respeita a loss configurada quando ela já é compatível.
+        """
+        configured = self.config.loss_function
+        try:
+            out_units = int(model.output_shape[-1])
+        except Exception:
+            return configured
+
+        y = np.asarray(y_train)
+        labels_one_hot = y.ndim > 1 and y.shape[-1] > 1
+
+        if out_units == 1:
+            chosen = "binary_crossentropy"
+        elif labels_one_hot:
+            chosen = "categorical_crossentropy"
+        else:
+            chosen = "sparse_categorical_crossentropy"
+
+        # Se a loss configurada já é compatível, mantém (evita sobrescrever
+        # escolhas legítimas como focal loss customizada via string).
+        compatible = {
+            1: {"binary_crossentropy", "bce", "mse", "mae"},
+        }.get(out_units, (
+            {"categorical_crossentropy", "kl_divergence"}
+            if labels_one_hot
+            else {"sparse_categorical_crossentropy"}
+        ))
+        if configured in compatible:
+            return configured
+
+        if chosen != configured:
+            self.logger.warning(
+                f"Loss '{configured}' incompatível com saída de {out_units} "
+                f"unidade(s) + labels "
+                f"{'one-hot' if labels_one_hot else 'esparsos'}; "
+                f"usando '{chosen}'."
+            )
+        return chosen
 
     def _infer_num_classes(self, y: np.ndarray) -> int:
         """Inferência de num_classes a partir de y (suporta sparse e one-hot)."""
