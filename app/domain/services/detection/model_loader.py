@@ -55,6 +55,11 @@ class ModelInfo:
     # classificação adaptativa (FAR=FRR ótimo). None = não calibrado.
     eer_threshold: Optional[float] = None
     eer_value: Optional[float] = None
+    # Tier-1 perf: sessão ONNX Runtime, criada quando há um `<name>.onnx` ao lado
+    # do modelo e `onnxruntime` está instalado. Quando presente, o Predictor a
+    # usa para inferência (FP32, mais rápida em CPU; mesmos pesos → mesma saída),
+    # com fallback automático para o modelo Keras.
+    onnx_session: Optional[Any] = None
 
 
 class ModelLoader:
@@ -79,7 +84,8 @@ class ModelLoader:
 
         for model_file in model_files:
             try:
-                self._load_single_model(model_file)
+                # warmup=False: aquecemos só o default depois (perf de startup).
+                self._load_single_model(model_file, warmup=False)
             except Exception as e:
                 logger.warning(f"Erro ao carregar modelo {model_file}: {e}")
 
@@ -93,9 +99,21 @@ class ModelLoader:
         if self.loaded_models:
             self.default_model = list(self.loaded_models.keys())[0]
             logger.info(f"Modelo padrão definido: {self.default_model}")
+            # Tier-1 perf: warm-up apenas do default (os demais aquecem no 1º
+            # uso via get_model). Evita N forward-passes no startup com N modelos.
+            default_info = self.loaded_models.get(self.default_model)
+            if default_info is not None and default_info.model_type == "tensorflow":
+                self._warmup_model(default_info)
 
-    def _load_single_model(self, model_path: Path):
-        """Carrega um único modelo."""
+    def _load_single_model(self, model_path: Path, warmup: bool = True):
+        """Carrega um único modelo.
+
+        Args:
+            warmup: se True, faz o warm-up (1 forward pass) — apropriado quando o
+                modelo está sendo carregado sob demanda (vai ser usado já já).
+                `load_available_models` passa False e aquece só o default, para
+                não pagar N forward-passes no startup.
+        """
         model_name = model_path.stem
         metadata = {}
 
@@ -215,10 +233,33 @@ class ModelLoader:
                 eer_value=eer_value,
             )
 
+            # Tier-1 perf: se houver um `<name>.onnx` ao lado e onnxruntime
+            # instalado, prepara uma sessão ONNX Runtime para inferência (FP32,
+            # mesmos pesos → mesma saída, porém mais rápida em CPU). Degrada
+            # graciosamente: sem .onnx ou sem onnxruntime → segue com Keras/TF.
+            if model_type == 'tensorflow':
+                onnx_path = model_path.parent / f"{model_name}.onnx"
+                if onnx_path.exists():
+                    try:
+                        from app.domain.models.inference.onnx_export import (
+                            OnnxInferenceSession,
+                        )
+                        model_info.onnx_session = OnnxInferenceSession(str(onnx_path))
+                        logger.info(
+                            f"ONNX session ativa para {model_name} "
+                            f"(inferência acelerada, fallback TF disponível)")
+                    except Exception as e:
+                        logger.debug(
+                            f"ONNX indisponível para {model_name} "
+                            f"(usando TF): {e}")
+                        model_info.onnx_session = None
+
             # Sprint 3.3: warm-up do modelo (1 forward pass com zeros) para
             # forçar JIT compile / layer init / GPU memory allocation.
             # Primeira inferência fica ~10× mais rápida.
-            if model_type == 'tensorflow':
+            # Tier-1 perf: condicional — no startup (load_available_models)
+            # aquecemos só o modelo default; os demais aquecem no 1º uso.
+            if warmup and model_type == 'tensorflow':
                 self._warmup_model(model_info)
 
             self.loaded_models[model_name] = model_info

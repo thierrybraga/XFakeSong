@@ -99,7 +99,11 @@ def _save_trained_model(name: str) -> tuple[bool, str]:
             if info.get("scaler") is not None:
                 joblib.dump(info["scaler"], str(MODELS_DIR / f"{slug}_scaler.pkl"))
         else:
-            info["model"].save(str(model_path))
+            # Artefato de inferência sem o estado do otimizador (~3× menor, load
+            # mais rápido, saída idêntica). Ver trainer.save_inference_keras.
+            from app.domain.models.training.trainer import save_inference_keras
+
+            save_inference_keras(info["model"], model_path)
 
         config = {
             "architecture": info["arch"],
@@ -925,13 +929,43 @@ def _run_training(
             spec_x = spec_augment_tf(spec_x, p=0.7)
             return spec_x, tf.gather(_table, label)
 
+        # Tier-1 perf: separa FEATURIZAÇÃO (cara: STFT/resample — determinística,
+        # cacheável) de AUGMENTATION (estocástica). Cacheamos a featurização para
+        # NÃO recalculá-la a cada época, e aplicamos a augmentation DEPOIS do
+        # cache, para que RawBoost/SpecAugment continuem variando por época
+        # (cachear após a augmentation a congelaria → pioraria a generalização).
         if input_type == "raw_audio":
-            train_prep, val_prep = _prep_raw_train, _prep_raw
-        else:
-            train_prep, val_prep = _prep_spec_train, _prep_spec
+            _feat_prep = _prep_raw
 
-        train_ds = train_ds.map(train_prep, num_parallel_calls=tf.data.AUTOTUNE)
+            def _augment(a, lab):
+                return rawboost_tf(a, sr=SAMPLE_RATE, algo=4, p=0.7), lab
+        else:
+            _feat_prep = _prep_spec
+
+            def _augment(s, lab):
+                return spec_augment_tf(s, p=0.7), lab
+
+        train_ds = train_ds.map(_feat_prep, num_parallel_calls=tf.data.AUTOTUNE)
         val_ds = val_ds.map(val_prep, num_parallel_calls=tf.data.AUTOTUNE)
+
+        # Cache em memória só para datasets pequenos/médios (guard de OOM):
+        # cardinalidade finita e ≲ 4000 amostras. Datasets grandes seguem sem
+        # cache (comportamento anterior, sem risco de estourar a RAM).
+        def _maybe_cache(ds):
+            try:
+                card = int(tf.data.experimental.cardinality(ds))
+                if 0 < card * int(batch_size) <= 4000:
+                    return ds.cache()
+            except Exception:
+                pass
+            return ds
+
+        train_ds = _maybe_cache(train_ds)   # featurização cacheada (sem aug)
+        val_ds = _maybe_cache(val_ds)       # val não tem augmentation → seguro
+
+        # Augmentation DEPOIS do cache → re-randomiza a cada época.
+        train_ds = train_ds.map(_augment, num_parallel_calls=tf.data.AUTOTUNE)
+
         train_ds = optimize_tf_dataset(train_ds, cache=False, prefetch=True)
         val_ds = optimize_tf_dataset(val_ds, cache=False, prefetch=True)
 
