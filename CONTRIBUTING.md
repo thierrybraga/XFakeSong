@@ -1,74 +1,66 @@
 # Contributing to XfakeSong
 
-First off, thanks for taking the time to contribute! 🎉
+Obrigado por contribuir com o XfakeSong. Este arquivo mantem apenas o fluxo de
+contribuicao; as regras tecnicas detalhadas ficam nos documentos canonicos:
 
-The following is a set of guidelines for contributing to XfakeSong. These are mostly guidelines, not rules. Use your best judgment, and feel free to propose changes to this document in a pull request.
+- [Guia do Desenvolvedor](docs/05_GUIA_DEV.md)
+- [Testes e Qualidade](docs/06_TESTES.md)
+- [Arquitetura](docs/03_ARQUITETURA.md)
+- [Codigo de Conduta](CODE_OF_CONDUCT.md)
 
-## Code of Conduct
+## Fluxo de Contribuicao
 
-This project and everyone participating in it is governed by the [XfakeSong Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
+1. Verifique se ja existe uma issue ou pull request sobre o tema.
+2. Abra uma issue quando a mudanca alterar comportamento, arquitetura ou API.
+3. Crie uma branch descritiva a partir da base atual.
+4. Instale as dependencias e rode a aplicacao localmente.
+5. Faca mudancas pequenas, testaveis e alinhadas a Clean Architecture.
+6. Rode os testes relevantes antes de abrir o pull request.
+7. Descreva no PR o problema, a solucao e a validacao executada.
 
-## How Can I Contribute?
+## Setup Local
 
-### Reporting Bugs
+```bash
+git clone https://github.com/YOUR_USERNAME/XFakeSong.git
+cd XFakeSong
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python main.py --bootstrap-dirs
+python main.py --gradio
+```
 
-This section guides you through submitting a bug report.
-*   **Use the issue search** — check if the issue has already been reported.
-*   **Check if the issue has been fixed** — try to reproduce it using the latest `main` or development branch in the repository.
-*   **Isolate the problem** — ideally create a reduced test case.
+## Validacao Basica
 
-### Suggesting Enhancements
+```bash
+pytest tests/
+pytest --cov=app tests/
+```
 
-This section guides you through submitting an enhancement suggestion, including completely new features and minor improvements to existing functionality.
+Use testes mais focados durante o desenvolvimento:
 
-*   **Use a clear and descriptive title** for the issue to identify the suggestion.
-*   **Provide a step-by-step description of the suggested enhancement** in as much detail as possible.
-*   **Explain why this enhancement would be useful** to most XfakeSong users.
+```bash
+pytest tests/unit/
+pytest tests/integration/
+pytest tests/api/
+pytest tests/functional/
+```
 
-### Your First Code Contribution
+## Padroes Essenciais
 
-1.  **Fork the repository** on GitHub.
-2.  **Clone your fork** locally:
-    ```bash
-    git clone https://github.com/YOUR_USERNAME/XFakeSong.git
-    ```
-3.  **Create a branch** for your feature or fix:
-    ```bash
-    git checkout -b feature/amazing-feature
-    ```
-4.  **Install dependencies** (we recommend using a virtual environment):
-    ```bash
-    pip install -r requirements.txt
-    ```
-5.  **Make your changes**.
-6.  **Run tests** (if applicable).
-7.  **Commit your changes** using descriptive commit messages.
-8.  **Push to the branch**:
-    ```bash
-    git push origin feature/amazing-feature
-    ```
-9.  **Submit a Pull Request**.
+- Codigo de dominio fica em `app/domain/` e nao deve depender de interfaces,
+  roteadores ou frameworks de entrada.
+- Use `logging.getLogger(__name__)`; evite `print()` em codigo de aplicacao.
+- Adicione type hints em funcoes publicas.
+- Atualize documentacao e testes quando mudar contratos publicos.
+- Nao inclua datasets, modelos treinados grandes, caches ou segredos no PR.
 
-## Styleguides
+## Reporte de Bugs e Sugestoes
 
-### Git Commit Messages
+Ao abrir uma issue, inclua:
 
-*   Use the present tense ("Add feature" not "Added feature").
-*   Use the imperative mood ("Move cursor to..." not "Moves cursor to...").
-*   Limit the first line to 72 characters or less.
-*   Reference issues and pull requests liberally after the first line.
-
-### Python Styleguide
-
-*   Follow [PEP 8](https://www.python.org/dev/peps/pep-0008/).
-*   Use `black` for formatting.
-*   Use `isort` for import sorting.
-*   Type hints are strongly encouraged.
-
-## Documentation
-
-Documentation is a vital part of this project. If you find a typo or an error in the documentation, please submit a PR to fix it.
-
-## Questions?
-
-Feel free to open an issue with the tag `question`.
+- versao do Python e sistema operacional;
+- comando executado;
+- stack trace ou log relevante;
+- passos para reproduzir;
+- resultado esperado e resultado observado.

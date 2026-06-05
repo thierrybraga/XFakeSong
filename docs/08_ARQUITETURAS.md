@@ -6,20 +6,20 @@ O XFakeSong implementa **14 arquiteturas** de detecção de deepfake, organizada
 
 | # | Arquitetura | Entrada | Referência | Arquivo |
 |---|-------------|---------|------------|---------|
-| 1 | WavLM | Áudio bruto | microsoft/wavlm-base | [wavlm.py](../app/domain/models/architectures/wavlm.py) |
-| 2 | HuBERT | Áudio bruto | Hidden-Unit BERT | [hubert.py](../app/domain/models/architectures/hubert.py) |
-| 3 | RawNet2 | Áudio bruto | RawNet2 (2021) | [rawnet2.py](../app/domain/models/architectures/rawnet2.py) |
-| 4 | Sonic Sleuth | Espectrograma | Alshehri et al. (2024) | [sonic_sleuth.py](../app/domain/models/architectures/sonic_sleuth.py) |
-| 5 | AASIST | Espectrograma | GAT spectro-temporal | [aasist.py](../app/domain/models/architectures/aasist.py) |
-| 6 | RawGAT-ST | Espectrograma | Graph Attention + GRU | [rawgat_st.py](../app/domain/models/architectures/rawgat_st.py) |
-| 7 | Conformer | Espectrograma | Conv + Transformer | [conformer.py](../app/domain/models/architectures/conformer.py) |
-| 8 | Hybrid CNN-Transformer (CCT) | Espectrograma | Bartusiak & Delp (2022) | [hybrid_cnn_transformer.py](../app/domain/models/architectures/hybrid_cnn_transformer.py) |
-| 9 | Spectrogram Transformer | Espectrograma | ViT adaptado para áudio | [spectrogram_transformer.py](../app/domain/models/architectures/spectrogram_transformer.py) |
-| 10 | EfficientNet-LSTM | Espectrograma | Transfer learning | [efficientnet_lstm.py](../app/domain/models/architectures/efficientnet_lstm.py) |
-| 11 | MultiscaleCNN (Res2Net) | Espectrograma | Gao et al. TPAMI 2021 | [multiscale_cnn.py](../app/domain/models/architectures/multiscale_cnn.py) |
-| 12 | Ensemble | Espectrograma | Pham et al. (2024) | [ensemble.py](../app/domain/models/architectures/ensemble.py) |
-| 13 | SVM | Features tabulares | scikit-learn SVC | [svm.py](../app/domain/models/architectures/svm.py) |
-| 14 | Random Forest | Features tabulares | scikit-learn RF | [random_forest.py](../app/domain/models/architectures/random_forest.py) |
+| 1 | WavLM | Áudio bruto | microsoft/wavlm-base | `app/domain/models/architectures/wavlm.py` |
+| 2 | HuBERT | Áudio bruto | Hidden-Unit BERT | `app/domain/models/architectures/hubert.py` |
+| 3 | RawNet2 | Áudio bruto | RawNet2 (2021) | `app/domain/models/architectures/rawnet2.py` |
+| 4 | Sonic Sleuth | Espectrograma | Alshehri et al. (2024) | `app/domain/models/architectures/sonic_sleuth.py` |
+| 5 | AASIST | Espectrograma | GAT spectro-temporal | `app/domain/models/architectures/aasist.py` |
+| 6 | RawGAT-ST | Espectrograma | Graph Attention + GRU | `app/domain/models/architectures/rawgat_st.py` |
+| 7 | Conformer | Espectrograma | Conv + Transformer | `app/domain/models/architectures/conformer.py` |
+| 8 | Hybrid CNN-Transformer (CCT) | Espectrograma | Bartusiak & Delp (2022) | `app/domain/models/architectures/hybrid_cnn_transformer.py` |
+| 9 | Spectrogram Transformer | Espectrograma | ViT adaptado para áudio | `app/domain/models/architectures/spectrogram_transformer.py` |
+| 10 | EfficientNet-LSTM | Espectrograma | Transfer learning | `app/domain/models/architectures/efficientnet_lstm.py` |
+| 11 | MultiscaleCNN (Res2Net) | Espectrograma | Gao et al. TPAMI 2021 | `app/domain/models/architectures/multiscale_cnn.py` |
+| 12 | Ensemble | Espectrograma | Pham et al. (2024) | `app/domain/models/architectures/ensemble.py` |
+| 13 | SVM | Features tabulares | scikit-learn SVC | `app/domain/models/architectures/svm.py` |
+| 14 | Random Forest | Features tabulares | scikit-learn RF | `app/domain/models/architectures/random_forest.py` |
 
 ---
 

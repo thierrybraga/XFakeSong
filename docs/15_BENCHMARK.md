@@ -1,6 +1,6 @@
 # 15 — Sistema de Benchmark e Teste (dados do TCC)
 
-O pacote [`benchmarks/`](../benchmarks) gera, de forma **reprodutível** e usando
+O pacote `benchmarks/` gera, de forma **reprodutível** e usando
 o **pipeline real** (`TrainingService → ModelLoader → Predictor →
 MetricsCalculator`) e a **API** (FastAPI `TestClient`), os dados empíricos do
 trabalho: desempenho por arquitetura, eficiência computacional, robustez a ruído

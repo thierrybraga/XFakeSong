@@ -5,38 +5,6 @@
   --md-accent-fg-color: #7c4dff;
 }
 
-/* Modern Card Styling */
-.md-typeset .grid.cards > ul > li {
-  border: 1px solid var(--md-default-fg-color--lightest);
-  border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.md-typeset .grid.cards > ul > li:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
-  border-color: var(--md-accent-fg-color);
-}
-
-/* Hero Section Enhancement */
-.md-banner {
-  background: linear-gradient(135deg, var(--md-primary-fg-color), var(--md-accent-fg-color));
-  color: white;
-}
-
-/* Button Improvements */
-.md-button {
-  border-radius: 50px;
-  font-weight: bold;
-  letter-spacing: 0.5px;
-  transition: all 0.3s ease;
-}
-
-.md-button--primary:hover {
-  box-shadow: 0 5px 15px rgba(64, 81, 181, 0.4);
-}
-
 /* Code Block Polish */
 .md-typeset pre > code {
   border-radius: 6px;

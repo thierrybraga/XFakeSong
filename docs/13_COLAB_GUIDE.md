@@ -76,4 +76,4 @@ O projeto inclui 3 notebooks para as diferentes etapas do pipeline:
 2. Execute todas as células em sequência.
 3. Clique no link público exibido na saída da última célula (ex: `Rodando em URL pública: https://...`).
 
-> **Dica**: Links do Gradio Live expiram após ~72 horas de inatividade. Para uso contínuo, considere o deploy no Hugging Face Spaces (ver [`10_DEPLOY_HUGGINGFACE.md`](10_DEPLOY_HUGGINGFACE.md)).
+> **Dica**: Links do Gradio Live expiram após ~72 horas de inatividade. Para uso contínuo, considere o deploy no Hugging Face Spaces (ver [`11_DEPLOY_HUGGINGFACE.md`](11_DEPLOY_HUGGINGFACE.md)).

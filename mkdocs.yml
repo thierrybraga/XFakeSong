@@ -9,7 +9,6 @@ edit_uri: edit/main/docs/
 theme:
   name: material
   language: pt-BR
-  custom_dir: docs/overrides
   features:
     - navigation.tabs
     - navigation.tabs.sticky
@@ -44,8 +43,6 @@ theme:
   font:
     text: Roboto
     code: Roboto Mono
-  favicon: assets/favicon.ico
-  logo: assets/logo.png
 
 extra_css:
   - stylesheets/extra.css
@@ -93,25 +90,28 @@ markdown_extensions:
       custom_checkbox: true
   - pymdownx.tilde
   - pymdownx.emoji:
-      emoji_index: !!python/name:materialx.emoji.twemoji
-      emoji_generator: !!python/name:materialx.emoji.to_svg
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 nav:
   - Home: index.md
   - Começando:
     - Introdução: 01_INTRODUCAO.md
     - Instalação e Configuração: 02_INSTALACAO_CONFIGURACAO.md
-    - Guia Google Colab: 12_COLAB_GUIDE.md
+    - Guia Google Colab: 13_COLAB_GUIDE.md
   - Arquitetura:
     - Visão Geral e Estrutura: 03_ARQUITETURA.md
     - Features de Áudio: 04_FEATURES.md
   - Modelos:
     - Arquiteturas Neurais: 08_ARQUITETURAS.md
+    - Revisão Técnica das Arquiteturas: 14_REVISAO_ARQUITETURAS.md
     - Fluxos de Inferência: 09_INFERENCIA.md
     - Treinamento: 10_TREINAMENTO.md
+  - Avaliação:
+    - Benchmark e TCC: 15_BENCHMARK.md
+    - Testes e Qualidade: 06_TESTES.md
   - Desenvolvimento:
     - Guia do Desenvolvedor: 05_GUIA_DEV.md
-    - Testes e Qualidade: 06_TESTES.md
     - API Reference: 07_API_REFERENCE.md
   - Dados:
     - Datasets Públicos: 12_DATASETS.md
