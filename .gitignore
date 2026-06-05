@@ -5,6 +5,11 @@ node_modules/
 results/models/
 *.h5
 
+# Saídas geradas pelo benchmark (results.json/csv, tabelas .tex, figuras .png)
+results/benchmark/
+results/benchmark_*/
+results/bench_*/
+
 # Claude Code internal
 .claude/
 
