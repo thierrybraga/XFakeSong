@@ -234,6 +234,380 @@ def _history_figure(train_loss, val_loss, train_acc, val_acc):
     return fig
 
 
+def _history_series(history, *keys):
+    """Retorna a primeira série não vazia encontrada no Keras history."""
+    data = getattr(history, "history", history) or {}
+    for key in keys:
+        values = data.get(key)
+        if values:
+            return values
+    return []
+
+
+def _resolve_accuracy_history_keys(history, preferred_train: str = None):
+    """Resolve chaves de accuracy gravadas pelo Keras para qualquer arquitetura."""
+    data = getattr(history, "history", history) or {}
+    candidates = []
+    if preferred_train:
+        candidates.append(preferred_train)
+    candidates.extend(
+        [
+            "accuracy",
+            "binary_accuracy",
+            "categorical_accuracy",
+            "sparse_categorical_accuracy",
+            "acc",
+        ]
+    )
+    for key in candidates:
+        if data.get(key):
+            val_key = f"val_{key}"
+            if data.get(val_key):
+                return key, val_key
+            return key, None
+    for key in data:
+        if key.startswith("val_"):
+            continue
+        if "acc" in key.lower() or "accuracy" in key.lower():
+            val_key = f"val_{key}"
+            return key, val_key if data.get(val_key) else None
+    return None, None
+
+
+def _history_figure_from_history(history, preferred_train_acc_key: str = None):
+    """Cria o gráfico canônico diretamente de um dict/History do Keras."""
+    train_acc_key, val_acc_key = _resolve_accuracy_history_keys(
+        history, preferred_train_acc_key
+    )
+    return _history_figure(
+        _history_series(history, "loss"),
+        _history_series(history, "val_loss"),
+        _history_series(history, train_acc_key) if train_acc_key else [],
+        _history_series(history, val_acc_key) if val_acc_key else [],
+    )
+
+
+def _normalize_true_labels(labels):
+    """Converte labels Keras/sparse/one-hot/(B,1) para vetor binário int."""
+    import numpy as np
+
+    arr = np.asarray(labels)
+    if arr.ndim > 1 and arr.shape[-1] > 1:
+        arr = np.argmax(arr, axis=-1)
+    return np.asarray(arr).reshape(-1).astype("int32")
+
+
+def _prediction_labels_and_scores(predictions):
+    """Converte saída sigmoid/softmax/logits em labels e score da classe fake."""
+    import numpy as np
+
+    pred = np.asarray(predictions, dtype="float32")
+    if pred.ndim == 1 or (pred.ndim > 1 and pred.shape[-1] == 1):
+        scores = pred.reshape(-1)
+        if scores.size and (float(scores.min()) < 0.0 or float(scores.max()) > 1.0):
+            scores = 1.0 / (1.0 + np.exp(-scores))
+        labels = (scores >= 0.5).astype("int32")
+        return labels, scores.astype("float32")
+
+    labels = np.argmax(pred, axis=-1).astype("int32")
+    scores_src = pred
+    row_sums = np.sum(scores_src, axis=-1)
+    if (
+        scores_src.size
+        and (
+            float(scores_src.min()) < 0.0
+            or float(scores_src.max()) > 1.0
+            or not np.allclose(row_sums, 1.0, atol=1e-3)
+        )
+    ):
+        scores_src = scores_src - np.max(scores_src, axis=-1, keepdims=True)
+        exp = np.exp(scores_src)
+        scores_src = exp / np.sum(exp, axis=-1, keepdims=True)
+    scores = scores_src[:, 1] if scores_src.shape[-1] > 1 else labels.astype("float32")
+    return labels, scores.astype("float32")
+
+
+def _collect_validation_predictions(model, val_ds):
+    """Coleta y_true, y_pred e y_score do dataset de validação."""
+    import numpy as np
+
+    y_true_all = []
+    y_pred_all = []
+    y_score_all = []
+    for x_batch, y_batch in val_ds:
+        preds = model.predict_on_batch(x_batch)
+        y_true_all.extend(_normalize_true_labels(y_batch.numpy()).tolist())
+        labels, scores = _prediction_labels_and_scores(preds)
+        y_pred_all.extend(labels.tolist())
+        y_score_all.extend(scores.tolist())
+    return (
+        np.asarray(y_true_all, dtype="int32"),
+        np.asarray(y_pred_all, dtype="int32"),
+        np.asarray(y_score_all, dtype="float32"),
+    )
+
+
+def _plot_confusion_matrix_on_axis(ax, fig, y_true, y_pred, title="Matriz de Confusão"):
+    """Renderiza matriz de confusão binária em eixo existente."""
+    import numpy as np
+    from sklearn.metrics import confusion_matrix
+
+    cm = confusion_matrix(
+        _normalize_true_labels(y_true),
+        _normalize_true_labels(y_pred),
+        labels=[0, 1],
+    )
+    style_ax(ax, fig, title)
+    ax.grid(False)
+    ax.imshow(cm, cmap="Blues")
+    ax.set_xticks([0, 1])
+    ax.set_yticks([0, 1])
+    ax.set_xticklabels(["real", "fake"])
+    ax.set_yticklabels(["real", "fake"])
+    ax.set_xlabel("Predito")
+    ax.set_ylabel("Verdadeiro")
+    cm_max = int(np.max(cm)) if cm.size and np.max(cm) > 0 else 1
+    for row in range(2):
+        for col in range(2):
+            color = "#f1f5f9" if cm[row, col] > cm_max / 2 else "#0f172a"
+            ax.text(
+                col,
+                row,
+                str(int(cm[row, col])),
+                ha="center",
+                va="center",
+                color=color,
+                fontweight="bold",
+            )
+    return cm
+
+
+def _message_figure(title: str, message: str):
+    """Figura fallback para avaliação indisponível sem quebrar a UI."""
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    style_ax(ax, fig, title)
+    ax.text(
+        0.5,
+        0.5,
+        message,
+        ha="center",
+        va="center",
+        transform=ax.transAxes,
+        color="#f1f5f9",
+        wrap=True,
+    )
+    ax.set_xticks([])
+    ax.set_yticks([])
+    safe_tight_layout(fig)
+    return fig
+
+
+def _roc_figure(y_true, y_scores):
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from sklearn.metrics import auc, roc_curve
+
+    y_true = _normalize_true_labels(y_true)
+    y_scores = np.asarray(y_scores, dtype="float32").reshape(-1)
+    if len(np.unique(y_true)) < 2:
+        return _message_figure("Curva ROC", "ROC indisponível: validação tem uma única classe.")
+    fpr, tpr, _ = roc_curve(y_true, y_scores)
+    roc_auc = auc(fpr, tpr)
+    fig, ax = plt.subplots(figsize=(8, 5))
+    style_ax(ax, fig, "Curva ROC")
+    ax.plot(fpr, tpr, color=PLOT_ACCENT, lw=2, label=f"AUC = {roc_auc:.3f}")
+    ax.plot([0, 1], [0, 1], color="#334155", lw=1.5, linestyle="--")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1.05)
+    ax.set_xlabel("False Positive Rate")
+    ax.set_ylabel("True Positive Rate")
+    ax.legend()
+    safe_tight_layout(fig)
+    return fig
+
+
+def _precision_recall_figure(y_true, y_scores):
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from sklearn.metrics import auc, precision_recall_curve
+
+    y_true = _normalize_true_labels(y_true)
+    y_scores = np.asarray(y_scores, dtype="float32").reshape(-1)
+    if len(np.unique(y_true)) < 2:
+        return _message_figure(
+            "Curva Precisão-Recall",
+            "Precisão-Recall indisponível: validação tem uma única classe.",
+        )
+    precision, recall, _ = precision_recall_curve(y_true, y_scores)
+    pr_auc = auc(recall, precision)
+    fig, ax = plt.subplots(figsize=(8, 5))
+    style_ax(ax, fig, "Curva Precisão-Recall")
+    ax.plot(recall, precision, color=PLOT_ACCENT, lw=2, label=f"AUC = {pr_auc:.3f}")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1.05)
+    ax.set_xlabel("Recall")
+    ax.set_ylabel("Precision")
+    ax.legend()
+    safe_tight_layout(fig)
+    return fig
+
+
+def _det_figure(y_true, y_scores):
+    import numpy as np
+
+    y_true = _normalize_true_labels(y_true)
+    if len(np.unique(y_true)) < 2:
+        return _message_figure("Curva DET / EER", "DET indisponível: validação tem uma única classe.")
+    try:
+        from app.domain.services.forensic_visualization import (
+            TrainingAnalyticsVisualizer,
+        )
+
+        fig, _eer = TrainingAnalyticsVisualizer().plot_det_curve_eer(
+            y_true, np.asarray(y_scores, dtype="float32").reshape(-1)
+        )
+        return fig
+    except Exception as exc:
+        return _message_figure("Curva DET / EER", f"Falha ao gerar DET/EER:\n{exc}")
+
+
+def _threshold_figure(y_true, y_scores):
+    import numpy as np
+
+    y_true = _normalize_true_labels(y_true)
+    if len(np.unique(y_true)) < 2:
+        return _message_figure(
+            "Otimização de Threshold",
+            "Threshold indisponível: validação tem uma única classe.",
+        )
+    try:
+        from app.domain.services.forensic_visualization import (
+            TrainingAnalyticsVisualizer,
+        )
+
+        return TrainingAnalyticsVisualizer().plot_threshold_optimization(
+            y_true, np.asarray(y_scores, dtype="float32").reshape(-1)
+        )
+    except Exception as exc:
+        return _message_figure("Otimização de Threshold", f"Falha ao gerar threshold:\n{exc}")
+
+
+def _class_accuracy_figure(y_true, y_pred):
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    y_true = _normalize_true_labels(y_true)
+    y_pred = _normalize_true_labels(y_pred)
+    scores = []
+    for cls in (0, 1):
+        mask = y_true == cls
+        scores.append(float(np.mean(y_pred[mask] == cls)) if np.any(mask) else 0.0)
+    fig, ax = plt.subplots(figsize=(7, 5))
+    style_ax(ax, fig, "Acurácia por Classe")
+    ax.bar(["real", "fake"], scores, color=[PLOT_ACCENT, PLOT_DANGER])
+    ax.set_ylim(0, 1.05)
+    ax.set_ylabel("Accuracy")
+    for i, score in enumerate(scores):
+        ax.text(i, min(1.0, score + 0.03), f"{score:.3f}", ha="center")
+    safe_tight_layout(fig)
+    return fig
+
+
+def _standalone_confusion_figure(y_true, y_pred):
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    _plot_confusion_matrix_on_axis(ax, fig, y_true, y_pred, "Matriz de Confusão")
+    safe_tight_layout(fig)
+    return fig
+
+
+def _lr_schedule_figure(lr_history):
+    if not lr_history:
+        return _message_figure(
+            "Schedule de Learning Rate",
+            "Learning-rate schedule indisponível: nenhuma época concluída.",
+        )
+    try:
+        from app.domain.services.forensic_visualization import (
+            TrainingAnalyticsVisualizer,
+        )
+
+        return TrainingAnalyticsVisualizer().plot_lr_schedule(lr_history)
+    except Exception as exc:
+        return _message_figure("Schedule de Learning Rate", f"Falha ao gerar LR:\n{exc}")
+
+
+def _training_eval_figures(y_true, y_pred, y_scores, lr_history=None):
+    """Conjunto de gráficos de avaliação pós-treino."""
+    return {
+        "roc": _roc_figure(y_true, y_scores),
+        "cm": _standalone_confusion_figure(y_true, y_pred),
+        "pr": _precision_recall_figure(y_true, y_scores),
+        "det": _det_figure(y_true, y_scores),
+        "threshold": _threshold_figure(y_true, y_scores),
+        "class_acc": _class_accuracy_figure(y_true, y_pred),
+        "lr": _lr_schedule_figure(lr_history or []),
+    }
+
+
+def _history_confusion_figure_from_history(
+    history,
+    y_true,
+    y_pred,
+    preferred_train_acc_key: str = None,
+):
+    """Figura final canônica: Loss, Accuracy e Matriz de Confusão."""
+    import matplotlib.pyplot as plt
+
+    train_acc_key, val_acc_key = _resolve_accuracy_history_keys(
+        history, preferred_train_acc_key
+    )
+    tl = [v for v in _history_series(history, "loss") if v is not None]
+    vl = [v for v in _history_series(history, "val_loss") if v is not None]
+    ta = [
+        v
+        for v in (_history_series(history, train_acc_key) if train_acc_key else [])
+        if v is not None
+    ]
+    va = [
+        v
+        for v in (_history_series(history, val_acc_key) if val_acc_key else [])
+        if v is not None
+    ]
+
+    fig, ax = plt.subplots(1, 3, figsize=(16, 4))
+
+    style_ax(ax[0], fig, "Loss")
+    ax[0].plot(range(1, len(tl) + 1), tl, label="treino",
+               color=PLOT_ACCENT, marker="o", ms=3)
+    if vl:
+        ax[0].plot(range(1, len(vl) + 1), vl, label="validação",
+                   color=PLOT_DANGER, marker="o", ms=3)
+    ax[0].set_xlabel("Época")
+    if 1 <= len(tl) <= 20:
+        ax[0].set_xticks(list(range(1, len(tl) + 1)))
+    ax[0].legend()
+
+    style_ax(ax[1], fig, "Accuracy")
+    ax[1].plot(range(1, len(ta) + 1), ta, label="treino",
+               color=PLOT_ACCENT, marker="o", ms=3)
+    if va:
+        ax[1].plot(range(1, len(va) + 1), va, label="validação",
+                   color=PLOT_DANGER, marker="o", ms=3)
+    ax[1].set_xlabel("Época")
+    ax[1].set_ylim(0.0, 1.02)
+    if 1 <= len(ta) <= 20:
+        ax[1].set_xticks(list(range(1, len(ta) + 1)))
+    ax[1].legend()
+
+    _plot_confusion_matrix_on_axis(ax[2], fig, y_true, y_pred, "Matriz de Confusão")
+    safe_tight_layout(fig)
+    return fig
+
+
 def _train_status_html(
     arch: str,
     device: str,
@@ -919,16 +1293,6 @@ def _run_training(
         from app.domain.models.training.rawboost import rawboost_tf
         from app.domain.models.training.spec_augment import spec_augment_tf
 
-        def _prep_raw_train(audio, label):
-            audio, lab = _prep_raw(audio, label)
-            audio = rawboost_tf(audio, sr=SAMPLE_RATE, algo=4, p=0.7)
-            return audio, lab
-
-        def _prep_spec_train(audio, label):
-            spec_x = _to_spec(audio)
-            spec_x = spec_augment_tf(spec_x, p=0.7)
-            return spec_x, tf.gather(_table, label)
-
         # Tier-1 perf: separa FEATURIZAÇÃO (cara: STFT/resample — determinística,
         # cacheável) de AUGMENTATION (estocástica). Cacheamos a featurização para
         # NÃO recalculá-la a cada época, e aplicamos a augmentation DEPOIS do
@@ -946,7 +1310,7 @@ def _run_training(
                 return spec_augment_tf(s, p=0.7), lab
 
         train_ds = train_ds.map(_feat_prep, num_parallel_calls=tf.data.AUTOTUNE)
-        val_ds = val_ds.map(val_prep, num_parallel_calls=tf.data.AUTOTUNE)
+        val_ds = val_ds.map(_feat_prep, num_parallel_calls=tf.data.AUTOTUNE)
 
         # Cache em memória só para datasets pequenos/médios (guard de OOM):
         # cardinalidade finita e ≲ 4000 amostras. Datasets grandes seguem sem
@@ -1428,9 +1792,17 @@ def _run_training(
         # Chaves de métrica reais (callback usa exatamente _acc_key/_val_acc_key)
         hist = {"loss": [], "acc": [], "val_loss": [], "val_acc": []}
         epoch_q: "_queue.Queue" = _queue.Queue()
+        lr_history: List[float] = []
 
         class _LiveQueueCb(tf.keras.callbacks.Callback):
             def on_epoch_end(self, epoch, logs=None):
+                try:
+                    lr = float(tf.keras.backend.get_value(
+                        self.model.optimizer.learning_rate
+                    ))
+                    lr_history.append(lr)
+                except Exception:
+                    pass
                 logs = logs or {}
                 epoch_q.put(
                     {
@@ -1572,22 +1944,27 @@ def _run_training(
             raise fit_box["error"]
         history = fit_box["history"]
 
-        # Plot final (canônico, a partir do history completo)
-        train_acc_key = _acc_key
-        val_acc_key = _val_acc_key
-        if history is not None and train_acc_key not in history.history:
-            for cand in ("accuracy", "binary_accuracy", "categorical_accuracy"):
-                if cand in history.history:
-                    train_acc_key = cand
-                    val_acc_key = f"val_{cand}"
-                    break
+        # Plot final (canônico, a partir do history completo). Resolve chaves de
+        # métrica para qualquer saída de arquitetura: sigmoid usa binary_accuracy;
+        # softmax pode registrar accuracy/sparse_categorical_accuracy etc.
+        train_acc_key, val_acc_key = _resolve_accuracy_history_keys(history, _acc_key)
+        progress(0.97, desc="Gerando matriz de confusão...")
+        y_true_val, y_pred_val, _y_score_val = _collect_validation_predictions(
+            model, val_ds
+        )
+        eval_figs = _training_eval_figures(
+            y_true_val,
+            y_pred_val,
+            _y_score_val,
+            lr_history,
+        )
 
         close_fig(_live_fig)
-        fig = _history_figure(
-            history.history.get("loss"),
-            history.history.get("val_loss"),
-            history.history.get(train_acc_key),
-            history.history.get(val_acc_key),
+        fig = _history_confusion_figure_from_history(
+            history,
+            y_true_val,
+            y_pred_val,
+            train_acc_key,
         )
 
         progress(1.0, desc="Concluído!")
@@ -1655,9 +2032,17 @@ def _run_training(
                     "─" * 48,
                     f"✓ Treino concluído — val_accuracy={final_acc:.4f}, "
                     f"val_loss={final_loss:.4f}",
+                    "Matriz de confusão gerada com o conjunto de validação.",
                 ]
             ),
             fig,
+            eval_figs["roc"],
+            eval_figs["cm"],
+            eval_figs["pr"],
+            eval_figs["det"],
+            eval_figs["threshold"],
+            eval_figs["class_acc"],
+            eval_figs["lr"],
         )
 
     except Exception as e:
@@ -1965,7 +2350,12 @@ def _run_classical_training(arch: str, dataset_path: str, progress):
         from sklearn.metrics import confusion_matrix
 
         y_pred = est.predict(X_va_s)
+        if hasattr(est, "predict_proba"):
+            y_score = est.predict_proba(X_va_s)[:, 1]
+        else:
+            y_score = y_pred.astype("float32")
         cm = confusion_matrix(y_va, y_pred, labels=[0, 1])
+        eval_figs = _training_eval_figures(y_va, y_pred, y_score, [])
 
         # ── Plot: matriz de confusão + (RF) importância das features ──
         fig, ax = plt.subplots(1, 2, figsize=(12, 4))
@@ -2063,6 +2453,13 @@ def _run_classical_training(arch: str, dataset_path: str, progress):
                 ]
             ),
             fig,
+            eval_figs["roc"],
+            eval_figs["cm"],
+            eval_figs["pr"],
+            eval_figs["det"],
+            eval_figs["threshold"],
+            eval_figs["class_acc"],
+            eval_figs["lr"],
         )
 
     except Exception as e:
@@ -2244,7 +2641,9 @@ def create_training_wizard_tab():
 
             with gr.Row():
                 with gr.Column(scale=1):
-                    history_plot = gr.Plot(label="Loss & Accuracy (ao vivo)")
+                    history_plot = gr.Plot(
+                        label="Loss, Accuracy & Matriz de Confusão"
+                    )
                 with gr.Column(scale=1):
                     logs_box = gr.TextArea(
                         label="Log por época",
@@ -2252,6 +2651,17 @@ def create_training_wizard_tab():
                         lines=16,
                         max_lines=40,
                     )
+
+            with gr.Accordion("Avaliação do Treinamento", open=True):
+                with gr.Row():
+                    eval_roc_plot = gr.Plot(label="Curva ROC")
+                    eval_cm_plot = gr.Plot(label="Matriz de Confusão")
+                    eval_pr_plot = gr.Plot(label="Curva Precisão-Recall")
+                with gr.Row():
+                    eval_det_plot = gr.Plot(label="Curva DET / EER")
+                    eval_threshold_plot = gr.Plot(label="Otimização de Threshold")
+                    eval_class_acc_plot = gr.Plot(label="Acurácia por Classe")
+                eval_lr_plot = gr.Plot(label="Schedule de Learning Rate")
 
             # ── Salvar modelo treinado ──────────────────────────────────
             with gr.Group():
@@ -2369,7 +2779,7 @@ def create_training_wizard_tab():
             updates_step = [4, _stepper_html(4), *_step_visibility(4)]
 
             # Streamed do _run_training
-            for status, logs, plot in _run_training(
+            for update in _run_training(
                 arch=arch,
                 dataset_path=(scan_state or {}).get("class_names")
                 and (scan_state.get("path") or "app/datasets")
@@ -2381,7 +2791,10 @@ def create_training_wizard_tab():
                 use_swa=bool(use_swa_val),
                 use_mixup=bool(use_mixup_val),
             ):
-                yield (*updates_step, status, logs, plot)
+                status, logs, plot, *eval_plots = update
+                while len(eval_plots) < 7:
+                    eval_plots.append(gr.update())
+                yield (*updates_step, status, logs, plot, *eval_plots[:7])
 
         # Captura o path do dataset junto com o resultado do scan
         def attach_path_to_scan(scan_state, path):
@@ -2416,5 +2829,12 @@ def create_training_wizard_tab():
                 status_box,
                 logs_box,
                 history_plot,
+                eval_roc_plot,
+                eval_cm_plot,
+                eval_pr_plot,
+                eval_det_plot,
+                eval_threshold_plot,
+                eval_class_acc_plot,
+                eval_lr_plot,
             ],
         )

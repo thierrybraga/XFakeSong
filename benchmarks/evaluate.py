@@ -30,7 +30,11 @@ def evaluate_scores(y_true: np.ndarray, p_fake: np.ndarray,
 
     y_true = np.asarray(y_true).ravel().astype(int)
     p_fake = np.asarray(p_fake, dtype="float64").ravel()
-    y_pred = (p_fake > threshold).astype(int)
+    nonfinite_scores = int((~np.isfinite(p_fake)).sum())
+    if nonfinite_scores:
+        p_fake = np.nan_to_num(p_fake, nan=0.5, posinf=1.0, neginf=0.0)
+    p_fake = np.clip(p_fake, 0.0, 1.0)
+    y_pred = (p_fake >= threshold).astype(int)
 
     n_pos = int((y_true == 1).sum())
     n_neg = int((y_true == 0).sum())
@@ -42,6 +46,7 @@ def evaluate_scores(y_true: np.ndarray, p_fake: np.ndarray,
         "n": int(len(y_true)),
         "n_pos": n_pos,
         "n_neg": n_neg,
+        "nonfinite_scores": nonfinite_scores,
     }
 
     # Métricas que exigem ambas as classes presentes

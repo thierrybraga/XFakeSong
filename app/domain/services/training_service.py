@@ -48,6 +48,12 @@ class TrainingService(ITrainingService):
             "parameters",
             "architecture",
             "dataset_path",
+            "use_mfcc_branch",
+            "use_cross_attention",
+            "use_gated_fusion",
+            "use_se_blocks",
+            "aux_loss_weight",
+            "use_mixed_precision",
         }
     )
 
@@ -243,6 +249,19 @@ class TrainingService(ITrainingService):
 
             # 3. Instanciar Modelo
             try:
+                if config.get("use_mixed_precision") is False:
+                    try:
+                        import tensorflow as tf
+
+                        tf.keras.mixed_precision.set_global_policy("float32")
+                        logger.info(
+                            "Mixed precision desabilitado antes da instanciação "
+                            "do modelo."
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Falha ao definir política float32 antes do modelo: {e}"
+                        )
                 module = importlib.import_module(arch_info.module_path)
                 create_model_fn = getattr(module, arch_info.function_name)
 
@@ -307,7 +326,10 @@ class TrainingService(ITrainingService):
                 train_conf_dict.setdefault(k, v)
 
             training_config = TrainingConfig(**train_conf_dict)
-            trainer = ModelTrainer(training_config)
+            trainer = ModelTrainer(
+                training_config,
+                use_mixed_precision=config.get("use_mixed_precision"),
+            )
 
             # kwargs para callbacks podem ser passados via config
             train_result = trainer.train(
@@ -396,7 +418,8 @@ class TrainingService(ITrainingService):
                     file_size=(
                         save_path.stat().st_size if save_path.exists() else 0
                     )
-                )
+                ),
+                metadata={"model": model},
             )
 
         except Exception as e:

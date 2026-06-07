@@ -65,11 +65,16 @@ class ModelInfo:
 class ModelLoader:
     """Responsável por carregar e gerenciar modelos."""
 
-    def __init__(self, models_dir: Union[str, Path]):
+    def __init__(
+        self,
+        models_dir: Union[str, Path],
+        create_default_models: bool = True,
+    ):
         self.models_dir = Path(models_dir)
         self.models_dir.mkdir(exist_ok=True)
         self.loaded_models: Dict[str, ModelInfo] = {}
         self.default_model = None
+        self.create_default_models = create_default_models
 
     def load_available_models(self):
         """Carrega todos os modelos disponíveis."""
@@ -90,10 +95,15 @@ class ModelLoader:
                 logger.warning(f"Erro ao carregar modelo {model_file}: {e}")
 
         # Se não há modelos carregados, criar modelos padrão
-        if not self.loaded_models:
+        if not self.loaded_models and self.create_default_models:
             logger.info(
                 "Nenhum modelo salvo encontrado. Criando modelos padrão...")
             self._create_default_models()
+        elif not self.loaded_models:
+            logger.info(
+                "Nenhum modelo salvo encontrado. Criação de modelos padrão "
+                "desativada."
+            )
 
         # Definir modelo padrão
         if self.loaded_models:
@@ -143,10 +153,16 @@ class ModelLoader:
 
                 try:
                     model = tf.keras.models.load_model(
-                        str(model_path), custom_objects=custom_objects)
+                        str(model_path),
+                        custom_objects=custom_objects,
+                        safe_mode=False,
+                    )
                 except TypeError:
                     # Fallback sem custom objects se não forem necessários
-                    model = tf.keras.models.load_model(str(model_path))
+                    model = tf.keras.models.load_model(
+                        str(model_path),
+                        safe_mode=False,
+                    )
 
                 model_type = 'tensorflow'
 

@@ -17,14 +17,27 @@ e teste de sistema da API.
 # 1) Verificação do harness (sintético, 1 época) — segundos:
 python scripts/run_benchmark.py --quick
 
-# 2) Execução do TCC (arquiteturas-chave + SVM/RF + API), dataset real .npz:
+# 2) Pipeline completo do TCC: download, processamento, split, treino,
+#    inferência, gráficos PNG e relatórios Markdown:
+python scripts/run_tcc_pipeline.py \
+    --tcc-full-dataset \
+    --out results/tcc_full_20k \
+    --npz app/datasets/benchmark_audio_raw_20k.npz
+
+# 3) Execução do TCC direto no benchmark, usando dataset real .npz já exportado:
 python scripts/run_benchmark.py --full --dataset app/datasets/brspeech_df.npz
 
-# 3) Sob medida:
+# 4) Sob medida:
 python scripts/run_benchmark.py \
     --archs MultiscaleCNN Ensemble EfficientNet-LSTM AASIST RawNet2 SVM RandomForest \
     --dataset data.npz --epochs 20 --snr 30 20 10 --api --out results/bench_tcc
 ```
+
+O preset `--tcc-full-dataset` configura o alvo oficial do experimento:
+`10.000` amostras reais + `10.000` amostras fake, com composição balanceada
+entre BRSpeech-DF, CommonVoice/FLEURS PT-BR e Fake Voices XTTS. Ele também
+ativa o benchmark completo e o probe da API. Use `--skip-download` quando os
+WAVs e splits já estiverem prontos localmente.
 
 O `.npz` deve conter `X_train`/`y_train` (e opcionalmente `X_val`/`X_test`); o
 harness **reconcatena e re-divide 70/15/15 estratificado** com semente fixa,
@@ -54,10 +67,15 @@ Tudo é gravado em `--out` (default `results/benchmark/`):
 | `tables/tab_resultados.tex` | **Tabela "Desempenho das arquiteturas"** (acur/EER/AUC/min-tDCF/lat/conv) |
 | `tables/tab_eficiencia.tex` | **Tabela "Eficiência computacional"** (params/MB/latência) |
 | `tables/tab_robustez.tex` | **Tabela "Robustez sob ruído AWGN"** (acur/EER por SNR) |
+| `dataset.md` / `dataset_manifest.json` | Composição, origem, split, processamento e hiperparâmetros globais do dataset |
+| `tcc_report.md` | Relatório Markdown com dataset, hiperparâmetros, métricas, inferências e imagens PNG |
 | `figures/roc.png` | Curvas ROC (visualiza a AUC) |
+| `figures/confusion_matrices.png` | Matrizes de confusão agregadas |
+| `figures/score_distributions.png` | Distribuição dos scores por classe |
 | `figures/robustez.png` | Acurácia × SNR (degradação sob ruído) |
 | `figures/eficiencia.png` | Latência × acurácia (verde=convergiu) |
 | `figures/convergencia.png` | Curvas de acurácia de validação por época |
+| `architectures/<modelo>/*.png` | Matrizes de confusão, ROC, scores e convergência por arquitetura |
 | `results.csv` / `results.json` | Dados brutos (reprodutibilidade / anexos) |
 | `summary.md` | Resumo legível (ambiente, dataset, tabela-resumo, API) |
 

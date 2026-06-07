@@ -26,6 +26,7 @@ fontes canonicas para cada assunto.
 | Executar no Google Colab | [Guia Google Colab](13_COLAB_GUIDE.md) |
 | Auditar aderencia das arquiteturas | [Revisao das Arquiteturas](14_REVISAO_ARQUITETURAS.md) |
 | Rodar benchmark para TCC | [Benchmark e TCC](15_BENCHMARK.md) |
+| Estudar com notebooks | [Guia de Notebooks](16_NOTEBOOKS.md) |
 
 ## Fluxos Principais
 
@@ -47,6 +48,14 @@ flowchart LR
     E --> F["Modelo exportado"]
 ```
 
+```mermaid
+flowchart LR
+    A["Benchmark TCC"] --> B["dataset.md"]
+    A --> C["tcc_report.md"]
+    A --> D["figures/*.png"]
+    A --> E["architectures/<modelo>/"]
+```
+
 ## Comandos Rapidos
 
 ```bash
@@ -54,6 +63,7 @@ python main.py --bootstrap-dirs
 python main.py --gradio
 pytest tests/
 docker compose up --build -d
+python scripts/run_tcc_pipeline.py --smoke --epochs 1 --batch-size 4
 ```
 
 Para detalhes de ambiente, dependencias e variaveis `.env`, use

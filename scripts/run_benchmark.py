@@ -50,6 +50,19 @@ def main() -> int:
     p.add_argument("--out", metavar="DIR", help="pasta de saída dos artefatos")
     p.add_argument("--api", action="store_true",
                    help="também roda o teste de sistema da API (TestClient)")
+    p.add_argument("--no-api", action="store_true",
+                   help="desativa o teste da API mesmo em presets que o habilitam")
+    p.add_argument("--batch-size", type=int, help="batch size de treino")
+    p.add_argument("--latency-runs", type=int,
+                   help="número de medições de latência por arquitetura")
+    p.add_argument("--synthetic-n", type=int,
+                   help="número de amostras do dataset sintético")
+    p.add_argument("--synthetic-shape", nargs="+", type=int, metavar="DIM",
+                   help="shape por amostra do dataset sintético, ex: 128 80")
+    p.add_argument("--converge-auc", type=float,
+                   help="AUC mínima para marcar convergência")
+    p.add_argument("--converge-accuracy", type=float,
+                   help="acurácia mínima no threshold 0.5 para convergência")
     p.add_argument("--seed", type=int, default=42)
     args = p.parse_args()
 
@@ -74,6 +87,20 @@ def main() -> int:
         cfg.output_dir = args.out
     if args.api:
         cfg.run_api_probe = True
+    if args.no_api:
+        cfg.run_api_probe = False
+    if args.batch_size:
+        cfg.batch_size = args.batch_size
+    if args.latency_runs:
+        cfg.latency_runs = args.latency_runs
+    if args.synthetic_n:
+        cfg.synthetic_n = args.synthetic_n
+    if args.synthetic_shape:
+        cfg.synthetic_shape = tuple(args.synthetic_shape)
+    if args.converge_auc is not None:
+        cfg.converge_auc_threshold = args.converge_auc
+    if args.converge_accuracy is not None:
+        cfg.converge_accuracy_threshold = args.converge_accuracy
     cfg.seed = args.seed
 
     logging.basicConfig(
@@ -82,7 +109,7 @@ def main() -> int:
         datefmt="%H:%M:%S",
     )
 
-    print(f"\n=== Benchmark XFakeSong ===")
+    print("\n=== Benchmark XFakeSong ===")
     print(f"Arquiteturas : {', '.join(cfg.architectures)}")
     print(f"Dataset      : {cfg.dataset_path or '(sintético)'}")
     print(f"Épocas       : {cfg.epochs} | SNRs: {cfg.snr_levels_db} | "
@@ -118,9 +145,9 @@ def main() -> int:
               f"({api.get('n_routes')} rotas registradas)")
     out = Path(cfg.output_dir).resolve()
     print(f"\nArtefatos: {out}")
-    print(f"  • results.json / results.csv / summary.md")
-    print(f"  • tables/*.tex  (resultados, eficiência, robustez)")
-    print(f"  • figures/*.png (roc, robustez, eficiência, convergência)\n")
+    print("  • results.json / results.csv / summary.md")
+    print("  • tables/*.tex  (resultados, eficiência, robustez)")
+    print("  • figures/*.png (roc, robustez, eficiência, convergência)\n")
     return 0
 
 

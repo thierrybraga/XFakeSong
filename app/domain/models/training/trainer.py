@@ -100,6 +100,12 @@ class ModelTrainer(IModelTrainer):
                 )
             except Exception as e:
                 self.logger.warning(f"Mixed precision indisponível: {e}")
+        else:
+            try:
+                tf.keras.mixed_precision.set_global_policy("float32")
+                self.logger.info("Mixed precision desabilitado para este treino.")
+            except Exception as e:
+                self.logger.warning(f"Falha ao definir política float32: {e}")
 
         # Configurar pipeline seguro para prevenção de data leakage
         secure_config = SecureTrainingConfig(

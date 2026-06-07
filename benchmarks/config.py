@@ -24,6 +24,7 @@ class BenchmarkConfig:
         run_api_probe: se True, roda o teste de sistema da API (TestClient).
         synthetic_n / synthetic_shape: tamanho/forma do dataset sintético.
         converge_auc_threshold: AUC mínimo (no limpo) para marcar "convergiu".
+        converge_accuracy_threshold: acurácia mínima no threshold de decisão.
     """
 
     architectures: List[str] = field(
@@ -40,17 +41,19 @@ class BenchmarkConfig:
     synthetic_n: int = 360
     synthetic_shape: tuple = (32, 16)
     converge_auc_threshold: float = 0.60
+    converge_accuracy_threshold: float = 0.55
 
     @classmethod
     def quick(cls, **overrides) -> "BenchmarkConfig":
         """Preset rápido (sintético, 1 época) — para verificação do harness."""
         base = dict(
-            architectures=["MultiscaleCNN"],
+            architectures=["SVM"],
             dataset_path=None,
             epochs=1,
             snr_levels_db=[20],
             latency_runs=5,
             synthetic_n=200,
+            synthetic_shape=(8, 8),
         )
         base.update(overrides)
         return cls(**base)

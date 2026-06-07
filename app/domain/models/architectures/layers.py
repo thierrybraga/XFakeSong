@@ -572,14 +572,30 @@ class SincNetLayer(layers.Layer):
         return 700 * (10**(mel / 2595) - 1)
 
     def call(self, inputs):
+        # Sinc filters are numerically sensitive and their trainable
+        # frequency parameters stay in float32 under mixed precision.
+        # Keep the whole filter construction/convolution in float32, then
+        # cast back to the layer policy dtype for downstream layers.
+        target_dtype = self.compute_dtype
+        inputs = tf.cast(inputs, tf.float32)
+
         # Constraints
-        low = self.min_low_hz + tf.abs(self.low_hz_)
-        high = tf.clip_by_value(low + self.min_band_hz + tf.abs(self.band_hz_), self.min_low_hz, self.sample_rate / 2)
+        min_low_hz = tf.cast(self.min_low_hz, tf.float32)
+        min_band_hz = tf.cast(self.min_band_hz, tf.float32)
+        nyquist = tf.cast(self.sample_rate / 2, tf.float32)
+        low = min_low_hz + tf.abs(tf.cast(self.low_hz_, tf.float32))
+        high = tf.clip_by_value(
+            low + min_band_hz + tf.abs(tf.cast(self.band_hz_, tf.float32)),
+            min_low_hz,
+            nyquist,
+        )
         band = high - low
 
         # Sinc function components
-        f_times_t_low = tf.matmul(tf.expand_dims(low, 1), tf.expand_dims(self.n_, 0))
-        f_times_t_high = tf.matmul(tf.expand_dims(high, 1), tf.expand_dims(self.n_, 0))
+        n = tf.cast(self.n_, tf.float32)
+        window = tf.cast(self.window_, tf.float32)
+        f_times_t_low = tf.matmul(tf.expand_dims(low, 1), tf.expand_dims(n, 0))
+        f_times_t_high = tf.matmul(tf.expand_dims(high, 1), tf.expand_dims(n, 0))
 
         # Band-pass sinc filters
         # sinc(x) = sin(pi*x) / (pi*x)
@@ -600,11 +616,15 @@ class SincNetLayer(layers.Layer):
             safe_x = tf.where(tf.abs(x) < 1e-7, tf.ones_like(x) * 1e-7, x)
             return tf.sin(np.pi * safe_x) / (np.pi * safe_x)
 
-        filters_low = 2 * tf.expand_dims(low, 1) * sinc(2 * tf.expand_dims(low, 1) * tf.expand_dims(self.n_, 0))
-        filters_high = 2 * tf.expand_dims(high, 1) * sinc(2 * tf.expand_dims(high, 1) * tf.expand_dims(self.n_, 0))
+        filters_low = 2 * tf.expand_dims(low, 1) * sinc(
+            2 * tf.expand_dims(low, 1) * tf.expand_dims(n, 0)
+        )
+        filters_high = 2 * tf.expand_dims(high, 1) * sinc(
+            2 * tf.expand_dims(high, 1) * tf.expand_dims(n, 0)
+        )
 
         filters = filters_high - filters_low
-        filters = filters * self.window_
+        filters = filters * window
 
         # Normalize filters
         filters = filters / (tf.reduce_max(tf.abs(filters), axis=1, keepdims=True) + 1e-8)
@@ -615,7 +635,8 @@ class SincNetLayer(layers.Layer):
         filters = tf.expand_dims(filters, 1)
 
         # Apply convolution
-        return tf.nn.conv1d(inputs, filters, stride=1, padding='SAME')
+        output = tf.nn.conv1d(inputs, filters, stride=1, padding='SAME')
+        return tf.cast(output, target_dtype)
 
     def get_config(self):
         config = super(SincNetLayer, self).get_config()
@@ -876,15 +897,20 @@ class SincConvLayer(layers.Layer):
 
     def call(self, inputs):
         # inputs: (batch, time, 1)
+        target_dtype = self.compute_dtype
+        inputs = tf.cast(inputs, tf.float32)
         if len(inputs.shape) == 2:
             inputs = tf.expand_dims(inputs, axis=-1)
 
         # Ensure positive frequencies
-        low = self.min_low_hz + tf.abs(self.low_hz_)
+        min_low_hz = tf.cast(self.min_low_hz, tf.float32)
+        min_band_hz = tf.cast(self.min_band_hz, tf.float32)
+        nyquist = tf.cast(self.sample_rate / 2.0, tf.float32)
+        low = min_low_hz + tf.abs(tf.cast(self.low_hz_, tf.float32))
         high = tf.clip_by_value(
-            low + self.min_band_hz + tf.abs(self.band_hz_),
-            clip_value_min=self.min_low_hz,
-            clip_value_max=self.sample_rate / 2.0
+            low + min_band_hz + tf.abs(tf.cast(self.band_hz_, tf.float32)),
+            clip_value_min=min_low_hz,
+            clip_value_max=nyquist,
         )
 
         # Time vector centered at 0
@@ -921,7 +947,7 @@ class SincConvLayer(layers.Layer):
         # Apply convolution
         output = tf.nn.conv1d(inputs, filters, stride=1, padding='SAME')
 
-        return output
+        return tf.cast(output, target_dtype)
 
     def get_config(self):
         config = super(SincConvLayer, self).get_config()

@@ -5,10 +5,9 @@ node_modules/
 results/models/
 *.h5
 
-# Saídas geradas pelo benchmark (results.json/csv, tabelas .tex, figuras .png)
-results/benchmark/
-results/benchmark_*/
-results/bench_*/
+# Saídas geradas (benchmark, pipeline TCC, notebooks, smoke): JSON/CSV, .tex,
+# .png, modelos. Tudo em results/ é artefato regenerável — não versionar.
+/results/
 
 # Claude Code internal
 .claude/
@@ -172,6 +171,8 @@ data/
 app/models/*.h5
 app/models/*.pkl
 app/models/*.keras
+app/models/*.onnx
+app/models/*.json
 app/results/
 datasets/
 logs/

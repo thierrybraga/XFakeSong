@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 from typing import Callable, Optional
 
 import numpy as np
 
+logger = logging.getLogger("benchmark")
+
 
 def count_params(model) -> Optional[int]:
     """Nº de parâmetros (Keras). None para modelos clássicos (sklearn)."""
     try:
         return int(model.count_params())
-    except Exception:
+    except Exception as exc:
+        logger.warning("Medição de latência falhou: %s", exc)
         return None
 
 

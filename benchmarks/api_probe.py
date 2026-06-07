@@ -8,6 +8,7 @@ não depende de caminhos chumbados que possam mudar.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Any, Dict, List
 
@@ -18,8 +19,19 @@ _PRIORITY_HINTS = ("health", "version", "info", "status", "metrics",
                    "architectures", "models")
 
 
+def _has_required_non_path_params(operation: Dict[str, Any]) -> bool:
+    params = operation.get("parameters") or []
+    return any(
+        p.get("required") and p.get("in") in {"query", "header", "cookie"}
+        for p in params
+    )
+
+
 def run_api_probe(max_endpoints: int = 8) -> Dict[str, Any]:
     """Sobe o app via TestClient e sonda endpoints GET sem parâmetros."""
+    os.environ.setdefault("XFAKE_API_ONLY", "1")
+    os.environ.setdefault("XFAKE_CREATE_DEFAULT_MODELS", "0")
+    os.environ.setdefault("GRADIO_ANALYTICS_ENABLED", "False")
     try:
         from fastapi.testclient import TestClient
 
@@ -29,10 +41,11 @@ def run_api_probe(max_endpoints: int = 8) -> Dict[str, Any]:
 
     endpoints: List[Dict[str, Any]] = []
     n_routes = len([r for r in app.routes if getattr(r, "methods", None)])
+    openapi_path = getattr(app, "openapi_url", None) or "/openapi.json"
 
     try:
         with TestClient(app) as client:
-            spec = client.get("/openapi.json")
+            spec = client.get(openapi_path)
             paths: Dict[str, Any] = {}
             if spec.status_code == 200:
                 try:
@@ -41,14 +54,25 @@ def run_api_probe(max_endpoints: int = 8) -> Dict[str, Any]:
                     paths = {}
 
             # GET sem parâmetros de caminho
-            candidates = [
-                p for p, ops in paths.items()
-                if "{" not in p and "get" in {m.lower() for m in ops}
-            ]
+            candidates = []
+            for p, ops in paths.items():
+                if "{" in p:
+                    continue
+                get_op = next(
+                    (v for k, v in ops.items() if str(k).lower() == "get"),
+                    None,
+                )
+                if not isinstance(get_op, dict):
+                    continue
+                if _has_required_non_path_params(get_op):
+                    continue
+                candidates.append(p)
             candidates.sort(
                 key=lambda p: 0 if any(h in p for h in _PRIORITY_HINTS) else 1
             )
-            probe = ["/openapi.json"] + candidates[:max_endpoints]
+            probe = [openapi_path] + [
+                p for p in candidates[:max_endpoints] if p != openapi_path
+            ]
 
             for path in probe:
                 t0 = time.perf_counter()

@@ -10,10 +10,21 @@ from app.domain.services.upload_service import AudioUploadService
 logger = logging.getLogger(__name__)
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @lru_cache()
 def get_detection_service() -> DetectionService:
     logger.info("Inicializando DetectionService singleton...")
-    return DetectionService(models_dir="app/models")
+    create_defaults = _env_flag("XFAKE_CREATE_DEFAULT_MODELS", True)
+    return DetectionService(
+        models_dir="app/models",
+        create_default_models=create_defaults,
+    )
 
 
 @lru_cache()

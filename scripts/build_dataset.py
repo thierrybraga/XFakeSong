@@ -3,15 +3,15 @@
 build_dataset.py — Orquestrador da Fase 1 (Dataset Real e Balanceamento).
 
 Composicao definida:
-  REAL  (2.000 amostras):
-    - 1.000 x BRSpeech-DF bonafide/   (fala real PT-BR, padrão ASVspoof)
-    - 1.000 x CommonVoice v17 PT + FLEURS PT-BR (diversidade de falantes)
+  REAL  (10.000 amostras):
+    - 5.000 x BRSpeech-DF bonafide/   (fala real PT-BR, padrão ASVspoof)
+    - 5.000 x CommonVoice v17 PT + FLEURS PT-BR (diversidade de falantes)
 
-  FAKE  (2.000 amostras):
-    - 1.000 x BRSpeech-DF spoof/      (múltiplos geradores TTS/VC)
-    - 1.000 x Fake Voices XTTS        (gerador independente — cross-generator)
+  FAKE  (10.000 amostras):
+    - 5.000 x BRSpeech-DF spoof/      (múltiplos geradores TTS/VC)
+    - 5.000 x Fake Voices XTTS        (gerador independente — cross-generator)
 
-  TOTAL : 4.000 amostras balanceadas 1:1
+  TOTAL : 20.000 amostras balanceadas 1:1
   SPLIT : 70% treino / 15% validacao / 15% teste (estratificado)
 
 Uso:
@@ -45,7 +45,7 @@ FAKE_DIR = DATASETS_DIR / "fake"
 # Composicao do dataset (valores padrao — ajustavel via --target)
 # ---------------------------------------------------------------------------
 COMPOSITION = {
-    "target_per_class": 2000,
+    "target_per_class": 10000,
     "split": {"train": 0.70, "val": 0.15, "test": 0.15},
     "sources": {
         "real": [
@@ -101,6 +101,10 @@ def run(cmd: list, description: str) -> int:
     result = subprocess.run(cmd, cwd=str(BASE_DIR))
     if result.returncode != 0:
         logger.error(f"FALHOU (codigo {result.returncode}): {description}")
+        raise RuntimeError(
+            f"Etapa obrigatoria falhou: {description}. "
+            "Interrompendo para evitar balancear/preprocessar dataset incompleto."
+        )
     else:
         logger.info(f"OK: {description}")
     return result.returncode
@@ -120,6 +124,8 @@ def count_wavs(directory: Path, prefixes: list = None) -> int:
 
 def print_status():
     """Imprime situacao atual do dataset."""
+    target_per_class = int(COMPOSITION.get("target_per_class", 10000))
+    half_target = target_per_class // 2
     real_total = count_wavs(REAL_DIR)
     fake_total = count_wavs(FAKE_DIR)
 
@@ -132,12 +138,12 @@ def print_status():
     logger.info("STATUS ATUAL DO DATASET")
     logger.info("=" * 60)
     logger.info(f"  REAL  total : {real_total:>5d}")
-    logger.info(f"    BRSpeech bonafide : {brspeech_real:>5d}  (meta: 1000)")
-    logger.info(f"    CommonVoice/FLEURS: {cv_real:>5d}  (meta: 1000)")
+    logger.info(f"    BRSpeech bonafide : {brspeech_real:>5d}  (meta: {half_target})")
+    logger.info(f"    CommonVoice/FLEURS: {cv_real:>5d}  (meta: {half_target})")
     logger.info(f"  FAKE  total : {fake_total:>5d}")
-    logger.info(f"    BRSpeech spoof    : {brspeech_fake:>5d}  (meta: 1000)")
-    logger.info(f"    Fake Voices XTTS  : {xtts_fake:>5d}  (meta: 1000)")
-    logger.info(f"  TOTAL       : {real_total + fake_total:>5d}  (meta: 4000)")
+    logger.info(f"    BRSpeech spoof    : {brspeech_fake:>5d}  (meta: {half_target})")
+    logger.info(f"    Fake Voices XTTS  : {xtts_fake:>5d}  (meta: {half_target})")
+    logger.info(f"  TOTAL       : {real_total + fake_total:>5d}  (meta: {target_per_class * 2})")
     logger.info("=" * 60)
 
     return real_total, fake_total
@@ -343,8 +349,8 @@ def main():
         description="Orquestrador de dataset PT-BR para deepfake detection (Fase 1 TCC)"
     )
     parser.add_argument(
-        "--target", type=int, default=2000,
-        help="Numero de amostras por classe (default: 2000, total = target*2)",
+        "--target", type=int, default=10000,
+        help="Numero de amostras por classe (default: 10000, total = target*2)",
     )
     parser.add_argument(
         "--train-ratio", type=float, default=0.70,
@@ -376,6 +382,7 @@ def main():
     )
 
     args = parser.parse_args()
+    COMPOSITION["target_per_class"] = int(args.target)
 
     # Validar ratios
     total_ratio = args.train_ratio + args.val_ratio + args.test_ratio
