@@ -1,7 +1,23 @@
+import pathlib
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import MagicMock
 import os
+
+# Categorias da suíte (espelham as subpastas de tests/). Cada teste recebe
+# AUTOMATICAMENTE o marcador da sua pasta — assim `pytest -m unit`,
+# `pytest -m api`, etc. funcionam sem anotar os 37 arquivos manualmente.
+_TEST_CATEGORIES = ("unit", "api", "functional", "integration", "smoke")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Aplica o marcador da categoria (pasta) a cada item coletado."""
+    for item in items:
+        parts = set(pathlib.Path(str(item.fspath)).parts)
+        for cat in _TEST_CATEGORIES:
+            if cat in parts:
+                item.add_marker(getattr(pytest.mark, cat))
+                break
 from app.main_fastapi import app
 from app.dependencies import (
     get_detection_service,

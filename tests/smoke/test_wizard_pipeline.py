@@ -69,8 +69,12 @@ def make_fake_dataset(root: str, n_per_class: int = 4) -> None:
             sf.write(os.path.join(cls_dir, f"{cls[0]}_{i}.wav"), audio, SAMPLE_RATE)
 
 
-def test_one(arch: str, dataset_path: str) -> tuple[bool, str]:
-    """Executa 1 epoch do pipeline wizard para uma arquitetura."""
+def _train_one_epoch(arch: str, dataset_path: str) -> tuple[bool, str]:
+    """Executa 1 epoch do pipeline wizard para uma arquitetura.
+
+    Helper (NÃO é um teste pytest — prefixo ``_`` evita coleta; o teste real é
+    ``test_smoke_wizard_pipeline`` abaixo).
+    """
     import tensorflow as tf
     import importlib
 
@@ -154,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
         results = []
         for arch in targets:
             print(f"\n>>> {arch}")
-            ok, msg = test_one(arch, tmp_dir)
+            ok, msg = _train_one_epoch(arch, tmp_dir)
             results.append((arch, ok, msg))
             print(f"  {'[OK]' if ok else '[FAIL]'} {msg}")
 

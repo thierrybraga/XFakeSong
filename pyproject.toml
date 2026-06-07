@@ -41,8 +41,14 @@ testpaths = [
     "tests",
 ]
 python_files = ["test_*.py", "*_test.py"]
+# Os marcadores são aplicados AUTOMATICAMENTE pela pasta do teste
+# (tests/conftest.py::pytest_collection_modifyitems). Use `pytest -m <cat>`.
 markers = [
-    "smoke: smoke tests pesados com TF real — execute com: pytest -m smoke tests/smoke/",
+    "unit: testes unitários (componentes isolados, sem I/O pesado)",
+    "api: contrato da API REST (FastAPI TestClient + serviços mockados)",
+    "functional: fluxos de usuário e rotas do frontend",
+    "integration: cooperação entre serviços/pipelines (pode treinar modelos)",
+    "smoke: pesados com TF real — execute com: pytest -m smoke tests/smoke/",
 ]
 
 [tool.ruff]

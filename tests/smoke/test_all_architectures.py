@@ -79,8 +79,12 @@ def _try_create(arch: str, input_shape: tuple) -> tuple[bool, str, object]:
         return False, f"FAIL in={input_shape}: {type(e).__name__}: {str(e)[:200]}", None
 
 
-def test_architecture(arch: str) -> dict:
-    """Tenta cada candidato até um funcionar."""
+def _check_architecture(arch: str) -> dict:
+    """Tenta cada candidato até um funcionar.
+
+    Helper (NÃO é um teste pytest — prefixo ``_`` evita coleta; o teste real é
+    ``test_smoke_all_architectures`` abaixo).
+    """
     inputs = CANDIDATE_INPUTS.get(arch, [(RAW_AUDIO_LEN, 1)])
     attempts = []
     success = None
@@ -109,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     results = []
     for arch in targets:
         print(f"\n>>> {arch}")
-        result = test_architecture(arch)
+        result = _check_architecture(arch)
         results.append(result)
         for a in result["attempts"]:
             status = "[OK]" if a["ok"] else "[FAIL]"

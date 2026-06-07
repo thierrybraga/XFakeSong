@@ -22,6 +22,15 @@ def mock_detection_service(tmp_path):
     fake_model_info.architecture = "AASIST"
     fake_model_info.input_shape = (1, 64600)  # Example raw audio shape
     fake_model_info.model_type = "tensorflow"
+    # Atributos que um ModelInfo REAL traz com defaults (Sprint 1.4/3.1/4.5 +
+    # Tier-1 ONNX). Sem defini-los, o MagicMock devolve sub-mocks "truthy" e o
+    # Predictor tenta usar onnx_session/temperature falsos (IndexError/TypeError).
+    # Espelhar os defaults faz o teste exercitar o caminho TensorFlow real.
+    fake_model_info.onnx_session = None
+    fake_model_info.temperature = 1.0
+    fake_model_info.eer_threshold = None
+    fake_model_info.input_contract = None
+    fake_model_info.jit_predict_fn = None
 
     service.model_loader.loaded_models = {
         "test_model": fake_model_info
