@@ -137,6 +137,12 @@ def test_legacy_notebook_code_cells_compile_after_archive_notice():
         "features/01_feature_extraction_study.ipynb",
         "models/13_svm.ipynb",
         "models/14_random_forest.ipynb",
+        # Self-contained (treinam em dados sintéticos): pegam erros de runtime
+        # que o compile() não detecta (ex.: APIs do TrainingService/ModelLoader/
+        # factory mudarem). N1 da revisão de notebooks.
+        "models/11_multiscale_cnn.ipynb",
+        "pipeline/02_training_model.ipynb",
+        "pipeline/03_inference.ipynb",
     ],
 )
 def test_lightweight_notebooks_execute_when_nbclient_is_available(rel_path):
@@ -147,7 +153,7 @@ def test_lightweight_notebooks_execute_when_nbclient_is_available(rel_path):
     nb = nbformat.read(str(nb_path), as_version=4)
     client = nbclient.NotebookClient(
         nb,
-        timeout=180,
+        timeout=600,  # treina modelos pequenos; runners de CI podem ser lentos
         kernel_name="python3",
         resources={"metadata": {"path": str(_ROOT)}},
     )
