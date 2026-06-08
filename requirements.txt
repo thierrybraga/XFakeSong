@@ -37,7 +37,9 @@ PyWavelets>=1.4
 # numpy: TF 2.20+ requer numpy>=1.26 e aceita numpy 2.x.
 # Subimos upper bound para 2.3 (TF + librosa funcionam em numpy 2.x estável).
 numpy>=1.24,<2.3
-pandas>=2.0
+# pandas <3: mlflow exige pandas<3 e o pandas 3.0 traz breaking changes.
+# Evita o ResolutionImpossible do Dependabot ao tentar pandas>=3.0.3.
+pandas>=2.0,<3.0
 matplotlib>=3.7
 seaborn>=0.13
 

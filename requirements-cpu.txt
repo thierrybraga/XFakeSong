@@ -31,7 +31,8 @@ datasets>=2.14
 
 # numpy: TF 2.20+ requer >=1.26 e aceita 2.x
 numpy>=1.24,<2.3
-pandas>=2.0
+# pandas <3: mlflow exige pandas<3 e o pandas 3.0 traz breaking changes.
+pandas>=2.0,<3.0
 matplotlib>=3.7
 seaborn>=0.13
 
