@@ -45,6 +45,65 @@ if str(ROOT) not in sys.path:
 print("Projeto:", ROOT)
 """
 
+# Captura de ambiente/versões — reprodutibilidade do estudo (TCC).
+SESSION_INFO = """\
+import platform
+
+print("Python     :", platform.python_version())
+print("Plataforma :", platform.platform())
+for _mod in ("numpy", "pandas", "librosa", "sklearn", "tensorflow"):
+    try:
+        _m = __import__(_mod)
+        print(f"{_mod:11s}:", getattr(_m, "__version__", "?"))
+    except Exception as _e:  # pragma: no cover
+        print(f"{_mod:11s}: (ausente)")
+try:
+    import tensorflow as _tf
+    print("GPUs TF    :", len(_tf.config.list_physical_devices("GPU")))
+except Exception:  # pragma: no cover
+    pass
+"""
+
+# Determinismo: semente única (numpy + TF) — use no início dos notebooks que
+# treinam, para métricas reproduzíveis.
+SEED_ALL = """\
+import numpy as np
+
+try:
+    import tensorflow as tf
+    tf.keras.utils.set_random_seed(0)
+except Exception:  # pragma: no cover
+    np.random.seed(0)
+"""
+
+# Avaliação rápida por modelo (gated): treina+avalia em dados sintéticos via o
+# MESMO harness de benchmark do TCC (accuracy/AUC/EER reais). Desligado por
+# padrão para manter a execução leve. `ARCHITECTURE` vem da célula anterior.
+EVAL_CELL = """\
+RUN_EVAL = False  # True → treina+avalia este modelo (rápido, dados sintéticos)
+
+if RUN_EVAL:
+    from benchmarks import BenchmarkConfig, run_benchmark
+
+    cfg = BenchmarkConfig.quick(
+        architectures=[ARCHITECTURE],
+        synthetic_n=160,
+        snr_levels_db=[20],
+        output_dir=str(ROOT / "results" / "notebook_eval" / ARCHITECTURE.lower()),
+    )
+    r = run_benchmark(cfg)["architectures"][ARCHITECTURE]
+    if r.get("status") == "ok":
+        c = r["clean"]
+        print(f"accuracy = {c['accuracy'] * 100:5.1f}%")
+        print(f"AUC-ROC  = {c.get('auc_roc', float('nan')):.3f}")
+        print(f"EER      = {c.get('eer', float('nan')):.3f}")
+        print(f"convergiu: {r.get('converged')}")
+    else:
+        print("ERRO:", r.get("error"))
+else:
+    print("RUN_EVAL=False — defina True para treinar+avaliar em dados sintéticos.")
+"""
+
 
 # ───────────────────────── helpers de célula ─────────────────────────
 
@@ -163,7 +222,23 @@ def build_index():
 
         **Ordem sugerida:** features → pipeline → models.
         """),
+        md("""
+        ## Como rodar
+
+        ```bash
+        pip install -r requirements.txt -r requirements-dev.txt   # inclui jupyter/nbclient
+        jupyter lab          # ou: jupyter notebook
+        ```
+
+        **Self-contained** (rodam sem dataset externo): este índice, `features/01`,
+        `pipeline/02`, `pipeline/03`, `models/13_svm`, `models/14_random_forest`.
+        Os demais `models/` instanciam o modelo (sem treino pesado); o treino
+        real/completo fica em `pipeline/`.
+        """),
         code(BOOTSTRAP),
+        md("## Ambiente (versões — reprodutibilidade)"),
+        code(SESSION_INFO),
+        md("## Notebooks disponíveis"),
         code("""
         # Lista todos os notebooks do projeto.
         for path in sorted((ROOT / "notebooks").rglob("*.ipynb")):
@@ -317,6 +392,9 @@ def build_models():
 
             # Modelos neurais são instanciados pelo factory (mesmo caminho do
             # benchmark/treino). summary() valida shapes sem treino pesado.
+            # num_classes=1 → saída sigmoid de 1 unidade = p(fake) (convenção do
+            # projeto). O treino real pode usar 2-unit softmax conforme o preset;
+            # o input_contract registra a convenção usada (ver pipeline/).
             from app.domain.models.architectures.factory import create_model_by_name
 
             input_shape = tuple(prepared.X.shape[1:])
@@ -357,6 +435,8 @@ def build_models():
             """),
             md("## Inspeção do modelo"),
             code(inspect),
+            md("## Avaliação rápida (gated): treino + métricas em dados sintéticos"),
+            code(EVAL_CELL),
             md("""
             ## Como ler este notebook
 
@@ -517,6 +597,8 @@ def build_pipeline():
         `input_contract` que garante paridade treino↔inferência.
         """),
         code(BOOTSTRAP),
+        md("## Reprodutibilidade (semente numpy + TensorFlow)"),
+        code(SEED_ALL),
         md("## 1. Dataset sintético `.npz` (espectrograma pequeno)"),
         code("""
         import tempfile
@@ -570,6 +652,8 @@ def build_pipeline():
         `input_contract` (temperatura/EER) e o fallback ONNX→TF.
         """),
         code(BOOTSTRAP),
+        md("## Reprodutibilidade (semente numpy + TensorFlow)"),
+        code(SEED_ALL),
         md("## 1. Treinar + salvar um modelo de demonstração"),
         code("""
         import tempfile
