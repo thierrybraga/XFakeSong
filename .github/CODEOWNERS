@@ -1,0 +1,11 @@
+# Donos de código — revisão automática solicitada nestes caminhos.
+# Veja: https://docs.github.com/articles/about-code-owners
+
+# Dono padrão de todo o repositório
+*                       @thierrybraga
+
+# Áreas sensíveis a segurança — revisão obrigatória
+/.github/               @thierrybraga
+/app/core/              @thierrybraga
+/app/routers/           @thierrybraga
+SECURITY.md             @thierrybraga
