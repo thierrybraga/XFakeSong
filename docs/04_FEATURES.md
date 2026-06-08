@@ -29,6 +29,26 @@ Definido canonicamente em `app/core/interfaces/audio.py`:
 
 ---
 
+## O que é usado em produção vs. experimental
+
+Nem todo `FeatureType` participa do **caminho de detecção**. O front-end real é
+ditado pelo `input_contract` gravado no treino (ver
+[09_INFERENCIA](09_INFERENCIA.md)):
+
+| Classe de modelo | Front-end em produção | Observação |
+| --- | --- | --- |
+| Neurais **raw-audio** (AASIST, RawGAT-ST, RawNet2, WavLM, HuBERT) | forma de onda bruta (front-end aprendido: SincNet / SSL) | sem features tabulares |
+| Neurais **spectrogram** (MultiscaleCNN, EfficientNet-LSTM, SpectrogramTransformer, Conformer, Hybrid, Ensemble, Sonic Sleuth) | **log-mel** ou **LFCC** (campo `feature_frontend` do contrato) | calculado on-the-fly via `tf.signal` |
+| **Clássicos** (SVM, RandomForest) | features tabulares **segmentadas e agregadas**: `SPECTRAL`, `CEPSTRAL`, `TEMPORAL`, `PROSODIC` | vetor 1-D por amostra |
+
+As demais famílias — `PERCEPTUAL`, `FORMANT`, `VOICE_QUALITY`, `COMPLEXITY`,
+`ADVANCED` (preditivas) — são usadas para **análise forense/exploratória** (aba
+*Investigar* e notebooks de estudo), **não** no caminho de detecção neural.
+Mantê-las catalogadas no registry é intencional: permite experimentação sem
+alterar o pipeline de inferência.
+
+---
+
 ## Arquitetura de Extração
 
 O pipeline de extração usa três camadas:

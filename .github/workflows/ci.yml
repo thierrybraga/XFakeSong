@@ -79,3 +79,14 @@ jobs:
       - run: pip install mkdocs mkdocs-material
       - name: Build estrito (falha em links/refs quebrados)
         run: mkdocs build --strict
+
+  docker:
+    name: Docker build (variante CPU)
+    # Só em PR: valida o Dockerfile sem gastar minutos a cada push.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build da imagem (TF_VARIANT=cpu)
+        run: docker build --build-arg TF_VARIANT=cpu -t xfakesong:ci .
