@@ -12,7 +12,7 @@ Princípio do menor privilégio: `permissions: contents: read`.
 
 | Job | Bloqueia? | O que faz |
 | --- | --- | --- |
-| **Testes + cobertura** | ✅ sim | `run_tests.sh cov` (suíte rápida, exclui smoke) em Python 3.13 |
+| **Testes + cobertura** | ✅ sim | `run_tests.sh cov` (suíte rápida, exclui smoke) em Python 3.11 |
 | **Docs** | ✅ sim | `mkdocs build --strict` — pega links/refs quebrados |
 | **Segurança** | ✅ HIGH | `bandit -lll` (SAST, falha em severidade alta); `pip-audit` advisório |
 | **Docker build** | ✅ (só em PR) | `docker build --build-arg TF_VARIANT=cpu` valida o Dockerfile |

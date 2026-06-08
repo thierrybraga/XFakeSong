@@ -66,7 +66,7 @@ Métricas padrão da área: acurácia, AUC-ROC, **EER** e **min-tDCF**. Ver
 
 ## Tecnologias
 
-- **Linguagem**: Python 3.13 (compatível 3.11+).
+- **Linguagem**: Python 3.11 (ambiente de referência; compatível 3.11–3.13).
 - **Áudio/DSP**: librosa, NumPy, SciPy, soundfile.
 - **ML**: TensorFlow + Keras 3, scikit-learn; ONNX Runtime (inferência opcional).
 - **Web**: FastAPI (API), Gradio (UI), Uvicorn.

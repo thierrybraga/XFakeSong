@@ -48,7 +48,7 @@ readonly DEFAULT_PORT="7860"
 readonly HEALTH_TIMEOUT="300"
 readonly HEALTH_INTERVAL="5"
 readonly CONTAINER_NAME="xfakesong_app"
-readonly PY_MIN_MINOR="10"   # Python 3.10+ aceitável; 3.11+ recomendado
+readonly PY_MIN_MINOR="11"   # Python 3.11 é a referência (compatível 3.11–3.13)
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly PROJECT_ROOT="$SCRIPT_DIR"
@@ -214,9 +214,9 @@ PYTHON_BIN=""
 check_python() {
     [[ -n "$PYTHON_BIN" ]] && return 0  # idempotente
 
-    # Prefere python3.11 / 3.12 explícitos, depois python3, depois python
+    # Prefere python3.11 (referência), depois 3.12/3.13, depois python3/python
     local cand
-    for cand in python3.12 python3.11 python3 python; do
+    for cand in python3.11 python3.12 python3.13 python3 python; do
         if command -v "$cand" >/dev/null 2>&1; then
             PYTHON_BIN="$cand"
             return 0
@@ -872,7 +872,7 @@ run_doctor() {
     echo "  SO: ${OS_PRETTY}"
     echo
 
-    check_item 'Python 3.10+'               'python_version_ok'
+    check_item 'Python 3.11+'               'python_version_ok'
     check_item 'pip'                        'command -v pip3 || command -v pip'
     check_item '.venv'                      '[ -d .venv ]'
     check_item 'requirements.txt'           '[ -f requirements.txt ]'

@@ -42,7 +42,7 @@ fontes canônicas de cada assunto.
   garantida pelo `input_contract`.
 - **Métricas** padrão da área: acurácia, AUC-ROC, **EER** e **min-tDCF**
   (ASVspoof), além de latência e tamanho do modelo.
-- **Plataforma**: Python 3.13, TensorFlow/Keras 3, FastAPI + Gradio, Docker
+- **Plataforma**: Python 3.11, TensorFlow/Keras 3, FastAPI + Gradio, Docker
   multi-stage, CI com testes/segurança/docs.
 
 ## Fluxos principais
