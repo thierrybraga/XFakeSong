@@ -1,6 +1,6 @@
 # Deploy no Hugging Face Spaces
 
-O XfakeSong foi projetado para ser facilmente implantado no [Hugging Face Spaces](https://huggingface.co/spaces), uma plataforma popular para hospedar demonstrações de Machine Learning.
+O XFakeSong foi projetado para ser facilmente implantado no [Hugging Face Spaces](https://huggingface.co/spaces), uma plataforma popular para hospedar demonstrações de Machine Learning.
 
 Este guia cobre o processo de deploy usando tanto o **Gradio SDK** (padrão) quanto **Docker** customizado, além de explicar como consumir a API da aplicação hospedada.
 
@@ -21,7 +21,7 @@ O arquivo `README.md` na raiz do projeto já contém o bloco YAML necessário:
 
 ```yaml
 ---
-title: XfakeSong
+title: XFakeSong
 emoji: 🛡️
 colorFrom: blue
 colorTo: slate
@@ -49,7 +49,7 @@ Você pode fazer push do código diretamente para o repositório do seu Space.
 3.  Faça o push:
     ```bash
     git add .
-    git commit -m "Deploy inicial XfakeSong"
+    git commit -m "Deploy inicial XFakeSong"
     git push
     ```
 
@@ -126,7 +126,7 @@ pip install gradio_client
 from gradio_client import Client
 
 # Conectar ao Space (substitua pelo seu)
-client = Client("thier/XfakeSong")
+client = Client("thier/XFakeSong")
 
 # Fazer predição (exemplo para aba de detecção)
 # Os endpoints podem variar. Verifique clicando em "Use via API" no rodapé do Space.

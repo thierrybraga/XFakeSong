@@ -1,6 +1,6 @@
 # Documentação de Inferência das Arquiteturas
 
-Este documento detalha os métodos de inferência e o fluxo de dados para cada arquitetura implementada no projeto XfakeSong. Todas as arquiteturas seguem uma interface unificada para facilitar a integração no pipeline de detecção, mas diferem significativamente em seus requisitos de entrada e processamento interno.
+Este documento detalha os métodos de inferência e o fluxo de dados para cada arquitetura implementada no projeto XFakeSong. Todas as arquiteturas seguem uma interface unificada para facilitar a integração no pipeline de detecção, mas diferem significativamente em seus requisitos de entrada e processamento interno.
 
 ## Interface Unificada
 

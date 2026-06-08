@@ -1,38 +1,80 @@
-# Visão Geral do Sistema XfakeSong
+# Visão Geral do Sistema XFakeSong
 
 ## Introdução
-O **XfakeSong** é um sistema avançado desenvolvido para a detecção de deepfakes de áudio. O projeto combina técnicas de processamento digital de sinais (DSP) e aprendizado de máquina (Deep Learning) para analisar, extrair características e classificar áudios como "Real" ou "Fake".
 
-O sistema foi projetado com uma arquitetura modular baseada em princípios de **Clean Architecture**, facilitando a manutenção, escalabilidade e testes de novos algoritmos de extração de características.
+O **XFakeSong** é uma plataforma open source para **detecção de deepfakes de
+áudio** (anti-spoofing). Ele combina processamento digital de sinais (DSP) e
+aprendizado profundo para analisar um sinal de voz, extrair representações e
+classificá-lo como **real** (bonafide) ou **fake** (spoof).
 
-## Funcionalidades Principais
+O foco do projeto é **acadêmico e reprodutível**: comparar arquiteturas de
+detecção num fluxo local e auditável, gerando as métricas, tabelas e figuras de
+um TCC. A arquitetura segue **Clean Architecture**, separando domínio, casos de
+uso, interfaces e infraestrutura para facilitar manutenção, testes e adição de
+novos modelos/extratores.
 
-### 1. Interface de Usuário (Gradio)
-O sistema conta com uma interface web interativa construída com Gradio, permitindo:
-- Upload de arquivos de áudio para análise.
-- Visualização de resultados em tempo real.
-- Gerenciamento de treinamento de modelos.
-- Visualização de gráficos e métricas.
+## O que o sistema faz
 
-### 2. Extração de Features (Características)
-O núcleo do sistema reside na sua capacidade robusta de extração de características de áudio, organizadas em:
-- **Cepstral**: MFCCs, LFCCs, PLP, etc.
-- **Complexity**: Dimensão Fractal, Entropia, Caos.
-- **Spectral**: Centróide espectral, Roll-off, Fluxo.
-- **Prosodic**: Pitch, Jitter, Shimmer.
+### 1. Detecção com 14 arquiteturas
 
-### 3. Pipeline de Processamento
-Utiliza um orquestrador de pipelines para gerenciar o fluxo de dados, desde o carregamento do áudio bruto até a inferência final, garantindo consistência e tratamento de erros.
+Um registry unifica **14 arquiteturas** sob a interface
+`create_model_by_name(architecture, input_shape, num_classes)`
+(`app/domain/models/architectures/factory.py`):
 
-### 4. Treinamento Seguro
-Módulo dedicado ao treinamento de modelos de Deep Learning, com validação cruzada temporal e gestão de datasets (Fake vs Real).
+| Categoria | Modelos |
+| --- | --- |
+| Raw-audio (forma de onda) | RawNet2, AASIST, RawGAT-ST, WavLM, HuBERT |
+| Espectrograma / Transformers | Sonic Sleuth, Conformer, SpectrogramTransformer, Hybrid CNN-Transformer |
+| CNN / fusão | EfficientNet-LSTM, MultiscaleCNN, Ensemble |
+| Clássicos (tabular) | SVM, Random Forest |
 
-## Tecnologias Utilizadas
-- **Linguagem**: Python 3.11+
-- **Interface**: Gradio
-- **Processamento de Áudio**: Librosa, NumPy, SciPy
-- **Machine Learning**: Keras 3 / TensorFlow, scikit-learn
-- **Arquitetura**: Clean Architecture, Pipeline Pattern
+Veja [Arquiteturas Neurais](08_ARQUITETURAS.md) e a
+[Revisão das Arquiteturas](14_REVISAO_ARQUITETURAS.md).
 
-## Próximos Passos
-Para começar a utilizar o sistema, consulte o guia de [Instalação e Configuração](./02_INSTALACAO_CONFIGURACAO.md).
+### 2. Extração de features
+
+O sistema extrai um conjunto rico de características acústicas (cepstral,
+espectral, prosódica, perceptual, formante, complexidade, preditiva, etc.). No
+**caminho de detecção**, porém, o front-end real é enxuto e ditado pelo
+`input_contract` do treino: **forma de onda bruta** (raw-audio), **log-mel** ou
+**LFCC** (default anti-spoofing), calculados in-graph com `tf.signal`. Detalhes
+em [Features de Áudio](04_FEATURES.md).
+
+### 3. Treinamento e inferência
+
+- **Treino** pelo `TrainingService` (mesmo caminho da API e do benchmark), com
+  class weighting, calibração de temperatura, threshold por EER e salvamento do
+  modelo de inferência sem estado do otimizador. Ver [Treinamento](10_TREINAMENTO.md).
+- **Inferência** pelo `ModelLoader` + `Predictor` (ONNX→TF com fallback),
+  aplicando o `input_contract` (temperatura/EER/OOD). Ver
+  [Inferência](09_INFERENCIA.md).
+
+### 4. Interfaces
+
+- **UI Gradio**: análise de áudio, análise forense/explicabilidade, assistente
+  de treino, gestão de datasets e perfis de voz.
+- **API FastAPI** (`/api/v1`): detecção single/multi-model, incerteza
+  (MC Dropout), features, treino, datasets e perfis. Ver
+  [API Reference](07_API_REFERENCE.md).
+
+### 5. Benchmark do TCC
+
+`scripts/run_tcc_pipeline.py` automatiza dataset → split → treino → inferência →
+**métricas, tabelas LaTeX e figuras PNG** (`tcc_report.md`, `dataset.md`).
+Métricas padrão da área: acurácia, AUC-ROC, **EER** e **min-tDCF**. Ver
+[Benchmark e TCC](15_BENCHMARK.md).
+
+## Tecnologias
+
+- **Linguagem**: Python 3.13 (compatível 3.11+).
+- **Áudio/DSP**: librosa, NumPy, SciPy, soundfile.
+- **ML**: TensorFlow + Keras 3, scikit-learn; ONNX Runtime (inferência opcional).
+- **Web**: FastAPI (API), Gradio (UI), Uvicorn.
+- **Deploy/Qualidade**: Docker multi-stage, pytest, ruff/black, bandit,
+  GitHub Actions. Ver [CI/CD e Segurança](17_CICD_SEGURANCA.md).
+
+## Próximos passos
+
+Comece pela [Instalação e Configuração](02_INSTALACAO_CONFIGURACAO.md). Termos
+técnicos (EER, min-tDCF, ASVspoof, LFCC, SSL…) estão no
+[Glossário](18_GLOSSARIO.md).

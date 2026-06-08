@@ -1,50 +1,67 @@
-# XfakeSong Documentation
+# Documentação do XFakeSong
 
-XfakeSong e uma plataforma open source para deteccao de deepfakes de audio com
-execucao local, interface Gradio, API FastAPI e pipelines modulares de
-extracao de features, treinamento e inferencia.
+O **XFakeSong** é uma plataforma open source para detecção de deepfakes de
+áudio com execução local: interface Gradio, API FastAPI e pipelines modulares
+de extração de features, treinamento, inferência e benchmark reprodutível para
+o TCC.
 
-Esta pagina e o mapa da documentacao. As paginas detalhadas abaixo sao as
-fontes canonicas para cada assunto.
+Esta página é o mapa da documentação. As páginas detalhadas abaixo são as
+fontes canônicas de cada assunto.
 
-## Leitura por Objetivo
+## Leitura por objetivo
 
-| Se voce quer... | Leia |
+| Se você quer… | Leia |
 | --- | --- |
-| Instalar e executar a aplicacao | [Instalacao e Configuracao](02_INSTALACAO_CONFIGURACAO.md) |
-| Entender o escopo do projeto | [Introducao](01_INTRODUCAO.md) |
+| Entender o escopo do projeto | [Introdução](01_INTRODUCAO.md) |
+| Instalar e executar a aplicação | [Instalação e Configuração](02_INSTALACAO_CONFIGURACAO.md) |
 | Navegar pela Clean Architecture | [Arquitetura](03_ARQUITETURA.md) |
-| Trabalhar com extracao de features | [Features de Audio](04_FEATURES.md) |
-| Contribuir com codigo | [Guia do Desenvolvedor](05_GUIA_DEV.md) |
-| Validar qualidade e CI | [Testes e Qualidade](06_TESTES.md) |
+| Trabalhar com extração de features | [Features de Áudio](04_FEATURES.md) |
+| Contribuir com código | [Guia do Desenvolvedor](05_GUIA_DEV.md) |
+| Validar qualidade e testes | [Testes e Qualidade](06_TESTES.md) |
 | Integrar via HTTP | [API Reference](07_API_REFERENCE.md) |
-| Comparar arquiteturas neurais | [Arquiteturas Neurais](08_ARQUITETURAS.md) |
-| Rodar predicao com modelos treinados | [Inferencia](09_INFERENCIA.md) |
+| Comparar as arquiteturas neurais | [Arquiteturas Neurais](08_ARQUITETURAS.md) |
+| Rodar predição com modelos treinados | [Inferência](09_INFERENCIA.md) |
 | Treinar modelos | [Treinamento](10_TREINAMENTO.md) |
 | Publicar no Hugging Face Spaces | [Deploy Hugging Face](11_DEPLOY_HUGGINGFACE.md) |
-| Preparar datasets | [Datasets Publicos](12_DATASETS.md) |
+| Preparar datasets | [Datasets Públicos](12_DATASETS.md) |
 | Executar no Google Colab | [Guia Google Colab](13_COLAB_GUIDE.md) |
-| Auditar aderencia das arquiteturas | [Revisao das Arquiteturas](14_REVISAO_ARQUITETURAS.md) |
-| Rodar benchmark para TCC | [Benchmark e TCC](15_BENCHMARK.md) |
-| Estudar com notebooks | [Guia de Notebooks](16_NOTEBOOKS.md) |
+| Auditar a aderência das arquiteturas | [Revisão das Arquiteturas](14_REVISAO_ARQUITETURAS.md) |
+| Rodar o benchmark do TCC | [Benchmark e TCC](15_BENCHMARK.md) |
+| Estudar com os notebooks | [Guia de Notebooks](16_NOTEBOOKS.md) |
+| Entender CI/CD e segurança | [CI/CD e Segurança](17_CICD_SEGURANCA.md) |
+| Consultar termos técnicos | [Glossário](18_GLOSSARIO.md) |
 
-## Fluxos Principais
+## Visão de uma página
+
+- **14 arquiteturas** de detecção: 12 neurais (AASIST, RawGAT-ST, RawNet2,
+  WavLM, HuBERT, Conformer, SpectrogramTransformer, Hybrid CNN-Transformer,
+  EfficientNet-LSTM, MultiscaleCNN, Ensemble, Sonic Sleuth) + 2 clássicas
+  (SVM, RandomForest).
+- **Front-end real** por modelo: forma de onda bruta (raw-audio), log-mel ou
+  **LFCC** (espectrograma), via `tf.signal` in-graph — paridade treino↔inferência
+  garantida pelo `input_contract`.
+- **Métricas** padrão da área: acurácia, AUC-ROC, **EER** e **min-tDCF**
+  (ASVspoof), além de latência e tamanho do modelo.
+- **Plataforma**: Python 3.13, TensorFlow/Keras 3, FastAPI + Gradio, Docker
+  multi-stage, CI com testes/segurança/docs.
+
+## Fluxos principais
 
 ```mermaid
 flowchart LR
-    A["Audio bruto"] --> B["Upload e validacao"]
-    B --> C["Extracao de features"]
+    A["Áudio bruto"] --> B["Upload e validação"]
+    B --> C["Extração de features"]
     C --> D["Modelo treinado"]
-    D --> E["Predicao"]
-    E --> F["Relatorio e explicabilidade"]
+    D --> E["Predição"]
+    E --> F["Relatório e explicabilidade"]
 ```
 
 ```mermaid
 flowchart LR
-    A["Dataset real/fake"] --> B["Pre-processamento"]
-    B --> C["Feature pipeline"]
+    A["Dataset real/fake"] --> B["Pré-processamento"]
+    B --> C["Pipeline de features"]
     C --> D["Treinamento"]
-    D --> E["Metricas"]
+    D --> E["Métricas"]
     E --> F["Modelo exportado"]
 ```
 
@@ -53,18 +70,18 @@ flowchart LR
     A["Benchmark TCC"] --> B["dataset.md"]
     A --> C["tcc_report.md"]
     A --> D["figures/*.png"]
-    A --> E["architectures/<modelo>/"]
+    A --> E["architectures/&lt;modelo&gt;/"]
 ```
 
-## Comandos Rapidos
+## Comandos rápidos
 
 ```bash
-python main.py --bootstrap-dirs
-python main.py --gradio
-./scripts/run_tests.sh fast
-docker compose up --build -d
+python main.py --bootstrap-dirs                 # cria a estrutura de diretórios
+python main.py --gradio                         # sobe a UI Gradio + API em :7860
+./scripts/run_tests.sh fast                     # suíte rápida (sem smoke)
+docker compose up --build -d                    # produção (Docker)
 python scripts/run_tcc_pipeline.py --smoke --epochs 1 --batch-size 4
 ```
 
-Para detalhes de ambiente, dependencias e variaveis `.env`, use
-[Instalacao e Configuracao](02_INSTALACAO_CONFIGURACAO.md).
+Para detalhes de ambiente, dependências e variáveis `.env`, veja
+[Instalação e Configuração](02_INSTALACAO_CONFIGURACAO.md).

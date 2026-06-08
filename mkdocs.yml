@@ -119,3 +119,4 @@ nav:
     - Datasets Públicos: 12_DATASETS.md
   - Deploy:
     - Hugging Face Spaces: 11_DEPLOY_HUGGINGFACE.md
+  - Glossário: 18_GLOSSARIO.md
