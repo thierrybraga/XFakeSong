@@ -21,25 +21,25 @@
 # Python 3.13 — só 3.9-3.12. Resultado: `ERROR: No matching distribution`.
 # TF 2.20+ é a primeira versão com suporte Python 3.13. Subimos para <2.22
 # para cobrir 3.11-3.13. Keras 3 continua nativo em todas essas versões.
-tensorflow>=2.16,<2.22
-keras>=3.0,<4.0
-scikit-learn>=1.3,<2.0
+tensorflow>=2.21.0,<2.22
+keras>=3.14.1,<4.0
+scikit-learn>=1.9.0,<2.0
 # numba 0.58 não suporta Python 3.13; 0.60+ sim.
-numba>=0.60
-joblib>=1.3
+numba>=0.65.1
+joblib>=1.5.3
 
 # --- Áudio ---
-librosa>=0.10
-soundfile>=0.12
-PyWavelets>=1.4
+librosa>=0.11.0
+soundfile>=0.14.0
+PyWavelets>=1.9.0
 
 # --- Numéricos ---
 # numpy: TF 2.20+ requer numpy>=1.26 e aceita numpy 2.x.
 # Subimos upper bound para 2.3 (TF + librosa funcionam em numpy 2.x estável).
-numpy>=1.24,<2.3
-pandas>=2.0
-matplotlib>=3.7
-seaborn>=0.13
+numpy>=2.4.6,<2.5
+pandas>=3.0.3
+matplotlib>=3.10.9
+seaborn>=0.13.2
 
 # --- Web / API ---
 # BUG.Render.1: pin firme em gradio>=4.31 — versões anteriores chamam
@@ -48,27 +48,27 @@ seaborn>=0.13
 # Sem o pin: dict é interpretado como template_name e Jinja2 cai com
 # `TypeError: unhashable type: 'dict'` na primeira request à raiz "/".
 # Gradio 4.31+ usa a API nova corretamente.
-gradio>=4.31,<5.0
+gradio>=6.17.3,<7.0
 # Pinar fastapi e starlette explicitamente garante reproducibilidade.
-fastapi>=0.110,<0.116
-starlette>=0.36,<0.42
-uvicorn[standard]>=0.27
-python-multipart>=0.0.9
-httpx>=0.27
-jinja2>=3.1.5
+fastapi>=0.136.3,<0.137
+starlette>=1.2.1,<1.3
+uvicorn[standard]>=0.49.0
+python-multipart>=0.0.32
+httpx>=0.28.1
+jinja2>=3.1.6
 slowapi>=0.1.9
-a2wsgi>=1.10
+a2wsgi>=1.10.10
 
 # --- HuggingFace datasets (necessário para scripts de download de datasets) ---
-datasets>=2.14
+datasets>=5.0.0
 
 # --- Persistência / Config ---
-sqlalchemy>=2.0
-pydantic>=2.5
-python-dotenv>=1.0
-pyyaml>=6.0
-jsonschema>=4.20
-redis>=5.0
+sqlalchemy>=2.0.50
+pydantic>=2.13.4
+python-dotenv>=1.2.2
+pyyaml>=6.0.3
+jsonschema>=4.26.0
+redis>=8.0.0
 
 # --- Hugging Face / deploy ---
 # BUG.HFHub: gradio 4.x importa `HfFolder`, REMOVIDO no huggingface_hub 1.0 →
@@ -76,19 +76,19 @@ redis>=5.0
 # `>=0.20` (sem teto) puxava 1.x e quebrava em qualquer install novo (Linux
 # incl.). Teto firme `<1.0`. Piso 0.25 = exigência do `datasets` (>=0.25,<2.0),
 # então a faixa 0.25–0.36 satisfaz gradio E datasets simultaneamente.
-huggingface_hub>=0.25,<1.0
-requests>=2.31
+huggingface_hub>=1.18.0,<2.0
+requests>=2.34.2
 
 # --- Documentação ---
-mkdocs>=1.5
-mkdocs-material>=9.5
+mkdocs>=1.6.1
+mkdocs-material>=9.7.6
 
 # --- Testes mínimos (manter aqui pois rotas importam em runtime) ---
-pytest>=7.4
+pytest>=9.0.3
 
 # --- GPU diagnóstico ---
 # pynvml permite detectar hardware NVIDIA mesmo quando TF não tem suporte CUDA
 # (típico em Windows nativo com TF ≥ 2.11). Usado por app.core.gpu para
 # popular o painel "🎮 Diagnóstico de GPU" do Dashboard.
 # Opcional — sem pynvml o sistema cai em `nvidia-smi` subprocess.
-pynvml>=11.5
+pynvml>=13.0.1

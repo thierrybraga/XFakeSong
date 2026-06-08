@@ -7,38 +7,38 @@
 -r requirements.txt
 
 # --- Qualidade de código ---
-black>=24.0
-isort>=5.13
-ruff>=0.3
-flake8>=7.0
-bandit>=1.7
-pip-audit>=2.7
-mypy>=1.8
+black>=26.5.1
+isort>=8.0.1
+ruff>=0.15.16
+flake8>=7.3.0
+bandit>=1.9.4
+pip-audit>=2.10.0
+mypy>=2.1.0
 
 # --- Testes ---
-pytest>=7.4
-pytest-cov>=4.1
-pytest-asyncio>=0.23
-pytest-mock>=3.12
+pytest>=9.0.3
+pytest-cov>=7.1.0
+pytest-asyncio>=1.4.0
+pytest-mock>=3.15.1
 
 # --- Pre-commit hooks ---
-pre-commit>=3.6
+pre-commit>=4.6.0
 
 # --- Sprint 3.4: ONNX export ---
-tf2onnx>=1.16
-onnxruntime>=1.17
+tf2onnx>=1.17.0
+onnxruntime>=1.26.0
 
 # --- Sprint 4.2: Hyperparameter tuning ---
-optuna>=3.5
+optuna>=4.9.0
 
 # --- Sprint 4.3: MLflow tracking ---
-mlflow>=2.10
+mlflow>=3.13.0
 
 # --- Sprint 5.2: Quantization-Aware Training ---
-tensorflow-model-optimization>=0.8
+tensorflow-model-optimization>=0.8.1
 
 # --- Dev utilities ---
-ipython>=8.18
-jupyter>=1.0
-ipdb>=0.13
-rich>=13.7
+ipython>=9.14.1
+jupyter>=1.1.1
+ipdb>=0.13.13
+rich>=15.0.0
