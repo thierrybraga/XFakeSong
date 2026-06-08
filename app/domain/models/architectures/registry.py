@@ -6,6 +6,7 @@ disponíveis no sistema, facilitando a integração com o pipeline de detecção
 
 import inspect
 import logging
+from functools import lru_cache
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
 
@@ -782,10 +783,15 @@ def validate_architecture_input(
     return architecture_registry.validate_input_shape(architecture_name, input_shape)
 
 
+@lru_cache(maxsize=64)
 def load_hyperparameters_json(
     architecture_name: str, results_dir: str
 ) -> Dict[str, Any]:
     """Carrega hiperparâmetros recomendados de um arquivo JSON.
+
+    Cacheado por ``(architecture_name, results_dir)``: o caminho de inferência
+    (FeaturePreparer) chamava isto a cada request, lendo disco repetidamente.
+    O retorno é tratado como somente-leitura pelos callers.
 
     Args:
         architecture_name: Nome da arquitetura

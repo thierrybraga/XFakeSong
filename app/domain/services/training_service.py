@@ -233,12 +233,15 @@ class TrainingService(ITrainingService):
                         validation_data = (X_val, y_val)
 
                 else:
-                    # TODO: Integrar com SegmentedFeatureLoader para CSVs
+                    # Apenas datasets .npz (X_train/y_train) são suportados por
+                    # este caminho. CSV/tabular segmentado não é aceito aqui —
+                    # gere um .npz pelo pipeline de extração de features.
                     return ProcessingResult(
                         status=ProcessingStatus.ERROR,
                         errors=[
-                            f"Formato não suportado: {data_path.suffix}. "
-                            "Use .npz"
+                            "Formato não suportado: "
+                            f"{data_path.suffix or '(sem extensão)'}. "
+                            "Forneça um .npz com X_train/y_train."
                         ]
                     )
             except Exception as e:
