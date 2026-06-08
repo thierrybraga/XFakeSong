@@ -19,9 +19,6 @@ jobs:
   lint:
     name: Lint (ruff) — advisório
     runs-on: ubuntu-latest
-    # Advisório: a base de código ainda não está 100% lint-clean; o job
-    # reporta, mas não bloqueia o merge. Remover quando zerar os achados.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -29,7 +26,10 @@ jobs:
           python-version: "3.13"
           cache: pip
       - run: pip install ruff
-      - run: ruff check app tests benchmarks scripts
+      # Advisório: a base ainda não está 100% lint-clean. `--exit-zero` mantém
+      # o job verde e publica os achados como anotações no PR (sem bloquear).
+      # Remover `--exit-zero` quando zerar os achados para tornar o gate firme.
+      - run: ruff check app tests benchmarks scripts --output-format=github --exit-zero
 
   test:
     name: Testes + cobertura
