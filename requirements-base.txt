@@ -1,0 +1,74 @@
+# =====================================================================
+# XFakeSong — Dependências COMPARTILHADAS (fonte única)
+# =====================================================================
+# Tudo EXCETO o TensorFlow. Os arquivos de runtime referenciam este base e
+# adicionam apenas a variante de TF:
+#   - requirements.txt      → -r requirements-base.txt + tensorflow
+#   - requirements-cpu.txt  → -r requirements-base.txt + tensorflow-cpu
+# Mantenha as deps compartilhadas SÓ aqui (evita drift entre os arquivos).
+# Ambiente de referência: Python 3.11 (compatível 3.11–3.13).
+# =====================================================================
+
+# --- ML / DL core ---
+keras>=3.0,<4.0
+scikit-learn>=1.3,<2.0
+numba>=0.60            # 0.60+ cobre Python 3.11–3.13
+joblib>=1.3
+
+# --- Áudio / DSP ---
+librosa>=0.10
+soundfile>=0.12
+PyWavelets>=1.4
+
+# --- Numéricos ---
+numpy>=1.24,<2.3       # TF aceita numpy 2.x estável; teto evita majors não testados
+# pandas <3: mlflow exige pandas<3 e o pandas 3.0 traz breaking changes
+# (evita ResolutionImpossible quando o Dependabot tenta pandas>=3.0.3).
+pandas>=2.0,<3.0
+matplotlib>=3.7
+seaborn>=0.13
+
+# --- Web / API ---
+# BUG.Render.1: pin firme gradio>=4.31 — versões anteriores usam a API antiga
+# `TemplateResponse(context_dict, name)`; starlette>=0.36 (puxado por fastapi)
+# mudou para `(request, name, context)` → `TypeError: unhashable type: 'dict'`
+# na 1ª request a "/". fastapi/starlette pinados para reprodutibilidade.
+gradio>=4.31,<5.0
+fastapi>=0.110,<0.116
+starlette>=0.36,<0.42
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9
+httpx>=0.27
+jinja2>=3.1.5
+slowapi>=0.1.9
+a2wsgi>=1.10
+
+# --- Datasets (scripts de download HuggingFace) ---
+datasets>=2.14
+
+# --- Persistência / Config ---
+sqlalchemy>=2.0
+pydantic>=2.5
+python-dotenv>=1.0
+pyyaml>=6.0
+jsonschema>=4.20
+redis>=5.0
+
+# --- Hugging Face / deploy ---
+# Teto <1.0: hub 1.0 removeu `HfFolder` que o gradio 4.x importa (quebra a UI no
+# boot). Piso 0.25 = exigência do `datasets`; a faixa 0.25–0.36 satisfaz ambos.
+huggingface_hub>=0.25,<1.0
+requests>=2.31
+
+# --- Documentação ---
+mkdocs>=1.5
+mkdocs-material>=9.5
+
+# --- Testes mínimos (rotas importam pytest em runtime) ---
+pytest>=7.4
+
+# --- Diagnóstico de GPU ---
+# pynvml detecta hardware NVIDIA mesmo sem CUDA no TF (Windows nativo, builds
+# CPU). Usado por app.core.gpu no painel de diagnóstico. Opcional (fallback
+# nvidia-smi), mas mantido em AMBAS as variantes para paridade.
+pynvml>=11.5

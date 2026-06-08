@@ -1,96 +1,18 @@
 # =====================================================================
-# XFakeSong — Runtime dependencies
-# Compatível com Python 3.11 — 3.13
-#   Python 3.11/3.12 → instala TF 2.16-2.19 (mais estável)
-#   Python 3.13      → instala TF 2.20+ (único com wheels Python 3.13)
-# Para dev tools (pytest, black, ruff, etc.) veja requirements-dev.txt
+# XFakeSong — Runtime (TensorFlow padrão, CPU+GPU)
+# =====================================================================
+# Ambiente de referência: Python 3.11 (testado; compatível 3.11–3.13).
+# Deps compartilhadas ficam em requirements-base.txt (fonte única).
+# Variantes:
+#   - CPU-only menor:  pip install -r requirements-cpu.txt
+#   - GPU (Linux NVIDIA): + pip install 'tensorflow[and-cuda]>=2.16,<2.22'
+#     (ou use docker-compose.gpu.yml)
+# Dev tools (pytest, ruff, black, …): requirements-dev.txt
 # =====================================================================
 
-# --- ML / DL core ---
-# PROD.7: TensorFlow tem 3 distribuições:
-#   - `tensorflow` (default): tenta carregar CUDA libs em runtime; ~700MB
-#     com bibliotecas GPU. Funciona em CPU mesmo sem GPU, mas warning verboso.
-#   - `tensorflow-cpu`: build menor (~250MB), SEM CUDA — recomendado para
-#     CPU-only builds (Docker padrão sem GPU). Para usar:
-#         pip uninstall -y tensorflow && pip install 'tensorflow-cpu>=2.16,<2.22'
-#   - `tensorflow[and-cuda]`: instala CUDA wheels (Linux NVIDIA). Use no
-#     docker-compose.gpu.yml override OU em hosts NVIDIA bare-metal.
-# Padrão usa `tensorflow` para compatibilidade ampla com CPU + GPU sem reinstalar.
-#
-# BUG.Install: o upper bound era `<2.20` mas TF 2.16-2.19 NÃO TÊM wheels para
-# Python 3.13 — só 3.9-3.12. Resultado: `ERROR: No matching distribution`.
-# TF 2.20+ é a primeira versão com suporte Python 3.13. Subimos para <2.22
-# para cobrir 3.11-3.13. Keras 3 continua nativo em todas essas versões.
+-r requirements-base.txt
+
+# `tensorflow` (default): funciona em CPU e GPU sem reinstalar; carrega libs
+# CUDA em runtime quando há GPU. Em Python 3.11 a faixa resolve para TF 2.21.
+# (TF 2.16–2.19 não têm wheels para 3.13; 2.20+ têm — daí o teto <2.22.)
 tensorflow>=2.16,<2.22
-keras>=3.0,<4.0
-scikit-learn>=1.3,<2.0
-# numba 0.58 não suporta Python 3.13; 0.60+ sim.
-numba>=0.60
-joblib>=1.3
-
-# --- Áudio ---
-librosa>=0.10
-soundfile>=0.12
-PyWavelets>=1.4
-
-# --- Numéricos ---
-# numpy: TF 2.20+ requer numpy>=1.26 e aceita numpy 2.x.
-# Subimos upper bound para 2.3 (TF + librosa funcionam em numpy 2.x estável).
-numpy>=1.24,<2.3
-# pandas <3: mlflow exige pandas<3 e o pandas 3.0 traz breaking changes.
-# Evita o ResolutionImpossible do Dependabot ao tentar pandas>=3.0.3.
-pandas>=2.0,<3.0
-matplotlib>=3.7
-seaborn>=0.13
-
-# --- Web / API ---
-# BUG.Render.1: pin firme em gradio>=4.31 — versões anteriores chamam
-# `templates.TemplateResponse(context_dict, name)` (API antiga). Starlette
-# >=0.36 (puxado por fastapi>=0.110) mudou para `(request, name, context)`.
-# Sem o pin: dict é interpretado como template_name e Jinja2 cai com
-# `TypeError: unhashable type: 'dict'` na primeira request à raiz "/".
-# Gradio 4.31+ usa a API nova corretamente.
-gradio>=4.31,<5.0
-# Pinar fastapi e starlette explicitamente garante reproducibilidade.
-fastapi>=0.110,<0.116
-starlette>=0.36,<0.42
-uvicorn[standard]>=0.27
-python-multipart>=0.0.9
-httpx>=0.27
-jinja2>=3.1.5
-slowapi>=0.1.9
-a2wsgi>=1.10
-
-# --- HuggingFace datasets (necessário para scripts de download de datasets) ---
-datasets>=2.14
-
-# --- Persistência / Config ---
-sqlalchemy>=2.0
-pydantic>=2.5
-python-dotenv>=1.0
-pyyaml>=6.0
-jsonschema>=4.20
-redis>=5.0
-
-# --- Hugging Face / deploy ---
-# BUG.HFHub: gradio 4.x importa `HfFolder`, REMOVIDO no huggingface_hub 1.0 →
-# `ImportError: cannot import name 'HfFolder'` derruba TODA a UI no boot. O pin
-# `>=0.20` (sem teto) puxava 1.x e quebrava em qualquer install novo (Linux
-# incl.). Teto firme `<1.0`. Piso 0.25 = exigência do `datasets` (>=0.25,<2.0),
-# então a faixa 0.25–0.36 satisfaz gradio E datasets simultaneamente.
-huggingface_hub>=0.25,<1.0
-requests>=2.31
-
-# --- Documentação ---
-mkdocs>=1.5
-mkdocs-material>=9.5
-
-# --- Testes mínimos (manter aqui pois rotas importam em runtime) ---
-pytest>=7.4
-
-# --- GPU diagnóstico ---
-# pynvml permite detectar hardware NVIDIA mesmo quando TF não tem suporte CUDA
-# (típico em Windows nativo com TF ≥ 2.11). Usado por app.core.gpu para
-# popular o painel "🎮 Diagnóstico de GPU" do Dashboard.
-# Opcional — sem pynvml o sistema cai em `nvidia-smi` subprocess.
-pynvml>=11.5

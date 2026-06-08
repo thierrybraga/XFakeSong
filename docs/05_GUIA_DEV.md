@@ -81,7 +81,7 @@ Adicione com **versão mínima** (e upper bound quando houver major arriscado) a
 ## Estilo e commits
 
 - Formatação: `black` + `isort`; lint: `ruff` (config em `pyproject.toml`).
-- Alvo Python 3.13. Prefira funções puras e testáveis; logue erros com
+- Alvo Python 3.11 (ambiente de referência). Prefira funções puras e testáveis; logue erros com
   `logger.exception`.
 - Commits pequenos e escopados; PRs passam pelos gates de CI (abaixo).
 

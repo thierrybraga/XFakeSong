@@ -7,7 +7,7 @@
 # Resultado: ~60% menor que single-stage, sem gcc/dev libs em produção
 # =====================================================================
 
-ARG PYTHON_VERSION=3.13
+ARG PYTHON_VERSION=3.11
 # PROD.7: TF_VARIANT controla qual requirements usar.
 #   - "" (default): requirements.txt — TensorFlow padrão
 #   - "cpu": requirements-cpu.txt — tensorflow-cpu, ~450MB menor.
@@ -39,7 +39,7 @@ WORKDIR /build
 
 # Aproveita cache de layer: requirements raramente muda comparado ao código.
 # PROD.7: copia ambos os requirements; seleciona qual instalar via TF_VARIANT.
-COPY requirements.txt requirements-cpu.txt* ./
+COPY requirements.txt requirements-base.txt requirements-cpu.txt* ./
 
 # Cria virtualenv isolado e instala dependências
 RUN python -m venv /opt/venv
