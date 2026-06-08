@@ -29,28 +29,22 @@ Este guia detalha como executar a plataforma XFakeSong de detecção de deepfake
 
 ## 2. Notebooks Disponíveis
 
-O projeto inclui 3 notebooks para as diferentes etapas do pipeline:
+Os notebooks ficam organizados por finalidade:
 
-### 2.1. `01_Setup_and_Extraction.ipynb`
-- **Objetivo**: Instala dependências e extrai características dos arquivos de áudio brutos.
-- **Entrada**: Arquivos de áudio em `data/raw/real/` e `data/raw/fake/`.
-- **Saída**: `real_features.joblib` e `fake_features.joblib` em `data/processed/`.
-- **Runtime**: CPU padrão (GPU recomendada para extração mais rápida).
+| Caminho | Objetivo | Runtime |
+|---|---|---|
+| `notebooks/00_index.ipynb` | Índice executável e mapa dos notebooks | CPU |
+| `notebooks/features/01_feature_extraction_study.ipynb` | Estudo de MFCC, log-mel, centroid, bandwidth e ZCR | CPU |
+| `notebooks/pipeline/01_benchmark_tcc_full_pipeline.ipynb` | Download, processamento, split, treino, inferência e relatório do TCC | GPU recomendada |
+| `notebooks/pipeline/02_training_model.ipynb` | Treino prático de um modelo pelo benchmark | CPU para SVM/RF, GPU para neurais |
+| `notebooks/pipeline/03_inference.ipynb` | Leitura de predições e fluxo de inferência | CPU ou GPU |
+| `notebooks/models/*.ipynb` | Um notebook de estudo para cada arquitetura | CPU para inspeção, GPU para treino |
+| `notebooks/legacy/` | Notebooks antigos preservados | Conforme notebook |
 
-### 2.2. `02_Training.ipynb`
-- **Objetivo**: Treina o modelo de detecção de deepfakes.
-- **Entrada**: Features extraídas pelo Notebook 01.
-- **Saída**: Modelo treinado salvo em `app/models/`.
-- **Runtime**: **GPU obrigatória.** Ative em `Ambiente de Execução > Alterar o tipo de ambiente de execução > T4 GPU`.
-
-### 2.3. `03_Inference_and_Demo.ipynb`
-- **Objetivo**: Executa a interface Gradio para testes e demonstração.
-- **Funcionalidades**:
-    - Gravação em tempo real ou upload de arquivo.
-    - Score de probabilidade de deepfake.
-    - Visualização de features e espectrogramas.
-- **Runtime**: CPU ou GPU.
-- **Acesso**: Gera um link público compartilhável (ex: `https://xxxx.gradio.live`).
+Para o experimento completo do TCC, comece por
+`notebooks/pipeline/01_benchmark_tcc_full_pipeline.ipynb`. Ele documenta o
+preset `--tcc-full-dataset`, com alvo de `10.000` amostras reais + `10.000`
+amostras fake.
 
 ---
 
@@ -70,10 +64,13 @@ O projeto inclui 3 notebooks para as diferentes etapas do pipeline:
 
 ---
 
-## 4. Executando a Demo
+## 4. Executando a Inferência ou Demo
 
-1. Abra o notebook `03_Inference_and_Demo.ipynb`.
-2. Execute todas as células em sequência.
-3. Clique no link público exibido na saída da última célula (ex: `Rodando em URL pública: https://...`).
+1. Abra `notebooks/pipeline/03_inference.ipynb` para estudar predições,
+   scores e artefatos do benchmark.
+2. Para interface visual, rode `python main.py --gradio` em uma célula do
+   Colab ou no terminal local.
+3. Se usar Gradio Live, clique no link público exibido na saída
+   (ex: `Rodando em URL pública: https://...`).
 
-> **Dica**: Links do Gradio Live expiram após ~72 horas de inatividade. Para uso contínuo, considere o deploy no Hugging Face Spaces (ver [`10_DEPLOY_HUGGINGFACE.md`](10_DEPLOY_HUGGINGFACE.md)).
+> **Dica**: Links do Gradio Live expiram após ~72 horas de inatividade. Para uso contínuo, considere o deploy no Hugging Face Spaces (ver [`11_DEPLOY_HUGGINGFACE.md`](11_DEPLOY_HUGGINGFACE.md)).

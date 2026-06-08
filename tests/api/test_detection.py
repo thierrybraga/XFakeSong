@@ -1,4 +1,5 @@
 from unittest.mock import MagicMock
+
 from app.core.interfaces.base import ProcessingStatus
 
 
@@ -20,6 +21,13 @@ def test_list_architectures(client):
 def test_analyze_audio_no_file(client):
     response = client.post("/api/v1/detection/analyze")
     assert response.status_code == 422  # Validation error
+
+
+def test_analyze_audio_invalid_format(client):
+    files = {'file': ('test.txt', b'text data', 'text/plain')}
+    response = client.post("/api/v1/detection/analyze", files=files)
+    assert response.status_code == 415
+    assert response.json()["error_code"] == "UNSUPPORTED_FORMAT"
 
 
 def test_analyze_audio_success(client, mock_detection_service):

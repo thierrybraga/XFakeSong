@@ -287,6 +287,16 @@ exit(0 if tf.test.is_built_with_cuda() and tf.config.list_physical_devices('GPU'
 PYEOF
 }
 
+# Verifica o NVIDIA Container Toolkit (necessário p/ Docker enxergar a GPU).
+# O toolkit instala o binário `nvidia-ctk` e registra o runtime "nvidia" no
+# daemon Docker. Aceita ambos os sinais (toolkit novo OU nvidia-docker2 antigo).
+check_nvidia_container_toolkit() {
+    command -v nvidia-ctk >/dev/null 2>&1 && return 0
+    docker info --format '{{range $k,$v := .Runtimes}}{{$k}} {{end}}' 2>/dev/null \
+        | grep -qw nvidia && return 0
+    return 1
+}
+
 get_gpu_status() {
     check_nvidia_gpu && echo "NVIDIA" || echo "CPU"
 }
@@ -561,7 +571,7 @@ gpu_config() {
             info "Próximo passo: ./start.sh cuda"
         fi
     elif is_wsl; then
-        info "WSL2: garanta o driver NVIDIA no Windows host (>=525)."
+        info "WSL2: garanta o driver NVIDIA no Windows host (>=535, p/ CUDA 12.x do TF 2.16+)."
     elif check_nvidia_pci && is_debian_like; then
         info "Próximo passo: ./start.sh nvidia-driver  (depois reinicie)"
     else
@@ -658,7 +668,7 @@ install_gpu_dependencies() {
     pip uninstall -y tensorflow tensorflow-cpu tensorflow-intel 2>/dev/null || true
 
     info "Instalando TensorFlow com suporte CUDA nativo (CUDA embutido)..."
-    pip install 'tensorflow[and-cuda]>=2.16,<3.0'
+    pip install 'tensorflow[and-cuda]>=2.16,<2.22'
 
     info "Sincronizando requirements restantes..."
     pip install -r requirements.txt
@@ -719,7 +729,7 @@ run_gpu_local() {
     if ! check_cuda_tensorflow; then
         info "TensorFlow CUDA não detectado — instalando..."
         pip uninstall -y tensorflow tensorflow-cpu 2>/dev/null || true
-        pip install 'tensorflow[and-cuda]>=2.16,<3.0'
+        pip install 'tensorflow[and-cuda]>=2.16,<2.22'
     else
         success "TensorFlow CUDA já instalado"
     fi
@@ -743,7 +753,28 @@ run_docker() {
     if [[ "$gpu_mode" == "1" ]]; then
         [[ -f docker-compose.gpu.yml ]] || fatal "docker-compose.gpu.yml não encontrado"
         compose_args+=(-f docker-compose.gpu.yml)
-        info "Modo GPU ativo (nvidia-container-toolkit necessário)"
+        info "Modo GPU ativo — validando pré-requisitos..."
+
+        # 1) Driver no host (em WSL2 vem do Windows; em Linux nativo, instalado)
+        if ! check_nvidia_gpu; then
+            warn "nvidia-smi indisponível no host — o container provavelmente NÃO verá a GPU."
+            is_wsl && warn "  WSL2: instale o driver NVIDIA no Windows host (>=535)." \
+                   || warn "  Linux: ./start.sh nvidia-driver (depois reinicie)."
+        fi
+
+        # 2) NVIDIA Container Toolkit (ponte driver→container)
+        if ! check_nvidia_container_toolkit; then
+            warn "NVIDIA Container Toolkit não detectado — sem ele o Docker ignora a GPU."
+            warn "  Instalar (Ubuntu/WSL2):"
+            warn "    sudo apt-get install -y nvidia-container-toolkit"
+            warn "    sudo nvidia-ctk runtime configure --runtime=docker"
+            warn "    sudo systemctl restart docker   # (no WSL2: reinicie o Docker Desktop)"
+            warn "  Detalhes: docs/02_INSTALACAO_CONFIGURACAO.md (Container Toolkit)"
+            confirm "Continuar mesmo assim (provável fallback para CPU)?" || \
+                fatal "Abortado. Instale o NVIDIA Container Toolkit e rode novamente."
+        else
+            success "NVIDIA Container Toolkit detectado"
+        fi
     fi
 
     info "Buildando e iniciando containers..."

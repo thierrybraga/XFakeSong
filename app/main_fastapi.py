@@ -45,13 +45,24 @@ def _running_under_pytest() -> bool:
     return "pytest" in sys.modules or "PYTEST_CURRENT_TEST" in os.environ
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _api_only_mode() -> bool:
+    return _env_flag("XFAKE_API_ONLY") or _env_flag("XFAKE_SKIP_GRADIO")
+
+
 # BUG.Render.2: verifica versões críticas — detecta incompatibilidade
 # gradio<4.31 + starlette>=0.36 antes do TypeError em runtime.
 check_versions(strict=False)
 
 # GPU.2: configura TF cedo em runtime real. Em pytest isso torna qualquer
 # import da API lento e carrega modelos antes dos mocks de dependência.
-if not _running_under_pytest():
+if not _running_under_pytest() and not _api_only_mode():
     _gpu_info = setup_gpu()
     _l.getLogger(__name__).info(f"GPU setup: {describe_gpu_setup()}")
 
@@ -117,7 +128,7 @@ async def loading(request: Request):
 for r in ALL_ROUTERS:
     app.include_router(r)
 
-if not _running_under_pytest():
+if not _running_under_pytest() and not _api_only_mode():
     import gradio as gr  # noqa: E402,I001
     from gradio_app import demo as gradio_demo  # noqa: E402
 

@@ -1,3 +1,4 @@
+import dataclasses
 import importlib as _stdlib_importlib
 import json
 import logging
@@ -27,6 +28,34 @@ class TrainingService(ITrainingService):
     Serviço responsável por gerenciar processos de treinamento.
     Integra ModelTrainer com o restante do sistema.
     """
+
+    # Chaves que NÃO são parâmetros do CONSTRUTOR do modelo. O `default_params`
+    # do registry mistura args do create_model (base_width, scale, dropout…)
+    # com campos de TrainingConfig (epochs, learning_rate…) e hints de pipeline
+    # (patience, lr_patience, gradient_clip, augmentation_strength). Passar
+    # esses ao create_model quebra builders cujo inner não aceita **kwargs
+    # (ex.: _create_res2net_model → "unexpected keyword argument 'patience'").
+    # Derivado dinamicamente do dataclass para não desatualizar.
+    _NON_MODEL_PARAM_KEYS = (
+        {f.name for f in dataclasses.fields(TrainingConfig)}
+        | {
+            "patience",
+            "lr_patience",
+            "gradient_clip",
+            "augmentation_strength",
+            "model_name",
+            "num_classes",
+            "parameters",
+            "architecture",
+            "dataset_path",
+            "use_mfcc_branch",
+            "use_cross_attention",
+            "use_gated_fusion",
+            "use_se_blocks",
+            "aux_loss_weight",
+            "use_mixed_precision",
+        }
+    )
 
     def __init__(self, models_dir: str = "app/models"):
         self.models_dir = Path(models_dir)
@@ -220,13 +249,45 @@ class TrainingService(ITrainingService):
 
             # 3. Instanciar Modelo
             try:
+                if config.get("use_mixed_precision") is False:
+                    try:
+                        import tensorflow as tf
+
+                        tf.keras.mixed_precision.set_global_policy("float32")
+                        logger.info(
+                            "Mixed precision desabilitado antes da instanciação "
+                            "do modelo."
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Falha ao definir política float32 antes do modelo: {e}"
+                        )
                 module = importlib.import_module(arch_info.module_path)
                 create_model_fn = getattr(module, arch_info.function_name)
 
                 # Mesclar parâmetros padrão com os fornecidos
-                model_params = arch_info.default_params.copy()
+                merged_params = arch_info.default_params.copy()
                 if 'parameters' in config:
-                    model_params.update(config['parameters'])
+                    merged_params.update(config['parameters'])
+
+                # Separa params do MODELO dos hints de treino/pipeline. Só os
+                # primeiros vão ao create_model (senão builders sem **kwargs
+                # quebram, ex.: Res2Net com 'patience').
+                model_params = {
+                    k: v for k, v in merged_params.items()
+                    if k not in self._NON_MODEL_PARAM_KEYS
+                }
+                # Aproveita os hints de patience recomendados pelo registry como
+                # DEFAULT do TrainingConfig (se o usuário não os definiu no config).
+                self._recommended_training = {}
+                if 'patience' in merged_params:
+                    self._recommended_training['early_stopping_patience'] = (
+                        merged_params['patience']
+                    )
+                if 'lr_patience' in merged_params:
+                    self._recommended_training['reduce_lr_patience'] = (
+                        merged_params['lr_patience']
+                    )
 
                 # Determinar input shape
                 # Assumindo (batch, time, feats) ou (batch, feats)
@@ -252,14 +313,23 @@ class TrainingService(ITrainingService):
                 )
 
             # 4. Configurar e Executar Treinamento
-            # Converter dicionário para objeto TrainingConfig
-            train_conf_dict = config.copy()
-            # Remover campos que não pertencem ao config direto se necessário
-            train_conf_dict.pop('parameters', None)
-            train_conf_dict.pop('model_name', None)
+            # Filtra SOMENTE campos válidos do TrainingConfig — o config do
+            # caller pode trazer 'parameters', 'model_name', 'num_classes',
+            # 'architecture' etc., que quebrariam TrainingConfig(**dict).
+            valid_fields = {f.name for f in dataclasses.fields(TrainingConfig)}
+            train_conf_dict = {
+                k: v for k, v in config.items() if k in valid_fields
+            }
+            # Aplica os defaults recomendados pelo registry (patience etc.) sem
+            # sobrescrever o que o usuário definiu explicitamente.
+            for k, v in getattr(self, '_recommended_training', {}).items():
+                train_conf_dict.setdefault(k, v)
 
             training_config = TrainingConfig(**train_conf_dict)
-            trainer = ModelTrainer(training_config)
+            trainer = ModelTrainer(
+                training_config,
+                use_mixed_precision=config.get("use_mixed_precision"),
+            )
 
             # kwargs para callbacks podem ser passados via config
             train_result = trainer.train(
@@ -296,6 +366,25 @@ class TrainingService(ITrainingService):
             label_classes_json = [
                 v.item() if hasattr(v, "item") else v for v in label_classes
             ]
+
+            # input_contract: PRESERVA a calibração feita no train() (temperatura,
+            # EER e OOD thresholds — Sprints 1.4/2.5/4.5). Sem isto, este JSON
+            # sobrescreveria o config que trainer.save_model gravou e a calibração
+            # seria SILENCIOSAMENTE perdida no reload (Predictor cairia em T=1.0 e
+            # threshold 0.5). Reconstruído a partir do trainer (atributos setados
+            # durante o treino), com a arquitetura real injetada.
+            try:
+                input_contract = trainer._build_input_contract(
+                    model, metadata={"architecture": architecture}
+                )
+            except Exception as _e:
+                logger.warning(f"Falha ao construir input_contract: {_e}")
+                input_contract = {}
+            if label_classes_json:
+                # Co-loca label_classes no contrato (além do top-level) para que
+                # o mapping inverso fique junto do resto do contrato de inferência.
+                input_contract["label_classes"] = label_classes_json
+
             model_metadata = {
                 "architecture": architecture,
                 "input_shape": list(input_shape),
@@ -304,6 +393,7 @@ class TrainingService(ITrainingService):
                 "model_type": "tensorflow",
                 "created_at": str(datetime.now()),
                 "metrics": train_result.data,
+                "input_contract": input_contract,
             }
             with open(config_path, 'w') as f:
                 json.dump(model_metadata, f, indent=4, default=str)
@@ -328,7 +418,8 @@ class TrainingService(ITrainingService):
                     file_size=(
                         save_path.stat().st_size if save_path.exists() else 0
                     )
-                )
+                ),
+                metadata={"model": model},
             )
 
         except Exception as e:

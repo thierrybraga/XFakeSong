@@ -46,13 +46,11 @@ services:
       # Persistência — paths são interpolados pelo Compose corretamente no Windows
       - ./app/models:/app/app/models
       - ./app/results:/app/app/results
+      - ./app/datasets:/app/app/datasets
       - ./logs:/app/logs
       - ./data:/app/data
 
     restart: unless-stopped
-
-    # tini já está como ENTRYPOINT — init: true seria redundante, mas mantém safety
-    init: true
 
     # SIGTERM dá tempo para Gradio fechar sockets antes do kill
     stop_grace_period: 30s

@@ -241,7 +241,10 @@ def remove_duplicates():
 
     for directory in [REAL_DIR, FAKE_DIR]:
         for wav_path in sorted(directory.glob("*.wav")):
-            h = hashlib.md5(wav_path.read_bytes()).hexdigest()
+            # MD5 apenas para deduplicação de arquivos (não-criptográfico)
+            h = hashlib.md5(
+                wav_path.read_bytes(), usedforsecurity=False
+            ).hexdigest()
             if h in hashes:
                 logger.info(f"  Duplicata: {wav_path.name} == {hashes[h]}")
                 wav_path.unlink()

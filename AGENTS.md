@@ -167,3 +167,5 @@ Toda a documentação técnica está em `docs/`, gerada via MkDocs Material (`mk
 | `11_DEPLOY_HUGGINGFACE.md` | Deploy no HF Spaces |
 | `12_DATASETS.md` | Datasets públicos com links e licenças |
 | `13_COLAB_GUIDE.md` | Execução via Google Colab |
+| `14_REVISAO_ARQUITETURAS.md` | Auditoria técnica das arquiteturas versus literatura |
+| `15_BENCHMARK.md` | Benchmark, métricas e geração de resultados para TCC |

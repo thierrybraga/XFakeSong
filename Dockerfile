@@ -9,8 +9,9 @@
 
 ARG PYTHON_VERSION=3.11
 # PROD.7: TF_VARIANT controla qual requirements usar.
-#   - "" (default): requirements.txt — TF com CUDA libs (~700MB)
+#   - "" (default): requirements.txt — TensorFlow padrão
 #   - "cpu": requirements-cpu.txt — tensorflow-cpu, ~450MB menor.
+#   - "gpu": requirements.txt + tensorflow[and-cuda] — CUDA wheels para Linux NVIDIA.
 # Build:  docker build --build-arg TF_VARIANT=cpu .
 ARG TF_VARIANT=""
 
@@ -48,6 +49,10 @@ RUN pip install --upgrade pip setuptools wheel && \
     if [ "${TF_VARIANT}" = "cpu" ] && [ -f requirements-cpu.txt ]; then \
         echo "[Dockerfile] Usando requirements-cpu.txt (tensorflow-cpu)"; \
         pip install -r requirements-cpu.txt; \
+    elif [ "${TF_VARIANT}" = "gpu" ]; then \
+        echo "[Dockerfile] Usando requirements.txt + tensorflow[and-cuda]"; \
+        pip install -r requirements.txt; \
+        pip install 'tensorflow[and-cuda]>=2.16,<2.22'; \
     else \
         echo "[Dockerfile] Usando requirements.txt (tensorflow padrão)"; \
         pip install -r requirements.txt; \
@@ -86,7 +91,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     HF_HOME=/tmp/huggingface \
     # Backend matplotlib não-interativo (Docker headless)
     MPLBACKEND=Agg \
-    PATH="/opt/venv/bin:$PATH"
+    # TensorFlow GPU via tensorflow[and-cuda] instala CUDA/cuDNN no venv.
+    # O runtime slim precisa desses caminhos explícitos para carregar as libs.
+    NVIDIA_PYPI_LIB_DIR=/opt/venv/nvidia \
+    LD_LIBRARY_PATH="/opt/venv/nvidia/cuda_nvrtc/lib:/opt/venv/nvidia/cuda_cupti/lib:/opt/venv/nvidia/cudnn/lib:/opt/venv/nvidia/nccl/lib:/opt/venv/nvidia/cusolver/lib:/opt/venv/nvidia/cuda_runtime/lib:/opt/venv/nvidia/cublas/lib:/opt/venv/nvidia/nvjitlink/lib:/opt/venv/nvidia/curand/lib:/opt/venv/nvidia/cufft/lib:/opt/venv/nvidia/cusparse/lib" \
+    XLA_FLAGS=--xla_gpu_cuda_data_dir=/opt/venv/nvidia/cuda_nvcc \
+    PATH="/opt/venv/bin:/opt/venv/nvidia/cuda_nvcc/bin:$PATH"
 
 # Apenas RUNTIME libs (sem gcc/dev) — imagem final menor
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -106,6 +116,13 @@ RUN groupadd --system --gid ${APP_GID} appuser && \
 
 # Copia venv pronto do builder (sem precisar reinstalar)
 COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
+
+# Caminho estável para os pacotes NVIDIA do tensorflow[and-cuda].
+RUN set -eux; \
+    nvidia_dir="$(find /opt/venv/lib -path '*/site-packages/nvidia' -type d | head -n 1)"; \
+    if [ -n "${nvidia_dir}" ]; then \
+        ln -s "${nvidia_dir}" /opt/venv/nvidia; \
+    fi
 
 WORKDIR /app
 

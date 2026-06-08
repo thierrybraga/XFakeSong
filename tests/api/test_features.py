@@ -14,7 +14,7 @@ def test_list_feature_types(client):
 def test_extract_features_invalid_file(client):
     files = {'file': ('test.txt', b'text data', 'text/plain')}
     response = client.post("/api/v1/features/extract", files=files)
-    assert response.status_code == 400
+    assert response.status_code == 415
 
 
 def test_extract_features_real_success(client, tmp_path):

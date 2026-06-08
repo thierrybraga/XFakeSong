@@ -26,7 +26,11 @@ logger = logging.getLogger(__name__)
 class DetectionService(IDetectionService):
     """Implementação do serviço de detecção de deepfake."""
 
-    def __init__(self, models_dir: Union[str, Path] = "models"):
+    def __init__(
+        self,
+        models_dir: Union[str, Path] = "models",
+        create_default_models: bool = True,
+    ):
         self.models_dir = Path(models_dir)
         self.feature_service = AudioFeatureExtractionService()
 
@@ -53,7 +57,10 @@ class DetectionService(IDetectionService):
         logger.info(f"DetectionService device default: {self.device}")
 
         # Inicializar sub-serviços
-        self.model_loader = ModelLoader(self.models_dir)
+        self.model_loader = ModelLoader(
+            self.models_dir,
+            create_default_models=create_default_models,
+        )
         self.feature_preparer = FeaturePreparer(self.feature_service)
         self.predictor = Predictor()
 

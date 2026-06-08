@@ -31,6 +31,41 @@ from .augmentation import AudioAugmenter
 from .metrics import MetricsCalculator
 from .optimization import OptimizerFactory
 
+_save_logger = logging.getLogger(__name__)
+
+
+def save_inference_keras(model: "tf.keras.Model", path) -> None:
+    """Salva um artefato de INFERÊNCIA (.keras) SEM o estado do otimizador.
+
+    No Keras 3, `include_optimizer=False` é IGNORADO para o formato `.keras`: o
+    estado do Adam (2 momentos por peso, ~2× os pesos) é sempre serializado,
+    deixando o arquivo ~3× maior que o necessário para inferência.
+
+    Removemos o otimizador ANTES de salvar e o restauramos DEPOIS. O grafo e os
+    pesos ficam idênticos — a saída do modelo NÃO muda (neutro em acurácia) —,
+    apenas o estado de treino deixa de ser gravado. Ganho típico: 561 MB → 188 MB
+    (MultiscaleCNN), com load proporcionalmente mais rápido.
+
+    Obs.: reconstruir via from_config+set_weights foi descartado por alterar a
+    saída (NaN em modelos com BatchNormalization/camadas custom).
+    """
+    path = str(path)
+    saved_opt = getattr(model, "optimizer", None)
+    try:
+        try:
+            model.optimizer = None
+        except Exception as e:
+            _save_logger.debug(f"Não foi possível remover o otimizador: {e}")
+        model.save(path)
+    finally:
+        # Restaura o otimizador para não afetar usos posteriores (ex.: continuar
+        # o treino, avaliar com o mesmo objeto de modelo).
+        if saved_opt is not None:
+            try:
+                model.optimizer = saved_opt
+            except Exception:
+                pass
+
 
 class ModelTrainer(IModelTrainer):
     """Implementação do treinador de modelos com prevenção de data leakage."""
@@ -65,6 +100,12 @@ class ModelTrainer(IModelTrainer):
                 )
             except Exception as e:
                 self.logger.warning(f"Mixed precision indisponível: {e}")
+        else:
+            try:
+                tf.keras.mixed_precision.set_global_policy("float32")
+                self.logger.info("Mixed precision desabilitado para este treino.")
+            except Exception as e:
+                self.logger.warning(f"Falha ao definir política float32: {e}")
 
         # Configurar pipeline seguro para prevenção de data leakage
         secure_config = SecureTrainingConfig(
@@ -133,11 +174,15 @@ class ModelTrainer(IModelTrainer):
                 self.config.optimizer, learning_rate=self.config.learning_rate
             )
 
-            # Compilar modelo
+            # Compilar modelo — a loss é resolvida conforme a SAÍDA real do
+            # modelo + o formato dos labels, evitando o rank mismatch
+            # "target and output must have the same rank" (ex.: softmax de 2
+            # unidades + labels esparsos com binary_crossentropy default).
+            resolved_loss = self._resolve_loss(model, y_train)
             model.compile(
                 optimizer=optimizer,
-                loss=self.config.loss_function,
-                metrics=self.config.metrics,
+                loss=resolved_loss,
+                metrics=self._resolve_metrics(),
             )
 
             # Preparar callbacks
@@ -267,9 +312,11 @@ class ModelTrainer(IModelTrainer):
             save_dir = Path(save_dir)
             save_dir.mkdir(parents=True, exist_ok=True)
 
-            # Salvar modelo no formato nativo Keras 3 (.keras)
+            # Salvar modelo no formato nativo Keras 3 (.keras) como artefato de
+            # INFERÊNCIA — sem o estado do otimizador (~3× menor, load mais
+            # rápido, saída idêntica). Ver save_inference_keras().
             model_path = save_dir / "model.keras"
-            model.save(str(model_path))
+            save_inference_keras(model, model_path)
 
             # Salvar scaler se disponível
             scaler_path = None
@@ -378,8 +425,9 @@ class ModelTrainer(IModelTrainer):
             save_path = Path(save_path)
             save_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Salvar modelo
-            model.save(str(save_path))
+            # Salvar modelo como artefato de inferência (sem estado do otimizador;
+            # ~3× menor e load mais rápido, saída idêntica). Ver save_inference_keras.
+            save_inference_keras(model, save_path)
 
             # Salvar configuração de treinamento com input_contract
             config_path = save_path.parent / f"{save_path.stem}_config.json"
@@ -529,6 +577,71 @@ class ModelTrainer(IModelTrainer):
             return False
         except Exception:
             return False
+
+    def _resolve_metrics(self) -> List[Any]:
+        """Métricas seguras para o `compile` (só as nativas do Keras).
+
+        O default do TrainingConfig inclui 'f1' — que NÃO é métrica nativa do
+        Keras (`Could not interpret metric identifier: f1`). Além disso,
+        Precision/Recall/AUC como classes podem quebrar com saída softmax de 2
+        unidades + labels esparsos (esperam binário). Como F1, EER, precision e
+        recall já são calculados post-hoc pelo MetricsCalculator
+        (`calculate_all_metrics`), no `compile` usamos APENAS 'accuracy', que é
+        robusta para binário/multiclasse e labels esparsos/one-hot.
+        """
+        return ["accuracy"]
+
+    def _resolve_loss(self, model: tf.keras.Model, y_train: np.ndarray):
+        """Escolhe a loss compatível com a saída do modelo e o formato dos labels.
+
+        O `loss_function` default do TrainingConfig é `binary_crossentropy`
+        (assume sigmoid de 1 unidade). Mas o TrainingService instancia modelos
+        com `num_classes` detectado (2 para binário) → saída softmax de 2
+        unidades. Compilar com binary_crossentropy nesse caso quebra o fit com
+        "target and output must have the same rank". Aqui auto-corrigimos:
+
+        - saída 1 unidade  → binary_crossentropy (labels esparsos ou (N,1))
+        - saída K>1 + labels esparsos (N,)   → sparse_categorical_crossentropy
+        - saída K>1 + labels one-hot (N,K)   → categorical_crossentropy
+
+        Respeita a loss configurada quando ela já é compatível.
+        """
+        configured = self.config.loss_function
+        try:
+            out_units = int(model.output_shape[-1])
+        except Exception:
+            return configured
+
+        y = np.asarray(y_train)
+        labels_one_hot = y.ndim > 1 and y.shape[-1] > 1
+
+        if out_units == 1:
+            chosen = "binary_crossentropy"
+        elif labels_one_hot:
+            chosen = "categorical_crossentropy"
+        else:
+            chosen = "sparse_categorical_crossentropy"
+
+        # Se a loss configurada já é compatível, mantém (evita sobrescrever
+        # escolhas legítimas como focal loss customizada via string).
+        compatible = {
+            1: {"binary_crossentropy", "bce", "mse", "mae"},
+        }.get(out_units, (
+            {"categorical_crossentropy", "kl_divergence"}
+            if labels_one_hot
+            else {"sparse_categorical_crossentropy"}
+        ))
+        if configured in compatible:
+            return configured
+
+        if chosen != configured:
+            self.logger.warning(
+                f"Loss '{configured}' incompatível com saída de {out_units} "
+                f"unidade(s) + labels "
+                f"{'one-hot' if labels_one_hot else 'esparsos'}; "
+                f"usando '{chosen}'."
+            )
+        return chosen
 
     def _infer_num_classes(self, y: np.ndarray) -> int:
         """Inferência de num_classes a partir de y (suporta sparse e one-hot)."""

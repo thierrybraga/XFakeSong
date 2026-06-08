@@ -1,123 +1,70 @@
----
-hide:
-  - navigation
-  - toc
----
+# XfakeSong Documentation
 
-# XfakeSong: Detecção de Deepfake de Áudio
+XfakeSong e uma plataforma open source para deteccao de deepfakes de audio com
+execucao local, interface Gradio, API FastAPI e pipelines modulares de
+extracao de features, treinamento e inferencia.
 
-<div class="md-banner" style="padding: 4rem 2rem; text-align: center; margin: -2rem -2rem 2rem -2rem; border-radius: 0 0 2rem 2rem;">
-  <h1 style="color: white; margin-bottom: 1rem; font-weight: 900; font-size: 3rem;">XfakeSong</h1>
-  <p style="color: rgba(255,255,255,0.9); font-size: 1.4rem; max-width: 800px; margin: 0 auto 2rem;">
-    Plataforma Enterprise Open Source para detecção forense de áudio sintético e segurança digital.
-  </p>
-  <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
-    <a href="02_INSTALACAO_CONFIGURACAO/" class="md-button md-button--primary" style="background-color: white; color: var(--md-primary-fg-color); border: none; font-size: 1.1rem; padding: 0.8rem 2rem;">
-      Começar Agora
-    </a>
-    <a href="03_ARQUITETURA/" class="md-button" style="border: 1px solid rgba(255,255,255,0.5); color: white; font-size: 1.1rem; padding: 0.8rem 2rem;">
-      Ver Arquitetura
-    </a>
-  </div>
-  <div style="margin-top: 3rem; display: flex; gap: 1rem; justify-content: center;">
-    <img src="https://img.shields.io/badge/Python-3.11%2B-blue?style=for-the-badge&logo=python&logoColor=white" alt="Python">
-    <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License">
-    <img src="https://img.shields.io/badge/Framework-Gradio-orange?style=for-the-badge&logo=gradio&logoColor=white" alt="Gradio">
-  </div>
-</div>
+Esta pagina e o mapa da documentacao. As paginas detalhadas abaixo sao as
+fontes canonicas para cada assunto.
 
-## Por que XfakeSong?
+## Leitura por Objetivo
 
-O **XfakeSong** não é apenas mais um classificador. É um ecossistema completo de forense digital projetado para pesquisadores, analistas de segurança e desenvolvedores que precisam de transparência e robustez.
+| Se voce quer... | Leia |
+| --- | --- |
+| Instalar e executar a aplicacao | [Instalacao e Configuracao](02_INSTALACAO_CONFIGURACAO.md) |
+| Entender o escopo do projeto | [Introducao](01_INTRODUCAO.md) |
+| Navegar pela Clean Architecture | [Arquitetura](03_ARQUITETURA.md) |
+| Trabalhar com extracao de features | [Features de Audio](04_FEATURES.md) |
+| Contribuir com codigo | [Guia do Desenvolvedor](05_GUIA_DEV.md) |
+| Validar qualidade e CI | [Testes e Qualidade](06_TESTES.md) |
+| Integrar via HTTP | [API Reference](07_API_REFERENCE.md) |
+| Comparar arquiteturas neurais | [Arquiteturas Neurais](08_ARQUITETURAS.md) |
+| Rodar predicao com modelos treinados | [Inferencia](09_INFERENCIA.md) |
+| Treinar modelos | [Treinamento](10_TREINAMENTO.md) |
+| Publicar no Hugging Face Spaces | [Deploy Hugging Face](11_DEPLOY_HUGGINGFACE.md) |
+| Preparar datasets | [Datasets Publicos](12_DATASETS.md) |
+| Executar no Google Colab | [Guia Google Colab](13_COLAB_GUIDE.md) |
+| Auditar aderencia das arquiteturas | [Revisao das Arquiteturas](14_REVISAO_ARQUITETURAS.md) |
+| Rodar benchmark para TCC | [Benchmark e TCC](15_BENCHMARK.md) |
+| Estudar com notebooks | [Guia de Notebooks](16_NOTEBOOKS.md) |
 
-<div class="grid cards" markdown>
+## Fluxos Principais
 
--   :material-fingerprint: **Precisão Forense**
+```mermaid
+flowchart LR
+    A["Audio bruto"] --> B["Upload e validacao"]
+    B --> C["Extracao de features"]
+    C --> D["Modelo treinado"]
+    D --> E["Predicao"]
+    E --> F["Relatorio e explicabilidade"]
+```
 
-    ---
+```mermaid
+flowchart LR
+    A["Dataset real/fake"] --> B["Pre-processamento"]
+    B --> C["Feature pipeline"]
+    C --> D["Treinamento"]
+    D --> E["Metricas"]
+    E --> F["Modelo exportado"]
+```
 
-    Utiliza uma combinação de **features espectrais** (MFCC, CQT, Chroma) e embeddings profundos (WavLM, HuBERT) para detectar até as manipulações mais sutis.
+```mermaid
+flowchart LR
+    A["Benchmark TCC"] --> B["dataset.md"]
+    A --> C["tcc_report.md"]
+    A --> D["figures/*.png"]
+    A --> E["architectures/<modelo>/"]
+```
 
--   :material-eye-outline: **Explainable AI (XAI)**
+## Comandos Rapidos
 
-    ---
+```bash
+python main.py --bootstrap-dirs
+python main.py --gradio
+pytest tests/
+docker compose up --build -d
+python scripts/run_tcc_pipeline.py --smoke --epochs 1 --batch-size 4
+```
 
-    Não confie apenas no resultado. Visualize **mapas de calor**, espectrogramas e análises fractais que justificam cada decisão do modelo.
-
--   :material-shield-lock: **Privacidade em Primeiro Lugar**
-
-    ---
-
-    Projetado para rodar 100% **offline** ou em containers isolados. Seus dados sensíveis nunca deixam sua infraestrutura.
-
--   :material-cube-scan: **Modularidade Extrema**
-
-    ---
-
-    Arquitetura plug-and-play. Adicione novos modelos, extratores de features ou pipelines de pré-processamento sem reescrever o núcleo.
-
-</div>
-
-## Funcionalidades em Destaque
-
-=== "🔍 Inferência Multimodal"
-
-    Carregue arquivos de áudio e receba análises detalhadas de múltiplos modelos simultaneamente (Ensemble Learning).
-
-    ```python
-    # Exemplo de uso da API
-    from app.services import AudioProcessor
-
-    processor = AudioProcessor()
-    result = processor.analyze("suspect_audio.wav")
-    print(f"Probabilidade de Fake: {result.fake_score:.2%}")
-    ```
-
-=== "📊 Dashboard Interativo"
-
-    Interface gráfica poderosa construída com **Gradio**, permitindo:
-    
-    *   Upload drag-and-drop
-    *   Visualização de formas de onda em tempo real
-    *   Ajuste fino de parâmetros de detecção
-    *   Exportação de relatórios em PDF/JSON
-
-=== "🐳 Deploy Simplificado"
-
-    Leve para produção em minutos com suporte nativo a Docker e Hugging Face Spaces.
-
-    ```bash
-    docker-compose up -d --build
-    ```
-
-## Comece sua Jornada
-
-<div class="grid cards" markdown>
-
--   [**Guia de Instalação**](02_INSTALACAO_CONFIGURACAO.md)
-    {: .card-link }
-    Configure seu ambiente local ou Docker em minutos.
-
--   [**Arquitetura do Sistema**](03_ARQUITETURA.md)
-    {: .card-link }
-    Entenda os princípios de Clean Architecture que guiam o projeto.
-
--   [**Testes e Qualidade**](06_TESTES.md)
-    {: .card-link }
-    Rode a suíte de testes e acompanhe cobertura de código.
-
--   [**Treinando Modelos**](10_TREINAMENTO.md)
-    {: .card-link }
-    Aprenda a criar e refinar seus próprios detectores de deepfake.
-
--   [**Contribua**](05_GUIA_DEV.md)
-    {: .card-link }
-    Junte-se à nossa comunidade e ajude a combater a desinformação.
-
-</div>
-
-<hr>
-
-<p align="center" style="font-size: 0.9rem; color: var(--md-default-fg-color--light);">
-  Desenvolvido com ❤️ pela equipe XfakeSong. Licenciado sob MIT.
-</p>
+Para detalhes de ambiente, dependencias e variaveis `.env`, use
+[Instalacao e Configuracao](02_INSTALACAO_CONFIGURACAO.md).

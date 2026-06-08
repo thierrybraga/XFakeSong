@@ -149,10 +149,14 @@ class AudioAugmenter:
             mask_size = tf.cast(
                 tf.cast(freq_dim, tf.float32) * self.frequency_mask_factor,
                 tf.int32)
-            # Garante mask_size >= 1 e < freq_dim para evitar range inválido
-            mask_size = tf.maximum(tf.minimum(mask_size, freq_dim - 1), 1)
-            mask_start = tf.random.uniform(
-                [], 0, freq_dim - mask_size, dtype=tf.int32)
+            # Garante range válido inclusive para tensores estreitos (freq_dim <= 1).
+            mask_size = tf.where(
+                freq_dim > 1,
+                tf.maximum(tf.minimum(mask_size, freq_dim - 1), 1),
+                0,
+            )
+            max_start = tf.maximum(freq_dim - mask_size, 1)
+            mask_start = tf.random.uniform([], 0, max_start, dtype=tf.int32)
 
             # Criar máscara — usa tf.stack para shape totalmente dinâmico
             mask = tf.ones_like(audio_features)
@@ -183,10 +187,14 @@ class AudioAugmenter:
             mask_size = tf.cast(
                 tf.cast(time_dim, tf.float32) * self.time_mask_factor,
                 tf.int32)
-            # Garante mask_size >= 1 e < time_dim para evitar range inválido
-            mask_size = tf.maximum(tf.minimum(mask_size, time_dim - 1), 1)
-            mask_start = tf.random.uniform(
-                [], 0, time_dim - mask_size, dtype=tf.int32)
+            # Garante range válido inclusive para tensores curtos (time_dim <= 1).
+            mask_size = tf.where(
+                time_dim > 1,
+                tf.maximum(tf.minimum(mask_size, time_dim - 1), 1),
+                0,
+            )
+            max_start = tf.maximum(time_dim - mask_size, 1)
+            mask_start = tf.random.uniform([], 0, max_start, dtype=tf.int32)
 
             # Criar máscara — usa tf.stack para shape totalmente dinâmico
             mask = tf.ones_like(audio_features)

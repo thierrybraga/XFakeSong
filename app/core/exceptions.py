@@ -115,7 +115,7 @@ class UnsupportedFormatError(AppError):
     def __init__(self, fmt: str, supported: list):
         super().__init__(
             f"Formato '{fmt}' não suportado. Use: {', '.join(supported)}",
-            status_code=400,
+            status_code=415,
             error_code="UNSUPPORTED_FORMAT",
         )
 

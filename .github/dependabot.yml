@@ -1,0 +1,21 @@
+version: 2
+updates:
+  # Dependências Python (requirements.txt + requirements-dev.txt)
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns: ["*"]
+    commit-message:
+      prefix: "deps"
+
+  # Actions usadas nos workflows
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"

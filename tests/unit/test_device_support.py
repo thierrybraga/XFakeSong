@@ -36,3 +36,27 @@ def test_detection_service_set_device(tmp_path) -> None:
         # Falha na inicialização (sem modelos) é esperada — mas set_device não deve falhar
         # Se chegou aqui foi o ctor que falhou, não o set_device
         pytest.skip(f"DetectionService não inicializou (sem modelos): {e}")
+
+
+def test_detection_service_can_skip_default_models(tmp_path) -> None:
+    """Modo API leve não deve criar modelos demonstrativos automaticamente."""
+    from app.domain.services.detection_service import DetectionService
+
+    ds = DetectionService(
+        models_dir=str(tmp_path / "models"),
+        create_default_models=False,
+    )
+    assert ds.get_available_models() == []
+    assert ds.default_model is None
+
+
+def test_main_fastapi_api_only_flag(monkeypatch) -> None:
+    """Flag XFAKE_API_ONLY centraliza o modo API sem Gradio/GPU eager."""
+    import app.main_fastapi as main_fastapi
+
+    monkeypatch.setenv("XFAKE_API_ONLY", "1")
+    assert main_fastapi._api_only_mode() is True
+
+    monkeypatch.delenv("XFAKE_API_ONLY", raising=False)
+    monkeypatch.setenv("XFAKE_SKIP_GRADIO", "true")
+    assert main_fastapi._api_only_mode() is True

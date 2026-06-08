@@ -75,9 +75,10 @@ def create_training_tab():
                             shutil.rmtree(base_dir)
                         base_dir.mkdir(parents=True, exist_ok=True)
 
-                        # Extrair
+                        # Extrair (valida contra zip slip — upload não confiável)
+                        from app.core.utils.file_utils import safe_extract_zip
                         with zipfile.ZipFile(zip_path.name, 'r') as zip_ref:
-                            zip_ref.extractall(base_dir)
+                            safe_extract_zip(zip_ref, base_dir)
 
                         # Organizar e Renomear
                         stats = {"real": 0, "fake": 0, "errors": 0}
@@ -677,18 +678,46 @@ def create_training_tab():
                             loss='sparse_categorical_crossentropy',
                             metrics=['accuracy'])
 
+                        def _first_metric(logs, *keys):
+                            logs = logs or {}
+                            for key in keys:
+                                if key in logs:
+                                    return logs.get(key)
+                            return None
+
                         class LogCallback(tf.keras.callbacks.Callback):
                             def __init__(self):
                                 self.logs_hist = []
 
                             def on_epoch_end(self, epoch, logs=None):
+                                acc = _first_metric(
+                                    logs,
+                                    "accuracy",
+                                    "binary_accuracy",
+                                    "categorical_accuracy",
+                                    "sparse_categorical_accuracy",
+                                    "acc",
+                                )
+                                val_acc = _first_metric(
+                                    logs,
+                                    "val_accuracy",
+                                    "val_binary_accuracy",
+                                    "val_categorical_accuracy",
+                                    "val_sparse_categorical_accuracy",
+                                    "val_acc",
+                                )
+                                loss = _first_metric(logs, "loss")
+                                val_loss = _first_metric(logs, "val_loss")
+
+                                def _fmt(v):
+                                    return "—" if v is None else f"{float(v):.4f}"
+
                                 msg = (
                                     f"Epoch {epoch + 1}/{epochs} - "
-                                    f"loss: {logs['loss']:.4f} - "
-                                    f"accuracy: {logs['accuracy']:.4f} - "
-                                    f"val_loss: {logs['val_loss']:.4f} - "
-                                    f"val_accuracy: "
-                                    f"{logs['val_accuracy']:.4f}\n"
+                                    f"loss: {_fmt(loss)} - "
+                                    f"accuracy: {_fmt(acc)} - "
+                                    f"val_loss: {_fmt(val_loss)} - "
+                                    f"val_accuracy: {_fmt(val_acc)}\n"
                                 )
                                 self.logs_hist.append(msg)
 
@@ -718,20 +747,16 @@ def create_training_tab():
                             callbacks=[log_cb, lr_cb]
                         )
 
-                        # Gerar gráfico de Loss/Acc
-                        fig_hist, ax = plt.subplots(1, 2, figsize=(12, 4))
-                        ax[0].plot(history.history['loss'], label='Train Loss')
-                        ax[0].plot(
-                            history.history['val_loss'], label='Val Loss')
-                        ax[0].set_title('Loss')
-                        ax[0].legend()
+                        # Gerar gráfico de Loss/Acc com resolvedor robusto de
+                        # métricas (accuracy, binary_accuracy, sparse_*, etc.).
+                        from app.interfaces.gradio.tabs.training_wizard import (
+                            _collect_validation_predictions,
+                            _history_figure_from_history,
+                            _prediction_labels_and_scores,
+                            _training_eval_figures,
+                        )
 
-                        ax[1].plot(
-                            history.history['accuracy'], label='Train Acc')
-                        ax[1].plot(
-                            history.history['val_accuracy'], label='Val Acc')
-                        ax[1].set_title('Accuracy')
-                        ax[1].legend()
+                        fig_hist = _history_figure_from_history(history)
 
                         # --- Avaliação Detalhada para Plots ---
                         yield (
@@ -741,85 +766,17 @@ def create_training_tab():
                             None, None, None, None, None
                         )
 
-                        y_true_all = []
-                        y_pred_probs_all = []
-
-                        # Iterar sobre dataset de validação
-                        for x_batch, y_batch in val_ds:
-                            preds = model.predict_on_batch(x_batch)
-                            y_true_all.extend(y_batch.numpy())
-                            y_pred_probs_all.extend(preds)
-
-                        y_true = np.array(y_true_all)
-                        y_probs = np.array(y_pred_probs_all)
-                        y_pred_labels = np.argmax(y_probs, axis=1)
-
-                        # Preparar scores para ROC/PR
-                        if y_probs.shape[1] == 2:
-                            y_scores = y_probs[:, 1]
-                        else:
-                            y_scores = y_probs.flatten()
-
-                        # 1. Curva ROC
-                        fpr, tpr, _ = roc_curve(y_true, y_scores)
-                        roc_auc = auc(fpr, tpr)
-
-                        # Dark theme tokens
-                        _BG, _FC = "#0f172a", "#1e293b"
-                        _TX, _GR = "#f1f5f9", "#334155"
-
-                        def _dstyle(ax, fig, title):
-                            fig.patch.set_facecolor(_BG)
-                            ax.set_facecolor(_FC)
-                            ax.set_title(title, color=_TX, fontweight="600", fontsize=12, pad=10)
-                            ax.tick_params(colors=_TX, labelsize=9)
-                            for label in (ax.xaxis.label, ax.yaxis.label):
-                                label.set_color(_TX)
-                                label.set_fontsize(10)
-                            for s in ax.spines.values():
-                                s.set_color(_GR)
-                            ax.grid(True, color=_GR, alpha=0.3, linewidth=0.5)
-
-                        fig_roc, ax_r = plt.subplots(figsize=(8, 6))
-                        _dstyle(ax_r, fig_roc, "ROC Curve")
-                        ax_r.plot(fpr, tpr, color='#f59e0b', lw=2,
-                                  label=f'AUC = {roc_auc:.2f}')
-                        ax_r.plot([0, 1], [0, 1], color=_GR, lw=1.5, linestyle='--')
-                        ax_r.set_xlim([0.0, 1.0])
-                        ax_r.set_ylim([0.0, 1.05])
-                        ax_r.set_xlabel('False Positive Rate')
-                        ax_r.set_ylabel('True Positive Rate')
-                        ax_r.legend(facecolor=_FC, edgecolor=_GR,
-                                    labelcolor=_TX, fontsize=9)
-
-                        # 2. Matriz de Confusão
-                        cm = confusion_matrix(y_true, y_pred_labels)
-
-                        fig_cm, ax_cm = plt.subplots(figsize=(8, 6))
-                        _dstyle(ax_cm, fig_cm, "Confusion Matrix")
-                        sns.heatmap(
-                            cm, annot=True, fmt='d', cmap='Blues',
-                            xticklabels=['Real', 'Fake'],
-                            yticklabels=['Real', 'Fake'], ax=ax_cm,
-                            annot_kws={"color": _TX}
+                        # Iterar sobre dataset de validação. Helper cobre
+                        # sigmoid (B,1), softmax (B,2) e logits.
+                        y_true, y_pred_labels, y_scores = (
+                            _collect_validation_predictions(model, val_ds)
                         )
-                        ax_cm.set_ylabel('True label')
-                        ax_cm.set_xlabel('Predicted label')
-                        plt.close(fig_cm)
-
-                        # 3. Curva Precision-Recall
-                        precision, recall, _ = precision_recall_curve(
-                            y_true, y_scores)
-
-                        fig_pr, ax_pr = plt.subplots(figsize=(8, 6))
-                        _dstyle(ax_pr, fig_pr, "Precision-Recall Curve")
-                        ax_pr.plot(recall, precision, color='#06b6d4',
-                                   lw=2, label='Precision-Recall')
-                        ax_pr.set_xlabel('Recall')
-                        ax_pr.set_ylabel('Precision')
-                        ax_pr.legend(facecolor=_FC, edgecolor=_GR,
-                                     labelcolor=_TX, fontsize=9)
-                        plt.close(fig_pr)
+                        eval_figs = _training_eval_figures(
+                            y_true, y_pred_labels, y_scores, lr_cb.lr_history
+                        )
+                        fig_roc = eval_figs["roc"]
+                        fig_cm = eval_figs["cm"]
+                        fig_pr = eval_figs["pr"]
 
                         full_logs = "".join(log_cb.logs_hist)
 
@@ -832,11 +789,11 @@ def create_training_tab():
                         model.save(model_path)
 
                         # --- Gráficos Avançados ---
-                        fig_det = None
-                        fig_thresh = None
-                        fig_class_acc = None
+                        fig_det = eval_figs["det"]
+                        fig_thresh = eval_figs["threshold"]
+                        fig_class_acc = eval_figs["class_acc"]
                         fig_tsne = None
-                        fig_lr = None
+                        fig_lr = eval_figs["lr"]
 
                         try:
                             from app.domain.services.forensic_visualization import (
@@ -857,7 +814,9 @@ def create_training_tab():
                             fake_accs = []
                             for x_b, y_b in val_ds:
                                 preds_b = model.predict_on_batch(x_b)
-                                pred_labels_b = np.argmax(preds_b, axis=1)
+                                pred_labels_b, _ = _prediction_labels_and_scores(
+                                    preds_b
+                                )
                                 y_np = y_b.numpy()
                                 real_mask = y_np == 0
                                 fake_mask = y_np == 1

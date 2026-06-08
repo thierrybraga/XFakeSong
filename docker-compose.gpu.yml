@@ -16,6 +16,10 @@
 
 services:
   app:
+    build:
+      args:
+        TF_VARIANT: "gpu"
+
     environment:
       # Permite TF usar GPU; mantém allow_growth para não alocar toda VRAM
       TF_FORCE_GPU_ALLOW_GROWTH: "true"

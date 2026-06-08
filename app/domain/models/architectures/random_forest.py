@@ -20,6 +20,7 @@ from app.domain.models.architectures.classical_ml_helpers import (
     BaseClassicalModel,
     evaluate_model,
     optimize_hyperparameters,
+    wrap_calibration,
 )
 
 # Configure logger for Random Forest
@@ -48,6 +49,7 @@ class RandomForestModel(BaseClassicalModel):
                  bootstrap: bool = True,
                  random_state: int = 42,
                  n_jobs: int = -1,
+                 calibrate: bool = False,
                  **kwargs):
         """
         Inicializa o modelo Random Forest.
@@ -61,6 +63,9 @@ class RandomForestModel(BaseClassicalModel):
         self.bootstrap = bootstrap
         self.random_state = random_state
         self.n_jobs = n_jobs
+        # Calibração isotônica opcional — RF tem probabilidades mal-calibradas
+        # por natureza; útil para limiares de decisão confiáveis. Default off.
+        self.calibrate = calibrate
 
         # Initialize pipeline immediately
         self.pipeline = self._create_pipeline()
@@ -69,19 +74,21 @@ class RandomForestModel(BaseClassicalModel):
             f"Random Forest model initialized with {n_estimators} estimators, max_depth={max_depth}")
 
     def _create_pipeline(self) -> Pipeline:
+        clf = RandomForestClassifier(
+            n_estimators=self.n_estimators,
+            max_depth=self.max_depth,
+            min_samples_split=self.min_samples_split,
+            min_samples_leaf=self.min_samples_leaf,
+            max_features=self.max_features,
+            bootstrap=self.bootstrap,
+            random_state=self.random_state,
+            n_jobs=self.n_jobs,
+            **self.kwargs
+        )
+        clf = wrap_calibration(clf, self.calibrate)
         return Pipeline([
             ('scaler', StandardScaler()),
-            ('rf', RandomForestClassifier(
-                n_estimators=self.n_estimators,
-                max_depth=self.max_depth,
-                min_samples_split=self.min_samples_split,
-                min_samples_leaf=self.min_samples_leaf,
-                max_features=self.max_features,
-                bootstrap=self.bootstrap,
-                random_state=self.random_state,
-                n_jobs=self.n_jobs,
-                **self.kwargs
-            ))
+            ('rf', clf),
         ])
 
     def get_feature_importance(

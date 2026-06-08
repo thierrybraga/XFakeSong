@@ -129,13 +129,40 @@ format:  ## Formata com black + isort
 	.venv/bin/black app/ tests/
 	.venv/bin/isort app/ tests/
 
+# Runner padronizado (escolhe o python do venv). Veja docs/06_TESTES.md.
+RUN_TESTS := ./scripts/run_tests.sh
+
 .PHONY: test
-test:  ## Roda pytest
-	.venv/bin/pytest tests/ -ra
+test:  ## Roda a suíte rápida (tudo EXCETO smoke) — run padrão da CI
+	$(RUN_TESTS) fast
+
+.PHONY: test-unit
+test-unit:  ## Só testes unitários
+	$(RUN_TESTS) unit
+
+.PHONY: test-api
+test-api:  ## Só contrato da API REST
+	$(RUN_TESTS) api
+
+.PHONY: test-functional
+test-functional:  ## Só fluxos de frontend/usuário
+	$(RUN_TESTS) functional
+
+.PHONY: test-integration
+test-integration:  ## Só integração (pode treinar modelos — mais lento)
+	$(RUN_TESTS) integration
+
+.PHONY: test-smoke
+test-smoke:  ## Smoke pesado com TF real (14 archs + wizard + API)
+	$(RUN_TESTS) smoke
+
+.PHONY: test-all
+test-all:  ## TUDO, inclusive smoke
+	$(RUN_TESTS) all
 
 .PHONY: test-cov
-test-cov:  ## pytest com coverage report
-	.venv/bin/pytest --cov=app --cov-report=term-missing tests/
+test-cov:  ## Suíte rápida + coverage (app + benchmarks)
+	$(RUN_TESTS) cov
 
 # =====================================================================
 # Utilitários

@@ -18,6 +18,74 @@ def update_device_settings(device_name):
         return f"❌ Erro ao atualizar dispositivo: {str(e)}"
 
 
+def run_auto_tuning(arch, dataset_path, n_trials, metric, epochs):
+    """Roda a busca de hiperparâmetros (Optuna) e devolve (resumo, best, figura).
+
+    Degrada graciosamente: se `optuna` não estiver instalado, ou o dataset não
+    existir, retorna uma mensagem clara sem levantar exceção. Cada trial treina
+    um modelo de verdade via TrainingService — logo pode levar minutos.
+    """
+    from pathlib import Path
+
+    from app.domain.models.training.hyperparameter_tuning import (
+        is_optuna_available,
+        suggest_search_space,
+        tune_hyperparameters,
+    )
+    from app.interfaces.gradio.utils.tuning_charts import render_tuning_figure
+
+    if not is_optuna_available():
+        return (
+            "⚠️ **optuna não está instalado.** A busca automática requer "
+            "`pip install optuna` (já em `requirements-dev.txt`).",
+            {},
+            None,
+        )
+    if not dataset_path or not Path(str(dataset_path)).exists():
+        return (
+            f"❌ Dataset `.npz` não encontrado: `{dataset_path}`.\n\n"
+            "Forneça um `.npz` com `X_train`/`y_train` (mesmo formato do treino "
+            "via serviço).",
+            {},
+            None,
+        )
+    try:
+        n_trials = max(2, int(n_trials))
+        epochs = max(1, int(epochs))
+    except (TypeError, ValueError):
+        return ("❌ N trials e épocas devem ser inteiros.", {}, None)
+
+    # val_loss → minimizar; accuracy/f1 → maximizar
+    direction = "minimize" if "loss" in str(metric).lower() else "maximize"
+    try:
+        result = tune_hyperparameters(
+            architecture=arch,
+            dataset_path=str(dataset_path),
+            base_config={"epochs": epochs, "batch_size": 32},
+            search_space=suggest_search_space(arch),
+            n_trials=n_trials,
+            metric=metric,
+            direction=direction,
+        )
+    except Exception as e:  # noqa: BLE001 — superfície de UI: nunca propaga
+        return (f"❌ Erro na busca: {e}", {}, None)
+
+    if result.get("status") != "success":
+        return (f"❌ Busca falhou: {result.get('errors')}", {}, None)
+
+    study = result.get("study")
+    fig = render_tuning_figure(study) if study is not None else None
+    best_score = result.get("best_score")
+    if best_score is not None:
+        summary = (
+            f"✅ **Busca concluída** — {result.get('n_trials', 0)} trials. "
+            f"Melhor **{metric}** = `{best_score:.4f}`."
+        )
+    else:
+        summary = "✅ Busca concluída."
+    return summary, result.get("best_params", {}), fig
+
+
 def create_optimization_tab():
     with gr.Tab("⚡ Otimização"):
         from app.interfaces.gradio.utils.components import page_header
@@ -164,3 +232,64 @@ def create_optimization_tab():
             inputs=[opt_arch],
             outputs=outputs_list
         )
+
+        gr.Markdown("---")  # Separator
+
+        # --- Busca Automática de Hiperparâmetros (Optuna) ---
+        with gr.Accordion(
+            "🔍 Busca Automática de Hiperparâmetros (Optuna)", open=False
+        ):
+            gr.Markdown(
+                "Busca Bayesiana (Optuna/TPE) que **treina vários modelos** e "
+                "mostra a **convergência** dos trials e a **importância** de cada "
+                "hiperparâmetro. Requer um dataset `.npz` (`X_train`/`y_train`) e "
+                "`optuna` instalado. ⚠️ Pode levar **vários minutos** — treina um "
+                "modelo por trial."
+            )
+            with gr.Row():
+                with gr.Column(scale=1):
+                    tune_arch = gr.Dropdown(
+                        choices=arch_choices,
+                        label="Arquitetura",
+                        value=arch_choices[0] if arch_choices else "MultiscaleCNN",
+                    )
+                    tune_dataset = gr.Textbox(
+                        label="Dataset (.npz com X_train/y_train)",
+                        placeholder="ex.: app/datasets/features/train.npz",
+                    )
+                    with gr.Row():
+                        tune_trials = gr.Number(
+                            label="Nº de trials", value=10, precision=0
+                        )
+                        tune_epochs = gr.Number(
+                            label="Épocas por trial", value=5, precision=0
+                        )
+                    tune_metric = gr.Dropdown(
+                        choices=[
+                            "val_accuracy",
+                            "f1_score",
+                            "accuracy",
+                            "val_loss",
+                        ],
+                        label="Métrica objetivo",
+                        value="val_accuracy",
+                    )
+                    tune_btn = gr.Button(
+                        "🔍 Buscar melhores hiperparâmetros", variant="primary"
+                    )
+                with gr.Column(scale=1):
+                    tune_status = gr.Markdown("")
+                    tune_best = gr.JSON(label="Melhores hiperparâmetros")
+            tune_plot = gr.Plot(label="Convergência & Importância dos parâmetros")
+
+            tune_btn.click(
+                run_auto_tuning,
+                inputs=[
+                    tune_arch,
+                    tune_dataset,
+                    tune_trials,
+                    tune_metric,
+                    tune_epochs,
+                ],
+                outputs=[tune_status, tune_best, tune_plot],
+            )

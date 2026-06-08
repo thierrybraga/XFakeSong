@@ -36,12 +36,18 @@ Há também **uma divergência arquitetural real**: o **RawGAT-ST não é fiel a
   → `raw_audio`); (b) variante **SSL→AASIST** (`wavlm_aasist`/`hubert_aasist`):
   back-end de grafo AASIST (`ssl_utils.build_ssl_aasist_backend`) sobre os
   hidden-states SSL, em vez do back-end raso (receita SOTA).
-- ⏳ **P3 pendente** — OC-Softmax, min-tDCF, refinamentos pontuais (AASIST 6
-  blocos, RawNet2 GRU 1024, AST init, Res2Net-26, calibração SVM/RF).
+- ✅ **P3 implementado** — `min-tDCF` (métrica primária ASVspoof, em
+  `training/metrics.py`, integrada a `calculate_all_metrics` junto do EER);
+  `OCSoftmaxLayer` + `oc_softmax_loss` (one-class, opcional, em `layers.py`);
+  AASIST com **6 blocos residuais** (paridade com o paper); RawNet2 **GRU 1024**;
+  e **calibração isotônica opt-in** (`calibrate=True`, `CalibratedClassifierCV`)
+  em SVM e Random Forest. (Restam só itens cosméticos: AST pretrained-init e
+  Res2Net-26 — não bloqueiam treino.)
 
 Cobertura de testes: `tests/unit/test_frontend_rawboost.py` (P0),
-`tests/unit/test_p1_specaug_ssl.py` (P1) e
-`tests/unit/test_p2_rawgatst_sslaasist.py` (P2).
+`tests/unit/test_p1_specaug_ssl.py` (P1),
+`tests/unit/test_p2_rawgatst_sslaasist.py` (P2) e
+`tests/unit/test_p3_metrics_ocsoftmax.py` (P3).
 
 ---
 

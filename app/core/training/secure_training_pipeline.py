@@ -112,6 +112,10 @@ class SecureFeatureScaler:
         self.config = config
         self.scaler = None
         self.logger = logging.getLogger(__name__)
+        # True quando o input NÃO é tabular (espectrograma/raw-audio, ndim != 2):
+        # StandardScaler/MinMaxScaler exigem 2D e modelos profundos normalizam
+        # internamente, então pulamos a escala. Ver fit_transform_train.
+        self._skip_scaling = False
 
         # Inicializar scaler baseado na configuração
         if config.scaler_type == "standard":
@@ -155,6 +159,22 @@ class SecureFeatureScaler:
         # BUG FIX: sanitizar antes de fit — NaN/Inf no input corrompem o scaler
         X_train = self._sanitize(X_train, "train", self.logger)
 
+        # Inputs NÃO-tabulares (espectrograma 3D, raw-audio 2D/3D com canal):
+        # StandardScaler/MinMaxScaler exigem 2D (n_samples, n_features) e
+        # levantariam "Found array with dim 3, while dim <= 2 is required".
+        # Modelos profundos normalizam internamente (AudioNormalizationLayer/
+        # BatchNorm); além disso, aplicar um scaler no treino SEM reaplicá-lo na
+        # inferência (o FeaturePreparer não usa este scaler) criaria mismatch
+        # train/inference. Então PULAMOS a escala — só sanitizamos NaN/Inf.
+        if X_train.ndim != 2:
+            self._skip_scaling = True
+            self.scaler = None
+            self.logger.info(
+                f"Scaler pulado (input ndim={X_train.ndim}, não-tabular). "
+                "Normalização fica a cargo das camadas internas do modelo."
+            )
+            return X_train
+
         X_train_scaled = self.scaler.fit_transform(X_train)
 
         # Sanitizar pós-escala (StandardScaler pode produzir NaN se std=0)
@@ -166,6 +186,9 @@ class SecureFeatureScaler:
 
     def transform_validation(self, X_val: np.ndarray) -> np.ndarray:
         """Transforma dados de validação usando scaler já ajustado."""
+        # Input não-tabular: passthrough (só sanitiza), consistente com o train.
+        if self._skip_scaling:
+            return self._sanitize(X_val, "val", self.logger)
         if self.scaler is None:
             raise ValueError(
                 "Scaler deve ser ajustado primeiro com dados de treino")
@@ -177,6 +200,8 @@ class SecureFeatureScaler:
 
     def transform_test(self, X_test: np.ndarray) -> np.ndarray:
         """Transforma dados de teste usando scaler já ajustado."""
+        if self._skip_scaling:
+            return self._sanitize(X_test, "test", self.logger)
         if self.scaler is None:
             raise ValueError(
                 "Scaler deve ser ajustado primeiro com dados de treino")
@@ -188,8 +213,10 @@ class SecureFeatureScaler:
 
     def save_scaler(self, path: Union[str, Path]) -> None:
         """Salva o scaler para uso futuro."""
-        if self.scaler is None:
-            raise ValueError("Scaler deve ser ajustado primeiro")
+        # Input não-tabular: não há scaler a salvar (no-op, não é erro).
+        if self._skip_scaling or self.scaler is None:
+            self.logger.info("Nenhum scaler a salvar (input não-tabular).")
+            return
 
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -313,8 +340,8 @@ class SecureTrainingPipeline:
             X_val_scaled = self.scaler.transform_validation(X_val)
             X_test_scaled = self.scaler.transform_test(X_test)
 
-            # 4. Validar uso do scaler se habilitado
-            if self.config.validate_no_leakage:
+            # 4. Validar uso do scaler se habilitado (só faz sentido p/ tabular)
+            if self.config.validate_no_leakage and self.scaler.scaler is not None:
                 scaler_validation = self.validator.validate_scaler_usage(
                     self.scaler, X_train, X_val)
                 if not scaler_validation["proper_usage"]:
@@ -322,8 +349,8 @@ class SecureTrainingPipeline:
                     for warning in scaler_validation["warnings"]:
                         self.logger.warning(warning)
 
-            # 5. Salvar scaler se habilitado
-            if self.config.save_scaler:
+            # 5. Salvar scaler se habilitado (no-op se não-tabular)
+            if self.config.save_scaler and self.scaler.scaler is not None:
                 scaler_path = Path("models/scalers/secure_scaler.pkl")
                 self.scaler.save_scaler(scaler_path)
 
@@ -338,9 +365,8 @@ class SecureTrainingPipeline:
 
             self.logger.info("Preparação dos dados concluída com sucesso")
             return ProcessingResult(
-                success=True,
+                status=ProcessingStatus.SUCCESS,
                 data=prepared_data,
-                status=ProcessingStatus.COMPLETED
             )
 
         except Exception as e:

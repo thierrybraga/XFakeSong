@@ -84,12 +84,52 @@ def _should_log_request(path: str, status: int, elapsed_ms: float) -> bool:
     return False
 
 
+def _build_security_headers() -> dict:
+    """Headers de segurança aplicados a TODAS as respostas (single pass).
+
+    Conjunto conservador por padrão para não quebrar o Gradio (mesma origem):
+    - ``X-Content-Type-Options: nosniff`` — impede MIME sniffing.
+    - ``X-Frame-Options: SAMEORIGIN`` — anti-clickjacking (Gradio é same-origin).
+    - ``Referrer-Policy`` — não vaza URL completa para terceiros.
+    - ``Cross-Origin-Opener-Policy: same-origin`` — isola o browsing context.
+    - ``Permissions-Policy`` — desliga câmera/geo; microfone só na própria
+      origem (a UI captura áudio).
+
+    HSTS e CSP são **opt-in** via env porque dependem do deploy (TLS) e uma CSP
+    estrita pode bloquear os assets inline do Gradio:
+    - ``XFAKE_ENABLE_HSTS=1`` → Strict-Transport-Security (só faz sentido atrás
+      de HTTPS).
+    - ``XFAKE_CSP="<policy>"`` → Content-Security-Policy literal.
+    """
+    headers = {
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "SAMEORIGIN",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Permissions-Policy": "camera=(), geolocation=(), microphone=(self)",
+    }
+    if _env_bool("XFAKE_ENABLE_HSTS", False):
+        headers["Strict-Transport-Security"] = (
+            "max-age=63072000; includeSubDomains"
+        )
+    csp = os.getenv("XFAKE_CSP")
+    if csp and csp.strip():
+        headers["Content-Security-Policy"] = csp.strip()
+    return headers
+
+
 class SystemASGIMiddleware:
     """ASGI middleware único para reduzir overhead por request."""
 
-    def __init__(self, app: ASGIApp, max_size_mb: int = 100):
+    def __init__(
+        self,
+        app: ASGIApp,
+        max_size_mb: int = 100,
+        security_headers: Optional[dict] = None,
+    ):
         self.app = app
         self.max_size = max_size_mb * 1024 * 1024
+        self.security_headers = security_headers or {}
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -127,6 +167,10 @@ class SystemASGIMiddleware:
                 status_code = int(message.get("status", 500))
                 headers = MutableHeaders(scope=message)
                 headers["X-Request-ID"] = req_id
+                # Headers de segurança (não sobrescreve se a rota já definiu)
+                for hk, hv in self.security_headers.items():
+                    if hk not in headers:
+                        headers[hk] = hv
             await send(message)
 
         try:
@@ -199,7 +243,16 @@ def setup_middleware(app: FastAPI) -> None:
     """
 
     max_upload_mb = _env_int("XFAKE_MAX_UPLOAD_MB", 100)
-    app.add_middleware(SystemASGIMiddleware, max_size_mb=max_upload_mb)
+    app.add_middleware(
+        SystemASGIMiddleware,
+        max_size_mb=max_upload_mb,
+        security_headers=_build_security_headers(),
+    )
 
 
-__all__ = ["SystemASGIMiddleware", "get_request_id", "setup_middleware"]
+__all__ = [
+    "SystemASGIMiddleware",
+    "get_request_id",
+    "setup_middleware",
+    "_build_security_headers",
+]

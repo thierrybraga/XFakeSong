@@ -594,25 +594,42 @@ class Predictor:
                 features_list, model_info.input_shape
             )
 
-            # Sprint 3.1: usa JIT (XLA) quando disponível com fallback automático.
-            # Pula XLA para modelos com ops in-graph não-XLA (Sonic Sleuth, Ensemble
-            # usam tf.signal.stft que pode falhar em XLA dependendo da versão TF).
-            use_xla = not self._is_xla_unfriendly(model_info)
+            # Tier-1 perf: ONNX Runtime quando disponível (FP32, mesmos pesos →
+            # mesma saída, porém mais rápido em CPU). Fallback automático p/ TF
+            # em qualquer erro (op não suportada, shape, etc.).
+            predictions = None
+            onnx_sess = getattr(model_info, "onnx_session", None)
+            if onnx_sess is not None:
+                try:
+                    predictions = onnx_sess.predict(batch_features)
+                except Exception as e:
+                    logger.debug(
+                        f"ONNX inferência falhou ({model_info.name}); "
+                        f"usando TF: {e}")
+                    predictions = None
 
-            if device:
-                # Formatar device string para TensorFlow (ex: /CPU:0, /GPU:0)
-                device_name = device
-                if not device.startswith("/"):
-                    device_name = f"/{device}"
-                if device == "CPU":
-                    device_name = "/CPU:0"
-                if device.startswith("GPU:") and not device.startswith("/GPU:"):
-                    device_name = f"/{device}"
+            if predictions is None:
+                # Sprint 3.1: usa JIT (XLA) com fallback automático. Pula XLA p/
+                # modelos com ops in-graph não-XLA (Sonic Sleuth, Ensemble usam
+                # tf.signal.stft que pode falhar em XLA dependendo da versão TF).
+                use_xla = not self._is_xla_unfriendly(model_info)
 
-                with tf.device(device_name):
-                    predictions = _predict_with_jit(model_info, batch_features, use_xla=use_xla)
-            else:
-                predictions = _predict_with_jit(model_info, batch_features, use_xla=use_xla)
+                if device:
+                    # Formatar device string para TensorFlow (ex: /CPU:0, /GPU:0)
+                    device_name = device
+                    if not device.startswith("/"):
+                        device_name = f"/{device}"
+                    if device == "CPU":
+                        device_name = "/CPU:0"
+                    if device.startswith("GPU:") and not device.startswith("/GPU:"):
+                        device_name = f"/{device}"
+
+                    with tf.device(device_name):
+                        predictions = _predict_with_jit(
+                            model_info, batch_features, use_xla=use_xla)
+                else:
+                    predictions = _predict_with_jit(
+                        model_info, batch_features, use_xla=use_xla)
 
             # Garante que predictions estejam em forma de probabilidades
             # (alguns modelos como AASIST com AMSoftmax + activation='linear'

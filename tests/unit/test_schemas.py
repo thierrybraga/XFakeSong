@@ -28,7 +28,10 @@ def test_multi_model_prediction_result_schema() -> None:
     """MultiModelPredictionResult deve gerar JSON Schema sem erro."""
     schema = TypeAdapter(MultiModelPredictionResult).json_schema()
     assert "properties" in schema, "Schema deve ter 'properties'"
-    assert "results" in schema["properties"], "Campo 'results' deve existir"
+    # A lista de resultados por modelo é exposta como `per_model` — é o campo
+    # que o router (detection.py) preenche e que o serviço retorna em
+    # metadata['per_model']. (Antes o teste checava 'results', que nunca existiu.)
+    assert "per_model" in schema["properties"], "Campo 'per_model' deve existir"
 
 
 def test_multi_model_metadata_field() -> None:

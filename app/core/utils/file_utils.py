@@ -182,6 +182,51 @@ def move_file_safe(src: Union[str, Path], dst: Union[str, Path],
         raise
 
 
+def _assert_within_directory(base: Path, member_name: str) -> None:
+    """Levanta ValueError se `member_name` escapar de `base` (path traversal).
+
+    Defesa contra "Zip Slip" / CVE-2007-4559 (tar): nomes com `../` ou caminhos
+    absolutos que, ao resolver, cairiam fora do diretório de extração.
+    """
+    base_resolved = base.resolve()
+    target = (base_resolved / member_name).resolve()
+    if base_resolved != target and base_resolved not in target.parents:
+        raise ValueError(
+            f"Caminho inseguro no arquivo (path traversal): {member_name}"
+        )
+
+
+def safe_extract_zip(zip_ref: zipfile.ZipFile, dest: Union[str, Path]) -> None:
+    """Extrai um ZIP validando cada entrada contra path traversal (zip slip)."""
+    dest = Path(dest)
+    for name in zip_ref.namelist():
+        _assert_within_directory(dest, name)
+    zip_ref.extractall(dest)  # nosec B202 - nomes validados (path traversal) acima
+
+
+def safe_extract_tar(tar_ref: tarfile.TarFile, dest: Union[str, Path]) -> None:
+    """Extrai um TAR com segurança.
+
+    Rejeita path traversal, symlinks/hardlinks (que poderiam apontar para fora)
+    e membros especiais (devices/fifos). Aplica também o filtro `data` do
+    tarfile (Python 3.12+), eliminando o vetor CVE-2007-4559.
+    """
+    dest = Path(dest)
+    safe_members = []
+    for member in tar_ref.getmembers():
+        _assert_within_directory(dest, member.name)
+        if member.issym() or member.islnk():
+            raise ValueError(
+                f"Link não permitido no arquivo TAR: {member.name}"
+            )
+        if member.isreg() or member.isdir():
+            safe_members.append(member)
+        # demais tipos (device/fifo/char) são silenciosamente ignorados
+    # Seguro: cada membro foi validado contra path traversal/links acima e o
+    # filtro 'data' (3.12+) bloqueia caminhos absolutos/devices.
+    tar_ref.extractall(dest, members=safe_members, filter="data")  # nosec B202
+
+
 def extract_archive(archive_path: Union[str, Path],
                     extract_to: Union[str, Path],
                     password: Optional[str] = None) -> List[Path]:
@@ -208,8 +253,8 @@ def extract_archive(archive_path: Union[str, Path],
                 if password:
                     zip_ref.setpassword(password.encode())
 
-                # Extrair todos os arquivos
-                zip_ref.extractall(extract_to)
+                # Extrair todos os arquivos (validando contra zip slip)
+                safe_extract_zip(zip_ref, extract_to)
 
                 # Coletar caminhos dos arquivos extraídos
                 for file_name in file_list:
@@ -221,8 +266,8 @@ def extract_archive(archive_path: Union[str, Path],
                 # Listar arquivos
                 file_list = tar_ref.getnames()
 
-                # Extrair todos os arquivos
-                tar_ref.extractall(extract_to)
+                # Extrair todos os arquivos (validação + filtro 'data')
+                safe_extract_tar(tar_ref, extract_to)
 
                 # Coletar caminhos dos arquivos extraídos
                 for file_name in file_list:

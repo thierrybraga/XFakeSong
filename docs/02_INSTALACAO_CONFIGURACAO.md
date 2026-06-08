@@ -54,9 +54,10 @@ Python, sem overhead de Docker. TF ≥ 2.11 **não suporta GPU em Windows nativo
 :: 1. No Windows (PowerShell admin) — instala WSL2 + Ubuntu
 wsl --install -d Ubuntu
 
-:: 2. Atualize driver NVIDIA Windows >= 525.x:
+:: 2. Atualize o driver NVIDIA no WINDOWS host >= 535
 ::    https://www.nvidia.com/drivers
-::    (Suporta CUDA via passthrough WSL2)
+::    (NÃO instale driver dentro do WSL — o WSL2 herda a GPU via passthrough.
+::     TF 2.16+ embute CUDA 12.x, que exige driver >= 535)
 ```
 
 Após reiniciar, abra o Ubuntu pelo menu Iniciar e:
@@ -68,19 +69,23 @@ git clone https://github.com/XFakeSong/XFakeSong.git
 cd XFakeSong
 chmod +x start.sh
 
-# 4. Setup completo automatizado (driver + CUDA TF + deps):
-./start.sh wsl-setup
+# 4. Instala TensorFlow com CUDA embutido (tensorflow[and-cuda]) + deps:
+./start.sh cuda
 
-# 5. Inicie a app (usa GPU automaticamente):
-./start.sh test
+# 5. (opcional) Valida que a GPU está visível ao TensorFlow:
+./start.sh gpu-config
+
+# 6. Inicia a app usando a GPU:
+./start.sh gpu-local
 ```
 
-O launcher fará:
-1. Verifica `nvidia-smi` (driver Windows passthrough)
-2. Cria `.venv`, instala `tensorflow[and-cuda]`
+O `./start.sh cuda` fará:
+1. Verifica `nvidia-smi` (driver Windows via passthrough WSL2)
+2. Cria `.venv` e instala `tensorflow[and-cuda]` (CUDA/cuDNN embutidos no wheel)
 3. Instala `requirements.txt`
-4. Valida que TF expõe a GPU
-5. Inicia o app em `http://localhost:7860`
+
+E `./start.sh gpu-local` valida o CUDA e inicia o app em `http://localhost:7860`
+(usando a GPU automaticamente).
 
 Performance esperada (RTX 3060 12 GB):
 - Treino AASIST (10 epochs, 4600 amostras): **~3 min** (vs ~30 min CPU)
@@ -118,9 +123,10 @@ make down               # para containers
 | `test` | Roda Python local em `.venv` — usa GPU se disponível |
 | `prod` | Sobe Docker em modo produção |
 | `gpu` | Sobe Docker + GPU (NVIDIA) |
-| `install-gpu` | Instala `tensorflow[and-cuda]` em `.venv` local (Linux/WSL2) |
-| `wsl-setup` | Setup WSL2 + GPU passo-a-passo (interativo) |
-| `gpu-test` | Diagnóstico de GPU standalone (sem subir app) |
+| `cuda` / `install-gpu` | Instala `tensorflow[and-cuda]` + deps em `.venv` (Linux/WSL2) |
+| `gpu-local` (`wsl-gpu`) | Roda local usando a GPU (instala TF CUDA se faltar) |
+| `gpu-config` | Reconhece a placa e valida se o TF enxerga a GPU |
+| `nvidia-driver` | Instala driver NVIDIA no Linux (no WSL2, instale no Windows host) |
 | `stop` | Para containers |
 | `logs` | Tail dos logs do container (`-f`) |
 | `rebuild` | Force rebuild sem cache |
@@ -274,6 +280,46 @@ INFO ... Version check: gradio=4.36.1, starlette=0.40.0, fastapi=0.115.0, jinja2
 ```
 
 Se aparecer `ERROR ... INCOMPATIBILIDADE CRÍTICA: gradio==X.Y.Z ...`, **siga o fix acima** — o servidor sobe mas falhará na primeira request à raiz.
+
+---
+
+### `ImportError: cannot import name 'HfFolder' from 'huggingface_hub'`
+
+**Sintoma**: o app **nem inicia** — falha logo no `import gradio` com:
+```
+ImportError: cannot import name 'HfFolder' from 'huggingface_hub'
+```
+
+**Causa**: o `huggingface_hub` **1.0** removeu a classe `HfFolder`, que o **gradio 4.x**
+ainda importa. Um `pip install` sem teto de versão (`huggingface_hub>=0.20`) puxa a
+linha 1.x e quebra a UI inteira — afeta qualquer instalação nova, **inclusive Linux**.
+
+**Fix**:
+```bash
+pip install 'huggingface_hub>=0.25,<1.0'
+```
+O `requirements.txt` já fixa `huggingface_hub>=0.25,<1.0` (teto firme `<1.0`; piso
+`0.25` é a exigência do `datasets`, então a faixa satisfaz **gradio E datasets**).
+
+**Verificação**: `python scripts/doctor.py` mostra na seção *Compatibilidade de versões*:
+```
+OK  gradio=4.44.1, huggingface_hub=0.36.2 (compatíveis)
+```
+Se aparecer `IMPORT QUEBRADO` em `gradio` na seção *Dependências* ou
+`INCOMPATIBILIDADE CRÍTICA: ... HfFolder ...` no log de startup, aplique o fix acima.
+
+---
+
+### Diagnóstico rápido do ambiente (incl. GPU)
+
+Antes de abrir um problema, rode o doctor — ele cobre Python, dependências (distinguindo
+*ausente* de *import quebrado*), compatibilidade de versões, **GPU/CUDA** (hardware NVIDIA,
+visibilidade pelo TensorFlow e dicas acionáveis por SO) e porta:
+```bash
+python scripts/doctor.py          # diagnóstico completo
+python scripts/doctor.py --fix    # tenta reinstalar deps faltantes
+```
+No Linux/WSL o `./start.sh doctor` faz o equivalente em shell (e checa Docker + toolkit).
 
 ---
 

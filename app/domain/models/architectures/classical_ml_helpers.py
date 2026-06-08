@@ -24,6 +24,26 @@ from app.domain.features.segmented_feature_loader import create_feature_loader
 logger = logging.getLogger(__name__)
 
 
+def wrap_calibration(classifier, calibrate: bool, cv: int = 3,
+                     method: str = "isotonic"):
+    """Envolve um classificador sklearn em `CalibratedClassifierCV` (opt-in).
+
+    Calibra as probabilidades de saída (default isotônica) — útil sobretudo para
+    Random Forest, cujas probabilidades são naturalmente mal-calibradas. Quando
+    `calibrate=False` (padrão), retorna o classificador inalterado (sem mudança
+    de comportamento). Tolerante à versão do sklearn (`estimator=` ≥1.2 vs
+    `base_estimator=`).
+    """
+    if not calibrate:
+        return classifier
+    from sklearn.calibration import CalibratedClassifierCV
+
+    try:
+        return CalibratedClassifierCV(estimator=classifier, method=method, cv=cv)
+    except TypeError:  # sklearn < 1.2
+        return CalibratedClassifierCV(base_estimator=classifier, method=method, cv=cv)
+
+
 class BaseClassicalModel(ABC):
     """
     Base class for classical ML models in the project.
