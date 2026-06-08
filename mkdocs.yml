@@ -1,6 +1,6 @@
-site_name: XfakeSong
+site_name: XFakeSong
 site_description: Plataforma Open Source de Inteligência Artificial para detecção de deepfakes de áudio e forense digital.
-site_author: XfakeSong Team
+site_author: XFakeSong Team
 site_url: https://thierrybraga.github.io/XFakeSong/
 repo_url: https://github.com/thierrybraga/XFakeSong
 repo_name: thierrybraga/XFakeSong
@@ -114,6 +114,7 @@ nav:
   - Desenvolvimento:
     - Guia do Desenvolvedor: 05_GUIA_DEV.md
     - API Reference: 07_API_REFERENCE.md
+    - CI/CD e Segurança: 17_CICD_SEGURANCA.md
   - Dados:
     - Datasets Públicos: 12_DATASETS.md
   - Deploy:

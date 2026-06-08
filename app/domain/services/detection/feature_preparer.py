@@ -66,6 +66,16 @@ class FeaturePreparer:
         # sobre o fallback genérico da arquitetura (ex.: AASIST antigo salvo
         # como (None, 80)).
         if not contract:
+            # I1: sem contrato de treino, o input_type é INFERIDO pelo shape —
+            # heurística que pode errar e produzir predição silenciosamente
+            # incorreta. Surfaça o risco; o ideal é re-treinar para gravar o
+            # input_contract.
+            logger.warning(
+                "Modelo '%s' sem input_contract — inferindo input_type pelo "
+                "shape %s (risco de skew; recomenda-se re-treinar).",
+                getattr(model_info, "name", "?"),
+                getattr(model_info, "input_shape", None),
+            )
             shape = getattr(model_info, "input_shape", None) or ()
             if len(shape) >= 2:
                 freq_dim = shape[1]
@@ -566,4 +576,6 @@ class FeaturePreparer:
                 metadata["recommended_hyperparameters"] = {}
             return {"status": "ok", "features": features, "metadata": metadata}
         except Exception as e:
+            # I2: registra o traceback completo — não engole a causa raiz.
+            logger.exception("Falha ao preparar entrada do modelo")
             return {"status": "error", "error": str(e)}

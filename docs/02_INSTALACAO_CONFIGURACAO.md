@@ -22,7 +22,7 @@ Guia completo para executar o XFakeSong em **Local (Python)**, **Docker** e **Hu
 ### Cenário 1: Docker (recomendado, isola dependências)
 
 ```cmd
-git clone https://github.com/XFakeSong/XFakeSong.git
+git clone https://github.com/thierrybraga/XFakeSong.git
 cd XFakeSong
 start.bat
 ```
@@ -65,7 +65,7 @@ Após reiniciar, abra o Ubuntu pelo menu Iniciar e:
 ```bash
 # 3. Dentro do Ubuntu WSL2
 sudo apt update && sudo apt install -y python3 python3-pip python3-venv git
-git clone https://github.com/XFakeSong/XFakeSong.git
+git clone https://github.com/thierrybraga/XFakeSong.git
 cd XFakeSong
 chmod +x start.sh
 
@@ -96,7 +96,7 @@ Performance esperada (RTX 3060 12 GB):
 ## 🚀 Quick start — Linux / macOS
 
 ```bash
-git clone https://github.com/XFakeSong/XFakeSong.git
+git clone https://github.com/thierrybraga/XFakeSong.git
 cd XFakeSong
 chmod +x start.sh
 ./start.sh prod         # Docker
@@ -454,10 +454,11 @@ start.bat deploy        # Windows
 ## 🧪 Testes
 
 ```bash
-make test               # via Makefile
-# ou
-pytest tests/ -ra
-pytest --cov=app tests/
+make test               # suíte rápida, exclui smoke
+make test-cov           # cobertura app + benchmarks
+# ou diretamente
+./scripts/run_tests.sh fast
+./scripts/run_tests.sh cov
 ```
 
 ---

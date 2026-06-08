@@ -128,7 +128,7 @@ a extração e estudo de features acústicas.
 ## Documentação
 
 A documentação técnica está em `docs/` e é publicada via MkDocs:
-[thier.github.io/TCC](https://thier.github.io/TCC/).
+[thierrybraga.github.io/XFakeSong](https://thierrybraga.github.io/XFakeSong/).
 
 | Objetivo | Documento |
 | --- | --- |
@@ -148,8 +148,8 @@ A documentação técnica está em `docs/` e é publicada via MkDocs:
 ```bash
 python main.py --bootstrap-dirs
 python main.py --gradio
-pytest tests/
-pytest --cov=app tests/
+./scripts/run_tests.sh fast
+./scripts/run_tests.sh cov
 docker compose up --build -d
 docker compose logs -f
 docker compose down

@@ -72,7 +72,7 @@ _HEAD_HTML = """
 <meta name="keywords"
  content="deepfake, audio, detection, ai, machine learning, security,
  forensics">
-<meta name="author" content="XfakeSong Team">
+<meta name="author" content="XFakeSong Team">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta property="og:title" content="XfakeSong Platform">
 <meta property="og:description"

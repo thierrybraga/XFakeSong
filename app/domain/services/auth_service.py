@@ -62,11 +62,19 @@ class AuthService:
                     "link de recuperação."
                 )
 
-            # TODO: Implementar envio real de email
-            logger.info(f"Solicitação de recuperação de senha para: {email}")
+            # Envio real de email ainda não está configurado (sem SMTP).
+            # IMPORTANTE: retornamos a MESMA mensagem genérica do ramo
+            # "usuário inexistente" para não vazar a existência da conta
+            # (anti-enumeração). Antes, esta mensagem distinta permitia
+            # enumerar emails cadastrados.
+            logger.info(
+                "Solicitação de recuperação de senha registrada "
+                "(envio de email não configurado) para: %s",
+                email,
+            )
             return True, (
-                "Email de recuperação enviado! "
-                "Verifique sua caixa de entrada."
+                "Se o email estiver cadastrado, você receberá um "
+                "link de recuperação."
             )
         except Exception as e:
             logger.error(f"Erro na recuperação de senha: {e}")

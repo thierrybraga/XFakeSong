@@ -76,6 +76,8 @@ site/
 notebooks/
 *.ipynb
 .ipynb_checkpoints/
+tests/
+benchmarks/
 
 # --- Claude / IA assist (memory local) ---
 .claude/
