@@ -7,7 +7,7 @@
 # Resultado: ~60% menor que single-stage, sem gcc/dev libs em produção
 # =====================================================================
 
-ARG PYTHON_VERSION=3.11
+ARG PYTHON_VERSION=3.13
 # PROD.7: TF_VARIANT controla qual requirements usar.
 #   - "" (default): requirements.txt — TensorFlow padrão
 #   - "cpu": requirements-cpu.txt — tensorflow-cpu, ~450MB menor.
@@ -66,8 +66,8 @@ FROM python:${PYTHON_VERSION}-slim AS runtime
 LABEL org.opencontainers.image.title="XFakeSong" \
       org.opencontainers.image.description="Deepfake audio detection platform" \
       org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.source="https://github.com/XFakeSong/XFakeSong" \
-      org.opencontainers.image.documentation="https://github.com/XFakeSong/XFakeSong/tree/main/docs"
+      org.opencontainers.image.source="https://github.com/thierrybraga/XFakeSong" \
+      org.opencontainers.image.documentation="https://github.com/thierrybraga/XFakeSong/tree/main/docs"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
