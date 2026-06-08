@@ -1,62 +1,102 @@
-# Guia de Desenvolvimento e Contribuição
+# Guia do Desenvolvedor
 
-Este guia é destinado a desenvolvedores que desejam manter ou expandir o sistema XfakeSong.
+Para quem mantém ou estende o **XFakeSong**. Veja também
+[`AGENTS.md`](https://github.com/thierrybraga/XFakeSong/blob/main/AGENTS.md) e
+[`CONTRIBUTING.md`](https://github.com/thierrybraga/XFakeSong/blob/main/CONTRIBUTING.md).
 
-## Padrões de Código
+## Arquitetura (onde colocar cada coisa)
 
-O projeto segue estritamente a **Clean Architecture**. Ao adicionar novas funcionalidades:
+Clean Architecture — as dependências apontam para dentro (domínio não conhece
+framework):
 
-1. **Novas Regras de Negócio**: Adicione em `app/domain`. Não dependa de frameworks aqui.
-2. **Novos Fluxos**: Adicione em `app/application`. Use o padrão Pipeline se for um processo sequencial.
-3. **Novas Bibliotecas**: Se precisar de uma lib externa (ex: librosa, pandas), crie um adaptador ou wrapper em `app/core` ou `app/domain/adapters` para não acoplar o domínio diretamente à biblioteca.
+| Camada | Pasta | Conteúdo |
+| --- | --- | --- |
+| Domínio | `app/domain/` | Modelos/arquiteturas, serviços (detecção, treino, features), regras de negócio |
+| Casos de uso | `app/application/` | Orquestração de fluxos (pipelines) |
+| Core | `app/core/` | Config, logging, segurança, middleware, exceções, GPU, utilitários |
+| Interfaces | `app/interfaces/` | UI Gradio (`gradio/tabs/`, `gradio/utils/`) e CLI |
+| API HTTP | `app/routers/` + `app/schemas/` | Rotas FastAPI e modelos Pydantic |
 
-## Logging e Debugging
+Regra prática: bibliotecas externas (librosa, TF, sklearn) entram via
+adaptadores; o domínio permanece testável sem elas.
 
-O sistema possui um módulo de logging robusto configurado em `app/core/config/settings.py`.
+## Logging
 
-- **Logs em Arquivo**: Salvos em `logs/deepfake_system.log`.
-- **Nível de Log**: Configurável via `.env` (`DEEPFAKE_LOG_LEVEL=DEBUG`).
+Configurado em `app/core/feedback.py::configure_logging` (chamado no startup de
+`app/main_fastapi.py`). O arquivo padrão é **`system.log`** na raiz; os
+diretórios e nível vêm de `app/core/config/settings.py` (`LoggingConfig`,
+`logs_dir = ./app/logs`).
 
-Use o logger padrão em seus módulos:
 ```python
 import logging
 logger = logging.getLogger(__name__)
 
 logger.info("Iniciando processamento...")
-logger.error("Falha ao carregar arquivo", exc_info=True)
+logger.exception("Falha ao carregar arquivo")  # inclui o traceback
 ```
 
-## Onde encontrar Resultados
+Variáveis de ambiente úteis (ver `settings.py` e `app/core/middleware.py`):
 
-O sistema gera artefatos durante a execução:
-- **Modelos Treinados**: Salvos em `app/models/` (ou caminho configurado em `DEEPFAKE_MODELS_DIR`).
-- **Gráficos e Métricas**: Salvos em `app/results/`.
-- **Arquivos Temporários**: `temp/` (limpos automaticamente se configurado).
+| Variável | Efeito |
+| --- | --- |
+| `DEEPFAKE_ENV` / `DEEPFAKE_DEBUG` | ambiente e modo debug |
+| `DEEPFAKE_DEVICE` | dispositivo preferido (CPU/GPU) |
+| `XFAKE_LOG_EVERY_REQUEST` | loga toda request (default só erros/lentas) |
+| `XFAKE_MAX_UPLOAD_MB` | limite de upload (default 100) |
+| `XFAKESONG_API_KEY` | chave da API |
+| `ALLOWED_ORIGINS` / `ALLOWED_HOSTS` | CORS e TrustedHost |
 
-## Adicionando Dependências
+## Artefatos gerados
 
-Adicione o pacote com versão mínima diretamente ao `requirements.txt`. Não use `pip freeze` — ele congela versões transitivas desnecessárias.
+- **Modelos treinados**: `app/models/` (`.keras`/`.pkl` + `_config.json` com o
+  `input_contract`). Ignorados pelo git.
+- **Resultados/benchmark**: `results/` (figuras, JSON/CSV, relatórios). Ignorado.
+- **Notebooks**: `notebooks/` — gerados por `scripts/build_notebooks.py`
+  (fonte de verdade; não edite o `.ipynb` à mão).
+
+## Como adicionar uma arquitetura
+
+1. Implemente o modelo em `app/domain/models/architectures/<nome>.py`
+   (função `create_model(input_shape, num_classes, **kwargs)`).
+2. Registre no `factory`/`registry` (`app/domain/models/architectures/`) com o
+   `input_requirements` correto (`input_type`: `raw_audio` ou `spectrogram`).
+3. Garanta que o **wizard** e o **benchmark** reconhecem o nome (o smoke
+   `tests/smoke/test_all_architectures.py` valida a criação de todas).
+4. Adicione um notebook em `MODELS` de `scripts/build_notebooks.py` e regenere.
+
+## Como adicionar um extrator de features
+
+1. Crie o extrator em `app/domain/features/extractors/<família>/` e o adapter
+   em `app/domain/features/adapters/`.
+2. Use uma chave do enum `FeatureType` (`app/core/interfaces/audio.py`).
+3. Registre no `FeatureExtractorRegistry`. Detalhes em
+   [Features de Áudio](04_FEATURES.md).
+
+## Dependências
+
+Adicione com **versão mínima** (e upper bound quando houver major arriscado) ao
+`requirements.txt` — não use `pip freeze`. Deps de desenvolvimento vão em
+`requirements-dev.txt`. O Dependabot mantém tudo atualizado semanalmente.
+
+## Estilo e commits
+
+- Formatação: `black` + `isort`; lint: `ruff` (config em `pyproject.toml`).
+- Alvo Python 3.13. Prefira funções puras e testáveis; logue erros com
+  `logger.exception`.
+- Commits pequenos e escopados; PRs passam pelos gates de CI (abaixo).
+
+## Testes e gates de CI
+
+Espelhe a estrutura de `app/` em `tests/` (ver [Testes e Qualidade](06_TESTES.md)):
 
 ```bash
-# Adicionar manualmente ao requirements.txt:
-# nome-do-pacote>=X.Y
-
-# Depois instalar:
-pip install -r requirements.txt
+./scripts/run_tests.sh fast        # suíte rápida (sem smoke)
+./scripts/run_tests.sh cov         # + cobertura
+mkdocs build --strict              # docs
+bandit -r app benchmarks scripts -lll   # SAST (bloqueia HIGH)
+python scripts/build_notebooks.py  # regenera notebooks
 ```
 
-## Testes
-
-Crie testes em `tests/`, espelhando a estrutura de `app/`:
-
-```
-tests/
-├── unit/         # Componentes isolados
-├── api/          # Contratos HTTP
-├── functional/   # Fluxos de usuário e frontend
-├── integration/  # Cooperação entre serviços
-└── smoke/        # TensorFlow real, opt-in
-```
-
-Rode a suíte rápida com `./scripts/run_tests.sh fast` ou `make test`
-(ver [`06_TESTES.md`](06_TESTES.md)).
+A CI (`.github/workflows/ci.yml`) roda testes+cobertura, docs, segurança
+(bandit/pip-audit) e build Docker em PRs. Ver
+[CI/CD e Segurança](17_CICD_SEGURANCA.md).
