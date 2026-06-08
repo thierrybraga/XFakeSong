@@ -73,12 +73,30 @@ def test_empty_study_no_crash():
     _close(fig)
 
 
-def test_run_auto_tuning_degrades_without_optuna():
+def test_run_auto_tuning_degrades_without_optuna(monkeypatch):
+    # Determinístico: força "optuna indisponível" independentemente do ambiente
+    # (em CI o optuna ESTÁ instalado via requirements-dev; localmente pode não).
+    import app.domain.models.training.hyperparameter_tuning as hpt
+
+    monkeypatch.setattr(hpt, "is_optuna_available", lambda: False)
     from app.interfaces.gradio.tabs.optimization import run_auto_tuning
 
     status, best, fig = run_auto_tuning(
         "MultiscaleCNN", "/caminho/inexistente.npz", 5, "val_accuracy", 3
     )
-    # optuna ausente neste ambiente → mensagem clara, sem best params nem figura
     assert "optuna" in status.lower()
+    assert best == {} and fig is None
+
+
+def test_run_auto_tuning_missing_dataset(monkeypatch):
+    # Com optuna disponível, mas dataset ausente → mensagem clara, sem figura.
+    import app.domain.models.training.hyperparameter_tuning as hpt
+
+    monkeypatch.setattr(hpt, "is_optuna_available", lambda: True)
+    from app.interfaces.gradio.tabs.optimization import run_auto_tuning
+
+    status, best, fig = run_auto_tuning(
+        "MultiscaleCNN", "/caminho/inexistente.npz", 5, "val_accuracy", 3
+    )
+    assert "encontrado" in status.lower()
     assert best == {} and fig is None
