@@ -1,34 +1,33 @@
+import os
 import pathlib
+from unittest.mock import MagicMock
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import MagicMock
-import os
 
-# Categorias da suíte (espelham as subpastas de tests/). Cada teste recebe
-# AUTOMATICAMENTE o marcador da sua pasta — assim `pytest -m unit`,
-# `pytest -m api`, etc. funcionam sem anotar os 37 arquivos manualmente.
+from app.core.interfaces.base import ProcessingResult, ProcessingStatus
+from app.dependencies import (
+    get_detection_service,
+    get_training_service,
+    get_upload_service,
+)
+from app.domain.services.detection_service import DetectionService
+from app.domain.services.training_service import TrainingService
+from app.domain.services.upload_service import AudioUploadService
+from app.main_fastapi import app
+from app.schemas.api_models import DatasetMetadata
+
 _TEST_CATEGORIES = ("unit", "api", "functional", "integration", "smoke")
 
 
 def pytest_collection_modifyitems(config, items):
-    """Aplica o marcador da categoria (pasta) a cada item coletado."""
+    """Marca cada teste pela categoria da pasta onde ele vive."""
     for item in items:
         parts = set(pathlib.Path(str(item.fspath)).parts)
         for cat in _TEST_CATEGORIES:
             if cat in parts:
                 item.add_marker(getattr(pytest.mark, cat))
                 break
-from app.main_fastapi import app
-from app.dependencies import (
-    get_detection_service,
-    get_upload_service,
-    get_training_service
-)
-from app.domain.services.detection_service import DetectionService
-from app.domain.services.upload_service import AudioUploadService
-from app.domain.services.training_service import TrainingService
-from app.core.interfaces.base import ProcessingResult, ProcessingStatus
-from app.schemas.api_models import DatasetMetadata
 
 # Configurar API Key para testes
 os.environ["XFAKESONG_API_KEY"] = "test-api-key"

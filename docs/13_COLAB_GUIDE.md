@@ -34,7 +34,7 @@ Os notebooks ficam organizados por finalidade:
 | Caminho | Objetivo | Runtime |
 |---|---|---|
 | `notebooks/00_index.ipynb` | Índice executável e mapa dos notebooks | CPU |
-| `notebooks/features/01_feature_extraction_study.ipynb` | Estudo de MFCC, log-mel, centroid, bandwidth e ZCR | CPU |
+| `notebooks/features/01_feature_extraction_study.ipynb` | Estudo do front-end real LFCC/log-mel/raw e features clássicas MFCC, centroid, bandwidth, ZCR e RMS | CPU |
 | `notebooks/pipeline/01_benchmark_tcc_full_pipeline.ipynb` | Download, processamento, split, treino, inferência e relatório do TCC | GPU recomendada |
 | `notebooks/pipeline/02_training_model.ipynb` | Treino prático de um modelo pelo benchmark | CPU para SVM/RF, GPU para neurais |
 | `notebooks/pipeline/03_inference.ipynb` | Leitura de predições e fluxo de inferência | CPU ou GPU |

@@ -29,6 +29,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 NB = ROOT / "notebooks"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 # Bootstrap comum: localiza a raiz do projeto e a coloca no sys.path.
 BOOTSTRAP = """\
@@ -135,13 +137,13 @@ def _input_type(display_name: str) -> str:
     if display_name in CLASSICAL:
         return "tabular"
     try:
-        from app.domain.models.architectures.registry import get_architecture_info
+        from app.domain.models.architectures.factory import get_architecture_info
 
         info = get_architecture_info(display_name)
         if info:
             return info.input_requirements.get("input_type", "?")
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"  aviso: contrato não lido para {display_name}: {exc}")
     return "?"
 
 
@@ -183,7 +185,9 @@ def build_features():
 
         - **LFCC** (default desde a melhoria P0 — supera o mel em anti-spoofing);
         - **log-mel**;
-        - **raw-audio** (forma de onda PCM 1D).
+        - **raw-audio** (forma de onda PCM 1D);
+        - métricas clássicas de estudo: **MFCC**, **centroide espectral**,
+          **bandwidth**, **ZCR** e energia RMS.
 
         Configuração: `sample_rate=16 kHz`, `n_fft=512`, `hop_length=128`,
         `n_mels = n_lfcc = 80`.
@@ -224,18 +228,50 @@ def build_features():
         print("log-mel:", np.asarray(logmel).shape)
         print("raw    :", np.asarray(raw).shape)
         """),
-        md("## 3. Visualizar"),
+        md("## 3. Features clássicas para estudo"),
+        code("""
+        import librosa
+        import pandas as pd
+
+        mfcc = librosa.feature.mfcc(y=wav, sr=16000, n_mfcc=13)
+        centroid = librosa.feature.spectral_centroid(y=wav, sr=16000)
+        bandwidth = librosa.feature.spectral_bandwidth(y=wav, sr=16000)
+        zcr = librosa.feature.zero_crossing_rate(wav)
+        rms = librosa.feature.rms(y=wav)
+
+        feature_summary = pd.DataFrame([{
+            "mfcc_mean": float(mfcc.mean()),
+            "mfcc_std": float(mfcc.std()),
+            "centroid_mean_hz": float(centroid.mean()),
+            "bandwidth_mean_hz": float(bandwidth.mean()),
+            "zcr_mean": float(zcr.mean()),
+            "rms_mean": float(rms.mean()),
+        }])
+        feature_summary
+        """),
+        md("## 4. Visualizar"),
         code("""
         import numpy as np
         import matplotlib.pyplot as plt
 
-        fig, ax = plt.subplots(1, 3, figsize=(13, 3.2))
+        fig, ax = plt.subplots(2, 3, figsize=(13, 6.2))
+        ax = ax.ravel()
         ax[0].plot(wav[:1000], color="#3b82f6", lw=0.8)
         ax[0].set_title("Forma de onda (1000 amostras)")
         ax[1].imshow(np.asarray(lfcc).T, aspect="auto", origin="lower", cmap="magma")
         ax[1].set_title("LFCC (80 × T)")
         ax[2].imshow(np.asarray(logmel).T, aspect="auto", origin="lower", cmap="magma")
         ax[2].set_title("log-mel (80 × T)")
+        ax[3].imshow(mfcc, aspect="auto", origin="lower", cmap="viridis")
+        ax[3].set_title("MFCC")
+        ax[4].plot(centroid.ravel(), label="centroid")
+        ax[4].plot(bandwidth.ravel(), label="bandwidth")
+        ax[4].set_title("Centroide e bandwidth")
+        ax[4].legend()
+        ax[5].plot(zcr.ravel(), label="ZCR")
+        ax[5].plot(rms.ravel(), label="RMS")
+        ax[5].set_title("ZCR e RMS")
+        ax[5].legend()
         fig.tight_layout()
         plt.show()
         """),
@@ -322,7 +358,7 @@ def build_models():
             md("## Inspeção do modelo"),
             code(inspect),
             md("""
-            ## Leituras
+            ## Como ler este notebook
 
             - `docs/08_ARQUITETURAS.md` — descrição de todas as arquiteturas.
             - `docs/10_TREINAMENTO.md` — hiperparâmetros e estratégia de treino.
@@ -330,6 +366,29 @@ def build_models():
 
             No relatório, compare sempre: acurácia, EER, AUC-ROC, min-tDCF,
             latência, tamanho do modelo, matriz de confusão e distribuição de scores.
+            """),
+            md(f"""
+            ## Hiperparâmetros e análise esperada
+
+            - **Treino rápido:** use `epochs=2` apenas para validar fluxo.
+            - **Treino para TCC:** use o preset do benchmark completo em
+              `notebooks/pipeline/01_benchmark_tcc_full_pipeline.ipynb`.
+            - **Entrada preparada:** confira a célula de `BenchmarkData` acima;
+              ela mostra o shape real usado no harness.
+            - **Arquivos esperados no relatório:** `architectures/{slug}/metrics.json`,
+              `confusion_matrix.png`, `roc.png`, `score_distribution.png` e,
+              quando houver histórico, `convergence.png`.
+            """),
+            code(f"""
+            import json
+
+            metrics_path = ROOT / "results" / "tcc_full_20k" / "architectures" / {slug!r} / "metrics.json"
+            if metrics_path.exists():
+                metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+                print(json.dumps(metrics.get("clean", metrics), indent=2, ensure_ascii=False)[:2000])
+            else:
+                print("Sem métricas salvas ainda:", metrics_path)
+                print("Rode o benchmark completo ou ajuste o caminho de results.")
             """),
         ])
 
@@ -342,14 +401,12 @@ def build_pipeline():
         md("""
         # Pipeline de Benchmark do TCC
 
-        Roda o sistema de benchmark (`benchmarks/`) que usa o **pipeline real**
-        (`TrainingService → ModelLoader → Predictor → MetricsCalculator`) e gera
-        tabelas LaTeX + figuras + JSON/CSV prontos para a monografia.
+        Roda o sistema de benchmark e documenta o automador completo do TCC:
+        download/preparação do dataset, split estratificado, treino, inferência,
+        tabelas LaTeX, figuras PNG, `dataset.md` e `tcc_report.md`.
         """),
         code(BOOTSTRAP),
-        md("""
-        ## 1. Benchmark rápido (sintético) — valida o harness em segundos
-        """),
+        md("## 1. Benchmark rápido (sintético) — valida o harness em segundos"),
         code("""
         from benchmarks import BenchmarkConfig, run_benchmark
 
@@ -380,8 +437,32 @@ def build_pipeline():
         md("""
         ## 2. Execução completa do TCC
 
-        Para o experimento oficial (download + processamento + treino + métricas),
-        use o automador de linha de comando (fora do notebook, pois é demorado):
+        A célula abaixo é executável, mas fica desligada por padrão para evitar
+        downloads e treinos longos sem confirmação explícita.
+        """),
+        code("""
+        import subprocess
+
+        RUN_FULL_PIPELINE = False
+        OUTPUT_DIR = ROOT / "results" / "tcc_full_20k"
+        DATASET_NPZ = ROOT / "app" / "datasets" / "benchmark_audio_raw_20k.npz"
+
+        cmd = [
+            sys.executable,
+            str(ROOT / "scripts" / "run_tcc_pipeline.py"),
+            "--tcc-full-dataset",
+            "--out", str(OUTPUT_DIR),
+            "--npz", str(DATASET_NPZ),
+        ]
+        print(" ".join(cmd))
+
+        if RUN_FULL_PIPELINE:
+            subprocess.run(cmd, cwd=ROOT, check=True)
+        else:
+            print("Execução completa desativada. Defina RUN_FULL_PIPELINE = True para rodar.")
+        """),
+        md("""
+        Comando equivalente no terminal:
 
         ```bash
         python scripts/run_tcc_pipeline.py --tcc-full-dataset \\
@@ -396,6 +477,32 @@ def build_pipeline():
         ```
 
         Veja `docs/15_BENCHMARK.md` para o mapeamento saída → tabela/figura do TCC.
+        """),
+        md("## 3. Validar e ler artefatos do relatório"),
+        code("""
+        import json
+        import pandas as pd
+
+        report_dir = ROOT / "results" / "tcc_full_20k"
+        required = [
+            "dataset.md",
+            "dataset_manifest.json",
+            "results.json",
+            "results.csv",
+            "tcc_report.md",
+            "figures/roc.png",
+            "figures/confusion_matrices.png",
+            "figures/score_distributions.png",
+        ]
+        missing = [p for p in required if not (report_dir / p).exists()]
+        print("Diretório:", report_dir)
+        print("Ausentes:", missing or "nenhum")
+
+        if (report_dir / "results.csv").exists():
+            display(pd.read_csv(report_dir / "results.csv"))
+        if (report_dir / "results.json").exists():
+            data = json.loads((report_dir / "results.json").read_text(encoding="utf-8"))
+            print("Arquiteturas:", list(data.get("architectures", {}).keys()))
         """),
     ])
 
