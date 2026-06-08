@@ -84,7 +84,9 @@ front-ends que o sistema usa de verdade, com visualização:
 
 - **LFCC** (default desde a melhoria P0 — supera o mel em anti-spoofing);
 - **log-mel**;
-- **raw-audio** (forma de onda PCM 1D).
+- **raw-audio** (forma de onda PCM 1D);
+- features clássicas de estudo: **MFCC**, centroide espectral, bandwidth,
+  **ZCR** e RMS.
 
 É o mesmo front-end reproduzido na detecção, garantindo paridade
 treino↔inferência via `input_contract`. O catálogo completo de features
@@ -106,6 +108,17 @@ células usam a API real do projeto (`BenchmarkData.prepare_for_architecture`,
 `create_model_by_name`, `BenchmarkConfig`/`run_benchmark`, `TrainingService`,
 `ModelLoader`+`Predictor`) e o `source` é gravado como lista de linhas em UTF-8
 (sem indentação espúria que viraria bloco de código no Jupyter).
+
+O teste de notebooks também verifica:
+
+- 14 notebooks de modelos com contrato de entrada resolvido;
+- notebook de benchmark com execução completa guardada por
+  `RUN_FULL_PIPELINE = False`;
+- presença dos artefatos esperados (`dataset.md`, `tcc_report.md`, PNGs);
+- notebook de features cobrindo front-end real e features clássicas;
+- notebooks legados com aviso de arquivamento e células de código compiláveis.
+- execução real opcional de uma amostra leve (`00_index`, features, SVM e
+  RandomForest) quando `nbformat` e `nbclient` estiverem instalados.
 
 Use o gerador quando a lista de modelos, os comandos de benchmark ou a estrutura
 didática mudarem. Os notebooks antigos ficam preservados em `notebooks/legacy/`

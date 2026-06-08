@@ -51,10 +51,12 @@ Crie testes em `tests/`, espelhando a estrutura de `app/`:
 
 ```
 tests/
-├── unit/         # Componentes isolados (extratores, serviços)
-├── integration/  # Fluxos entre módulos (pipeline completo)
-├── api/          # Endpoints HTTP (status, payloads)
-└── functional/   # Fluxos de usuário end-to-end
+├── unit/         # Componentes isolados
+├── api/          # Contratos HTTP
+├── functional/   # Fluxos de usuário e frontend
+├── integration/  # Cooperação entre serviços
+└── smoke/        # TensorFlow real, opt-in
 ```
 
-Rode os testes com `pytest tests/` (ver [`06_TESTES.md`](06_TESTES.md)).
+Rode a suíte rápida com `./scripts/run_tests.sh fast` ou `make test`
+(ver [`06_TESTES.md`](06_TESTES.md)).

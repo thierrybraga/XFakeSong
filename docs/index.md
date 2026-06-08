@@ -61,7 +61,7 @@ flowchart LR
 ```bash
 python main.py --bootstrap-dirs
 python main.py --gradio
-pytest tests/
+./scripts/run_tests.sh fast
 docker compose up --build -d
 python scripts/run_tcc_pipeline.py --smoke --epochs 1 --batch-size 4
 ```
