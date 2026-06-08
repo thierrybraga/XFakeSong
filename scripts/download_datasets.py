@@ -594,8 +594,9 @@ def _download_cetuc_openslr(max_samples: int) -> None:
             return
 
     logger.info("Extraindo CETUC...")
+    from app.core.utils.file_utils import safe_extract_tar
     with tarfile.open(str(dest), "r:gz") as tar:
-        tar.extractall(str(cetuc_raw))
+        safe_extract_tar(tar, cetuc_raw)
 
     wav_files = list(cetuc_raw.rglob("*.wav"))
     logger.info(f"Encontrados {len(wav_files)} WAVs no CETUC")

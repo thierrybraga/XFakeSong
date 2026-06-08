@@ -75,9 +75,10 @@ def create_training_tab():
                             shutil.rmtree(base_dir)
                         base_dir.mkdir(parents=True, exist_ok=True)
 
-                        # Extrair
+                        # Extrair (valida contra zip slip — upload não confiável)
+                        from app.core.utils.file_utils import safe_extract_zip
                         with zipfile.ZipFile(zip_path.name, 'r') as zip_ref:
-                            zip_ref.extractall(base_dir)
+                            safe_extract_zip(zip_ref, base_dir)
 
                         # Organizar e Renomear
                         stats = {"real": 0, "fake": 0, "errors": 0}

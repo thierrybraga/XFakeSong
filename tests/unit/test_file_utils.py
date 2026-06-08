@@ -155,6 +155,31 @@ def test_extract_corrupted_zip(tmp_path):
         fu.extract_archive(bad, tmp_path / "o")
 
 
+def test_extract_zip_rejects_path_traversal(tmp_path):
+    """Zip Slip: entrada com ../ deve ser rejeitada (não escrever fora do dest)."""
+    archive = tmp_path / "evil.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("../escape.txt", "pwned")
+    with pytest.raises(ValueError):
+        fu.extract_archive(archive, tmp_path / "out")
+    assert not (tmp_path / "escape.txt").exists()
+
+
+def test_extract_tar_rejects_path_traversal(tmp_path):
+    """CVE-2007-4559: membro de tar com ../ deve ser rejeitado."""
+    import io
+
+    archive = tmp_path / "evil.tgz"
+    with tarfile.open(archive, "w:gz") as tf:
+        data = b"pwned"
+        info = tarfile.TarInfo(name="../escape.txt")
+        info.size = len(data)
+        tf.addfile(info, io.BytesIO(data))
+    with pytest.raises(ValueError):
+        fu.extract_archive(archive, tmp_path / "out")
+    assert not (tmp_path / "escape.txt").exists()
+
+
 # ── diretórios temporários ────────────────────────────────────────────────
 
 def test_temp_directory_lifecycle():
