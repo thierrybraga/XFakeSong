@@ -858,6 +858,26 @@ def build_pipeline():
         python scripts/download_datasets.py --brspeech --max-samples 600   # real+fake (pode pedir token)
         ```
         """),
+        md("""
+        ## Usar o modelo treinado no sistema principal
+
+        Treinar salva o par **`nb_demo.keras` + `nb_demo_config.json`** em
+        `models_dir`. Esse par é tudo que o `DetectionService` (o pipeline de
+        detecção da API e do Gradio) precisa para carregar e inferir — veja
+        `notebooks/pipeline/03_inference.ipynb`, Seção 3, para o `detect_single`
+        ponta a ponta a partir de áudio bruto.
+
+        Para o app principal achar o seu modelo, treine direto no diretório que ele
+        lê (ou copie os dois arquivos para lá):
+
+        - **Gradio** (`python main.py --gradio`): `models/` na raiz.
+        - **API FastAPI**: `app/models/`.
+
+        ```python
+        # treina já no destino do Gradio:
+        TrainingService(models_dir="models").train_model(...)
+        ```
+        """),
     ])
 
     # 03 — inferência
@@ -919,6 +939,53 @@ def build_pipeline():
           e o `Predictor` os aplica automaticamente.
         - Se houver um `nb_infer.onnx` ao lado e `onnxruntime` instalado, a
           inferência usa ONNX (mais rápida em CPU) com fallback para o TF.
+        """),
+        md("""
+        ## 3. Inferência pelo PIPELINE DO SISTEMA (`DetectionService`)
+
+        `ModelLoader` + `Predictor` acima são os internos. O
+        `DetectionService.detect_single` é o **mesmo caminho de alto nível que a API
+        e o app Gradio usam**: recebe **áudio bruto**, extrai as features pelo
+        `input_contract` e prevê. É a prova de que um modelo treinado nos notebooks
+        roda, sem adaptação, no sistema principal.
+        """),
+        code("""
+        from app.core.interfaces.audio import AudioData
+        from app.domain.services.detection_service import DetectionService
+
+        # Mesma instância que o app cria — só muda o models_dir (aponta p/ o do
+        # notebook). No app, o default é "models" (Gradio) / "app/models" (API).
+        ds = DetectionService(models_dir=str(models_dir), create_default_models=False)
+
+        # Entrada REAL do pipeline: áudio bruto de 1 s (16 kHz).
+        t = np.linspace(0, 1.0, 16000, endpoint=False)
+        audio = AudioData(
+            samples=(0.6 * np.sin(2 * np.pi * 220 * t)).astype("float32"),
+            sample_rate=16000, duration=1.0,
+        )
+
+        out = ds.detect_single(audio, model_name="nb_infer")
+        print("status :", out.status.value)
+        print("is_fake:", out.data.is_fake,
+              "| confiança:", round(float(out.data.confidence), 4))
+        """),
+        md("""
+        ## Onde salvar para o app principal carregar o seu modelo
+
+        O par **`<nome>.keras` + `<nome>_config.json`** é auto-suficiente: o
+        `DetectionService` varre o `models_dir` e expõe o modelo por
+        `model_name="<nome>"`. Para o seu modelo aparecer no app, copie os dois
+        arquivos para o diretório que cada interface lê:
+
+        | Interface | Diretório lido | Como subir o modelo |
+        | --- | --- | --- |
+        | **Gradio** (`python main.py --gradio`) | `models/` (raiz) | copie `<nome>.keras` + `<nome>_config.json` para `models/` |
+        | **API FastAPI** | `app/models/` | copie os dois arquivos para `app/models/` |
+
+        > Dica: treine direto no destino passando `TrainingService(models_dir="models")`
+        > (Gradio) ou `"app/models"` (API) no `pipeline/02`. Sem o `_config.json` ao
+        > lado, o serviço cai no contrato do registry (ainda funciona, mas sem a
+        > temperatura/EER calibrados do seu treino).
         """),
     ])
 
