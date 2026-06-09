@@ -115,9 +115,15 @@ def test_features_notebook_covers_runtime_and_classic_features():
         "pipeline/03_inference.ipynb",
     ],
 )
-def test_lightweight_notebooks_execute_when_nbclient_is_available(rel_path):
+def test_lightweight_notebooks_execute_when_nbclient_is_available(rel_path, monkeypatch):
     nbformat = pytest.importorskip("nbformat")
     nbclient = pytest.importorskip("nbclient")
+
+    # Build-only no CI: os notebooks de modelo treinam por padrão
+    # (XFAKE_RUN_EVAL=1, para o estudo ser funcional/Colab). Aqui forçamos =0 —
+    # o treino é coberto por pipeline/02 (TrainingService, que sempre treina) e
+    # por tests/integration/test_architectures_build (build de todas as archs).
+    monkeypatch.setenv("XFAKE_RUN_EVAL", "0")
 
     nb_path = _NB / rel_path
     nb = nbformat.read(str(nb_path), as_version=4)

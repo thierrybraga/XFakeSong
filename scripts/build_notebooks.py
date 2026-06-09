@@ -37,17 +37,48 @@ if str(ROOT) not in sys.path:
 # Diretório canônico do relatório completo do TCC (fonte única do caminho).
 TCC_RESULTS = "tcc_full_20k"
 
-# Bootstrap comum: localiza a raiz do projeto e a coloca no sys.path.
+# Bootstrap comum + compatível com Google Colab / Kaggle:
+# - localiza a raiz do projeto (pasta com `app/`) e a coloca no sys.path;
+# - em ambiente limpo (sem o projeto no disco) clona o repositório;
+# - instala apenas as dependências de áudio que faltarem (TF/NumPy/sklearn/pandas
+#   já vêm no Colab — reinstalar tudo causaria conflitos).
+# Usa `subprocess` (não `!pip`) para continuar sendo Python válido/compilável.
 BOOTSTRAP = """\
-from pathlib import Path
+import importlib.util
+import os
+import subprocess
 import sys
+from pathlib import Path
 
-ROOT = Path.cwd()
-while not (ROOT / "app").exists() and ROOT.parent != ROOT:
-    ROOT = ROOT.parent
+_REPO_URL = "https://github.com/thierrybraga/XFakeSong.git"
+
+
+def _project_root() -> Path:
+    p = Path.cwd()
+    while not (p / "app").exists() and p.parent != p:
+        p = p.parent
+    return p
+
+
+# Colab/Kaggle limpos: clona o repositório se o projeto não estiver no disco.
+if not (_project_root() / "app").exists():
+    if not Path("XFakeSong").exists():
+        print("Clonando XFakeSong...")
+        subprocess.run(["git", "clone", "--depth", "1", _REPO_URL], check=True)
+    os.chdir("XFakeSong")
+
+_DEPS = {"librosa": "librosa>=0.10", "soundfile": "soundfile>=0.12",
+         "pywt": "PyWavelets>=1.4"}
+_missing = [s for m, s in _DEPS.items() if importlib.util.find_spec(m) is None]
+if _missing:
+    print("Instalando dependências de áudio:", *_missing)
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", *_missing],
+                   check=True)
+
+ROOT = _project_root()
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-print("Projeto:", ROOT)
+print("Projeto:", ROOT, "| Colab:", "google.colab" in sys.modules)
 """
 
 # Captura de ambiente/versões — reprodutibilidade do estudo (TCC).
@@ -87,10 +118,12 @@ except Exception:  # pragma: no cover
 EVAL_CELL = """\
 import os
 
-# RUN_EVAL liga o treino+avaliação em dados sintéticos. Default desligado para
-# manter a execução leve; o render do CI exporta XFAKE_RUN_EVAL=1 para o HTML do
-# TCC mostrar métricas reais. Defina RUN_EVAL = True à mão para rodar localmente.
-RUN_EVAL = os.environ.get("XFAKE_RUN_EVAL", "0") == "1"
+# Treina + avalia este modelo em dados sintéticos (rápido) pelo MESMO harness do
+# benchmark do TCC. LIGADO por padrão para o estudo ser funcional de ponta a
+# ponta; defina XFAKE_RUN_EVAL=0 para pular (usado no CI de build).
+# Em Colab, selecione um runtime com GPU (Ambiente de execução → Alterar o tipo
+# de hardware → GPU) para acelerar.
+RUN_EVAL = os.environ.get("XFAKE_RUN_EVAL", "1") == "1"
 
 if RUN_EVAL:
     from benchmarks import BenchmarkConfig, run_benchmark
@@ -111,7 +144,7 @@ if RUN_EVAL:
     else:
         print("ERRO:", r.get("error"))
 else:
-    print("RUN_EVAL=False — defina True para treinar+avaliar em dados sintéticos.")
+    print("Treino desligado (XFAKE_RUN_EVAL=0).")
 """
 
 
@@ -210,6 +243,24 @@ MODELS = [
      "Ensemble de árvores sobre features agregadas; rápido e robusto."),
 ]
 CLASSICAL = {"SVM", "RandomForest"}
+# Modelos SSL: backbone do HuggingFace `transformers` (baixa o checkpoint na 1ª
+# execução). Recebem uma célula extra de instalação no notebook.
+SSL_SLUGS = {"wavlm", "hubert"}
+
+SSL_DEPS_CELL = """\
+# WavLM/HuBERT usam um backbone SSL do HuggingFace `transformers` (baixa o
+# checkpoint pré-treinado na 1ª execução — requer internet e, idealmente, GPU).
+import importlib.util
+import subprocess
+import sys
+
+if importlib.util.find_spec("transformers") is None:
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-q", "transformers>=4.30"],
+        check=True,
+    )
+print("transformers OK")
+"""
 
 
 def _input_type(display_name: str, declared: str) -> str:
@@ -265,17 +316,31 @@ def build_index():
         md("""
         ## Como rodar
 
+        ### Google Colab (recomendado para treinar com GPU)
+
+        Abra qualquer notebook por:
+        `https://colab.research.google.com/github/thierrybraga/XFakeSong/blob/main/notebooks/<caminho>`
+        (ex.: `notebooks/pipeline/02_training_model.ipynb`). Depois:
+
+        1. **Ambiente de execução → Alterar o tipo de hardware → GPU** (T4 grátis).
+        2. Rode a **primeira célula**: ela clona o repositório e instala as
+           dependências de áudio automaticamente (a primeira execução demora um
+           pouco).
+
+        ### Localmente
+
         ```bash
         pip install -r requirements.txt -r requirements-dev.txt   # inclui jupyter/nbclient
         jupyter lab          # ou: jupyter notebook
         ```
 
-        **Self-contained** (rodam sem dataset externo, em CPU): este índice,
-        `features/01`, `pipeline/02`, `pipeline/03`, `models/11_multiscale_cnn`
-        (neural leve), `models/13_svm` e `models/14_random_forest`. Os demais
-        `models/` instanciam o modelo e mostram o `summary()` (sem treino pesado);
-        o treino real/completo fica em `pipeline/`. Estes mesmos notebooks leves
-        são executados de verdade no CI (`tests/unit/test_notebooks_compile.py`).
+        ### Treino
+
+        Os notebooks de **modelo** treinam + avaliam em dados sintéticos ao rodar
+        (rápido); defina o ambiente `XFAKE_RUN_EVAL=0` para pular. Todos são
+        **self-contained** (sem dataset externo). **WavLM/HuBERT** baixam um
+        checkpoint SSL na 1ª execução (requer internet). Treino real com dataset
+        próprio: `pipeline/02_training_model.ipynb`.
         """),
         code(BOOTSTRAP),
         md("## Ambiente (versões — reprodutibilidade)"),
@@ -442,6 +507,11 @@ def build_models():
             model.summary()
             print("Parâmetros:", model.count_params())
             """
+        # WavLM/HuBERT precisam do `transformers` (download SSL) — célula extra.
+        ssl_setup = (
+            [md("## Dependência SSL (`transformers`)"), code(SSL_DEPS_CELL)]
+            if slug in SSL_SLUGS else []
+        )
         write_nb(f"models/{num:02d}_{slug}.ipynb", [
             md(f"""
             # Estudo do modelo: {name}
@@ -455,12 +525,15 @@ def build_models():
 
             1. Mostrar o **contrato de entrada** que o benchmark prepara para esta
                arquitetura.
-            2. Gerar dados sintéticos mínimos para validar shape e fluxo.
-            3. Instanciar/rodar o modelo pelo **mesmo caminho** do benchmark.
+            2. Instanciar o modelo pelo **mesmo caminho** do benchmark (`summary()`).
+            3. **Treinar + avaliar** em dados sintéticos (accuracy/AUC/EER) — ligado
+               por padrão (defina `XFAKE_RUN_EVAL=0` para pular).
 
-            Para treino real e métricas, use `notebooks/pipeline/`.
+            Para treino com o seu próprio dataset, use
+            `notebooks/pipeline/02_training_model.ipynb`.
             """),
             code(BOOTSTRAP),
+            *ssl_setup,
             md("## Reprodutibilidade (semente numpy + TensorFlow)"),
             code(SEED_ALL),
             code(f"""
@@ -477,7 +550,7 @@ def build_models():
             """),
             md("## Inspeção do modelo"),
             code(inspect),
-            md("## Avaliação rápida (gated): treino + métricas em dados sintéticos"),
+            md("## Treino + avaliação em dados sintéticos"),
             code(EVAL_CELL),
             md("""
             ## Como ler este notebook
