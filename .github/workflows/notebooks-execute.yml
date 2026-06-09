@@ -50,7 +50,7 @@ jobs:
             notebooks/pipeline/02_training_model.ipynb \
             notebooks/pipeline/03_inference.ipynb
       - name: Publicar HTML como artefato
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: notebooks-html
           path: rendered/
