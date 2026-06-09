@@ -120,6 +120,13 @@ O teste de notebooks também verifica:
   e **raw-audio** (`03_rawnet2`, SincConv), além de `00_index`, features, SVM,
   RandomForest e os notebooks de `pipeline/`.
 
+Além disso, `tests/integration/test_architectures_build.py` constrói as **10
+arquiteturas neurais não-SSL** pelo MESMO caminho dos notebooks de modelo
+(`BenchmarkData.synthetic → prepare_for_architecture → create_model_by_name`) e
+faz um forward pass — rápido (sem treino) e dentro do gate bloqueante do CI
+(`not smoke`). WavLM/HuBERT (download SSL) e os clássicos SVM/RandomForest ficam
+fora desse teste e seguem cobertos pelo smoke e pelos notebooks, respectivamente.
+
 O gerador é **determinístico e TF-free**: o `input_type` de cada modelo vem do
 catálogo `MODELS` (cross-check opcional com o registry quando o factory está
 importável). Use-o quando a lista de modelos, os comandos de benchmark ou a
