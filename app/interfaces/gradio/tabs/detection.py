@@ -69,8 +69,12 @@ def get_detection_service():
         # o check e o acquire do lock.
         if _detection_service_instance is None:
             try:
-                from app.domain.services import detection_service as ds
-                _detection_service_instance = ds.DetectionService()
+                # Reusa o MESMO singleton (app/models) da API e do reload do wizard
+                # de treino — assim um modelo recém-treinado aparece aqui sem
+                # reiniciar. Antes criava um DetectionService() próprio lendo o dir
+                # default "models" (raiz, vazio).
+                from app.dependencies import get_detection_service as _shared
+                _detection_service_instance = _shared()
             except Exception as e:
                 logger.error(f"Failed to init detection service: {e}")
                 return None

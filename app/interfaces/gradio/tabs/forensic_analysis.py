@@ -29,8 +29,9 @@ def _get_detection_service():
     global _detection_service
     if _detection_service is None:
         try:
-            from app.domain.services.detection_service import DetectionService
-            _detection_service = DetectionService()
+            # Mesmo singleton (app/models) da API/Detectar/wizard — ver detection.py.
+            from app.dependencies import get_detection_service as _shared
+            _detection_service = _shared()
         except Exception as e:
             logger.warning(f"Detection service unavailable: {e}")
             return None

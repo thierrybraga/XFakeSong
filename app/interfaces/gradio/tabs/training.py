@@ -780,10 +780,11 @@ def create_training_tab():
 
                         full_logs = "".join(log_cb.logs_hist)
 
-                        # Salvar modelo
-                        from app.core.config.settings import PathConfig
-                        paths = PathConfig()
-                        save_dir = paths.models_dir
+                        # Salvar modelo no MESMO dir do resto do sistema
+                        # (app/models) — antes usava PathConfig.models_dir
+                        # (app/artifacts/models), um terceiro local que a detecção
+                        # não lia.
+                        save_dir = Path("app/models")
                         save_dir.mkdir(parents=True, exist_ok=True)
                         model_path = save_dir / f"{arch}_{int(time.time())}.h5"
                         model.save(model_path)

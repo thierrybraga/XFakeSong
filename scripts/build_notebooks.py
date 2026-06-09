@@ -867,15 +867,14 @@ def build_pipeline():
         `notebooks/pipeline/03_inference.ipynb`, Seção 3, para o `detect_single`
         ponta a ponta a partir de áudio bruto.
 
-        Para o app principal achar o seu modelo, treine direto no diretório que ele
-        lê (ou copie os dois arquivos para lá):
-
-        - **Gradio** (`python main.py --gradio`): `models/` na raiz.
-        - **API FastAPI**: `app/models/`.
+        O app principal — tanto o Gradio (`python main.py --gradio`) quanto a API —
+        lê **`app/models/`**, que é também o **default** do `TrainingService`. Logo,
+        treine sem passar `models_dir` e o modelo já cai no lugar certo (ou copie o
+        par para `app/models/`).
 
         ```python
-        # treina já no destino do Gradio:
-        TrainingService(models_dir="models").train_model(...)
+        # default models_dir = app/models (lido pelo Gradio E pela API):
+        TrainingService().train_model(...)
         ```
         """),
     ])
@@ -954,7 +953,7 @@ def build_pipeline():
         from app.domain.services.detection_service import DetectionService
 
         # Mesma instância que o app cria — só muda o models_dir (aponta p/ o do
-        # notebook). No app, o default é "models" (Gradio) / "app/models" (API).
+        # notebook). No app, o default já é "app/models" (Gradio E API).
         ds = DetectionService(models_dir=str(models_dir), create_default_models=False)
 
         # Entrada REAL do pipeline: áudio bruto de 1 s (16 kHz).
@@ -979,12 +978,13 @@ def build_pipeline():
 
         | Interface | Diretório lido | Como subir o modelo |
         | --- | --- | --- |
-        | **Gradio** (`python main.py --gradio`) | `models/` (raiz) | copie `<nome>.keras` + `<nome>_config.json` para `models/` |
-        | **API FastAPI** | `app/models/` | copie os dois arquivos para `app/models/` |
+        | **Gradio** (`python main.py --gradio`) | `app/models/` | copie `<nome>.keras` + `<nome>_config.json` para `app/models/` |
+        | **API FastAPI** | `app/models/` | idem — mesmo diretório |
 
-        > Dica: treine direto no destino passando `TrainingService(models_dir="models")`
-        > (Gradio) ou `"app/models"` (API) no `pipeline/02`. Sem o `_config.json` ao
-        > lado, o serviço cai no contrato do registry (ainda funciona, mas sem a
+        > Dica: `app/models/` é o **default** do `TrainingService` e do
+        > `DetectionService`, então treinar sem passar `models_dir` já põe o modelo
+        > no lugar certo para as duas interfaces. Sem o `_config.json` ao lado, o
+        > serviço cai no contrato do registry (ainda funciona, mas sem a
         > temperatura/EER calibrados do seu treino).
         """),
     ])
