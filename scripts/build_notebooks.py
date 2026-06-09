@@ -796,6 +796,57 @@ def build_pipeline():
         - O `nb_demo_config.json` carrega o `input_contract` (temperatura/EER/OOD
           calibrados) lido na inferência. Ver `notebooks/pipeline/03_inference.ipynb`.
         """),
+        md("""
+        ## 3. Treinar com um dataset REAL (download) — opcional
+
+        Baixa um dataset real do HuggingFace, monta o `.npz` e treina pelo MESMO
+        `TrainingService`. Desligado por padrão (download + treino são pesados).
+
+        > ⚠️ **Requer `datasets<4.0`** — a 4.x exige `torchcodec` e quebra o
+        > download de áudio (a célula instala a versão certa). Algumas fontes
+        > pedem um **token do HuggingFace** (erro 401) — exporte `HF_TOKEN` antes
+        > ou veja `docs/12_DATASETS.md`. **FLEURS** (real, PT-BR) é público e leve;
+        > fontes *fake* como WaveFake são grandes (dezenas de GB).
+        """),
+        code("""
+        import subprocess
+
+        DOWNLOAD_REAL = False          # → True para baixar + treinar com dados reais
+        N_PER_CLASS = 150              # amostras por classe (pequeno p/ demonstração)
+        REAL_NPZ = ROOT / "app" / "datasets" / "nb_real.npz"
+
+        if DOWNLOAD_REAL:
+            # 1. datasets compatível (a 4.x quebra o download de áudio).
+            subprocess.run([sys.executable, "-m", "pip", "install", "-q",
+                            "datasets>=2.14,<4.0"], check=True)
+            # 2. Pipeline canônico: download → preparo → split → export .npz → treino.
+            cmd = [
+                sys.executable, str(ROOT / "scripts" / "run_tcc_pipeline.py"),
+                "--download", "--skip-real-cv",
+                "--archs", "SVM",
+                "--target-per-class", str(N_PER_CLASS),
+                "--epochs", "5",
+                "--npz", str(REAL_NPZ),
+                "--out", str(ROOT / "results" / "nb_real"),
+            ]
+            print(" ".join(cmd))
+            subprocess.run(cmd, cwd=ROOT, check=True)
+            print("NPZ real:", REAL_NPZ, "| existe:", REAL_NPZ.exists())
+        else:
+            print("DOWNLOAD_REAL=False — usando o dataset sintético da Seção 1.")
+            print("Defina DOWNLOAD_REAL=True para baixar dados reais (ver docs/12).")
+        """),
+        md("""
+        Com o `.npz` real em mãos, treine **qualquer arquitetura** repetindo a
+        Seção 2 com `dataset_path=str(REAL_NPZ)`. Para baixar uma fonte específica
+        direto (sem o pipeline completo):
+
+        ```bash
+        pip install 'datasets>=2.14,<4.0'                                  # obrigatório
+        python scripts/download_datasets.py --fleurs --max-samples 300     # real (público)
+        python scripts/download_datasets.py --brspeech --max-samples 600   # real+fake (pode pedir token)
+        ```
+        """),
     ])
 
     # 03 — inferência
