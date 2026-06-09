@@ -24,8 +24,10 @@ Definido canonicamente em `app/core/interfaces/audio.py`:
 | `COMPLEXITY` | Métricas de complexidade e caos (ApEn, SampEn, Hurst) |
 | `CUSTOM` | Extratores customizados registrados pelo usuário |
 
-> **Nota**: `app/domain/features/types.py` e `app/domain/features/interfaces.py` são re-exports
-> que apontam para a fonte canônica em `app/core/interfaces/audio.py`.
+!!! note
+    `app/domain/features/types.py` e `app/domain/features/interfaces.py` são
+    re-exports que apontam para a fonte canônica em
+    `app/core/interfaces/audio.py`.
 
 ---
 

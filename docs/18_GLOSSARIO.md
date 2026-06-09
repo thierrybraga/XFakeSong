@@ -25,7 +25,7 @@ Termos usados no XFakeSong e na literatura de detecção de deepfakes de áudio
 - **FAR / FRR** — *False Acceptance Rate* (spoof aceito como real) e *False
   Rejection Rate* (real rejeitado como spoof).
 - **min-tDCF (minimum tandem Detection Cost Function)** — custo mínimo do sistema
-  combdo (ASV + detector) usado no ASVspoof; pondera os dois tipos de erro.
+  combinado (ASV + detector) usado no ASVspoof; pondera os dois tipos de erro.
   **Menor é melhor.** Implementado em `app/domain/models/training/metrics.py`.
 - **AUC-ROC** — área sob a curva ROC; probabilidade de ranquear um spoof acima
   de um bonafide. 1.0 = perfeito, 0.5 = aleatório.
