@@ -36,7 +36,9 @@ license: mit
 ### Passo 2: Dependências
 Certifique-se de que o arquivo `requirements.txt` na raiz contém todas as bibliotecas necessárias. O Hugging Face instalará automaticamente tudo listado ali.
 
-> **Nota:** Bibliotecas de sistema (como `ffmpeg`) já estão pré-instaladas no ambiente padrão do Gradio SDK. Se precisar de libs exóticas, use o Método 2 (Docker).
+!!! note
+    Bibliotecas de sistema (como `ffmpeg`) já estão pré-instaladas no ambiente
+    padrão do Gradio SDK. Se precisar de libs exóticas, use o Método 2 (Docker).
 
 ### Passo 3: Deploy via Git
 Você pode fazer push do código diretamente para o repositório do seu Space.

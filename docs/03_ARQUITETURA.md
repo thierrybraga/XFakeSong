@@ -38,7 +38,7 @@ Funcionalidades transversais usadas por todas as camadas.
 
 Adapta entradas externas (usuário, HTTP, CLI) para o domínio.
 
-- **`gradio/`**: Interface web com 8 abas (detecção, treinamento, features, histórico, etc.).
+- **`gradio/`**: Interface web com 5 seções role-based (Painel, Detectar, Investigar, Treinar, Gerenciar).
 - **`cli/`**: Interface de linha de comando com menus interativos.
 
 ### 5. Routers (API REST)
@@ -83,7 +83,10 @@ UploadStage → FeatureExtractionStage → TrainingStage / DetectionStage → Pi
 
 Cada `PipelineStage` retorna um `PipelineResult` com `status`, `data`, `error` e `execution_time`. Se um estágio falha (`ProcessingStatus.ERROR`), o pipeline é interrompido.
 
-> **Nota**: O pipeline orquestrado (`app/application/pipeline/`) é usado para fluxos customizados. O fluxo de produção padrão chama `DetectionService` diretamente via routers e Gradio.
+!!! note "Pipeline orquestrado × fluxo de produção"
+    O pipeline orquestrado (`app/application/pipeline/`) é usado para fluxos
+    customizados. O fluxo de produção padrão chama `DetectionService`
+    diretamente via routers e Gradio.
 
 ---
 
@@ -159,8 +162,8 @@ XFakeSong/
 │   │       └── plugin_system.py
 │   │
 │   ├── interfaces/                 # Adaptadores de entrada
-│   │   ├── gradio/                 # Interface web (8 abas)
-│   │   │   └── tabs/               # detection, training, features, history, ...
+│   │   ├── gradio/                 # Interface web (5 seções role-based)
+│   │   │   └── tabs/               # dashboard, detection, forensic_analysis, training_wizard, ...
 │   │   └── cli/                    # Interface CLI com menus
 │   │       └── menus/
 │   │

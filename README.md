@@ -131,6 +131,7 @@ A documentação técnica está em `docs/` e é publicada via MkDocs:
 
 | Objetivo | Documento |
 | --- | --- |
+| Conceitos da área (anti-spoofing) | [Conceitos e Fundamentos](docs/00_CONCEITOS.md) |
 | Visão geral | [Introdução](docs/01_INTRODUCAO.md) |
 | Instalação local, Docker e HF Spaces | [Instalação e Configuração](docs/02_INSTALACAO_CONFIGURACAO.md) |
 | Arquitetura do sistema | [Arquitetura](docs/03_ARQUITETURA.md) |
@@ -141,6 +142,7 @@ A documentação técnica está em `docs/` e é publicada via MkDocs:
 | Datasets | [Datasets Públicos](docs/12_DATASETS.md) |
 | Benchmark e resultados do TCC | [Benchmark e TCC](docs/15_BENCHMARK.md) |
 | Notebooks | [Guia de Notebooks](docs/16_NOTEBOOKS.md) |
+| Dúvidas frequentes | [Perguntas Frequentes (FAQ)](docs/19_FAQ.md) |
 
 ## Comandos Essenciais
 
