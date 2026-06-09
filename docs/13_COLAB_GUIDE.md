@@ -4,26 +4,35 @@ Este guia detalha como executar a plataforma XFakeSong de detecção de deepfake
 
 ## 1. Configuração Inicial
 
-### 1.1. Preparar o Google Drive
-1. Crie uma pasta chamada `XFakeSong` na raiz do seu Google Drive.
-2. Faça upload do conteúdo do projeto para essa pasta.
-   - Opção recomendada: use `git clone` diretamente no Colab.
-   - Alternativa: faça upload do arquivo zip e extraia.
+Os notebooks são **auto-suficientes no Colab**: a primeira célula (bootstrap)
+detecta o ambiente, clona o repositório e instala as dependências de áudio.
+**Não é preciso** montar o Google Drive nem subir arquivos manualmente.
 
-### 1.2. Estrutura de Diretórios Esperada
+### 1.1. Abrir um notebook no Colab
+
+Abra qualquer notebook pela URL `colab.research.google.com/github/…`:
 
 ```
-/content/drive/MyDrive/XFakeSong/
-├── app/
-├── data/
-│   ├── raw/
-│   │   ├── real/
-│   │   └── fake/
-│   └── processed/
-├── notebooks/
-├── requirements.txt
-└── ...
+https://colab.research.google.com/github/thierrybraga/XFakeSong/blob/main/notebooks/<caminho>
 ```
+
+Exemplos:
+
+- Treinar um modelo: `notebooks/pipeline/02_training_model.ipynb`
+- Estudar uma arquitetura: `notebooks/models/05_aasist.ipynb`
+- Índice de tudo: `notebooks/00_index.ipynb`
+
+### 1.2. Selecionar GPU e rodar o setup
+
+1. **Ambiente de execução → Alterar o tipo de hardware → GPU** (T4 grátis).
+2. Rode a **primeira célula**: ela clona o `XFakeSong`, entra na pasta e instala
+   `librosa` / `soundfile` / `PyWavelets` (TensorFlow, NumPy e scikit-learn já
+   vêm no Colab — por isso o setup é rápido, ~1–2 min na 1ª execução).
+
+!!! tip "Persistir resultados entre sessões"
+    O armazenamento do Colab é efêmero. Para guardar modelos/resultados, monte o
+    Drive (`from google.colab import drive; drive.mount('/content/drive')`) e
+    aponte o `output_dir`/`models_dir` dos notebooks para uma pasta nele.
 
 ---
 
@@ -49,9 +58,13 @@ amostras fake.
 
 ## 3. Problemas Comuns e Soluções
 
-### 3.1. Erros de Caminho
-- Execute sempre a célula de setup que monta o Drive e define `PROJECT_PATH`.
-- Se ocorrer `ModuleNotFoundError`, certifique-se de que a linha `sys.path.append(PROJECT_PATH)` foi executada antes.
+### 3.1. Erros de import / caminho
+- Rode a **célula de bootstrap** (a primeira) antes de qualquer outra — ela
+  clona o projeto, ajusta o `sys.path` e instala as dependências.
+- `ModuleNotFoundError: No module named 'app'` → o clone não rodou; reexecute a
+  primeira célula.
+- `ModuleNotFoundError: No module named 'transformers'` → ocorre só em
+  WavLM/HuBERT; esses notebooks têm uma célula dedicada que o instala (rode-a).
 
 ### 3.2. GPU Não Disponível
 - Execute `!nvidia-smi` para verificar se uma GPU está disponível na sessão atual.

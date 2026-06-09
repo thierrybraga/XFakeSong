@@ -42,6 +42,14 @@ Para o passo a passo completo de instalação e os erros detalhados, veja
     detecta e loga isso no *startup*. Detalhes em
     [Instalação e Configuração](02_INSTALACAO_CONFIGURACAO.md).
 
+??? question "Como rodo os notebooks no Google Colab?"
+    Eles são auto-suficientes: abra por
+    `colab.research.google.com/github/thierrybraga/XFakeSong/blob/main/notebooks/<caminho>`,
+    selecione **GPU** (Ambiente de execução → Alterar o tipo de hardware) e rode
+    a **primeira célula** — ela clona o repo e instala as dependências. Os
+    notebooks de modelo treinam por padrão. Guia completo:
+    [Google Colab](13_COLAB_GUIDE.md).
+
 ## Treinamento
 
 ??? question "Que formato de dataset o treino espera?"

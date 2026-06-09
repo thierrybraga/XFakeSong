@@ -4,6 +4,14 @@ Os notebooks foram reorganizados para separar estudo, execução do benchmark,
 treinamento, inferência e análise de features. A estrutura atual evita um
 notebook monolítico e facilita revisar cada arquitetura isoladamente.
 
+!!! tip "Rodar no Google Colab (com GPU)"
+    Todos os notebooks são **auto-suficientes no Colab**: a primeira célula
+    detecta o ambiente, clona o repositório e instala as dependências. Abra por
+    `colab.research.google.com/github/thierrybraga/XFakeSong/blob/main/notebooks/<caminho>`,
+    selecione um runtime com **GPU** e rode a 1ª célula. Os notebooks de modelo
+    **treinam por padrão** (defina `XFAKE_RUN_EVAL=0` para pular). Passo a passo
+    no [Guia Google Colab](13_COLAB_GUIDE.md).
+
 ## Estrutura
 
 ```text
