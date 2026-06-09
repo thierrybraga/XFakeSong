@@ -83,3 +83,32 @@ def test_architecture_builds_and_forwards(architecture):
     assert out[-1] in (1, 2), f"{architecture}: nº de classes inesperado: {out}"
     assert model.count_params() > 0, f"{architecture}: modelo sem parâmetros"
     assert np.all(np.isfinite(np.asarray(y))), f"{architecture}: saída não-finita"
+
+
+# Arquiteturas de espectrograma — o adaptador do benchmark precisa AUMENTAR
+# entradas minúsculas para um tamanho treinável.
+SPECTROGRAM_ARCHS = [
+    "Sonic Sleuth", "Conformer", "Hybrid CNN-Transformer",
+    "SpectrogramTransformer", "EfficientNet-LSTM", "MultiscaleCNN", "Ensemble",
+]
+
+
+@pytest.mark.parametrize("architecture", SPECTROGRAM_ARCHS)
+def test_spectrogram_arch_builds_from_tiny_synthetic(architecture):
+    """Regressão (Sonic Sleuth): a `quick` do benchmark usa
+    `synthetic_shape=(8, 8)`. O adaptador `prepare_for_architecture` deve
+    redimensionar essa grade minúscula para um espectrograma grande o bastante
+    para a arquitetura construir — antes, os 5 blocos de pooling do Sonic Sleuth
+    colapsavam (8, 8) até `1×1` e quebravam com "Negative dimension".
+    """
+    data = BenchmarkData.synthetic(n=8, shape=(8, 8), seed=3)
+    prepared = data.prepare_for_architecture(architecture)
+    T, F = int(prepared.X.shape[1]), int(prepared.X.shape[2])
+    assert T >= 32 and F >= 32, f"{architecture}: preparado {T}x{F} pequeno demais"
+
+    model = create_model_by_name(
+        architecture, input_shape=tuple(prepared.X.shape[1:]), num_classes=1
+    )
+    y = model(prepared.X[:1], training=False)
+    assert tuple(int(d) for d in y.shape)[0] == 1, f"{architecture}: batch inesperado"
+    assert np.all(np.isfinite(np.asarray(y))), f"{architecture}: saída não-finita"

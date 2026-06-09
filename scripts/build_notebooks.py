@@ -243,13 +243,16 @@ MODELS = [
      "Ensemble de árvores sobre features agregadas; rápido e robusto."),
 ]
 CLASSICAL = {"SVM", "RandomForest"}
-# Modelos SSL: backbone do HuggingFace `transformers` (baixa o checkpoint na 1ª
-# execução). Recebem uma célula extra de instalação no notebook.
+# Modelos SSL: célula OPCIONAL que instala `transformers` para usar o backbone
+# real (WavLM/HuBERT do HuggingFace). Sem ele, o projeto cai numa implementação
+# simplificada que treina/infere normalmente — por isso o install é opcional.
 SSL_SLUGS = {"wavlm", "hubert"}
 
 SSL_DEPS_CELL = """\
-# WavLM/HuBERT usam um backbone SSL do HuggingFace `transformers` (baixa o
-# checkpoint pré-treinado na 1ª execução — requer internet e, idealmente, GPU).
+# OPCIONAL: instala `transformers` para usar o backbone SSL pré-treinado real
+# (baixa o checkpoint na 1ª execução; requer internet e, idealmente, GPU).
+# Se você pular esta célula, o projeto usa uma implementação simplificada do
+# WavLM/HuBERT que treina e infere normalmente — só não carrega os pesos SSL.
 import importlib.util
 import subprocess
 import sys
@@ -259,7 +262,7 @@ if importlib.util.find_spec("transformers") is None:
         [sys.executable, "-m", "pip", "install", "-q", "transformers>=4.30"],
         check=True,
     )
-print("transformers OK")
+print("transformers disponível — backbone SSL real será usado.")
 """
 
 
@@ -509,7 +512,7 @@ def build_models():
             """
         # WavLM/HuBERT precisam do `transformers` (download SSL) — célula extra.
         ssl_setup = (
-            [md("## Dependência SSL (`transformers`)"), code(SSL_DEPS_CELL)]
+            [md("## Backbone SSL real (`transformers`, opcional)"), code(SSL_DEPS_CELL)]
             if slug in SSL_SLUGS else []
         )
         write_nb(f"models/{num:02d}_{slug}.ipynb", [

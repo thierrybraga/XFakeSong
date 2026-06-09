@@ -318,6 +318,12 @@ class ArchitectureRegistry:
                     "max_duration": 3.0,
                     "sample_rate": 16000,
                     "preprocessing": "log_mel",
+                    # Alvo de espectrograma (como as demais arquiteturas de
+                    # espectrograma). Sem isto, o adaptador do benchmark mantinha
+                    # a forma de entrada crua e os 5 blocos de pooling colapsavam
+                    # entradas pequenas (< 32×32) → "Negative dimension".
+                    "min_sequence_length": 100,
+                    "feature_dim": 80,
                 },
             )
         )

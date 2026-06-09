@@ -347,8 +347,11 @@ def _to_spectrogram(X: np.ndarray, requirements: Dict[str, Any]) -> np.ndarray:
         flat = _fit_length(arr.reshape(len(arr), -1), time_steps * feature_dim)
         arr = flat.reshape(len(arr), time_steps, feature_dim)
     elif arr.ndim == 3:
-        time_steps = int(requirements.get("min_sequence_length") or arr.shape[1])
-        feature_dim = int(requirements.get("feature_dim") or arr.shape[2])
+        # Piso defensivo: se o spec não declara o alvo, garante uma grade grande
+        # o bastante para sobreviver às camadas de pooling (evita "Negative
+        # dimension" em arquiteturas profundas com entradas sintéticas pequenas).
+        time_steps = int(requirements.get("min_sequence_length") or max(arr.shape[1], 64))
+        feature_dim = int(requirements.get("feature_dim") or max(arr.shape[2], 64))
         arr = _resize_axis(arr, max(1, time_steps), axis=1)
         arr = _resize_axis(arr, max(1, feature_dim), axis=2)
     else:
