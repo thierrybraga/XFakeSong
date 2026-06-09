@@ -9,6 +9,10 @@ results/models/
 # .png, modelos. Tudo em results/ é artefato regenerável — não versionar.
 /results/
 
+# Diretório padrão do DetectionService (models_dir="models"): artefatos de modelo
+# (.keras/.pkl/scalers) gerados em runtime/testes. Não versionar.
+/models/
+
 # Claude Code internal
 .claude/
 
