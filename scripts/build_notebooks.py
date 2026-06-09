@@ -604,39 +604,68 @@ def build_pipeline():
         tabelas LaTeX, figuras PNG, `dataset.md` e `tcc_report.md`.
         """),
         code(BOOTSTRAP),
-        md("## 1. Benchmark rápido (sintético) — valida o harness em segundos"),
-        code("""
-        from benchmarks import BenchmarkConfig, run_benchmark
+        md("""
+        ## 1. Benchmark rápido (sintético) — valida o harness em segundos
 
-        cfg = BenchmarkConfig.quick(
-            architectures=["MultiscaleCNN", "SVM"],
-            synthetic_n=160,
-            snr_levels_db=[20],
-            output_dir=str(ROOT / "results" / "notebook_benchmark"),
-        )
-        results = run_benchmark(cfg)
-
-        for name, r in results["architectures"].items():
-            if r.get("status") == "ok":
-                c = r["clean"]
-                print(f"{name:<16} acc={c['accuracy']*100:5.1f}%  "
-                      f"AUC={c.get('auc_roc', float('nan')):.3f}  "
-                      f"conv={r.get('converged')}")
-            else:
-                print(f"{name:<16} ERRO: {r.get('error')}")
+        Treina algumas arquiteturas em **dados sintéticos** e gera as MESMAS
+        métricas, tabela e figuras do relatório do TCC. Como os dados são
+        sintéticos, **os números não são resultados reais** (acurácia ~50% é
+        esperada) — servem só para validar o harness de ponta a ponta. Seed fixo
+        (`42`, default do benchmark). Resultados reais: Seção 2.
         """),
         code("""
-        # Artefatos gerados (tabelas .tex, figuras .png, CSV/JSON).
-        out = ROOT / "results" / "notebook_benchmark"
-        for f in sorted(out.rglob("*")):
-            if f.is_file():
-                print(f.relative_to(out))
+        import pandas as pd
+
+        try:
+            from IPython.display import Image, display
+        except Exception:           # fora do kernel IPython
+            display, Image = print, None
+
+        from benchmarks import BenchmarkConfig, run_benchmark
+
+        try:
+            import tensorflow as tf
+            print("GPUs disponíveis:", len(tf.config.list_physical_devices("GPU")))
+        except Exception:
+            pass
+
+        OUT = ROOT / "results" / "notebook_benchmark"
+        cfg = BenchmarkConfig.quick(
+            architectures=["MultiscaleCNN", "Ensemble", "SVM", "RandomForest"],
+            synthetic_n=160,
+            snr_levels_db=[20],
+            output_dir=str(OUT),
+        )
+        run_benchmark(cfg)
+
+        # Tabela canônica do relatório, ordenada por EER (menor = melhor).
+        cols = ["arquitetura", "convergiu", "accuracy", "eer", "auc_roc",
+                "min_tdcf", "params", "size_mb", "latency_ms"]
+        df = pd.read_csv(OUT / "results.csv")
+        df = df[[c for c in cols if c in df.columns]].sort_values("eer")
+        display(df.round(4))
+        """),
+        md("### Figuras agregadas geradas pelo benchmark"),
+        code("""
+        # Exibe inline as figuras que o benchmark gravou em disco.
+        figs = OUT / "figures"
+        for name in ["roc.png", "score_distributions.png", "confusion_matrices.png",
+                     "eficiencia.png", "robustez.png"]:
+            fp = figs / name
+            if fp.exists() and Image is not None:
+                print(name)
+                display(Image(filename=str(fp)))
+            elif fp.exists():
+                print("figura:", fp)
         """),
         md("""
         ## 2. Execução completa do TCC
 
-        A célula abaixo é executável, mas fica desligada por padrão para evitar
-        downloads e treinos longos sem confirmação explícita.
+        > ⚠️ **Pesado — requer GPU e tempo.** Baixa/prepara ~20k amostras (10k
+        > real + 10k fake) e treina o preset completo de arquiteturas. Em GPU leva
+        > de dezenas de minutos a horas; em CPU é inviável. Por isso fica
+        > **desligado por padrão** (`RUN_FULL_PIPELINE = False`). O
+        > `--tcc-full-dataset` já ativa download + benchmark completo + probe da API.
         """),
         code("""
         import subprocess
@@ -668,44 +697,41 @@ def build_pipeline():
             --npz app/datasets/benchmark_audio_raw_20k.npz
         ```
 
-        Ou o benchmark direto sobre um `.npz` já exportado:
+        Ou o benchmark direto sobre um `.npz` já exportado (veja como gerar o
+        dataset em `docs/12_DATASETS.md`):
 
         ```bash
-        python scripts/run_benchmark.py --full --dataset app/datasets/brspeech_df.npz
+        python scripts/run_benchmark.py --full --dataset app/datasets/SEU_DATASET.npz
         ```
 
         Veja `docs/15_BENCHMARK.md` para o mapeamento saída → tabela/figura do TCC.
         """),
         md("## 3. Validar e ler artefatos do relatório"),
         code("""
-        import json
         import pandas as pd
 
-        try:                                  # display() só existe no kernel IPython
+        try:
             from IPython.display import display
         except Exception:
             display = print
 
-        report_dir = ROOT / "results" / "tcc_full_20k"
-        required = [
-            "dataset.md",
-            "dataset_manifest.json",
-            "results.json",
-            "results.csv",
-            "tcc_report.md",
-            "figures/roc.png",
-            "figures/confusion_matrices.png",
-            "figures/score_distributions.png",
-        ]
+        # Lê o relatório que existir: o completo (Seção 2) OU o rápido (Seção 1) —
+        # assim a tabela aparece mesmo sem rodar o pipeline de horas.
+        candidates = [ROOT / "results" / "tcc_full_20k",
+                      ROOT / "results" / "notebook_benchmark"]
+        report_dir = next((d for d in candidates if (d / "results.csv").exists()),
+                          candidates[0])
+        print("Lendo relatório de:", report_dir)
+
+        # dataset.md/manifest só existem na execução completa (Seção 2).
+        required = ["results.csv", "results.json", "tcc_report.md",
+                    "figures/roc.png", "figures/confusion_matrices.png",
+                    "figures/score_distributions.png"]
         missing = [p for p in required if not (report_dir / p).exists()]
-        print("Diretório:", report_dir)
         print("Ausentes:", missing or "nenhum")
 
         if (report_dir / "results.csv").exists():
             display(pd.read_csv(report_dir / "results.csv"))
-        if (report_dir / "results.json").exists():
-            data = json.loads((report_dir / "results.json").read_text(encoding="utf-8"))
-            print("Arquiteturas:", list(data.get("architectures", {}).keys()))
         """),
     ])
 
