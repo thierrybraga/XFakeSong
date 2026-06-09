@@ -16,9 +16,18 @@ import uuid
 from contextvars import ContextVar
 from typing import Any, Callable, Optional
 
-from fastapi import FastAPI
-from starlette.datastructures import MutableHeaders
-from starlette.types import ASGIApp, Message, Receive, Scope, Send
+# Web layer OPCIONAL: em ambientes de treino/Colab (sem FastAPI/Starlette), este
+# módulo ainda precisa importar — `get_request_id`/`request_id_ctx` são usados pelo
+# domínio. A classe ASGI e `setup_middleware` só rodam dentro da API. Com
+# `from __future__ import annotations`, as anotações com tipos do Starlette viram
+# strings e não são avaliadas no import.
+try:
+    from fastapi import FastAPI
+    from starlette.datastructures import MutableHeaders
+    from starlette.types import ASGIApp, Message, Receive, Scope, Send
+except ImportError:  # pragma: no cover - caminho Colab/treino sem web layer
+    FastAPI = MutableHeaders = None
+    ASGIApp = Message = Receive = Scope = Send = Any
 
 logger = logging.getLogger(__name__)
 

@@ -4,12 +4,25 @@ Implementa RFC 7807 Problem Details para respostas de erro consistentes.
 Todas as exceções de domínio herdam de AppError para tratamento uniforme.
 """
 
+from __future__ import annotations
+
 import logging
 from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+# O web layer (FastAPI) é OPCIONAL: em ambientes de treino/Colab (notebooks que só
+# importam o domínio) o FastAPI pode não estar instalado. As classes de exceção de
+# domínio abaixo são Python puro; só os handlers HTTP (fim do arquivo) usam FastAPI,
+# e esses só rodam dentro da API, onde o FastAPI existe. `from __future__ import
+# annotations` garante que as anotações com tipos do FastAPI não sejam avaliadas no
+# import.
+try:
+    from fastapi import FastAPI, HTTPException, Request
+    from fastapi.exceptions import RequestValidationError
+    from fastapi.responses import JSONResponse
+    _FASTAPI_AVAILABLE = True
+except ImportError:  # pragma: no cover - caminho Colab/treino sem web layer
+    FastAPI = HTTPException = Request = RequestValidationError = JSONResponse = None
+    _FASTAPI_AVAILABLE = False
 
 from app.core.middleware import get_request_id
 
