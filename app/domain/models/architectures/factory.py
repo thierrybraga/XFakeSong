@@ -96,7 +96,10 @@ class BaseArchitectureFactory(IArchitectureFactory):
             raise ValueError(
                 f"Invalid input shape {input_shape} for {self.spec.name}")
 
-        if variant not in self.spec.supported_variants:
+        # "default" é o sentinel universal de fallback (valor padrão do argumento)
+        # e sempre é aceito, mesmo quando não está listado em supported_variants —
+        # só avisamos quando o chamador pede explicitamente um variant inexistente.
+        if variant != "default" and variant not in self.spec.supported_variants:
             logger.warning(f"Variant {variant} not supported, using default")
             variant = "default"
 

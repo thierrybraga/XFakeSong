@@ -131,8 +131,14 @@ class BaseClassicalModel(ABC):
     def get_params(self) -> Dict[str, Any]:
         """
         Returns model parameters.
+
+        Retorna uma CÓPIA de ``self.kwargs``: subclasses (SVM/RF) fazem
+        ``params = super().get_params(); params.update({...})`` — sem a cópia,
+        o ``update`` envenenaria ``self.kwargs`` com chaves como ``kernel`` e a
+        próxima chamada a ``_create_pipeline`` quebraria com "got multiple values
+        for keyword argument 'kernel'".
         """
-        return self.kwargs
+        return dict(self.kwargs)
 
     def save(self, filepath: str) -> None:
         """
