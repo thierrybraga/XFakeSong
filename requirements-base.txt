@@ -10,68 +10,68 @@
 # =====================================================================
 
 # --- ML / DL core ---
-keras>=3.0,<4.0
-scikit-learn>=1.3,<2.0
-numba>=0.60            # 0.60+ cobre Python 3.11–3.13
-joblib>=1.3
+keras>=3.14.1,<4.0
+scikit-learn>=1.9.0,<2.0
+numba>=0.65.1            # 0.60+ cobre Python 3.11–3.13
+joblib>=1.5.3
 
 # --- Áudio / DSP ---
-librosa>=0.10
-soundfile>=0.12
-PyWavelets>=1.4
+librosa>=0.11.0
+soundfile>=0.14.0
+PyWavelets>=1.9.0
 
 # --- Numéricos ---
-numpy>=1.24,<2.3       # TF aceita numpy 2.x estável; teto evita majors não testados
+numpy>=2.4.6,<2.5       # TF aceita numpy 2.x estável; teto evita majors não testados
 # pandas <3: mlflow exige pandas<3 e o pandas 3.0 traz breaking changes
 # (evita ResolutionImpossible quando o Dependabot tenta pandas>=3.0.3).
-pandas>=2.0,<3.0
-matplotlib>=3.7
-seaborn>=0.13
+pandas>=3.0.3,<4.0
+matplotlib>=3.10.9
+seaborn>=0.13.2
 
 # --- Web / API ---
 # BUG.Render.1: pin firme gradio>=4.31 — versões anteriores usam a API antiga
 # `TemplateResponse(context_dict, name)`; starlette>=0.36 (puxado por fastapi)
 # mudou para `(request, name, context)` → `TypeError: unhashable type: 'dict'`
 # na 1ª request a "/". fastapi/starlette pinados para reprodutibilidade.
-gradio>=4.31,<5.0
-fastapi>=0.110,<0.116
-starlette>=0.36,<0.42
-uvicorn[standard]>=0.27
-python-multipart>=0.0.9
-httpx>=0.27
-jinja2>=3.1.5
+gradio>=6.17.3,<7.0
+fastapi>=0.136.3,<0.137
+starlette>=1.2.1,<1.3
+uvicorn[standard]>=0.49.0
+python-multipart>=0.0.32
+httpx>=0.28.1
+jinja2>=3.1.6
 slowapi>=0.1.9
-a2wsgi>=1.10
+a2wsgi>=1.10.10
 
 # --- Datasets (scripts de download HuggingFace) ---
 # Teto <4.0: o datasets 4.x passou a exigir `torchcodec` (torch + FFmpeg) para
 # decodificar áudio, quebrando o download (mesmo com Audio(decode=False)). Até
 # 3.x o decode é via soundfile — o workaround de `download_datasets.py` funciona.
-datasets>=2.14,<4.0
+datasets>=5.0.0,<6.0
 
 # --- Persistência / Config ---
-sqlalchemy>=2.0
-pydantic>=2.5
-python-dotenv>=1.0
-pyyaml>=6.0
-jsonschema>=4.20
-redis>=5.0
+sqlalchemy>=2.0.50
+pydantic>=2.13.4
+python-dotenv>=1.2.2
+pyyaml>=6.0.3
+jsonschema>=4.26.0
+redis>=8.0.0
 
 # --- Hugging Face / deploy ---
 # Teto <1.0: hub 1.0 removeu `HfFolder` que o gradio 4.x importa (quebra a UI no
 # boot). Piso 0.25 = exigência do `datasets`; a faixa 0.25–0.36 satisfaz ambos.
-huggingface_hub>=0.25,<1.0
-requests>=2.31
+huggingface_hub>=1.18.0,<2.0
+requests>=2.34.2
 
 # --- Documentação ---
-mkdocs>=1.5
-mkdocs-material>=9.5
+mkdocs>=1.6.1
+mkdocs-material>=9.7.6
 
 # --- Testes mínimos (rotas importam pytest em runtime) ---
-pytest>=7.4
+pytest>=9.0.3
 
 # --- Diagnóstico de GPU ---
 # pynvml detecta hardware NVIDIA mesmo sem CUDA no TF (Windows nativo, builds
 # CPU). Usado por app.core.gpu no painel de diagnóstico. Opcional (fallback
 # nvidia-smi), mas mantido em AMBAS as variantes para paridade.
-pynvml>=11.5
+pynvml>=13.0.1
