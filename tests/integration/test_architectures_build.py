@@ -112,3 +112,36 @@ def test_spectrogram_arch_builds_from_tiny_synthetic(architecture):
     y = model(prepared.X[:1], training=False)
     assert tuple(int(d) for d in y.shape)[0] == 1, f"{architecture}: batch inesperado"
     assert np.all(np.isfinite(np.asarray(y))), f"{architecture}: saída não-finita"
+
+
+# Arquiteturas cujos supported_variants NÃO incluem "default" — instanciá-las
+# pelo caminho do notebook (sem passar variant) usava o sentinel "default" e
+# emitia um WARNING "Variant default not supported" assustador para quem roda os
+# notebooks 10/11/12. "default" é o fallback universal e nunca deve avisar.
+ARCHS_WITHOUT_DEFAULT_VARIANT = ["EfficientNet-LSTM", "MultiscaleCNN", "Ensemble"]
+
+
+@pytest.mark.parametrize("architecture", ARCHS_WITHOUT_DEFAULT_VARIANT)
+def test_default_variant_does_not_warn(architecture, caplog):
+    """Regressão: pedir o variant default (implícito) não deve logar
+    "not supported", mesmo quando "default" não está em supported_variants."""
+    import logging
+
+    from app.domain.models.architectures.factory import get_architecture_info
+
+    info = get_architecture_info(architecture)
+    # Pré-condição: estas arquiteturas realmente não listam "default".
+    assert "default" not in info.supported_variants, (
+        f"{architecture}: teste obsoleto — 'default' agora está nos variants"
+    )
+
+    data = BenchmarkData.synthetic(n=8, shape=(64, 40), seed=7)
+    prepared = data.prepare_for_architecture(architecture)
+    with caplog.at_level(logging.WARNING,
+                         logger="app.domain.models.architectures.factory"):
+        create_model_by_name(
+            architecture, input_shape=tuple(prepared.X.shape[1:]), num_classes=1
+        )
+    offending = [r.getMessage() for r in caplog.records
+                 if "not supported" in r.getMessage()]
+    assert not offending, f"{architecture}: avisos espúrios de variant: {offending}"

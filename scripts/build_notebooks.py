@@ -480,19 +480,30 @@ def build_models():
             inspect = f"""
             ARCHITECTURE = {name!r}
 
-            # Modelos clássicos (sklearn) são treinados/avaliados pelo harness de
-            # benchmark (caminho clássico), não pelo factory Keras. Rodamos um
-            # benchmark rápido em dados sintéticos só para validar o fluxo.
-            from benchmarks import BenchmarkConfig, run_benchmark
+            # Modelos clássicos (sklearn) NÃO passam pelo factory Keras: têm um
+            # construtor próprio que monta um Pipeline (StandardScaler + classificador).
+            # Aqui instanciamos pelo MESMO caminho do benchmark clássico e
+            # inspecionamos a ESTRUTURA — simétrico ao summary() dos neurais. O
+            # treino+avaliação real acontece na célula seguinte (mesmo harness).
+            #
+            # Features (T×F) são achatadas para um vetor (T*F,): é exatamente o que
+            # o runner clássico faz internamente antes de chamar fit().
+            import numpy as np
 
-            cfg = BenchmarkConfig.quick(
-                architectures=[ARCHITECTURE],
-                synthetic_n=120,
-                snr_levels_db=[20],
-                output_dir=str(ROOT / "results" / "notebook_smoke" / ARCHITECTURE.lower()),
-            )
-            results = run_benchmark(cfg)
-            print("clean:", results["architectures"][ARCHITECTURE]["clean"])
+            if ARCHITECTURE == "SVM":
+                from app.domain.models.architectures.svm import (
+                    create_svm_model as make_classical,
+                )
+            else:
+                from app.domain.models.architectures.random_forest import (
+                    create_random_forest_model as make_classical,
+                )
+
+            n_features = int(np.prod(prepared.X.shape[1:]))
+            clf = make_classical(input_shape=(n_features,), num_classes=2)
+            print("Entrada achatada :", (n_features,))
+            print("Pipeline         :", " -> ".join(s for s, _ in clf.pipeline.steps))
+            print("Hiperparâmetros  :", clf.get_params())
             """
         else:
             inspect = f"""
