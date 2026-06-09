@@ -114,6 +114,16 @@ Pela UI: aba **Dataset → Preprocessamento → Pipeline Completo**.
 
 Os scripts agora dão **mensagens acionáveis**. Os erros mais comuns:
 
+### `ImportError: ... please install 'torchcodec'` (datasets 4.x)
+A biblioteca `datasets` **4.x** passou a exigir o `torchcodec` (torch + FFmpeg)
+para decodificar áudio e **quebra o download** — mesmo com `Audio(decode=False)`.
+O projeto fixa `datasets>=2.14,<4.0` (onde o decode é via `soundfile`). Se você
+estiver com a 4.x (ex.: ambiente novo, Colab):
+```bash
+pip install 'datasets>=2.14,<4.0'
+```
+Os notebooks de treino já fazem isso na célula de download.
+
 ### "requer AUTENTICAÇÃO no HuggingFace" (401)
 ```bash
 # 1. Crie um token: https://huggingface.co/settings/tokens

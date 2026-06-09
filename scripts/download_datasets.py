@@ -68,6 +68,25 @@ MAX_DURATION = 30.0
 DEFAULT_MAX_SAMPLES = 5_000
 
 
+def _warn_if_datasets_incompatible() -> None:
+    """A `datasets` 4.x passou a exigir `torchcodec` para decodificar áudio e
+    quebra o download (mesmo com Audio(decode=False)). Avisa claramente, com o
+    comando de correção, em vez de deixar estourar um ImportError obscuro de
+    torchcodec no meio da iteração do streaming."""
+    try:
+        import datasets
+
+        if int(datasets.__version__.split(".")[0]) >= 4:
+            logger.warning(
+                "datasets %s detectado — a 4.x exige 'torchcodec' e QUEBRA o "
+                "download de áudio. Instale uma versão compatível:\n"
+                "    pip install 'datasets>=2.14,<4.0'",
+                datasets.__version__,
+            )
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Diagnóstico de erros acionável (BUG.Datasets.2)
 # ---------------------------------------------------------------------------
@@ -82,7 +101,7 @@ def check_dependencies(required: list[str]) -> list[str]:
     """
     import importlib.util
     _pip_names = {
-        "datasets": "datasets>=4.0",
+        "datasets": "datasets>=2.14,<4.0",
         "huggingface_hub": "huggingface_hub",
         "pandas": "pandas",
         "requests": "requests",
@@ -393,7 +412,7 @@ def download_brspeech(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     try:
         from datasets import load_dataset
     except ImportError:
-        logger.error("Instale: pip install datasets>=4.0")
+        logger.error("Instale: pip install datasets>=2.14,<4.0")
         return
 
     samples_per_class = max_samples // 2
@@ -522,7 +541,7 @@ def download_cetuc(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     try:
         from datasets import load_dataset
     except ImportError:
-        logger.error("Instale: pip install datasets>=4.0")
+        logger.error("Instale: pip install datasets>=2.14,<4.0")
         return _download_cetuc_openslr(max_samples)
 
     dataset = None
@@ -693,7 +712,7 @@ def download_fleurs(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     try:
         from datasets import load_dataset
     except ImportError:
-        logger.error("Instale: pip install datasets>=4.0")
+        logger.error("Instale: pip install datasets>=2.14,<4.0")
         return
 
     existing = count_wavs(REAL_DIR, "fleurs")
@@ -743,7 +762,7 @@ def download_mlaad_pt(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     try:
         from datasets import load_dataset
     except ImportError:
-        logger.error("Instale: pip install datasets>=4.0")
+        logger.error("Instale: pip install datasets>=2.14,<4.0")
         return
 
     existing = count_wavs(FAKE_DIR, "mlaad")
@@ -822,7 +841,7 @@ def download_asvspoof2019(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     try:
         from datasets import load_dataset
     except ImportError:
-        logger.error("Instale: pip install datasets>=4.0")
+        logger.error("Instale: pip install datasets>=2.14,<4.0")
         return
 
     samples_per_class = max_samples // 2
@@ -1080,7 +1099,7 @@ def download_in_the_wild(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     try:
         from datasets import load_dataset
     except ImportError:
-        logger.error("Instale: pip install datasets>=4.0")
+        logger.error("Instale: pip install datasets>=2.14,<4.0")
         return
 
     samples_per_class = max_samples // 2
@@ -1187,7 +1206,7 @@ def download_common_voice_pt(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     try:
         from datasets import load_dataset
     except ImportError:
-        logger.error("Instale: pip install datasets>=4.0")
+        logger.error("Instale: pip install datasets>=2.14,<4.0")
         return
 
     existing = count_wavs(REAL_DIR, "cvpt")
@@ -1261,7 +1280,7 @@ def download_asvspoof5(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     try:
         from datasets import load_dataset
     except ImportError:
-        logger.error("Instale: pip install datasets>=4.0")
+        logger.error("Instale: pip install datasets>=2.14,<4.0")
         return
 
     samples_per_class = max_samples // 2
@@ -1393,6 +1412,7 @@ def main() -> None:
                         help="Máximo de falantes do Fake Voices (padrão: 20)")
 
     args = parser.parse_args()
+    _warn_if_datasets_incompatible()
 
     _any = any([
         args.all, args.all_intl,

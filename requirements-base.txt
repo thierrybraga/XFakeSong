@@ -44,7 +44,10 @@ slowapi>=0.1.9
 a2wsgi>=1.10
 
 # --- Datasets (scripts de download HuggingFace) ---
-datasets>=2.14
+# Teto <4.0: o datasets 4.x passou a exigir `torchcodec` (torch + FFmpeg) para
+# decodificar áudio, quebrando o download (mesmo com Audio(decode=False)). Até
+# 3.x o decode é via soundfile — o workaround de `download_datasets.py` funciona.
+datasets>=2.14,<4.0
 
 # --- Persistência / Config ---
 sqlalchemy>=2.0
