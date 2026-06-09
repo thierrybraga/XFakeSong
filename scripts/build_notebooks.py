@@ -666,6 +666,13 @@ def build_pipeline():
         > de dezenas de minutos a horas; em CPU é inviável. Por isso fica
         > **desligado por padrão** (`RUN_FULL_PIPELINE = False`). O
         > `--tcc-full-dataset` já ativa download + benchmark completo + probe da API.
+
+        A execução completa grava o relatório em `results/tcc_full_20k/`:
+        `dataset.md`, `dataset_manifest.json`, `results.json`/`results.csv`,
+        `tcc_report.md` e as figuras `figures/roc.png`,
+        `figures/confusion_matrices.png` e `figures/score_distributions.png`
+        (estes dois primeiros, `dataset.md`/`dataset_manifest.json`, só saem aqui —
+        a Seção 1 não baixa dataset).
         """),
         code("""
         import subprocess
