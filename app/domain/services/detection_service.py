@@ -28,9 +28,13 @@ class DetectionService(IDetectionService):
 
     def __init__(
         self,
-        models_dir: Union[str, Path] = "models",
+        models_dir: Union[str, Path] = "app/models",
         create_default_models: bool = True,
     ):
+        # Default = "app/models": é onde o TrainingService (default), o wizard do
+        # Gradio, a injeção de dependência da API e o CLI gravam/leem os modelos.
+        # Antes o default era "models" (raiz), que ficava VAZIO → a aba Detectar do
+        # Gradio (que instanciava com o default) não achava modelo nenhum.
         self.models_dir = Path(models_dir)
         self.feature_service = AudioFeatureExtractionService()
 
