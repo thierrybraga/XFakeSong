@@ -12,6 +12,7 @@ fontes canônicas de cada assunto.
 
 | Se você quer… | Leia |
 | --- | --- |
+| Entender a área (anti-spoofing, ameaças, métricas) | [Conceitos e Fundamentos](00_CONCEITOS.md) |
 | Entender o escopo do projeto | [Introdução](01_INTRODUCAO.md) |
 | Instalar e executar a aplicação | [Instalação e Configuração](02_INSTALACAO_CONFIGURACAO.md) |
 | Navegar pela Clean Architecture | [Arquitetura](03_ARQUITETURA.md) |
@@ -30,6 +31,7 @@ fontes canônicas de cada assunto.
 | Estudar com os notebooks | [Guia de Notebooks](16_NOTEBOOKS.md) |
 | Entender CI/CD e segurança | [CI/CD e Segurança](17_CICD_SEGURANCA.md) |
 | Consultar termos técnicos | [Glossário](18_GLOSSARIO.md) |
+| Tirar dúvidas rápidas | [Perguntas Frequentes (FAQ)](19_FAQ.md) |
 
 ## Visão de uma página
 

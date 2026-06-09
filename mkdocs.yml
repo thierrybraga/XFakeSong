@@ -17,6 +17,7 @@ theme:
     - navigation.top
     - navigation.tracking
     - navigation.indexes
+    - navigation.footer
     - toc.integrate
     - toc.follow
     - search.suggest
@@ -96,9 +97,11 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Começando:
+    - Conceitos e Fundamentos: 00_CONCEITOS.md
     - Introdução: 01_INTRODUCAO.md
     - Instalação e Configuração: 02_INSTALACAO_CONFIGURACAO.md
     - Guia Google Colab: 13_COLAB_GUIDE.md
+    - Perguntas Frequentes (FAQ): 19_FAQ.md
   - Arquitetura:
     - Visão Geral e Estrutura: 03_ARQUITETURA.md
     - Features de Áudio: 04_FEATURES.md
@@ -120,3 +123,7 @@ nav:
   - Deploy:
     - Hugging Face Spaces: 11_DEPLOY_HUGGINGFACE.md
   - Glossário: 18_GLOSSARIO.md
+  - Projeto:
+    - Contribuindo: https://github.com/thierrybraga/XFakeSong/blob/main/CONTRIBUTING.md
+    - Código de Conduta: https://github.com/thierrybraga/XFakeSong/blob/main/CODE_OF_CONDUCT.md
+    - Política de Segurança: https://github.com/thierrybraga/XFakeSong/blob/main/SECURITY.md
