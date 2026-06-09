@@ -112,11 +112,10 @@ notebooks/
 │   ├── 01_benchmark_tcc_full_pipeline.ipynb
 │   ├── 02_training_model.ipynb
 │   └── 03_inference.ipynb
-├── models/
-│   ├── 01_wavlm.ipynb
-│   ├── ...
-│   └── 14_random_forest.ipynb
-└── legacy/
+└── models/
+    ├── 01_wavlm.ipynb
+    ├── ...
+    └── 14_random_forest.ipynb
 ```
 
 Cada notebook em `notebooks/models/` documenta uma arquitetura, seu contrato de

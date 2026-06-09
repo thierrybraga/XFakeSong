@@ -14,7 +14,9 @@ Reconstrói, de forma reprodutível, os notebooks ATIVOS em `notebooks/`
 Cada célula de código é validada com `compile()` ANTES de ser gravada — se o
 gerador roda sem erro, todo o código dos notebooks é sintaticamente válido.
 
-NÃO altera `notebooks/legacy/` (preservado).
+O gerador é determinístico e NÃO depende de TensorFlow no build: o `input_type`
+de cada modelo vem do catálogo `MODELS` (cross-check opcional com o registry
+quando o factory está importável).
 
 Uso:
     python scripts/build_notebooks.py
@@ -31,6 +33,9 @@ ROOT = Path(__file__).resolve().parent.parent
 NB = ROOT / "notebooks"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+# Diretório canônico do relatório completo do TCC (fonte única do caminho).
+TCC_RESULTS = "tcc_full_20k"
 
 # Bootstrap comum: localiza a raiz do projeto e a coloca no sys.path.
 BOOTSTRAP = """\
@@ -55,7 +60,7 @@ for _mod in ("numpy", "pandas", "librosa", "sklearn", "tensorflow"):
     try:
         _m = __import__(_mod)
         print(f"{_mod:11s}:", getattr(_m, "__version__", "?"))
-    except Exception as _e:  # pragma: no cover
+    except Exception:  # pragma: no cover
         print(f"{_mod:11s}: (ausente)")
 try:
     import tensorflow as _tf
@@ -80,7 +85,12 @@ except Exception:  # pragma: no cover
 # MESMO harness de benchmark do TCC (accuracy/AUC/EER reais). Desligado por
 # padrão para manter a execução leve. `ARCHITECTURE` vem da célula anterior.
 EVAL_CELL = """\
-RUN_EVAL = False  # True → treina+avalia este modelo (rápido, dados sintéticos)
+import os
+
+# RUN_EVAL liga o treino+avaliação em dados sintéticos. Default desligado para
+# manter a execução leve; o render do CI exporta XFAKE_RUN_EVAL=1 para o HTML do
+# TCC mostrar métricas reais. Defina RUN_EVAL = True à mão para rodar localmente.
+RUN_EVAL = os.environ.get("XFAKE_RUN_EVAL", "0") == "1"
 
 if RUN_EVAL:
     from benchmarks import BenchmarkConfig, run_benchmark
@@ -156,71 +166,101 @@ def write_nb(rel_path: str, cells: list) -> None:
 
 
 # ───────────────────────── catálogo de modelos ─────────────────────────
-# (num, slug_arquivo, nome_no_registry, família, porquê estudar)
+# (num, slug_arquivo, nome_no_registry, input_type, família, porquê estudar)
+#
+# `input_type` é HARDCODED aqui (raw_audio | spectrogram | tabular) — fonte
+# autoritativa: `input_requirements["input_type"]` do registry. Manter no
+# catálogo deixa o gerador determinístico e SEM dependência de TensorFlow no
+# build (`_input_type` faz cross-check com o factory só quando ele está
+# importável, avisando se divergir). Se mudar um contrato no registry, rode o
+# gerador num ambiente com TF: o aviso aponta a linha a atualizar.
 MODELS = [
-    (1, "wavlm", "WavLM", "Foundation/SSL (raw-audio)",
+    (1, "wavlm", "WavLM", "raw_audio", "Foundation/SSL (raw-audio)",
      "Backbone auto-supervisionado; cabeça de classificação sobre features SSL."),
-    (2, "hubert", "HuBERT", "Foundation/SSL (raw-audio)",
+    (2, "hubert", "HuBERT", "raw_audio", "Foundation/SSL (raw-audio)",
      "Alternativa SSL ao WavLM; mesmo padrão de fine-tuning."),
-    (3, "rawnet2", "RawNet2", "Forma de onda (SincNet)",
+    (3, "rawnet2", "RawNet2", "raw_audio", "Forma de onda (SincNet)",
      "Processa PCM 1D via Sinc-Convolutions; baseline end-to-end."),
-    (4, "sonic_sleuth", "Sonic Sleuth", "Espectrograma (features in-model)",
+    (4, "sonic_sleuth", "Sonic Sleuth", "spectrogram",
+     "Espectrograma (features in-model)",
      "Extrai LFCC/MFCC/CQT dentro do grafo (tf.signal)."),
-    (5, "aasist", "AASIST", "Forma de onda + grafo",
+    (5, "aasist", "AASIST", "raw_audio", "Forma de onda + grafo",
      "Graph attention espectro-temporal; SOTA em datasets controlados."),
-    (6, "rawgat_st", "RawGAT-ST", "Forma de onda + grafo duplo",
+    (6, "rawgat_st", "RawGAT-ST", "raw_audio", "Forma de onda + grafo duplo",
      "SincConv + grafos espectral/temporal com fusão."),
-    (7, "conformer", "Conformer", "Espectrograma (conv+atenção)",
+    (7, "conformer", "Conformer", "spectrogram", "Espectrograma (conv+atenção)",
      "Convolução + self-attention para contexto local e global."),
-    (8, "hybrid_cnn_transformer", "Hybrid CNN-Transformer",
+    (8, "hybrid_cnn_transformer", "Hybrid CNN-Transformer", "spectrogram",
      "Espectrograma (híbrido)",
      "CNN para features locais + Transformer para dependências longas."),
-    (9, "spectrogram_transformer", "SpectrogramTransformer",
+    (9, "spectrogram_transformer", "SpectrogramTransformer", "spectrogram",
      "Espectrograma (AST)",
      "Audio Spectrogram Transformer: patches do espectrograma."),
-    (10, "efficientnet_lstm", "EfficientNet-LSTM", "Espectrograma + temporal",
+    (10, "efficientnet_lstm", "EfficientNet-LSTM", "spectrogram",
+     "Espectrograma + temporal",
      "EfficientNet (mel→224×224) + LSTM com atenção temporal."),
-    (11, "multiscale_cnn", "MultiscaleCNN", "Espectrograma (Res2Net)",
+    (11, "multiscale_cnn", "MultiscaleCNN", "spectrogram",
+     "Espectrograma (Res2Net)",
      "Convoluções multi-escala (Res2Net); baseline neural principal."),
-    (12, "ensemble", "Ensemble", "Espectrograma (multi-ramo)",
+    (12, "ensemble", "Ensemble", "spectrogram", "Espectrograma (multi-ramo)",
      "5 ramos convolucionais com fusão adaptativa; leve e rápido."),
-    (13, "svm", "SVM", "Clássico (tabular)",
+    (13, "svm", "SVM", "tabular", "Clássico (tabular)",
      "Baseline leve sobre features acústicas agregadas; ideal em CPU."),
-    (14, "random_forest", "RandomForest", "Clássico (tabular)",
+    (14, "random_forest", "RandomForest", "tabular", "Clássico (tabular)",
      "Ensemble de árvores sobre features agregadas; rápido e robusto."),
 ]
 CLASSICAL = {"SVM", "RandomForest"}
 
 
-def _input_type(display_name: str) -> str:
-    if display_name in CLASSICAL:
-        return "tabular"
+def _input_type(display_name: str, declared: str) -> str:
+    """Retorna o input_type do catálogo. Se o factory estiver importável, faz
+    cross-check com o registry e avisa (sem falhar) caso tenha divergido —
+    mantém o build determinístico e TF-free."""
     try:
         from app.domain.models.architectures.factory import get_architecture_info
 
         info = get_architecture_info(display_name)
         if info:
-            return info.input_requirements.get("input_type", "?")
-    except Exception as exc:
-        print(f"  aviso: contrato não lido para {display_name}: {exc}")
-    return "?"
+            actual = info.input_requirements.get("input_type")
+            if actual and actual != declared:
+                print(f"  AVISO: input_type de {display_name} divergiu: "
+                      f"catálogo={declared!r} ≠ registry={actual!r} — atualize MODELS.")
+            return actual or declared
+    except Exception:
+        pass  # TF ausente → usa o valor (determinístico) do catálogo.
+    return declared
 
 
 # ───────────────────────── 00_index ─────────────────────────
 
 def build_index():
+    # TOC com links relativos (clicáveis no Jupyter e no HTML renderizado).
+    model_links = "\n".join(
+        f"   - [{num:02d} · {name}](models/{num:02d}_{slug}.ipynb)"
+        for num, slug, name, _itype, _family, _why in MODELS
+    )
     write_nb("00_index.ipynb", [
         md("""
         # XFakeSong — Índice dos Notebooks
 
-        Estudos organizados em quatro blocos:
+        Estudos organizados em três blocos:
 
-        - `pipeline/`: benchmark completo, treino e inferência.
         - `features/`: extração e análise de features.
+        - `pipeline/`: benchmark completo, treino e inferência.
         - `models/`: um notebook por arquitetura (14 modelos).
-        - `legacy/`: notebooks antigos preservados.
 
         **Ordem sugerida:** features → pipeline → models.
+        """),
+        md(f"""
+        ## Sumário (links clicáveis)
+
+        1. [Estudo de features](features/01_feature_extraction_study.ipynb)
+        2. Pipeline
+           - [01 · Benchmark do TCC](pipeline/01_benchmark_tcc_full_pipeline.ipynb)
+           - [02 · Treino de um modelo](pipeline/02_training_model.ipynb)
+           - [03 · Inferência](pipeline/03_inference.ipynb)
+        3. Modelos
+        {model_links}
         """),
         md("""
         ## Como rodar
@@ -230,10 +270,12 @@ def build_index():
         jupyter lab          # ou: jupyter notebook
         ```
 
-        **Self-contained** (rodam sem dataset externo): este índice, `features/01`,
-        `pipeline/02`, `pipeline/03`, `models/13_svm`, `models/14_random_forest`.
-        Os demais `models/` instanciam o modelo (sem treino pesado); o treino
-        real/completo fica em `pipeline/`.
+        **Self-contained** (rodam sem dataset externo, em CPU): este índice,
+        `features/01`, `pipeline/02`, `pipeline/03`, `models/11_multiscale_cnn`
+        (neural leve), `models/13_svm` e `models/14_random_forest`. Os demais
+        `models/` instanciam o modelo e mostram o `summary()` (sem treino pesado);
+        o treino real/completo fica em `pipeline/`. Estes mesmos notebooks leves
+        são executados de verdade no CI (`tests/unit/test_notebooks_compile.py`).
         """),
         code(BOOTSTRAP),
         md("## Ambiente (versões — reprodutibilidade)"),
@@ -298,7 +340,6 @@ def build_features():
             wav, input_type="raw_audio", input_shape=(16000, 1),
             sample_rate=16000,
         )
-        import numpy as np
         print("LFCC   :", np.asarray(lfcc).shape)
         print("log-mel:", np.asarray(logmel).shape)
         print("raw    :", np.asarray(raw).shape)
@@ -326,7 +367,6 @@ def build_features():
         """),
         md("## 4. Visualizar"),
         code("""
-        import numpy as np
         import matplotlib.pyplot as plt
 
         fig, ax = plt.subplots(2, 3, figsize=(13, 6.2))
@@ -364,8 +404,8 @@ def build_features():
 # ───────────────────────── models/* ─────────────────────────
 
 def build_models():
-    for num, slug, name, family, why in MODELS:
-        itype = _input_type(name)
+    for num, slug, name, declared_itype, family, why in MODELS:
+        itype = _input_type(name, declared_itype)
         is_classical = name in CLASSICAL
         # célula de inspeção difere para clássico × neural
         if is_classical:
@@ -421,6 +461,8 @@ def build_models():
             Para treino real e métricas, use `notebooks/pipeline/`.
             """),
             code(BOOTSTRAP),
+            md("## Reprodutibilidade (semente numpy + TensorFlow)"),
+            code(SEED_ALL),
             code(f"""
             ARCHITECTURE = {name!r}
 
@@ -462,7 +504,7 @@ def build_models():
             code(f"""
             import json
 
-            metrics_path = ROOT / "results" / "tcc_full_20k" / "architectures" / {slug!r} / "metrics.json"
+            metrics_path = ROOT / "results" / {TCC_RESULTS!r} / "architectures" / {slug!r} / "metrics.json"
             if metrics_path.exists():
                 metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
                 print(json.dumps(metrics.get("clean", metrics), indent=2, ensure_ascii=False)[:2000])
@@ -562,6 +604,11 @@ def build_pipeline():
         code("""
         import json
         import pandas as pd
+
+        try:                                  # display() só existe no kernel IPython
+            from IPython.display import display
+        except Exception:
+            display = print
 
         report_dir = ROOT / "results" / "tcc_full_20k"
         required = [
@@ -706,7 +753,7 @@ def build_pipeline():
 
 
 def main() -> int:
-    print("Gerando notebooks (legacy/ é preservado)...")
+    print("Gerando notebooks ativos (00_index, features/, models/, pipeline/)...")
     build_index()
     build_features()
     build_models()

@@ -31,24 +31,6 @@ def _notebook_text(path: Path) -> str:
     return "\n".join("".join(c.get("source", [])) for c in nbj.get("cells", []))
 
 
-def _strip_ipython_magics(src: str) -> str:
-    """Remove magics do IPython (`!shell`, `%magic`, `%%cellmagic`) que não são
-    Python válido — permite validar só a sintaxe Python das células.
-
-    Células iniciadas por `%%cellmagic` (corpo não-Python, ex.: `%%bash`) são
-    inteiramente ignoradas.
-    """
-    lines = src.splitlines()
-    for ln in lines:
-        if ln.strip():
-            if ln.lstrip().startswith("%%"):
-                return ""
-            break
-    return "\n".join(
-        ln for ln in lines if not ln.lstrip().startswith(("!", "%"))
-    )
-
-
 def test_expected_notebook_structure():
     names = {p.relative_to(_NB).as_posix() for p in _active_notebooks()}
     assert "00_index.ipynb" in names
@@ -114,22 +96,6 @@ def test_features_notebook_covers_runtime_and_classic_features():
         assert term in text
 
 
-def test_legacy_notebook_code_cells_compile_after_archive_notice():
-    legacy_notebooks = sorted((_NB / "legacy").glob("*.ipynb"))
-    assert legacy_notebooks
-    for nb_path in legacy_notebooks:
-        nbj = json.loads(nb_path.read_text(encoding="utf-8"))
-        text = _notebook_text(nb_path)
-        assert "Legacy" in text
-        for i, cell in enumerate(
-            [c for c in nbj["cells"] if c["cell_type"] == "code"]
-        ):
-            # Notebooks legacy contêm magics (`!pip install`, `%matplotlib`) —
-            # remova-os antes do compile (validamos só a sintaxe Python).
-            src = _strip_ipython_magics("".join(cell["source"]))
-            compile(src, f"{nb_path.name}#legacy-code{i}", "exec")
-
-
 @pytest.mark.parametrize(
     "rel_path",
     [
@@ -140,7 +106,11 @@ def test_legacy_notebook_code_cells_compile_after_archive_notice():
         # Self-contained (treinam em dados sintéticos): pegam erros de runtime
         # que o compile() não detecta (ex.: APIs do TrainingService/ModelLoader/
         # factory mudarem). N1 da revisão de notebooks.
-        "models/11_multiscale_cnn.ipynb",
+        "models/11_multiscale_cnn.ipynb",  # caminho espectrograma
+        # RawNet2 cobre o caminho RAW-AUDIO (SincConv + _to_raw_audio), que de
+        # outro modo só seria compile-checado — pega drift na construção do
+        # modelo raw para a forma sintética preparada pelo benchmark.
+        "models/03_rawnet2.ipynb",
         "pipeline/02_training_model.ipynb",
         "pipeline/03_inference.ipynb",
     ],

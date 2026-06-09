@@ -39,7 +39,6 @@ Os notebooks ficam organizados por finalidade:
 | `notebooks/pipeline/02_training_model.ipynb` | Treino prático de um modelo pelo benchmark | CPU para SVM/RF, GPU para neurais |
 | `notebooks/pipeline/03_inference.ipynb` | Leitura de predições e fluxo de inferência | CPU ou GPU |
 | `notebooks/models/*.ipynb` | Um notebook de estudo para cada arquitetura | CPU para inspeção, GPU para treino |
-| `notebooks/legacy/` | Notebooks antigos preservados | Conforme notebook |
 
 Para o experimento completo do TCC, comece por
 `notebooks/pipeline/01_benchmark_tcc_full_pipeline.ipynb`. Ele documenta o
