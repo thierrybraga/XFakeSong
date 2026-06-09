@@ -30,7 +30,6 @@ notebooks/
 │   ├── 12_ensemble.ipynb
 │   ├── 13_svm.ipynb
 │   └── 14_random_forest.ipynb
-└── legacy/
 ```
 
 ## Ordem Recomendada
@@ -116,11 +115,13 @@ O teste de notebooks também verifica:
   `RUN_FULL_PIPELINE = False`;
 - presença dos artefatos esperados (`dataset.md`, `tcc_report.md`, PNGs);
 - notebook de features cobrindo front-end real e features clássicas;
-- notebooks legados com aviso de arquivamento e células de código compiláveis.
-- execução real opcional de uma amostra leve (`00_index`, features, SVM e
-  RandomForest) quando `nbformat` e `nbclient` estiverem instalados.
+- execução real opcional de uma amostra leve quando `nbformat`/`nbclient` estão
+  instalados, cobrindo **ambos os caminhos**: espectrograma (`11_multiscale_cnn`)
+  e **raw-audio** (`03_rawnet2`, SincConv), além de `00_index`, features, SVM,
+  RandomForest e os notebooks de `pipeline/`.
 
-Use o gerador quando a lista de modelos, os comandos de benchmark ou a estrutura
-didática mudarem. Os notebooks antigos ficam preservados em `notebooks/legacy/`
-(não são regenerados). O teste `tests/unit/test_notebooks_compile.py` garante
-que todas as células de código continuam compilando.
+O gerador é **determinístico e TF-free**: o `input_type` de cada modelo vem do
+catálogo `MODELS` (cross-check opcional com o registry quando o factory está
+importável). Use-o quando a lista de modelos, os comandos de benchmark ou a
+estrutura didática mudarem. O teste `tests/unit/test_notebooks_compile.py`
+garante que todas as células de código continuam compilando.

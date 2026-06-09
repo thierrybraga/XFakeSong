@@ -10,7 +10,6 @@ Estrutura reorganizada para estudo e reprodução dos experimentos do TCC.
 | `pipeline/` | Benchmark completo, treino e inferência |
 | `features/` | Extração e estudo de features |
 | `models/` | Um notebook por modelo/arquitetura |
-| `legacy/` | Notebooks antigos preservados |
 
 ## Ordem recomendada
 
@@ -29,5 +28,5 @@ com alvo de 10.000 amostras reais + 10.000 amostras fake.
 Os notebooks ativos (`00_index`, `features/`, `models/`, `pipeline/`) são
 **gerados** por `python scripts/build_notebooks.py` — todas as células de código
 são validadas com `compile()` e usam a API real do projeto. O teste
-`tests/unit/test_notebooks_compile.py` garante que continuam funcionais. Os
-notebooks em `legacy/` são preservados e não são regenerados.
+`tests/unit/test_notebooks_compile.py` garante que continuam funcionais. O
+gerador é determinístico e não depende de TensorFlow no build.

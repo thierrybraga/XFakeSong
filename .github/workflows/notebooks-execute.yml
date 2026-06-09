@@ -21,6 +21,9 @@ jobs:
     env:
       MPLBACKEND: Agg
       XFAKE_API_ONLY: "1"
+      # Liga a avaliação gated (treino+métricas em dados sintéticos) para o HTML
+      # do TCC mostrar accuracy/AUC/EER reais em vez do placeholder RUN_EVAL=False.
+      XFAKE_RUN_EVAL: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v6
@@ -39,9 +42,11 @@ jobs:
             --output-dir rendered \
             notebooks/00_index.ipynb \
             notebooks/features/01_feature_extraction_study.ipynb \
+            notebooks/models/03_rawnet2.ipynb \
             notebooks/models/11_multiscale_cnn.ipynb \
             notebooks/models/13_svm.ipynb \
             notebooks/models/14_random_forest.ipynb \
+            notebooks/pipeline/01_benchmark_tcc_full_pipeline.ipynb \
             notebooks/pipeline/02_training_model.ipynb \
             notebooks/pipeline/03_inference.ipynb
       - name: Publicar HTML como artefato
