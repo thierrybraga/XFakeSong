@@ -72,11 +72,15 @@ class SVMModel(BaseClassicalModel):
             f"SVM model initialized with kernel={kernel}, C={C}, gamma={gamma}")
 
     def _create_pipeline(self) -> Pipeline:
+        # Com calibração externa (CalibratedClassifierCV), desliga o Platt
+        # interno do SVC (probability=True): dupla calibração aninhada degrada
+        # as probabilidades e duplica o custo de fit. O CalibratedClassifierCV
+        # usa decision_function e fornece o predict_proba.
         clf = SVC(
             kernel=self.kernel,
             C=self.C,
             gamma=self.gamma,
-            probability=self.probability,
+            probability=self.probability and not self.calibrate,
             random_state=self.random_state,
             **self.kwargs
         )

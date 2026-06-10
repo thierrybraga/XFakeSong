@@ -133,6 +133,7 @@ def _create_efficientnet_lstm_model(
     num_classes: int = 1,
     lstm_units: int = 256,
     dropout_rate: float = 0.3,
+    pretrained: bool = True,
     architecture: str = 'efficientnet_lstm'
 ) -> models.Model:
     """Create EfficientNet-LSTM model based on literature.
@@ -174,15 +175,34 @@ def _create_efficientnet_lstm_model(
                 x = layers.Conv2D(3, (1, 1), name='channel_proj')(x)
 
     # ---------- EfficientNet-B0 feature extraction ----------
-    # Per arXiv:2407.01777: EfficientNet-B0 as backbone on spectrograms
-    efficientnet = EfficientNetB0(
-        weights=None,
-        include_top=False,
-        input_shape=(224, 224, 3)
-    )
-    # Unfreeze last 3 EfficientNet layers for fine-tuning
-    for layer in efficientnet.layers[-3:]:
-        layer.trainable = True
+    # Per arXiv:2407.01777: EfficientNet-B0 as backbone on spectrograms.
+    # TRANSFER LEARNING DE VERDADE: tenta pesos ImageNet (download na 1ª vez,
+    # com fallback gracioso para None se offline). Antes era weights=None
+    # (treino do zero) e o "unfreeze last 3" era inócuo — com weights=None
+    # tudo já é treinável e nada havia sido congelado.
+    _weights = "imagenet" if pretrained else None
+    try:
+        efficientnet = EfficientNetB0(
+            weights=_weights,
+            include_top=False,
+            input_shape=(224, 224, 3)
+        )
+    except Exception as e:
+        logger.warning(
+            f"Pesos ImageNet indisponíveis ({e}); EfficientNet-B0 do zero."
+        )
+        _weights = None
+        efficientnet = EfficientNetB0(
+            weights=None,
+            include_top=False,
+            input_shape=(224, 224, 3)
+        )
+    if _weights == "imagenet":
+        # Congela o backbone e fine-tuna só o bloco final (block7 + top_conv),
+        # a receita padrão de transfer learning para domínios próximos.
+        efficientnet.trainable = True
+        for layer in efficientnet.layers:
+            layer.trainable = layer.name.startswith(("block7", "top_"))
     # Feature maps: (batch, 7, 7, 1280)
     feature_maps = efficientnet(x)
 

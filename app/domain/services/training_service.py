@@ -323,6 +323,10 @@ class TrainingService(ITrainingService):
             train_conf_dict = {
                 k: v for k, v in config.items() if k in valid_fields
             }
+            # Marca LR como explícito SÓ quando o chamador o passou — permite
+            # ao ModelTrainer (compile-respect) sobrescrever o LR da
+            # arquitetura apenas nesse caso.
+            train_conf_dict["lr_is_explicit"] = "learning_rate" in config
             # Aplica os defaults recomendados pelo registry (patience etc.) sem
             # sobrescrever o que o usuário definiu explicitamente.
             for k, v in getattr(self, '_recommended_training', {}).items():

@@ -750,7 +750,8 @@ def create_conformer_model(input_shape, num_classes=2, d_model=256, d_ff=1024,
     # Label smoothing cross-entropy loss
     def label_smoothing_loss(y_true, y_pred, smoothing=0.1):
         num_classes = tf.cast(tf.shape(y_pred)[-1], tf.float32)
-        y_true_int = tf.cast(tf.squeeze(y_true), tf.int32)
+        # reshape em vez de squeeze: squeeze total colapsaria batch=1 a escalar
+        y_true_int = tf.cast(tf.reshape(y_true, [-1]), tf.int32)
         one_hot = tf.one_hot(y_true_int, tf.cast(num_classes, tf.int32))
         smoothed = one_hot * (1.0 - smoothing) + smoothing / num_classes
         return tf.reduce_mean(tf.keras.losses.categorical_crossentropy(smoothed, y_pred))

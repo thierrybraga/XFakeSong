@@ -55,12 +55,17 @@ class AudioResamplingLayer(layers.Layer):
         if self.source_sample_rate == self.target_sample_rate:
             y = x
         else:
+            # `tf.signal.resample` NÃO existe — o branch antigo quebraria com
+            # AttributeError na 1ª execução com taxas distintas. Reamostragem
+            # por interpolação linear via tf.image.resize (1D como imagem Nx1).
             in_len = tf.shape(x)[-1]
             ratio = tf.cast(self.target_sample_rate, tf.float32) / tf.cast(
                 self.source_sample_rate, tf.float32
             )
             target_len = tf.cast(tf.round(tf.cast(in_len, tf.float32) * ratio), tf.int32)
-            y = tf.signal.resample(x, target_len, axis=-1)
+            img = tf.expand_dims(tf.expand_dims(x, axis=-1), axis=-1)  # (B,T,1,1)
+            img = tf.image.resize(img, [target_len, 1], method="bilinear")
+            y = tf.squeeze(img, axis=[-1, -2])
 
         if squeezed:
             y = tf.expand_dims(y, axis=-1)
@@ -119,7 +124,7 @@ def _create_rawnet2_model(
     # 2. SincNet Front-end
     x = SincNetLayer(filters=sinc_filters, kernel_size=sinc_kernel_size, name='sincnet')(x)
     x = layers.BatchNormalization()(x)
-    x = layers.LeakyReLU(alpha=0.3)(x)
+    x = layers.LeakyReLU(negative_slope=0.3)(x)
     x = layers.MaxPooling1D(pool_size=3)(x)
 
     # 3. Residual Blocks + FMS
@@ -132,21 +137,17 @@ def _create_rawnet2_model(
             x = layers.MaxPooling1D(pool_size=3)(x)
 
     # 4. Temporal Modeling (GRU)
+    # Paridade com o paper "Improved RawNet": UMA camada GRU(1024) — antes
+    # havia duas empilhadas, dobrando params/latência sem respaldo no paper.
     # Em Keras 3 o layers.GRU usa cuDNN automaticamente quando as condições
     # são atendidas (recurrent_dropout=0, ativações padrão, sem mask).
-    # Não há mais necessidade do branch GPU/CPU manual.
     x = layers.BatchNormalization()(x)
-    x = layers.LeakyReLU(alpha=0.3)(x)
+    x = layers.LeakyReLU(negative_slope=0.3)(x)
 
-    x = layers.GRU(
-        units=gru_units, return_sequences=True,
-        dropout=dropout_rate, recurrent_dropout=0.0,
-        name='gru_1'
-    )(x)
     x = layers.GRU(
         units=gru_units, return_sequences=False,
         dropout=dropout_rate, recurrent_dropout=0.0,
-        name='gru_2'
+        name='gru_1'
     )(x)
 
     # 5. Classification Head
