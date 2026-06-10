@@ -317,26 +317,25 @@ class ConvBlock(layers.Layer):
 
 
 def preprocess(x):
-    """Global preprocessing function for Sonic Sleuth compatibility."""
+    """Global preprocessing function for Sonic Sleuth compatibility.
+
+    Vetorizado: `tf.signal.stft` opera direto no batch (B, T) — o loop
+    Python anterior (`for i in range(tf.shape(x)[0])`) quebrava em graph
+    mode (range sobre tensor simbólico).
+    """
     if len(x.shape) == 2 and x.shape[-1] == 1:
         x = tf.squeeze(x, axis=-1)
     if len(x.shape) == 2:
-        mel_spectrograms = []
-        for i in range(tf.shape(x)[0]):
-            audio_sample = x[i]
-            stft = tf.signal.stft(
-                audio_sample, frame_length=1024,
-                frame_step=256, fft_length=1024
-            )
-            magnitude = tf.abs(stft)
-            mel_weight_matrix = tf.signal.linear_to_mel_weight_matrix(
-                num_mel_bins=128, num_spectrogram_bins=513,
-                sample_rate=16000, lower_edge_hertz=0.0,
-                upper_edge_hertz=8000.0
-            )
-            mel_spectrogram = tf.tensordot(magnitude, mel_weight_matrix, 1)
-            mel_spectrograms.append(mel_spectrogram)
-        x = tf.stack(mel_spectrograms)
+        stft = tf.signal.stft(
+            x, frame_length=1024, frame_step=256, fft_length=1024
+        )
+        magnitude = tf.abs(stft)
+        mel_weight_matrix = tf.signal.linear_to_mel_weight_matrix(
+            num_mel_bins=128, num_spectrogram_bins=513,
+            sample_rate=16000, lower_edge_hertz=0.0,
+            upper_edge_hertz=8000.0
+        )
+        x = tf.tensordot(magnitude, mel_weight_matrix, 1)
     if len(x.shape) == 3:
         x = tf.expand_dims(x, axis=-1)
     x = tf.nn.sigmoid(x)
@@ -486,7 +485,11 @@ def _create_sonic_sleuth_paper(input_shape, num_classes=1, feature_type='lfcc',
         metrics=['accuracy']
     )
 
-    logger.info(f"Sonic Sleuth (paper-faithful) created: feature_type={feature_type}, params={model.count_params()}")
+    logger.info(
+        f"Sonic Sleuth (enhanced, paper-inspired: 5 ConvBlocks+SE+residual vs "
+        f"3 do paper) created: feature_type={feature_type}, "
+        f"params={model.count_params()}"
+    )
     return model
 
 

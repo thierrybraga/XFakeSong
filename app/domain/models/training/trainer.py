@@ -169,21 +169,47 @@ class ModelTrainer(IModelTrainer):
                     "Dados de validação fornecidos externamente - pipeline seguro não aplicado"
                 )
 
-            # Configurar otimizador
-            optimizer = self.optimizer_factory.create_optimizer(
-                self.config.optimizer, learning_rate=self.config.learning_rate
-            )
-
-            # Compilar modelo — a loss é resolvida conforme a SAÍDA real do
-            # modelo + o formato dos labels, evitando o rank mismatch
-            # "target and output must have the same rank" (ex.: softmax de 2
-            # unidades + labels esparsos com binary_crossentropy default).
-            resolved_loss = self._resolve_loss(model, y_train)
-            model.compile(
-                optimizer=optimizer,
-                loss=resolved_loss,
-                metrics=self._resolve_metrics(),
-            )
+            # ── Compile-respect ─────────────────────────────────────────────
+            # Cada arquitetura compila a si mesma com loss/otimizador corretos
+            # (ex.: AASIST = AM-Softmax logits + loss from_logits=True + AdamW
+            # clipnorm; Conformer/CCT/AST = WarmupCosineDecay; WavLM/HuBERT =
+            # LR baixo p/ fine-tune SSL). Recompilar aqui DESCARTAVA tudo isso e
+            # — pior — aplicava a string "sparse_categorical_crossentropy"
+            # (from_logits=False) sobre logits crus do AASIST, quebrando o
+            # treino. Agora: modelo já compilado é RESPEITADO; só ajustamos o
+            # LR quando o chamador o definiu explicitamente (lr_is_explicit).
+            already_compiled = getattr(model, "optimizer", None) is not None
+            if already_compiled:
+                self.logger.info(
+                    "Modelo já compilado pela arquitetura — preservando "
+                    "loss/otimizador originais."
+                )
+                if getattr(self.config, "lr_is_explicit", False):
+                    try:
+                        model.optimizer.learning_rate = self.config.learning_rate
+                        self.logger.info(
+                            f"LR explícito aplicado: {self.config.learning_rate}"
+                        )
+                    except Exception as e:
+                        # LR pode ser um schedule (WarmupCosineDecay) — nesse
+                        # caso o schedule da arquitetura prevalece.
+                        self.logger.warning(
+                            f"LR explícito ignorado (schedule da arquitetura "
+                            f"prevalece): {e}"
+                        )
+            else:
+                optimizer = self.optimizer_factory.create_optimizer(
+                    self.config.optimizer,
+                    learning_rate=self.config.learning_rate,
+                )
+                # A loss é resolvida conforme a SAÍDA real do modelo (inclusive
+                # ativação linear → from_logits=True) + o formato dos labels.
+                resolved_loss = self._resolve_loss(model, y_train)
+                model.compile(
+                    optimizer=optimizer,
+                    loss=resolved_loss,
+                    metrics=self._resolve_metrics(),
+                )
 
             # Preparar callbacks
             callbacks = self._prepare_callbacks(**kwargs)
@@ -193,7 +219,14 @@ class ModelTrainer(IModelTrainer):
                 train_dataset = self.augmenter.create_augmented_dataset(
                     X_train, y_train, self.config.batch_size
                 )
-                steps_per_epoch = len(X_train) // self.config.batch_size
+                # O dataset aumentado é FINITO (~2N amostras). Com
+                # steps_per_epoch fixo e SEM repeat(), o iterator esgotava na
+                # ~2ª época e o Keras interrompia o treino ("ran out of data").
+                # repeat() + steps_per_epoch garante épocas completas sempre.
+                train_dataset = train_dataset.repeat()
+                steps_per_epoch = max(
+                    1, len(X_train) // self.config.batch_size
+                )
             else:
                 train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
                 train_dataset = train_dataset.batch(self.config.batch_size)
@@ -614,6 +647,31 @@ class ModelTrainer(IModelTrainer):
 
         y = np.asarray(y_train)
         labels_one_hot = y.ndim > 1 and y.shape[-1] > 1
+
+        # Saída LINEAR (sem sigmoid/softmax) emite LOGITS CRUS — ex.: AASIST
+        # com AMSoftmaxLayer. As strings de loss do Keras assumem
+        # from_logits=False e fariam log/normalização de valores negativos
+        # (gradiente sem sentido). Detecta e usa objetos com from_logits=True.
+        from_logits = False
+        try:
+            last_act = getattr(model.layers[-1], "activation", None)
+            from_logits = last_act is None or last_act is tf.keras.activations.linear
+        except Exception:
+            pass
+
+        if from_logits:
+            if out_units == 1:
+                chosen = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+            elif labels_one_hot:
+                chosen = tf.keras.losses.CategoricalCrossentropy(from_logits=True)
+            else:
+                chosen = tf.keras.losses.SparseCategoricalCrossentropy(
+                    from_logits=True
+                )
+            self.logger.info(
+                "Saída linear detectada (logits crus) — loss com from_logits=True."
+            )
+            return chosen
 
         if out_units == 1:
             chosen = "binary_crossentropy"

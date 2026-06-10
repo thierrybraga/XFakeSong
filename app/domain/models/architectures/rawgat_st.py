@@ -193,6 +193,15 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         x = layers.GlobalAveragePooling1D(name="transformer_avg_pool")(x)
 
     elif architecture == "rawgat_st":
+        # Cabeça softmax multi-classe: com num_classes=1, softmax de 1 unidade
+        # emite constante 1.0 e a CCE é identicamente zero (não aprende).
+        # Promove para 2 classes (real/fake).
+        if num_classes < 2:
+            logger.info(
+                "RawGAT-ST: num_classes=1 promovido para 2 (softmax de 1 "
+                "unidade degeneraria a saída)."
+            )
+            num_classes = 2
         # ================================================================
         # RawGAT-ST: End-to-End Spectro-Temporal Graph Attention Networks
         # (Tak et al., 2021) — IMPLEMENTAÇÃO FIEL AO PAPER.

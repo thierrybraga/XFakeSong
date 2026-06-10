@@ -41,16 +41,11 @@ class AudioAugmenter:
             # Dataset aumentado
             augmented_datasets = []
 
-            # Aplicar diferentes técnicas de augmentation
-            techniques = [
-                self._add_noise,
-                self._time_shift,
-                self._volume_change,
-                self._frequency_mask,
-                self._time_mask,
-                self._rawboost,
-                self._codec_simulation,
-            ]
+            # Técnicas selecionadas pelo DOMÍNIO da entrada: RawBoost/codec só
+            # fazem sentido em forma de onda; SpecAugment (freq/time mask) só
+            # em espectrograma. Antes, todas eram aplicadas a qualquer input
+            # (ex.: máscara de "frequência" em waveform = zerar amostras).
+            techniques = self._select_techniques(X.shape)
 
             num_augmented = int(len(X) * (augmentation_factor - 1))
             samples_per_technique = num_augmented // len(techniques)
@@ -90,6 +85,21 @@ class AudioAugmenter:
             # Fallback para dataset original
             dataset = tf.data.Dataset.from_tensor_slices((X, y))
             return dataset.batch(batch_size)
+
+    def _select_techniques(self, x_shape) -> list:
+        """Seleciona técnicas de augmentation pelo formato do batch X.
+
+        - raw-audio  — (N, T) ou (N, T, 1): ruído, shift, volume, RawBoost,
+          simulação de codec (distorções de forma de onda).
+        - espectrograma — (N, T, F>1) ou (N, T, F, C): ruído, shift, volume,
+          SpecAugment (máscaras de frequência/tempo).
+        """
+        rank = len(x_shape)
+        is_raw = rank == 2 or (rank == 3 and int(x_shape[-1]) == 1)
+        common = [self._add_noise, self._time_shift, self._volume_change]
+        if is_raw:
+            return common + [self._rawboost, self._codec_simulation]
+        return common + [self._frequency_mask, self._time_mask]
 
     def _add_noise(self, audio_features: tf.Tensor,
                    label: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:

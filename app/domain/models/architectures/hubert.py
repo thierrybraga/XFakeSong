@@ -62,10 +62,14 @@ class HuBERTFeatureExtractor(layers.Layer):
 
         if HF_AVAILABLE:
             try:
-                # Carregar modelo HuBERT pré-treinado
+                # Carregar modelo HuBERT pré-treinado. O checkpoint do hub
+                # (facebook/hubert-base-ls960) só tem pesos PyTorch — é
+                # preciso `from_pt=True` para a conversão automática PT→TF.
+                # (Antes usava `from_tf=True`, que procurava um tf_model.h5
+                # inexistente → falhava SEMPRE e caía no simplificado.)
                 self.hubert_model = TFHubertModel.from_pretrained(
                     model_name,
-                    from_tf=True
+                    from_pt=True
                 )
 
                 # Configurar para retornar todos os hidden states para weighted sum
@@ -291,9 +295,15 @@ def _create_hubert_model(input_shape: Tuple[int, ...],
         outputs=outputs,
         name=f"hubert_{architecture}")
 
-    # Compilar modelo. Fine-tuning parcial → LR baixo (1e-5) p/ não esquecer
-    # os pesos pré-treinados; backbone congelado → LR padrão (1e-4).
-    lr = 1e-5 if n_trainable_layers and n_trainable_layers > 0 else 1e-4
+    # Compilar modelo. Fine-tuning parcial do backbone SSL REAL → LR baixo
+    # (1e-5) p/ não esquecer os pesos pré-treinados; backbone congelado OU
+    # fallback simplificado (CNN do zero, sem pesos a preservar) → 1e-4.
+    using_simplified = hasattr(feature_extractor, '_use_simplified')
+    lr = (
+        1e-5
+        if (n_trainable_layers and n_trainable_layers > 0 and not using_simplified)
+        else 1e-4
+    )
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
     model.compile(
         optimizer=optimizer,

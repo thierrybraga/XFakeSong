@@ -22,7 +22,12 @@ from app.domain.models.architectures.layers import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Tentar importar Transformers
+# Tentar importar Transformers.
+# ATENÇÃO: o `transformers` NÃO fornece WavLM em TensorFlow (`TFWavLMModel`
+# não existe — WavLM é PyTorch-only). Logo este import falha MESMO com
+# transformers instalado, e o backbone usado é sempre a implementação
+# simplificada (CNN 1D). HuBERT (TFHubertModel) é a opção SSL com backbone
+# real em TF.
 try:
     from transformers import TFWavLMModel, Wav2Vec2Processor
     HF_AVAILABLE = True
@@ -30,7 +35,11 @@ except ImportError:
     HF_AVAILABLE = False
     TFWavLMModel = None
     Wav2Vec2Processor = None
-    logger.info("Transformers library not found. Using simplified WavLM implementation.")
+    logger.warning(
+        "Backbone WavLM real indisponível (transformers ausente ou sem "
+        "TFWavLMModel — WavLM é PyTorch-only). Usando implementação "
+        "simplificada; para SSL real em TF use HuBERT."
+    )
 
 
 class WavLMFeatureExtractor(layers.Layer):
@@ -49,10 +58,11 @@ class WavLMFeatureExtractor(layers.Layer):
 
         if HF_AVAILABLE:
             try:
-                # Carregar modelo WavLM pré-treinado
+                # Carregar modelo WavLM pré-treinado (checkpoint do hub é
+                # PyTorch → from_pt=True converte automaticamente).
                 self.wavlm_model = TFWavLMModel.from_pretrained(
                     model_name,
-                    from_tf=True
+                    from_pt=True
                 )
 
                 # Configurar para retornar todos os hidden states para weighted sum
@@ -247,10 +257,15 @@ def _create_wavlm_model(input_shape: Tuple[int, ...],
         outputs=outputs,
         name=f'wavlm_{architecture}')
 
-    # Compilar modelo. Em fine-tuning parcial (backbone SSL descongelado) usa-se
-    # LR baixo (1e-5) para evitar esquecimento catastrófico dos pesos pré-treinados;
-    # com backbone congelado, LR padrão (1e-4) para o classificador.
-    lr = 1e-5 if n_trainable_layers and n_trainable_layers > 0 else 1e-4
+    # Compilar modelo. Fine-tuning parcial do backbone SSL REAL → LR baixo
+    # (1e-5) p/ evitar esquecimento catastrófico; backbone congelado OU
+    # fallback simplificado (CNN do zero, nada a preservar) → 1e-4.
+    using_simplified = hasattr(feature_extractor, '_use_simplified')
+    lr = (
+        1e-5
+        if (n_trainable_layers and n_trainable_layers > 0 and not using_simplified)
+        else 1e-4
+    )
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
     model.compile(
         optimizer=optimizer,

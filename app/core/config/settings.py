@@ -143,6 +143,11 @@ class TrainingConfig:
     batch_size: int = 32
     epochs: int = 100
     learning_rate: float = 0.001
+    # True quando o CHAMADOR definiu learning_rate explicitamente (setado pelo
+    # TrainingService). Com o compile-respect do ModelTrainer, modelos já
+    # compilados pela arquitetura preservam seu otimizador; o LR só é
+    # sobrescrito quando foi pedido de fato — o default acima não conta.
+    lr_is_explicit: bool = False
     validation_split: float = 0.2
     test_split: float = 0.1
     early_stopping_patience: int = 10

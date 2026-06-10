@@ -188,6 +188,16 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         x = layers.GlobalAveragePooling1D(name="transformer_avg_pool")(x)
 
     elif architecture == "aasist":
+        # A cabeça AM-Softmax é inerentemente multi-classe: com num_classes=1
+        # a CCE sobre 1 logit é identicamente zero (modelo não aprende).
+        # Promove para 2 classes (real/fake) — o Predictor já entende ambas
+        # as convenções de saída.
+        if num_classes < 2:
+            logger.info(
+                "AASIST: num_classes=1 promovido para 2 (AM-Softmax é "
+                "multi-classe; 1 classe degeneraria a loss)."
+            )
+            num_classes = 2
         # ================================================================
         # AASIST: Audio Anti-Spoofing using Integrated Spectro-Temporal
         # Graph Attention Networks (Jung et al., ICASSP 2022)
@@ -294,12 +304,21 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         # y_pred ∈ [-15, 15] → log(valor_negativo) = NaN → loss NaN na época 1.
         # Solução: from_logits=True aplica softmax interno via log-sum-exp numericamente
         # estável ANTES de calcular o log, evitando log de valores negativos.
+        # Margem aditiva (CosFace) aplicada NA LOSS: a AMSoftmaxLayer emite
+        # s·cos(θ) sem margem (no grafo funcional os labels nunca chegam ao
+        # call da camada, então a margem lá era código morto). Aqui, com
+        # y_true disponível, subtraímos s·m do logit da classe-alvo —
+        # exatamente o AM-Softmax do paper — e mantemos o label smoothing.
+        _am_scale, _am_margin = 15.0, 0.35  # manter em sincronia com a camada
+
         def label_smoothing_loss(y_true, y_pred):
             num_classes_f = tf.cast(tf.shape(y_pred)[-1], tf.float32)
             y_true_int = tf.cast(y_true, tf.int32)
             if len(y_true_int.shape) > 1:
                 y_true_int = tf.squeeze(y_true_int, axis=-1)
             one_hot = tf.one_hot(y_true_int, tf.cast(num_classes_f, tf.int32))
+            # CosFace: logit_alvo ← s·(cos(θ) − m) = s·cos(θ) − s·m
+            y_pred = y_pred - one_hot * (_am_scale * _am_margin)
             smoothed = one_hot * 0.9 + 0.1 / num_classes_f
             # from_logits=True: y_pred are raw logits, softmax applied internally
             return tf.reduce_mean(

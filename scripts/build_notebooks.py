@@ -243,16 +243,20 @@ MODELS = [
      "Ensemble de árvores sobre features agregadas; rápido e robusto."),
 ]
 CLASSICAL = {"SVM", "RandomForest"}
-# Modelos SSL: célula OPCIONAL que instala `transformers` para usar o backbone
-# real (WavLM/HuBERT do HuggingFace). Sem ele, o projeto cai numa implementação
-# simplificada que treina/infere normalmente — por isso o install é opcional.
+# Modelos SSL: célula OPCIONAL que instala `transformers` para o backbone real.
+# IMPORTANTE: o transformers só fornece HuBERT em TF (`TFHubertModel`, carregado
+# com from_pt=True). WavLM é PyTorch-only — em TF o projeto usa SEMPRE a
+# implementação simplificada (CNN 1D), que treina/infere normalmente.
 SSL_SLUGS = {"wavlm", "hubert"}
 
 SSL_DEPS_CELL = """\
-# OPCIONAL: instala `transformers` para usar o backbone SSL pré-treinado real
-# (baixa o checkpoint na 1ª execução; requer internet e, idealmente, GPU).
-# Se você pular esta célula, o projeto usa uma implementação simplificada do
-# WavLM/HuBERT que treina e infere normalmente — só não carrega os pesos SSL.
+# OPCIONAL: instala `transformers` para usar o backbone SSL pré-treinado real.
+# - HuBERT: backbone REAL em TF (TFHubertModel; baixa o checkpoint na 1ª
+#   execução — requer internet e, idealmente, GPU).
+# - WavLM: o transformers NÃO tem WavLM em TensorFlow (PyTorch-only) — o
+#   projeto usa a implementação simplificada (CNN 1D) mesmo com transformers.
+# Pulando esta célula, ambos usam o caminho simplificado, que treina e infere
+# normalmente — só não carrega pesos SSL pré-treinados.
 import importlib.util
 import subprocess
 import sys
@@ -262,7 +266,7 @@ if importlib.util.find_spec("transformers") is None:
         [sys.executable, "-m", "pip", "install", "-q", "transformers>=4.30"],
         check=True,
     )
-print("transformers disponível — backbone SSL real será usado.")
+print("transformers disponível — HuBERT usará o backbone SSL real (TF).")
 """
 
 

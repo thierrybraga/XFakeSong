@@ -252,8 +252,8 @@ class SpectralAttentionPooling(layers.Layer):
 def create_spectrogram_transformer_model(
     input_shape: Tuple[int, ...],
     num_classes: int,
-    patch_size: Tuple[int, int] = (8, 8),
-    stride: Tuple[int, int] = (6, 6),
+    patch_size: Tuple[int, int] = (16, 16),
+    stride: Tuple[int, int] = (10, 10),
     embed_dim: int = 768,
     num_blocks: int = 12,
     num_heads: int = 12,
@@ -304,21 +304,38 @@ def create_spectrogram_transformer_model(
         processed_height = max(64, input_shape[0])
         processed_width = max(64, input_shape[1])
 
-    # Convolution stem for downsampled feature extraction
-    x = ConvolutionStemLayer(filters=[64, 128, 256], name='conv_stem')(x)
+    # Patches DIRETO no espectrograma, como no paper AST (Gong et al., 2021:
+    # patches 16×16 com stride 10 sobre o espectrograma, SEM conv stem).
+    # Antes havia um ConvolutionStemLayer (÷8 espacial) que reduzia (100, 80)
+    # a ~12×10 → com patch 8×8/stride 6 sobravam 1×1 = **1 patch** e o
+    # Transformer de 12 blocos atendia sobre 2 tokens (CLS+1) — degenerado.
+    grid_h = x.shape[1] if x.shape[1] is not None else processed_height
+    grid_w = x.shape[2] if x.shape[2] is not None else processed_width
 
-    # Update spatial dims after stem (stem downsamples by 2x per conv block with stride 2)
-    stem_height = x.shape[1] if x.shape[1] is not None else processed_height // 8
-    stem_width = x.shape[2] if x.shape[2] is not None else processed_width // 8
+    # Adapta patch/stride para entradas pequenas (garante uma grade real de
+    # patches): encolhe à metade enquanto não couberem ≥2 patches por eixo.
+    ph, pw = patch_size
+    sh, sw = stride
+    while ph > 2 and (grid_h - ph) // sh + 1 < 2:
+        ph, sh = max(2, ph // 2), max(1, sh // 2)
+    while pw > 2 and (grid_w - pw) // sw + 1 < 2:
+        pw, sw = max(2, pw // 2), max(1, sw // 2)
+    patch_size = (ph, pw)
+    stride = (sh, sw)
 
-    # Calculate number of patches considering overlap (padding='valid')
-    # num_patches = floor((input - patch_size) / stride) + 1
-    num_patches_h = (stem_height - patch_size[0]) // stride[0] + 1
-    num_patches_w = (stem_width - patch_size[1]) // stride[1] + 1
+    # num_patches = floor((input - patch) / stride) + 1 (padding='valid')
+    num_patches_h = (grid_h - patch_size[0]) // stride[0] + 1
+    num_patches_w = (grid_w - patch_size[1]) // stride[1] + 1
     num_patches = num_patches_h * num_patches_w
+    if num_patches < 1:
+        raise ValueError(
+            f"AST: entrada {grid_h}x{grid_w} pequena demais para patches "
+            f"{patch_size} com stride {stride}."
+        )
 
     logger.info(
-        f"Using {num_patches} patches ({num_patches_h}x{num_patches_w}) with overlap stride {stride}")
+        f"Using {num_patches} patches ({num_patches_h}x{num_patches_w}) "
+        f"patch={patch_size} stride={stride} (direto no espectrograma, sem stem)")
 
     # Patch embedding (with overlap) on stem output
     x = PatchEmbedding(patch_size, embed_dim, stride=stride, name='patch_embedding')(x)
