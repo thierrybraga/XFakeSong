@@ -5,7 +5,7 @@
 # Deps compartilhadas ficam em requirements-base.txt (fonte única).
 # Variantes:
 #   - CPU-only menor:  pip install -r requirements-cpu.txt
-#   - GPU (Linux NVIDIA): + pip install 'tensorflow[and-cuda]>=2.16,<2.22'
+#   - GPU (Linux NVIDIA): + pip install 'tensorflow[and-cuda]>=2.21.0,<2.22'
 #     (ou use docker-compose.gpu.yml)
 # Dev tools (pytest, ruff, black, …): requirements-dev.txt
 # =====================================================================
@@ -15,4 +15,4 @@
 # `tensorflow` (default): funciona em CPU e GPU sem reinstalar; carrega libs
 # CUDA em runtime quando há GPU. Em Python 3.11 a faixa resolve para TF 2.21.
 # (TF 2.16–2.19 não têm wheels para 3.13; 2.20+ têm — daí o teto <2.22.)
-tensorflow>=2.16,<2.22
+tensorflow>=2.21.0,<2.22
