@@ -62,7 +62,7 @@ em [Features de Áudio](04_FEATURES.md).
 `scripts/run_tcc_pipeline.py` automatiza dataset → split → treino → inferência →
 **métricas, tabelas LaTeX e figuras PNG** (`tcc_report.md`, `dataset.md`).
 Métricas padrão da área: acurácia, AUC-ROC, **EER** e **min-tDCF**. Ver
-[Benchmark e TCC](15_BENCHMARK.md).
+[Benchmark e Resultados](15_BENCHMARK.md).
 
 ## Tecnologias
 

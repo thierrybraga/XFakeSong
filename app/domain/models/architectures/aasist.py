@@ -21,6 +21,7 @@ from app.domain.models.architectures.layers import (
     GraphPoolLayer,
     GraphReadoutLayer,
     HSGALLayer,
+    MagnitudeLayer,
     ResidualBlock1D,
     SincConvLayer,
     apply_gru_block,
@@ -223,7 +224,7 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         x = SincConvLayer(
             n_filters=128, kernel_size=129, sample_rate=16000,
             name="sinc_conv")(x)
-        x = layers.Lambda(lambda t: tf.abs(t), name="sinc_abs")(x)
+        x = MagnitudeLayer(name="sinc_abs")(x)
         x = layers.BatchNormalization(name="sinc_bn")(x)
         x = layers.LeakyReLU(negative_slope=0.3, name="sinc_lrelu")(x)
         x = layers.MaxPooling1D(pool_size=3, name="sinc_pool")(x)

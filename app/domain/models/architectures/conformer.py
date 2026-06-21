@@ -21,6 +21,7 @@ from tensorflow.keras import layers
 from app.domain.models.architectures.layers import create_classification_head
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class RelativePositionalEncoding(layers.Layer):
     """Relative sinusoidal positional encoding (Transformer-XL style).
 
@@ -77,7 +78,7 @@ class RelativePositionalEncoding(layers.Layer):
         # Keras 3 prefere keras.ops.shape para evitar "tf.shape on KerasTensor"
         seq_len = tf.shape(inputs)[1]
         # Return encodings reversed (from seq_len-1 to 0) for relative attention
-        return self.pe[:, :seq_len, :]
+        return tf.cast(self.pe[:, :seq_len, :], inputs.dtype)
 
     def get_config(self):
         config = super(RelativePositionalEncoding, self).get_config()
@@ -88,6 +89,7 @@ class RelativePositionalEncoding(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class RelativeMultiHeadAttention(layers.Layer):
     """Multi-head attention with relative positional encoding.
 
@@ -190,6 +192,7 @@ class RelativeMultiHeadAttention(layers.Layer):
         Q = tf.matmul(inputs, self.W_q)   # (batch, seq_len, d_model)
         K = tf.matmul(inputs, self.W_k)
         V = tf.matmul(inputs, self.W_v)
+        pos_enc = tf.cast(pos_enc, inputs.dtype)
         P = tf.matmul(pos_enc, self.W_pos)  # (1, seq_len, d_model)
 
         # Reshape to (batch, seq_len, num_heads, d_k) then transpose to (batch, heads, seq_len, d_k)
@@ -233,7 +236,7 @@ class RelativeMultiHeadAttention(layers.Layer):
         # Output projection
         output = tf.matmul(context, self.W_o)
 
-        return output
+        return tf.cast(output, inputs.dtype)
 
     def get_config(self):
         config = super(RelativeMultiHeadAttention, self).get_config()
@@ -245,6 +248,7 @@ class RelativeMultiHeadAttention(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class ConvSubsampling(layers.Layer):
     """Convolutional subsampling layer (4x temporal reduction).
 
@@ -329,6 +333,7 @@ class ConvSubsampling(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class ConvolutionModule(layers.Layer):
     """Convolution module for Conformer architecture.
 
@@ -380,7 +385,7 @@ class ConvolutionModule(layers.Layer):
         x = self.pointwise_conv2(x)
         x = self.dropout(x, training=training)
 
-        return x + inputs  # Residual connection
+        return tf.cast(x, inputs.dtype) + inputs  # Residual connection
 
     def get_config(self):
         config = super().get_config()
@@ -392,6 +397,7 @@ class ConvolutionModule(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class FeedForwardModule(layers.Layer):
     """Feed-forward module for Conformer architecture.
 
@@ -420,7 +426,7 @@ class FeedForwardModule(layers.Layer):
         x = self.dropout1(x, training=training)
         x = self.dense2(x)
         x = self.dropout2(x, training=training)
-        return 0.5 * x + inputs  # Half-step residual (Macaron-Net)
+        return tf.cast(0.5 * x, inputs.dtype) + inputs  # Half-step residual
 
     def get_config(self):
         config = super().get_config()
@@ -432,6 +438,7 @@ class FeedForwardModule(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class MultiHeadSelfAttentionModule(layers.Layer):
     """Multi-head self-attention module with relative positional encoding.
 
@@ -465,7 +472,7 @@ class MultiHeadSelfAttentionModule(layers.Layer):
         x = self.layer_norm(inputs)
         attn_output = self.rel_attention(x, pos_enc, training=training)
         attn_output = self.dropout(attn_output, training=training)
-        return attn_output + inputs  # Residual connection
+        return tf.cast(attn_output, inputs.dtype) + inputs  # Residual connection
 
     def get_config(self):
         config = super().get_config()
@@ -477,6 +484,7 @@ class MultiHeadSelfAttentionModule(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class ConformerBlock(layers.Layer):
     """Conformer block combining all sub-modules.
 
@@ -563,6 +571,7 @@ class ConformerBlock(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class ConformerEncoder(layers.Layer):
     """Full Conformer encoder combining subsampling, positional encoding,
     and stacked Conformer blocks.
@@ -654,7 +663,11 @@ class ConformerEncoder(layers.Layer):
 def create_conformer_model(input_shape, num_classes=2, d_model=256, d_ff=1024,
                            num_heads=4, num_blocks=16, conv_kernel_size=31,
                            dropout_rate=0.1, ff_dropout_rate=None,
-                           attn_dropout_rate=None, conv_dropout_rate=None):
+                           attn_dropout_rate=None, conv_dropout_rate=None,
+                           learning_rate=1e-4, weight_decay=1e-4,
+                           warmup_steps=1500, decay_steps=50000,
+                           alpha=1e-7, label_smoothing=0.05,
+                           clipnorm=1.0):
     """Create a paper-faithful Conformer model for audio classification.
 
     Pipeline:
@@ -748,7 +761,7 @@ def create_conformer_model(input_shape, num_classes=2, d_model=256, d_ff=1024,
     model = tf.keras.Model(inputs=inputs, outputs=outputs, name='conformer')
 
     # Label smoothing cross-entropy loss
-    def label_smoothing_loss(y_true, y_pred, smoothing=0.1):
+    def label_smoothing_loss(y_true, y_pred, smoothing=label_smoothing):
         num_classes = tf.cast(tf.shape(y_pred)[-1], tf.float32)
         # reshape em vez de squeeze: squeeze total colapsaria batch=1 a escalar
         y_true_int = tf.cast(tf.reshape(y_true, [-1]), tf.int32)
@@ -759,19 +772,26 @@ def create_conformer_model(input_shape, num_classes=2, d_model=256, d_ff=1024,
     # Warmup + cosine decay learning rate schedule with AdamW optimizer
     from app.domain.models.training.optimization import WarmupCosineDecaySchedule
     lr_schedule = WarmupCosineDecaySchedule(
-        initial_learning_rate=0.0004,
-        warmup_steps=1000,
-        decay_steps=50000,
-        alpha=1e-7
+        initial_learning_rate=learning_rate,
+        warmup_steps=warmup_steps,
+        decay_steps=decay_steps,
+        alpha=alpha,
     )
-    optimizer = tf.keras.optimizers.AdamW(learning_rate=lr_schedule, weight_decay=0.01)
+    optimizer_kwargs = {}
+    if clipnorm is not None and clipnorm > 0:
+        optimizer_kwargs["clipnorm"] = clipnorm
+    optimizer = tf.keras.optimizers.AdamW(
+        learning_rate=lr_schedule,
+        weight_decay=weight_decay,
+        **optimizer_kwargs,
+    )
 
     model.compile(optimizer=optimizer, loss=label_smoothing_loss, metrics=['accuracy'])
     return model
 
 
 def create_model(input_shape: Tuple[int, ...], num_classes: int,
-                 architecture: str = 'conformer') -> tf.keras.Model:
+                 architecture: str = 'conformer', **kwargs) -> tf.keras.Model:
     """Factory function to create Conformer models.
 
     Variants follow the paper's model configurations:
@@ -802,7 +822,8 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int,
             dropout_rate=0.1,
             ff_dropout_rate=0.2,
             attn_dropout_rate=0.1,
-            conv_dropout_rate=0.1
+            conv_dropout_rate=0.1,
+            **kwargs,
         )
     elif architecture == 'conformer_lite':
         # Conformer-M (Medium) from the paper
@@ -813,7 +834,8 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int,
             d_ff=1024,       # 4 × d_model (paper)
             num_heads=4,      # paper Conformer-M
             num_blocks=16,    # paper Conformer-M
-            dropout_rate=0.1
+            dropout_rate=0.1,
+            **kwargs,
         )
     else:
         raise ValueError(

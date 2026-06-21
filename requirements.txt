@@ -16,3 +16,10 @@
 # CUDA em runtime quando há GPU. Em Python 3.11 a faixa resolve para TF 2.21.
 # (TF 2.16–2.19 não têm wheels para 3.13; 2.20+ têm — daí o teto <2.22.)
 tensorflow>=2.16,<2.22
+
+# SSL original inference/benchmark (WavLM/HuBERT reais em PyTorch).
+# Necessário para carregar `bench_wavlm_original.pt` e
+# `bench_hubert_original.pt` no frontend Gradio quando esses modelos forem
+# selecionados para demonstração.
+torch>=2.3,<3.0
+transformers>=4.40,<5.0

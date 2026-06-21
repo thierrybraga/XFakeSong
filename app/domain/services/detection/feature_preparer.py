@@ -436,6 +436,46 @@ class FeaturePreparer:
                             features = np.array([])
                             feature_names = []
 
+                        features = np.asarray(features, dtype=np.float32).reshape(-1)
+                        features = np.nan_to_num(
+                            features,
+                            nan=0.0,
+                            posinf=0.0,
+                            neginf=0.0,
+                        )
+                        expected_dim = None
+                        if getattr(model_info, "input_shape", None):
+                            try:
+                                expected_dim = int(model_info.input_shape[0])
+                            except (TypeError, ValueError, IndexError):
+                                expected_dim = None
+                        if expected_dim is None and getattr(model_info, "scaler", None):
+                            expected_dim = getattr(
+                                model_info.scaler, "n_features_in_", None
+                            )
+                        if expected_dim is None:
+                            expected_dim = getattr(
+                                getattr(model_info, "model", None),
+                                "n_features_in_",
+                                None,
+                            )
+
+                        feature_adjustment = "none"
+                        original_feature_count = int(features.size)
+                        if expected_dim:
+                            expected_dim = int(expected_dim)
+                            if features.size > expected_dim:
+                                features = features[:expected_dim]
+                                feature_names = list(feature_names)[:expected_dim]
+                                feature_adjustment = "truncated"
+                            elif features.size < expected_dim:
+                                features = np.pad(
+                                    features,
+                                    (0, expected_dim - features.size),
+                                    mode="constant",
+                                )
+                                feature_adjustment = "padded"
+
                         # Metadados
                         metadata = {
                             "feature_type": "segmented_aggregated",
@@ -443,6 +483,9 @@ class FeaturePreparer:
                             "feature_shapes": {"combined_features": features.shape},
                             "feature_count_total": features.size,
                             "features_shape": features.shape,
+                            "original_feature_count": original_feature_count,
+                            "expected_feature_count": expected_dim,
+                            "feature_adjustment": feature_adjustment,
                             "sample_rate": audio_data.sample_rate,
                             "duration_s": audio_data.duration,
                             "channels": audio_data.channels,

@@ -1222,9 +1222,21 @@ with gr.Blocks(
 
             # 🎓 Treinar — assistente linear + otimização
             with gr.Tab("🎓 Treinar", id="tab_train"):
-                with gr.Tabs():
-                    create_training_wizard_tab()
-                    create_optimization_tab()
+                training_enabled = (
+                    os.getenv("ENABLE_TRAINING", "true").strip().lower()
+                    not in {"0", "false", "no", "off"}
+                )
+                if training_enabled:
+                    with gr.Tabs():
+                        create_training_wizard_tab()
+                        create_optimization_tab()
+                else:
+                    gr.Markdown(
+                        "### Modo demonstração\n\n"
+                        "O treinamento está desativado neste ambiente. "
+                        "Use a aba **Detectar** para inferência com os modelos "
+                        "já treinados."
+                    )
 
             # 🗂️ Gerenciar — datasets, features e histórico
             with gr.Tab("🗂️ Gerenciar", id="tab_admin"):

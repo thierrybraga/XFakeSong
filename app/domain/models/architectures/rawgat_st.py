@@ -18,6 +18,7 @@ from app.domain.models.architectures.layers import (
     GATConvLayer,
     GraphPoolLayer,
     GraphReadoutLayer,
+    MagnitudeLayer,
     ResidualBlock1D,
     SincConvLayer,
     apply_gru_block,
@@ -225,7 +226,7 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         x = SincConvLayer(
             n_filters=70, kernel_size=129, sample_rate=16000,
             name="rawgat_sinc")(x)
-        x = layers.Lambda(lambda t: tf.abs(t), name="rawgat_sinc_abs")(x)
+        x = MagnitudeLayer(name="rawgat_sinc_abs")(x)
         x = layers.BatchNormalization(name="rawgat_sinc_bn")(x)
         x = layers.LeakyReLU(negative_slope=0.3, name="rawgat_sinc_lrelu")(x)
         x = layers.MaxPooling1D(pool_size=3, name="rawgat_sinc_pool")(x)
@@ -241,6 +242,15 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         spectral_nodes = layers.Permute(
             (2, 1), name="rawgat_spectral_transpose")(encoder_out)  # (B, 128, T')
         temporal_nodes = encoder_out                                # (B, T', 128)
+        # O GAT materializa atenção densa N x N. Em clips de 5s, T' ainda
+        # passa de milhares de nós; reduzimos o grafo temporal antes da
+        # atenção para manter o treino viável em GPUs de 12 GB.
+        temporal_nodes = layers.AveragePooling1D(
+            pool_size=8,
+            strides=8,
+            padding="same",
+            name="rawgat_temporal_graph_downsample",
+        )(temporal_nodes)
 
         # --- 4. Graph Attention em cada grafo ---
         spectral_nodes = GATConvLayer(

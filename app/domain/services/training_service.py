@@ -1,4 +1,5 @@
 import dataclasses
+import inspect
 import importlib as _stdlib_importlib
 import json
 import logging
@@ -16,7 +17,9 @@ from app.core.interfaces.services import (
     ModelMetadata,
     ProcessingResult,
 )
-from app.domain.models.architectures.registry import get_architecture_info
+from app.domain.models.architectures.registry import (
+    get_architecture_by_any_name as get_architecture_info,
+)
 from app.domain.models.training.trainer import ModelTrainer
 
 logger = logging.getLogger(__name__)
@@ -188,6 +191,7 @@ class TrainingService(ITrainingService):
                     status=ProcessingStatus.ERROR,
                     errors=[f"Arquitetura '{architecture}' não encontrada."]
                 )
+            architecture = arch_info.name
 
             # 2. Carregar Dados
             # Suporte inicial para arquivos .npz (padrão numpy)
@@ -257,7 +261,7 @@ class TrainingService(ITrainingService):
                         import tensorflow as tf
 
                         tf.keras.mixed_precision.set_global_policy("float32")
-                        logger.info(
+                        logger.warning(
                             "Mixed precision desabilitado antes da instanciação "
                             "do modelo."
                         )
@@ -270,8 +274,10 @@ class TrainingService(ITrainingService):
 
                 # Mesclar parâmetros padrão com os fornecidos
                 merged_params = arch_info.default_params.copy()
+                explicit_model_params = {}
                 if 'parameters' in config:
-                    merged_params.update(config['parameters'])
+                    explicit_model_params = dict(config['parameters'] or {})
+                    merged_params.update(explicit_model_params)
 
                 # Separa params do MODELO dos hints de treino/pipeline. Só os
                 # primeiros vão ao create_model (senão builders sem **kwargs
@@ -279,7 +285,19 @@ class TrainingService(ITrainingService):
                 model_params = {
                     k: v for k, v in merged_params.items()
                     if k not in self._NON_MODEL_PARAM_KEYS
+                    or k in explicit_model_params
                 }
+                sig = inspect.signature(create_model_fn)
+                has_var_keyword = any(
+                    p.kind == inspect.Parameter.VAR_KEYWORD
+                    for p in sig.parameters.values()
+                )
+                if not has_var_keyword:
+                    accepted = set(sig.parameters.keys())
+                    model_params = {
+                        k: v for k, v in model_params.items()
+                        if k in accepted
+                    }
                 # Aproveita os hints de patience recomendados pelo registry como
                 # DEFAULT do TrainingConfig (se o usuário não os definiu no config).
                 self._recommended_training = {}
@@ -339,10 +357,16 @@ class TrainingService(ITrainingService):
             )
 
             # kwargs para callbacks podem ser passados via config
+            callback_kwargs = {
+                key: config[key]
+                for key in ("checkpoint_path", "tensorboard_dir", "csv_log_path")
+                if config.get(key)
+            }
             train_result = trainer.train(
                 model,
                 (X_train, y_train),
-                validation_data=validation_data
+                validation_data=validation_data,
+                **callback_kwargs,
             )
 
             if train_result.status != ProcessingStatus.SUCCESS:
@@ -350,6 +374,46 @@ class TrainingService(ITrainingService):
                     status=ProcessingStatus.ERROR,
                     errors=train_result.errors
                 )
+
+            checkpoint_path = config.get("checkpoint_path")
+            if checkpoint_path:
+                checkpoint_file = Path(checkpoint_path)
+                if checkpoint_file.exists():
+                    try:
+                        import tensorflow as tf
+
+                        model = tf.keras.models.load_model(str(checkpoint_file))
+                        if validation_data is not None:
+                            trainer._calibrated_temperature = (
+                                trainer._auto_calibrate_temperature(
+                                    model, validation_data
+                                )
+                            )
+                            trainer._ood_threshold = trainer._compute_ood_threshold(
+                                model,
+                                validation_data,
+                                trainer._calibrated_temperature,
+                            )
+                            trainer._eer_threshold, trainer._eer_value = (
+                                trainer._compute_eer_threshold(
+                                    model,
+                                    validation_data,
+                                    trainer._calibrated_temperature,
+                                )
+                            )
+                            train_result.data["final_metrics"] = (
+                                trainer._calculate_final_metrics(
+                                    model, validation_data
+                                )
+                            )
+                        logger.info(
+                            f"Melhor checkpoint restaurado: {checkpoint_file}"
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "Checkpoint encontrado, mas não pôde ser restaurado; "
+                            f"mantendo pesos em memória: {e}"
+                        )
 
             # 5. Salvar Modelo e Metadados
             model_name = config.get(
@@ -654,4 +718,3 @@ class TrainingService(ITrainingService):
         # Implementação futura
         return ProcessingResult(
             status=ProcessingStatus.ERROR, errors=["Not implemented"])
-

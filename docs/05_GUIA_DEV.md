@@ -48,9 +48,16 @@ Variáveis de ambiente úteis (ver `settings.py` e `app/core/middleware.py`):
 
 ## Artefatos gerados
 
-- **Modelos treinados**: `app/models/` (`.keras`/`.pkl` + `_config.json` com o
-  `input_contract`). Ignorados pelo git.
-- **Resultados/benchmark**: `results/` (figuras, JSON/CSV, relatórios). Ignorado.
+- **Modelos treinados default**: `app/models/` (`bench_*.keras`,
+  `bench_*.pkl` + `bench_*_config.json` com o `input_contract`). É o diretório
+  carregado pela Gradio/API.
+- **Modelos finais completos**: `app/models/benchmark_final/<arquitetura>/`.
+  Preserva backbones SSL, README dos modelos originais e artefatos auxiliares.
+- **Manifesto de modelos**: `app/models/benchmark_final_manifest.json`.
+- **Resultados/benchmark**: `results/` (figuras, JSON/CSV, relatórios,
+  métricas por arquitetura e cópia da execução original). Ignorado.
+- **Material acadêmico**: `tcc_overleaf/main.tex` é a fonte única; `tcc_overleaf.zip`
+  contém o pacote limpo para Overleaf, sem PDF nem auxiliares LaTeX.
 - **Notebooks**: `notebooks/` — gerados por `scripts/build_notebooks.py`
   (fonte de verdade; não edite o `.ipynb` à mão).
 

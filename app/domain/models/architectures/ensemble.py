@@ -45,6 +45,20 @@ logger = logging.getLogger(__name__)
 
 # ============================ SHARED STFT CACHE (Sprint 2.1) ============================
 
+
+def _flatten_audio_tensor(inputs):
+    """Normaliza áudio para (batch, samples) antes de tf.signal.stft."""
+    rank = inputs.shape.rank
+    if rank == 3:
+        if inputs.shape[-1] == 1:
+            return tf.squeeze(inputs, axis=-1)
+        return tf.reduce_mean(inputs, axis=-1)
+    if rank is not None and rank > 3:
+        return tf.reshape(inputs, [tf.shape(inputs)[0], -1])
+    return inputs
+
+
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class SharedSTFTLayer(layers.Layer):
     """Computa STFT 1× e devolve magnitude e power para todas as branches.
 
@@ -64,6 +78,7 @@ class SharedSTFTLayer(layers.Layer):
         self.hop_length = hop_length
 
     def call(self, inputs):
+        inputs = _flatten_audio_tensor(inputs)
         stft = tf.signal.stft(
             inputs, frame_length=self.n_fft,
             frame_step=self.hop_length, fft_length=self.n_fft
@@ -80,6 +95,7 @@ class SharedSTFTLayer(layers.Layer):
 
 # ============================ FEATURE EXTRACTION LAYERS ============================
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class MelSpectrogramBranch(layers.Layer):
     """Mel spectrogram extraction per Pham et al. (2024).
 
@@ -113,6 +129,7 @@ class MelSpectrogramBranch(layers.Layer):
         )
 
     def call(self, inputs, stft_cache=None):
+        inputs = _flatten_audio_tensor(inputs)
         # Reuso de STFT compartilhado quando disponível
         if stft_cache is not None and 'power' in stft_cache:
             power = stft_cache['power']
@@ -137,6 +154,7 @@ class MelSpectrogramBranch(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class LFCCBranch(layers.Layer):
     """Linear Frequency Cepstral Coefficients extraction.
 
@@ -182,6 +200,7 @@ class LFCCBranch(layers.Layer):
         self.dct_matrix = tf.constant(dct_matrix, dtype=tf.float32)
 
     def call(self, inputs, stft_cache=None):
+        inputs = _flatten_audio_tensor(inputs)
         # Sprint 2.1: reusa STFT compartilhado quando disponível
         if stft_cache is not None and 'power' in stft_cache:
             power = stft_cache['power']
@@ -208,6 +227,7 @@ class LFCCBranch(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class CQTBranch(layers.Layer):
     """Constant-Q Transform feature extraction.
 
@@ -248,6 +268,7 @@ class CQTBranch(layers.Layer):
         self.cqt_filter_bank = tf.constant(cqt_filters, dtype=tf.float32)
 
     def call(self, inputs, stft_cache=None):
+        inputs = _flatten_audio_tensor(inputs)
         # Sprint 2.1: reusa STFT compartilhado (magnitude) quando disponível
         if stft_cache is not None and 'magnitude' in stft_cache:
             magnitude = stft_cache['magnitude']
@@ -273,6 +294,7 @@ class CQTBranch(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class MFCCBranch(layers.Layer):
     """Mel-Frequency Cepstral Coefficients extraction.
 
@@ -312,6 +334,7 @@ class MFCCBranch(layers.Layer):
         )
 
     def call(self, inputs, stft_cache=None):
+        inputs = _flatten_audio_tensor(inputs)
         # Sprint 2.1: reusa STFT compartilhado quando disponível
         if stft_cache is not None and 'power' in stft_cache:
             power = stft_cache['power']
@@ -367,6 +390,7 @@ def _create_cnn_branch(x, branch_name, filters=None):
 
 # ============================ ENSEMBLE FUSION LAYERS ============================
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class ScoreFusionLayer(layers.Layer):
     """Learnable weighted score-level fusion.
 
@@ -661,6 +685,7 @@ def _create_ensemble_lite(
 
 # ============================ ENSEMBLE ADAPTATIVO (TCC Eq. 27-28) ============================
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class AdaptiveWeightLayer(layers.Layer):
     """Pesos adaptativos por confiança dos modelos (TCC Eq. 27).
 
@@ -828,10 +853,18 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
 
 # Register custom layers
 tf.keras.utils.get_custom_objects().update({
+    'SharedSTFTLayer': SharedSTFTLayer,
+    'XFakeSong>SharedSTFTLayer': SharedSTFTLayer,
     'MelSpectrogramBranch': MelSpectrogramBranch,
+    'XFakeSong>MelSpectrogramBranch': MelSpectrogramBranch,
     'LFCCBranch': LFCCBranch,
+    'XFakeSong>LFCCBranch': LFCCBranch,
     'CQTBranch': CQTBranch,
+    'XFakeSong>CQTBranch': CQTBranch,
     'MFCCBranch': MFCCBranch,
+    'XFakeSong>MFCCBranch': MFCCBranch,
     'ScoreFusionLayer': ScoreFusionLayer,
+    'XFakeSong>ScoreFusionLayer': ScoreFusionLayer,
     'AdaptiveWeightLayer': AdaptiveWeightLayer,
+    'XFakeSong>AdaptiveWeightLayer': AdaptiveWeightLayer,
 })

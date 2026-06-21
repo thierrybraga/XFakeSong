@@ -116,3 +116,54 @@ def test_predictor_recognizes_and_predicts(trained_dir):
         assert k in d
     assert 0.0 <= d["p_fake"] <= 1.0
     assert d["temperature_applied"] == pytest.approx(mi.temperature)
+
+
+def test_aasist_save_load_roundtrip_uses_serializable_layers(tmp_path):
+    """AASIST não deve depender de safe_mode=False nem de Lambda anônimo."""
+    import tensorflow as tf
+
+    from app.domain.models.architectures.aasist import create_model
+
+    model = create_model(input_shape=(1024, 1), num_classes=2)
+    path = tmp_path / "aasist_roundtrip.keras"
+    model.save(path)
+
+    loaded = tf.keras.models.load_model(path, compile=False)
+
+    assert loaded.input_shape == (None, 1024, 1)
+    assert loaded.output_shape == (None, 2)
+    assert any(
+        layer.name == "sinc_abs" and layer.__class__.__name__ == "MagnitudeLayer"
+        for layer in loaded.layers
+    )
+    assert not any(layer.__class__.__name__ == "Lambda" for layer in loaded.layers)
+
+
+def test_efficientnet_lstm_save_load_roundtrip_uses_serializable_layers(tmp_path):
+    """EfficientNet-LSTM salvo em .keras deve carregar em safe mode."""
+    import tensorflow as tf
+
+    from app.domain.models.architectures.efficientnet_lstm import create_model
+
+    model = create_model(
+        input_shape=(100, 80),
+        num_classes=2,
+        lstm_units=16,
+        dropout_rate=0.1,
+        pretrained=False,
+    )
+    path = tmp_path / "efficientnet_lstm_roundtrip.keras"
+    model.save(path)
+
+    loaded = tf.keras.models.load_model(path, compile=False)
+
+    assert loaded.input_shape == (None, 100, 80)
+    assert loaded.output_shape == (None, 2)
+    assert any(
+        layer.__class__.__name__ == "TemporalPoolingLayer"
+        for layer in loaded.layers
+    )
+    assert any(
+        layer.__class__.__name__ == "DeltaFeatureLayer"
+        for layer in loaded.layers
+    )

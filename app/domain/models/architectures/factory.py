@@ -302,11 +302,13 @@ class ArchitectureFactoryRegistry:
             input_requirements={
                 "input_type": "raw_audio",
                 "min_sequence_length": 16000,  # >=1s @ 16kHz
+                "target_sequence_length": 16000,
+                "crop_strategy": "center",
                 "sample_rate": 16000,
             },
             output_requirements={
                 "type": "classification",
-                "activation": "sigmoid"}
+                "activation": "softmax"}
         ))
 
         # RawGAT-ST — reescrito fiel ao paper (Tak et al., 2021): SincNet sobre
@@ -339,6 +341,8 @@ class ArchitectureFactoryRegistry:
                 "input_type": "raw_audio",
                 "sample_rate": 16000,
                 "min_sequence_length": 16000,
+                "target_sequence_length": 16000,
+                "crop_strategy": "center",
             },
             output_requirements={
                 "type": "classification",
@@ -364,7 +368,7 @@ class ArchitectureFactoryRegistry:
             },
             output_requirements={
                 "type": "classification",
-                "activation": "sigmoid"}
+                "activation": "softmax"}
         ))
 
         # MultiscaleCNN
@@ -387,7 +391,7 @@ class ArchitectureFactoryRegistry:
             },
             output_requirements={
                 "type": "classification",
-                "activation": "sigmoid"}
+                "activation": "softmax"}
         ))
 
         # SpectrogramTransformer
@@ -401,7 +405,8 @@ class ArchitectureFactoryRegistry:
                 "default",           # alias -> spectrogram_transformer
                 "spectrogram_transformer_lite"],
             default_params={
-                # create_model params: architecture only (no model hyperparams accepted)
+                # create_model params: dropout_rate, learning_rate,
+                # warmup_steps, decay_steps, weight_decay, alpha
             },
             input_requirements={
                 "input_type": "spectrogram",
@@ -449,9 +454,11 @@ class ArchitectureFactoryRegistry:
                 "ensemble_adaptive"],
             default_params={},
             input_requirements={
-                "input_type": "spectrogram",
-                "min_sequence_length": 100,
-                "feature_dim": 80,
+                "input_type": "raw_audio",
+                "sample_rate": 16000,
+                "min_sequence_length": 16000,
+                "target_sequence_length": 16000,
+                "crop_strategy": "center",
             },
             output_requirements={
                 "type": "classification",
@@ -499,6 +506,8 @@ class ArchitectureFactoryRegistry:
             input_requirements={
                 "input_type": "raw_audio",
                 "min_sequence_length": 16000,
+                "target_sequence_length": 16000,
+                "crop_strategy": "center",
                 "sample_rate": 16000,
                 "max_duration": 5.0,
                 "preprocessing": "normalize",
@@ -525,6 +534,8 @@ class ArchitectureFactoryRegistry:
                 "input_type": "raw_audio",
                 "min_sequence_length": 16000,
                 "sample_rate": 16000,
+                "target_sequence_length": 16000,
+                "crop_strategy": "center",
                 "max_duration": 10.0,
                 "preprocessing": "normalize",
             },

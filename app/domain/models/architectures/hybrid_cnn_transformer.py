@@ -54,6 +54,7 @@ logger = logging.getLogger(__name__)
 
 # ============================ CUSTOM LAYERS ============================
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class MelSpectrogramLayer(layers.Layer):
     """Mel spectrogram extraction for CNN-Transformer input.
 
@@ -99,6 +100,7 @@ class MelSpectrogramLayer(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class CCTTokenizer(layers.Layer):
     """Convolutional Tokenizer per Hassani et al. (2021).
 
@@ -157,6 +159,24 @@ class CCTTokenizer(layers.Layer):
         x = tf.reshape(x, [batch_size, -1, channels])
         return x
 
+    def build(self, input_shape):
+        dummy_shape = [1] + [dim if dim is not None else 1 for dim in input_shape[1:]]
+        x = tf.zeros(dummy_shape, dtype=self.compute_dtype)
+        for layer in self.conv_layers:
+            x = layer(x)
+        super().build(input_shape)
+
+    def compute_output_shape(self, input_shape):
+        height = input_shape[1]
+        width = input_shape[2]
+        for _ in self.num_output_channels:
+            if height is not None:
+                height = int(np.ceil(height / self.pooling_stride))
+            if width is not None:
+                width = int(np.ceil(width / self.pooling_stride))
+        seq_len = None if height is None or width is None else height * width
+        return (input_shape[0], seq_len, self.num_output_channels[-1])
+
     def get_config(self):
         config = super().get_config()
         config.update({
@@ -169,6 +189,7 @@ class CCTTokenizer(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class StochasticDepth(layers.Layer):
     """Stochastic Depth regularization per Huang et al. (2016).
 
@@ -195,6 +216,7 @@ class StochasticDepth(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class TransformerBlock(layers.Layer):
     """Pre-norm Transformer encoder block per CCT.
 
@@ -233,6 +255,7 @@ class TransformerBlock(layers.Layer):
         x1 = self.norm1(inputs)
         attn_out = self.attn(x1, x1, training=training)
         attn_out = self.stochastic_depth1(attn_out, training=training)
+        attn_out = tf.cast(attn_out, inputs.dtype)
         x2 = inputs + attn_out
 
         # Pre-norm FFN
@@ -242,7 +265,29 @@ class TransformerBlock(layers.Layer):
         x3 = self.ffn_dense2(x3)
         x3 = self.ffn_dropout2(x3, training=training)
         x3 = self.stochastic_depth2(x3, training=training)
+        x3 = tf.cast(x3, x2.dtype)
         return x2 + x3
+
+    def build(self, input_shape):
+        seq_len = input_shape[1] if input_shape[1] is not None else 2
+        feature_dim = input_shape[2] if input_shape[2] is not None else self.projection_dim
+        dummy_shape = [1, seq_len, feature_dim]
+        dummy = tf.zeros(dummy_shape, dtype=self.compute_dtype)
+        x1 = self.norm1(dummy)
+        attn_out = self.attn(x1, x1, training=False)
+        attn_out = self.stochastic_depth1(attn_out, training=False)
+        x2 = dummy + tf.cast(attn_out, dummy.dtype)
+
+        x3 = self.norm2(x2)
+        x3 = self.ffn_dense1(x3)
+        x3 = self.ffn_dropout1(x3, training=False)
+        x3 = self.ffn_dense2(x3)
+        x3 = self.ffn_dropout2(x3, training=False)
+        self.stochastic_depth2(x3, training=False)
+        super().build(input_shape)
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
 
     def get_config(self):
         config = super().get_config()
@@ -255,6 +300,7 @@ class TransformerBlock(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class PositionalEmbeddingLayer(layers.Layer):
     """Learned positional embeddings per CCT (Hassani et al., 2021).
 
@@ -282,13 +328,14 @@ class PositionalEmbeddingLayer(layers.Layer):
 
     def call(self, inputs):
         if self.static_seq_len:
-            return inputs + self.pos_emb
+            return inputs + tf.cast(self.pos_emb, inputs.dtype)
         return inputs
 
     def get_config(self):
         return super().get_config()
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class SequencePooling(layers.Layer):
     """Attention-weighted sequence pooling per Hassani et al. (2021).
 
@@ -303,6 +350,7 @@ class SequencePooling(layers.Layer):
 
     def call(self, inputs):
         attention_weights = tf.nn.softmax(self.attention_dense(inputs), axis=1)
+        attention_weights = tf.cast(attention_weights, inputs.dtype)
         # (batch, seq, 1)^T @ (batch, seq, dim) -> (batch, 1, dim)
         weighted = tf.matmul(
             tf.transpose(attention_weights, perm=[0, 2, 1]),
@@ -310,6 +358,13 @@ class SequencePooling(layers.Layer):
         )
         # (batch, dim)
         return tf.squeeze(weighted, axis=1)
+
+    def build(self, input_shape):
+        self.attention_dense.build(input_shape)
+        super().build(input_shape)
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0], input_shape[-1])
 
     def get_config(self):
         return super().get_config()

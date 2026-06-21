@@ -98,7 +98,7 @@ Por isso a área usa métricas próprias (ver [Glossário](18_GLOSSARIO.md) e
 !!! warning "Robustez importa"
     Um número bom em áudio limpo não garante uso real. O benchmark do projeto
     também degrada o áudio em **níveis de SNR** controlados para medir robustez —
-    veja [Benchmark e TCC](15_BENCHMARK.md).
+    veja [Benchmark e Resultados](15_BENCHMARK.md).
 
 ## Próximos passos
 

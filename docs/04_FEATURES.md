@@ -239,3 +239,156 @@ extractor_registry.register(ExtractorSpec(
 | `DEEPFAKE_PARALLEL_EXTRACTION` | Extração paralela de múltiplos arquivos | `false` |
 
 Features são normalizadas automaticamente no pipeline para estabilidade numérica no treinamento.
+
+---
+
+## Equações Consolidadas do Estudo Experimental
+
+Esta seção replica as equações usadas no artigo consolidado em
+`tcc_overleaf/main.tex`. Elas documentam a base matemática dos extratores e
+facilitam auditoria entre implementação, notebooks e relatório do benchmark.
+
+### Pré-processamento
+
+**Normalização AGC**:
+
+$$
+x_{norm}[n] = x[n] \cdot 10^{\frac{L_{target} - L_{measured}}{20}}
+$$
+
+**Energia por quadro para VAD**:
+
+$$
+E_m = \sum_{n=mH}^{mH+N-1} x^2[n] w[n-mH]
+$$
+
+**Decisão de voz**:
+
+$$
+V_m =
+\begin{cases}
+1, & 10\log_{10}(E_m) > \theta_{VAD}\\
+0, & \text{caso contrário}
+\end{cases}
+$$
+
+### Características espectrais
+
+**Centroide espectral**:
+
+$$
+C_t = \frac{\sum_{k=0}^{K-1} f_k |X_t[k]|}{\sum_{k=0}^{K-1} |X_t[k]|}
+$$
+
+**Largura de banda espectral**:
+
+$$
+B_t = \left(
+\frac{\sum_k (f_k - C_t)^2 |X_t[k]|}{\sum_k |X_t[k]|}
+\right)^{1/2}
+$$
+
+**Roll-off espectral**:
+
+$$
+\sum_{k=0}^{k_r} |X_t[k]| = \alpha \sum_{k=0}^{K-1} |X_t[k]|
+$$
+
+**Zero Crossing Rate**:
+
+$$
+ZCR_t = \frac{1}{2N}\sum_{n=1}^{N-1}
+\left|\operatorname{sgn}(x_t[n]) - \operatorname{sgn}(x_t[n-1])\right|
+$$
+
+**Flatness espectral**:
+
+$$
+SF_t =
+\frac{\left(\prod_{k=0}^{K-1}|X_t[k]|\right)^{1/K}}
+{\frac{1}{K}\sum_{k=0}^{K-1}|X_t[k]|}
+$$
+
+**Contraste espectral**:
+
+$$
+SC_b = 10\log_{10}\left(\frac{\mu_{peaks,b}}{\mu_{valleys,b}}\right)
+$$
+
+### Cepstrais e mel
+
+**MFCC**:
+
+$$
+c_n = \sum_{m=0}^{M-1} \log(S_m)
+\cos\left[\frac{\pi n}{M}\left(m+\frac{1}{2}\right)\right]
+$$
+
+**Espectrograma mel**:
+
+$$
+M[m,t] = \sum_{k=0}^{K-1} |X_t[k]|^2 H_m[k]
+$$
+
+### Prosódicas
+
+**Frequência fundamental média**:
+
+$$
+F0_{mean} = \frac{1}{T}\sum_{t=1}^{T} F0_t
+$$
+
+**Jitter**:
+
+$$
+Jitter = \frac{1}{N-1}\sum_{i=1}^{N-1}
+\frac{|T_i - T_{i+1}|}{\bar{T}}
+$$
+
+**Shimmer**:
+
+$$
+Shimmer = \frac{1}{N-1}\sum_{i=1}^{N-1}
+\frac{|A_i - A_{i+1}|}{\bar{A}}
+$$
+
+### CQT, deltas e normalização
+
+**Constant-Q Transform**:
+
+$$
+Q = \frac{f_k}{\Delta f_k}
+$$
+
+**Delta e delta-delta**:
+
+$$
+d_t =
+\frac{\sum_{n=1}^{N} n(c_{t+n} - c_{t-n})}
+{2\sum_{n=1}^{N} n^2}
+$$
+
+**Min-Max Scaling**:
+
+$$
+X_{norm} = \frac{X - X_{min}}{X_{max} - X_{min}}
+$$
+
+**Z-score**:
+
+$$
+X_{norm} = \frac{X - \mu}{\sigma}
+$$
+
+## Ranking de Características do Artigo
+
+| Grupo | Dimensão | Custo | Uso no sistema |
+|---|---:|---|---|
+| LFCC/CQCC | 20-84 | Médio | Front-end forte para spoofing e Sonic Sleuth |
+| Mel espectrograma | 80-128 | Médio | Conformer, Hybrid, EfficientNet-LSTM, MultiscaleCNN |
+| CQT | 84 | Alto | Complementar no Ensemble e Sonic Sleuth |
+| MFCC | 13-40 | Baixo | Baseline e fusão multi-feature |
+| Prosódicas | 6 | Médio | Complementares, fracas isoladamente |
+
+Para a leitura completa da fundamentação e análise experimental, veja
+[Estudo Experimental](20_ESTUDO_EXPERIMENTAL.md).

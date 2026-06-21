@@ -34,6 +34,7 @@ from app.domain.models.architectures.layers import (
 logger = logging.getLogger(__name__)
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class AudioResamplingLayer(layers.Layer):
     def __init__(
         self,

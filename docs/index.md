@@ -27,11 +27,38 @@ fontes canônicas de cada assunto.
 | Preparar datasets | [Datasets Públicos](12_DATASETS.md) |
 | Executar no Google Colab | [Guia Google Colab](13_COLAB_GUIDE.md) |
 | Auditar a aderência das arquiteturas | [Revisão das Arquiteturas](14_REVISAO_ARQUITETURAS.md) |
-| Rodar o benchmark do TCC | [Benchmark e TCC](15_BENCHMARK.md) |
+| Rodar o benchmark consolidado | [Benchmark e Resultados](15_BENCHMARK.md) |
+| Ler a fundamentação e análise experimental no GitHub Pages | [Estudo Experimental](20_ESTUDO_EXPERIMENTAL.md) |
 | Estudar com os notebooks | [Guia de Notebooks](16_NOTEBOOKS.md) |
 | Entender CI/CD e segurança | [CI/CD e Segurança](17_CICD_SEGURANCA.md) |
 | Consultar termos técnicos | [Glossário](18_GLOSSARIO.md) |
 | Tirar dúvidas rápidas | [Perguntas Frequentes (FAQ)](19_FAQ.md) |
+
+## Artefatos consolidados
+
+| Item | Local |
+| --- | --- |
+| Artigo para Overleaf | `tcc_overleaf/main.tex` |
+| Pacote Overleaf | `tcc_overleaf.zip` |
+| Dataset do benchmark atual | `app/datasets/benchmark_audio_raw_balanced_15k.npz` |
+| Modelos default da aplicação | `app/models/bench_*` |
+| Modelos completos por arquitetura | `app/models/benchmark_final/` |
+| Métricas, gráficos e relatórios | `results/` |
+
+## Estudo experimental no GitHub Pages
+
+A documentação agora incorpora a fundamentação técnica e a análise experimental
+consolidadas a partir do trabalho:
+
+- equações de síntese, pré-processamento, VAD e extração de características em
+  [Features de Áudio](04_FEATURES.md) e [Estudo Experimental](20_ESTUDO_EXPERIMENTAL.md);
+- fluxograma de predição e treinamento em [Arquitetura](03_ARQUITETURA.md);
+- descrição das 14 arquiteturas e decisão operacional em
+  [Arquiteturas Neurais](08_ARQUITETURAS.md);
+- resultados, artefatos, modelos treinados e rastreabilidade em
+  [Benchmark e Resultados](15_BENCHMARK.md);
+- versão navegável do estudo em
+  [Estudo Experimental](20_ESTUDO_EXPERIMENTAL.md).
 
 ## Visão de uma página
 
@@ -73,6 +100,7 @@ flowchart LR
     A --> C["tcc_report.md"]
     A --> D["figures/*.png"]
     A --> E["architectures/&lt;modelo&gt;/"]
+    E --> F["app/models/benchmark_final"]
 ```
 
 ## Comandos rápidos

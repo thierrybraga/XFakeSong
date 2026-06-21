@@ -1,9 +1,11 @@
 import logging
+import importlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import joblib
+import numpy as np
 import tensorflow as tf
 from sklearn.preprocessing import StandardScaler
 
@@ -28,6 +30,29 @@ from app.domain.models.architectures.registry import (
 from app.domain.models.architectures.safe_normalization import SafeInstanceNormalization
 
 logger = logging.getLogger(__name__)
+
+
+def _load_custom_architecture_modules() -> None:
+    """Import custom architecture modules so Keras registrations are available."""
+    for module_name in (
+        "app.domain.models.architectures.aasist",
+        "app.domain.models.architectures.conformer",
+        "app.domain.models.architectures.efficientnet_lstm",
+        "app.domain.models.architectures.hybrid_cnn_transformer",
+        "app.domain.models.architectures.multiscale_cnn",
+        "app.domain.models.architectures.rawnet2",
+        "app.domain.models.architectures.rawgat_st",
+        "app.domain.models.architectures.wavlm",
+        "app.domain.models.architectures.hubert",
+        "app.domain.models.architectures.sonic_sleuth",
+        "app.domain.models.architectures.spectrogram_transformer",
+        "app.domain.models.architectures.ensemble",
+        "app.domain.models.training.optimization",
+    ):
+        try:
+            importlib.import_module(module_name)
+        except Exception as exc:  # noqa: BLE001 - best-effort registry hydration
+            logger.debug("Falha ao importar %s para custom_objects: %s", module_name, exc)
 
 
 @dataclass
@@ -62,6 +87,142 @@ class ModelInfo:
     onnx_session: Optional[Any] = None
 
 
+class TorchSSLOriginalModel:
+    """Lazy PyTorch inference wrapper for original WavLM/HuBERT benchmark models."""
+
+    def __init__(self, artifact_path: Path, metadata: Dict[str, Any]):
+        self.artifact_path = Path(artifact_path)
+        self.metadata = metadata or {}
+        self.backbone_dir = self._resolve_backbone_dir()
+        self.device = None
+        self.torch = None
+        self.backbone = None
+        self.classifier = None
+        self._loaded = False
+
+    def _resolve_backbone_dir(self) -> Path:
+        architecture = str(self.metadata.get("architecture", "")).lower()
+        if "hubert" in architecture or "hubert" in self.artifact_path.stem.lower():
+            default_name = "hubert_backbone"
+        else:
+            default_name = "wavlm_backbone"
+
+        candidates = []
+        raw_artifact = self.metadata.get("backbone_artifact")
+        if raw_artifact:
+            candidates.append(Path(raw_artifact))
+        candidates.append(self.artifact_path.parent / default_name)
+        candidates.append(
+            self.artifact_path.parent
+            / "benchmark_final"
+            / self.artifact_path.stem.replace("bench_", "")
+            / default_name
+        )
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        return candidates[0]
+
+    @staticmethod
+    def _normalize_wave_batch(features: np.ndarray) -> np.ndarray:
+        x = np.asarray(features, dtype=np.float32)
+        if x.ndim == 1:
+            x = x[np.newaxis, :]
+        if x.ndim == 3 and x.shape[-1] == 1:
+            x = x[..., 0]
+        flat = x.reshape(len(x), -1)
+        target_len = 16000
+        if flat.shape[1] > target_len:
+            start = max(0, (flat.shape[1] - target_len) // 2)
+            flat = flat[:, start:start + target_len]
+        elif flat.shape[1] < target_len:
+            repeats = int(np.ceil(target_len / max(1, flat.shape[1])))
+            flat = np.tile(flat, (1, repeats))[:, :target_len]
+        mean = flat.mean(axis=1, keepdims=True)
+        std = flat.std(axis=1, keepdims=True)
+        flat = (flat - mean) / np.maximum(std, 1e-6)
+        return np.clip(flat, -5.0, 5.0).astype(np.float32)
+
+    def _ensure_loaded(self) -> None:
+        if self._loaded:
+            return
+        try:
+            import torch
+            import torch.nn as nn
+            from transformers import HubertModel, WavLMModel
+        except Exception as exc:  # noqa: BLE001 - dependency surfaced to UI
+            raise RuntimeError(
+                "Modelos WavLM/HuBERT originais exigem torch e transformers "
+                "instalados no ambiente de inferência."
+            ) from exc
+
+        checkpoint = torch.load(
+            self.artifact_path,
+            map_location="cpu",
+            weights_only=False,
+        )
+        model_class = checkpoint.get(
+            "model_class",
+            self.metadata.get("model_class", "WavLMModel"),
+        )
+        backbone_cls = HubertModel if "Hubert" in str(model_class) else WavLMModel
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.backbone = backbone_cls.from_pretrained(str(self.backbone_dir)).to(
+            self.device
+        )
+        self.backbone.eval()
+        for param in self.backbone.parameters():
+            param.requires_grad = False
+
+        hidden_size = int(
+            checkpoint.get(
+                "hidden_size",
+                getattr(self.backbone.config, "hidden_size", 768),
+            )
+        )
+        dropout = float(
+            self.metadata.get(
+                "dropout",
+                checkpoint.get("training_config", {}).get("dropout", 0.2),
+            )
+        )
+        self.classifier = nn.Sequential(
+            nn.Dropout(dropout),
+            nn.Linear(hidden_size, 256),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(256, 2),
+        ).to(self.device)
+        self.classifier.load_state_dict(checkpoint["classifier_state_dict"])
+        self.classifier.eval()
+        self.torch = torch
+        self._loaded = True
+
+    def predict(self, features: np.ndarray, batch_size: int = 8) -> np.ndarray:
+        self._ensure_loaded()
+        assert self.torch is not None
+        assert self.backbone is not None
+        assert self.classifier is not None
+
+        x = self._normalize_wave_batch(features)
+        outputs = []
+        with self.torch.no_grad():
+            for start in range(0, len(x), max(1, int(batch_size))):
+                xb = self.torch.from_numpy(x[start:start + batch_size]).to(
+                    self.device
+                )
+                backbone_out = self.backbone(
+                    xb,
+                    output_hidden_states=False,
+                    return_dict=True,
+                )
+                pooled = backbone_out.last_hidden_state.mean(dim=1)
+                logits = self.classifier(pooled)
+                probs = self.torch.softmax(logits, dim=1)
+                outputs.append(probs.detach().cpu().numpy())
+        return np.concatenate(outputs, axis=0).astype(np.float32)
+
+
 class ModelLoader:
     """Responsável por carregar e gerenciar modelos."""
 
@@ -73,47 +234,46 @@ class ModelLoader:
         self.models_dir = Path(models_dir)
         self.models_dir.mkdir(exist_ok=True)
         self.loaded_models: Dict[str, ModelInfo] = {}
+        self.available_model_names: List[str] = []
         self.default_model = None
         self.create_default_models = create_default_models
 
-    def load_available_models(self):
-        """Carrega todos os modelos disponíveis."""
-        logger.info("Carregando modelos disponíveis...")
-
-        # Tentar carregar modelos salvos (suporta .keras, .h5 e .pkl)
-        model_files = (
+    def _discover_model_files(self) -> List[Path]:
+        """Return supported model artifacts in deterministic preference order."""
+        files = (
             list(self.models_dir.glob("*.keras")) +
             list(self.models_dir.glob("*.h5")) +
-            list(self.models_dir.glob("*.pkl"))
+            list(self.models_dir.glob("*.pkl")) +
+            list(self.models_dir.glob("*.pt"))
+        )
+        return sorted(
+            [p for p in files if "_scaler" not in p.stem],
+            key=lambda p: p.stem,
         )
 
-        for model_file in model_files:
-            try:
-                # warmup=False: aquecemos só o default depois (perf de startup).
-                self._load_single_model(model_file, warmup=False)
-            except Exception as e:
-                logger.warning(f"Erro ao carregar modelo {model_file}: {e}")
+    def load_available_models(self):
+        """Descobre modelos disponíveis sem carregar todos os pesos no startup."""
+        logger.info("Descobrindo modelos disponíveis em %s...", self.models_dir)
 
-        # Se não há modelos carregados, criar modelos padrão
-        if not self.loaded_models and self.create_default_models:
+        model_files = self._discover_model_files()
+        self.available_model_names = [p.stem for p in model_files]
+
+        # Se não há artefatos, criar modelos padrão leves para demonstração.
+        if not self.available_model_names and self.create_default_models:
             logger.info(
                 "Nenhum modelo salvo encontrado. Criando modelos padrão...")
             self._create_default_models()
-        elif not self.loaded_models:
+            self.available_model_names = sorted(self.loaded_models.keys())
+        elif not self.available_model_names:
             logger.info(
                 "Nenhum modelo salvo encontrado. Criação de modelos padrão "
                 "desativada."
             )
 
         # Definir modelo padrão
-        if self.loaded_models:
-            self.default_model = list(self.loaded_models.keys())[0]
+        if self.available_model_names:
+            self.default_model = self.available_model_names[0]
             logger.info(f"Modelo padrão definido: {self.default_model}")
-            # Tier-1 perf: warm-up apenas do default (os demais aquecem no 1º
-            # uso via get_model). Evita N forward-passes no startup com N modelos.
-            default_info = self.loaded_models.get(self.default_model)
-            if default_info is not None and default_info.model_type == "tensorflow":
-                self._warmup_model(default_info)
 
     def _load_single_model(self, model_path: Path, warmup: bool = True):
         """Carrega um único modelo.
@@ -140,6 +300,7 @@ class ModelLoader:
         try:
             if model_path.suffix in ('.h5', '.keras'):
                 # Modelo TensorFlow/Keras — suporta ambos os formatos
+                _load_custom_architecture_modules()
                 custom_objects = {
                     'AudioResamplingLayer': AudioResamplingLayer,
                     'AudioNormalizationLayer': AudioNormalizationLayer,
@@ -150,18 +311,41 @@ class ModelLoader:
                     'SliceLayer': SliceLayer,
                     'SafeInstanceNormalization': SafeInstanceNormalization
                 }
+                try:
+                    from app.domain.models.architectures.wavlm import (
+                        WavLMFeatureExtractor,
+                    )
+
+                    custom_objects['WavLMFeatureExtractor'] = WavLMFeatureExtractor
+                except Exception as exc:  # noqa: BLE001 - optional SSL loader
+                    logger.debug(
+                        "WavLMFeatureExtractor indisponível para load: %s", exc
+                    )
+                try:
+                    from app.domain.models.architectures.hubert import (
+                        HuBERTFeatureExtractor,
+                    )
+
+                    custom_objects['HuBERTFeatureExtractor'] = HuBERTFeatureExtractor
+                except Exception as exc:  # noqa: BLE001 - optional SSL loader
+                    logger.debug(
+                        "HuBERTFeatureExtractor indisponível para load: %s", exc
+                    )
+                custom_objects.update(tf.keras.utils.get_custom_objects())
 
                 try:
                     model = tf.keras.models.load_model(
                         str(model_path),
                         custom_objects=custom_objects,
                         safe_mode=False,
+                        compile=False,
                     )
                 except TypeError:
                     # Fallback sem custom objects se não forem necessários
                     model = tf.keras.models.load_model(
                         str(model_path),
                         safe_mode=False,
+                        compile=False,
                     )
 
                 model_type = 'tensorflow'
@@ -192,6 +376,13 @@ class ModelLoader:
                 # Para modelos sklearn, input_shape será definido durante a
                 # predição
                 input_shape = None
+
+            elif model_path.suffix == '.pt':
+                model = TorchSSLOriginalModel(model_path, metadata)
+                model_type = 'pytorch_transformers'
+                scaler = None
+                raw_shape = metadata.get('input_shape', [16000, 1])
+                input_shape = tuple(raw_shape)
 
             else:
                 logger.warning(
@@ -333,10 +524,12 @@ class ModelLoader:
             return 'EfficientNet-LSTM'
         elif 'multiscale' in name_lower:
             return 'MultiscaleCNN'
-        elif 'spectrogram' in name_lower or 'transformer' in name_lower:
-            return 'SpectrogramTransformer'
         elif 'conformer' in name_lower:
             return 'Conformer'
+        elif 'hybrid' in name_lower:
+            return 'Hybrid CNN-Transformer'
+        elif 'spectrogram' in name_lower or 'transformer' in name_lower:
+            return 'SpectrogramTransformer'
         elif 'ensemble' in name_lower:
             return 'Ensemble'
         elif 'rawnet2' in name_lower:
@@ -349,7 +542,7 @@ class ModelLoader:
             return 'Sonic Sleuth'
         elif 'svm' in name_lower:
             return 'SVM'
-        elif 'random_forest' in name_lower:
+        elif 'random_forest' in name_lower or 'randomforest' in name_lower or 'rf' in name_lower:
             return 'RandomForest'
         elif 'neural_network' in name_lower:
             return 'SimpleNN'
@@ -411,7 +604,7 @@ class ModelLoader:
             return self.loaded_models[model_name]
 
         # Lazy loading: busca nos formatos suportados (ordem de preferência)
-        for suffix in ('.keras', '.h5', '.pkl'):
+        for suffix in ('.keras', '.h5', '.pkl', '.pt'):
             model_file = self.models_dir / f"{model_name}{suffix}"
             if model_file.exists():
                 try:
@@ -426,9 +619,10 @@ class ModelLoader:
 
     def get_available_models(self) -> List[str]:
         """Retorna lista de modelos disponíveis (arquivos ou carregados)."""
-        # União de chaves de arquivos disponíveis e modelos já carregados
-        # (padrão)
-        return list(self.loaded_models.keys())
+        discovered = {p.stem for p in self._discover_model_files()}
+        discovered.update(self.available_model_names)
+        discovered.update(self.loaded_models.keys())
+        return sorted(discovered)
 
     def get_available_architectures(self) -> List[str]:
         """Retorna lista de arquiteturas disponíveis."""

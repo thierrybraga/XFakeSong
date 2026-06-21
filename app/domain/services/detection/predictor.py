@@ -569,6 +569,10 @@ class Predictor:
                     return self._predict_tensorflow_batch_with_tta(
                         model_info, features_list, device)
                 return self._predict_tensorflow_batch(model_info, features_list, device)
+            elif model_info.model_type == 'pytorch_transformers':
+                return self._predict_pytorch_transformers_batch(
+                    model_info, features_list
+                )
             elif model_info.model_type == 'sklearn':
                 return self._predict_sklearn_batch(model_info, features_list)
             else:
@@ -711,6 +715,66 @@ class Predictor:
                 errors=[f"Erro na predição TensorFlow: {str(e)}"]
             )
 
+    def _predict_pytorch_transformers_batch(
+        self,
+        model_info: ModelInfo,
+        features_list: List[np.ndarray],
+    ) -> ProcessingResult[List[Dict[str, Any]]]:
+        """Predição em lote com backbones SSL originais em PyTorch."""
+        try:
+            batch_features = prepare_batch_for_model(
+                features_list, model_info.input_shape
+            )
+            predictions = model_info.model.predict(batch_features)
+            predictions = normalize_logits_to_probs(predictions)
+
+            model_temp = float(getattr(model_info, 'temperature', 1.0))
+            predictions = apply_temperature_scaling(predictions, model_temp)
+            ood_scores = compute_energy_score(predictions, temperature=model_temp)
+            ood_threshold = None
+            if model_info.input_contract and isinstance(model_info.input_contract, dict):
+                ood_threshold = model_info.input_contract.get('ood_threshold')
+            fake_threshold = _get_numeric_attr(model_info, 'eer_threshold', 0.5)
+
+            results = []
+            for i in range(len(predictions)):
+                pred = predictions[i]
+                if np.ndim(pred) == 0 or pred.shape[-1] == 1:
+                    p_fake = _as_probability(
+                        pred[0] if np.ndim(pred) > 0 else pred
+                    )
+                    p_real = _as_probability(1.0 - p_fake)
+                else:
+                    p_fake = _as_probability(pred[1])
+                    p_real = _as_probability(pred[0])
+
+                is_deepfake = bool(p_fake > fake_threshold)
+                confidence = _as_probability(p_fake if is_deepfake else p_real)
+                ood_score = float(ood_scores[i])
+                is_ood = (
+                    ood_threshold is not None and ood_score < float(ood_threshold)
+                )
+                results.append({
+                    'is_deepfake': is_deepfake,
+                    'confidence': float(confidence),
+                    'p_fake': float(p_fake),
+                    'p_real': float(p_real),
+                    'temperature_applied': model_temp,
+                    'ood_score': ood_score,
+                    'is_ood': bool(is_ood),
+                    'ood_threshold': (
+                        float(ood_threshold) if ood_threshold is not None else None
+                    ),
+                    'classification_threshold': fake_threshold,
+                })
+
+            return ProcessingResult(status=ProcessingStatus.SUCCESS, data=results)
+        except Exception as e:
+            return ProcessingResult(
+                status=ProcessingStatus.ERROR,
+                errors=[f"Erro na predição PyTorch SSL: {str(e)}"],
+            )
+
     def _predict_sklearn_batch(
         self,
         model_info: ModelInfo,
@@ -740,17 +804,18 @@ class Predictor:
             # Probabilidade (convenção: índice 0 = real, índice 1 = fake)
             if hasattr(model_info.model, 'predict_proba'):
                 probas = model_info.model.predict_proba(X)
+                fake_threshold = _get_numeric_attr(model_info, 'eer_threshold', 0.5)
                 for i in range(len(probas)):
                     p_real = float(probas[i][0])
                     p_fake = float(probas[i][1]) if len(probas[i]) > 1 else 1.0 - p_real
-                    is_deepfake = bool(p_fake > 0.5)
+                    is_deepfake = bool(p_fake > fake_threshold)
                     confidence = p_fake if is_deepfake else p_real
                     results.append({
                         'is_deepfake': is_deepfake,
                         'confidence': float(confidence),
                         'p_fake': p_fake,
                         'p_real': p_real,
-                        'classification_threshold': 0.5,
+                        'classification_threshold': fake_threshold,
                     })
             else:
                 for i in range(len(predictions)):

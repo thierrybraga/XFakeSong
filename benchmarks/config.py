@@ -4,7 +4,31 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
+
+
+ALL_TCC_ARCHITECTURES = [
+    "WavLM",
+    "HuBERT",
+    "RawNet2",
+    "Sonic Sleuth",
+    "AASIST",
+    "RawGAT-ST",
+    "Conformer",
+    "Hybrid CNN-Transformer",
+    "SpectrogramTransformer",
+    "EfficientNet-LSTM",
+    "MultiscaleCNN",
+    "Ensemble",
+    "SVM",
+    "RandomForest",
+]
+
+CLASSICAL_TCC_ARCHITECTURES = ["SVM", "RandomForest"]
+
+NEURAL_TCC_ARCHITECTURES = [
+    arch for arch in ALL_TCC_ARCHITECTURES if arch not in CLASSICAL_TCC_ARCHITECTURES
+]
 
 
 @dataclass
@@ -21,6 +45,8 @@ class BenchmarkConfig:
         snr_levels_db: níveis de SNR (dB) do teste de robustez AWGN.
         latency_runs: nº de inferências para medir a latência (mediana).
         output_dir: pasta de saída dos artefatos (JSON/CSV/LaTeX/figuras).
+        models_dir: pasta padrão para modelos treinados pelo benchmark. Por
+            padrão usa o mesmo diretório carregado pela Gradio/API.
         run_api_probe: se True, roda o teste de sistema da API (TestClient).
         synthetic_n / synthetic_shape: tamanho/forma do dataset sintético.
         converge_auc_threshold: AUC mínimo (no limpo) para marcar "convergiu".
@@ -37,11 +63,16 @@ class BenchmarkConfig:
     snr_levels_db: List[int] = field(default_factory=lambda: [30, 20, 10])
     latency_runs: int = 30
     output_dir: str = "results/benchmark"
+    models_dir: str = "app/models"
     run_api_probe: bool = False
     synthetic_n: int = 360
     synthetic_shape: tuple = (32, 16)
     converge_auc_threshold: float = 0.60
     converge_accuracy_threshold: float = 0.55
+    preset_name: str = "custom"
+    device_profile: str = "auto"
+    optimize_hyperparameters: bool = True
+    training_overrides: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
     @classmethod
     def quick(cls, **overrides) -> "BenchmarkConfig":
@@ -54,30 +85,57 @@ class BenchmarkConfig:
             latency_runs=5,
             synthetic_n=200,
             synthetic_shape=(8, 8),
+            preset_name="quick",
+            optimize_hyperparameters=False,
         )
         base.update(overrides)
         return cls(**base)
 
     @classmethod
     def full_tcc(cls, **overrides) -> "BenchmarkConfig":
-        """Preset do TCC: as arquiteturas-chave + baselines clássicos.
-
-        Inclui SVM e Random Forest (clássicos, leves) — baselines que o cenário
-        CPU/dados-escassos favorece e que o artigo original havia omitido.
-        """
+        """Preset completo do TCC: todas as arquiteturas + baselines clássicos."""
         base = dict(
-            architectures=[
-                "MultiscaleCNN",
-                "Ensemble",
-                "EfficientNet-LSTM",
-                "AASIST",
-                "RawNet2",
-                "SVM",
-                "RandomForest",
-            ],
-            epochs=20,
+            architectures=list(ALL_TCC_ARCHITECTURES),
+            epochs=100,
             snr_levels_db=[30, 20, 10],
             run_api_probe=True,
+            preset_name="full_tcc",
+            optimize_hyperparameters=True,
+        )
+        base.update(overrides)
+        return cls(**base)
+
+    @classmethod
+    def full_all_architectures(cls, **overrides) -> "BenchmarkConfig":
+        """Alias explícito para o preset completo com as 14 arquiteturas."""
+        return cls.full_tcc(**overrides)
+
+    @classmethod
+    def neural_tcc(cls, **overrides) -> "BenchmarkConfig":
+        """Preset neural do TCC: todas as arquiteturas neurais, sem SVM/RF."""
+        base = dict(
+            architectures=list(NEURAL_TCC_ARCHITECTURES),
+            epochs=100,
+            snr_levels_db=[30, 20, 10],
+            run_api_probe=False,
+            preset_name="neural_tcc",
+            optimize_hyperparameters=True,
+        )
+        base.update(overrides)
+        return cls(**base)
+
+    @classmethod
+    def rawnet2_100e(cls, **overrides) -> "BenchmarkConfig":
+        """Preset individual do RawNet2 para benchmark real em 100 epocas."""
+        base = dict(
+            architectures=["RawNet2"],
+            epochs=100,
+            batch_size=16,
+            snr_levels_db=[30, 20, 10],
+            run_api_probe=False,
+            preset_name="single:RawNet2",
+            device_profile="gpu",
+            optimize_hyperparameters=True,
         )
         base.update(overrides)
         return cls(**base)

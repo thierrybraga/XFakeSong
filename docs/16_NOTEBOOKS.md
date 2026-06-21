@@ -1,8 +1,9 @@
 # 16 — Guia de Notebooks
 
 Os notebooks foram reorganizados para separar estudo, execução do benchmark,
-treinamento, inferência e análise de features. A estrutura atual evita um
-notebook monolítico e facilita revisar cada arquitetura isoladamente.
+treinamento, inferência, análise de features e execução completa de todas as
+arquiteturas. A estrutura facilita revisar cada arquitetura isoladamente e
+também oferece um caderno único para o experimento final.
 
 !!! tip "Rodar no Google Colab (com GPU)"
     Todos os notebooks são **auto-suficientes no Colab**: a primeira célula
@@ -22,7 +23,8 @@ notebooks/
 ├── pipeline/
 │   ├── 01_benchmark_tcc_full_pipeline.ipynb
 │   ├── 02_training_model.ipynb
-│   └── 03_inference.ipynb
+│   ├── 03_inference.ipynb
+│   └── 04_all_architectures_full_benchmark.ipynb
 ├── models/
 │   ├── 01_wavlm.ipynb
 │   ├── 02_hubert.ipynb
@@ -49,7 +51,10 @@ notebooks/
    de download, processamento, treino, inferência e relatório.
 4. `notebooks/pipeline/02_training_model.ipynb`: treino prático de um modelo.
 5. `notebooks/pipeline/03_inference.ipynb`: leitura de predições e inferência.
-6. `notebooks/models/*.ipynb`: estudo individual por arquitetura.
+6. `notebooks/pipeline/04_all_architectures_full_benchmark.ipynb`: execução
+   operacional de todas as arquiteturas, com storage, download robusto, treino,
+   auditoria de gráficos/relatórios e modelos salvos.
+7. `notebooks/models/*.ipynb`: estudo individual por arquitetura.
 
 ## Notebook de Benchmark
 
@@ -57,15 +62,41 @@ notebooks/
 
 ```bash
 python scripts/run_tcc_pipeline.py \
-  --tcc-full-dataset \
-  --out results/tcc_full_20k \
-  --npz app/datasets/benchmark_audio_raw_20k.npz
+  --download \
+  --target-per-class 7500 \
+  --full-benchmark \
+  --epochs 100 \
+  --device-profile gpu \
+  --out results/tcc_full_15k \
+  --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
-Esse preset usa o alvo experimental de `10.000` amostras reais + `10.000`
-amostras fake, ativa o benchmark completo e inclui o probe da API. O notebook
-mantém a execução completa desativada por padrão para evitar download e treino
-longos sem revisão do ambiente.
+Esse roteiro reproduz o benchmark consolidado do TCC: `7.500` amostras reais +
+`7.500` amostras fake, 100 épocas para modelos neurais, benchmark completo e
+probe da API quando habilitado. O notebook mantém a execução completa
+desativada por padrão para evitar download e treino longos sem revisão do
+ambiente.
+
+## Notebook Completo de Todas as Arquiteturas
+
+`pipeline/04_all_architectures_full_benchmark.ipynb` é o caderno recomendado
+para Colab Pro ou máquina com GPU quando o objetivo é rodar o experimento de
+ponta a ponta. Ele:
+
+- configura `XFAKE_STORAGE_DIR`, `XFAKE_DATASETS_DIR`, `XFAKE_MODELS_DIR` e
+  `XFAKE_LOGS_DIR` para storage persistente;
+- executa um smoke test antes do treino pesado;
+- usa alvo de `7.500` amostras reais + `7.500` fake no benchmark atual;
+- chama `scripts/run_tcc_pipeline.py --download --target-per-class ... --archs`
+  com as 14 arquiteturas;
+- audita `dataset.md`, `dataset_manifest.json`, `results.json`, `results.csv`,
+  `predictions_clean.csv`, figuras PNG agregadas e artefatos por arquitetura;
+- verifica o campo `model_artifact` e a consolidação em `app/models/`, garantindo
+  que os modelos treinados foram salvos para uso posterior no Gradio/API.
+
+A flag `RUN_FULL_BENCHMARK = False` impede execução acidental. Ative somente
+após confirmar GPU, espaço em disco/storage e credenciais necessárias para os
+datasets.
 
 ## Notebooks por Modelo
 
@@ -119,6 +150,8 @@ células usam a API real do projeto (`BenchmarkData.prepare_for_architecture`,
 O teste de notebooks também verifica:
 
 - 14 notebooks de modelos com contrato de entrada resolvido;
+- 4 notebooks de pipeline, incluindo o caderno completo de todas as
+  arquiteturas;
 - notebook de benchmark com execução completa guardada por
   `RUN_FULL_PIPELINE = False`;
 - presença dos artefatos esperados (`dataset.md`, `tcc_report.md`, PNGs);

@@ -25,7 +25,19 @@ Uso por CLI:
 
 from __future__ import annotations
 
-from benchmarks.config import BenchmarkConfig
-from benchmarks.runner import run_benchmark
+from benchmarks.config import (
+    ALL_TCC_ARCHITECTURES,
+    CLASSICAL_TCC_ARCHITECTURES,
+    NEURAL_TCC_ARCHITECTURES,
+    BenchmarkConfig,
+)
+from benchmarks.runner import plan_benchmark, run_benchmark
 
-__all__ = ["BenchmarkConfig", "run_benchmark"]
+__all__ = [
+    "ALL_TCC_ARCHITECTURES",
+    "CLASSICAL_TCC_ARCHITECTURES",
+    "NEURAL_TCC_ARCHITECTURES",
+    "BenchmarkConfig",
+    "plan_benchmark",
+    "run_benchmark",
+]

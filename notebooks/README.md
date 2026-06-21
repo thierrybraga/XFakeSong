@@ -7,7 +7,7 @@ Estrutura reorganizada para estudo e reprodução dos experimentos do TCC.
 | Pasta | Conteúdo |
 |---|---|
 | `00_index.ipynb` | Índice executável dos notebooks |
-| `pipeline/` | Benchmark completo, treino e inferência |
+| `pipeline/` | Benchmark completo, todas as arquiteturas, treino e inferência |
 | `features/` | Extração e estudo de features |
 | `models/` | Um notebook por modelo/arquitetura |
 
@@ -18,10 +18,13 @@ Estrutura reorganizada para estudo e reprodução dos experimentos do TCC.
 3. `pipeline/01_benchmark_tcc_full_pipeline.ipynb`
 4. `pipeline/02_training_model.ipynb`
 5. `pipeline/03_inference.ipynb`
-6. `models/<modelo>.ipynb`
+6. `pipeline/04_all_architectures_full_benchmark.ipynb`
+7. `models/<modelo>.ipynb`
 
 O experimento oficial do TCC usa `scripts/run_tcc_pipeline.py --tcc-full-dataset`,
 com alvo de 10.000 amostras reais + 10.000 amostras fake.
+Para treinar e auditar todas as arquiteturas em um único caderno, use
+`pipeline/04_all_architectures_full_benchmark.ipynb`.
 
 ## Geração e validação
 

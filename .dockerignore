@@ -17,6 +17,8 @@ __pycache__/
 *.so
 .Python
 .venv/
+.venv-wsl/
+.venv_wsl/
 venv/
 env/
 ENV/
@@ -56,6 +58,7 @@ logs/
 *.log
 tmp/
 temp/
+results/
 
 # --- Data e modelos pesados (volumes montados em runtime) ---
 data/
@@ -67,7 +70,9 @@ app/models/*.pkl
 app/models/*.onnx
 app/models/*.tflite
 app/models/optuna_trials/
+app/models/benchmark_final/
 app/results/
+models/
 
 # --- Dev / docs (não necessários em produção) ---
 docs/

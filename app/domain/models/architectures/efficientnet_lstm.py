@@ -48,6 +48,7 @@ logger = logging.getLogger(__name__)
 
 # ============================ CUSTOM LAYERS ============================
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class MelSpectrogramFrontEnd(layers.Layer):
     """Mel spectrogram extraction matching CNN-LSTM paper parameters.
 
@@ -106,6 +107,7 @@ class MelSpectrogramFrontEnd(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class TemporalPoolingLayer(layers.Layer):
     """Pool EfficientNet feature maps along frequency axis to get temporal sequence.
 
@@ -345,6 +347,7 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
             num_classes=num_classes,
             lstm_units=kwargs.get('lstm_units', 256),
             dropout_rate=kwargs.get('dropout_rate', 0.3),
+            pretrained=kwargs.get('pretrained', True),
             architecture=architecture
         )
 
@@ -352,10 +355,17 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
 # Register custom layers
 tf.keras.utils.get_custom_objects().update({
     'MelSpectrogramFrontEnd': MelSpectrogramFrontEnd,
+    'XFakeSong>MelSpectrogramFrontEnd': MelSpectrogramFrontEnd,
     'TemporalPoolingLayer': TemporalPoolingLayer,
+    'XFakeSong>TemporalPoolingLayer': TemporalPoolingLayer,
     'AttentionLayer': AttentionLayer,
+    'XFakeSong>AttentionLayer': AttentionLayer,
     'ExpandDimsLayer': ExpandDimsLayer,
+    'XFakeSong>ExpandDimsLayer': ExpandDimsLayer,
     'ResizeLayer': ResizeLayer,
+    'XFakeSong>ResizeLayer': ResizeLayer,
     'RepeatChannelLayer': RepeatChannelLayer,
+    'XFakeSong>RepeatChannelLayer': RepeatChannelLayer,
     'DeltaFeatureLayer': DeltaFeatureLayer,
+    'XFakeSong>DeltaFeatureLayer': DeltaFeatureLayer,
 })

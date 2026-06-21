@@ -317,6 +317,7 @@ def build_index():
            - [01 · Benchmark do TCC](pipeline/01_benchmark_tcc_full_pipeline.ipynb)
            - [02 · Treino de um modelo](pipeline/02_training_model.ipynb)
            - [03 · Inferência](pipeline/03_inference.ipynb)
+           - [04 · Todas as arquiteturas](pipeline/04_all_architectures_full_benchmark.ipynb)
         3. Modelos
         {model_links}
         """),
@@ -990,6 +991,311 @@ def build_pipeline():
         > no lugar certo para as duas interfaces. Sem o `_config.json` ao lado, o
         > serviço cai no contrato do registry (ainda funciona, mas sem a
         > temperatura/EER calibrados do seu treino).
+        """),
+    ])
+
+    # 04 — benchmark completo: todas as arquiteturas
+    write_nb("pipeline/04_all_architectures_full_benchmark.ipynb", [
+        md("""
+        # Benchmark Completo: todas as arquiteturas
+
+        Notebook operacional para executar o ciclo completo do TCC em Colab,
+        Kaggle, máquina local ou ambiente com GPU:
+
+        1. prepara storage persistente (`XFAKE_STORAGE_DIR`);
+        2. baixa/prepara dataset robusto com alvo de 10.000 reais + 10.000 fake;
+        3. treina todas as arquiteturas registradas no benchmark;
+        4. gera métricas, predições, curvas, matrizes de confusão e relatório;
+        5. valida os artefatos e confirma que os modelos foram salvos.
+
+        A execução completa é pesada e fica desligada por padrão. Primeiro rode o
+        smoke test, verifique GPU/storage, depois altere `RUN_FULL_BENCHMARK=True`.
+        """),
+        code(BOOTSTRAP),
+        md("## 1. Ambiente, storage e GPU"),
+        code("""
+        import json
+        import os
+        import shutil
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        IN_COLAB = "google.colab" in sys.modules
+        USE_GOOGLE_DRIVE = IN_COLAB
+
+        if USE_GOOGLE_DRIVE:
+            from google.colab import drive
+
+            drive.mount("/content/drive")
+            STORAGE_ROOT = Path("/content/drive/MyDrive/XFakeSong")
+        else:
+            STORAGE_ROOT = Path(os.environ.get("XFAKE_STORAGE_DIR", ROOT / "storage"))
+
+        DATASETS_DIR = STORAGE_ROOT / "datasets"
+        MODELS_DIR = STORAGE_ROOT / "models"
+        RESULTS_DIR = STORAGE_ROOT / "results"
+        LOGS_DIR = STORAGE_ROOT / "logs"
+
+        for d in (DATASETS_DIR, MODELS_DIR, RESULTS_DIR, LOGS_DIR):
+            d.mkdir(parents=True, exist_ok=True)
+
+        os.environ["XFAKE_STORAGE_DIR"] = str(STORAGE_ROOT)
+        os.environ["XFAKE_DATASETS_DIR"] = str(DATASETS_DIR)
+        os.environ["XFAKE_MODELS_DIR"] = str(MODELS_DIR)
+        os.environ["XFAKE_LOGS_DIR"] = str(LOGS_DIR)
+        os.environ["XFAKE_CREATE_DEFAULT_MODELS"] = "false"
+
+        print("ROOT          :", ROOT)
+        print("STORAGE_ROOT  :", STORAGE_ROOT)
+        print("DATASETS_DIR  :", DATASETS_DIR)
+        print("MODELS_DIR    :", MODELS_DIR)
+        print("RESULTS_DIR   :", RESULTS_DIR)
+
+        try:
+            import tensorflow as tf
+
+            physical = tf.config.list_physical_devices("GPU")
+            for gpu in physical:
+                try:
+                    tf.config.experimental.set_memory_growth(gpu, True)
+                except Exception:
+                    pass
+            print("GPUs TensorFlow:", physical)
+        except Exception as exc:
+            print("TensorFlow/GPU indisponível:", exc)
+        """),
+        md("## 2. Arquiteturas e hiperparâmetros do experimento"),
+        code("""
+        ALL_ARCHITECTURES = [
+            "WavLM",
+            "HuBERT",
+            "RawNet2",
+            "Sonic Sleuth",
+            "AASIST",
+            "RawGAT-ST",
+            "Conformer",
+            "Hybrid CNN-Transformer",
+            "SpectrogramTransformer",
+            "EfficientNet-LSTM",
+            "MultiscaleCNN",
+            "Ensemble",
+            "SVM",
+            "RandomForest",
+        ]
+
+        TARGET_PER_CLASS = 10_000
+        EPOCHS = 20
+        BATCH_SIZE = 32
+        DURATION_SEC = 5.0
+        SNR_LEVELS_DB = [30, 20, 10]
+        LATENCY_RUNS = 30
+        WORKERS = max((os.cpu_count() or 2) - 1, 1)
+
+        OUTPUT_DIR = RESULTS_DIR / "tcc_all_architectures_20k"
+        DATASET_NPZ = DATASETS_DIR / "benchmark_audio_raw_20k.npz"
+
+        print("Arquiteturas:", len(ALL_ARCHITECTURES), ALL_ARCHITECTURES)
+        print("Alvo dataset:", TARGET_PER_CLASS, "reais +", TARGET_PER_CLASS, "fake")
+        print("Épocas/batch:", EPOCHS, BATCH_SIZE)
+        print("Workers CPU :", WORKERS)
+        """),
+        md("""
+        ## 3. Smoke test obrigatório
+
+        Roda um benchmark mínimo com SVM e RandomForest. Ele valida o contrato do
+        pipeline, geração de CSV/JSON/PNG e persistência dos modelos antes de
+        iniciar o treino completo.
+        """),
+        code("""
+        RUN_SMOKE_TEST = True
+        SMOKE_OUT = RESULTS_DIR / "smoke_all_architectures_contract"
+        SMOKE_NPZ = DATASETS_DIR / "smoke_all_architectures_contract.npz"
+
+        smoke_cmd = [
+            sys.executable,
+            str(ROOT / "scripts" / "run_tcc_pipeline.py"),
+            "--smoke",
+            "--archs", "SVM", "RandomForest",
+            "--epochs", "1",
+            "--batch-size", "4",
+            "--latency-runs", "2",
+            "--out", str(SMOKE_OUT),
+            "--npz", str(SMOKE_NPZ),
+        ]
+        print(" ".join(smoke_cmd))
+
+        if RUN_SMOKE_TEST:
+            subprocess.run(smoke_cmd, cwd=ROOT, check=True)
+        else:
+            print("Smoke test desativado.")
+        """),
+        md("""
+        ## 4. Download + treino completo + inferência + relatório
+
+        O comando abaixo usa `scripts/run_tcc_pipeline.py` como orquestrador
+        único. Ele baixa/prepara os dados, cria split, treina todas as
+        arquiteturas, roda inferência limpa e com ruído, mede latência, salva os
+        modelos em `MODELS_DIR`, e gera os relatórios em `OUTPUT_DIR`.
+
+        Em Colab Pro, use GPU antes de ativar esta célula. Em CPU, rode apenas
+        baselines clássicos ou reduza `ALL_ARCHITECTURES`.
+        """),
+        code("""
+        RUN_FULL_BENCHMARK = False
+
+        full_cmd = [
+            sys.executable,
+            str(ROOT / "scripts" / "run_tcc_pipeline.py"),
+            "--download",
+            "--full-benchmark",
+            "--target-per-class", str(TARGET_PER_CLASS),
+            "--epochs", str(EPOCHS),
+            "--batch-size", str(BATCH_SIZE),
+            "--duration-sec", str(DURATION_SEC),
+            "--latency-runs", str(LATENCY_RUNS),
+            "--snr", *[str(snr) for snr in SNR_LEVELS_DB],
+            "--out", str(OUTPUT_DIR),
+            "--npz", str(DATASET_NPZ),
+            "--archs", *ALL_ARCHITECTURES,
+        ]
+
+        print(" ".join(full_cmd))
+
+        if RUN_FULL_BENCHMARK:
+            subprocess.run(full_cmd, cwd=ROOT, check=True)
+        else:
+            print("Execução completa desativada. Revise GPU/storage e defina RUN_FULL_BENCHMARK=True.")
+        """),
+        md("## 5. Auditoria dos artefatos gerados"),
+        code("""
+        import pandas as pd
+
+        try:
+            from IPython.display import display
+        except Exception:
+            display = print
+
+        def _read_json(path: Path):
+            return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+
+
+        def audit_benchmark_artifacts(report_dir: Path):
+            root_required = [
+                "dataset.md",
+                "dataset_manifest.json",
+                "results.json",
+                "results.csv",
+                "predictions_clean.csv",
+                "summary.md",
+                "tcc_report.md",
+                "figures/roc.png",
+                "figures/robustez.png",
+                "figures/convergencia.png",
+                "figures/eficiencia.png",
+                "figures/confusion_matrices.png",
+                "figures/score_distributions.png",
+            ]
+            missing_root = [p for p in root_required if not (report_dir / p).exists()]
+
+            results = _read_json(report_dir / "results.json") or {}
+            arch_results = results.get("architectures", {})
+            per_arch = {}
+            for arch, payload in arch_results.items():
+                arch_dir = report_dir / arch
+                expected = [
+                    "metrics.json",
+                    "summary.md",
+                    "predictions_clean.csv",
+                    "robustness.csv",
+                    "confusion_matrix.png",
+                    "roc.png",
+                    "score_distribution.png",
+                    "convergence.png",
+                ]
+                model_artifact = payload.get("model_artifact")
+                if model_artifact:
+                    expected.append(str(Path(model_artifact)))
+                missing = []
+                for item in expected:
+                    candidate = Path(item)
+                    if not candidate.is_absolute():
+                        candidate = arch_dir / candidate
+                    if not candidate.exists():
+                        missing.append(str(candidate))
+                per_arch[arch] = {
+                    "status": payload.get("status"),
+                    "missing": missing,
+                    "model_artifact": model_artifact,
+                }
+
+            return {"missing_root": missing_root, "per_arch": per_arch}
+
+
+        REPORT_DIR = OUTPUT_DIR if (OUTPUT_DIR / "results.json").exists() else SMOKE_OUT
+        print("Auditando:", REPORT_DIR)
+        audit = audit_benchmark_artifacts(REPORT_DIR)
+        print(json.dumps(audit, indent=2, ensure_ascii=False))
+
+        if (REPORT_DIR / "results.csv").exists():
+            df = pd.read_csv(REPORT_DIR / "results.csv")
+            display(df)
+        """),
+        md("## 6. Exibir gráficos principais"),
+        code("""
+        try:
+            from IPython.display import Image, display
+        except Exception:
+            Image = None
+            display = print
+
+        FIGURES = [
+            "roc.png",
+            "confusion_matrices.png",
+            "score_distributions.png",
+            "convergencia.png",
+            "robustez.png",
+            "eficiencia.png",
+        ]
+
+        figures_dir = REPORT_DIR / "figures"
+        for figure in FIGURES:
+            path = figures_dir / figure
+            if path.exists() and Image is not None:
+                print(figure)
+                display(Image(filename=str(path)))
+            else:
+                print("não encontrado:", path)
+        """),
+        md("""
+        ## 7. Exportar pacote para apresentação/TCC
+
+        O diretório `OUTPUT_DIR` já contém os `.md`, `.csv`, `.json` e `.png`.
+        Ative o zip se precisar transportar os resultados.
+        """),
+        code("""
+        CREATE_RESULTS_ZIP = False
+
+        if CREATE_RESULTS_ZIP and OUTPUT_DIR.exists():
+            zip_path = shutil.make_archive(str(OUTPUT_DIR), "zip", OUTPUT_DIR)
+            print("ZIP:", zip_path)
+        else:
+            print("Zip desativado. Resultados em:", OUTPUT_DIR)
+            print("Modelos salvos em:", MODELS_DIR)
+        """),
+        md("""
+        ## 8. Usar no Gradio para demonstração
+
+        O benchmark salva os modelos em `MODELS_DIR`, apontado por
+        `XFAKE_MODELS_DIR`. Para demonstrar:
+
+        ```bash
+        python main.py --gradio
+        ```
+
+        No Hugging Face Spaces, configure o mesmo bucket/storage persistente e as
+        variáveis `XFAKE_STORAGE_DIR=/data`, `XFAKE_MODELS_DIR=/data/models`.
+        A interface Gradio carregará os modelos salvos para inferência.
         """),
     ])
 

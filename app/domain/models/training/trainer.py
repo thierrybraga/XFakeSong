@@ -4,6 +4,7 @@ Este módulo implementa o treinador principal para modelos de detecção de deep
 """
 
 import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -32,6 +33,67 @@ from .metrics import MetricsCalculator
 from .optimization import OptimizerFactory
 
 _save_logger = logging.getLogger(__name__)
+_progress_logger = logging.getLogger("training.progress")
+
+
+class EpochProgressLogger(tf.keras.callbacks.Callback):
+    """Loga progresso de treino em linha única por época ou intervalo."""
+
+    def __init__(self, interval: int = 1, label: str = ""):
+        super().__init__()
+        self.interval = max(1, int(interval or 1))
+        self.label = label or "model"
+        self._started_at = 0.0
+        self._epoch_started_at = 0.0
+
+    def on_train_begin(self, logs=None):
+        self._started_at = time.time()
+        total = self.params.get("epochs", "?")
+        steps = self.params.get("steps", "?")
+        _progress_logger.warning(
+            "[TRAIN] %s iniciado: epochs=%s steps_per_epoch=%s",
+            self.label,
+            total,
+            steps,
+        )
+
+    def on_epoch_begin(self, epoch, logs=None):
+        self._epoch_started_at = time.time()
+
+    def on_epoch_end(self, epoch, logs=None):
+        logs = logs or {}
+        total = int(self.params.get("epochs") or 0)
+        current = int(epoch) + 1
+        should_log = (
+            current == 1
+            or (total and current == total)
+            or current % self.interval == 0
+        )
+        if not should_log:
+            return
+
+        elapsed = time.time() - self._started_at
+        epoch_s = time.time() - self._epoch_started_at
+        eta_min = None
+        if total and current < total:
+            eta_min = (elapsed / current) * (total - current) / 60.0
+        metric_bits = []
+        for key in ("loss", "accuracy", "val_loss", "val_accuracy", "learning_rate"):
+            if key in logs:
+                try:
+                    metric_bits.append(f"{key}={float(logs[key]):.6g}")
+                except Exception:
+                    metric_bits.append(f"{key}={logs[key]}")
+        _progress_logger.warning(
+            "[TRAIN] %s epoch=%d/%s epoch_s=%.1f elapsed_min=%.1f eta_min=%s %s",
+            self.label,
+            current,
+            total or "?",
+            epoch_s,
+            elapsed / 60.0,
+            f"{eta_min:.1f}" if eta_min is not None else "-",
+            " ".join(metric_bits),
+        )
 
 
 def save_inference_keras(model: "tf.keras.Model", path) -> None:
@@ -118,6 +180,52 @@ class ModelTrainer(IModelTrainer):
             validate_no_leakage=True,
         )
         self.secure_pipeline = SecureTrainingPipeline(secure_config)
+
+    def _array_dataset(
+        self,
+        X: np.ndarray,
+        y: np.ndarray,
+        *,
+        batch_size: int,
+        purpose: str,
+    ) -> tuple[tf.data.Dataset, bool]:
+        """Cria dataset sem materializar arrays grandes como Tensor constante."""
+        X = np.asarray(X)
+        y = np.asarray(y)
+        bytes_total = int(X.nbytes + y.nbytes)
+        large_threshold = 256 * 1024 * 1024
+
+        if bytes_total <= large_threshold:
+            return tf.data.Dataset.from_tensor_slices((X, y)).batch(batch_size), False
+
+        self.logger.info(
+            "Dataset %s grande (%.1f MB) — usando generator em batches para "
+            "reduzir cópias de RAM.",
+            purpose,
+            bytes_total / (1024 * 1024),
+        )
+
+        x_shape = (None,) + tuple(X.shape[1:])
+        y_shape = (None,) + tuple(y.shape[1:])
+        x_dtype = tf.as_dtype(X.dtype)
+        y_dtype = tf.as_dtype(y.dtype)
+
+        def batch_generator():
+            n = len(y)
+            for start in range(0, n, batch_size):
+                end = min(start + batch_size, n)
+                yield X[start:end], y[start:end]
+
+        n_batches = int(np.ceil(len(y) / max(1, batch_size)))
+        dataset = tf.data.Dataset.from_generator(
+            batch_generator,
+            output_signature=(
+                tf.TensorSpec(shape=x_shape, dtype=x_dtype),
+                tf.TensorSpec(shape=y_shape, dtype=y_dtype),
+            ),
+        )
+        dataset = dataset.apply(tf.data.experimental.assert_cardinality(n_batches))
+        return dataset, True
 
     def train(
         self,
@@ -228,9 +336,19 @@ class ModelTrainer(IModelTrainer):
                     1, len(X_train) // self.config.batch_size
                 )
             else:
-                train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
-                train_dataset = train_dataset.batch(self.config.batch_size)
-                steps_per_epoch = None
+                train_dataset, train_streaming = self._array_dataset(
+                    X_train,
+                    y_train,
+                    batch_size=self.config.batch_size,
+                    purpose="train",
+                )
+                if train_streaming:
+                    train_dataset = train_dataset.repeat()
+                    steps_per_epoch = int(
+                        np.ceil(len(y_train) / max(1, self.config.batch_size))
+                    )
+                else:
+                    steps_per_epoch = None
             train_dataset = optimize_tf_dataset(
                 train_dataset, cache=False, prefetch=True
             )
@@ -259,8 +377,13 @@ class ModelTrainer(IModelTrainer):
                 self._mixup_enabled = False
 
             # Preparar dados de validação
-            val_dataset = tf.data.Dataset.from_tensor_slices(validation_data)
-            val_dataset = val_dataset.batch(self.config.batch_size)
+            X_val, y_val = validation_data
+            val_dataset, _val_streaming = self._array_dataset(
+                X_val,
+                y_val,
+                batch_size=self.config.batch_size,
+                purpose="validation",
+            )
             val_dataset = optimize_tf_dataset(val_dataset, cache=False, prefetch=True)
 
             # Class weighting automático para datasets desbalanceados
@@ -274,6 +397,8 @@ class ModelTrainer(IModelTrainer):
             else:
                 class_weight = self._compute_class_weights(y_train)
 
+            verbose = int(getattr(self.config, "verbose", 1))
+
             # Treinar modelo
             history = model.fit(
                 train_dataset,
@@ -282,7 +407,7 @@ class ModelTrainer(IModelTrainer):
                 callbacks=callbacks,
                 steps_per_epoch=steps_per_epoch,
                 class_weight=class_weight,
-                verbose=1,
+                verbose=verbose,
             )
 
             # Calibração automática de temperatura (post-hoc)
@@ -331,11 +456,11 @@ class ModelTrainer(IModelTrainer):
         scaler = self.get_scaler()
         if scaler is None or scaler.scaler is None:
             self.logger.warning("Scaler não disponível - usando dados sem normalização")
-            return model.predict(X)
+            return model.predict(X, verbose=0)
 
         # Aplicar mesma normalização usada no treinamento
         X_scaled = scaler.transform_test(X)
-        return model.predict(X_scaled)
+        return model.predict(X_scaled, verbose=0)
 
     def save_training_artifacts(
         self, model: tf.keras.Model, save_dir: Union[str, Path]
@@ -420,7 +545,9 @@ class ModelTrainer(IModelTrainer):
             )
 
             # Predições para métricas detalhadas
-            y_pred = model.predict(X_test, batch_size=self.config.batch_size)
+            y_pred = model.predict(
+                X_test, batch_size=self.config.batch_size, verbose=0
+            )
             # Suporta saídas (N,1) sigmoid e (N,K) softmax
             y_pred_classes = (
                 np.argmax(y_pred, axis=1)
@@ -509,6 +636,15 @@ class ModelTrainer(IModelTrainer):
         # Termina o treinamento imediatamente se NaN/Inf aparecer na loss
         callbacks.append(tf.keras.callbacks.TerminateOnNaN())
 
+        progress_interval = int(getattr(self.config, "progress_log_interval", 0) or 0)
+        if progress_interval > 0:
+            callbacks.append(
+                EpochProgressLogger(
+                    interval=progress_interval,
+                    label=getattr(self.config, "progress_label", "") or "training",
+                )
+            )
+
         # Sprint 2.3: Stochastic Weight Averaging (opt-in via TrainingConfig)
         if getattr(self.config, "use_swa", False):
             try:
@@ -518,7 +654,7 @@ class ModelTrainer(IModelTrainer):
                     start_epoch=getattr(self.config, "swa_start_epoch", -1),
                     swa_freq=getattr(self.config, "swa_freq", 1),
                     bn_update_data=kwargs.get("bn_update_data", None),
-                    verbose=1,
+                    verbose=int(getattr(self.config, "verbose", 1)),
                 )
                 callbacks.append(swa_cb)
                 self._swa_callback = swa_cb  # acessível depois do treino
@@ -527,25 +663,28 @@ class ModelTrainer(IModelTrainer):
                 self.logger.warning(f"Falha ao adicionar SWA callback: {e}")
 
         # Early stopping
-        callbacks.append(
-            EarlyStopping(
-                monitor="val_loss",
-                patience=self.config.early_stopping_patience,
-                restore_best_weights=True,
-                verbose=1,
+        if getattr(self.config, "early_stopping", True):
+            callbacks.append(
+                EarlyStopping(
+                    monitor="val_loss",
+                    patience=self.config.early_stopping_patience,
+                    restore_best_weights=True,
+                    verbose=int(getattr(self.config, "verbose", 1)),
+                )
             )
-        )
 
-        # Reduce learning rate
-        callbacks.append(
-            ReduceLROnPlateau(
-                monitor="val_loss",
-                factor=0.5,
-                patience=self.config.reduce_lr_patience,
-                min_lr=1e-7,
-                verbose=1,
+        # Reduce learning rate. Arquiteturas com LearningRateSchedule próprio
+        # não aceitam setar optimizer.learning_rate em runtime.
+        if getattr(self.config, "reduce_lr_on_plateau", True):
+            callbacks.append(
+                ReduceLROnPlateau(
+                    monitor="val_loss",
+                    factor=0.5,
+                    patience=self.config.reduce_lr_patience,
+                    min_lr=1e-7,
+                    verbose=int(getattr(self.config, "verbose", 1)),
+                )
             )
-        )
 
         # Model checkpoint
         if "checkpoint_path" in kwargs:
@@ -555,7 +694,7 @@ class ModelTrainer(IModelTrainer):
                     monitor="val_loss",
                     save_best_only=True,
                     save_weights_only=False,
-                    verbose=1,
+                    verbose=int(getattr(self.config, "verbose", 1)),
                 )
             )
 
@@ -864,7 +1003,7 @@ class ModelTrainer(IModelTrainer):
         X_val, y_val = validation_data
 
         # Predições
-        y_pred = model.predict(X_val, batch_size=self.config.batch_size)
+        y_pred = model.predict(X_val, batch_size=self.config.batch_size, verbose=0)
         # Suporta saídas (N,1) sigmoid e (N,K) softmax
         y_pred_classes = (
             np.argmax(y_pred, axis=1)
@@ -1070,20 +1209,24 @@ class ModelTrainer(IModelTrainer):
         predictions = []
 
         # Original prediction
-        predictions.append(model.predict(X, batch_size=self.config.batch_size))
+        predictions.append(
+            model.predict(X, batch_size=self.config.batch_size, verbose=0)
+        )
 
         if n_augmentations >= 2:
             # Positive noise
             X_noise = X + np.random.normal(0, noise_std, X.shape).astype(np.float32)
             predictions.append(
-                model.predict(X_noise, batch_size=self.config.batch_size)
+                model.predict(X_noise, batch_size=self.config.batch_size, verbose=0)
             )
 
         if n_augmentations >= 3:
             # Negative noise
             X_noise_neg = X - np.random.normal(0, noise_std, X.shape).astype(np.float32)
             predictions.append(
-                model.predict(X_noise_neg, batch_size=self.config.batch_size)
+                model.predict(
+                    X_noise_neg, batch_size=self.config.batch_size, verbose=0
+                )
             )
 
         if n_augmentations >= 4:
@@ -1094,14 +1237,18 @@ class ModelTrainer(IModelTrainer):
             if shift_amount > 0:
                 X_shifted = np.roll(X, shift_amount, axis=1)
                 predictions.append(
-                    model.predict(X_shifted, batch_size=self.config.batch_size)
+                    model.predict(
+                        X_shifted, batch_size=self.config.batch_size, verbose=0
+                    )
                 )
 
         if n_augmentations >= 5:
             # Volume change
             vol_factor = np.random.uniform(volume_range[0], volume_range[1])
             X_vol = X * vol_factor
-            predictions.append(model.predict(X_vol, batch_size=self.config.batch_size))
+            predictions.append(
+                model.predict(X_vol, batch_size=self.config.batch_size, verbose=0)
+            )
 
         # Average all predictions
         avg_prediction = np.mean(predictions, axis=0)

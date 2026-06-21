@@ -1,15 +1,116 @@
-# 15 — Sistema de Benchmark e Teste (dados do TCC)
+# 15 — Sistema de Benchmark, Modelos Treinados e Resultados
 
 O pacote `benchmarks/` gera, de forma **reprodutível** e usando
 o **pipeline real** (`TrainingService → ModelLoader → Predictor →
 MetricsCalculator`) e a **API** (FastAPI `TestClient`), os dados empíricos do
-trabalho: desempenho por arquitetura, eficiência computacional, robustez a ruído
+projeto: desempenho por arquitetura, eficiência computacional, robustez a ruído
 e teste de sistema da API.
 
 > Importante: este harness usa o pipeline **já corrigido** (treino→salvar→
 > carregar→prever funcional). Os números aqui substituem com fidelidade os
-> medidos manualmente — incluindo os modelos `raw-audio` e os baselines
+> medidos manualmente, incluindo os modelos `raw-audio` e os baselines
 > clássicos (SVM/RF) que faltavam.
+
+## Estado consolidado atual
+
+O material acadêmico foi consolidado em uma única fonte LaTeX pronta para
+Overleaf:
+
+| Artefato | Caminho |
+|---|---|
+| Fonte principal do artigo | `tcc_overleaf/main.tex` |
+| Pacote Overleaf limpo | `tcc_overleaf.zip` |
+| Figuras usadas no artigo | `tcc_overleaf/figures/*.png` |
+| Matrizes de confusão por arquitetura | `tcc_overleaf/figures/confusion_matrices/*.png` |
+| Dataset do benchmark atual | `app/datasets/benchmark_audio_raw_balanced_15k.npz` |
+| Modelos default da Gradio/API | `app/models/bench_*` |
+| Modelos completos por arquitetura | `app/models/benchmark_final/<arquitetura>/` |
+| Manifesto dos modelos consolidados | `app/models/benchmark_final_manifest.json` |
+| Resultados e relatórios de benchmark | `results/<run>/` |
+
+Não há PDFs versionados como fonte de verdade. O PDF deve ser gerado a partir de
+`tcc_overleaf/main.tex` no Overleaf ou localmente com `pdflatex`.
+
+A versão navegável da fundamentação e análise experimental está em
+[Estudo Experimental](20_ESTUDO_EXPERIMENTAL.md), incluindo equações,
+fluxograma, modelos, resultados, discussão, limitações e comandos de reprodução.
+
+### Modelos treinados consolidados
+
+Os 14 diretórios finais em `app/models/benchmark_final/` preservam o artefato
+completo de cada arquitetura, incluindo backbones SSL quando aplicável. No topo
+de `app/models/`, ficam os arquivos carregáveis diretamente pela interface e
+pela API (`.keras`/`.pkl`) e seus respectivos `bench_*_config.json`.
+
+| Arquitetura | Artefato principal | Diretório completo |
+|---|---|---|
+| AASIST | `app/models/bench_aasist.keras` | `app/models/benchmark_final/aasist/` |
+| Conformer | `app/models/bench_conformer.keras` | `app/models/benchmark_final/conformer/` |
+| EfficientNet-LSTM | `app/models/bench_efficientnet_lstm.keras` | `app/models/benchmark_final/efficientnet_lstm/` |
+| Ensemble | `app/models/bench_ensemble.keras` | `app/models/benchmark_final/ensemble/` |
+| HuBERT Original | `app/models/benchmark_final/hubert_original/bench_hubert_original.pt` | `app/models/benchmark_final/hubert_original/` |
+| Hybrid CNN-Transformer | `app/models/bench_hybrid_cnn_transformer.keras` | `app/models/benchmark_final/hybrid_cnn_transformer/` |
+| MultiscaleCNN | `app/models/bench_multiscalecnn.keras` | `app/models/benchmark_final/multiscalecnn/` |
+| RandomForest | `app/models/bench_randomforest.pkl` | `app/models/benchmark_final/randomforest/` |
+| RawGAT-ST | `app/models/bench_rawgat_st.keras` | `app/models/benchmark_final/rawgat_st/` |
+| RawNet2 | `app/models/bench_rawnet2.keras` | `app/models/benchmark_final/rawnet2/` |
+| Sonic Sleuth | `app/models/bench_sonic_sleuth.keras` | `app/models/benchmark_final/sonic_sleuth/` |
+| SpectrogramTransformer | `app/models/bench_spectrogramtransformer.keras` | `app/models/benchmark_final/spectrogramtransformer/` |
+| SVM | `app/models/bench_svm.pkl` | `app/models/benchmark_final/svm/` |
+| WavLM Original | `app/models/benchmark_final/wavlm_original/bench_wavlm_original.pt` | `app/models/benchmark_final/wavlm_original/` |
+
+WavLM Original e HuBERT Original são artefatos PyTorch/SSL completos; por isso
+ficam preservados no diretório completo com o backbone (`wavlm_backbone/` ou
+`hubert_backbone/`). Os demais modelos Keras/sklearn têm cópia direta no topo de
+`app/models/`.
+
+### Publicação dos modelos no Hugging Face Hub
+
+A fonte oficial para publicação é `app/models/`, pois é a mesma pasta usada
+pela Gradio/API como default. Antes de enviar, verifique o plano de upload:
+
+```bash
+python scripts/upload_models_to_hf.py \
+    --repo-id SEU_USUARIO/xfakesong-models \
+    --dry-run
+```
+
+Depois envie para um repositório do tipo **Model**:
+
+```bash
+python scripts/upload_models_to_hf.py \
+    --repo-id SEU_USUARIO/xfakesong-models \
+    --private
+```
+
+O script usa `HF_TOKEN` ou `HUGGINGFACE_HUB_TOKEN`, cria o repositório quando
+necessário e sobe os arquivos para `models/` no Hub. Use
+`--include-overleaf` e `--include-results` apenas quando quiser anexar o pacote
+do artigo e relatórios consolidados junto ao repositório de modelos.
+
+### Resultados numéricos usados no artigo
+
+O benchmark atual usa dataset balanceado de 15.000 amostras, split estratificado
+70/15/15 e 2.250 amostras de teste. Os modelos neurais finais foram treinados
+por 100 épocas quando aplicável; SVM e RandomForest usam GridSearchCV + ajuste
+final.
+
+| Modelo | Accuracy | AUC ROC | EER | Decisão prática |
+|---|---:|---:|---:|---|
+| Conformer | 100,00% | 1,0000 | 0,00% | Demonstração principal de maior qualidade |
+| Sonic Sleuth | 100,00% | 1,0000 | 0,00% | Demo leve/estável |
+| Hybrid CNN-Transformer | 99,96% | 1,0000 | 0,00% | Melhor compromisso neural para Gradio/API |
+| MultiscaleCNN | 99,73% | 1,0000 | 0,18% | Comparação neural convolucional |
+| SVM | 99,02% | 0,9995 | 0,98% | Baseline rápido em CPU |
+| RandomForest | 98,18% | 0,9986 | 1,91% | Baseline clássico complementar |
+| RawNet2 | 96,36% | 0,9961 | 3,56% | Modelo raw-audio funcional |
+| Ensemble | 95,82% | 0,9970 | 4,18% | Fusão multi-feature, robustez com ressalvas |
+| RawGAT-ST | 95,29% | 0,9940 | 4,71% | Comparação com atenção em grafos |
+| AASIST | 93,64% | 0,9918 | 6,36% | Comparação com arquitetura GAT |
+| HuBERT Original | 92,71% | 0,9708 | 7,29% | Referência SSL |
+| EfficientNet-LSTM | 91,16% | 0,9721 | 9,07% | Transfer learning funcional, não prioritário para demo |
+| WavLM Original | 86,36% | 0,9240 | 13,64% | Referência SSL experimental |
+| SpectrogramTransformer | 71,51% | 0,7779 | 28,49% | Candidato a novo tuning |
 
 ## Como rodar
 
@@ -20,29 +121,286 @@ python scripts/run_benchmark.py --quick
 # 2) Pipeline completo do TCC: download, processamento, split, treino,
 #    inferência, gráficos PNG e relatórios Markdown:
 python scripts/run_tcc_pipeline.py \
-    --tcc-full-dataset \
-    --out results/tcc_full_20k \
-    --npz app/datasets/benchmark_audio_raw_20k.npz
+    --download \
+    --target-per-class 7500 \
+    --full-benchmark \
+    --epochs 100 \
+    --device-profile gpu \
+    --out results/tcc_full_15k \
+    --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
 
 # 3) Execução do TCC direto no benchmark, usando dataset real .npz já exportado:
-python scripts/run_benchmark.py --full --dataset app/datasets/brspeech_df.npz
-
-# 4) Sob medida:
 python scripts/run_benchmark.py \
-    --archs MultiscaleCNN Ensemble EfficientNet-LSTM AASIST RawNet2 SVM RandomForest \
-    --dataset data.npz --epochs 20 --snr 30 20 10 --api --out results/bench_tcc
+    --full \
+    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --epochs 100 \
+    --device-profile gpu
+
+# 4) Benchmark neural completo, sem SVM/RF:
+python scripts/run_benchmark.py \
+    --neural \
+    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --epochs 100 \
+    --device-profile gpu \
+    --out results/bench_neural_tcc
+
+# 5) Sob medida:
+python scripts/run_benchmark.py \
+    --archs WavLM HuBERT RawNet2 "Sonic Sleuth" AASIST RawGAT-ST Conformer \
+    "Hybrid CNN-Transformer" SpectrogramTransformer EfficientNet-LSTM \
+    MultiscaleCNN Ensemble SVM RandomForest \
+    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --epochs 100 --snr 30 20 10 --api --out results/bench_tcc
+
+# 6) Modelo individual:
+python scripts/run_benchmark.py \
+    --model AASIST \
+    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --epochs 100 \
+    --out results/bench_aasist
 ```
 
-O preset `--tcc-full-dataset` configura o alvo oficial do experimento:
-`10.000` amostras reais + `10.000` amostras fake, com composição balanceada
-entre BRSpeech-DF, CommonVoice/FLEURS PT-BR e Fake Voices XTTS. Ele também
-ativa o benchmark completo e o probe da API. Use `--skip-download` quando os
-WAVs e splits já estiverem prontos localmente.
+Por padrão, os relatórios, métricas, CSVs e figuras ficam em `results/benchmark/`
+ou no diretório informado por `--out`. Os modelos treinados pelo benchmark ficam
+em `app/models/`, o mesmo diretório usado pela Gradio/API para inferência. Use
+`--models-dir outro/diretorio` ou `DEEPFAKE_MODELS_DIR` apenas quando quiser
+isolar uma execução. Caminhos relativos são resolvidos a partir da raiz do
+projeto, mesmo quando o comando é chamado de outro diretório.
+
+## Roteiro oficial do dataset robusto
+
+O benchmark do TCC atual parte de um conjunto balanceado 1:1 com `7.500`
+áudios reais e `7.500` áudios fake, totalizando 15.000 amostras. A rota padrão
+é:
+
+1. baixar BRSpeech-DF e separar `bonafide` em real e `spoof` em fake;
+2. completar a classe real com Common Voice PT-BR e FLEURS PT-BR;
+3. usar CETUC/OpenSLR como fallback real quando Common Voice/FLEURS não
+   entregarem a cota planejada;
+4. completar a classe fake com Fake Voices XTTS;
+5. normalizar tudo para WAV mono 16 kHz, remover arquivos inválidos,
+   silenciosos, fora de duração e duplicados;
+6. criar split estratificado 70/15/15;
+7. exportar `app/datasets/benchmark_audio_raw_balanced_15k.npz`;
+8. executar o preflight (`benchmark_plan.json`/`.md`) com preset, ambiente,
+   dataset e hiperparâmetros efetivos;
+9. treinar, inferir e gerar relatórios/gráficos para as 14 arquiteturas.
+
+O script `scripts/build_dataset.py` arquiva excedentes em
+`app/datasets/overflow/` por padrão, em vez de apagar os WAVs brutos. Use
+`--delete-excess` apenas quando o descarte destrutivo for intencional.
+
+Comando completo recomendado:
+
+```bash
+python scripts/run_tcc_pipeline.py \
+    --download \
+    --target-per-class 7500 \
+    --full-benchmark \
+    --epochs 100 \
+    --device-profile gpu \
+    --out results/tcc_full_15k \
+    --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
+```
+
+Para um ensaio rápido do roteiro sem downloads:
+
+```bash
+python scripts/run_tcc_pipeline.py \
+    --smoke \
+    --epochs 1 \
+    --batch-size 4 \
+    --latency-runs 1 \
+    --out results/smoke_route
+```
+
+Para revisar tudo antes de iniciar o treinamento longo:
+
+```bash
+python scripts/run_benchmark.py \
+    --full \
+    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --epochs 100 \
+    --out results/tcc_full_15k \
+    --plan-only
+```
+
+Para revisar um modelo individual:
+
+```bash
+python scripts/run_benchmark.py \
+    --model RawNet2 \
+    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --out results/bench_rawnet2 \
+    --plan-only
+```
+
+Esse comando valida o `.npz` e grava:
+
+| Arquivo | Conteúdo |
+|---|---|
+| `benchmark_plan.json` | preset, dataset, ambiente, arquiteturas e hiperparâmetros efetivos |
+| `benchmark_plan.md` | tabela legível com epochs, batch, learning rate e ajuste CPU/GPU por arquitetura |
+
+O alvo final usado no artigo é `7.500` amostras reais + `7.500` amostras fake.
+O roteiro aceita alvos maiores para novas rodadas, mas os resultados,
+intervalos de confiança e gráficos do TCC foram consolidados sobre
+`benchmark_audio_raw_balanced_15k.npz`. Use `--skip-download` quando os WAVs e
+splits já estiverem prontos localmente.
+
+## Preset e hiperparâmetros pré-treino
+
+O preset oficial é `full_tcc`:
+
+- arquiteturas: WavLM, HuBERT, RawNet2, Sonic Sleuth, AASIST, RawGAT-ST,
+  Conformer, Hybrid CNN-Transformer, SpectrogramTransformer,
+  EfficientNet-LSTM, MultiscaleCNN, Ensemble, SVM e RandomForest;
+- dataset: `.npz` balanceado exportado do split 70/15/15;
+- épocas globais do benchmark TCC: `100` por padrão nos presets completos,
+  ajustável com `--epochs`;
+- robustez: AWGN em `30`, `20` e `10` dB;
+- latência: mediana de `30` execuções por arquitetura;
+- API: probe habilitado no preset completo.
+
+Para treinar apenas os modelos neurais, use o preset `neural_tcc`
+(`--neural` ou `--preset neural_tcc`). Ele roda as 12 arquiteturas neurais:
+WavLM, HuBERT, RawNet2, Sonic Sleuth, AASIST, RawGAT-ST, Conformer,
+Hybrid CNN-Transformer, SpectrogramTransformer, EfficientNet-LSTM,
+MultiscaleCNN e Ensemble. SVM/RF ficam reservados para o baseline clássico.
+
+Antes do treino, o preflight aplica hiperparâmetros recomendados por
+arquitetura e adapta o `batch_size` ao perfil de dispositivo:
+
+- `--device-profile auto`: usa GPU se o TensorFlow detectar CUDA, senão CPU;
+- `--device-profile cpu`: limita batches de modelos pesados para evitar OOM/RAM;
+- `--device-profile gpu`: habilita caps conservadores de VRAM e mixed precision
+  quando a arquitetura permite;
+- `--no-optimize-hparams`: desliga recomendações por arquitetura e usa os
+  valores globais `--epochs`/`--batch-size`.
+
+Hiperparâmetros neurais efetivos do benchmark:
+
+| Arquitetura | Entrada | Batch base | LR | Dropout | L2 | Observação |
+|---|---|---:|---:|---:|---:|---|
+| WavLM | raw audio | 1 em GPU / 4 em CPU | 1e-5 | 0.2 | 1e-4 | sem augmentation/mixed precision; batch conservador por VRAM; backbone SSL ou fallback reportado |
+| HuBERT | raw audio | 1 em GPU / 4 em CPU | 1e-5 | 0.2 | 1e-4 | `from_pt=True` quando backbone real existe; fallback reportado |
+| RawNet2 | raw audio | 24 | 1e-5 | 0.3 | 1e-4 | LR conservador para Sinc/GRU |
+| Sonic Sleuth | espectrograma/features | 32 | 1e-3 | 0.3 | 1e-4 | ReduceLROnPlateau |
+| AASIST | espectrograma | 16 | 1e-4 | 0.2 | 1e-4 | mantém loss/margem da arquitetura |
+| RawGAT-ST | raw audio | 16 | 1e-4 | 0.2 | 1e-4 | SincNet + GAT espectral/temporal com LR estável |
+| Conformer | espectrograma | 32 | 1e-3 | 0.3 | 1e-4 | WarmupCosineDecay |
+| Hybrid CNN-Transformer | espectrograma | 32 | 1e-3 | 0.2 | 1e-4 | 3 blocos residuais + 2 camadas Transformer |
+| SpectrogramTransformer | espectrograma | 16 | 1e-4 | 0.1 | 1e-5 | AST com batch conservador por memória |
+| EfficientNet-LSTM | espectrograma | 32 | 5e-4 | 0.4 | 2e-4 | transfer learning + Bi-LSTM |
+| MultiscaleCNN | espectrograma | 64 | 2e-3 | 0.5 | 5e-4 | baseline neural convolucional |
+| Ensemble | espectrograma/features | 32 | 1e-3 | 0.3 | 1e-4 | 100 épocas no benchmark neural completo |
+
+O campo `epochs` no plano é sempre o valor solicitado no CLI (`--epochs`),
+enquanto `recommended_epochs` documenta a receita completa por arquitetura.
+Assim, o mesmo pipeline serve para smoke test (`--epochs 1`), piloto
+(`--epochs 20`) e treinamento final (`--epochs 100`).
+
+O pipeline completo chama esse preflight automaticamente antes de iniciar o
+benchmark. Use `--skip-benchmark-preflight` apenas para depuração local.
+
+## Benchmark de modelo individual
+
+Use `--model` quando quiser treinar e avaliar apenas uma arquitetura. O script
+continua gerando os mesmos artefatos (`results.json`, `tcc_report.md`,
+`figures/*.png`, `architectures/<modelo>/*.png`), mas restritos ao modelo
+selecionado.
+
+```bash
+python scripts/run_tcc_pipeline.py \
+    --skip-download \
+    --skip-preprocess \
+    --model SpectrogramTransformer \
+    --npz app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --out results/bench_spectrogram_transformer
+```
+
+Para múltiplos modelos, mantenha `--archs`. `--model` e `--archs` são
+mutuamente exclusivos.
+
+## Execução sequencial com timeout
+
+Para rodar todas as arquiteturas de forma resiliente, use o orquestrador
+sequencial. Ele executa um modelo por vez, cria uma subpasta por modelo, grava
+`run.log`, aplica timeout e permite retomar com `--resume`.
+
+```bash
+python scripts/run_models_sequential.py \
+    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --out results/sequential_15k \
+    --device-profile gpu \
+    --timeout-min 90
+```
+
+Rodar somente os modelos neurais:
+
+```bash
+python scripts/run_models_sequential.py \
+    --neural-only \
+    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --out results/sequential_neural_15k \
+    --device-profile gpu \
+    --timeout-min 90
+```
+
+Revisar planos neurais antes do treino:
+
+```bash
+python scripts/run_models_sequential.py \
+    --neural-only \
+    --plan-only \
+    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --out results/sequential_neural_plan \
+    --device-profile cpu
+```
+
+No `plan-only` com `.npz` real, cada subprocesso carrega o dataset para
+registrar forma, balanço e metadados. Em datasets grandes, espere alguns
+segundos por modelo mesmo sem iniciar treino.
+
+Retomar somente modelos pendentes:
+
+```bash
+python scripts/run_models_sequential.py \
+    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --out results/sequential_15k \
+    --device-profile gpu \
+    --timeout-min 90 \
+    --resume
+```
+
+Executar um subconjunto:
+
+```bash
+python scripts/run_models_sequential.py \
+    --models AASIST RawNet2 Conformer \
+    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --out results/sequential_neural_subset
+```
+
+No Windows nativo com TensorFlow 2.11+, CUDA não é exposto ao TensorFlow. Para
+`--device-profile gpu`, rode esse script dentro do WSL2/Linux com
+`tensorflow[and-cuda]` instalado.
+
+Por padrão, o CLI do benchmark imprime apenas o resumo final e avisos
+importantes. Use `--verbose` para depuração detalhada de treino, registry,
+factories e salvamento de modelos.
 
 O `.npz` deve conter `X_train`/`y_train` (e opcionalmente `X_val`/`X_test`); o
 harness **reconcatena e re-divide 70/15/15 estratificado** com semente fixa,
 garantindo um conjunto de teste *held-out* controlado. Sem `--dataset`, usa um
 dataset sintético separável (apenas para validar o harness).
+
+!!! warning "WavLM/HuBERT e backbone SSL"
+    O benchmark registra o ambiente em `results.json`. Se `transformers` ou o
+    backbone compatível não estiverem disponíveis, **WavLM** e **HuBERT** rodam
+    com fallback simplificado em TensorFlow. Use essa condição apenas para
+    validar o pipeline; para comparar qualidade de modelo no TCC, registre
+    explicitamente se o backbone SSL real ou o fallback foi usado.
 
 ## O que é medido
 
@@ -60,7 +418,9 @@ uniforme e reprodutível em todas as arquiteturas, documentada no relatório.
 
 ## Saídas → mapeamento para as tabelas/figuras do TCC
 
-Tudo é gravado em `--out` (default `results/benchmark/`):
+Os artefatos de análise são gravados em `--out` (default
+`results/benchmark/`). Os pesos/configs treinados ficam em `app/models/` por
+default para serem reutilizados diretamente pela interface e pela API:
 
 | Arquivo | Uso no TCC |
 |---|---|
@@ -68,6 +428,7 @@ Tudo é gravado em `--out` (default `results/benchmark/`):
 | `tables/tab_eficiencia.tex` | **Tabela "Eficiência computacional"** (params/MB/latência) |
 | `tables/tab_robustez.tex` | **Tabela "Robustez sob ruído AWGN"** (acur/EER por SNR) |
 | `dataset.md` / `dataset_manifest.json` | Composição, origem, split, processamento e hiperparâmetros globais do dataset |
+| `benchmark_plan.md` / `benchmark_plan.json` | Preset e hiperparâmetros efetivos antes do treino |
 | `tcc_report.md` | Relatório Markdown com dataset, hiperparâmetros, métricas, inferências e imagens PNG |
 | `figures/roc.png` | Curvas ROC (visualiza a AUC) |
 | `figures/confusion_matrices.png` | Matrizes de confusão agregadas |
@@ -75,13 +436,87 @@ Tudo é gravado em `--out` (default `results/benchmark/`):
 | `figures/robustez.png` | Acurácia × SNR (degradação sob ruído) |
 | `figures/eficiencia.png` | Latência × acurácia (verde=convergiu) |
 | `figures/convergencia.png` | Curvas de acurácia de validação por época |
-| `architectures/<modelo>/*.png` | Matrizes de confusão, ROC, scores e convergência por arquitetura |
+| `app/models/bench_*` | Modelos e configs default carregados pela Gradio/API |
+| `app/models/benchmark_final/<modelo>/` | Cópia completa do modelo final por arquitetura |
+| `app/models/benchmark_final_manifest.json` | Manifesto dos modelos finais consolidados |
+| `architectures/<modelo>/models/*` | Cópia do modelo dentro da execução original do benchmark |
+| `architectures/<modelo>/hyperparameter_tuning.json` | Configuração do GridSearchCV, melhor score e melhores hiperparâmetros |
+| `architectures/<modelo>/hyperparameter_tuning.csv` | Todos os candidatos avaliados no tuning, score médio e ranking |
+| `architectures/<modelo>/*.json/csv/md/png` | Métricas, predições, robustez, resumo e figuras individuais |
 | `results.csv` / `results.json` | Dados brutos (reprodutibilidade / anexos) |
 | `summary.md` | Resumo legível (ambiente, dataset, tabela-resumo, API) |
+| `tcc_overleaf/main.tex` | Artigo consolidado para Overleaf |
+| `tcc_overleaf/figures/*.png` | Figuras finais referenciadas pelo artigo |
+| `tcc_overleaf.zip` | Pacote limpo para upload no Overleaf |
+
+Cada arquitetura possui uma pasta própria em `architectures/<modelo>/`.
+Exemplo para SVM:
+
+```text
+architectures/svm/
+├── metrics.json
+├── predictions_clean.csv
+├── robustness.csv
+├── hyperparameter_tuning.json
+├── hyperparameter_tuning.csv
+├── summary.md
+├── confusion_matrix.png
+├── roc.png
+├── score_distribution.png
+├── convergence.png
+└── models/
+    └── bench_svm.pkl
+```
 
 As tabelas `.tex` usam `\singlespacing`, decimais com vírgula e as cores
 `successgreen`/`dangerred` — **basta `\input{}`** no documento (o preâmbulo do
 TCC já define esses pacotes/cores).
+
+## Estrutura final para apresentação e builds
+
+Para uma demonstração com Gradio/API, o diretório de modelos padrão é:
+
+```text
+app/models/
+├── bench_aasist.keras
+├── bench_aasist_config.json
+├── bench_conformer.keras
+├── bench_conformer_config.json
+├── ...
+├── bench_svm.pkl
+├── bench_svm_config.json
+├── benchmark_final_manifest.json
+└── benchmark_final/
+    ├── aasist/
+    ├── conformer/
+    ├── hubert_original/
+    ├── wavlm_original/
+    └── ...
+```
+
+`DetectionService`, `TrainingService`, Gradio e API usam `app/models/` como
+default. Em builds Docker/Hugging Face, preserve esse diretório ou configure
+`MODELS_DIR`, `DEEPFAKE_MODELS_DIR` ou `XFAKE_MODELS_DIR` apontando para uma
+pasta persistente equivalente.
+
+O pacote do artigo fica separado dos modelos:
+
+```text
+tcc_overleaf/
+├── main.tex
+├── README_OVERLEAF.md
+└── figures/
+    ├── benchmark_accuracy_auc.png
+    ├── benchmark_eer.png
+    ├── benchmark_latency.png
+    ├── benchmark_robustness.png
+    ├── benchmark_size.png
+    ├── training_stability.png
+    └── confusion_matrices/
+```
+
+O arquivo `tcc_overleaf.zip` deve conter somente `main.tex`, README e figuras,
+sem PDF, `.aux`, `.log`, `.out` ou `.toc`.
 
 ## Reprodutibilidade
 

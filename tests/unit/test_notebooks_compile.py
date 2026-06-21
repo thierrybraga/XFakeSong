@@ -4,7 +4,7 @@ Trava o bug que motivou a regeneração: células de código com indentação
 espúria (IndentationError) e markdown/JSON malformados. Cada célula de código
 de cada notebook ATIVO (fora de `legacy/`) deve compilar; o JSON deve ser
 nbformat 4 válido; e a estrutura esperada (index + features + 14 models +
-3 pipeline) deve existir.
+4 pipeline) deve existir.
 
 Não executa os notebooks (treino é lento) — apenas valida sintaxe e estrutura.
 """
@@ -36,7 +36,7 @@ def test_expected_notebook_structure():
     assert "00_index.ipynb" in names
     assert "features/01_feature_extraction_study.ipynb" in names
     assert sum(1 for n in names if n.startswith("models/")) == 14
-    assert sum(1 for n in names if n.startswith("pipeline/")) == 3
+    assert sum(1 for n in names if n.startswith("pipeline/")) == 4
 
 
 @pytest.mark.parametrize(
@@ -77,6 +77,40 @@ def test_pipeline_notebook_documents_guarded_full_run_and_artifacts():
         "figures/roc.png",
         "figures/confusion_matrices.png",
         "figures/score_distributions.png",
+    ):
+        assert artifact in text
+
+
+def test_all_architectures_notebook_documents_full_benchmark_contract():
+    text = _notebook_text(
+        _NB / "pipeline" / "04_all_architectures_full_benchmark.ipynb"
+    )
+    assert "RUN_FULL_BENCHMARK = False" in text
+    assert "TARGET_PER_CLASS = 10_000" in text
+    assert "XFAKE_STORAGE_DIR" in text
+    assert "--download" in text
+    assert "--target-per-class" in text
+    assert "--archs" in text
+    for arch in (
+        "WavLM",
+        "HuBERT",
+        "SpectrogramTransformer",
+        "AASIST",
+        "SVM",
+        "RandomForest",
+    ):
+        assert arch in text
+    assert '"Spectrogram Transformer",' not in text
+    for artifact in (
+        "dataset.md",
+        "dataset_manifest.json",
+        "results.json",
+        "results.csv",
+        "predictions_clean.csv",
+        "figures/roc.png",
+        "figures/confusion_matrices.png",
+        "figures/score_distributions.png",
+        "model_artifact",
     ):
         assert artifact in text
 

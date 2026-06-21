@@ -42,19 +42,23 @@ except ImportError:
     )
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class WavLMFeatureExtractor(layers.Layer):
     """Extrator de características usando modelo WavLM pré-treinado."""
 
     def __init__(self, model_name: str = "microsoft/wavlm-base",
                  freeze_weights: bool = True, n_trainable_layers: int = 0,
-                 **kwargs):
+                 feature_dim: int | None = None, **kwargs):
         super(WavLMFeatureExtractor, self).__init__(**kwargs)
         self.model_name = model_name
         self.freeze_weights = freeze_weights
         # Fine-tuning parcial: nº de camadas do encoder a descongelar (do topo).
         # >0 ativa o fine-tune recomendado (Tak et al. 2022); 0 = congelado.
         self.n_trainable_layers = int(n_trainable_layers)
-        self.feature_dim = 768 if "base" in model_name else 1024
+        self.feature_dim = (
+            int(feature_dim) if feature_dim is not None
+            else 768 if "base" in model_name else 1024
+        )
 
         if HF_AVAILABLE:
             try:
@@ -113,6 +117,22 @@ class WavLMFeatureExtractor(layers.Layer):
                 name='conv5'),
             layers.BatchNormalization(name='bn5')
         ]
+
+    def build(self, input_shape):
+        """Inicializa subcamadas para serialização/reload estáveis."""
+        if hasattr(self, '_use_simplified'):
+            x_shape = tf.TensorShape(input_shape)
+            if x_shape.rank == 3:
+                current_shape = x_shape
+            elif x_shape.rank == 2:
+                current_shape = x_shape.concatenate([1])
+            else:
+                current_shape = tf.TensorShape([None, None, 1])
+
+            for layer in self.conv_layers:
+                layer.build(current_shape)
+                current_shape = layer.compute_output_shape(current_shape)
+        super().build(input_shape)
 
     def call(self, inputs, training=None):
         """Forward pass do extrator de características."""
@@ -232,16 +252,16 @@ def _create_wavlm_model(input_shape: Tuple[int, ...],
             x, dropout_rate=dropout_rate, name="wavlm_aasist"
         )
     else:
-        # Back-end raso (conv 1D + attention pooling)
-        conv_out = layers.Conv1D(256, 3, padding='same', activation='relu', name='temporal_conv1')(x)
-        conv_out = layers.BatchNormalization(name='temporal_bn1')(conv_out)
-        conv_out2 = layers.Conv1D(256, 3, padding='same', activation='relu', name='temporal_conv2')(conv_out)
-        conv_out2 = layers.BatchNormalization(name='temporal_bn2')(conv_out2)
-        conv_out2 = conv_out2 + conv_out  # residual
-        conv_out3 = layers.Conv1D(256, 3, padding='same', activation='relu', name='temporal_conv3')(conv_out2)
-        conv_out3 = layers.BatchNormalization(name='temporal_bn3')(conv_out3)
-        conv_out3 = conv_out3 + conv_out2  # residual
-        pooled = AttentionPoolingLayer(name='attention_pool')(conv_out3)
+        # Back-end raso com projeção temporal. Evita Conv1D grande sobre
+        # features SSL/fallback, que no CUDA pode escolher kernels com workspace
+        # de dezenas de GB mesmo com batch=1.
+        projected = layers.Dense(
+            256, activation='relu', name='temporal_projection'
+        )(x)
+        projected = layers.LayerNormalization(name='temporal_projection_norm')(
+            projected
+        )
+        pooled = AttentionPoolingLayer(name='attention_pool')(projected)
 
     # Classification Head
     outputs, loss = create_classification_head(
@@ -318,5 +338,6 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
 # Registrar objetos personalizados no Keras
 tf.keras.utils.get_custom_objects().update({
     'WavLMFeatureExtractor': WavLMFeatureExtractor,
+    'XFakeSong>WavLMFeatureExtractor': WavLMFeatureExtractor,
     'preprocess': preprocess
 })

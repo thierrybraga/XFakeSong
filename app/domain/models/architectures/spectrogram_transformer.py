@@ -200,11 +200,13 @@ class SpectrogramTransformerBlock(layers.Layer):
         # Self-attention with residual connection
         attn_output = self.attention(inputs, inputs, training=training)
         attn_output = self.dropout1(attn_output, training=training)
+        attn_output = tf.cast(attn_output, inputs.dtype)
         out1 = self.layernorm1(inputs + attn_output)
 
         # Feed-forward with residual connection
         ffn_output = self.ffn(out1, training=training)
         ffn_output = self.dropout2(ffn_output, training=training)
+        ffn_output = tf.cast(ffn_output, out1.dtype)
         out2 = self.layernorm2(out1 + ffn_output)
 
         return out2
@@ -259,6 +261,11 @@ def create_spectrogram_transformer_model(
     num_heads: int = 12,
     ff_dim: int = 3072,
     dropout_rate: float = 0.1,
+    learning_rate: float = 1e-4,
+    warmup_steps: int = 1000,
+    decay_steps: int = 50000,
+    weight_decay: float = 1e-5,
+    alpha: float = 1e-7,
     architecture: str = 'spectrogram_transformer'
 ) -> models.Model:
     """
@@ -275,6 +282,11 @@ def create_spectrogram_transformer_model(
         num_heads: Number of attention heads (ViT-Base: 12)
         ff_dim: Feed-forward dimension (ViT-Base: 3072)
         dropout_rate: Dropout rate
+        learning_rate: Peak learning rate after warmup
+        warmup_steps: Number of linear warmup optimizer steps
+        decay_steps: Number of cosine decay optimizer steps
+        weight_decay: AdamW weight decay
+        alpha: Minimum learning rate used by the warmup/cosine schedule
         architecture: Architecture name
 
     Returns:
@@ -397,25 +409,27 @@ def create_spectrogram_transformer_model(
     # (gradientes grandes) e cosine decay melhora convergência final.
     from app.domain.models.training.optimization import create_warmup_cosine_optimizer
     optimizer = create_warmup_cosine_optimizer(
-        initial_learning_rate=1e-4,
-        warmup_steps=1000,
-        decay_steps=50000,
-        weight_decay=1e-5,
-        alpha=1e-7,
+        initial_learning_rate=learning_rate,
+        warmup_steps=warmup_steps,
+        decay_steps=decay_steps,
+        weight_decay=weight_decay,
+        alpha=alpha,
     )
 
     model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
 
     logger.info(
         f"Spectrogram Transformer model created successfully with {model.count_params()} parameters "
-        f"(WarmupCosineDecay: warmup=1000, decay=50000)")
+        f"(WarmupCosineDecay: lr={learning_rate}, warmup={warmup_steps}, "
+        f"decay={decay_steps}, weight_decay={weight_decay}, alpha={alpha})")
     return model
 
 
 def create_lightweight_spectrogram_transformer(
     input_shape: Tuple[int, ...],
     num_classes: int,
-    architecture: str = 'spectrogram_transformer_lite'
+    architecture: str = 'spectrogram_transformer_lite',
+    **kwargs
 ) -> models.Model:
     """
     Create a lightweight version of Spectrogram Transformer for faster inference.
@@ -428,21 +442,26 @@ def create_lightweight_spectrogram_transformer(
     Returns:
         Compiled Keras model
     """
+    params = {
+        "patch_size": (16, 16),  # Larger patches
+        "embed_dim": 128,        # Smaller embedding
+        "num_blocks": 4,         # Fewer blocks
+        "num_heads": 4,          # Fewer heads
+        "ff_dim": 256,           # Smaller FF dimension
+        "dropout_rate": 0.1,
+    }
+    params.update(kwargs)
     return create_spectrogram_transformer_model(
         input_shape=input_shape,
         num_classes=num_classes,
-        patch_size=(16, 16),  # Larger patches
-        embed_dim=128,        # Smaller embedding
-        num_blocks=4,         # Fewer blocks
-        num_heads=4,          # Fewer heads
-        ff_dim=256,           # Smaller FF dimension
-        dropout_rate=0.1,
-        architecture=architecture
+        architecture=architecture,
+        **params
     )
 
 
 def create_model(input_shape: Tuple[int, ...], num_classes: int,
-                 architecture: str = 'spectrogram_transformer') -> models.Model:
+                 architecture: str = 'spectrogram_transformer',
+                 **kwargs) -> models.Model:
     """
     Factory function to create Spectrogram Transformer models (for compatibility with existing code).
 
@@ -460,10 +479,10 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int,
 
     if architecture == 'spectrogram_transformer':
         return create_spectrogram_transformer_model(
-            input_shape, num_classes, architecture=architecture)
+            input_shape, num_classes, architecture=architecture, **kwargs)
     elif architecture == 'spectrogram_transformer_lite':
         return create_lightweight_spectrogram_transformer(
-            input_shape, num_classes, architecture=architecture)
+            input_shape, num_classes, architecture=architecture, **kwargs)
     else:
         raise ValueError(
             f"Unsupported architecture: {architecture}. Use 'spectrogram_transformer' or 'spectrogram_transformer_lite'")
@@ -472,6 +491,7 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int,
 # Register custom layers and functions for model loading
 tf.keras.utils.get_custom_objects().update({
     'PatchEmbedding': PatchEmbedding,
+    'ClassTokenLayer': ClassTokenLayer,
     'PositionalEncoding': PositionalEncoding,
     'SpectrogramTransformerBlock': SpectrogramTransformerBlock,
     'SpectralAttentionPooling': SpectralAttentionPooling,

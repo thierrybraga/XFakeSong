@@ -81,6 +81,37 @@ def test_aasist_has_six_residual_blocks():
     assert n == 6  # paridade com o paper (RawNet2 encoder)
 
 
+def test_feature_map_scaling_is_multiplicative_and_identity_centered():
+    import tensorflow as tf
+
+    from app.domain.models.architectures.layers import FeatureMapScalingLayer
+
+    layer = FeatureMapScalingLayer()
+    x = tf.ones((2, 4, 3), dtype=tf.float32)
+    initial = layer(x).numpy()
+    assert np.allclose(initial, np.ones((2, 4, 3)), atol=1e-6)
+
+    layer.dense.kernel.assign(tf.zeros_like(layer.dense.kernel))
+    layer.dense.bias.assign(tf.fill(layer.dense.bias.shape, -20.0))
+
+    y = layer(x).numpy()
+
+    assert np.max(np.abs(y)) < 1e-6
+
+
+def test_audio_normalization_preserves_raw_waveform_variance():
+    import tensorflow as tf
+
+    from app.domain.models.architectures.layers import AudioNormalizationLayer
+
+    x = tf.reshape(tf.range(12, dtype=tf.float32), (2, 6, 1))
+    y = AudioNormalizationLayer()(x).numpy()
+
+    assert np.allclose(y.mean(axis=1), 0.0, atol=1e-6)
+    assert np.allclose(y.std(axis=1), 1.0, atol=1e-6)
+    assert float(np.std(y)) > 0.0
+
+
 # ───────────────────────── calibração opt-in ─────────────────────────
 
 @pytest.mark.parametrize("calibrate", [False, True])

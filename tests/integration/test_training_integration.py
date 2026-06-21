@@ -94,6 +94,49 @@ def test_training_flow_success(training_service, mock_dataset):
         mock_trainer_instance.save_model.assert_called_once()
 
 
+def test_training_service_accepts_common_architecture_alias(tmp_path):
+    service = TrainingService(models_dir=str(tmp_path / "models"))
+
+    X_train = np.random.rand(10, 100, 80).astype("float32")
+    y_train = np.array([0, 1] * 5)
+    X_val = np.random.rand(4, 100, 80).astype("float32")
+    y_val = np.array([0, 1, 0, 1])
+    dataset = tmp_path / "spectrogram_transformer_alias.npz"
+    np.savez(dataset, X_train=X_train, y_train=y_train, X_val=X_val, y_val=y_val)
+
+    with patch(
+        "app.domain.services.training_service.importlib.import_module"
+    ) as mock_import, patch(
+        "app.domain.services.training_service.ModelTrainer"
+    ) as MockTrainer:
+        mock_module = MagicMock()
+        mock_model = MagicMock()
+        mock_module.create_model.return_value = mock_model
+        mock_import.return_value = mock_module
+
+        trainer = MockTrainer.return_value
+        trainer.train.return_value = ProcessingResult(
+            status=ProcessingStatus.SUCCESS,
+            data={"accuracy": 0.9},
+            metadata={"model": mock_model},
+        )
+        trainer.save_model.return_value = ProcessingResult(
+            status=ProcessingStatus.SUCCESS,
+            data=str(tmp_path / "models" / "alias_model.keras"),
+        )
+        trainer._build_input_contract.return_value = {}
+
+        result = service.train_model(
+            "Spectrogram Transformer",
+            str(dataset),
+            {"model_name": "alias_model", "epochs": 1, "batch_size": 2},
+        )
+
+    assert result.status == ProcessingStatus.SUCCESS, result.errors
+    assert result.data.architecture == "SpectrogramTransformer"
+    mock_module.create_model.assert_called_once()
+
+
 def test_training_flow_invalid_architecture(training_service, mock_dataset):
     with patch(
         "app.domain.services.training_service.get_architecture_info"

@@ -6,6 +6,7 @@ disponíveis no sistema, facilitando a integração com o pipeline de detecção
 
 import inspect
 import logging
+import re
 from functools import lru_cache
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
@@ -88,6 +89,8 @@ class ArchitectureRegistry:
                     "format": "raw",
                     "sample_rate": 16000,
                     "min_sequence_length": 16000,
+                    "target_sequence_length": 16000,
+                    "crop_strategy": "center",
                     "max_duration": 4.0,
                     "preprocessing": "normalize",
                 },
@@ -130,6 +133,8 @@ class ArchitectureRegistry:
                     "format": "raw",
                     "sample_rate": 16000,
                     "min_sequence_length": 16000,
+                    "target_sequence_length": 16000,
+                    "crop_strategy": "center",
                     "max_duration": 4.0,
                     "preprocessing": "normalize",
                 },
@@ -155,11 +160,15 @@ class ArchitectureRegistry:
                     "augmentation_strength": 0.3,
                 },
                 input_requirements={
-                    "input_type": "spectrogram",
-                    "type": "features",
-                    "format": "spectrogram",
-                    "min_sequence_length": 100,
-                    "feature_dim": 80,
+                    "input_type": "raw_audio",
+                    "type": "audio",
+                    "format": "raw",
+                    "sample_rate": 16000,
+                    "min_sequence_length": 16000,
+                    "target_sequence_length": 16000,
+                    "crop_strategy": "center",
+                    "max_duration": 5.0,
+                    "preprocessing": "normalize",
                 },
             )
         )
@@ -355,6 +364,9 @@ class ArchitectureRegistry:
                     "type": "audio",
                     "format": "raw",
                     "sample_rate": 16000,
+                    "min_sequence_length": 16000,
+                    "target_sequence_length": 16000,
+                    "crop_strategy": "center",
                     "max_duration": 5.0,
                     "preprocessing": "normalize",
                 },
@@ -386,6 +398,9 @@ class ArchitectureRegistry:
                     "type": "audio",
                     "format": "raw",
                     "sample_rate": 16000,
+                    "min_sequence_length": 16000,
+                    "target_sequence_length": 16000,
+                    "crop_strategy": "center",
                     "max_duration": 10.0,
                     "preprocessing": "normalize",
                 },
@@ -520,6 +535,10 @@ class ArchitectureRegistry:
         name_lower = name.lower().replace("-", "_").replace(" ", "_")
         for snake, display in cls._SNAKE_TO_DISPLAY.items():
             if snake == name_lower:
+                return display
+        compact = re.sub(r"[^a-z0-9]+", "", name.lower())
+        for display in cls._DISPLAY_TO_SNAKE:
+            if re.sub(r"[^a-z0-9]+", "", display.lower()) == compact:
                 return display
         raise ValueError(
             f"Arquitetura '{name}' não encontrada. "
@@ -782,6 +801,11 @@ def get_architecture_info(architecture_name: str) -> ArchitectureInfo:
     return architecture_registry.get_architecture(architecture_name)
 
 
+def get_architecture_by_any_name(architecture_name: str) -> ArchitectureInfo:
+    """Obtém arquitetura aceitando display name, snake_case ou alias comum."""
+    return architecture_registry.get_architecture_by_any_name(architecture_name)
+
+
 def validate_architecture_input(
     architecture_name: str, input_shape: Tuple[int, ...]
 ) -> bool:
@@ -862,6 +886,7 @@ __all__ = [
     "create_model_by_name",
     "create_safe_model_by_name",
     "get_architecture_info",
+    "get_architecture_by_any_name",
     "validate_architecture_input",
     "load_hyperparameters_json",
     "get_architecture_choices",

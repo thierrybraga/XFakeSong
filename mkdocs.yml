@@ -48,6 +48,10 @@ theme:
 extra_css:
   - stylesheets/extra.css
 
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+
 extra:
   social:
     - icon: fontawesome/brands/github
@@ -78,6 +82,8 @@ markdown_extensions:
   - pymdownx.inlinehilite
   - pymdownx.keys
   - pymdownx.mark
+  - pymdownx.arithmatex:
+      generic: true
   - pymdownx.smartsymbols
   - pymdownx.snippets
   - pymdownx.superfences:
@@ -111,7 +117,8 @@ nav:
     - Fluxos de Inferência: 09_INFERENCIA.md
     - Treinamento: 10_TREINAMENTO.md
   - Avaliação:
-    - Benchmark e TCC: 15_BENCHMARK.md
+    - Benchmark e Resultados: 15_BENCHMARK.md
+    - Estudo Experimental: 20_ESTUDO_EXPERIMENTAL.md
     - Guia de Notebooks: 16_NOTEBOOKS.md
     - Testes e Qualidade: 06_TESTES.md
   - Desenvolvimento:

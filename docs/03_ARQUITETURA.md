@@ -73,6 +73,48 @@ graph TD
     OUT --> G
 ```
 
+## Fluxograma Experimental do Sistema
+
+O artigo consolidado descreve o sistema em duas fases: **predição** e
+**treinamento**. A documentação abaixo espelha o fluxograma usado no `.tex`,
+mas em Mermaid para renderização no GitHub Pages.
+
+```mermaid
+flowchart LR
+    subgraph P["Predição"]
+        A["Áudio de entrada"] --> B["VAD + AGC"]
+        B --> C["Extração de características"]
+        C --> D["Normalização"]
+        D --> E["Inferência"]
+        E --> F["Score 0-1"]
+        F --> G{"score > 0,5?"}
+        G -->|"Sim"| H["REAL"]
+        G -->|"Não"| I["FAKE"]
+    end
+
+    subgraph T["Treinamento"]
+        J["Dataset real/fake"] --> K["Pré-processamento"]
+        K --> L["Extração de características"]
+        L --> M["Arquiteturas neurais/clássicas"]
+        M --> N["Treinamento"]
+        N --> O{"Convergiu?"}
+        O -->|"Sim"| Q["Modelo salvo"]
+        O -->|"Não"| P2["Ajustar hiperparâmetros"]
+        P2 --> N
+    end
+```
+
+Esse fluxo é implementado por serviços reais do projeto:
+
+| Etapa | Implementação principal |
+|---|---|
+| Upload/validação | `app/domain/services/upload_service.py` |
+| Extração de características | `app/domain/services/feature_extraction_service.py` |
+| Treinamento | `app/domain/services/training_service.py` |
+| Fábrica de modelos | `app/domain/models/architectures/factory.py` |
+| Inferência | `app/domain/services/detection/predictor.py` |
+| Métricas e relatórios | `app/domain/models/training/metrics.py`, `benchmarks/report.py` |
+
 ## Padrão Pipeline
 
 O orquestrador (`DeepfakePipelineOrchestrator`) gerencia estágios sequenciais via padrão **Chain of Responsibility**:

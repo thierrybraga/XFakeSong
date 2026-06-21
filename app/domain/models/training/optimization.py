@@ -397,6 +397,7 @@ def create_warmup_cosine_optimizer(
     )
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class WarmupCosineDecaySchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
     """Linear warm-up followed by cosine decay schedule."""
 
@@ -426,10 +427,10 @@ class WarmupCosineDecaySchedule(tf.keras.optimizers.schedules.LearningRateSchedu
 
     def get_config(self):
         return {
-            'initial_learning_rate': self.initial_learning_rate,
-            'warmup_steps': self.warmup_steps,
-            'decay_steps': self.decay_steps,
-            'alpha': self.alpha,
+            'initial_learning_rate': float(self.initial_learning_rate),
+            'warmup_steps': int(self.warmup_steps),
+            'decay_steps': int(self.decay_steps),
+            'alpha': float(self.alpha),
         }
 
 
@@ -486,6 +487,14 @@ class CosineAnnealingWarmRestartsSchedule(tf.keras.optimizers.schedules.Learning
             'm_mult': self.m_mult,
             'alpha': self.alpha,
         }
+
+
+tf.keras.utils.get_custom_objects().update(
+    {
+        "WarmupCosineDecaySchedule": WarmupCosineDecaySchedule,
+        "XFakeSong>WarmupCosineDecaySchedule": WarmupCosineDecaySchedule,
+    }
+)
 
 
 class LossFactory:

@@ -2,6 +2,14 @@
 
 O XFakeSong implementa **14 arquiteturas** de detecção de deepfake, organizadas em três categorias de acordo com o tipo de entrada. Todos os modelos expõem a interface unificada `create_model(input_shape, num_classes, **kwargs)` via `app/domain/models/architectures/factory.py`.
 
+!!! note "Fallback SSL em ambientes sem `transformers`"
+    **WavLM** e **HuBERT** tentam usar backbones SSL reais quando as
+    dependências/checkpoints estão disponíveis. Em ambientes sem `transformers`
+    ou sem backend compatível, o sistema usa uma implementação simplificada em
+    TensorFlow para manter treino, inferência e benchmark funcionais. Relatórios
+    de benchmark devem registrar esse ambiente, porque números do fallback não
+    devem ser comparados diretamente com o backbone SSL original.
+
 ## Tabela Resumo
 
 | # | Arquitetura | Entrada | Referência | Arquivo |
@@ -11,7 +19,7 @@ O XFakeSong implementa **14 arquiteturas** de detecção de deepfake, organizada
 | 3 | RawNet2 | Áudio bruto | RawNet2 (2021) | `app/domain/models/architectures/rawnet2.py` |
 | 4 | Sonic Sleuth | Espectrograma | Alshehri et al. (2024) | `app/domain/models/architectures/sonic_sleuth.py` |
 | 5 | AASIST | Espectrograma | GAT spectro-temporal | `app/domain/models/architectures/aasist.py` |
-| 6 | RawGAT-ST | Espectrograma | Graph Attention + GRU | `app/domain/models/architectures/rawgat_st.py` |
+| 6 | RawGAT-ST | Áudio bruto | SincNet + Graph Attention espectro-temporal | `app/domain/models/architectures/rawgat_st.py` |
 | 7 | Conformer | Espectrograma | Conv + Transformer | `app/domain/models/architectures/conformer.py` |
 | 8 | Hybrid CNN-Transformer (CCT) | Espectrograma | Bartusiak & Delp (2022) | `app/domain/models/architectures/hybrid_cnn_transformer.py` |
 | 9 | Spectrogram Transformer | Espectrograma | ViT adaptado para áudio | `app/domain/models/architectures/spectrogram_transformer.py` |
@@ -20,6 +28,45 @@ O XFakeSong implementa **14 arquiteturas** de detecção de deepfake, organizada
 | 12 | Ensemble | Espectrograma | Pham et al. (2024) | `app/domain/models/architectures/ensemble.py` |
 | 13 | SVM | Features tabulares | scikit-learn SVC | `app/domain/models/architectures/svm.py` |
 | 14 | Random Forest | Features tabulares | scikit-learn RF | `app/domain/models/architectures/random_forest.py` |
+
+---
+
+## Visão Consolidada do Estudo Experimental
+
+O artigo atual agrupa as 14 arquiteturas por função experimental e por tipo de
+entrada. Essa organização é a referência para leitura dos resultados do
+benchmark de 15.000 amostras.
+
+| Família | Modelos | Papel no experimento |
+|---|---|---|
+| SSL e áudio bruto | WavLM, HuBERT, RawNet2 | Comparação com representações modernas e forma de onda direta |
+| Grafos | AASIST, RawGAT-ST | Modelagem explícita de dependências espectro-temporais |
+| Espectrograma + atenção | Conformer, Hybrid CNN-Transformer, Spectrogram Transformer | Avaliação de convolução local + atenção global |
+| CNN e fusão | Sonic Sleuth, EfficientNet-LSTM, MultiscaleCNN, Ensemble | Frentes espectrais, transferência e fusão multi-feature |
+| Clássicos | SVM, Random Forest | Baselines interpretáveis e rápidos em CPU |
+
+### Decisão operacional por arquitetura
+
+| Modelo | Decisão no artigo | Observação |
+|---|---|---|
+| Conformer | Demonstração principal | Maior qualidade e robustez sob AWGN |
+| Sonic Sleuth | Demonstração leve | Acurácia máxima, artefato pequeno e baixa latência |
+| Hybrid CNN-Transformer | Pronto para Gradio/API | Melhor compromisso neural entre acurácia, tamanho e latência |
+| MultiscaleCNN | Comparação neural | Alta acurácia, mas artefato maior |
+| SVM | Baseline rápido | Excelente latência; frágil sob ruído AWGN |
+| Random Forest | Baseline complementar | Bom desempenho, maior custo que SVM |
+| RawNet2 | Estudo raw-audio | Convergente no preset GPU |
+| Ensemble | Funcional com ressalva | Bom limpo, queda acentuada sob ruído |
+| RawGAT-ST | Comparação em grafos | Estável e relativamente robusto |
+| AASIST | Comparação em grafos | Receita de treino corrigida e consistente |
+| HuBERT Original | Referência SSL funcional | Backbone original viável, custo elevado |
+| EfficientNet-LSTM | Funcional | Maior latência e abaixo dos líderes |
+| WavLM Original | Referência SSL experimental | Acurácia inferior a HuBERT no benchmark atual |
+| Spectrogram Transformer | Requer novo ajuste | Instabilidade entre melhor validação e avaliação final |
+
+Os artefatos finais ficam em `app/models/bench_*` e
+`app/models/benchmark_final/<arquitetura>/`. A rastreabilidade completa está em
+[Benchmark e Resultados](15_BENCHMARK.md) e [Estudo Experimental](20_ESTUDO_EXPERIMENTAL.md).
 
 ---
 
@@ -72,7 +119,8 @@ Modela o áudio como grafo — aprende relações espectro-temporais explicitame
 
 ### 6. RawGAT-ST
 
-Variante do AASIST com foco em Graph Attention Networks espectrais-temporais + GRU.
+Variante fiel ao RawGAT-ST com SincNet sobre áudio bruto, grafo espectral,
+grafo temporal e fusão element-wise dos readouts.
 
 - Utiliza `GraphAttentionLayer` e `AttentionLayer` customizadas.
 - Blocos residuais para extração de features locais antes da modelagem global por grafo.
@@ -156,7 +204,7 @@ Encapsulados para seguir a interface do projeto, úteis como baseline e em cená
 | RawNet2 | Áudio bruto | `(batch, samples,)` | SincNet + pré-ênfase (interno) |
 | Sonic Sleuth | Áudio bruto | `(batch, samples,)` | LFCC/MFCC/CQT extraído no modelo |
 | AASIST | Espectrograma | `(batch, time, freq)` | `AudioFeatureNormalization` |
-| RawGAT-ST | Espectrograma | `(batch, time, freq)` | `AudioFeatureNormalization` |
+| RawGAT-ST | Áudio bruto | `(batch, samples, 1)` | SincConv + GAT espectral/temporal |
 | Conformer | Espectrograma | `(batch, time, freq)` | Subsampling 4× + Positional Enc. |
 | Hybrid CNN-T | Áudio bruto / Espectrograma | `(batch, samples,)` | Mel 128 bins → CCT Tokenizer |
 | SpectrogramTransformer | Áudio bruto / Espectrograma | `(batch, time, freq)` | STFT → ConvStem → Patches |

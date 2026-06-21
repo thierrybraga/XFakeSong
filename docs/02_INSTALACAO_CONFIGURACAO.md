@@ -426,28 +426,48 @@ docker run -d \
 
 ## 🤗 Deploy Hugging Face Spaces
 
-### 1. Preparação
+O deploy recomendado é **Docker Space**, com modelos treinados em um
+repositório separado do tipo **Model** no Hugging Face Hub. O SDK Gradio simples
+não é indicado para o app completo, porque não oferece o mesmo controle sobre
+TensorFlow, PyTorch, FFmpeg, GPU, healthcheck e Storage.
+
+### Resumo operacional
+
+1. Crie um Space com **SDK: Docker**.
+2. Use `sdk: docker` e `app_port: 7860` no `README.md`.
+3. Envie os modelos de `app/models/` para um Model Repo:
+
 ```bash
-git lfs install
+python scripts/upload_models_to_hf.py \
+  --repo-id SEU_USUARIO/xfakesong-models \
+  --dry-run
+
+python scripts/upload_models_to_hf.py \
+  --repo-id SEU_USUARIO/xfakesong-models \
+  --private
 ```
 
-### 2. Criar Space
-[huggingface.co/new-space](https://huggingface.co/new-space) → SDK: **Gradio**, Hardware: **CPU Basic** (mínimo) ou **T4 small** (para inferência DL).
+4. Configure no Space:
 
-### 3. Deploy
-**Recomendado**: conecte o repositório GitHub no Space (auto-deploy).
-
-**Manual**:
-```bash
-git remote add space https://huggingface.co/spaces/SEU_USUARIO/NOME_DO_SPACE
-git push space main
+```env
+MODEL_REPO_ID=SEU_USUARIO/xfakesong-models
+ENABLE_TRAINING=false
+XFAKE_SYNC_MODELS_ON_BOOT=true
+DEEPFAKE_MODELS_DIR=app/models
+DEEPFAKE_ENV=production
 ```
 
-Ou via launcher:
-```bash
-./start.sh deploy       # Linux
-start.bat deploy        # Windows
+5. Se o Model Repo for privado, adicione `HF_TOKEN` como **Secret**.
+6. Para demo com todos os modelos, prefira GPU **L4**; para demo leve, CPU
+   Upgrade/T4 pode bastar.
+7. Para persistir uploads, datasets, logs ou novos treinamentos, anexe Storage
+   Bucket em `/data` e defina:
+
+```env
+XFAKE_STORAGE_DIR=/data
 ```
+
+Guia completo: [Deploy Hugging Face](11_DEPLOY_HUGGINGFACE.md).
 
 ---
 

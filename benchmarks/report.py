@@ -39,6 +39,23 @@ def _conv(flag) -> str:
             else r"\textcolor{dangerred}{Não}")
 
 
+def _train_budget_label(r: Dict[str, Any]) -> str:
+    if r.get("type") == "classical":
+        fit = r.get("fit_strategy") or (r.get("training_config") or {}).get("fit_strategy") or {}
+        if fit.get("kind") == "grid_search_cv_then_refit":
+            n_fits = fit.get("n_fits")
+            cv = fit.get("cv")
+            candidates = fit.get("n_candidates")
+            if n_fits:
+                return f"CV {n_fits}+fit"
+            if cv and candidates:
+                return f"CV {cv}x{candidates}+fit"
+            return "CV+fit"
+        return "fit"
+    epochs = r.get("epochs")
+    return str(epochs) if epochs is not None else "--"
+
+
 # ───────────────────────── tabelas LaTeX ─────────────────────────
 
 def _ok_items(results) -> List:
@@ -61,7 +78,7 @@ def _table_resultados(results) -> str:
         rows.append(
             f"{name} & {_pct(c.get('accuracy'))} & {_pct(c.get('eer'))} & "
             f"{_num(c.get('auc_roc'))} & {_num(c.get('min_tdcf'),4)} & "
-            f"{_num(e.get('latency_ms'),1)} & {r.get('epochs','--')} & "
+            f"{_num(e.get('latency_ms'),1)} & {_train_budget_label(r)} & "
             f"{_conv(r.get('converged'))} \\\\"
         )
     body = "\n".join(rows)
@@ -73,7 +90,7 @@ def _table_resultados(results) -> str:
         "\\begin{tabular}{lccccccc}\n\\toprule\n"
         "\\textbf{Arquitetura} & \\textbf{Acur.} & \\textbf{EER} & "
         "\\textbf{AUC-ROC} & \\textbf{min-tDCF} & \\textbf{Lat.\\,(ms)} & "
-        "\\textbf{Époc.} & \\textbf{Conv.?} \\\\\n\\midrule\n"
+        "\\textbf{Treino} & \\textbf{Conv.?} \\\\\n\\midrule\n"
         f"{body}\n\\bottomrule\n\\end{{tabular}}\n\\end{{table}}\n"
     )
 
@@ -142,8 +159,15 @@ def _fig_roc(results, out: Path) -> None:
     y = np.asarray(results["dataset"].get("y_test", []))
     items = [(n, r) for n, r in _ok_items(results) if r.get("scores_clean")]
     if y.size == 0 or not items or len(np.unique(y)) < 2:
+        _write_placeholder_figure(
+            out / "roc.png",
+            "Curvas ROC",
+            "Dados insuficientes para plotar ROC. Verifique y_test e scores "
+            "limpos das arquiteturas.",
+        )
         return
     fig, ax = plt.subplots(figsize=(6, 5))
+    plotted = 0
     for name, r in items:
         s = np.asarray(r["scores_clean"], dtype=float)
         if len(s) != len(y) or not np.isfinite(s).all():
@@ -152,6 +176,16 @@ def _fig_roc(results, out: Path) -> None:
         auc = r["clean"].get("auc_roc")
         ax.plot(fpr, tpr, lw=1.8,
                 label=f"{name} (AUC={_num(auc).replace(chr(92),'')})")
+        plotted += 1
+    if plotted == 0:
+        plt.close(fig)
+        _write_placeholder_figure(
+            out / "roc.png",
+            "Curvas ROC",
+            "Scores encontrados, mas nenhum vetor era compatível com y_test "
+            "ou continha apenas valores finitos.",
+        )
+        return
     ax.plot([0, 1], [0, 1], "--", color="#94a3b8", lw=1)
     ax.set_xlabel("Taxa de falsos positivos (FPR)")
     ax.set_ylabel("Taxa de verdadeiros positivos (TPR)")
@@ -169,14 +203,34 @@ def _fig_robustez(results, out: Path) -> None:
     snrs = results["config"]["snr_levels_db"]
     conv = [(n, r) for n, r in _ok_items(results) if r.get("converged")]
     if not conv:
+        _write_placeholder_figure(
+            out / "robustez.png",
+            "Robustez sob ruído AWGN",
+            "Nenhuma arquitetura convergente com métricas de robustez foi "
+            "registrada nesta execução.",
+        )
         return
     xs = ["Limpo"] + [f"{s} dB" for s in snrs]
     fig, ax = plt.subplots(figsize=(7, 4.2))
+    plotted = 0
     for name, r in conv:
         ys = [r["clean"].get("accuracy", np.nan)]
-        ys += [r["robustness"].get(str(s), {}).get("accuracy", np.nan)
+        ys += [(r.get("robustness") or {}).get(str(s), {}).get("accuracy", np.nan)
                for s in snrs]
-        ax.plot(xs, [v * 100 for v in ys], marker="o", lw=1.8, label=name)
+        values = np.asarray(ys, dtype=float)
+        if not np.isfinite(values).any():
+            continue
+        ax.plot(xs, values * 100, marker="o", lw=1.8, label=name)
+        plotted += 1
+    if plotted == 0:
+        plt.close(fig)
+        _write_placeholder_figure(
+            out / "robustez.png",
+            "Robustez sob ruído AWGN",
+            "Arquiteturas convergentes encontradas, mas sem métricas finitas "
+            "de acurácia para plotagem.",
+        )
+        return
     ax.axhline(50, ls="--", color="#94a3b8", lw=1, label="acaso (50%)")
     ax.set_ylabel("Acurácia (%)")
     ax.set_xlabel("Condição de ruído (SNR decrescente →)")
@@ -195,15 +249,34 @@ def _fig_eficiencia(results, out: Path) -> None:
     items = [(n, r) for n, r in _ok_items(results)
              if r["efficiency"].get("latency_ms") is not None]
     if not items:
+        _write_placeholder_figure(
+            out / "eficiencia.png",
+            "Eficiência computacional",
+            "Nenhuma arquitetura registrou latência válida para plotagem.",
+        )
         return
     fig, ax = plt.subplots(figsize=(7, 4.2))
+    plotted = 0
     for name, r in items:
         lat = r["efficiency"]["latency_ms"]
-        acc = r["clean"].get("accuracy", np.nan) * 100
+        acc = r["clean"].get("accuracy", np.nan)
+        acc = float(acc) * 100 if acc is not None else np.nan
+        if not np.isfinite(acc):
+            continue
         color = "#10b981" if r.get("converged") else "#ef4444"
         ax.scatter(lat, acc, s=80, color=color, edgecolor="#1e293b", zorder=3)
         ax.annotate(name, (lat, acc), fontsize=7, xytext=(4, 4),
                     textcoords="offset points")
+        plotted += 1
+    if plotted == 0:
+        plt.close(fig)
+        _write_placeholder_figure(
+            out / "eficiencia.png",
+            "Eficiência computacional",
+            "Latências encontradas, mas nenhuma arquitetura registrou acurácia "
+            "finita para plotagem.",
+        )
+        return
     ax.set_xlabel("Latência (ms/amostra)")
     ax.set_ylabel("Acurácia (%)")
     ax.set_title("Eficiência × desempenho (verde=convergiu)")
@@ -213,11 +286,38 @@ def _fig_eficiencia(results, out: Path) -> None:
     plt.close(fig)
 
 
+def _write_placeholder_figure(path: Path, title: str, message: str) -> None:
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(7, 3.6))
+    ax.axis("off")
+    ax.set_title(title)
+    ax.text(
+        0.5,
+        0.5,
+        message,
+        ha="center",
+        va="center",
+        wrap=True,
+        fontsize=11,
+        color="#334155",
+    )
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+
+
 def _fig_convergencia(results, out: Path) -> None:
     import matplotlib.pyplot as plt
 
     items = [(n, r) for n, r in _ok_items(results) if r.get("history")]
     if not items:
+        _write_placeholder_figure(
+            out / "convergencia.png",
+            "Convergência do treino",
+            "Nenhuma arquitetura desta execução registrou histórico por época. "
+            "Isso é esperado para modelos clássicos ou execuções sem treino neural.",
+        )
         return
 
     def _val_accuracy(history: Dict[str, Any]):
@@ -240,6 +340,7 @@ def _fig_convergencia(results, out: Path) -> None:
         return None
 
     fig, ax = plt.subplots(figsize=(7, 4.2))
+    plotted = 0
     for name, r in items:
         h = r["history"]
         va = _val_accuracy(h)
@@ -247,6 +348,16 @@ def _fig_convergencia(results, out: Path) -> None:
             continue
         ax.plot(range(1, len(va) + 1), [v * 100 for v in va],
                 marker="o", ms=3, lw=1.6, label=name)
+        plotted += 1
+    if plotted == 0:
+        plt.close(fig)
+        _write_placeholder_figure(
+            out / "convergencia.png",
+            "Convergência do treino",
+            "Históricos encontrados, mas sem série de acurácia de validação "
+            "compatível para plotagem.",
+        )
+        return
     ax.set_xlabel("Época")
     ax.set_ylabel("Acurácia de validação (%)")
     ax.set_title("Convergência do treino")
@@ -272,6 +383,12 @@ def _fig_confusion_matrices(results, out: Path) -> None:
         and np.isfinite(np.asarray(r["scores_clean"], dtype=float)).all()
     ]
     if y.size == 0 or not items:
+        _write_placeholder_figure(
+            out / "confusion_matrices.png",
+            "Matrizes de confusão",
+            "Dados insuficientes para gerar matrizes de confusão. Verifique "
+            "y_test e scores limpos das arquiteturas.",
+        )
         return
 
     n_cols = min(3, len(items))
@@ -324,6 +441,12 @@ def _fig_score_distributions(results, out: Path) -> None:
         and np.isfinite(np.asarray(r["scores_clean"], dtype=float)).all()
     ]
     if y.size == 0 or not items:
+        _write_placeholder_figure(
+            out / "score_distributions.png",
+            "Distribuição dos scores",
+            "Dados insuficientes para plotar distribuição de scores. Verifique "
+            "y_test e scores limpos das arquiteturas.",
+        )
         return
 
     fig, ax = plt.subplots(figsize=(7, 4.2))
@@ -366,6 +489,12 @@ def _fig_single_confusion(name: str, y_true, scores, out: Path) -> None:
     y = np.asarray(y_true, dtype=int)
     s = np.asarray(scores, dtype=float)
     if y.size == 0 or len(s) != len(y) or not np.isfinite(s).all():
+        _write_placeholder_figure(
+            out / "confusion_matrix.png",
+            f"Matriz de confusão — {name}",
+            "Dados insuficientes para gerar a matriz de confusão desta "
+            "arquitetura.",
+        )
         return
     cm = confusion_matrix(y, (s >= 0.5).astype(int), labels=[0, 1])
     fig, ax = plt.subplots(figsize=(4.5, 4.0))
@@ -405,6 +534,11 @@ def _fig_single_roc(name: str, y_true, scores, out: Path) -> None:
         or len(np.unique(y)) < 2
         or not np.isfinite(s).all()
     ):
+        _write_placeholder_figure(
+            out / "roc.png",
+            f"ROC — {name}",
+            "Dados insuficientes para gerar a curva ROC desta arquitetura.",
+        )
         return
     fpr, tpr, _ = roc_curve(y, s)
     fig, ax = plt.subplots(figsize=(5.0, 4.2))
@@ -425,6 +559,12 @@ def _fig_single_score_distribution(name: str, y_true, scores, out: Path) -> None
     y = np.asarray(y_true, dtype=int)
     s = np.asarray(scores, dtype=float)
     if y.size == 0 or len(s) != len(y) or not np.isfinite(s).all():
+        _write_placeholder_figure(
+            out / "score_distribution.png",
+            f"Scores por classe — {name}",
+            "Dados insuficientes para plotar a distribuição de scores desta "
+            "arquitetura.",
+        )
         return
     fig, ax = plt.subplots(figsize=(5.0, 4.2))
     ax.boxplot(
@@ -446,6 +586,12 @@ def _fig_single_convergence(name: str, history: Dict[str, Any], out: Path) -> No
     import matplotlib.pyplot as plt
 
     if not history:
+        _write_placeholder_figure(
+            out / "convergence.png",
+            f"Convergência — {name}",
+            "Histórico por época não disponível para esta arquitetura. "
+            "Modelos clássicos não possuem curva de loss/acurácia por época.",
+        )
         return
     loss = history.get("loss") or []
     val_loss = history.get("val_loss") or []
@@ -466,6 +612,12 @@ def _fig_single_convergence(name: str, history: Dict[str, Any], out: Path) -> No
         or []
     )
     if not loss and not val_loss and not acc and not val_acc:
+        _write_placeholder_figure(
+            out / "convergence.png",
+            f"Convergência — {name}",
+            "Histórico de treino salvo, mas sem séries de loss/acurácia "
+            "compatíveis para plotagem.",
+        )
         return
     fig, axes = plt.subplots(1, 2, figsize=(8.0, 3.5))
     if loss:
@@ -608,7 +760,8 @@ def _write_arch_summary(name: str, r: Dict[str, Any], path: Path) -> None:
         f"- Shape preparado: {(r.get('input_preparation') or {}).get('prepared_shape')}",
         "",
         "Arquivos nesta pasta: `metrics.json`, `predictions_clean.csv`, "
-        "`robustness.csv` e figuras individuais.",
+        "`robustness.csv`, `hyperparameter_tuning.*` quando aplicável, "
+        "`models/*` e figuras individuais.",
     ]
     path.write_text("\n".join(lines), encoding="utf-8")
 
@@ -665,9 +818,9 @@ def _write_summary(results, path: Path) -> None:
         c, e = r["clean"], r["efficiency"]
         conv = "✅" if r.get("converged") else "⚠️"
         lines.append(
-            f"| {name} | ok | {conv} | {c.get('accuracy',0)*100:.2f}% | "
-            f"{c.get('eer',float('nan'))*100:.2f}% | {c.get('auc_roc',0):.3f} | "
-            f"{c.get('min_tdcf',float('nan')):.4f} | "
+            f"| {name} | ok | {conv} | {_pct(c.get('accuracy'))} | "
+            f"{_pct(c.get('eer'))} | {_num(c.get('auc_roc'))} | "
+            f"{_num(c.get('min_tdcf'), 4)} | "
             f"{e.get('latency_ms')} | {e.get('params')} |"
         )
     if "api" in results:
@@ -767,7 +920,7 @@ def _write_tcc_report(results: Dict[str, Any], path: Path) -> None:
             f"- Status: `{r.get('status')}`",
             f"- Tipo: `{r.get('type')}`",
             f"- Shape preparado: `{r.get('input_shape')}`",
-            f"- Épocas executadas: `{r.get('epochs')}`",
+            f"- Treino executado: `{_train_budget_label(r)}`",
             f"- Tempo total: `{r.get('wall_time_s')}` s",
             f"- Artefato do modelo: `{r.get('model_artifact')}`",
             "",
@@ -779,6 +932,7 @@ def _write_tcc_report(results: Dict[str, Any], path: Path) -> None:
             "",
         ]
         if r.get("status") == "ok":
+            tuning = r.get("hyperparameter_tuning") or {}
             lines += [
                 f"![Matriz de confusão — {name}](architectures/{slug}/confusion_matrix.png)",
                 "",
@@ -791,6 +945,14 @@ def _write_tcc_report(results: Dict[str, Any], path: Path) -> None:
                 f"- Métricas completas: `architectures/{slug}/metrics.json`",
                 f"- Predições limpas: `architectures/{slug}/predictions_clean.csv`",
                 f"- Robustez: `architectures/{slug}/robustness.csv`",
+                *(
+                    [
+                        f"- Tuning de hiperparâmetros: `architectures/{slug}/hyperparameter_tuning.json`",
+                        f"- Candidatos do grid: `architectures/{slug}/hyperparameter_tuning.csv`",
+                    ]
+                    if tuning.get("enabled")
+                    else []
+                ),
                 "",
             ]
         else:

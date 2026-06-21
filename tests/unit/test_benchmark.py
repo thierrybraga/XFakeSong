@@ -13,6 +13,7 @@ from pathlib import Path
 
 import matplotlib
 import numpy as np
+import pytest
 
 matplotlib.use("Agg")
 
@@ -83,6 +84,65 @@ def test_prepare_raw_audio_for_spectrogram_uses_logmel():
     assert spec.X.shape == (8, 100, 80)
     assert np.isfinite(spec.X).all()
     assert spec.metadata["input_type"] == "spectrogram"
+
+
+def test_prepare_raw_audio_center_crops_long_clips_for_rawnet2():
+    from benchmarks.data import BenchmarkData
+
+    rng = np.random.default_rng(33)
+    d = BenchmarkData(
+        X=rng.standard_normal((8, 80000, 1)).astype("float32"),
+        y=np.array([0, 1] * 4),
+    )
+    raw = d.prepare_for_architecture("RawNet2")
+
+    assert raw.X.shape == (8, 16000, 1)
+    assert raw.metadata["prepared_shape"] == [16000, 1]
+
+
+def test_prepare_raw_audio_center_crops_long_clips_for_aasist():
+    from benchmarks.data import BenchmarkData
+
+    rng = np.random.default_rng(34)
+    d = BenchmarkData(
+        X=rng.standard_normal((8, 80000, 1)).astype("float32"),
+        y=np.array([0, 1] * 4),
+    )
+    raw = d.prepare_for_architecture("AASIST")
+
+    assert raw.X.shape == (8, 16000, 1)
+    assert raw.metadata["input_type"] == "raw_audio"
+    assert raw.metadata["prepared_shape"] == [16000, 1]
+
+
+def test_prepare_raw_audio_center_crops_long_clips_for_ensemble():
+    from benchmarks.data import BenchmarkData
+
+    rng = np.random.default_rng(35)
+    d = BenchmarkData(
+        X=rng.standard_normal((8, 80000, 1)).astype("float32"),
+        y=np.array([0, 1] * 4),
+    )
+    raw = d.prepare_for_architecture("Ensemble")
+
+    assert raw.X.shape == (8, 16000, 1)
+    assert raw.metadata["input_type"] == "raw_audio"
+    assert raw.metadata["prepared_shape"] == [16000, 1]
+
+
+def test_prepare_raw_audio_center_crops_long_clips_for_wavlm():
+    from benchmarks.data import BenchmarkData
+
+    rng = np.random.default_rng(36)
+    d = BenchmarkData(
+        X=rng.standard_normal((8, 80000, 1)).astype("float32"),
+        y=np.array([0, 1] * 4),
+    )
+    raw = d.prepare_for_architecture("WavLM")
+
+    assert raw.X.shape == (8, 16000, 1)
+    assert raw.metadata["input_type"] == "raw_audio"
+    assert raw.metadata["prepared_shape"] == [16000, 1]
 
 
 def test_prepare_raw_audio_for_classical_uses_compact_features():
@@ -251,12 +311,333 @@ def test_robustez_table_uses_dynamic_colspan_without_converged_models():
         assert "\\multicolumn{5}{c}{(nenhum modelo convergente)}" in tex
 
 
+def test_report_creates_convergence_placeholder_for_classical_models():
+    from benchmarks.report import write_all
+
+    fake = {
+        "config": {"snr_levels_db": [20]},
+        "environment": {"platform": "x", "python": "3.13"},
+        "dataset": {
+            "name": "synthetic",
+            "n_total": 10,
+            "n_test": 4,
+            "input_shape": [8, 8],
+            "balance_test": {"real": 2, "fake": 2},
+            "y_test": [0, 1, 0, 1],
+        },
+        "architectures": {
+            "SVM": {
+                "status": "ok",
+                "type": "classical",
+                "converged": True,
+                "clean": {"accuracy": 0.75, "eer": 0.25, "auc_roc": 0.75},
+                "scores_clean": [0.1, 0.8, 0.4, 0.7],
+                "robustness": {"20": {"accuracy": 0.75, "eer": 0.25}},
+                "efficiency": {"params": None, "size_mb": 0.1, "latency_ms": 1.0},
+                "history": None,
+                "training_config": {"model_family": "classical", "fit_samples": 6},
+                "final_training_metrics": {
+                    "fit_samples": 6,
+                    "n_features": 8,
+                    "classes": [0, 1],
+                },
+                "epochs": 1,
+            }
+        },
+    }
+    with tempfile.TemporaryDirectory() as td:
+        write_all(fake, td)
+        out = Path(td)
+        assert (out / "figures" / "convergencia.png").exists()
+        assert (out / "architectures" / "svm" / "convergence.png").exists()
+        assert "(architectures/svm/convergence.png)" in (
+            out / "tcc_report.md"
+        ).read_text("utf-8")
+
+
+def test_report_creates_graph_placeholders_when_scores_are_missing():
+    from benchmarks.report import write_all
+
+    fake = {
+        "config": {"snr_levels_db": [20]},
+        "environment": {"platform": "x", "python": "3.13"},
+        "dataset": {
+            "name": "synthetic",
+            "n_total": 10,
+            "n_test": 4,
+            "input_shape": [8, 8],
+            "balance_test": {"real": 2, "fake": 2},
+            "y_test": [0, 1, 0, 1],
+        },
+        "architectures": {
+            "RawNet2": {
+                "status": "ok",
+                "type": "neural",
+                "converged": False,
+                "clean": {"accuracy": None, "eer": None, "auc_roc": None},
+                "scores_clean": [],
+                "robustness": {},
+                "efficiency": {"params": None, "size_mb": None, "latency_ms": None},
+                "history": {},
+                "epochs": 1,
+            }
+        },
+    }
+    with tempfile.TemporaryDirectory() as td:
+        write_all(fake, td)
+        out = Path(td)
+        for figure in [
+            "roc.png",
+            "robustez.png",
+            "convergencia.png",
+            "eficiencia.png",
+            "confusion_matrices.png",
+            "score_distributions.png",
+        ]:
+            assert (out / "figures" / figure).exists()
+        for figure in [
+            "confusion_matrix.png",
+            "roc.png",
+            "score_distribution.png",
+            "convergence.png",
+        ]:
+            assert (out / "architectures" / "rawnet2" / figure).exists()
+
+
+def test_tcc_pipeline_verifies_per_architecture_artifacts(tmp_path):
+    from scripts.run_tcc_pipeline import _verify_outputs
+
+    results = {
+        "architectures": {
+            "SVM": {
+                "status": "ok",
+            }
+        }
+    }
+    root_files = [
+        "results.csv",
+        "predictions_clean.csv",
+        "summary.md",
+        "tcc_report.md",
+        "dataset_manifest.json",
+        "dataset.md",
+        "tables/tab_resultados.tex",
+        "tables/tab_eficiencia.tex",
+        "tables/tab_robustez.tex",
+        "figures/roc.png",
+        "figures/robustez.png",
+        "figures/convergencia.png",
+        "figures/eficiencia.png",
+        "figures/confusion_matrices.png",
+        "figures/score_distributions.png",
+    ]
+    arch_files = [
+        "metrics.json",
+        "summary.md",
+        "predictions_clean.csv",
+        "robustness.csv",
+        "confusion_matrix.png",
+        "roc.png",
+        "score_distribution.png",
+    ]
+
+    (tmp_path / "results.json").write_text(json.dumps(results), encoding="utf-8")
+    for relative in root_files:
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("ok", encoding="utf-8")
+    for relative in arch_files:
+        path = tmp_path / "architectures" / "svm" / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("ok", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="architectures/svm/convergence.png"):
+        _verify_outputs(tmp_path)
+
+
 def test_quick_preset_is_classical_and_fast():
     from benchmarks import BenchmarkConfig
 
     cfg = BenchmarkConfig.quick()
     assert cfg.architectures == ["SVM"]
     assert cfg.synthetic_shape == (8, 8)
+
+
+def test_benchmark_relative_paths_are_anchored_to_project_root(monkeypatch, tmp_path):
+    from benchmarks import BenchmarkConfig, plan_benchmark
+    from benchmarks.runner import PROJECT_ROOT
+
+    monkeypatch.chdir(tmp_path)
+    cfg = BenchmarkConfig.quick(
+        output_dir="results/path_anchor_probe",
+        models_dir="app/models/path_anchor_probe",
+    )
+
+    plan_benchmark(cfg, write=False)
+
+    assert Path(cfg.output_dir) == PROJECT_ROOT / "results" / "path_anchor_probe"
+    assert Path(cfg.models_dir) == PROJECT_ROOT / "app" / "models" / "path_anchor_probe"
+
+
+def test_full_tcc_preset_includes_all_architectures():
+    from benchmarks.config import (
+        ALL_TCC_ARCHITECTURES,
+        CLASSICAL_TCC_ARCHITECTURES,
+        NEURAL_TCC_ARCHITECTURES,
+        BenchmarkConfig,
+    )
+
+    cfg = BenchmarkConfig.full_tcc()
+
+    assert cfg.architectures == ALL_TCC_ARCHITECTURES
+    assert len(cfg.architectures) == 14
+    assert "SpectrogramTransformer" in cfg.architectures
+    assert "Spectrogram Transformer" not in cfg.architectures
+    assert BenchmarkConfig.full_all_architectures().architectures == cfg.architectures
+    assert CLASSICAL_TCC_ARCHITECTURES == ["SVM", "RandomForest"]
+    assert len(NEURAL_TCC_ARCHITECTURES) == 12
+    assert "SVM" not in NEURAL_TCC_ARCHITECTURES
+    assert BenchmarkConfig.neural_tcc().architectures == NEURAL_TCC_ARCHITECTURES
+    rawnet2 = BenchmarkConfig.rawnet2_100e()
+    assert rawnet2.architectures == ["RawNet2"]
+    assert rawnet2.epochs == 100
+    assert rawnet2.batch_size == 16
+    assert rawnet2.device_profile == "gpu"
+    assert rawnet2.preset_name == "single:RawNet2"
+
+
+def test_neural_benchmark_plan_uses_curated_hyperparameters():
+    from benchmarks import BenchmarkConfig, plan_benchmark
+
+    with tempfile.TemporaryDirectory() as td:
+        cfg = BenchmarkConfig.neural_tcc(
+            architectures=[
+                "WavLM",
+                "AASIST",
+                "SpectrogramTransformer",
+                "EfficientNet-LSTM",
+            ],
+            output_dir=td,
+            synthetic_n=24,
+            synthetic_shape=(8, 8),
+            epochs=7,
+            device_profile="cpu",
+        )
+        plan = plan_benchmark(cfg, write=True)
+
+        wavlm = plan["architectures"]["WavLM"]["training_config"]
+        aasist = plan["architectures"]["AASIST"]["training_config"]
+        ast = plan["architectures"]["SpectrogramTransformer"]["training_config"]
+        efficientnet = plan["architectures"]["EfficientNet-LSTM"]["training_config"]
+
+        assert plan["preset"] == "neural_tcc"
+        assert wavlm["learning_rate"] == 1e-4
+        assert wavlm["batch_size"] <= 4
+        assert wavlm["use_augmentation"] is False
+        assert wavlm["use_mixed_precision"] is False
+        assert aasist["learning_rate"] == 1e-4
+        assert aasist["input_domain"] == "raw_audio"
+        assert aasist["batch_size"] <= 4
+        assert ast["learning_rate"] == 2e-5
+        assert ast["batch_size"] <= 8
+        assert ast["l2_reg_strength"] == 5e-5
+        assert ast["weight_decay"] == 5e-5
+        assert ast["use_augmentation"] is False
+        assert ast["warmup_steps"] == 3000
+        assert ast["checkpoint_best"] is True
+        assert ast["early_stopping"] is True
+        assert ast["early_stopping_patience"] == 20
+        assert ast["epochs"] == 7
+        assert ast["recommended_epochs"] == 100
+        assert efficientnet["learning_rate"] == 1e-4
+        assert efficientnet["optimizer"] == "Adam"
+        assert efficientnet["lstm_units"] == 128
+        assert efficientnet["pretrained"] is True
+        assert efficientnet["batch_size"] <= 8
+
+
+def test_rawnet2_100e_preset_uses_benchmark_hparams():
+    from benchmarks import BenchmarkConfig, plan_benchmark
+
+    with tempfile.TemporaryDirectory() as td:
+        cfg = BenchmarkConfig.rawnet2_100e(output_dir=td)
+        plan = plan_benchmark(cfg, write=True)
+
+        rawnet2 = plan["architectures"]["RawNet2"]["training_config"]
+        assert plan["preset"] == "single:RawNet2"
+        assert rawnet2["epochs"] == 100
+        assert rawnet2["batch_size"] <= 16
+        assert rawnet2["learning_rate"] == 1e-4
+        assert rawnet2["optimizer"] == "Adam"
+        assert rawnet2["use_augmentation"] is False
+        assert rawnet2["use_mixed_precision"] is False
+        assert rawnet2["early_stopping"] is False
+
+
+def test_benchmark_plan_is_written_before_training():
+    from benchmarks import BenchmarkConfig, plan_benchmark
+
+    with tempfile.TemporaryDirectory() as td:
+        cfg = BenchmarkConfig.full_all_architectures(
+            output_dir=td,
+            synthetic_n=24,
+            synthetic_shape=(8, 8),
+            epochs=3,
+            device_profile="cpu",
+            run_api_probe=False,
+        )
+        plan = plan_benchmark(cfg, write=True)
+
+        assert plan["preset"] == "full_tcc"
+        assert len(plan["architectures"]) == 14
+        assert plan["architectures"]["AASIST"]["training_config"]["batch_size"] <= 8
+        assert plan["architectures"]["SVM"]["training_config"]["model_family"] == "classical"
+        assert (Path(td) / "benchmark_plan.json").exists()
+        assert (Path(td) / "benchmark_plan.md").exists()
+
+
+def test_all_architectures_benchmark_smoke_contract(monkeypatch):
+    """CI smoke barato: valida nomes, preparo, métricas e artefatos sem treino pesado."""
+    from benchmarks import BenchmarkConfig, run_benchmark
+    import benchmarks.runner as runner
+
+    def fake_run_neural(_arch, _cfg, splits, _tmp, _models_dir):
+        _Xtr, _ytr, _Xv, _yv, Xte, _yte = splits
+        p = np.linspace(0.1, 0.9, len(Xte), dtype="float32")
+
+        return {
+            "predict_p_fake": lambda X: np.resize(p, len(X)),
+            "predict_fn": lambda xb: np.zeros((len(xb), 1), dtype="float32"),
+            "params": 1,
+            "size_mb": 0.0,
+            "history": {"val_accuracy": [0.5]},
+            "training_config": {"epochs": _cfg.epochs, "batch_size": _cfg.batch_size},
+            "final_metrics": {},
+            "model_artifact": str(_models_dir / f"bench_{_arch}.keras"),
+        }
+
+    def fake_run_classical(arch, cfg, splits, tmp, models_dir):
+        return fake_run_neural(arch, cfg, splits, tmp, models_dir)
+
+    monkeypatch.setattr(runner, "_run_neural", fake_run_neural)
+    monkeypatch.setattr(runner, "_run_classical", fake_run_classical)
+
+    with tempfile.TemporaryDirectory() as td:
+        cfg = BenchmarkConfig.full_all_architectures(
+            output_dir=td,
+            synthetic_n=24,
+            synthetic_shape=(8, 8),
+            epochs=1,
+            latency_runs=1,
+            snr_levels_db=[20],
+            run_api_probe=False,
+        )
+        results = run_benchmark(cfg)
+
+        assert len(results["architectures"]) == 14
+        assert all(r["status"] == "ok" for r in results["architectures"].values())
+        assert (Path(td) / "figures" / "confusion_matrices.png").exists()
+        assert (Path(td) / "results.json").exists()
 
 
 def test_convergence_requires_accuracy_threshold():
@@ -287,23 +668,85 @@ def test_api_probe_uses_configured_openapi_path(monkeypatch):
 
 
 
-def test_run_benchmark_quick_svm_integration():
+def test_run_benchmark_quick_svm_integration(monkeypatch):
     """Smoke ponta-a-ponta com SVM (clássico, rápido): runner + relatório."""
     from benchmarks import BenchmarkConfig, run_benchmark
 
+    for name in (
+        "MODELS_DIR",
+        "DEEPFAKE_MODELS_DIR",
+        "XFAKE_MODELS_DIR",
+        "XFAKE_STORAGE_DIR",
+        "DEEPFAKE_STORAGE_DIR",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
     with tempfile.TemporaryDirectory() as td:
+        models_dir = Path(td) / "models"
         cfg = BenchmarkConfig.quick(
-            architectures=["SVM"], snr_levels_db=[20], output_dir=td,
+            architectures=["SVM"],
+            snr_levels_db=[20],
+            output_dir=td,
+            models_dir=str(models_dir),
             synthetic_n=160, synthetic_shape=(8, 8),
         )
         results = run_benchmark(cfg)
         svm = results["architectures"]["SVM"]
         assert svm["status"] == "ok", svm
         assert svm["type"] == "classical"
+        assert svm["epochs"] is None
+        assert svm["fit_strategy"]["kind"] == "single_fit"
         assert "clean" in svm and "auc_roc" in svm["clean"]
         assert "20" in svm["robustness"]
         assert svm["efficiency"]["latency_ms"] is not None
+        model_artifact = Path(svm["model_artifact"])
+        assert model_artifact.exists()
+        assert model_artifact.parent == models_dir
         # artefatos
         saved = json.loads((Path(td) / "results.json").read_text("utf-8"))
         assert saved["dataset"]["n_test"] > 0
         assert (Path(td) / "tcc_report.md").exists()
+
+
+def test_svm_optimized_benchmark_reports_real_fit_strategy(monkeypatch):
+    """SVM otimizado deve reportar GridSearchCV+refit, não épocas artificiais."""
+    from benchmarks import BenchmarkConfig, run_benchmark
+
+    for name in (
+        "MODELS_DIR",
+        "DEEPFAKE_MODELS_DIR",
+        "XFAKE_MODELS_DIR",
+        "XFAKE_STORAGE_DIR",
+        "DEEPFAKE_STORAGE_DIR",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    with tempfile.TemporaryDirectory() as td:
+        models_dir = Path(td) / "models"
+        cfg = BenchmarkConfig(
+            architectures=["SVM"],
+            output_dir=td,
+            models_dir=str(models_dir),
+            dataset_path=None,
+            synthetic_n=160,
+            synthetic_shape=(8, 8),
+            epochs=100,
+            snr_levels_db=[20],
+            latency_runs=1,
+            optimize_hyperparameters=True,
+        )
+        results = run_benchmark(cfg)
+        svm = results["architectures"]["SVM"]
+        assert svm["status"] == "ok", svm
+        assert svm["type"] == "classical"
+        assert svm["epochs"] is None
+        assert svm["fit_strategy"]["kind"] == "grid_search_cv_then_refit"
+        assert svm["fit_strategy"]["cv"] == 3
+        assert svm["fit_strategy"]["n_candidates"] == 12
+        assert svm["fit_strategy"]["n_fits"] == 36
+        assert svm["fit_strategy"]["final_refit"] is True
+        assert svm["fit_strategy"]["total_fit_calls_estimate"] == 37
+
+        report = (Path(td) / "tcc_report.md").read_text("utf-8")
+        assert "Treino executado: `CV 36+fit`" in report
+        assert "Épocas executadas: `100`" not in report

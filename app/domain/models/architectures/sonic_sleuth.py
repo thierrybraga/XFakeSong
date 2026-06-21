@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 # Feature extraction layers (LFCC, MFCC, CQT) as described in the paper
 # ---------------------------------------------------------------------------
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class LFCCLayer(layers.Layer):
     """Linear Frequency Cepstral Coefficients (LFCC) extraction layer.
 
@@ -115,6 +116,7 @@ class LFCCLayer(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class MFCCLayer(layers.Layer):
     """Mel-Frequency Cepstral Coefficients (MFCC) extraction layer.
 
@@ -172,6 +174,7 @@ class MFCCLayer(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class CQTLayer(layers.Layer):
     """Constant-Q Transform (CQT) feature extraction layer.
 
@@ -242,6 +245,7 @@ class CQTLayer(layers.Layer):
 # Legacy compatibility
 # ---------------------------------------------------------------------------
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class MelSpectrogramLayer(layers.Layer):
     """Custom layer to convert audio to mel spectrogram (legacy compatibility)."""
 
@@ -281,6 +285,7 @@ class MelSpectrogramLayer(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class ConvBlock(layers.Layer):
     """Conv2D + BatchNorm + ReLU + MaxPool2D + Dropout block."""
 
@@ -297,6 +302,15 @@ class ConvBlock(layers.Layer):
         self.relu = layers.ReLU()
         self.maxpool = layers.MaxPooling2D(pool_size=(2, 2))
         self.dropout = layers.Dropout(dropout_rate)
+
+    def build(self, input_shape):
+        self.conv.build(input_shape)
+        conv_shape = self.conv.compute_output_shape(input_shape)
+        self.bn.build(conv_shape)
+        self.relu.build(conv_shape)
+        pool_shape = self.maxpool.compute_output_shape(conv_shape)
+        self.dropout.build(pool_shape)
+        super().build(input_shape)
 
     def call(self, inputs, training=None):
         x = self.conv(inputs)
@@ -316,6 +330,7 @@ class ConvBlock(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 def preprocess(x):
     """Global preprocessing function for Sonic Sleuth compatibility.
 

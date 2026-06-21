@@ -161,6 +161,7 @@ class STFTLayer(layers.Layer):
         })
         return config
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class ExpandDimsLayer(layers.Layer):
     def __init__(self, axis=-1, **kwargs):
         super(ExpandDimsLayer, self).__init__(**kwargs)
@@ -174,6 +175,7 @@ class ExpandDimsLayer(layers.Layer):
         config.update({'axis': self.axis})
         return config
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class ResizeLayer(layers.Layer):
     def __init__(self, target_height, target_width, **kwargs):
         super(ResizeLayer, self).__init__(**kwargs)
@@ -191,6 +193,7 @@ class ResizeLayer(layers.Layer):
         })
         return config
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class MagnitudeLayer(layers.Layer):
     def call(self, inputs):
         return tf.abs(inputs)
@@ -198,6 +201,7 @@ class MagnitudeLayer(layers.Layer):
     def get_config(self):
         return super().get_config()
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class RepeatChannelLayer(layers.Layer):
     def __init__(self, repeats=3, axis=-1, **kwargs):
         super(RepeatChannelLayer, self).__init__(**kwargs)
@@ -212,6 +216,7 @@ class RepeatChannelLayer(layers.Layer):
         config.update({'repeats': self.repeats, 'axis': self.axis})
         return config
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class SafeEfficientNetInputLayer(layers.Layer):
     """Custom layer to safely reshape/preprocess input for EfficientNet."""
 
@@ -276,6 +281,7 @@ def create_classification_head(x, num_classes, dropout_rate=0.3, hidden_dims=Non
     return outputs, loss
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class AudioFeatureNormalization(SafeInstanceNormalization):
     """
     DEPRECATED: Esta classe foi substituída por SafeAudioNormalization/SafeInstanceNormalization.
@@ -303,6 +309,7 @@ class AudioFeatureNormalization(SafeInstanceNormalization):
     # We explicitly want to remove that behavior.
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class AttentionLayer(layers.Layer):
     """
     Camada de atenção personalizada (Bahdanau).
@@ -397,9 +404,13 @@ class AudioNormalizationLayer(layers.Layer):
         super(AudioNormalizationLayer, self).__init__(**kwargs)
 
     def call(self, inputs):
-        # Calcular média e desvio padrão ao longo do eixo temporal
-        mean = tf.reduce_mean(inputs, axis=-1, keepdims=True)
-        std = tf.math.reduce_std(inputs, axis=-1, keepdims=True)
+        # Calcular média e desvio padrão ao longo do eixo temporal. Para áudio
+        # bruto em shape (batch, time, 1), axis=-1 é o canal mono e zera o
+        # sinal inteiro; o eixo temporal é 1. Para shape (batch, time), também
+        # usamos axis=1.
+        temporal_axis = 1 if inputs.shape.rank in (2, 3) else -1
+        mean = tf.reduce_mean(inputs, axis=temporal_axis, keepdims=True)
+        std = tf.math.reduce_std(inputs, axis=temporal_axis, keepdims=True)
 
         # Evitar divisão por zero
         std = tf.maximum(std, 1e-8)
@@ -495,7 +506,12 @@ class FeatureMapScalingLayer(layers.Layer):
 
     def build(self, input_shape):
         self.channels = input_shape[-1]
-        self.dense = layers.Dense(self.channels, activation='sigmoid')
+        self.dense = layers.Dense(
+            self.channels,
+            activation='sigmoid',
+            kernel_initializer='zeros',
+            bias_initializer='zeros',
+        )
         super(FeatureMapScalingLayer, self).build(input_shape)
 
     def call(self, inputs):
@@ -505,8 +521,10 @@ class FeatureMapScalingLayer(layers.Layer):
         y = self.dense(y)
         # Reshape for broadcasting
         y = tf.expand_dims(y, axis=1)
-        # Scale input
-        return inputs * y + y
+        # Feature Map Scaling from RawNet2 is multiplicative. Center the
+        # sigmoid gate at 1.0 on initialization (2 * sigmoid(0)) so stacking FMS
+        # blocks does not shrink the waveform evidence before the GRU.
+        return inputs * (2.0 * y)
 
     def get_config(self):
         return super(FeatureMapScalingLayer, self).get_config()
@@ -1630,6 +1648,7 @@ class PreEmphasisLayer(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class DeltaFeatureLayer(layers.Layer):
     """Computes delta (velocity) and delta-delta (acceleration) features.
 
@@ -1679,6 +1698,7 @@ class DeltaFeatureLayer(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class SqueezeExcitationBlock2D(layers.Layer):
     """Squeeze-and-Excitation block for 2D feature maps (CNN models).
 
@@ -1705,6 +1725,7 @@ class SqueezeExcitationBlock2D(layers.Layer):
         se = self.dense2(se)
         # Reshape for broadcasting: (batch, 1, 1, C)
         se = tf.reshape(se, [-1, 1, 1, tf.shape(inputs)[-1]])
+        se = tf.cast(se, inputs.dtype)
         return inputs * se
 
     def get_config(self):
@@ -1713,6 +1734,7 @@ class SqueezeExcitationBlock2D(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class CrossAttentionFusionLayer(layers.Layer):
     """Cross-attention fusion for multi-branch ensemble models.
 
@@ -1728,16 +1750,19 @@ class CrossAttentionFusionLayer(layers.Layer):
     def build(self, input_shape):
         # input_shape is a list of shapes from each branch
         self.projection_layers = []
-        for i in range(len(input_shape)):
-            self.projection_layers.append(
-                layers.Dense(self.embed_dim, name=f'proj_{i}')
-            )
+        for i, shape in enumerate(input_shape):
+            projection = layers.Dense(self.embed_dim, name=f'proj_{i}')
+            projection.build(shape)
+            self.projection_layers.append(projection)
         self.mha = layers.MultiHeadAttention(
             num_heads=self.num_heads,
             key_dim=self.embed_dim // self.num_heads,
             name='cross_attn'
         )
         self.layer_norm = layers.LayerNormalization()
+        sequence_shape = (input_shape[0][0], len(input_shape), self.embed_dim)
+        self.mha.build(sequence_shape, sequence_shape)
+        self.layer_norm.build(sequence_shape)
         super(CrossAttentionFusionLayer, self).build(input_shape)
 
     def call(self, inputs, training=None):
@@ -1756,8 +1781,12 @@ class CrossAttentionFusionLayer(layers.Layer):
 
         # Flatten: (batch, num_branches * embed_dim)
         batch_size = tf.shape(attn_out)[0]
-        fused = tf.reshape(attn_out, [batch_size, -1])
+        num_branches = len(inputs)
+        fused = tf.reshape(attn_out, [batch_size, num_branches * self.embed_dim])
         return fused
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0][0], len(input_shape) * self.embed_dim)
 
     def get_config(self):
         config = super(CrossAttentionFusionLayer, self).get_config()
@@ -1768,6 +1797,7 @@ class CrossAttentionFusionLayer(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class GatedFusionLayer(layers.Layer):
     """Gated fusion mechanism for multi-branch models.
 
@@ -1780,10 +1810,10 @@ class GatedFusionLayer(layers.Layer):
     def build(self, input_shape):
         # input_shape is a list of shapes
         self.gate_layers = []
-        for i in range(len(input_shape)):
-            self.gate_layers.append(
-                layers.Dense(1, activation='sigmoid', name=f'gate_{i}')
-            )
+        for i, shape in enumerate(input_shape):
+            gate = layers.Dense(1, activation='sigmoid', name=f'gate_{i}')
+            gate.build(shape)
+            self.gate_layers.append(gate)
         super(GatedFusionLayer, self).build(input_shape)
 
     def call(self, inputs):
@@ -1800,19 +1830,48 @@ class GatedFusionLayer(layers.Layer):
 
 # Register all custom objects
 tf.keras.utils.get_custom_objects().update({
+    'AudioFeatureNormalization': AudioFeatureNormalization,
+    'XFakeSong>AudioFeatureNormalization': AudioFeatureNormalization,
+    'MagnitudeLayer': MagnitudeLayer,
+    'XFakeSong>MagnitudeLayer': MagnitudeLayer,
+    'ExpandDimsLayer': ExpandDimsLayer,
+    'XFakeSong>ExpandDimsLayer': ExpandDimsLayer,
+    'ResizeLayer': ResizeLayer,
+    'XFakeSong>ResizeLayer': ResizeLayer,
+    'RepeatChannelLayer': RepeatChannelLayer,
+    'XFakeSong>RepeatChannelLayer': RepeatChannelLayer,
+    'SafeEfficientNetInputLayer': SafeEfficientNetInputLayer,
+    'XFakeSong>SafeEfficientNetInputLayer': SafeEfficientNetInputLayer,
+    'AttentionLayer': AttentionLayer,
+    'XFakeSong>AttentionLayer': AttentionLayer,
     'SincConvLayer': SincConvLayer,
+    'XFakeSong>SincConvLayer': SincConvLayer,
     'ResidualBlock1D': ResidualBlock1D,
+    'XFakeSong>ResidualBlock1D': ResidualBlock1D,
     'GATConvLayer': GATConvLayer,
+    'XFakeSong>GATConvLayer': GATConvLayer,
     'GraphPoolLayer': GraphPoolLayer,
+    'XFakeSong>GraphPoolLayer': GraphPoolLayer,
     'GraphReadoutLayer': GraphReadoutLayer,
+    'XFakeSong>GraphReadoutLayer': GraphReadoutLayer,
     'HSGALLayer': HSGALLayer,
+    'XFakeSong>HSGALLayer': HSGALLayer,
     'AMSoftmaxLayer': AMSoftmaxLayer,
+    'XFakeSong>AMSoftmaxLayer': AMSoftmaxLayer,
     'OCSoftmaxLayer': OCSoftmaxLayer,
+    'XFakeSong>OCSoftmaxLayer': OCSoftmaxLayer,
     'AttentionPoolingLayer': AttentionPoolingLayer,
+    'XFakeSong>AttentionPoolingLayer': AttentionPoolingLayer,
     'ConvolutionStemLayer': ConvolutionStemLayer,
+    'XFakeSong>ConvolutionStemLayer': ConvolutionStemLayer,
     'PreEmphasisLayer': PreEmphasisLayer,
+    'XFakeSong>PreEmphasisLayer': PreEmphasisLayer,
     'DeltaFeatureLayer': DeltaFeatureLayer,
+    'XFakeSong>DeltaFeatureLayer': DeltaFeatureLayer,
     'SqueezeExcitationBlock2D': SqueezeExcitationBlock2D,
+    'XFakeSong>SqueezeExcitationBlock2D': SqueezeExcitationBlock2D,
     'CrossAttentionFusionLayer': CrossAttentionFusionLayer,
+    'XFakeSong>CrossAttentionFusionLayer': CrossAttentionFusionLayer,
     'GatedFusionLayer': GatedFusionLayer,
+    'XFakeSong>GatedFusionLayer': GatedFusionLayer,
 })

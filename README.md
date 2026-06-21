@@ -3,9 +3,8 @@ title: XFakeSong
 emoji: 🛡️
 colorFrom: blue
 colorTo: slate
-sdk: gradio
-sdk_version: 4.31.0
-app_file: app.py
+sdk: docker
+app_port: 7860
 pinned: false
 license: mit
 ---
@@ -19,7 +18,7 @@ resultados numéricos e gráficos do TCC.
 
 ![Python Version](https://img.shields.io/badge/python-3.11%2B-blue?style=for-the-badge&logo=python)
 ![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
-![Benchmark](https://img.shields.io/badge/benchmark-TCC_20k-informational?style=for-the-badge)
+![Benchmark](https://img.shields.io/badge/benchmark-TCC_15k-informational?style=for-the-badge)
 [![CI](https://github.com/thierrybraga/XFakeSong/actions/workflows/ci.yml/badge.svg)](https://github.com/thierrybraga/XFakeSong/actions/workflows/ci.yml)
 
 ## Foco do Projeto
@@ -34,8 +33,11 @@ fluxo local, auditável e repetível:
 5. gerar métricas, matrizes de confusão, curvas ROC, robustez, latência e
    relatórios Markdown com imagens PNG.
 
-O pipeline oficial usa o preset `--tcc-full-dataset`, com alvo de `10.000`
-amostras reais + `10.000` amostras fake.
+O benchmark consolidado do TCC usa o dataset
+`app/datasets/benchmark_audio_raw_balanced_15k.npz`, com `7.500` amostras reais
++ `7.500` amostras fake.
+Excedentes baixados durante a curadoria são arquivados em
+`app/datasets/overflow/`, preservando os WAVs brutos para novas rotas.
 
 ## Início Rápido
 
@@ -69,24 +71,97 @@ Execução completa planejada para o TCC:
 
 ```bash
 python scripts/run_tcc_pipeline.py ^
-  --tcc-full-dataset ^
-  --out results/tcc_full_20k ^
-  --npz app/datasets/benchmark_audio_raw_20k.npz
+  --download ^
+  --target-per-class 7500 ^
+  --full-benchmark ^
+  --epochs 100 ^
+  --device-profile gpu ^
+  --out results/tcc_full_15k ^
+  --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
 Saídas principais:
 
 | Artefato | Conteúdo |
 | --- | --- |
+| `benchmark_plan.md` / `benchmark_plan.json` | preset, dataset e hiperparâmetros efetivos antes do treino |
 | `dataset.md` | composição, split, processamento e hiperparâmetros globais |
 | `dataset_manifest.json` | manifesto estruturado do dataset |
 | `results.json` / `results.csv` | métricas completas por arquitetura |
 | `tcc_report.md` | relatório final com métricas, inferências e imagens PNG |
 | `figures/*.png` | gráficos agregados |
 | `architectures/<modelo>/*.png` | matriz de confusão, ROC, scores e convergência por modelo |
+| `app/models/bench_*` | modelos/configs salvos por padrão para uso direto na Gradio/API |
+| `app/models/benchmark_final/` | cópia completa dos modelos finais por arquitetura |
+| `tcc_overleaf/main.tex` | fonte acadêmica para Overleaf |
+| `tcc_overleaf.zip` | pacote limpo com `.tex` e figuras, sem PDF/auxiliares |
+
+Use `--models-dir outro/diretorio` apenas quando quiser isolar os modelos de uma
+execução específica. Caminhos relativos de `--out`, `--models-dir` e `--dataset`
+são ancorados na raiz do projeto.
+
+Para revisar o plano sem iniciar treinamento:
+
+```bash
+python scripts/run_benchmark.py --full ^
+  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz ^
+  --epochs 100 ^
+  --out results/tcc_full_15k ^
+  --plan-only
+```
+
+Benchmark de um modelo individual:
+
+```bash
+python scripts/run_benchmark.py --model AASIST ^
+  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz ^
+  --epochs 100 ^
+  --out results/bench_aasist
+```
 
 Para detalhes do desenho experimental, consulte
 [docs/15_BENCHMARK.md](docs/15_BENCHMARK.md).
+
+## Publicar Modelos no Hugging Face
+
+Depois de consolidar os artefatos em `app/models/`, envie os modelos finais
+para um repositório do tipo **Model** no Hugging Face Hub:
+
+```bash
+python scripts/upload_models_to_hf.py \
+  --repo-id SEU_USUARIO/xfakesong-models \
+  --dry-run
+
+python scripts/upload_models_to_hf.py \
+  --repo-id SEU_USUARIO/xfakesong-models \
+  --private
+```
+
+Use `HF_TOKEN` ou `HUGGINGFACE_HUB_TOKEN` como variável de ambiente. O script
+envia `app/models/bench_*`, `app/models/benchmark_final/` e o manifesto dos
+modelos; opções extras permitem anexar `tcc_overleaf/` e resultados
+consolidados. O passo a passo completo está em
+[docs/11_DEPLOY_HUGGINGFACE.md](docs/11_DEPLOY_HUGGINGFACE.md).
+
+### Deploy como Hugging Face Space
+
+O repositório já está preparado para **Docker Space** (`sdk: docker`,
+`app_port: 7860`). Para demonstração com os modelos já treinados, configure no
+Space:
+
+| Tipo | Nome | Valor recomendado |
+| --- | --- | --- |
+| Variable | `MODEL_REPO_ID` | `SEU_USUARIO/xfakesong-models` |
+| Variable | `ENABLE_TRAINING` | `false` |
+| Variable | `XFAKE_SYNC_MODELS_ON_BOOT` | `true` |
+| Variable | `DEEPFAKE_MODELS_DIR` | `app/models` |
+| Secret | `HF_TOKEN` | token com leitura do model repo, se privado |
+
+No boot, `scripts/sync_hf_models.py` sincroniza os artefatos do Model Hub para
+`app/models`. Se `MODEL_REPO_ID` não estiver definido, a aplicação usa os
+modelos já empacotados/localmente disponíveis. O frontend lista os modelos sem
+carregar todos os pesos no startup; cada modelo é carregado sob demanda ao ser
+selecionado para inferência.
 
 ## Modelos Avaliados
 
@@ -140,7 +215,8 @@ A documentação técnica está em `docs/` e é publicada via MkDocs:
 | Treinamento | [Treinamento](docs/10_TREINAMENTO.md) |
 | Inferência | [Inferência](docs/09_INFERENCIA.md) |
 | Datasets | [Datasets Públicos](docs/12_DATASETS.md) |
-| Benchmark e resultados do TCC | [Benchmark e TCC](docs/15_BENCHMARK.md) |
+| Benchmark e resultados | [Benchmark e Resultados](docs/15_BENCHMARK.md) |
+| Estudo experimental no GitHub Pages | [Estudo Experimental](docs/20_ESTUDO_EXPERIMENTAL.md) |
 | Notebooks | [Guia de Notebooks](docs/16_NOTEBOOKS.md) |
 | Dúvidas frequentes | [Perguntas Frequentes (FAQ)](docs/19_FAQ.md) |
 

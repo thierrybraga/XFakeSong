@@ -9,7 +9,9 @@ Executa, de forma reprodutível:
 
 Exemplos:
   python scripts/run_tcc_pipeline.py --smoke
+  python scripts/run_tcc_pipeline.py --smoke --model SVM
   python scripts/run_tcc_pipeline.py --skip-download --target-per-class 500 --archs SVM RandomForest
+  python scripts/run_tcc_pipeline.py --skip-download --skip-preprocess --model AASIST
   python scripts/run_tcc_pipeline.py --skip-download --skip-preprocess --archs SVM RandomForest
   python scripts/run_tcc_pipeline.py --tcc-full-dataset --download --full-benchmark
 """
@@ -214,10 +216,50 @@ def _verify_outputs(output_dir: Path) -> list[str]:
         "tables/tab_eficiencia.tex",
         "tables/tab_robustez.tex",
         "figures/roc.png",
+        "figures/robustez.png",
+        "figures/convergencia.png",
         "figures/eficiencia.png",
         "figures/confusion_matrices.png",
         "figures/score_distributions.png",
     ]
+    results_path = output_dir / "results.json"
+    if results_path.exists():
+        results = json.loads(results_path.read_text(encoding="utf-8"))
+        arch_files = [
+            "metrics.json",
+            "summary.md",
+            "predictions_clean.csv",
+            "robustness.csv",
+            "confusion_matrix.png",
+            "roc.png",
+            "score_distribution.png",
+            "convergence.png",
+        ]
+        for name, result in results.get("architectures", {}).items():
+            if result.get("status") != "ok":
+                continue
+            slug = name.lower().replace(" ", "_").replace("-", "_")
+            expected.extend(f"architectures/{slug}/{file}" for file in arch_files)
+            model_artifact = result.get("model_artifact")
+            if model_artifact:
+                model_path = Path(model_artifact)
+                if model_path.is_absolute():
+                    try:
+                        expected.append(str(model_path.relative_to(output_dir)))
+                    except ValueError:
+                        if not model_path.exists():
+                            raise RuntimeError(
+                                f"Artefato de modelo ausente: {model_path}"
+                            )
+                else:
+                    if model_path.exists():
+                        continue
+                    expected.append(str(model_path))
+            tuning = result.get("hyperparameter_tuning") or {}
+            if tuning.get("enabled"):
+                expected.append(f"architectures/{slug}/hyperparameter_tuning.json")
+                if tuning.get("status") == "ok":
+                    expected.append(f"architectures/{slug}/hyperparameter_tuning.csv")
     missing = [p for p in expected if not (output_dir / p).exists()]
     if missing:
         raise RuntimeError(f"Artefatos ausentes: {missing}")
@@ -280,9 +322,12 @@ def _write_dataset_docs(
         "dataset_config": dataset_config,
         "benchmark": {
             "full_benchmark": bool(args.full_benchmark),
-            "architectures": args.archs,
+            "architectures": [args.model] if args.model else args.archs,
+            "model": args.model,
             "epochs": int(args.epochs),
             "batch_size": int(args.batch_size),
+            "device_profile": args.device_profile,
+            "optimize_hyperparameters": not bool(args.no_optimize_hparams),
             "latency_runs": int(args.latency_runs),
             "snr": [int(v) for v in args.snr],
             "api": bool(args.api),
@@ -334,9 +379,12 @@ def _write_dataset_docs(
         "## Hiperparâmetros Globais do Benchmark",
         "",
         f"- Full benchmark: `{args.full_benchmark}`",
+        f"- Modelo individual: `{args.model}`",
         f"- Arquiteturas explícitas: `{args.archs}`",
         f"- Épocas: `{args.epochs}`",
         f"- Batch size: `{args.batch_size}`",
+        f"- Perfil de dispositivo: `{args.device_profile}`",
+        f"- Hiperparâmetros otimizados por arquitetura: `{not args.no_optimize_hparams}`",
         f"- SNRs de robustez: `{args.snr}`",
         f"- Rodadas de latência: `{args.latency_runs}`",
         f"- API probe: `{args.api}`",
@@ -374,9 +422,13 @@ def main() -> int:
     parser.add_argument("--target-per-class", type=int, default=10000)
     parser.add_argument("--skip-real-cv", action="store_true")
     parser.add_argument("--full-benchmark", action="store_true", help="usa preset completo do benchmark")
+    parser.add_argument("--model", default=None, help="executa benchmark de uma única arquitetura")
     parser.add_argument("--archs", nargs="+", default=None)
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--device-profile", choices=["auto", "cpu", "gpu"], default="auto")
+    parser.add_argument("--no-optimize-hparams", action="store_true")
+    parser.add_argument("--skip-benchmark-preflight", action="store_true")
     parser.add_argument("--latency-runs", type=int, default=30)
     parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10])
     parser.add_argument("--api", action="store_true")
@@ -386,6 +438,9 @@ def main() -> int:
     parser.add_argument("--npz", default="app/datasets/benchmark_audio_raw.npz")
     parser.add_argument("--out", default=None)
     args = parser.parse_args()
+
+    if args.model and args.archs:
+        parser.error("Use --model para um único modelo ou --archs para vários, não ambos.")
 
     if args.tcc_full_dataset:
         args.target_per_class = 10000
@@ -472,6 +527,8 @@ def main() -> int:
         str(args.epochs),
         "--batch-size",
         str(args.batch_size),
+        "--device-profile",
+        args.device_profile,
         "--latency-runs",
         str(args.latency_runs),
         "--snr",
@@ -481,7 +538,11 @@ def main() -> int:
     ]
     if args.full_benchmark:
         bench_cmd.insert(2, "--full")
-    if args.archs:
+    if args.no_optimize_hparams:
+        bench_cmd.append("--no-optimize-hparams")
+    if args.model:
+        bench_cmd.extend(["--model", args.model])
+    elif args.archs:
         bench_cmd.extend(["--archs", *args.archs])
     elif args.smoke:
         bench_cmd.extend(["--archs", "SVM", "RandomForest"])
@@ -489,6 +550,13 @@ def main() -> int:
         bench_cmd.append("--api")
     else:
         bench_cmd.append("--no-api")
+
+    if not args.skip_benchmark_preflight:
+        _run(
+            [*bench_cmd, "--plan-only"],
+            "Preflight: preset, dataset e hiperparâmetros efetivos",
+            log_path,
+        )
 
     _run(bench_cmd, "Benchmark: treinamento, inferência e relatório", log_path)
     _write_dataset_docs(output_dir, npz_path, args, counts)

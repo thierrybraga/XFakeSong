@@ -273,13 +273,16 @@ def _create_hubert_model(input_shape: Tuple[int, ...],
             x, dropout_rate=dropout_rate, name="hubert_aasist"
         )
     else:
-        # Back-end raso (conv 1D + attention pooling)
-        conv_out = layers.Conv1D(256, 3, padding='same', activation='relu', name='temporal_conv1')(x)
-        conv_out = layers.BatchNormalization(name='temporal_bn1')(conv_out)
-        conv_out2 = layers.Conv1D(256, 3, padding='same', activation='relu', name='temporal_conv2')(conv_out)
-        conv_out2 = layers.BatchNormalization(name='temporal_bn2')(conv_out2)
-        conv_out2 = conv_out2 + conv_out  # residual
-        pooled = AttentionPoolingLayer(name='attention_pool')(conv_out2)
+        # Back-end raso com projeção temporal. Mantém custo previsível em GPU e
+        # evita workspaces CUDNN grandes quando o backbone real não está
+        # disponível e o fallback CNN produz sequências densas.
+        projected = layers.Dense(
+            256, activation='relu', name='temporal_projection'
+        )(x)
+        projected = layers.LayerNormalization(name='temporal_projection_norm')(
+            projected
+        )
+        pooled = AttentionPoolingLayer(name='attention_pool')(projected)
 
     # Classification Head
     outputs, loss = create_classification_head(

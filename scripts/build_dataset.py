@@ -19,11 +19,13 @@ Uso:
   python scripts/build_dataset.py --target 1000          # 1000 por classe (debug)
   python scripts/build_dataset.py --skip-download        # apenas preprocessa
   python scripts/build_dataset.py --only-splits          # apenas recria os splits
+  python scripts/build_dataset.py --delete-excess        # descarte destrutivo dos excedentes
 """
 
 import argparse
 import json
 import logging
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -40,6 +42,7 @@ SCRIPTS_DIR = BASE_DIR / "scripts"
 DATASETS_DIR = BASE_DIR / "app" / "datasets"
 REAL_DIR = DATASETS_DIR / "real"
 FAKE_DIR = DATASETS_DIR / "fake"
+OVERFLOW_DIR = DATASETS_DIR / "overflow"
 
 # ---------------------------------------------------------------------------
 # Composicao do dataset (valores padrao — ajustavel via --target)
@@ -53,7 +56,7 @@ COMPOSITION = {
                 "name": "BRSpeech-DF bonafide",
                 "hf_repo": "AKCIT-Deepfake/BRSpeech-DF",
                 "type": "real",
-                "target": 1000,
+                "target": 5000,
                 "file_prefix": "brspeech",
                 "script": "download_datasets.py",
                 "args": ["--brspeech"],
@@ -62,10 +65,10 @@ COMPOSITION = {
                 "name": "CommonVoice v17 PT + FLEURS PT-BR",
                 "hf_repo": "mozilla-foundation/common_voice_17_0 + google/fleurs",
                 "type": "real",
-                "target": 1000,
-                "file_prefix": "cetuc|fleurs",
+                "target": 5000,
+                "file_prefix": "cvpt|fleurs|cetuc",
                 "script": "download_datasets.py",
-                "args": ["--cetuc"],
+                "args": ["--common-voice-pt", "--fleurs"],
             },
         ],
         "fake": [
@@ -73,7 +76,7 @@ COMPOSITION = {
                 "name": "BRSpeech-DF spoof",
                 "hf_repo": "AKCIT-Deepfake/BRSpeech-DF",
                 "type": "fake",
-                "target": 1000,
+                "target": 5000,
                 "file_prefix": "brspeech",
                 "script": "download_datasets.py",
                 "args": ["--brspeech"],
@@ -82,7 +85,7 @@ COMPOSITION = {
                 "name": "Fake Voices XTTS (unfake/fake_voices)",
                 "hf_repo": "unfake/fake_voices",
                 "type": "fake",
-                "target": 1000,
+                "target": 5000,
                 "file_prefix": "fkvoice",
                 "script": "download_datasets.py",
                 "args": ["--fake-voices"],
@@ -130,7 +133,7 @@ def print_status():
     fake_total = count_wavs(FAKE_DIR)
 
     brspeech_real = count_wavs(REAL_DIR, ["brspeech"])
-    cv_real = count_wavs(REAL_DIR, ["cetuc", "cv", "fleurs"])
+    cv_real = count_wavs(REAL_DIR, ["cetuc", "cv", "cvpt", "fleurs"])
     brspeech_fake = count_wavs(FAKE_DIR, ["brspeech"])
     xtts_fake = count_wavs(FAKE_DIR, ["fkvoice", "fakevoice"])
 
@@ -152,6 +155,8 @@ def print_status():
 def step_download(target_per_class: int, skip_real_cv: bool = False):
     """Fase de download dos 4 fontes."""
     half = target_per_class // 2
+    cvpt_target = half // 2
+    fleurs_target = half - cvpt_target
 
     # --- BRSpeech-DF (real bonafide + fake spoof juntos, max_samples = total das duas classes)
     brspeech_real = count_wavs(REAL_DIR, ["brspeech"])
@@ -169,15 +174,36 @@ def step_download(target_per_class: int, skip_real_cv: bool = False):
 
     # --- CommonVoice PT + FLEURS (apenas real)
     if not skip_real_cv:
-        cv_real = count_wavs(REAL_DIR, ["cetuc", "cv", "fleurs"])
-        if cv_real < half:
+        cvpt_real = count_wavs(REAL_DIR, ["cvpt"])
+        fleurs_real = count_wavs(REAL_DIR, ["fleurs"])
+        public_real = count_wavs(REAL_DIR, ["cetuc", "cv", "cvpt", "fleurs"])
+
+        if cvpt_real < cvpt_target:
             run(
                 [sys.executable, str(SCRIPTS_DIR / "download_datasets.py"),
-                 "--cetuc", "--max-samples", str(half)],
-                f"CommonVoice PT + FLEURS PT-BR (meta: {half} reais)",
+                 "--common-voice-pt", "--max-samples", str(cvpt_target)],
+                f"Common Voice PT-BR (meta: {cvpt_target} reais)",
             )
         else:
-            logger.info(f"CommonVoice/FLEURS ja tem {cv_real} amostras reais. Pulando.")
+            logger.info(f"Common Voice PT-BR ja tem {cvpt_real} amostras. Pulando.")
+
+        if fleurs_real < fleurs_target:
+            run(
+                [sys.executable, str(SCRIPTS_DIR / "download_datasets.py"),
+                 "--fleurs", "--max-samples", str(fleurs_target)],
+                f"FLEURS PT-BR (meta: {fleurs_target} reais)",
+            )
+        else:
+            logger.info(f"FLEURS PT-BR ja tem {fleurs_real} amostras. Pulando.")
+
+        public_real = count_wavs(REAL_DIR, ["cetuc", "cv", "cvpt", "fleurs"])
+        if public_real < half:
+            remaining = half - public_real
+            run(
+                [sys.executable, str(SCRIPTS_DIR / "download_datasets.py"),
+                 "--cetuc", "--max-samples", str(remaining)],
+                f"CETUC/OpenSLR fallback (faltam {remaining} reais publicos)",
+            )
 
     # --- Fake Voices XTTS
     xtts_fake = count_wavs(FAKE_DIR, ["fkvoice", "fakevoice"])
@@ -193,11 +219,38 @@ def step_download(target_per_class: int, skip_real_cv: bool = False):
         logger.info(f"Fake Voices XTTS ja tem {xtts_fake} amostras. Pulando.")
 
 
-def step_balance(target_per_class: int):
+def _archive_or_delete(files: list[Path], label: str, delete_excess: bool) -> int:
+    """Arquiva excedentes fora do conjunto ativo ou remove se solicitado."""
+    moved = 0
+    archive_dir = OVERFLOW_DIR / label
+    if not delete_excess:
+        archive_dir.mkdir(parents=True, exist_ok=True)
+
+    for src in files:
+        if delete_excess:
+            src.unlink()
+            moved += 1
+            continue
+
+        dst = archive_dir / src.name
+        if dst.exists():
+            stem = src.stem
+            suffix = src.suffix
+            counter = 1
+            while dst.exists():
+                dst = archive_dir / f"{stem}_{counter}{suffix}"
+                counter += 1
+        shutil.move(str(src), str(dst))
+        moved += 1
+    return moved
+
+
+def step_balance(target_per_class: int, delete_excess: bool = False):
     """
     Garante balanceamento 1:1 entre classes.
-    Se uma classe tiver mais que target_per_class, remove o excesso
-    priorizando manter diversidade (remove os mais recentes por nome).
+    Se uma classe tiver mais que target_per_class, arquiva o excesso em
+    app/datasets/overflow/ por padrão, mantendo os WAVs brutos recuperáveis.
+    Use --delete-excess apenas quando quiser descarte destrutivo.
     """
     logger.info("\n" + "=" * 60)
     logger.info("BALANCEAMENTO 1:1")
@@ -224,19 +277,19 @@ def step_balance(target_per_class: int):
     # Remover excesso de REAL
     if real_count > effective_target:
         excess = real_count - effective_target
-        # Remover do final (manter diversidade de fontes no inicio)
+        # Manter o início ordenado preserva uma mistura determinística por prefixo.
         to_remove = real_files[effective_target:]
-        for f in to_remove:
-            f.unlink()
-        logger.info(f"  Real: removidos {excess} arquivos excedentes")
+        moved = _archive_or_delete(to_remove, "real", delete_excess)
+        action = "removidos" if delete_excess else "arquivados"
+        logger.info(f"  Real: {action} {moved}/{excess} arquivos excedentes")
 
     # Remover excesso de FAKE
     if fake_count > effective_target:
         excess = fake_count - effective_target
         to_remove = fake_files[effective_target:]
-        for f in to_remove:
-            f.unlink()
-        logger.info(f"  Fake: removidos {excess} arquivos excedentes")
+        moved = _archive_or_delete(to_remove, "fake", delete_excess)
+        action = "removidos" if delete_excess else "arquivados"
+        logger.info(f"  Fake: {action} {moved}/{excess} arquivos excedentes")
 
     real_final = len(list(REAL_DIR.glob("*.wav")))
     fake_final = len(list(FAKE_DIR.glob("*.wav")))
@@ -270,14 +323,17 @@ def save_dataset_config(target_per_class: int, train_r: float, val_r: float, tes
     fake_total = count_wavs(FAKE_DIR)
 
     brspeech_real = count_wavs(REAL_DIR, ["brspeech"])
-    cv_real = count_wavs(REAL_DIR, ["cetuc", "cv", "fleurs"])
+    cv_real = count_wavs(REAL_DIR, ["cetuc", "cv", "cvpt", "fleurs"])
     brspeech_fake = count_wavs(FAKE_DIR, ["brspeech"])
     xtts_fake = count_wavs(FAKE_DIR, ["fkvoice", "fakevoice"])
 
     config = {
         "version": "1.0",
         "description": "Dataset PT-BR para deteccao de deepfake de audio — TCC UFSJ 2026",
-        "balancing_strategy": "1:1 (real:fake), corte por classe no target_per_class",
+        "balancing_strategy": (
+            "1:1 (real:fake), conjunto ativo limitado por classe; "
+            "excedentes arquivados em app/datasets/overflow por padrão"
+        ),
         "target_per_class": target_per_class,
         "total_samples": real_total + fake_total,
         "real_samples": real_total,
@@ -377,6 +433,10 @@ def main():
         help="Apenas recriar os splits (skip download + balance)",
     )
     parser.add_argument(
+        "--delete-excess", action="store_true",
+        help="Remove excedentes em vez de arquivar em app/datasets/overflow",
+    )
+    parser.add_argument(
         "--status", action="store_true",
         help="Apenas mostrar status atual do dataset",
     )
@@ -413,7 +473,7 @@ def main():
     # --- Etapa 2: Balanceamento
     if not args.only_splits:
         logger.info("\n>>> ETAPA 2: BALANCEAMENTO")
-        step_balance(args.target)
+        step_balance(args.target, delete_excess=args.delete_excess)
 
     # --- Etapa 3: Pre-processamento + Splits
     logger.info("\n>>> ETAPA 3: PRE-PROCESSAMENTO + SPLITS")

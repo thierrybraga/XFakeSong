@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 # Res2Net core block: Bottle2neck (Gao et al., 2021)
 # ---------------------------------------------------------------------------
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class Bottle2neck(layers.Layer):
     """Res2Net Bottle2neck block — paper-faithful implementation.
 
@@ -146,7 +147,7 @@ class Bottle2neck(layers.Layer):
                 sp = spx[i]
             else:
                 # y_i = K_i(x_i + y_{i-1}) — the core Res2Net formula
-                sp = sp + spx[i]
+                sp = sp + tf.cast(spx[i], sp.dtype)
             sp = self.convs[i](sp)
             sp = self.bns_inner[i](sp, training=training)
             sp = tf.nn.relu(sp)
@@ -159,6 +160,7 @@ class Bottle2neck(layers.Layer):
             sp_outputs.append(spx[self.nums])
 
         # Concatenate all scale groups
+        sp_outputs = [tf.cast(item, sp_outputs[0].dtype) for item in sp_outputs]
         out = layers.Concatenate(axis=-1)(sp_outputs)
 
         # 1×1 conv: channel expansion
@@ -173,6 +175,7 @@ class Bottle2neck(layers.Layer):
             identity = self.downsample(inputs)
             identity = self.downsample_bn(identity, training=training)
 
+        identity = tf.cast(identity, out.dtype)
         out = out + identity
         out = tf.nn.relu(out)
         return out
@@ -193,6 +196,7 @@ class Bottle2neck(layers.Layer):
 # Safe input handling (kept for compatibility)
 # ---------------------------------------------------------------------------
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class SafeInputReshapeLayer(layers.Layer):
     """Layer to safely reshape inputs for 2D CNN processing."""
 

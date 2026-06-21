@@ -38,7 +38,7 @@ class PathConfig:
     data_dir: Path = field(default_factory=lambda: Path("./app/datasets"))
     logs_dir: Path = field(default_factory=lambda: Path("./app/logs"))
     temp_dir: Path = field(default_factory=lambda: Path("./app/temp"))
-    models_dir: Path = field(default_factory=lambda: Path("./app/artifacts/models"))
+    models_dir: Path = field(default_factory=lambda: Path("./app/models"))
 
     # Subdiretórios de dados
     datasets_dir: Path = field(default_factory=lambda: Path("./app/datasets"))
@@ -148,9 +148,14 @@ class TrainingConfig:
     # compilados pela arquitetura preservam seu otimizador; o LR só é
     # sobrescrito quando foi pedido de fato — o default acima não conta.
     lr_is_explicit: bool = False
+    verbose: int = 1
+    progress_log_interval: int = 0
+    progress_label: str = ""
     validation_split: float = 0.2
     test_split: float = 0.1
+    early_stopping: bool = True
     early_stopping_patience: int = 10
+    reduce_lr_on_plateau: bool = True
     reduce_lr_patience: int = 5
 
     # Arquiteturas disponíveis
@@ -443,6 +448,58 @@ class SystemConfig:
 
         if os.getenv("DEEPFAKE_API_PORT"):
             config.api.port = int(os.getenv("DEEPFAKE_API_PORT"))
+
+        storage_dir = os.getenv("XFAKE_STORAGE_DIR") or os.getenv("DEEPFAKE_STORAGE_DIR")
+        if storage_dir:
+            storage = Path(storage_dir)
+            config.paths.data_dir = storage / "datasets"
+            config.paths.datasets_dir = storage / "datasets"
+            config.paths.features_dir = storage / "datasets" / "features"
+            config.paths.samples_dir = storage / "datasets"
+            config.paths.models_dir = storage / "models"
+            config.paths.logs_dir = storage / "logs"
+            config.paths.temp_dir = storage / "temp"
+            config.paths.uploads_dir = storage / "uploads"
+            config.paths.upload_training_dir = storage / "uploads" / "training"
+            config.paths.upload_validation_dir = storage / "uploads" / "validation"
+            config.paths.upload_test_dir = storage / "uploads" / "test"
+            config.paths.upload_production_dir = storage / "uploads" / "production"
+
+        if os.getenv("DEEPFAKE_DATASETS_DIR") or os.getenv("XFAKE_DATASETS_DIR"):
+            datasets_dir = Path(
+                os.getenv("DEEPFAKE_DATASETS_DIR")
+                or os.getenv("XFAKE_DATASETS_DIR")
+            )
+            config.paths.data_dir = datasets_dir
+            config.paths.datasets_dir = datasets_dir
+            config.paths.features_dir = datasets_dir / "features"
+            config.paths.samples_dir = datasets_dir
+
+        if (
+            os.getenv("MODELS_DIR")
+            or os.getenv("DEEPFAKE_MODELS_DIR")
+            or os.getenv("XFAKE_MODELS_DIR")
+        ):
+            config.paths.models_dir = Path(
+                os.getenv("MODELS_DIR")
+                or os.getenv("DEEPFAKE_MODELS_DIR")
+                or os.getenv("XFAKE_MODELS_DIR")
+            )
+
+        if os.getenv("DEEPFAKE_LOGS_DIR") or os.getenv("XFAKE_LOGS_DIR"):
+            config.paths.logs_dir = Path(
+                os.getenv("DEEPFAKE_LOGS_DIR") or os.getenv("XFAKE_LOGS_DIR")
+            )
+
+        if os.getenv("UPLOAD_DIR") or os.getenv("DEEPFAKE_UPLOADS_DIR"):
+            upload_dir = Path(os.getenv("UPLOAD_DIR") or os.getenv("DEEPFAKE_UPLOADS_DIR"))
+            config.paths.uploads_dir = upload_dir
+            config.paths.upload_training_dir = upload_dir / "training"
+            config.paths.upload_validation_dir = upload_dir / "validation"
+            config.paths.upload_test_dir = upload_dir / "test"
+            config.paths.upload_production_dir = upload_dir / "production"
+
+        config.paths.create_directories()
 
         if os.getenv("XFAKE_TF_INTRA_OP_THREADS"):
             config.performance.cpu_threads = int(os.getenv("XFAKE_TF_INTRA_OP_THREADS"))

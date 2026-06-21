@@ -17,6 +17,7 @@ lógica de binarização de labels (BUG.Training.4).
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
 from pathlib import Path
@@ -41,7 +42,14 @@ logger = logging.getLogger("gradio_training_wizard")
 
 # Diretório onde os modelos treinados são persistidos (mesmo lido pelo
 # ModelLoader / DetectionService em app/dependencies.py).
-MODELS_DIR = Path("app/models")
+_STORAGE_DIR = os.getenv("XFAKE_STORAGE_DIR") or os.getenv("DEEPFAKE_STORAGE_DIR")
+MODELS_DIR = Path(
+    os.getenv("MODELS_DIR")
+    or os.getenv("DEEPFAKE_MODELS_DIR")
+    or os.getenv("XFAKE_MODELS_DIR")
+    or (_STORAGE_DIR and str(Path(_STORAGE_DIR) / "models"))
+    or "app/models"
+)
 
 # Holder do ÚLTIMO modelo treinado com sucesso nesta sessão do servidor.
 # O modelo Keras é criado dentro do gerador _run_training e seria coletado

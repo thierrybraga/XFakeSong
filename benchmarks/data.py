@@ -224,7 +224,8 @@ def _fit_length(flat: np.ndarray, target_len: int) -> np.ndarray:
     if flat.shape[1] == target_len:
         return flat
     if flat.shape[1] > target_len:
-        return flat[:, :target_len]
+        start = max(0, (flat.shape[1] - target_len) // 2)
+        return flat[:, start : start + target_len]
     repeats = int(np.ceil(target_len / max(1, flat.shape[1])))
     return np.tile(flat, (1, repeats))[:, :target_len]
 
@@ -300,9 +301,18 @@ def _to_tabular_features(X: np.ndarray) -> np.ndarray:
 def _to_raw_audio(X: np.ndarray, requirements: Dict[str, Any]) -> np.ndarray:
     arr = np.asarray(X, dtype="float32")
     flat = arr.reshape(len(arr), -1)
-    target_len = int(
+    min_len = int(
         requirements.get("min_sequence_length")
         or requirements.get("sample_rate", 16000)
+    )
+    # `min_sequence_length` is a lower bound. Architectures may request an
+    # explicit `target_sequence_length` when full clips are too memory-heavy.
+    # Without an explicit target, preserve long raw clips instead of truncating
+    # them to the minimum.
+    target_len = int(
+        requirements.get("sequence_length")
+        or requirements.get("target_sequence_length")
+        or max(flat.shape[1], min_len)
     )
     raw = _fit_length(flat, max(1, target_len))
     raw = _normalize_per_sample(raw)
