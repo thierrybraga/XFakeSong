@@ -61,6 +61,18 @@ class FeaturePreparer:
                 if key in contract and contract[key] is not None:
                     base_req[key] = contract[key]
 
+            shape = getattr(model_info, "input_shape", None) or ()
+            req_type = base_req.get("type")
+            req_format = base_req.get("format")
+            if (
+                req_type == "features"
+                and req_format == "spectrogram"
+                and len(shape) >= 2
+            ):
+                base_req["input_type"] = "spectrogram"
+                if shape[1] not in (None, 1):
+                    base_req["feature_dim"] = int(shape[1])
+
         # Compatibilidade com modelos legados salvos sem input_contract.
         # Quando o shape real do modelo é espectrograma, ele deve prevalecer
         # sobre o fallback genérico da arquitetura (ex.: AASIST antigo salvo

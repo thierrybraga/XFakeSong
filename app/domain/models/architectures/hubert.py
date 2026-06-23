@@ -25,15 +25,34 @@ from app.domain.models.architectures.layers import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Verificar disponibilidade do Transformers (compatível com Keras 3)
-try:
-    from transformers import TFHubertModel, Wav2Vec2Processor
-    HF_AVAILABLE = True
-except ImportError:
-    HF_AVAILABLE = False
-    TFHubertModel = None
-    Wav2Vec2Processor = None
-    logger.info("Transformers library not found. Using simplified HuBERT implementation.")
+# O import de `transformers` é mantido lazy para evitar inicializar torch/triton
+# no boot do container. A interface deve subir mesmo quando o backbone HF real
+# estiver indisponível; o fallback Keras continua funcional.
+HF_AVAILABLE = None
+TFHubertModel = None
+
+
+def _load_tf_hubert() -> bool:
+    global HF_AVAILABLE, TFHubertModel
+
+    if HF_AVAILABLE is not None:
+        return HF_AVAILABLE
+
+    try:
+        from transformers import TFHubertModel as _TFHubertModel
+
+        TFHubertModel = _TFHubertModel
+        HF_AVAILABLE = True
+    except Exception as exc:
+        HF_AVAILABLE = False
+        TFHubertModel = None
+        logger.info(
+            "Transformers/TFHubert indisponível (%s). "
+            "Usando implementação HuBERT simplificada.",
+            exc,
+        )
+
+    return HF_AVAILABLE
 
 
 class HuBERTFeatureExtractor(layers.Layer):
@@ -60,7 +79,7 @@ class HuBERTFeatureExtractor(layers.Layer):
         # Fine-tuning parcial: nº de camadas do encoder a descongelar (do topo).
         self.n_trainable_layers = int(n_trainable_layers)
 
-        if HF_AVAILABLE:
+        if _load_tf_hubert():
             try:
                 # Carregar modelo HuBERT pré-treinado. O checkpoint do hub
                 # (facebook/hubert-base-ls960) só tem pesos PyTorch — é

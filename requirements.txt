@@ -20,6 +20,8 @@ tensorflow>=2.16,<2.22
 # SSL original inference/benchmark (WavLM/HuBERT reais em PyTorch).
 # Necessário para carregar `bench_wavlm_original.pt` e
 # `bench_hubert_original.pt` no frontend Gradio quando esses modelos forem
-# selecionados para demonstração.
-torch>=2.3,<3.0
-transformers>=4.40,<5.0
+# selecionados para demonstração. Pins conservadores: versões mais novas de
+# torch/transformers acionaram torch.dynamo/triton no import e causaram
+# segfault no container GPU.
+torch==2.5.1
+transformers==4.45.2

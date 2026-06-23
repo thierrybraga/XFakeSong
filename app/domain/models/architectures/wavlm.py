@@ -22,24 +22,22 @@ from app.domain.models.architectures.layers import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Tentar importar Transformers.
 # ATENÇÃO: o `transformers` NÃO fornece WavLM em TensorFlow (`TFWavLMModel`
-# não existe — WavLM é PyTorch-only). Logo este import falha MESMO com
-# transformers instalado, e o backbone usado é sempre a implementação
-# simplificada (CNN 1D). HuBERT (TFHubertModel) é a opção SSL com backbone
-# real em TF.
-try:
-    from transformers import TFWavLMModel, Wav2Vec2Processor
-    HF_AVAILABLE = True
-except ImportError:
-    HF_AVAILABLE = False
-    TFWavLMModel = None
-    Wav2Vec2Processor = None
+# não existe — WavLM é PyTorch-only). Portanto a arquitetura Keras WavLM usa
+# sempre o backbone simplificado. Mantemos isso explícito e sem importar
+# `transformers` no boot, porque o import inicializa torch/triton e pode
+# derrubar containers GPU antes da interface carregar.
+HF_AVAILABLE = False
+TFWavLMModel = None
+
+
+def _load_tf_wavlm() -> bool:
     logger.warning(
-        "Backbone WavLM real indisponível (transformers ausente ou sem "
-        "TFWavLMModel — WavLM é PyTorch-only). Usando implementação "
-        "simplificada; para SSL real em TF use HuBERT."
+        "Backbone WavLM real indisponível em TensorFlow "
+        "(WavLM é PyTorch-only). Usando implementação simplificada; "
+        "para SSL real em TF use HuBERT."
     )
+    return False
 
 
 @tf.keras.utils.register_keras_serializable(package="XFakeSong")
@@ -60,7 +58,7 @@ class WavLMFeatureExtractor(layers.Layer):
             else 768 if "base" in model_name else 1024
         )
 
-        if HF_AVAILABLE:
+        if _load_tf_wavlm():
             try:
                 # Carregar modelo WavLM pré-treinado (checkpoint do hub é
                 # PyTorch → from_pt=True converte automaticamente).

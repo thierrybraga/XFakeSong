@@ -604,18 +604,20 @@ def create_detection_tab():
             "prosódicos e temporais para identificar deepfakes.",
         )
 
-        with gr.Row():
+        with gr.Row(elem_classes="detect-main-grid"):
             # Coluna de Entrada (Esquerda/Topo)
-            with gr.Column(scale=1, min_width=500):
-                with gr.Group():
+            with gr.Column(scale=1, min_width=420, elem_classes="detect-column"):
+                with gr.Group(elem_classes="detect-card detect-input-card"):
                     gr.Markdown("#### Entrada e Configuração")
                     audio_input = gr.Audio(
                         type="numpy", label="Arquivo de Áudio", sources=[
-                            "upload", "microphone"], streaming=True)
+                            "upload", "microphone"], streaming=True,
+                        elem_classes="detect-audio-input")
                     stream_state = gr.State()
 
                     with gr.Accordion(
-                        "⚙️ Configurações Avançadas", open=False
+                        "⚙️ Configurações Avançadas", open=False,
+                        elem_classes="detect-advanced-settings"
                     ):
 
                         if MODELS_AVAILABLE:
@@ -653,25 +655,30 @@ def create_detection_tab():
                         )
 
                     analyze_btn = gr.Button(
-                        "🔍 Analisar Áudio", variant="primary", size="lg")
+                        "🔍 Analisar Áudio", variant="primary", size="lg",
+                        elem_classes="detect-primary-action")
 
             # Coluna de Saída (Direita/Baixo)
-            with gr.Column(scale=1, min_width=500):
-                with gr.Group():
+            with gr.Column(scale=1, min_width=420, elem_classes="detect-column"):
+                with gr.Group(elem_classes="detect-card detect-result-card"):
                     gr.Markdown("#### Resultado da Análise")
-                    with gr.Row():
+                    with gr.Row(elem_classes="detect-output-grid"):
                         label_output = gr.Label(
+                            value={"Aguardando análise": 1.0},
                             label="Classificação",
                             num_top_classes=2,
-                            scale=2
+                            scale=3,
+                            elem_classes="detect-label-output",
                         )
                         confidence_output = gr.Number(
                             label="Confiança",
+                            value=0.0,
                             scale=1,
                             info=(
                                 "Probabilidade da classe predita. Já calibrada "
                                 "via temperature scaling (Sprint 1.4)."
                             ),
+                            elem_classes="detect-confidence-output",
                         )
 
         section_divider()

@@ -625,23 +625,26 @@ class DetectionService(IDetectionService):
     def save_analysis_result(self, result: DeepfakeDetectionResult, filename: str) -> bool:
         """Persiste o resultado da análise no banco de dados."""
         try:
+            from app.core.database import SessionLocal
             from ...domain.models.analysis import AnalysisResult
 
+            metadata = result.metadata or {}
             analysis = AnalysisResult(
                 filename=filename,
                 is_fake=result.is_fake,
                 confidence=result.confidence,
                 model_name=result.model_name,
-                duration_seconds=result.metadata.get('duration_s', 0.0),
+                duration_seconds=metadata.get('duration_s', 0.0),
                 sample_rate=16000, # Padronizado
                 details={
                     "probabilities": result.probabilities,
-                    "metadata": result.metadata,
+                    "metadata": metadata,
                     "features_used": result.features_used
                 }
             )
-            analysis.save()
-            logger.info(f"Análise salva com sucesso: ID {analysis.id}")
+            with SessionLocal() as db:
+                analysis.save(db)
+                logger.info(f"Análise salva com sucesso: ID {analysis.id}")
             return True
         except Exception as e:
             logger.error(f"Falha ao salvar análise: {e}")

@@ -74,6 +74,15 @@ app/models/benchmark_final/
 app/results/
 models/
 
+# --- Inferência empacotada: manter modelos finais treinados na imagem ---
+!app/models/bench_*
+!app/models/benchmark_final/
+!app/models/benchmark_final/**
+!app/models/wavlm_backbone/
+!app/models/wavlm_backbone/**
+!app/models/hubert_backbone/
+!app/models/hubert_backbone/**
+
 # --- Dev / docs (não necessários em produção) ---
 docs/
 mkdocs.yml
