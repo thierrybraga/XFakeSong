@@ -5,6 +5,7 @@ através de práticas seguras de divisão de dados e normalização.
 """
 
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
@@ -394,7 +395,8 @@ class SecureTrainingPipeline:
 
             # 5. Salvar scaler se habilitado (no-op se não-tabular)
             if self.config.save_scaler and self.scaler.scaler is not None:
-                scaler_path = Path("models/scalers/secure_scaler.pkl")
+                models_dir = Path(os.getenv("DEEPFAKE_MODELS_DIR", "app/models"))
+                scaler_path = models_dir / "scalers" / "secure_scaler.pkl"
                 self.scaler.save_scaler(scaler_path)
 
             prepared_data = {

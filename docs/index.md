@@ -18,6 +18,7 @@ fontes canônicas de cada assunto.
 | Navegar pela Clean Architecture | [Arquitetura](03_ARQUITETURA.md) |
 | Trabalhar com extração de features | [Features de Áudio](04_FEATURES.md) |
 | Contribuir com código | [Guia do Desenvolvedor](05_GUIA_DEV.md) |
+| Planejar a separação de ambientes de treino | [Plano de Ambientes de Treinamento](26_PLANO_AMBIENTES_TREINAMENTO.md) |
 | Validar qualidade e testes | [Testes e Qualidade](06_TESTES.md) |
 | Integrar via HTTP | [API Reference](07_API_REFERENCE.md) |
 | Comparar as arquiteturas neurais | [Arquiteturas Neurais](08_ARQUITETURAS.md) |
@@ -30,6 +31,7 @@ fontes canônicas de cada assunto.
 | Executar no Google Colab | [Guia Google Colab](13_COLAB_GUIDE.md) |
 | Auditar a aderência das arquiteturas | [Revisão das Arquiteturas](14_REVISAO_ARQUITETURAS.md) |
 | Rodar o benchmark consolidado | [Benchmark e Resultados](15_BENCHMARK.md) |
+| Acompanhar correções metodológicas do benchmark | [Plano de Correções do Benchmark](25_PLANO_CORRECOES.md) |
 | Ler a fundamentação e análise experimental no GitHub Pages | [Estudo Experimental](20_ESTUDO_EXPERIMENTAL.md) |
 | Estudar com os notebooks | [Guia de Notebooks](16_NOTEBOOKS.md) |
 | Entender CI/CD e segurança | [CI/CD e Segurança](17_CICD_SEGURANCA.md) |
@@ -63,6 +65,8 @@ consolidadas a partir do trabalho:
   [Interface Gradio](23_INTERFACE_GRADIO.md);
 - publicação coordenada de documentação e demonstração em
   [GitHub Pages e Hugging Face](24_PUBLICACAO_GITHUB_HF.md);
+- plano de separação de ambientes Docker e dependências por família em
+  [Plano de Ambientes de Treinamento](26_PLANO_AMBIENTES_TREINAMENTO.md);
 - versão navegável do estudo em
   [Estudo Experimental](20_ESTUDO_EXPERIMENTAL.md).
 

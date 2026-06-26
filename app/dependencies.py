@@ -53,7 +53,7 @@ def get_upload_service() -> AudioUploadService:
         "UPLOAD_DIR",
         "DEEPFAKE_UPLOADS_DIR",
         "XFAKE_UPLOADS_DIR",
-        default="uploads",
+        default="data/uploads",
         storage_subdir="uploads",
     )
     return AudioUploadService(upload_directory=upload_dir)

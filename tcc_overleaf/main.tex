@@ -703,7 +703,7 @@ inferência (\subref{fig:pipeline_pred}).}
 \label{sec:dataset_protocolo}
 % ------------------------------------------------------------------
 
-\subsubsection{Construção do Dataset BRSpeech-DF}
+\subsubsection{Construção da Base Experimental Balanceada}
 \label{sec:brspeech_df}
 
 O conjunto de dados experimental utilizado no \textit{benchmark} consolidado
@@ -711,13 +711,12 @@ foi estruturado como uma base balanceada de 15.000 amostras de áudio, sendo
 7.500 amostras \textit{bonafide} e 7.500 amostras \textit{spoof}. Esse volume
 foi adotado para treinar arquiteturas de maior capacidade, inclusive modelos
 \textit{raw-audio} e \textit{self-supervised learning} (SSL), sob um protocolo
-único de avaliação.\footnote{O rótulo \textit{BRSpeech-DF} é um identificador
-interno de projeto que designa a aplicação-alvo (detecção de \textit{deepfakes}
-de voz no contexto brasileiro). Ele \emph{não} implica composição
-majoritariamente em português brasileiro: a proporção por idioma ainda não foi
-consolidada no manifesto (ver Seção~\ref{sec:ameacas_validade}), e essa
-verificação é pré-requisito para qualquer afirmação sobre cobertura
-linguística.}
+único de avaliação.\footnote{O arquivo consolidado do \textit{benchmark}
+agrupa amostras rotuladas como reais e sintéticas em uma base operacional
+única. Ele \emph{não} implica composição majoritariamente em português
+brasileiro: a proporção por idioma ainda não foi consolidada no manifesto
+atual (ver Seção~\ref{sec:ameacas_validade}), e essa verificação é
+pré-requisito para qualquer afirmação sobre cobertura linguística.}
 
 \begin{itemize}
     \item \textbf{Origem e rastreabilidade}: os arquivos foram organizados a
@@ -765,7 +764,7 @@ experimental utilizada no \textit{benchmark}.
 
 \begin{table}[H]
 \centering
-\caption{Resumo da base experimental BRSpeech-DF usada no \textit{benchmark}.}
+\caption{Resumo da base experimental balanceada usada no \textit{benchmark}.}
 \label{tab:dataset_brspeechdf}
 \begin{tabular}{ll}
 \toprule
@@ -796,9 +795,12 @@ confusão e figuras são salvos em pastas individuais por arquitetura dentro de
 \subsubsection{Protocolo de Treinamento}
 \label{sec:protocolo_treinamento}
 
-Os modelos neurais foram treinados com o preset de \textit{benchmark} de
-100 épocas, semente 42, divisão estratificada e salvamento de melhor
-\textit{checkpoint}. O \textit{batch size} padrão foi 32, reduzido para 16 em
+Os modelos neurais foram treinados com orçamento máximo de 100 épocas,
+semente 42, divisão estratificada, \textit{early stopping} e salvamento de
+melhor \textit{checkpoint}. Assim, a coluna de treino nas tabelas indica o
+orçamento configurado, enquanto o histórico registra as épocas efetivamente
+executadas antes da parada antecipada. O \textit{batch size} padrão foi 32,
+reduzido para 16 em
 arquiteturas com maior consumo de VRAM e para 1 nos modelos SSL originais
 quando necessário. Precisão mista (\texttt{mixed\_float16}) foi habilitada
 apenas para os modelos Keras compatíveis: Conformer, Hybrid CNN-Transformer,
@@ -1235,7 +1237,7 @@ Modelos clássicos & CPU, validação cruzada e paralelismo \\
 
 A execução foi organizada para permitir repetição do experimento completo e de
 modelos individuais. O protocolo usa base consolidada única, semente fixa,
-divisão estratificada, 100 épocas para modelos neurais e validação
+divisão estratificada, orçamento de até 100 épocas para modelos neurais e validação
 cruzada para SVM/Random Forest. Cada arquitetura grava arquivos em diretório
 próprio, permitindo auditar o modelo salvo, as configurações, o histórico de
 treino, as métricas e as figuras correspondentes. A
@@ -1254,7 +1256,7 @@ Conjunto de dados & \path{app/datasets/benchmark_audio_raw_balanced_15k.npz} \\
 Amostras & 15.000, balanceadas entre real e sintético \\
 Teste & 2.250 amostras, divisão estratificada \\
 Semente & 42 \\
-Treino neural & 100 épocas, melhor \textit{checkpoint} salvo \\
+Treino neural & até 100 épocas, \textit{early stopping} e melhor \textit{checkpoint} salvo \\
 Clássicos & GridSearchCV + ajuste final \\
 Resultados & \path{results/<run>/} \\
 Modelos padrão & \path{app/models/} \\
@@ -1580,11 +1582,12 @@ de SNR estimado em tempo de inferência.
 
 A Tabela~\ref{tab:estabilidade_treinamento} e a
 Figura~\ref{fig:training_stability} resumem, por arquitetura neural, a melhor
-validação, a validação final e a queda de desempenho ao longo das 100 épocas.
+validação, a validação final e a queda de desempenho ao longo do orçamento
+máximo de 100 épocas.
 
 \begin{table}[H]
 \centering
-\caption{Estabilidade dos modelos neurais durante as 100 épocas.}
+\caption{Estabilidade dos modelos neurais durante o orçamento máximo de 100 épocas.}
 \label{tab:estabilidade_treinamento}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lccccc}
@@ -1670,8 +1673,9 @@ embora o histórico de validação desse modelo exija controle rigoroso de
     memorização de fonte. A divisão estratificada deve evoluir para separação
     por falante/fonte quando esses metadados estiverem completos.
 
-    \item \textbf{Validade externa}: os resultados refletem o BRSpeech-DF
-    consolidado. A generalização para outros idiomas, microfones, codecs,
+    \item \textbf{Validade externa}: os resultados refletem a base consolidada
+    de 15.000 amostras usada neste \textit{benchmark}. A generalização para
+    outros idiomas, microfones, codecs,
     vocoders, plataformas TTS/VC e condições de ruído precisa ser medida em
     bases externas (ASVspoof, WaveFake, In-the-Wild).
 
@@ -1697,10 +1701,10 @@ embora o histórico de validação desse modelo exija controle rigoroso de
     \item \textbf{Interpretabilidade}: SHAP e análises locais por segmento
     ainda devem ser integradas ao relatório final.
 
-    \item \textbf{Idioma}: o BRSpeech-DF não documenta a proporção de amostras
-    em português brasileiro. Um sistema treinado predominantemente em inglês
-    pode ter viés de idioma que inflacione métricas e falhe em cenários reais
-    de uso no Brasil.
+    \item \textbf{Idioma}: o manifesto atual da base consolidada não documenta
+    a proporção de amostras em português brasileiro. Um sistema treinado
+    predominantemente em inglês pode ter viés de idioma que inflacione métricas
+    e falhe em cenários reais de uso no Brasil.
 \end{itemize}
 
 \subsection{Considerações Éticas e LGPD}
@@ -1734,7 +1738,8 @@ geradores.
 \begin{itemize}
     \item Reexecutar o Spectrogram Transformer com \textit{checkpoint}
     obrigatório, \textit{learning rate} menor, \textit{weight decay},
-    \textit{dropout} maior e \textit{early stopping} com métrica de teste.
+    \textit{dropout} maior e \textit{early stopping} guiado apenas por
+    validação, preservando o teste final como avaliação independente.
     \item Incluir ASVspoof 2019/2021/5, WaveFake e In-the-Wild no preset
     completo de validação externa.
     \item Implementar divisão por falante e por gerador para eliminar risco
@@ -1751,8 +1756,8 @@ geradores.
     de confusão, curvas ROC/PR, curvas de treinamento e exemplos de inferência.
     \item Integrar SHAP, Grad-CAM espectral ou análise por oclusão temporal
     para explicar decisões dos modelos neurais.
-    \item Documentar metadados completos do BRSpeech-DF (falantes, idioma,
-    licenças, durações, verificação de duplicatas).
+    \item Documentar metadados completos da base consolidada e de cada fonte
+    de áudio (falantes, idioma, licenças, durações, verificação de duplicatas).
     \item Registrar desvio padrão e percentil 95 de latência em todas as
     rodadas de benchmark.
     \item Expandir a documentação ética para uso com dados de voz em contexto
@@ -2005,9 +2010,10 @@ Processing (ICASSP)}, p.~9216--9220, 2022.
 
 \subsection{Hiperparâmetros Consolidados}
 
-O preset final do \textit{benchmark} utiliza 100 épocas para modelos neurais,
-batch adaptado ao consumo de VRAM, precisão mista quando segura e salvamento
-do melhor \textit{checkpoint}. Modelos SSL originais utilizam seus
+O preset final do \textit{benchmark} utiliza orçamento máximo de 100 épocas
+para modelos neurais, batch adaptado ao consumo de VRAM, precisão mista quando
+segura, \textit{early stopping} e salvamento do melhor \textit{checkpoint}.
+Modelos SSL originais utilizam seus
 \textit{backbones} reais via PyTorch/CUDA. Os modelos clássicos utilizam busca
 de hiperparâmetros com validação cruzada antes do ajuste final. A
 Tabela~\ref{tab:hiperparametros_consolidados} resume os principais
@@ -2022,13 +2028,13 @@ hiperparâmetros por família de modelo.
 \toprule
 \textbf{Família} & \textbf{Entrada} & \textbf{Treinamento} & \textbf{Observação} \\
 \midrule
-WavLM/HuBERT & Áudio bruto \SI{16}{\kilo\hertz} & 100 épocas + cabeça supervisionada & \textit{Backbone} original salvo localmente \\
-RawNet2 & PCM $80{.}000\times1$ & 100 épocas, GPU, GRU + SincNet & Convergente no preset GPU \\
-AASIST/RawGAT-ST & Espectro-temporal & 100 épocas, atenção em grafos & Feedback e checkpoints por época \\
-Conformer/Hybrid & Espectrograma & 100 épocas, Adam/AdamW & Conformer estável; Hybrid exige \textit{checkpoint} \\
-Spectrogram Transformer & Espectrograma & 100 épocas & Acurácia de 97,69\%; validação instável \\
-EfficientNet-LSTM & Espectrograma 2D & 100 épocas, transferência parcial & Boa convergência, maior latência \\
-MultiscaleCNN/Ensemble & Características espectrais & 100 épocas & Acurácia elevada na base limpa \\
+WavLM/HuBERT & Áudio bruto \SI{16}{\kilo\hertz} & até 100 épocas + cabeça supervisionada & \textit{Backbone} original salvo localmente \\
+RawNet2 & PCM $80{.}000\times1$ & até 100 épocas, GPU, GRU + SincNet & Convergente no preset GPU \\
+AASIST/RawGAT-ST & Espectro-temporal & até 100 épocas, atenção em grafos & Feedback e checkpoints por época \\
+Conformer/Hybrid & Espectrograma & até 100 épocas, Adam/AdamW & Conformer estável; Hybrid exige \textit{checkpoint} \\
+Spectrogram Transformer & Espectrograma & até 100 épocas & Acurácia de 97,69\%; validação instável \\
+EfficientNet-LSTM & Espectrograma 2D & até 100 épocas, transferência parcial & Boa convergência, maior latência \\
+MultiscaleCNN/Ensemble & Características espectrais & até 100 épocas & Acurácia elevada na base limpa \\
 SVM & Características tabulares & GridSearchCV + SVC RBF & Modelo leve; queda sob AWGN forte \\
 Random Forest & Características tabulares & GridSearchCV + \texttt{n\_jobs=-1} & Paralelismo CPU \\
 \bottomrule
@@ -2075,7 +2081,7 @@ treinamento, inferência, cálculo de métricas e geração dos relatórios.
 
 \begin{table}[H]
 \centering
-\caption{Módulos reais do XFakeSong\protect\footnotemark\ referenciados pelo \textit{benchmark}.}
+\caption{Módulos reais do XFakeSong referenciados pelo \textit{benchmark}.}
 \label{tab:modulos_pipeline_real}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lll}
@@ -2094,8 +2100,9 @@ Relatórios & \path{benchmarks/report.py} & Consolida tabelas, figuras e Markdow
 \bottomrule
 \end{tabular}}
 \end{table}
-\footnotetext{XFakeSong é o nome do sistema de detecção de áudio sintético
-desenvolvido pelo autor como produto deste trabalho de conclusão de curso.}
+
+Neste contexto, XFakeSong é o nome do sistema de detecção de áudio sintético
+desenvolvido pelo autor como produto deste trabalho de conclusão de curso.
 
 \section{Comandos de Execução e Reprodutibilidade}
 
@@ -2145,7 +2152,7 @@ Os comandos a seguir sintetizam o fluxo operacional usado para repetir o
 
     \item \textbf{Compilar o artigo:}
     \begin{quote}\footnotesize\ttfamily
-    pdflatex tcc.tex
+    pdflatex main.tex
     \end{quote}
 \end{itemize}
 

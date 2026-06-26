@@ -1,10 +1,14 @@
 # =====================================================================
-# XFakeSong — docker-compose (Compose v2 / Docker Desktop 4.x+)
+# XFakeSong — docker-compose legado de inferência (Compose v2)
+# Para novos builds, prefira:
+#   docker compose -f docker/compose/inference.cpu.yml up --build inference-api
+#   docker compose -f docker/compose/inference.nvidia.yml up --build inference-api
 # Usar:  docker compose up -d         (start)
 #        docker compose logs -f       (logs)
 #        docker compose down          (stop & remove)
 #        docker compose build         (rebuild)
-# Override GPU: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# Override GPU legado:
+#        docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 # =====================================================================
 
 services:
@@ -35,6 +39,9 @@ services:
       # Numba/HF caches no /tmp (já configurado no Dockerfile)
       TF_CPP_MIN_LOG_LEVEL: "2"
       MPLBACKEND: Agg
+      DATABASE_URL: sqlite:////app/data/app.db
+      DEEPFAKE_UPLOADS_DIR: /app/data/uploads
+      DEEPFAKE_MODELS_DIR: /app/app/models
       # PROD.6: ALLOWED_HOSTS deve INCLUIR 127.0.0.1 para healthcheck funcionar
       # se o admin definir hosts específicos. * é o default seguro para healthcheck.
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}

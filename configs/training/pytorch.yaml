@@ -1,0 +1,19 @@
+# PyTorch audio benchmark preset.
+
+family: pytorch-audio
+models:
+  - RawNet2
+  - AASIST
+  - RawGAT-ST
+  - Conformer
+  - Hybrid CNN-Transformer
+dataset: app/datasets/benchmark_audio_raw_balanced_15k.npz
+output_dir: results/pytorch_benchmark
+models_dir: app/models
+epochs: 100
+batch_size: 16
+device_profile: gpu
+latency_runs: 30
+snr: [30, 20, 10]
+optimize_hyperparameters: true
+

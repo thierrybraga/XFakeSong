@@ -9,10 +9,10 @@ from pathlib import Path
 
 
 # Defaults reprodutíveis (antes: SOURCE apontava para um .txt morto em
-# C:\Users\...\.codex\attachments). Agora o template-base é o próprio tcc.tex
+# C:\Users\...\.codex\attachments). Agora o template-base é o próprio main.tex
 # e os dados vêm do summary gerado por scripts/consolidate_results.py. Todos
 # podem ser sobrescritos por CLI (--source/--summary/--output/--in-place).
-SOURCE = Path("tcc_overleaf/tcc.tex")
+SOURCE = Path("tcc_overleaf/main.tex")
 SUMMARY = Path("results/tcc_consolidated/benchmark_summary.json")
 OUTPUT = Path("tcc_overleaf/tcc_atualizado.tex")
 
@@ -203,7 +203,7 @@ def _tables_fragment(results_table, efficiency_table, robustness_table,
                      stability_table, figures_dir: str) -> str:
     """Fragmento .tex autocontido (tabelas data-driven + figuras).
 
-    Projetado para `\\input{}` no tcc.tex — NÃO toca na prosa da tese. Os
+    Projetado para `\\input{}` no main.tex — NÃO toca na prosa da tese. Os
     valores vêm do benchmark_summary.json (consolidate_results.py), logo
     refletem o treinamento mais recente.
     """
@@ -965,7 +965,7 @@ def main() -> None:
         description="Atualiza o .tex do TCC a partir do summary consolidado"
     )
     p.add_argument("--source", default=str(SOURCE),
-                   help="tex base (default: tcc_overleaf/tcc.tex)")
+                   help="tex base (default: tcc_overleaf/main.tex)")
     p.add_argument("--summary", default=str(SUMMARY),
                    help="benchmark_summary.json (consolidate_results.py)")
     p.add_argument("--output", default=str(OUTPUT),
@@ -1002,7 +1002,7 @@ def main() -> None:
             out = out.with_name("tabelas_benchmark.tex")
         out.write_text(fragment, encoding="utf-8")
         print(f"Fragmento de tabelas escrito: {out.resolve()}")
-        print("Use no tcc.tex com:  \\input{tabelas_benchmark.tex}")
+        print("Use no main.tex com:  \\input{tabelas_benchmark.tex}")
         return
 
     # ---- Modo legado: reescrita completa da tese (frágil) ----

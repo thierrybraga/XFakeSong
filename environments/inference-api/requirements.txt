@@ -1,0 +1,12 @@
+# XFakeSong - lightweight inference/API environment
+# Python 3.11 recommended.
+#
+# This file intentionally excludes most training-only dependencies. TensorFlow
+# and Torch are kept because current trained artifacts may require both loaders.
+
+-r ../../requirements-base.txt
+
+tensorflow-cpu>=2.16,<2.22
+torch==2.5.1
+transformers==4.45.2
+

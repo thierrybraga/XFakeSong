@@ -171,6 +171,42 @@ Para usar os modelos treinados na demonstração visual, consulte
 [Interface Gradio](23_INTERFACE_GRADIO.md). Para publicar modelos e demo,
 consulte [GitHub Pages e Hugging Face](24_PUBLICACAO_GITHUB_HF.md).
 
+### Execução por família de ambiente
+
+Além do preset completo, o benchmark pode ser executado por família
+computacional. Essa é a rota recomendada quando o objetivo é isolar dependências
+e aproveitar GPU/CPU de forma controlada.
+
+| Família | Preset | Comando |
+|---|---|---|
+| Clássicos | `configs/training/classical.yaml` | `python scripts/train_classical.py` |
+| TensorFlow/Keras | `configs/training/tensorflow.yaml` | `python scripts/train_tensorflow.py` |
+| PyTorch áudio | `configs/training/pytorch.yaml` | `python scripts/train_pytorch.py` |
+| SSL/Transformers | `configs/training/ssl.yaml` | `python scripts/train_ssl.py` |
+
+```bash
+# Revisão sem iniciar treino
+python scripts/train_tensorflow.py --plan-only
+
+# Modelo individual dentro da família TensorFlow/Keras
+python scripts/train_tensorflow.py \
+    --models SpectrogramTransformer \
+    --epochs 100 \
+    --device-profile gpu \
+    --out results/spectrogram_transformer_retrain
+
+# Execução Docker com GPU para SSL
+docker compose -f docker/compose/train.nvidia.yml run --rm ssl-transformers
+
+# Benchmark completo em container NVIDIA
+docker compose -f docker/compose/benchmark.nvidia.yml run --rm benchmark
+```
+
+Cada wrapper delega para `scripts/run_models_sequential.py`; por isso o padrão
+de saída continua o mesmo: `run_summary.json`, `run_summary.md`,
+`<modelo>/run.log`, `<modelo>/results.json` e
+`<modelo>/architectures/<modelo>/*.png`.
+
 ## Roteiro oficial do dataset robusto
 
 O benchmark do TCC atual parte de um conjunto balanceado 1:1 com `7.500`

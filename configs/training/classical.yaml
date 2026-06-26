@@ -1,0 +1,16 @@
+# Classical ML benchmark preset.
+
+family: classical-ml
+models:
+  - SVM
+  - RandomForest
+dataset: app/datasets/benchmark_audio_raw_balanced_15k.npz
+output_dir: results/classical_benchmark
+models_dir: app/models
+epochs: 100
+batch_size: 32
+device_profile: cpu
+latency_runs: 30
+snr: [30, 20, 10]
+optimize_hyperparameters: true
+

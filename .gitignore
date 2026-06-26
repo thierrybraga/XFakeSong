@@ -151,6 +151,17 @@ venv.bak/
 # mkdocs documentation
 /site
 
+# LaTeX/Overleaf build artifacts. Keep .tex, tables and figures versioned;
+# regenerate PDF/auxiliary files from tcc_overleaf/tcc.tex when needed.
+tcc_overleaf/*.aux
+tcc_overleaf/*.lof
+tcc_overleaf/*.lot
+tcc_overleaf/*.out
+tcc_overleaf/*.toc
+tcc_overleaf/*.log
+tcc_overleaf/*.synctex.gz
+tcc_overleaf/*.pdf
+
 # mypy
 .mypy_cache/
 .dmypy.json

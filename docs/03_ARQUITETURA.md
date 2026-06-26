@@ -222,6 +222,14 @@ XFakeSong/
 │       └── api_models.py
 │
 ├── docs/                           # Documentação
+├── docker/compose/                 # Perfis Docker segmentados por uso/dispositivo
+├── environments/                   # Dockerfiles/requirements por família computacional
+├── configs/                        # Configs YAML de dataset, treino e inferência
+├── data/                           # Runtime local persistente
+│   ├── app.db                      # SQLite local padrão
+│   └── uploads/                    # Uploads da Gradio/API
+├── results/                        # Resultados regeneráveis de benchmark/treino
+├── app/models/benchmark_final/     # Modelos finais consolidados por arquitetura
 ├── tests/                          # Testes (unit/, integration/, api/, functional/)
 ├── scripts/                        # Scripts utilitários
 ├── gradio_app.py                   # App unificado (FastAPI + Gradio via Uvicorn)
@@ -236,4 +244,8 @@ XFakeSong/
 - **`app/core/interfaces/`** — define os contratos SOLID que garantem desacoplamento; consulte aqui para entender o "contrato" de cada componente.
 - **`app/dependencies.py`** — singletons via `lru_cache`; ponto único para obter instâncias dos serviços.
 - **`app/datasets/`** — espera subpastas `real/` e `fake/` para treinamento supervisionado.
+- **`data/`** — runtime local persistente (`data/app.db`, `data/uploads/`); não deve receber código-fonte.
+- **`results/`** — artefatos regeneráveis de benchmark, gráficos e relatórios.
+- **`app/models/`** — raiz técnica usada por treino/inferência; `benchmark_final/` guarda os modelos finais consolidados.
+- **`docker/compose/`** — caminho principal para novos builds Docker; os `docker-compose*.yml` da raiz são compatibilidade legada.
 - **`tests/`** — espelha a estrutura de `app/` com camadas `unit/`, `integration/`, `api/` e `functional/`.

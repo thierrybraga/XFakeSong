@@ -1,0 +1,15 @@
+# XFakeSong inference defaults.
+
+inference:
+  models_dir: app/models
+  benchmark_models_dir: app/models/benchmark_final
+  registry_path: app/models/registry.json
+  results_dir: results
+  gradio:
+    host: 0.0.0.0
+    port: 7860
+  cache:
+    huggingface: cache/huggingface
+    torch: cache/torch
+    tensorflow: cache/tensorflow
+

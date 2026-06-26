@@ -1,0 +1,69 @@
+x-train-common: &train-common
+  working_dir: /app
+  volumes:
+    - ../..:/app
+    - ../../cache/huggingface:/app/cache/huggingface
+    - ../../cache/torch:/app/cache/torch
+    - ../../cache/tensorflow:/app/cache/tensorflow
+  environment:
+    DEEPFAKE_ENV: benchmark
+    DEEPFAKE_LOG_LEVEL: ${DEEPFAKE_LOG_LEVEL:-INFO}
+    PYTHONIOENCODING: utf-8
+    TF_CPP_MIN_LOG_LEVEL: "2"
+    GRADIO_ANALYTICS_ENABLED: "False"
+    DATABASE_URL: sqlite:////app/data/app.db
+    DEEPFAKE_UPLOADS_DIR: /app/data/uploads
+    DEEPFAKE_MODELS_DIR: /app/app/models
+    HF_HOME: /app/cache/huggingface
+    TORCH_HOME: /app/cache/torch
+    XFAKE_SYNC_MODELS_ON_BOOT: "false"
+    XFAKE_CREATE_DEFAULT_MODELS: "false"
+    XFAKE_TRAIN_BATCH_LOG_INTERVAL_S: ${XFAKE_TRAIN_BATCH_LOG_INTERVAL_S:-60}
+  deploy:
+    resources:
+      limits:
+        cpus: "${DOCKER_TRAIN_CPU_LIMIT:-8.0}"
+        memory: ${DOCKER_TRAIN_MEMORY_LIMIT:-16G}
+  healthcheck:
+    disable: true
+
+services:
+  classical-ml:
+    <<: *train-common
+    build:
+      context: ../..
+      dockerfile: environments/classical-ml/Dockerfile.cpu
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
+    image: xfakesong/classical-ml:cpu
+    command: ["python", "scripts/train_classical.py"]
+
+  tensorflow-keras:
+    <<: *train-common
+    build:
+      context: ../..
+      dockerfile: environments/tensorflow-keras/Dockerfile.cpu
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
+    image: xfakesong/tensorflow-keras:cpu
+    command: ["python", "scripts/train_tensorflow.py", "--device-profile", "cpu"]
+
+  pytorch-audio:
+    <<: *train-common
+    build:
+      context: ../..
+      dockerfile: environments/pytorch-audio/Dockerfile.cpu
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
+    image: xfakesong/pytorch-audio:cpu
+    command: ["python", "scripts/train_pytorch.py", "--device-profile", "cpu"]
+
+  ssl-transformers:
+    <<: *train-common
+    build:
+      context: ../..
+      dockerfile: environments/ssl-transformers/Dockerfile.cpu
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
+    image: xfakesong/ssl-transformers:cpu
+    command: ["python", "scripts/train_ssl.py", "--device-profile", "cpu"]

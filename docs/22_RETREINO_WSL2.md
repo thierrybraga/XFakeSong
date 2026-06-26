@@ -46,13 +46,12 @@ bash scripts/retrain_wsl2.sh --check
 
 ```bash
 # Requer NVIDIA Container Toolkit / GPU habilitada no Docker Desktop.
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml build
+docker compose -f docker/compose/train.nvidia.yml build
 # Validar GPU dentro do container:
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml run --rm app \
+docker compose -f docker/compose/train.nvidia.yml run --rm tensorflow-keras \
   python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
-# Rodar o driver dentro do container:
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml run --rm app \
-  bash scripts/retrain_wsl2.sh --indist --xgen fkvoice
+# Rodar o benchmark sequencial dentro do container:
+docker compose -f docker/compose/benchmark.nvidia.yml run --rm benchmark
 ```
 
 ## Executar o retreino + benchmark
@@ -123,7 +122,7 @@ python scripts/update_tcc_latex.py \
     --summary results/tcc_consolidated/benchmark_summary.json \
     --output tcc_overleaf/tabelas_benchmark.tex --figures-dir figures
 
-# 3) No tcc.tex, incluir uma vez:   \input{tabelas_benchmark.tex}
+# 3) No main.tex, incluir uma vez:   \input{tabelas_benchmark.tex}
 #    e recompilar.
 ```
 
@@ -143,4 +142,4 @@ partir do `history`). Gera exatamente os nomes que o TCC usa:
 > recomendado.
 
 > Todas as 20 figuras hoje em `tcc_overleaf/figures/` **estão em uso** pelo
-> `tcc.tex` — o passo 1 as **substitui in-place** pelas novas; não apague nada.
+> `main.tex` — o passo 1 as **substitui in-place** pelas novas; não apague nada.

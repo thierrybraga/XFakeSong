@@ -1,0 +1,37 @@
+# syntax=docker/dockerfile:1.7
+ARG PYTHON_VERSION=3.11
+
+FROM python:${PYTHON_VERSION}-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONIOENCODING=utf-8 \
+    TF_CPP_MIN_LOG_LEVEL=2 \
+    GRADIO_ANALYTICS_ENABLED=False \
+    GRADIO_SERVER_NAME=0.0.0.0 \
+    GRADIO_SERVER_PORT=7860 \
+    MPLBACKEND=Agg \
+    NUMBA_CACHE_DIR=/tmp/numba_cache \
+    HF_HOME=/app/cache/huggingface \
+    TORCH_HOME=/app/cache/torch
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        libsndfile1 \
+        libgomp1 \
+        curl \
+        tini \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY requirements-base.txt requirements-cpu.txt ./
+RUN pip install --upgrade pip setuptools wheel \
+    && pip install -r requirements-cpu.txt \
+    && pip install torch==2.5.1 transformers==4.45.2
+
+COPY . .
+
+EXPOSE 7860
+ENTRYPOINT ["tini", "--"]
+CMD ["python", "main.py", "--gradio", "--gradio-port", "7860"]
+

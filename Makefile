@@ -16,11 +16,18 @@ PORT ?= 7860
 IMAGE_NAME := xfakesong
 IMAGE_TAG ?= latest
 
-# GPU profile (set GPU=1)
-COMPOSE_FILES := -f docker-compose.yml
+# Perfis Docker segmentados. Os arquivos docker-compose*.yml da raiz ficam
+# como aliases legados; novos builds devem usar docker/compose/*.yml.
+SERVICE ?= inference-api
+COMPOSE_FILE := docker/compose/inference.cpu.yml
 ifeq ($(GPU),1)
-COMPOSE_FILES += -f docker-compose.gpu.yml
+COMPOSE_FILE := docker/compose/inference.nvidia.yml
 endif
+COMPOSE_FILES := -f $(COMPOSE_FILE)
+
+TRAIN_CPU_COMPOSE := docker/compose/train.cpu.yml
+TRAIN_NVIDIA_COMPOSE := docker/compose/train.nvidia.yml
+BENCHMARK_NVIDIA_COMPOSE := docker/compose/benchmark.nvidia.yml
 
 # =====================================================================
 .PHONY: help
@@ -33,6 +40,7 @@ help:  ## Mostra esta ajuda
 	@echo "Variáveis:"
 	@echo "  GPU=1               Habilita GPU (NVIDIA)"
 	@echo "  PORT=7860           Porta Gradio (default 7860)"
+	@echo "  SERVICE=inference-api Serviço Compose alvo"
 	@echo "  PYTHON=python3      Binário Python para venv local"
 
 # =====================================================================
@@ -41,21 +49,21 @@ help:  ## Mostra esta ajuda
 
 .PHONY: build
 build:  ## Build da imagem Docker (com cache)
-	$(DC) $(COMPOSE_FILES) build
+	$(DC) $(COMPOSE_FILES) build $(SERVICE)
 
 .PHONY: build-nocache
 build-nocache:  ## Build sem cache + pull base images
-	$(DC) $(COMPOSE_FILES) build --no-cache --pull
+	$(DC) $(COMPOSE_FILES) build --no-cache --pull $(SERVICE)
 
 .PHONY: up
 up:  ## Sobe containers em background
-	$(DC) $(COMPOSE_FILES) up -d
+	$(DC) $(COMPOSE_FILES) up -d $(SERVICE)
 	@echo ""
 	@echo "Aplicação em http://localhost:$(PORT)"
 
 .PHONY: down
 down:  ## Para e remove containers
-	$(DC) down
+	$(DC) $(COMPOSE_FILES) down
 
 .PHONY: restart
 restart: down up  ## Reinicia containers
@@ -65,7 +73,7 @@ rebuild: down build-nocache up  ## Rebuild completo + restart
 
 .PHONY: logs
 logs:  ## Tail dos logs (follow)
-	$(DC) logs -f --tail=100 app
+	$(DC) $(COMPOSE_FILES) logs -f --tail=100 $(SERVICE)
 
 .PHONY: ps
 ps:  ## Status do compose
@@ -73,7 +81,7 @@ ps:  ## Status do compose
 
 .PHONY: shell
 shell:  ## Abre shell no container
-	$(DC) exec app /bin/bash
+	$(DC) $(COMPOSE_FILES) exec $(SERVICE) /bin/bash
 
 .PHONY: stats
 stats:  ## Stats em tempo real
@@ -81,13 +89,35 @@ stats:  ## Stats em tempo real
 
 .PHONY: health
 health:  ## Status do healthcheck
-	@docker inspect -f '{{.State.Health.Status}}' xfakesong_app 2>/dev/null || echo "Container não encontrado"
+	@docker inspect -f '{{.State.Status}}' xfakesong_inference_cpu 2>/dev/null || \
+	docker inspect -f '{{.State.Status}}' xfakesong_inference_nvidia 2>/dev/null || \
+	echo "Container não encontrado"
 
 .PHONY: clean
 clean:  ## Down + remove volumes anônimos + prune
-	$(DC) down -v --remove-orphans
+	$(DC) $(COMPOSE_FILES) down -v --remove-orphans
 	docker image prune -f
 	docker builder prune -f
+
+.PHONY: train-cpu
+train-cpu:  ## Executa perfil de treino CPU/classical
+	$(DC) -f $(TRAIN_CPU_COMPOSE) run --rm classical-ml
+
+.PHONY: train-nvidia
+train-nvidia:  ## Executa perfil de treino NVIDIA TensorFlow/Keras
+	$(DC) -f $(TRAIN_NVIDIA_COMPOSE) run --rm tensorflow-keras
+
+.PHONY: benchmark-nvidia
+benchmark-nvidia:  ## Executa benchmark completo NVIDIA/WSL2
+	$(DC) -f $(BENCHMARK_NVIDIA_COMPOSE) run --rm benchmark
+
+.PHONY: docker-config
+docker-config:  ## Valida configuração Compose dos perfis segmentados
+	$(PYTHON) scripts/docker_build.py inference-cpu config
+	$(PYTHON) scripts/docker_build.py inference-nvidia config
+	$(PYTHON) scripts/docker_build.py train-cpu config
+	$(PYTHON) scripts/docker_build.py train-nvidia config
+	$(PYTHON) scripts/docker_build.py benchmark-nvidia config
 
 # =====================================================================
 # Desenvolvimento local (Python venv)

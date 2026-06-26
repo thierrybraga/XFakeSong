@@ -121,12 +121,14 @@ nav:
     - Estudo Experimental: 20_ESTUDO_EXPERIMENTAL.md
     - Guia de Notebooks: 16_NOTEBOOKS.md
     - Plano de Retreino: 21_PLANO_RETREINO.md
+    - Plano de Correções do Benchmark: 25_PLANO_CORRECOES.md
     - Retreino em WSL2: 22_RETREINO_WSL2.md
     - Testes e Qualidade: 06_TESTES.md
   - Interface:
     - Guia da Interface Gradio: 23_INTERFACE_GRADIO.md
   - Desenvolvimento:
     - Guia do Desenvolvedor: 05_GUIA_DEV.md
+    - Plano de Ambientes de Treinamento: 26_PLANO_AMBIENTES_TREINAMENTO.md
     - API Reference: 07_API_REFERENCE.md
     - CI/CD e Segurança: 17_CICD_SEGURANCA.md
   - Dados:

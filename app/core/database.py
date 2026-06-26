@@ -18,7 +18,12 @@ logger = logging.getLogger(__name__)
 # ── Configuração ───────────────────────────────────────────────────────
 
 BASE_DIR = Path(__file__).parent.parent.parent
-DB_PATH = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/app.db")
+DEFAULT_DB_FILE = BASE_DIR / "data" / "app.db"
+DB_PATH = os.getenv("DATABASE_URL", f"sqlite:///{DEFAULT_DB_FILE}")
+
+if DB_PATH.startswith("sqlite:///") and DB_PATH != "sqlite:///:memory:":
+    sqlite_target = Path(DB_PATH.replace("sqlite:///", "", 1))
+    sqlite_target.parent.mkdir(parents=True, exist_ok=True)
 
 # Pool configurável via env
 POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "5"))

@@ -1,0 +1,117 @@
+# =====================================================================
+# XFakeSong - training environments by computational family (alias legado)
+# =====================================================================
+# Para novos builds, prefira os perfis segmentados:
+#   docker compose -f docker/compose/train.cpu.yml run --rm classical-ml
+#   docker compose -f docker/compose/train.nvidia.yml run --rm tensorflow-keras
+#
+# Examples:
+#   docker compose -f docker/compose/train.cpu.yml run --rm classical-ml
+#   docker compose -f docker/compose/train.nvidia.yml run --rm tensorflow-keras
+# This root file is kept as a compatibility alias for train.nvidia.yml.
+# =====================================================================
+
+x-train-common: &train-common
+  working_dir: /app
+  volumes:
+    - ./:/app
+    - ./cache/huggingface:/app/cache/huggingface
+    - ./cache/torch:/app/cache/torch
+    - ./cache/tensorflow:/app/cache/tensorflow
+  environment:
+    DEEPFAKE_ENV: benchmark
+    DEEPFAKE_LOG_LEVEL: ${DEEPFAKE_LOG_LEVEL:-INFO}
+    PYTHONIOENCODING: utf-8
+    TF_CPP_MIN_LOG_LEVEL: "2"
+    TF_FORCE_GPU_ALLOW_GROWTH: "true"
+    GRADIO_ANALYTICS_ENABLED: "False"
+    DATABASE_URL: sqlite:////app/data/app.db
+    DEEPFAKE_UPLOADS_DIR: /app/data/uploads
+    DEEPFAKE_MODELS_DIR: /app/app/models
+    HF_HOME: /app/cache/huggingface
+    TORCH_HOME: /app/cache/torch
+    XFAKE_SYNC_MODELS_ON_BOOT: "false"
+    XFAKE_CREATE_DEFAULT_MODELS: "false"
+    XFAKE_TRAIN_BATCH_LOG_INTERVAL_S: ${XFAKE_TRAIN_BATCH_LOG_INTERVAL_S:-60}
+  healthcheck:
+    disable: true
+
+services:
+  classical-ml:
+    <<: *train-common
+    build:
+      context: .
+      dockerfile: environments/classical-ml/Dockerfile.cpu
+    image: xfakesong:classical-ml
+    command: ["python", "scripts/train_classical.py"]
+
+  tensorflow-keras:
+    <<: *train-common
+    build:
+      context: .
+      dockerfile: environments/tensorflow-keras/Dockerfile.nvidia
+    image: xfakesong:tensorflow-keras-gpu
+    shm_size: 2gb
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${NVIDIA_GPU_COUNT:-all}
+              capabilities: [gpu, compute, utility]
+    command: ["python", "scripts/train_tensorflow.py"]
+
+  pytorch-audio:
+    <<: *train-common
+    build:
+      context: .
+      dockerfile: environments/pytorch-audio/Dockerfile.nvidia
+    image: xfakesong:pytorch-audio-gpu
+    shm_size: 2gb
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${NVIDIA_GPU_COUNT:-all}
+              capabilities: [gpu, compute, utility]
+    command: ["python", "scripts/train_pytorch.py"]
+
+  ssl-transformers:
+    <<: *train-common
+    build:
+      context: .
+      dockerfile: environments/ssl-transformers/Dockerfile.nvidia
+    image: xfakesong:ssl-transformers-gpu
+    shm_size: 2gb
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${NVIDIA_GPU_COUNT:-all}
+              capabilities: [gpu, compute, utility]
+    command: ["python", "scripts/train_ssl.py"]
+
+  inference-api:
+    working_dir: /app
+    build:
+      context: .
+      dockerfile: environments/inference-api/Dockerfile.cpu
+    image: xfakesong:inference-api
+    ports:
+      - "${GRADIO_PORT:-7860}:7860"
+    volumes:
+      - ./:/app
+      - ./cache/huggingface:/app/cache/huggingface
+      - ./cache/torch:/app/cache/torch
+    environment:
+      DEEPFAKE_ENV: ${DEEPFAKE_ENV:-production}
+      DEEPFAKE_LOG_LEVEL: ${DEEPFAKE_LOG_LEVEL:-INFO}
+      GRADIO_SERVER_NAME: 0.0.0.0
+      GRADIO_SERVER_PORT: "7860"
+      GRADIO_ANALYTICS_ENABLED: "False"
+      TF_CPP_MIN_LOG_LEVEL: "2"
+      HF_HOME: /app/cache/huggingface
+      TORCH_HOME: /app/cache/torch
+    command: ["python", "main.py", "--gradio", "--gradio-port", "7860"]

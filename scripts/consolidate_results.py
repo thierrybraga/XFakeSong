@@ -4,7 +4,7 @@
 Preenche o passo que faltava entre o benchmark e o TCC: lê um ou mais
 `results.json` (de runs single-arch OU de um run completo), monta o
 `benchmark_summary.json` consolidado e (re)gera TODAS as figuras nomeadas que o
-`tcc.tex` referencia — sobrescrevendo as antigas. Tudo é derivado dos
+`main.tex` referencia — sobrescrevendo as antigas. Tudo é derivado dos
 resultados do treinamento; nada é hardcoded.
 
 Saídas (em --out, default results/tcc_consolidated):

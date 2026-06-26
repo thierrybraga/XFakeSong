@@ -20,7 +20,7 @@ teste. As acurácias ~100% medem desempenho **in-domain**, não generalização.
 
 ### P0.0 — Auditoria forense do dataset ✅ *(concluída — sem GPU)*
 
-Script: [`scripts/audit_dataset_leakage.py`](../scripts/audit_dataset_leakage.py).
+Script: `scripts/audit_dataset_leakage.py`.
 Relatório: `results/audit_dataset_leakage/leakage_report.{json,md}`.
 
 **Evidências obtidas:**
@@ -60,8 +60,7 @@ python scripts/run_benchmark.py --full \
 ```
 
 Treina sem o XTTS e testa nele → generalização a gerador inédito. Infra pronta
-([run_benchmark.py:101](../scripts/run_benchmark.py),
-[data.py:290](../benchmarks/data.py)). **GPU/WSL2.**
+(`scripts/run_benchmark.py:101`, `benchmarks/data.py:290`). **GPU/WSL2.**
 **Aceite:** `results.json` com `holdout_generator="fkvoice"`; EER do Sonic Sleuth
 deixa de ser 0,00% (degradar é o resultado *honesto*).
 
@@ -100,12 +99,12 @@ salvava o número de teste.
 
 **Ações feitas:**
 - `create_warmup_cosine_optimizer(..., clipnorm=1.0)` → AdamW `global_clipnorm`
-  ([optimization.py](../app/domain/models/training/optimization.py)). Fix central,
+  (`app/domain/models/training/optimization.py`). Fix central,
   beneficia AST **e** CCT.
 - AST builder aceita `clipnorm` (default 1.0) e o repassa; `warmup_steps` default
-  1000→2000 ([spectrogram_transformer.py](../app/domain/models/architectures/spectrogram_transformer.py)).
+  1000→2000 (`app/domain/models/architectures/spectrogram_transformer.py`).
 - `clipnorm: 1.0` adicionado ao plano recomendado do AST
-  ([planning.py](../benchmarks/planning.py)); `EarlyStopping` em `val_loss` já era
+  (`benchmarks/planning.py`); `EarlyStopping` em `val_loss` já era
   o monitor correto.
 - Regressão: `tests/unit/test_benchmark.py` agora exige `ast["clipnorm"]==1.0`;
   verificado end-to-end que o otimizador do AST sai com `global_clipnorm=1.0`.
@@ -116,7 +115,7 @@ no próximo run cross-generator (P0.1).
 ### P1.2 — Hybrid CNN-Transformer (`best_val=0,972 → final_val=0,765`) ✅ *(código aplicado)*
 
 Mesma causa, mais branda. `clipnorm=1.0` explícito no builder do CCT
-([hybrid_cnn_transformer.py](../app/domain/models/architectures/hybrid_cnn_transformer.py)).
+(`app/domain/models/architectures/hybrid_cnn_transformer.py`).
 **Aceite (pende re-treino):** `final_val ≥ best_val − 3 p.p.`
 
 ---
@@ -139,16 +138,16 @@ Mesma causa, mais branda. `clipnorm=1.0` explícito no builder do CCT
 resolve — a raiz é a fusão superconfiante + ausência de augmentation.
 
 **Feito agora (no-GPU, testado):**
-- **Métrica honesta `accuracy_at_eer`** em [evaluate.py](../benchmarks/evaluate.py):
+- **Métrica honesta `accuracy_at_eer`** em `benchmarks/evaluate.py`:
   acurácia no ponto de EER, separando "falha de limiar" de "falha de
   separabilidade". Teste de regressão em `test_benchmark.py`
   (`test_accuracy_at_eer_separates_threshold_collapse_from_failure`).
-- **`use_augmentation: True`** para o Ensemble em [planning.py](../benchmarks/planning.py)
+- **`use_augmentation: True`** para o Ensemble em `benchmarks/planning.py`
   (corrige o `False` confirmado) — vale no próximo re-treino.
 
 **Pende re-treino (queue com P0.1):**
 - Label smoothing na loss da fusão em
-  [ensemble.py:521-526](../app/domain/models/architectures/ensemble.py) (string
+  `app/domain/models/architectures/ensemble.py:521-526` (string
   `binary_crossentropy`/`sparse_categorical_crossentropy` → loss com
   `label_smoothing=0.05`) para curar a saturação {0,1}. Não feito agora por mexer
   em loss custom + serialização do `.keras` salvo, e só ter efeito com re-treino.
@@ -156,7 +155,7 @@ resolve — a raiz é a fusão superconfiante + ausência de augmentation.
   menos acc@0,5 ≈ accuracy_at_eer (scores estáveis sob ruído).
 
 **Opção de deploy (runtime, sem re-treino):** `detect_multi_model(..., weights="robustness")`
-já existe ([detection_service.py](../app/domain/services/detection_service.py)) e
+já existe (`app/domain/services/detection_service.py`) e
 funde os modelos individuais robustos (Conformer/MultiscaleCNN) ponderando por
 robustez — caminho alternativo a um Ensemble treinado frágil.
 
@@ -168,7 +167,7 @@ robustez — caminho alternativo a um Ensemble treinado frágil.
   *teto otimista* + tabela cross-generator como estimativa honesta + ressalva do
   confound fonte↔classe; para o Spectrogram Transformer, deixar claro que o
   número depende da restauração do checkpoint.
-  Arquivos: `tcc_overleaf/tcc.tex`, `tcc_overleaf/tabelas_benchmark.tex`.
+  Arquivos: `tcc_overleaf/main.tex`, `tcc_overleaf/tabelas_benchmark.tex`.
 - **P3.2** Documentar o protocolo em [15_BENCHMARK.md](15_BENCHMARK.md) e
   [20_ESTUDO_EXPERIMENTAL.md](20_ESTUDO_EXPERIMENTAL.md) (estratificado vs grupo
   vs cross-generator) + registrar esta auditoria.

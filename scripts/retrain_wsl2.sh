@@ -150,10 +150,10 @@ if [[ -n "$CONSOL_SRC" && -f "$CONSOL_SRC/results.json" ]]; then
       --output tcc_overleaf/tabelas_benchmark.tex \
       --figures-dir figures
   echo "<<< TCC atualizado: figuras substituídas + tcc_overleaf/tabelas_benchmark.tex"
-  echo "    No tcc.tex, garanta:  \\input{tabelas_benchmark.tex}"
+  echo "    No main.tex, garanta:  \\input{tabelas_benchmark.tex}"
 fi
 
 echo "==================================================================="
 echo " Concluído. Figuras e tabelas do TCC regeneradas a partir do treino."
-echo " Recompile tcc_overleaf/tcc.tex (as figuras foram substituídas in-place)."
+echo " Recompile tcc_overleaf/main.tex (as figuras foram substituídas in-place)."
 echo "==================================================================="

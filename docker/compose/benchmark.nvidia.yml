@@ -1,0 +1,65 @@
+services:
+  benchmark:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
+        TF_VARIANT: gpu
+    image: xfakesong/benchmark:nvidia
+    container_name: xfakesong_benchmark_nvidia
+    working_dir: /app
+    shm_size: 2gb
+    volumes:
+      - ../..:/app
+      - ../../cache/huggingface:/app/cache/huggingface
+      - ../../cache/torch:/app/cache/torch
+      - ../../cache/tensorflow:/app/cache/tensorflow
+    environment:
+      DEEPFAKE_ENV: benchmark
+      DEEPFAKE_LOG_LEVEL: ${DEEPFAKE_LOG_LEVEL:-INFO}
+      PYTHONIOENCODING: utf-8
+      TF_CPP_MIN_LOG_LEVEL: "2"
+      TF_FORCE_GPU_ALLOW_GROWTH: "true"
+      TF_GPU_ALLOCATOR: cuda_malloc_async
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      DATABASE_URL: sqlite:////app/data/app.db
+      DEEPFAKE_UPLOADS_DIR: /app/data/uploads
+      DEEPFAKE_MODELS_DIR: /app/app/models
+      HF_HOME: /app/cache/huggingface
+      TORCH_HOME: /app/cache/torch
+      XFAKE_SYNC_MODELS_ON_BOOT: "false"
+      XFAKE_CREATE_DEFAULT_MODELS: "false"
+      XFAKE_TRAIN_BATCH_LOG_INTERVAL_S: ${XFAKE_TRAIN_BATCH_LOG_INTERVAL_S:-60}
+    deploy:
+      resources:
+        limits:
+          cpus: "${DOCKER_TRAIN_CPU_LIMIT:-8.0}"
+          memory: ${DOCKER_TRAIN_MEMORY_LIMIT:-16G}
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${NVIDIA_GPU_COUNT:-all}
+              capabilities: [gpu, compute, utility]
+    healthcheck:
+      disable: true
+    command:
+      - python
+      - scripts/run_models_sequential.py
+      - --dataset
+      - app/datasets/benchmark_audio_raw_balanced_15k.npz
+      - --out
+      - results/clean_benchmark_latest
+      - --epochs
+      - "100"
+      - --device-profile
+      - gpu
+      - --timeout-min
+      - "240"
+      - --latency-runs
+      - "30"
+      - --snr
+      - "30"
+      - "20"
+      - "10"

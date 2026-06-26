@@ -1,6 +1,9 @@
 # =====================================================================
-# XFakeSong — benchmark/training batch profile
+# XFakeSong — benchmark/training batch profile legado
 # =====================================================================
+# Para novos builds, prefira:
+#   docker compose -f docker/compose/benchmark.nvidia.yml run --rm benchmark
+#
 # Uso:
 #   docker compose -f docker-compose.benchmark.yml build benchmark
 #   docker compose -f docker-compose.benchmark.yml run --rm benchmark
@@ -35,6 +38,9 @@ services:
       TF_FORCE_GPU_ALLOW_GROWTH: "true"
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      DATABASE_URL: sqlite:////app/data/app.db
+      DEEPFAKE_UPLOADS_DIR: /app/data/uploads
+      DEEPFAKE_MODELS_DIR: /app/app/models
       XFAKE_SYNC_MODELS_ON_BOOT: "false"
       XFAKE_CREATE_DEFAULT_MODELS: "false"
       XFAKE_TRAIN_BATCH_LOG_INTERVAL_S: ${XFAKE_TRAIN_BATCH_LOG_INTERVAL_S:-60}

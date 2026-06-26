@@ -1,7 +1,10 @@
 # =====================================================================
-# XFakeSong — docker-compose GPU override
+# XFakeSong — docker-compose GPU override legado
 # =====================================================================
-# Use junto com o compose base para habilitar GPU NVIDIA:
+# Para novos builds NVIDIA, prefira:
+#   docker compose -f docker/compose/inference.nvidia.yml up --build inference-api
+#
+# Use junto com o compose base legado para habilitar GPU NVIDIA:
 #   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 #
 # Pré-requisitos:

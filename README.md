@@ -55,11 +55,91 @@ A interface Gradio fica disponível em `http://localhost:7860/gradio/`.
 O uso das abas, análises e notificações está documentado em
 [docs/23_INTERFACE_GRADIO.md](docs/23_INTERFACE_GRADIO.md).
 
+## Runtime Local
+
+Os caminhos padrão são mantidos separados para evitar artefatos soltos na raiz:
+
+| Uso | Caminho padrão |
+| --- | --- |
+| Banco SQLite local | `data/app.db` |
+| Uploads da API/Gradio | `data/uploads/` |
+| Resultados regeneráveis | `results/` |
+| Raiz de modelos usada pela inferência | `app/models/` |
+| Modelos finais consolidados | `app/models/benchmark_final/` |
+
+`DEEPFAKE_MODELS_DIR` deve continuar apontando para `app/models`; os modelos
+treinados prontos para demonstração ficam em `app/models/benchmark_final/` e
+também são materializados como `app/models/bench_*` quando necessário pelo
+loader.
+
 No Windows, o menu interativo também pode ser iniciado com:
 
 ```bash
 start.bat
 ```
+
+## Ambientes de Treinamento
+
+O projeto possui uma estrutura consolidada por família computacional em
+`environments/`, com requirements, Dockerfiles e READMEs dedicados.
+
+| Família | Modelos | Entrada |
+| --- | --- | --- |
+| `classical-ml` | SVM, RandomForest | `python scripts/train_classical.py` |
+| `tensorflow-keras` | Sonic Sleuth, EfficientNet-LSTM, MultiscaleCNN, SpectrogramTransformer | `python scripts/train_tensorflow.py` |
+| `pytorch-audio` | RawNet2, AASIST, RawGAT-ST, Conformer, Hybrid CNN-Transformer | `python scripts/train_pytorch.py` |
+| `ssl-transformers` | WavLM, HuBERT | `python scripts/train_ssl.py` |
+| `inference-api` | Gradio/FastAPI com modelos treinados | `python main.py --gradio` |
+
+Todos os wrappers usam `scripts/run_models_sequential.py`, preservando pasta
+própria por modelo, logs, retomada, `results.json`, figuras e artefatos.
+
+```bash
+python scripts/train_classical.py --plan-only
+python scripts/train_tensorflow.py --models MultiscaleCNN --epochs 100 --device-profile gpu
+python scripts/train_pytorch.py --models Conformer RawNet2 --epochs 100 --device-profile gpu
+python scripts/train_ssl.py --models WavLM HuBERT --epochs 100 --device-profile gpu
+```
+
+Execução via Docker por perfil:
+
+```bash
+# CPU/onboard, sem CUDA
+docker compose -f docker/compose/train.cpu.yml run --rm classical-ml
+docker compose -f docker/compose/train.cpu.yml run --rm tensorflow-keras
+
+# NVIDIA CUDA via Linux/WSL2/Docker Desktop GPU
+docker compose -f docker/compose/train.nvidia.yml run --rm tensorflow-keras
+docker compose -f docker/compose/train.nvidia.yml run --rm pytorch-audio
+docker compose -f docker/compose/train.nvidia.yml run --rm ssl-transformers
+
+# Inferência
+docker compose -f docker/compose/inference.cpu.yml up --build inference-api
+docker compose -f docker/compose/inference.nvidia.yml up --build inference-api
+```
+
+Também há um helper único:
+
+```bash
+python scripts/docker_build.py train-nvidia config
+python scripts/docker_build.py inference-cpu up
+python scripts/docker_build.py benchmark-nvidia run
+```
+
+Via `make`, os targets de Docker usam os mesmos perfis segmentados:
+
+```bash
+make build              # docker/compose/inference.cpu.yml
+make up                 # inferência CPU/onboard
+make up GPU=1           # inferência NVIDIA
+make train-cpu          # treino clássico/CPU
+make train-nvidia       # treino neural TensorFlow/Keras com NVIDIA
+make benchmark-nvidia   # benchmark completo NVIDIA/WSL2
+make docker-config      # valida todos os compose segmentados
+```
+
+O plano técnico e os critérios de aceite estão em
+[docs/26_PLANO_AMBIENTES_TREINAMENTO.md](docs/26_PLANO_AMBIENTES_TREINAMENTO.md).
 
 ## Benchmark do TCC
 

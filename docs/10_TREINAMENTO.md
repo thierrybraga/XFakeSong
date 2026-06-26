@@ -2,6 +2,30 @@
 
 Este documento detalha o processo de treinamento, configurações de otimização e peculiaridades de cada arquitetura implementada no XFakeSong.
 
+## Ambientes consolidados
+
+O treinamento operacional foi organizado por família computacional. Os arquivos
+ficam em `environments/`, os presets em `configs/training/` e os entrypoints em
+`scripts/train_*.py`.
+
+| Família | Config | Entrypoint | Modelos |
+|---|---|---|---|
+| `classical-ml` | `configs/training/classical.yaml` | `scripts/train_classical.py` | SVM, RandomForest |
+| `tensorflow-keras` | `configs/training/tensorflow.yaml` | `scripts/train_tensorflow.py` | Sonic Sleuth, EfficientNet-LSTM, MultiscaleCNN, SpectrogramTransformer |
+| `pytorch-audio` | `configs/training/pytorch.yaml` | `scripts/train_pytorch.py` | RawNet2, AASIST, RawGAT-ST, Conformer, Hybrid CNN-Transformer |
+| `ssl-transformers` | `configs/training/ssl.yaml` | `scripts/train_ssl.py` | WavLM, HuBERT |
+
+```bash
+python scripts/train_classical.py --plan-only
+python scripts/train_tensorflow.py --models MultiscaleCNN --epochs 100 --device-profile gpu
+python scripts/train_pytorch.py --models Conformer RawNet2 --epochs 100 --device-profile gpu
+python scripts/train_ssl.py --models WavLM HuBERT --epochs 100 --device-profile gpu
+```
+
+Todos os entrypoints chamam `scripts/run_models_sequential.py`, que executa
+`scripts/run_benchmark.py --model <nome>` para cada arquitetura, salvando logs,
+modelos, métricas e figuras em pasta própria por modelo.
+
 ## 1. Pipeline de Treinamento
 
 ### 1.1 Fluxo Geral

@@ -1,0 +1,37 @@
+services:
+  inference-api:
+    build:
+      context: ../..
+      dockerfile: environments/inference-api/Dockerfile.cpu
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
+    image: xfakesong/inference-api:cpu
+    container_name: xfakesong_inference_cpu
+    working_dir: /app
+    ports:
+      - "${GRADIO_PORT:-7860}:7860"
+    volumes:
+      - ../../app/models:/app/app/models
+      - ../../app/datasets:/app/app/datasets
+      - ../../results:/app/results
+      - ../../data:/app/data
+      - ../../cache/huggingface:/app/cache/huggingface
+      - ../../cache/torch:/app/cache/torch
+    environment:
+      DEEPFAKE_ENV: ${DEEPFAKE_ENV:-production}
+      DEEPFAKE_LOG_LEVEL: ${DEEPFAKE_LOG_LEVEL:-INFO}
+      GRADIO_SERVER_NAME: 0.0.0.0
+      GRADIO_SERVER_PORT: "7860"
+      GRADIO_ANALYTICS_ENABLED: "False"
+      TF_CPP_MIN_LOG_LEVEL: "2"
+      DATABASE_URL: sqlite:////app/data/app.db
+      DEEPFAKE_UPLOADS_DIR: /app/data/uploads
+      DEEPFAKE_MODELS_DIR: /app/app/models
+      HF_HOME: /app/cache/huggingface
+      TORCH_HOME: /app/cache/torch
+    deploy:
+      resources:
+        limits:
+          cpus: "${DOCKER_CPU_LIMIT:-4.0}"
+          memory: ${DOCKER_MEMORY_LIMIT:-8G}
+    command: ["python", "main.py", "--gradio", "--gradio-port", "7860"]

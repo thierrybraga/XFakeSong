@@ -81,12 +81,21 @@ jobs:
         run: mkdocs build --strict
 
   docker:
-    name: Docker build (variante CPU)
+    name: Docker build/config
     # Só em PR: valida o Dockerfile sem gastar minutos a cada push.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
       - name: Build da imagem (TF_VARIANT=cpu)
         run: docker build --build-arg TF_VARIANT=cpu -t xfakesong:ci .
+      - name: Validar compose segmentado
+        run: |
+          python scripts/docker_build.py inference-cpu config
+          python scripts/docker_build.py train-cpu config
+          python scripts/docker_build.py train-nvidia config
+          python scripts/docker_build.py benchmark-nvidia config

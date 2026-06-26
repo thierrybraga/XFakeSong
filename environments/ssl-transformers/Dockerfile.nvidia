@@ -1,0 +1,31 @@
+# syntax=docker/dockerfile:1.7
+ARG PYTHON_VERSION=3.11
+
+FROM python:${PYTHON_VERSION}-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONIOENCODING=utf-8 \
+    HF_HOME=/app/cache/huggingface \
+    TORCH_HOME=/app/cache/torch \
+    MPLBACKEND=Agg \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        libsndfile1 \
+        libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY environments/ssl-transformers/requirements.txt /tmp/requirements.txt
+RUN pip install --upgrade pip setuptools wheel \
+    && pip install -r /tmp/requirements.txt \
+    && pip install 'tensorflow[and-cuda]>=2.16,<2.22' \
+    && pip install --upgrade --no-deps 'nvidia-cudnn-cu12>=9.3.0.75,<10' \
+    && pip install --no-deps 'nvidia-cuda-nvcc-cu12'
+
+COPY . .
+
+CMD ["python", "scripts/train_ssl.py", "--help"]

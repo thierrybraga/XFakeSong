@@ -109,9 +109,11 @@ chmod +x start.sh
 Ou via `make`:
 ```bash
 make install            # Cria .venv e instala
-make up                 # docker compose up -d
+make up                 # inferência CPU/onboard via docker/compose/inference.cpu.yml
+make up GPU=1           # inferência NVIDIA via docker/compose/inference.nvidia.yml
 make logs               # tail logs
 make down               # para containers
+make docker-config      # valida todos os perfis Compose segmentados
 ```
 
 ---
@@ -165,7 +167,7 @@ O `Dockerfile` usa **multi-stage build**:
 
 Resultado: imagem final ~60% menor que single-stage. Sem `gcc` em produção.
 
-### docker-compose
+### docker-compose legado
 
 ```yaml
 # Comando base
@@ -184,7 +186,84 @@ docker compose logs -f app
 docker compose down -v --remove-orphans
 ```
 
+Esses arquivos da raiz (`docker-compose.yml`, `docker-compose.gpu.yml`,
+`docker-compose.benchmark.yml` e `docker-compose.train.yml`) são mantidos como
+compatibilidade. Para novos builds, use os perfis segmentados descritos abaixo.
+
 **Importante**: usar `docker compose` (v2, espaço) e não `docker-compose` (v1, hífen). Os scripts `start.bat`/`start.sh` detectam ambos automaticamente.
+
+### Perfis Docker segmentados
+
+Para novos builds, prefira os arquivos em `docker/compose/`. Eles separam
+inferência, treino CPU/onboard, treino NVIDIA e benchmark. Os arquivos
+`docker-compose.yml`, `docker-compose.gpu.yml`, `docker-compose.benchmark.yml` e
+`docker-compose.train.yml` continuam disponíveis por compatibilidade.
+
+| Perfil | Compose | Uso |
+|---|---|---|
+| Inferência CPU/onboard | `docker/compose/inference.cpu.yml` | Gradio/FastAPI sem CUDA |
+| Inferência NVIDIA | `docker/compose/inference.nvidia.yml` | Gradio/FastAPI com CUDA |
+| Treino CPU/onboard | `docker/compose/train.cpu.yml` | SVM/RF e smoke neural sem CUDA |
+| Treino NVIDIA/WSL2 | `docker/compose/train.nvidia.yml` | treino neural com CUDA |
+| Benchmark NVIDIA/WSL2 | `docker/compose/benchmark.nvidia.yml` | benchmark sequencial completo |
+
+CPU/onboard significa que o container não solicita dispositivo GPU. É o perfil
+correto para Windows nativo, Intel/AMD integrado e máquinas sem NVIDIA. Para
+aceleração CUDA, use os perfis `*.nvidia.yml` com WSL2/Docker Desktop GPU
+habilitado.
+
+```bash
+# Validar configuração sem build
+python scripts/docker_build.py train-nvidia config
+
+# Inferência
+docker compose -f docker/compose/inference.cpu.yml up --build inference-api
+docker compose -f docker/compose/inference.nvidia.yml up --build inference-api
+
+# Treino por família
+docker compose -f docker/compose/train.cpu.yml run --rm classical-ml
+docker compose -f docker/compose/train.nvidia.yml run --rm tensorflow-keras
+docker compose -f docker/compose/train.nvidia.yml run --rm pytorch-audio
+docker compose -f docker/compose/train.nvidia.yml run --rm ssl-transformers
+
+# Benchmark completo em GPU NVIDIA
+docker compose -f docker/compose/benchmark.nvidia.yml run --rm benchmark
+```
+
+Os serviços NVIDIA declaram reserva de GPU no próprio compose; mantenha Docker
+Desktop com WSL2 GPU habilitado. Valide o host antes do build:
+
+```bash
+docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
+```
+
+Para detalhes de arquitetura e migração, veja
+[Plano de Ambientes de Treinamento](26_PLANO_AMBIENTES_TREINAMENTO.md).
+
+### Runtime e persistência local
+
+Os caminhos padrão foram padronizados para separar runtime, resultados e
+artefatos de inferência:
+
+| Uso | Caminho local | Caminho no container |
+|---|---|---|
+| Banco SQLite | `data/app.db` | `/app/data/app.db` |
+| Uploads Gradio/API | `data/uploads/` | `/app/data/uploads/` |
+| Resultados regeneráveis | `results/` | `/app/results/` |
+| Datasets de benchmark | `app/datasets/` | `/app/app/datasets/` |
+| Modelos da inferência | `app/models/` | `/app/app/models/` |
+| Modelos finais consolidados | `app/models/benchmark_final/` | `/app/app/models/benchmark_final/` |
+
+No Docker, os perfis definem:
+
+```env
+DATABASE_URL=sqlite:////app/data/app.db
+DEEPFAKE_UPLOADS_DIR=/app/data/uploads
+DEEPFAKE_MODELS_DIR=/app/app/models
+```
+
+Em execução local Python, os defaults equivalentes são `data/app.db`,
+`data/uploads` e `app/models`.
 
 ### Limites de recursos
 
@@ -192,6 +271,9 @@ Editáveis via `.env`:
 ```env
 DOCKER_MEMORY_LIMIT=8G       # Default 8GB
 DOCKER_CPU_LIMIT=4.0         # Default 4 CPUs
+DOCKER_TRAIN_MEMORY_LIMIT=16G
+DOCKER_TRAIN_CPU_LIMIT=8.0
+NVIDIA_GPU_COUNT=all
 GRADIO_PORT=7860             # Porta exposta
 ```
 
@@ -365,7 +447,12 @@ Ou adicione `.gitattributes`:
    ```cmd
    docker run --rm --gpus all nvidia/cuda:12.2.0-base-ubuntu22.04 nvidia-smi
    ```
-4. Use `start.bat gpu` (carrega `docker-compose.gpu.yml`)
+4. Use um dos comandos abaixo. `start.bat gpu` continua disponível por
+   compatibilidade e usa o compose legado.
+   ```cmd
+   docker compose -f docker/compose/inference.nvidia.yml up --build inference-api
+   docker compose -f docker/compose/train.nvidia.yml run --rm tensorflow-keras
+   ```
 
 ---
 
@@ -503,7 +590,9 @@ make env                # via Makefile
 | `GRADIO_SERVER_PORT` | `7860` | Porta interna do Gradio (container) |
 | `DOCKER_MEMORY_LIMIT` | `8G` | Limite RAM do container |
 | `DOCKER_CPU_LIMIT` | `4.0` | Limite CPUs do container |
-| `NVIDIA_GPU_COUNT` | `all` | Apenas com `docker-compose.gpu.yml` |
+| `DOCKER_TRAIN_MEMORY_LIMIT` | `16G` | RAM para containers de treino/benchmark |
+| `DOCKER_TRAIN_CPU_LIMIT` | `8.0` | CPUs para containers de treino/benchmark |
+| `NVIDIA_GPU_COUNT` | `all` | Perfis `docker/compose/*.nvidia.yml` |
 
 ---
 
@@ -521,8 +610,17 @@ XFakeSong/
 ├── logs/               # Logs da aplicação [VOLUME]
 ├── .venv/              # Virtualenv local (ignorado no Docker)
 ├── Dockerfile          # Multi-stage build
+├── docker/
+│   ├── build.env.example
+│   └── compose/
+│       ├── inference.cpu.yml
+│       ├── inference.nvidia.yml
+│       ├── train.cpu.yml
+│       ├── train.nvidia.yml
+│       └── benchmark.nvidia.yml
 ├── docker-compose.yml          # Base
-├── docker-compose.gpu.yml      # Override GPU
+├── docker-compose.gpu.yml      # Override GPU legado
+├── docker-compose.train.yml    # Alias legado de treino NVIDIA
 ├── docker-entrypoint.sh        # Entrypoint do container
 ├── Makefile                    # Comandos uniformes
 ├── start.bat / start.sh        # Launchers

@@ -1,9 +1,9 @@
-# Revisão acadêmica — `tcc.tex`
+# Revisão acadêmica — `main.tex`
 
 **Trabalho:** *Pipeline Modular para Detecção de Áudio Sintético usando Arquiteturas Neurais Híbridas e Análise Empírica de Características*
 **Autor:** Thierry Gonçalves Braga · **Revisão em:** 25/06/2026
 
-Revisão de rigor acadêmico do `tcc.tex` (2.233 linhas). Esta é uma **lista de melhorias e ajustes** — nada no arquivo foi alterado. As verificações automáticas executadas estão resumidas no final.
+Revisão de rigor acadêmico do `main.tex` (2.233 linhas). Esta é uma **lista de melhorias e ajustes** — nada no arquivo foi alterado. As verificações automáticas executadas estão resumidas no final.
 
 ---
 

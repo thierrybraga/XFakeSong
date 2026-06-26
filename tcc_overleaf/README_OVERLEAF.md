@@ -1,9 +1,9 @@
 # Pacote Overleaf - TCC XFakeSong
 
-Faça upload de todos os arquivos desta pasta no Overleaf e compile `tcc.tex` com pdfLaTeX.
+Faça upload de todos os arquivos desta pasta no Overleaf e compile `main.tex` com pdfLaTeX.
 
 Conteúdo:
-- `tcc.tex`: versão otimizada do TCC com caminhos relativos.
+- `main.tex`: versão otimizada do TCC com caminhos relativos.
 - `figures/`: gráficos consolidados do benchmark utilizados no texto.
 - `figures/confusion_matrices/`: matrizes de confusão por arquitetura.
 
@@ -13,7 +13,7 @@ Origem dos dados:
 - Modelos completos por arquitetura: `app/models/benchmark_final/`.
 - Métricas e relatórios completos: `results/`.
 
-O pacote `tcc_overleaf.zip` deve conter apenas `tcc.tex`, este README e as
+O pacote `tcc_overleaf.zip` deve conter apenas `main.tex`, este README e as
 figuras. Não inclua PDFs ou arquivos auxiliares (`.aux`, `.log`, `.out`,
 `.toc`) no upload.
 

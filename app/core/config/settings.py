@@ -36,8 +36,8 @@ class PathConfig:
 
     base_dir: Path = field(default_factory=lambda: Path("."))
     data_dir: Path = field(default_factory=lambda: Path("./app/datasets"))
-    logs_dir: Path = field(default_factory=lambda: Path("./app/logs"))
-    temp_dir: Path = field(default_factory=lambda: Path("./app/temp"))
+    logs_dir: Path = field(default_factory=lambda: Path("./logs"))
+    temp_dir: Path = field(default_factory=lambda: Path("./data/temp"))
     models_dir: Path = field(default_factory=lambda: Path("./app/models"))
 
     # Subdiretórios de dados
@@ -46,16 +46,16 @@ class PathConfig:
     samples_dir: Path = field(default_factory=lambda: Path("./app/datasets"))
 
     # Diretórios de upload
-    uploads_dir: Path = field(default_factory=lambda: Path("./app/uploads"))
+    uploads_dir: Path = field(default_factory=lambda: Path("./data/uploads"))
     upload_training_dir: Path = field(
-        default_factory=lambda: Path("./app/uploads/training")
+        default_factory=lambda: Path("./data/uploads/training")
     )
     upload_validation_dir: Path = field(
-        default_factory=lambda: Path("./app/uploads/validation")
+        default_factory=lambda: Path("./data/uploads/validation")
     )
-    upload_test_dir: Path = field(default_factory=lambda: Path("./app/uploads/test"))
+    upload_test_dir: Path = field(default_factory=lambda: Path("./data/uploads/test"))
     upload_production_dir: Path = field(
-        default_factory=lambda: Path("./app/uploads/production")
+        default_factory=lambda: Path("./data/uploads/production")
     )
 
     def __post_init__(self):
@@ -74,6 +74,16 @@ class PathConfig:
             self.features_dir = self.base_dir / self.features_dir
         if not self.samples_dir.is_absolute():
             self.samples_dir = self.base_dir / self.samples_dir
+        if not self.uploads_dir.is_absolute():
+            self.uploads_dir = self.base_dir / self.uploads_dir
+        if not self.upload_training_dir.is_absolute():
+            self.upload_training_dir = self.base_dir / self.upload_training_dir
+        if not self.upload_validation_dir.is_absolute():
+            self.upload_validation_dir = self.base_dir / self.upload_validation_dir
+        if not self.upload_test_dir.is_absolute():
+            self.upload_test_dir = self.base_dir / self.upload_test_dir
+        if not self.upload_production_dir.is_absolute():
+            self.upload_production_dir = self.base_dir / self.upload_production_dir
 
     def create_directories(self):
         """Cria todos os diretórios necessários."""
@@ -86,6 +96,11 @@ class PathConfig:
             self.datasets_dir,
             self.features_dir,
             self.samples_dir,
+            self.uploads_dir,
+            self.upload_training_dir,
+            self.upload_validation_dir,
+            self.upload_test_dir,
+            self.upload_production_dir,
         ]
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)
@@ -267,7 +282,7 @@ class DatabaseConfig:
     password: Optional[str] = None
 
     # SQLite específico
-    sqlite_path: Path = field(default_factory=lambda: Path("./data/database.db"))
+    sqlite_path: Path = field(default_factory=lambda: Path("./data/app.db"))
 
     # Pool de conexões
     pool_size: int = 5

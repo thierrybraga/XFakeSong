@@ -1,0 +1,7 @@
+# XFakeSong - TensorFlow/Keras training environment
+# Python 3.11 recommended.
+
+-r ../../requirements-base.txt
+
+tensorflow>=2.16,<2.22
+

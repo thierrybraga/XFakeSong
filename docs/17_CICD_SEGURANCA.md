@@ -15,7 +15,7 @@ Princípio do menor privilégio: `permissions: contents: read`.
 | **Testes + cobertura** | ✅ sim | `run_tests.sh cov` (suíte rápida, exclui smoke) em Python 3.11 |
 | **Docs** | ✅ sim | `mkdocs build --strict` — pega links/refs quebrados |
 | **Segurança** | ✅ HIGH | `bandit -lll` (SAST, falha em severidade alta); `pip-audit` advisório |
-| **Docker build** | ✅ (só em PR) | `docker build --build-arg TF_VARIANT=cpu` valida o Dockerfile |
+| **Docker build** | ✅ (só em PR) | `docker build --build-arg TF_VARIANT=cpu` + `docker compose config` dos perfis segmentados |
 | **Lint (ruff)** | ⚠️ advisório | publica achados como anotações (`--exit-zero`) sem bloquear |
 
 Workflows auxiliares:
@@ -31,7 +31,10 @@ Para reproduzir os gates localmente:
 ./scripts/run_tests.sh cov                 # testes + cobertura
 mkdocs build --strict                      # docs
 bandit -r app benchmarks scripts -lll      # SAST (HIGH)
-docker build --build-arg TF_VARIANT=cpu .  # valida o Dockerfile
+docker build --build-arg TF_VARIANT=cpu .  # valida o Dockerfile legado
+python scripts/docker_build.py inference-cpu config
+python scripts/docker_build.py train-cpu config
+python scripts/docker_build.py train-nvidia config
 ```
 
 ## Modelo de segurança da aplicação
