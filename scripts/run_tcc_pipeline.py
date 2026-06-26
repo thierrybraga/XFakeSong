@@ -428,6 +428,12 @@ def main() -> int:
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--device-profile", choices=["auto", "cpu", "gpu"], default="auto")
     parser.add_argument("--no-optimize-hparams", action="store_true")
+    # P0 — repasse dos protocolos anti-vazamento ao benchmark.
+    parser.add_argument("--group-split", action="store_true",
+                        help="split disjunto por fonte/gerador (anti-vazamento)")
+    parser.add_argument("--cross-generator", metavar="GERADOR", default=None,
+                        help="segura este gerador fora do treino e testa nele "
+                             "(ex.: fkvoice)")
     parser.add_argument("--skip-benchmark-preflight", action="store_true")
     parser.add_argument("--latency-runs", type=int, default=30)
     parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10])
@@ -550,6 +556,10 @@ def main() -> int:
         bench_cmd.append("--api")
     else:
         bench_cmd.append("--no-api")
+    if args.group_split:
+        bench_cmd.append("--group-split")
+    if args.cross_generator:
+        bench_cmd.extend(["--cross-generator", args.cross_generator])
 
     if not args.skip_benchmark_preflight:
         _run(

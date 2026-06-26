@@ -17,7 +17,7 @@ O XFakeSong oferece **dois caminhos** para popular `app/datasets/real/` e `app/d
 
 ### 1. Interface Gradio (recomendado) — Download balanceado
 
-Abra a interface (`python main.py --gradio`) → aba **Dataset → Download**.
+Abra a interface (`python main.py --gradio`) → **Gerenciar → Datasets/Download**.
 
 O sistema é **balance-aware**: você define um *alvo por classe* e seleciona as fontes; o XFakeSong calcula automaticamente quantas amostras baixar de cada fonte para chegar a um dataset equilibrado.
 
@@ -241,7 +241,7 @@ app/datasets/
 ```
 
 **Fluxo recomendado de ponta a ponta:**
-1. **Baixar** (balanceado): UI **Dataset → Download** ou `python scripts/download_datasets.py --all --max-samples 2000`
+1. **Baixar** (balanceado): UI **Gerenciar → Datasets/Download** ou `python scripts/download_datasets.py --all --max-samples 2000`
 2. **Validar + normalizar + splits**: `python scripts/preprocess_dataset.py --full`
 3. **Treinar**: UI **Treinar** (wizard) — escolha um modelo compatível com o tamanho do seu dataset.
 

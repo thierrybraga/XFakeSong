@@ -329,10 +329,13 @@ def _run_neural(
     train_config["verbose"] = 0
     compact = _compact_slug(arch)
     if compact == "rawnet2":
+        # P2 — RawNet2 colapsava a ~50% sob ruído por treinar SEM augmentation.
+        # Com o ruído agora calibrado por SNR (+ RawBoost/codec para raw-audio),
+        # habilitar augmentation é o conserto direto da fragilidade a ruído.
         train_config.update(
             {
                 "learning_rate": 1e-4,
-                "use_augmentation": False,
+                "use_augmentation": True,
                 "use_mixed_precision": False,
             }
         )
@@ -376,7 +379,14 @@ def _run_neural(
                 if key in train_config:
                     model_params.setdefault(key, train_config[key])
         elif compact == "spectrogramtransformer":
-            train_config.update({"use_augmentation": False})
+            # P1 — retreino obrigatório. Liga augmentation (ruído SNR + SpecAug)
+            # e força a restauração do MELHOR checkpoint (val_loss), atacando o
+            # colapso val→teste por sobreajuste. Hiperparâmetros mais
+            # regularizados vêm dos defaults da arquitetura (dropout 0.3,
+            # weight_decay 1e-4, lr de pico 5e-5).
+            train_config.update(
+                {"use_augmentation": True, "checkpoint_best": True}
+            )
 
     checkpoint_path = None
     if bool(train_config.pop("checkpoint_best", False)):
@@ -482,6 +492,23 @@ def _run_classical(
             axis=0,
         )
         y_fit = np.concatenate([y_train, np.asarray(yv).ravel()], axis=0)
+
+    # P2 — augmentation ruidoso (SVM/RF): anexa cópias do treino com AWGN nos
+    # mesmos SNRs avaliados. Feito no espaço de feature em que a robustez é
+    # medida (BenchmarkData.add_awgn opera sobre o vetor de features tabular),
+    # então o treino passa a ver a degradação que antes só aparecia no teste.
+    aug_snrs = []
+    if getattr(cfg, "classical_noise_augmentation", True):
+        aug_snrs = list(cfg.snr_levels_db)
+    if aug_snrs:
+        extra_X = [BenchmarkData.add_awgn(X_fit_2d, snr, seed=cfg.seed + i)
+                   for i, snr in enumerate(aug_snrs)]
+        X_fit_2d = np.concatenate([X_fit_2d, *extra_X], axis=0)
+        y_fit = np.concatenate([y_fit] * (1 + len(aug_snrs)), axis=0)
+        logging.getLogger("benchmark").info(
+            "[%s] augmentation clássico: +%d cópias ruidosas (SNRs=%s) → %d amostras",
+            arch, len(aug_snrs), aug_snrs, len(y_fit),
+        )
 
     tuning = {"enabled": False, "status": "disabled"}
     model_kwargs: dict[str, Any] = {}
@@ -699,7 +726,21 @@ def run_benchmark(cfg: BenchmarkConfig) -> Dict[str, Any]:
     write_benchmark_plan(plan, cfg.output_dir)
     apply_plan_to_config(cfg, plan)
 
-    y_test_base = _stratified_test_labels(data.y, cfg.seed)
+    # Rótulos do teste held-out para o resumo do dataset. Sob split por
+    # grupo/cross-generator, reproduz a MESMA partição (label-only, sem copiar
+    # o X grande) para que balance_test/y_test reflitam o protocolo real.
+    if (cfg.group_split or cfg.holdout_generator) and data.groups is not None:
+        label_view = BenchmarkData(
+            X=np.zeros((len(data.y), 1), dtype="float32"),
+            y=data.y, name=data.name, groups=data.groups,
+        )
+        _, _, _, _, _, y_test_base = label_view.stratified_split(
+            cfg.seed,
+            group_split=cfg.group_split,
+            holdout_generator=cfg.holdout_generator,
+        )
+    else:
+        y_test_base = _stratified_test_labels(data.y, cfg.seed)
     n_test = len(y_test_base)
     logger.info(
         "Dataset '%s': %d amostras | teste held-out: %d", data.name,
@@ -710,7 +751,11 @@ def run_benchmark(cfg: BenchmarkConfig) -> Dict[str, Any]:
     for arch in cfg.architectures:
         logger.info("=== Benchmark: %s ===", arch)
         prepared = data.prepare_for_architecture(arch)
-        splits = prepared.stratified_split(cfg.seed)
+        splits = prepared.stratified_split(
+            cfg.seed,
+            group_split=cfg.group_split,
+            holdout_generator=cfg.holdout_generator,
+        )
         per_arch[arch] = _benchmark_one(arch, cfg, splits)
         per_arch[arch]["input_preparation"] = prepared.metadata or {}
 

@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import argparse
 import json
+import sys
 from pathlib import Path
 
 
-SOURCE = Path(
-    r"C:\Users\thier\.codex\attachments"
-    r"\7478ca51-40fc-4641-a09a-21d2c0649704\pasted-text.txt"
-)
+# Defaults reprodutíveis (antes: SOURCE apontava para um .txt morto em
+# C:\Users\...\.codex\attachments). Agora o template-base é o próprio tcc.tex
+# e os dados vêm do summary gerado por scripts/consolidate_results.py. Todos
+# podem ser sobrescritos por CLI (--source/--summary/--output/--in-place).
+SOURCE = Path("tcc_overleaf/tcc.tex")
 SUMMARY = Path("results/tcc_consolidated/benchmark_summary.json")
-OUTPUT = Path("TCC_benchmark_atualizado.tex")
+OUTPUT = Path("tcc_overleaf/tcc_atualizado.tex")
 
 MODEL_ORDER = [
     "WavLM Original",
@@ -88,37 +91,17 @@ def integer(value: int | None) -> str:
 
 
 def model_rows(data: list[dict]) -> list[dict]:
-    by_key = {}
-    for row in data:
-        normalized = dict(row)
-        if row.get("model") == "RandomForest":
-            rf_metrics_path = Path(
-                "results/tcc_pipeline_svm_rf_balanced_15k/"
-                "architectures/randomforest/metrics.json"
-            )
-            rf_metrics = json.loads(rf_metrics_path.read_text(encoding="utf-8"))
-            clean = rf_metrics["clean"]
-            efficiency = rf_metrics["efficiency"]
-            normalized.update(
-                {
-                    "key": "RandomForest",
-                    "accuracy": clean["accuracy"],
-                    "auc": clean["auc_roc"],
-                    "eer": clean["eer"],
-                    "f1": clean["f1"],
-                    "latency": efficiency["latency_ms"],
-                    "size": efficiency["size_mb"],
-                    "params": efficiency["params"],
-                    "robustness": rf_metrics["robustness"],
-                    "best_val": None,
-                    "final_val": None,
-                }
-            )
-        by_key[normalized["key"]] = normalized
+    # O summary consolidado (consolidate_results.py) já traz TODAS as
+    # arquiteturas — inclusive RandomForest — com métricas e robustez. O
+    # antigo caso especial que lia um metrics.json fixo do RF foi removido.
+    by_key = {row["key"]: dict(row) for row in data if "key" in row}
     missing = [key for key in MODEL_ORDER if key not in by_key]
     if missing:
-        raise RuntimeError(f"Missing benchmark rows: {missing}")
-    return [by_key[key] for key in MODEL_ORDER]
+        # Tolerante: avisa e segue com o que houver (ex.: consolidação parcial).
+        print(f"AVISO: faltando no summary: {missing}", file=sys.stderr)
+    ordered = [by_key[key] for key in MODEL_ORDER if key in by_key]
+    ordered += [r for k, r in by_key.items() if k not in MODEL_ORDER]
+    return ordered
 
 
 def build_results_table(rows: list[dict]) -> str:
@@ -214,6 +197,99 @@ def build_stability_table(rows: list[dict]) -> str:
             + r" \\"
         )
     return "\n".join(table_rows)
+
+
+def _tables_fragment(results_table, efficiency_table, robustness_table,
+                     stability_table, figures_dir: str) -> str:
+    """Fragmento .tex autocontido (tabelas data-driven + figuras).
+
+    Projetado para `\\input{}` no tcc.tex — NÃO toca na prosa da tese. Os
+    valores vêm do benchmark_summary.json (consolidate_results.py), logo
+    refletem o treinamento mais recente.
+    """
+    fd = figures_dir.replace("\\", "/")
+    return rf"""% ====================================================================
+% Tabelas e figuras de benchmark — GERADO automaticamente.
+% Origem: results/.../results.json -> consolidate_results.py -> summary
+% NÃO editar à mão; regenerar com:
+%   python scripts/consolidate_results.py <runs...>
+%   python scripts/update_tcc_latex.py
+% ====================================================================
+
+\begin{{table}}[ht]
+\centering
+\caption{{Desempenho no conjunto limpo.}}
+\begin{{tabular}}{{lccccccc}}
+\hline
+Modelo & Acur. & EER & AUC & F1 & Lat.\,(ms) & Treino & Status \\
+\hline
+{results_table}
+\hline
+\end{{tabular}}
+\end{{table}}
+
+\begin{{table}}[ht]
+\centering
+\caption{{Eficiência (parâmetros, tamanho, latência).}}
+\begin{{tabular}}{{lccccc}}
+\hline
+Modelo & Parâmetros & Tam.\,(MB) & Lat.\,(ms) & Acur. & EER \\
+\hline
+{efficiency_table}
+\hline
+\end{{tabular}}
+\end{{table}}
+
+\begin{{table}}[ht]
+\centering
+\caption{{Robustez a ruído (acurácia por SNR, AWGN).}}
+\begin{{tabular}}{{lcccc}}
+\hline
+Modelo & Limpo & 30\,dB & 20\,dB & 10\,dB \\
+\hline
+{robustness_table}
+\hline
+\end{{tabular}}
+\end{{table}}
+
+\begin{{table}}[ht]
+\centering
+\caption{{Estabilidade de treinamento (validação).}}
+\begin{{tabular}}{{lccccc}}
+\hline
+Modelo & Val.\,pico & Época & Val.\,final & Queda & Nota \\
+\hline
+{stability_table}
+\hline
+\end{{tabular}}
+\end{{table}}
+
+\begin{{figure}}[ht]\centering
+\includegraphics[width=\textwidth]{{{fd}/benchmark_accuracy_auc.png}}
+\caption{{Acurácia e AUC-ROC por arquitetura.}}
+\end{{figure}}
+
+\begin{{figure}}[ht]\centering
+\includegraphics[width=\textwidth]{{{fd}/benchmark_robustness.png}}
+\caption{{Robustez a ruído (acurácia vs.\ SNR).}}
+\end{{figure}}
+
+\begin{{figure}}[ht]\centering
+\includegraphics[width=0.92\textwidth]{{{fd}/benchmark_eer.png}}
+\caption{{EER por arquitetura.}}
+\end{{figure}}
+
+\begin{{figure}}[ht]\centering
+\includegraphics[width=0.95\textwidth]{{{fd}/benchmark_latency.png}}
+\includegraphics[width=0.95\textwidth]{{{fd}/benchmark_size.png}}
+\caption{{Latência e tamanho dos modelos.}}
+\end{{figure}}
+
+\begin{{figure}}[ht]\centering
+\includegraphics[width=0.95\textwidth]{{{fd}/training_stability.png}}
+\caption{{Acurácia de validação ao longo das épocas.}}
+\end{{figure}}
+"""
 
 
 def replace_between(text: str, start: str, end: str, replacement: str) -> str:
@@ -885,7 +961,61 @@ __STABILITY_TABLE__
 
 
 def main() -> None:
-    text = SOURCE.read_text(encoding="utf-8")
+    p = argparse.ArgumentParser(
+        description="Atualiza o .tex do TCC a partir do summary consolidado"
+    )
+    p.add_argument("--source", default=str(SOURCE),
+                   help="tex base (default: tcc_overleaf/tcc.tex)")
+    p.add_argument("--summary", default=str(SUMMARY),
+                   help="benchmark_summary.json (consolidate_results.py)")
+    p.add_argument("--output", default=str(OUTPUT),
+                   help="saída (default: tcc_overleaf/tcc_atualizado.tex)")
+    p.add_argument("--in-place", action="store_true",
+                   help="(só com --full-rewrite) sobrescreve o --source com backup .bak")
+    p.add_argument("--full-rewrite", action="store_true",
+                   help="reescreve a TESE inteira injetando prosa+tabelas. FRÁGIL: "
+                        "exige que os marcadores de seção batam EXATAMENTE com o "
+                        "--source. Por padrão, gera só o fragmento de tabelas.")
+    p.add_argument("--figures-dir",
+                   default="results/tcc_consolidated/figures",
+                   help="caminho das figuras referenciado no fragmento de tabelas")
+    args = p.parse_args()
+
+    summary = Path(args.summary)
+    if not summary.exists():
+        sys.exit(f"ERRO: summary não encontrado: {summary}. "
+                 "Rode antes: python scripts/consolidate_results.py <runs...>")
+    rows_all = json.loads(summary.read_text(encoding="utf-8"))
+
+    # ---- Modo padrão: fragmento de TABELAS (data-driven, seguro) ----
+    if not args.full_rewrite:
+        rows = model_rows(rows_all)
+        fragment = _tables_fragment(
+            results_table=build_results_table(rows),
+            efficiency_table=build_efficiency_table(rows),
+            robustness_table=build_robustness_table(rows),
+            stability_table=build_stability_table(rows),
+            figures_dir=args.figures_dir,
+        )
+        out = Path(args.output)
+        if out.name == "tcc_atualizado.tex":  # default → nome de fragmento
+            out = out.with_name("tabelas_benchmark.tex")
+        out.write_text(fragment, encoding="utf-8")
+        print(f"Fragmento de tabelas escrito: {out.resolve()}")
+        print("Use no tcc.tex com:  \\input{tabelas_benchmark.tex}")
+        return
+
+    # ---- Modo legado: reescrita completa da tese (frágil) ----
+    source = Path(args.source)
+    output = Path(args.source) if args.in_place else Path(args.output)
+    if not source.exists():
+        sys.exit(f"ERRO: tex base não encontrado: {source}")
+    if args.in_place:
+        backup = source.with_suffix(source.suffix + ".bak")
+        backup.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+        print(f"Backup: {backup}")
+
+    text = source.read_text(encoding="utf-8")
     text = text.replace(
         "\\usepackage{microtype}   % melhora justificação e hifenização",
         "\\usepackage{microtype}   % melhora justificação e hifenização\n"
@@ -903,7 +1033,7 @@ def main() -> None:
         "Prof.\\ [Nome do Membro 2]\\\\\n[Instituição]",
         "Prof.\\ \\textit{[Nome do Membro 2]}\\\\\n\\textit{[Instituição]}",
     )
-    rows = model_rows(json.loads(SUMMARY.read_text(encoding="utf-8")))
+    rows = model_rows(json.loads(summary.read_text(encoding="utf-8")))
 
     results_table = build_results_table(rows)
     efficiency_table = build_efficiency_table(rows)
@@ -958,8 +1088,8 @@ def main() -> None:
         ),
     )
 
-    OUTPUT.write_text(text, encoding="utf-8")
-    print(f"Wrote {OUTPUT.resolve()}")
+    output.write_text(text, encoding="utf-8")
+    print(f"Wrote {output.resolve()}")
 
 
 if __name__ == "__main__":

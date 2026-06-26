@@ -167,6 +167,10 @@ em `app/models/`, o mesmo diretório usado pela Gradio/API para inferência. Use
 isolar uma execução. Caminhos relativos são resolvidos a partir da raiz do
 projeto, mesmo quando o comando é chamado de outro diretório.
 
+Para usar os modelos treinados na demonstração visual, consulte
+[Interface Gradio](23_INTERFACE_GRADIO.md). Para publicar modelos e demo,
+consulte [GitHub Pages e Hugging Face](24_PUBLICACAO_GITHUB_HF.md).
+
 ## Roteiro oficial do dataset robusto
 
 O benchmark do TCC atual parte de um conjunto balanceado 1:1 com `7.500`

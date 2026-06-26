@@ -51,7 +51,9 @@ python main.py --bootstrap-dirs
 python main.py --gradio
 ```
 
-A interface Gradio fica disponível em `http://localhost:7860`.
+A interface Gradio fica disponível em `http://localhost:7860/gradio/`.
+O uso das abas, análises e notificações está documentado em
+[docs/23_INTERFACE_GRADIO.md](docs/23_INTERFACE_GRADIO.md).
 
 No Windows, o menu interativo também pode ser iniciado com:
 
@@ -143,6 +145,15 @@ modelos; opções extras permitem anexar `tcc_overleaf/` e resultados
 consolidados. O passo a passo completo está em
 [docs/11_DEPLOY_HUGGINGFACE.md](docs/11_DEPLOY_HUGGINGFACE.md).
 
+Para baixar modelos pré-treinados do benchmark em outra máquina ou no Space:
+
+```bash
+MODEL_REPO_ID=SEU_USUARIO/xfakesong-models \
+python scripts/sync_hf_models.py --models-dir app/models --force
+```
+
+Use `HF_TOKEN` se o repositório de modelos for privado.
+
 ### Deploy como Hugging Face Space
 
 O repositório já está preparado para **Docker Space** (`sdk: docker`,
@@ -218,6 +229,8 @@ A documentação técnica está em `docs/` e é publicada via MkDocs:
 | Benchmark e resultados | [Benchmark e Resultados](docs/15_BENCHMARK.md) |
 | Estudo experimental no GitHub Pages | [Estudo Experimental](docs/20_ESTUDO_EXPERIMENTAL.md) |
 | Notebooks | [Guia de Notebooks](docs/16_NOTEBOOKS.md) |
+| Interface Gradio e abas | [Interface Gradio](docs/23_INTERFACE_GRADIO.md) |
+| GitHub Pages e Hugging Face | [Publicação GitHub/HF](docs/24_PUBLICACAO_GITHUB_HF.md) |
 | Dúvidas frequentes | [Perguntas Frequentes (FAQ)](docs/19_FAQ.md) |
 
 ## Comandos Essenciais

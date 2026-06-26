@@ -74,6 +74,22 @@ class BenchmarkConfig:
     optimize_hyperparameters: bool = True
     training_overrides: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
+    # P0 — split por fonte/gerador (anti-vazamento). Quando True e o dataset
+    # carrega `groups` (fonte por amostra), o split mantém os grupos DISJUNTOS
+    # entre train/val/test (StratifiedGroupKFold), evitando que o mesmo
+    # falante/gerador apareça em treino e teste (números inflados).
+    group_split: bool = False
+    # P0.4 — protocolo cross-generator: nome do gerador (ex.: "fkvoice") a
+    # segurar fora do treino; o teste passa a conter SÓ esse gerador (+ reais
+    # disjuntos). Mede generalização a gerador inédito. None desativa.
+    holdout_generator: Optional[str] = None
+
+    # P2 — augmentation ruidoso para os modelos clássicos (SVM/RF). Anexa
+    # cópias do conjunto de treino com AWGN nos MESMOS níveis de SNR avaliados
+    # (mesmo espaço de feature em que a robustez é medida), atacando o colapso
+    # a ~50% sob ruído.
+    classical_noise_augmentation: bool = True
+
     @classmethod
     def quick(cls, **overrides) -> "BenchmarkConfig":
         """Preset rápido (sintético, 1 época) — para verificação do harness."""
@@ -109,6 +125,47 @@ class BenchmarkConfig:
     def full_all_architectures(cls, **overrides) -> "BenchmarkConfig":
         """Alias explícito para o preset completo com as 14 arquiteturas."""
         return cls.full_tcc(**overrides)
+
+    @classmethod
+    def cross_generator_tcc(cls, holdout_generator: str = "fkvoice",
+                            **overrides) -> "BenchmarkConfig":
+        """Preset P0.4 — reteste cross-generator (anti-vazamento de fonte).
+
+        Treina SEM o gerador `holdout_generator` (default XTTS=fkvoice) e o usa
+        como teste. Mede generalização a gerador inédito — o reteste
+        metodológico mais importante antes da defesa.
+        """
+        base = dict(
+            architectures=list(ALL_TCC_ARCHITECTURES),
+            epochs=100,
+            snr_levels_db=[30, 20, 10],
+            run_api_probe=False,
+            preset_name=f"cross_generator:{holdout_generator}",
+            optimize_hyperparameters=True,
+            holdout_generator=holdout_generator,
+        )
+        base.update(overrides)
+        return cls(**base)
+
+    @classmethod
+    def group_tcc(cls, **overrides) -> "BenchmarkConfig":
+        """Preset P0 — split disjunto por fonte/gerador (StratifiedGroupKFold).
+
+        Atenção: se as fontes forem fortemente correlacionadas à classe (poucos
+        grupos), o teste pode ficar de classe única — nesse caso prefira
+        `cross_generator_tcc`.
+        """
+        base = dict(
+            architectures=list(ALL_TCC_ARCHITECTURES),
+            epochs=100,
+            snr_levels_db=[30, 20, 10],
+            run_api_probe=False,
+            preset_name="group_tcc",
+            optimize_hyperparameters=True,
+            group_split=True,
+        )
+        base.update(overrides)
+        return cls(**base)
 
     @classmethod
     def neural_tcc(cls, **overrides) -> "BenchmarkConfig":

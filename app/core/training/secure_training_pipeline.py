@@ -26,6 +26,10 @@ class SecureTrainingConfig:
     validation_size: float = 0.2
     random_state: int = 42
     use_temporal_split: bool = True
+    # P0 — quando True e metadata['groups'] existir, mantém fonte/gerador
+    # disjunto entre os conjuntos (anti-vazamento de fonte). Tem prioridade
+    # sobre o split temporal/estratificado.
+    use_group_split: bool = False
     scaler_type: str = "standard"  # "standard" ou "minmax"
     save_scaler: bool = True
     validate_no_leakage: bool = True
@@ -52,10 +56,49 @@ class SecureDataSplitter:
         """
         self.logger.info("Iniciando divisão segura dos dados")
 
+        if self.config.use_group_split and metadata and 'groups' in metadata:
+            return self._group_split(X, y, np.asarray(metadata['groups']))
         if self.config.use_temporal_split and metadata and 'timestamps' in metadata:
             return self._temporal_split(X, y, metadata['timestamps'])
         else:
             return self._stratified_split(X, y)
+
+    def _group_split(self, X: np.ndarray, y: np.ndarray,
+                     groups: np.ndarray) -> Tuple[np.ndarray, ...]:
+        """Split disjunto por grupo (fonte/gerador) via StratifiedGroupKFold."""
+        from sklearn.model_selection import StratifiedGroupKFold
+
+        idx = np.arange(len(y))
+        n_groups = len(np.unique(groups))
+        n_splits = max(2, min(round(1.0 / max(self.config.test_size, 1e-6)),
+                              n_groups))
+        sgkf = StratifiedGroupKFold(
+            n_splits=n_splits, shuffle=True,
+            random_state=self.config.random_state)
+        trainval_idx, test_idx = next(sgkf.split(idx, y, groups))
+
+        g_tv = groups[trainval_idx]
+        rel_val = self.config.validation_size / (1 - self.config.test_size)
+        if len(np.unique(g_tv)) >= 2:
+            inner = max(2, min(round(1.0 / max(rel_val, 1e-6)),
+                               len(np.unique(g_tv))))
+            sgkf2 = StratifiedGroupKFold(
+                n_splits=inner, shuffle=True,
+                random_state=self.config.random_state)
+            tr_rel, val_rel = next(
+                sgkf2.split(trainval_idx, y[trainval_idx], g_tv))
+            train_idx, val_idx = trainval_idx[tr_rel], trainval_idx[val_rel]
+        else:
+            rng = np.random.default_rng(self.config.random_state)
+            shuffled = rng.permutation(trainval_idx)
+            n_val = max(1, int(len(shuffled) * rel_val))
+            val_idx, train_idx = shuffled[:n_val], shuffled[n_val:]
+
+        self.logger.info(
+            f"Divisão por grupo: Train={len(train_idx)}, Val={len(val_idx)}, "
+            f"Test={len(test_idx)} (grupos disjuntos)")
+        return (X[train_idx], X[val_idx], X[test_idx],
+                y[train_idx], y[val_idx], y[test_idx])
 
     def _temporal_split(self, X: np.ndarray, y: np.ndarray,
                         timestamps: np.ndarray) -> Tuple[np.ndarray, ...]:

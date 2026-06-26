@@ -23,7 +23,9 @@ fontes canônicas de cada assunto.
 | Comparar as arquiteturas neurais | [Arquiteturas Neurais](08_ARQUITETURAS.md) |
 | Rodar predição com modelos treinados | [Inferência](09_INFERENCIA.md) |
 | Treinar modelos | [Treinamento](10_TREINAMENTO.md) |
+| Usar a interface Gradio e suas abas | [Interface Gradio](23_INTERFACE_GRADIO.md) |
 | Publicar no Hugging Face Spaces | [Deploy Hugging Face](11_DEPLOY_HUGGINGFACE.md) |
+| Publicar documentação e demo | [GitHub Pages e Hugging Face](24_PUBLICACAO_GITHUB_HF.md) |
 | Preparar datasets | [Datasets Públicos](12_DATASETS.md) |
 | Executar no Google Colab | [Guia Google Colab](13_COLAB_GUIDE.md) |
 | Auditar a aderência das arquiteturas | [Revisão das Arquiteturas](14_REVISAO_ARQUITETURAS.md) |
@@ -57,6 +59,10 @@ consolidadas a partir do trabalho:
   [Arquiteturas Neurais](08_ARQUITETURAS.md);
 - resultados, artefatos, modelos treinados e rastreabilidade em
   [Benchmark e Resultados](15_BENCHMARK.md);
+- uso da interface, abas, notificações e fluxos de análise em
+  [Interface Gradio](23_INTERFACE_GRADIO.md);
+- publicação coordenada de documentação e demonstração em
+  [GitHub Pages e Hugging Face](24_PUBLICACAO_GITHUB_HF.md);
 - versão navegável do estudo em
   [Estudo Experimental](20_ESTUDO_EXPERIMENTAL.md).
 

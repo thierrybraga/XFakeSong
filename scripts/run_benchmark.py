@@ -96,6 +96,11 @@ def main() -> int:
                    help="força o treino a executar todas as épocas solicitadas")
     p.add_argument("--verbose", action="store_true",
                    help="exibe logs INFO detalhados durante o benchmark")
+    p.add_argument("--group-split", action="store_true",
+                   help="P0: split disjunto por fonte/gerador (anti-vazamento)")
+    p.add_argument("--cross-generator", metavar="GERADOR", default=None,
+                   help="P0.4: segura este gerador fora do treino e o usa como "
+                        "teste (ex.: fkvoice). Reteste cross-generator.")
     args = p.parse_args()
 
     from benchmarks import BenchmarkConfig, plan_benchmark, run_benchmark
@@ -159,6 +164,10 @@ def main() -> int:
     if args.converge_accuracy is not None:
         cfg.converge_accuracy_threshold = args.converge_accuracy
     cfg.seed = args.seed
+    if args.group_split:
+        cfg.group_split = True
+    if args.cross_generator:
+        cfg.holdout_generator = args.cross_generator
     if args.device_profile:
         cfg.device_profile = args.device_profile
     if args.no_optimize_hparams:

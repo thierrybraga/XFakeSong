@@ -16,8 +16,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import queue
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -69,6 +71,20 @@ def _plan_done(model_dir: Path) -> bool:
     return (model_dir / "benchmark_plan.json").exists()
 
 
+def _emit(message: str = "") -> None:
+    print(message, flush=True)
+
+
+def _tail_text(path: Path, max_lines: int = 40) -> str:
+    if not path.exists():
+        return ""
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception:
+        return ""
+    return "\n".join(lines[-max_lines:])
+
+
 def _build_command(args: argparse.Namespace, model: str, model_dir: Path) -> list[str]:
     cmd = [
         sys.executable,
@@ -117,16 +133,47 @@ def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, 
         log.write(" ".join(cmd) + "\n\n")
         log.flush()
         try:
-            completed = subprocess.run(
+            proc = subprocess.Popen(
                 cmd,
                 cwd=str(ROOT),
-                stdout=log,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                timeout=timeout_s,
+                bufsize=1,
                 env={**os.environ, "PYTHONIOENCODING": "utf-8"},
             )
-            returncode = completed.returncode
+            output_queue: queue.Queue[str | None] = queue.Queue()
+
+            def _reader() -> None:
+                assert proc.stdout is not None
+                for line in proc.stdout:
+                    output_queue.put(line)
+                output_queue.put(None)
+
+            reader = threading.Thread(target=_reader, daemon=True)
+            reader.start()
+            reader_done = False
+
+            while True:
+                try:
+                    line = output_queue.get(timeout=1.0)
+                except queue.Empty:
+                    line = ""
+
+                if line is None:
+                    reader_done = True
+                elif line:
+                    log.write(line)
+                    log.flush()
+                    print(line, end="", flush=True)
+
+                if proc.poll() is not None and reader_done:
+                    break
+                if time.time() - started > timeout_s:
+                    proc.kill()
+                    raise subprocess.TimeoutExpired(cmd, timeout=timeout_s)
+
+            returncode = proc.returncode
             done = _plan_done(model_dir) if args.plan_only else _model_done(model_dir)
             status = "ok" if returncode == 0 and done else "error"
             error = None if status == "ok" else f"returncode={returncode}"
@@ -134,6 +181,9 @@ def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, 
             returncode = None
             status = "timeout"
             error = f"timeout_min={args.timeout_min}"
+            log.write(f"\n[TIMEOUT] {model}: {error}\n")
+            log.flush()
+            _emit(f"[TIMEOUT] {model}: {error}")
 
     elapsed = round(time.time() - started, 1)
     metrics = {}
@@ -155,6 +205,7 @@ def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, 
         "clean": metrics.get("clean"),
         "efficiency": metrics.get("efficiency"),
         "model_artifact": metrics.get("model_artifact"),
+        "log_tail": _tail_text(log_path) if status != "ok" else "",
     }
 
 
@@ -262,22 +313,25 @@ def main() -> int:
         model_dir = root_out / _slug(model)
         done = _plan_done(model_dir) if args.plan_only else _model_done(model_dir)
         if args.resume and model in completed and done:
-            print(f"[SKIP] {model} já concluído")
+            _emit(f"[SKIP] {model} ja concluido")
             continue
 
-        print(f"[RUN] {model}")
+        _emit(f"[RUN] {model} -> {model_dir}")
         result = _run_one(args, model, root_out)
         existing_by_model[model] = result
         summary["models"] = [existing_by_model[m] for m in existing_by_model]
         _write_json(summary_path, summary)
         _write_summary(root_out, summary)
-        print(f"[{result['status'].upper()}] {model} em {result['elapsed_s']}s")
+        _emit(f"[{result['status'].upper()}] {model} em {result['elapsed_s']}s")
+        if result["status"] != "ok" and result.get("log_tail"):
+            _emit(f"[LOG TAIL] {model}")
+            _emit(result["log_tail"])
 
     statuses = [item.get("status") for item in summary["models"]]
     summary["status"] = "ok" if statuses and all(s == "ok" for s in statuses) else "partial"
     _write_json(summary_path, summary)
     _write_summary(root_out, summary)
-    print(f"Resumo: {summary_path}")
+    _emit(f"Resumo: {summary_path}")
     return 0 if summary["status"] == "ok" else 2
 
 

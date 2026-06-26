@@ -260,11 +260,15 @@ def create_spectrogram_transformer_model(
     num_blocks: int = 12,
     num_heads: int = 12,
     ff_dim: int = 3072,
-    dropout_rate: float = 0.1,
-    learning_rate: float = 1e-4,
+    # P1 — retreino obrigatório: o modelo colapsava val→teste (~25 pp) por
+    # sobreajuste. Mais regularização (dropout 0.1→0.3, weight_decay 1e-5→1e-4)
+    # e LR de pico menor (1e-4→5e-5) reduzem o gap de generalização. Combinado
+    # com restauração obrigatória do melhor checkpoint e augmentation SNR.
+    dropout_rate: float = 0.3,
+    learning_rate: float = 5e-5,
     warmup_steps: int = 1000,
     decay_steps: int = 50000,
-    weight_decay: float = 1e-5,
+    weight_decay: float = 1e-4,
     alpha: float = 1e-7,
     architecture: str = 'spectrogram_transformer'
 ) -> models.Model:

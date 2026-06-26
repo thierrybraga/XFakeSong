@@ -19,6 +19,15 @@ class AudioAugmenter:
 
         # Parâmetros de augmentation
         self.noise_factor = config.get('noise_factor', 0.1)
+        # Faixa de SNR (dB) para o ruído aditivo calibrado. O ruído de treino
+        # passa a ser parametrizado por SNR alvo (potência do sinal / SNR), a
+        # MESMA definição usada na avaliação de robustez (benchmarks/data.py
+        # add_awgn). Antes, _add_noise usava stddev fixo (noise_factor), não
+        # calibrado por SNR e descasado dos SNRs de teste (10/20/30 dB) —
+        # origem do colapso de robustez. Faixa default cobre 10/20/30 dB.
+        snr_range = config.get('snr_range_db', (5.0, 40.0))
+        self.snr_min_db = float(min(snr_range))
+        self.snr_max_db = float(max(snr_range))
         self.time_stretch_factor = config.get('time_stretch_factor', 0.1)
         self.pitch_shift_steps = config.get('pitch_shift_steps', 2)
         self.volume_factor = config.get('volume_factor', 0.2)
@@ -103,15 +112,25 @@ class AudioAugmenter:
 
     def _add_noise(self, audio_features: tf.Tensor,
                    label: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
-        """Adiciona ruído gaussiano."""
+        """Adiciona ruído gaussiano calibrado a um SNR alvo (AWGN).
+
+        Amostra um SNR alvo ~ U(snr_min_db, snr_max_db) e deriva o desvio-padrão
+        do ruído a partir da potência do sinal da própria amostra:
+            sig_power = mean(x^2);  noise_std = sqrt(sig_power / 10^(SNR/10))
+        Esta é a MESMA definição usada na avaliação de robustez
+        (benchmarks/data.py:add_awgn), eliminando o descasamento treino↔teste:
+        o modelo passa a ver, no treino, ruído na mesma escala física em que é
+        testado (cobrindo 10/20/30 dB).
+        """
+        x = tf.cast(audio_features, tf.float32)
+        snr_db = tf.random.uniform([], self.snr_min_db, self.snr_max_db)
+        snr_lin = tf.pow(10.0, snr_db / 10.0)
+        sig_power = tf.reduce_mean(tf.square(x))
+        noise_std = tf.sqrt(sig_power / tf.maximum(snr_lin, 1e-12))
         noise = tf.random.normal(
-            shape=tf.shape(audio_features),
-            mean=0.0,
-            stddev=self.noise_factor,
-            dtype=tf.float32
-        )
-        augmented_features = audio_features + noise
-        return augmented_features, label
+            shape=tf.shape(x), mean=0.0, stddev=1.0, dtype=tf.float32
+        ) * noise_std
+        return x + noise, label
 
     def _time_shift(self, audio_features: tf.Tensor,
                     label: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
@@ -453,6 +472,7 @@ class AudioAugmenter:
         """Retorna resumo das configurações de augmentation."""
         return {
             "noise_factor": self.noise_factor,
+            "snr_range_db": (self.snr_min_db, self.snr_max_db),
             "time_stretch_factor": self.time_stretch_factor,
             "pitch_shift_steps": self.pitch_shift_steps,
             "volume_factor": self.volume_factor,

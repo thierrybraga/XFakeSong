@@ -1,0 +1,16 @@
+\babel@toc {brazilian}{}\relax 
+\contentsline {table}{\numberline {1}{\ignorespaces \textit {Survey} das gerações de métodos de detecção de áudio sintético.}}{13}{table.caption.1}%
+\contentsline {table}{\numberline {2}{\ignorespaces Resumo da base experimental BRSpeech-DF usada no \textit {benchmark}.}}{16}{table.caption.3}%
+\contentsline {table}{\numberline {3}{\ignorespaces Ranking de características acústicas: síntese da literatura. \textbf {Custo Computacional}: estimativa qualitativa (Baixo/Médio/Alto) do consumo de tempo e memória para extração no \textit {pipeline}.}}{20}{table.caption.4}%
+\contentsline {table}{\numberline {4}{\ignorespaces Resumo do ambiente de execução do \textit {benchmark}.}}{23}{table.caption.5}%
+\contentsline {table}{\numberline {5}{\ignorespaces Parâmetros de reprodutibilidade do benchmark consolidado.}}{24}{table.caption.6}%
+\contentsline {table}{\numberline {6}{\ignorespaces Resultados consolidados no conjunto de teste limpo.}}{24}{table.caption.7}%
+\contentsline {table}{\numberline {7}{\ignorespaces Intervalos de confiança de Wilson para a acurácia no teste ($n=2.250$, 95\%).}}{26}{table.caption.10}%
+\contentsline {table}{\numberline {8}{\ignorespaces Parâmetros, tamanho, latência e desempenho por arquitetura. Latência reportada como média de 30 medições. DP = desvio padrão; células ``---'' indicam desvio não registrado nesta versão do \textit {benchmark}, previsto para a próxima rodada.}}{27}{table.caption.11}%
+\contentsline {table}{\numberline {9}{\ignorespaces Síntese operacional de Pareto para seleção de modelos.}}{29}{table.caption.14}%
+\contentsline {table}{\numberline {10}{\ignorespaces Decisão final por arquitetura para uso no sistema e na apresentação.}}{29}{table.caption.15}%
+\contentsline {table}{\numberline {11}{\ignorespaces Acurácia sob ruído AWGN em diferentes SNRs.}}{30}{table.caption.16}%
+\contentsline {table}{\numberline {12}{\ignorespaces Estabilidade dos modelos neurais durante as 100 épocas.}}{31}{table.caption.18}%
+\contentsline {table}{\numberline {13}{\ignorespaces Resumo dos principais hiperparâmetros por família de modelo.}}{39}{table.caption.20}%
+\contentsline {table}{\numberline {14}{\ignorespaces Rastreabilidade dos principais artefatos gerados pelo benchmark.}}{39}{table.caption.21}%
+\contentsline {table}{\numberline {15}{\ignorespaces Módulos reais do XFakeSong\footnotemark \ referenciados pelo benchmark.}}{40}{table.caption.22}%

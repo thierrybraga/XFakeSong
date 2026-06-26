@@ -53,6 +53,22 @@ RUN pip install --upgrade pip setuptools wheel && \
         echo "[Dockerfile] Usando requirements.txt + tensorflow[and-cuda]"; \
         pip install -r requirements.txt; \
         pip install 'tensorflow[and-cuda]>=2.16,<2.22'; \
+        # ---- Conflito de cuDNN (corrigido) ---------------------------------
+        # torch fixa `nvidia-cudnn-cu12==9.1.0.70`, mas TF 2.21 foi compilado
+        # com cuDNN 9.3 e EXIGE >=9.3.0.75. Sem o upgrade abaixo, a GPU falha
+        # com: "Loaded runtime CuDNN library: 9.1.0 but source was compiled
+        # with: 9.3.0 ... No DNN in stream executor". O cuDNN 9.x é
+        # retrocompatível com o torch (validado: torch conv na GPU OK com
+        # 9.23). `--no-deps` evita que o pip rebaixe outras libs por causa do
+        # pino do torch; o aviso de incompatibilidade do torch é cosmético.
+        pip install --upgrade --no-deps 'nvidia-cudnn-cu12>=9.3.0.75,<10'; \
+        # ptxas/nvlink p/ XLA: sem o nvcc, o TF GPU falha com "No PTX
+        # compilation provider is available" ao compilar kernels XLA no fit().
+        # O PATH/XLA_FLAGS (runtime) já apontam p/ nvidia/cuda_nvcc.
+        pip install --no-deps 'nvidia-cuda-nvcc-cu12'; \
+        # Sanidade: cuDNN >=9.3 E ptxas presente (senão TF GPU falha).
+        python -c "import importlib.metadata as m; v=m.version('nvidia-cudnn-cu12'); j,n=(int(x) for x in v.split('.')[:2]); assert (j,n)>=(9,3), 'cuDNN '+v+' < 9.3'; print('[Dockerfile] cuDNN OK p/ TF GPU:', v)"; \
+        ls /opt/venv/lib/python3.11/site-packages/nvidia/cuda_nvcc/bin/ptxas; \
     else \
         echo "[Dockerfile] Usando requirements.txt (tensorflow padrão)"; \
         pip install -r requirements.txt; \

@@ -4,6 +4,7 @@ Este módulo implementa o treinador principal para modelos de detecção de deep
 """
 
 import logging
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -45,6 +46,12 @@ class EpochProgressLogger(tf.keras.callbacks.Callback):
         self.label = label or "model"
         self._started_at = 0.0
         self._epoch_started_at = 0.0
+        self._epoch_index = 0
+        self._last_batch_log_at = 0.0
+        self.batch_log_interval_s = max(
+            0,
+            int(os.getenv("XFAKE_TRAIN_BATCH_LOG_INTERVAL_S", "60") or "0"),
+        )
 
     def on_train_begin(self, logs=None):
         self._started_at = time.time()
@@ -58,7 +65,34 @@ class EpochProgressLogger(tf.keras.callbacks.Callback):
         )
 
     def on_epoch_begin(self, epoch, logs=None):
+        self._epoch_index = int(epoch) + 1
         self._epoch_started_at = time.time()
+        self._last_batch_log_at = self._epoch_started_at
+
+    def on_train_batch_end(self, batch, logs=None):
+        if self.batch_log_interval_s <= 0:
+            return
+        steps = self.params.get("steps")
+        if not isinstance(steps, int) or steps <= 0:
+            return
+        now = time.time()
+        current_batch = int(batch) + 1
+        if current_batch < steps and now - self._last_batch_log_at < self.batch_log_interval_s:
+            return
+        self._last_batch_log_at = now
+        elapsed = now - self._started_at
+        epoch_elapsed = now - self._epoch_started_at
+        pct = min(100.0, 100.0 * current_batch / max(1, steps))
+        _progress_logger.warning(
+            "[TRAIN] %s epoch=%s batch=%d/%d %.1f%% epoch_elapsed_min=%.1f elapsed_min=%.1f",
+            self.label,
+            self._epoch_index or "?",
+            current_batch,
+            steps,
+            pct,
+            epoch_elapsed / 60.0,
+            elapsed / 60.0,
+        )
 
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}

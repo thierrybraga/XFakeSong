@@ -1,0 +1,68 @@
+# =====================================================================
+# XFakeSong — benchmark/training batch profile
+# =====================================================================
+# Uso:
+#   docker compose -f docker-compose.benchmark.yml build benchmark
+#   docker compose -f docker-compose.benchmark.yml run --rm benchmark
+#
+# Este compose é deliberadamente separado do serviço web:
+# - não expõe porta 7860;
+# - não usa healthcheck HTTP;
+# - monta datasets/modelos/resultados do projeto;
+# - usa TF_VARIANT=gpu para benchmark neural em NVIDIA Docker/WSL2.
+# =====================================================================
+
+services:
+  benchmark:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PYTHON_VERSION: "3.11"
+        TF_VARIANT: "gpu"
+    image: xfakesong:benchmark-gpu
+    container_name: xfakesong_benchmark
+    working_dir: /app
+    shm_size: 2gb
+    healthcheck:
+      disable: true
+    environment:
+      DEEPFAKE_ENV: ${DEEPFAKE_ENV:-benchmark}
+      DEEPFAKE_LOG_LEVEL: ${DEEPFAKE_LOG_LEVEL:-INFO}
+      GRADIO_ANALYTICS_ENABLED: "False"
+      PYTHONIOENCODING: utf-8
+      TF_CPP_MIN_LOG_LEVEL: "2"
+      TF_FORCE_GPU_ALLOW_GROWTH: "true"
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      XFAKE_SYNC_MODELS_ON_BOOT: "false"
+      XFAKE_CREATE_DEFAULT_MODELS: "false"
+      XFAKE_TRAIN_BATCH_LOG_INTERVAL_S: ${XFAKE_TRAIN_BATCH_LOG_INTERVAL_S:-60}
+    volumes:
+      - ./:/app
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${NVIDIA_GPU_COUNT:-all}
+              capabilities: [gpu, compute, utility]
+    command:
+      - python
+      - scripts/run_models_sequential.py
+      - --dataset
+      - app/datasets/benchmark_audio_raw_balanced_15k.npz
+      - --out
+      - results/clean_benchmark_latest
+      - --epochs
+      - "100"
+      - --device-profile
+      - gpu
+      - --timeout-min
+      - "240"
+      - --latency-runs
+      - "30"
+      - --snr
+      - "30"
+      - "20"
+      - "10"

@@ -451,10 +451,43 @@ def _diagnose_gpu_situation(
 # =====================================================================
 
 
+def _probe_cudnn(tf) -> tuple[bool, Optional[str]]:
+    """Executa um conv mínimo na GPU para validar o cuDNN ANTES do treino.
+
+    A falha de versão do cuDNN (ex.: runtime 9.1 vs TF compilado com 9.3) só
+    se manifesta no PRIMEIRO op de DNN — no meio do `fit()`, com a mensagem
+    críptica "No DNN in stream executor". Este probe antecipa o erro e o torna
+    acionável: detecta o mismatch de versão e permite o fallback para CPU.
+
+    Returns:
+        (ok, mensagem_de_erro). ok=True se o cuDNN funciona.
+    """
+    try:
+        with tf.device("/GPU:0"):
+            x = tf.random.normal([1, 8, 8, 1])
+            tf.keras.layers.Conv2D(1, 3)(x)
+        return True, None
+    except Exception as e:
+        detail = str(e)
+        # Enriquece com a comparação de versões quando for o mismatch conhecido.
+        try:
+            import importlib.metadata as _m
+            runtime = _m.version("nvidia-cudnn-cu12")
+            compiled = (tf.sysconfig.get_build_info() or {}).get("cudnn_version")
+            detail = (
+                f"cuDNN runtime={runtime} vs TF compilado com cuDNN "
+                f"major={compiled}. {detail}"
+            )
+        except Exception:
+            pass
+        return False, detail
+
+
 def setup_gpu(
     *,
     memory_growth: bool = True,
     enable_mixed_precision: Optional[bool] = None,
+    cudnn_fallback: bool = True,
     log_level: int = logging.INFO,
 ) -> Dict[str, Any]:
     """Configura TF GPU de forma robusta.
@@ -589,6 +622,46 @@ def setup_gpu(
 
         result["device_policy"] = "gpu"
         result["tensor_core_capable"] = any_tensor_core
+
+        # === Probe de cuDNN + fallback p/ CPU (gerenciamento de recursos) ===
+        # Valida o caminho de DNN ANTES do treino. Se o cuDNN estiver
+        # incompatível (mismatch de versão), em vez de crashar no meio do
+        # fit() com "No DNN in stream executor", logamos um erro acionável e —
+        # se cudnn_fallback — escondemos a GPU para o treino seguir em CPU.
+        cudnn_ok, cudnn_err = _probe_cudnn(tf)
+        result["cudnn_ok"] = cudnn_ok
+        if not cudnn_ok:
+            result["cudnn_error"] = cudnn_err
+            logger.error(
+                "[GPU] cuDNN indisponível/incompatível — DNN ops falham na GPU. "
+                "%s",
+                cudnn_err,
+            )
+            logger.error(
+                "[GPU]  → Corrija com: pip install --upgrade --no-deps "
+                "'nvidia-cudnn-cu12>=9.3.0.75,<10'  (ou rebuild da imagem GPU; "
+                "ver Dockerfile / docs/22)."
+            )
+            if cudnn_fallback:
+                try:
+                    tf.config.set_visible_devices([], "GPU")
+                    result["device_policy"] = "cpu"
+                    result["cudnn_fallback_applied"] = True
+                    logger.warning(
+                        "[GPU]  → Fallback aplicado: GPU oculta, treino seguirá "
+                        "em CPU (mais lento, porém funcional)."
+                    )
+                except Exception as e:
+                    result["errors"].append(f"Falha no fallback CPU: {e}")
+                # Sem GPU efetiva → não habilita mixed precision.
+                result["diagnosis"] = _diagnose_gpu_situation(
+                    result["nvidia_hardware"],
+                    tf_gpus_count=0,
+                    pci_present=result["nvidia_pci_present"],
+                )
+                _setup_done = True
+                _setup_result = result
+                return result
 
         # === Mixed precision (Sprint 3.2) ===
         if enable_mixed_precision is None:

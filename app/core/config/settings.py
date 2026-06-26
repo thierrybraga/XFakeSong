@@ -183,6 +183,9 @@ class TrainingConfig:
     augmentation_config: Dict[str, Any] = field(
         default_factory=lambda: {
             "noise_factor": 0.1,
+            # Faixa de SNR (dB) do ruído aditivo calibrado no treino — casa com
+            # a faixa de robustez avaliada no benchmark (10/20/30 dB).
+            "snr_range_db": (5.0, 40.0),
             "time_stretch_factor": 0.1,
             "pitch_shift_steps": 2,
         }

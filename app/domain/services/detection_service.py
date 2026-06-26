@@ -23,6 +23,52 @@ from .feature_extraction_service import AudioFeatureExtractionService
 logger = logging.getLogger(__name__)
 
 
+# P2 — priors de robustez a ruído por arquitetura (derivados da avaliação de
+# robustez AWGN: acurácia ~10 dB). Usados para reponderar a fusão multi-modelo
+# favorecendo os modelos prontos para campo. Chave = substring normalizada do
+# nome do modelo; valor = peso relativo (não precisa somar 1, é normalizado).
+ROBUSTNESS_PRIORS: Dict[str, float] = {
+    "conformer": 0.94,
+    "rawgat": 0.88,
+    "hybrid": 0.88,
+    "aasist": 0.84,
+    "sonic": 0.83,
+    "multiscale": 0.82,
+    "efficientnet": 0.82,
+    "hubert": 0.55,
+    "randomforest": 0.55,
+    "random_forest": 0.55,
+    "ensemble": 0.52,
+    "wavlm": 0.51,
+    "rawnet": 0.50,
+    "svm": 0.50,
+    "spectrogram": 0.50,
+}
+_ROBUSTNESS_DEFAULT = 0.6
+
+
+def robustness_fusion_weights(model_names: List[str]) -> List[float]:
+    """Pesos de fusão proporcionais à robustez a ruído de cada modelo.
+
+    Faz match por substring normalizada (minúsculas, sem separadores) contra
+    ROBUSTNESS_PRIORS; modelos desconhecidos recebem um peso neutro. O retorno
+    é normalizado para somar 1.
+    """
+    raw: List[float] = []
+    for name in model_names:
+        key = "".join(ch for ch in name.lower() if ch.isalnum())
+        score = _ROBUSTNESS_DEFAULT
+        for prior_key, prior_val in ROBUSTNESS_PRIORS.items():
+            if prior_key.replace("_", "") in key:
+                score = prior_val
+                break
+        raw.append(score)
+    total = sum(raw)
+    if total <= 0:
+        return [1.0 / len(model_names)] * len(model_names)
+    return [w / total for w in raw]
+
+
 class DetectionService(IDetectionService):
     """Implementação do serviço de detecção de deepfake."""
 
@@ -481,7 +527,7 @@ class DetectionService(IDetectionService):
         audio_data: AudioData,
         model_names: List[str],
         fusion: str = 'weighted_avg',
-        weights: Optional[List[float]] = None,
+        weights: Optional[Union[List[float], str]] = None,
         use_tta: bool = False,
     ) -> ProcessingResult[DeepfakeDetectionResult]:
         """Sprint 4.4: detecção via fusão de múltiplos modelos.
@@ -521,7 +567,21 @@ class DetectionService(IDetectionService):
                     errors=[f"Fusion '{fusion}' inválida. Use: {valid_fusions}"],
                 )
 
-            # Pesos default: uniforme
+            # Pesos default: uniforme. P2 — `weights="robustness"` deriva pesos
+            # dos priors de robustez a ruído (reponderar ramos robustos:
+            # Conformer/RawGAT-ST/Hybrid/AASIST/Sonic Sleuth recebem mais peso
+            # que SVM/RF/RawNet2/SSL frágeis).
+            if isinstance(weights, str):
+                if weights.lower() == "robustness":
+                    weights = robustness_fusion_weights(model_names)
+                elif weights.lower() == "uniform":
+                    weights = None
+                else:
+                    return ProcessingResult(
+                        status=ProcessingStatus.ERROR,
+                        errors=[f"weights '{weights}' inválido. "
+                                "Use lista, 'robustness' ou 'uniform'."],
+                    )
             if weights is None:
                 weights = [1.0 / len(model_names)] * len(model_names)
             else:

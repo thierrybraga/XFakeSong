@@ -39,6 +39,11 @@ ALLOW_PATTERNS = (
     "wavlm_backbone/*",
     "hubert_backbone/*",
     "benchmark_final/**",
+    "models/bench_*",
+    "models/benchmark_final_manifest.json",
+    "models/wavlm_backbone/*",
+    "models/hubert_backbone/*",
+    "models/benchmark_final/**",
 )
 
 
@@ -101,7 +106,12 @@ def sync_models(repo_id: str | None, models_dir: Path, force: bool = False) -> i
             local_dir=os.getenv("XFAKE_MODEL_CACHE_DIR") or None,
         )
     )
-    copied = _copy_tree_contents(snapshot_path, models_dir)
+    source_path = (
+        snapshot_path / "models"
+        if (snapshot_path / "models").is_dir()
+        else snapshot_path
+    )
+    copied = _copy_tree_contents(source_path, models_dir)
     missing_after = _missing_artifacts(models_dir)
     print(f"[sync_hf_models] Arquivos copiados: {copied}")
     if missing_after:

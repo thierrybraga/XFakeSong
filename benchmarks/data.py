@@ -24,6 +24,10 @@ class BenchmarkData:
     y: np.ndarray
     name: str = "dataset"
     metadata: Dict[str, Any] | None = None
+    # P0 — fonte/gerador por amostra (alinhado a X/y). Usado para splits
+    # disjuntos por grupo e para o protocolo cross-generator. None quando o
+    # dataset não carrega proveniência.
+    groups: np.ndarray | None = None
 
     @classmethod
     def synthetic(cls, n: int = 360, shape: Tuple[int, int] = (32, 16),
@@ -49,11 +53,13 @@ class BenchmarkData:
             raise FileNotFoundError(f"Dataset não encontrado: {path}")
         data = np.load(p, allow_pickle=False)
         xs, ys = [], []
+        used_keys: list[tuple[str, str]] = []
         for xk, yk in (("X_train", "y_train"), ("X_val", "y_val"),
                        ("X_test", "y_test"), ("X", "y")):
             if xk in data and yk in data:
                 xs.append(np.asarray(data[xk], dtype="float32"))
                 ys.append(np.asarray(data[yk]))
+                used_keys.append((xk, yk))
         if not xs:
             raise ValueError(
                 f"{path}: esperado X_train/y_train (ou X/y) no .npz; "
@@ -76,9 +82,52 @@ class BenchmarkData:
                 metadata["npz_path"] = str(p)
             except Exception:
                 metadata["metadata_parse_error"] = True
-        loaded = cls(X=X, y=y, name=p.stem, metadata=metadata)
+
+        # P0 — proveniência por amostra (fonte/gerador). Preferimos uma chave
+        # explícita `groups` no .npz; senão derivamos do nome de arquivo nos
+        # `paths` do metadata (mesma ordem de concatenação: train→val→test→X).
+        groups = cls._extract_groups(data, metadata, used_keys, n=len(y))
+        loaded = cls(X=X, y=y, name=p.stem, metadata=metadata, groups=groups)
         loaded.validate()
         return loaded
+
+    @staticmethod
+    def _derive_group(path: str) -> str:
+        """Extrai o identificador de fonte/gerador do nome do arquivo.
+
+        Os nomes seguem `<fonte>_NNNNN.wav` (ex.: brspeech, cvpt, fkvoice). Não
+        há ID de falante embutido, então o grupo mais fino disponível é a
+        FONTE/GERADOR — suficiente para o reteste cross-generator (XTTS=fkvoice).
+        """
+        base = str(path).replace("\\", "/").rsplit("/", 1)[-1].lower()
+        m = re.match(r"([a-z]+)", base)
+        return m.group(1) if m else "unknown"
+
+    @classmethod
+    def _extract_groups(
+        cls,
+        data: Any,
+        metadata: Dict[str, Any],
+        used_keys: list[tuple[str, str]],
+        n: int,
+    ) -> np.ndarray | None:
+        """Constrói o array de grupos alinhado a X/y, ou None se indisponível."""
+        if "groups" in getattr(data, "files", []):
+            g = np.asarray(data["groups"]).astype(str).ravel()
+            return g if len(g) == n else None
+
+        splits = (metadata or {}).get("splits") or {}
+        key_to_split = {"X_train": "train", "X_val": "val", "X_test": "test"}
+        groups: list[str] = []
+        for xk, _yk in used_keys:
+            split_name = key_to_split.get(xk)
+            paths = (splits.get(split_name) or {}).get("paths") if split_name else None
+            if not paths:
+                return None  # sem proveniência completa → não arrisca desalinhar
+            groups.extend(cls._derive_group(p) for p in paths)
+        if len(groups) != n:
+            return None
+        return np.asarray(groups, dtype=object).astype(str)
 
     def validate(self, min_per_class: int = 2) -> None:
         """Valida sanidade básica antes de treinar/avaliar."""
@@ -140,12 +189,31 @@ class BenchmarkData:
             y=np.asarray(self.y, dtype="int64"),
             name=self.name,
             metadata=meta,
+            groups=self.groups,
         )
 
     def stratified_split(
-        self, seed: int = 42, val_frac: float = 0.15, test_frac: float = 0.15
+        self,
+        seed: int = 42,
+        val_frac: float = 0.15,
+        test_frac: float = 0.15,
+        group_split: bool = False,
+        holdout_generator: str | None = None,
     ):
-        """Divisão estratificada 70/15/15 (preserva a proporção de classes)."""
+        """Divisão 70/15/15. Suporta três modos:
+
+        - **estratificada** (default): preserva a proporção de classes.
+        - **group_split**: mantém fonte/gerador DISJUNTO entre train/val/test
+          (anti-vazamento), quando `groups` está disponível.
+        - **holdout_generator**: protocolo cross-generator — segura um gerador
+          fora do treino e o usa (só ele) como teste.
+        """
+        if holdout_generator is not None and self.groups is not None:
+            return self._cross_generator_split(
+                holdout_generator, seed, val_frac
+            )
+        if group_split and self.groups is not None:
+            return self._grouped_split(seed, val_frac, test_frac)
         try:
             from sklearn.model_selection import train_test_split
 
@@ -173,6 +241,99 @@ class BenchmarkData:
             self.X[val_idx], self.y[val_idx],
             self.X[test_idx], self.y[test_idx],
         )
+
+    def _select(self, idx: np.ndarray):
+        idx = np.asarray(idx, dtype=int)
+        return self.X[idx], self.y[idx]
+
+    def _grouped_split(self, seed: int, val_frac: float, test_frac: float):
+        """Split disjunto por grupo via StratifiedGroupKFold (anti-vazamento).
+
+        Mantém cada fonte/gerador inteiramente em um único conjunto. Como há
+        poucos grupos correlacionados à classe, isto pode desbalancear classes
+        — é o trade-off honesto para eliminar vazamento de fonte.
+        """
+        from sklearn.model_selection import StratifiedGroupKFold
+
+        groups = np.asarray(self.groups)
+        idx = np.arange(len(self.y))
+        n_groups = len(np.unique(groups))
+        # nº de folds limitado pelo nº de grupos; teste = 1 fold.
+        n_splits = max(2, min(round(1.0 / max(test_frac, 1e-6)), n_groups))
+        sgkf = StratifiedGroupKFold(
+            n_splits=n_splits, shuffle=True, random_state=seed
+        )
+        trainval_idx, test_idx = next(sgkf.split(idx, self.y, groups))
+        # Val a partir do trainval, ainda disjunto por grupo quando possível.
+        g_tv = groups[trainval_idx]
+        if len(np.unique(g_tv)) >= 2:
+            rel_val = val_frac / (1.0 - test_frac)
+            inner_splits = max(2, min(round(1.0 / max(rel_val, 1e-6)),
+                                      len(np.unique(g_tv))))
+            sgkf2 = StratifiedGroupKFold(
+                n_splits=inner_splits, shuffle=True, random_state=seed
+            )
+            tr_rel, val_rel = next(
+                sgkf2.split(trainval_idx, self.y[trainval_idx], g_tv)
+            )
+            train_idx, val_idx = trainval_idx[tr_rel], trainval_idx[val_rel]
+        else:
+            rng = np.random.default_rng(seed)
+            shuffled = rng.permutation(trainval_idx)
+            n_val = max(1, int(len(shuffled) * val_frac))
+            val_idx, train_idx = shuffled[:n_val], shuffled[n_val:]
+        Xtr, ytr = self._select(train_idx)
+        Xv, yv = self._select(val_idx)
+        Xte, yte = self._select(test_idx)
+        return Xtr, ytr, Xv, yv, Xte, yte
+
+    def _cross_generator_split(
+        self, holdout_generator: str, seed: int, val_frac: float
+    ):
+        """Protocolo cross-generator: treina SEM `holdout_generator`, testa NELE.
+
+        Teste = todas as amostras do gerador segurado + reais não vistos no
+        treino (para manter ambas as classes no teste). Train/val saem do
+        restante, estratificados por classe.
+        """
+        from sklearn.model_selection import train_test_split
+
+        groups = np.asarray(self.groups)
+        held = np.char.lower(groups.astype(str)) == holdout_generator.lower()
+        if not held.any():
+            # gerador inexistente → cai no split estratificado padrão
+            return self.stratified_split(seed=seed, val_frac=val_frac)
+
+        idx = np.arange(len(self.y))
+        held_idx = idx[held]
+        rest_idx = idx[~held]
+        y_rest = self.y[rest_idx]
+
+        # Reais ficam disponíveis no restante; reservamos uma fração de reais
+        # para compor o teste cross-generator (classe 0 inédita no treino).
+        real_rest = rest_idx[y_rest == 0]
+        rng = np.random.default_rng(seed)
+        real_rest = rng.permutation(real_rest)
+        n_real_test = min(len(real_rest), max(1, len(held_idx)))
+        real_test_idx = real_rest[:n_real_test]
+        test_idx = np.concatenate([held_idx, real_test_idx])
+
+        trainval_idx = np.setdiff1d(rest_idx, real_test_idx, assume_unique=False)
+        y_tv = self.y[trainval_idx]
+        try:
+            tr_idx, val_idx = train_test_split(
+                trainval_idx, test_size=val_frac, stratify=y_tv,
+                random_state=seed,
+            )
+        except Exception:
+            shuffled = rng.permutation(trainval_idx)
+            n_val = max(1, int(len(shuffled) * val_frac))
+            val_idx, tr_idx = shuffled[:n_val], shuffled[n_val:]
+
+        Xtr, ytr = self._select(tr_idx)
+        Xv, yv = self._select(val_idx)
+        Xte, yte = self._select(test_idx)
+        return Xtr, ytr, Xv, yv, Xte, yte
 
     @staticmethod
     def add_awgn(X: np.ndarray, snr_db: float, seed: int = 0) -> np.ndarray:
@@ -295,7 +456,44 @@ def _to_tabular_features(X: np.ndarray) -> np.ndarray:
     except Exception:
         pass
 
+    # P2 — RASTA-PLP: características robustas a ruído/canal para os modelos
+    # clássicos (SVM/RF), que colapsavam a ~50% sob ruído. O filtro RASTA
+    # remove variações lentas (efeitos de canal), tornando o vetor de features
+    # mais estável sob degradação. Reusa o extrator do domínio.
+    feats.append(_rasta_plp_stats(flat))
+
     return np.vstack(feats).T.astype("float32")
+
+
+def _rasta_plp_stats(flat: np.ndarray, n_plp: int = 13) -> np.ndarray:
+    """Estatísticas (média/desvio por coeficiente) de RASTA-PLP por amostra.
+
+    Retorna shape (2*n_plp, N) para empilhar com as demais features. Degrada
+    para zeros se a extração falhar (mantém o vetor de features consistente).
+    """
+    try:
+        from app.domain.features.extractors.cepstral.components.plp import (
+            extract_rasta_plp_features,
+        )
+    except Exception:
+        return np.zeros((2 * n_plp, len(flat)), dtype="float32")
+
+    rows = []
+    for y in flat:
+        try:
+            feats = extract_rasta_plp_features(
+                y.astype("float32"), sr=16000, frame_length=512,
+                hop_length=256, n_plp=n_plp,
+            )
+            rp = np.asarray(feats.get("rasta_plp"))
+            if rp.ndim != 2 or rp.shape[0] != n_plp:
+                raise ValueError("forma RASTA-PLP inesperada")
+            rows.append(np.concatenate([rp.mean(axis=1), rp.std(axis=1)]))
+        except Exception:
+            rows.append(np.zeros(2 * n_plp, dtype="float32"))
+    arr = np.nan_to_num(np.asarray(rows, dtype="float32"), nan=0.0,
+                        posinf=0.0, neginf=0.0)
+    return arr.T
 
 
 def _to_raw_audio(X: np.ndarray, requirements: Dict[str, Any]) -> np.ndarray:

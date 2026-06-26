@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import platform
 from pathlib import Path
 from typing import Any, Dict
@@ -274,7 +275,10 @@ def _fit_to_device(params: Dict[str, Any], arch: str, device: Dict[str, Any]) ->
         tuned["use_mixed_precision"] = False
     else:
         if compact == "hubert":
-            cap = 1
+            # HuBERT real/fallback é pesado, mas batch=1 torna o benchmark
+            # impraticável no dataset completo. Mantém um padrão conservador
+            # para GPUs de 12 GB e permite reduzir via ambiente se necessário.
+            cap = int(os.getenv("XFAKE_HUBERT_GPU_BATCH_CAP", "8"))
         elif compact == "wavlm":
             cap = 8
         elif compact == "rawnet2":

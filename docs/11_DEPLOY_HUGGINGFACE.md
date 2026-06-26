@@ -74,6 +74,9 @@ Arquivos usados no deploy:
 
 Os pesos devem ficar em um repositório separado do tipo **Model** para evitar
 rebuilds pesados do Space e permitir atualização independente dos modelos.
+O conteúdo publicado deve corresponder aos modelos treinados no dataset do
+benchmark (`app/datasets/benchmark_audio_raw_balanced_15k.npz`) e aos artefatos
+consolidados em `app/models/`.
 
 Faça uma simulação:
 
@@ -96,10 +99,105 @@ Remova `--private` se o repositório deve ser público.
 O upload inclui:
 
 ```text
-app/models/bench_*                  # modelos carregáveis pela UI/API
-app/models/benchmark_final/         # cópia completa por arquitetura
-app/models/benchmark_final_manifest.json
+models/bench_*                       # modelos carregáveis pela UI/API
+models/benchmark_final/              # cópia completa por arquitetura
+models/benchmark_final_manifest.json
 ```
+
+### Salvar modelos treinados do benchmark
+
+Depois de rodar o benchmark final, confirme primeiro que os artefatos estão no
+diretório padrão:
+
+```text
+app/models/
+├── bench_aasist.keras
+├── bench_conformer.keras
+├── ...
+├── bench_svm.pkl
+├── bench_randomforest.pkl
+├── benchmark_final_manifest.json
+└── benchmark_final/
+```
+
+Faça o plano de upload sem enviar arquivos:
+
+```bash
+python scripts/upload_models_to_hf.py \
+  --repo-id SEU_USUARIO/xfakesong-benchmark-models \
+  --dry-run
+```
+
+Envie os modelos pré-treinados:
+
+```bash
+export HF_TOKEN=hf_xxx
+
+python scripts/upload_models_to_hf.py \
+  --repo-id SEU_USUARIO/xfakesong-benchmark-models \
+  --private \
+  --commit-message "Upload benchmark 15k pretrained models"
+```
+
+Use `--private` quando os modelos ou metadados não puderem ser públicos.
+Remova a flag para publicar abertamente.
+
+Para anexar resultados e pacote acadêmico ao mesmo Model Hub:
+
+```bash
+python scripts/upload_models_to_hf.py \
+  --repo-id SEU_USUARIO/xfakesong-benchmark-models \
+  --private \
+  --include-results \
+  --include-overleaf
+```
+
+O script ignora arquivos temporários, PDF, `.aux`, `.log`, `.toc` e caches.
+
+### Baixar modelos pré-treinados do Hugging Face
+
+Para baixar os modelos em uma máquina local, Docker ou Space:
+
+```bash
+export MODEL_REPO_ID=SEU_USUARIO/xfakesong-benchmark-models
+export HF_TOKEN=hf_xxx        # apenas se o repo for privado
+
+python scripts/sync_hf_models.py \
+  --repo-id "$MODEL_REPO_ID" \
+  --models-dir app/models \
+  --force
+```
+
+No Windows PowerShell:
+
+```powershell
+$env:MODEL_REPO_ID="SEU_USUARIO/xfakesong-benchmark-models"
+$env:HF_TOKEN="hf_xxx"
+
+python scripts/sync_hf_models.py `
+  --repo-id $env:MODEL_REPO_ID `
+  --models-dir app/models `
+  --force
+```
+
+Após o download, valide:
+
+```bash
+python scripts/sync_hf_models.py \
+  --repo-id SEU_USUARIO/xfakesong-benchmark-models \
+  --models-dir app/models
+
+python main.py --gradio
+```
+
+O sincronizador aceita dois layouts no Model Hub:
+
+| Layout no Hub | Destino local |
+| --- | --- |
+| `bench_*`, `benchmark_final/` na raiz | `app/models/` |
+| `models/bench_*`, `models/benchmark_final/` | `app/models/` |
+
+O segundo layout é o padrão do `upload_models_to_hf.py`.
 
 ## 3. Configurar Variables e Secrets
 
@@ -324,6 +422,8 @@ Artefatos esperados:
 - A URL `https://SEU_USUARIO-NOME_DO_SPACE.hf.space/` abre.
 - A aba **Treinar** está desativada quando `ENABLE_TRAINING=false`.
 - Upload de áudio funciona.
+- O fluxo de uso das abas segue o guia
+  [Interface Gradio](23_INTERFACE_GRADIO.md).
 
 ### Inferência
 
@@ -361,7 +461,16 @@ client.view_api()
 Os nomes dos endpoints podem mudar conforme a composição da interface. Use
 `view_api()` no Space publicado para obter os endpoints reais.
 
-## 9. Problemas Comuns
+## 9. Documentação Relacionada
+
+| Tema | Documento |
+| --- | --- |
+| Uso da interface e abas | [Interface Gradio](23_INTERFACE_GRADIO.md) |
+| Publicação GitHub Pages + Hugging Face | [GitHub Pages e Hugging Face](24_PUBLICACAO_GITHUB_HF.md) |
+| Modelos e artefatos do benchmark | [Benchmark e Resultados](15_BENCHMARK.md) |
+| Notebooks de benchmark/treino/inferência | [Guia de Notebooks](16_NOTEBOOKS.md) |
+
+## 10. Problemas Comuns
 
 | Sintoma | Causa provável | Correção |
 | --- | --- | --- |
@@ -371,4 +480,3 @@ Os nomes dos endpoints podem mudar conforme a composição da interface. Use
 | Arquivos somem após restart | disco efêmero | anexar Storage Bucket em `/data` |
 | Treino aparece na demo pública | `ENABLE_TRAINING` não definido | configurar `ENABLE_TRAINING=false` |
 | Build lento | dependências grandes e modelos no repo do Space | manter modelos em Model Hub separado |
-
