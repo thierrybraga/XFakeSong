@@ -16,13 +16,21 @@
 # Uso (a partir da raiz do repo, dentro do WSL2):
 #   bash scripts/retrain_wsl2.sh --check                  # só valida GPU/ambiente
 #   bash scripts/retrain_wsl2.sh --indist                 # retreino in-distribution (14 arq.)
-#   bash scripts/retrain_wsl2.sh --xgen fkvoice           # reteste cross-generator
+#   bash scripts/retrain_wsl2.sh --xgen fkvoice           # reteste cross-generator (P0.1)
+#   bash scripts/retrain_wsl2.sh --group                  # split disjunto por fonte (P0.2)
 #   bash scripts/retrain_wsl2.sh --indist --xgen fkvoice  # ambos, em sequência
 #   bash scripts/retrain_wsl2.sh --model SpectrogramTransformer  # uma arquitetura
 # Opções:
 #   --dataset PATH   (default: app/datasets/benchmark_audio_raw_balanced_15k.npz)
 #   --epochs N       (default: 100)
 #   --out-prefix DIR (default: results/retrain_wsl2)
+#   --consolidate-from xgen|group|indist  (default: honesto-primeiro: xgen→group→indist)
+#
+# CONSOLIDAÇÃO: a fonte canônica das figuras/tabelas do TCC é, por padrão, a
+# corrida HONESTA (cross-generator > group-split > in-distribution). O run
+# in-distribution (estratificado) vaza fonte/gerador e serve só como TETO
+# otimista — não deve sobrescrever as figuras do TCC quando há uma corrida
+# honesta disponível. Veja docs/25_PLANO_CORRECOES.md (P0).
 # =====================================================================
 set -euo pipefail
 
@@ -31,8 +39,10 @@ EPOCHS=100
 OUT_PREFIX="results/retrain_wsl2"
 DO_INDIST=0
 DO_XGEN=""
+DO_GROUP=0
 SINGLE_MODEL=""
 CHECK_ONLY=0
+CONSOLIDATE_FROM=""
 PY="${PYTHON:-python}"
 
 while [[ $# -gt 0 ]]; do
@@ -40,11 +50,13 @@ while [[ $# -gt 0 ]]; do
     --check) CHECK_ONLY=1; shift;;
     --indist) DO_INDIST=1; shift;;
     --xgen) DO_XGEN="${2:?gerador requerido, ex.: fkvoice}"; shift 2;;
+    --group) DO_GROUP=1; shift;;
     --model) SINGLE_MODEL="${2:?nome da arquitetura}"; shift 2;;
     --dataset) DATASET="${2:?}"; shift 2;;
     --epochs) EPOCHS="${2:?}"; shift 2;;
     --out-prefix) OUT_PREFIX="${2:?}"; shift 2;;
-    -h|--help) sed -n '2,40p' "$0"; exit 0;;
+    --consolidate-from) CONSOLIDATE_FROM="${2:?xgen|group|indist}"; shift 2;;
+    -h|--help) sed -n '2,46p' "$0"; exit 0;;
     *) echo "Opção desconhecida: $1" >&2; exit 2;;
   esac
 done
@@ -100,20 +112,34 @@ run_bench () {  # $1 = sufixo do out, $2... = flags extras
 
 # --- 3. Execuções ----------------------------------------------------
 [[ "$DO_INDIST" == "1" ]] && run_bench "indist"
+[[ "$DO_GROUP" == "1" ]] && run_bench "group" --group-split
 [[ -n "$DO_XGEN" ]] && run_bench "xgen_${DO_XGEN}" --cross-generator "$DO_XGEN"
 
-if [[ "$DO_INDIST" == "0" && -z "$DO_XGEN" ]]; then
-  echo "Nada selecionado. Use --indist e/ou --xgen GERADOR (ou --check)." >&2
+if [[ "$DO_INDIST" == "0" && "$DO_GROUP" == "0" && -z "$DO_XGEN" ]]; then
+  echo "Nada selecionado. Use --indist, --group e/ou --xgen GERADOR (ou --check)." >&2
   exit 2
 fi
 
 # --- 4. Consolidação automática → figuras + tabelas do TCC -----------
-# Usa o run in-distribution como fonte canônica do TCC quando existir;
-# senão o cross-generator. Sobrescreve os artefatos consolidados antigos
-# pelos NOVOS (resultado do treino que acabou de rodar).
+# Fonte canônica = corrida HONESTA primeiro (xgen > group > indist), pois o
+# in-distribution vaza fonte/gerador e só vale como teto otimista. Override
+# explícito via --consolidate-from. Sobrescreve os artefatos consolidados
+# antigos pelos NOVOS (resultado do treino que acabou de rodar).
+declare -A SRC_BY_KEY=(
+  [xgen]="${OUT_PREFIX}_xgen_${DO_XGEN}"
+  [group]="${OUT_PREFIX}_group"
+  [indist]="${OUT_PREFIX}_indist"
+)
 CONSOL_SRC=""
-[[ "$DO_INDIST" == "1" ]] && CONSOL_SRC="${OUT_PREFIX}_indist"
-[[ -z "$CONSOL_SRC" && -n "$DO_XGEN" ]] && CONSOL_SRC="${OUT_PREFIX}_xgen_${DO_XGEN}"
+if [[ -n "$CONSOLIDATE_FROM" ]]; then
+  CONSOL_SRC="${SRC_BY_KEY[$CONSOLIDATE_FROM]:-}"
+  [[ -z "$CONSOL_SRC" ]] && { echo "ERRO: --consolidate-from inválido: $CONSOLIDATE_FROM" >&2; exit 2; }
+else
+  [[ -n "$DO_XGEN" ]] && CONSOL_SRC="${OUT_PREFIX}_xgen_${DO_XGEN}"
+  [[ -z "$CONSOL_SRC" && "$DO_GROUP" == "1" ]] && CONSOL_SRC="${OUT_PREFIX}_group"
+  [[ -z "$CONSOL_SRC" && "$DO_INDIST" == "1" ]] && CONSOL_SRC="${OUT_PREFIX}_indist"
+fi
+[[ -n "$CONSOL_SRC" ]] && echo ">>> Fonte de consolidação do TCC: $CONSOL_SRC"
 
 if [[ -n "$CONSOL_SRC" && -f "$CONSOL_SRC/results.json" ]]; then
   echo ">>> Consolidando $CONSOL_SRC → results/tcc_consolidated + tcc_overleaf/figures"

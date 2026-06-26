@@ -15,8 +15,15 @@ def evaluate_scores(y_true: np.ndarray, p_fake: np.ndarray,
     metodologia do treino), e sklearn para AUC-ROC. Acurácia/precisão/recall/F1
     são medidas no limiar informado (default 0.5, como na decisão padrão).
 
-    Retorna dict com: accuracy, precision, recall, f1, auc_roc, eer,
-    eer_threshold, min_tdcf, n, n_pos, n_neg.
+    P2 — também reporta `accuracy_at_eer`: a acurácia no LIMIAR ÓTIMO (ponto de
+    EER), separando "falha de calibração/limiar" de "falha de separabilidade".
+    Modelos cujos scores deslocam sob ruído (ex.: o Ensemble, cujo score colapsa
+    para ~0 mantendo AUC alta) despencam no limiar fixo 0.5 mas permanecem
+    separáveis — `accuracy_at_eer` revela esse teto, enquanto `accuracy` mostra a
+    decisão operável real. A distância entre os dois mede o quanto é só limiar.
+
+    Retorna dict com: accuracy, accuracy_at_eer, precision, recall, f1, auc_roc,
+    eer, eer_threshold, min_tdcf, n, n_pos, n_neg.
     """
     from sklearn.metrics import (
         accuracy_score,
@@ -60,9 +67,18 @@ def evaluate_scores(y_true: np.ndarray, p_fake: np.ndarray,
             eer, eer_thr = mc.calculate_eer(y_true, p_fake)
             out["eer"] = float(eer)
             out["eer_threshold"] = float(eer_thr)
+            # Acurácia no limiar ótimo (ponto de EER) — teto de separabilidade,
+            # independente da calibração do limiar fixo 0.5.
+            if np.isfinite(eer_thr):
+                out["accuracy_at_eer"] = float(
+                    accuracy_score(y_true, (p_fake >= eer_thr).astype(int))
+                )
+            else:
+                out["accuracy_at_eer"] = float("nan")
         except Exception:
             out["eer"] = float("nan")
             out["eer_threshold"] = float("nan")
+            out["accuracy_at_eer"] = float("nan")
         try:
             tdcf, _ = mc.calculate_min_tdcf(y_true, p_fake)
             out["min_tdcf"] = float(tdcf)
@@ -72,6 +88,7 @@ def evaluate_scores(y_true: np.ndarray, p_fake: np.ndarray,
         out["auc_roc"] = float("nan")
         out["eer"] = float("nan")
         out["eer_threshold"] = float("nan")
+        out["accuracy_at_eer"] = float("nan")
         out["min_tdcf"] = float("nan")
 
     return out

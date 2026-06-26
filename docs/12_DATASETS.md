@@ -2,6 +2,100 @@
 
 Este guia reúne os principais datasets públicos para detecção de deepfakes de áudio e documenta **como baixá-los e balanceá-los** no XFakeSong, tanto pela interface Gradio quanto pela linha de comando.
 
+---
+
+## Tiers de Dataset (test · small · medium · large)
+
+O XFakeSong organiza a montagem do dataset em **quatro tiers** com finalidade
+bem definida. Eles são a **fonte única de verdade** de tamanho/finalidade
+(`app/core/dataset_catalog.py` → `DATASET_TIERS`), compartilhada por
+`scripts/build_dataset.py`, pela interface Gradio, pelo benchmark e por esta
+documentação — escolher um tier pré-configura tamanho, fontes e estratégia de
+split de forma consistente em todo o sistema.
+
+| Tier | Por classe | Total | Finalidade | Fontes | Split | Falante |
+|------|-----------:|------:|------------|--------|-------|:------:|
+| **test** | 100 | 200 | **Smoke** — validar que treino e modelo funcionam de ponta a ponta. Não mede desempenho. | BRSpeech-DF + Fake Voices | 70/15/15 estratificado | — |
+| **small** | 1.000 | 2.000 | **Treino rápido** para iteração. Habilita Clássico (SVM/RF) + CNN leve. | BRSpeech-DF + Fake Voices | 70/15/15 estratificado | — |
+| **medium** | 3.000 | 6.000 | **Treino + teste completos** com diversidade real adicional. Habilita até Transformer. | BRSpeech-DF + Common Voice PT + FLEURS + Fake Voices | 70/15/15 estratificado | — |
+| **large** | 10.000 | 20.000 | **Completo** com falantes identificados e **usuários não vistos**. Habilita todas as 14 arquiteturas (Ensemble). | BRSpeech-DF + Common Voice PT + FLEURS + Fake Voices | **disjunto por falante** + cross-generator | **sim** |
+
+### Descrição detalhada
+
+- **`test` — mínimo (100/classe).** Conjunto de validação. Serve só para
+  confirmar que download → pré-processamento → treino → inferência rodam sem
+  erro (acurácia não é significativa neste tamanho). Real vem inteiramente do
+  BRSpeech-DF bonafide; fake do BRSpeech-DF spoof + Fake Voices XTTS. Download em
+  segundos. Use antes de qualquer execução pesada.
+- **`small` — rápido (1.000/classe).** Para ciclos rápidos de experimentação.
+  Atinge os limiares de prontidão de **SVM/RandomForest** e **CNNs leves**
+  (RawNet2, Sonic Sleuth, MultiscaleCNN). PT-BR via BRSpeech-DF + Fake Voices.
+- **`medium` — completo (3.000/classe).** Treino **e** teste mais robustos, com
+  diversidade real adicional (Common Voice PT + FLEURS) e fake independente
+  (Fake Voices XTTS). Atinge os limiares de **CNN/RNN** e **Transformers**.
+- **`large` — completo + falantes não vistos (10.000/classe).** O tier de
+  referência do TCC. Além do volume que habilita **todas as 14 arquiteturas**
+  (incluindo o Ensemble, ≥6.000/classe), ele:
+  - **identifica falantes** num sidecar `app/datasets/speaker_manifest.json`
+    (Fake Voices por falante do ZIP, Common Voice por `client_id`, In-the-Wild
+    por celebridade, ASVspoof pelo `speaker` do protocolo). Fontes que não
+    expõem falante caem para o nível de **fonte** (`<prefixo>`);
+  - cria splits **disjuntos por falante** — nenhum falante aparece em treino e
+    teste ao mesmo tempo, medindo generalização a **usuários não vistos**;
+  - combina com o **protocolo cross-generator** (segura o XTTS=`fkvoice` fora do
+    treino).
+
+> **Identificação de falante é aditiva** — não altera os nomes de arquivo
+> (`<fonte>_NNNNN.wav`), então todos os parsers de prefixo (catálogo, auditoria,
+> benchmark) continuam funcionando. O manifesto é gravado automaticamente pelos
+> downloaders das fontes que expõem falante.
+
+### Como usar
+
+**Interface Gradio** — aba **Datasets → Download → "1. Escolher Tier"**. Escolher
+um tier pré-preenche o **alvo por classe** e as **fontes**, e mostra a descrição
++ o protocolo de split. O restante do fluxo balance-aware continua igual.
+
+**Linha de comando:**
+
+```bash
+# Monta o dataset de um tier (download + balanceamento + splits + config)
+python scripts/build_dataset.py --tier test       # smoke, ~segundos
+python scripts/build_dataset.py --tier small       # 1.000/classe
+python scripts/build_dataset.py --tier medium      # 3.000/classe
+python scripts/build_dataset.py --tier large       # 10.000/classe, split por falante
+
+# Override manual do tamanho de um tier (mantém fontes/split do tier):
+python scripts/build_dataset.py --tier medium --target 4000
+```
+
+O `dataset_config.json` resultante registra `tier`, `split_strategy`,
+`speaker_aware` e um resumo `speakers` (total, identificados, por fonte). Para o
+tier `large`, o `splits_metadata.json` registra `unseen_in_test` (falantes só no
+teste) e a verificação de vazamento `leakage_overlap_train_test`.
+
+**Benchmark (protocolo de usuário não visto):** o `.npz` exportado por
+`scripts/run_tcc_pipeline.py` inclui o array `speaker_ids`. Ative o protocolo com:
+
+```bash
+# split disjunto por falante (usuários não vistos)
+python scripts/run_benchmark.py --full --dataset SEU_large.npz --speaker-split
+
+# holdout de um falante específico (teste = só ele + reais reservados)
+python scripts/run_benchmark.py --full --dataset SEU_large.npz --unseen-speaker "fkvoice:<id>"
+
+# pipeline ponta a ponta no tier large
+python scripts/run_tcc_pipeline.py --download --tier large --full-benchmark --speaker-split
+```
+
+> Quando os falantes de uma fonte são correlacionados à classe (ex.: fonte pura
+> só-real ou só-fake), o split disjunto por falante na criação dos splits pode
+> degenerar para classe única; nesse caso o pipeline **cai para o estratificado**
+> e avisa — o protocolo de usuário não visto fica melhor servido pelo benchmark
+> (`--unseen-speaker`, que reserva reais para manter o teste balanceado).
+
+---
+
 ## Boas Práticas
 - Respeite as licenças e termos de uso de cada dataset.
 - Não redistribua arquivos quando a licença proibir.
@@ -37,10 +131,41 @@ Fluxo:
 | PT-BR Completo | + CETUC + MLAAD-PT | Cobertura PT-BR completa |
 | Internacional Padrão | ASVspoof 2019 + WaveFake + In-the-Wild | Benchmark anti-spoofing |
 | Máxima Cobertura | PT-BR + Internacional | Máxima diversidade |
+| Benchmark Robusto Recomendado | BRSpeech-DF + Fake Voices + FLEURS + Common Voice PT + ASVspoof 2019 + WaveFake + In-the-Wild | Treino/benchmark com PT-BR, fontes reais adicionais e validação internacional |
 | Só Reforçar Real | FLEURS + CETUC + Common Voice PT | Corrigir déficit de reais |
 | Só Reforçar Fake | Fake Voices + MLAAD-PT + WaveFake + ASVspoof 5 | Corrigir déficit de fakes |
 
 > **Dica:** combine sempre ≥1 fonte `both` (BRSpeech-DF, ASVspoof 2019) com fontes especializadas (Fake Voices para fakes, CETUC para reais) para diversidade máxima.
+
+### Catálogo usado pela Gradio e pelo benchmark
+
+A aba Gradio **Datasets/Download** e o pipeline de benchmark usam o catálogo
+central `app/core/dataset_catalog.py`. Esse catálogo documenta tipo de classe,
+comando de download, licença, duração, falantes e uso recomendado. Quando uma
+fonte não publica um valor estável por idioma, o campo fica marcado como
+“não informado” ou “variável”; nesses casos, o manifesto do benchmark registra
+as contagens realmente baixadas.
+
+| Dataset | Tipo | Flag | Prefixo | Idioma | Arquivos/duração | Falantes | Licença | Uso no benchmark |
+|---|:---:|---|---|---|---|---|---|---|
+| BRSpeech-DF | both | `--brspeech` | `brspeech_` | pt-BR | 459.137 amostras; duração não informada pela fonte | não informado | Apache-2.0/CC BY 4.0 (HF divergente) | Fonte principal PT-BR para treino balanceado |
+| Fake Voices | fake | `--fake-voices` | `fkvoice_` | pt-BR | ~140 h; ~30,5 GB | 101 falantes | MIT | Fake PT-BR independente para teste cross-generator |
+| FLEURS | real | `--fleurs` | `fleurs_` | pt-BR | `pt_br` ~4,1 mil linhas; duração variável | não consolidado no catálogo local | CC BY 4.0 | Reforço de fala real PT-BR |
+| CETUC | real | `--cetuc` | `cetuc_` | pt-BR | variável conforme fallback | variável | livre/variável | Completar déficit de amostras reais |
+| MLAAD-PT | fake | `--mlaad-pt` | `mlaad_` | pt | subconjunto PT filtrado em streaming | não informado | CC-BY-NC 4.0 | Reforço fake; uso condicionado à licença NC |
+| Common Voice PT | real | `--common-voice-pt` | `cvpt_`, `cv_` | pt | variável por release/configuração; HF v17 legacy vazio | variável por release/configuração | CC0 | Diversidade de fala real; usar Mozilla Data Collective |
+| ASVspoof 2019 | both | `--asvspoof2019` | `asv2019_` | inglês | protocolo oficial LA/PA | derivado do VCTK; consultar protocolo oficial | ODC-BY 1.0 | Referência externa padrão anti-spoofing |
+| WaveFake | fake | `--wavefake` | `wavefake_` | inglês/japonês | ~175 h; download completo ~28,9 GB | LJSpeech/JSUT; poucos falantes base | CC-BY-SA 4.0 | Reforço fake internacional e cross-vocoder |
+| In-the-Wild | both | `--in-the-wild` | `itw_` | majoritariamente inglês | ~20,8 h real + ~17,2 h fake | 58 celebridades/falantes | Apache-2.0 | Validação externa realista |
+| ASVspoof 5 | both | `--asvspoof5` | `asv5_` | inglês/multifonte | protocolo ASVspoof 5; mirror HF ~142 GB | ~2.000 falantes | consultar README/LICENSE oficiais | Referência moderna; pode exigir login/aceite |
+
+O `.npz` exportado por `scripts/run_tcc_pipeline.py` inclui:
+
+- `metadata_json.source_summary`: contagem por fonte, classe e horas estimadas
+  pelas janelas exportadas;
+- `metadata_json.dataset_catalog`: snapshot do catálogo usado na execução;
+- `groups`: vetor alinhado às amostras, derivado do prefixo de origem, usado
+  por `--group-split` e `--cross-generator`.
 
 ### 2. Linha de comando — `scripts/download_datasets.py`
 
@@ -64,7 +189,7 @@ python scripts/download_datasets.py --asvspoof5 --max-samples 2000
 
 | Flag | Tipo | Prefixo arquivo | Licença |
 |------|:----:|-----------------|---------|
-| `--brspeech` | both | `brspeech_` | ODC-BY |
+| `--brspeech` | both | `brspeech_` | Apache-2.0/CC BY 4.0 (HF divergente) |
 | `--fake-voices` | fake | `fkvoice_` | MIT |
 | `--cetuc` | real | `cetuc_` | livre |
 | `--fleurs` | real | `fleurs_` | CC BY 4.0 |
@@ -72,8 +197,8 @@ python scripts/download_datasets.py --asvspoof5 --max-samples 2000
 | `--common-voice-pt` | real | `cvpt_` | CC0 |
 | `--asvspoof2019` | both | `asv2019_` | ODC-BY |
 | `--wavefake` | fake | `wavefake_` | MIT |
-| `--in-the-wild` | both | `itw_` | CC BY 4.0 |
-| `--asvspoof5` | both | `asv5_` | CC BY 4.0 |
+| `--in-the-wild` | both | `itw_` | Apache-2.0 |
+| `--asvspoof5` | both | `asv5_` | consultar README/LICENSE oficiais |
 
 **Parâmetros:**
 - `--max-samples N` — máximo **por classe** (fontes `both` dividem em N/2 real + N/2 fake).
@@ -182,23 +307,23 @@ fakes se precisar de volume rapidamente.
 
 ### ASVspoof 5 (2024)
 - Descrição: Edição mais recente; 20+ tipos de ataque, incluindo TTS/VC com LLMs de voz.
-- Mirror HF: [jungjee/asvspoof5](https://huggingface.co/datasets/jungjee/asvspoof5) — CC BY 4.0 (requer login)
+- Mirror HF: [jungjee/asvspoof5](https://huggingface.co/datasets/jungjee/asvspoof5) — verificar README/LICENSE oficiais (pode exigir login)
 
 ### WaveFake (NeurIPS 2021)
 - Descrição: Deepfakes de áudio com 6 vocoders (MelGAN, PWG, HiFi-GAN, WaveGlow, MB-MelGAN, FB-MelGAN); ~175 h.
 - Repositório: [GitHub — WaveFake](https://github.com/RUB-SysSec/WaveFake)
-- Download: [Zenodo 5642694](https://zenodo.org/records/5642694) (~28.9 GB) — MIT/CC BY-SA 4.0
+- Download: [Zenodo 5642694](https://zenodo.org/records/5642694) (~28.9 GB) — CC-BY-SA 4.0
 - Idiomas: Inglês e Japonês (LJSpeech/JSUT).
 - O script tenta espelhos HF primeiro e cai para o Zenodo automaticamente.
 
 ### In-the-Wild (Deepfake de Áudio)
 - Descrição: Deepfakes e áudios autênticos de figuras públicas; foco em generalização realista.
-- Página: [deepfake-total.com/in_the_wild](https://deepfake-total.com/in_the_wild) — CC BY 4.0
+- Página: [deepfake-total.com/in_the_wild](https://deepfake-total.com/in_the_wild) — Apache-2.0
 - Tamanho: ~20.8 h bonafide + ~17.2 h spoof.
 
 ### BRSpeech-DF (PT-BR)
 - Descrição: Corpus PT-BR com bonafide + spoof (459 K arquivos). Principal fonte em português.
-- Mirror HF: [AKCIT-Deepfake/BRSpeech-DF](https://huggingface.co/datasets/AKCIT-Deepfake/BRSpeech-DF) — ODC-BY
+- Mirror HF: [AKCIT-Deepfake/BRSpeech-DF](https://huggingface.co/datasets/AKCIT-Deepfake/BRSpeech-DF) — metadado HF Apache-2.0; card cita CC BY 4.0
 
 ### Fake Voices (XTTS, PT-BR)
 - Descrição: ~140 h geradas por XTTS, 101 falantes; ZIPs por falante.
@@ -211,7 +336,7 @@ fakes se precisar de volume rapidamente.
 ### FLEURS / CETUC / Common Voice PT (reais PT-BR)
 - FLEURS: [google/fleurs](https://huggingface.co/datasets/google/fleurs) (`pt_br`) — CC BY 4.0
 - CETUC: via Common Voice/OpenSLR 132 (fallback em cascata) — livre
-- Common Voice PT: [mozilla-foundation/common_voice_17_0](https://huggingface.co/datasets/mozilla-foundation/common_voice_17_0) (`pt`) — CC0 (requer login/aceite)
+- Common Voice PT: [Mozilla Common Voice](https://commonvoice.mozilla.org/datasets) (`pt`) — CC0; o mirror HF v17 está legacy/vazio desde 2025
 
 ### FakeAVCeleb (Áudio-Vídeo)
 - Descrição: Multimodal (vídeo + áudio clonado sincronizado). Acesso via formulário dos autores.
@@ -229,20 +354,26 @@ O XFakeSong usa estrutura de dois estágios em `app/datasets/`:
 
 ```
 app/datasets/
-├── real/           # Áudios genuínos (16 kHz mono PCM-16)
-├── fake/           # Áudios sintéticos/deepfake
-├── raw/            # Caches de download (ZIPs, parquet) antes da normalização
-├── splits/         # Gerado por preprocess_dataset.py --create-splits
+├── real/                   # Áudios genuínos (16 kHz mono PCM-16)
+├── fake/                   # Áudios sintéticos/deepfake
+├── raw/                    # Caches de download (ZIPs, parquet) antes da normalização
+├── splits/                 # Gerado por preprocess_dataset.py --create-splits
 │   ├── train/{real,fake}/
 │   ├── val/{real,fake}/
 │   ├── test/{real,fake}/
-│   └── splits_metadata.json
-└── features/       # Features extraídas (numpy/JSON)
+│   └── splits_metadata.json   # inclui split_strategy + estatística de falantes
+├── dataset_config.json     # tier, split_strategy, speaker_aware, fontes, formato
+├── speaker_manifest.json   # arquivo → falante (tier large; aditivo, opcional)
+└── features/               # Features extraídas (numpy/JSON)
 ```
 
 **Fluxo recomendado de ponta a ponta:**
-1. **Baixar** (balanceado): UI **Gerenciar → Datasets/Download** ou `python scripts/download_datasets.py --all --max-samples 2000`
-2. **Validar + normalizar + splits**: `python scripts/preprocess_dataset.py --full`
+1. **Escolher um tier e montar**: UI **Datasets → Download → Escolher Tier** ou
+   `python scripts/build_dataset.py --tier <test|small|medium|large>` (faz
+   download balanceado + validação/normalização + splits + `dataset_config.json`).
+   Para fontes avulsas: `python scripts/download_datasets.py --all --max-samples 2000`.
+2. **(Opcional) re-criar splits**: `python scripts/preprocess_dataset.py --full`
+   (adicione `--speaker-disjoint` para o protocolo de usuários não vistos).
 3. **Treinar**: UI **Treinar** (wizard) — escolha um modelo compatível com o tamanho do seu dataset.
 
 Mantenha um `metadata.json` por dataset externo com: fonte (URL), licença, data de obtenção e comandos de pré-processamento.

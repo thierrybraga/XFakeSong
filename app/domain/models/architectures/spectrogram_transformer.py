@@ -266,10 +266,11 @@ def create_spectrogram_transformer_model(
     # com restauração obrigatória do melhor checkpoint e augmentation SNR.
     dropout_rate: float = 0.3,
     learning_rate: float = 5e-5,
-    warmup_steps: int = 1000,
+    warmup_steps: int = 2000,
     decay_steps: int = 50000,
     weight_decay: float = 1e-4,
     alpha: float = 1e-7,
+    clipnorm: float = 1.0,
     architecture: str = 'spectrogram_transformer'
 ) -> models.Model:
     """
@@ -411,6 +412,8 @@ def create_spectrogram_transformer_model(
     # Sprint 2.2: WarmupCosineDecay default para Transformers.
     # Warmup linear estabiliza Self-Attention nas primeiras épocas
     # (gradientes grandes) e cosine decay melhora convergência final.
+    # P1 — clipnorm=1.0 + warmup maior estabilizam a atenção e evitam o colapso
+    # val→0.5 visto no benchmark (treino divergia após o pico do warmup).
     from app.domain.models.training.optimization import create_warmup_cosine_optimizer
     optimizer = create_warmup_cosine_optimizer(
         initial_learning_rate=learning_rate,
@@ -418,6 +421,7 @@ def create_spectrogram_transformer_model(
         decay_steps=decay_steps,
         weight_decay=weight_decay,
         alpha=alpha,
+        clipnorm=clipnorm,
     )
 
     model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
@@ -425,7 +429,8 @@ def create_spectrogram_transformer_model(
     logger.info(
         f"Spectrogram Transformer model created successfully with {model.count_params()} parameters "
         f"(WarmupCosineDecay: lr={learning_rate}, warmup={warmup_steps}, "
-        f"decay={decay_steps}, weight_decay={weight_decay}, alpha={alpha})")
+        f"decay={decay_steps}, weight_decay={weight_decay}, alpha={alpha}, "
+        f"clipnorm={clipnorm})")
     return model
 
 

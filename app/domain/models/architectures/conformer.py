@@ -790,6 +790,27 @@ def create_conformer_model(input_shape, num_classes=2, d_model=256, d_ff=1024,
     return model
 
 
+def _merge_variant_params(defaults, overrides):
+    params = dict(defaults)
+    overrides = dict(overrides)
+
+    alias_map = {
+        "attention_heads": "num_heads",
+        "hidden_units": "d_model",
+        "l2_reg_strength": "weight_decay",
+    }
+    for source, target in alias_map.items():
+        if source in overrides:
+            value = overrides.pop(source)
+            if target not in overrides:
+                overrides[target] = value
+
+    for key in list(params):
+        if key in overrides:
+            params[key] = overrides.pop(key)
+    return params, overrides
+
+
 def create_model(input_shape: Tuple[int, ...], num_classes: int,
                  architecture: str = 'conformer', **kwargs) -> tf.keras.Model:
     """Factory function to create Conformer models.
@@ -806,35 +827,54 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int,
     Returns:
         Compiled Keras model
     """
+    nested_parameters = kwargs.pop("parameters", None)
+    if nested_parameters:
+        parameters = dict(nested_parameters)
+        parameters.update(kwargs)
+        kwargs = parameters
+
     # Alias "default" → variante paper-faithful (consistente com AASIST/RawGAT-ST)
     if architecture == 'default':
         architecture = 'conformer'
 
     if architecture == 'conformer':
-        # Conformer optimized for anti-spoofing
+        # Conformer optimized for anti-spoofing. Variant defaults are merged
+        # before the call so benchmark overrides do not duplicate keyword args.
+        params, kwargs = _merge_variant_params(
+            {
+                "d_model": 256,
+                "d_ff": 1024,        # 4 × d_model
+                "num_heads": 4,
+                "num_blocks": 8,
+                "dropout_rate": 0.1,
+                "ff_dropout_rate": 0.2,
+                "attn_dropout_rate": 0.1,
+                "conv_dropout_rate": 0.1,
+            },
+            kwargs,
+        )
         return create_conformer_model(
             input_shape=input_shape,
             num_classes=num_classes,
-            d_model=256,
-            d_ff=1024,        # 4 × d_model
-            num_heads=4,
-            num_blocks=8,
-            dropout_rate=0.1,
-            ff_dropout_rate=0.2,
-            attn_dropout_rate=0.1,
-            conv_dropout_rate=0.1,
+            **params,
             **kwargs,
         )
     elif architecture == 'conformer_lite':
         # Conformer-M (Medium) from the paper
+        params, kwargs = _merge_variant_params(
+            {
+                "d_model": 256,
+                "d_ff": 1024,       # 4 × d_model (paper)
+                "num_heads": 4,     # paper Conformer-M
+                "num_blocks": 16,   # paper Conformer-M
+                "dropout_rate": 0.1,
+            },
+            kwargs,
+        )
         return create_conformer_model(
             input_shape=input_shape,
             num_classes=num_classes,
-            d_model=256,
-            d_ff=1024,       # 4 × d_model (paper)
-            num_heads=4,      # paper Conformer-M
-            num_blocks=16,    # paper Conformer-M
-            dropout_rate=0.1,
+            **params,
             **kwargs,
         )
     else:

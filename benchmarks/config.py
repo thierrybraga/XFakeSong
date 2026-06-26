@@ -84,6 +84,17 @@ class BenchmarkConfig:
     # disjuntos). Mede generalização a gerador inédito. None desativa.
     holdout_generator: Optional[str] = None
 
+    # Tier `large` — split DISJUNTO POR FALANTE (usuários não vistos). Quando True
+    # e o dataset carrega `speaker_ids`, mantém cada falante inteiramente em um
+    # único conjunto (StratifiedGroupKFold por falante). Espelha `group_split`.
+    speaker_split: bool = False
+    # Protocolo holdout-speaker: segura este falante fora do treino e o usa (só
+    # ele + reais reservados) como teste — generalização a usuário inédito.
+    # Espelha `holdout_generator`. None desativa.
+    holdout_speaker: Optional[str] = None
+    # Tier informativo do dataset (test/small/medium/large/custom), só para o plano.
+    tier: Optional[str] = None
+
     # P2 — augmentation ruidoso para os modelos clássicos (SVM/RF). Anexa
     # cópias do conjunto de treino com AWGN nos MESMOS níveis de SNR avaliados
     # (mesmo espaço de feature em que a robustez é medida), atacando o colapso
@@ -143,6 +154,33 @@ class BenchmarkConfig:
             preset_name=f"cross_generator:{holdout_generator}",
             optimize_hyperparameters=True,
             holdout_generator=holdout_generator,
+        )
+        base.update(overrides)
+        return cls(**base)
+
+    @classmethod
+    def unseen_speaker_tcc(cls, holdout_speaker: Optional[str] = None,
+                           **overrides) -> "BenchmarkConfig":
+        """Preset tier `large` — protocolo de USUÁRIO NÃO VISTO (unseen speaker).
+
+        Com `holdout_speaker`, segura um falante fora do treino e testa nele
+        (mais reais reservados, p/ manter ambas as classes no teste). Sem ele,
+        usa split disjunto por falante (`speaker_split=True`). Requer um `.npz`
+        com `speaker_ids` (exportado a partir de um dataset tier `large`).
+        """
+        base = dict(
+            architectures=list(ALL_TCC_ARCHITECTURES),
+            epochs=100,
+            snr_levels_db=[30, 20, 10],
+            run_api_probe=False,
+            preset_name=(
+                f"unseen_speaker:{holdout_speaker}" if holdout_speaker
+                else "unseen_speaker"
+            ),
+            optimize_hyperparameters=True,
+            tier="large",
+            speaker_split=holdout_speaker is None,
+            holdout_speaker=holdout_speaker,
         )
         base.update(overrides)
         return cls(**base)

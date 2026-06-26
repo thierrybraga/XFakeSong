@@ -9,7 +9,6 @@
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
 \usepackage{graphicx}
-% MELHORIA: graphicspath removido — todos os \includegraphics já usam o
 % prefixo figures/ explicitamente, evitando redundância de caminho.
 \usepackage{cite}
 \usepackage{amsmath}
@@ -146,7 +145,6 @@
     pdftitle={Pipeline Modular para Detecção de Áudio Sintético},
     pdfauthor={Thierry Gonçalves Braga},
     pdfsubject={Trabalho de Conclusão de Curso},
-    % MELHORIA: palavras-chave em português, alinhadas ao resumo
     pdfkeywords={deepfake de áudio; benchmark; arquiteturas neurais;
                  WavLM; HuBERT; Conformer; MultiscaleCNN; robustez a ruído}
 }
@@ -211,7 +209,7 @@ Federal de São João del-Rei}\\[0.5cm]
 % ------------------------------------------------------------------
 %  FOLHA DE APROVAÇÃO
 % ------------------------------------------------------------------
-\pagestyle{empty}   % MELHORIA: garantir que folha de aprovação não herde cabeçalho
+\pagestyle{empty}
 \begin{center}
 \textbf{FOLHA DE APROVAÇÃO}
 \end{center}
@@ -241,7 +239,7 @@ Prof.\ \underline{\hspace{6cm}}\\
 Instituição: \underline{\hspace{5.2cm}}
 
 \newpage
-\pagestyle{fancy}   % MELHORIA: retomar cabeçalho apenas a partir daqui
+\pagestyle{fancy}
 
 % ------------------------------------------------------------------
 %  RESUMO (NBR 6028:2021)
@@ -263,22 +261,20 @@ experimentos foram conduzidos sobre uma base balanceada com 15.000 amostras de
 padronizadas em \SI{16}{\kilo\hertz}, mono e \SI{5}{\second}.
 O treinamento neural utilizou GPU NVIDIA RTX 3060 via WSL2/CUDA, enquanto SVM
 e Random Forest foram otimizados por validação cruzada em CPU. No protocolo
-consolidado, Conformer e Sonic Sleuth\footnote{Sonic Sleuth é
-o nome interno dado pelo autor ao modelo híbrido de características clássicas
-(LFCC, MFCC e CQT) com rede neural compacta desenvolvido neste trabalho.}
-obtiveram 100,00\% de acurácia e EER de 0,00\% no conjunto de teste limpo,
-seguidos por Hybrid CNN-Transformer (99,96\%), MultiscaleCNN (99,73\%), SVM
-(99,02\%) e Random Forest (98,18\%). O Spectrogram Transformer foi a principal
-arquitetura com instabilidade observada: alcançou 98,00\% de validação na época
-11, mas terminou com 71,51\% de acurácia no teste, indicando necessidade de
-restauração rigorosa do melhor \textit{checkpoint} e novo ajuste de
-hiperparâmetros. Os resultados confirmam a funcionalidade do \textit{pipeline}
+consolidado, Sonic Sleuth, nome interno do classificador híbrido de
+características clássicas (LFCC, MFCC e CQT) com rede neural compacta, obteve
+100,00\% de acurácia e EER de 0,00\% no conjunto de teste limpo,
+seguido por MultiscaleCNN (99,96\%), Conformer (99,87\%), HuBERT Original
+(98,93\%), RawNet2 e Random Forest (98,04\%). O Spectrogram Transformer
+registrou 97,69\% no teste limpo, mas manteve instabilidade no histórico de
+validação: melhor validação de 96,49\% na época 7 e validação final de
+50,00\%, indicando necessidade de restauração rigorosa do melhor
+\textit{checkpoint} e novo ajuste de hiperparâmetros. Os resultados confirmam a funcionalidade do \textit{pipeline}
 para comparação padronizada de arquiteturas, mas também evidenciam a necessidade
 de validação externa, análise de robustez e controle de possíveis vieses de
 domínio antes de uso em cenários reais.
 
 \vspace{0.4cm}
-% MELHORIA: palavras-chave normalizadas por ponto-e-vírgula (NBR 6028:2021)
 \noindent\textbf{Palavras-chave:} \textit{deepfake} de áudio;
 \textit{benchmark}; arquiteturas neurais; WavLM; HuBERT; Conformer;
 MultiscaleCNN; robustez a ruído.
@@ -300,14 +296,13 @@ Experiments were conducted on a balanced 15,000-sample audio dataset with a
 70/15/15 train/validation/test split and \SI{16}{\kilo\hertz} mono
 \SI{5}{\second} windows. Neural models were trained on an NVIDIA RTX 3060 GPU
 through WSL2/CUDA, while SVM and Random Forest were optimized with CPU
-cross-validation. Under the consolidated protocol, Conformer and Sonic Sleuth
-achieved 100.00\%
-accuracy and 0.00\% EER on the clean test set, followed by Hybrid
-CNN-Transformer (99.96\%), MultiscaleCNN (99.73\%), SVM (99.02\%) and Random
-Forest (98.18\%). The Spectrogram Transformer was the main architecture with
-observed instability: it reached 98.00\% validation accuracy at epoch 11 but
-ended with 71.51\% test accuracy, indicating the need for strict
-best-checkpoint restoration and further hyperparameter tuning. The results
+cross-validation. Under the consolidated protocol, Sonic Sleuth achieved 100.00\% accuracy
+and 0.00\% EER on the clean test set, followed by MultiscaleCNN (99.96\%),
+Conformer (99.87\%), HuBERT Original (98.93\%), RawNet2 and Random Forest
+(98.04\%). The Spectrogram Transformer reached 97.69\% clean-test accuracy,
+but its validation history remained unstable: 96.49\% best validation accuracy
+at epoch 7 and 50.00\% final validation accuracy, indicating the need for
+strict best-checkpoint restoration and further hyperparameter tuning. The results
 confirm the pipeline's ability to compare heterogeneous architectures in a
 standardized way, while also showing the need for external validation,
 robustness analysis and domain-bias control before deployment in real-world
@@ -387,7 +382,6 @@ WavLM; HuBERT; Conformer; MultiscaleCNN; noise robustness.
 \section{Introdução}
 \label{sec:introducao}
 
-% MELHORIA: menção às implicações éticas já na introdução, retomadas na conclusão
 A crescente democratização de tecnologias de síntese de áudio baseadas em
 inteligência artificial tem facilitado a criação de \textit{deepfakes} de
 áudio com qualidade cada vez mais próxima à voz humana natural
@@ -412,7 +406,6 @@ necessidade de sistemas automatizados robustos e explica o surgimento dos
 \textit{benchmarks} padronizados ASVspoof como eixo central de avaliação
 \cite{todisco2019asvspoof, yamagishi2021asvspoof, wang2024asvspoof5}.
 
-% MELHORIA: nota sobre risco de uso dual logo na introdução
 \begin{warningbox}{Uso dual e responsabilidade científica}
 Os resultados apresentados neste trabalho descrevem quais características
 acústicas são mais discriminativas para detecção. Esse conhecimento, publicado
@@ -641,9 +634,8 @@ A Tabela~\ref{tab:survey_geracoes} consolida as quatro gerações de métodos.
 O sistema proposto opera em duas fases: \textbf{treinamento} e
 \textbf{predição}. Durante o treinamento, o modelo aprende a distinguir
 características de voz real e sintética. Na predição, processa novos áudios e
-fornece classificação binária (Real/Fake) com \textit{score} de confiança.
+fornece classificação binária (real/sintético) com pontuação de confiança.
 
-% MELHORIA: pipeline dividido em duas subfiguras para melhor legibilidade
 \begin{figure}[H]
 \centering
 \begin{subfigure}[b]{0.46\textwidth}
@@ -655,10 +647,10 @@ fornece classificação binária (Real/Fake) com \textit{score} de confiança.
 \node (feat)   [block, below=of vad]   {Extração de Características};
 \node (norm)   [block, below=of feat]  {Normalização};
 \node (inf)    [modelnode, below=of norm]{Inferência};
-\node (score)  [block, below=of inf]   {Score 0--1};
+\node (score)  [block, below=of inf]   {Pontuação 0--1};
 \node (dec)    [decision, below=of score, yshift=-0.2cm] {$> 0{,}5$?};
 \node (real)   [resultreal, below left=1.1cm and 0.9cm of dec]  {REAL};
-\node (fake)   [resultfake, below right=1.1cm and 0.9cm of dec] {FAKE};
+\node (fake)   [resultfake, below right=1.1cm and 0.9cm of dec] {SINTÉTICO};
 
 \draw[arrow,color=primaryblue] (audio) -- (vad);
 \draw[arrow,color=primaryblue] (vad)   -- (feat);
@@ -679,7 +671,7 @@ fornece classificação binária (Real/Fake) com \textit{score} de confiança.
 \centering
 \begin{tikzpicture}[node distance=1.4cm, scale=0.82, transform shape,
                     every node/.append style={font=\footnotesize}]
-\node (dataset) [startend]               {Dataset};
+\node (dataset) [startend]               {Conjunto de Dados};
 \node (prep)    [block, below=of dataset] {Pré-processamento};
 \node (ftrain)  [block, below=of prep]   {Extração de Características};
 \node (arch)    [block, below=of ftrain] {Arquiteturas Neurais};
@@ -707,9 +699,8 @@ inferência (\subref{fig:pipeline_pred}).}
 \end{figure}
 
 % ------------------------------------------------------------------
-\subsection{Dataset e Protocolo Experimental}
+\subsection{Conjunto de Dados e Protocolo Experimental}
 \label{sec:dataset_protocolo}
-% MELHORIA: subseção própria para dataset/protocolo — separado de metodologia geral
 % ------------------------------------------------------------------
 
 \subsubsection{Construção do Dataset BRSpeech-DF}
@@ -731,11 +722,10 @@ linguística.}
 \begin{itemize}
     \item \textbf{Origem e rastreabilidade}: os arquivos foram organizados a
     partir de diretórios rotulados como \textit{real} e \textit{fake} e
-    exportados para um arquivo NumPy único. O manifesto do pipeline registra
+    exportados para um arquivo NumPy único. O manifesto do \textit{pipeline} registra
     caminho de origem, parâmetros de áudio, contagens por classe, semente e
     partições.
 
-    % MELHORIA: limitação documental tornada explícita e destacada
     \item \textbf{Metadados pendentes}: número de falantes distintos,
     distribuição por gênero e idioma (em especial, proporção de amostras em
     português brasileiro), licença de cada fonte, duração original dos
@@ -754,7 +744,6 @@ linguística.}
     proporção 1:1 em todas as partições, evitando viés de decisão por
     frequência de classe.
 
-    % MELHORIA: nota explícita sobre risco de vazamento por falante
     \item \textbf{Divisão estratificada}: 70\% para treino (10.500 amostras),
     15\% para validação (2.250 amostras) e 15\% para teste (2.250 amostras),
     com semente fixa 42. \emph{Importante:} a divisão atual estratifica por
@@ -798,7 +787,7 @@ Idioma & Não documentado no manifesto atual \\
 \end{tabular}
 \end{table}
 
-Os artefatos de entrada do \textit{benchmark} foram consolidados no arquivo
+Os arquivos de entrada do \textit{benchmark} foram consolidados no arquivo
 \path{benchmark_audio_raw_balanced_15k.npz}, localizado em
 \path{app/datasets/}. Os resultados, modelos treinados, métricas, matrizes de
 confusão e figuras são salvos em pastas individuais por arquitetura dentro de
@@ -873,7 +862,7 @@ segmento; e $D_{min} = 0{,}3$\,s.
 O Silero VAD (disponibilizado via Torch Hub) oferece performance pré-treinada
 superior ao VAD por energia. Nos experimentos, a indisponibilidade do
 \texttt{torchaudio} motivou o uso do VAD por energia como \textit{fallback},
-preservando a funcionalidade do pipeline sem dependências externas não
+preservando a funcionalidade do \textit{pipeline} sem dependências externas não
 atendidas no ambiente de CPU.
 \end{infobox}
 
@@ -1095,7 +1084,7 @@ sob o mesmo benchmark.
 
 \subsection{Modelos SSL e \textit{Raw-Audio}}
 
-O WavLM original \cite{chen2022wavlm} e o HuBERT original
+O WavLM Original \cite{chen2022wavlm} e o HuBERT Original
 \cite{hsu2021hubert} foram avaliados com \textit{backbones} reais, não apenas
 com implementações simplificadas. Ambos recebem áudio bruto a
 \SI{16}{\kilo\hertz} e usam representações aprendidas em larga escala, com
@@ -1134,7 +1123,8 @@ características complementares.
 
 \subsection{Modelos Clássicos}
 
-SVM e Random Forest foram mantidos como baselines fortes e interpretáveis. O
+SVM e Random Forest foram mantidos como linhas de base interpretáveis e
+competitivas. O
 SVM utiliza padronização estatística e kernel RBF; a Random Forest explora
 paralelismo em CPU com múltiplas árvores e \texttt{n\_jobs=-1}. Ambos foram
 submetidos a busca de hiperparâmetros antes do ajuste final, permitindo
@@ -1246,7 +1236,7 @@ Modelos clássicos & CPU, validação cruzada e paralelismo \\
 A execução foi organizada para permitir repetição do experimento completo e de
 modelos individuais. O protocolo usa base consolidada única, semente fixa,
 divisão estratificada, 100 épocas para modelos neurais e validação
-cruzada para SVM/Random Forest. Cada arquitetura grava artefatos em diretório
+cruzada para SVM/Random Forest. Cada arquitetura grava arquivos em diretório
 próprio, permitindo auditar o modelo salvo, as configurações, o histórico de
 treino, as métricas e as figuras correspondentes. A
 Tabela~\ref{tab:reprodutibilidade_benchmark} resume os parâmetros de
@@ -1260,11 +1250,11 @@ reprodutibilidade do experimento.
 \toprule
 \textbf{Item} & \textbf{Valor registrado} \\
 \midrule
-Dataset & \path{app/datasets/benchmark_audio_raw_balanced_15k.npz} \\
+Conjunto de dados & \path{app/datasets/benchmark_audio_raw_balanced_15k.npz} \\
 Amostras & 15.000, balanceadas entre real e sintético \\
 Teste & 2.250 amostras, divisão estratificada \\
 Semente & 42 \\
-Treino neural & 100 épocas, melhor checkpoint salvo \\
+Treino neural & 100 épocas, melhor \textit{checkpoint} salvo \\
 Clássicos & GridSearchCV + ajuste final \\
 Resultados & \path{results/<run>/} \\
 Modelos padrão & \path{app/models/} \\
@@ -1284,27 +1274,26 @@ respectivamente, acurácia e AUC-ROC e a taxa de erro igual (EER) por arquitetur
 \centering
 \caption{Resultados consolidados no conjunto de teste limpo.}
 \label{tab:resultados_consolidados}
-% MELHORIA: fonte explícita mínima de 9pt (verificar com \resizebox)
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{clccccccc}
 \toprule
 \textbf{Rank} & \textbf{Modelo} & \textbf{Acurácia} & \textbf{EER} & \textbf{AUC} &
 \textbf{F1} & \textbf{Lat. ms} & \textbf{Treino} & \textbf{Status} \\
 \midrule
-        1 & Conformer & 100,00\% & 0,00\% & 1,000 & 100,00\% & 49,22 & 100 & \textcolor{successgreen}{OK} \\
-        1 & Sonic Sleuth & 100,00\% & 0,00\% & 1,000 & 100,00\% & 30,86 & 100 & \textcolor{successgreen}{OK} \\
-        3 & Hybrid CNN-Transformer & 99,96\% & 0,00\% & 1,000 & 99,96\% & 33,69 & 100 & \textcolor{successgreen}{OK} \\
-        4 & MultiscaleCNN & 99,73\% & 0,18\% & 1,000 & 99,73\% & 60,87 & 100 & \textcolor{successgreen}{OK} \\
-        5 & SVM & 99,02\% & 0,98\% & 0,999 & 99,02\% & 0,20 & CV+fit & \textcolor{successgreen}{OK} \\
-        6 & Random Forest & 98,18\% & 1,91\% & 0,999 & 98,18\% & 26,75 & CV+fit & \textcolor{successgreen}{OK} \\
-        7 & RawNet2 & 96,36\% & 3,56\% & 0,996 & 96,34\% & 56,28 & 100 & \textcolor{successgreen}{OK} \\
-        8 & Ensemble & 95,82\% & 2,80\% & 0,998 & 95,88\% & 46,55 & 100 & \textcolor{successgreen}{OK} \\
-        9 & RawGAT-ST & 95,29\% & 4,62\% & 0,984 & 95,34\% & 49,61 & 100 & \textcolor{successgreen}{OK} \\
-        10 & AASIST & 93,64\% & 6,36\% & 0,937 & 93,53\% & 47,77 & 100 & \textcolor{successgreen}{OK} \\
-        11 & HuBERT Original & 92,71\% & 7,20\% & 0,981 & 92,81\% & 21,17 & 100 & \textcolor{successgreen}{OK} \\
-        12 & EfficientNet-LSTM & 91,16\% & 9,07\% & 0,972 & 91,37\% & 62,56 & 100 & \textcolor{successgreen}{OK} \\
-        13 & WavLM Original & 86,36\% & 13,64\% & 0,947 & 87,13\% & 10,18 & 100 & \textcolor{successgreen}{OK} \\
-        14 & Spectrogram Transformer & 71,51\% & 28,67\% & 0,807 & 71,01\% & 50,13 & 100 & \textcolor{warningorange}{Tuning} \\
+        1 & Sonic Sleuth & 100,00\% & 0,00\% & 1,000 & 100,00\% & 31,52 & 100 & \textcolor{successgreen}{OK} \\
+        2 & MultiscaleCNN & 99,96\% & 0,09\% & 1,000 & 99,96\% & 71,03 & 100 & \textcolor{successgreen}{OK} \\
+        3 & Conformer & 99,87\% & 0,04\% & 1,000 & 99,87\% & 50,56 & 100 & \textcolor{successgreen}{OK} \\
+        4 & HuBERT Original & 98,93\% & 0,93\% & 0,999 & 98,93\% & 59,06 & 100 & \textcolor{successgreen}{OK} \\
+        5 & Ensemble & 98,18\% & 1,82\% & 0,999 & 98,16\% & 41,63 & 100 & \textcolor{successgreen}{OK} \\
+        6 & Random Forest & 98,04\% & 2,04\% & 0,998 & 98,05\% & 37,75 & CV+fit & \textcolor{successgreen}{OK} \\
+        6 & RawNet2 & 98,04\% & 2,00\% & 0,999 & 98,02\% & 47,07 & 100 & \textcolor{successgreen}{OK} \\
+        8 & Spectrogram Transformer & 97,69\% & 2,18\% & 0,998 & 97,72\% & 52,59 & 100 & \textcolor{warningorange}{Tuning} \\
+        9 & Hybrid CNN-Transformer & 97,33\% & 2,76\% & 0,996 & 97,32\% & 37,72 & 100 & \textcolor{successgreen}{OK} \\
+        10 & SVM & 96,62\% & 3,38\% & 0,995 & 96,63\% & 0,95 & CV+fit & \textcolor{successgreen}{OK} \\
+        11 & WavLM Original & 93,87\% & 5,78\% & 0,985 & 93,99\% & 36,20 & 100 & \textcolor{successgreen}{OK} \\
+        12 & EfficientNet-LSTM & 92,89\% & 7,11\% & 0,980 & 92,88\% & 48,33 & 100 & \textcolor{successgreen}{OK} \\
+        13 & AASIST & 92,80\% & 7,16\% & 0,929 & 92,76\% & 52,35 & 100 & \textcolor{successgreen}{OK} \\
+        14 & RawGAT-ST & 83,29\% & 16,36\% & 0,917 & 82,59\% & 38,22 & 100 & \textcolor{successgreen}{OK} \\
 \bottomrule
 \end{tabular}}
 \end{table}
@@ -1335,20 +1324,20 @@ Wilson (95\%) para a acurácia de cada modelo no conjunto de teste.
 \toprule
 \textbf{Modelo} & \textbf{Acurácia observada} & \textbf{Acertos estimados} & \textbf{IC 95\% Wilson} \\
 \midrule
-Conformer & 100,00\% & 2250/2250 & [99,83\%; 100,00\%] \\
 Sonic Sleuth & 100,00\% & 2250/2250 & [99,83\%; 100,00\%] \\
-Hybrid CNN-Transformer & 99,96\% & 2249/2250 & [99,75\%; 99,99\%] \\
-MultiscaleCNN & 99,73\% & 2244/2250 & [99,42\%; 99,88\%] \\
-SVM & 99,02\% & 2228/2250 & [98,52\%; 99,35\%] \\
-Random Forest & 98,18\% & 2209/2250 & [97,54\%; 98,65\%] \\
-RawNet2 & 96,36\% & 2168/2250 & [95,50\%; 97,05\%] \\
-Ensemble & 95,82\% & 2156/2250 & [94,91\%; 96,57\%] \\
-RawGAT-ST & 95,29\% & 2144/2250 & [94,33\%; 96,09\%] \\
-AASIST & 93,64\% & 2107/2250 & [92,56\%; 94,58\%] \\
-HuBERT Original & 92,71\% & 2086/2250 & [91,56\%; 93,71\%] \\
-EfficientNet-LSTM & 91,16\% & 2051/2250 & [89,91\%; 92,26\%] \\
-WavLM Original & 86,36\% & 1943/2250 & [84,88\%; 87,71\%] \\
-Spectrogram Transformer & 71,51\% & 1609/2250 & [69,61\%; 73,34\%] \\
+MultiscaleCNN & 99,96\% & 2249/2250 & [99,75\%; 99,99\%] \\
+Conformer & 99,87\% & 2247/2250 & [99,61\%; 99,95\%] \\
+HuBERT Original & 98,93\% & 2226/2250 & [98,42\%; 99,28\%] \\
+Ensemble & 98,18\% & 2209/2250 & [97,54\%; 98,65\%] \\
+Random Forest & 98,04\% & 2206/2250 & [97,39\%; 98,54\%] \\
+RawNet2 & 98,04\% & 2206/2250 & [97,39\%; 98,54\%] \\
+Spectrogram Transformer & 97,69\% & 2198/2250 & [96,98\%; 98,23\%] \\
+Hybrid CNN-Transformer & 97,33\% & 2190/2250 & [96,58\%; 97,92\%] \\
+SVM & 96,62\% & 2174/2250 & [95,79\%; 97,29\%] \\
+WavLM Original & 93,87\% & 2112/2250 & [92,80\%; 94,79\%] \\
+EfficientNet-LSTM & 92,89\% & 2090/2250 & [91,75\%; 93,88\%] \\
+AASIST & 92,80\% & 2088/2250 & [91,66\%; 93,80\%] \\
+RawGAT-ST & 83,29\% & 1874/2250 & [81,69\%; 84,77\%] \\
 \bottomrule
 \end{tabular}}
 \end{table}
@@ -1370,26 +1359,27 @@ mas perfis de erro diferentes.
 \subsection{Análise dos Resultados}
 % ------------------------------------------------------------------
 
-Os melhores desempenhos foram obtidos por Conformer e Sonic Sleuth, ambos com
-100,00\% de acurácia e EER de 0,00\% no conjunto de teste limpo.
-\emph{Esses valores indicam separação perfeita no recorte experimental
+O melhor desempenho isolado foi obtido pelo Sonic Sleuth, com 100,00\% de
+acurácia e EER de 0,00\% no conjunto de teste limpo. MultiscaleCNN e Conformer
+ficaram imediatamente abaixo, com 99,96\% e 99,87\%, respectivamente.
+\emph{Esses valores indicam separação quase perfeita no recorte experimental
 avaliado e não devem ser interpretados como garantia de generalização
 universal.} Como apontado na Seção~\ref{sec:dataset_protocolo}, a divisão
 atual não garante separação por falante, o que abre a possibilidade de
 que parte do desempenho elevado reflita memorização de artefatos de origem
 em vez de generalização para áudio sintético de qualquer procedência.
 
-Em seguida, Hybrid CNN-Transformer, MultiscaleCNN e SVM permaneceram acima
-de 99\% de acurácia, indicando que tanto arquiteturas espectrais profundas
-quanto baselines clássicos bem ajustados extraem sinais discriminativos fortes
-no \textit{dataset} definido.
+Entre os demais modelos, HuBERT Original, Ensemble, Random Forest, RawNet2,
+Spectrogram Transformer, Hybrid CNN-Transformer e SVM permaneceram acima de
+96\% de acurácia, indicando que diferentes famílias de classificadores extraem
+sinais discriminativos relevantes do conjunto de dados definido.
 
-RawNet2, Ensemble, RawGAT-ST, AASIST, HuBERT original e EfficientNet-LSTM
-também convergiram adequadamente, com acurácia entre 91,16\% e 96,36\%.
+As demais arquiteturas funcionais também convergiram adequadamente, com
+acurácia entre 92,80\% e 98,93\%, exceto RawGAT-ST, que foi o principal
+resultado abaixo desse intervalo, com 83,29\%.
 
-% MELHORIA: análise aprofundada do WavLM vs HuBERT
 \begin{warningbox}{WavLM com desempenho inferior ao HuBERT: hipóteses}
-WavLM (86,36\%) ficou abaixo de HuBERT (92,71\%) apesar de ser
+WavLM (93,87\%) ficou abaixo de HuBERT (98,93\%) apesar de ser
 arquiteturalmente mais sofisticado. Três hipóteses são levantadas para
 trabalhos futuros: (1)~o número de épocas de \textit{fine-tuning} pode ser
 insuficiente para que o WavLM explore sua capacidade adicional; (2)~a taxa de
@@ -1399,11 +1389,12 @@ mais complexa generalize melhor que a mais simples. Um experimento de ablação
 com taxas de aprendizado distintas para cada modelo SSL é recomendado.
 \end{warningbox}
 
-O caso discrepante foi o Spectrogram Transformer: embora tenha alcançado
-98,00\% de acurácia de validação na época 11, a avaliação registrada no artefato
-final caiu para 71,51\% no teste. Isso sugere instabilidade de
-otimização, sensibilidade a hiperparâmetros e necessidade de restaurar
-obrigatoriamente o melhor \textit{checkpoint} para inferência.
+O caso que ainda exige maior controle operacional foi o Spectrogram
+Transformer: a avaliação do melhor arquivo de modelo alcançou 97,69\% no teste limpo,
+mas o histórico de treino caiu de 96,49\% de melhor validação para 50,00\%
+no fim do treinamento. Isso sugere instabilidade de otimização, sensibilidade
+a hiperparâmetros e necessidade de restaurar obrigatoriamente o melhor
+\textit{checkpoint} para inferência.
 
 % ------------------------------------------------------------------
 \subsection{Eficiência Computacional}
@@ -1412,7 +1403,7 @@ obrigatoriamente o melhor \textit{checkpoint} para inferência.
 A Tabela~\ref{tab:eficiencia_modelos} detalha parâmetros, tamanho e latência por
 arquitetura; as Figuras~\ref{fig:benchmark_latency} e~\ref{fig:benchmark_size}
 ilustram, respectivamente, a latência média de inferência e o tamanho dos
-artefatos treinados.
+arquivos treinados.
 
 \begin{table}[H]
 \centering
@@ -1422,26 +1413,25 @@ Latência reportada como média de 30 medições. DP = desvio padrão; células
 previsto para a próxima rodada.}
 \label{tab:eficiencia_modelos}
 \resizebox{\textwidth}{!}{%
-% MELHORIA: coluna de desvio padrão de latência adicionada
 \begin{tabular}{lcccccc}
 \toprule
 \textbf{Modelo} & \textbf{Parâmetros} & \textbf{Tam. MB} &
 \textbf{Lat. média (ms)} & \textbf{DP Lat. (ms)} & \textbf{Acurácia} & \textbf{EER} \\
 \midrule
-WavLM Original & 94.579.314 & 360,89 & 10,18 & --- & 86,36\% & 13,64\% \\
-HuBERT Original & 94.569.090 & 360,78 & 21,17 & --- & 92,71\% & 7,20\% \\
-RawNet2 & 3.460.866 & 13,37 & 56,28 & --- & 96,36\% & 3,56\% \\
-Sonic Sleuth & 2.083.394 & 8,11 & 30,86 & --- & 100,00\% & 0,00\% \\
-AASIST & 1.859.842 & 7,27 & 47,77 & --- & 93,64\% & 6,36\% \\
-RawGAT-ST & 609.920 & 2,43 & 49,61 & --- & 95,29\% & 4,62\% \\
-Conformer & 15.925.122 & 61,27 & 49,22 & --- & 100,00\% & 0,00\% \\
-Hybrid CNN-Transformer & 1.694.479 & 6,67 & 33,69 & --- & 99,96\% & 0,00\% \\
-Spectrogram Transformer & 87.403.522 & 333,92 & 50,13 & --- & 71,51\% & 28,67\% \\
-EfficientNet-LSTM & 5.706.917 & 22,62 & 62,56 & --- & 91,16\% & 9,07\% \\
-MultiscaleCNN & 48.967.630 & 187,83 & 60,87 & --- & 99,73\% & 0,18\% \\
-Ensemble & 3.019.782 & 11,98 & 46,55 & --- & 95,82\% & 2,80\% \\
-SVM & n.a. & 0,47 & 0,20 & --- & 99,02\% & 0,98\% \\
-Random Forest & n.a. & 20,60 & 26,75 & --- & 98,18\% & 1,91\% \\
+WavLM Original & 4.018.755 & 15,42 & 36,20 & --- & 93,87\% & 5,78\% \\
+HuBERT Original & 90.609.283 & 346,11 & 59,06 & --- & 98,93\% & 0,93\% \\
+RawNet2 & 3.460.866 & 13,37 & 47,07 & --- & 98,04\% & 2,00\% \\
+Sonic Sleuth & 2.083.394 & 8,11 & 31,52 & --- & 100,00\% & 0,00\% \\
+AASIST & 1.859.842 & 7,27 & 52,35 & --- & 92,80\% & 7,16\% \\
+RawGAT-ST & 306.560 & 1,27 & 38,22 & --- & 83,29\% & 16,36\% \\
+Conformer & 15.925.122 & 61,27 & 50,56 & --- & 99,87\% & 0,04\% \\
+Hybrid CNN-Transformer & 1.822.479 & 7,15 & 37,72 & --- & 97,33\% & 2,76\% \\
+Spectrogram Transformer & 87.403.522 & 333,91 & 52,59 & --- & 97,69\% & 2,18\% \\
+EfficientNet-LSTM & 5.706.917 & 22,62 & 48,33 & --- & 92,89\% & 7,11\% \\
+MultiscaleCNN & 48.967.630 & 187,83 & 71,03 & --- & 99,96\% & 0,09\% \\
+Ensemble & 3.019.782 & 11,98 & 41,63 & --- & 98,18\% & 1,82\% \\
+SVM & n.a. & 10,43 & 0,95 & --- & 96,62\% & 3,38\% \\
+Random Forest & n.a. & 154,59 & 37,75 & --- & 98,04\% & 2,04\% \\
 \bottomrule
 \end{tabular}}
 \end{table}
@@ -1456,11 +1446,11 @@ Random Forest & n.a. & 20,60 & 26,75 & --- & 98,18\% & 1,91\% \\
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.95\textwidth]{figures/benchmark_size.png}
-    \caption{Tamanho dos artefatos treinados por arquitetura.}
+    \caption{Tamanho dos arquivos treinados por arquitetura.}
     \label{fig:benchmark_size}
 \end{figure}
 
-O WavLM e o HuBERT originais apresentam os maiores artefatos, próximos de
+O WavLM Original e o HuBERT Original apresentam os maiores arquivos de modelo, próximos de
 \SI{361}{\mega\byte}, por incorporarem \textit{backbones} SSL de
 aproximadamente 94,5 milhões de parâmetros. Para demonstrações em tempo real,
 Sonic Sleuth, Hybrid CNN-Transformer, SVM e Ensemble oferecem melhor
@@ -1481,13 +1471,13 @@ desempenho, latência, tamanho e robustez.
 \toprule
 \textbf{Critério} & \textbf{Modelo(s)} & \textbf{Evidência principal} & \textbf{Uso recomendado} \\
 \midrule
-Máx.\ acurácia limpa & Conformer; Sonic Sleuth & 100,00\% e EER 0,00\% & Referência no benchmark \\
-Melhor robustez a \SI{10}{\decibel} & Conformer & 94,18\% sob AWGN & Com ruído moderado \\
-Equilíbrio neural leve & Hybrid CNN-Transformer & 99,96\%, 6,67 MB, 33,69 ms & Demo Gradio e API \\
-Menor latência & SVM & 0,20 ms e 0,47 MB & Baseline rápido em CPU \\
-Modelo compacto clássico & SVM; Random Forest & 99,02\% e 98,18\% & Comparação interpretável \\
+Máx.\ acurácia limpa & Sonic Sleuth; MultiscaleCNN; Conformer & 100,00\%, 99,96\% e 99,87\% & Referência no benchmark \\
+Melhor robustez a \SI{10}{\decibel} & Sonic Sleuth; MultiscaleCNN; Conformer & 99,78\%, 99,16\% e 97,60\% sob AWGN & Ambientes com ruído \\
+Equilíbrio neural leve & Sonic Sleuth; Ensemble; Hybrid CNN-Transformer & 8,11--11,98 MB e acurácia acima de 97\% & Demo Gradio e API \\
+Menor latência & SVM & 0,95 ms e 10,43 MB & Linha de base rápida em CPU \\
+Modelo clássico robusto & Random Forest; SVM & 98,04\% e 96,62\% no limpo & Comparação interpretável \\
 Pesquisa SSL & HuBERT; WavLM & Backbones originais CUDA & Comparação com literatura \\
-Risco de instabilidade & Spectrogram Transformer & 71,51\% pós-98\% em val. & Novo ajuste necessário \\
+Risco de instabilidade & Spectrogram Transformer; Hybrid CNN-Transformer & Queda de validação no histórico & Exigir melhor \textit{checkpoint} \\
 \bottomrule
 \end{tabular}}
 \end{table}
@@ -1504,20 +1494,20 @@ arquitetura no sistema e na apresentação.
 \toprule
 \textbf{Modelo} & \textbf{Decisão} & \textbf{Justificativa} \\
 \midrule
-Conformer & Pronto (demo principal) & Melhor acurácia e maior robustez sob AWGN \\
-Sonic Sleuth & Pronto (demo leve) & Acurácia máxima, artefato pequeno, baixa latência \\
-Hybrid CNN-Transformer & Pronto (Gradio/API) & Melhor compromisso acurácia/tamanho/latência neural \\
-MultiscaleCNN & Pronto (benchmark) & Alta acurácia; latência e tamanho maiores \\
-SVM & Pronto (baseline rápido) & Excelente latência; frágil sob ruído \\
-Random Forest & Baseline complementar & Bom desempenho clássico; mais pesado que SVM \\
-RawNet2 & Funcional (raw-audio) & Boa convergência e desempenho intermediário-alto \\
-Ensemble & Funcional (ressalva robustez) & Bom no limpo; queda sob AWGN \\
-RawGAT-ST & Funcional (grafos) & Estável e relativamente robusto sob ruído \\
-AASIST & Funcional (grafos) & Treino corrigido; desempenho consistente \\
-HuBERT Original & Referência SSL & Backbone original viável; custo elevado \\
-EfficientNet-LSTM & Funcional (não prioritário) & Maior latência; acurácia abaixo dos líderes \\
-WavLM Original & Referência SSL experimental & Baixa latência medida; acurácia inferior ao HuBERT \\
-Spectrogram Transformer & Requer novo ajuste & Instabilidade validação/teste \\
+Sonic Sleuth & Modelo prioritário & Melhor acurácia e robustez, com arquivo compacto \\
+MultiscaleCNN & Modelo neural de alta acurácia & 99,96\% no limpo e 99,16\% a 10 dB \\
+Conformer & Modelo Transformer prioritário & 99,87\% no limpo, EER 0,04\% e robustez elevada \\
+HuBERT Original & Referência SSL & \textit{Backbone} original viável, acurácia de 98,93\% e custo elevado \\
+RawNet2 & Funcional (áudio bruto) & Convergência estável e acurácia de 98,04\% \\
+Random Forest & Linha de base clássica complementar & Acurácia de 98,04\%, porém maior arquivo de modelo \\
+Ensemble & Funcional (ressalva robustez) & Acurácia de 98,18\% no teste limpo; queda acentuada sob AWGN \\
+Spectrogram Transformer & Requer controle de \textit{checkpoint} & Acurácia de 97,69\%, mas validação final instável \\
+Hybrid CNN-Transformer & Funcional (com ressalva) & Acurácia de 97,33\%, com queda de validação no histórico \\
+SVM & Linha de base clássica leve & Menor latência, queda moderada sob ruído forte \\
+WavLM Original & Referência SSL experimental & Desempenho inferior ao HuBERT neste preset \\
+EfficientNet-LSTM & Funcional (não prioritário) & Acurácia abaixo dos líderes e latência intermediária \\
+AASIST & Funcional (grafos) & Treino corrigido; desempenho consistente, abaixo dos líderes \\
+RawGAT-ST & Funcional (grafos) & Arquitetura executável, mas menor desempenho do ciclo atual \\
 \bottomrule
 \end{tabular}}
 \end{table}
@@ -1538,20 +1528,20 @@ apresentam a acurácia dos modelos sob ruído AWGN em diferentes níveis de SNR.
 \toprule
 \textbf{Modelo} & \textbf{Limpo} & \textbf{\SI{30}{\decibel}} & \textbf{\SI{20}{\decibel}} & \textbf{\SI{10}{\decibel}} \\
 \midrule
-WavLM Original & 86,36\% & 72,44\% & 62,09\% & 51,29\% \\
-HuBERT Original & 92,71\% & 82,67\% & 61,64\% & 50,00\% \\
-RawNet2 & 96,36\% & 89,02\% & 63,02\% & 50,36\% \\
-Sonic Sleuth & 100,00\% & 100,00\% & 100,00\% & 83,24\% \\
-AASIST & 93,64\% & 93,47\% & 93,02\% & 84,27\% \\
-RawGAT-ST & 95,29\% & 95,24\% & 95,29\% & 87,73\% \\
-Conformer & 100,00\% & 100,00\% & 99,91\% & 94,18\% \\
-Hybrid CNN-Transformer & 99,96\% & 99,96\% & 99,64\% & 88,49\% \\
-Spectrogram Transformer & 71,51\% & 71,69\% & 71,82\% & 70,93\% \\
-EfficientNet-LSTM & 91,16\% & 90,89\% & 90,13\% & 81,87\% \\
-MultiscaleCNN & 99,73\% & 99,73\% & 99,56\% & 82,04\% \\
-Ensemble & 95,82\% & 77,69\% & 67,60\% & 52,00\% \\
-SVM & 99,02\% & 50,00\% & 50,00\% & 50,00\% \\
-Random Forest & 98,18\% & 75,38\% & 66,93\% & 55,07\% \\
+WavLM Original & 93,87\% & 94,04\% & 93,73\% & 92,44\% \\
+HuBERT Original & 98,93\% & 98,89\% & 98,76\% & 98,44\% \\
+RawNet2 & 98,04\% & 97,16\% & 95,47\% & 88,62\% \\
+Sonic Sleuth & 100,00\% & 100,00\% & 100,00\% & 99,78\% \\
+AASIST & 92,80\% & 92,71\% & 90,98\% & 63,73\% \\
+RawGAT-ST & 83,29\% & 82,84\% & 80,27\% & 55,07\% \\
+Conformer & 99,87\% & 99,87\% & 99,78\% & 97,60\% \\
+Hybrid CNN-Transformer & 97,33\% & 96,89\% & 94,27\% & 78,53\% \\
+Spectrogram Transformer & 97,69\% & 97,64\% & 97,24\% & 96,00\% \\
+EfficientNet-LSTM & 92,89\% & 92,98\% & 92,93\% & 88,76\% \\
+MultiscaleCNN & 99,96\% & 99,96\% & 99,91\% & 99,16\% \\
+Ensemble & 98,18\% & 73,91\% & 54,58\% & 50,09\% \\
+SVM & 96,62\% & 95,64\% & 88,49\% & 67,20\% \\
+Random Forest & 98,04\% & 93,87\% & 85,78\% & 68,00\% \\
 \bottomrule
 \end{tabular}}
 \end{table}
@@ -1563,23 +1553,22 @@ Random Forest & 98,18\% & 75,38\% & 66,93\% & 55,07\% \\
     \label{fig:benchmark_robustness}
 \end{figure}
 
-A robustez sob ruído é heterogênea. Modelos que dependem de detalhes
-espectrais finos tendem a sofrer queda em SNRs mais baixos, enquanto
-arquiteturas com fusão de características ou treinamento mais estável mantêm
-separação melhor em \SI{30}{\decibel}.
+A robustez sob ruído é heterogênea. No ciclo atual, Sonic Sleuth,
+MultiscaleCNN, HuBERT Original, Conformer e Spectrogram Transformer mantiveram
+acurácia superior a 96\% mesmo em \SI{10}{\decibel}. Em contraste, Ensemble,
+RawGAT-ST, AASIST, SVM e Random Forest apresentaram maior degradação em SNRs
+baixos.
 
-% MELHORIA: análise aprofundada da queda do SVM
-O SVM apresentou comportamento particularmente frágil sob AWGN: embora tenha
-alcançado 99,02\% no áudio limpo, caiu para 50,00\% em todos os níveis de
-ruído testados --- equivalente a decisão aleatória binária. Essa queda abrupta
-tem uma explicação direta: o SVM com kernel RBF aprende uma fronteira de
-decisão ajustada à distribuição das características do conjunto limpo (médias,
-variâncias e coeficientes espectrais padronizados). Ruído AWGN desloca
-sistematicamente essas estatísticas: o centroide espectral se move para
-frequências mais altas, a planura espectral aumenta e o HNR cai, fazendo com
-que a distribuição de teste saia completamente da região de suporte do modelo.
-Em trabalhos futuros, esse baseline deve ser reavaliado com:
-(1)~extração de características robustas a ruído (e.g., RASTA-PLP ou MFCC
+O SVM apresentou queda moderada sob AWGN: alcançou 96,62\% no áudio limpo,
+95,64\% em \SI{30}{\decibel}, 88,49\% em \SI{20}{\decibel} e 67,20\% em
+\SI{10}{\decibel}. A degradação tem explicação direta: o SVM com kernel RBF
+aprende uma fronteira de decisão ajustada à distribuição das características
+do conjunto limpo (médias, variâncias e coeficientes espectrais padronizados).
+Ruído AWGN desloca sistematicamente essas estatísticas: o centroide espectral
+se move para frequências mais altas, a planura espectral aumenta e o HNR cai,
+reduzindo a margem de separação do classificador.
+Em trabalhos futuros, essa linha de base deve ser reavaliada com:
+(1)~extração de características robustas a ruído, por exemplo RASTA-PLP ou MFCC
 com pré-ênfase adaptativa); (2)~adição de exemplos ruidosos no treinamento
 (\textit{data augmentation}); e (3)~calibração do limiar de decisão por nível
 de SNR estimado em tempo de inferência.
@@ -1603,18 +1592,18 @@ validação, a validação final e a queda de desempenho ao longo das 100 época
 \textbf{Modelo} & \textbf{Melhor val.} & \textbf{Época} &
 \textbf{Val. final} & \textbf{Queda} & \textbf{Observação} \\
 \midrule
-WavLM Original & 88,93\% & 46 & 85,91\% & 3,02\% & estável \\
-HuBERT Original & 92,84\% & 92 & 92,13\% & 0,71\% & estável \\
-RawNet2 & 97,56\% & 58 & 96,84\% & 0,71\% & estável \\
-Sonic Sleuth & 99,91\% & 23 & 99,87\% & 0,04\% & estável \\
-AASIST & 94,13\% & 100 & 94,13\% & 0,00\% & estável \\
-RawGAT-ST & 95,20\% & 55 & 94,98\% & 0,22\% & estável \\
-Conformer & 100,00\% & 49 & 99,82\% & 0,18\% & estável \\
-Hybrid CNN-Transformer & 99,78\% & 96 & 99,78\% & 0,00\% & estável \\
-Spectrogram Transformer & 98,00\% & 11 & 72,98\% & 25,02\% & \textcolor{dangerred}{checkpoint obrigatório} \\
-EfficientNet-LSTM & 92,04\% & 74 & 90,93\% & 1,11\% & estável \\
-MultiscaleCNN & 100,00\% & 69 & 100,00\% & 0,00\% & estável \\
-Ensemble & 98,71\% & 62 & 95,56\% & 3,16\% & estável \\
+WavLM Original & 95,47\% & 20 & 94,67\% & 0,80\% & estável \\
+HuBERT Original & 99,29\% & 23 & 99,24\% & 0,04\% & estável \\
+RawNet2 & 98,13\% & 61 & 97,87\% & 0,27\% & estável \\
+Sonic Sleuth & 99,96\% & 68 & 99,91\% & 0,04\% & estável \\
+AASIST & 93,96\% & 69 & 92,49\% & 1,47\% & estável \\
+RawGAT-ST & 84,27\% & 4 & 80,00\% & 4,27\% & estável \\
+Conformer & 99,96\% & 38 & 99,91\% & 0,04\% & estável \\
+Hybrid CNN-Transformer & 97,20\% & 18 & 76,49\% & 20,71\% & estável \\
+Spectrogram Transformer & 96,49\% & 7 & 50,00\% & 46,49\% & \textcolor{dangerred}{\textit{checkpoint} obrigatório} \\
+EfficientNet-LSTM & 91,96\% & 40 & 88,31\% & 3,64\% & estável \\
+MultiscaleCNN & 99,96\% & 71 & 99,87\% & 0,09\% & estável \\
+Ensemble & 98,49\% & 33 & 97,78\% & 0,71\% & estável \\
 \bottomrule
 \end{tabular}}
 \end{table}
@@ -1628,9 +1617,12 @@ Ensemble & 98,71\% & 62 & 95,56\% & 3,16\% & estável \\
 
 A análise de estabilidade mostra que a maioria das arquiteturas manteve
 diferença controlada entre a melhor validação e o fim do treinamento. O
-Spectrogram Transformer é o único caso crítico, com queda de 25,02 pontos
-percentuais --- o principal candidato a novo ciclo de regularização, redução de
-taxa de aprendizado, aumento de \textit{dropout} e \textit{weight decay}.
+Spectrogram Transformer é o caso mais crítico, com queda de 46,49 pontos
+percentuais entre a melhor validação e a validação final. O Hybrid
+CNN-Transformer também merece auditoria de \textit{checkpoint}, com queda de
+20,71 pontos percentuais apesar da acurácia de 97,33\% no teste limpo. Ambos são
+candidatos a novo ciclo de regularização, redução de taxa de aprendizado,
+aumento de \textit{dropout} e \textit{weight decay}.
 
 % =====================================================================
 %  7. DISCUSSÃO
@@ -1639,11 +1631,11 @@ taxa de aprendizado, aumento de \textit{dropout} e \textit{weight decay}.
 \label{sec:discussao}
 
 Do ponto de vista prático, os resultados sugerem três perfis de uso. Para
-máxima acurácia na base atual, Conformer, Sonic Sleuth, Hybrid
-CNN-Transformer e MultiscaleCNN são as opções mais fortes. Para inferência
-leve e integração em demonstrações, SVM e Sonic Sleuth são particularmente
-atraentes. Para estudo de representações modernas e comparação com a
-literatura, WavLM, HuBERT, RawNet2, AASIST e RawGAT-ST são essenciais.
+máxima acurácia na base atual, Sonic Sleuth, MultiscaleCNN e Conformer são as
+opções de maior acurácia. Para inferência leve e integração em demonstrações, SVM e
+Sonic Sleuth são particularmente atraentes. Para estudo de representações
+modernas e comparação com a literatura, WavLM, HuBERT, RawNet2, AASIST,
+RawGAT-ST e Spectrogram Transformer são essenciais.
 
 \subsection{Comparação Qualitativa com a Literatura}
 
@@ -1652,16 +1644,19 @@ comparados numericamente de forma direta com trabalhos avaliados em outras
 bases de dados. Como referência qualitativa: o AASIST reporta EER inferior
 a 0,83\% no ASVspoof 2019 LA \cite{jung2022aasist}; o RawNet2 reporta EER de
 4,8\% no mesmo protocolo \cite{tak2021rawnet2}. Os EERs observados neste
-trabalho (AASIST: 6,36\%, RawNet2: 3,56\%) são plausíveis para uma base
+trabalho (AASIST: 7,16\%, RawNet2: 2,00\%) são plausíveis para uma base
 menor e menos diversa, mas a comparação direta é inválida pela diferença de
-dataset. Modelos SSL como WavLM e HuBERT representam o estado moderno de
-aprendizado auto-supervisionado; seu desempenho inferior neste benchmark
-(86--93\%) pode refletir subajuste de hiperparâmetros em uma base menor,
-não uma limitação intrínseca da arquitetura.
+conjunto de dados. Modelos SSL como WavLM e HuBERT representam o estado moderno
+de aprendizado auto-supervisionado; o desempenho distinto entre WavLM (93,87\%)
+e HuBERT (98,93\%) pode refletir diferenças de ajuste fino, custo de
+\textit{backbone} e adequação ao domínio do conjunto de dados, não uma
+limitação intrínseca da família SSL.
 
-O bom desempenho do Conformer e do Hybrid CNN-Transformer é coerente com a
-hipótese de que a combinação de convolução local e atenção global captura
-artefatos espectro-temporais de forma eficiente.
+O desempenho do Conformer e o resultado competitivo do modelo híbrido
+CNN-Transformer são coerentes com a hipótese de que a combinação de convolução
+local e atenção global captura artefatos espectro-temporais de forma eficiente,
+embora o histórico de validação desse modelo exija controle rigoroso de
+\textit{checkpoint}.
 
 \subsection{Ameaças à Validade e Limitações}
 \label{sec:ameacas_validade}
@@ -1681,7 +1676,7 @@ artefatos espectro-temporais de forma eficiente.
     bases externas (ASVspoof, WaveFake, In-the-Wild).
 
     \item \textbf{Ausência de testes estatísticos entre modelos}: diferenças
-    pequenas no topo do ranking (ex.: 99,73\% vs 99,96\%) não são
+    pequenas no topo da classificação (por exemplo, 99,87\% e 99,96\%) não são
     estatisticamente testadas. Um teste de McNemar pareado sobre o conjunto de
     teste ou bootstrap de intervalos de confiança da diferença entre modelos é
     necessário para afirmar que essas diferenças são significativas.
@@ -1711,7 +1706,6 @@ artefatos espectro-temporais de forma eficiente.
 \subsection{Considerações Éticas e LGPD}
 \label{sec:etica_lgpd}
 
-% MELHORIA: ética integrada à discussão e retomada na conclusão
 Sistemas de detecção de voz sintética devem ser tratados como ferramentas de
 apoio, não como mecanismos definitivos de acusação ou autenticação de pessoas.
 Falsos negativos podem permitir que áudios sintéticos sejam aceitos como reais;
@@ -1722,7 +1716,7 @@ calibração explícita de limiar.
 
 Como o dado analisado é voz, há implicações diretas de privacidade. Uma
 implantação aderente à LGPD deve coletar apenas o áudio necessário, informar a
-finalidade do tratamento, evitar retenção desnecessária, proteger os artefatos
+finalidade do tratamento, evitar retenção desnecessária, proteger os arquivos
 gerados e respeitar consentimento, base legal e direitos do titular. O
 processamento local reduz exposição a terceiros, mas não elimina a necessidade
 de governança, controle de acesso e descarte seguro dos arquivos de entrada.
@@ -1731,7 +1725,7 @@ Adicionalmente, conforme antecipado na introdução (Seção~\ref{sec:introducao
 o conhecimento sobre quais características acústicas são discriminativas pode
 ser usado para criar sistemas de síntese mais difíceis de detectar. A
 publicação responsável deste trabalho deve ser acompanhada de monitoramento
-da literatura adversarial e reavaliação periódica do pipeline contra novos
+da literatura adversarial e reavaliação periódica do \textit{pipeline} contra novos
 geradores.
 
 \subsection{Trabalhos Futuros}
@@ -1746,7 +1740,7 @@ geradores.
     \item Implementar divisão por falante e por gerador para eliminar risco
     de vazamento de dados nos resultados mais altos.
     \item Conduzir testes estatísticos pareados (McNemar, bootstrap) para
-    validar diferenças de ranking entre arquiteturas próximas.
+    validar diferenças de classificação entre arquiteturas próximas.
     \item Investigar por que WavLM obteve desempenho inferior ao HuBERT,
     via ablação de taxa de aprendizado e número de épocas de \textit{fine-tuning}.
     \item Implementar validação \textit{cross-dataset} e ablações por família
@@ -1771,7 +1765,6 @@ geradores.
 \section{Conclusões}
 \label{sec:conclusao}
 
-% MELHORIA: conclusão mais concisa, focada em implicações e limitações abertas
 Este trabalho desenvolveu e avaliou um \textit{pipeline} modular de código
 aberto para detecção de áudio sintético, cobrindo processamento de dados,
 extração de características, treinamento, inferência, \textit{benchmark} e
@@ -1779,18 +1772,19 @@ geração de relatórios. A versão consolidada demonstra que o sistema é capaz
 treinar, auditar e comparar quatorze arquiteturas heterogêneas sob as mesmas
 condições experimentais.
 
-Os resultados confirmam forte desempenho de modelos espectrais e híbridos no
-protocolo controlado, com destaque para Conformer, Sonic Sleuth, Hybrid
-CNN-Transformer, MultiscaleCNN e os baselines clássicos otimizados. A
-principal contribuição não é o ranking final em si, mas a consolidação de um
+Os resultados confirmam desempenho elevado de modelos espectrais e híbridos no
+protocolo controlado, com destaque para Sonic Sleuth, MultiscaleCNN,
+Conformer, HuBERT Original, RawNet2 e as linhas de base clássicas otimizadas. A
+principal contribuição não é a classificação final em si, mas a consolidação de um
 processo reprodutível para treinar, comparar e documentar arquiteturas de
 detecção de áudio sintético.
 
 Três limitações abertas merecem atenção prioritária antes de qualquer uso em
 produção: (1)~a ausência de separação por falante na divisão treino/teste, que
 pode inflar os resultados mais elevados; (2)~a falta de validação em bases
-externas como ASVspoof e WaveFake; e (3)~a fragilidade do SVM e de modelos
-SSL sob ruído AWGN, que compromete a robustez em cenários reais de campo.
+externas como ASVspoof e WaveFake; e (3)~a queda sob ruído de parte dos
+classificadores, especialmente Ensemble, RawGAT-ST, AASIST, SVM e Random
+Forest em \SI{10}{\decibel}.
 
 Do ponto de vista ético, retomando o alerta da Seção~\ref{sec:introducao}, o
 conhecimento produzido neste trabalho deve ser utilizado com responsabilidade:
@@ -2028,42 +2022,42 @@ hiperparâmetros por família de modelo.
 \toprule
 \textbf{Família} & \textbf{Entrada} & \textbf{Treinamento} & \textbf{Observação} \\
 \midrule
-WavLM/HuBERT & Áudio bruto \SI{16}{\kilo\hertz} & 100 épocas + cabeça supervisionada & Backbone original salvo localmente \\
+WavLM/HuBERT & Áudio bruto \SI{16}{\kilo\hertz} & 100 épocas + cabeça supervisionada & \textit{Backbone} original salvo localmente \\
 RawNet2 & PCM $80{.}000\times1$ & 100 épocas, GPU, GRU + SincNet & Convergente no preset GPU \\
 AASIST/RawGAT-ST & Espectro-temporal & 100 épocas, atenção em grafos & Feedback e checkpoints por época \\
-Conformer/Hybrid & Espectrograma & 100 épocas, Adam/AdamW & Melhor estabilidade entre Transformers \\
-Spectrogram Transformer & Espectrograma & 100 épocas & Requer checkpoint e novo ajuste \\
+Conformer/Hybrid & Espectrograma & 100 épocas, Adam/AdamW & Conformer estável; Hybrid exige \textit{checkpoint} \\
+Spectrogram Transformer & Espectrograma & 100 épocas & Acurácia de 97,69\%; validação instável \\
 EfficientNet-LSTM & Espectrograma 2D & 100 épocas, transferência parcial & Boa convergência, maior latência \\
-MultiscaleCNN/Ensemble & Características espectrais & 100 épocas & Forte desempenho na base limpa \\
-SVM & Características tabulares & GridSearchCV + SVC RBF & Modelo leve; frágil sob AWGN \\
+MultiscaleCNN/Ensemble & Características espectrais & 100 épocas & Acurácia elevada na base limpa \\
+SVM & Características tabulares & GridSearchCV + SVC RBF & Modelo leve; queda sob AWGN forte \\
 Random Forest & Características tabulares & GridSearchCV + \texttt{n\_jobs=-1} & Paralelismo CPU \\
 \bottomrule
 \end{tabular}}
 \end{table}
 
-\subsection{Organização dos Artefatos}
+\subsection{Organização dos Arquivos Gerados}
 
 Cada arquitetura possui diretório próprio em \path{results/}, contendo
 modelo treinado, configuração, histórico de treinamento, métricas em JSON/CSV,
 matriz de confusão, curvas ROC/PR, gráficos de acurácia e perda, resultados de
 robustez e relatório Markdown. Os gráficos consolidados utilizados no TCC
 ficam em \path{figures/}. A Tabela~\ref{tab:rastreabilidade_artefatos} resume a
-rastreabilidade dos principais artefatos gerados.
+rastreabilidade dos principais arquivos gerados.
 
 \begin{table}[H]
 \centering
-\caption{Rastreabilidade dos principais artefatos gerados pelo benchmark.}
+\caption{Rastreabilidade dos principais arquivos gerados pelo \textit{benchmark}.}
 \label{tab:rastreabilidade_artefatos}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lll}
 \toprule
-\textbf{Artefato} & \textbf{Padrão de caminho} & \textbf{Finalidade} \\
+\textbf{Arquivo ou grupo} & \textbf{Padrão de caminho} & \textbf{Finalidade} \\
 \midrule
-Dataset consolidado & \path{app/datasets/benchmark_audio_raw_balanced_15k.npz} & Entrada única do benchmark \\
+Conjunto de dados consolidado & \path{app/datasets/benchmark_audio_raw_balanced_15k.npz} & Entrada única do \textit{benchmark} \\
 Modelo neural & \path{app/models/bench_<modelo>.keras} & Inferência padrão na Gradio/API \\
-Modelo clássico & \path{app/models/bench_<modelo>.pkl} & Pipeline sklearn com scaler e classificador \\
+Modelo clássico & \path{app/models/bench_<modelo>.pkl} & \textit{Pipeline} sklearn com scaler e classificador \\
 Configuração & \path{app/models/bench_<modelo>_config.json} & Contrato de entrada e hiperparâmetros \\
-Backbones SSL & \path{app/models/benchmark_final/<modelo>/} & Artefatos completos de WavLM/HuBERT \\
+Backbones SSL & \path{app/models/benchmark_final/<modelo>/} & Arquivos completos de WavLM/HuBERT \\
 Métricas & \path{results/<run>/architectures/<modelo>/metrics.json} & Accuracy, F1, AUC, EER, latência e robustez \\
 Relatório & \path{results/<run>/tcc_report.md} & Registro textual para auditoria e TCC \\
 Figuras consolidadas & \path{tcc_overleaf/figures/*.png} & Gráficos usados no artigo \\
@@ -2074,14 +2068,14 @@ Matrizes de confusão & \path{tcc_overleaf/figures/confusion_matrices/*.png} & E
 
 \section{Implementação de Referência}
 
-A implementação avaliada neste trabalho corresponde ao pipeline real do
+A implementação avaliada neste trabalho corresponde ao \textit{pipeline} real do
 repositório, e não a um exemplo isolado de código. A Tabela
 \ref{tab:modulos_pipeline_real} registra os módulos efetivamente usados para
 treinamento, inferência, cálculo de métricas e geração dos relatórios.
 
 \begin{table}[H]
 \centering
-\caption{Módulos reais do XFakeSong\protect\footnotemark\ referenciados pelo benchmark.}
+\caption{Módulos reais do XFakeSong\protect\footnotemark\ referenciados pelo \textit{benchmark}.}
 \label{tab:modulos_pipeline_real}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lll}
@@ -2090,7 +2084,7 @@ treinamento, inferência, cálculo de métricas e geração dos relatórios.
 \midrule
 Orquestração & \path{benchmarks/runner.py} & Executa preparação, treino, inferência, métricas e persistência \\
 Entrada operacional & \path{scripts/run_benchmark.py} & Rodadas individuais ou múltiplas via linha de comando \\
-Treinamento & \path{app/domain/services/training_service.py} & Cria o modelo, aplica callbacks, treina e salva artefatos \\
+Treinamento & \path{app/domain/services/training_service.py} & Cria o modelo, aplica callbacks, treina e salva arquivos gerados \\
 Fábrica de arquiteturas & \path{app/domain/models/architectures/factory.py} & Normaliza aliases e instancia as arquiteturas avaliadas \\
 Carregamento de modelos & \path{app/domain/services/detection/model_loader.py} & Recarrega modelos Keras/sklearn e contratos de entrada \\
 Predição & \path{app/domain/services/detection/predictor.py} & Executa inferência padronizada e aplicação de limiar \\
@@ -2106,7 +2100,7 @@ desenvolvido pelo autor como produto deste trabalho de conclusão de curso.}
 \section{Comandos de Execução e Reprodutibilidade}
 
 Os comandos a seguir sintetizam o fluxo operacional usado para repetir o
-pipeline, executar modelos isolados e gerar os artefatos do artigo.
+\textit{pipeline}, executar modelos isolados e gerar os arquivos do artigo.
 
 \begin{itemize}
     \item \textbf{Preparar pastas locais:}
@@ -2124,7 +2118,7 @@ pipeline, executar modelos isolados e gerar os artefatos do artigo.
     python scripts/build\_dataset.py --target 7500
     \end{quote}
 
-    \item \textbf{Executar o pipeline completo do TCC:}
+    \item \textbf{Executar o \textit{pipeline} completo do TCC:}
     \begin{quote}\footnotesize\ttfamily
     python scripts/run\_tcc\_pipeline.py --download --target-per-class 7500\\
     --full-benchmark --epochs 100 --device-profile gpu\\
@@ -2254,7 +2248,7 @@ dos quatorze modelos avaliados.
         \includegraphics[width=\textwidth]{figures/confusion_matrices/random_forest.png}
         \caption{Random Forest}
     \end{subfigure}
-    \caption{Matrizes de confusão, parte 2: espectrais, Ensemble e baselines clássicos.}
+    \caption{Matrizes de confusão, parte 2: espectrais, Ensemble e linhas de base clássicas.}
     \label{fig:confusion_all_neural_b}
 \end{figure}
 

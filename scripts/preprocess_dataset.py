@@ -42,6 +42,8 @@ logging.basicConfig(
 logger = logging.getLogger("DatasetPreprocessor")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
 DATASETS_DIR = BASE_DIR / "app" / "datasets"
 REAL_DIR = DATASETS_DIR / "real"
 FAKE_DIR = DATASETS_DIR / "fake"
@@ -259,10 +261,66 @@ def remove_duplicates():
 # ---------------------------------------------------------------------------
 # Criar splits train/val/test
 # ---------------------------------------------------------------------------
-def create_splits(train_ratio=0.70, val_ratio=0.15, test_ratio=0.15):
-    """Cria splits estratificados train/val/test."""
+def _stratified_indices(files, labels, val_ratio, test_ratio):
+    """Split estratificado por classe (default). Retorna (train, val, test) idx."""
+    sss1 = StratifiedShuffleSplit(
+        n_splits=1, test_size=(val_ratio + test_ratio), random_state=42
+    )
+    train_idx, temp_idx = next(sss1.split(files, labels))
+    val_test_ratio = test_ratio / (val_ratio + test_ratio)
+    sss2 = StratifiedShuffleSplit(n_splits=1, test_size=val_test_ratio, random_state=42)
+    val_idx_local, test_idx_local = next(sss2.split(files[temp_idx], labels[temp_idx]))
+    return train_idx, temp_idx[val_idx_local], temp_idx[test_idx_local]
+
+
+def _speaker_disjoint_indices(files, labels, groups, val_ratio, test_ratio):
+    """Split DISJUNTO POR FALANTE: nenhum falante em train e test ao mesmo tempo.
+
+    Espelha benchmarks/data.py:_grouped_split — usa StratifiedGroupKFold para
+    segurar um fold como teste e, dentro do restante, um fold como validacao.
+    Cai para o split estratificado quando ha poucos grupos.
+    """
+    from sklearn.model_selection import StratifiedGroupKFold
+
+    n_groups = len(np.unique(groups))
+    if n_groups < 3:
+        logger.warning(
+            "  speaker_disjoint: apenas %d grupos de falante — caindo para "
+            "split estratificado (poucos falantes para isolar treino/teste).",
+            n_groups,
+        )
+        return _stratified_indices(files, labels, val_ratio, test_ratio)
+
+    idx = np.arange(len(labels))
+    n_splits = max(2, min(round(1.0 / max(test_ratio, 1e-6)), n_groups))
+    sgkf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=42)
+    trainval_idx, test_idx = next(sgkf.split(idx, labels, groups))
+
+    g_tv = groups[trainval_idx]
+    if len(np.unique(g_tv)) >= 2:
+        rel_val = val_ratio / (1.0 - test_ratio)
+        inner = max(2, min(round(1.0 / max(rel_val, 1e-6)), len(np.unique(g_tv))))
+        sgkf2 = StratifiedGroupKFold(n_splits=inner, shuffle=True, random_state=42)
+        tr_rel, val_rel = next(sgkf2.split(trainval_idx, labels[trainval_idx], g_tv))
+        return trainval_idx[tr_rel], trainval_idx[val_rel], test_idx
+
+    rng = np.random.default_rng(42)
+    shuffled = rng.permutation(trainval_idx)
+    n_val = max(1, int(len(shuffled) * val_ratio))
+    return shuffled[n_val:], shuffled[:n_val], test_idx
+
+
+def create_splits(train_ratio=0.70, val_ratio=0.15, test_ratio=0.15,
+                  speaker_disjoint=False):
+    """Cria splits train/val/test.
+
+    speaker_disjoint=True (tier `large`): mantem cada falante inteiramente em um
+    unico conjunto, medindo generalizacao a USUARIOS NAO VISTOS. Default: split
+    estratificado por classe.
+    """
     logger.info("=" * 60)
-    logger.info("CRIANDO SPLITS TRAIN/VAL/TEST")
+    logger.info("CRIANDO SPLITS TRAIN/VAL/TEST"
+                + (" (disjunto por falante)" if speaker_disjoint else ""))
     logger.info("=" * 60)
 
     # Coletar todos os arquivos
@@ -286,16 +344,45 @@ def create_splits(train_ratio=0.70, val_ratio=0.15, test_ratio=0.15):
         logger.error("Muito poucos arquivos para criar splits!")
         return
 
-    # Primeiro split: train vs (val+test)
-    sss1 = StratifiedShuffleSplit(n_splits=1, test_size=(val_ratio + test_ratio), random_state=42)
-    train_idx, temp_idx = next(sss1.split(files, labels))
+    # Grupos de falante (para split disjunto e/ou estatistica de usuarios nao vistos)
+    groups = None
+    try:
+        from app.core.speaker_manifest import speaker_for_path
 
-    # Segundo split: val vs test
-    val_test_ratio = test_ratio / (val_ratio + test_ratio)
-    sss2 = StratifiedShuffleSplit(n_splits=1, test_size=val_test_ratio, random_state=42)
-    val_idx_local, test_idx_local = next(sss2.split(files[temp_idx], labels[temp_idx]))
-    val_idx = temp_idx[val_idx_local]
-    test_idx = temp_idx[test_idx_local]
+        groups = np.array([speaker_for_path(f) for f in files], dtype=object)
+    except Exception as exc:
+        logger.warning("Identificacao de falante indisponivel: %s", exc)
+
+    strategy = "stratified"
+    if speaker_disjoint and groups is not None:
+        train_idx, val_idx, test_idx = _speaker_disjoint_indices(
+            files, labels, groups, val_ratio, test_ratio
+        )
+        strategy = "speaker_disjoint"
+        # Guarda: se os grupos forem fortemente correlacionados à classe (ex.:
+        # fontes puras sem ID de falante), o fold disjunto pode ficar de classe
+        # única — inútil para avaliar. Nesse caso cai para o estratificado e
+        # avisa. O protocolo de falante não visto fica melhor servido no
+        # benchmark (--unseen-speaker, que reserva reais para o teste).
+        single_class = (
+            len(np.unique(labels[test_idx])) < 2
+            or len(np.unique(labels[train_idx])) < 2
+        )
+        if single_class:
+            logger.warning(
+                "  speaker_disjoint produziu split de classe única "
+                "(falantes correlacionados à classe). Caindo para estratificado; "
+                "use --unseen-speaker no benchmark para o protocolo de falante "
+                "não visto com teste balanceado."
+            )
+            train_idx, val_idx, test_idx = _stratified_indices(
+                files, labels, val_ratio, test_ratio
+            )
+            strategy = "stratified_fallback_from_speaker_disjoint"
+    else:
+        train_idx, val_idx, test_idx = _stratified_indices(
+            files, labels, val_ratio, test_ratio
+        )
 
     # Criar diretórios e copiar
     for split_name, indices in [("train", train_idx), ("val", val_idx), ("test", test_idx)]:
@@ -334,7 +421,29 @@ def create_splits(train_ratio=0.70, val_ratio=0.15, test_ratio=0.15):
         "val_ratio": val_ratio,
         "test_ratio": test_ratio,
         "target_sr": TARGET_SR,
+        "split_strategy": strategy,
     }
+
+    # Estatistica de falantes / usuarios nao vistos (quando ha grupos)
+    if groups is not None:
+        g_train = set(groups[train_idx].tolist())
+        g_val = set(groups[val_idx].tolist())
+        g_test = set(groups[test_idx].tolist())
+        unseen = g_test - g_train - g_val
+        metadata["speakers"] = {
+            "total": int(len(set(groups.tolist()))),
+            "identified": int(sum(1 for g in set(groups.tolist()) if ":" in str(g))),
+            "train": len(g_train),
+            "val": len(g_val),
+            "test": len(g_test),
+            "unseen_in_test": len(unseen),
+            "leakage_overlap_train_test": len(g_train & g_test),
+        }
+        logger.info(
+            "  Falantes: %d total · teste %d (não vistos: %d · vazamento train∩test: %d)",
+            metadata["speakers"]["total"], len(g_test),
+            len(unseen), len(g_train & g_test),
+        )
 
     with open(SPLITS_DIR / "splits_metadata.json", "w") as f:
         json.dump(metadata, f, indent=2)
@@ -394,6 +503,10 @@ def main():
         "--test-ratio", type=float, default=0.15,
         help="Proporção de teste (default: 0.15)",
     )
+    parser.add_argument(
+        "--speaker-disjoint", action="store_true",
+        help="Split disjunto por falante (tier large / usuários não vistos)",
+    )
 
     args = parser.parse_args()
 
@@ -422,6 +535,7 @@ def main():
             train_ratio=args.train_ratio,
             val_ratio=args.val_ratio,
             test_ratio=args.test_ratio,
+            speaker_disjoint=args.speaker_disjoint,
         )
 
     if args.create_zip:

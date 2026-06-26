@@ -101,6 +101,11 @@ def main() -> int:
     p.add_argument("--cross-generator", metavar="GERADOR", default=None,
                    help="P0.4: segura este gerador fora do treino e o usa como "
                         "teste (ex.: fkvoice). Reteste cross-generator.")
+    p.add_argument("--speaker-split", action="store_true",
+                   help="tier large: split disjunto por falante (usuários não vistos)")
+    p.add_argument("--unseen-speaker", metavar="FALANTE", default=None,
+                   help="tier large: segura este falante fora do treino e o usa "
+                        "como teste (protocolo de usuário não visto)")
     args = p.parse_args()
 
     from benchmarks import BenchmarkConfig, plan_benchmark, run_benchmark
@@ -168,6 +173,10 @@ def main() -> int:
         cfg.group_split = True
     if args.cross_generator:
         cfg.holdout_generator = args.cross_generator
+    if args.speaker_split:
+        cfg.speaker_split = True
+    if args.unseen_speaker:
+        cfg.holdout_speaker = args.unseen_speaker
     if args.device_profile:
         cfg.device_profile = args.device_profile
     if args.no_optimize_hparams:

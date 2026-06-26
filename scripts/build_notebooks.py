@@ -621,6 +621,22 @@ def build_pipeline():
         """),
         code(BOOTSTRAP),
         md("""
+        ## Tiers de dataset
+
+        O dataset é montado por **tier** (`scripts/build_dataset.py --tier ...`),
+        a fonte única de tamanho/finalidade (ver `docs/12_DATASETS.md`):
+
+        | Tier | Por classe | Finalidade | Split |
+        |------|-----------:|------------|-------|
+        | `test` | 100 | Smoke (valida o pipeline) | estratificado |
+        | `small` | 1.000 | Treino rápido (Clássico + CNN leve) | estratificado |
+        | `medium` | 3.000 | Treino+teste (até Transformer) | estratificado |
+        | `large` | 10.000 | Completo + **usuários não vistos** (Ensemble) | disjunto por falante |
+
+        O pipeline aceita `--tier` e, no `large`, `--speaker-split` /
+        `--unseen-speaker` para o protocolo de falante não visto.
+        """),
+        md("""
         ## 1. Benchmark rápido (sintético) — valida o harness em segundos
 
         Treina algumas arquiteturas em **dados sintéticos** e gera as MESMAS
@@ -828,7 +844,7 @@ def build_pipeline():
         import subprocess
 
         DOWNLOAD_REAL = False          # → True para baixar + treinar com dados reais
-        N_PER_CLASS = 150              # amostras por classe (pequeno p/ demonstração)
+        TIER = "test"                  # tier de dataset (test=smoke ~100/classe). Ver docs/12.
         REAL_NPZ = ROOT / "app" / "datasets" / "nb_real.npz"
 
         if DOWNLOAD_REAL:
@@ -838,9 +854,8 @@ def build_pipeline():
             # 2. Pipeline canônico: download → preparo → split → export .npz → treino.
             cmd = [
                 sys.executable, str(ROOT / "scripts" / "run_tcc_pipeline.py"),
-                "--download", "--skip-real-cv",
+                "--download", "--tier", TIER,
                 "--archs", "SVM",
-                "--target-per-class", str(N_PER_CLASS),
                 "--epochs", "5",
                 "--npz", str(REAL_NPZ),
                 "--out", str(ROOT / "results" / "nb_real"),
@@ -1084,7 +1099,11 @@ def build_pipeline():
             "RandomForest",
         ]
 
-        TARGET_PER_CLASS = 10_000
+        # Tier do dataset (test/small/medium/large) — define tamanho, fontes e
+        # protocolo de split. Ver docs/12_DATASETS.md. O `large` (10k/classe)
+        # ativa identificação de falante + usuários não vistos.
+        TIER = "large"
+        SPEAKER_SPLIT = TIER == "large"   # protocolo de usuários não vistos
         EPOCHS = 20
         BATCH_SIZE = 32
         DURATION_SEC = 5.0
@@ -1092,11 +1111,11 @@ def build_pipeline():
         LATENCY_RUNS = 30
         WORKERS = max((os.cpu_count() or 2) - 1, 1)
 
-        OUTPUT_DIR = RESULTS_DIR / "tcc_all_architectures_20k"
-        DATASET_NPZ = DATASETS_DIR / "benchmark_audio_raw_20k.npz"
+        OUTPUT_DIR = RESULTS_DIR / f"tcc_all_architectures_{TIER}"
+        DATASET_NPZ = DATASETS_DIR / f"benchmark_audio_raw_{TIER}.npz"
 
         print("Arquiteturas:", len(ALL_ARCHITECTURES), ALL_ARCHITECTURES)
-        print("Alvo dataset:", TARGET_PER_CLASS, "reais +", TARGET_PER_CLASS, "fake")
+        print("Tier dataset:", TIER, "| split por falante:", SPEAKER_SPLIT)
         print("Épocas/batch:", EPOCHS, BATCH_SIZE)
         print("Workers CPU :", WORKERS)
         """),
@@ -1149,7 +1168,7 @@ def build_pipeline():
             str(ROOT / "scripts" / "run_tcc_pipeline.py"),
             "--download",
             "--full-benchmark",
-            "--target-per-class", str(TARGET_PER_CLASS),
+            "--tier", TIER,
             "--epochs", str(EPOCHS),
             "--batch-size", str(BATCH_SIZE),
             "--duration-sec", str(DURATION_SEC),
@@ -1159,6 +1178,8 @@ def build_pipeline():
             "--npz", str(DATASET_NPZ),
             "--archs", *ALL_ARCHITECTURES,
         ]
+        if SPEAKER_SPLIT:
+            full_cmd.append("--speaker-split")   # tier large: usuários não vistos
 
         print(" ".join(full_cmd))
 

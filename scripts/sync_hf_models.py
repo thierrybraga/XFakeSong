@@ -10,6 +10,7 @@ The script is intentionally conservative for Spaces:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 from pathlib import Path
@@ -35,11 +36,13 @@ EXPECTED_ARTIFACTS = (
 
 ALLOW_PATTERNS = (
     "bench_*",
+    "pretrained_manifest.json",
     "benchmark_final_manifest.json",
     "wavlm_backbone/*",
     "hubert_backbone/*",
     "benchmark_final/**",
     "models/bench_*",
+    "models/pretrained_manifest.json",
     "models/benchmark_final_manifest.json",
     "models/wavlm_backbone/*",
     "models/hubert_backbone/*",
@@ -57,7 +60,28 @@ def _configured_repo(cli_repo: str | None) -> str | None:
 
 
 def _missing_artifacts(models_dir: Path) -> list[str]:
-    return [name for name in EXPECTED_ARTIFACTS if not (models_dir / name).exists()]
+    expected = _expected_artifacts(models_dir)
+    return [name for name in expected if not (models_dir / name).exists()]
+
+
+def _expected_artifacts(models_dir: Path) -> tuple[str, ...]:
+    manifest = models_dir / "pretrained_manifest.json"
+    if manifest.exists():
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+            names = []
+            for item in data.get("models", []):
+                if item.get("status") != "ok":
+                    continue
+                artifact = item.get("artifact") or {}
+                path = artifact.get("path") if isinstance(artifact, dict) else None
+                if path:
+                    names.append(Path(path).name)
+            if names:
+                return tuple(dict.fromkeys(names))
+        except Exception:
+            pass
+    return EXPECTED_ARTIFACTS
 
 
 def _copy_tree_contents(src: Path, dst: Path) -> int:

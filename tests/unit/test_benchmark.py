@@ -196,7 +196,29 @@ def test_evaluate_scores_perfect_separation():
     assert m["auc_roc"] == 1.0
     assert m["eer"] == 0.0
     assert m["accuracy"] == 1.0
+    assert m["accuracy_at_eer"] == 1.0
     assert "min_tdcf" in m
+
+
+def test_accuracy_at_eer_separates_threshold_collapse_from_failure():
+    """P2: scores ordenados mas colapsados para ~0 (caso Ensemble sob ruído)
+    despencam no limiar fixo 0.5, mas `accuracy_at_eer` revela o teto real."""
+    import numpy as np
+
+    from benchmarks.evaluate import evaluate_scores
+
+    y = np.array([0] * 50 + [1] * 50)
+    # Reais em [0, 0.001), fakes em [0.002, 0.01): AUC=1.0, mas tudo < 0.5.
+    rng = np.random.default_rng(0)
+    p = np.concatenate([rng.uniform(0, 0.001, 50), rng.uniform(0.002, 0.01, 50)])
+    m = evaluate_scores(y, p)
+    assert m["auc_roc"] > 0.99           # perfeitamente separável (ranking)
+    assert m["accuracy"] < 0.6           # colapsa no limiar fixo 0.5
+    assert m["accuracy_at_eer"] > 0.95   # recupera no limiar ótimo
+    # E quando há sobreposição genuína, os dois ficam baixos:
+    p_bad = np.concatenate([rng.uniform(0.3, 0.7, 50), rng.uniform(0.3, 0.7, 50)])
+    mb = evaluate_scores(y, p_bad)
+    assert mb["accuracy_at_eer"] < 0.7
 
 
 def test_evaluate_scores_sanitizes_nonfinite_scores():
@@ -544,6 +566,7 @@ def test_neural_benchmark_plan_uses_curated_hyperparameters():
         assert ast["weight_decay"] == 5e-5
         assert ast["use_augmentation"] is False
         assert ast["warmup_steps"] == 3000
+        assert ast["clipnorm"] == 1.0
         assert ast["checkpoint_best"] is True
         assert ast["early_stopping"] is True
         assert ast["early_stopping_patience"] == 20
@@ -653,6 +676,77 @@ def test_convergence_requires_accuracy_threshold():
         )
         results = run_benchmark(cfg)
         assert results["architectures"]["SVM"]["converged"] is False
+
+
+def test_conformer_benchmark_smoke_generates_model_results_and_figures(monkeypatch):
+    """Smoke P0: Conformer deve treinar 1 época e materializar artefatos."""
+    from benchmarks import BenchmarkConfig, run_benchmark
+
+    for name in (
+        "MODELS_DIR",
+        "DEEPFAKE_MODELS_DIR",
+        "XFAKE_MODELS_DIR",
+        "XFAKE_STORAGE_DIR",
+        "DEEPFAKE_STORAGE_DIR",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        output_dir = root / "conformer_smoke"
+        models_dir = root / "models"
+        cfg = BenchmarkConfig(
+            architectures=["Conformer"],
+            dataset_path=None,
+            epochs=1,
+            batch_size=16,
+            seed=123,
+            snr_levels_db=[20],
+            latency_runs=1,
+            output_dir=str(output_dir),
+            models_dir=str(models_dir),
+            run_api_probe=False,
+            synthetic_n=24,
+            synthetic_shape=(16, 16),
+            optimize_hyperparameters=False,
+            training_overrides={
+                "Conformer": {
+                    "parameters": {
+                        "dropout_rate": 0.3,
+                        "learning_rate": 1e-4,
+                        "weight_decay": 1e-4,
+                    },
+                    "use_mixed_precision": False,
+                }
+            },
+        )
+
+        results = run_benchmark(cfg)
+        conformer = results["architectures"]["Conformer"]
+        assert conformer["status"] == "ok", conformer
+        assert conformer["type"] == "neural"
+        assert conformer["epochs"] == 1
+        assert conformer["model_parameters"]["dropout_rate"] == 0.3
+
+        model_artifact = Path(conformer["model_artifact"])
+        assert model_artifact.exists()
+        assert model_artifact.parent == models_dir
+        assert (output_dir / "results.json").exists()
+
+        saved = json.loads((output_dir / "results.json").read_text("utf-8"))
+        assert saved["architectures"]["Conformer"]["status"] == "ok"
+
+        for figure in (
+            "roc.png",
+            "robustez.png",
+            "convergencia.png",
+            "eficiencia.png",
+            "confusion_matrices.png",
+            "score_distributions.png",
+        ):
+            path = output_dir / "figures" / figure
+            assert path.exists(), figure
+            assert path.stat().st_size > 0, figure
 
 
 def test_api_probe_uses_configured_openapi_path(monkeypatch):

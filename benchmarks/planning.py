@@ -163,6 +163,7 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "warmup_steps": 3000,
         "decay_steps": 100000,
         "alpha": 1e-6,
+        "clipnorm": 1.0,
         "optimizer": "AdamW",
         "scheduler": "WarmupCosineDecay",
         "use_augmentation": False,
@@ -171,7 +172,7 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "checkpoint_best": True,
         "reduce_lr_on_plateau": False,
         "recommended_epochs": 100,
-        "notes": "AST conforme a implementação do artigo: arquitetura inalterada, LR/weight_decay menores, warmup maior e checkpoint obrigatório para evitar salvar o estado final colapsado.",
+        "notes": "AST conforme a implementação do artigo: arquitetura inalterada, LR/weight_decay menores, warmup maior, clipnorm=1.0 (gradiente) e checkpoint obrigatório para evitar divergência/salvar o estado final colapsado.",
     },
     "efficientnetlstm": {
         "model_family": "neural",
@@ -212,11 +213,17 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "l2_reg_strength": 1e-4,
         "optimizer": "AdamW",
         "scheduler": "architecture_default",
-        "use_augmentation": False,
+        # P2 — causa-raiz do colapso de robustez (acc 0.98→0.50 a 10 dB): o run
+        # 20260626 treinou o Ensemble com use_augmentation=False, então ele NUNCA
+        # viu ruído; sob AWGN o score da fusão (sigmoid saturada em {0,1}) colapsa
+        # para ~0 mantendo AUC alta (30 dB AUC 0.95). Ligar augmentation SNR
+        # expõe o ramo de fusão a ruído no treino. Complemento (re-treino): label
+        # smoothing na loss da fusão (ensemble.py:521-526) para curar a saturação.
+        "use_augmentation": True,
         "use_mixed_precision": False,
         "reduce_lr_on_plateau": False,
         "recommended_epochs": 100,
-        "notes": "Ensemble real opera em áudio bruto: branches Mel/LFCC/CQT/MFCC e fusão multimodal; recorte central 1s para custo controlado.",
+        "notes": "Ensemble real opera em áudio bruto: branches Mel/LFCC/CQT/MFCC e fusão multimodal; recorte central 1s para custo controlado. P2: augmentation SNR ligada (antes False → fragilidade sob ruído).",
     },
 }
 

@@ -429,7 +429,8 @@ class ArchitectureFactoryRegistry:
                 "default",           # alias -> conformer
                 "conformer_lite"],
             default_params={
-                # create_model params: architecture only (no model hyperparams accepted)
+                # create_model params: dropout_rate, learning_rate, weight_decay,
+                # warmup_steps, decay_steps, alpha, clipnorm, label_smoothing
             },
             input_requirements={
                 "input_type": "spectrogram",

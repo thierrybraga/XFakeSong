@@ -58,24 +58,28 @@ notebooks/
 
 ## Notebook de Benchmark
 
-`pipeline/01_benchmark_tcc_full_pipeline.ipynb` documenta o comando oficial:
+`pipeline/01_benchmark_tcc_full_pipeline.ipynb` documenta o comando oficial,
+agora parametrizado por **tier** (ver [docs/12_DATASETS.md](12_DATASETS.md)):
 
 ```bash
 python scripts/run_tcc_pipeline.py \
   --download \
-  --target-per-class 7500 \
+  --tier large \
   --full-benchmark \
   --epochs 100 \
   --device-profile gpu \
-  --out results/tcc_full_15k \
-  --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
+  --speaker-split \
+  --out results/tcc_large \
+  --npz app/datasets/benchmark_audio_raw_large.npz
 ```
 
-Esse roteiro reproduz o benchmark consolidado do TCC: `7.500` amostras reais +
-`7.500` amostras fake, 100 épocas para modelos neurais, benchmark completo e
-probe da API quando habilitado. O notebook mantém a execução completa
-desativada por padrão para evitar download e treino longos sem revisão do
-ambiente.
+Esse roteiro reproduz o benchmark consolidado do TCC: o tier `large` monta
+`10.000` reais + `10.000` fake com identificação de falante, 100 épocas para
+modelos neurais, benchmark completo, protocolo de **usuários não vistos**
+(`--speaker-split`) e probe da API quando habilitado. Troque `--tier` por
+`test`/`small`/`medium` para ensaios mais leves. O notebook mantém a execução
+completa desativada por padrão para evitar download e treino longos sem revisão
+do ambiente.
 
 ## Notebook Completo de Todas as Arquiteturas
 
@@ -86,8 +90,9 @@ ponta a ponta. Ele:
 - configura `XFAKE_STORAGE_DIR`, `XFAKE_DATASETS_DIR`, `XFAKE_MODELS_DIR` e
   `XFAKE_LOGS_DIR` para storage persistente;
 - executa um smoke test antes do treino pesado;
-- usa alvo de `7.500` amostras reais + `7.500` fake no benchmark atual;
-- chama `scripts/run_tcc_pipeline.py --download --target-per-class ... --archs`
+- usa um **tier** de dataset (`--tier large` no benchmark de referência: `10.000`
+  reais + `10.000` fake com falantes identificados);
+- chama `scripts/run_tcc_pipeline.py --download --tier <tier> --archs`
   com as 14 arquiteturas;
 - audita `dataset.md`, `dataset_manifest.json`, `results.json`, `results.csv`,
   `predictions_clean.csv`, figuras PNG agregadas e artefatos por arquitetura;

@@ -44,6 +44,16 @@ REAL_DIR = DATASETS_DIR / "real"
 FAKE_DIR = DATASETS_DIR / "fake"
 OVERFLOW_DIR = DATASETS_DIR / "overflow"
 
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+from app.core.dataset_catalog import (  # noqa: E402
+    DATASET_CATALOG,
+    get_tier,
+    summarize_dataset_paths,
+    tier_choices,
+)
+
 # ---------------------------------------------------------------------------
 # Composicao do dataset (valores padrao — ajustavel via --target)
 # ---------------------------------------------------------------------------
@@ -153,21 +163,33 @@ def print_status():
 
 
 def step_download(target_per_class: int, skip_real_cv: bool = False):
-    """Fase de download dos 4 fontes."""
+    """Fase de download das fontes.
+
+    Quando `skip_real_cv` (tiers test/small): a classe real vem INTEIRAMENTE do
+    BRSpeech bonafide (alvo = target_per_class). Caso contrário (medium/large):
+    metade BRSpeech bonafide + metade CommonVoice/FLEURS.
+    """
     half = target_per_class // 2
     cvpt_target = half // 2
     fleurs_target = half - cvpt_target
 
-    # --- BRSpeech-DF (real bonafide + fake spoof juntos, max_samples = total das duas classes)
+    # Alvo de real vindo do BRSpeech: tudo (test/small) ou metade (medium/large).
+    brspeech_real_goal = target_per_class if skip_real_cv else half
+
+    # --- BRSpeech-DF (real bonafide + fake spoof juntos; o downloader divide
+    #     max_samples em metade real + metade fake).
     brspeech_real = count_wavs(REAL_DIR, ["brspeech"])
     brspeech_fake = count_wavs(FAKE_DIR, ["brspeech"])
-    brspeech_needed = max(0, half - brspeech_real) + max(0, half - brspeech_fake)
+    brspeech_needed = (
+        max(0, brspeech_real_goal - brspeech_real)
+        + max(0, brspeech_real_goal - brspeech_fake)
+    )
 
     if brspeech_needed > 0:
         run(
             [sys.executable, str(SCRIPTS_DIR / "download_datasets.py"),
-             "--brspeech", "--max-samples", str(half * 2)],
-            f"BRSpeech-DF bonafide + spoof ({half} por classe)",
+             "--brspeech", "--max-samples", str(brspeech_real_goal * 2)],
+            f"BRSpeech-DF bonafide + spoof ({brspeech_real_goal} por classe)",
         )
     else:
         logger.info(f"BRSpeech-DF ja tem {brspeech_real} real + {brspeech_fake} fake. Pulando.")
@@ -217,6 +239,32 @@ def step_download(target_per_class: int, skip_real_cv: bool = False):
         )
     else:
         logger.info(f"Fake Voices XTTS ja tem {xtts_fake} amostras. Pulando.")
+
+
+def _excess_round_robin(files: list[Path], keep_n: int) -> list[Path]:
+    """Escolhe quais arquivos REMOVER mantendo um mix proporcional por fonte.
+
+    Em vez de cortar a cauda alfabética (que zeraria um gerador inteiro, p.ex.
+    todos os `fkvoice_*`), agrupa por prefixo de fonte e mantém os primeiros
+    `keep_n` em ordem round-robin entre as fontes — preservando a diversidade
+    de geradores (importante para o protocolo cross-generator).
+    """
+    if keep_n >= len(files):
+        return []
+    by_prefix: dict[str, list[Path]] = {}
+    for f in files:
+        prefix = f.stem.split("_", 1)[0]
+        by_prefix.setdefault(prefix, []).append(f)
+    order = sorted(by_prefix)  # determinístico
+    kept: list[Path] = []
+    i = 0
+    while len(kept) < keep_n and any(by_prefix[p] for p in order):
+        bucket = by_prefix[order[i % len(order)]]
+        if bucket:
+            kept.append(bucket.pop(0))
+        i += 1
+    kept_set = set(kept)
+    return [f for f in files if f not in kept_set]
 
 
 def _archive_or_delete(files: list[Path], label: str, delete_excess: bool) -> int:
@@ -277,8 +325,8 @@ def step_balance(target_per_class: int, delete_excess: bool = False):
     # Remover excesso de REAL
     if real_count > effective_target:
         excess = real_count - effective_target
-        # Manter o início ordenado preserva uma mistura determinística por prefixo.
-        to_remove = real_files[effective_target:]
+        # Round-robin por fonte preserva a diversidade (não zera um gerador).
+        to_remove = _excess_round_robin(real_files, effective_target)
         moved = _archive_or_delete(to_remove, "real", delete_excess)
         action = "removidos" if delete_excess else "arquivados"
         logger.info(f"  Real: {action} {moved}/{excess} arquivos excedentes")
@@ -286,7 +334,7 @@ def step_balance(target_per_class: int, delete_excess: bool = False):
     # Remover excesso de FAKE
     if fake_count > effective_target:
         excess = fake_count - effective_target
-        to_remove = fake_files[effective_target:]
+        to_remove = _excess_round_robin(fake_files, effective_target)
         moved = _archive_or_delete(to_remove, "fake", delete_excess)
         action = "removidos" if delete_excess else "arquivados"
         logger.info(f"  Fake: {action} {moved}/{excess} arquivos excedentes")
@@ -305,19 +353,27 @@ def step_balance(target_per_class: int, delete_excess: bool = False):
     return real_final, fake_final
 
 
-def step_preprocess(train_ratio: float, val_ratio: float, test_ratio: float):
+def step_preprocess(train_ratio: float, val_ratio: float, test_ratio: float,
+                    speaker_disjoint: bool = False):
     """Roda o pipeline de pre-processamento com os ratios corretos."""
+    cmd = [
+        sys.executable, str(SCRIPTS_DIR / "preprocess_dataset.py"),
+        "--full",
+        "--train-ratio", str(train_ratio),
+        "--val-ratio",   str(val_ratio),
+        "--test-ratio",  str(test_ratio),
+    ]
+    if speaker_disjoint:
+        cmd.append("--speaker-disjoint")
     run(
-        [sys.executable, str(SCRIPTS_DIR / "preprocess_dataset.py"),
-         "--full",
-         "--train-ratio", str(train_ratio),
-         "--val-ratio",   str(val_ratio),
-         "--test-ratio",  str(test_ratio)],
-        f"Pre-processamento + splits {int(train_ratio*100)}/{int(val_ratio*100)}/{int(test_ratio*100)}",
+        cmd,
+        f"Pre-processamento + splits {int(train_ratio*100)}/{int(val_ratio*100)}/{int(test_ratio*100)}"
+        + (" (disjunto por falante)" if speaker_disjoint else ""),
     )
 
 
-def save_dataset_config(target_per_class: int, train_r: float, val_r: float, test_r: float):
+def save_dataset_config(target_per_class: int, train_r: float, val_r: float, test_r: float,
+                        tier: str | None = None):
     """Salva dataset_config.json com a estrategia documentada."""
     real_total = count_wavs(REAL_DIR)
     fake_total = count_wavs(FAKE_DIR)
@@ -326,10 +382,33 @@ def save_dataset_config(target_per_class: int, train_r: float, val_r: float, tes
     cv_real = count_wavs(REAL_DIR, ["cetuc", "cv", "cvpt", "fleurs"])
     brspeech_fake = count_wavs(FAKE_DIR, ["brspeech"])
     xtts_fake = count_wavs(FAKE_DIR, ["fkvoice", "fakevoice"])
+    active_paths = [
+        str(path.relative_to(BASE_DIR))
+        for path in list(REAL_DIR.glob("*.wav")) + list(FAKE_DIR.glob("*.wav"))
+    ]
+
+    tier_info = get_tier(tier) if tier else None
+    split_strategy = (
+        tier_info.split_strategy if tier_info else "stratified"
+    )
+    speaker_aware = bool(tier_info.speaker_aware) if tier_info else False
+
+    speakers_summary = {}
+    try:
+        from app.core.speaker_manifest import summarize_speakers
+
+        speakers_summary = summarize_speakers(active_paths)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Resumo de falantes indisponivel: {exc}")
 
     config = {
-        "version": "1.0",
+        "version": "1.1",
         "description": "Dataset PT-BR para deteccao de deepfake de audio — TCC UFSJ 2026",
+        "tier": tier or "custom",
+        "tier_purpose": tier_info.purpose if tier_info else "alvo manual via --target",
+        "split_strategy": split_strategy,
+        "speaker_aware": speaker_aware,
+        "speakers": speakers_summary,
         "balancing_strategy": (
             "1:1 (real:fake), conjunto ativo limitado por classe; "
             "excedentes arquivados em app/datasets/overflow por padrão"
@@ -339,17 +418,38 @@ def save_dataset_config(target_per_class: int, train_r: float, val_r: float, tes
         "real_samples": real_total,
         "fake_samples": fake_total,
         "ratio_real_fake": round(real_total / max(fake_total, 1), 4),
+        "source_summary": summarize_dataset_paths(active_paths),
+        "dataset_catalog": {
+            name: {
+                "type": info.source_type,
+                "cli_flag": info.cli_flag,
+                "prefixes": list(info.prefixes),
+                "repository": info.repository,
+                "url": info.url,
+                "license": info.license,
+                "language": info.language,
+                "audio_count": info.audio_count,
+                "duration": info.duration,
+                "speakers": info.speakers,
+                "benchmark_use": info.benchmark_use,
+            }
+            for name, info in DATASET_CATALOG.items()
+        },
         "split": {
             "train": train_r,
             "val": val_r,
             "test": test_r,
-            "method": "StratifiedShuffleSplit (random_state=42)",
+            "method": (
+                "StratifiedGroupKFold por falante (random_state=42)"
+                if split_strategy == "speaker_disjoint"
+                else "StratifiedShuffleSplit (random_state=42)"
+            ),
         },
         "sources": {
             "real": {
                 "BRSpeech-DF bonafide": {
                     "repo": "AKCIT-Deepfake/BRSpeech-DF",
-                    "license": "CC-BY-NC 4.0",
+                    "license": DATASET_CATALOG["BRSpeech-DF"].license,
                     "count": brspeech_real,
                     "target": target_per_class // 2,
                 },
@@ -363,7 +463,7 @@ def save_dataset_config(target_per_class: int, train_r: float, val_r: float, tes
             "fake": {
                 "BRSpeech-DF spoof": {
                     "repo": "AKCIT-Deepfake/BRSpeech-DF",
-                    "license": "CC-BY-NC 4.0",
+                    "license": DATASET_CATALOG["BRSpeech-DF"].license,
                     "generators": "multiplos TTS/VC PT-BR",
                     "count": brspeech_fake,
                     "target": target_per_class // 2,
@@ -405,8 +505,13 @@ def main():
         description="Orquestrador de dataset PT-BR para deepfake detection (Fase 1 TCC)"
     )
     parser.add_argument(
-        "--target", type=int, default=10000,
-        help="Numero de amostras por classe (default: 10000, total = target*2)",
+        "--tier", choices=tier_choices(), default=None,
+        help="Tier de dataset (test/small/medium/large) — define tamanho, fontes, "
+             "split e protocolo de falante. Veja docs/12_DATASETS.md.",
+    )
+    parser.add_argument(
+        "--target", type=int, default=None,
+        help="Numero de amostras por classe (override; default do tier, ou 10000 sem tier)",
     )
     parser.add_argument(
         "--train-ratio", type=float, default=0.70,
@@ -442,10 +547,26 @@ def main():
     )
 
     args = parser.parse_args()
-    COMPOSITION["target_per_class"] = int(args.target)
+
+    # Resolver tier → tamanho/fontes/split/falante (override manual via --target).
+    tier = get_tier(args.tier) if args.tier else None
+    if tier is not None:
+        target_per_class = int(args.target) if args.target is not None else tier.per_class
+        skip_real_cv = args.skip_real_cv or tier.skip_real_cv
+        speaker_disjoint = tier.split_strategy == "speaker_disjoint"
+        train_r, val_r, test_r = (
+            tier.split["train"], tier.split["val"], tier.split["test"],
+        )
+    else:
+        target_per_class = int(args.target) if args.target is not None else 10000
+        skip_real_cv = args.skip_real_cv
+        speaker_disjoint = False
+        train_r, val_r, test_r = args.train_ratio, args.val_ratio, args.test_ratio
+
+    COMPOSITION["target_per_class"] = target_per_class
 
     # Validar ratios
-    total_ratio = args.train_ratio + args.val_ratio + args.test_ratio
+    total_ratio = train_r + val_r + test_r
     if abs(total_ratio - 1.0) > 0.001:
         logger.error(f"Soma dos ratios deve ser 1.0 (atual: {total_ratio:.3f})")
         sys.exit(1)
@@ -453,11 +574,20 @@ def main():
     logger.info("=" * 60)
     logger.info("BUILD DATASET — FASE 1 TCC (UFSJ 2026)")
     logger.info("=" * 60)
-    logger.info(f"  Target por classe : {args.target}")
-    logger.info(f"  Total esperado    : {args.target * 2}")
-    logger.info(f"  Split             : {int(args.train_ratio*100)}/{int(args.val_ratio*100)}/{int(args.test_ratio*100)}")
-    logger.info(f"  Composicao real   : {args.target//2} BRSpeech-bonafide + {args.target//2} CommonVoice/FLEURS")
-    logger.info(f"  Composicao fake   : {args.target//2} BRSpeech-spoof + {args.target//2} Fake Voices XTTS")
+    if tier is not None:
+        logger.info(f"  Tier              : {tier.name} — {tier.purpose}")
+        logger.info(f"  Estrategia split  : {tier.split_strategy}"
+                    + (" (disjunto por falante)" if speaker_disjoint else ""))
+    logger.info(f"  Target por classe : {target_per_class}")
+    logger.info(f"  Total esperado    : {target_per_class * 2}")
+    logger.info(f"  Split             : {int(train_r*100)}/{int(val_r*100)}/{int(test_r*100)}")
+    real_comp = (
+        f"{target_per_class} BRSpeech-bonafide"
+        if skip_real_cv
+        else f"{target_per_class//2} BRSpeech-bonafide + {target_per_class//2} CommonVoice/FLEURS"
+    )
+    logger.info(f"  Composicao real   : {real_comp}")
+    logger.info(f"  Composicao fake   : {target_per_class//2} BRSpeech-spoof + {target_per_class//2} Fake Voices XTTS")
 
     if args.status:
         print_status()
@@ -466,22 +596,22 @@ def main():
     # --- Etapa 1: Downloads
     if not args.skip_download and not args.only_splits:
         logger.info("\n>>> ETAPA 1: DOWNLOADS")
-        step_download(args.target, skip_real_cv=args.skip_real_cv)
+        step_download(target_per_class, skip_real_cv=skip_real_cv)
     else:
         logger.info("\n>>> ETAPA 1: DOWNLOADS (pulado)")
 
     # --- Etapa 2: Balanceamento
     if not args.only_splits:
         logger.info("\n>>> ETAPA 2: BALANCEAMENTO")
-        step_balance(args.target, delete_excess=args.delete_excess)
+        step_balance(target_per_class, delete_excess=args.delete_excess)
 
     # --- Etapa 3: Pre-processamento + Splits
     logger.info("\n>>> ETAPA 3: PRE-PROCESSAMENTO + SPLITS")
-    step_preprocess(args.train_ratio, args.val_ratio, args.test_ratio)
+    step_preprocess(train_r, val_r, test_r, speaker_disjoint=speaker_disjoint)
 
     # --- Etapa 4: Salvar config
     logger.info("\n>>> ETAPA 4: SALVAR CONFIG")
-    save_dataset_config(args.target, args.train_ratio, args.val_ratio, args.test_ratio)
+    save_dataset_config(target_per_class, train_r, val_r, test_r, tier=args.tier)
 
     # --- Status final
     real_total, fake_total = print_status()

@@ -190,6 +190,62 @@ O benchmark do TCC atual parte de um conjunto balanceado 1:1 com `7.500`
    dataset e hiperparâmetros efetivos;
 9. treinar, inferir e gerar relatórios/gráficos para as 14 arquiteturas.
 
+### Catálogo de fontes usado no benchmark
+
+O catálogo único de datasets fica em `app/core/dataset_catalog.py` e é usado
+pela aba Gradio **Datasets/Download**, pela documentação e pelo exportador
+`scripts/run_tcc_pipeline.py`. Ele registra, para cada fonte: tipo (`real`,
+`fake` ou `both`), flag de download, prefixos de arquivo, licença, idioma,
+quantidade/duração conhecida, falantes e uso recomendado no benchmark.
+
+O preset mais completo para novas rodadas é **Benchmark Robusto Recomendado**:
+
+| Classe | Fontes recomendadas |
+|---|---|
+| Real | BRSpeech-DF bonafide, FLEURS, Common Voice PT, ASVspoof 2019 bonafide, In-the-Wild bonafide |
+| Fake | BRSpeech-DF spoof, Fake Voices, WaveFake, ASVspoof 2019 spoof, In-the-Wild spoof |
+
+Esse preset aumenta diversidade de idioma, falantes, geradores e vocoders. Para
+o TCC, registre sempre a composição efetiva, porque fontes como Common Voice,
+ASVspoof 5 e alguns mirrors podem exigir login, aceite de termos ou variar por
+release.
+
+O `.npz` exportado pelo pipeline inclui os metadados usados pelo benchmark:
+
+| Campo no NPZ/manifesto | Uso |
+|---|---|
+| `metadata_json.source_summary` | Contagem por fonte e horas estimadas pelas janelas exportadas |
+| `metadata_json.dataset_catalog` | Snapshot do catálogo usado naquela execução |
+| `metadata_json.splits.<split>.source_summary` | Composição por fonte em treino, validação e teste |
+| `groups` | Fonte por amostra, derivada do prefixo; usada em `--group-split` e `--cross-generator` |
+| `speaker_ids` | Falante por amostra (tier `large`); usado em `--speaker-split` e `--unseen-speaker` |
+
+### Tiers e protocolos de split
+
+O dataset é montado por **tier** (ver [docs/12_DATASETS.md](12_DATASETS.md)). O
+tier determina tamanho, fontes e estratégia de split; o benchmark expõe os
+protocolos correspondentes:
+
+| Tier | `build_dataset` | Protocolo de avaliação no benchmark |
+|------|-----------------|-------------------------------------|
+| test / small / medium | `--tier test\|small\|medium` | split estratificado (default) |
+| large | `--tier large` | `--speaker-split` (usuários não vistos) ou `--unseen-speaker <id>` (holdout de falante) |
+
+Protocolos anti-vazamento disponíveis no `run_benchmark.py` / `run_tcc_pipeline.py`:
+
+- `--group-split` / `--cross-generator <gerador>` — disjunto por **fonte/gerador**
+  (preset `group_tcc` / `cross_generator_tcc`).
+- `--speaker-split` / `--unseen-speaker <falante>` — disjunto por **falante**
+  (preset `unseen_speaker_tcc`), exige um `.npz` com `speaker_ids` (tier `large`).
+
+```bash
+# tier large ponta a ponta com protocolo de usuário não visto
+python scripts/run_tcc_pipeline.py --download --tier large \
+    --full-benchmark --epochs 100 --device-profile gpu --speaker-split \
+    --out results/tcc_large_unseen \
+    --npz app/datasets/benchmark_audio_raw_large.npz
+```
+
 O script `scripts/build_dataset.py` arquiva excedentes em
 `app/datasets/overflow/` por padrão, em vez de apagar os WAVs brutos. Use
 `--delete-excess` apenas quando o descarte destrutivo for intencional.

@@ -240,7 +240,8 @@ class ArchitectureRegistry:
                 description="Conformer: Convolution-augmented Transformer - configuração padrão para máxima acurácia",
                 supported_variants=["conformer", "conformer_lite"],
                 default_params={
-                    # create_model params: architecture only (no model hyperparams accepted)
+                    # create_model params: dropout_rate, learning_rate, weight_decay,
+                    # warmup_steps, decay_steps, alpha, clipnorm, label_smoothing
                     # Training params (used by pipeline, not by create_model)
                     "patience": 22,
                     "lr_patience": 11,

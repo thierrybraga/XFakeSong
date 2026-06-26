@@ -28,6 +28,10 @@ class BenchmarkData:
     # disjuntos por grupo e para o protocolo cross-generator. None quando o
     # dataset não carrega proveniência.
     groups: np.ndarray | None = None
+    # Tier `large` — falante por amostra (alinhado a X/y). Usado para split
+    # disjunto por falante e protocolo holdout-speaker (usuários não vistos).
+    # None quando o dataset não carrega identificação de falante.
+    speakers: np.ndarray | None = None
 
     @classmethod
     def synthetic(cls, n: int = 360, shape: Tuple[int, int] = (32, 16),
@@ -87,7 +91,11 @@ class BenchmarkData:
         # explícita `groups` no .npz; senão derivamos do nome de arquivo nos
         # `paths` do metadata (mesma ordem de concatenação: train→val→test→X).
         groups = cls._extract_groups(data, metadata, used_keys, n=len(y))
-        loaded = cls(X=X, y=y, name=p.stem, metadata=metadata, groups=groups)
+        speakers = cls._extract_speakers(data, metadata, used_keys, n=len(y))
+        loaded = cls(
+            X=X, y=y, name=p.stem, metadata=metadata,
+            groups=groups, speakers=speakers,
+        )
         loaded.validate()
         return loaded
 
@@ -128,6 +136,41 @@ class BenchmarkData:
         if len(groups) != n:
             return None
         return np.asarray(groups, dtype=object).astype(str)
+
+    @classmethod
+    def _extract_speakers(
+        cls,
+        data: Any,
+        metadata: Dict[str, Any],
+        used_keys: list[tuple[str, str]],
+        n: int,
+    ) -> np.ndarray | None:
+        """Array de falantes alinhado a X/y (chave `speaker_ids` no .npz), ou None.
+
+        Preferimos a chave explícita `speaker_ids`; senão derivamos do
+        `speaker_manifest` a partir dos `paths` do metadata (mesma ordem de
+        concatenação train→val→test→X).
+        """
+        if "speaker_ids" in getattr(data, "files", []):
+            s = np.asarray(data["speaker_ids"]).astype(str).ravel()
+            return s if len(s) == n else None
+
+        splits = (metadata or {}).get("splits") or {}
+        key_to_split = {"X_train": "train", "X_val": "val", "X_test": "test"}
+        try:
+            from app.core.speaker_manifest import speaker_for_path
+        except Exception:
+            return None
+        speakers: list[str] = []
+        for xk, _yk in used_keys:
+            split_name = key_to_split.get(xk)
+            paths = (splits.get(split_name) or {}).get("paths") if split_name else None
+            if not paths:
+                return None
+            speakers.extend(speaker_for_path(p) for p in paths)
+        if len(speakers) != n:
+            return None
+        return np.asarray(speakers, dtype=object).astype(str)
 
     def validate(self, min_per_class: int = 2) -> None:
         """Valida sanidade básica antes de treinar/avaliar."""
@@ -190,6 +233,7 @@ class BenchmarkData:
             name=self.name,
             metadata=meta,
             groups=self.groups,
+            speakers=self.speakers,
         )
 
     def stratified_split(
@@ -199,19 +243,29 @@ class BenchmarkData:
         test_frac: float = 0.15,
         group_split: bool = False,
         holdout_generator: str | None = None,
+        speaker_split: bool = False,
+        holdout_speaker: str | None = None,
     ):
-        """Divisão 70/15/15. Suporta três modos:
+        """Divisão 70/15/15. Suporta cinco modos (precedência nesta ordem):
 
-        - **estratificada** (default): preserva a proporção de classes.
-        - **group_split**: mantém fonte/gerador DISJUNTO entre train/val/test
-          (anti-vazamento), quando `groups` está disponível.
+        - **holdout_speaker**: protocolo usuário não visto — segura um falante
+          fora do treino e o usa (só ele + reais reservados) como teste.
         - **holdout_generator**: protocolo cross-generator — segura um gerador
-          fora do treino e o usa (só ele) como teste.
+          fora do treino e o usa como teste.
+        - **speaker_split**: mantém FALANTE disjunto entre train/val/test.
+        - **group_split**: mantém fonte/gerador DISJUNTO entre train/val/test.
+        - **estratificada** (default): preserva a proporção de classes.
         """
+        if holdout_speaker is not None and self.speakers is not None:
+            return self._cross_generator_split(
+                holdout_speaker, seed, val_frac, groups=self.speakers
+            )
         if holdout_generator is not None and self.groups is not None:
             return self._cross_generator_split(
                 holdout_generator, seed, val_frac
             )
+        if speaker_split and self.speakers is not None:
+            return self._grouped_split(seed, val_frac, test_frac, groups=self.speakers)
         if group_split and self.groups is not None:
             return self._grouped_split(seed, val_frac, test_frac)
         try:
@@ -246,16 +300,18 @@ class BenchmarkData:
         idx = np.asarray(idx, dtype=int)
         return self.X[idx], self.y[idx]
 
-    def _grouped_split(self, seed: int, val_frac: float, test_frac: float):
+    def _grouped_split(self, seed: int, val_frac: float, test_frac: float,
+                       groups: np.ndarray | None = None):
         """Split disjunto por grupo via StratifiedGroupKFold (anti-vazamento).
 
-        Mantém cada fonte/gerador inteiramente em um único conjunto. Como há
-        poucos grupos correlacionados à classe, isto pode desbalancear classes
-        — é o trade-off honesto para eliminar vazamento de fonte.
+        Mantém cada grupo (fonte/gerador, ou falante quando `groups=self.speakers`)
+        inteiramente em um único conjunto. Como pode haver poucos grupos
+        correlacionados à classe, isto pode desbalancear classes — é o trade-off
+        honesto para eliminar vazamento.
         """
         from sklearn.model_selection import StratifiedGroupKFold
 
-        groups = np.asarray(self.groups)
+        groups = np.asarray(self.groups if groups is None else groups)
         idx = np.arange(len(self.y))
         n_groups = len(np.unique(groups))
         # nº de folds limitado pelo nº de grupos; teste = 1 fold.
@@ -288,17 +344,20 @@ class BenchmarkData:
         return Xtr, ytr, Xv, yv, Xte, yte
 
     def _cross_generator_split(
-        self, holdout_generator: str, seed: int, val_frac: float
+        self, holdout_generator: str, seed: int, val_frac: float,
+        groups: np.ndarray | None = None,
     ):
-        """Protocolo cross-generator: treina SEM `holdout_generator`, testa NELE.
+        """Protocolo cross-generator / holdout-speaker: treina SEM o item segurado,
+        testa NELE.
 
-        Teste = todas as amostras do gerador segurado + reais não vistos no
-        treino (para manter ambas as classes no teste). Train/val saem do
-        restante, estratificados por classe.
+        Teste = todas as amostras do gerador/falante segurado + reais não vistos
+        no treino (para manter ambas as classes no teste). Train/val saem do
+        restante, estratificados por classe. Com `groups=self.speakers` vira o
+        protocolo de usuário não visto.
         """
         from sklearn.model_selection import train_test_split
 
-        groups = np.asarray(self.groups)
+        groups = np.asarray(self.groups if groups is None else groups)
         held = np.char.lower(groups.astype(str)) == holdout_generator.lower()
         if not held.any():
             # gerador inexistente → cai no split estratificado padrão

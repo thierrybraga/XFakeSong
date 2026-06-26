@@ -215,6 +215,23 @@ def next_index(directory: Path, prefix: str) -> int:
     return max_idx + 1
 
 
+def record_speaker_safe(target_path: Path, speaker_id) -> None:
+    """Registra o falante de um WAV recém-salvo (best-effort, nunca quebra o download).
+
+    Aditivo: alimenta `app/datasets/speaker_manifest.json` para o tier `large`
+    (split disjunto por falante / usuarios nao vistos). No-op silencioso se o
+    modulo nao estiver disponivel ou o id de falante for vazio.
+    """
+    if not speaker_id:
+        return
+    try:
+        from app.core.speaker_manifest import record_speaker
+
+        record_speaker(target_path, speaker_id)
+    except Exception:
+        pass
+
+
 def safe_write_wav(target_path: Path, audio: np.ndarray, sr: int = TARGET_SR) -> bool:
     """Salva WAV com validação final de NaN/Inf — última linha de defesa.
 
@@ -685,7 +702,9 @@ def download_fake_voices(max_speakers: int = 20, max_per_speaker: int = 100) -> 
                         audio, ok = process_audio(raw_data, sr)
                         if not ok:
                             continue
-                        if safe_write_wav(FAKE_DIR / f"fkvoice_{idx:05d}.wav", audio):
+                        fk_path = FAKE_DIR / f"fkvoice_{idx:05d}.wav"
+                        if safe_write_wav(fk_path, audio):
+                            record_speaker_safe(fk_path, speaker)
                             total_count += 1
                             idx += 1
                             speaker_count += 1
@@ -916,14 +935,19 @@ def download_asvspoof2019(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
         if not ok:
             continue
 
+        asv_speaker = item.get("speaker", item.get("speaker_id"))
         if is_real:
-            if safe_write_wav(REAL_DIR / f"asv2019_{real_idx:05d}.wav", audio):
+            asv_path = REAL_DIR / f"asv2019_{real_idx:05d}.wav"
+            if safe_write_wav(asv_path, audio):
+                record_speaker_safe(asv_path, asv_speaker)
                 real_c += 1
                 real_idx += 1
                 if real_c % 100 == 0:
                     logger.info(f"  real: {real_c}/{samples_per_class}")
         else:
-            if safe_write_wav(FAKE_DIR / f"asv2019_{fake_idx:05d}.wav", audio):
+            asv_path = FAKE_DIR / f"asv2019_{fake_idx:05d}.wav"
+            if safe_write_wav(asv_path, audio):
+                record_speaker_safe(asv_path, asv_speaker)
                 fake_c += 1
                 fake_idx += 1
                 if fake_c % 100 == 0:
@@ -1169,14 +1193,19 @@ def download_in_the_wild(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
         if not ok:
             continue
 
+        itw_speaker = item.get("speaker", item.get("speaker_id", item.get("name")))
         if is_real:
-            if safe_write_wav(REAL_DIR / f"itw_{real_idx:05d}.wav", audio):
+            itw_path = REAL_DIR / f"itw_{real_idx:05d}.wav"
+            if safe_write_wav(itw_path, audio):
+                record_speaker_safe(itw_path, itw_speaker)
                 real_c += 1
                 real_idx += 1
                 if real_c % 50 == 0:
                     logger.info(f"  real: {real_c}/{samples_per_class}")
         else:
-            if safe_write_wav(FAKE_DIR / f"itw_{fake_idx:05d}.wav", audio):
+            itw_path = FAKE_DIR / f"itw_{fake_idx:05d}.wav"
+            if safe_write_wav(itw_path, audio):
+                record_speaker_safe(itw_path, itw_speaker)
                 fake_c += 1
                 fake_idx += 1
                 if fake_c % 50 == 0:
@@ -1253,7 +1282,9 @@ def download_common_voice_pt(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
         audio, ok = process_audio(_arr, _sr)
         if not ok:
             continue
-        if safe_write_wav(REAL_DIR / f"cvpt_{idx:05d}.wav", audio):
+        cv_path = REAL_DIR / f"cvpt_{idx:05d}.wav"
+        if safe_write_wav(cv_path, audio):
+            record_speaker_safe(cv_path, item.get("client_id"))
             count += 1
             idx += 1
             if count % 100 == 0:
@@ -1355,17 +1386,23 @@ def download_asvspoof5(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
         if not ok:
             continue
 
+        asv5_speaker = item.get("speaker", item.get("speaker_id"))
         if is_real:
-            if safe_write_wav(REAL_DIR / f"asv5_{real_idx:05d}.wav", audio):
+            asv5_path = REAL_DIR / f"asv5_{real_idx:05d}.wav"
+            if safe_write_wav(asv5_path, audio):
+                record_speaker_safe(asv5_path, asv5_speaker)
                 real_c += 1
                 real_idx += 1
                 if real_c % 100 == 0:
                     logger.info(f"  real: {real_c}/{samples_per_class}")
-        elif safe_write_wav(FAKE_DIR / f"asv5_{fake_idx:05d}.wav", audio):
-            fake_c += 1
-            fake_idx += 1
-            if fake_c % 100 == 0:
-                logger.info(f"  fake: {fake_c}/{samples_per_class}")
+        else:
+            asv5_path = FAKE_DIR / f"asv5_{fake_idx:05d}.wav"
+            if safe_write_wav(asv5_path, audio):
+                record_speaker_safe(asv5_path, asv5_speaker)
+                fake_c += 1
+                fake_idx += 1
+                if fake_c % 100 == 0:
+                    logger.info(f"  fake: {fake_c}/{samples_per_class}")
 
     logger.info(f"ASVspoof5: {real_c} real + {fake_c} fake")
 

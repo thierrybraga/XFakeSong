@@ -473,6 +473,7 @@ def _create_cct_model(
 
     # Sprint 2.2: WarmupCosineDecay default para Transformers.
     # CCT tem self-attention pesada — warmup é crítico para estabilidade.
+    # P1: clipnorm=1.0 elimina o gap val→teste (0.97→0.76) por divergência tardia.
     from app.domain.models.training.optimization import create_warmup_cosine_optimizer
     optimizer = create_warmup_cosine_optimizer(
         initial_learning_rate=1e-3,
@@ -480,6 +481,7 @@ def _create_cct_model(
         decay_steps=50000,
         weight_decay=1e-4,
         alpha=1e-7,
+        clipnorm=1.0,
     )
 
     model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
@@ -487,7 +489,7 @@ def _create_cct_model(
     logger.info(
         f"CCT model created: transformer_layers={transformer_layers}, heads={num_heads}, "
         f"dim={projection_dim}, params={model.count_params()} "
-        f"(WarmupCosineDecay: warmup=1500, decay=50000)"
+        f"(WarmupCosineDecay: warmup=1500, decay=50000, clipnorm=1.0)"
     )
     return model
 

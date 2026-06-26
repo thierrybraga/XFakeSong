@@ -36,6 +36,16 @@ SPLITS_DIR = DATASETS_DIR / "splits"
 
 LOGGER = logging.getLogger("TCCPipeline")
 
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+from app.core.dataset_catalog import (  # noqa: E402
+    DATASET_CATALOG,
+    infer_prefix_from_path,
+    summarize_dataset_paths,
+)
+from app.core.speaker_manifest import speaker_for_path  # noqa: E402
+
 
 def _run(cmd: list[str], description: str, log_path: Path) -> None:
     LOGGER.info("=" * 72)
@@ -121,12 +131,24 @@ def export_npz_from_splits(
 ) -> Path:
     out_npz.parent.mkdir(parents=True, exist_ok=True)
     arrays = {}
+    all_paths: list[str] = []
     meta = {
         "source": str(splits_dir.relative_to(BASE_DIR)),
         "sample_rate": sample_rate,
         "duration_sec": duration_sec,
         "format": "raw_audio",
         "splits": {},
+        "dataset_catalog": {
+            name: {
+                "type": info.source_type,
+                "license": info.license,
+                "language": info.language,
+                "duration": info.duration,
+                "speakers": info.speakers,
+                "benchmark_use": info.benchmark_use,
+            }
+            for name, info in DATASET_CATALOG.items()
+        },
     }
     for split in ("train", "val", "test"):
         X, y, paths = _collect_split(
@@ -139,11 +161,13 @@ def export_npz_from_splits(
             raise RuntimeError(f"Split vazio: {splits_dir / split}")
         arrays[f"X_{split}"] = X
         arrays[f"y_{split}"] = y
+        all_paths.extend(paths)
         meta["splits"][split] = {
             "samples": int(len(y)),
             "real": int(np.sum(y == 0)),
             "fake": int(np.sum(y == 1)),
             "paths": paths,
+            "source_summary": summarize_dataset_paths(paths, duration_sec),
         }
         LOGGER.info(
             "%s: %d amostras (%d real + %d fake), shape=%s",
@@ -153,6 +177,17 @@ def export_npz_from_splits(
             int(np.sum(y == 1)),
             list(X.shape[1:]),
         )
+    meta["source_summary"] = summarize_dataset_paths(all_paths, duration_sec)
+    arrays["groups"] = np.asarray(
+        [infer_prefix_from_path(path) for path in all_paths],
+        dtype="U64",
+    )
+    # Falante por amostra (tier large / usuários não vistos). Cai para o nível de
+    # fonte quando o speaker_manifest não cobre o arquivo.
+    arrays["speaker_ids"] = np.asarray(
+        [speaker_for_path(path) for path in all_paths],
+        dtype="U128",
+    )
     arrays["metadata_json"] = np.asarray(json.dumps(meta, ensure_ascii=False))
     np.savez_compressed(out_npz, **arrays)
     LOGGER.info("NPZ exportado: %s", out_npz)
@@ -412,6 +447,10 @@ def main() -> int:
         action="store_true",
         help="preset de dataset ideal do TCC: 10.000 real + 10.000 fake, full benchmark e API",
     )
+    parser.add_argument(
+        "--tier", choices=["test", "small", "medium", "large"], default=None,
+        help="tier de dataset (test/small/medium/large) repassado ao build_dataset",
+    )
     parser.add_argument("--download", action="store_true", help="executa scripts/build_dataset.py antes do treino")
     parser.add_argument("--skip-download", action="store_true", help="usa datasets/splits já existentes")
     parser.add_argument(
@@ -434,6 +473,11 @@ def main() -> int:
     parser.add_argument("--cross-generator", metavar="GERADOR", default=None,
                         help="segura este gerador fora do treino e testa nele "
                              "(ex.: fkvoice)")
+    parser.add_argument("--speaker-split", action="store_true",
+                        help="tier large: split disjunto por falante (usuários não vistos)")
+    parser.add_argument("--unseen-speaker", metavar="FALANTE", default=None,
+                        help="tier large: segura este falante fora do treino e "
+                             "testa nele (protocolo de usuário não visto)")
     parser.add_argument("--skip-benchmark-preflight", action="store_true")
     parser.add_argument("--latency-runs", type=int, default=30)
     parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10])
@@ -454,6 +498,17 @@ def main() -> int:
         args.api = True
         if not args.download and not args.skip_download:
             args.download = True
+
+    # Tier define o tamanho do dataset; sincroniza para o manifesto refletir a
+    # realidade e ativa o protocolo de falante não visto no tier large.
+    if args.tier:
+        from app.core.dataset_catalog import get_tier
+
+        _tier = get_tier(args.tier)
+        if _tier is not None:
+            args.target_per_class = _tier.per_class
+            if _tier.speaker_aware and not args.unseen_speaker:
+                args.speaker_split = True
 
     if not args.smoke and not args.download and not args.skip_download:
         parser.error("Use --download para baixar/preparar ou --skip-download para usar splits existentes.")
@@ -489,9 +544,12 @@ def main() -> int:
             cmd = [
                 sys.executable,
                 str(SCRIPTS_DIR / "build_dataset.py"),
-                "--target",
-                str(args.target_per_class),
             ]
+            if args.tier:
+                # tier define tamanho/fontes/split; --target só se explicitado.
+                cmd += ["--tier", args.tier]
+            else:
+                cmd += ["--target", str(args.target_per_class)]
             if args.skip_real_cv:
                 cmd.append("--skip-real-cv")
             _run(cmd, "Download, balanceamento, validação e splits", log_path)
@@ -560,6 +618,10 @@ def main() -> int:
         bench_cmd.append("--group-split")
     if args.cross_generator:
         bench_cmd.extend(["--cross-generator", args.cross_generator])
+    if args.speaker_split:
+        bench_cmd.append("--speaker-split")
+    if args.unseen_speaker:
+        bench_cmd.extend(["--unseen-speaker", args.unseen_speaker])
 
     if not args.skip_benchmark_preflight:
         _run(

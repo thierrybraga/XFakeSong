@@ -114,6 +114,89 @@ def test_spectrogram_arch_builds_from_tiny_synthetic(architecture):
     assert np.all(np.isfinite(np.asarray(y))), f"{architecture}: saída não-finita"
 
 
+def test_conformer_accepts_benchmark_hyperparameter_overrides(monkeypatch):
+    """Regressão P0: benchmark passa dropout_rate em parameters.
+
+    O wrapper da variante também define dropout_rate; a mesclagem deve
+    sobrescrever o default antes da chamada ao construtor, sem duplicar kwargs.
+    """
+    from app.domain.models.architectures import conformer as conformer_module
+
+    captured = {}
+
+    def fake_create_conformer_model(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(
+        conformer_module, "create_conformer_model", fake_create_conformer_model
+    )
+
+    create_model_by_name(
+        "Conformer",
+        input_shape=(100, 80),
+        num_classes=1,
+        dropout_rate=0.3,
+        learning_rate=1e-4,
+        weight_decay=1e-4,
+        warmup_steps=1500,
+        decay_steps=50000,
+        alpha=1e-7,
+        clipnorm=1.0,
+        label_smoothing=0.05,
+        attention_heads=8,
+        hidden_units=256,
+        l2_reg_strength=5e-4,
+    )
+
+    assert captured["dropout_rate"] == 0.3
+    assert captured["learning_rate"] == 1e-4
+    assert captured["weight_decay"] == 1e-4
+    assert captured["num_heads"] == 8
+    assert captured["d_model"] == 256
+    assert "attention_heads" not in captured
+    assert "hidden_units" not in captured
+    assert "l2_reg_strength" not in captured
+
+
+def test_conformer_accepts_training_service_parameters_contract(monkeypatch):
+    """Regressão P0: create_model(..., parameters={...}) não deve falhar."""
+    from app.domain.models.architectures import conformer as conformer_module
+
+    captured = {}
+
+    def fake_create_conformer_model(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(
+        conformer_module, "create_conformer_model", fake_create_conformer_model
+    )
+
+    parameters = {
+        "dropout_rate": 0.3,
+        "learning_rate": 1e-4,
+        "weight_decay": 1e-4,
+        "warmup_steps": 1500,
+        "decay_steps": 50000,
+        "alpha": 1e-7,
+        "clipnorm": 1.0,
+        "label_smoothing": 0.05,
+    }
+    create_model_by_name(
+        "Conformer",
+        input_shape=(100, 80),
+        num_classes=1,
+        parameters=parameters,
+    )
+
+    assert captured["dropout_rate"] == 0.3
+    assert captured["learning_rate"] == 1e-4
+    assert captured["weight_decay"] == 1e-4
+    assert captured["clipnorm"] == 1.0
+    assert captured["label_smoothing"] == 0.05
+
+
 # Arquiteturas cujos supported_variants NÃO incluem "default" — instanciá-las
 # pelo caminho do notebook (sem passar variant) usava o sentinel "default" e
 # emitia um WARNING "Variant default not supported" assustador para quem roda os

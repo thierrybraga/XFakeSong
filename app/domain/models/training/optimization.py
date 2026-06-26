@@ -365,6 +365,7 @@ def create_warmup_cosine_optimizer(
     decay_steps: int = 50000,
     weight_decay: float = 0.01,
     alpha: float = 1e-7,
+    clipnorm: float = 1.0,
 ) -> tf.keras.optimizers.Optimizer:
     """Helper Sprint 2.2: cria AdamW + WarmupCosineDecaySchedule.
 
@@ -378,6 +379,11 @@ def create_warmup_cosine_optimizer(
         decay_steps: total de passos até atingir lr=alpha (típico: epochs * steps/epoch)
         weight_decay: weight decay do AdamW
         alpha: LR mínimo como fração do inicial
+        clipnorm: P1 — clipping GLOBAL da norma dos gradientes (default 1.0).
+            Sem ele, um pico de gradiente na atenção fazia o SpectrogramTransformer
+            divergir após o pico do warmup (val colapsava para 0.5 = uma classe;
+            o teste só sobrevivia via `restore_best_weights`). Espelha o
+            `clipnorm=1.0` que já estabiliza o Conformer. `None` desativa.
 
     Returns:
         AdamW com schedule integrado.
@@ -394,6 +400,7 @@ def create_warmup_cosine_optimizer(
         beta_1=0.9,
         beta_2=0.999,
         epsilon=1e-7,
+        global_clipnorm=clipnorm,
     )
 
 

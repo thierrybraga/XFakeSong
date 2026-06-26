@@ -18,6 +18,15 @@ import numpy as np
 
 import gradio as gr
 
+from app.core.dataset_catalog import (
+    PRESET_SELECTIONS,
+    dataset_reference_markdown,
+    get_tier,
+    prefix_to_dataset,
+    source_type_map,
+    tier_reference_markdown,
+)
+
 matplotlib.use("Agg")
 
 logger = logging.getLogger("gradio_dataset_management")
@@ -52,9 +61,9 @@ _SOURCE_COLORS = {
     "BRSpeech-DF":   "#3b82f6",
     "Fake Voices":   "#8b5cf6",
     "FLEURS":        "#06b6d4",
-    "Common Voice":  "#f59e0b",
+    "Common Voice PT": "#f59e0b",
     "CETUC":         "#10b981",
-    "MLAAD":         "#e879f9",
+    "MLAAD-PT":      "#e879f9",
     "ASVspoof 2019": "#f97316",
     "ASVspoof 5":    "#fb923c",
     "WaveFake":      "#a855f7",
@@ -68,32 +77,13 @@ _SOURCE_COLORS = {
 # ---------------------------------------------------------------------------
 
 # Classifica cada fonte quanto ao tipo de áudio que produz
-_SOURCE_TYPE: Dict[str, str] = {
-    "BRSpeech-DF":     "both",   # bonafide=real + spoof=fake
-    "Fake Voices":     "fake",   # XTTS sintético apenas
-    "FLEURS":          "real",   # fala real PT-BR apenas
-    "CETUC":           "real",   # fala real PT-BR apenas
-    "MLAAD-PT":        "fake",   # TTS multi-idioma, apenas fake
-    "Common Voice PT": "real",   # Mozilla CC0, real apenas
-    "ASVspoof 2019":   "both",   # benchmark: bonafide + 19 ataques
-    "WaveFake":        "fake",   # 6 vocoders, apenas fake
-    "In-the-Wild":     "both",   # celebridades: real + deepfake
-    "ASVspoof 5":      "both",   # challenge 2024: bonafide + 20+ ataques
-}
+_SOURCE_TYPE: Dict[str, str] = source_type_map()
 
 # Estimativa de amostras por falante para Fake Voices (max_per_speaker=100 padrão)
 _FAKE_VOICES_SAMPLES_PER_SPEAKER = 80   # conservador para evitar overcount
 
 # Combinações pré-definidas para facilitar o uso
-_PRESET_SELECTIONS: Dict[str, List[str]] = {
-    "PT-BR Rápido":          ["BRSpeech-DF", "Fake Voices"],
-    "PT-BR Completo":        ["BRSpeech-DF", "Fake Voices", "CETUC", "MLAAD-PT"],
-    "Internacional Padrão":  ["ASVspoof 2019", "WaveFake", "In-the-Wild"],
-    "Máxima Cobertura":      ["BRSpeech-DF", "Fake Voices", "CETUC", "MLAAD-PT",
-                              "ASVspoof 2019", "WaveFake", "In-the-Wild"],
-    "Só Reforçar Real":      ["FLEURS", "CETUC", "Common Voice PT"],
-    "Só Reforçar Fake":      ["Fake Voices", "MLAAD-PT", "WaveFake", "ASVspoof 5"],
-}
+_PRESET_SELECTIONS: Dict[str, List[str]] = PRESET_SELECTIONS
 
 
 def _compute_download_plan(
@@ -372,21 +362,9 @@ def _scan_dataset(light: bool = False) -> Dict[str, Any]:
         "durations_fake": [],
     }
 
-    # Prefixos conhecidos → nome de fonte
-    prefix_map = {
-        "brspeech": "BRSpeech-DF",
-        "fkvoice": "Fake Voices",
-        "fleurs": "FLEURS",
-        "cvpt": "Common Voice",
-        "cv": "Common Voice",
-        "cetuc": "CETUC",
-        "mlaad": "MLAAD",
-        "asv2019": "ASVspoof 2019",
-        "asv5": "ASVspoof 5",
-        "wavefake": "WaveFake",
-        "itw": "In-the-Wild",
-        "synthetic": "Synthetic",
-    }
+    # Prefixos conhecidos -> nome de fonte, mantidos no catalogo central.
+    prefix_map = prefix_to_dataset()
+    prefix_map["synthetic"] = "Synthetic"
 
     for label, directory in [("real", REAL_DIR), ("fake", FAKE_DIR)]:
         if not directory.exists():
@@ -742,6 +720,22 @@ def create_dataset_management_tab():
                         f"| Formato | **WAV PCM 16-bit mono** |"
                     )
 
+                    # Tier + protocolo de falante (quando o dataset foi montado
+                    # por tier e/ou os splits guardam estatística de falante).
+                    meta_overview = data.get("splits_metadata") or {}
+                    spk = meta_overview.get("speakers") or {}
+                    strategy = meta_overview.get("split_strategy")
+                    extra = ""
+                    if strategy:
+                        extra += f"\n| Estratégia de Split | **{strategy}** |"
+                    if spk:
+                        extra += (
+                            f"\n| Falantes (total) | **{spk.get('total', '—')}** |"
+                            f"\n| Falantes identificados | **{spk.get('identified', '—')}** |"
+                            f"\n| Falantes não vistos no teste | **{spk.get('unseen_in_test', '—')}** |"
+                        )
+                    kpi += extra
+
                     fig_class = _build_class_distribution(data)
                     fig_source = _build_source_pie(data)
                     fig_dur = _build_duration_histogram(data)
@@ -784,7 +778,25 @@ def create_dataset_management_tab():
                     with gr.Column(scale=1):
 
                         with gr.Group():
-                            gr.Markdown("**1. Selecionar Fontes**")
+                            gr.Markdown("**1. Escolher Tier**")
+                            dl_tier = gr.Radio(
+                                choices=[
+                                    ("Test — smoke (100/classe)", "test"),
+                                    ("Small — rápido (1.000/classe)", "small"),
+                                    ("Medium — completo (3.000/classe)", "medium"),
+                                    ("Large — falantes não vistos (10.000/classe)", "large"),
+                                ],
+                                value=None,
+                                label="Tier de dataset",
+                                info="Pré-configura tamanho, fontes e protocolo de split (ou configure manualmente abaixo)",
+                            )
+                            dl_tier_desc = gr.Markdown(
+                                "*Selecione um tier para pré-configurar tamanho e "
+                                "fontes, ou ajuste manualmente nos passos abaixo.*"
+                            )
+
+                        with gr.Group():
+                            gr.Markdown("**2. Selecionar Fontes**")
                             dl_preset = gr.Dropdown(
                                 choices=["— preset —"] + list(_PRESET_SELECTIONS.keys()),
                                 value="— preset —",
@@ -798,7 +810,7 @@ def create_dataset_management_tab():
                             )
 
                         with gr.Group():
-                            gr.Markdown("**2. Configurar Alvo de Balanceamento**")
+                            gr.Markdown("**3. Configurar Alvo de Balanceamento**")
                             dl_target = gr.Slider(
                                 minimum=100,
                                 maximum=10_000,
@@ -838,24 +850,20 @@ def create_dataset_management_tab():
                         )
                         dl_status = gr.Markdown("*Aguardando...*")
 
+                with gr.Accordion("Tiers de Dataset (test/small/medium/large)", open=False):
+                    gr.Markdown(
+                        tier_reference_markdown()
+                        + "\n\n"
+                        "> Os tiers são a fonte única de verdade do tamanho/finalidade "
+                        "do dataset (`app/core/dataset_catalog.py`), compartilhada com "
+                        "`scripts/build_dataset.py --tier ...`, o benchmark e a "
+                        "documentação. Detalhes em `docs/12_DATASETS.md`."
+                    )
+
                 with gr.Accordion("Referência de Datasets", open=False):
                     gr.Markdown(
-                        "**PT-BR**\n\n"
-                        "| Dataset | Tipo | Descrição | Licença |\n"
-                        "|---------|:----:|-----------|---------|\n"
-                        "| **BRSpeech-DF** | both | 459K arquivos bonafide+spoof PT-BR | ODC-BY |\n"
-                        "| **Fake Voices** | fake | ~140h XTTS, 101 falantes | MIT |\n"
-                        "| **FLEURS** | real | Google PT-BR, acesso público | CC BY 4.0 |\n"
-                        "| **CETUC** | real | Corpus PT-BR (CommonVoice/OpenSLR) | livre |\n"
-                        "| **MLAAD-PT** | fake | Multi-Language ASV, subset PT | CC-BY-NC |\n"
-                        "| **Common Voice PT** | real | Mozilla CC0 (requer login HF) | CC0 |\n\n"
-                        "**Internacionais**\n\n"
-                        "| Dataset | Tipo | Descrição | Licença |\n"
-                        "|---------|:----:|-----------|---------|\n"
-                        "| **ASVspoof 2019** | both | Benchmark LA, 19 ataques TTS/VC | ODC-BY |\n"
-                        "| **WaveFake** | fake | 6 vocoders (MelGAN/HiFi-GAN/WaveGlow...) | MIT |\n"
-                        "| **In-the-Wild** | both | 58 celebridades deepfake de redes sociais | CC 4.0 |\n"
-                        "| **ASVspoof 5** | both | Challenge 2024, 20+ ataques LLM | CC 4.0 |\n\n"
+                        dataset_reference_markdown()
+                        + "\n\n"
                         "> **Dica de balanceamento:** combine sempre pelo menos 1 fonte `both` "
                         "(BRSpeech-DF, ASVspoof 2019) com fontes especializadas "
                         "(Fake Voices para fakes, CETUC para reais) para máxima diversidade."
@@ -874,6 +882,42 @@ def create_dataset_management_tab():
                     if preset_name in _PRESET_SELECTIONS:
                         return gr.update(value=_PRESET_SELECTIONS[preset_name])
                     return gr.update()
+
+                def _dl_apply_tier(tier_name: str):
+                    """Aplica um tier: alvo por classe + fontes + descrição.
+
+                    A mudança em dl_sources cascateia para recalcular o plano
+                    automaticamente (mesmo padrão do preset).
+                    """
+                    tier = get_tier(tier_name) if tier_name else None
+                    if tier is None:
+                        return gr.update(), gr.update(), gr.update()
+                    split_txt = (
+                        "split **disjunto por falante** (usuários não vistos) + "
+                        "protocolo cross-generator"
+                        if tier.speaker_aware
+                        else "split 70/15/15 estratificado"
+                    )
+                    note = ""
+                    if tier.speaker_aware:
+                        note = (
+                            "\n\n> 🔬 **Protocolo de usuários não vistos:** o `large` "
+                            "identifica falantes (`speaker_manifest.json`) e mantém "
+                            "cada falante inteiramente em treino **ou** teste. No "
+                            "benchmark use `--speaker-split` ou `--unseen-speaker`."
+                        )
+                    desc = (
+                        f"**Tier `{tier.name}`** — {tier.purpose}\n\n"
+                        f"{tier.description}\n\n"
+                        f"**{tier.per_class:,}/classe** ({tier.total:,} total) · "
+                        f"fontes: {', '.join(tier.sources)} · {split_txt}.\n\n"
+                        f"_Habilita:_ {tier.models_enabled}{note}"
+                    )
+                    return (
+                        gr.update(value=tier.per_class),
+                        gr.update(value=list(tier.sources)),
+                        gr.update(value=desc),
+                    )
 
                 def _dl_on_sources_change(selected_sources, target):
                     """Handler único disparado quando as fontes mudam (manual OU via preset).
@@ -1148,6 +1192,13 @@ def create_dataset_management_tab():
                 dl_bal_refresh.click(
                     fn=_dl_refresh_balance,
                     outputs=[dl_balance_html, dl_readiness_md],
+                )
+                # Tier → define alvo + sources + descrição; o .change de sources
+                # cascateia para recalcular o plano automaticamente.
+                dl_tier.change(
+                    fn=_dl_apply_tier,
+                    inputs=[dl_tier],
+                    outputs=[dl_target, dl_sources, dl_tier_desc],
                 )
                 # Preset → atualiza sources; o .change de sources cascateia
                 # para recalcular o plano automaticamente (sem clicar em Calcular).

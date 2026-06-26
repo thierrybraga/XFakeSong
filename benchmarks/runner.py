@@ -729,15 +729,21 @@ def run_benchmark(cfg: BenchmarkConfig) -> Dict[str, Any]:
     # Rótulos do teste held-out para o resumo do dataset. Sob split por
     # grupo/cross-generator, reproduz a MESMA partição (label-only, sem copiar
     # o X grande) para que balance_test/y_test reflitam o protocolo real.
-    if (cfg.group_split or cfg.holdout_generator) and data.groups is not None:
+    _protocol_split = (
+        cfg.group_split or cfg.holdout_generator
+        or cfg.speaker_split or cfg.holdout_speaker
+    )
+    if _protocol_split and (data.groups is not None or data.speakers is not None):
         label_view = BenchmarkData(
             X=np.zeros((len(data.y), 1), dtype="float32"),
-            y=data.y, name=data.name, groups=data.groups,
+            y=data.y, name=data.name, groups=data.groups, speakers=data.speakers,
         )
         _, _, _, _, _, y_test_base = label_view.stratified_split(
             cfg.seed,
             group_split=cfg.group_split,
             holdout_generator=cfg.holdout_generator,
+            speaker_split=cfg.speaker_split,
+            holdout_speaker=cfg.holdout_speaker,
         )
     else:
         y_test_base = _stratified_test_labels(data.y, cfg.seed)
@@ -755,6 +761,8 @@ def run_benchmark(cfg: BenchmarkConfig) -> Dict[str, Any]:
             cfg.seed,
             group_split=cfg.group_split,
             holdout_generator=cfg.holdout_generator,
+            speaker_split=cfg.speaker_split,
+            holdout_speaker=cfg.holdout_speaker,
         )
         per_arch[arch] = _benchmark_one(arch, cfg, splits)
         per_arch[arch]["input_preparation"] = prepared.metadata or {}
