@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import json
 import logging
 import os
 import sys
@@ -233,6 +234,23 @@ def record_speaker_safe(target_path: Path, speaker_id) -> None:
         record_speaker(target_path, speaker_id)
     except Exception:
         pass
+
+
+def _load_done_speakers(path: Path) -> set:
+    """Carrega o conjunto de falantes já concluídos (estado de resume)."""
+    try:
+        return set(json.loads(path.read_text(encoding="utf-8")))
+    except Exception:  # noqa: BLE001
+        return set()
+
+
+def _save_done_speakers(path: Path, done: set) -> None:
+    """Persiste (best-effort) o conjunto de falantes concluídos."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(sorted(done)), encoding="utf-8")
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"  não foi possível salvar estado de falantes: {e}")
 
 
 def safe_write_wav(target_path: Path, audio: np.ndarray, sr: int = TARGET_SR) -> bool:
@@ -811,39 +829,41 @@ def download_fake_voices(max_speakers: int = 20, max_per_speaker: int = 100) -> 
     idx = next_index(FAKE_DIR, "fkvoice")
     workers = download_workers()
 
-    # Resume idempotente: cada falante concluído contribui com max_per_speaker
-    # arquivos e a ordem de zip_files é determinística → pula os já baixados em
-    # execuções anteriores, evitando reprocessar/duplicar (BUG: antes reiniciava
-    # do 1º falante e duplicava tudo).
-    speakers_already = total_count // max_per_speaker
-    if total_count % max_per_speaker:
-        logger.warning(
-            f"  {total_count} fkvoice não é múltiplo de {max_per_speaker} — há um "
-            f"falante PARCIAL; remova os arquivos dele p/ um resume sem duplicar."
-        )
-    if speakers_already:
-        logger.info(
-            f"  Resume: {speakers_already} falante(s) já concluído(s) — pulando."
-        )
+    # Resume idempotente por NOME de falante (robusto a overshoot/lacunas/falhas):
+    # mantém um estado em disco com os falantes já concluídos e os pula. Evita o
+    # BUG de reprocessar do 1º falante (que duplicava tudo). O contador de
+    # arquivos por falante varia (parallel_decode_write tem overshoot ~workers),
+    # por isso NÃO usamos count//max_per_speaker como verdade.
+    done_path = RAW_DIR / "fkvoice_done.json"
+    done = _load_done_speakers(done_path)
+    if not done and total_count > 0:
+        # Legado sem estado: estima os primeiros N falantes (ordem determinística)
+        # a partir do que já há em disco e grava o estado inicial.
+        boot = min(total_count // max_per_speaker, len(zip_files))
+        done = {zip_files[i].split("/")[-1].replace(".zip", "") for i in range(boot)}
+        _save_done_speakers(done_path, done)
+        logger.info(f"  Bootstrap do estado: {len(done)} falante(s) concluído(s).")
+    elif done:
+        logger.info(f"  Resume: {len(done)} falante(s) já concluído(s) — pulando.")
     logger.info(f"  Processamento paralelo: {workers} threads")
 
-    speakers_done = 0
-    for zip_name in zip_files[speakers_already:]:
-        if speakers_already + speakers_done >= max_speakers:
+    for zip_name in zip_files:
+        if len(done) >= max_speakers:
             break
         speaker = zip_name.split("/")[-1].replace(".zip", "")
-        pos = speakers_already + speakers_done + 1
-        logger.info(f"  Falante {pos}/{max_speakers}: {speaker}")
+        if speaker in done:
+            continue
+        logger.info(f"  Falante {len(done) + 1}/{max_speakers}: {speaker}")
         try:
             local_path = hf_download_retry(
                 "unfake/fake_voices", zip_name, repo_type="dataset",
                 cache_dir=str(RAW_DIR / "fake_voices_cache"),
             )
         except Exception as e:  # noqa: BLE001
-            # Falha persistente de download (rede): para aqui p/ manter o resume
-            # contíguo — a próxima execução retoma deste falante.
-            logger.error(f"  Download de {speaker} falhou após retries: {e} — parando.")
-            break
+            # Falha persistente de download (rede): pula este falante; a próxima
+            # execução o retoma (não está no estado de concluídos).
+            logger.error(f"  Download de {speaker} falhou após retries: {e} — pulando.")
+            continue
         try:
             idx_box = [idx]
             with zipfile.ZipFile(local_path, "r") as zf:
@@ -871,7 +891,8 @@ def download_fake_voices(max_speakers: int = 20, max_per_speaker: int = 100) -> 
             total_count += len(written)
             idx = idx_box[0]
             logger.info(f"    {len(written)} amostras do falante {speaker}")
-            speakers_done += 1
+            done.add(speaker)
+            _save_done_speakers(done_path, done)
         except Exception as e:
             logger.error(f"  Erro ao processar {speaker}: {e}")
 
