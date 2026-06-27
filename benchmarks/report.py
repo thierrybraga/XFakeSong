@@ -152,6 +152,49 @@ def _table_robustez(results) -> str:
 
 # ───────────────────────── figuras ─────────────────────────
 
+FIG_DPI = 300  # qualidade de impressão/TCC (era 150)
+
+
+def _series_styles(n: int) -> List[dict]:
+    """Estilos distintos para até ~40 séries: cor (tab20) + linestyle + marker.
+
+    Resolve a ambiguidade do ciclo default do matplotlib (10 cores) quando há
+    12–14 arquiteturas no mesmo eixo (ROC, robustez, convergência).
+    """
+    import matplotlib.pyplot as plt
+
+    colors = list(plt.get_cmap("tab20").colors)
+    linestyles = ["-", "--", "-.", ":"]
+    markers = ["o", "s", "^", "D", "v", "P", "X", "*"]
+    return [
+        {
+            "color": colors[i % len(colors)],
+            "linestyle": linestyles[(i // len(colors)) % len(linestyles)],
+            "marker": markers[i % len(markers)],
+        }
+        for i in range(n)
+    ]
+
+
+def _save_fig(fig, path: Path) -> None:
+    """Salva em PNG (300 dpi) e PDF vetorial (mesmo nome) para o LaTeX.
+
+    `bbox_inches='tight'` garante que legendas movidas para fora do eixo não
+    sejam cortadas.
+    """
+    fig.savefig(path, dpi=FIG_DPI, bbox_inches="tight")
+    try:
+        fig.savefig(path.with_suffix(".pdf"), bbox_inches="tight")
+    except Exception as e:  # noqa: BLE001
+        logger.debug("PDF de %s falhou: %s", path.name, e)
+
+
+def _legend_outside(ax, **kwargs) -> None:
+    """Legenda à direita, fora da área de plotagem (não cobre os dados)."""
+    ax.legend(loc="center left", bbox_to_anchor=(1.01, 0.5), fontsize=7,
+              borderaxespad=0.0, **kwargs)
+
+
 def _fig_roc(results, out: Path) -> None:
     import matplotlib.pyplot as plt
     from sklearn.metrics import roc_curve
@@ -166,15 +209,22 @@ def _fig_roc(results, out: Path) -> None:
             "limpos das arquiteturas.",
         )
         return
-    fig, ax = plt.subplots(figsize=(6, 5))
+    # Ordena por AUC desc → legenda legível (melhores no topo; NaN ao fim).
+    def _auc_key(item):
+        a = item[1]["clean"].get("auc_roc")
+        return a if isinstance(a, (int, float)) and np.isfinite(a) else -1.0
+
+    items.sort(key=_auc_key, reverse=True)
+    styles = _series_styles(len(items))
+    fig, ax = plt.subplots(figsize=(6.4, 5))
     plotted = 0
-    for name, r in items:
+    for (name, r), st in zip(items, styles):
         s = np.asarray(r["scores_clean"], dtype=float)
         if len(s) != len(y) or not np.isfinite(s).all():
             continue
         fpr, tpr, _ = roc_curve(y, s)
         auc = r["clean"].get("auc_roc")
-        ax.plot(fpr, tpr, lw=1.8,
+        ax.plot(fpr, tpr, lw=1.6, color=st["color"], linestyle=st["linestyle"],
                 label=f"{name} (AUC={_num(auc).replace(chr(92),'')})")
         plotted += 1
     if plotted == 0:
@@ -187,13 +237,15 @@ def _fig_roc(results, out: Path) -> None:
         )
         return
     ax.plot([0, 1], [0, 1], "--", color="#94a3b8", lw=1)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_aspect("equal")
     ax.set_xlabel("Taxa de falsos positivos (FPR)")
     ax.set_ylabel("Taxa de verdadeiros positivos (TPR)")
     ax.set_title("Curvas ROC (conjunto de teste limpo)")
-    ax.legend(fontsize=8, loc="lower right")
+    _legend_outside(ax)
     ax.grid(alpha=0.3)
-    fig.tight_layout()
-    fig.savefig(out / "roc.png", dpi=150)
+    _save_fig(fig, out / "roc.png")
     plt.close(fig)
 
 
@@ -211,16 +263,20 @@ def _fig_robustez(results, out: Path) -> None:
         )
         return
     xs = ["Limpo"] + [f"{s} dB" for s in snrs]
-    fig, ax = plt.subplots(figsize=(7, 4.2))
+    styles = _series_styles(len(conv))
+    fig, ax = plt.subplots(figsize=(7.2, 4.4))
     plotted = 0
-    for name, r in conv:
+    lowest = 100.0
+    for (name, r), st in zip(conv, styles):
         ys = [r["clean"].get("accuracy", np.nan)]
         ys += [(r.get("robustness") or {}).get(str(s), {}).get("accuracy", np.nan)
                for s in snrs]
         values = np.asarray(ys, dtype=float)
         if not np.isfinite(values).any():
             continue
-        ax.plot(xs, values * 100, marker="o", lw=1.8, label=name)
+        ax.plot(xs, values * 100, lw=1.8, color=st["color"],
+                linestyle=st["linestyle"], marker=st["marker"], ms=5, label=name)
+        lowest = min(lowest, float(np.nanmin(values)) * 100)
         plotted += 1
     if plotted == 0:
         plt.close(fig)
@@ -235,11 +291,11 @@ def _fig_robustez(results, out: Path) -> None:
     ax.set_ylabel("Acurácia (%)")
     ax.set_xlabel("Condição de ruído (SNR decrescente →)")
     ax.set_title("Robustez sob ruído AWGN")
-    ax.set_ylim(40, 102)
-    ax.legend(fontsize=8)
+    # ylim dinâmico: não corta modelos que degradam abaixo de 40%.
+    ax.set_ylim(min(40.0, lowest - 5), 102)
+    _legend_outside(ax)
     ax.grid(alpha=0.3)
-    fig.tight_layout()
-    fig.savefig(out / "robustez.png", dpi=150)
+    _save_fig(fig, out / "robustez.png")
     plt.close(fig)
 
 
@@ -255,17 +311,27 @@ def _fig_eficiencia(results, out: Path) -> None:
             "Nenhuma arquitetura registrou latência válida para plotagem.",
         )
         return
-    fig, ax = plt.subplots(figsize=(7, 4.2))
+    fig, ax = plt.subplots(figsize=(7.2, 4.4))
     plotted = 0
-    for name, r in items:
+    seen_conv = {True: False, False: False}
+    # Marcador (○ converge / ✕ não) além da cor → acessível a daltônicos.
+    for i, (name, r) in enumerate(items):
         lat = r["efficiency"]["latency_ms"]
         acc = r["clean"].get("accuracy", np.nan)
         acc = float(acc) * 100 if acc is not None else np.nan
-        if not np.isfinite(acc):
+        if not np.isfinite(acc) or lat is None or lat <= 0:
             continue
-        color = "#10b981" if r.get("converged") else "#ef4444"
-        ax.scatter(lat, acc, s=80, color=color, edgecolor="#1e293b", zorder=3)
-        ax.annotate(name, (lat, acc), fontsize=7, xytext=(4, 4),
+        converged = bool(r.get("converged"))
+        color = "#10b981" if converged else "#ef4444"
+        marker = "o" if converged else "X"
+        ax.scatter(lat, acc, s=90, color=color, marker=marker,
+                   edgecolor="#1e293b", zorder=3,
+                   label=("convergiu" if converged else "não convergiu")
+                   if not seen_conv[converged] else None)
+        seen_conv[converged] = True
+        # Offset alternado p/ reduzir sobreposição de rótulos.
+        dy = 6 if i % 2 == 0 else -10
+        ax.annotate(name, (lat, acc), fontsize=7, xytext=(5, dy),
                     textcoords="offset points")
         plotted += 1
     if plotted == 0:
@@ -277,12 +343,15 @@ def _fig_eficiencia(results, out: Path) -> None:
             "finita para plotagem.",
         )
         return
-    ax.set_xlabel("Latência (ms/amostra)")
+    # Latência varia em ordens de grandeza (clássico ~ms vs SSL ~centenas) →
+    # escala log evita o amontoado à esquerda.
+    ax.set_xscale("log")
+    ax.set_xlabel("Latência (ms/amostra, escala log)")
     ax.set_ylabel("Acurácia (%)")
-    ax.set_title("Eficiência × desempenho (verde=convergiu)")
-    ax.grid(alpha=0.3)
-    fig.tight_layout()
-    fig.savefig(out / "eficiencia.png", dpi=150)
+    ax.set_title("Eficiência × desempenho")
+    ax.legend(fontsize=8, loc="lower left")
+    ax.grid(alpha=0.3, which="both")
+    _save_fig(fig, out / "eficiencia.png")
     plt.close(fig)
 
 
@@ -303,7 +372,7 @@ def _write_placeholder_figure(path: Path, title: str, message: str) -> None:
         color="#334155",
     )
     fig.tight_layout()
-    fig.savefig(path, dpi=150)
+    _save_fig(fig, path)
     plt.close(fig)
 
 
@@ -339,15 +408,19 @@ def _fig_convergencia(results, out: Path) -> None:
                 return values
         return None
 
-    fig, ax = plt.subplots(figsize=(7, 4.2))
+    styles = _series_styles(len(items))
+    fig, ax = plt.subplots(figsize=(7.2, 4.4))
     plotted = 0
-    for name, r in items:
+    lowest = 100.0
+    for (name, r), st in zip(items, styles):
         h = r["history"]
         va = _val_accuracy(h)
         if not va:
             continue
         ax.plot(range(1, len(va) + 1), [v * 100 for v in va],
-                marker="o", ms=3, lw=1.6, label=name)
+                marker=st["marker"], ms=3, lw=1.6, color=st["color"],
+                linestyle=st["linestyle"], label=name)
+        lowest = min(lowest, min(v * 100 for v in va))
         plotted += 1
     if plotted == 0:
         plt.close(fig)
@@ -361,11 +434,10 @@ def _fig_convergencia(results, out: Path) -> None:
     ax.set_xlabel("Época")
     ax.set_ylabel("Acurácia de validação (%)")
     ax.set_title("Convergência do treino")
-    ax.set_ylim(40, 102)
-    ax.legend(fontsize=8)
+    ax.set_ylim(min(40.0, lowest - 5), 102)
+    _legend_outside(ax)
     ax.grid(alpha=0.3)
-    fig.tight_layout()
-    fig.savefig(out / "convergencia.png", dpi=150)
+    _save_fig(fig, out / "convergencia.png")
     plt.close(fig)
 
 
@@ -425,7 +497,7 @@ def _fig_confusion_matrices(results, out: Path) -> None:
 
     fig.suptitle("Matrizes de confusão no conjunto de teste limpo", y=1.02)
     fig.tight_layout()
-    fig.savefig(out / "confusion_matrices.png", dpi=150, bbox_inches="tight")
+    _save_fig(fig, out / "confusion_matrices.png")
     plt.close(fig)
 
 
@@ -478,7 +550,7 @@ def _fig_score_distributions(results, out: Path) -> None:
         loc="best",
     )
     fig.tight_layout()
-    fig.savefig(out / "score_distributions.png", dpi=150)
+    _save_fig(fig, out / "score_distributions.png")
     plt.close(fig)
 
 
@@ -518,7 +590,7 @@ def _fig_single_confusion(name: str, y_true, scores, out: Path) -> None:
                 fontweight="bold",
             )
     fig.tight_layout()
-    fig.savefig(out / "confusion_matrix.png", dpi=150)
+    _save_fig(fig, out / "confusion_matrix.png")
     plt.close(fig)
 
 
@@ -542,14 +614,24 @@ def _fig_single_roc(name: str, y_true, scores, out: Path) -> None:
         return
     fpr, tpr, _ = roc_curve(y, s)
     fig, ax = plt.subplots(figsize=(5.0, 4.2))
-    ax.plot(fpr, tpr, lw=1.8, label="ROC")
+    from sklearn.metrics import roc_auc_score
+    try:
+        auc = roc_auc_score(y, s)
+    except Exception:  # noqa: BLE001
+        auc = None
+    ax.plot(fpr, tpr, lw=1.8,
+            label=f"ROC (AUC={_num(auc).replace(chr(92), '')})")
     ax.plot([0, 1], [0, 1], "--", color="#94a3b8", lw=1)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_aspect("equal")
     ax.set_xlabel("FPR")
     ax.set_ylabel("TPR")
     ax.set_title(f"ROC — {name}")
+    ax.legend(fontsize=8, loc="lower right")
     ax.grid(alpha=0.3)
     fig.tight_layout()
-    fig.savefig(out / "roc.png", dpi=150)
+    _save_fig(fig, out / "roc.png")
     plt.close(fig)
 
 
@@ -578,7 +660,7 @@ def _fig_single_score_distribution(name: str, y_true, scores, out: Path) -> None
     ax.set_title(f"Scores por classe — {name}")
     ax.grid(axis="y", alpha=0.25)
     fig.tight_layout()
-    fig.savefig(out / "score_distribution.png", dpi=150)
+    _save_fig(fig, out / "score_distribution.png")
     plt.close(fig)
 
 
@@ -640,7 +722,7 @@ def _fig_single_convergence(name: str, history: Dict[str, Any], out: Path) -> No
         axes[1].legend(fontsize=8)
     fig.suptitle(f"Convergência — {name}")
     fig.tight_layout()
-    fig.savefig(out / "convergence.png", dpi=150)
+    _save_fig(fig, out / "convergence.png")
     plt.close(fig)
 
 
