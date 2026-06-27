@@ -23,7 +23,7 @@ Estrutura reorganizada para estudo e reprodução dos experimentos do TCC.
 
 O experimento oficial do TCC usa `scripts/run_tcc_pipeline.py --download
 --target-per-class 7500 --full-benchmark`, com alvo de 7.500 amostras reais +
-7.500 amostras fake (`app/datasets/benchmark_audio_raw_balanced_20k.npz`).
+7.500 amostras fake (`app/datasets/benchmark_audio_raw_balanced_15k.npz`).
 Para treinar e auditar todas as arquiteturas em um único caderno, use
 `pipeline/04_all_architectures_full_benchmark.ipynb`.
 

@@ -52,7 +52,7 @@ Os notebooks ficam organizados por finalidade:
 Para o experimento completo do TCC, comece por
 `notebooks/pipeline/01_benchmark_tcc_full_pipeline.ipynb`. Ele documenta o
 roteiro consolidado com `7.500` amostras reais + `7.500` amostras fake,
-exportado como `app/datasets/benchmark_audio_raw_balanced_20k.npz`.
+exportado como `app/datasets/benchmark_audio_raw_balanced_15k.npz`.
 
 ---
 

@@ -27,7 +27,7 @@ except Exception:
     pass
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DATASET = ROOT / "app" / "datasets" / "benchmark_audio_raw_balanced_20k.npz"
+DEFAULT_DATASET = ROOT / "app" / "datasets" / "benchmark_audio_raw_balanced_15k.npz"
 DEFAULT_MODELS_DIR = ROOT / "app" / "models"
 DEFAULT_RESULTS_DIR = ROOT / "results"
 DEFAULT_IMAGE = "xfakesong:benchmark-gpu"

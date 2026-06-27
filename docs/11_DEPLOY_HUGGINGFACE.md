@@ -75,7 +75,7 @@ Arquivos usados no deploy:
 Os pesos devem ficar em um repositório separado do tipo **Model** para evitar
 rebuilds pesados do Space e permitir atualização independente dos modelos.
 O conteúdo publicado deve corresponder aos modelos treinados no dataset do
-benchmark (`app/datasets/benchmark_audio_raw_balanced_20k.npz`) e aos artefatos
+benchmark (`app/datasets/benchmark_audio_raw_balanced_15k.npz`) e aos artefatos
 consolidados em `app/models/`.
 
 Faça uma simulação:
@@ -389,7 +389,7 @@ python scripts/run_tcc_pipeline.py \
     RawNet2 WavLM HuBERT "Hybrid CNN-Transformer" \
     SVM RandomForest \
   --out /data/results/tcc_all_architectures \
-  --npz /data/datasets/benchmark_audio_raw_balanced_20k.npz
+  --npz /data/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
 Artefatos esperados:
@@ -398,7 +398,7 @@ Artefatos esperados:
 /data/models/
 /data/models/benchmark_final/
 /data/results/tcc_all_architectures/
-/data/datasets/benchmark_audio_raw_balanced_20k.npz
+/data/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
 ## 7. Checklist Pós-Deploy

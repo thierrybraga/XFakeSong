@@ -4,7 +4,7 @@ family: ssl-transformers
 models:
   - WavLM
   - HuBERT
-dataset: app/datasets/benchmark_audio_raw_balanced_20k.npz
+dataset: app/datasets/benchmark_audio_raw_balanced_15k.npz
 output_dir: results/ssl_benchmark
 models_dir: app/models
 epochs: 100

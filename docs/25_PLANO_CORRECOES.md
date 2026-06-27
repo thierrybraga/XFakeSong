@@ -13,7 +13,7 @@ técnicas de modelos; P3 é texto/reprodutibilidade.
 
 ## P0 — Metodologia / vazamento de domínio *(bloqueante)*
 
-O dataset `benchmark_audio_raw_balanced_20k.npz` tem um confound fonte↔classe e
+O dataset `benchmark_audio_raw_balanced_15k.npz` tem um confound fonte↔classe e
 foi avaliado com **split estratificado** (`group_split=false`,
 `holdout_generator=null`), que compartilha fontes/geradores entre treino e
 teste. As acurácias ~100% medem desempenho **in-domain**, não generalização.
@@ -54,7 +54,7 @@ atalho de fonte só some com o protocolo cross-generator (P0.1).
 
 ```bash
 python scripts/run_benchmark.py --full \
-  --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
+  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
   --cross-generator fkvoice \
   --out results/xgen_fkvoice_20260626 --verbose
 ```
@@ -68,7 +68,7 @@ deixa de ser 0,00% (degradar é o resultado *honesto*).
 
 ```bash
 python scripts/run_benchmark.py --full \
-  --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
+  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
   --group-split \
   --out results/group_split_20260626 --verbose
 ```

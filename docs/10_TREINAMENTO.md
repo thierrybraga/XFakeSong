@@ -77,7 +77,7 @@ estratégia de split. Detalhes de fontes/licenças em
 | `large` | 10.000 | 20.000 | **disjunto por falante** + cross-generator | **todas as 14 arquiteturas** (inclui Ensemble) | execução de referência do TCC |
 
 > O `.npz` canônico do benchmark
-> (`app/datasets/benchmark_audio_raw_balanced_20k.npz`, ~15k) corresponde ao tier
+> (`app/datasets/benchmark_audio_raw_balanced_15k.npz`, ~15k) corresponde ao tier
 > **`large`** (10k/classe com folga de balanceamento). Para o retreino dos
 > modelos ajustados use sempre `large` — só ele exercita a robustez sob falantes
 > não vistos e habilita o Ensemble.

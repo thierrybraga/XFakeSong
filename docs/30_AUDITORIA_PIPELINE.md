@@ -51,7 +51,7 @@ mesmo `.npz`:
   estratificada e reprodutível (semente fixa, `val=0.15`/`test=0.15`) — o teste é
   idêntico para todos os modelos, independente do split original do `.npz`.
 - Todos os presets `configs/training/*.yaml` apontam para
-  `app/datasets/benchmark_audio_raw_balanced_20k.npz` (nome canônico).
+  `app/datasets/benchmark_audio_raw_balanced_15k.npz` (nome canônico).
 
 **Atualizar o dataset = regerar esse `.npz`** (não versionado) a partir dos
 splits, e todos os modelos passam a usá-lo automaticamente:
@@ -59,12 +59,12 @@ splits, e todos os modelos passam a usá-lo automaticamente:
 ```bash
 python scripts/build_dataset.py --skip-download --target <N>   # dedup→balance→splits
 python scripts/export_npz_from_splits.py \
-    --out app/datasets/benchmark_audio_raw_balanced_20k.npz --sample-rate 16000 --duration-sec 5.0
+    --out app/datasets/benchmark_audio_raw_balanced_15k.npz --sample-rate 16000 --duration-sec 5.0
 ```
 
-> Estado atual (auditado em sessão): após o dedup, `real=7.500` único / `fake`
-> pendente de re-balance. Decisão em aberto: 7.500/7.500 (15k) agora vs. baixar
-> +2.500 reais para 10k/10k (20k). Ver [27](27_DATASET_PIPELINE.md).
+> **Decisão consolidada: 15k total (7.500 real / 7.500 fake)**, nome canônico
+> `benchmark_audio_raw_balanced_15k.npz`. Composição por fonte registrada em
+> [29](29_DATASET_BENCHMARK_UTILIZADO.md).
 
 ---
 
@@ -109,7 +109,7 @@ Augmentation: `use_augmentation=True`, `snr_range_db=(5,40)`.
    batch por VRAM + gating de mixed precision.
 
 ### 4.3 Presets por família — `configs/training/*.yaml`
-Todos: `dataset=...balanced_20k.npz`, `epochs=100`, `snr=[30,20,10]`,
+Todos: `dataset=...balanced_15k.npz`, `epochs=100`, `snr=[30,20,10]`,
 `latency_runs=30`, `optimize_hyperparameters=true`. Listas de modelos em ordem de
 custo crescente.
 

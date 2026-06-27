@@ -34,7 +34,7 @@ fluxo local, auditável e repetível:
    relatórios Markdown com imagens PNG.
 
 O benchmark consolidado do TCC usa o dataset
-`app/datasets/benchmark_audio_raw_balanced_20k.npz`, com `7.500` amostras reais
+`app/datasets/benchmark_audio_raw_balanced_15k.npz`, com `7.500` amostras reais
 + `7.500` amostras fake.
 Excedentes baixados durante a curadoria são arquivados em
 `app/datasets/overflow/`, preservando os WAVs brutos para novas rotas.
@@ -159,7 +159,7 @@ python scripts/run_tcc_pipeline.py ^
   --epochs 100 ^
   --device-profile gpu ^
   --out results/tcc_full_15k ^
-  --npz app/datasets/benchmark_audio_raw_balanced_20k.npz
+  --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
 Saídas principais:
@@ -186,7 +186,7 @@ Para revisar o plano sem iniciar treinamento:
 
 ```bash
 python scripts/run_benchmark.py --full ^
-  --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz ^
+  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz ^
   --epochs 100 ^
   --out results/tcc_full_15k ^
   --plan-only
@@ -196,7 +196,7 @@ Benchmark de um modelo individual:
 
 ```bash
 python scripts/run_benchmark.py --model AASIST ^
-  --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz ^
+  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz ^
   --epochs 100 ^
   --out results/bench_aasist
 ```

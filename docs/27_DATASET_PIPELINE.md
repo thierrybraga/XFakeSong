@@ -150,7 +150,7 @@ quando cada modelo pode treinar, nao o tamanho do dataset.
 **Pontos de atencao / a reconciliar:**
 
 1. **Nome x tamanho do `.npz` canonico — CORRIGIDO.** O `.npz` canonico foi
-   padronizado em `benchmark_audio_raw_balanced_20k.npz`, coerente com
+   padronizado em `benchmark_audio_raw_balanced_15k.npz`, coerente com
    `target_per_class: 10000` (= 20.000 total, tier `large`). O rename foi
    aplicado em todas as referencias forward (configs, scripts, environments e
    docs). O registro historico do ultimo benchmark

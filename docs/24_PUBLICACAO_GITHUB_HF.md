@@ -98,7 +98,7 @@ Depois da execução, envie os modelos finais ao Model Hub e volte
 
 Os modelos consolidados usados pela Gradio/API ficam em `app/models/`.
 Esse diretório deve conter os modelos pré-treinados com o dataset do benchmark
-(`benchmark_audio_raw_balanced_20k.npz`) antes do upload.
+(`benchmark_audio_raw_balanced_15k.npz`) antes do upload.
 
 ```bash
 python scripts/upload_models_to_hf.py \

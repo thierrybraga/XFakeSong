@@ -157,7 +157,7 @@ make train-cpu        # perfil classical/CPU (Docker)
 
 # Sequencial, um modelo por vez (timeout, --resume, log por modelo):
 python scripts/run_models_sequential.py \
-  --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
+  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
   --models AASIST Ensemble --epochs 100 --snr 30 20 10 \
   --device-profile gpu --out results/<run> --resume
 

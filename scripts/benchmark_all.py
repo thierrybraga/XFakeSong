@@ -20,7 +20,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--dataset",
-        default="app/datasets/benchmark_audio_raw_balanced_20k.npz",
+        default="app/datasets/benchmark_audio_raw_balanced_15k.npz",
         help="Canonical dataset .npz.",
     )
     parser.add_argument("--out", default="results/all_architectures_benchmark")
