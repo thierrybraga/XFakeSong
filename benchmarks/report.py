@@ -176,6 +176,36 @@ def _series_styles(n: int) -> List[dict]:
     ]
 
 
+_STYLE_APPLIED = False
+
+
+def _apply_style() -> None:
+    """Centraliza a tipografia/qualidade das figuras (rcParams) — uma vez.
+
+    Evita repetir tamanhos de fonte/dpi por figura e garante consistência. Não
+    mexe em `axes.grid` global (quebraria as matrizes de confusão via imshow);
+    o grid continua sendo ligado explicitamente onde faz sentido.
+    """
+    global _STYLE_APPLIED
+    if _STYLE_APPLIED:
+        return
+    import matplotlib as mpl
+
+    mpl.rcParams.update({
+        "savefig.dpi": FIG_DPI,
+        "savefig.bbox": "tight",
+        "font.size": 10,
+        "axes.titlesize": 12,
+        "axes.labelsize": 10,
+        "legend.fontsize": 8,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "axes.axisbelow": True,  # grid atrás dos dados
+        "lines.antialiased": True,
+    })
+    _STYLE_APPLIED = True
+
+
 def _save_fig(fig, path: Path) -> None:
     """Salva em PNG (300 dpi) e PDF vetorial (mesmo nome) para o LaTeX.
 
@@ -218,6 +248,7 @@ def _fig_roc(results, out: Path) -> None:
     styles = _series_styles(len(items))
     fig, ax = plt.subplots(figsize=(6.4, 5))
     plotted = 0
+    curves = []  # (fpr, tpr, style) p/ replotar no zoom inset
     for (name, r), st in zip(items, styles):
         s = np.asarray(r["scores_clean"], dtype=float)
         if len(s) != len(y) or not np.isfinite(s).all():
@@ -226,6 +257,7 @@ def _fig_roc(results, out: Path) -> None:
         auc = r["clean"].get("auc_roc")
         ax.plot(fpr, tpr, lw=1.6, color=st["color"], linestyle=st["linestyle"],
                 label=f"{name} (AUC={_num(auc).replace(chr(92),'')})")
+        curves.append((fpr, tpr, st))
         plotted += 1
     if plotted == 0:
         plt.close(fig)
@@ -240,6 +272,21 @@ def _fig_roc(results, out: Path) -> None:
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.set_aspect("equal")
+    # Zoom inset no canto superior-esquerdo (curvas de AUC alto se aglomeram lá).
+    # Posicionado no quadrante inferior-direito do eixo p/ não cobrir as curvas.
+    try:
+        axins = ax.inset_axes([0.46, 0.08, 0.5, 0.5])
+        for fpr, tpr, st in curves:
+            axins.plot(fpr, tpr, lw=1.1, color=st["color"], linestyle=st["linestyle"])
+        axins.plot([0, 1], [0, 1], "--", color="#94a3b8", lw=0.8)
+        axins.set_xlim(0.0, 0.2)
+        axins.set_ylim(0.8, 1.0)
+        axins.set_title("zoom (canto sup.-esq.)", fontsize=7)
+        axins.tick_params(labelsize=6)
+        axins.grid(alpha=0.3)
+        ax.indicate_inset_zoom(axins, edgecolor="#64748b", alpha=0.6)
+    except Exception as e:  # noqa: BLE001
+        logger.debug("zoom inset da ROC falhou: %s", e)
     ax.set_xlabel("Taxa de falsos positivos (FPR)")
     ax.set_ylabel("Taxa de verdadeiros positivos (TPR)")
     ax.set_title("Curvas ROC (conjunto de teste limpo)")
@@ -1063,6 +1110,7 @@ def _write_tcc_report(results: Dict[str, Any], path: Path) -> None:
 
 def write_all(results: Dict[str, Any], output_dir: str) -> None:
     """Grava todos os artefatos do benchmark em `output_dir`."""
+    _apply_style()  # tipografia/qualidade consistente em todas as figuras
     out = Path(output_dir)
     (out / "tables").mkdir(parents=True, exist_ok=True)
     (out / "figures").mkdir(parents=True, exist_ok=True)
