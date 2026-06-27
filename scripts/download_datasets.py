@@ -310,8 +310,10 @@ def parallel_decode_write(jobs, limit: int, workers: int | None = None) -> list:
     it = iter(jobs)
     written: list = []
     with ThreadPoolExecutor(max_workers=workers) as ex:
-        # Janela de tarefas em voo: mantém o pool cheio sem ler tudo de uma vez.
-        window = max(workers * 4, 16)
+        # Mantém exatamente `workers` tarefas em voo (pool cheio) e reabastece a
+        # cada conclusão. Janela = workers minimiza o overshoot além do limite
+        # (tarefas já em execução não podem ser canceladas).
+        window = workers
         futures = set()
         for _ in range(window):
             try:
@@ -329,9 +331,18 @@ def parallel_decode_write(jobs, limit: int, workers: int | None = None) -> list:
                         futures.add(ex.submit(_decode_process_write, *next(it)))
                     except StopIteration:
                         pass
-        for fut in futures:  # além do limite → cancela o que não começou
-            fut.cancel()
-    return written[:limit]
+        # Limite atingido (ou jobs esgotados): cancela o que NÃO começou, mas
+        # contabiliza os que já rodaram e gravaram no disco — assim o retorno
+        # reflete exatamente os arquivos gravados (overshoot <= ~workers).
+        for fut in futures:
+            if not fut.cancel():
+                try:
+                    res = fut.result()
+                    if res:
+                        written.append(res)
+                except Exception:  # noqa: BLE001
+                    pass
+    return written
 
 
 def cast_no_decode(ds):
