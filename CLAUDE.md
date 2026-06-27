@@ -126,12 +126,28 @@ Hybrid CNN-Transformer), `ssl.yaml` (WavLM, HuBERT) e `classical.yaml`
 (SVM, RandomForest). Campos: `dataset`, `epochs`, `batch_size`, `device_profile`,
 `snr`, `optimize_hyperparameters`.
 
-Hiperparametros por modelo vivem em dois lugares:
-`registry.py` (`default_params`: dropout, l2, patience, gradient_clip,
-augmentation_strength) e o `create_model(...)` de cada `architectures/<nome>.py`
-(LR, weight_decay, clipnorm, loss). A config global (augmentation com
-`snr_range_db`, class weighting, calibracao de temperatura, SWA, mixup) esta em
-`app/core/config/settings.py`.
+Hiperparametros por modelo vivem em **tres lugares** (cuidado com drift; chaves
+como `dropout_rate`/`l2_reg_strength` se sobrepoem):
+1. `registry.py` (`default_params`: dropout, l2, patience, gradient_clip,
+   augmentation_strength) — consumido pelo `training_service` (app/Gradio/
+   `train_advanced`);
+2. o `create_model(...)` de cada `architectures/<nome>.py` (LR, weight_decay,
+   clipnorm, loss);
+3. `benchmarks/planning.py` (`NEURAL_BENCHMARK_HPARAMS`: lr, batch, optimizer,
+   scheduler, warmup, label_smoothing) — usado **pelo benchmark** quando
+   `optimize_hyperparameters=True` (default). Ao ajustar um modelo, revise as 3
+   fontes para nao divergir.
+
+A config global (augmentation com `snr_range_db`, class weighting, calibracao de
+temperatura, SWA, mixup) esta em `app/core/config/settings.py`.
+
+> **Caveat WavLM/HuBERT (importante para o TCC):** o caminho TF do benchmark usa
+> **fallback CNN-1D treinado do zero**, nao os backbones SSL reais. WavLM e
+> *sempre* fallback (PyTorch-only, sem conversao TF). HuBERT tenta o backbone
+> real (`from_pt=True`) e cai no simplificado se indisponivel. Logo, resultados
+> rotulados "WavLM/HuBERT" no benchmark TF nao refletem os modelos SSL originais
+> — reporte isso ao comparar com a literatura. Os artefatos `*_original.pt`
+> (PyTorch) sao os reais, usados so na inferencia/demonstracao do Gradio.
 
 Execucao:
 

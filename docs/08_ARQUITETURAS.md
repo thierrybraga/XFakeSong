@@ -2,13 +2,21 @@
 
 O XFakeSong implementa **14 arquiteturas** de detecção de deepfake, organizadas em três categorias de acordo com o tipo de entrada. Todos os modelos expõem a interface unificada `create_model(input_shape, num_classes, **kwargs)` via `app/domain/models/architectures/factory.py`.
 
-!!! note "Fallback SSL em ambientes sem `transformers`"
-    **WavLM** e **HuBERT** tentam usar backbones SSL reais quando as
-    dependências/checkpoints estão disponíveis. Em ambientes sem `transformers`
-    ou sem backend compatível, o sistema usa uma implementação simplificada em
-    TensorFlow para manter treino, inferência e benchmark funcionais. Relatórios
-    de benchmark devem registrar esse ambiente, porque números do fallback não
-    devem ser comparados diretamente com o backbone SSL original.
+!!! warning "Fallback SSL no caminho TensorFlow (importante para o TCC)"
+    No caminho TensorFlow do benchmark, **WavLM** e **HuBERT** podem rodar como
+    **fallback CNN-1D treinado do zero**, não como os backbones SSL reais:
+
+    - **WavLM** usa *sempre* o fallback simplificado — o `transformers` não
+      fornece `TFWavLMModel` (WavLM é PyTorch-only), então o backbone real nunca
+      é carregado no caminho TF.
+    - **HuBERT** tenta o backbone real (`from_pt=True`) e cai no simplificado se
+      `transformers`/checkpoint estiverem indisponíveis.
+
+    Portanto, números rotulados "WavLM/HuBERT" no benchmark TF **não devem ser
+    comparados diretamente** com os modelos SSL originais da literatura; o
+    relatório deve registrar explicitamente se foi backbone real ou fallback. Os
+    backbones SSL reais (PyTorch, artefatos `*_original.pt`) são usados apenas na
+    inferência/demonstração do Gradio.
 
 ## Tabela Resumo
 
@@ -78,9 +86,13 @@ Estas arquiteturas operam diretamente sobre a forma de onda (waveform) — entra
 
 Modelo SSL (Self-Supervised Learning) treinado com masked prediction e denoising. Robusto a variações de canal e ruído.
 
-- **Modo completo**: carrega `microsoft/wavlm-base` via `transformers` (embeddings 768-dim).
-- **Modo simplificado**: CNN 1D compatível com Keras 3 (para ambientes sem HuggingFace).
-- **Classificador**: Backbone congelado + MLP head.
+- **Caminho TensorFlow (benchmark)**: *sempre* o modo simplificado — não existe
+  `TFWavLMModel` (WavLM é PyTorch-only), então `microsoft/wavlm-base` não é
+  carregado no TF. O bloco `from_pt=True` está presente mas é inalcançável.
+- **Modo simplificado**: CNN 1D compatível com Keras 3 (embeddings aprendidos do zero).
+- **Backbone SSL real**: disponível apenas no caminho PyTorch (artefato
+  `bench_wavlm_original.pt`), usado na inferência/demonstração do Gradio.
+- **Classificador**: backbone (simplificado) + MLP head.
 
 ### 2. HuBERT
 
