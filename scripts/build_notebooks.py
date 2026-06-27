@@ -1080,23 +1080,53 @@ def build_pipeline():
         except Exception as exc:
             print("TensorFlow/GPU indisponível:", exc)
         """),
-        md("## 2. Arquiteturas e hiperparâmetros do experimento"),
+        md(textwrap.dedent('''\
+        ## 2. Arquiteturas e hiperparâmetros do experimento
+
+        As 14 arquiteturas rodam **do menos para o mais custoso de treinar** —
+        o barato (clássico, CNN de espectrograma) valida o pipeline cedo e falha
+        rápido; o caro (raw-audio GAT/SSL e o Ensemble) fica por último. Ordem
+        (heurística por família, domínio de entrada, complexidade e cap de batch
+        por VRAM; refinável com a latência medida de uma corrida completa):
+
+        | # | Modelo | Família | Entrada | Custo relativo |
+        |---:|---|---|---|---|
+        | 1 | RandomForest | clássico | features | muito baixo |
+        | 2 | SVM | clássico (RBF) | features | baixo |
+        | 3 | MultiscaleCNN | CNN | espectrograma | baixo |
+        | 4 | Sonic Sleuth | CNN | espectrograma | baixo-médio |
+        | 5 | EfficientNet-LSTM | CNN+LSTM | espectrograma | médio |
+        | 6 | Conformer | Conv+Attention | espectrograma | médio-alto |
+        | 7 | Hybrid CNN-Transformer | CNN+Transformer | espectrograma | médio-alto |
+        | 8 | SpectrogramTransformer | Transformer | espectrograma | alto (batch 8) |
+        | 9 | RawNet2 | SincConv+GRU | áudio bruto | alto |
+        | 10 | AASIST | Sinc+GAT | áudio bruto | alto |
+        | 11 | RawGAT-ST | Sinc+GAT | áudio bruto | muito alto (batch 8) |
+        | 12 | WavLM | SSL (fallback CNN-1D no TF) | áudio bruto | muito alto |
+        | 13 | HuBERT | SSL (real/fallback) | áudio bruto | muito alto |
+        | 14 | Ensemble | fusão | — | máximo (depende dos demais) |
+
+        > A ordem é a mesma de `benchmarks/config.py::ALL_TCC_ARCHITECTURES`, fonte
+        > única consumida também por `run_models_sequential.py`.
+        ''')),
         code("""
+        # Ordem por custo crescente de treino (espelha benchmarks/config.py::
+        # ALL_TCC_ARCHITECTURES). Mantenha sincronizada com aquela fonte.
         ALL_ARCHITECTURES = [
-            "WavLM",
-            "HuBERT",
-            "RawNet2",
+            "RandomForest",
+            "SVM",
+            "MultiscaleCNN",
             "Sonic Sleuth",
-            "AASIST",
-            "RawGAT-ST",
+            "EfficientNet-LSTM",
             "Conformer",
             "Hybrid CNN-Transformer",
             "SpectrogramTransformer",
-            "EfficientNet-LSTM",
-            "MultiscaleCNN",
+            "RawNet2",
+            "AASIST",
+            "RawGAT-ST",
+            "WavLM",
+            "HuBERT",
             "Ensemble",
-            "SVM",
-            "RandomForest",
         ]
 
         # Tier do dataset (test/small/medium/large) — define tamanho, fontes e

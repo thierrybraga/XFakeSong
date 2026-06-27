@@ -1,12 +1,14 @@
 # PyTorch audio benchmark preset.
 
 family: pytorch-audio
+# ordem por custo crescente (espectrograma antes de áudio bruto/GAT);
+# ver benchmarks/config.py::ALL_TCC_ARCHITECTURES
 models:
+  - Conformer
+  - Hybrid CNN-Transformer
   - RawNet2
   - AASIST
   - RawGAT-ST
-  - Conformer
-  - Hybrid CNN-Transformer
 dataset: app/datasets/benchmark_audio_raw_balanced_20k.npz
 output_dir: results/pytorch_benchmark
 models_dir: app/models

@@ -7,24 +7,37 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 
+# Ordem CANÔNICA de execução do benchmark: do MENOS para o MAIS custoso de
+# treinar. Roda primeiro o barato (clássico, CNN de espectrograma leve) — que
+# valida o pipeline cedo e falha rápido — e deixa por último o caro (raw-audio
+# GAT/SSL e o Ensemble, que depende dos demais). Heurística por: família
+# (clássico < neural), domínio de entrada (espectrograma < áudio bruto de 16k×5s),
+# complexidade (CNN < LSTM < Transformer < GAT < SSL) e cap de batch por VRAM
+# (ver benchmarks/planning.py::_fit_to_device). Refinável com a latência/tempo
+# medidos de uma execução completa. `run_models_sequential.py` e o caderno
+# `04_all_architectures_full_benchmark` consomem esta ordem.
 ALL_TCC_ARCHITECTURES = [
-    "WavLM",
-    "HuBERT",
-    "RawNet2",
+    # --- Clássico (single fit, CPU) ---
+    "RandomForest",
+    "SVM",
+    # --- Espectrograma: CNN leve -> LSTM -> Transformer ---
+    "MultiscaleCNN",
     "Sonic Sleuth",
-    "AASIST",
-    "RawGAT-ST",
+    "EfficientNet-LSTM",
     "Conformer",
     "Hybrid CNN-Transformer",
     "SpectrogramTransformer",
-    "EfficientNet-LSTM",
-    "MultiscaleCNN",
+    # --- Áudio bruto: CNN/GRU -> GAT -> SSL ---
+    "RawNet2",
+    "AASIST",
+    "RawGAT-ST",
+    "WavLM",
+    "HuBERT",
+    # --- Fusão (depende dos demais; mais custoso) ---
     "Ensemble",
-    "SVM",
-    "RandomForest",
 ]
 
-CLASSICAL_TCC_ARCHITECTURES = ["SVM", "RandomForest"]
+CLASSICAL_TCC_ARCHITECTURES = ["RandomForest", "SVM"]
 
 NEURAL_TCC_ARCHITECTURES = [
     arch for arch in ALL_TCC_ARCHITECTURES if arch not in CLASSICAL_TCC_ARCHITECTURES

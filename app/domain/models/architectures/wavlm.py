@@ -93,6 +93,10 @@ class WavLMFeatureExtractor(layers.Layer):
             self._use_simplified = True
 
         if hasattr(self, '_use_simplified'):
+            # Fallback explícito: aborta em modo estrito (XFAKE_STRICT_SSL) para
+            # não comprometer o benchmark com um backbone que não é o WavLM real.
+            from app.domain.models.architectures.ssl_utils import strict_ssl_guard
+            strict_ssl_guard("WavLM")
             # Implementação simplificada usando CNN 1D
             self._build_simplified_extractor()
 

@@ -1,10 +1,11 @@
 # TensorFlow/Keras benchmark preset.
 
 family: tensorflow-keras
+# ordem por custo crescente (ver benchmarks/config.py::ALL_TCC_ARCHITECTURES)
 models:
+  - MultiscaleCNN
   - Sonic Sleuth
   - EfficientNet-LSTM
-  - MultiscaleCNN
   - SpectrogramTransformer
 dataset: app/datasets/benchmark_audio_raw_balanced_20k.npz
 output_dir: results/tensorflow_benchmark

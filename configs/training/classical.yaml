@@ -1,9 +1,10 @@
 # Classical ML benchmark preset.
 
 family: classical-ml
+# ordem por custo crescente (ver benchmarks/config.py::ALL_TCC_ARCHITECTURES)
 models:
-  - SVM
   - RandomForest
+  - SVM
 dataset: app/datasets/benchmark_audio_raw_balanced_20k.npz
 output_dir: results/classical_benchmark
 models_dir: app/models

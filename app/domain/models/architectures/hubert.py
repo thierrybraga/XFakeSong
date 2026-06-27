@@ -118,6 +118,10 @@ class HuBERTFeatureExtractor(layers.Layer):
             self._use_simplified = True
 
         if hasattr(self, '_use_simplified'):
+            # Fallback explícito: aborta em modo estrito (XFAKE_STRICT_SSL) quando
+            # o backbone HuBERT real está indisponível, p/ não comprometer o benchmark.
+            from app.domain.models.architectures.ssl_utils import strict_ssl_guard
+            strict_ssl_guard("HuBERT")
             # Implementação simplificada usando CNN 1D + Transformers (Keras nativo)
             self._build_simplified_extractor()
 

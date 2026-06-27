@@ -14,6 +14,7 @@ modo seguro (congelar tudo) se a estrutura não for reconhecida.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -22,7 +23,30 @@ __all__ = [
     "find_encoder_layers",
     "set_ssl_backbone_trainability",
     "build_ssl_aasist_backend",
+    "strict_ssl_guard",
 ]
+
+
+def strict_ssl_guard(model_name: str) -> None:
+    """Falha alto quando um modelo SSL cairia no fallback simplificado.
+
+    Em modo estrito (`XFAKE_STRICT_SSL=1`), levanta RuntimeError em vez de usar
+    silenciosamente o backbone CNN-1D treinado do zero — protege a integridade do
+    benchmark, que NÃO deve comparar números do fallback com os SSL reais da
+    literatura. Sem a flag, apenas registra um aviso explícito (comportamento
+    padrão preservado). Ver docs/08_ARQUITETURAS.md (caveat SSL).
+    """
+    msg = (
+        f"[SSL] {model_name}: backbone real indisponível no caminho TensorFlow — "
+        f"usaria fallback CNN-1D treinado do zero."
+    )
+    if os.getenv("XFAKE_STRICT_SSL", "").strip().lower() in {"1", "true", "yes", "on"}:
+        raise RuntimeError(
+            msg + " XFAKE_STRICT_SSL está ligado: abortando para não comprometer o "
+            "benchmark. Remova o modelo do preset, use o caminho PyTorch "
+            "(*_original.pt) ou desligue XFAKE_STRICT_SSL para permitir o fallback."
+        )
+    logger.warning(msg + " (fallback permitido; ligue XFAKE_STRICT_SSL p/ exigir SSL real)")
 
 
 def build_ssl_aasist_backend(x, dropout_rate: float = 0.3, proj_dim: int = 128,
