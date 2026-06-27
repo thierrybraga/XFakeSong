@@ -73,15 +73,18 @@ class ArchitectureRegistry:
                 ],
                 default_params={
                     # create_model params: dropout_rate, l2_reg_strength, hidden_dim, num_layers
+                    # AJUSTE (retune): subajuste (val_loss travada ~1.0, acc ~0.92)
+                    # + recall colapsa sob ruido (0.29 @10dB). Reduz regularizacao
+                    # excessiva e reforca augmentation p/ robustez.
                     "dropout_rate": 0.2,
-                    "l2_reg_strength": 0.0005,
+                    "l2_reg_strength": 0.0002,
                     "hidden_dim": 512,
                     "num_layers": 8,
                     # Training params (used by pipeline, not by create_model)
-                    "patience": 20,
-                    "lr_patience": 10,
+                    "patience": 25,
+                    "lr_patience": 8,
                     "gradient_clip": 1.0,
-                    "augmentation_strength": 0.25,
+                    "augmentation_strength": 0.35,
                 },
                 input_requirements={
                     "input_type": "raw_audio",
@@ -114,16 +117,20 @@ class ArchitectureRegistry:
                 ],
                 default_params={
                     # create_model params: dropout_rate, l2_reg_strength, attention_heads, hidden_dim, num_layers
-                    "dropout_rate": 0.2,
-                    "l2_reg_strength": 0.0005,
+                    # AJUSTE (retune): pior modelo - val_acc cai apos epoca 4 e
+                    # val_loss dispara (0.39->1.85) enquanto treino sobe = overfit/
+                    # divergencia. Mais dropout + L2, clip mais apertado, mais
+                    # augmentation e paciencia maior p/ achar minimo melhor.
+                    "dropout_rate": 0.35,
+                    "l2_reg_strength": 0.001,
                     "attention_heads": 8,
                     "hidden_dim": 512,
                     "num_layers": 6,
                     # Training params (used by pipeline, not by create_model)
-                    "patience": 18,
-                    "lr_patience": 9,
-                    "gradient_clip": 0.8,
-                    "augmentation_strength": 0.3,
+                    "patience": 25,
+                    "lr_patience": 8,
+                    "gradient_clip": 0.5,
+                    "augmentation_strength": 0.4,
                 },
                 input_requirements={
                     # Paper-faithful: opera sobre ÁUDIO BRUTO (SincNet front-end),
@@ -151,10 +158,12 @@ class ArchitectureRegistry:
                 supported_variants=["efficientnet_lstm", "efficientnet_lstm_lite"],
                 default_params={
                     # create_model params: lstm_units (int), dropout_rate
+                    # AJUSTE (retune): acc limpa baixa (0.929) porem robusto -
+                    # reduz dropout e da mais paciencia p/ ganhar acuracia.
                     "lstm_units": 256,
-                    "dropout_rate": 0.3,
+                    "dropout_rate": 0.25,
                     # Training params (used by pipeline, not by create_model)
-                    "patience": 15,
+                    "patience": 20,
                     "lr_patience": 8,
                     "gradient_clip": 1.0,
                     "augmentation_strength": 0.3,
@@ -279,10 +288,13 @@ class ArchitectureRegistry:
                     "use_se_blocks": True,
                     "aux_loss_weight": 0.3,
                     # Training params
-                    "patience": 15,
+                    # AJUSTE (retune): falha catastrofica de robustez - a 10dB a
+                    # acc vira 0.50 e recall->0 (predicts tudo como "real"). Precisa
+                    # ver fakes ruidosos no treino: augmentation forte + paciencia.
+                    "patience": 20,
                     "lr_patience": 8,
                     "gradient_clip": 1.0,
-                    "augmentation_strength": 0.3,
+                    "augmentation_strength": 0.45,
                 },
                 input_requirements={
                     "input_type": "spectrogram",
@@ -457,14 +469,16 @@ class ArchitectureRegistry:
                     "num_heads": 4,
                     "transformer_layers": 4,
                     "conv_channels": [64, 128],
-                    "dropout_rate": 0.1,
-                    "stochastic_depth_rate": 0.1,
+                    # AJUSTE (retune): robustez moderada (0.97->0.785 @10dB).
+                    # Mais dropout/stochastic-depth e augmentation p/ generalizar.
+                    "dropout_rate": 0.2,
+                    "stochastic_depth_rate": 0.15,
                     "use_positional_emb": True,
                     # Training params (used by pipeline, not by create_model)
-                    "patience": 15,
+                    "patience": 18,
                     "lr_patience": 8,
                     "gradient_clip": 1.0,
-                    "augmentation_strength": 0.3,
+                    "augmentation_strength": 0.4,
                 },
                 input_requirements={
                     "input_type": "spectrogram",

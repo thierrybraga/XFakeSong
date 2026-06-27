@@ -326,9 +326,12 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
                 tf.keras.losses.categorical_crossentropy(smoothed, y_pred, from_logits=True)
             )
 
+        # AJUSTE (retune): subajuste (val_acc travada ~0.92). LR 1e-4->3e-4 e
+        # weight_decay 0.01->1e-3 (regularizacao estava forte demais p/ o LR
+        # baixo, otimizacao nao saia do plato).
         optimizer = tf.keras.optimizers.AdamW(
-            learning_rate=0.0001,
-            weight_decay=0.01,
+            learning_rate=0.0003,
+            weight_decay=0.001,
             global_clipnorm=1.0,  # previne gradientes explosivos
         )
 

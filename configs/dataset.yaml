@@ -1,7 +1,7 @@
 # XFakeSong benchmark dataset defaults.
 
 dataset:
-  canonical_npz: app/datasets/benchmark_audio_raw_balanced_15k.npz
+  canonical_npz: app/datasets/benchmark_audio_raw_balanced_20k.npz
   sample_rate: 16000
   duration_sec: 4.0
   split:

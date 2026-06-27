@@ -8,7 +8,7 @@ Conteúdo:
 - `figures/confusion_matrices/`: matrizes de confusão por arquitetura.
 
 Origem dos dados:
-- Dataset do benchmark atual: `app/datasets/benchmark_audio_raw_balanced_15k.npz`.
+- Dataset do benchmark atual: `app/datasets/benchmark_audio_raw_balanced_20k.npz`.
 - Modelos finais default da aplicação: `app/models/bench_*`.
 - Modelos completos por arquitetura: `app/models/benchmark_final/`.
 - Métricas e relatórios completos: `results/`.

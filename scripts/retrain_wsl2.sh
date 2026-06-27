@@ -21,7 +21,7 @@
 #   bash scripts/retrain_wsl2.sh --indist --xgen fkvoice  # ambos, em sequência
 #   bash scripts/retrain_wsl2.sh --model SpectrogramTransformer  # uma arquitetura
 # Opções:
-#   --dataset PATH   (default: app/datasets/benchmark_audio_raw_balanced_15k.npz)
+#   --dataset PATH   (default: app/datasets/benchmark_audio_raw_balanced_20k.npz)
 #   --epochs N       (default: 100)
 #   --out-prefix DIR (default: results/retrain_wsl2)
 #   --consolidate-from xgen|group|indist  (default: honesto-primeiro: xgen→group→indist)
@@ -34,7 +34,7 @@
 # =====================================================================
 set -euo pipefail
 
-DATASET="app/datasets/benchmark_audio_raw_balanced_15k.npz"
+DATASET="app/datasets/benchmark_audio_raw_balanced_20k.npz"
 EPOCHS=100
 OUT_PREFIX="results/retrain_wsl2"
 DO_INDIST=0

@@ -60,6 +60,57 @@ Se `X_val`/`y_val` estiverem ausentes, o `SecureTrainingPipeline` cria automatic
 
 O parâmetro `num_classes` pode ser passado no `config`; se omitido, é inferido automaticamente via `np.unique(y_train).size`.
 
+### 1.2.1 Datasets de treino — tiers `small` / `medium` / `large`
+
+O tamanho e a composição do dataset são padronizados em **tiers** definidos em
+`app/core/dataset_catalog.py` (`DATASET_TIERS`) — fonte única de verdade
+compartilhada por `scripts/build_dataset.py`, pela aba Datasets do Gradio, pelo
+benchmark e pela documentação. Escolher um tier pré-configura tamanho, fontes e
+estratégia de split. Detalhes de fontes/licenças em
+[docs/12_DATASETS.md](12_DATASETS.md).
+
+| Tier | Por classe | Total | Split | Habilita | Uso típico no treino |
+|------|-----------:|------:|-------|----------|----------------------|
+| `test` | 100 | 200 | 70/15/15 estratificado | nenhum (abaixo do mínimo clássico) | smoke de ponta a ponta |
+| `small` | 1.000 | 2.000 | 70/15/15 estratificado | Clássico (SVM/RF) + CNN leve | iteração rápida de hiperparâmetros |
+| `medium` | 3.000 | 6.000 | 70/15/15 estratificado | até Transformer | treino/teste mais robustos |
+| `large` | 10.000 | 20.000 | **disjunto por falante** + cross-generator | **todas as 14 arquiteturas** (inclui Ensemble) | execução de referência do TCC |
+
+> O `.npz` canônico do benchmark
+> (`app/datasets/benchmark_audio_raw_balanced_20k.npz`, ~15k) corresponde ao tier
+> **`large`** (10k/classe com folga de balanceamento). Para o retreino dos
+> modelos ajustados use sempre `large` — só ele exercita a robustez sob falantes
+> não vistos e habilita o Ensemble.
+
+**Montar um tier** (download + balanceamento + splits + `dataset_config.json`):
+
+```bash
+python scripts/build_dataset.py --tier small     # 1.000/classe — segundos a minutos
+python scripts/build_dataset.py --tier medium    # 3.000/classe
+python scripts/build_dataset.py --tier large     # 10.000/classe, split por falante
+
+# override do tamanho mantendo fontes/split do tier:
+python scripts/build_dataset.py --tier medium --target 4000
+```
+
+**Como o tier afeta o treino:**
+
+- **Prontidão por modelo.** O treino só habilita um modelo quando o tier atinge o
+  mínimo de amostras dele — `small` cobre Clássico + CNN leve (RawNet2, Sonic
+  Sleuth, MultiscaleCNN); `medium` chega aos Transformers; o **Ensemble** exige
+  `large` (≥6.000/classe).
+- **Split.** `test/small/medium` usam 70/15/15 estratificado; `large` usa split
+  **disjunto por falante** (`speaker_manifest.json`), medindo generalização a
+  usuários não vistos e evitando vazamento de falante entre treino e teste.
+- **Pipeline de ponta a ponta** (download → benchmark) por tier:
+
+```bash
+python scripts/run_tcc_pipeline.py --download --tier large --full-benchmark --speaker-split
+```
+
+Recomendação prática: prototipe hiperparâmetros em `small`, valide arquitetura em
+`medium` e produza os números finais (e o retreino ajustado) em `large`.
+
 ### 1.3 ModelTrainer
 
 Classe principal de treinamento (`app/domain/models/training/trainer.py`). Funcionalidades:

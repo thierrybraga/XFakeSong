@@ -239,17 +239,35 @@ class ModelLoader:
         self.create_default_models = create_default_models
 
     def _discover_model_files(self) -> List[Path]:
-        """Return supported model artifacts in deterministic preference order."""
-        files = (
-            list(self.models_dir.glob("*.keras")) +
-            list(self.models_dir.glob("*.h5")) +
-            list(self.models_dir.glob("*.pkl")) +
-            list(self.models_dir.glob("*.pt"))
-        )
-        return sorted(
-            [p for p in files if "_scaler" not in p.stem],
-            key=lambda p: p.stem,
-        )
+        """Return supported model artifacts in deterministic preference order.
+
+        Cobre tanto artefatos na raiz de ``models_dir`` quanto os modelos
+        PROMOVIDOS do benchmark em ``benchmark_final/<arch>/bench_<arch>.*``.
+        Sem a busca em ``benchmark_final`` (P0), a descoberta nao-recursiva nao
+        encontrava os modelos treinados e o servico caia nos modelos de
+        demonstracao (`_create_default_models`). Restringe ao prefixo ``bench_``
+        sob ``benchmark_final/<arch>/`` para nao capturar checkpoints
+        intermediarios (ex.: ``results/.../models/best_checkpoint.keras``).
+        """
+        exts = ("*.keras", "*.h5", "*.pkl", "*.pt")
+        files: List[Path] = []
+        for ext in exts:
+            files.extend(self.models_dir.glob(ext))
+        bench_final = self.models_dir / "benchmark_final"
+        if bench_final.is_dir():
+            for ext in ("bench_*.keras", "bench_*.h5", "bench_*.pkl", "bench_*.pt"):
+                files.extend(bench_final.glob(f"*/{ext}"))
+        seen: set = set()
+        unique: List[Path] = []
+        for fp in files:
+            if "_scaler" in fp.stem:
+                continue
+            key = fp.resolve()
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(fp)
+        return sorted(unique, key=lambda fp: fp.stem)
 
     def load_available_models(self):
         """Descobre modelos disponíveis sem carregar todos os pesos no startup."""

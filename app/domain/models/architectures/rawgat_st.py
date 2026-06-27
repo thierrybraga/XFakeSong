@@ -290,10 +290,13 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
             name="output_layer")(x)
 
         model = models.Model(inputs=input_tensor, outputs=output_tensor)
+        # AJUSTE (retune): LR 1e-4->5e-5 e clipnorm 1.0->0.7 para conter a
+        # divergencia (val_loss subia de 0.39->1.85). weight_decay vem do
+        # l2_reg_strength (registry: 0.0005->0.001).
         optimizer = tf.keras.optimizers.AdamW(
-            learning_rate=0.0001,
+            learning_rate=0.00005,
             weight_decay=l2_reg_strength,
-            global_clipnorm=1.0,  # estabilidade (grafos + SincConv)
+            global_clipnorm=0.7,  # estabilidade (grafos + SincConv)
         )
         model.compile(
             optimizer=optimizer,

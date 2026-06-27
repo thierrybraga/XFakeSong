@@ -92,17 +92,17 @@ Ajustes de código **aplicados e testados** (`tests/unit/test_retraining_adjustm
 ```bash
 # Reteste cross-generator (P0.4) — o mais importante antes da defesa
 python scripts/run_benchmark.py --full \
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
   --cross-generator fkvoice --out results/bench_xgen
 
 # Split disjunto por fonte (P0) — use se houver mais grupos/falantes no futuro
 python scripts/run_benchmark.py --full \
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
   --group-split --out results/bench_group
 
 # Retreino padrão (in-distribution) com augmentation SNR + P1/P2 já aplicados
 python scripts/run_benchmark.py --full \
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
   --out results/bench_indist
 ```
 
@@ -111,7 +111,7 @@ python scripts/run_benchmark.py --full \
 ```bash
 # Ablação de fine-tuning do WavLM (varre LR; baseline HuBERT)
 python scripts/ablate_wavlm_finetune.py \
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
   --lrs 1e-5 3e-5 1e-4 --epochs 30 --out results/ablation_wavlm
 
 # Pruning do MultiscaleCNN (requer: pip install tensorflow-model-optimization)

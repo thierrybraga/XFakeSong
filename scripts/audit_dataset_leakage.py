@@ -23,7 +23,7 @@ benchmark realmente viu, incluindo qualquer artefato de pré-processamento).
 
 Exemplo:
     python scripts/audit_dataset_leakage.py \
-        --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+        --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
         --source brspeech --max-per-class 1500 \
         --out results/audit_dataset_leakage
 """

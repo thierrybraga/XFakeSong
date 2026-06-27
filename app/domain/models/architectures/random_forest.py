@@ -178,12 +178,16 @@ def optimize_random_forest_hyperparameters(
     Otimiza hiperparâmetros do Random Forest usando Grid Search.
     """
     if param_grid is None:
+        # AJUSTE (retune): grid anterior selecionava max_depth=20/None com
+        # min_samples_leaf=1 -> train_score=1.0 (overfit) e robustez ruim
+        # (0.98->0.68 sob ruido). Remove profundidade ilimitada e exige folhas/
+        # splits maiores para regularizar e generalizar melhor sob ruido.
         param_grid = {
-            'rf__n_estimators': [50, 100, 200],
-            'rf__max_depth': [None, 10, 20, 30],
-            'rf__min_samples_split': [2, 5, 10],
-            'rf__min_samples_leaf': [1, 2, 4],
-            'rf__max_features': ['sqrt', 'log2', None]
+            'rf__n_estimators': [200, 300],
+            'rf__max_depth': [10, 15, 20],
+            'rf__min_samples_split': [5, 10, 20],
+            'rf__min_samples_leaf': [2, 4, 8],
+            'rf__max_features': ['sqrt', 'log2']
         }
 
     return optimize_hyperparameters(

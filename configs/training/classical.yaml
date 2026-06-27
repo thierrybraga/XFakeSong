@@ -4,7 +4,7 @@ family: classical-ml
 models:
   - SVM
   - RandomForest
-dataset: app/datasets/benchmark_audio_raw_balanced_15k.npz
+dataset: app/datasets/benchmark_audio_raw_balanced_20k.npz
 output_dir: results/classical_benchmark
 models_dir: app/models
 epochs: 100

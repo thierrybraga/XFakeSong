@@ -353,9 +353,12 @@ def _create_res2net_model(input_shape, num_classes=1, base_width=26, scale=8,
     model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
 
     # Paper uses SGD with momentum; Adam is a common alternative for audio tasks
+    # AJUSTE (retune): clipnorm=1.0 evita os NaN de val_loss nas epocas 4-8
+    # observados no treino anterior (LR inicial alto + sem clipping).
     model.compile(
         optimizer=tf.keras.optimizers.Adam(
             learning_rate=1e-3,
+            clipnorm=1.0,
         ),
         loss=loss,
         metrics=['accuracy']
