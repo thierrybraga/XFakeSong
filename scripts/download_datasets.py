@@ -41,8 +41,10 @@ from __future__ import annotations
 import argparse
 import io
 import logging
+import os
 import sys
 import zipfile
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 
 import librosa
@@ -250,6 +252,86 @@ def safe_write_wav(target_path: Path, audio: np.ndarray, sr: int = TARGET_SR) ->
     except Exception as e:
         logger.warning(f"  safe_write: erro ao gravar {target_path.name}: {e}")
         return False
+
+
+# ---------------------------------------------------------------------------
+# Processamento PARALELO de áudio (multi-thread) para fontes baseadas em arquivo
+# ---------------------------------------------------------------------------
+
+def download_workers() -> int:
+    """Nº de threads para decodificar+reamostrar+gravar áudio em paralelo.
+
+    `soundfile` (libsndfile, C) e o resampler do `librosa` (soxr) liberam o GIL,
+    então threads dão speedup real no caminho CPU-bound do download. Ajuste via
+    XFAKE_DOWNLOAD_WORKERS; default = min(8, núcleos lógicos).
+    """
+    raw = os.getenv("XFAKE_DOWNLOAD_WORKERS", "").strip()
+    if raw.isdigit() and int(raw) > 0:
+        return int(raw)
+    return max(2, min(8, os.cpu_count() or 4))
+
+
+def _decode_process_write(raw_bytes, target_path: Path, speaker=None):
+    """Worker thread-safe: bytes WAV → process_audio → safe_write_wav.
+
+    Sem estado global compartilhado (a leitura dos bytes e a atribuição do
+    índice acontecem na thread principal). Retorna (target_path, speaker) se
+    gravou, senão None.
+    """
+    try:
+        data, sr = sf.read(io.BytesIO(raw_bytes))
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"  decode falhou {getattr(target_path, 'name', '?')}: {e}")
+        return None
+    audio, ok = process_audio(data, sr)
+    if not ok:
+        return None
+    if safe_write_wav(target_path, audio):
+        return (target_path, speaker)
+    return None
+
+
+def parallel_decode_write(jobs, limit: int, workers: int | None = None) -> list:
+    """Processa `jobs` em paralelo, parando após `limit` gravações com sucesso.
+
+    Args:
+        jobs: iterável de tuplas (raw_bytes, target_path, speaker). É consumido
+            preguiçosamente na thread principal — mantém a memória limitada a uma
+            janela de tarefas em voo (não materializa todos os bytes de uma vez).
+        limit: nº alvo de WAVs gravados; ao atingir, cancela o restante.
+        workers: nº de threads (default download_workers()).
+
+    Returns:
+        Lista de (target_path, speaker) efetivamente gravados (até `limit`).
+    """
+    if limit <= 0:
+        return []
+    workers = workers or download_workers()
+    it = iter(jobs)
+    written: list = []
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        # Janela de tarefas em voo: mantém o pool cheio sem ler tudo de uma vez.
+        window = max(workers * 4, 16)
+        futures = set()
+        for _ in range(window):
+            try:
+                futures.add(ex.submit(_decode_process_write, *next(it)))
+            except StopIteration:
+                break
+        while futures and len(written) < limit:
+            done, futures = wait(futures, return_when=FIRST_COMPLETED)
+            for fut in done:
+                res = fut.result()
+                if res:
+                    written.append(res)
+                if len(written) < limit:
+                    try:
+                        futures.add(ex.submit(_decode_process_write, *next(it)))
+                    except StopIteration:
+                        pass
+        for fut in futures:  # além do limite → cancela o que não começou
+            fut.cancel()
+    return written[:limit]
 
 
 def cast_no_decode(ds):
@@ -519,22 +601,20 @@ def _download_brspeech_parquet(
             local_path = hf_hub_download("AKCIT-Deepfake/BRSpeech-DF", pf,
                                           repo_type="dataset", cache_dir=cache_dir)
             df = pd.read_parquet(local_path)
-            for _, row in df.iterrows():
-                if count >= max_count:
-                    break
-                audio_info = row.get("audio", {})
-                if isinstance(audio_info, dict) and "bytes" in audio_info:
-                    try:
-                        raw_data, sr = sf.read(io.BytesIO(audio_info["bytes"]))
-                        # process_audio agora trata stereo internamente
-                        audio, ok = process_audio(raw_data, sr)
-                        if not ok:
-                            continue
-                        if safe_write_wav(target_dir / f"{prefix}_{idx:05d}.wav", audio):
-                            count += 1
-                            idx += 1
-                    except Exception:
+            idx_box = [idx]
+
+            def _jobs():
+                for _, row in df.iterrows():
+                    audio_info = row.get("audio", {})
+                    if not (isinstance(audio_info, dict) and "bytes" in audio_info):
                         continue
+                    path = target_dir / f"{prefix}_{idx_box[0]:05d}.wav"
+                    idx_box[0] += 1
+                    yield (audio_info["bytes"], path, None)
+
+            written = parallel_decode_write(_jobs(), limit=max(0, max_count - count))
+            count += len(written)
+            idx = idx_box[0]
         except Exception as e:
             logger.warning(f"    Erro no parquet {pf}: {e}")
     return count
@@ -678,6 +758,8 @@ def download_fake_voices(max_speakers: int = 20, max_per_speaker: int = 100) -> 
     total_count = count_wavs(FAKE_DIR, "fkvoice")
     idx = next_index(FAKE_DIR, "fkvoice")
     speakers_done = 0
+    workers = download_workers()
+    logger.info(f"  Processamento paralelo: {workers} threads")
 
     for zip_name in zip_files:
         if speakers_done >= max_speakers:
@@ -689,28 +771,32 @@ def download_fake_voices(max_speakers: int = 20, max_per_speaker: int = 100) -> 
                 "unfake/fake_voices", zip_name, repo_type="dataset",
                 cache_dir=str(RAW_DIR / "fake_voices_cache"),
             )
-            speaker_count = 0
+            idx_box = [idx]
             with zipfile.ZipFile(local_path, "r") as zf:
                 wav_names = [n for n in zf.namelist() if n.lower().endswith(".wav")]
-                for wav_name in wav_names:
-                    if speaker_count >= max_per_speaker:
-                        break
-                    try:
-                        with zf.open(wav_name) as af:
-                            raw_data, sr = sf.read(io.BytesIO(af.read()))
-                        # process_audio trata stereo→mono internamente
-                        audio, ok = process_audio(raw_data, sr)
-                        if not ok:
+
+                def _jobs():
+                    # Lê os bytes na thread principal (zipfile não é thread-safe);
+                    # o decode/resample/gravação roda nas threads do pool.
+                    for wav_name in wav_names:
+                        try:
+                            with zf.open(wav_name) as af:
+                                raw = af.read()
+                        except Exception as e:  # noqa: BLE001
+                            logger.debug(f"    leitura falhou {wav_name}: {e}")
                             continue
-                        fk_path = FAKE_DIR / f"fkvoice_{idx:05d}.wav"
-                        if safe_write_wav(fk_path, audio):
-                            record_speaker_safe(fk_path, speaker)
-                            total_count += 1
-                            idx += 1
-                            speaker_count += 1
-                    except Exception as e:
-                        logger.debug(f"    Erro em {wav_name}: {e}")
-            logger.info(f"    {speaker_count} amostras do falante {speaker}")
+                        path = FAKE_DIR / f"fkvoice_{idx_box[0]:05d}.wav"
+                        idx_box[0] += 1
+                        yield (raw, path, speaker)
+
+                written = parallel_decode_write(
+                    _jobs(), limit=max_per_speaker, workers=workers
+                )
+            for fk_path, spk in written:
+                record_speaker_safe(fk_path, spk)
+            total_count += len(written)
+            idx = idx_box[0]
+            logger.info(f"    {len(written)} amostras do falante {speaker}")
             speakers_done += 1
         except Exception as e:
             logger.error(f"  Erro ao processar {speaker}: {e}")
@@ -1083,21 +1169,25 @@ def _download_wavefake_zenodo(current_count: int, max_samples: int) -> int:
         try:
             with zipfile.ZipFile(str(local_zip), "r") as zf:
                 wav_names = [n for n in zf.namelist() if n.lower().endswith(".wav")]
-                for wav_name in wav_names:
-                    if count >= max_samples:
-                        break
-                    try:
-                        with zf.open(wav_name) as af:
-                            raw_data, sr = sf.read(io.BytesIO(af.read()))
-                        # process_audio trata stereo→mono internamente
-                        audio, ok = process_audio(raw_data, sr)
-                        if not ok:
+                idx_box = [idx]
+
+                def _jobs():
+                    for wav_name in wav_names:
+                        try:
+                            with zf.open(wav_name) as af:
+                                raw = af.read()
+                        except Exception as e:  # noqa: BLE001
+                            logger.debug(f"  leitura falhou {wav_name}: {e}")
                             continue
-                        if safe_write_wav(FAKE_DIR / f"wavefake_{idx:05d}.wav", audio):
-                            count += 1
-                            idx += 1
-                    except Exception as e:
-                        logger.debug(f"  Erro em {wav_name}: {e}")
+                        path = FAKE_DIR / f"wavefake_{idx_box[0]:05d}.wav"
+                        idx_box[0] += 1
+                        yield (raw, path, None)
+
+                written = parallel_decode_write(
+                    _jobs(), limit=max(0, max_samples - count)
+                )
+            count += len(written)
+            idx = idx_box[0]
         except Exception as e:
             logger.error(f"  Erro ao extrair {local_zip.name}: {e}")
 
