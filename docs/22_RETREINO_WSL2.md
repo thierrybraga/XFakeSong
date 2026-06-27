@@ -9,7 +9,7 @@
 
 - `tf.config.list_physical_devices("GPU")` retorna **vazio** no Windows nativo
   (TF ≥2.11). Sob WSL2 + `tensorflow[and-cuda]`, a RTX 3060 é exposta.
-- O **dataset já existe** no repo (`app/datasets/benchmark_audio_raw_balanced_15k.npz`,
+- O **dataset já existe** no repo (`app/datasets/benchmark_audio_raw_balanced_20k.npz`,
   ~2.8 GB) — **não há download**.
 - Os ajustes de código (P0–P3) já estão aplicados; aqui só se **executa**.
 
@@ -39,7 +39,7 @@ bash scripts/retrain_wsl2.sh --check
 
 > Observação de E/S: treinar lendo o `.npz` de 2.8 GB via `/mnt/d` (disco
 > Windows) é mais lento que copiar para o filesystem do WSL2. Para máxima
-> velocidade: `cp app/datasets/benchmark_audio_raw_balanced_15k.npz ~/ds.npz`
+> velocidade: `cp app/datasets/benchmark_audio_raw_balanced_20k.npz ~/ds.npz`
 > e use `--dataset ~/ds.npz`.
 
 ## Caminho B — container GPU (Docker Desktop + WSL2 backend)
@@ -77,7 +77,7 @@ Equivalente "cru" (sem o driver), via orquestrador:
 ```bash
 python scripts/run_tcc_pipeline.py --skip-download --skip-preprocess \
   --full-benchmark --epochs 100 --device-profile gpu \
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
   --cross-generator fkvoice
 ```
 
@@ -85,7 +85,7 @@ python scripts/run_tcc_pipeline.py --skip-download --skip-preprocess \
 
 ```bash
 python scripts/ablate_wavlm_finetune.py \
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
   --lrs 1e-5 3e-5 1e-4 --epochs 30 --out results/ablation_wavlm
 ```
 

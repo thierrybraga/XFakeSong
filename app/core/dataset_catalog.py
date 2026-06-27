@@ -253,9 +253,9 @@ PRESET_SELECTIONS: Dict[str, List[str]] = {
 # ---------------------------------------------------------------------------
 # Fonte unica de verdade para o TAMANHO/FINALIDADE de um dataset, consumida pela
 # UI Gradio, por scripts/build_dataset.py, pelo benchmark e pela documentacao.
-# Os limiares de modelos seguem a prontidao em
-# app/interfaces/gradio/tabs/dataset_management.py (Classico >=300, CNN leve
-# >=1000, CNN/RNN >=2000, Transformer >=4000, Ensemble >=6000 por classe).
+# Os limiares de prontidao por familia de modelo ficam em MODEL_READINESS_TIERS
+# (mais abaixo) — Classico >=300, CNN leve >=1000, CNN/RNN >=2000,
+# Transformer >=4000, Ensemble >=6000 por classe.
 
 
 @dataclass(frozen=True)
@@ -379,6 +379,37 @@ def tier_reference_markdown() -> str:
             f"{tier.purpose} | {', '.join(tier.sources)} | {split} | {spk} |"
         )
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Prontidao de treino por familia de modelo
+# ---------------------------------------------------------------------------
+# Limiar minimo de amostras POR CLASSE para cada familia poder treinar sem
+# subajuste severo (thresholds empiricos, literatura ASVspoof). Eixo DISTINTO
+# dos DATASET_TIERS (que definem TAMANHO do dataset): aqui medimos quando cada
+# modelo fica "pronto". Fonte unica consumida pela UI Gradio (aba Datasets ->
+# Prontidao) — nao duplicar a lista em outros modulos.
+
+
+@dataclass(frozen=True)
+class ModelReadinessTier:
+    name: str
+    models: str
+    min_per_class: int
+
+
+MODEL_READINESS_TIERS: tuple[ModelReadinessTier, ...] = (
+    ModelReadinessTier("Clássico", "SVM, Random Forest", 300),
+    ModelReadinessTier("CNN Leve", "RawNet2, Sonic Sleuth, MultiscaleCNN", 1_000),
+    ModelReadinessTier("CNN/RNN", "WavLM, HuBERT, EfficientNet-LSTM, RawGAT-ST", 2_000),
+    ModelReadinessTier("Transformer", "Conformer, AASIST, SpectrogramTransformer", 4_000),
+    ModelReadinessTier("Ensemble", "Ensemble, Hybrid CNN-Transformer", 6_000),
+)
+
+
+def model_readiness_tiers() -> tuple["ModelReadinessTier", ...]:
+    """Lista (ordenada) de limiares de prontidao por familia de modelo."""
+    return MODEL_READINESS_TIERS
 
 
 def source_type_map() -> Dict[str, str]:

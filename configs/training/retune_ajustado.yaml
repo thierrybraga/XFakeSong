@@ -1,0 +1,28 @@
+# Preset de RETREINO dos modelos ajustados (retune).
+#
+# Contém apenas os modelos que receberam ajuste de hiperparâmetros após o
+# diagnóstico do run clean_benchmark_full_20260626. Os demais (Conformer,
+# HuBERT, SpectrogramTransformer, WavLM, RawNet2, Sonic Sleuth) foram mantidos
+# e NÃO precisam de retreino.
+#
+# Mapa diagnóstico -> ajuste em docs/RETREINO_AJUSTES.md
+
+family: retune-ajustado
+models:
+  - RawGAT-ST              # overfitting/divergência: LR 1e-4->5e-5, clip 1.0->0.7, dropout/L2/aug+
+  - AASIST                 # subajuste: LR 1e-4->3e-4, weight_decay 0.01->1e-3, L2-, aug+
+  - Ensemble               # colapso de robustez: augmentation_strength 0.30->0.45
+  - Hybrid CNN-Transformer # robustez moderada: dropout/stochastic-depth/aug+
+  - EfficientNet-LSTM      # acc limpa baixa: dropout 0.3->0.25, paciência+
+  - MultiscaleCNN          # NaN inicial: clipnorm=1.0 no Adam
+  - RandomForest           # overfit (train=1.0): grid regularizado
+  - SVM                    # robustez: retreino com features aumentadas por ruído
+dataset: app/datasets/benchmark_audio_raw_balanced_20k.npz
+output_dir: results/retune_ajustado
+models_dir: app/models
+epochs: 120
+batch_size: 32
+device_profile: gpu
+latency_runs: 30
+snr: [30, 20, 10]
+optimize_hyperparameters: true

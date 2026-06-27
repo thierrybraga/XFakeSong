@@ -409,7 +409,7 @@ amostras e permite treinar arquiteturas de maior capacidade, inclusive modelos
 \end{itemize}
 
 Os artefatos de entrada do \textit{benchmark} foram consolidados em
-\path{app/datasets/benchmark_audio_raw_balanced_15k.npz}. Os resultados,
+\path{app/datasets/benchmark_audio_raw_balanced_20k.npz}. Os resultados,
 modelos treinados, métricas, matrizes de confusão e figuras são salvos em
 pastas individuais por arquitetura dentro de \path{results/}, permitindo
 auditoria e reexecução parcial por modelo.

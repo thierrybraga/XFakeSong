@@ -6,7 +6,7 @@ models:
   - EfficientNet-LSTM
   - MultiscaleCNN
   - SpectrogramTransformer
-dataset: app/datasets/benchmark_audio_raw_balanced_15k.npz
+dataset: app/datasets/benchmark_audio_raw_balanced_20k.npz
 output_dir: results/tensorflow_benchmark
 models_dir: app/models
 epochs: 100

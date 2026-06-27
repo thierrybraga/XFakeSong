@@ -11,7 +11,7 @@ por SNR. O HuBERT é avaliado uma vez como referência.
 Sem GPU em Windows nativo (TF>=2.11) → rode sob WSL2. Exemplos:
 
     python scripts/ablate_wavlm_finetune.py \
-        --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+        --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
         --lrs 1e-5 3e-5 1e-4 --epochs 30 --out results/ablation_wavlm
 
     # Verificação rápida do harness (sintético, sem áudio):

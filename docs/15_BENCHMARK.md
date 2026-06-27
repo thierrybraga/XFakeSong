@@ -22,7 +22,7 @@ Overleaf:
 | Pacote Overleaf limpo | `tcc_overleaf.zip` |
 | Figuras usadas no artigo | `tcc_overleaf/figures/*.png` |
 | Matrizes de confusão por arquitetura | `tcc_overleaf/figures/confusion_matrices/*.png` |
-| Dataset do benchmark atual | `app/datasets/benchmark_audio_raw_balanced_15k.npz` |
+| Dataset do benchmark atual | `app/datasets/benchmark_audio_raw_balanced_20k.npz` |
 | Modelos default da Gradio/API | `app/models/bench_*` |
 | Modelos completos por arquitetura | `app/models/benchmark_final/<arquitetura>/` |
 | Manifesto dos modelos consolidados | `app/models/benchmark_final_manifest.json` |
@@ -127,19 +127,19 @@ python scripts/run_tcc_pipeline.py \
     --epochs 100 \
     --device-profile gpu \
     --out results/tcc_full_15k \
-    --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
+    --npz app/datasets/benchmark_audio_raw_balanced_20k.npz
 
 # 3) Execução do TCC direto no benchmark, usando dataset real .npz já exportado:
 python scripts/run_benchmark.py \
     --full \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
     --epochs 100 \
     --device-profile gpu
 
 # 4) Benchmark neural completo, sem SVM/RF:
 python scripts/run_benchmark.py \
     --neural \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
     --epochs 100 \
     --device-profile gpu \
     --out results/bench_neural_tcc
@@ -149,13 +149,13 @@ python scripts/run_benchmark.py \
     --archs WavLM HuBERT RawNet2 "Sonic Sleuth" AASIST RawGAT-ST Conformer \
     "Hybrid CNN-Transformer" SpectrogramTransformer EfficientNet-LSTM \
     MultiscaleCNN Ensemble SVM RandomForest \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
     --epochs 100 --snr 30 20 10 --api --out results/bench_tcc
 
 # 6) Modelo individual:
 python scripts/run_benchmark.py \
     --model AASIST \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
     --epochs 100 \
     --out results/bench_aasist
 ```
@@ -221,7 +221,7 @@ O benchmark do TCC atual parte de um conjunto balanceado 1:1 com `7.500`
 5. normalizar tudo para WAV mono 16 kHz, remover arquivos inválidos,
    silenciosos, fora de duração e duplicados;
 6. criar split estratificado 70/15/15;
-7. exportar `app/datasets/benchmark_audio_raw_balanced_15k.npz`;
+7. exportar `app/datasets/benchmark_audio_raw_balanced_20k.npz`;
 8. executar o preflight (`benchmark_plan.json`/`.md`) com preset, ambiente,
    dataset e hiperparâmetros efetivos;
 9. treinar, inferir e gerar relatórios/gráficos para as 14 arquiteturas.
@@ -296,7 +296,7 @@ python scripts/run_tcc_pipeline.py \
     --epochs 100 \
     --device-profile gpu \
     --out results/tcc_full_15k \
-    --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
+    --npz app/datasets/benchmark_audio_raw_balanced_20k.npz
 ```
 
 Para um ensaio rápido do roteiro sem downloads:
@@ -315,7 +315,7 @@ Para revisar tudo antes de iniciar o treinamento longo:
 ```bash
 python scripts/run_benchmark.py \
     --full \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
     --epochs 100 \
     --out results/tcc_full_15k \
     --plan-only
@@ -326,7 +326,7 @@ Para revisar um modelo individual:
 ```bash
 python scripts/run_benchmark.py \
     --model RawNet2 \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
     --out results/bench_rawnet2 \
     --plan-only
 ```
@@ -341,7 +341,7 @@ Esse comando valida o `.npz` e grava:
 O alvo final usado no artigo é `7.500` amostras reais + `7.500` amostras fake.
 O roteiro aceita alvos maiores para novas rodadas, mas os resultados,
 intervalos de confiança e gráficos do TCC foram consolidados sobre
-`benchmark_audio_raw_balanced_15k.npz`. Use `--skip-download` quando os WAVs e
+`benchmark_audio_raw_balanced_20k.npz`. Use `--skip-download` quando os WAVs e
 splits já estiverem prontos localmente.
 
 ## Preset e hiperparâmetros pré-treino
@@ -411,7 +411,7 @@ python scripts/run_tcc_pipeline.py \
     --skip-download \
     --skip-preprocess \
     --model SpectrogramTransformer \
-    --npz app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --npz app/datasets/benchmark_audio_raw_balanced_20k.npz \
     --out results/bench_spectrogram_transformer
 ```
 
@@ -426,7 +426,7 @@ sequencial. Ele executa um modelo por vez, cria uma subpasta por modelo, grava
 
 ```bash
 python scripts/run_models_sequential.py \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
     --out results/sequential_15k \
     --device-profile gpu \
     --timeout-min 90
@@ -437,7 +437,7 @@ Rodar somente os modelos neurais:
 ```bash
 python scripts/run_models_sequential.py \
     --neural-only \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
     --out results/sequential_neural_15k \
     --device-profile gpu \
     --timeout-min 90
@@ -449,7 +449,7 @@ Revisar planos neurais antes do treino:
 python scripts/run_models_sequential.py \
     --neural-only \
     --plan-only \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
     --out results/sequential_neural_plan \
     --device-profile cpu
 ```
@@ -462,7 +462,7 @@ Retomar somente modelos pendentes:
 
 ```bash
 python scripts/run_models_sequential.py \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
     --out results/sequential_15k \
     --device-profile gpu \
     --timeout-min 90 \
@@ -474,7 +474,7 @@ Executar um subconjunto:
 ```bash
 python scripts/run_models_sequential.py \
     --models AASIST RawNet2 Conformer \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
     --out results/sequential_neural_subset
 ```
 

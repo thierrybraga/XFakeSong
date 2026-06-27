@@ -72,7 +72,7 @@ Hoje o projeto ainda parte de um runtime centralizado:
 | Dependencias | `requirements.txt`, `requirements-base.txt`, `requirements-cpu.txt`, `requirements-dev.txt` |
 | Docker | Principal: `docker/compose/*.yml`; legado: `Dockerfile`, `docker-compose.yml`, `docker-compose.gpu.yml`, `docker-compose.benchmark.yml`, `docker-compose.train.yml` |
 | Benchmark | `scripts/run_tcc_pipeline.py`, `scripts/run_benchmark.py`, `benchmarks/` |
-| Dataset principal | `app/datasets/benchmark_audio_raw_balanced_15k.npz` |
+| Dataset principal | `app/datasets/benchmark_audio_raw_balanced_20k.npz` |
 | Modelos default | `app/models/bench_*` e `app/models/benchmark_final/` |
 | Resultados | `results/`, `results/tcc_consolidated/`, `reports/` |
 | Documentacao | `docs/` via MkDocs Material |

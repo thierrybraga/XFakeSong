@@ -11,7 +11,7 @@ Recommended command:
 
 ```bash
 python scripts/train_tensorflow.py \
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz \
   --epochs 100 \
   --device-profile gpu \
   --out results/tensorflow_benchmark

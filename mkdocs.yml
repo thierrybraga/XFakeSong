@@ -116,6 +116,7 @@ nav:
     - Revisão Técnica das Arquiteturas: 14_REVISAO_ARQUITETURAS.md
     - Fluxos de Inferência: 09_INFERENCIA.md
     - Treinamento: 10_TREINAMENTO.md
+    - Inferência e Gradio (verificação): 28_INFERENCIA_GRADIO.md
   - Avaliação:
     - Benchmark e Resultados: 15_BENCHMARK.md
     - Estudo Experimental: 20_ESTUDO_EXPERIMENTAL.md
@@ -133,6 +134,7 @@ nav:
     - CI/CD e Segurança: 17_CICD_SEGURANCA.md
   - Dados:
     - Datasets Públicos: 12_DATASETS.md
+    - Pipeline e Auditoria do Dataset: 27_DATASET_PIPELINE.md
   - Deploy:
     - Hugging Face Spaces: 11_DEPLOY_HUGGINGFACE.md
     - GitHub Pages e Hugging Face: 24_PUBLICACAO_GITHUB_HF.md

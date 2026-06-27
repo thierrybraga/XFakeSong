@@ -5,7 +5,7 @@ Este orquestrador chama `scripts/run_benchmark.py --model <nome>` para cada
 arquitetura. Cada modelo recebe uma pasta própria, log próprio e status próprio.
 
 Exemplos:
-  python scripts/run_models_sequential.py --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz
+  python scripts/run_models_sequential.py --dataset app/datasets/benchmark_audio_raw_balanced_20k.npz
   python scripts/run_models_sequential.py --models SVM RandomForest --timeout-min 20
   python scripts/run_models_sequential.py --neural-only --resume --device-profile gpu
   python scripts/run_models_sequential.py --neural-only --plan-only
@@ -239,7 +239,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--dataset",
-        default="app/datasets/benchmark_audio_raw_balanced_15k.npz",
+        default="app/datasets/benchmark_audio_raw_balanced_20k.npz",
         help="Dataset .npz usado por todos os modelos.",
     )
     parser.add_argument(

@@ -19,6 +19,7 @@ import numpy as np
 import gradio as gr
 
 from app.core.dataset_catalog import (
+    MODEL_READINESS_TIERS,
     PRESET_SELECTIONS,
     dataset_reference_markdown,
     get_tier,
@@ -281,15 +282,9 @@ def _assess_training_readiness(real_count: int, fake_count: int) -> str:
     lines.append("| Tier | Modelos | Mín/classe | Status |")
     lines.append("|------|---------|:----------:|:------:|")
 
-    _TIERS = [
-        ("Clássico",    "SVM, Random Forest",                              300),
-        ("CNN Leve",    "RawNet2, Sonic Sleuth, MultiscaleCNN",            1_000),
-        ("CNN/RNN",     "WavLM, HuBERT, EfficientNet-LSTM, RawGAT-ST",   2_000),
-        ("Transformer", "Conformer, AASIST, SpectrogramTransformer",      4_000),
-        ("Ensemble",    "Ensemble, Hybrid CNN-Transformer",               6_000),
-    ]
-
-    for tier_name, models, required in _TIERS:
+    # Fonte unica: app/core/dataset_catalog.py::MODEL_READINESS_TIERS
+    for _tier in MODEL_READINESS_TIERS:
+        tier_name, models, required = _tier.name, _tier.models, _tier.min_per_class
         if per_class >= required:
             icon = "✅"
             note = f"Pronto ({per_class:,}/{required:,})"
