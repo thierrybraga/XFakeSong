@@ -22,6 +22,7 @@ class RuntimePerformanceConfig:
     gpu_memory_growth: bool
     gpu_memory_limit_mb: Optional[int]
     cuda_malloc_async: bool
+    enable_tf32: bool
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -65,6 +66,11 @@ def get_runtime_performance_config() -> RuntimePerformanceConfig:
         gpu_memory_growth=_env_bool("XFAKE_GPU_MEMORY_GROWTH", True),
         gpu_memory_limit_mb=_env_optional_int("XFAKE_GPU_MEMORY_LIMIT_MB"),
         cuda_malloc_async=_env_bool("XFAKE_CUDA_MALLOC_ASYNC", True),
+        # TF32 (Ampere+, CC>=8.0): acelera matmul/conv em float32 com leve perda
+        # de precisão. Default OFF p/ reprodutibilidade do benchmark; ligue via
+        # XFAKE_ENABLE_TF32=true para ganho nos modelos que rodam em float32
+        # (WavLM/HuBERT/RawNet2/Ensemble, que optam por não usar mixed_float16).
+        enable_tf32=_env_bool("XFAKE_ENABLE_TF32", False),
     )
 
 
@@ -106,6 +112,17 @@ def configure_tensorflow_runtime(tf_module: Any = None) -> Dict[str, Any]:
             tf.config.optimizer.set_jit(bool(cfg.enable_xla))
         except Exception as exc:
             logger.debug("TensorFlow XLA JIT config skipped: %s", exc)
+
+        # TF32 em GPUs Ampere+ (opt-in): acelera ops float32 sem o risco de
+        # NaN do fp16. Off por default p/ não alterar a numérica do benchmark.
+        try:
+            tf.config.experimental.enable_tensor_float_32_execution(
+                bool(cfg.enable_tf32)
+            )
+            if cfg.enable_tf32:
+                logger.info("TF32 habilitado (Ampere+): ops float32 aceleradas.")
+        except Exception as exc:
+            logger.debug("TF32 config skipped: %s", exc)
     except ImportError:
         pass
     return asdict(cfg)

@@ -702,12 +702,13 @@ def setup_gpu(
         logger.log(
             log_level,
             "[PERF] CPU threads intra=%s inter=%s workers=%s · XLA=%s · "
-            "cuda_malloc_async=%s · vram_limit_mb=%s",
+            "cuda_malloc_async=%s · TF32=%s · vram_limit_mb=%s",
             perf_cfg.intra_op_threads,
             perf_cfg.inter_op_threads,
             perf_cfg.max_parallel_workers,
             perf_cfg.enable_xla,
             perf_cfg.cuda_malloc_async,
+            perf_cfg.enable_tf32,
             perf_cfg.gpu_memory_limit_mb or "auto-growth",
         )
 
