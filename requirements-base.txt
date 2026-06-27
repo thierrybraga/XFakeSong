@@ -21,6 +21,11 @@ joblib>=1.3
 # --- Áudio / DSP ---
 librosa>=0.10
 soundfile>=0.12
+# soxr é o resampler default do `librosa.resample` (>=0.10) e do caminho de
+# download multithread; scipy é exigido pelo librosa. Ambos viriam transitivos,
+# mas pinamos explicitamente para blindar contra installs minimalistas.
+soxr>=0.3.2
+scipy>=1.10
 PyWavelets>=1.4
 
 # --- Numéricos ---
