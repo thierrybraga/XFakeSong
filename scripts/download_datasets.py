@@ -45,6 +45,7 @@ import os
 import sys
 import zipfile
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from concurrent.futures import TimeoutError as FuturesTimeout
 from pathlib import Path
 
 import librosa
@@ -343,6 +344,46 @@ def parallel_decode_write(jobs, limit: int, workers: int | None = None) -> list:
                 except Exception:  # noqa: BLE001
                     pass
     return written
+
+
+def hf_download_retry(repo, filename, *, repo_type, cache_dir,
+                      attempts=4, timeout_s=None):
+    """hf_hub_download com timeout por tentativa + retries (resume via cache).
+
+    Um stall de rede no hf_hub_download pode travar indefinidamente (o corpo da
+    resposta nao tem timeout). Roda em thread e usa future.result(timeout) para
+    nao bloquear o loop; em timeout/erro, tenta de novo — o cache do
+    huggingface_hub retoma o download parcial. Override do timeout por
+    XFAKE_HF_DOWNLOAD_TIMEOUT (segundos; default 600).
+    """
+    from huggingface_hub import hf_hub_download
+
+    if timeout_s is None:
+        raw = os.getenv("XFAKE_HF_DOWNLOAD_TIMEOUT", "").strip()
+        timeout_s = int(raw) if raw.isdigit() and int(raw) > 0 else 600
+
+    last_exc = None
+    for k in range(1, attempts + 1):
+        ex = ThreadPoolExecutor(max_workers=1)
+        fut = ex.submit(
+            hf_hub_download, repo, filename,
+            repo_type=repo_type, cache_dir=cache_dir,
+        )
+        try:
+            path = fut.result(timeout=timeout_s)
+            ex.shutdown(wait=False)
+            return path
+        except FuturesTimeout:
+            last_exc = TimeoutError(f"sem progresso por {timeout_s}s")
+            logger.warning(
+                f"    download travou (> {timeout_s}s), tentativa {k}/{attempts}…"
+            )
+            ex.shutdown(wait=False)  # nao espera a thread orfa (retoma via cache)
+        except Exception as e:  # noqa: BLE001
+            last_exc = e
+            logger.warning(f"    download falhou ({e}), tentativa {k}/{attempts}…")
+            ex.shutdown(wait=False)
+    raise last_exc if last_exc else RuntimeError("download falhou")
 
 
 def cast_no_decode(ds):
@@ -768,20 +809,42 @@ def download_fake_voices(max_speakers: int = 20, max_per_speaker: int = 100) -> 
 
     total_count = count_wavs(FAKE_DIR, "fkvoice")
     idx = next_index(FAKE_DIR, "fkvoice")
-    speakers_done = 0
     workers = download_workers()
+
+    # Resume idempotente: cada falante concluído contribui com max_per_speaker
+    # arquivos e a ordem de zip_files é determinística → pula os já baixados em
+    # execuções anteriores, evitando reprocessar/duplicar (BUG: antes reiniciava
+    # do 1º falante e duplicava tudo).
+    speakers_already = total_count // max_per_speaker
+    if total_count % max_per_speaker:
+        logger.warning(
+            f"  {total_count} fkvoice não é múltiplo de {max_per_speaker} — há um "
+            f"falante PARCIAL; remova os arquivos dele p/ um resume sem duplicar."
+        )
+    if speakers_already:
+        logger.info(
+            f"  Resume: {speakers_already} falante(s) já concluído(s) — pulando."
+        )
     logger.info(f"  Processamento paralelo: {workers} threads")
 
-    for zip_name in zip_files:
-        if speakers_done >= max_speakers:
+    speakers_done = 0
+    for zip_name in zip_files[speakers_already:]:
+        if speakers_already + speakers_done >= max_speakers:
             break
         speaker = zip_name.split("/")[-1].replace(".zip", "")
-        logger.info(f"  Falante {speakers_done + 1}/{max_speakers}: {speaker}")
+        pos = speakers_already + speakers_done + 1
+        logger.info(f"  Falante {pos}/{max_speakers}: {speaker}")
         try:
-            local_path = hf_hub_download(
+            local_path = hf_download_retry(
                 "unfake/fake_voices", zip_name, repo_type="dataset",
                 cache_dir=str(RAW_DIR / "fake_voices_cache"),
             )
+        except Exception as e:  # noqa: BLE001
+            # Falha persistente de download (rede): para aqui p/ manter o resume
+            # contíguo — a próxima execução retoma deste falante.
+            logger.error(f"  Download de {speaker} falhou após retries: {e} — parando.")
+            break
+        try:
             idx_box = [idx]
             with zipfile.ZipFile(local_path, "r") as zf:
                 wav_names = [n for n in zf.namelist() if n.lower().endswith(".wav")]
