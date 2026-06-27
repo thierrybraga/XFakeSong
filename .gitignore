@@ -192,6 +192,9 @@ app/results/
 datasets/
 logs/
 temp/
+# Artefatos de dataset na raiz (para builds; regeneraveis, nao versionados)
+/dataset_pt_deepfake*.zip
+/*.npz
 !data/.gitkeep
 !app/models/.gitkeep
 !app/results/.gitkeep
