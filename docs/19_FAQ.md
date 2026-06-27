@@ -8,8 +8,10 @@ Para o passo a passo completo de instalação e os erros detalhados, veja
 
 ??? question "Qual versão de Python devo usar?"
     **Python 3.11** é o ambiente de referência (testado com TensorFlow 2.21);
-    a faixa suportada é **3.11–3.13**. No 3.13 é preciso TensorFlow ≥ 2.20
-    (versões 2.16–2.19 não têm *wheels* para 3.13).
+    a faixa suportada é **3.11–3.12**. O Python 3.13 ainda não é suportado
+    porque o pino `torch==2.5.1` não tem *wheels* cp313 (suporte a 3.13 só a
+    partir do torch 2.6). Para usar 3.13, suba torch/torchaudio para >=2.6 e
+    revalide o import na GPU.
 
 ??? question "`pip install` falha no TensorFlow"
     Quase sempre é incompatibilidade Python↔TF. Confirme a versão do Python e use

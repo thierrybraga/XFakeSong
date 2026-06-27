@@ -48,7 +48,8 @@ readonly DEFAULT_PORT="7860"
 readonly HEALTH_TIMEOUT="300"
 readonly HEALTH_INTERVAL="5"
 readonly CONTAINER_NAME="xfakesong_app"
-readonly PY_MIN_MINOR="11"   # Python 3.11 é a referência (compatível 3.11–3.13)
+readonly PY_MIN_MINOR="11"   # Python 3.11 é a referência (compatível 3.11–3.12)
+readonly PY_MAX_MINOR="12"   # teto: torch==2.5.1 não tem wheels p/ Python 3.13
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly PROJECT_ROOT="$SCRIPT_DIR"
@@ -214,9 +215,10 @@ PYTHON_BIN=""
 check_python() {
     [[ -n "$PYTHON_BIN" ]] && return 0  # idempotente
 
-    # Prefere python3.11 (referência), depois 3.12/3.13, depois python3/python
+    # Prefere python3.11 (referência), depois 3.12, depois python3/python.
+    # python3.13 fica fora: torch==2.5.1 não tem wheels cp313.
     local cand
-    for cand in python3.11 python3.12 python3.13 python3 python; do
+    for cand in python3.11 python3.12 python3 python; do
         if command -v "$cand" >/dev/null 2>&1; then
             PYTHON_BIN="$cand"
             return 0
@@ -233,7 +235,9 @@ python_minor() {
 
 python_version_ok() {
     local minor; minor="$(python_minor)"
-    [[ -n "$minor" ]] && [[ "$minor" -ge "$PY_MIN_MINOR" ]]
+    [[ -n "$minor" ]] \
+        && [[ "$minor" -ge "$PY_MIN_MINOR" ]] \
+        && [[ "$minor" -le "$PY_MAX_MINOR" ]]
 }
 
 ensure_python() {
@@ -465,7 +469,7 @@ setup_python() {
         success "Python OK ($("$PYTHON_BIN" --version 2>&1))"
     else
         local cur; cur="$(python_minor || echo '?')"
-        warn "Python 3.${cur} insuficiente/ausente (mín. 3.${PY_MIN_MINOR}). Instalando..."
+        warn "Python 3.${cur} fora da faixa suportada (3.${PY_MIN_MINOR}–3.${PY_MAX_MINOR}). Instalando..."
         # Tenta o python3 padrão da distro primeiro
         apt_install python3 python3-venv python3-dev python3-pip
         PYTHON_BIN=""  # força redetecção
@@ -872,7 +876,7 @@ run_doctor() {
     echo "  SO: ${OS_PRETTY}"
     echo
 
-    check_item 'Python 3.11+'               'python_version_ok'
+    check_item 'Python 3.11–3.12'           'python_version_ok'
     check_item 'pip'                        'command -v pip3 || command -v pip'
     check_item '.venv'                      '[ -d .venv ]'
     check_item 'requirements.txt'           '[ -f requirements.txt ]'

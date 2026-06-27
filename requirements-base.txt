@@ -6,7 +6,8 @@
 #   - requirements.txt      → -r requirements-base.txt + tensorflow
 #   - requirements-cpu.txt  → -r requirements-base.txt + tensorflow-cpu
 # Mantenha as deps compartilhadas SÓ aqui (evita drift entre os arquivos).
-# Ambiente de referência: Python 3.11 (compatível 3.11–3.13).
+# Ambiente de referência: Python 3.11 (compatível 3.11–3.12; o pino
+# torch==2.5.1 dos runtimes não tem wheels cp313 — ver requirements.txt).
 # =====================================================================
 
 # --- ML / DL core ---

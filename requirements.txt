@@ -1,7 +1,10 @@
 # =====================================================================
 # XFakeSong — Runtime (TensorFlow padrão, CPU+GPU)
 # =====================================================================
-# Ambiente de referência: Python 3.11 (testado; compatível 3.11–3.13).
+# Ambiente de referência: Python 3.11 (testado; compatível 3.11–3.12).
+# Teto 3.12: `torch==2.5.1` não tem wheels cp313 (suporte a 3.13 só no torch
+# 2.6+). Para usar Python 3.13, suba torch/torchaudio para >=2.6 e revalide
+# o import na GPU (ver pino do torch abaixo).
 # Deps compartilhadas ficam em requirements-base.txt (fonte única).
 # Variantes:
 #   - CPU-only menor:  pip install -r requirements-cpu.txt
@@ -22,6 +25,7 @@ tensorflow>=2.16,<2.22
 # `bench_hubert_original.pt` no frontend Gradio quando esses modelos forem
 # selecionados para demonstração. Pins conservadores: versões mais novas de
 # torch/transformers acionaram torch.dynamo/triton no import e causaram
-# segfault no container GPU.
+# segfault no container GPU. NOTA: 2.5.1 não tem wheels para Python 3.13
+# (cp313 só a partir do torch 2.6) — daí o teto de Python 3.12 acima.
 torch==2.5.1
 transformers==4.45.2

@@ -5,7 +5,8 @@
 # Deps compartilhadas vêm de requirements-base.txt (fonte única — sem drift).
 # Usar:  pip install -r requirements-cpu.txt
 # Docker: docker build --build-arg TF_VARIANT=cpu .
-# Ambiente de referência: Python 3.11 (compatível 3.11–3.13).
+# Ambiente de referência: Python 3.11 (compatível 3.11–3.12; torch==2.5.1
+# não tem wheels cp313 — ver requirements.txt).
 # =====================================================================
 
 -r requirements-base.txt

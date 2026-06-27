@@ -8,7 +8,7 @@ Guia completo para executar o XFakeSong em **Local (Python)**, **Docker** e **Hu
 
 | Componente | Versão mínima | Notas |
 |------------|---------------|-------|
-| **Python** | 3.11 | Referência (testado); compatível 3.11–3.13 — 3.13 requer TF 2.20+ |
+| **Python** | 3.11 | Referência (testado); compatível 3.11–3.12 (torch 2.5.1 não tem wheels p/ 3.13) |
 | **pip** | 23+ | `python -m pip install --upgrade pip` |
 | **Docker Desktop** | 4.x (Compose v2) | Para modo produção |
 | **NVIDIA Driver** | 535+ | Apenas para GPU (Windows: via WSL2) |
