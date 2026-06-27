@@ -25,6 +25,13 @@ class ArchitectureInfo:
     function_name: str
     description: str
     supported_variants: List[str]
+    # NOTA: hiperparâmetros por arquitetura vivem em 3 lugares (cuidado com drift,
+    # chaves como dropout_rate/l2_reg_strength se sobrepõem):
+    #   1) este `default_params` (regularização/controle: dropout, l2, patience,
+    #      gradient_clip, augmentation_strength) — usado pelo training_service;
+    #   2) o `create_model(...)` de cada architectures/<nome>.py (LR/optimizer/loss);
+    #   3) benchmarks/planning.py::NEURAL_BENCHMARK_HPARAMS (lr/batch/scheduler/
+    #      warmup), aplicado pelo benchmark quando optimize_hyperparameters=True.
     default_params: Dict[str, Any]
     input_requirements: Dict[str, Any]
 

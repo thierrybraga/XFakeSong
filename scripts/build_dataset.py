@@ -600,6 +600,19 @@ def main():
     else:
         logger.info("\n>>> ETAPA 1: DOWNLOADS (pulado)")
 
+    # --- Etapa 1.5: Dedup ANTES do balance
+    # O preprocess (--full) tambem deduplica, mas DEPOIS do balance — o que
+    # remove duplicatas ja contadas no 1:1 e reintroduz desbalanceamento
+    # (ex.: real 10000 -> 7500 apos dedup, com fake intacto). Deduplicar aqui,
+    # antes de balancear, garante que o balanceamento opere sobre dados unicos.
+    if not args.only_splits:
+        logger.info("\n>>> ETAPA 1.5: DEDUP (antes do balance)")
+        run(
+            [sys.executable, str(SCRIPTS_DIR / "preprocess_dataset.py"),
+             "--remove-duplicates"],
+            "Remocao de duplicatas por hash (pre-balance)",
+        )
+
     # --- Etapa 2: Balanceamento
     if not args.only_splits:
         logger.info("\n>>> ETAPA 2: BALANCEAMENTO")

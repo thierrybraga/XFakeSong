@@ -24,6 +24,13 @@ HEAVY_ARCHES = {
     "efficientnetlstm",
 }
 
+# Hiperparâmetros recomendados por arquitetura para o benchmark (aplicados
+# quando cfg.optimize_hyperparameters=True; ver _merge_effective_hparams).
+# Este é 1 dos 3 locais de hparams por arquitetura — mantenha em sincronia com:
+#   - app/domain/models/architectures/registry.py::default_params (regularização);
+#   - o create_model(...) de cada architectures/<nome>.py (LR/optimizer/loss).
+# Chaves sobrepostas (dropout_rate, l2_reg_strength) podem divergir — revise as 3
+# fontes ao ajustar um modelo.
 NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
     "wavlm": {
         "model_family": "neural",

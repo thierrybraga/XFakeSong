@@ -1103,8 +1103,10 @@ def build_pipeline():
         # protocolo de split. Ver docs/12_DATASETS.md. O `large` (10k/classe)
         # ativa identificação de falante + usuários não vistos.
         TIER = "large"
-        SPEAKER_SPLIT = TIER == "large"   # protocolo de usuários não vistos
-        EPOCHS = 20
+        # protocolo de usuários não vistos — requer manifesto de falante
+        # (speaker_manifest.json); sem ele o split cai para estratificado por fonte.
+        SPEAKER_SPLIT = TIER == "large"
+        EPOCHS = 100   # canônico do benchmark (recommended_epochs=100); 20 só p/ teste rápido
         BATCH_SIZE = 32
         DURATION_SEC = 5.0
         SNR_LEVELS_DB = [30, 20, 10]
