@@ -159,20 +159,59 @@ def validate_dataset():
 # ---------------------------------------------------------------------------
 # Normalização
 # ---------------------------------------------------------------------------
-def normalize_all():
-    """Normaliza todos os WAVs: reamostra para 16kHz mono, normaliza amplitude."""
+_NORM_MANIFEST = DATASETS_DIR / ".normalized_manifest.json"
+
+
+def _file_sig(path: Path) -> list:
+    """Assinatura barata do arquivo (tamanho + mtime) para cache de normalização."""
+    st = path.stat()
+    return [int(st.st_size), int(st.st_mtime)]
+
+
+def _load_norm_manifest() -> dict:
+    try:
+        return json.loads(_NORM_MANIFEST.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _save_norm_manifest(manifest: dict) -> None:
+    try:
+        _NORM_MANIFEST.write_text(json.dumps(manifest), encoding="utf-8")
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"  nao foi possivel salvar manifesto de normalizacao: {e}")
+
+
+def normalize_all(force: bool = False):
+    """Normaliza todos os WAVs: reamostra para 16kHz mono, normaliza amplitude.
+
+    Idempotente: mantém um manifesto (tamanho+mtime) dos arquivos já
+    normalizados e PULA os inalterados — evita re-decodificar/reescrever os 20k
+    WAVs a cada build (a normalização completa custa minutos). `force=True`
+    ignora o cache e re-normaliza tudo.
+    """
     logger.info("=" * 60)
     logger.info("NORMALIZACAO DO DATASET")
     logger.info("=" * 60)
 
     fixed = 0
     removed = 0
+    skipped = 0
+    manifest = {} if force else _load_norm_manifest()
 
     for label, directory in [("real", REAL_DIR), ("fake", FAKE_DIR)]:
         wav_files = sorted(directory.glob("*.wav"))
         logger.info(f"\nNormalizando {len(wav_files)} arquivos em {directory.name}/...")
 
         for wav_path in wav_files:
+            rel = str(wav_path.relative_to(DATASETS_DIR))
+            if not force:
+                try:
+                    if manifest.get(rel) == _file_sig(wav_path):
+                        skipped += 1
+                        continue  # ja normalizado e inalterado
+                except OSError:
+                    pass
             try:
                 y, sr = librosa.load(str(wav_path), sr=TARGET_SR, mono=True)
 
@@ -220,6 +259,7 @@ def normalize_all():
 
                 sf.write(str(wav_path), y, TARGET_SR, subtype="PCM_16")
                 fixed += 1
+                manifest[rel] = _file_sig(wav_path)  # assinatura pós-gravação
 
             except Exception as e:
                 logger.warning(f"  Removendo arquivo corrompido: {wav_path.name} ({e})")
@@ -229,7 +269,11 @@ def normalize_all():
                     pass
                 removed += 1
 
-    logger.info(f"\nNormalizacao completa: {fixed} normalizados, {removed} removidos")
+    _save_norm_manifest(manifest)
+    logger.info(
+        f"\nNormalizacao completa: {fixed} normalizados, "
+        f"{skipped} ja normalizados (cache), {removed} removidos"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -487,6 +531,8 @@ def main():
     parser = argparse.ArgumentParser(description="Pre-processamento de dataset de audio")
     parser.add_argument("--validate", action="store_true", help="Validar integridade")
     parser.add_argument("--normalize", action="store_true", help="Normalizar todos os WAVs")
+    parser.add_argument("--force-normalize", action="store_true",
+                        help="Re-normaliza tudo, ignorando o cache (.normalized_manifest.json)")
     parser.add_argument("--remove-duplicates", action="store_true", help="Remover duplicatas")
     parser.add_argument("--create-splits", action="store_true", help="Criar splits train/val/test")
     parser.add_argument("--create-zip", action="store_true", help="Criar ZIP para upload na UI")
@@ -525,7 +571,7 @@ def main():
         validate_dataset()
 
     if args.full or args.normalize:
-        normalize_all()
+        normalize_all(force=args.force_normalize)
 
     if args.full or args.remove_duplicates:
         remove_duplicates()
