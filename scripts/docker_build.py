@@ -22,6 +22,13 @@ PROFILES = {
 def _compose_cmd(compose_file: str, action: str, service: str | None,
                  extra: list[str]) -> list[str]:
     cmd = ["docker", "compose", "-f", compose_file]
+    # Compose resolve o `.env` relativo ao diretório do compose file
+    # (docker/compose/), não ao CWD. Apontar explicitamente para o `.env` da
+    # raiz garante que DOCKER_TRAIN_*/NVIDIA_*/GRADIO_PORT/PYTHON_VERSION sejam
+    # aplicados. `--env-file` não altera a resolução dos volumes `../..`.
+    root_env = ROOT / ".env"
+    if root_env.is_file():
+        cmd += ["--env-file", str(root_env)]
     if action == "config":
         return [*cmd, "config", "--quiet"]
     if action == "build":
