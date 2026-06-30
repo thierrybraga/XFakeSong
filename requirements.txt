@@ -2,13 +2,13 @@
 # XFakeSong — Runtime (TensorFlow padrão, CPU+GPU)
 # =====================================================================
 # Ambiente de referência: Python 3.11 (testado; compatível 3.11–3.12).
-# Teto 3.12: `torch==2.5.1` não tem wheels cp313 (suporte a 3.13 só no torch
+# Teto 3.12: `torch==2.12.1` não tem wheels cp313 (suporte a 3.13 só no torch
 # 2.6+). Para usar Python 3.13, suba torch/torchaudio para >=2.6 e revalide
 # o import na GPU (ver pino do torch abaixo).
 # Deps compartilhadas ficam em requirements-base.txt (fonte única).
 # Variantes:
 #   - CPU-only menor:  pip install -r requirements-cpu.txt
-#   - GPU (Linux NVIDIA): + pip install 'tensorflow[and-cuda]>=2.16,<2.22'
+#   - GPU (Linux NVIDIA): + pip install 'tensorflow[and-cuda]>=2.21.0,<2.22'
 #     (ou use docker-compose.gpu.yml)
 # Dev tools (pytest, ruff, black, …): requirements-dev.txt
 # =====================================================================
@@ -18,7 +18,7 @@
 # `tensorflow` (default): funciona em CPU e GPU sem reinstalar; carrega libs
 # CUDA em runtime quando há GPU. Em Python 3.11 a faixa resolve para TF 2.21.
 # (TF 2.16–2.19 não têm wheels para 3.13; 2.20+ têm — daí o teto <2.22.)
-tensorflow>=2.16,<2.22
+tensorflow>=2.21.0,<2.22
 
 # SSL original inference/benchmark (WavLM/HuBERT reais em PyTorch).
 # Necessário para carregar `bench_wavlm_original.pt` e
@@ -27,5 +27,5 @@ tensorflow>=2.16,<2.22
 # torch/transformers acionaram torch.dynamo/triton no import e causaram
 # segfault no container GPU. NOTA: 2.5.1 não tem wheels para Python 3.13
 # (cp313 só a partir do torch 2.6) — daí o teto de Python 3.12 acima.
-torch==2.5.1
-transformers==4.45.2
+torch==2.12.1
+transformers==5.12.1
