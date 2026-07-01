@@ -15,13 +15,17 @@ from benchmarks.config import BenchmarkConfig
 
 CLASSICAL_ARCHES = {"svm", "randomforest"}
 HEAVY_ARCHES = {
-    "wavlm",
-    "hubert",
     "rawnet2",
     "aasist",
     "rawgatst",
     "spectrogramtransformer",
-    "efficientnetlstm",
+}
+ARCH_ALIASES = {
+    "cct": "hybridcnntransformer",
+    "ast": "spectrogramtransformer",
+    "audiospectrogramtransformer": "spectrogramtransformer",
+    "res2net": "multiscalecnn",
+    "randomforest": "randomforest",
 }
 
 # Hiperparâmetros recomendados por arquitetura para o benchmark (aplicados
@@ -32,36 +36,6 @@ HEAVY_ARCHES = {
 # Chaves sobrepostas (dropout_rate, l2_reg_strength) podem divergir — revise as 3
 # fontes ao ajustar um modelo.
 NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
-    "wavlm": {
-        "model_family": "neural",
-        "input_domain": "raw_audio",
-        "batch_size": 8,
-        "learning_rate": 1e-4,
-        "epochs": 100,
-        "dropout_rate": 0.2,
-        "l2_reg_strength": 1e-4,
-        "optimizer": "AdamW",
-        "scheduler": "architecture_default",
-        "use_augmentation": False,
-        "use_mixed_precision": False,
-        "recommended_epochs": 100,
-        "notes": "WavLM é PyTorch-only; neste pipeline TF usa fallback CNN 1D treinado do zero, com LR 1e-4 e recorte central 1s.",
-    },
-    "hubert": {
-        "model_family": "neural",
-        "input_domain": "raw_audio",
-        "batch_size": 8,
-        "learning_rate": 1e-5,
-        "epochs": 100,
-        "dropout_rate": 0.2,
-        "l2_reg_strength": 1e-4,
-        "optimizer": "AdamW",
-        "scheduler": "architecture_default",
-        "use_augmentation": False,
-        "use_mixed_precision": False,
-        "recommended_epochs": 100,
-        "notes": "HuBERT usa from_pt=True quando o backbone real existe; fallback simplificado deve ser reportado.",
-    },
     "rawnet2": {
         "model_family": "neural",
         "input_domain": "raw_audio",
@@ -79,30 +53,23 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "recommended_epochs": 100,
         "notes": "Raw waveform + Sinc/GRU: recorte central 1s, mixed precision desligado; LR segue o compile da arquitetura.",
     },
-    "sonicsleuth": {
-        "model_family": "neural",
-        "input_domain": "spectrogram",
-        "batch_size": 32,
-        "learning_rate": 1e-3,
-        "epochs": 100,
-        "dropout_rate": 0.3,
-        "l2_reg_strength": 1e-4,
-        "optimizer": "AdamW",
-        "scheduler": "ReduceLROnPlateau",
-        "recommended_epochs": 100,
-    },
     "aasist": {
         "model_family": "neural",
         "input_domain": "raw_audio",
         "batch_size": 16,
-        "learning_rate": 1e-4,
+        # AJUSTE (retune): LR 1e-4->3e-4 e l2 1e-4->2e-4, em sincronia com
+        # aasist.py::create_model e registry.py::default_params (ver
+        # docs/RETREINO_AJUSTES.md). Augmentation ligado — subajuste + colapso
+        # de recall sob ruído (0.29 @10dB) no diagnóstico original.
+        "learning_rate": 3e-4,
         "epochs": 100,
         "dropout_rate": 0.2,
-        "l2_reg_strength": 1e-4,
+        "l2_reg_strength": 2e-4,
         "attention_heads": 12,
         "hidden_units": 512,
         "optimizer": "AdamW",
         "scheduler": "architecture_default",
+        "use_augmentation": True,
         "recommended_epochs": 100,
         "notes": "Raw waveform + Sinc/GAT/HS-GAL; recorte central 1s para conter custo quadrático do GAT temporal. Mantém compile-respect: loss/margem da própria arquitetura e LR estável.",
     },
@@ -110,13 +77,18 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "model_family": "neural",
         "input_domain": "raw_audio",
         "batch_size": 16,
-        "learning_rate": 1e-4,
+        # AJUSTE (retune): LR 1e-4->5e-5, dropout 0.2->0.35 e l2 1e-4->1e-3,
+        # em sincronia com rawgat_st.py::create_model e
+        # registry.py::default_params (ver docs/RETREINO_AJUSTES.md).
+        # Augmentation ligado — pior modelo do recorte, overfit/divergência
+        # após a época 4 no diagnóstico original.
+        "learning_rate": 5e-5,
         "epochs": 100,
-        "dropout_rate": 0.2,
-        "l2_reg_strength": 1e-4,
+        "dropout_rate": 0.35,
+        "l2_reg_strength": 1e-3,
         "optimizer": "AdamW",
         "scheduler": "architecture_default",
-        "use_augmentation": False,
+        "use_augmentation": True,
         "use_mixed_precision": False,
         "recommended_epochs": 100,
         "notes": "Raw waveform + SincNet/GAT; segue a factory atual com entrada de áudio bruto e recorte central do benchmark.",
@@ -181,22 +153,6 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "recommended_epochs": 100,
         "notes": "AST conforme a implementação do artigo: arquitetura inalterada, LR/weight_decay menores, warmup maior, clipnorm=1.0 (gradiente) e checkpoint obrigatório para evitar divergência/salvar o estado final colapsado.",
     },
-    "efficientnetlstm": {
-        "model_family": "neural",
-        "input_domain": "spectrogram",
-        "batch_size": 32,
-        "learning_rate": 1e-4,
-        "epochs": 100,
-        "dropout_rate": 0.4,
-        "l2_reg_strength": 2e-4,
-        "lstm_units": 128,
-        "hidden_units": "128/64",
-        "optimizer": "Adam",
-        "scheduler": "ReduceLROnPlateau",
-        "pretrained": True,
-        "recommended_epochs": 100,
-        "notes": "EfficientNetB0 + Delta features + BiLSTM; usa ImageNet quando pesos estão disponíveis e fallback offline com pesos aleatórios. LR segue o compile da arquitetura.",
-    },
     "multiscalecnn": {
         "model_family": "neural",
         "input_domain": "spectrogram",
@@ -210,28 +166,6 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "scheduler": "ReduceLROnPlateau",
         "recommended_epochs": 100,
     },
-    "ensemble": {
-        "model_family": "neural",
-        "input_domain": "raw_audio",
-        "batch_size": 16,
-        "learning_rate": 5e-5,
-        "epochs": 100,
-        "dropout_rate": 0.3,
-        "l2_reg_strength": 1e-4,
-        "optimizer": "AdamW",
-        "scheduler": "architecture_default",
-        # P2 — causa-raiz do colapso de robustez (acc 0.98→0.50 a 10 dB): o run
-        # 20260626 treinou o Ensemble com use_augmentation=False, então ele NUNCA
-        # viu ruído; sob AWGN o score da fusão (sigmoid saturada em {0,1}) colapsa
-        # para ~0 mantendo AUC alta (30 dB AUC 0.95). Ligar augmentation SNR
-        # expõe o ramo de fusão a ruído no treino. Complemento (re-treino): label
-        # smoothing na loss da fusão (ensemble.py:521-526) para curar a saturação.
-        "use_augmentation": True,
-        "use_mixed_precision": False,
-        "reduce_lr_on_plateau": False,
-        "recommended_epochs": 100,
-        "notes": "Ensemble real opera em áudio bruto: branches Mel/LFCC/CQT/MFCC e fusão multimodal; recorte central 1s para custo controlado. P2: augmentation SNR ligada (antes False → fragilidade sob ruído).",
-    },
 }
 
 
@@ -239,8 +173,13 @@ def _compact(name: str) -> str:
     return "".join(ch for ch in name.lower() if ch.isalnum())
 
 
-def _base_recommended_hparams(arch: str) -> Dict[str, Any]:
+def _canonical_arch_key(arch: str) -> str:
     compact = _compact(arch)
+    return ARCH_ALIASES.get(compact, compact)
+
+
+def _base_recommended_hparams(arch: str) -> Dict[str, Any]:
+    compact = _canonical_arch_key(arch)
     if compact in CLASSICAL_ARCHES:
         return {
             "model_family": "classical",
@@ -250,35 +189,27 @@ def _base_recommended_hparams(arch: str) -> Dict[str, Any]:
             "epochs": None,
         }
 
-    params = dict(
-        NEURAL_BENCHMARK_HPARAMS.get(
-            compact,
-            {
-                "model_family": "neural",
-                "input_domain": "spectrogram",
-                "batch_size": 32,
-                "learning_rate": 1e-3,
-                "epochs": 100,
-                "dropout_rate": 0.3,
-                "l2_reg_strength": 1e-4,
-                "optimizer": "AdamW",
-                "scheduler": "ReduceLROnPlateau",
-                "recommended_epochs": 100,
-            },
+    if compact not in NEURAL_BENCHMARK_HPARAMS:
+        raise ValueError(
+            f"Arquitetura fora do recorte do artigo: {arch}. "
+            "Use apenas RawNet2, AASIST, RawGAT-ST, Conformer, CCT/Hybrid "
+            "CNN-Transformer, AST/SpectrogramTransformer, Res2Net/MultiscaleCNN, "
+            "SVM ou RandomForest."
         )
-    )
+
+    params = dict(NEURAL_BENCHMARK_HPARAMS[compact])
     return params
 
 
 def _fit_to_device(params: Dict[str, Any], arch: str, device: Dict[str, Any]) -> Dict[str, Any]:
     tuned = dict(params)
-    compact = _compact(arch)
+    compact = _canonical_arch_key(arch)
     if compact in CLASSICAL_ARCHES:
         return tuned
 
     batch = int(tuned.get("batch_size", 32))
     if device.get("resolved_profile") == "cpu":
-        if compact in {"wavlm", "hubert", "rawnet2", "aasist", "rawgatst"}:
+        if compact in {"rawnet2", "aasist", "rawgatst"}:
             cap = 4
         elif compact in HEAVY_ARCHES:
             cap = 8
@@ -288,30 +219,15 @@ def _fit_to_device(params: Dict[str, Any], arch: str, device: Dict[str, Any]) ->
         tuned["device_adjustment"] = "cpu_batch_cap"
         tuned["use_mixed_precision"] = False
     else:
-        if compact == "hubert":
-            # HuBERT real/fallback é pesado, mas batch=1 torna o benchmark
-            # impraticável no dataset completo. Mantém um padrão conservador
-            # para GPUs de 12 GB e permite reduzir via ambiente se necessário.
-            cap = int(os.getenv("XFAKE_HUBERT_GPU_BATCH_CAP", "8"))
-        elif compact == "wavlm":
-            cap = 8
-        elif compact == "rawnet2":
+        if compact == "rawnet2":
             cap = 16
-        elif compact == "rawgatst":
-            cap = 8
-        elif compact == "ensemble":
-            cap = 16
-        elif compact in {"aasist", "spectrogramtransformer", "efficientnetlstm"}:
+        elif compact in {"rawgatst", "aasist", "spectrogramtransformer"}:
             cap = 16
         else:
             cap = 32
         tuned["batch_size"] = min(batch, cap)
-        tuned["device_adjustment"] = (
-            "gpu_ssl_safe_cap" if compact in {"hubert"}
-            else "gpu_wavlm_fallback_cap" if compact == "wavlm"
-            else "gpu_vram_safe_cap"
-        )
-        if compact not in {"wavlm", "hubert", "rawnet2", "ensemble"}:
+        tuned["device_adjustment"] = "gpu_vram_safe_cap"
+        if compact not in {"rawnet2", "aasist", "rawgatst"}:
             tuned.setdefault("use_mixed_precision", True)
         else:
             tuned["use_mixed_precision"] = False

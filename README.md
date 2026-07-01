@@ -18,7 +18,7 @@ resultados numéricos e gráficos do TCC.
 
 ![Python Version](https://img.shields.io/badge/python-3.11%2B-blue?style=for-the-badge&logo=python)
 ![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
-![Benchmark](https://img.shields.io/badge/benchmark-TCC_15k-informational?style=for-the-badge)
+![Benchmark](https://img.shields.io/badge/benchmark-medium_15k-informational?style=for-the-badge)
 [![CI](https://github.com/thierrybraga/XFakeSong/actions/workflows/ci.yml/badge.svg)](https://github.com/thierrybraga/XFakeSong/actions/workflows/ci.yml)
 
 ## Foco do Projeto
@@ -33,11 +33,33 @@ fluxo local, auditável e repetível:
 5. gerar métricas, matrizes de confusão, curvas ROC, robustez, latência e
    relatórios Markdown com imagens PNG.
 
-O benchmark consolidado do TCC usa o dataset
-`app/datasets/benchmark_audio_raw_balanced_15k.npz`, com `7.500` amostras reais
-+ `7.500` amostras fake.
+O benchmark consolidado do TCC usa o tier `medium`, exportado como
+`app/datasets/benchmark_audio_raw_balanced_15k.npz`, com alvo de `7.500`
+amostras reais + `7.500` amostras fake. A revisão local de 28/06/2026 usa
+BRSpeech-DF, Fake Voices, MLS Portuguese e TTS-Portuguese Corpus:
+
+| Métrica | Valor |
+| --- | ---: |
+| WAVs ativos | 15.000 |
+| Duração dos WAVs ativos | 2.045,61 min / 34,09 h |
+| Tamanho dos WAVs ativos | 3.746,26 MiB |
+| Tamanho do NPZ canônico | 2.769,01 MiB |
+| Formato dos WAVs | PCM linear, 16 bits, mono, 16 kHz |
+| Splits | 10.500 treino / 2.250 validação / 2.250 teste |
+
+Os tiers de dataset são:
+
+| Tier | Total | Uso |
+| --- | ---: | --- |
+| `small` | 10.000 | iteração rápida robusta |
+| `medium` | 15.000 | benchmark canônico do TCC |
+| `large` | 20.000 | auditoria estendida e protocolo de falantes não vistos |
+
 Excedentes baixados durante a curadoria são arquivados em
 `app/datasets/overflow/`, preservando os WAVs brutos para novas rotas.
+IDs reais de falantes são registrados em `app/datasets/speaker_manifest.json`
+quando a fonte expõe esse metadado; a tabela consolidada por arquivo fica em
+`app/datasets/speaker_table.csv`.
 
 ## Início Rápido
 
@@ -82,6 +104,9 @@ start.bat
 
 O projeto possui uma estrutura consolidada por família computacional em
 `environments/`, com requirements, Dockerfiles e READMEs dedicados.
+
+No Windows nativo, TensorFlow roda em CPU. Treino/benchmark com GPU NVIDIA deve
+ser executado via WSL2/Docker Desktop GPU usando os perfis `*-nvidia`.
 
 | Família | Modelos | Entrada |
 | --- | --- | --- |
@@ -154,12 +179,28 @@ Execução completa planejada para o TCC:
 ```bash
 python scripts/run_tcc_pipeline.py ^
   --download ^
-  --target-per-class 7500 ^
+  --tier medium ^
   --full-benchmark ^
   --epochs 100 ^
   --device-profile gpu ^
-  --out results/tcc_full_15k ^
+  --out results/benchmark_15k_medium ^
   --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
+```
+
+No Windows com GPU, use o perfil Docker/WSL2:
+
+```powershell
+$env:DOCKER_TRAIN_CPU_LIMIT='8'
+docker compose -f docker\compose\benchmark.nvidia.yml --env-file .env run --rm benchmark `
+  python scripts/run_tcc_pipeline.py `
+    --download `
+    --tier medium `
+    --full-benchmark `
+    --epochs 100 `
+    --batch-size 32 `
+    --device-profile gpu `
+    --npz app/datasets/benchmark_audio_raw_balanced_15k.npz `
+    --out results/benchmark_15k_medium
 ```
 
 Saídas principais:
@@ -169,6 +210,8 @@ Saídas principais:
 | `benchmark_plan.md` / `benchmark_plan.json` | preset, dataset e hiperparâmetros efetivos antes do treino |
 | `dataset.md` | composição, split, processamento e hiperparâmetros globais |
 | `dataset_manifest.json` | manifesto estruturado do dataset |
+| `app/datasets/speaker_manifest.json` | IDs reais de falante quando a fonte fornece o metadado |
+| `app/datasets/speaker_table.csv` | tabela por arquivo com classe, fonte, split, falante, duração e tamanho |
 | `results.json` / `results.csv` | métricas completas por arquitetura |
 | `tcc_report.md` | relatório final com métricas, inferências e imagens PNG |
 | `figures/*.png` | gráficos agregados |
@@ -188,7 +231,7 @@ Para revisar o plano sem iniciar treinamento:
 python scripts/run_benchmark.py --full ^
   --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz ^
   --epochs 100 ^
-  --out results/tcc_full_15k ^
+  --out results/benchmark_15k_medium ^
   --plan-only
 ```
 
@@ -203,6 +246,14 @@ python scripts/run_benchmark.py --model AASIST ^
 
 Para detalhes do desenho experimental, consulte
 [docs/15_BENCHMARK.md](docs/15_BENCHMARK.md).
+
+Para auditar falantes depois de montar o dataset:
+
+```bash
+python scripts/rebuild_speaker_manifest.py --dataset-dir app/datasets
+python scripts/export_speaker_table.py --dataset-dir app/datasets --scope all
+python scripts/audit_speaker_manifest.py --dataset-dir app/datasets --scope splits
+```
 
 ## Publicar Modelos no Hugging Face
 
@@ -307,6 +358,8 @@ A documentação técnica está em `docs/` e é publicada via MkDocs:
 | Inferência | [Inferência](docs/09_INFERENCIA.md) |
 | Datasets | [Datasets Públicos](docs/12_DATASETS.md) |
 | Benchmark e resultados | [Benchmark e Resultados](docs/15_BENCHMARK.md) |
+| Dataset usado no benchmark | [Dataset do Benchmark Utilizado](docs/29_DATASET_BENCHMARK_UTILIZADO.md) |
+| Pipeline e auditoria de dataset | [Dataset Pipeline](docs/27_DATASET_PIPELINE.md) |
 | Estudo experimental no GitHub Pages | [Estudo Experimental](docs/20_ESTUDO_EXPERIMENTAL.md) |
 | Notebooks | [Guia de Notebooks](docs/16_NOTEBOOKS.md) |
 | Interface Gradio e abas | [Interface Gradio](docs/23_INTERFACE_GRADIO.md) |

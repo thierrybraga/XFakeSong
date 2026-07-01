@@ -8,11 +8,11 @@ Exemplos:
     # Verificação rápida (sintético, 1 época) — valida o harness:
     python scripts/run_benchmark.py --quick
 
-    # Execução do TCC (arquiteturas-chave + SVM/RF + API), dataset real .npz:
+    # Execução do TCC (9 modelos do artigo + API), dataset real .npz:
     python scripts/run_benchmark.py --full --dataset app/datasets/brspeech_df.npz
 
     # Sob medida:
-    python scripts/run_benchmark.py --archs MultiscaleCNN Ensemble SVM \
+    python scripts/run_benchmark.py --archs RawNet2 AASIST SVM RandomForest \
         --dataset data.npz --epochs 20 --snr 30 20 10 --api --out results/bench
 
     # Modelo individual:
@@ -47,9 +47,9 @@ def main() -> int:
     p.add_argument("--quick", action="store_true",
                    help="preset rápido sintético (1 época) para verificar o harness")
     p.add_argument("--full", action="store_true",
-                   help="preset do TCC (arquiteturas-chave + SVM/RF + API)")
+                   help="preset do TCC (9 modelos documentados no artigo + API)")
     p.add_argument("--neural", action="store_true",
-                   help="preset neural do TCC (12 arquiteturas neurais, sem SVM/RF)")
+                   help="preset neural do TCC (7 arquiteturas neurais do artigo, sem SVM/RF)")
     p.add_argument("--preset", choices=[
         "custom", "quick", "full_tcc", "neural_tcc", "rawnet2_100e"
     ],

@@ -172,21 +172,16 @@ def _metric_card(label: str, value, kind: str = "neutral", fmt: str = "{:.4f}") 
     import math
 
     if value is None:
-        shown, color = "—", "var(--xf-text-muted, #94a3b8)"
+        shown, state = "—", "muted"
     elif isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
-        shown, color = "NaN", "#ef4444"
+        shown, state = "NaN", "bad"
     else:
         shown = fmt.format(value)
-        color = {
-            "good": "#10b981",
-            "bad": "#ef4444",
-            "accent": "#06b6d4",
-            "neutral": "var(--xf-text, #f1f5f9)",
-        }.get(kind, "var(--xf-text, #f1f5f9)")
+        state = kind if kind in {"good", "bad", "accent", "neutral"} else "neutral"
     return (
         f'<div class="tl-card">'
         f'<div class="tl-card-label">{label}</div>'
-        f'<div class="tl-card-value" style="color:{color}">{shown}</div>'
+        f'<div class="tl-card-value tl-card-value-{state}">{shown}</div>'
         f"</div>"
     )
 
@@ -651,23 +646,18 @@ def _train_status_html(
 
     # Estado/Cabeçalho
     if phase == "preparing":
-        bar_color = "linear-gradient(90deg,#3b82f6,#06b6d4)"
-        head_icon, head_txt, head_color = "⏳", "Preparando…", "#06b6d4"
+        head_icon, head_txt = "⏳", "Preparando…"
         pct_disp = 4.0  # barra indeterminada-ish
     elif phase == "done":
-        bar_color = "linear-gradient(90deg,#10b981,#34d399)"
-        head_icon, head_txt, head_color = "✓", "Concluído", "#10b981"
+        head_icon, head_txt = "✓", "Concluído"
         pct_disp = 100.0
     elif phase == "error":
-        bar_color = "linear-gradient(90deg,#ef4444,#f87171)"
-        head_icon, head_txt, head_color = "✗", "Falhou", "#ef4444"
+        head_icon, head_txt = "✗", "Falhou"
         pct_disp = 100.0
     else:  # running
-        bar_color = "linear-gradient(90deg,#3b82f6,#06b6d4)"
-        head_icon, head_txt, head_color = (
+        head_icon, head_txt = (
             "▶",
             f"Treinando · época {epoch}/{total}",
-            "#3b82f6",
         )
         pct_disp = pct
 
@@ -696,15 +686,13 @@ def _train_status_html(
     note_html = f'<div class="tl-note">{note}</div>' if note else ""
 
     return f"""
-    <div class="train-live">
+    <div class="train-live train-live-{phase}">
       <div class="tl-head">
-        <span class="tl-head-title" style="color:{head_color}">{head_icon} {head_txt}</span>
+        <span class="tl-head-title tl-head-title-{phase}">{head_icon} {head_txt}</span>
         <span class="tl-head-meta">{arch} · {device} · ⏱ {_fmt_secs(elapsed_s)}
           {("· ETA " + eta_txt) if eta_txt != "—" else ""}</span>
       </div>
-      <div class="tl-bar-track">
-        <div class="tl-bar-fill" style="width:{pct_disp:.1f}%;background:{bar_color}"></div>
-      </div>
+      <progress class="tl-progress tl-progress-{phase}" value="{pct_disp:.1f}" max="100"></progress>
       <div class="tl-cards">
         {_metric_card("loss", loss, loss_kind)}
         {_metric_card("accuracy", acc, acc_kind)}
@@ -2058,11 +2046,10 @@ def _run_training(
         # Notify.5: erro acionável com hint específico
         notify_from_actionable(CommonErrors.training_failed(str(e)))
         err_panel = (
-            '<div class="train-live">'
-            '<div class="tl-head"><span class="tl-head-title" style="color:#ef4444">'
+            '<div class="train-live train-live-error">'
+            '<div class="tl-head"><span class="tl-head-title tl-head-title-error">'
             "✗ Treinamento falhou</span></div>"
-            '<div class="tl-note" style="border-left-color:#ef4444;'
-            'background:rgba(239,68,68,0.08)">'
+            '<div class="tl-note tl-note-error">'
             f"{str(e)[:300]}</div></div>"
         )
         yield (
@@ -2475,10 +2462,10 @@ def _run_classical_training(arch: str, dataset_path: str, progress):
         notify_from_actionable(CommonErrors.training_failed(str(e)))
         yield (
             (
-                '<div class="train-live"><div class="tl-head">'
-                '<span class="tl-head-title" style="color:#ef4444">'
+                '<div class="train-live train-live-error"><div class="tl-head">'
+                '<span class="tl-head-title tl-head-title-error">'
                 "✗ Treinamento falhou</span></div>"
-                f'<div class="tl-note" style="border-left-color:#ef4444">{str(e)[:300]}'
+                f'<div class="tl-note tl-note-error">{str(e)[:300]}'
                 "</div></div>"
             ),
             f"❌ Erro no treino clássico:\n{e}",
@@ -2694,7 +2681,7 @@ def create_training_wizard_tab():
 
             with gr.Row():
                 back_s4_btn = gr.Button("← Novo Treino", scale=1)
-                gr.HTML('<div style="flex:1"></div>')
+                gr.HTML('<div class="xf-spacer"></div>')
 
         # ────────────────────────── Event handlers ──────────────────────────
 

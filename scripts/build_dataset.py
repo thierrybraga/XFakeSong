@@ -3,26 +3,27 @@
 build_dataset.py — Orquestrador da Fase 1 (Dataset Real e Balanceamento).
 
 Composicao definida:
-  REAL  (10.000 amostras):
-    - 5.000 x BRSpeech-DF bonafide/   (fala real PT-BR, padrão ASVspoof)
-    - 5.000 x CommonVoice v17 PT + FLEURS PT-BR (diversidade de falantes)
+  REAL canônico medium (7.500 amostras):
+    - 3.750 x BRSpeech-DF bonafide/   (fala real PT-BR, padrão ASVspoof)
+    - 3.750 x MLS Portuguese + TTS-Portuguese (reforço real fora do HF)
 
-  FAKE  (10.000 amostras):
-    - 5.000 x BRSpeech-DF spoof/      (múltiplos geradores TTS/VC)
-    - 5.000 x Fake Voices XTTS        (gerador independente — cross-generator)
+  FAKE canônico medium (7.500 amostras):
+    - 3.750 x BRSpeech-DF spoof/      (múltiplos geradores TTS/VC)
+    - 3.750 x Fake Voices XTTS        (gerador independente — cross-generator)
 
-  TOTAL : 20.000 amostras balanceadas 1:1
+  TOTAL canônico: 15.000 amostras balanceadas 1:1
   SPLIT : 70% treino / 15% validacao / 15% teste (estratificado)
 
 Uso:
   python scripts/build_dataset.py                        # executa tudo
-  python scripts/build_dataset.py --target 1000          # 1000 por classe (debug)
+  python scripts/build_dataset.py --tier medium          # 7.500/classe (15k canônico)
   python scripts/build_dataset.py --skip-download        # apenas preprocessa
   python scripts/build_dataset.py --only-splits          # apenas recria os splits
   python scripts/build_dataset.py --delete-excess        # descarte destrutivo dos excedentes
 """
 
 import argparse
+import importlib.util
 import json
 import logging
 import shutil
@@ -47,18 +48,35 @@ OVERFLOW_DIR = DATASETS_DIR / "overflow"
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from app.core.dataset_catalog import (  # noqa: E402
-    DATASET_CATALOG,
-    get_tier,
-    summarize_dataset_paths,
-    tier_choices,
-)
+
+def _load_dataset_catalog():
+    """Carrega o catálogo sem importar app.core inteiro.
+
+    O pacote app.core puxa interfaces de áudio e exige numpy no import. Este
+    script precisa mostrar --help e orquestrar Docker mesmo quando o Python
+    nativo ainda não tem as dependências ML instaladas.
+    """
+    module_path = BASE_DIR / "app" / "core" / "dataset_catalog.py"
+    spec = importlib.util.spec_from_file_location("xfake_dataset_catalog", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Falha ao carregar catálogo: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_dataset_catalog = _load_dataset_catalog()
+DATASET_CATALOG = _dataset_catalog.DATASET_CATALOG
+get_tier = _dataset_catalog.get_tier
+summarize_dataset_paths = _dataset_catalog.summarize_dataset_paths
+tier_choices = _dataset_catalog.tier_choices
 
 # ---------------------------------------------------------------------------
 # Composicao do dataset (valores padrao — ajustavel via --target)
 # ---------------------------------------------------------------------------
 COMPOSITION = {
-    "target_per_class": 10000,
+    "target_per_class": 7500,
     "split": {"train": 0.70, "val": 0.15, "test": 0.15},
     "sources": {
         "real": [
@@ -66,19 +84,19 @@ COMPOSITION = {
                 "name": "BRSpeech-DF bonafide",
                 "hf_repo": "AKCIT-Deepfake/BRSpeech-DF",
                 "type": "real",
-                "target": 5000,
+                "target": 3750,
                 "file_prefix": "brspeech",
                 "script": "download_datasets.py",
                 "args": ["--brspeech"],
             },
             {
-                "name": "CommonVoice v17 PT + FLEURS PT-BR",
-                "hf_repo": "mozilla-foundation/common_voice_17_0 + google/fleurs",
+                "name": "MLS Portuguese + TTS-Portuguese",
+                "hf_repo": "OpenSLR 94 + Edresson/TTS-Portuguese-Corpus",
                 "type": "real",
-                "target": 5000,
-                "file_prefix": "cvpt|fleurs|cetuc",
+                "target": 3750,
+                "file_prefix": "mlspt|ttsport",
                 "script": "download_datasets.py",
-                "args": ["--common-voice-pt", "--fleurs"],
+                "args": ["--mls-portuguese", "--tts-portuguese"],
             },
         ],
         "fake": [
@@ -86,7 +104,7 @@ COMPOSITION = {
                 "name": "BRSpeech-DF spoof",
                 "hf_repo": "AKCIT-Deepfake/BRSpeech-DF",
                 "type": "fake",
-                "target": 5000,
+                "target": 3750,
                 "file_prefix": "brspeech",
                 "script": "download_datasets.py",
                 "args": ["--brspeech"],
@@ -95,7 +113,7 @@ COMPOSITION = {
                 "name": "Fake Voices XTTS (unfake/fake_voices)",
                 "hf_repo": "unfake/fake_voices",
                 "type": "fake",
-                "target": 5000,
+                "target": 3750,
                 "file_prefix": "fkvoice",
                 "script": "download_datasets.py",
                 "args": ["--fake-voices"],
@@ -143,7 +161,10 @@ def print_status():
     fake_total = count_wavs(FAKE_DIR)
 
     brspeech_real = count_wavs(REAL_DIR, ["brspeech"])
-    cv_real = count_wavs(REAL_DIR, ["cetuc", "cv", "cvpt", "fleurs"])
+    public_real = count_wavs(
+        REAL_DIR,
+        ["mlspt", "ttsport", "cetuc", "cv", "cvpt", "fleurs"],
+    )
     brspeech_fake = count_wavs(FAKE_DIR, ["brspeech"])
     xtts_fake = count_wavs(FAKE_DIR, ["fkvoice", "fakevoice"])
 
@@ -152,7 +173,7 @@ def print_status():
     logger.info("=" * 60)
     logger.info(f"  REAL  total : {real_total:>5d}")
     logger.info(f"    BRSpeech bonafide : {brspeech_real:>5d}  (meta: {half_target})")
-    logger.info(f"    CommonVoice/FLEURS: {cv_real:>5d}  (meta: {half_target})")
+    logger.info(f"    Reforco real publ.: {public_real:>5d}  (meta: {half_target})")
     logger.info(f"  FAKE  total : {fake_total:>5d}")
     logger.info(f"    BRSpeech spoof    : {brspeech_fake:>5d}  (meta: {half_target})")
     logger.info(f"    Fake Voices XTTS  : {xtts_fake:>5d}  (meta: {half_target})")
@@ -167,11 +188,10 @@ def step_download(target_per_class: int, skip_real_cv: bool = False):
 
     Quando `skip_real_cv` (tiers test/small): a classe real vem INTEIRAMENTE do
     BRSpeech bonafide (alvo = target_per_class). Caso contrário (medium/large):
-    metade BRSpeech bonafide + metade CommonVoice/FLEURS.
+    metade BRSpeech bonafide + metade de fontes reais publicas fora do HF
+    quebrado (MLS Portuguese/TTS-Portuguese; CV/FLEURS ficam apenas legado).
     """
     half = target_per_class // 2
-    cvpt_target = half // 2
-    fleurs_target = half - cvpt_target
 
     # Alvo de real vindo do BRSpeech: tudo (test/small) ou metade (medium/large).
     brspeech_real_goal = target_per_class if skip_real_cv else half
@@ -194,37 +214,27 @@ def step_download(target_per_class: int, skip_real_cv: bool = False):
     else:
         logger.info(f"BRSpeech-DF ja tem {brspeech_real} real + {brspeech_fake} fake. Pulando.")
 
-    # --- CommonVoice PT + FLEURS (apenas real)
+    # --- Reforço real público (apenas real)
     if not skip_real_cv:
-        cvpt_real = count_wavs(REAL_DIR, ["cvpt"])
-        fleurs_real = count_wavs(REAL_DIR, ["fleurs"])
-        public_real = count_wavs(REAL_DIR, ["cetuc", "cv", "cvpt", "fleurs"])
-
-        if cvpt_real < cvpt_target:
-            run(
-                [sys.executable, str(SCRIPTS_DIR / "download_datasets.py"),
-                 "--common-voice-pt", "--max-samples", str(cvpt_target)],
-                f"Common Voice PT-BR (meta: {cvpt_target} reais)",
-            )
-        else:
-            logger.info(f"Common Voice PT-BR ja tem {cvpt_real} amostras. Pulando.")
-
-        if fleurs_real < fleurs_target:
-            run(
-                [sys.executable, str(SCRIPTS_DIR / "download_datasets.py"),
-                 "--fleurs", "--max-samples", str(fleurs_target)],
-                f"FLEURS PT-BR (meta: {fleurs_target} reais)",
-            )
-        else:
-            logger.info(f"FLEURS PT-BR ja tem {fleurs_real} amostras. Pulando.")
-
-        public_real = count_wavs(REAL_DIR, ["cetuc", "cv", "cvpt", "fleurs"])
+        # CommonVoice/FLEURS foram mantidos como prefixos legados se já existirem
+        # localmente, mas o download novo usa fontes diretas fora do HF.
+        public_prefixes = ["mlspt", "ttsport", "cvpt", "cv", "fleurs", "cetuc"]
+        public_real = count_wavs(REAL_DIR, public_prefixes)
         if public_real < half:
             remaining = half - public_real
             run(
                 [sys.executable, str(SCRIPTS_DIR / "download_datasets.py"),
-                 "--cetuc", "--max-samples", str(remaining)],
-                f"CETUC/OpenSLR fallback (faltam {remaining} reais publicos)",
+                 "--mls-portuguese", "--max-samples", str(remaining)],
+                f"MLS Portuguese (faltam {remaining} reais publicos)",
+            )
+
+        public_real = count_wavs(REAL_DIR, public_prefixes)
+        if public_real < half:
+            remaining = half - public_real
+            run(
+                [sys.executable, str(SCRIPTS_DIR / "download_datasets.py"),
+                 "--tts-portuguese", "--max-samples", str(remaining)],
+                f"TTS-Portuguese fallback PT-BR (faltam {remaining} reais publicos)",
             )
 
     # --- Fake Voices XTTS
@@ -379,9 +389,12 @@ def save_dataset_config(target_per_class: int, train_r: float, val_r: float, tes
     fake_total = count_wavs(FAKE_DIR)
 
     brspeech_real = count_wavs(REAL_DIR, ["brspeech"])
-    cv_real = count_wavs(REAL_DIR, ["cetuc", "cv", "cvpt", "fleurs"])
+    mls_real = count_wavs(REAL_DIR, ["mlspt"])
+    tts_real = count_wavs(REAL_DIR, ["ttsport"])
+    legacy_real = count_wavs(REAL_DIR, ["cetuc", "cv", "cvpt", "fleurs"])
     brspeech_fake = count_wavs(FAKE_DIR, ["brspeech"])
     xtts_fake = count_wavs(FAKE_DIR, ["fkvoice", "fakevoice"])
+    public_source_target = target_per_class // 4
     active_paths = [
         str(path.relative_to(BASE_DIR))
         for path in list(REAL_DIR.glob("*.wav")) + list(FAKE_DIR.glob("*.wav"))
@@ -453,11 +466,23 @@ def save_dataset_config(target_per_class: int, train_r: float, val_r: float, tes
                     "count": brspeech_real,
                     "target": target_per_class // 2,
                 },
-                "CommonVoice_v17_PT_FLEURS": {
-                    "repo": "mozilla-foundation/common_voice_17_0 + google/fleurs",
-                    "license": "CC0 / CC-BY-4.0",
-                    "count": cv_real,
-                    "target": target_per_class // 2,
+                "MLS_Portuguese": {
+                    "repo": "OpenSLR 94 / Facebook AI MLS",
+                    "license": DATASET_CATALOG["MLS Portuguese"].license,
+                    "count": mls_real,
+                    "target": public_source_target,
+                },
+                "TTS_Portuguese_Corpus": {
+                    "repo": "Edresson/TTS-Portuguese-Corpus",
+                    "license": DATASET_CATALOG["TTS-Portuguese Corpus"].license,
+                    "count": tts_real,
+                    "target": public_source_target,
+                },
+                "Legacy_CV_FLEURS_CETUC": {
+                    "repo": "Common Voice/FLEURS/CETUC local legacy",
+                    "license": "CC0 / CC-BY-4.0 / variavel",
+                    "count": legacy_real,
+                    "target": 0,
                 },
             },
             "fake": {
@@ -511,7 +536,7 @@ def main():
     )
     parser.add_argument(
         "--target", type=int, default=None,
-        help="Numero de amostras por classe (override; default do tier, ou 10000 sem tier)",
+        help="Numero de amostras por classe (override; default do tier, ou 7500 sem tier)",
     )
     parser.add_argument(
         "--train-ratio", type=float, default=0.70,
@@ -531,7 +556,7 @@ def main():
     )
     parser.add_argument(
         "--skip-real-cv", action="store_true",
-        help="Pular download de CommonVoice/FLEURS (apenas BRSpeech + FakeVoices)",
+        help="Pular reforco real publico (apenas BRSpeech + FakeVoices)",
     )
     parser.add_argument(
         "--only-splits", action="store_true",
@@ -558,7 +583,7 @@ def main():
             tier.split["train"], tier.split["val"], tier.split["test"],
         )
     else:
-        target_per_class = int(args.target) if args.target is not None else 10000
+        target_per_class = int(args.target) if args.target is not None else 7500
         skip_real_cv = args.skip_real_cv
         speaker_disjoint = False
         train_r, val_r, test_r = args.train_ratio, args.val_ratio, args.test_ratio
@@ -584,7 +609,10 @@ def main():
     real_comp = (
         f"{target_per_class} BRSpeech-bonafide"
         if skip_real_cv
-        else f"{target_per_class//2} BRSpeech-bonafide + {target_per_class//2} CommonVoice/FLEURS"
+        else (
+            f"{target_per_class//2} BRSpeech-bonafide + "
+            f"{target_per_class//2} MLS/TTS-Portuguese"
+        )
     )
     logger.info(f"  Composicao real   : {real_comp}")
     logger.info(f"  Composicao fake   : {target_per_class//2} BRSpeech-spoof + {target_per_class//2} Fake Voices XTTS")

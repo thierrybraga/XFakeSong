@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Benchmark de SSL original (PyTorch/Hugging Face), sem fallback TensorFlow.
+"""Benchmark de SSL original (PyTorch/Hugging Face).
 
 Este runner cobre WavLM e HuBERT reais via PyTorch. O backbone Hugging Face e
 carregado congelado por padrao, e a cabeca de classificacao e treinada sobre
-embeddings SSL reais.
+embeddings SSL reais. No fluxo WSL/Docker, HuBERT usa este caminho para evitar
+o fallback Keras e preservar o backbone base congelado durante o treino.
 """
 
 from __future__ import annotations
@@ -289,7 +290,7 @@ def main() -> int:
     parser.add_argument(
         "--architecture",
         choices=["wavlm", "hubert"],
-        default="wavlm",
+        default="hubert",
         help="Backbone SSL original a executar.",
     )
     parser.add_argument("--model-name", default=None)
@@ -309,6 +310,7 @@ def main() -> int:
         help="Congela o backbone original e treina apenas a cabeca.",
     )
     args = parser.parse_args()
+
     arch_meta = {
         "wavlm": {
             "display": "WavLM Original",

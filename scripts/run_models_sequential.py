@@ -31,14 +31,46 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from benchmarks.config import (  # noqa: E402
-    ALL_TCC_ARCHITECTURES,
     CLASSICAL_TCC_ARCHITECTURES,
-    NEURAL_TCC_ARCHITECTURES,
+    DOCKER_TRAINING_ARCHITECTURES,
+    NEURAL_DOCKER_ARCHITECTURES,
 )
+
+
+SSL_ORIGINAL_MODELS = {
+    "wavlm": {
+        "display": "WavLM Original",
+        "architecture": "wavlm",
+        "runner": SCRIPTS / "run_wavlm_original_benchmark.py",
+    },
+    "wavlmoriginal": {
+        "display": "WavLM Original",
+        "architecture": "wavlm",
+        "runner": SCRIPTS / "run_wavlm_original_benchmark.py",
+    },
+    "hubert": {
+        "display": "HuBERT Original",
+        "architecture": "hubert",
+        "runner": SCRIPTS / "run_wavlm_original_benchmark.py",
+    },
+    "hubertoriginal": {
+        "display": "HuBERT Original",
+        "architecture": "hubert",
+        "runner": SCRIPTS / "run_wavlm_original_benchmark.py",
+    },
+}
 
 
 def _slug(name: str) -> str:
     return "".join(ch if ch.isalnum() else "_" for ch in name.lower()).strip("_")
+
+
+def _compact(name: str) -> str:
+    return "".join(ch for ch in name.lower() if ch.isalnum())
+
+
+def _ssl_meta(model: str) -> dict[str, Any] | None:
+    return SSL_ORIGINAL_MODELS.get(_compact(model))
 
 
 def _load_json(path: Path, default: Any) -> Any:
@@ -86,6 +118,30 @@ def _tail_text(path: Path, max_lines: int = 40) -> str:
 
 
 def _build_command(args: argparse.Namespace, model: str, model_dir: Path) -> list[str]:
+    ssl_meta = _ssl_meta(model)
+    if ssl_meta is not None:
+        return [
+            sys.executable,
+            str(ssl_meta["runner"]),
+            "--architecture",
+            ssl_meta["architecture"],
+            "--dataset",
+            str(Path(args.dataset).resolve()),
+            "--out",
+            str(model_dir),
+            "--epochs",
+            str(args.epochs),
+            "--train-batch-size",
+            str(args.batch_size),
+            "--feature-batch-size",
+            str(args.ssl_feature_batch_size),
+            "--latency-runs",
+            str(args.latency_runs),
+            "--snr",
+            *[str(v) for v in args.snr],
+            "--freeze-backbone",
+        ]
+
     cmd = [
         sys.executable,
         str(SCRIPTS / "run_benchmark.py"),
@@ -116,6 +172,10 @@ def _build_command(args: argparse.Namespace, model: str, model_dir: Path) -> lis
         cmd.append("--plan-only")
     if args.verbose:
         cmd.append("--verbose")
+    if getattr(args, "speaker_split", False):
+        cmd.append("--speaker-split")
+    if getattr(args, "group_split", False):
+        cmd.append("--group-split")
     return cmd
 
 
@@ -127,6 +187,71 @@ def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, 
     cmd = _build_command(args, model, model_dir)
     timeout_s = int(args.timeout_min * 60)
     started = time.time()
+    ssl_meta = _ssl_meta(model)
+
+    if args.plan_only and ssl_meta is not None:
+        model_name = (
+            "facebook/hubert-base-ls960"
+            if ssl_meta["architecture"] == "hubert"
+            else "microsoft/wavlm-base"
+        )
+        plan = {
+            "model": ssl_meta["display"],
+            "runner": str(ssl_meta["runner"]),
+            "architecture": ssl_meta["architecture"],
+            "model_name": model_name,
+            "dataset": str(Path(args.dataset).resolve()),
+            "output_dir": str(model_dir),
+            "epochs": args.epochs,
+            "train_batch_size": args.batch_size,
+            "feature_batch_size": args.ssl_feature_batch_size,
+            "latency_runs": args.latency_runs,
+            "snr": args.snr,
+            "freeze_backbone": True,
+            "fit_strategy": "frozen_backbone_embedding_then_classifier_fit",
+            "command": cmd,
+        }
+        _write_json(model_dir / "benchmark_plan.json", plan)
+        model_dir.joinpath("benchmark_plan.md").write_text(
+            "\n".join(
+                [
+                    f"# Plano de Benchmark - {ssl_meta['display']}",
+                    "",
+                    f"- Runner: `{ssl_meta['runner']}`",
+                    f"- Backbone: `{model_name}`",
+                    "- Pesos do backbone: congelados",
+                    "- Treino: somente cabeca classificadora PyTorch",
+                    f"- Dataset: `{plan['dataset']}`",
+                    f"- Saida: `{model_dir}`",
+                    "",
+                    "## Comando",
+                    "",
+                    "```bash",
+                    " ".join(cmd),
+                    "```",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        log_path.write_text(
+            "PLAN ONLY: runner SSL PyTorch preparado para WSL/Docker; "
+            "backbone Hugging Face congelado por padrao.\n",
+            encoding="utf-8",
+        )
+        elapsed = round(time.time() - started, 1)
+        return {
+            "model": model,
+            "status": "ok",
+            "error": None,
+            "elapsed_s": elapsed,
+            "output_dir": str(model_dir),
+            "log": str(log_path),
+            "returncode": 0,
+            "clean": None,
+            "efficiency": None,
+            "model_artifact": None,
+            "log_tail": "",
+        }
 
     with log_path.open("w", encoding="utf-8", errors="replace") as log:
         log.write("COMMAND:\n")
@@ -246,10 +371,13 @@ def main() -> int:
         "--models",
         nargs="+",
         default=None,
-        help="Lista de arquiteturas/modelos. Default: 14 arquiteturas do TCC.",
+        help=(
+            "Lista de arquiteturas/modelos. Default: modelos documentados no "
+            "artigo + WavLM/HuBERT Original no runner SSL Docker."
+        ),
     )
     parser.add_argument("--neural-only", action="store_true",
-                        help="roda somente as 12 arquiteturas neurais do TCC")
+                        help="roda arquiteturas neurais do artigo + WavLM/HuBERT SSL Docker")
     parser.add_argument("--classical-only", action="store_true",
                         help="roda somente SVM e RandomForest")
     parser.add_argument("--out", default="results/sequential_benchmark")
@@ -257,6 +385,12 @@ def main() -> int:
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--device-profile", choices=["auto", "cpu", "gpu"], default="auto")
     parser.add_argument("--latency-runs", type=int, default=30)
+    parser.add_argument(
+        "--ssl-feature-batch-size",
+        type=int,
+        default=16,
+        help="batch para extracao de embeddings HuBERT/WavLM no runner SSL",
+    )
     parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10])
     parser.add_argument("--timeout-min", type=float, default=60.0)
     parser.add_argument("--resume", action="store_true", help="pula modelos já concluídos")
@@ -264,6 +398,10 @@ def main() -> int:
                         help="gera benchmark_plan.* por modelo e não inicia treino")
     parser.add_argument("--api", action="store_true")
     parser.add_argument("--no-optimize-hparams", action="store_true")
+    parser.add_argument("--speaker-split", action="store_true",
+                        help="split disjunto por falante (tier large; requer speaker_ids no .npz)")
+    parser.add_argument("--group-split", action="store_true",
+                        help="split por fonte/gerador (cross-generator)")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
     if args.neural_only and args.classical_only:
@@ -271,11 +409,11 @@ def main() -> int:
     if args.models:
         selected_models = list(args.models)
     elif args.neural_only:
-        selected_models = list(NEURAL_TCC_ARCHITECTURES)
+        selected_models = list(NEURAL_DOCKER_ARCHITECTURES)
     elif args.classical_only:
         selected_models = list(CLASSICAL_TCC_ARCHITECTURES)
     else:
-        selected_models = list(ALL_TCC_ARCHITECTURES)
+        selected_models = list(DOCKER_TRAINING_ARCHITECTURES)
 
     dataset_path = Path(args.dataset)
     if not dataset_path.is_absolute():
@@ -304,6 +442,7 @@ def main() -> int:
         "timeout_min": args.timeout_min,
         "epochs": args.epochs,
         "batch_size": args.batch_size,
+        "ssl_feature_batch_size": args.ssl_feature_batch_size,
         "snr": args.snr,
         "models": summary.get("models", []),
     }

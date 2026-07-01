@@ -10,7 +10,8 @@
 - `tf.config.list_physical_devices("GPU")` retorna **vazio** no Windows nativo
   (TF ≥2.11). Sob WSL2 + `tensorflow[and-cuda]`, a RTX 3060 é exposta.
 - O **dataset já existe** no repo (`app/datasets/benchmark_audio_raw_balanced_15k.npz`,
-  ~2.8 GB) — **não há download**.
+  2.769,01 MiB). Ele deriva de 15.000 WAVs ativos em PCM linear, 16 bits,
+  mono, 16 kHz, somando 2.045,61 min de áudio validado — **não há download**.
 - Os ajustes de código (P0–P3) já estão aplicados; aqui só se **executa**.
 
 ## Pré-requisitos (uma vez)
@@ -37,7 +38,7 @@ pip install 'tensorflow[and-cuda]'      # habilita CUDA/cuDNN p/ a GPU
 bash scripts/retrain_wsl2.sh --check
 ```
 
-> Observação de E/S: treinar lendo o `.npz` de 2.8 GB via `/mnt/d` (disco
+> Observação de E/S: treinar lendo o `.npz` de 2.769,01 MiB via `/mnt/d` (disco
 > Windows) é mais lento que copiar para o filesystem do WSL2. Para máxima
 > velocidade: `cp app/datasets/benchmark_audio_raw_balanced_15k.npz ~/ds.npz`
 > e use `--dataset ~/ds.npz`.
@@ -59,7 +60,7 @@ docker compose -f docker/compose/benchmark.nvidia.yml run --rm benchmark
 O driver [scripts/retrain_wsl2.sh](https://github.com/thierrybraga/XFakeSong/blob/main/scripts/retrain_wsl2.sh) encapsula tudo:
 
 ```bash
-# Retreino in-distribution das 14 arquiteturas (augmentation SNR + P1/P2 ativos):
+# Retreino in-distribution dos modelos do artigo + HuBERT Original SSL:
 bash scripts/retrain_wsl2.sh --indist
 
 # Reteste cross-generator (segura o XTTS/fkvoice fora do treino) — P0.4:
@@ -75,10 +76,42 @@ bash scripts/retrain_wsl2.sh --model SpectrogramTransformer --indist
 Equivalente "cru" (sem o driver), via orquestrador:
 
 ```bash
-python scripts/run_tcc_pipeline.py --skip-download --skip-preprocess \
-  --full-benchmark --epochs 100 --device-profile gpu \
+python scripts/run_clean_benchmark_pipeline.py \
+  --phase full \
   --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
-  --cross-generator fkvoice
+  --epochs 100 \
+  --batch-size 32 \
+  --device-profile gpu \
+  --timeout-min 240 \
+  --build
+```
+
+### HuBERT Original em WSL/Docker
+
+O HuBERT real não deve passar pelo fallback Keras. No fluxo Docker, ele é
+roteado para `scripts/run_wavlm_original_benchmark.py`, baixa
+`facebook/hubert-base-ls960`, congela o backbone (`--freeze-backbone`) e treina
+somente a cabeça classificadora PyTorch sobre embeddings SSL.
+
+```bash
+python scripts/run_clean_benchmark_pipeline.py \
+  --models "HuBERT Original" \
+  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --epochs 100 \
+  --batch-size 32 \
+  --ssl-feature-batch-size 16 \
+  --device-profile gpu \
+  --timeout-min 240 \
+  --build
+```
+
+Para revisar sem iniciar treino nem baixar pesos:
+
+```bash
+python scripts/run_models_sequential.py \
+  --models "HuBERT Original" \
+  --plan-only \
+  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
 ### Ablação do WavLM (opcional, P2)
@@ -102,8 +135,9 @@ pip install tensorflow-model-optimization   # ausente por padrão
   robustez AWGN, eficiência e **figuras** (`roc.png`, `robustez.png`,
   `eficiencia.png`, `convergencia.png`, `confusion_matrices.png`) via
   [benchmarks/report.py](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/report.py).
-- **Tempo**: 14 arquiteturas × 100 épocas em RTX 3060 leva **horas** (modelos
-  SSL como WavLM/HuBERT dominam). Rode em sessão persistente (`tmux`/`nohup`).
+- **Tempo**: o preset completo com os modelos do artigo + HuBERT Original em
+  RTX 3060 leva **horas**; HuBERT domina parte relevante do tempo por extrair
+  embeddings do backbone SSL. Rode em sessão persistente (`tmux`/`nohup`).
 
 ## Atualizar o TCC com os novos resultados (automatizado)
 

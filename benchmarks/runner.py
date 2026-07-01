@@ -340,9 +340,13 @@ def _run_neural(
             }
         )
     elif compact in {"aasist", "rawgatst"}:
-        train_config.update(
-            {"learning_rate": 1e-4, "use_augmentation": False}
-        )
+        # AJUSTE (retune): antes forçava learning_rate=1e-4 e
+        # use_augmentation=False aqui, sobrescrevendo os ajustes já feitos em
+        # aasist.py/rawgat_st.py/registry.py (ver docs/RETREINO_AJUSTES.md) e
+        # anulando o efeito do retreino de 2026-06-30. Agora só liga
+        # augmentation e deixa o LR fluir de cfg.training_overrides
+        # (benchmarks/planning.py, já sincronizado com os defaults tunados).
+        train_config.update({"use_augmentation": True})
     elif compact == "efficientnetlstm":
         model_params = train_config.setdefault("parameters", {})
         if "dropout_rate" in train_config:

@@ -276,7 +276,7 @@ class ArchitectureFactoryRegistry:
         """Registra arquiteturas padrão do sistema."""
 
         # AASIST
-        # Nota: variant "default" agora é alias para "aasist" (paper-faithful).
+        # Nota: variant "default" agora é alias para "aasist" (arquitetura do artigo).
         # Para o comportamento antigo (CNN+Bi-GRU), use "cnn_gru_simple".
         # O default opera em áudio bruto (T, 1); variantes legadas em espectrograma.
         self.register_factory(ArchitectureSpec(
@@ -285,7 +285,7 @@ class ArchitectureFactoryRegistry:
             factory_function="create_model",
             description="Anti-spoofing Audio Spoofing and Deepfake Detection (SincConv + GAT + HS-GAL)",
             supported_variants=[
-                "aasist",            # paper-faithful (default)
+                "aasist",            # arquitetura do artigo (default)
                 "default",           # alias -> aasist
                 "cnn_gru_simple",    # CNN 2D + Bi-GRU + Attention (legado)
                 "cnn_baseline",
@@ -311,7 +311,7 @@ class ArchitectureFactoryRegistry:
                 "activation": "softmax"}
         ))
 
-        # RawGAT-ST — reescrito fiel ao paper (Tak et al., 2021): SincNet sobre
+        # RawGAT-ST — alinhado ao paper (Tak et al., 2021): SincNet sobre
         # ÁUDIO BRUTO + grafo espectral (Gs) e temporal (Gt) com fusão
         # element-wise. (Antes usava Conv2D em espectrograma — divergia do paper.)
         # As variantes legadas (cnn_gru_simple etc.) ainda existem em create_model
@@ -322,8 +322,12 @@ class ArchitectureFactoryRegistry:
             factory_function="create_model",
             description="End-to-End Spectro-Temporal Graph Attention (SincNet + Gs/Gt GAT, áudio bruto)",
             supported_variants=[
-                "rawgat_st",         # paper-faithful: SincNet + grafo Gs/Gt (default)
+                "rawgat_st",         # paper-aligned: SincNet + Gs/Gt + produto
                 "default",           # alias -> rawgat_st
+                "rawgat_st_paper",   # sem downsampling temporal extra
+                "rawgat_st_fast",    # variante otimizada anterior
+                "rawgat_st_stable",
+                "rawgat_st_optimized",
                 "cnn_gru_simple",    # CNN 2D + Bi-GRU + Attention (legado, espectro)
                 "cnn_baseline",
                 "bidirectional_gru",
@@ -336,6 +340,8 @@ class ArchitectureFactoryRegistry:
                 "attention_heads": 8,
                 "hidden_dim": 512,
                 "num_layers": 6,
+                "temporal_pool_stride": 4,
+                "fusion_mode": "multiply",
             },
             input_requirements={
                 "input_type": "raw_audio",
@@ -376,12 +382,17 @@ class ArchitectureFactoryRegistry:
             name="MultiscaleCNN",
             module_path="app.domain.models.architectures.multiscale_cnn",
             factory_function="create_model",
-            description="Multi-Scale Convolutional Neural Network",
-            supported_variants=["multiscale_cnn", "multiscale_cnn_lite"],
+            description="Res2Net-50 para espectrogramas; variante SE otimizada opcional",
+            supported_variants=[
+                "multiscale_cnn",
+                "multiscale_cnn_lite",
+                "multiscale_cnn_se",
+                "multiscale_cnn_optimized"],
             default_params={
                 # create_model params: base_width, scale, layer_config, dropout_rate
                 "base_width": 26,
-                "scale": 8,
+                "scale": 4,
+                "use_se": False,
                 "dropout_rate": 0.2,
             },
             input_requirements={
@@ -405,8 +416,23 @@ class ArchitectureFactoryRegistry:
                 "default",           # alias -> spectrogram_transformer
                 "spectrogram_transformer_lite"],
             default_params={
-                # create_model params: dropout_rate, learning_rate,
-                # warmup_steps, decay_steps, weight_decay, alpha
+                # create_model params: patch_size, stride, embed_dim, num_blocks,
+                # num_heads, ff_dim, dropout_rate, learning_rate, warmup_steps,
+                # decay_steps, weight_decay, alpha, clipnorm, pretrained
+                "patch_size": (16, 16),
+                "stride": (10, 10),
+                "embed_dim": 768,
+                "num_blocks": 12,
+                "num_heads": 12,
+                "ff_dim": 3072,
+                "dropout_rate": 0.3,
+                "learning_rate": 5e-5,
+                "warmup_steps": 2000,
+                "decay_steps": 50000,
+                "weight_decay": 1e-4,
+                "alpha": 1e-7,
+                "clipnorm": 1.0,
+                "pretrained": False,
             },
             input_requirements={
                 "input_type": "spectrogram",
@@ -500,8 +526,8 @@ class ArchitectureFactoryRegistry:
                 "sinc_filters": 128,
                 "sinc_kernel_size": 1024,
                 "res_filters": [128, 128, 256, 256, 256, 256],
-                "gru_units": 512,
-                "dense_units": 512,
+                "gru_units": 1024,
+                "dense_units": 1024,
                 "dropout_rate": 0.3,
             },
             input_requirements={

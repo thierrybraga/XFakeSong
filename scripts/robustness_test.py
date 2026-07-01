@@ -2,7 +2,7 @@
 """
 robustness_test.py — Teste de robustez sob ruido aditivo (AWGN).
 
-Avalia MultiscaleCNN e Ensemble Adaptativo em SNR = 10, 20, 30 dB.
+Avalia Res2Net (alias tecnico MultiscaleCNN) em SNR = 10, 20, 30 dB.
 Gera Tabela 5 do TCC.
 
 Uso:
@@ -37,8 +37,7 @@ OUTPUT_PATH = BASE_DIR / "results" / "robustness_results.json"
 SNR_LEVELS = [10, 20, 30]  # dB
 
 MODELS_TO_TEST = {
-    "multiscale_cnn":    MODELS_DIR / "multiscale_cnn_best.h5",
-    "ensemble_adaptive": MODELS_DIR / "ensemble_adaptive_best.h5",
+    "res2net": MODELS_DIR / "multiscale_cnn_best.h5",
 }
 
 

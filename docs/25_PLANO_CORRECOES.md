@@ -23,7 +23,8 @@ teste. As acurácias ~100% medem desempenho **in-domain**, não generalização.
 Script: `scripts/audit_dataset_leakage.py`.
 Relatório: `results/audit_dataset_leakage/leakage_report.{json,md}`.
 
-**Evidências obtidas:**
+**Evidências obtidas na corrida anterior (`20260626`, antes da reconstrução do
+dataset):**
 
 | Fonte | real | fake | observação |
 |---|---:|---:|---|
@@ -31,9 +32,18 @@ Relatório: `results/audit_dataset_leakage/leakage_report.{json,md}`.
 | cvpt | 2500 | 0 | **fonte pura → atalho** |
 | fkvoice (XTTS) | 0 | 2500 | **fonte pura → atalho** |
 
-1. **Atalho por fonte pura:** **32,9% do teste (741/2250)** é trivialmente
-   separável só pela identidade da fonte (cvpt→real, fkvoice→fake aparecem em
-   treino *e* teste).
+**Composição canônica atual (`medium` reconstruído em 28/06/2026):**
+
+| Fonte | real | fake | observação |
+|---|---:|---:|---|
+| brspeech | 3.750 | 3.750 | fonte both; sem coluna explícita de falante no Parquet local |
+| mlspt | 1.875 | 0 | real puro; 21 chaves de leitor |
+| ttsport | 1.875 | 0 | real puro; 1 falante |
+| fkvoice (XTTS) | 0 | 3.750 | fake puro; 50 chaves de falante |
+
+1. **Atalho por fonte pura:** o risco permanece no split estratificado, agora
+   com MLS/TTS-Portuguese como fontes reais puras e Fake Voices como fonte fake
+   pura aparecendo em treino *e* teste.
 2. **Atalho intra-fonte (brspeech):** uma regressão logística sobre ~10 features
    globais triviais (sem nenhuma pista fina de spoofing) separa real/fake do
    brspeech com **77,2% de acurácia / AUC 0,843**. O discriminador dominante é o

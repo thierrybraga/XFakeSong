@@ -108,6 +108,64 @@ DATASET_CATALOG: Dict[str, DatasetInfo] = {
         access="publico; pode usar fallback em cascata",
         benchmark_use="Completa deficit de amostras reais.",
         recommended_for_full_benchmark=True,
+        notes="OpenSLR 132/resources/cetuc.tar.gz estava 404 na verificacao local de 2026-06-27.",
+    ),
+    "MLS Portuguese": DatasetInfo(
+        name="MLS Portuguese",
+        source_type="real",
+        cli_flag="--mls-portuguese",
+        prefixes=("mlspt",),
+        description="Multilingual LibriSpeech em portugues, download direto fora do HF.",
+        repository="OpenSLR 94 / Facebook AI MLS",
+        url="https://www.openslr.org/94/",
+        license="CC BY 4.0",
+        language="pt",
+        classes="real",
+        audio_count="59 h; pacote opus ~2.5 GB",
+        duration="~59 h",
+        speakers="diversos leitores LibriVox; nao necessariamente PT-BR",
+        access="download direto; HEAD 200 em 2026-06-27",
+        benchmark_use="Completar classe real quando PT-BR estrito nao atinge 15k.",
+        recommended_for_full_benchmark=True,
+        notes="Português amplo/LibriVox; documentar separadamente de PT-BR estrito.",
+    ),
+    "TTS-Portuguese Corpus": DatasetInfo(
+        name="TTS-Portuguese Corpus",
+        source_type="real",
+        cli_flag="--tts-portuguese",
+        prefixes=("ttsport",),
+        description="Corpus brasileiro para TTS, fala real de um falante.",
+        repository="Edresson/TTS-Portuguese-Corpus",
+        url="https://github.com/Edresson/TTS-Portuguese-Corpus",
+        license="CC BY 4.0",
+        language="pt-BR",
+        classes="real",
+        audio_count="3.632 sentencas",
+        duration="~10 h",
+        speakers="1 falante",
+        access="download direto via Dropbox/GitHub",
+        benchmark_use="Reforco real PT-BR; limitado por single-speaker.",
+        recommended_for_full_benchmark=False,
+        notes="Nao usar sozinho para generalizacao por falante.",
+    ),
+    "CORAA ASR": DatasetInfo(
+        name="CORAA ASR",
+        source_type="real",
+        cli_flag="manual",
+        prefixes=("coraa",),
+        description="Corpus brasileiro ASR com fala espontanea e preparada.",
+        repository="nilc-nlp/CORAA",
+        url="https://github.com/nilc-nlp/CORAA",
+        license="CC BY-NC-ND 4.0",
+        language="pt-BR",
+        classes="real",
+        audio_count="~290 h segundo publicacao do corpus",
+        duration="~290 h",
+        speakers="diversos; consultar metadados oficiais",
+        access="download/manual; licenca restritiva NC-ND",
+        benchmark_use="Opcional academico para completar real PT-BR com restricao de licenca.",
+        recommended_for_full_benchmark=False,
+        notes="Nao entra no preset padrao por restricao NoDerivatives/NonCommercial.",
     ),
     "MLAAD-PT": DatasetInfo(
         name="MLAAD-PT",
@@ -223,12 +281,24 @@ DATASET_CATALOG: Dict[str, DatasetInfo] = {
 
 PRESET_SELECTIONS: Dict[str, List[str]] = {
     "PT-BR Rápido": ["BRSpeech-DF", "Fake Voices"],
-    "PT-BR Completo": ["BRSpeech-DF", "Fake Voices", "CETUC", "MLAAD-PT"],
+    "PT-BR Completo": [
+        "BRSpeech-DF",
+        "Fake Voices",
+        "TTS-Portuguese Corpus",
+        "MLAAD-PT",
+    ],
+    "PT-BR 15k Viável": [
+        "BRSpeech-DF",
+        "Fake Voices",
+        "MLS Portuguese",
+        "TTS-Portuguese Corpus",
+    ],
     "Internacional Padrão": ["ASVspoof 2019", "WaveFake", "In-the-Wild"],
     "Máxima Cobertura": [
         "BRSpeech-DF",
         "Fake Voices",
-        "CETUC",
+        "MLS Portuguese",
+        "TTS-Portuguese Corpus",
         "MLAAD-PT",
         "ASVspoof 2019",
         "WaveFake",
@@ -237,13 +307,19 @@ PRESET_SELECTIONS: Dict[str, List[str]] = {
     "Benchmark Robusto Recomendado": [
         "BRSpeech-DF",
         "Fake Voices",
-        "FLEURS",
-        "Common Voice PT",
+        "MLS Portuguese",
+        "TTS-Portuguese Corpus",
         "ASVspoof 2019",
         "WaveFake",
         "In-the-Wild",
     ],
-    "Só Reforçar Real": ["FLEURS", "CETUC", "Common Voice PT"],
+    "Só Reforçar Real": [
+        "MLS Portuguese",
+        "TTS-Portuguese Corpus",
+        "FLEURS",
+        "CETUC",
+        "Common Voice PT",
+    ],
     "Só Reforçar Fake": ["Fake Voices", "MLAAD-PT", "WaveFake", "ASVspoof 5"],
 }
 
@@ -276,9 +352,16 @@ class DatasetTier:
 
     @property
     def skip_real_cv(self) -> bool:
-        """test/small dispensam CommonVoice/FLEURS (real vem do BRSpeech bonafide)."""
+        """test/small dispensam reforco real (real vem do BRSpeech bonafide)."""
         return not any(
-            s in self.sources for s in ("Common Voice PT", "FLEURS", "CETUC")
+            s in self.sources
+            for s in (
+                "Common Voice PT",
+                "FLEURS",
+                "CETUC",
+                "MLS Portuguese",
+                "TTS-Portuguese Corpus",
+            )
         )
 
 
@@ -302,33 +385,41 @@ DATASET_TIERS: Dict[str, DatasetTier] = {
     ),
     "small": DatasetTier(
         name="small",
-        per_class=1_000,
-        purpose="Treino rapido para iteracao (Classico + CNN leve).",
+        per_class=5_000,
+        purpose="Treino rapido robusto (10k total).",
         description=(
-            "Dataset enxuto (1.000 por classe) para ciclos rapidos de treino. "
-            "Habilita SVM/RandomForest e CNNs leves (RawNet2, Sonic Sleuth, "
-            "MultiscaleCNN). PT-BR via BRSpeech-DF + Fake Voices."
+            "Dataset de 10k total (5.000 por classe) para iteracao ainda rapida, "
+            "mas com volume suficiente para comparar classificadores classicos, "
+            "CNNs leves e parte das arquiteturas neurais. PT-BR via BRSpeech-DF "
+            "+ Fake Voices."
         ),
         sources=("BRSpeech-DF", "Fake Voices"),
         split=_STD_SPLIT,
         split_strategy="stratified",
         speaker_aware=False,
-        models_enabled="Classico + CNN leve (ate ~1.000/classe).",
+        models_enabled="Classico, CNN leve, CNN/RNN e Transformers principais.",
     ),
     "medium": DatasetTier(
         name="medium",
-        per_class=3_000,
-        purpose="Treino e teste mais completos (ate Transformer).",
+        per_class=7_500,
+        purpose="Benchmark canonico 15k do XFakeSong.",
         description=(
-            "Dataset completo de treino+teste (3.000 por classe) com diversidade "
-            "real adicional (Common Voice PT + FLEURS) e fake independente "
-            "(Fake Voices XTTS). Habilita CNN/RNN e Transformers."
+            "Dataset canonico de benchmark com 15k total (7.500 por classe). "
+            "Quando Common Voice/FLEURS estiverem indisponiveis, completa a "
+            "classe real com MLS Portuguese/TTS-Portuguese, registrando a "
+            "composicao efetiva. E o padrao para "
+            "`benchmark_audio_raw_balanced_15k.npz`."
         ),
-        sources=("BRSpeech-DF", "Common Voice PT", "FLEURS", "Fake Voices"),
+        sources=(
+            "BRSpeech-DF",
+            "MLS Portuguese",
+            "TTS-Portuguese Corpus",
+            "Fake Voices",
+        ),
         split=_STD_SPLIT,
         split_strategy="stratified",
         speaker_aware=False,
-        models_enabled="Ate Transformer (>=2.000–4.000/classe).",
+        models_enabled="Todas as 14 arquiteturas no benchmark canonico.",
     ),
     "large": DatasetTier(
         name="large",
@@ -338,13 +429,18 @@ DATASET_TIERS: Dict[str, DatasetTier] = {
             "usuarios nao vistos."
         ),
         description=(
-            "Dataset completo (10.000 por classe) com identificacao de falante "
+            "Dataset large de 20k total (10.000 por classe) com identificacao de falante "
             "(speaker_manifest.json) e split DISJUNTO POR FALANTE: nenhum falante "
             "aparece em treino e teste ao mesmo tempo, medindo generalizacao a "
             "usuarios nao vistos. Habilita todas as 14 arquiteturas, incluindo o "
             "Ensemble. Combina com o protocolo cross-generator (XTTS=fkvoice)."
         ),
-        sources=("BRSpeech-DF", "Common Voice PT", "FLEURS", "Fake Voices"),
+        sources=(
+            "BRSpeech-DF",
+            "MLS Portuguese",
+            "TTS-Portuguese Corpus",
+            "Fake Voices",
+        ),
         split=_STD_SPLIT,
         split_strategy="speaker_disjoint",
         speaker_aware=True,

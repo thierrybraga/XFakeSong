@@ -9,6 +9,8 @@ Datasets PT-BR (foco local):
   --cetuc         CETUC/CommonVoice v17 PT-BR / FLEURS / OpenSLR (real)
   --fake-voices   Fake Voices XTTS (unfake/fake_voices): ZIPs por falante (fake)
   --fleurs        FLEURS PT-BR Google (real)
+  --mls-portuguese  MLS Portuguese/LibriVox via download direto (real, CC BY 4.0)
+  --tts-portuguese  TTS-Portuguese Corpus via download direto (real, CC BY 4.0)
   --mlaad-pt      MLAAD v9 subconjunto PT (fake, CC-BY-NC 4.0)
   --common-voice-pt  Mozilla Common Voice v17 PT (real, CC0)
 
@@ -44,6 +46,7 @@ import json
 import logging
 import os
 import sys
+import tarfile
 import zipfile
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from concurrent.futures import TimeoutError as FuturesTimeout
@@ -66,10 +69,18 @@ REAL_DIR = DATASETS_DIR / "real"
 FAKE_DIR = DATASETS_DIR / "fake"
 RAW_DIR = DATASETS_DIR / "raw"
 
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
 TARGET_SR = 16_000
 MIN_DURATION = 1.0
 MAX_DURATION = 30.0
 DEFAULT_MAX_SAMPLES = 5_000
+AUDIO_EXTENSIONS = {".wav", ".flac", ".mp3", ".ogg", ".opus", ".m4a"}
+MLS_PORTUGUESE_URL = "https://dl.fbaipublicfiles.com/mls/mls_portuguese_opus.tar.gz"
+TTS_PORTUGUESE_URL = (
+    "https://www.dropbox.com/s/ohpc7epowv9ct7o/TTS-Portuguese-Corpus.zip?dl=1"
+)
 
 
 def _warn_if_datasets_incompatible() -> None:
@@ -222,8 +233,8 @@ def next_index(directory: Path, prefix: str) -> int:
 def record_speaker_safe(target_path: Path, speaker_id) -> None:
     """Registra o falante de um WAV recém-salvo (best-effort, nunca quebra o download).
 
-    Aditivo: alimenta `app/datasets/speaker_manifest.json` para o tier `large`
-    (split disjunto por falante / usuarios nao vistos). No-op silencioso se o
+    Aditivo: alimenta `app/datasets/speaker_manifest.json` para qualquer tier
+    quando a fonte expoe falante. No-op silencioso se o
     modulo nao estiver disponivel ou o id de falante for vazio.
     """
     if not speaker_id:
@@ -234,6 +245,28 @@ def record_speaker_safe(target_path: Path, speaker_id) -> None:
         record_speaker(target_path, speaker_id)
     except Exception:
         pass
+
+
+def speaker_from_record(record) -> str | None:
+    """Extrai ID de falante de registros HF/parquet quando o campo existe."""
+    getter = record.get if hasattr(record, "get") else None
+    if getter is None:
+        return None
+    for key in (
+        "speaker_id",
+        "speaker",
+        "client_id",
+        "client",
+        "speaker_name",
+        "voice_id",
+        "user_id",
+        "reader_id",
+        "id_speaker",
+    ):
+        value = getter(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return None
 
 
 def _load_done_speakers(path: Path) -> set:
@@ -251,6 +284,44 @@ def _save_done_speakers(path: Path, done: set) -> None:
         path.write_text(json.dumps(sorted(done)), encoding="utf-8")
     except Exception as e:  # noqa: BLE001
         logger.debug(f"  não foi possível salvar estado de falantes: {e}")
+
+
+def _download_file(url: str, dest: Path, label: str) -> bool:
+    """Download direto com resume simples por existencia do arquivo."""
+    if dest.exists() and dest.stat().st_size > 0:
+        logger.info(f"{label}: usando arquivo local {dest}")
+        return True
+
+    try:
+        import requests
+        from tqdm import tqdm
+    except ImportError:
+        logger.error("Instale: pip install requests tqdm")
+        return False
+
+    tmp = dest.with_suffix(dest.suffix + ".part")
+    try:
+        timeout_s = int(os.getenv("XFAKE_DIRECT_DOWNLOAD_TIMEOUT", "60"))
+        logger.info(f"{label}: baixando {url}")
+        with requests.get(url, stream=True, timeout=timeout_s) as resp:
+            resp.raise_for_status()
+            total = int(resp.headers.get("content-length", 0))
+            with open(tmp, "wb") as f, tqdm(
+                total=total, unit="iB", unit_scale=True
+            ) as bar:
+                for chunk in resp.iter_content(1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+                        bar.update(len(chunk))
+        tmp.replace(dest)
+        return True
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"{label}: falha no download: {e}")
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return False
 
 
 def safe_write_wav(target_path: Path, audio: np.ndarray, sr: int = TARGET_SR) -> bool:
@@ -680,9 +751,11 @@ def _download_brspeech_parquet(
                         continue
                     path = target_dir / f"{prefix}_{idx_box[0]:05d}.wav"
                     idx_box[0] += 1
-                    yield (audio_info["bytes"], path, None)
+                    yield (audio_info["bytes"], path, speaker_from_record(row))
 
             written = parallel_decode_write(_jobs(), limit=max(0, max_count - count))
+            for wav_path, speaker_id in written:
+                record_speaker_safe(wav_path, speaker_id)
             count += len(written)
             idx = idx_box[0]
         except Exception as e:
@@ -751,8 +824,6 @@ def download_cetuc(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
 
 def _download_cetuc_openslr(max_samples: int) -> None:
     """Fallback: CETUC via OpenSLR 132."""
-    import tarfile
-
     try:
         import requests
         from tqdm import tqdm
@@ -802,6 +873,123 @@ def _download_cetuc_openslr(max_samples: int) -> None:
             idx += 1
 
     logger.info(f"CETUC OpenSLR: {count} amostras reais")
+
+
+# ---------------------------------------------------------------------------
+# 2b. MLS / TTS-Portuguese — reforços reais fora do Hugging Face
+# ---------------------------------------------------------------------------
+
+def _speaker_from_audio_path(path: Path, prefix: str) -> str:
+    parts = [p for p in path.parts if p and p not in (".", "..")]
+    if len(parts) >= 3:
+        return f"{prefix}_{parts[-3]}"
+    if len(parts) >= 2:
+        return f"{prefix}_{parts[-2]}"
+    return prefix
+
+
+def _ingest_audio_tree(
+    raw_dir: Path,
+    prefix: str,
+    max_samples: int,
+    speaker_prefix: str,
+) -> int:
+    """Converte uma arvore de audio real em WAVs normalizados."""
+    existing = count_wavs(REAL_DIR, prefix)
+    if existing >= max_samples:
+        logger.info(f"{prefix}: já existem {existing} amostras. Pulando.")
+        return existing
+
+    idx = next_index(REAL_DIR, prefix)
+    count = existing
+    audio_files = sorted(
+        p for p in raw_dir.rglob("*")
+        if p.is_file() and p.suffix.lower() in AUDIO_EXTENSIONS
+    )
+    logger.info(f"{prefix}: encontrados {len(audio_files)} arquivos de audio")
+
+    for audio_path in audio_files:
+        if count >= max_samples:
+            break
+        try:
+            y, sr = librosa.load(str(audio_path), sr=TARGET_SR, mono=True)
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"  librosa.load falhou em {audio_path.name}: {e}")
+            continue
+        audio, ok = process_audio(y, TARGET_SR)
+        if not ok:
+            continue
+        out_path = REAL_DIR / f"{prefix}_{idx:05d}.wav"
+        if safe_write_wav(out_path, audio):
+            record_speaker_safe(
+                out_path,
+                _speaker_from_audio_path(audio_path.relative_to(raw_dir), speaker_prefix),
+            )
+            count += 1
+            idx += 1
+            if count % 100 == 0:
+                logger.info(f"  {prefix}: {count}/{max_samples}")
+
+    logger.info(f"{prefix}: {count} amostras reais")
+    return count
+
+
+def download_mls_portuguese(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
+    """MLS Portuguese (LibriVox) — fala real em portugues, fora do HF.
+
+    Licença: CC BY 4.0. Download direto:
+    https://www.openslr.org/94/ / dl.fbaipublicfiles.com/mls.
+    """
+    logger.info("=" * 60)
+    logger.info("MLS PORTUGUESE / LIBRIVOX (real)")
+    logger.info("=" * 60)
+
+    raw_dir = RAW_DIR / "mls_portuguese"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    archive = raw_dir / "mls_portuguese_opus.tar.gz"
+
+    if not _download_file(MLS_PORTUGUESE_URL, archive, "MLS Portuguese"):
+        return
+
+    marker = raw_dir / ".extracted"
+    if not marker.exists():
+        logger.info("MLS Portuguese: extraindo pacote opus...")
+        from app.core.utils.file_utils import safe_extract_tar
+
+        with tarfile.open(str(archive), "r:gz") as tar:
+            safe_extract_tar(tar, raw_dir)
+        marker.write_text("ok", encoding="utf-8")
+
+    _ingest_audio_tree(raw_dir, "mlspt", max_samples, "mlspt")
+
+
+def download_tts_portuguese(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
+    """TTS-Portuguese Corpus — fala real PT-BR de um falante.
+
+    Licença: CC BY 4.0. Útil como reforço real, mas não substitui diversidade
+    de falantes porque o corpus é majoritariamente single-speaker.
+    """
+    logger.info("=" * 60)
+    logger.info("TTS-PORTUGUESE CORPUS (real, single-speaker)")
+    logger.info("=" * 60)
+
+    raw_dir = RAW_DIR / "tts_portuguese"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    archive = raw_dir / "tts_portuguese.zip"
+
+    if not _download_file(TTS_PORTUGUESE_URL, archive, "TTS-Portuguese"):
+        return
+
+    marker = raw_dir / ".extracted"
+    if not marker.exists():
+        logger.info("TTS-Portuguese: extraindo ZIP...")
+        from app.core.utils.file_utils import safe_extract_zip
+
+        with zipfile.ZipFile(str(archive), "r") as zf:
+            safe_extract_zip(zf, raw_dir)
+        marker.write_text("ok", encoding="utf-8")
+
+    _ingest_audio_tree(raw_dir, "ttsport", max_samples, "ttsport_single_speaker")
 
 
 # ---------------------------------------------------------------------------
@@ -940,7 +1128,9 @@ def download_fleurs(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
         audio, ok = process_audio(_arr, _sr)
         if not ok:
             continue
-        if safe_write_wav(REAL_DIR / f"fleurs_{idx:05d}.wav", audio):
+        fleurs_path = REAL_DIR / f"fleurs_{idx:05d}.wav"
+        if safe_write_wav(fleurs_path, audio):
+            record_speaker_safe(fleurs_path, speaker_from_record(item))
             count += 1
             idx += 1
             if count % 50 == 0:
@@ -1469,7 +1659,7 @@ def download_common_voice_pt(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
             continue
         cv_path = REAL_DIR / f"cvpt_{idx:05d}.wav"
         if safe_write_wav(cv_path, audio):
-            record_speaker_safe(cv_path, item.get("client_id"))
+            record_speaker_safe(cv_path, speaker_from_record(item))
             count += 1
             idx += 1
             if count % 100 == 0:
@@ -1612,6 +1802,10 @@ def main() -> None:
                         help="Fake Voices XTTS via ZIPs (fake)")
     parser.add_argument("--fleurs", action="store_true",
                         help="FLEURS PT-BR do Google (real)")
+    parser.add_argument("--mls-portuguese", action="store_true",
+                        help="MLS Portuguese/LibriVox via download direto (real, CC BY 4.0)")
+    parser.add_argument("--tts-portuguese", action="store_true",
+                        help="TTS-Portuguese Corpus via download direto (real, CC BY 4.0)")
     parser.add_argument("--mlaad-pt", action="store_true",
                         help="MLAAD v9 subconjunto PT (fake, CC-BY-NC 4.0)")
     parser.add_argument("--common-voice-pt", action="store_true",
@@ -1639,6 +1833,7 @@ def main() -> None:
     _any = any([
         args.all, args.all_intl,
         args.brspeech, args.cetuc, args.fake_voices, args.fleurs,
+        args.mls_portuguese, args.tts_portuguese,
         args.mlaad_pt, args.common_voice_pt,
         args.asvspoof2019, args.wavefake, args.in_the_wild, args.asvspoof5,
     ])
@@ -1679,6 +1874,12 @@ def main() -> None:
 
     if args.fleurs:
         download_fleurs(args.max_samples)
+
+    if args.mls_portuguese:
+        download_mls_portuguese(args.max_samples)
+
+    if args.tts_portuguese:
+        download_tts_portuguese(args.max_samples)
 
     if args.mlaad_pt:
         download_mlaad_pt(args.max_samples)

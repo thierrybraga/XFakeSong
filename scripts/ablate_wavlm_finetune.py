@@ -1,8 +1,9 @@
-"""Ablação de fine-tuning do WavLM (P2).
+"""Ablação futura de fine-tuning do WavLM (fora do recorte do artigo).
 
-O WavLM ficou abaixo do HuBERT (86% vs 92%) e colapsou a ~51% em 10 dB. Esta
-ablação varre o learning rate (e, opcionalmente, épocas) do fine-tuning para
-explicar/corrigir o subdesempenho, comparando contra o HuBERT como baseline.
+Este script permanece no repositório apenas para experimentos futuros com
+backbones SSL completos. Ele não deve alimentar as tabelas, figuras ou comandos
+do TCC atual, cujo benchmark quantitativo contempla apenas os nove modelos do
+artigo.
 
 Reusa o harness de benchmark (treino + robustez AWGN + eficiência). Para cada
 LR, roda WavLM no mesmo dataset/seed e tabula acurácia limpa, AUC e robustez
@@ -74,7 +75,9 @@ def _row(label, arch_result):
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="Ablação de fine-tuning do WavLM")
+    p = argparse.ArgumentParser(
+        description="Ablação futura de fine-tuning do WavLM (fora do TCC)"
+    )
     p.add_argument("--dataset", help=".npz com X_train/y_train (raw audio)")
     p.add_argument("--lrs", nargs="+", type=float,
                    default=[1e-5, 3e-5, 1e-4],
@@ -87,7 +90,15 @@ def main() -> int:
                    help="não roda o baseline HuBERT")
     p.add_argument("--quick", action="store_true",
                    help="preset sintético de verificação (1 época, sem áudio)")
+    p.add_argument("--allow-future-ssl", action="store_true",
+                   help="habilita explicitamente esta ablação fora do TCC")
     args = p.parse_args()
+
+    if not args.allow_future_ssl:
+        p.error(
+            "ablação WavLM/HuBERT está fora do recorte quantitativo do TCC; "
+            "use --allow-future-ssl apenas para trabalho futuro"
+        )
 
     if not args.quick and not args.dataset:
         p.error("--dataset é obrigatório (ou use --quick)")

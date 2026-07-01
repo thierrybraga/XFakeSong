@@ -12,9 +12,13 @@ sintético. A metodologia integra pré-processamento, extração de característ
 acústicas, treinamento supervisionado, inferência e geração automática de
 relatórios de benchmark.
 
-O experimento consolidado avalia **14 arquiteturas** sobre uma base balanceada
-com **15.000 amostras** de áudio, divididas em 70/15/15 para treino, validação
-e teste. As janelas foram padronizadas em **16 kHz**, mono e **5 s**. Modelos
+O experimento consolidado avalia **14 arquiteturas** sobre o tier `medium`
+canônico de 15k, com **15.000 amostras alvo** de áudio, divididas em 70/15/15
+para treino, validação e teste. As janelas foram padronizadas em **16 kHz**, mono e
+**5 s**. A base ativa consolidada contém 15.000 WAVs PCM lineares, 16 bits,
+mono, 16 kHz, somando **2.045,61 min** de áudio validado; o `.npz` canônico tem
+**2.769,01 MiB** e representa **1.250,00 min** após o corte/padding de 5 s por
+amostra. Modelos
 neurais foram treinados em GPU NVIDIA RTX 3060 via WSL2/CUDA; SVM e Random
 Forest foram otimizados por validação cruzada em CPU.
 

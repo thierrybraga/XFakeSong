@@ -64,20 +64,19 @@ agora parametrizado por **tier** (ver [docs/12_DATASETS.md](12_DATASETS.md)):
 ```bash
 python scripts/run_tcc_pipeline.py \
   --download \
-  --tier large \
+  --tier medium \
   --full-benchmark \
   --epochs 100 \
   --device-profile gpu \
-  --speaker-split \
-  --out results/tcc_large \
-  --npz app/datasets/benchmark_audio_raw_large.npz
+  --out results/tcc_medium_15k \
+  --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
-Esse roteiro reproduz o benchmark consolidado do TCC: o tier `large` monta
-`10.000` reais + `10.000` fake com identificação de falante, 100 épocas para
-modelos neurais, benchmark completo, protocolo de **usuários não vistos**
-(`--speaker-split`) e probe da API quando habilitado. Troque `--tier` por
-`test`/`small`/`medium` para ensaios mais leves. O notebook mantém a execução
+Esse roteiro reproduz o benchmark consolidado do TCC: o tier `medium` monta
+`7.500` reais + `7.500` fake, 100 épocas para modelos neurais e benchmark
+completo. Use `large` apenas quando o objetivo for auditoria 20k com protocolo
+de **usuários não vistos** (`--speaker-split`). Troque `--tier` por `test` ou
+`small` para ensaios mais leves. O notebook mantém a execução
 completa desativada por padrão para evitar download e treino longos sem revisão
 do ambiente.
 
@@ -90,8 +89,8 @@ ponta a ponta. Ele:
 - configura `XFAKE_STORAGE_DIR`, `XFAKE_DATASETS_DIR`, `XFAKE_MODELS_DIR` e
   `XFAKE_LOGS_DIR` para storage persistente;
 - executa um smoke test antes do treino pesado;
-- usa um **tier** de dataset (`--tier large` no benchmark de referência: `10.000`
-  reais + `10.000` fake com falantes identificados);
+- usa um **tier** de dataset (`--tier medium` no benchmark canônico: `7.500`
+  reais + `7.500` fake);
 - chama `scripts/run_tcc_pipeline.py --download --tier <tier> --archs`
   com as 14 arquiteturas;
 - audita `dataset.md`, `dataset_manifest.json`, `results.json`, `results.csv`,

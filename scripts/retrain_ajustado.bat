@@ -23,6 +23,7 @@ python scripts\run_models_sequential.py ^
   --epochs 120 ^
   --snr 30 20 10 ^
   --device-profile gpu ^
+  --speaker-split ^
   --resume
 
 echo.

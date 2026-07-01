@@ -218,6 +218,12 @@ class TrainingConfig:
     # produzir confidências melhor calibradas (que correspondem à acurácia real).
     auto_calibrate_temperature: bool = True
     calibration_min_samples: int = 50  # mínimo de amostras de val para calibrar
+    # Calibração sob ruído: por padrão a temperatura e os thresholds (EER/OOD)
+    # são calibrados num val que inclui cópias com AWGN nos SNRs abaixo — assim
+    # o ponto de operação reflete o uso real sob ruído (corrige o colapso de
+    # recall, ex.: Ensemble, quando a calibração era só em áudio limpo).
+    calibrate_under_noise: bool = True
+    calibration_snr_db: List[int] = field(default_factory=lambda: [20, 10])
 
     # SWA — Stochastic Weight Averaging (Sprint 2.3)
     # Mantém média móvel dos pesos nas últimas ~20% épocas. Pesquisa empírica:

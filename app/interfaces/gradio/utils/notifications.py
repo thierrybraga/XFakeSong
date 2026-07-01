@@ -408,7 +408,7 @@ def render_notification_center_html(limit: int = 10) -> str:
     if not notes:
         return (
             '<div class="notif-empty">'
-            '<div style="font-size:2rem">📭</div>'
+            '<div class="notif-empty-icon">📭</div>'
             "<div>Nenhuma notificação ainda</div>"
             "</div>"
         )
@@ -427,7 +427,7 @@ def render_notification_center_html(limit: int = 10) -> str:
         source_html = f'<span class="notif-code">{source}</span>' if source else ""
         items_html += f"""
         <div class="notif-item notif-{n.level}">
-            <div class="notif-icon" style="color:{n.color}">{n.icon}</div>
+            <div class="notif-icon">{n.icon}</div>
             <div class="notif-body">
                 <div class="notif-header">
                     <span class="notif-title">{title}</span>

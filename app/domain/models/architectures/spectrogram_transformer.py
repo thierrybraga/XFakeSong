@@ -271,17 +271,18 @@ def create_spectrogram_transformer_model(
     weight_decay: float = 1e-4,
     alpha: float = 1e-7,
     clipnorm: float = 1.0,
+    pretrained: bool = False,
     architecture: str = 'spectrogram_transformer'
 ) -> models.Model:
     """
     Create Audio Spectrogram Transformer (AST) model for audio deepfake detection.
-    Fidelity to AST Paper (Gong et al., 2021).
+    Topologically aligned with AST (Gong et al., 2021), trained from scratch.
 
     Args:
         input_shape: Shape of input features
         num_classes: Number of output classes
-        patch_size: Size of patches for patch embedding (default: 8x8)
-        stride: Stride for overlapping patches (default: 6x6)
+        patch_size: Size of patches for patch embedding (default: 16x16)
+        stride: Stride for overlapping patches (default: 10x10)
         embed_dim: Embedding dimension (ViT-Base: 768)
         num_blocks: Number of transformer blocks (ViT-Base: 12)
         num_heads: Number of attention heads (ViT-Base: 12)
@@ -292,6 +293,9 @@ def create_spectrogram_transformer_model(
         decay_steps: Number of cosine decay optimizer steps
         weight_decay: AdamW weight decay
         alpha: Minimum learning rate used by the warmup/cosine schedule
+        pretrained: Reserved metadata flag. This Keras implementation trains
+            AST from scratch; passing True logs a warning and does not load
+            AudioSet/ImageNet weights.
         architecture: Architecture name
 
     Returns:
@@ -299,6 +303,11 @@ def create_spectrogram_transformer_model(
     """
     logger.info(
         f"Creating AST model with input_shape={input_shape}, num_classes={num_classes}")
+    if pretrained:
+        logger.warning(
+            "SpectrogramTransformer/AST: pretrained=True solicitado, mas este "
+            "caminho Keras nao carrega pesos AudioSet/ImageNet; treinando do zero."
+        )
 
     # Input layer
     inputs = layers.Input(shape=input_shape, name='ast_input')
@@ -482,7 +491,7 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int,
     Returns:
         Compiled Keras model
     """
-    # Alias "default" → variante paper-faithful (consistente com AASIST/RawGAT-ST)
+    # Alias "default" -> AST topologicamente alinhado ao artigo, treinado do zero.
     if architecture == 'default':
         architecture = 'spectrogram_transformer'
 

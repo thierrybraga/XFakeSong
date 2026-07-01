@@ -135,6 +135,7 @@ nav:
   - Dados:
     - Datasets Públicos: 12_DATASETS.md
     - Pipeline e Auditoria do Dataset: 27_DATASET_PIPELINE.md
+    - Dataset do Benchmark Utilizado: 29_DATASET_BENCHMARK_UTILIZADO.md
   - Deploy:
     - Hugging Face Spaces: 11_DEPLOY_HUGGINGFACE.md
     - GitHub Pages e Hugging Face: 24_PUBLICACAO_GITHUB_HF.md

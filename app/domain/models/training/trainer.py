@@ -444,20 +444,25 @@ class ModelTrainer(IModelTrainer):
                 verbose=verbose,
             )
 
+            # Conjunto de calibração: por padrão inclui cópias com ruído (AWGN
+            # nos SNRs do teste) para que temperatura/threshold reflitam o ponto
+            # de operação sob ruído (não só em áudio limpo).
+            calibration_data = self._build_calibration_set(validation_data)
+
             # Calibração automática de temperatura (post-hoc)
             self._calibrated_temperature = self._auto_calibrate_temperature(
-                model, validation_data
+                model, calibration_data
             )
 
             # Sprint 2.5: Calibra threshold de OOD detection no val set
             self._ood_threshold = self._compute_ood_threshold(
-                model, validation_data, self._calibrated_temperature
+                model, calibration_data, self._calibrated_temperature
             )
 
             # Sprint 4.5: Calibra threshold EER (Equal Error Rate) no val set
             # Habilita threshold adaptativo por modelo na inferência (em vez de 0.5)
             self._eer_threshold, self._eer_value = self._compute_eer_threshold(
-                model, validation_data, self._calibrated_temperature
+                model, calibration_data, self._calibrated_temperature
             )
 
             # Calcular métricas finais
@@ -927,6 +932,48 @@ class ModelTrainer(IModelTrainer):
         except Exception as e:
             self.logger.warning(f"Erro ao calcular class weights: {e}")
             return None
+
+    @staticmethod
+    def _add_awgn(X: np.ndarray, snr_db: float, seed: int = 0) -> np.ndarray:
+        """AWGN a um SNR alvo (por amostra). Paridade com benchmarks/data.add_awgn."""
+        rng = np.random.default_rng(seed)
+        X = np.asarray(X, dtype="float32")
+        flat = X.reshape(len(X), -1)
+        sig_power = np.mean(flat ** 2, axis=1, keepdims=True)
+        snr_lin = 10.0 ** (float(snr_db) / 10.0)
+        noise_std = np.sqrt(sig_power / max(snr_lin, 1e-12))
+        noise = rng.standard_normal(flat.shape).astype("float32") * noise_std
+        return (flat + noise).reshape(X.shape).astype("float32")
+
+    def _build_calibration_set(self, validation_data):
+        """Val limpo + cópias com AWGN para calibrar sob ruído.
+
+        Gated por `calibrate_under_noise` (default True) nos SNRs de
+        `calibration_snr_db`. Retorna `(X, y)`; em falha, devolve o val original.
+        """
+        if validation_data is None:
+            return validation_data
+        if not getattr(self.config, "calibrate_under_noise", True):
+            return validation_data
+        snrs = list(getattr(self.config, "calibration_snr_db", []) or [])
+        if not snrs:
+            return validation_data
+        try:
+            X_val, y_val = validation_data
+            X_val = np.asarray(X_val, dtype="float32")
+            y_val = np.asarray(y_val)
+            extra = [self._add_awgn(X_val, snr, seed=1234 + i)
+                     for i, snr in enumerate(snrs)]
+            X_cal = np.concatenate([X_val, *extra], axis=0)
+            y_cal = np.concatenate([y_val] * (1 + len(snrs)), axis=0)
+            self.logger.info(
+                "Calibração sob ruído: val %d → %d amostras (SNRs=%s)",
+                len(y_val), len(y_cal), snrs,
+            )
+            return (X_cal, y_cal)
+        except Exception as e:  # noqa: BLE001
+            self.logger.warning("Falha ao montar calibração com ruído: %s", e)
+            return validation_data
 
     def _auto_calibrate_temperature(
         self, model: tf.keras.Model, validation_data: Tuple[np.ndarray, np.ndarray]

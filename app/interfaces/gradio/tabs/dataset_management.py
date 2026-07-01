@@ -64,6 +64,9 @@ _SOURCE_COLORS = {
     "FLEURS":        "#06b6d4",
     "Common Voice PT": "#f59e0b",
     "CETUC":         "#10b981",
+    "MLS Portuguese": "#0ea5e9",
+    "TTS-Portuguese Corpus": "#22c55e",
+    "CORAA ASR":     "#64748b",
     "MLAAD-PT":      "#e879f9",
     "ASVspoof 2019": "#f97316",
     "ASVspoof 5":    "#fb923c",
@@ -209,30 +212,29 @@ def _balance_bar_html(real_count: int, fake_count: int) -> str:
     ratio = real_count / max(fake_count, 1)
 
     if real_count == 0 and fake_count == 0:
-        badge, bcolor = "📭 Dataset vazio", "#94a3b8"
+        badge, status = "📭 Dataset vazio", "empty"
     elif 0.8 <= ratio <= 1.25:
-        badge, bcolor = "✅ Balanceado", _SUCCESS
+        badge, status = "✅ Balanceado", "balanced"
     elif 0.5 <= ratio <= 2.0:
-        badge, bcolor = "⚠️ Aceitável", _WARNING
+        badge, status = "⚠️ Aceitável", "acceptable"
     else:
-        badge, bcolor = "❌ Desbalanceado", _DANGER
+        badge, status = "❌ Desbalanceado", "unbalanced"
 
     return (
-        f'<div style="background:{_FACE};border:1px solid {_GRID};border-radius:8px;'
-        f'padding:12px 14px;font-family:monospace;">'
-        f'<div style="display:flex;justify-content:space-between;margin-bottom:8px;">'
-        f'<span style="color:{_TEXT};font-weight:bold;font-size:13px;">Estado do Dataset</span>'
-        f'<span style="color:{bcolor};font-weight:bold;font-size:13px;">{badge}</span>'
+        f'<div class="dataset-balance-card dataset-balance-{status}">'
+        f'<div class="dataset-balance-head">'
+        f'<span class="dataset-balance-title">Estado do Dataset</span>'
+        f'<span class="dataset-balance-badge">{badge}</span>'
         f'</div>'
-        f'<div style="background:{_BG};border-radius:4px;height:16px;overflow:hidden;'
-        f'display:flex;margin-bottom:8px;">'
-        f'<div style="width:{real_pct:.1f}%;background:{_SUCCESS};transition:width .4s;"></div>'
-        f'<div style="width:{fake_pct:.1f}%;background:{_DANGER};transition:width .4s;"></div>'
+        f'<div class="dataset-balance-meters">'
+        f'<progress class="dataset-balance-progress dataset-balance-real" '
+        f'value="{real_pct:.1f}" max="100"></progress>'
+        f'<progress class="dataset-balance-progress dataset-balance-fake" '
+        f'value="{fake_pct:.1f}" max="100"></progress>'
         f'</div>'
-        f'<div style="display:flex;justify-content:space-between;'
-        f'color:{_TEXT};font-size:12px;">'
+        f'<div class="dataset-balance-kpis">'
         f'<span>🟢 Real: <b>{real_count:,}</b> ({real_pct:.0f}%)</span>'
-        f'<span style="color:{_GRID};">Ratio: <b style="color:{bcolor};">{ratio:.2f}</b></span>'
+        f'<span class="dataset-balance-ratio">Ratio: <b>{ratio:.2f}</b></span>'
         f'<span>🔴 Fake: <b>{fake_count:,}</b> ({fake_pct:.0f}%)</span>'
         f'</div>'
         f'</div>'
@@ -777,8 +779,8 @@ def create_dataset_management_tab():
                             dl_tier = gr.Radio(
                                 choices=[
                                     ("Test — smoke (100/classe)", "test"),
-                                    ("Small — rápido (1.000/classe)", "small"),
-                                    ("Medium — completo (3.000/classe)", "medium"),
+                                    ("Small — 10k rápido (5.000/classe)", "small"),
+                                    ("Medium — benchmark 15k (7.500/classe)", "medium"),
                                     ("Large — falantes não vistos (10.000/classe)", "large"),
                                 ],
                                 value=None,
@@ -809,7 +811,7 @@ def create_dataset_management_tab():
                             dl_target = gr.Slider(
                                 minimum=100,
                                 maximum=10_000,
-                                value=1_000,
+                                value=7_500,
                                 step=100,
                                 label="Alvo por classe (real e fake)",
                                 info="Mínimo de amostras reais E fakes desejado após o download",
@@ -1100,6 +1102,18 @@ def create_dataset_management_tab():
 
                             elif source == "CETUC":
                                 dl_mod.download_cetuc(max_s)
+
+                            elif source == "MLS Portuguese":
+                                dl_mod.download_mls_portuguese(max_s)
+
+                            elif source == "TTS-Portuguese Corpus":
+                                dl_mod.download_tts_portuguese(max_s)
+
+                            elif source == "CORAA ASR":
+                                capture.records.append(
+                                    "[WARN] CORAA ASR é fonte manual/restrita "
+                                    "(CC BY-NC-ND 4.0); não há download automático."
+                                )
 
                             elif source == "MLAAD-PT":
                                 dl_mod.download_mlaad_pt(max_s)

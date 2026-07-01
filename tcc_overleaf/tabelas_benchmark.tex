@@ -1,131 +1,160 @@
 % ====================================================================
-% Tabelas e figuras de benchmark — GERADO automaticamente.
-% Origem: results/.../results.json -> consolidate_results.py -> summary
-% NÃO editar à mão; regenerar com:
-%   python scripts/consolidate_results.py <runs...>
+% Tabelas e figuras de benchmark -- GERADO automaticamente.
+% Recorte oficial: Random Forest, SVM, CCT, AST, Res2Net, Conformer,
+% RawNet2, AASIST, RawGAT-ST, WavLM Original e HuBERT Original.
+% Nao editar a mao; regenerar com:
+%   python scripts/consolidate_results.py <runs...> --prefer-last --copy-to tcc_overleaf/figures
 %   python scripts/update_tcc_latex.py
 % ====================================================================
 
 \begin{table}[ht]
 \centering
-\caption{Desempenho no conjunto limpo.}
-\begin{tabular}{lccccccc}
+\caption{Resultados consolidados no conjunto de teste limpo.}
+\label{tab:resultados_consolidados}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccccc}
 \hline
-Modelo & Acur. & EER & AUC & F1 & Lat.\,(ms) & Treino & Status \\
+Modelo & Acur. & EER & $t$-DCF$^\ast$ & AUC & F1 & Lat.\,(ms) & Treino & Status \\
 \hline
-        WavLM Original & 93,87\% & 5,78\% & 0,985 & 93,99\% & 36,20 & 100 & \textcolor{successgreen}{OK} \\
-        HuBERT Original & 98,93\% & 0,93\% & 0,999 & 98,93\% & 59,06 & 100 & \textcolor{successgreen}{OK} \\
-        RawNet2 & 98,04\% & 2,00\% & 0,999 & 98,02\% & 47,07 & 100 & \textcolor{successgreen}{OK} \\
-        Sonic Sleuth & 100,00\% & 0,00\% & 1,000 & 100,00\% & 31,52 & 100 & \textcolor{successgreen}{OK} \\
-        AASIST & 92,80\% & 7,16\% & 0,929 & 92,76\% & 52,35 & 100 & \textcolor{successgreen}{OK} \\
-        RawGAT-ST & 83,29\% & 16,36\% & 0,917 & 82,59\% & 38,22 & 100 & \textcolor{successgreen}{OK} \\
-        Conformer & 99,87\% & 0,04\% & 1,000 & 99,87\% & 50,56 & 100 & \textcolor{successgreen}{OK} \\
-        Hybrid CNN-Transformer & 97,33\% & 2,76\% & 0,996 & 97,32\% & 37,72 & 100 & \textcolor{successgreen}{OK} \\
-        Spectrogram Transformer & 97,69\% & 2,18\% & 0,998 & 97,72\% & 52,59 & 100 & \textcolor{warningorange}{Tuning} \\
-        EfficientNet-LSTM & 92,89\% & 7,11\% & 0,980 & 92,88\% & 48,33 & 100 & \textcolor{successgreen}{OK} \\
-        MultiscaleCNN & 99,96\% & 0,09\% & 1,000 & 99,96\% & 71,03 & 100 & \textcolor{successgreen}{OK} \\
-        Ensemble & 98,18\% & 1,82\% & 0,999 & 98,16\% & 41,63 & 100 & \textcolor{successgreen}{OK} \\
-        SVM & 96,62\% & 3,38\% & 0,995 & 96,63\% & 0,95 & CV+fit & \textcolor{successgreen}{OK} \\
-        Random Forest & 98,04\% & 2,04\% & 0,998 & 98,05\% & 37,75 & CV+fit & \textcolor{successgreen}{OK} \\
+        Random Forest & 98,18\% & 1,69\% & 0,0446 & 0,998 & 98,18\% & 46,47 & CV+fit & \textcolor{successgreen}{OK} \\
+        SVM & 96,00\% & 4,31\% & 0,1126 & 0,991 & 96,03\% & 1,02 & CV+fit & \textcolor{successgreen}{OK} \\
+        CCT & 96,04\% & 3,91\% & 0,1012 & 0,991 & 96,07\% & 53,37 & 100 & \textcolor{successgreen}{OK} \\
+        AST & 98,71\% & 1,33\% & 0,0349 & 0,995 & 98,71\% & 43,35 & 100 & \textcolor{successgreen}{OK} \\
+        Res2Net & 99,69\% & 0,44\% & 0,0075 & 1,000 & 99,69\% & 42,75 & 100 & \textcolor{successgreen}{OK} \\
+        Conformer & 99,69\% & 0,27\% & 0,0076 & 1,000 & 99,69\% & 59,21 & 100 & \textcolor{successgreen}{OK} \\
+        RawNet2 & 97,38\% & 2,89\% & 0,0576 & 0,998 & 97,37\% & 80,71 & 100 & \textcolor{successgreen}{OK} \\
+        AASIST & 91,69\% & 8,31\% & 0,2574 & 0,917 & 91,88\% & 57,08 & 100 & \textcolor{successgreen}{OK} \\
+        RawGAT-ST & 83,56\% & 16,27\% & 0,4353 & 0,920 & 84,01\% & 37,51 & 100 & \textcolor{successgreen}{OK} \\
+        WavLM Original & 86,09\% & 13,47\% & 1,0000 & 0,937 & 85,66\% & 9,17 & 100 & \textcolor{successgreen}{OK} \\
+        HuBERT Original & 90,18\% & 9,73\% & 0,7031 & 0,969 & 90,02\% & 6,64 & 100 & \textcolor{successgreen}{OK} \\
 \hline
 \end{tabular}
+}
 \end{table}
+
+\noindent\footnotesize{$t$-DCF$^\ast$: proxy interno de custo normalizado,
+sem acoplamento a um sistema ASV oficial.}\normalsize
 
 \begin{table}[ht]
 \centering
-\caption{Eficiência (parâmetros, tamanho, latência).}
+\caption{Eficiência computacional dos modelos consolidados.}
+\label{tab:eficiencia_modelos}
+\resizebox{\textwidth}{!}{%
 \begin{tabular}{lccccc}
 \hline
 Modelo & Parâmetros & Tam.\,(MB) & Lat.\,(ms) & Acur. & EER \\
 \hline
-        WavLM Original & 4.018.755 & 15,42 & 36,20 & 93,87\% & 5,78\% \\
-        HuBERT Original & 90.609.283 & 346,11 & 59,06 & 98,93\% & 0,93\% \\
-        RawNet2 & 3.460.866 & 13,37 & 47,07 & 98,04\% & 2,00\% \\
-        Sonic Sleuth & 2.083.394 & 8,11 & 31,52 & 100,00\% & 0,00\% \\
-        AASIST & 1.859.842 & 7,27 & 52,35 & 92,80\% & 7,16\% \\
-        RawGAT-ST & 306.560 & 1,27 & 38,22 & 83,29\% & 16,36\% \\
-        Conformer & 15.925.122 & 61,27 & 50,56 & 99,87\% & 0,04\% \\
-        Hybrid CNN-Transformer & 1.822.479 & 7,15 & 37,72 & 97,33\% & 2,76\% \\
-        Spectrogram Transformer & 87.403.522 & 333,91 & 52,59 & 97,69\% & 2,18\% \\
-        EfficientNet-LSTM & 5.706.917 & 22,62 & 48,33 & 92,89\% & 7,11\% \\
-        MultiscaleCNN & 48.967.630 & 187,83 & 71,03 & 99,96\% & 0,09\% \\
-        Ensemble & 3.019.782 & 11,98 & 41,63 & 98,18\% & 1,82\% \\
-        SVM & -- & 10,43 & 0,95 & 96,62\% & 3,38\% \\
-        Random Forest & -- & 154,59 & 37,75 & 98,04\% & 2,04\% \\
+        Random Forest & -- & 157,93 & 46,47 & 98,18\% & 1,69\% \\
+        SVM & -- & 11,22 & 1,02 & 96,00\% & 4,31\% \\
+        CCT & 1.822.479 & 7,15 & 53,37 & 96,04\% & 3,91\% \\
+        AST & 87.403.522 & 333,91 & 43,35 & 98,71\% & 1,33\% \\
+        Res2Net & 23.707.438 & 91,01 & 42,75 & 99,69\% & 0,44\% \\
+        Conformer & 15.925.122 & 61,27 & 59,21 & 99,69\% & 0,27\% \\
+        RawNet2 & 7.004.418 & 26,89 & 80,71 & 97,38\% & 2,89\% \\
+        AASIST & 1.859.842 & 7,27 & 57,08 & 91,69\% & 8,31\% \\
+        RawGAT-ST & 241.024 & 1,02 & 37,51 & 83,56\% & 16,27\% \\
+        WavLM Original & 94.579.314 & 360,88 & 9,17 & 86,09\% & 13,47\% \\
+        HuBERT Original & 94.569.090 & 360,83 & 6,64 & 90,18\% & 9,73\% \\
 \hline
 \end{tabular}
+}
 \end{table}
 
 \begin{table}[ht]
 \centering
-\caption{Robustez a ruído (acurácia por SNR, AWGN).}
+\caption{Robustez a ruído AWGN por modelo consolidado.}
+\label{tab:robustez_awgn}
+\resizebox{\textwidth}{!}{%
 \begin{tabular}{lcccc}
 \hline
 Modelo & Limpo & 30\,dB & 20\,dB & 10\,dB \\
 \hline
-        WavLM Original & 93,87\% & 94,04\% & 93,73\% & 92,44\% \\
-        HuBERT Original & 98,93\% & 98,89\% & 98,76\% & 98,44\% \\
-        RawNet2 & 98,04\% & 97,16\% & 95,47\% & 88,62\% \\
-        Sonic Sleuth & 100,00\% & 100,00\% & 100,00\% & 99,78\% \\
-        AASIST & 92,80\% & 92,71\% & 90,98\% & 63,73\% \\
-        RawGAT-ST & 83,29\% & 82,84\% & 80,27\% & 55,07\% \\
-        Conformer & 99,87\% & 99,87\% & 99,78\% & 97,60\% \\
-        Hybrid CNN-Transformer & 97,33\% & 96,89\% & 94,27\% & 78,53\% \\
-        Spectrogram Transformer & 97,69\% & 97,64\% & 97,24\% & 96,00\% \\
-        EfficientNet-LSTM & 92,89\% & 92,98\% & 92,93\% & 88,76\% \\
-        MultiscaleCNN & 99,96\% & 99,96\% & 99,91\% & 99,16\% \\
-        Ensemble & 98,18\% & 73,91\% & 54,58\% & 50,09\% \\
-        SVM & 96,62\% & 95,64\% & 88,49\% & 67,20\% \\
-        Random Forest & 98,04\% & 93,87\% & 85,78\% & 68,00\% \\
+        Random Forest & 98,18\% & 93,51\% & 84,53\% & 68,04\% \\
+        SVM & 96,00\% & 95,07\% & 87,42\% & 66,44\% \\
+        CCT & 96,04\% & 95,64\% & 93,60\% & 81,20\% \\
+        AST & 98,71\% & 98,76\% & 98,67\% & 97,38\% \\
+        Res2Net & 99,69\% & 99,64\% & 99,60\% & 96,18\% \\
+        Conformer & 99,69\% & 99,73\% & 99,69\% & 98,44\% \\
+        RawNet2 & 97,38\% & 96,84\% & 94,40\% & 90,80\% \\
+        AASIST & 91,69\% & 91,73\% & 91,33\% & 71,38\% \\
+        RawGAT-ST & 83,56\% & 83,64\% & 82,44\% & 53,20\% \\
+        WavLM Original & 86,09\% & 73,20\% & 65,16\% & 52,58\% \\
+        HuBERT Original & 90,18\% & 78,76\% & 62,13\% & 50,67\% \\
 \hline
 \end{tabular}
+}
 \end{table}
 
 \begin{table}[ht]
 \centering
 \caption{Estabilidade de treinamento (validação).}
+\label{tab:estabilidade_treinamento}
+\resizebox{\textwidth}{!}{%
 \begin{tabular}{lccccc}
 \hline
 Modelo & Val.\,pico & Época & Val.\,final & Queda & Nota \\
 \hline
-        WavLM Original & 95,47\% & 20 & 94,67\% & 0,80\% & estável \\
-        HuBERT Original & 99,29\% & 23 & 99,24\% & 0,04\% & estável \\
-        RawNet2 & 98,13\% & 61 & 97,87\% & 0,27\% & estável \\
-        Sonic Sleuth & 99,96\% & 68 & 99,91\% & 0,04\% & estável \\
-        AASIST & 93,96\% & 69 & 92,49\% & 1,47\% & estável \\
-        RawGAT-ST & 84,27\% & 4 & 80,00\% & 4,27\% & estável \\
-        Conformer & 99,96\% & 38 & 99,91\% & 0,04\% & estável \\
-        Hybrid CNN-Transformer & 97,20\% & 18 & 76,49\% & 20,71\% & estável \\
-        Spectrogram Transformer & 96,49\% & 7 & 50,00\% & 46,49\% & checkpoint obrigatório \\
-        EfficientNet-LSTM & 91,96\% & 40 & 88,31\% & 3,64\% & estável \\
-        MultiscaleCNN & 99,96\% & 71 & 99,87\% & 0,09\% & estável \\
-        Ensemble & 98,49\% & 33 & 97,78\% & 0,71\% & estável \\
+        Random Forest & -- & CV+fit & -- & -- & não aplicável (modelo clássico) \\
+        SVM & -- & CV+fit & -- & -- & não aplicável (modelo clássico) \\
+        CCT & 95,91\% & 30 & 92,13\% & 3,78\% & flutuação moderada \\
+        AST & 99,16\% & 29 & 99,07\% & 0,09\% & estável \\
+        Res2Net & 99,91\% & 40 & 99,73\% & 0,18\% & estável \\
+        Conformer & 100,00\% & 17 & 99,64\% & 0,36\% & estável \\
+        RawNet2 & 98,18\% & 62 & 97,56\% & 0,62\% & estável \\
+        AASIST & 92,04\% & 51 & 91,87\% & 0,18\% & estável \\
+        RawGAT-ST & 85,07\% & 6 & 83,42\% & 1,64\% & convergência precoce \\
+        WavLM Original & 86,76\% & 13 & 85,24\% & 1,51\% & estável \\
+        HuBERT Original & 91,07\% & 25 & 89,73\% & 1,33\% & estável \\
 \hline
 \end{tabular}
+}
 \end{table}
 
 \begin{figure}[ht]\centering
 \includegraphics[width=\textwidth]{figures/benchmark_accuracy_auc.png}
-\caption{Acurácia e AUC-ROC por arquitetura.}
+\caption{Acurácia e AUC-ROC no conjunto de teste limpo.}
+\label{fig:benchmark_accuracy_auc}
 \end{figure}
 
 \begin{figure}[ht]\centering
 \includegraphics[width=\textwidth]{figures/benchmark_robustness.png}
 \caption{Robustez a ruído (acurácia vs.\ SNR).}
+\label{fig:benchmark_robustness}
 \end{figure}
 
 \begin{figure}[ht]\centering
 \includegraphics[width=0.92\textwidth]{figures/benchmark_eer.png}
-\caption{EER por arquitetura.}
+\caption{Taxa de Erro Igual (EER) por arquitetura.}
+\label{fig:benchmark_eer}
+\end{figure}
+
+\begin{figure}[ht]\centering
+\includegraphics[width=0.92\textwidth]{figures/benchmark_tdcf.png}
+\caption{$t$-DCF$^\ast$ por arquitetura.}
+\label{fig:benchmark_tdcf}
 \end{figure}
 
 \begin{figure}[ht]\centering
 \includegraphics[width=0.95\textwidth]{figures/benchmark_latency.png}
 \includegraphics[width=0.95\textwidth]{figures/benchmark_size.png}
 \caption{Latência e tamanho dos modelos.}
+\label{fig:benchmark_latency_size}
+\end{figure}
+
+\begin{figure}[ht]\centering
+\includegraphics[width=0.95\textwidth]{figures/benchmark_accuracy_latency_tradeoff.png}
+\caption{Trade-off entre acurácia, latência e tamanho dos artefatos.}
+\label{fig:benchmark_accuracy_latency_tradeoff}
 \end{figure}
 
 \begin{figure}[ht]\centering
 \includegraphics[width=0.95\textwidth]{figures/training_stability.png}
-\caption{Acurácia de validação ao longo das épocas.}
+\caption{Resumo de estabilidade e convergência dos onze modelos consolidados. Modelos clássicos são indicados como ajuste por validação cruzada, sem trajetória temporal por época.}
+\label{fig:training_stability}
+\end{figure}
+
+\begin{figure}[ht]\centering
+\includegraphics[width=\textwidth]{figures/confusion_matrices_article.png}
+\caption{Matrizes de confusão dos onze modelos avaliados neste trabalho.}
+\label{fig:confusion_matrices_article}
 \end{figure}

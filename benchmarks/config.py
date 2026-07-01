@@ -7,40 +7,138 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 
-# Ordem CANÔNICA de execução do benchmark: do MENOS para o MAIS custoso de
-# treinar. Roda primeiro o barato (clássico, CNN de espectrograma leve) — que
-# valida o pipeline cedo e falha rápido — e deixa por último o caro (raw-audio
-# GAT/SSL e o Ensemble, que depende dos demais). Heurística por: família
-# (clássico < neural), domínio de entrada (espectrograma < áudio bruto de 16k×5s),
-# complexidade (CNN < LSTM < Transformer < GAT < SSL) e cap de batch por VRAM
-# (ver benchmarks/planning.py::_fit_to_device). Refinável com a latência/tempo
-# medidos de uma execução completa. `run_models_sequential.py` e o caderno
-# `04_all_architectures_full_benchmark` consomem esta ordem.
+# Manifesto oficial do recorte experimental. Ele fixa nomes, variantes e
+# runners usados no TCC; listas derivadas abaixo devem ser consumidas pelos
+# scripts para evitar divergência entre treino, consolidação e LaTeX.
+OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
+    {
+        "benchmark_name": "RandomForest",
+        "result_key": "RandomForest",
+        "display_name": "Random Forest",
+        "variant": "sklearn_random_forest_gridsearch",
+        "runner": "benchmarks.runner:classical",
+        "input_type": "tabular_features",
+    },
+    {
+        "benchmark_name": "SVM",
+        "result_key": "SVM",
+        "display_name": "SVM",
+        "variant": "sklearn_svc_rbf_gridsearch",
+        "runner": "benchmarks.runner:classical",
+        "input_type": "tabular_features",
+    },
+    {
+        "benchmark_name": "Hybrid CNN-Transformer",
+        "result_key": "CCT",
+        "display_name": "CCT",
+        "variant": "cct",
+        "runner": "benchmarks.runner:keras",
+        "input_type": "spectrogram",
+    },
+    {
+        "benchmark_name": "SpectrogramTransformer",
+        "result_key": "AST",
+        "display_name": "AST",
+        "variant": "ast_vit_base_scratch",
+        "runner": "benchmarks.runner:keras",
+        "input_type": "spectrogram",
+    },
+    {
+        "benchmark_name": "MultiscaleCNN",
+        "result_key": "Res2Net",
+        "display_name": "Res2Net",
+        "variant": "res2net50_scale4_no_se",
+        "runner": "benchmarks.runner:keras",
+        "input_type": "spectrogram",
+    },
+    {
+        "benchmark_name": "Conformer",
+        "result_key": "Conformer",
+        "display_name": "Conformer",
+        "variant": "conformer",
+        "runner": "benchmarks.runner:keras",
+        "input_type": "spectrogram",
+    },
+    {
+        "benchmark_name": "RawNet2",
+        "result_key": "RawNet2",
+        "display_name": "RawNet2",
+        "variant": "rawnet2_paper_like_gru1024_dense1024",
+        "runner": "benchmarks.runner:keras",
+        "input_type": "raw_audio",
+    },
+    {
+        "benchmark_name": "AASIST",
+        "result_key": "AASIST",
+        "display_name": "AASIST",
+        "variant": "aasist",
+        "runner": "benchmarks.runner:keras",
+        "input_type": "raw_audio",
+    },
+    {
+        "benchmark_name": "RawGAT-ST",
+        "result_key": "RawGAT-ST",
+        "display_name": "RawGAT-ST",
+        "variant": "rawgat_st_multiply_stride4",
+        "runner": "benchmarks.runner:keras",
+        "input_type": "raw_audio",
+    },
+    {
+        "benchmark_name": "WavLM Original",
+        "result_key": "WavLM Original",
+        "display_name": "WavLM Original",
+        "variant": "microsoft/wavlm-base:frozen_backbone",
+        "runner": "scripts.run_wavlm_original_benchmark:ssl_original",
+        "input_type": "raw_audio_16khz_16000",
+    },
+    {
+        "benchmark_name": "HuBERT Original",
+        "result_key": "HuBERT Original",
+        "display_name": "HuBERT Original",
+        "variant": "facebook/hubert-base-ls960:frozen_backbone",
+        "runner": "scripts.run_wavlm_original_benchmark:ssl_original",
+        "input_type": "raw_audio_16khz_16000",
+    },
+]
+
+OFFICIAL_TCC_RESULT_ORDER = [
+    item["result_key"] for item in OFFICIAL_TCC_MODEL_MANIFEST
+]
+
+OFFICIAL_TCC_DISPLAY_NAMES = {
+    item["result_key"]: item["display_name"] for item in OFFICIAL_TCC_MODEL_MANIFEST
+}
+
+# Modelos suportados diretamente por benchmarks.runner/run_benchmark.py.
 ALL_TCC_ARCHITECTURES = [
-    # --- Clássico (single fit, CPU) ---
-    "RandomForest",
-    "SVM",
-    # --- Espectrograma: CNN leve -> LSTM -> Transformer ---
-    "MultiscaleCNN",
-    "Sonic Sleuth",
-    "EfficientNet-LSTM",
-    "Conformer",
-    "Hybrid CNN-Transformer",
-    "SpectrogramTransformer",
-    # --- Áudio bruto: CNN/GRU -> GAT -> SSL ---
-    "RawNet2",
-    "AASIST",
-    "RawGAT-ST",
-    "WavLM",
-    "HuBERT",
-    # --- Fusão (depende dos demais; mais custoso) ---
-    "Ensemble",
+    item["benchmark_name"]
+    for item in OFFICIAL_TCC_MODEL_MANIFEST
+    if not str(item["runner"]).endswith(":ssl_original")
+]
+
+# WavLM/HuBERT reais são treinados no mesmo fluxo WSL/Docker, mas por um runner
+# SSL PyTorch/Hugging Face dedicado. O runner baixa o checkpoint base, congela o
+# backbone e treina somente a cabeça classificadora.
+SSL_DOCKER_ARCHITECTURES = [
+    item["benchmark_name"]
+    for item in OFFICIAL_TCC_MODEL_MANIFEST
+    if str(item["runner"]).endswith(":ssl_original")
+]
+
+DOCKER_TRAINING_ARCHITECTURES = [
+    item["benchmark_name"] for item in OFFICIAL_TCC_MODEL_MANIFEST
 ]
 
 CLASSICAL_TCC_ARCHITECTURES = ["RandomForest", "SVM"]
 
 NEURAL_TCC_ARCHITECTURES = [
     arch for arch in ALL_TCC_ARCHITECTURES if arch not in CLASSICAL_TCC_ARCHITECTURES
+]
+
+NEURAL_DOCKER_ARCHITECTURES = [
+    arch
+    for arch in DOCKER_TRAINING_ARCHITECTURES
+    if arch not in CLASSICAL_TCC_ARCHITECTURES
 ]
 
 
@@ -67,7 +165,7 @@ class BenchmarkConfig:
     """
 
     architectures: List[str] = field(
-        default_factory=lambda: ["MultiscaleCNN", "Ensemble"]
+        default_factory=lambda: ["MultiscaleCNN", "SVM"]
     )
     dataset_path: Optional[str] = None
     epochs: int = 20
@@ -133,7 +231,7 @@ class BenchmarkConfig:
 
     @classmethod
     def full_tcc(cls, **overrides) -> "BenchmarkConfig":
-        """Preset completo do TCC: todas as arquiteturas + baselines clássicos."""
+        """Preset TCC para o runner direto: nove modelos não SSL."""
         base = dict(
             architectures=list(ALL_TCC_ARCHITECTURES),
             epochs=100,
@@ -147,7 +245,7 @@ class BenchmarkConfig:
 
     @classmethod
     def full_all_architectures(cls, **overrides) -> "BenchmarkConfig":
-        """Alias explícito para o preset completo com as 14 arquiteturas."""
+        """Alias explícito para o preset completo do artigo."""
         return cls.full_tcc(**overrides)
 
     @classmethod
@@ -220,7 +318,7 @@ class BenchmarkConfig:
 
     @classmethod
     def neural_tcc(cls, **overrides) -> "BenchmarkConfig":
-        """Preset neural do TCC: todas as arquiteturas neurais, sem SVM/RF."""
+        """Preset neural do TCC: sete arquiteturas neurais do artigo, sem SVM/RF."""
         base = dict(
             architectures=list(NEURAL_TCC_ARCHITECTURES),
             epochs=100,

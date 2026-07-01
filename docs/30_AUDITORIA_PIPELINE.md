@@ -66,6 +66,16 @@ python scripts/export_npz_from_splits.py \
 > `benchmark_audio_raw_balanced_15k.npz`. Composição por fonte registrada em
 > [29](29_DATASET_BENCHMARK_UTILIZADO.md).
 
+Snapshot local do canônico reconstruído em 28/06/2026:
+
+| Item | Valor |
+|---|---:|
+| WAVs ativos | 15.000 |
+| Tamanho dos WAVs ativos | 3.746,26 MiB |
+| Duração dos WAVs ativos | 2.045,61 min / 34,09 h |
+| Tamanho do `.npz` | 2.769,01 MiB |
+| Formato | WAV PCM linear, 16 bits, mono, 16 kHz |
+
 ---
 
 ## 3. Política de fallback (explícita, evitável)

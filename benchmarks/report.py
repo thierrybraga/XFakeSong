@@ -159,7 +159,7 @@ def _series_styles(n: int) -> List[dict]:
     """Estilos distintos para até ~40 séries: cor (tab20) + linestyle + marker.
 
     Resolve a ambiguidade do ciclo default do matplotlib (10 cores) quando há
-    12–14 arquiteturas no mesmo eixo (ROC, robustez, convergência).
+    várias arquiteturas no mesmo eixo (ROC, robustez, convergência).
     """
     import matplotlib.pyplot as plt
 

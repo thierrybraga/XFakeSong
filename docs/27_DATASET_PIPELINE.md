@@ -12,7 +12,7 @@ divirjam entre os componentes.
 
 ---
 
-## 1. Catalogo de fontes (10)
+## 1. Catalogo de fontes (13)
 
 | Fonte | Tipo | Idioma | Licenca | Prefixo(s) | Flag CLI | Full-bench |
 |---|---|---|---|---|---|:--:|
@@ -20,6 +20,9 @@ divirjam entre os componentes.
 | Fake Voices (XTTS) | fake | pt-BR | MIT | `fkvoice`,`fakevoice` | `--fake-voices` | sim |
 | FLEURS | real | pt-BR | consultar oficial | `fleurs` | `--fleurs` | sim |
 | CETUC | real | pt-BR | livre/variavel | `cetuc` | `--cetuc` | sim |
+| MLS Portuguese | real | pt | CC BY 4.0 | `mlspt` | `--mls-portuguese` | sim |
+| TTS-Portuguese Corpus | real | pt-BR | CC BY 4.0 | `ttsport` | `--tts-portuguese` | sim |
+| CORAA ASR | real | pt-BR | CC BY-NC-ND 4.0 | `coraa` | manual | nao |
 | Common Voice PT | real | pt | CC0 | `cvpt`,`cv` | `--common-voice-pt` | sim |
 | MLAAD-PT | fake | pt | CC-BY-NC 4.0 | `mlaad` | `--mlaad-pt` | nao (NC) |
 | ASVspoof 2019 | real+fake | ingles | ODC-BY 1.0 | `asv2019` | `--asvspoof2019` | sim |
@@ -38,13 +41,29 @@ no `.npz`, splits cross-generator).
 | Tier | Por classe | Total | Split | Fontes | Habilita |
 |---|---:|---:|---|---|---|
 | `test` | 100 | 200 | 70/15/15 estratificado | BRSpeech-DF, Fake Voices | smoke (nada de desempenho) |
-| `small` | 1.000 | 2.000 | 70/15/15 estratificado | BRSpeech-DF, Fake Voices | Classico + CNN leve |
-| `medium` | 3.000 | 6.000 | 70/15/15 estratificado | + Common Voice PT, FLEURS | ate Transformer |
-| `large` | 10.000 | 20.000 | **disjunto por falante** | + Common Voice PT, FLEURS | todas as 14 (Ensemble) |
+| `small` | 5.000 | 10.000 | 70/15/15 estratificado | BRSpeech-DF, Fake Voices | treino rapido robusto |
+| `medium` | 7.500 | 15.000 | 70/15/15 estratificado | + MLS Portuguese, TTS-Portuguese | **benchmark canonico 15k** |
+| `large` | 10.000 | 20.000 | **disjunto por falante** | + MLS Portuguese, TTS-Portuguese | auditoria 20k + usuarios nao vistos |
 
 `small/test` puxam a classe real inteiramente do BRSpeech-DF bonafide
-(`skip_real_cv`); `medium/large` adicionam Common Voice PT + FLEURS. Apenas o
+(`skip_real_cv`); `medium/large` adicionam MLS/TTS-Portuguese, com
+Common Voice/FLEURS somente como legado local se já baixados. Apenas o
 `large` ativa `speaker_aware` (manifesto de falante + split disjunto).
+
+### Snapshot do canônico `medium`
+
+Revisão local: **28/06/2026**.
+
+| Métrica | Valor |
+|---|---:|
+| WAVs ativos | 15.000 |
+| Real / fake | 7.500 / 7.500 |
+| Tamanho dos WAVs ativos | 3.746,26 MiB |
+| Duração dos WAVs ativos | 2.045,61 min / 34,09 h |
+| Tamanho do `.npz` | 2.769,01 MiB |
+| Duração efetiva no `.npz` | 1.250,00 min / 20,83 h |
+| Formato | WAV PCM linear, 16 bits, mono, 16 kHz |
+| Fontes ativas | BRSpeech-DF, MLS Portuguese, TTS-Portuguese Corpus, Fake Voices XTTS |
 
 ---
 
@@ -67,12 +86,14 @@ run_tcc_pipeline.py --download --tier <t> --full-benchmark
 Comandos:
 
 ```bash
-python scripts/build_dataset.py --tier small        # 1.000/classe
+python scripts/build_dataset.py --tier small        # 5.000/classe, 10k total
+python scripts/build_dataset.py --tier medium       # 7.500/classe, 15k canonico
 python scripts/build_dataset.py --tier large        # 10.000/classe, split por falante
-python scripts/build_dataset.py --tier medium --target 4000   # override de tamanho
+python scripts/build_dataset.py --tier medium --target 7500   # override explicito
 
-# ponta a ponta (download + npz + benchmark) no tier large:
-python scripts/run_tcc_pipeline.py --download --tier large --full-benchmark --speaker-split
+# ponta a ponta (download + npz + benchmark) no tier medium canonico:
+python scripts/run_tcc_pipeline.py --download --tier medium --full-benchmark \
+  --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
 ### Esquema do `.npz` canonico
@@ -84,7 +105,7 @@ python scripts/run_tcc_pipeline.py --download --tier large --full-benchmark --sp
 | `X_train`,`X_val`,`X_test` | audio bruto `(amostras, 1)` por split |
 | `y_train`,`y_val`,`y_test` | rotulos `0=real`, `1=fake` |
 | `groups` | fonte/gerador por amostra (do prefixo) |
-| `speaker_ids` | falante por amostra (tier large; cai p/ fonte quando sem manifesto) |
+| `speaker_ids` | falante por amostra; usa `speaker_manifest.json` quando ha ID real e cai para fonte quando nao ha |
 | `metadata_json` | splits, contagens, `paths`, `source_summary`, duracao, sample_rate |
 
 ---
@@ -149,17 +170,13 @@ quando cada modelo pode treinar, nao o tamanho do dataset.
 
 **Pontos de atencao / a reconciliar:**
 
-1. **Nome x tamanho do `.npz` canonico — CORRIGIDO.** O `.npz` canonico foi
+1. **Nome x tamanho do `.npz` canonico — DECISAO ATUAL.** O `.npz` canonico foi
    padronizado em `benchmark_audio_raw_balanced_15k.npz`, coerente com
-   `target_per_class: 10000` (= 20.000 total, tier `large`). O rename foi
-   aplicado em todas as referencias forward (configs, scripts, environments e
-   docs). O registro historico do ultimo benchmark
-   (`app/models/benchmark_final/**` e `tcc_overleaf/main.tex`) foi **preservado**
-   com o nome antigo (`...15k.npz`), pois descreve a execucao ja realizada. Como
-   o `.npz` nao e versionado (gerado sob demanda), renomeie/regerar o arquivo
-   fisico antes do proximo treino.
+   `target_per_class: 7500` (= 15.000 total, tier `medium`). O tier `large`
+   permanece como execucao estendida de 20.000 amostras (`10.000/classe`) e deve
+   usar outro nome de saida quando for materializado.
 2. **Dois conceitos de "tier" — CENTRALIZADO.** Tamanho de dataset (catalogo:
-   100/1.000/3.000/10.000) vs. prontidao por familia de modelo (300/1.000/2.000/
+   100/5.000/7.500/10.000 por classe) vs. prontidao por familia de modelo (300/1.000/2.000/
    4.000/6.000) sao eixos diferentes e legitimos. A lista de prontidao deixou de
    ser hardcoded no Gradio: agora vive em `dataset_catalog.py`
    (`MODEL_READINESS_TIERS` / `ModelReadinessTier`) e `dataset_management.py` a
@@ -167,4 +184,3 @@ quando cada modelo pode treinar, nao o tamanho do dataset.
 3. **`.npz` nao versionado.** A proveniencia exata do arquivo usado no ultimo
    benchmark vem do `metadata_json` interno e do `dataset_config.json`, nao do
    git. Mantenha esses sidecars junto aos resultados ao promover artefatos.
-

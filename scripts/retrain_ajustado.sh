@@ -47,6 +47,7 @@ python scripts/run_models_sequential.py \
   --epochs "${EPOCHS}" \
   --snr ${SNR} \
   --device-profile gpu \
+  --speaker-split \
   --resume
 
 echo

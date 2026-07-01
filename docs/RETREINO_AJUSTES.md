@@ -66,3 +66,26 @@ retreinados.
 
 > Importante: promova um modelo só se ele melhorar (ou empatar) o baseline,
 > especialmente a robustez a 10 dB. Caso contrário, mantenha o artefato anterior.
+
+## Qualidade de treino (P1) — status
+
+Ajustes de qualidade aplicados para o retreino dos novos modelos:
+
+1. **Augmentation de ruído casada com o teste — JÁ ATIVO.** O benchmark treina
+   redes com `use_augmentation` (ruído SNR + SpecAug) e os clássicos (SVM/RF)
+   com `classical_noise_augmentation` (default True), anexando cópias do treino
+   com AWGN nos SNRs avaliados (`benchmarks/runner.py`). A faixa global é
+   `snr_range_db=(5,40)` (`settings.py`), cobrindo 10/20/30 dB.
+2. **Calibração de temperatura/threshold sob ruído — APLICADO.** `settings.py`
+   ganhou `calibrate_under_noise` (default True) + `calibration_snr_db=[20,10]`;
+   o `ModelTrainer` (`_build_calibration_set`) calibra temperatura, EER e OOD
+   num val que inclui cópias com AWGN — corrige o ponto de operação (ex.: colapso
+   de recall do Ensemble) antes medido só em áudio limpo.
+3. **Early stopping `val_loss` + `restore_best_weights` — JÁ ATIVO.** Callbacks do
+   `ModelTrainer` usam `monitor="val_loss"`, `restore_best_weights=True` e
+   paciência da config/registry (RawGAT-ST/AASIST já com paciência maior).
+4. **Split disjunto por falante (tier `large`) — APLICADO.**
+   `run_models_sequential.py` ganhou `--speaker-split`/`--group-split` (repassados
+   ao `run_benchmark.py`) e os scripts `retrain_ajustado.sh/.bat` já passam
+   `--speaker-split` (requer `.npz` tier large com `speaker_ids`; cai para o
+   estratificado com aviso se ausente).

@@ -7,8 +7,10 @@ mapeia o nome do arquivo -> falante, quando a fonte expoe esse identificador
 ASVspoof pelo `speaker` do protocolo). Para fontes que nao expoem falante, o
 agrupamento cai para o nivel de FONTE (`<prefixo>`), o grupo mais fino disponivel.
 
-Usado pelo tier `large` para split DISJUNTO POR FALANTE (usuarios nao vistos) e
-pelo benchmark (`speaker_ids` no `.npz`, `--speaker-split`/`--unseen-speaker`).
+Usado por todos os tiers para preencher `speaker_ids` no `.npz` quando houver ID
+real de falante. O tier `large` tambem usa esse manifesto para split DISJUNTO
+POR FALANTE (usuarios nao vistos) e pelo benchmark
+(`--speaker-split`/`--unseen-speaker`).
 
 Importante: este modulo NAO renomeia arquivos — e puramente aditivo, entao todos
 os parsers de prefixo existentes (catalogo, auditoria, benchmark) permanecem

@@ -38,16 +38,16 @@ ataca a origem em vez dos sintomas modelo a modelo.
   - `SecureDataSplitter._stratified_split` — [app/core/training/secure_training_pipeline.py:86](https://github.com/thierrybraga/XFakeSong/blob/main/app/core/training/secure_training_pipeline.py)
   - `BenchmarkData.stratified_split` — [benchmarks/data.py:145](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/data.py)
   - `runner._stratified_test_labels` — [benchmarks/runner.py:267](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/runner.py)
-- A identidade de **falante/gerador existe apenas no nome de arquivo/diretório**
-  (`brspeech`, `fkvoice/fakevoice`, `cetuc`, `cv`, `fleurs`) —
-  [scripts/build_dataset.py:325](https://github.com/thierrybraga/XFakeSong/blob/main/scripts/build_dataset.py) — e **não é
-  propagada por amostra** para o `.npz` (só `X_*`/`y_*` são salvos;
-  `from_npz` lê apenas `X/y` — [benchmarks/data.py:43](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/data.py)).
+- A identidade de **falante/gerador** agora é propagada por `groups`,
+  `speaker_ids`, `speaker_manifest.json` e `speaker_table.csv`. No dataset
+  canônico consolidado existem 73 chaves de falante/fonte: MLS, TTS-Portuguese
+  e Fake Voices têm ID rastreável; BRSpeech-DF cai para fallback por fonte
+  porque os Parquets locais não expõem coluna explícita de falante.
 
 > Consequência: o mesmo falante/gerador pode cair em treino **e** teste →
 > números 100% (Conformer, Sonic Sleuth) possivelmente **inflados**. Sem
-> propagar `groups`, o reteste por falante/gerador é **impossível**. É
-> pré-requisito de tudo.
+> usar `groups`/`speaker_ids`, o reteste por falante/gerador perde validade. É
+> pré-requisito de qualquer comparação de generalização.
 
 ### 0.3 Val não representativo (origem do colapso val→teste)
 
@@ -76,12 +76,15 @@ Ajustes de código **aplicados e testados** (`tests/unit/test_retraining_adjustm
 | P3 MultiscaleCNN: módulo de pruning por magnitude | ✅ feito | [magnitude_pruning.py](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/models/training/magnitude_pruning.py) |
 
 **Achados da execução (importantes para a banca):**
-- **Não há ID de falante** nos nomes (`brspeech_NNNNN`, `cvpt_NNNNN`,
-  `fkvoice_NNNNN`) — só dá para agrupar por **fonte/gerador** (3 grupos). O
-  split por *falante* puro é inviável com os metadados atuais.
-- As 3 fontes são **correlacionadas à classe** (cvpt=real, fkvoice=fake,
-  brspeech=real+fake). Logo o `group_split` puro tende a um **teste de classe
-  única** (degenerado). O reteste **defensável** aqui é o **cross-generator**.
+- O dataset canônico consolidado contém 15.000 WAVs ativos: BRSpeech-DF
+  bonafide/spoof (3.750+3.750), MLS Portuguese (1.875), TTS-Portuguese (1.875)
+  e Fake Voices XTTS (3.750).
+- Há 73 chaves em `speaker_table.csv`: 21 de MLS, 1 de TTS-Portuguese, 50 de
+  Fake Voices e fallback por fonte para BRSpeech-DF.
+- Algumas fontes continuam **correlacionadas à classe** (MLS/TTS só real,
+  Fake Voices só fake). Logo o `group_split` puro pode ficar degenerado; o
+  reteste **defensável** continua sendo o **cross-generator** e/ou o tier
+  `large` com mais fontes por classe.
 - Validação executada (SVM, subset real): cross-generator (held-out fkvoice/XTTS)
   → acurácia limpa **0,47** / AUC **0,65** vs. ~0,99 no split estratificado —
   evidência concreta de que os números altos sofrem de vazamento de fonte.
@@ -141,7 +144,7 @@ vazados.
 ### P0.1 — Capturar a fonte por amostra na extração
 - [ ] Em [scripts/build_dataset.py](https://github.com/thierrybraga/XFakeSong/blob/main/scripts/build_dataset.py): derivar um
   `group_id` por arquivo (falante quando houver; senão gerador/fonte:
-  `brspeech_spk###`, `xtts`, `cetuc_spk###`, `cv_###`, `fleurs_###`).
+  `brspeech`, `mlspt:<leitor>`, `ttsport_single_speaker`, `fkvoice:<falante>`).
 - [ ] Salvar no `.npz` um array `groups` alinhado a `X/y`
   (e opcionalmente `group_kind` ∈ {speaker, generator}).
 

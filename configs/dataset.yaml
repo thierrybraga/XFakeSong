@@ -1,9 +1,10 @@
 # XFakeSong benchmark dataset defaults.
 
 dataset:
+  canonical_tier: medium
   canonical_npz: app/datasets/benchmark_audio_raw_balanced_15k.npz
   sample_rate: 16000
-  duration_sec: 4.0
+  duration_sec: 5.0
   split:
     train: 0.7
     val: 0.15
@@ -12,10 +13,28 @@ dataset:
     classes:
       - real
       - fake
-    target_per_class: 10000
+    target_per_class: 7500
+    target_total: 15000
+  tiers:
+    test:
+      target_per_class: 100
+      target_total: 200
+      split_strategy: stratified
+    small:
+      target_per_class: 5000
+      target_total: 10000
+      split_strategy: stratified
+    medium:
+      target_per_class: 7500
+      target_total: 15000
+      split_strategy: stratified
+      canonical_benchmark: true
+    large:
+      target_per_class: 10000
+      target_total: 20000
+      split_strategy: speaker_disjoint
   artifacts:
     raw_dir: datasets/raw
     processed_dir: datasets/processed
     manifests_dir: datasets/manifests
     splits_dir: app/datasets/splits
-

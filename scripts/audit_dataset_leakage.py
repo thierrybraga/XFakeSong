@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Auditoria forense de vazamento de domínio no dataset do benchmark (P0.0).
 
-Testa a hipótese central do diagnóstico: as acurácias ~100% (Sonic Sleuth, etc.)
+Testa a hipótese central do diagnóstico: acurácias muito elevadas
 vêm de um ATALHO de domínio/gerador, não de detecção genuína de falsificação.
 
 Duas evidências são produzidas:

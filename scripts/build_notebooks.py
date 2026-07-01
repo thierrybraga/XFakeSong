@@ -208,55 +208,35 @@ def write_nb(rel_path: str, cells: list) -> None:
 # importável, avisando se divergir). Se mudar um contrato no registry, rode o
 # gerador num ambiente com TF: o aviso aponta a linha a atualizar.
 MODELS = [
-    (1, "wavlm", "WavLM", "raw_audio", "Foundation/SSL (raw-audio)",
-     "Backbone auto-supervisionado; cabeça de classificação sobre features SSL."),
-    (2, "hubert", "HuBERT", "raw_audio", "Foundation/SSL (raw-audio)",
-     "Alternativa SSL ao WavLM; mesmo padrão de fine-tuning."),
-    (3, "rawnet2", "RawNet2", "raw_audio", "Forma de onda (SincNet)",
+    (1, "rawnet2", "RawNet2", "raw_audio", "Forma de onda (SincNet)",
      "Processa PCM 1D via Sinc-Convolutions; baseline end-to-end."),
-    (4, "sonic_sleuth", "Sonic Sleuth", "spectrogram",
-     "Espectrograma (features in-model)",
-     "Extrai LFCC/MFCC/CQT dentro do grafo (tf.signal)."),
-    (5, "aasist", "AASIST", "raw_audio", "Forma de onda + grafo",
+    (2, "aasist", "AASIST", "raw_audio", "Forma de onda + grafo",
      "Graph attention espectro-temporal; SOTA em datasets controlados."),
-    (6, "rawgat_st", "RawGAT-ST", "raw_audio", "Forma de onda + grafo duplo",
+    (3, "rawgat_st", "RawGAT-ST", "raw_audio", "Forma de onda + grafo duplo",
      "SincConv + grafos espectral/temporal com fusão."),
-    (7, "conformer", "Conformer", "spectrogram", "Espectrograma (conv+atenção)",
+    (4, "conformer", "Conformer", "spectrogram", "Espectrograma (conv+atenção)",
      "Convolução + self-attention para contexto local e global."),
-    (8, "hybrid_cnn_transformer", "Hybrid CNN-Transformer", "spectrogram",
-     "Espectrograma (híbrido)",
-     "CNN para features locais + Transformer para dependências longas."),
-    (9, "spectrogram_transformer", "SpectrogramTransformer", "spectrogram",
+    (5, "hybrid_cnn_transformer", "Hybrid CNN-Transformer", "spectrogram",
+     "Espectrograma (CCT)",
+     "Alias técnico do CCT; tokenização convolucional + Transformer."),
+    (6, "spectrogram_transformer", "SpectrogramTransformer", "spectrogram",
      "Espectrograma (AST)",
      "Audio Spectrogram Transformer: patches do espectrograma."),
-    (10, "efficientnet_lstm", "EfficientNet-LSTM", "spectrogram",
-     "Espectrograma + temporal",
-     "EfficientNet (mel→224×224) + LSTM com atenção temporal."),
-    (11, "multiscale_cnn", "MultiscaleCNN", "spectrogram",
+    (7, "multiscale_cnn", "MultiscaleCNN", "spectrogram",
      "Espectrograma (Res2Net)",
      "Convoluções multi-escala (Res2Net); baseline neural principal."),
-    (12, "ensemble", "Ensemble", "spectrogram", "Espectrograma (multi-ramo)",
-     "5 ramos convolucionais com fusão adaptativa; leve e rápido."),
-    (13, "svm", "SVM", "tabular", "Clássico (tabular)",
+    (8, "svm", "SVM", "tabular", "Clássico (tabular)",
      "Baseline leve sobre features acústicas agregadas; ideal em CPU."),
-    (14, "random_forest", "RandomForest", "tabular", "Clássico (tabular)",
-     "Ensemble de árvores sobre features agregadas; rápido e robusto."),
+    (9, "random_forest", "RandomForest", "tabular", "Clássico (tabular)",
+     "Comitê de árvores sobre features agregadas; rápido e robusto."),
 ]
 CLASSICAL = {"SVM", "RandomForest"}
-# Modelos SSL: célula OPCIONAL que instala `transformers` para o backbone real.
-# IMPORTANTE: o transformers só fornece HuBERT em TF (`TFHubertModel`, carregado
-# com from_pt=True). WavLM é PyTorch-only — em TF o projeto usa SEMPRE a
-# implementação simplificada (CNN 1D), que treina/infere normalmente.
-SSL_SLUGS = {"wavlm", "hubert"}
+# Modelos SSL completos ficam fora do recorte quantitativo do artigo; portanto
+# o gerador de notebooks não cria células opcionais de backbone externo.
+SSL_SLUGS: set[str] = set()
 
 SSL_DEPS_CELL = """\
-# OPCIONAL: instala `transformers` para usar o backbone SSL pré-treinado real.
-# - HuBERT: backbone REAL em TF (TFHubertModel; baixa o checkpoint na 1ª
-#   execução — requer internet e, idealmente, GPU).
-# - WavLM: o transformers NÃO tem WavLM em TensorFlow (PyTorch-only) — o
-#   projeto usa a implementação simplificada (CNN 1D) mesmo com transformers.
-# Pulando esta célula, ambos usam o caminho simplificado, que treina e infere
-# normalmente — só não carrega pesos SSL pré-treinados.
+# Reservado a experimentos futuros com backbones SSL completos.
 import importlib.util
 import subprocess
 import sys
@@ -266,7 +246,7 @@ if importlib.util.find_spec("transformers") is None:
         [sys.executable, "-m", "pip", "install", "-q", "transformers>=4.30"],
         check=True,
     )
-print("transformers disponível — HuBERT usará o backbone SSL real (TF).")
+print("transformers disponível para experimentos SSL futuros.")
 """
 
 
@@ -346,9 +326,10 @@ def build_index():
 
         Os notebooks de **modelo** treinam + avaliam em dados sintéticos ao rodar
         (rápido); defina o ambiente `XFAKE_RUN_EVAL=0` para pular. Todos são
-        **self-contained** (sem dataset externo). **WavLM/HuBERT** baixam um
-        checkpoint SSL na 1ª execução (requer internet). Treino real com dataset
-        próprio: `pipeline/02_training_model.ipynb`.
+        **self-contained** (sem dataset externo). Treino real com dataset
+        próprio: `pipeline/02_training_model.ipynb`. O catálogo gerado aqui
+        acompanha o recorte do artigo: nove modelos documentados e
+        materializados.
         """),
         code(BOOTSTRAP),
         md("## Ambiente (versões — reprodutibilidade)"),
@@ -526,7 +507,7 @@ def build_models():
             model.summary()
             print("Parâmetros:", model.count_params())
             """
-        # WavLM/HuBERT precisam do `transformers` (download SSL) — célula extra.
+        # Backbones SSL completos ficam fora do recorte quantitativo do artigo.
         ssl_setup = (
             [md("## Backbone SSL real (`transformers`, opcional)"), code(SSL_DEPS_CELL)]
             if slug in SSL_SLUGS else []
@@ -629,9 +610,9 @@ def build_pipeline():
         | Tier | Por classe | Finalidade | Split |
         |------|-----------:|------------|-------|
         | `test` | 100 | Smoke (valida o pipeline) | estratificado |
-        | `small` | 1.000 | Treino rápido (Clássico + CNN leve) | estratificado |
-        | `medium` | 3.000 | Treino+teste (até Transformer) | estratificado |
-        | `large` | 10.000 | Completo + **usuários não vistos** (Ensemble) | disjunto por falante |
+        | `small` | 5.000 | Treino rápido robusto (10k total) | estratificado |
+        | `medium` | 7.500 | Benchmark canônico 15k | estratificado |
+        | `large` | 10.000 | Completo + **usuários não vistos** | disjunto por falante |
 
         O pipeline aceita `--tier` e, no `large`, `--speaker-split` /
         `--unseen-speaker` para o protocolo de falante não visto.
@@ -663,7 +644,7 @@ def build_pipeline():
 
         OUT = ROOT / "results" / "notebook_benchmark"
         cfg = BenchmarkConfig.quick(
-            architectures=["MultiscaleCNN", "Ensemble", "SVM", "RandomForest"],
+            architectures=["MultiscaleCNN", "SVM", "RandomForest"],
             synthetic_n=160,
             snr_levels_db=[20],
             output_dir=str(OUT),
@@ -1083,9 +1064,9 @@ def build_pipeline():
         md(textwrap.dedent('''\
         ## 2. Arquiteturas e hiperparâmetros do experimento
 
-        As 14 arquiteturas rodam **do menos para o mais custoso de treinar** —
+        As 9 arquiteturas do artigo rodam **do menos para o mais custoso de treinar** —
         o barato (clássico, CNN de espectrograma) valida o pipeline cedo e falha
-        rápido; o caro (raw-audio GAT/SSL e o Ensemble) fica por último. Ordem
+        rápido; o caro (raw-audio e grafos de atenção) fica por último. Ordem
         (heurística por família, domínio de entrada, complexidade e cap de batch
         por VRAM; refinável com a latência medida de uma corrida completa):
 
@@ -1093,18 +1074,13 @@ def build_pipeline():
         |---:|---|---|---|---|
         | 1 | RandomForest | clássico | features | muito baixo |
         | 2 | SVM | clássico (RBF) | features | baixo |
-        | 3 | MultiscaleCNN | CNN | espectrograma | baixo |
-        | 4 | Sonic Sleuth | CNN | espectrograma | baixo-médio |
-        | 5 | EfficientNet-LSTM | CNN+LSTM | espectrograma | médio |
-        | 6 | Conformer | Conv+Attention | espectrograma | médio-alto |
-        | 7 | Hybrid CNN-Transformer | CNN+Transformer | espectrograma | médio-alto |
-        | 8 | SpectrogramTransformer | Transformer | espectrograma | alto (batch 8) |
-        | 9 | RawNet2 | SincConv+GRU | áudio bruto | alto |
-        | 10 | AASIST | Sinc+GAT | áudio bruto | alto |
-        | 11 | RawGAT-ST | Sinc+GAT | áudio bruto | muito alto (batch 8) |
-        | 12 | WavLM | SSL (fallback CNN-1D no TF) | áudio bruto | muito alto |
-        | 13 | HuBERT | SSL (real/fallback) | áudio bruto | muito alto |
-        | 14 | Ensemble | fusão | — | máximo (depende dos demais) |
+        | 3 | MultiscaleCNN (Res2Net) | CNN | espectrograma | baixo |
+        | 4 | Hybrid CNN-Transformer (CCT) | CNN+Transformer | espectrograma | médio |
+        | 5 | Conformer | Conv+Attention | espectrograma | médio-alto |
+        | 6 | SpectrogramTransformer (AST) | Transformer | espectrograma | alto (batch 8) |
+        | 7 | RawNet2 | SincConv+GRU | áudio bruto | alto |
+        | 8 | AASIST | Sinc+GAT | áudio bruto | alto |
+        | 9 | RawGAT-ST | Sinc+GAT | áudio bruto | muito alto (batch 8) |
 
         > A ordem é a mesma de `benchmarks/config.py::ALL_TCC_ARCHITECTURES`, fonte
         > única consumida também por `run_models_sequential.py`.
@@ -1116,23 +1092,18 @@ def build_pipeline():
             "RandomForest",
             "SVM",
             "MultiscaleCNN",
-            "Sonic Sleuth",
-            "EfficientNet-LSTM",
-            "Conformer",
             "Hybrid CNN-Transformer",
+            "Conformer",
             "SpectrogramTransformer",
             "RawNet2",
             "AASIST",
             "RawGAT-ST",
-            "WavLM",
-            "HuBERT",
-            "Ensemble",
         ]
 
         # Tier do dataset (test/small/medium/large) — define tamanho, fontes e
-        # protocolo de split. Ver docs/12_DATASETS.md. O `large` (10k/classe)
-        # ativa identificação de falante + usuários não vistos.
-        TIER = "large"
+        # protocolo de split. Ver docs/12_DATASETS.md. O `medium` (7.5k/classe)
+        # é o benchmark canônico 15k.
+        TIER = "medium"
         # protocolo de usuários não vistos — requer manifesto de falante
         # (speaker_manifest.json); sem ele o split cai para estratificado por fonte.
         SPEAKER_SPLIT = TIER == "large"

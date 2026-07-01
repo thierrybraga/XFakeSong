@@ -72,44 +72,44 @@ estratégia de split. Detalhes de fontes/licenças em
 | Tier | Por classe | Total | Split | Habilita | Uso típico no treino |
 |------|-----------:|------:|-------|----------|----------------------|
 | `test` | 100 | 200 | 70/15/15 estratificado | nenhum (abaixo do mínimo clássico) | smoke de ponta a ponta |
-| `small` | 1.000 | 2.000 | 70/15/15 estratificado | Clássico (SVM/RF) + CNN leve | iteração rápida de hiperparâmetros |
-| `medium` | 3.000 | 6.000 | 70/15/15 estratificado | até Transformer | treino/teste mais robustos |
-| `large` | 10.000 | 20.000 | **disjunto por falante** + cross-generator | **todas as 14 arquiteturas** (inclui Ensemble) | execução de referência do TCC |
+| `small` | 5.000 | 10.000 | 70/15/15 estratificado | clássicos, CNNs leves e principais neurais | iteração robusta |
+| `medium` | 7.500 | 15.000 | 70/15/15 estratificado | **todas as 14 arquiteturas** | **benchmark canônico do TCC** |
+| `large` | 10.000 | 20.000 | **disjunto por falante** + cross-generator | todas as 14 + auditoria de falantes | execução estendida |
 
 > O `.npz` canônico do benchmark
 > (`app/datasets/benchmark_audio_raw_balanced_15k.npz`, ~15k) corresponde ao tier
-> **`large`** (10k/classe com folga de balanceamento). Para o retreino dos
-> modelos ajustados use sempre `large` — só ele exercita a robustez sob falantes
-> não vistos e habilita o Ensemble.
+> **`medium`** (7.500/classe). Use `large` quando o objetivo for uma auditoria
+> estendida de 20k com protocolo de falantes não vistos.
 
 **Montar um tier** (download + balanceamento + splits + `dataset_config.json`):
 
 ```bash
-python scripts/build_dataset.py --tier small     # 1.000/classe — segundos a minutos
-python scripts/build_dataset.py --tier medium    # 3.000/classe
+python scripts/build_dataset.py --tier small     # 5.000/classe, 10k total
+python scripts/build_dataset.py --tier medium    # 7.500/classe, 15k canônico
 python scripts/build_dataset.py --tier large     # 10.000/classe, split por falante
 
 # override do tamanho mantendo fontes/split do tier:
-python scripts/build_dataset.py --tier medium --target 4000
+python scripts/build_dataset.py --tier medium --target 7500
 ```
 
 **Como o tier afeta o treino:**
 
 - **Prontidão por modelo.** O treino só habilita um modelo quando o tier atinge o
-  mínimo de amostras dele — `small` cobre Clássico + CNN leve (RawNet2, Sonic
-  Sleuth, MultiscaleCNN); `medium` chega aos Transformers; o **Ensemble** exige
-  `large` (≥6.000/classe).
+  mínimo de amostras dele — `small` já cobre os principais modelos; `medium`
+  é o alvo canônico para comparar as 14 arquiteturas; `large` aumenta a margem
+  para auditorias.
 - **Split.** `test/small/medium` usam 70/15/15 estratificado; `large` usa split
   **disjunto por falante** (`speaker_manifest.json`), medindo generalização a
   usuários não vistos e evitando vazamento de falante entre treino e teste.
 - **Pipeline de ponta a ponta** (download → benchmark) por tier:
 
 ```bash
-python scripts/run_tcc_pipeline.py --download --tier large --full-benchmark --speaker-split
+python scripts/run_tcc_pipeline.py --download --tier medium --full-benchmark \
+  --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
-Recomendação prática: prototipe hiperparâmetros em `small`, valide arquitetura em
-`medium` e produza os números finais (e o retreino ajustado) em `large`.
+Recomendação prática: prototipe hiperparâmetros em `small`, produza os números
+finais no `medium` canônico e use `large` para auditoria adicional de falantes.
 
 ### 1.3 ModelTrainer
 

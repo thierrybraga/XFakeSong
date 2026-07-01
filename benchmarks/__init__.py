@@ -20,7 +20,7 @@ Uso programático:
 
 Uso por CLI:
     python scripts/run_benchmark.py --quick
-    python scripts/run_benchmark.py --dataset data.npz --archs MultiscaleCNN Ensemble SVM
+    python scripts/run_benchmark.py --dataset data.npz --archs MultiscaleCNN SVM RandomForest
 """
 
 from __future__ import annotations
@@ -28,7 +28,13 @@ from __future__ import annotations
 from benchmarks.config import (
     ALL_TCC_ARCHITECTURES,
     CLASSICAL_TCC_ARCHITECTURES,
+    DOCKER_TRAINING_ARCHITECTURES,
     NEURAL_TCC_ARCHITECTURES,
+    NEURAL_DOCKER_ARCHITECTURES,
+    OFFICIAL_TCC_DISPLAY_NAMES,
+    OFFICIAL_TCC_MODEL_MANIFEST,
+    OFFICIAL_TCC_RESULT_ORDER,
+    SSL_DOCKER_ARCHITECTURES,
     BenchmarkConfig,
 )
 from benchmarks.runner import plan_benchmark, run_benchmark
@@ -36,7 +42,13 @@ from benchmarks.runner import plan_benchmark, run_benchmark
 __all__ = [
     "ALL_TCC_ARCHITECTURES",
     "CLASSICAL_TCC_ARCHITECTURES",
+    "DOCKER_TRAINING_ARCHITECTURES",
     "NEURAL_TCC_ARCHITECTURES",
+    "NEURAL_DOCKER_ARCHITECTURES",
+    "OFFICIAL_TCC_DISPLAY_NAMES",
+    "OFFICIAL_TCC_MODEL_MANIFEST",
+    "OFFICIAL_TCC_RESULT_ORDER",
+    "SSL_DOCKER_ARCHITECTURES",
     "BenchmarkConfig",
     "plan_benchmark",
     "run_benchmark",

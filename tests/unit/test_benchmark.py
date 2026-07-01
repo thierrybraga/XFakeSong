@@ -505,19 +505,29 @@ def test_full_tcc_preset_includes_all_architectures():
     from benchmarks.config import (
         ALL_TCC_ARCHITECTURES,
         CLASSICAL_TCC_ARCHITECTURES,
+        DOCKER_TRAINING_ARCHITECTURES,
         NEURAL_TCC_ARCHITECTURES,
+        SSL_DOCKER_ARCHITECTURES,
         BenchmarkConfig,
     )
 
     cfg = BenchmarkConfig.full_tcc()
 
     assert cfg.architectures == ALL_TCC_ARCHITECTURES
-    assert len(cfg.architectures) == 14
+    assert len(cfg.architectures) == 9
     assert "SpectrogramTransformer" in cfg.architectures
     assert "Spectrogram Transformer" not in cfg.architectures
+    assert "WavLM Original" not in cfg.architectures
+    assert "HuBERT Original" not in cfg.architectures
     assert BenchmarkConfig.full_all_architectures().architectures == cfg.architectures
-    assert CLASSICAL_TCC_ARCHITECTURES == ["SVM", "RandomForest"]
-    assert len(NEURAL_TCC_ARCHITECTURES) == 12
+    assert CLASSICAL_TCC_ARCHITECTURES == ["RandomForest", "SVM"]
+    assert SSL_DOCKER_ARCHITECTURES == ["WavLM Original", "HuBERT Original"]
+    assert DOCKER_TRAINING_ARCHITECTURES == [
+        *ALL_TCC_ARCHITECTURES,
+        *SSL_DOCKER_ARCHITECTURES,
+    ]
+    assert len(DOCKER_TRAINING_ARCHITECTURES) == 11
+    assert len(NEURAL_TCC_ARCHITECTURES) == 7
     assert "SVM" not in NEURAL_TCC_ARCHITECTURES
     assert BenchmarkConfig.neural_tcc().architectures == NEURAL_TCC_ARCHITECTURES
     rawnet2 = BenchmarkConfig.rawnet2_100e()
@@ -612,7 +622,7 @@ def test_benchmark_plan_is_written_before_training():
         plan = plan_benchmark(cfg, write=True)
 
         assert plan["preset"] == "full_tcc"
-        assert len(plan["architectures"]) == 14
+        assert len(plan["architectures"]) == 9
         assert plan["architectures"]["AASIST"]["training_config"]["batch_size"] <= 8
         assert plan["architectures"]["SVM"]["training_config"]["model_family"] == "classical"
         assert (Path(td) / "benchmark_plan.json").exists()
@@ -657,7 +667,7 @@ def test_all_architectures_benchmark_smoke_contract(monkeypatch):
         )
         results = run_benchmark(cfg)
 
-        assert len(results["architectures"]) == 14
+        assert len(results["architectures"]) == 9
         assert all(r["status"] == "ok" for r in results["architectures"].values())
         assert (Path(td) / "figures" / "confusion_matrices.png").exists()
         assert (Path(td) / "results.json").exists()

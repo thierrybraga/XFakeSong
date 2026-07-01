@@ -71,12 +71,12 @@ class ArchitectureRegistry:
                 function_name="create_model",
                 description="Anti-spoofing Audio Spoofing and Deepfake Detection - configuração otimizada para reduzir overfitting",
                 supported_variants=[
+                    "aasist",
                     "default",
                     "cnn_baseline",
                     "bidirectional_gru",
                     "resnet_gru",
                     "transformer",
-                    "aasist",
                 ],
                 default_params={
                     # create_model params: dropout_rate, l2_reg_strength, hidden_dim, num_layers
@@ -115,12 +115,17 @@ class ArchitectureRegistry:
                 function_name="create_model",
                 description="End-to-End Spectro-Temporal Graph Attention (Tak et al., 2021) — SincNet sobre áudio bruto + grafo espectral (Gs) e temporal (Gt) com fusão element-wise",
                 supported_variants=[
+                    "rawgat_st",
                     "default",
+                    "rawgat_st_paper",
+                    "rawgat_st_fast",
+                    "rawgat_st_stable",
+                    "rawgat_st_optimized",
+                    "cnn_gru_simple",
                     "cnn_baseline",
                     "bidirectional_gru",
                     "resnet_gru",
                     "transformer",
-                    "rawgat_st",
                 ],
                 default_params={
                     # create_model params: dropout_rate, l2_reg_strength, attention_heads, hidden_dim, num_layers
@@ -133,6 +138,8 @@ class ArchitectureRegistry:
                     "attention_heads": 8,
                     "hidden_dim": 512,
                     "num_layers": 6,
+                    "temporal_pool_stride": 4,
+                    "fusion_mode": "multiply",
                     # Training params (used by pipeline, not by create_model)
                     "patience": 25,
                     "lr_patience": 8,
@@ -140,8 +147,8 @@ class ArchitectureRegistry:
                     "augmentation_strength": 0.4,
                 },
                 input_requirements={
-                    # Paper-faithful: opera sobre ÁUDIO BRUTO (SincNet front-end),
-                    # igual ao AASIST. (Antes estava 'spectrogram', divergindo do paper.)
+                    # Opera sobre ÁUDIO BRUTO (SincNet front-end), igual ao
+                    # AASIST. (Antes estava 'spectrogram', divergindo do paper.)
                     "input_type": "raw_audio",
                     "type": "audio",
                     "format": "raw",
@@ -196,11 +203,17 @@ class ArchitectureRegistry:
                 module_path="app.domain.models.architectures.multiscale_cnn",
                 function_name="create_model",
                 description="Res2Net: Multi-scale backbone with hierarchical residual connections (Gao et al., TPAMI 2021). Res2Net-50 config: scale=4, baseWidth=26, [3,4,6,3] blocks.",
-                supported_variants=["multiscale_cnn", "multiscale_cnn_lite"],
+                supported_variants=[
+                    "multiscale_cnn",
+                    "multiscale_cnn_lite",
+                    "multiscale_cnn_se",
+                    "multiscale_cnn_optimized",
+                ],
                 default_params={
                     # create_model params: base_width, scale, layer_config, dropout_rate
                     "base_width": 26,
-                    "scale": 8,
+                    "scale": 4,
+                    "use_se": False,
                     "dropout_rate": 0.2,
                     # Training params (used by pipeline, not by create_model)
                     "patience": 15,
@@ -230,7 +243,21 @@ class ArchitectureRegistry:
                     "spectrogram_transformer_lite",
                 ],
                 default_params={
-                    # create_model params: architecture only (no model hyperparams accepted)
+                    # create_model params: AST/ViT-Base trained from scratch.
+                    "patch_size": (16, 16),
+                    "stride": (10, 10),
+                    "embed_dim": 768,
+                    "num_blocks": 12,
+                    "num_heads": 12,
+                    "ff_dim": 3072,
+                    "dropout_rate": 0.3,
+                    "learning_rate": 5e-5,
+                    "warmup_steps": 2000,
+                    "decay_steps": 50000,
+                    "weight_decay": 1e-4,
+                    "alpha": 1e-7,
+                    "clipnorm": 1.0,
+                    "pretrained": False,
                     # Training params (used by pipeline, not by create_model)
                     "patience": 25,
                     "lr_patience": 12,
@@ -370,8 +397,8 @@ class ArchitectureRegistry:
                     "sinc_filters": 128,
                     "sinc_kernel_size": 1024,
                     "res_filters": [128, 128, 256, 256, 256, 256],
-                    "gru_units": 512,
-                    "dense_units": 512,
+                    "gru_units": 1024,
+                    "dense_units": 1024,
                     "dropout_rate": 0.3,
                     # Training params (used by pipeline, not by create_model)
                     "patience": 15,

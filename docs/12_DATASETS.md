@@ -16,9 +16,9 @@ split de forma consistente em todo o sistema.
 | Tier | Por classe | Total | Finalidade | Fontes | Split | Falante |
 |------|-----------:|------:|------------|--------|-------|:------:|
 | **test** | 100 | 200 | **Smoke** — validar que treino e modelo funcionam de ponta a ponta. Não mede desempenho. | BRSpeech-DF + Fake Voices | 70/15/15 estratificado | — |
-| **small** | 1.000 | 2.000 | **Treino rápido** para iteração. Habilita Clássico (SVM/RF) + CNN leve. | BRSpeech-DF + Fake Voices | 70/15/15 estratificado | — |
-| **medium** | 3.000 | 6.000 | **Treino + teste completos** com diversidade real adicional. Habilita até Transformer. | BRSpeech-DF + Common Voice PT + FLEURS + Fake Voices | 70/15/15 estratificado | — |
-| **large** | 10.000 | 20.000 | **Completo** com falantes identificados e **usuários não vistos**. Habilita todas as 14 arquiteturas (Ensemble). | BRSpeech-DF + Common Voice PT + FLEURS + Fake Voices | **disjunto por falante** + cross-generator | **sim** |
+| **small** | 5.000 | 10.000 | **Treino rápido robusto**. Habilita clássicos, CNNs leves e principais redes neurais. | BRSpeech-DF + Fake Voices | 70/15/15 estratificado | parcial |
+| **medium** | 7.500 | 15.000 | **Benchmark canônico viável** do XFakeSong/TCC. Habilita as 14 arquiteturas sob protocolo balanceado. | BRSpeech-DF + MLS Portuguese + TTS-Portuguese + Fake Voices | 70/15/15 estratificado | parcial |
+| **large** | 10.000 | 20.000 | **Completo** com falantes identificados e **usuários não vistos**. Habilita todas as 14 arquiteturas (Ensemble). | BRSpeech-DF + MLS Portuguese + TTS-Portuguese + Fake Voices | **disjunto por falante** + cross-generator | **sim** |
 
 ### Descrição detalhada
 
@@ -27,14 +27,17 @@ split de forma consistente em todo o sistema.
   erro (acurácia não é significativa neste tamanho). Real vem inteiramente do
   BRSpeech-DF bonafide; fake do BRSpeech-DF spoof + Fake Voices XTTS. Download em
   segundos. Use antes de qualquer execução pesada.
-- **`small` — rápido (1.000/classe).** Para ciclos rápidos de experimentação.
-  Atinge os limiares de prontidão de **SVM/RandomForest** e **CNNs leves**
-  (RawNet2, Sonic Sleuth, MultiscaleCNN). PT-BR via BRSpeech-DF + Fake Voices.
-- **`medium` — completo (3.000/classe).** Treino **e** teste mais robustos, com
-  diversidade real adicional (Common Voice PT + FLEURS) e fake independente
-  (Fake Voices XTTS). Atinge os limiares de **CNN/RNN** e **Transformers**.
-- **`large` — completo + falantes não vistos (10.000/classe).** O tier de
-  referência do TCC. Além do volume que habilita **todas as 14 arquiteturas**
+- **`small` — 10k rápido (5.000/classe).** Para ciclos de experimentação já
+  representativos. Atinge os limiares de prontidão de classificadores clássicos,
+  CNNs leves, CNN/RNN e Transformers principais. PT-BR via BRSpeech-DF + Fake
+  Voices.
+- **`medium` — benchmark canônico (7.500/classe, 15.000 total).** Treino **e**
+  teste robustos, com diversidade real adicional fora do HF
+  (MLS Portuguese/TTS-Portuguese) e fake independente (Fake Voices XTTS).
+  Common Voice/FLEURS ficam como legado local quando já existirem. É o tier padrão para gerar
+  `app/datasets/benchmark_audio_raw_balanced_15k.npz`.
+- **`large` — 20k + falantes não vistos (10.000/classe).** Tier estendido para
+  auditoria de generalização. Além do volume que habilita **todas as 14 arquiteturas**
   (incluindo o Ensemble, ≥6.000/classe), ele:
   - **identifica falantes** num sidecar `app/datasets/speaker_manifest.json`
     (Fake Voices por falante do ZIP, Common Voice por `client_id`, In-the-Wild
@@ -50,6 +53,39 @@ split de forma consistente em todo o sistema.
 > benchmark) continuam funcionando. O manifesto é gravado automaticamente pelos
 > downloaders das fontes que expõem falante.
 
+### Dataset `medium` consolidado em disco
+
+Revisão local: **28/06/2026**. O dataset canônico ativo foi reconstruído do
+zero com BRSpeech-DF, Fake Voices, MLS Portuguese e TTS-Portuguese Corpus.
+
+| Item | Valor consolidado |
+|---|---:|
+| WAVs ativos | 15.000 |
+| Classe real | 7.500 arquivos |
+| Classe fake | 7.500 arquivos |
+| Tamanho dos WAVs ativos | 3.746,26 MiB |
+| Duração dos WAVs ativos | 2.045,61 min / 34,09 h |
+| Tamanho do NPZ canônico | 2.769,01 MiB |
+| Duração efetiva no NPZ | 1.250,00 min / 20,83 h |
+| Formato de áudio | WAV RIFF, PCM linear, 16 bits, mono, 16 kHz |
+| Modulação/codificação | PCM (`Pulse-Code Modulation`) sem compressão |
+| Splits | 10.500 treino, 2.250 validação, 2.250 teste |
+| Falantes/chaves de falante | 73 chaves no conjunto ativo |
+| IDs de falante | 7.500 linhas com ID real + 7.500 com fallback por fonte |
+
+Composição efetiva dos WAVs ativos:
+
+| Classe | Fonte | Arquivos | MiB | Minutos | Falantes/chaves | Licença |
+|---|---|---:|---:|---:|---:|---|
+| real | BRSpeech-DF bonafide | 3.750 | 847,84 | 462,95 | 1 fallback | Apache-2.0/CC BY 4.0 (HF divergente) |
+| real | MLS Portuguese | 1.875 | 894,37 | 488,40 | 21 | CC BY 4.0 |
+| real | TTS-Portuguese Corpus | 1.875 | 645,12 | 352,28 | 1 | CC BY 4.0 |
+| fake | BRSpeech-DF spoof | 3.750 | 836,65 | 456,84 | 1 fallback | Apache-2.0/CC BY 4.0 (HF divergente) |
+| fake | Fake Voices XTTS | 3.750 | 522,27 | 285,15 | 50 | MIT |
+
+Todos os 15.000 WAVs ativos foram validados como `16000 Hz`, `1` canal,
+amostra de `2` bytes e compressão `NONE` pelo módulo padrão `wave` do Python.
+
 ### Como usar
 
 **Interface Gradio** — aba **Datasets → Download → "1. Escolher Tier"**. Escolher
@@ -61,12 +97,12 @@ um tier pré-preenche o **alvo por classe** e as **fontes**, e mostra a descriç
 ```bash
 # Monta o dataset de um tier (download + balanceamento + splits + config)
 python scripts/build_dataset.py --tier test       # smoke, ~segundos
-python scripts/build_dataset.py --tier small       # 1.000/classe
-python scripts/build_dataset.py --tier medium      # 3.000/classe
+python scripts/build_dataset.py --tier small       # 5.000/classe, 10k total
+python scripts/build_dataset.py --tier medium      # 7.500/classe, 15k canônico
 python scripts/build_dataset.py --tier large       # 10.000/classe, split por falante
 
 # Override manual do tamanho de um tier (mantém fontes/split do tier):
-python scripts/build_dataset.py --tier medium --target 4000
+python scripts/build_dataset.py --tier medium --target 7500
 ```
 
 O `dataset_config.json` resultante registra `tier`, `split_strategy`,
@@ -84,8 +120,9 @@ python scripts/run_benchmark.py --full --dataset SEU_large.npz --speaker-split
 # holdout de um falante específico (teste = só ele + reais reservados)
 python scripts/run_benchmark.py --full --dataset SEU_large.npz --unseen-speaker "fkvoice:<id>"
 
-# pipeline ponta a ponta no tier large
-python scripts/run_tcc_pipeline.py --download --tier large --full-benchmark --speaker-split
+# pipeline ponta a ponta canônico do benchmark
+python scripts/run_tcc_pipeline.py --download --tier medium --full-benchmark \
+  --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
 > Quando os falantes de uma fonte são correlacionados à classe (ex.: fonte pura
@@ -128,14 +165,14 @@ Fluxo:
 | Preset | Fontes | Uso |
 |--------|--------|-----|
 | PT-BR Rápido | BRSpeech-DF + Fake Voices | Começar rápido em português |
-| PT-BR Completo | + CETUC + MLAAD-PT | Cobertura PT-BR completa |
+| PT-BR Completo | BRSpeech-DF + MLS Portuguese + TTS-Portuguese + Fake Voices | 15k viável com reforço real fora do HF |
 | Internacional Padrão | ASVspoof 2019 + WaveFake + In-the-Wild | Benchmark anti-spoofing |
 | Máxima Cobertura | PT-BR + Internacional | Máxima diversidade |
-| Benchmark Robusto Recomendado | BRSpeech-DF + Fake Voices + FLEURS + Common Voice PT + ASVspoof 2019 + WaveFake + In-the-Wild | Treino/benchmark com PT-BR, fontes reais adicionais e validação internacional |
-| Só Reforçar Real | FLEURS + CETUC + Common Voice PT | Corrigir déficit de reais |
+| Benchmark Robusto Recomendado | BRSpeech-DF + MLS Portuguese + TTS-Portuguese + Fake Voices + ASVspoof 2019 + WaveFake + In-the-Wild | Treino/benchmark com 15k canônico e validação internacional |
+| Só Reforçar Real | MLS Portuguese + TTS-Portuguese; Common Voice/FLEURS apenas legado local | Corrigir déficit de reais |
 | Só Reforçar Fake | Fake Voices + MLAAD-PT + WaveFake + ASVspoof 5 | Corrigir déficit de fakes |
 
-> **Dica:** combine sempre ≥1 fonte `both` (BRSpeech-DF, ASVspoof 2019) com fontes especializadas (Fake Voices para fakes, CETUC para reais) para diversidade máxima.
+> **Dica:** combine sempre ≥1 fonte `both` (BRSpeech-DF, ASVspoof 2019) com fontes especializadas (Fake Voices para fakes, MLS/TTS-Portuguese para reais) para diversidade máxima.
 
 ### Catálogo usado pela Gradio e pelo benchmark
 
@@ -151,7 +188,10 @@ as contagens realmente baixadas.
 | BRSpeech-DF | both | `--brspeech` | `brspeech_` | pt-BR | 459.137 amostras; duração não informada pela fonte | não informado | Apache-2.0/CC BY 4.0 (HF divergente) | Fonte principal PT-BR para treino balanceado |
 | Fake Voices | fake | `--fake-voices` | `fkvoice_` | pt-BR | ~140 h; ~30,5 GB | 101 falantes | MIT | Fake PT-BR independente para teste cross-generator |
 | FLEURS | real | `--fleurs` | `fleurs_` | pt-BR | `pt_br` ~4,1 mil linhas; duração variável | não consolidado no catálogo local | CC BY 4.0 | Reforço de fala real PT-BR |
-| CETUC | real | `--cetuc` | `cetuc_` | pt-BR | variável conforme fallback | variável | livre/variável | Completar déficit de amostras reais |
+| CETUC | real | `--cetuc` | `cetuc_` | pt-BR | variável conforme fallback | variável | livre/variável | Completar déficit de amostras reais; OpenSLR 132 404 em 27/06/2026 |
+| MLS Portuguese | real | `--mls-portuguese` | `mlspt_` | pt | ~59 h; pacote opus ~2,5 GB | diversos leitores LibriVox | CC BY 4.0 | Completar 15k quando PT-BR estrito não atinge volume |
+| TTS-Portuguese Corpus | real | `--tts-portuguese` | `ttsport_` | pt-BR | 3.632 sentenças; ~10 h | 1 falante | CC BY 4.0 | Reforço real PT-BR com limitação single-speaker |
+| CORAA ASR | real | manual | `coraa_` | pt-BR | ~290 h | diversos | CC BY-NC-ND 4.0 | Opcional acadêmico; não entra no preset padrão por licença restritiva |
 | MLAAD-PT | fake | `--mlaad-pt` | `mlaad_` | pt | subconjunto PT filtrado em streaming | não informado | CC-BY-NC 4.0 | Reforço fake; uso condicionado à licença NC |
 | Common Voice PT | real | `--common-voice-pt` | `cvpt_`, `cv_` | pt | variável por release/configuração; HF v17 legacy vazio | variável por release/configuração | CC0 | Diversidade de fala real; usar Mozilla Data Collective |
 | ASVspoof 2019 | both | `--asvspoof2019` | `asv2019_` | inglês | protocolo oficial LA/PA | derivado do VCTK; consultar protocolo oficial | ODC-BY 1.0 | Referência externa padrão anti-spoofing |
@@ -179,6 +219,8 @@ python scripts/download_datasets.py --brspeech --max-samples 1000
 python scripts/download_datasets.py --cetuc --max-samples 1000
 python scripts/download_datasets.py --fake-voices --max-speakers 20
 python scripts/download_datasets.py --fleurs --max-samples 500
+python scripts/download_datasets.py --mls-portuguese --max-samples 3000
+python scripts/download_datasets.py --tts-portuguese --max-samples 1000
 python scripts/download_datasets.py --mlaad-pt --max-samples 500
 python scripts/download_datasets.py --common-voice-pt --max-samples 1000
 python scripts/download_datasets.py --asvspoof2019 --max-samples 2000
@@ -193,6 +235,8 @@ python scripts/download_datasets.py --asvspoof5 --max-samples 2000
 | `--fake-voices` | fake | `fkvoice_` | MIT |
 | `--cetuc` | real | `cetuc_` | livre |
 | `--fleurs` | real | `fleurs_` | CC BY 4.0 |
+| `--mls-portuguese` | real | `mlspt_` | CC BY 4.0 |
+| `--tts-portuguese` | real | `ttsport_` | CC BY 4.0 |
 | `--mlaad-pt` | fake | `mlaad_` | CC-BY-NC 4.0 |
 | `--common-voice-pt` | real | `cvpt_` | CC0 |
 | `--asvspoof2019` | both | `asv2019_` | ODC-BY |

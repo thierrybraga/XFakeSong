@@ -1,4 +1,12 @@
 % !TeX program = pdflatex
+% =====================================================================
+%  PIPELINE MODULAR PARA DETECÇÃO DE ÁUDIO SINTÉTICO
+%  Versão consolidada e refatorada — Thierry Gonçalves Braga
+%  - Arquiteturas nomeadas conforme a literatura
+%  - 11 modelos consolidados: WavLM, HuBERT, RawNet2, AASIST, RawGAT-ST,
+%    Conformer, CCT, AST, Res2Net, SVM e Random Forest
+%  - Tabelas/figuras de benchmark geradas automaticamente (tabelas_benchmark.tex)
+% =====================================================================
 \documentclass[12pt,a4paper]{article}
 
 % =====================================================================
@@ -9,7 +17,6 @@
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
 \usepackage{graphicx}
-% prefixo figures/ explicitamente, evitando redundância de caminho.
 \usepackage{cite}
 \usepackage{amsmath}
 \usepackage{amssymb}
@@ -31,18 +38,28 @@
 \usepackage{url}
 \usepackage{setspace}
 \usepackage{caption}
-\usepackage{siunitx}          % formatação consistente de unidades (dB, kHz, ms)
-\DeclareSIUnit{\lufs}{LUFS}    % unidade de loudness usada no AGC
-\usepackage{hyperref}         % sempre o ÚLTIMO pacote
+% Fallback leve de unidades (evita dependência do siunitx).
+\newcommand{\SI}[2]{#1\,#2}
+\newcommand{\SIrange}[3]{#1--#2\,#3}
+\newcommand{\num}[1]{#1}
+\newcommand{\kilo}{k}
+\newcommand{\milli}{m}
+\newcommand{\hertz}{Hz}
+\newcommand{\second}{s}
+\newcommand{\decibel}{dB}
+\newcommand{\percent}{\%}
+\newcommand{\bit}{bit}
+\newcommand{\lufs}{LUFS}
+\usepackage{hyperref} % deve ser o último
 
 % =====================================================================
-%  ESPAÇAMENTO ABNT (NBR 14724:2011)
+%  ESPAÇAMENTO ABNT (NBR 14724)
 % =====================================================================
 \onehalfspacing
 \frenchspacing
 
 % =====================================================================
-%  CONFIGURACAO TIKZ
+%  TIKZ
 % =====================================================================
 \usetikzlibrary{shapes.geometric, arrows, positioning, fit}
 
@@ -61,18 +78,14 @@
 \definecolor{deepblue}{RGB}{25, 42, 86}
 
 % =====================================================================
-%  LAYOUT (ABNT: esq 3cm, dir 2cm, sup 3cm, inf 2cm)
+%  LAYOUT (ABNT)
 % =====================================================================
 \geometry{a4paper, left=3cm, right=2cm, top=3cm, bottom=2cm}
 
 % =====================================================================
-%  LEGENDA — fonte menor, espaçamento simples (ABNT)
+%  LEGENDA
 % =====================================================================
-\captionsetup{
-  font={small, singlespacing},
-  labelfont=bf,
-  skip=6pt
-}
+\captionsetup{font={small, singlespacing}, labelfont=bf, skip=6pt}
 
 % =====================================================================
 %  CABEÇALHO E RODAPÉ
@@ -80,7 +93,6 @@
 \pagestyle{fancy}
 \setlength{\headheight}{14pt}
 \fancyhf{}
-% ABNT NBR 14724: número de página no canto superior direito.
 \fancyhead[L]{\small\textcolor{darkgray}{Detecção de \textit{deepfakes} de voz}}
 \fancyhead[R]{\small\textcolor{darkgray}{\thepage}}
 \renewcommand{\headrulewidth}{0.5pt}
@@ -89,13 +101,9 @@
 % =====================================================================
 %  TÍTULOS
 % =====================================================================
-\titleformat{\section}
-  {\Large\bfseries\color{deepblue}}{\thesection}{1em}{}
-\titleformat{\subsection}
-  {\large\bfseries\color{darkgray}}{\thesubsection}{1em}{}
-\titleformat{\subsubsection}
-  {\normalsize\bfseries\color{darkgray}}{\thesubsubsection}{1em}{}
-
+\titleformat{\section}{\Large\bfseries\color{deepblue}}{\thesection}{1em}{}
+\titleformat{\subsection}{\large\bfseries\color{darkgray}}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\color{darkgray}}{\thesubsubsection}{1em}{}
 \titlespacing*{\section}{0pt}{18pt}{10pt}
 \titlespacing*{\subsection}{0pt}{14pt}{8pt}
 \titlespacing*{\subsubsection}{0pt}{10pt}{6pt}
@@ -103,25 +111,16 @@
 % =====================================================================
 %  CAIXAS INFORMATIVAS
 % =====================================================================
-\tcbuselibrary{skins,breakable}
-
-\newtcolorbox{infobox}[1]{
-    colback=primaryblue!5, colframe=primaryblue,
-    coltitle=white, fonttitle=\bfseries,
-    fontupper=\small\singlespacing,
+\tcbuselibrary{breakable}
+\newtcolorbox{infobox}[1]{colback=primaryblue!5, colframe=primaryblue,
+    coltitle=white, fonttitle=\bfseries, fontupper=\small\singlespacing,
     title=#1, rounded corners, breakable}
-
-\newtcolorbox{warningbox}[1]{
-    colback=warningorange!10, colframe=warningorange,
-    coltitle=white, fonttitle=\bfseries,
-    fontupper=\small\singlespacing,
-    title=#1, rounded corners}
-
-\newtcolorbox{successbox}[1]{
-    colback=successgreen!10, colframe=successgreen,
-    coltitle=white, fonttitle=\bfseries,
-    fontupper=\small\singlespacing,
-    title=#1, rounded corners}
+\newtcolorbox{warningbox}[1]{colback=warningorange!10, colframe=warningorange,
+    coltitle=white, fonttitle=\bfseries, fontupper=\small\singlespacing,
+    title=#1, rounded corners, breakable}
+\newtcolorbox{successbox}[1]{colback=successgreen!10, colframe=successgreen,
+    coltitle=white, fonttitle=\bfseries, fontupper=\small\singlespacing,
+    title=#1, rounded corners, breakable}
 
 % =====================================================================
 %  LISTAS
@@ -134,20 +133,14 @@
 % =====================================================================
 %  HYPERLINKS
 % =====================================================================
-\hypersetup{
-    colorlinks=true,
-    linkcolor=primaryblue,
-    filecolor=purpleaccent,
-    urlcolor=primaryblue,
-    citecolor=primaryblue,
-    bookmarksopen=true,
+\hypersetup{colorlinks=true, linkcolor=primaryblue, filecolor=purpleaccent,
+    urlcolor=primaryblue, citecolor=primaryblue, bookmarksopen=true,
     pdfstartview=FitH,
     pdftitle={Pipeline Modular para Detecção de Áudio Sintético},
     pdfauthor={Thierry Gonçalves Braga},
     pdfsubject={Trabalho de Conclusão de Curso},
-    pdfkeywords={deepfake de áudio; benchmark; arquiteturas neurais;
-                 WavLM; HuBERT; Conformer; MultiscaleCNN; robustez a ruído}
-}
+    pdfkeywords={deepfake de áudio; anti-spoofing; arquiteturas neurais;
+                 min t-DCF; robustez a ruído}}
 
 % =====================================================================
 %  ESTILOS TIKZ
@@ -181,7 +174,7 @@
 \pagestyle{empty}
 
 % ------------------------------------------------------------------
-%  PÁGINA DE TÍTULO (NBR 14724:2011)
+%  CAPA / FOLHA DE ROSTO (NBR 14724)
 % ------------------------------------------------------------------
 \begin{center}
 {\large UNIVERSIDADE FEDERAL DE SÃO JOÃO DEL-REI}\\[0.3cm]
@@ -203,22 +196,18 @@ Federal de São João del-Rei}\\[0.5cm]
 {\normalsize São João del-Rei --- MG\\
 2026}
 \end{center}
-
 \newpage
 
 % ------------------------------------------------------------------
 %  FOLHA DE APROVAÇÃO
 % ------------------------------------------------------------------
 \pagestyle{empty}
-\begin{center}
-\textbf{FOLHA DE APROVAÇÃO}
-\end{center}
-
+\begin{center}\textbf{FOLHA DE APROVAÇÃO}\end{center}
 \vspace{1.5cm}
 \noindent
 Trabalho de Conclusão de Curso defendido e aprovado em
 \underline{\hspace{4cm}}, como requisito parcial para obtenção do título de
-Bacharel em Ciência da Computação.
+Bacharel em Engenharia de Telecomunicações.
 
 \vspace{2cm}
 \noindent\textbf{Banca Examinadora:}
@@ -242,389 +231,647 @@ Instituição: \underline{\hspace{5.2cm}}
 \pagestyle{fancy}
 
 % ------------------------------------------------------------------
-%  RESUMO (NBR 6028:2021)
+%  RESUMO (NBR 6028)
 % ------------------------------------------------------------------
 \begin{center}\textbf{RESUMO}\end{center}
 \vspace{0.5cm}
-
 \begin{singlespace}
 \noindent
 Este trabalho apresenta o desenvolvimento e a avaliação de um \textit{pipeline}
-modular e de código aberto para detecção de áudio sintético. A metodologia
-integra pré-processamento de áudio, extração de características acústicas,
-treinamento supervisionado, inferência e geração automática de relatórios de
-\textit{benchmark}. A versão experimental consolidada avalia quatorze
-arquiteturas, abrangendo modelos SSL, redes baseadas em forma de onda, grafos,
-CNNs, Transformers, modelos de fusão e classificadores clássicos. Os
-experimentos foram conduzidos sobre uma base balanceada com 15.000 amostras de
-áudio, dividida em 70/15/15 para treino, validação e teste, com janelas
-padronizadas em \SI{16}{\kilo\hertz}, mono e \SI{5}{\second}.
-O treinamento neural utilizou GPU NVIDIA RTX 3060 via WSL2/CUDA, enquanto SVM
-e Random Forest foram otimizados por validação cruzada em CPU. No protocolo
-consolidado, Sonic Sleuth, nome interno do classificador híbrido de
-características clássicas (LFCC, MFCC e CQT) com rede neural compacta, obteve
-100,00\% de acurácia e EER de 0,00\% no conjunto de teste limpo,
-seguido por MultiscaleCNN (99,96\%), Conformer (99,87\%), HuBERT Original
-(98,93\%), RawNet2 e Random Forest (98,04\%). O Spectrogram Transformer
-registrou 97,69\% no teste limpo, mas manteve instabilidade no histórico de
-validação: melhor validação de 96,49\% na época 7 e validação final de
-50,00\%, indicando necessidade de restauração rigorosa do melhor
-\textit{checkpoint} e novo ajuste de hiperparâmetros. Os resultados confirmam a funcionalidade do \textit{pipeline}
-para comparação padronizada de arquiteturas, mas também evidenciam a necessidade
-de validação externa, análise de robustez e controle de possíveis vieses de
-domínio antes de uso em cenários reais.
+modular e de código aberto para detecção de áudio sintético, em resposta à
+proliferação de \textit{deepfakes} de voz. A metodologia integra
+pré-processamento acústico (detecção de atividade de voz e controle automático
+de ganho), extração de características heterogêneas --- áudio bruto,
+representações tempo-frequência (espectrogramas Mel) e um vetor tabular de
+descritores temporais, cepstrais (MFCC) e espectro-perceptuais (RASTA-PLP) ---,
+treinamento supervisionado, inferência padronizada e geração automática de
+relatórios de \textit{benchmark}. A versão experimental consolidada avalia
+\num{11} modelos reconhecidos na literatura, abrangendo modelos
+auto-supervisionados (SSL), redes de áudio bruto, grafos de atenção,
+\textit{Transformers} espectrais, redes convolucionais multi-escala e
+classificadores estatísticos clássicos. Os experimentos utilizaram um
+\textit{corpus} balanceado de \num{15000} amostras de fala em português, com
+partição estratificada 70/15/15 e janelas monofônicas padronizadas em
+\SI{16}{\kilo\hertz} e \SI{5}{\second}. Os modelos neurais foram treinados em
+perfil GPU (WSL2/CUDA), enquanto a consolidação final das métricas de inferência
+foi executada em CPU; SVM e \textit{Random Forest} foram otimizados por
+validação cruzada. No conjunto de teste limpo, Res2Net e Conformer obtiveram
+\num{99,69}\% de acurácia, seguidos por Audio Spectrogram Transformer
+(\num{98,71}\%), \textit{Random Forest} (\num{98,18}\%) e RawNet2
+(\num{97,38}\%). Os resultados confirmam a funcionalidade do \textit{pipeline}
+para comparação padronizada de arquiteturas, mas também evidenciam, conforme a
+análise de vazamento de domínio documentada, a necessidade de validação externa,
+análise de robustez e controle de vieses de fonte e canal antes do uso em
+cenários reais.
 
 \vspace{0.4cm}
 \noindent\textbf{Palavras-chave:} \textit{deepfake} de áudio;
-\textit{benchmark}; arquiteturas neurais; WavLM; HuBERT; Conformer;
-MultiscaleCNN; robustez a ruído.
+\textit{anti-spoofing}; arquiteturas neurais; extração de características;
+\textit{min} t-DCF; robustez a ruído.
 \end{singlespace}
 
 \vspace{1cm}
 \begin{center}\textbf{ABSTRACT}\end{center}
 \vspace{0.5cm}
-
 \begin{singlespace}
 \noindent
 This work presents the development and evaluation of a modular open-source
-pipeline for synthetic audio detection. The methodology integrates audio
-preprocessing, acoustic feature extraction, supervised training, inference and
-automatic benchmark report generation. The consolidated experimental version
-evaluates fourteen architectures, including SSL models, waveform-based
-networks, graphs, CNNs, Transformers, fusion models and classical classifiers.
-Experiments were conducted on a balanced 15,000-sample audio dataset with a
-70/15/15 train/validation/test split and \SI{16}{\kilo\hertz} mono
-\SI{5}{\second} windows. Neural models were trained on an NVIDIA RTX 3060 GPU
-through WSL2/CUDA, while SVM and Random Forest were optimized with CPU
-cross-validation. Under the consolidated protocol, Sonic Sleuth achieved 100.00\% accuracy
-and 0.00\% EER on the clean test set, followed by MultiscaleCNN (99.96\%),
-Conformer (99.87\%), HuBERT Original (98.93\%), RawNet2 and Random Forest
-(98.04\%). The Spectrogram Transformer reached 97.69\% clean-test accuracy,
-but its validation history remained unstable: 96.49\% best validation accuracy
-at epoch 7 and 50.00\% final validation accuracy, indicating the need for
-strict best-checkpoint restoration and further hyperparameter tuning. The results
-confirm the pipeline's ability to compare heterogeneous architectures in a
-standardized way, while also showing the need for external validation,
-robustness analysis and domain-bias control before deployment in real-world
-scenarios.
+pipeline for synthetic audio detection, addressing the proliferation of voice
+deepfakes. The methodology integrates acoustic preprocessing (voice activity
+detection and automatic gain control), extraction of heterogeneous features ---
+raw audio, time--frequency representations (Mel spectrograms), and a tabular
+vector of temporal, cepstral (MFCC), and spectro-perceptual (RASTA-PLP)
+descriptors ---, supervised training, standardized inference, and automatic
+benchmark report generation. The consolidated experimental version evaluates
+\num{11} models recognized in the literature, spanning self-supervised (SSL)
+models, raw-audio networks, graph-attention networks, spectral Transformers,
+multi-scale convolutional networks, and classical statistical classifiers.
+Experiments used a balanced \num{15000}-sample Portuguese speech corpus, with a
+stratified 70/15/15 split and \SI{16}{\kilo\hertz} mono \SI{5}{\second} windows.
+Neural models were trained on a GPU profile (WSL2/CUDA), while final inference
+metrics were consolidated on CPU; SVM and Random Forest were optimized through
+cross-validation. On the clean test set, Res2Net and Conformer achieved
+\num{99.69}\% accuracy, followed by Audio Spectrogram Transformer
+(\num{98.71}\%), Random Forest (\num{98.18}\%), and RawNet2 (\num{97.38}\%). The
+results confirm the pipeline's ability to compare heterogeneous architectures in
+a standardized way, while also showing, consistent with the documented
+domain-leakage analysis, the need for external validation, robustness analysis,
+and source/channel bias control before real-world deployment.
 
 \vspace{0.4cm}
-\noindent\textbf{Keywords:} audio deepfake; benchmark; neural architectures;
-WavLM; HuBERT; Conformer; MultiscaleCNN; noise robustness.
+\noindent\textbf{Keywords:} audio deepfake; anti-spoofing; neural architectures;
+feature extraction; min t-DCF; noise robustness.
 \end{singlespace}
 
 \newpage
 
 % ------------------------------------------------------------------
-%  LISTA DE FIGURAS E LISTA DE TABELAS
-%  (NBR 14724: antecedem a lista de siglas e o sumário)
+%  LISTAS
 % ------------------------------------------------------------------
 \listoffigures
 \newpage
 \listoftables
 \newpage
 
-% ------------------------------------------------------------------
-%  LISTA DE ABREVIATURAS E SIGLAS
-% ------------------------------------------------------------------
 \section*{Lista de Abreviaturas e Siglas}
 \addcontentsline{toc}{section}{Lista de Abreviaturas e Siglas}
-
 \begin{singlespace}
 \begin{tabular}{p{2.5cm}p{12cm}}
-\textbf{AGC}      & \textit{Automatic Gain Control} (Controle Automático de Ganho) \\
-\textbf{AASIST}   & \textit{Audio Anti-Spoofing using Integrated Spectro-Temporal Graph Attention Networks} \\
-\textbf{AST}      & \textit{Audio Spectrogram Transformer} \\
-\textbf{AUC-ROC}  & \textit{Area Under the Receiver Operating Characteristic Curve} \\
-\textbf{AWGN}     & \textit{Additive White Gaussian Noise} (Ruído Gaussiano Branco Aditivo) \\
-\textbf{CNN}      & \textit{Convolutional Neural Network} (Rede Neural Convolucional) \\
-\textbf{CPU}      & \textit{Central Processing Unit} \\
-\textbf{CQT}      & \textit{Constant-Q Transform} \\
-\textbf{CQCC}     & \textit{Constant-Q Cepstral Coefficients} \\
-\textbf{EER}      & \textit{Equal Error Rate} (Taxa de Erro Igual) \\
-\textbf{FFT}      & \textit{Fast Fourier Transform} (Transformada Rápida de Fourier) \\
-\textbf{F0}       & Frequência Fundamental \\
-\textbf{GAT}      & \textit{Graph Attention Network} \\
-\textbf{GMM-UBM}  & \textit{Gaussian Mixture Model -- Universal Background Model} \\
-\textbf{GPU}      & \textit{Graphics Processing Unit} \\
-\textbf{HAG}      & \textit{Heterogeneous Attention Graph} \\
-\textbf{HNR}      & \textit{Harmonic-to-Noise Ratio} \\
-\textbf{LCNN}     & \textit{Light CNN} \\
-\textbf{LFCC}     & \textit{Linear Frequency Cepstral Coefficients} \\
-\textbf{LSTM}     & \textit{Long Short-Term Memory} \\
-\textbf{LUFS}     & \textit{Loudness Units relative to Full Scale} \\
-\textbf{MFCC}     & \textit{Mel-Frequency Cepstral Coefficients} (Coeficientes Cepstrais na Escala Mel) \\
-\textbf{MLP}      & \textit{Multilayer Perceptron} \\
-\textbf{PCM}      & \textit{Pulse-Code Modulation} \\
-\textbf{RNN}      & \textit{Recurrent Neural Network} \\
-\textbf{RVC}      & \textit{Retrieval-based Voice Conversion} \\
-\textbf{SHAP}     & \textit{SHapley Additive exPlanations} \\
-\textbf{SNR}      & \textit{Signal-to-Noise Ratio} (Relação Sinal-Ruído) \\
-\textbf{SSL}      & \textit{Self-Supervised Learning} (Aprendizado Auto-Supervisionado) \\
-\textbf{SVM}      & \textit{Support Vector Machine} \\
-\textbf{STFT}     & \textit{Short-Time Fourier Transform} \\
-\textbf{t-DCF}    & \textit{Tandem Detection Cost Function} \\
-\textbf{TTS}      & \textit{Text-to-Speech} (Síntese de Fala) \\
-\textbf{VAD}      & \textit{Voice Activity Detection} (Detecção de Atividade de Voz) \\
-\textbf{VC}       & \textit{Voice Conversion} (Conversão de Voz) \\
-\textbf{ZCR}      & \textit{Zero-Crossing Rate} (Taxa de Cruzamento por Zero) \\
+\textbf{AGC}     & \textit{Automatic Gain Control} (Controle Automático de Ganho) \\
+\textbf{AASIST}  & \textit{Audio Anti-Spoofing using Integrated Spectro-Temporal Graph Attention Networks} \\
+\textbf{AST}     & \textit{Audio Spectrogram Transformer} \\
+\textbf{AUC-ROC} & \textit{Area Under the Receiver Operating Characteristic Curve} \\
+\textbf{AWGN}    & \textit{Additive White Gaussian Noise} (Ruído Gaussiano Branco Aditivo) \\
+\textbf{CCT}     & \textit{Compact Convolutional Transformer} \\
+\textbf{CNN}     & \textit{Convolutional Neural Network} (Rede Neural Convolucional) \\
+\textbf{CPU}     & \textit{Central Processing Unit} \\
+\textbf{CQT}     & \textit{Constant-Q Transform} \\
+\textbf{CQCC}    & \textit{Constant-Q Cepstral Coefficients} \\
+\textbf{EER}     & \textit{Equal Error Rate} (Taxa de Erro Igual) \\
+\textbf{F0}      & Frequência Fundamental \\
+\textbf{FFT}     & \textit{Fast Fourier Transform} (Transformada Rápida de Fourier) \\
+\textbf{GAT}     & \textit{Graph Attention Network} \\
+\textbf{GMM-UBM} & \textit{Gaussian Mixture Model -- Universal Background Model} \\
+\textbf{GPU}     & \textit{Graphics Processing Unit} \\
+\textbf{GRU}     & \textit{Gated Recurrent Unit} \\
+\textbf{HNR}     & \textit{Harmonic-to-Noise Ratio} (Relação Harmônico-Ruído) \\
+\textbf{LCNN}    & \textit{Light CNN} \\
+\textbf{LFCC}    & \textit{Linear Frequency Cepstral Coefficients} \\
+\textbf{LSTM}    & \textit{Long Short-Term Memory} \\
+\textbf{LUFS}    & \textit{Loudness Units relative to Full Scale} \\
+\textbf{MFCC}    & \textit{Mel-Frequency Cepstral Coefficients} (Coeficientes Cepstrais na Escala Mel) \\
+\textbf{MLP}     & \textit{Multilayer Perceptron} \\
+\textbf{MLS}     & \textit{Multilingual LibriSpeech} \\
+\textbf{PCM}     & \textit{Pulse-Code Modulation} \\
+\textbf{RNN}     & \textit{Recurrent Neural Network} \\
+\textbf{RVC}     & \textit{Retrieval-based Voice Conversion} \\
+\textbf{SHAP}    & \textit{SHapley Additive exPlanations} \\
+\textbf{SNR}     & \textit{Signal-to-Noise Ratio} (Relação Sinal-Ruído) \\
+\textbf{SSL}     & \textit{Self-Supervised Learning} (Aprendizado Auto-Supervisionado) \\
+\textbf{STFT}    & \textit{Short-Time Fourier Transform} \\
+\textbf{SVM}     & \textit{Support Vector Machine} (Máquina de Vetores de Suporte) \\
+\textbf{t-DCF}   & \textit{Tandem Detection Cost Function} \\
+\textbf{TTS}     & \textit{Text-to-Speech} (Síntese de Fala) \\
+\textbf{VAD}     & \textit{Voice Activity Detection} (Detecção de Atividade de Voz) \\
+\textbf{VC}      & \textit{Voice Conversion} (Conversão de Voz) \\
+\textbf{ViT}     & \textit{Vision Transformer} \\
+\textbf{XTTS}    & \textit{Cross-lingual Text-to-Speech} \\
+\textbf{ZCR}     & \textit{Zero-Crossing Rate} (Taxa de Cruzamento por Zero) \\
 \end{tabular}
 \end{singlespace}
 
 \newpage
-% Sumário: último elemento pré-textual (NBR 14724).
 \tableofcontents
 \newpage
-
 % =====================================================================
 %  1. INTRODUÇÃO
 % =====================================================================
 \section{Introdução}
 \label{sec:introducao}
 
-A crescente democratização de tecnologias de síntese de áudio baseadas em
-inteligência artificial tem facilitado a criação de \textit{deepfakes} de
-áudio com qualidade cada vez mais próxima à voz humana natural
-\cite{muller2022warning, heidari2024deepfake}. Técnicas modernas como RVC
-(\textit{Retrieval-based Voice Conversion}) \cite{bird2023realtime},
-Tacotron~2 \cite{shen2018natural} e WaveNet \cite{oord2016wavenet} permitem a
-geração de conteúdo sintético realista com apenas alguns minutos de áudio
-original.
+A síntese de fala, ou \textit{Text-to-Speech} (TTS), evoluiu de sistemas
+mecânicos rudimentares para modelos computacionais capazes de reproduzir, com
+alta fidelidade, as nuances, a emoção e a identidade de um locutor específico
+--- processo hoje conhecido como clonagem de voz \cite{arik2017}. Os primeiros
+marcos da síntese eletrônica surgiram com os \textit{Vocoders} (\textit{Voice
+Coders}) de Homer Dudley, na década de 1930 \cite{dudley1939}. Baseados no modelo
+fonte-filtro de produção de fala, esses dispositivos separavam a excitação (a
+fonte, como as cordas vocais) das características do trato vocal (o filtro).
+Embora revolucionários e fundamentais para a compressão em telecomunicações, os
+sistemas puramente paramétricos produziam vozes de aspecto robótico, carentes de
+naturalidade \cite{klatt1987}.
 
-Esta evolução tecnológica, embora benéfica para aplicações legítimas como
-assistentes virtuais e dublagem automatizada, tem sido explorada maliciosamente
-em fraudes financeiras, manipulação política e chantagem
-\cite{pindrop2025, dfrlab2024}. No contexto brasileiro, foram documentados 78
-casos de conteúdo sintético relacionado a candidatos durante as eleições
-municipais de 2024 \cite{farrugia2024}, evidenciando a necessidade urgente de
-sistemas de detecção robustos voltados para o português brasileiro.
+Para superar essa limitação, a década de 1990 foi marcada pela síntese
+concatenativa, que se baseia na gravação de extensos bancos de voz humana
+segmentados em pequenas unidades fonéticas (difones ou sílabas)
+\cite{hunt1996}. A verdadeira quebra de paradigma, contudo, ocorreu na última
+década com o advento do aprendizado profundo (\textit{Deep Learning}). Modelos
+neurais generativos, como o WaveNet \cite{oord2016wavenet} e o Tacotron
+\cite{wang2017}, substituíram os \textit{pipelines} tradicionais por
+arquiteturas de ponta a ponta (\textit{end-to-end}), aprendendo o mapeamento
+direto entre texto (ou fonemas) e a forma de onda acústica, capturando variações
+prosódicas complexas. É nesse cenário que a clonagem de voz se torna viável e
+acessível: por meio de adaptação de locutor e aprendizado \textit{few-shot} ou
+\textit{zero-shot}, tornou-se possível sintetizar a voz de um indivíduo com
+poucos segundos de áudio de referência \cite{jia2018, wang2023vall}.
+
+A crescente democratização dessas tecnologias tem facilitado a criação de
+\textit{deepfakes} de áudio com qualidade cada vez mais próxima à voz humana
+natural \cite{muller2022warning, heidari2024deepfake}. Técnicas modernas como
+RVC (\textit{Retrieval-based Voice Conversion}) \cite{bird2023realtime},
+Tacotron~2 \cite{shen2018natural} e WaveNet \cite{oord2016wavenet} permitem
+gerar conteúdo sintético realista com apenas alguns segundos de áudio original.
+Embora benéfica para aplicações legítimas (assistentes virtuais, dublagem
+automatizada), essa evolução tem sido explorada maliciosamente em fraudes
+financeiras, manipulação política e chantagem \cite{pindrop2025, dfrlab2024}. No
+contexto brasileiro, foram documentados \num{78} casos de conteúdo sintético
+relacionado a candidatos durante as eleições municipais de 2024
+\cite{farrugia2024}, evidenciando a necessidade urgente de sistemas de detecção
+robustos voltados ao português brasileiro.
 
 Estudos perceptuais indicam que humanos identificam corretamente
-\textit{deepfakes} de áudio em apenas 73\% dos casos, taxa que decresce para
-51\% com áudios de alta qualidade \cite{muller2022warning}. Isso evidencia a
-necessidade de sistemas automatizados robustos e explica o surgimento dos
-\textit{benchmarks} padronizados ASVspoof como eixo central de avaliação
-\cite{todisco2019asvspoof, yamagishi2021asvspoof, wang2024asvspoof5}.
+\textit{deepfakes} de áudio em apenas \num{73}\% dos casos, taxa que decresce para
+\num{51}\% com áudios de alta qualidade \cite{muller2022warning}. Isso justifica o
+desenvolvimento de sistemas automatizados e explica o surgimento de
+\textit{benchmarks} padronizados como o ASVspoof
+\cite{todisco2019asvspoof, yamagishi2021asvspoof, wang2024asvspoof5} e o desafio
+ADD \cite{yi2022add}, hoje eixos centrais de avaliação.
 
-\begin{warningbox}{Uso dual e responsabilidade científica}
-Os resultados apresentados neste trabalho descrevem quais características
-acústicas são mais discriminativas para detecção. Esse conhecimento, publicado
-de forma aberta, pode ser usado para calibrar sistemas de síntese mais difíceis
-de detectar. O autor e a orientadora reconhecem esse risco e recomendam que
-qualquer extensão ou implantação do \textit{pipeline} seja precedida de
-avaliação ética formal e, em contextos sensíveis, revisão humana obrigatória
-das decisões automatizadas.
-\end{warningbox}
+\subsection{Biometria de Voz: Mercado e Adoção}
+\label{sec:biometria_voz}
+
+A biometria de voz é uma tecnologia de autenticação que analisa características
+vocais únicas para validar identidades. Com os avanços em inteligência
+artificial e aprendizado profundo, tornou-se ferramenta relevante em segurança
+da informação, oferecendo resposta ao aumento de fraudes complexas e
+\textit{deepfakes} de áudio. O setor apresenta forte crescimento global, com
+liderança da América do Norte, que concentra cerca de 38\% da receita mundial em
+razão de regulamentações rigorosas de privacidade. A expansão é impulsionada
+pela demanda por automação segura e pela adoção de infraestruturas em nuvem. A
+Tabela~\ref{tab:mercado_biometria} resume estimativas recentes do mercado.
+
+\begin{table}[htbp]
+\centering
+\caption{Dimensionamento aproximado do mercado de biometria de voz.}
+\label{tab:mercado_biometria}
+\small\singlespacing
+\begin{tabular}{lccc}
+\toprule
+\textbf{Região} & \textbf{Mercado (2025)} & \textbf{Estimativa (2026)} & \textbf{Crescimento (CAGR)} \\
+\midrule
+EUA (isolado)    & US\$ 687 milhões  & US\$ 788 milhões  & 14,75\% \\
+América do Norte & US\$ 1,06 bilhão  & US\$ 1,32 bilhão  & 19,20\% \\
+Global           & US\$ 2,65 bilhões & US\$ 3,25 bilhões & 16\% a 25\% \\
+\bottomrule
+\end{tabular}
+
+\vspace{2pt}
+{\footnotesize\raggedright \textit{Nota:} valores aproximados compilados de
+relatórios de mercado do setor, apresentados como contexto ilustrativo da ordem
+de grandeza e da tendência de crescimento; não constituem medida primária deste
+trabalho.\par}
+\end{table}
+
+A tecnologia atende principalmente instituições que lidam com alto volume de
+transações críticas e interações remotas. Entre os segmentos de maior adoção
+destacam-se: o \textbf{setor financeiro} (bancos e \textit{fintechs}), maior
+consumidor global, que emprega majoritariamente autenticação passiva (análise
+transparente da voz durante o atendimento) para elevar a segurança sem gerar
+atrito; \textbf{telecomunicações}, que mitiga fraudes de falsidade ideológica,
+como o \textit{SIM swapping}; \textbf{saúde}, que protege o acesso a prontuários
+eletrônicos e valida prescrições digitais; e o \textbf{setor público}, que
+emprega sistemas de autenticação por voz na concessão de benefícios sociais e no controle de
+acesso. Em resumo, o mercado prioriza soluções em nuvem, buscando escalabilidade,
+integração via APIs e atualização contínua contra ataques de falsificação
+(\textit{spoofing}).
+
+\newpage
 
 \subsection{Objetivos}
 
 \subsubsection{Objetivo Geral}
 
-Desenvolver um \textit{pipeline} modular, de código aberto e extensível para
-detecção de áudio sintético que integre múltiplas arquiteturas neurais
-especializadas e permita análise empírica sistemática de características
-acústicas.
+Desenvolver e avaliar um \textit{pipeline} modular, reprodutível e de código
+aberto para detecção de áudio sintético em português, contemplando
+\num{11} modelos consolidados na literatura e permitindo a comparação
+sistemática entre representações de áudio bruto, descritores acústicos
+tabulares e mapas tempo-frequência.
 
 \subsubsection{Objetivos Específicos}
-
 \begin{itemize}
-    \item Realizar uma pesquisa sistematizada das gerações de métodos de
-    detecção de áudio sintético.
-    \item Implementar pré-processamento com VAD e AGC.
-    \item Ranquear características acústicas por capacidade discriminativa,
-    ancorado na literatura consolidada.
-    \item Implementar e comparar quatorze arquiteturas especializadas
-    sobre uma base experimental padronizada.
-    \item Avaliar robustez sob ruído AWGN com múltiplos níveis de SNR.
-    \item Propor um \textit{pipeline} reprodutível com tecnologias de código
-    aberto.
+    \item Revisar as principais gerações de síntese, clonagem e conversão de
+    voz, relacionando seus artefatos acústicos aos desafios de detecção.
+    \item Consolidar uma base experimental balanceada em português, com
+    particionamento reprodutível e especificação padronizada de taxa de
+    amostragem, duração, canal e rótulo.
+    \item Implementar pré-processamento acústico com detecção de atividade de
+    voz (VAD), controle automático de ganho (AGC), normalização temporal e
+    extração de características compatíveis com cada família de modelo.
+    \item Implementar e comparar \num{11} modelos referenciados na literatura:
+    WavLM, HuBERT, RawNet2, AASIST, RawGAT-ST, Conformer, CCT, AST, Res2Net,
+    SVM e \textit{Random Forest}.
+    \item Avaliar os modelos sob um protocolo comum, reportando acurácia,
+    F1-score, AUC-ROC, EER, $t$-DCF, latência, tamanho dos artefatos e matrizes
+    de confusão.
+    \item Investigar a robustez dos modelos sob ruído AWGN em múltiplos níveis
+    de SNR e discutir limitações de generalização, vazamento de domínio e
+    vieses de fonte.
+    \item Disponibilizar um \textit{pipeline} de treinamento, inferência e
+    \textit{benchmark} baseado em tecnologias de código aberto, com artefatos e
+    figuras gerados de forma rastreável.
 \end{itemize}
 
+
+
+\newpage
+
 % =====================================================================
-%  2. FUNDAMENTAÇÃO TEÓRICA
+%  2. FUNDAMENTAÇÃO TEÓRICA — GERAÇÕES DE MÉTODOS
 % =====================================================================
-\section{Fundamentação Teórica}
-\label{sec:fundamentacao}
+\section{Tecnologias de Síntese de Voz}
+\label{sec:tecnologias_sintese}
 
-\subsection{Tecnologias de Síntese de Voz}
+A síntese de voz reúne técnicas capazes de gerar ou transformar fala humana por
+meio de modelos acústicos, linguísticos e neurais. Nesta pesquisa, essas
+tecnologias são relevantes porque definem o tipo de artefato que o detector deve
+identificar: descontinuidades espectrais de \textit{vocoders}, inconsistências
+prosódicas, vazamento de identidade vocal, ruído de canal ou padrões de
+codificação aprendidos por sistemas generativos. Assim, este capítulo separa as
+tecnologias de geração de fala dos métodos de detecção, preservando a ligação
+entre os ataques considerados e as arquiteturas avaliadas no restante do
+trabalho.
 
-\subsubsection{Clonagem de Voz}
+\subsection{Da Síntese Clássica à Síntese Neural}
 
-A clonagem de voz (\textit{voice cloning}) consiste em criar um modelo capaz
-de replicar as características acústicas e prosódicas de um falante específico
-a partir de amostras limitadas \cite{muller2022warning}. Modelos como VALL-E
-\cite{wang2023vall} utilizam abordagem \textit{few-shot} baseada em
-codificadores neurais de áudio, atingindo qualidade quase indistinguível com
-apenas 3 segundos de áudio. O processo pode ser formalizado como:
+Os primeiros sistemas eletrônicos de fala baseavam-se no modelo fonte-filtro,
+em que a excitação glotal e o trato vocal eram parametrizados separadamente
+\cite{dudley1939,klatt1987}. Posteriormente, a síntese concatenativa passou a
+combinar unidades gravadas de fala humana, obtendo maior naturalidade ao custo
+de grandes bases de áudio e menor flexibilidade prosódica \cite{hunt1996}. A
+transição para modelos neurais substituiu regras explícitas por funções
+aprendidas: WaveNet modelou a forma de onda de modo autoregressivo
+\cite{oord2016wavenet}, Tacotron e Tacotron~2 mapearam texto para
+espectrogramas Mel \cite{wang2017,shen2018natural}, e arquiteturas posteriores
+como FastSpeech e VITS exploraram inferência mais rápida e geração
+\textit{end-to-end} \cite{ren2019fastspeech,kim2021conditional}.
 
-\begin{equation}
-\label{eq:voice_clone}
-\mathbf{y}_{clone} = f_{\theta}(\mathbf{x}_{text},\; \mathbf{z}_{speaker})
-\end{equation}
+Modelos recentes ampliaram esse cenário para síntese multilíngue, clonagem de
+voz e adaptação com poucas amostras. YourTTS e VALL-E exemplificam essa
+tendência ao combinar representação de locutor, conteúdo linguístico e
+codificadores neurais de áudio para generalizar a falantes não vistos
+\cite{casanova2022yourtts,wang2023vall}. No conjunto utilizado neste trabalho, a
+fração Fake Voices é composta por amostras geradas com XTTS, sistema
+\textit{cross-lingual} de TTS associado à classe sintética do \textit{corpus}
+\cite{fakevoices_card}. Essa origem justifica a avaliação de detectores capazes
+de lidar com fala neural em português brasileiro e com variações de locutor.
 
-\noindent
-onde $\mathbf{y}_{clone}$ é o áudio sintético gerado, $\mathbf{x}_{text}$ é
-o texto de entrada, $\mathbf{z}_{speaker}$ é o vetor de características do
-falante e $f_{\theta}$ é o modelo neural treinado.
+\subsection{Text-to-Speech, Clonagem e Conversão de Voz}
 
-\subsubsection{Conversão de Voz}
-
-A conversão de voz (\textit{voice conversion}, VC) transforma a voz de um
-falante para soar como a de outro, preservando o conteúdo linguístico original
-\cite{bird2023realtime}. A técnica RVC emprega bancos de dados de vozes e
-extratores de características para mapear o falante de origem ao alvo:
-
-\begin{equation}
-\label{eq:voice_conv}
-\mathbf{y}_{conv} = g_{\phi}(\mathbf{x}_{source},\; \mathbf{z}_{target})
-\end{equation}
-
-Modelos como StarGAN-VC \cite{kameoka2018stargan} utilizam redes adversariais
-para aprender mapeamentos muitos-para-muitos entre vozes com latência reduzida.
-A VC é desafiadora para detecção, pois preserva o conteúdo linguístico,
-mascarando artefatos e levando detectores baseados em características espectrais
-a EERs de até 15\% \cite{wang2024asvspoof5}.
-
-\begin{infobox}{Conversão de Voz nas Eleições Brasileiras de 2024}
-Durante as eleições municipais brasileiras de 2024, a conversão de voz foi
-identificada em casos de manipulação de discursos de candidatos, onde trechos
-de áudio foram alterados para simular falas comprometedoras \cite{farrugia2024}.
-\end{infobox}
-
-\subsubsection{Síntese de Fala (\textit{Text-to-Speech})}
-
-O Tacotron~2 \cite{shen2018natural} estabeleceu arquiteturas
-\textit{sequence-to-sequence} para mapear texto em espectrogramas mel,
-convertidos em áudio por um vocoder como WaveNet \cite{oord2016wavenet}:
-
+A síntese de fala por texto (\textit{Text-to-Speech}, TTS) recebe uma sequência
+textual ou fonética e produz áudio inteligível. Em sistemas neurais clássicos,
+um modelo acústico transforma o texto em espectrograma Mel, que é convertido em
+forma de onda por um \textit{vocoder} neural:
 \begin{equation}
 \label{eq:tts}
 \mathbf{s}_{mel} = h_{\psi}(\mathbf{t}_{text}), \qquad
 \mathbf{y}_{audio} = v_{\omega}(\mathbf{s}_{mel})
 \end{equation}
-
 \noindent
-onde $\mathbf{t}_{text}$ é o texto de entrada, $\mathbf{s}_{mel}$ é o
-espectrograma mel intermediário, $\mathbf{y}_{audio}$ é a forma de onda
-sintetizada, $h_{\psi}$ representa o modelo \textit{sequence-to-sequence}
-(Tacotron~2) e $v_{\omega}$ representa o vocoder neural (WaveNet).
+em que $\mathbf{t}_{text}$ é o texto de entrada, $\mathbf{s}_{mel}$ é o
+espectrograma intermediário, $\mathbf{y}_{audio}$ é a forma de onda sintetizada,
+$h_{\psi}$ representa o modelo acústico e $v_{\omega}$ representa o
+\textit{vocoder}. A Equação~\ref{eq:tts} é uma abstração funcional do processo:
+implementações modernas podem empregar codificadores de fala, modelos
+auto-regressivos, difusão, \textit{flow} ou variacionais, mas a separação entre
+conteúdo linguístico, representação acústica e síntese de onda permanece útil
+para discutir artefatos detectáveis.
 
-A WaveNet modela diretamente a forma de onda bruta, alcançando qualidade
-próxima à humana \cite{oord2016wavenet}. Sistemas TTS avançados dificultam a
-detecção por métodos tradicionais baseados em MFCCs devido à alta naturalidade
-dos áudios gerados.
+A clonagem de voz (\textit{voice cloning}) consiste em replicar as
+características acústicas e prosódicas de um falante a partir de amostras
+limitadas \cite{muller2022warning}. Modelos como VALL-E \cite{wang2023vall}
+empregam abordagem \textit{few-shot} baseada em codificadores neurais de áudio,
+com alta similaridade perceptual mesmo quando a referência de voz é curta:
+\begin{equation}
+\label{eq:voice_clone}
+\mathbf{y}_{clone} = f_{\theta}(\mathbf{x}_{text},\; \mathbf{z}_{speaker})
+\end{equation}
+\noindent
+onde $\mathbf{y}_{clone}$ é o áudio sintético, $\mathbf{x}_{text}$ é o texto,
+$\mathbf{z}_{speaker}$ é o vetor de características do falante e $f_{\theta}$ é o
+modelo neural treinado. A Equação~\ref{eq:voice_clone} evidencia que a ameaça
+não depende apenas da naturalidade da fala, mas também da preservação da
+identidade vocal, fator central em ataques contra biometria de voz.
 
-\subsubsection{Manipulação em Tempo Real}
+A conversão de voz (\textit{voice conversion}, VC) transforma a voz de um
+falante para soar como a de outro, preservando o conteúdo linguístico
+\cite{bird2023realtime}. Diferentemente do TTS, a entrada já contém fala; o
+modelo busca separar conteúdo, prosódia e identidade para reemitir o sinal com
+características do falante-alvo:
+\begin{equation}
+\label{eq:voice_conv}
+\mathbf{y}_{conv} = g_{\phi}(\mathbf{x}_{source},\; \mathbf{z}_{target})
+\end{equation}
+A Equação~\ref{eq:voice_conv} formaliza esse mapeamento. Modelos como
+StarGAN-VC \cite{kameoka2018stargan} usam redes adversariais para aprender
+mapeamentos muitos-para-muitos. A VC é particularmente desafiadora para
+detecção porque preserva boa parte do conteúdo linguístico e pode deslocar
+artefatos para regiões sutis do espectro, aumentando a dependência de modelos
+robustos a geradores não vistos \cite{wang2024asvspoof5}.
 
-A manipulação em tempo real permite alterar áudios durante conversas ao vivo
-com latência inferior a \SI{200}{\milli\second}, tornando-a imperceptível para
-humanos \cite{pindrop2025}. Sistemas como RVC~v2 otimizam a conversão para
-baixa latência utilizando redes convolucionais 1D leves \cite{bird2023realtime}:
-
+A manipulação em tempo real representa a aplicação operacional da conversão de
+voz em chamadas, transmissões ou atendimento remoto. Em vez de assumir que o
+ataque seja imperceptível, a questão técnica relevante é que latências baixas
+reduzem a janela de verificação humana e automatizada \cite{pindrop2025}. Uma
+forma abstrata desse processo é:
 \begin{equation}
 \label{eq:realtime}
 \mathbf{y}_{rt} = r_{\xi}(\mathbf{x}_{input},\; \mathbf{z}_{target},\; t)
 \end{equation}
+\noindent
+em que $t$ representa restrição temporal de processamento na
+Equação~\ref{eq:realtime}. Sistemas RVC e abordagens correlatas procuram
+reduzir essa latência com extratores de conteúdo e redes otimizadas para
+inferência contínua \cite{bird2023realtime}.
 
-\begin{warningbox}{Riscos do \textit{vishing} em Tempo Real}
-Casos de \textit{vishing} em 2025 usaram manipulação em tempo real para imitar
-vozes de familiares, enganando vítimas em transferências financeiras de
-emergência \cite{pindrop2025}. A latência média desses sistemas é inferior a
-\SI{200}{\milli\second}.
-\end{warningbox}
+A Tabela~\ref{tab:tipos_sintese_ataque} sintetiza as quatro modalidades
+descritas nesta seção, relacionando entrada, saída, artefatos acústicos
+esperados e o risco associado a cada uma.
 
-% ------------------------------------------------------------------
-\subsection{Gerações de Métodos de Detecção}
-% ------------------------------------------------------------------
+\begin{table}[H]
+\centering
+\caption{Principais modalidades de geração e manipulação de fala sintética.}
+\label{tab:tipos_sintese_ataque}
+\footnotesize\singlespacing
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{2.4cm}
+                >{\raggedright\arraybackslash}p{2.7cm}
+                >{\raggedright\arraybackslash}p{2.8cm}
+                >{\raggedright\arraybackslash}p{3.2cm}
+                >{\raggedright\arraybackslash}p{2.6cm}@{}}
+\toprule
+\textbf{Modalidade} & \textbf{Entrada típica} & \textbf{Saída} &
+\textbf{Artefatos esperados} & \textbf{Risco principal} \\
+\midrule
+TTS neural & Texto ou fonemas & Fala sintética completa &
+Prosódia artificial, marcas de \textit{vocoder}, suavização espectral &
+Conteúdo falso atribuído a uma voz \\
+\addlinespace
+Clonagem de voz & Texto e poucos segundos do locutor & Fala no timbre do alvo &
+Inconsistência de identidade, entonação e respiração & Fraudes de identidade \\
+\addlinespace
+Conversão de voz & Fala de origem e identidade-alvo & Fala convertida &
+Artefatos de separação conteúdo/falante, fase e formantes & Impersonação em fala real \\
+\addlinespace
+Manipulação em tempo real & Fluxo de áudio e perfil-alvo & Saída alterada em baixa latência &
+Compressão, instabilidade temporal e ruído de canal & Ataques em chamadas ao vivo \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-\subsubsection{Primeira Geração --- Características Manuais e Estatística Clássica}
+\subsection{Implicações para a Detecção}
 
-Até o ASVspoof 2015 \cite{wu2015asvspoof}, o padrão envolvia extração
-manual de MFCC, LFCC e CQCC seguida por classificadores GMM-UBM e SVM.
-Sahidullah et al.\ \cite{sahidullah2015comparison} demonstraram que o LFCC
-supera o MFCC como \textit{front-end} para detecção de \textit{spoofing},
-enquanto Todisco et al.\ \cite{todisco2016new} introduziram o CQCC como
-característica de referência para a área. Embora computacionalmente leves,
-essas arquiteturas falham gravemente com métodos de síntese neural modernos
-por não generalizarem entre bases de dados
-(EER $>$ 20\% em cenários \textit{cross-dataset}).
-
-\subsubsection{Segunda Geração --- CNNs e RNNs em Espectrogramas}
-
-A partir do ASVspoof 2019 \cite{todisco2019asvspoof}, CNNs (como ResNet e
-Res2Net \cite{gao2021res2net}) e LSTMs processando espectrogramas mel
-tornaram-se dominantes. Sistemas como o LCNN (\textit{Light CNN}) reduziram
-drasticamente os EERs ao explorar artefatos visuais de alta frequência
-deixados por \textit{vocoders}. Abordagens híbridas CNN e CNN-RNN sobre
-espectrogramas reportam acurácias superiores a 90\% na detecção de áudio
-sintético \cite{pham2024deepfake}.
-
-\subsubsection{Terceira Geração --- Análise Direta de Forma de Onda e Grafos}
-
-A introdução de RawNet2 \cite{tak2021rawnet2} e AASIST \cite{jung2022aasist}
-marcou o processamento \textit{end-to-end}. O RawNet2 utiliza
-\textit{Sinc-Convolutions} para processar diretamente a forma de onda PCM 1D.
-O AASIST implementa Redes de Atenção em Grafos (GATs) para modelar
-dependências temporais e espectrais simultaneamente, alcançando EER inferior
-a 1\% em bases controladas.
-
-\begin{warningbox}{Requisitos Computacionais da 3\textordfeminine\ Geração}
-Modelos \textit{raw-audio} como RawNet2 e AASIST exigem GPU dedicada e
-bases suficientemente amplas para convergir de forma estável. Em
-cenários restritos de dados ou sem aceleração por GPU, a literatura reporta
-maior dificuldade de otimização para modelos desse tipo
-\cite{tak2021rawnet2, jung2022aasist}.
-\end{warningbox}
-
-\subsubsection{Quarta Geração --- Modelos \textit{Foundation} e SSL}
-
-Com o ASVspoof 5 \cite{wang2024asvspoof5} e avaliações recentes de modelos
-auto-supervisionados, o padrão ouro consolidou-se em torno de WavLM
-\cite{chen2022wavlm} e HuBERT \cite{hsu2021hubert}. Pré-treinados em dezenas
-de milhares de horas de áudio não rotulado, esses modelos, herdeiros do paradigma de
-representação auto-supervisionada estabelecido pelo wav2vec~2.0
-\cite{baevski2020wav2vec}, são ajustados
-(\textit{fine-tuned}) para \textit{anti-spoofing}, oferecendo resistência
-superior a ataques adversariais e dados \textit{crowdsourced}. O Audio
-Spectrogram Transformer (AST) \cite{gong2021ast} emerge como alternativa
-promissora, processando espectrogramas como sequências de \textit{patches}
-sem convoluções.
-
-A Tabela~\ref{tab:survey_geracoes} consolida as quatro gerações de métodos.
+As tecnologias descritas acima motivam detectores capazes de operar sobre
+representações complementares. Modelos baseados em descritores manuais capturam
+estatísticas acústicas agregadas; redes espectrais exploram padrões
+tempo-frequência; arquiteturas de áudio bruto modelam microestrutura temporal;
+e modelos auto-supervisionados herdam representações treinadas em grandes
+coleções de fala. A Tabela~\ref{tab:survey_geracoes} sintetiza essa progressão
+histórica como evolução dos métodos de detecção, não como taxonomia de síntese.
 
 \begin{table}[H]
 \centering
 \caption{\textit{Survey} das gerações de métodos de detecção de áudio sintético.}
 \label{tab:survey_geracoes}
-\small\singlespacing
-\begin{tabular}{p{2.0cm}p{3.0cm}p{3.0cm}p{3.0cm}p{2.5cm}}
+\footnotesize\singlespacing
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{1.9cm}
+                >{\raggedright\arraybackslash}p{2.8cm}
+                >{\raggedright\arraybackslash}p{2.9cm}
+                >{\raggedright\arraybackslash}p{3.1cm}
+                >{\raggedright\arraybackslash}p{2.7cm}@{}}
 \toprule
-\textbf{Geração} & \textbf{Representação} &
-\textbf{Classificador} & \textbf{Pontos Fortes} & \textbf{Limitações} \\
+\textbf{Geração} & \textbf{Representação} & \textbf{Classificador} & \textbf{Pontos Fortes} & \textbf{Limitações} \\
 \midrule
-1\textordfeminine\ (até 2015)
-  & MFCC, LFCC, CQCC & GMM-UBM, SVM
-  & Leveza computacional & Baixa generalização \\
+1\textordfeminine\ (até 2015) & MFCC, LFCC, CQCC & GMM-UBM, SVM \cite{cortes1995support} & Baixo custo computacional & Baixa generalização \\
 \addlinespace
-2\textordfeminine\ (2019)
-  & Espectrograma mel & CNN, LSTM, LCNN
-  & Robustez a artefatos de vocoder
-  & Sensível a geradores não vistos \\
+2\textordfeminine\ (2019) & Espectrograma Mel & CNN, LSTM \cite{hochreiter1997lstm}, LCNN & Robustez a artefatos de \textit{vocoder} & Sensibilidade a geradores não vistos \\
 \addlinespace
-3\textordfeminine\ (2021)
-  & Forma de onda bruta, grafos & RawNet2, AASIST
-  & EER $<$ 1\% controlado & GPU + $>$5.000 amostras \\
+3\textordfeminine\ (2021) & Forma de onda, grafos & RawNet2, AASIST & EER $<$ 1\% em base controlada & Alta demanda computacional (GPU) \\
 \addlinespace
-4\textordfeminine\ (2024+)
-  & Representação SSL & WavLM, HuBERT + MLP
-  & Generalização \textit{cross-dataset}
-  & Dependência de GPUs potentes \\
+4\textordfeminine\ (2024+) & Representação SSL e atenção & WavLM, HuBERT, AST & Melhor aproveitamento de contexto global & Dependência de pré-treinamento e validação externa \\
 \bottomrule
 \end{tabular}
 \end{table}
 
+Até o desafio ASVspoof 2015 \cite{wu2015asvspoof}, o estado da arte envolvia a
+extração manual de características paramétricas --- como MFCC, LFCC e CQCC ---
+seguida por classificadores tradicionais. Sahidullah et al.\
+\cite{sahidullah2015comparison} demonstraram que o LFCC supera o MFCC como
+\textit{front-end} para detecção de \textit{spoofing}, enquanto Todisco et al.\
+\cite{todisco2016new} introduziram o CQCC como representação de referência. A
+partir do ASVspoof 2019 \cite{todisco2019asvspoof}, CNNs, LCNNs
+\cite{lavrentyeva2017audio}, Res2Net \cite{gao2021res2net} e modelos
+recorrentes passaram a explorar espectrogramas e mapas tempo-frequência. Em
+seguida, RawNet2 \cite{tak2021rawnet2}, AASIST \cite{jung2022aasist} e
+RawGAT-ST aproximaram a detecção do sinal bruto e de grafos de atenção. Mais
+recentemente, WavLM \cite{chen2022wavlm}, HuBERT \cite{hsu2021hubert},
+wav2vec~2.0 \cite{baevski2020wav2vec} e AST \cite{gong2021ast} incorporaram
+representações SSL e mecanismos de atenção inspirados por Transformers
+\cite{vaswani2017attention} e ViT \cite{dosovitskiy2021vit}. Essa trajetória
+fundamenta a seleção das arquiteturas comparadas na Seção~\ref{sec:arquiteturas}
+e justifica a avaliação de modelos heterogêneos sob um mesmo protocolo.
+
+
+
+\newpage
+
 % =====================================================================
-%  3. METODOLOGIA
+%  3. ARQUITETURAS DE CLASSIFICAÇÃO
+% =====================================================================
+\section{Arquiteturas de Classificação}
+\label{sec:arquiteturas}
+
+% ------------------------------------------------------------------
+\subsection{Modelos Auto-Supervisionados (SSL) e de Áudio Bruto}
+\label{subsec:ssl_raw}
+% ------------------------------------------------------------------
+
+Este grupo reúne modelos que evitam a dependência exclusiva de descritores
+tabulares extraídos manualmente. WavLM e HuBERT utilizam representações
+auto-supervisionadas aprendidas previamente em grandes coleções de fala, ao
+passo que RawNet2, AASIST e RawGAT-ST aprendem filtros e relações temporais
+diretamente a partir da forma de onda. Em todos os casos, o protocolo deste
+trabalho preserva a entrada em áudio bruto como eixo metodológico comum,
+adaptando apenas a cabeça supervisionada e os detalhes necessários para a
+execução reprodutível no \textit{benchmark}.
+
+\subsubsection*{WavLM \cite{chen2022wavlm}}
+\textbf{Síntese Arquitetural:} WavLM é um modelo SSL baseado em Transformer,
+treinado por predição mascarada de fala combinada a uma tarefa de denoising.
+Essa formulação busca preservar conteúdo linguístico, identidade do locutor e
+informações paralinguísticas, tornando o \textit{backbone} útil para tarefas de
+fala além de reconhecimento automático.
+
+\par\textbf{Formato de entrada no artigo de referência:} O modelo opera sobre
+forma de onda de fala, usualmente representada como sinal monofônico amostrado
+a \SI{16}{\kilo\hertz}. A extração de atributos é feita internamente pelo
+codificador convolucional e pelas camadas Transformer, sem necessidade de
+espectrogramas ou MFCCs pré-computados.
+
+\par\textbf{Escopo neste trabalho:} O manifesto experimental avalia o WavLM
+Original por meio do \textit{checkpoint} \path{microsoft/wavlm-base}, carregado
+via PyTorch/\texttt{transformers}. O \textit{backbone} permanece congelado e o
+treinamento supervisionado ajusta apenas a cabeça de classificação binária
+sobre \textit{embeddings} SSL extraídos de áudio bruto normalizado a
+\SI{16}{\kilo\hertz}. Essa escolha reduz custo computacional e evita confundir
+o efeito do pré-treinamento SSL com um ajuste fino integral do modelo. O
+qualificador ``Original'' distingue este uso do \textit{checkpoint} pré-treinado
+real de eventuais implementações simplificadas; ele não implica ajuste fino
+completo, de modo que os resultados refletem a qualidade dos \textit{embeddings}
+congelados, não o teto de desempenho do WavLM.
+
+\subsubsection*{HuBERT (\textit{Hidden-Unit BERT}) \cite{hsu2021hubert}}
+\textbf{Síntese Arquitetural:} HuBERT também pertence à família SSL, mas sua
+ideia central é prever unidades acústicas ocultas obtidas por agrupamento
+offline. O treinamento aplica perda apenas sobre regiões mascaradas, forçando o
+modelo a aprender regularidades acústicas e linguísticas a partir de rótulos
+discretos pseudo-supervisionados.
+
+\par\textbf{Formato de entrada no artigo de referência:} O modelo recebe fala
+em forma de onda contínua, sem extratores cepstrais externos. As unidades
+ocultas usadas como alvo de pré-treinamento são derivadas de agrupamentos sobre
+representações acústicas, mas a entrada operacional do modelo permanece o
+áudio bruto, tipicamente em \SI{16}{\kilo\hertz}.
+
+\par\textbf{Escopo neste trabalho:} O HuBERT Original é avaliado com o
+\textit{checkpoint} \path{facebook/hubert-base-ls960}, também via
+PyTorch/\texttt{transformers}. Assim como no WavLM, o \textit{backbone} é
+mantido congelado e a etapa supervisionada treina uma cabeça de classificação
+sobre os \textit{embeddings} extraídos. Com isso, HuBERT permanece no escopo
+principal dos \num{11} modelos consolidados, sem ser tratado como trabalho
+futuro.
+
+\subsubsection*{RawNet2 \cite{tak2021rawnet2}}
+\textbf{Síntese Arquitetural:} RawNet2 é uma rede \textit{end-to-end} para
+anti-\textit{spoofing} que substitui descritores manuais por filtros
+passa-banda aprendíveis. A arquitetura combina uma frente SincNet, blocos
+residuais com escalamento de mapas de características e uma camada GRU para
+agregação temporal antes da decisão binária.
+
+\par\textbf{Formato de entrada no artigo de referência:} O artigo de referência
+processa diretamente a forma de onda bruta, sem converter previamente o sinal
+para espectrograma. Essa entrada preserva informações de fase, microvariações
+temporais e artefatos de síntese que podem ser suavizados por representações
+tempo-frequência.
+
+\par\textbf{Escopo neste trabalho:} O benchmark utiliza a variante RawNet2
+alinhada ao artigo, em configuração \textit{paper-like} com GRU e camada densa
+de \num{1024} unidades, operando sobre áudio bruto padronizado. A implementação mantém SincNet, blocos residuais, FMS e GRU de
+\num{1024} unidades, com treinamento supervisionado por \num{100} épocas em GPU.
+O modelo representa a referência principal de aprendizagem direta sobre PCM no
+conjunto experimental.
+
+\subsubsection*{AASIST \cite{jung2022aasist}}
+\textbf{Síntese Arquitetural:} AASIST estende a família RawNet ao introduzir
+atenção em grafos espectrais e temporais. Após uma frente convolucional sobre a
+forma de onda, o modelo constrói subgrafos para capturar relações entre bandas
+frequenciais e segmentos temporais, integrando-os por uma camada heterogênea de
+atenção com nó de empilhamento.
+
+\par\textbf{Formato de entrada no artigo de referência:} A entrada é áudio
+bruto. Os grafos espectro-temporais não são fornecidos como dados externos:
+eles são derivados internamente a partir das representações aprendidas pelo
+codificador inicial.
+
+\par\textbf{Escopo neste trabalho:} A variante \texttt{aasist} é usada como
+implementação alinhada ao artigo, com SincConv, blocos residuais, ramos de GAT
+espectral e temporal, camadas HS-GAL, leitura por grafo e cabeça AM-Softmax. O
+modelo é treinado no mesmo protocolo de \num{100} épocas e integra o grupo de
+modelos de áudio bruto/grafos do manifesto oficial.
+
+\subsubsection*{RawGAT-ST \cite{tak2021rawgatst}}
+\textbf{Síntese Arquitetural:} RawGAT-ST modela artefatos de falsificação por
+meio de redes de atenção em grafos aplicadas a dois domínios complementares:
+subbandas espectrais e intervalos temporais. A fusão em nível de modelo permite
+combinar evidências locais e globais sem depender de um \textit{ensemble} externo
+de detectores.
+
+\par\textbf{Formato de entrada no artigo de referência:} Assim como RawNet2 e
+AASIST, o RawGAT-ST recebe a forma de onda bruta. A estrutura espectro-temporal
+é aprendida a partir de um codificador inicial e depois organizada em subgrafos
+espectral e temporal.
+
+\par\textbf{Escopo neste trabalho:} O benchmark utiliza uma variante RawGAT-ST
+com fusão multiplicativa e \textit{stride} temporal igual a \num{4}, composta por
+SincConv, encoder residual, GAT espectral, GAT temporal e fusão por
+multiplicação elemento a elemento. O
+\textit{stride} temporal controla o custo quadrático da atenção em grafos,
+preservando o princípio arquitetural do artigo e viabilizando treinamento
+reprodutível em GPU.
+
+% ------------------------------------------------------------------
+\subsection{Arquiteturas Neurais de Domínio Espectro-Temporal}
+\label{subsec:espectrais}
+% ------------------------------------------------------------------
+
+\subsubsection*{Conformer \cite{gulati2020conformer}}
+\textbf{Síntese Arquitetural:} Topologia híbrida (\textit{Convolution-augmented Transformer}) que integra a excelência de modelagem de contexto global da autoatenção com a eficiência na extração de padrões locais dos módulos convolucionais.
+\par\textbf{Desempenho e Observações:} Demonstra alta precisão operando sobre representações bidimensionais densas (espectrogramas Mel), capturando anomalias de fase típicas da síntese de \textit{vocoders}.
+
+\subsubsection*{Compact Convolutional Transformer (CCT) \cite{hassani2021cct}}
+\textbf{Síntese Arquitetural:} Variação otimizada do \textit{Transformer} que substitui o fatiamento linear tradicional por uma etapa de tokenização convolucional precedente à inserção nos blocos de atenção.
+\par\textbf{Desempenho e Observações:} Proporciona expressiva redução no custo paramétrico e na exigência de volume de dados, mitigando o custo quadrático da autoatenção sobre mapas espectrais.
+
+\subsubsection*{Audio Spectrogram Transformer (AST) \cite{gong2021ast}}
+\textbf{Síntese Arquitetural:} Adaptação direta do \textit{Vision Transformer} (ViT) para o domínio acústico. Trata mapas tempo-frequência como sequências de \textit{patches} processadas via autoatenção global pura.
+\par\textbf{Desempenho e Observações:} Exibe alta resiliência sob injeção de ruído aditivo. Demanda, em contrapartida, calibragem minuciosa de hiperparâmetros e esquemas severos de regularização para evitar instabilidade.
+
+\subsubsection*{Res2Net (Topologia Multi-escala) \cite{gao2021res2net}}
+\textbf{Síntese Arquitetural:} Evolução convolucional caracterizada pela introdução de conexões residuais hierárquicas de múltiplas escalas (resoluções) aninhadas dentro de um único bloco.
+\par\textbf{Desempenho e Observações:} A extração multi-resolução permite ao modelo identificar simultaneamente artefatos de \textit{spoofing} que se manifestam tanto em bandas largas quanto em nichos de alta frequência.
+
+% ------------------------------------------------------------------
+\subsection{Classificadores Estatísticos Clássicos}
+\label{subsec:classicos}
+% ------------------------------------------------------------------
+
+\subsubsection*{Support Vector Machine (SVM) \cite{cortes1995support}}
+\textbf{Síntese Arquitetural:} Com \textit{kernel} de base radial (RBF), o SVM é um classificador não linear que projeta vetores de características acústicas (por exemplo, LFCCs e CQCCs) em um espaço de maior dimensão, no qual otimiza o hiperplano de separação por maximização de margem entre classes.
+\par\textbf{Desempenho e Observações:} Foi referência de desempenho nas primeiras edições de detecção de \textit{spoofing} de voz (e.g., ASVspoof 2015), mas sua capacidade preditiva cai de forma acentuada diante de ataques lógicos mais recentes. Em protocolos de generalização cruzada, o modelo costuma registrar Taxa de Erro Igual (EER) superior a \SI{20}{\percent} ao enfrentar artefatos de síntese gerados por redes neurais mais complexas.
+
+\subsubsection*{Random Forest \cite{breiman2001random}}
+\textbf{Síntese Arquitetural:} Método de aprendizagem em comitê (\textit{ensemble learning}) baseado na agregação de múltiplas árvores de decisão estocásticas. O modelo reduz a propensão ao sobreajuste (\textit{overfitting}) combinando amostragem \textit{bootstrap} (\textit{bagging}) com seleção aleatória de subespaços de características a cada nó de ramificação.
+\par\textbf{Desempenho e Observações:} Destaca-se pela escalabilidade em arquiteturas multi-núcleo e pela interpretabilidade direta da relevância dos atributos (\textit{feature importance}). Por outro lado, tem dificuldade em capturar dependências espectro-temporais finas e assinaturas não estacionárias relevantes para a detecção de \textit{deepfakes} de voz mais recentes (padrão ASVspoof 2019 e sucessores) --- limitação também observada empiricamente neste trabalho na robustez sob ruído (Seção~\ref{sec:analise_resultados}).
+
+
+
+\newpage
+
+
+
+
+% =====================================================================
+%  4. METODOLOGIA
 % =====================================================================
 \section{Metodologia}
 \label{sec:metodologia}
@@ -698,1125 +945,634 @@ inferência (\subref{fig:pipeline_pred}).}
 \label{fig:pipeline}
 \end{figure}
 
+\newpage
+
+% ------------------------------------------------------------------
+\subsection{Representações de Entrada e Características Acústicas}
+\label{sec:caracteristicas}
+% ------------------------------------------------------------------
+
+O \textit{pipeline} adapta a representação de entrada a cada família de
+arquitetura, preservando o mesmo áudio pré-processado
+($\mathbf{x} \in \mathbb{R}^{80000\times1}$, \SI{16}{\kilo\hertz} mono,
+\SI{5}{\second}) como origem comum. A Tabela~\ref{tab:representacoes_entrada}
+resume essa correspondência.
+
+\begin{table}[H]
+\centering
+\caption{Representação de entrada consumida por família de modelo.}
+\label{tab:representacoes_entrada}
+\small
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{3.2cm}
+                >{\raggedright\arraybackslash}p{4.6cm}
+                >{\raggedright\arraybackslash}p{6.2cm}@{}}
+\toprule
+\textbf{Representação} & \textbf{Modelos} & \textbf{Observação} \\
+\midrule
+Áudio bruto (\textit{raw-audio}) & WavLM, HuBERT, RawNet2, AASIST, RawGAT-ST &
+Forma de onda normalizada, sem extrator externo \\
+\addlinespace
+Espectrograma Mel & Conformer, CCT, AST, Res2Net &
+Representação tempo-frequência para camadas convolucionais/atenção \\
+\addlinespace
+Vetor tabular (\num{63} descritores) & SVM, \textit{Random Forest} &
+Estatísticas de amplitude, MFCC e RASTA-PLP \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Para os classificadores clássicos, a ausência de camadas convolucionais ou de
+atenção exige um vetor de características de dimensão fixa. O módulo
+\path{benchmarks/data.py} constrói, para cada amostra, um vetor de
+\num{63} descritores compostos por três famílias:
+\begin{itemize}
+    \item \textbf{Estatísticas temporais (11):} média, desvio-padrão, média
+    absoluta, valor RMS, mínimo, máximo, percentis 25/50/75, energia da
+    diferença entre amostras consecutivas (proxy de rugosidade do sinal) e
+    taxa de cruzamento por zero (ZCR).
+    \item \textbf{MFCC (26):} média e desvio-padrão de \num{13} coeficientes
+    cepstrais na escala Mel por amostra.
+    \item \textbf{RASTA-PLP (26):} média e desvio-padrão de \num{13}
+    coeficientes RASTA-PLP (\textit{RelAtive SpecTrA -- Perceptual Linear
+    Prediction} \cite{hermansky1994rasta}) por amostra. O filtro RASTA atenua
+    variações espectrais lentas associadas a efeitos de canal e foi incorporado
+    especificamente para mitigar a degradação de SVM e \textit{Random Forest}
+    sob ruído, discutida na Seção~\ref{sec:resultados}.
+\end{itemize}
+
+\noindent
+Esse vetor de \num{63} dimensões implementa, de forma concreta, os
+descritores estatísticos temporais e cepstrais mencionados nos objetivos deste
+trabalho. Cabe uma ressalva de escopo: o repositório também implementa
+extratores de características prosódicas e de qualidade vocal --- F0,
+medidas de perturbação de período de pitch (RAP, PPQ) e \textit{shimmer}, além
+de HNR (\textit{Harmonic-to-Noise Ratio}) --- disponíveis como adaptadores
+\texttt{IFeatureExtractor} em \path{app/domain/features/}, mas esses
+descritores não compõem o vetor tabular efetivamente consumido pelo SVM e pelo
+\textit{Random Forest} nesta rodada de \textit{benchmark}. Assim, os \num{11}
+modelos comparados neste trabalho cobrem três regimes de entrada
+(áudio bruto, espectrograma Mel e vetor tabular temporal/cepstral), enquanto a
+integração de descritores prosódicos e de qualidade vocal ao \textit{benchmark}
+permanece como extensão natural (Seção~\ref{sec:trabalhos_futuros}).
+
 % ------------------------------------------------------------------
 \subsection{Conjunto de Dados e Protocolo Experimental}
 \label{sec:dataset_protocolo}
 % ------------------------------------------------------------------
 
-\subsubsection{Construção da Base Experimental Balanceada}
-\label{sec:brspeech_df}
+\subsubsection{Composição e Proveniência}
 
-O conjunto de dados experimental utilizado no \textit{benchmark} consolidado
-foi estruturado como uma base balanceada de 15.000 amostras de áudio, sendo
-7.500 amostras \textit{bonafide} e 7.500 amostras \textit{spoof}. Esse volume
-foi adotado para treinar arquiteturas de maior capacidade, inclusive modelos
-\textit{raw-audio} e \textit{self-supervised learning} (SSL), sob um protocolo
-único de avaliação.\footnote{O arquivo consolidado do \textit{benchmark}
-agrupa amostras rotuladas como reais e sintéticas em uma base operacional
-única. Ele \emph{não} implica composição majoritariamente em português
-brasileiro: a proporção por idioma ainda não foi consolidada no manifesto
-atual (ver Seção~\ref{sec:ameacas_validade}), e essa verificação é
-pré-requisito para qualquer afirmação sobre cobertura linguística.}
+O protocolo experimental desta pesquisa fundamenta-se em um \textit{corpus}
+composto por \num{15000} amostras de áudio em português, balanceado entre as
+classes (\SI{50}{\percent} \textit{bonafide} e \SI{50}{\percent}
+\textit{spoof}). A classe genuína (\textit{bonafide}) reúne subconjuntos
+provenientes do BRSpeech-DF~\cite{brspeechdf_card}, amostras de leitura do
+\textit{Multilingual LibriSpeech} (MLS) Portuguese~\cite{pratap2020mls} e o
+\textit{TTS-Portuguese Corpus}~\cite{ttspt_card}.
 
-\begin{itemize}
-    \item \textbf{Origem e rastreabilidade}: os arquivos foram organizados a
-    partir de diretórios rotulados como \textit{real} e \textit{fake} e
-    exportados para um arquivo NumPy único. O manifesto do \textit{pipeline} registra
-    caminho de origem, parâmetros de áudio, contagens por classe, semente e
-    partições.
+A classe artificial (\textit{spoof}) agrega a fração sintética do BRSpeech-DF e
+amostras geradas por XTTS no \textit{corpus} Fake
+Voices~\cite{fakevoices_card}. A Tabela~\ref{tab:dataset_fontes} consolida a
+proveniência dos dados, discriminando a variabilidade de locutores e as
+estratégias de amostragem empregadas.
 
-    \item \textbf{Metadados pendentes}: número de falantes distintos,
-    distribuição por gênero e idioma (em especial, proporção de amostras em
-    português brasileiro), licença de cada fonte, duração original dos
-    arquivos e verificação explícita de duplicatas perceptuais ainda não foram
-    consolidados no manifesto. Por esse motivo, os resultados são tratados como
-    avaliação controlada do \textit{pipeline} e \emph{não substituem} validação
-    externa em bases públicas como ASVspoof, WaveFake e In-the-Wild.
-
-    \item \textbf{Padronização}: todos os arquivos foram convertidos para
-    \SI{16}{\kilo\hertz}, mono, janelas de \SI{5}{\second} e representação PCM
-    normalizada. Para os modelos de áudio bruto, a entrada final possui dimensão
-    $80{.}000\times1$; para modelos espectrais, o mesmo áudio é convertido para
-    representações Mel, LFCC, CQT ou MFCC conforme a arquitetura.
-
-    \item \textbf{Balanceamento}: as classes real e falsa foram mantidas em
-    proporção 1:1 em todas as partições, evitando viés de decisão por
-    frequência de classe.
-
-    \item \textbf{Divisão estratificada}: 70\% para treino (10.500 amostras),
-    15\% para validação (2.250 amostras) e 15\% para teste (2.250 amostras),
-    com semente fixa 42. \emph{Importante:} a divisão atual estratifica por
-    classe, mas não garante separação por falante ou por origem do gerador.
-    Caso amostras do mesmo falante ou do mesmo sistema TTS/VC apareçam em
-    partições diferentes, modelos podem aprender artefatos de origem em vez de
-    propriedades gerais de áudio sintético, inflando as métricas. Quando os
-    metadados de falante e fonte estiverem completos, a divisão deve evoluir
-    para separação explícita por origem.
-
-    \item \textbf{Robustez}: além do teste limpo, foram geradas versões com
-    ruído AWGN em SNR de \SI{30}{\decibel}, \SI{20}{\decibel} e
-    \SI{10}{\decibel} para medir degradação em cenários de transmissão e
-    captura degradadas.
-\end{itemize}
-
-A Tabela~\ref{tab:dataset_brspeechdf} consolida os principais atributos da base
-experimental utilizada no \textit{benchmark}.
-
-\begin{table}[H]
+\begin{table}[tbp]
 \centering
-\caption{Resumo da base experimental balanceada usada no \textit{benchmark}.}
-\label{tab:dataset_brspeechdf}
-\begin{tabular}{ll}
+\caption{Composição analítica da base de dados ($\num{15000}$ amostras) estratificada por classe e proveniência estrutural.}
+\label{tab:dataset_fontes}
+\small
+\begin{tabular}{llcc}
 \toprule
-\textbf{Atributo} & \textbf{Valor consolidado} \\
+\textbf{Classe} & \textbf{Fonte Original} & \textbf{Volume (Amostras)} & \textbf{Identificação do Locutor} \\
 \midrule
-Total de amostras & 15.000 \\
-Amostras \textit{bonafide} & 7.500 \\
-Amostras \textit{spoof} & 7.500 \\
-Treino / validação / teste & 10.500 / 2.250 / 2.250 \\
-Balanceamento do teste & 1.125 reais + 1.125 falsas \\
+\textit{Bonafide} & BRSpeech-DF & \num{3750} & Metadado da fonte \\
+\textit{Bonafide} & MLS Portuguese & \num{1875} & Disjunta (\num{21} locutores) \\
+\textit{Bonafide} & TTS-Portuguese Corpus & \num{1875} & Locutor único \\
+\addlinespace
+\textit{Spoof} & BRSpeech-DF & \num{3750} & Metadado da fonte \\
+\textit{Spoof} & Fake Voices (XTTS) & \num{3750} & Disjunta (\num{50} locutores) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Pré-processamento e Particionamento}
+
+Para assegurar homogeneidade no espaço de características acústicas,
+estabeleceu-se um fluxo de padronização de sinais e amostragem estratificada.
+Esse procedimento preserva a proporção de $1:1$ entre as classes em todas as
+partições experimentais, mitigando vieses probabilísticos \textit{a priori}. Os
+parâmetros operacionais desse fluxo estão formalizados na
+Tabela~\ref{tab:prep_part}.
+
+\begin{table}[tbp]
+\centering
+\caption{Especificações técnicas do protocolo de pré-processamento acústico e partições de amostragem.}
+\label{tab:prep_part}
+\small
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{5.2cm}
+                >{\raggedright\arraybackslash}p{9.5cm}@{}}
+\toprule
+\textbf{Parâmetro Metodológico} & \textbf{Especificação Nominal} \\
+\midrule
+\multicolumn{2}{c}{\textbf{Pré-processamento Acústico}} \\
+\midrule
 Taxa de amostragem & \SI{16}{\kilo\hertz} \\
-Duração padronizada & \SI{5}{\second} \\
-Formato bruto & PCM mono normalizado, $80{.}000\times1$ \\
-Semente de particionamento & 42 \\
-Testes de ruído & AWGN em \SI{30}{\decibel}, \SI{20}{\decibel} e \SI{10}{\decibel} \\
-Separação por falante & \emph{Pendente} --- ver Seção~\ref{sec:ameacas_validade} \\
-Idioma & Não documentado no manifesto atual \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Os arquivos de entrada do \textit{benchmark} foram consolidados no arquivo
-\path{benchmark_audio_raw_balanced_15k.npz}, localizado em
-\path{app/datasets/}. Os resultados, modelos treinados, métricas, matrizes de
-confusão e figuras são salvos em pastas individuais por arquitetura dentro de
-\path{results/}.
-
-\subsubsection{Protocolo de Treinamento}
-\label{sec:protocolo_treinamento}
-
-Os modelos neurais foram treinados com orçamento máximo de 100 épocas,
-semente 42, divisão estratificada, \textit{early stopping} e salvamento de
-melhor \textit{checkpoint}. Assim, a coluna de treino nas tabelas indica o
-orçamento configurado, enquanto o histórico registra as épocas efetivamente
-executadas antes da parada antecipada. O \textit{batch size} padrão foi 32,
-reduzido para 16 em
-arquiteturas com maior consumo de VRAM e para 1 nos modelos SSL originais
-quando necessário. Precisão mista (\texttt{mixed\_float16}) foi habilitada
-apenas para os modelos Keras compatíveis: Conformer, Hybrid CNN-Transformer,
-MultiscaleCNN, EfficientNet-LSTM e Ensemble; os modelos SSL originais
-utilizaram PyTorch/CUDA em precisão padrão (\texttt{float32}).
-
-Para interpretação das métricas, adotou-se acurácia e F1 como medidas de
-desempenho global, AUC-ROC como separabilidade probabilística e EER como taxa
-de equilíbrio entre falso aceite e falsa rejeição. Como o conjunto de teste
-possui 2.250 amostras, resultados de 100,00\% não devem ser interpretados como
-erro populacional nulo; pelo intervalo de Wilson, zero erro no teste ainda
-implica limite inferior aproximado de 99,83\% para a acurácia verdadeira a 95\%
-de confiança.
-
-% ------------------------------------------------------------------
-\subsection{Etapa 1: Pré-processamento}
-% ------------------------------------------------------------------
-
-O sistema suporta múltiplos formatos (WAV, MP3, FLAC, OGG) com conversão
-automática para padrões consistentes: taxa de amostragem de \SI{16}{\kilo\hertz},
-mono, 16 bits PCM linear.
-
-\subsubsection{Normalização AGC}
-
-A normalização implementa controle automático de ganho adaptativo
-(Equação~\ref{eq:agc}):
-
-\begin{equation}
-\label{eq:agc}
-x_{norm}[n] = x[n] \cdot
-\frac{L_{target}}{\sqrt{\dfrac{1}{N}\displaystyle\sum_{i=0}^{N-1}x[i]^2}}
-\end{equation}
-
-\noindent
-onde $L_{target}$ é o nível alvo de \textit{loudness}, fixado em \SI{-23}{\lufs}.
-
-\subsubsection{Detecção de Atividade de Voz (VAD)}
-
-O VAD baseado em energia remove segmentos silenciosos pelas
-Equações~\ref{eq:vad_energy} e~\ref{eq:vad_decision}:
-
-\begin{equation}
-\label{eq:vad_energy}
-E[m] = 10\log_{10}\!\left(\frac{1}{N}\sum_{n=0}^{N-1}|x[mH+n]|^2\right)
-\end{equation}
-
-\begin{equation}
-\label{eq:vad_decision}
-\text{Voice}[m] = \begin{cases}
-1, & \text{se } E[m] > \theta_{VAD} \text{ e } D[m] > D_{min}\\
-0, & \text{caso contrário}
-\end{cases}
-\end{equation}
-
-\noindent
-onde $\theta_{VAD}$ é o limiar de energia, fixado em \SI{-25}{\decibel};
-$H$ é o \textit{hop length} ($H = 256$ amostras); $D[m]$ é a duração do
-segmento; e $D_{min} = 0{,}3$\,s.
-
-\begin{infobox}{VAD em Ambiente de Produção}
-O Silero VAD (disponibilizado via Torch Hub) oferece performance pré-treinada
-superior ao VAD por energia. Nos experimentos, a indisponibilidade do
-\texttt{torchaudio} motivou o uso do VAD por energia como \textit{fallback},
-preservando a funcionalidade do \textit{pipeline} sem dependências externas não
-atendidas no ambiente de CPU.
-\end{infobox}
-
-% ------------------------------------------------------------------
-\subsection{Etapa 2: Extração e Análise de Características}
-% ------------------------------------------------------------------
-
-O sistema extrai características acústicas complementares cuja hierarquia
-discriminativa é suportada pela literatura consolidada de
-\textit{anti-spoofing}
-\cite{sahidullah2015comparison, todisco2016new, todisco2019asvspoof}.
-
-\subsubsection{Características Espectrais}
-
-\textbf{Centroide Espectral} (Equação~\ref{eq:sc}):
-\begin{equation}
-\label{eq:sc}
-SC[m] = \frac{\displaystyle\sum_{k=0}^{K-1} k\cdot|X[m,k]|^2}
-             {\displaystyle\sum_{k=0}^{K-1}|X[m,k]|^2}
-\end{equation}
-
-\textbf{Rolloff Espectral} (Equação~\ref{eq:sr}): frequência abaixo da qual
-está 85\% da energia
-\begin{equation}
-\label{eq:sr}
-SR[m] = k_r \text{ tal que }
-\sum_{k=0}^{k_r}|X[m,k]|^2 = 0{,}85\sum_{k=0}^{K-1}|X[m,k]|^2
-\end{equation}
-
-\textbf{Largura de Banda Espectral} (Equação~\ref{eq:sb}):
-\begin{equation}
-\label{eq:sb}
-SB[m] =
-\sqrt{\frac{\displaystyle\sum_{k=0}^{K-1}(k-SC[m])^2\cdot|X[m,k]|^2}
-           {\displaystyle\sum_{k=0}^{K-1}|X[m,k]|^2}}
-\end{equation}
-
-\textbf{Taxa de Cruzamento Zero (ZCR)} (Equação~\ref{eq:zcr}):
-\begin{equation}
-\label{eq:zcr}
-ZCR[m] = \frac{1}{2N}\sum_{n=0}^{N-1}
-|\mathrm{sgn}(x[mH+n]) - \mathrm{sgn}(x[mH+n-1])|
-\end{equation}
-
-\textbf{Contraste Espectral} (Equação~\ref{eq:sc2}):
-\begin{equation}
-\label{eq:sc2}
-SContrast[m] = \log\!\left(\frac{\mu_p}{\mu_v}\right)
-\end{equation}
-
-\noindent
-onde $\mu_p$ e $\mu_v$ são as médias dos picos e vales espectrais.
-
-\textbf{Planura Espectral} (Equação~\ref{eq:sf}):
-\begin{equation}
-\label{eq:sf}
-SFlatness[m] =
-\frac{\left(\displaystyle\prod_{k=0}^{K-1}|X[m,k]|^2\right)^{1/K}}
-     {\dfrac{1}{K}\displaystyle\sum_{k=0}^{K-1}|X[m,k]|^2}
-\end{equation}
-
-\subsubsection{Coeficientes Cepstrais na Escala Mel (MFCC)}
-
-\begin{equation}
-\label{eq:mfcc}
-MFCC[m,c] = \sum_{k=0}^{M-1}\log(S[m,k])\cdot
-\cos\!\left(\frac{\pi c(k+0{,}5)}{M}\right)
-\end{equation}
-
-\noindent
-onde $S[m,k]$ são as energias dos filtros mel, $M=40$ filtros, coeficientes:
-40, pré-ênfase $\alpha=0{,}97$, faixa \SIrange{80}{8000}{\hertz}.
-
-\subsubsection{Espectrogramas na Escala Mel}
-
-\begin{equation}
-\label{eq:melspec}
-MelSpec[m,k] = \log\!\left(\sum_{n}H_k[n]\cdot|STFT[m,n]|^2 +
-\varepsilon\right)
-\end{equation}
-
-Configurações: 80 bandas mel, janela Hamming de 1024 amostras,
-\textit{hop length} 256, tamanho da FFT de 2048 pontos.
-
-\subsubsection{Características Prosódicas}
-
-\textbf{Frequência Fundamental (F0)}: estimada pelo CREPE, uma rede neural
-convolucional profunda treinada para rastreamento de \textit{pitch} diretamente
-sobre a forma de onda (distinta de métodos clássicos por autocorrelação, como
-o YIN).
-
-\textbf{Jitter} (variação de período ciclo a ciclo, Equação~\ref{eq:jitter}):
-\begin{equation}
-\label{eq:jitter}
-Jitter = \frac{1}{N-1}\sum_{i=1}^{N-1}\frac{|T_i - T_{i-1}|}{\bar{T}}
-\end{equation}
-
-\textbf{Shimmer} (variação de amplitude ciclo a ciclo, Equação~\ref{eq:shimmer}):
-\begin{equation}
-\label{eq:shimmer}
-Shimmer = \frac{1}{N-1}\sum_{i=1}^{N-1}\frac{|A_i - A_{i-1}|}{\bar{A}}
-\end{equation}
-
-\textbf{HNR} (\textit{Harmonic-to-Noise Ratio}, Equação~\ref{eq:hnr}):
-\begin{equation}
-\label{eq:hnr}
-HNR = 10\log_{10}\!\left(\frac{P_{harmonic}}{P_{noise}}\right)
-\end{equation}
-
-\subsubsection{Constant-Q Transform (CQT)}
-
-\begin{equation}
-\label{eq:cqt}
-CQT[m,k] = \sum_{n}x[n]\cdot g_k[n-mH]\cdot e^{-j2\pi Q_k n/N_k}
-\end{equation}
-
-O CQCC derivado do CQT foi estabelecido como \textit{front-end} de referência
-para \textit{anti-spoofing} por Todisco et al.\ \cite{todisco2016new}.
-Configurações: 12 \textit{bins} por oitava, 7 oitavas
-(84 características), $f_{min}=\SI{65}{\hertz}$.
-
-\subsubsection{Características Delta e Delta-Delta}
-
-\begin{equation}
-\label{eq:delta}
-\Delta X[m,c] = \frac{\displaystyle\sum_{n=1}^{N}n(X[m+n,c]-X[m-n,c])}
-                     {2\displaystyle\sum_{n=1}^{N}n^2}
-\end{equation}
-
-% ------------------------------------------------------------------
-\subsection{Ranking de Características por Desempenho Discriminativo}
-% ------------------------------------------------------------------
-
-A escolha das características acústicas é ancorada na literatura de
-\textit{anti-spoofing}. Características espectrais apresentam consistentemente
-maior poder discriminativo em relação a MFCCs clássicos, conforme demonstrado
-em estudos sistemáticos conduzidos nas edições do ASVspoof
-\cite{sahidullah2015comparison, todisco2016new, todisco2019asvspoof}.
-Características prosódicas, embora complementares, exibem desempenho inferior
-quando utilizadas isoladamente, resultado consistente com os achados do ADD
-Challenge \cite{yi2022add}.
-A Tabela~\ref{tab:ranking_features} apresenta um resumo das características
-descritas nesta seção, organizado por tipo, dimensionalidade do vetor extraído,
-custo computacional e validação de cada conjunto na literatura.
-
-\begin{table}[H]
-\centering
-\caption{Ranking de características acústicas: síntese da literatura.
-\textbf{Custo Computacional}: estimativa qualitativa (Baixo/Médio/Alto) do
-consumo de tempo e memória para extração no \textit{pipeline}.}
-\label{tab:ranking_features}
-\small\singlespacing
-\begin{tabular}{p{2.8cm}cp{2.0cm}p{4.5cm}}
-\toprule
-\textbf{Tipo} & \textbf{Dimen.} & \textbf{Custo Comp.} &
-\textbf{Validação na Literatura} \\
+Formato e Resolução quantizada & Monofônico, PCM linear de \SI{16}{\bit} \\
+Janelamento temporal canônico & \SI{5}{\second} (ajustado via truncamento ou \textit{zero-padding}) \\
+Dimensionalidade do vetor & $\mathbf{x} \in \mathbb{R}^{\num{80000} \times 1}$ (domínio do tempo discreto) \\
+Representações de entrada & \textit{Raw-audio}, Espectrogramas Mel ou vetor tabular (MFCC + RASTA-PLP) \\
 \midrule
-Espectrais
-  & 14 & Médio
-  & Maior poder discriminativo em detecção de artefatos de
-    \textit{vocoder}~\cite{bartusiak2022, todisco2016new} \\
-\addlinespace
-Combinação otimizada
-  & 60 & Alto
-  & Fusão de domínios reduz EER em cenários
-    \textit{cross-dataset}~\cite{wang2024asvspoof5} \\
-\addlinespace
-MFCC
-  & 40 & Baixo
-  & Referência clássica; LFCC supera MFCC em \textit{spoofing}
-    desde 2015~\cite{sahidullah2015comparison, todisco2019asvspoof} \\
-\addlinespace
-Mel Spectrogram
-  & 80 & Baixo
-  & Base para CNNs; captura artefatos visuais de alta
-    frequência~\cite{jung2022aasist, tak2021rawnet2} \\
-\addlinespace
-CQT
-  & 84 & Alto
-  & Resolução logarítmica; CQCC como \textit{front-end}
-    robusto~\cite{todisco2016new} \\
-\addlinespace
-Prosódicas
-  & 6 & Médio
-  & Desempenho isolado inferior; fusão com espectrais melhora
-    resultados~\cite{yi2022add, muller2022warning} \\
+\multicolumn{2}{c}{\textbf{Particionamento Estratificado}} \\
+\midrule
+Distribuição dos subconjuntos & \SI{70}{\percent} Treinamento, \SI{15}{\percent} Validação, \SI{15}{\percent} Teste \\
+Cardinalidade por partição & \num{10500} (Tr), \num{2250} (Vl), \num{2250} (Te) \\
+Avaliação de robustez (Ruído) & Injeção de AWGN ($SNR$ de \num{30}, \num{20} e \SI{10}{\decibel}) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
+A matriz unidimensional resultante ($\mathbf{x} \in
+\mathbb{R}^{\num{80000} \times 1}$) atua como estrutura canônica de entrada
+tanto para o processamento direto fim-a-fim (\textit{end-to-end}) quanto para os
+módulos extratores de representações tempo-frequência. Em paralelo, a inserção
+controlada de Ruído Branco Gaussiano Aditivo (AWGN) no conjunto de teste simula
+uma degradação acústica simples e reprodutível, permitindo mensurar a
+resiliência dos classificadores sob diferentes níveis de SNR.
+
+\subsubsection{Limitações do Protocolo: Viés de Canal e Sobreposição de Locutores}
+\label{sec:vazamento}
+
+O protocolo apresenta duas limitações estruturais: a ausência de disjunção
+estrita de locutores (\textit{speaker-disjoint protocol}) e o pareamento
+assimétrico das fontes de dados. Em partições sem metadados individualizados de
+identidade --- caso do BRSpeech-DF ---, há risco real de sobreposição
+(\textit{overlap}) de vozes entre os subconjuntos de treinamento e teste.
+
+Além disso, a escassez de amostras acusticamente pareadas (\textit{twins}) ---
+uma vez que o \textit{corpus} Fake Voices não tem contrapartidas autênticas, e
+os \textit{datasets} MLS e TTS-Portuguese não têm derivações sintéticas
+correspondentes --- introduz variáveis de confusão (\textit{confounding
+variables}) relevantes. Essa assimetria entre fontes favorece o vazamento de
+domínio (\textit{domain leakage}): os modelos podem otimizar a decisão a partir
+de perfis espúrios de codificação ou ruído de canal, em vez de aprender apenas
+assinaturas do processo de síntese de voz.
+
+Consequentemente, as métricas reportadas na Seção~\ref{sec:resultados}
+caracterizam eficácia preditiva em distribuição fechada (\textit{in-domain}) e
+exigem cautela quanto à validade externa. A atenuação desses vieses por meio de
+partições estritamente disjuntas e validação cruzada entre bases
+(\textit{cross-dataset}) constitui uma prioridade para investigações
+subsequentes (Seção~\ref{sec:trabalhos_futuros}).
+
 % ------------------------------------------------------------------
-\subsection{Normalização Estatística}
+\subsection{Métricas de Avaliação}
+\label{sec:metricas}
 % ------------------------------------------------------------------
 
-\textbf{Min-Max Scaling} (Equação~\ref{eq:minmax}):
+O protocolo experimental reporta um conjunto padronizado de métricas de
+classificação binária (\textit{bonafide} vs.\ \textit{spoof}), calculadas a
+partir da pontuação de \textit{spoof} $p_{fake} \in [0,1]$ predita por cada
+modelo.
+
+\subsubsection*{Acurácia, Precisão, Revocação e F1-\textit{score}}
+
+Sejam $TP$, $TN$, $FP$ e $FN$ os verdadeiros positivos, verdadeiros negativos,
+falsos positivos e falsos negativos, respectivamente, obtidos ao limiar de
+decisão padrão ($p_{fake} > 0{,}5$):
 \begin{equation}
-\label{eq:minmax}
-X_{norm} = \frac{X - X_{min}}{X_{max} - X_{min}}
+\label{eq:accuracy}
+\text{Acurácia} = \frac{TP + TN}{TP + TN + FP + FN}, \qquad
+F1 = 2 \cdot \frac{\text{Precisão} \cdot \text{Revocação}}{\text{Precisão} + \text{Revocação}}
 \end{equation}
+\noindent
+em que $\text{Precisão} = TP/(TP+FP)$ e $\text{Revocação} = TP/(TP+FN)$ na
+Equação~\ref{eq:accuracy}.
 
-\textbf{Z-Score} (Equação~\ref{eq:zscore}):
+\subsubsection*{AUC-ROC}
+
+A curva ROC (\textit{Receiver Operating Characteristic}) relaciona a taxa de
+verdadeiros positivos ($TPR$) à taxa de falsos positivos ($FPR$) variando-se o
+limiar de decisão $\theta$ sobre $p_{fake}$. A AUC-ROC é a área sob essa curva:
+valor $1{,}0$ indica separação perfeita entre as classes e $0{,}5$ equivale a
+uma decisão aleatória.
+
+\subsubsection*{Taxa de Erro Igual (EER)}
+
+O EER é o ponto de operação $\theta^\ast$ em que a taxa de falsos positivos
+iguala a taxa de falsos negativos ($FNR = 1 - TPR$):
 \begin{equation}
-\label{eq:zscore}
-X_{norm} = \frac{X - \mu}{\sigma}
+\label{eq:eer}
+\text{EER} = FPR(\theta^\ast), \quad \text{tal que} \quad FPR(\theta^\ast) = FNR(\theta^\ast).
 \end{equation}
+\noindent
+Na Equação~\ref{eq:eer}, valores menores indicam maior separabilidade entre as
+distribuições de pontuação das classes \textit{bonafide} e \textit{spoof},
+independentemente da escolha de limiar.
 
-% =====================================================================
-%  4. ARQUITETURAS DE DEEP LEARNING
-% =====================================================================
-\section{Arquiteturas de \textit{Deep Learning}}
-\label{sec:arquiteturas}
+\subsubsection*{$t$-DCF (proxy interno)}
+\label{sec:tdcf_def}
 
-O \textit{pipeline} consolidado contempla quatorze arquiteturas, cobrindo desde
-classificadores clássicos sobre características tabulares até modelos neurais
-\textit{end-to-end} baseados em forma de onda, grafos, convoluções,
-atenção e \textit{self-supervised learning}. Essa seleção permite comparar custo
-computacional, estabilidade de treinamento, robustez a ruído e desempenho final
-sob o mesmo benchmark.
-
-\subsection{Modelos SSL e \textit{Raw-Audio}}
-
-O WavLM Original \cite{chen2022wavlm} e o HuBERT Original
-\cite{hsu2021hubert} foram avaliados com \textit{backbones} reais, não apenas
-com implementações simplificadas. Ambos recebem áudio bruto a
-\SI{16}{\kilo\hertz} e usam representações aprendidas em larga escala, com
-cabeça supervisionada para a tarefa binária real/\textit{fake}. No
-\textit{benchmark}, os \textit{backbones} foram executados em PyTorch/CUDA e
-persistidos localmente para inferência.
-
-O RawNet2 \cite{tak2021rawnet2} processa diretamente a forma de onda por meio
-de filtros SincNet, blocos residuais com \textit{feature map scaling} e GRU,
-preservando informação temporal fina sem necessidade de espectrograma. AASIST
-\cite{jung2022aasist} e RawGAT-ST \cite{tak2021rawgatst} exploram atenção em grafos
-espectro-temporais para modelar relações locais e globais entre regiões do
-sinal. Esses modelos foram avaliados no protocolo consolidado descrito na
-Seção~\ref{sec:resultados}.
-
-\subsection{Modelos Espectrais Neurais}
-
-Sonic Sleuth\footnote{Nome interno criado pelo autor para o classificador híbrido
-que combina características clássicas (LFCC, MFCC e CQT) com uma rede neural
-compacta desenvolvida no escopo deste trabalho.} combina características
-acústicas clássicas com uma rede neural compacta. Conformer
-\cite{gulati2020conformer} une convoluções locais e autoatenção para capturar
-padrões espectro-temporais em diferentes escalas. O Hybrid CNN-Transformer,
-seguindo a linha de modelos híbridos convolução-atenção para áudio
-\cite{pham2024deepfake}, utiliza tokenização convolucional antes dos blocos
-Transformer, reduzindo o custo em comparação com atenção aplicada diretamente
-a mapas espectrais densos.
-
-O Spectrogram Transformer avaliado neste trabalho é uma adaptação própria que
-aplica a lógica de \textit{Vision Transformer}/AST \cite{gong2021ast} a
-espectrogramas, distinta da implementação original do AST. O EfficientNet-LSTM usa transferência de
-aprendizado convolucional seguida por Bi-LSTM para resumir dependências
-temporais. A MultiscaleCNN incorpora blocos multi-escala inspirados em
-Res2Net \cite{gao2021res2net}, enquanto o Ensemble funde quatro ramos de
-características complementares.
-
-\subsection{Modelos Clássicos}
-
-SVM e Random Forest foram mantidos como linhas de base interpretáveis e
-competitivas. O
-SVM utiliza padronização estatística e kernel RBF; a Random Forest explora
-paralelismo em CPU com múltiplas árvores e \texttt{n\_jobs=-1}. Ambos foram
-submetidos a busca de hiperparâmetros antes do ajuste final, permitindo
-comparação justa com as arquiteturas neurais.
+O $t$-DCF (\textit{Tandem Detection Cost Function}) normalizado, proposto por
+Kinnunen et al.\ \cite{kinnunen2018tdcf} para o protocolo ASVspoof 2019, pondera
+em conjunto os custos de falha do detector (\textit{countermeasure}, CM) e de
+um sistema de verificação de locutor (ASV) operando em tandem:
+\begin{equation}
+\label{eq:tdcf}
+t\text{-DCF}(\theta) = \frac{C_1 \cdot P_{\text{miss}}^{\text{cm}}(\theta) +
+C_2 \cdot P_{\text{fa}}^{\text{cm}}(\theta)}{\min(C_1, C_2)}
+\end{equation}
+\noindent
+com os coeficientes de custo dados por
+\begin{equation}
+\label{eq:tdcf_c1c2}
+C_1 = P_{\text{tar}}\big(C_{\text{miss}} - C_{\text{miss}}\, P_{\text{miss}}^{\text{asv}}\big)
+      - P_{\text{non}}\, C_{\text{fa}}\, P_{\text{fa}}^{\text{asv}}, \qquad
+C_2 = C_{\text{fa}}\, P_{\text{spoof}}\big(1 - P_{\text{miss,spoof}}^{\text{asv}}\big).
+\end{equation}
+\noindent
+Na Equação~\ref{eq:tdcf_c1c2}, $P_{\text{miss}}^{\text{cm}}(\theta)$ é a
+probabilidade de o detector rejeitar (classificar como \textit{spoof}) uma
+amostra \textit{bonafide}, e
+$P_{\text{fa}}^{\text{cm}}(\theta)$ é a probabilidade de aceitar (classificar
+como \textit{bonafide}) uma amostra \textit{spoof}; o \textit{min t-DCF}
+reportado nas tabelas minimiza a Equação~\ref{eq:tdcf} sobre $\theta$. Este
+trabalho não dispõe de um sistema ASV pareado ao \textit{corpus} experimental:
+os parâmetros do ASV ($P_{\text{fa}}^{\text{asv}}=0{,}0524$,
+$P_{\text{miss}}^{\text{asv}}=0{,}0104$,
+$P_{\text{miss,spoof}}^{\text{asv}}=0{,}0058$) e as prioris
+($P_{\text{tar}}=0{,}9405$, $P_{\text{non}}=0{,}0095$, $P_{\text{spoof}}=0{,}05$,
+$C_{\text{miss}}=1$, $C_{\text{fa}}=10$) são fixados nos valores-padrão do
+particionamento LA do ASVspoof 2019 \cite{kinnunen2018tdcf}, e apenas o termo do
+detector ($P_{\text{miss}}^{\text{cm}}$, $P_{\text{fa}}^{\text{cm}}$) é medido
+sobre os modelos deste \textit{benchmark}. Por essa razão, o valor reportado é
+tratado como \textbf{\textit{proxy} interno} --- comparável entre os
+\num{11} modelos deste trabalho, mas não equivalente ao \textit{min t-DCF}
+oficial de um protocolo com sistema ASV real --- e identificado com asterisco
+($t$-DCF$^\ast$) nas tabelas da Seção~\ref{sec:resultados}.
 
 % ------------------------------------------------------------------
-%  CONFIGURAÇÃO DE TREINAMENTO (movida para cá, integrada às arquiteturas)
-% ------------------------------------------------------------------
-\subsection{Configuração de Treinamento}
-
-\subsubsection{Função de Perda}
-
-\textit{Binary Cross-Entropy} com balanceamento de classes
-(Equação~\ref{eq:bce}):
-
-\begin{equation}
-\label{eq:bce}
-\mathcal{L} = -\frac{1}{N}\sum_{i=1}^{N}\left[
-w_1 y_i\log(\hat{y}_i) + w_0(1-y_i)\log(1-\hat{y}_i)\right]
-\end{equation}
-
-\subsubsection{Regularização}
-
-Regularização L2 com $\lambda=0{,}0001$, \textit{Early Stopping} com
-paciência de 10 épocas, \textit{ReduceLROnPlateau} com paciência de 5 épocas.
-A paciência uniforme de 10 épocas foi mantida para todas as arquiteturas para
-garantir comparação justa; a instabilidade do Spectrogram Transformer
-(Seção~\ref{sec:estabilidade}) é tratada como diagnóstico de hiperparâmetros,
-não como limitação do critério de parada.
-
-\subsubsection{Otimizador}
-
-Otimizador Adam (\textit{Adaptive Moment Estimation}) \cite{kingma2015adam}
-com $\alpha=0{,}001$, $\beta_1=0{,}9$, $\beta_2=0{,}999$. O Adam combina os
-benefícios das técnicas AdaGrad (adaptação por parâmetro) e RMSProp (média
-móvel exponencial dos gradientes ao quadrado), sendo amplamente adotado no
-treinamento de redes neurais profundas por sua robustez a hiperparâmetros e
-boa convergência em superfícies de perda não-convexas.
-
-% =====================================================================
-%  5. FERRAMENTAS DE SOFTWARE LIVRE
-%  MELHORIA: movida de seção flutuante no meio do texto para posição
-%  lógica após as arquiteturas, antes dos experimentos
-% =====================================================================
-\section{Ferramentas de Software Livre}
+\subsection{Ferramentas de Software Livre}
 \label{sec:software}
+% ------------------------------------------------------------------
+
+Para garantir reprodutibilidade e escalabilidade, a arquitetura foi
+desenvolvida com ferramentas de código aberto e bibliotecas amplamente adotadas
+pela comunidade científica, conforme descrito a seguir:
 
 \begin{itemize}
-    \item \textbf{Pré-processamento e VAD:} Silero VAD (via Torch Hub) com
-    \textit{fallback} por energia para ambientes sem \texttt{torchaudio}. Para
-    AGC e reamostragem, \texttt{librosa} provê operações eficientes em CPU.
-    \item \textbf{Extração de Características:} \texttt{librosa} e
-    \texttt{essentia} para extração de características espectrais, MFCC e
-    prosódicas.
-    \item \textbf{Modelos \textit{Foundation}:} Disponíveis via
-    \texttt{transformers} (Hugging Face). Exigem GPU para \textit{fine-tuning}
-    eficiente.
-    \item \textbf{Arquiteturas Especializadas:} RawNet2 e AASIST com
-    implementações oficiais no GitHub sob licença MIT.
-    \item \textbf{Ensemble e Classificação:} TensorFlow/Keras para
-    implementação dos modelos e fusão adaptativa.
-    \item \textbf{Interpretabilidade (proposta):} \texttt{shap} para valores
-    SHAP \cite{lundberg2017unified} e \texttt{captum} (PyTorch) para GradCAM
-    --- integração planejada
-    como extensão futura (ver Seção~\ref{sec:trabalhos_futuros}).
+    \item \textbf{Pré-processamento e Detecção de Atividade de Voz (VAD):} Empregou-se o modelo \textit{Silero VAD} (via \textit{Torch Hub}), com mecanismo de contingência (\textit{fallback}) baseado em limiar de energia para ambientes sem o ecossistema \texttt{torchaudio}. As operações de controle automático de ganho (AGC) e reamostragem foram gerenciadas pela biblioteca \texttt{librosa}, assegurando eficiência computacional em CPU.
+    \item \textbf{Extração de Características Acústicas:} A biblioteca \texttt{librosa} foi incorporada para a extração de estatísticas temporais e coeficientes cepstrais na escala Mel (MFCC); os coeficientes RASTA-PLP são calculados pelo extrator próprio do repositório (Seção~\ref{sec:caracteristicas}).
+    \item \textbf{Modelos de Fundação (\textit{Foundation Models}):} WavLM e HuBERT foram integrados via ecossistema \texttt{transformers} (Hugging Face). Neste protocolo, os \textit{backbones} permanecem congelados e apenas a cabeça de classificação é treinada sobre os \textit{embeddings} extraídos.
+    \item \textbf{Arquiteturas Especializadas:} Adotaram-se as redes RawNet2 e AASIST a partir de suas implementações de referência codificadas em PyTorch, disponibilizadas sob a licença MIT.
+    \item \textbf{Treinamento e Classificação:} O arcabouço TensorFlow/Keras foi utilizado no desenvolvimento e treinamento das arquiteturas neurais espectrais; os classificadores clássicos foram implementados com Scikit-Learn.
+    \item \textbf{Mecanismos de Interpretabilidade (Propostos):} Prevê-se a integração da biblioteca \texttt{shap} para o cômputo de valores SHAP~\cite{lundberg2017unified} e do framework \texttt{captum} (PyTorch) para a geração de mapas de ativação via GradCAM, planejados como extensões metodológicas subsequentes (Seção~\ref{sec:trabalhos_futuros}).
 \end{itemize}
 
+% ------------------------------------------------------------------
+\subsection{Protocolo de Treinamento}
+\label{sec:protocolo_treinamento}
+% ------------------------------------------------------------------
+
+O regime de treinamento aplicado às arquiteturas conexionistas consistiu em um
+protocolo padronizado de \num{100} épocas, com salvamento automatizado do melhor
+\textit{checkpoint} segundo o desempenho no conjunto de validação. Durante o
+processo, coletaram-se históricos de perda (\textit{loss}) e acurácia, matrizes
+de confusão, curvas ROC e de Precisão-Revocação (\textit{Precision-Recall}),
+métricas por classe, tamanho em disco e latência de inferência.
+
+Para os classificadores estatísticos clássicos, realizou-se busca em grade de
+hiperparâmetros (\textit{hyperparameter grid search}) antes do ajuste final. No
+cômputo geral, avaliaram-se \num{11} modelos consolidados: Random Forest, SVM,
+CCT, AST, Res2Net, Conformer, RawNet2, AASIST, RawGAT-ST, WavLM Original e
+HuBERT Original. Extensões de fusão tardia via \textit{ensemble} adaptativo
+permanecem delineadas na Seção~\ref{sec:trabalhos_futuros}.
+
+\newpage
+
 % =====================================================================
-%  6. EXPERIMENTOS E RESULTADOS
+%  5. EXPERIMENTOS E RESULTADOS
 % =====================================================================
+
 \section{Experimentos e Resultados}
 \label{sec:resultados}
 
 \subsection{Ambiente Experimental e Hardware}
 
-O \textit{benchmark} consolidado foi executado em Windows 11 com WSL2 e acesso
-à GPU NVIDIA via CUDA. Os relatórios automáticos registraram Linux
-6.6.114.1-microsoft-standard-WSL2, Python 3.11.15 e TensorFlow 2.21.0 nas
-execuções Keras. A GPU principal foi uma NVIDIA GeForce RTX 3060, capacidade
-computacional 8.6, com \textit{memory growth}, \texttt{cuda\_malloc\_async} e
-precisão mista (\texttt{mixed\_float16}) para modelos compatíveis (ver
-Seção~\ref{sec:protocolo_treinamento}). WavLM e HuBERT originais utilizaram
-PyTorch/CUDA por serem \textit{backbones} nativos do ecossistema Transformers.
-SVM e Random Forest foram executados em CPU com paralelismo e validação cruzada.
-A Tabela~\ref{tab:hardware_benchmark} resume o ambiente de execução.
+O ambiente computacional dedicado à execução do \textit{benchmark} foi
+estruturado sobre \textit{Windows Subsystem for Linux 2} (WSL2), em Windows 11,
+com apoio de contêineres Docker para isolar dependências e facilitar a
+reprodutibilidade. Na fase de treinamento, o \textit{pipeline} foi configurado
+com suporte a processamento gráfico (GPU), precisão mista (\textit{mixed
+precision}) e controle de alocação de memória de vídeo (VRAM) para otimizar a
+vazão dos lotes (\textit{batch size}).
 
-\begin{table}[H]
+Para aferir a viabilidade de implantação em cenários mais restritos, a etapa de
+consolidação final e a extração das métricas de inferência foram executadas em
+CPU, utilizando TensorFlow 2.21.0 sobre Python 3.11.15. Os classificadores
+estatísticos clássicos, SVM e \textit{Random Forest}, também foram processados
+em CPU, com paralelismo multi-core e validação cruzada. O sumário das
+configurações de hardware e infraestrutura consta na
+Tabela~\ref{tab:hardware_benchmark}.
+
+\begin{table}[tbp]
 \centering
-\caption{Resumo do ambiente de execução do \textit{benchmark}.}
+\caption{Especificações de infraestrutura, hardware e parametrização do ambiente de \textit{benchmarking}.}
 \label{tab:hardware_benchmark}
-\begin{tabular}{ll}
+\small\singlespacing
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{4.2cm}
+                >{\raggedright\arraybackslash}p{10.5cm}@{}}
 \toprule
-\textbf{Componente} & \textbf{Configuração} \\
+\textbf{Componente de Infraestrutura} & \textbf{Configuração e Parâmetros Operacionais} \\
 \midrule
-Sistema operacional & Windows 11 + WSL2 \\
-Kernel registrado & Linux 6.6.114.1-microsoft-standard-WSL2 \\
-Python & 3.11.15 (execuções GPU) \\
-TensorFlow & 2.21.0 (execuções Keras) \\
-GPU & NVIDIA GeForce RTX 3060, CC 8.6, Tensor Cores/FP16 \\
-Aceleração Keras & CUDA, precisão mista (\texttt{mixed\_float16}) \\
-Modelos SSL originais & PyTorch/CUDA + \textit{backbone} WavLM/HuBERT real \\
-Modelos clássicos & CPU, validação cruzada e paralelismo \\
+Sistema operacional base & Windows 11 + WSL2 (Ambiente nativo Linux Ubuntu) \\
+Fase de treinamento & Execução em GPU com precisão mista e controle de VRAM \\
+Ambiente de avaliação de inferência & Execução em CPU via TensorFlow 2.21.0 \\
+Modelos conexionistas profundos & Abstração TensorFlow/Keras com persistência de \textit{checkpoints} \\
+Modelos baseados em SSL & WavLM Original e HuBERT Original via \texttt{transformers} \\
+Modelos estatísticos clássicos & Processamento multi-core via Scikit-Learn com validação cruzada \\
+Volume do \textit{corpus} consolidado & \num{15000} amostras balanceadas (\num{7500} reais / \num{7500} sintéticas) \\
+Particionamento de dados (\textit{Split}) & Razão 70/15/15 (\num{10500} treino, \num{2250} validação, \num{2250} teste) \\
+Especificação padrão de sinal & Monofônico, \SI{16}{\kilo\hertz}, \SI{5}{\second} ($\mathbf{x} \in \mathbb{R}^{\num{80000} \times 1}$ em \textit{raw-audio}) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Reprodutibilidade do Benchmark}
+\subsection{Resultados Consolidados}
+\label{sec:resultados_consolidados}
 
-A execução foi organizada para permitir repetição do experimento completo e de
-modelos individuais. O protocolo usa base consolidada única, semente fixa,
-divisão estratificada, orçamento de até 100 épocas para modelos neurais e validação
-cruzada para SVM/Random Forest. Cada arquitetura grava arquivos em diretório
-próprio, permitindo auditar o modelo salvo, as configurações, o histórico de
-treino, as métricas e as figuras correspondentes. A
-Tabela~\ref{tab:reprodutibilidade_benchmark} resume os parâmetros de
-reprodutibilidade do experimento.
+Os resultados oficiais, tabelas de eficiência, robustez, estabilidade, gráficos
+comparativos e matrizes de confusão são incorporados a partir do fragmento
+gerado automaticamente em \texttt{tabelas\_benchmark.tex}. Esse procedimento
+evita divergência entre os artefatos experimentais e o texto principal. O
+fragmento constitui a fonte única para as
+Tabelas~\ref{tab:resultados_consolidados}, \ref{tab:eficiencia_modelos},
+\ref{tab:robustez_awgn} e~\ref{tab:estabilidade_treinamento}, além das
+Figuras~\ref{fig:benchmark_accuracy_auc}, \ref{fig:benchmark_robustness},
+\ref{fig:benchmark_eer}, \ref{fig:benchmark_tdcf},
+\ref{fig:benchmark_latency_size},
+\ref{fig:benchmark_accuracy_latency_tradeoff},
+\ref{fig:training_stability} e~\ref{fig:confusion_matrices_article}. O
+protocolo de treinamento e as ferramentas de software que geraram esses
+artefatos estão descritos nas Seções~\ref{sec:software}
+e~\ref{sec:protocolo_treinamento}.
 
-\begin{table}[H]
-\centering
-\caption{Parâmetros de reprodutibilidade do benchmark consolidado.}
-\label{tab:reprodutibilidade_benchmark}
-\begin{tabular}{ll}
-\toprule
-\textbf{Item} & \textbf{Valor registrado} \\
-\midrule
-Conjunto de dados & \path{app/datasets/benchmark_audio_raw_balanced_15k.npz} \\
-Amostras & 15.000, balanceadas entre real e sintético \\
-Teste & 2.250 amostras, divisão estratificada \\
-Semente & 42 \\
-Treino neural & até 100 épocas, \textit{early stopping} e melhor \textit{checkpoint} salvo \\
-Clássicos & GridSearchCV + ajuste final \\
-Resultados & \path{results/<run>/} \\
-Modelos padrão & \path{app/models/} \\
-Relatório & \path{results/<run>/tcc_report.md} \\
-\bottomrule
-\end{tabular}
-\end{table}
+\input{tabelas_benchmark.tex}
 
-\subsection{Resultados no Conjunto de Teste Limpo}
-
-A Tabela~\ref{tab:resultados_consolidados} apresenta os resultados consolidados
-das quatorze arquiteturas no conjunto de teste limpo. As
-Figuras~\ref{fig:benchmark_accuracy_auc} e~\ref{fig:benchmark_eer} resumem,
-respectivamente, acurácia e AUC-ROC e a taxa de erro igual (EER) por arquitetura.
-
-\begin{table}[H]
-\centering
-\caption{Resultados consolidados no conjunto de teste limpo.}
-\label{tab:resultados_consolidados}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{clccccccc}
-\toprule
-\textbf{Rank} & \textbf{Modelo} & \textbf{Acurácia} & \textbf{EER} & \textbf{AUC} &
-\textbf{F1} & \textbf{Lat. ms} & \textbf{Treino} & \textbf{Status} \\
-\midrule
-        1 & Sonic Sleuth & 100,00\% & 0,00\% & 1,000 & 100,00\% & 31,52 & 100 & \textcolor{successgreen}{OK} \\
-        2 & MultiscaleCNN & 99,96\% & 0,09\% & 1,000 & 99,96\% & 71,03 & 100 & \textcolor{successgreen}{OK} \\
-        3 & Conformer & 99,87\% & 0,04\% & 1,000 & 99,87\% & 50,56 & 100 & \textcolor{successgreen}{OK} \\
-        4 & HuBERT Original & 98,93\% & 0,93\% & 0,999 & 98,93\% & 59,06 & 100 & \textcolor{successgreen}{OK} \\
-        5 & Ensemble & 98,18\% & 1,82\% & 0,999 & 98,16\% & 41,63 & 100 & \textcolor{successgreen}{OK} \\
-        6 & Random Forest & 98,04\% & 2,04\% & 0,998 & 98,05\% & 37,75 & CV+fit & \textcolor{successgreen}{OK} \\
-        6 & RawNet2 & 98,04\% & 2,00\% & 0,999 & 98,02\% & 47,07 & 100 & \textcolor{successgreen}{OK} \\
-        8 & Spectrogram Transformer & 97,69\% & 2,18\% & 0,998 & 97,72\% & 52,59 & 100 & \textcolor{warningorange}{Tuning} \\
-        9 & Hybrid CNN-Transformer & 97,33\% & 2,76\% & 0,996 & 97,32\% & 37,72 & 100 & \textcolor{successgreen}{OK} \\
-        10 & SVM & 96,62\% & 3,38\% & 0,995 & 96,63\% & 0,95 & CV+fit & \textcolor{successgreen}{OK} \\
-        11 & WavLM Original & 93,87\% & 5,78\% & 0,985 & 93,99\% & 36,20 & 100 & \textcolor{successgreen}{OK} \\
-        12 & EfficientNet-LSTM & 92,89\% & 7,11\% & 0,980 & 92,88\% & 48,33 & 100 & \textcolor{successgreen}{OK} \\
-        13 & AASIST & 92,80\% & 7,16\% & 0,929 & 92,76\% & 52,35 & 100 & \textcolor{successgreen}{OK} \\
-        14 & RawGAT-ST & 83,29\% & 16,36\% & 0,917 & 82,59\% & 38,22 & 100 & \textcolor{successgreen}{OK} \\
-\bottomrule
-\end{tabular}}
-\end{table}
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=\textwidth]{figures/benchmark_accuracy_auc.png}
-    \caption{Acurácia e AUC-ROC consolidadas por arquitetura.}
-    \label{fig:benchmark_accuracy_auc}
-\end{figure}
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.92\textwidth]{figures/benchmark_eer.png}
-    \caption{Equal Error Rate (EER) por arquitetura. Valores menores indicam melhor separação entre classes.}
-    \label{fig:benchmark_eer}
-\end{figure}
-
-A Tabela~\ref{tab:intervalos_confianca} apresenta os intervalos de confiança de
-Wilson (95\%) para a acurácia de cada modelo no conjunto de teste.
-
-\begin{table}[H]
-\centering
-\caption{Intervalos de confiança de Wilson para a acurácia no teste ($n=2.250$, 95\%).}
-\label{tab:intervalos_confianca}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{lccc}
-\toprule
-\textbf{Modelo} & \textbf{Acurácia observada} & \textbf{Acertos estimados} & \textbf{IC 95\% Wilson} \\
-\midrule
-Sonic Sleuth & 100,00\% & 2250/2250 & [99,83\%; 100,00\%] \\
-MultiscaleCNN & 99,96\% & 2249/2250 & [99,75\%; 99,99\%] \\
-Conformer & 99,87\% & 2247/2250 & [99,61\%; 99,95\%] \\
-HuBERT Original & 98,93\% & 2226/2250 & [98,42\%; 99,28\%] \\
-Ensemble & 98,18\% & 2209/2250 & [97,54\%; 98,65\%] \\
-Random Forest & 98,04\% & 2206/2250 & [97,39\%; 98,54\%] \\
-RawNet2 & 98,04\% & 2206/2250 & [97,39\%; 98,54\%] \\
-Spectrogram Transformer & 97,69\% & 2198/2250 & [96,98\%; 98,23\%] \\
-Hybrid CNN-Transformer & 97,33\% & 2190/2250 & [96,58\%; 97,92\%] \\
-SVM & 96,62\% & 2174/2250 & [95,79\%; 97,29\%] \\
-WavLM Original & 93,87\% & 2112/2250 & [92,80\%; 94,79\%] \\
-EfficientNet-LSTM & 92,89\% & 2090/2250 & [91,75\%; 93,88\%] \\
-AASIST & 92,80\% & 2088/2250 & [91,66\%; 93,80\%] \\
-RawGAT-ST & 83,29\% & 1874/2250 & [81,69\%; 84,77\%] \\
-\bottomrule
-\end{tabular}}
-\end{table}
-
-\subsection{Leitura das Matrizes de Confusão}
-
-As matrizes de confusão complementam as métricas agregadas ao explicitar o
-tipo de erro cometido por cada classificador. As matrizes completas das
-quatorze arquiteturas foram consolidadas no Apêndice, nas
-Figuras~\ref{fig:confusion_all_neural_a} e~\ref{fig:confusion_all_neural_b}.
-
-Em aplicações reais, falsos negativos são mais críticos para segurança, pois
-áudios sintéticos são aceitos como reais; falsos positivos afetam usabilidade,
-pois áudios legítimos são rejeitados ou encaminhados para revisão manual. Essa
-leitura é especialmente importante para comparar modelos com acurácia próxima,
-mas perfis de erro diferentes.
-
-% ------------------------------------------------------------------
 \subsection{Análise dos Resultados}
-% ------------------------------------------------------------------
+\label{sec:analise_resultados}
 
-O melhor desempenho isolado foi obtido pelo Sonic Sleuth, com 100,00\% de
-acurácia e EER de 0,00\% no conjunto de teste limpo. MultiscaleCNN e Conformer
-ficaram imediatamente abaixo, com 99,96\% e 99,87\%, respectivamente.
-\emph{Esses valores indicam separação quase perfeita no recorte experimental
-avaliado e não devem ser interpretados como garantia de generalização
-universal.} Como apontado na Seção~\ref{sec:dataset_protocolo}, a divisão
-atual não garante separação por falante, o que abre a possibilidade de
-que parte do desempenho elevado reflita memorização de artefatos de origem
-em vez de generalização para áudio sintético de qualquer procedência.
+\subsubsection*{Desempenho no Conjunto Limpo}
 
-Entre os demais modelos, HuBERT Original, Ensemble, Random Forest, RawNet2,
-Spectrogram Transformer, Hybrid CNN-Transformer e SVM permaneceram acima de
-96\% de acurácia, indicando que diferentes famílias de classificadores extraem
-sinais discriminativos relevantes do conjunto de dados definido.
+O recorte consolidado da Tabela~\ref{tab:resultados_consolidados} e da
+Figura~\ref{fig:benchmark_accuracy_auc} mostra maior desempenho para Res2Net e
+Conformer, ambos com \num{99,69}\% de acurácia no conjunto de teste limpo (EER
+de \num{0,44}\% e \num{0,27}\%, respectivamente). Em seguida aparecem AST
+(\num{98,71}\%), Random Forest (\num{98,18}\%) e RawNet2 (\num{97,38}\%),
+indicando que redes neurais profundas e classificadores estatísticos otimizados
+extraem padrões discriminativos relevantes no cenário experimental controlado.
+Com \num{2250} amostras de teste, uma acurácia de \num{99,69}\% corresponde a
+cerca de \num{7} amostras mal classificadas, e a diferença de EER entre Res2Net
+e Conformer equivale a aproximadamente duas amostras. Res2Net e Conformer devem,
+portanto, ser tratados como \textbf{empate técnico}, e não como ordenamento
+estrito entre primeiro e segundo colocados.
 
-As demais arquiteturas funcionais também convergiram adequadamente, com
-acurácia entre 92,80\% e 98,93\%, exceto RawGAT-ST, que foi o principal
-resultado abaixo desse intervalo, com 83,29\%.
+Esse ordenamento contrasta com a hierarquia sugerida pela
+Tabela~\ref{tab:survey_geracoes}: AASIST e RawGAT-ST (3\textordfeminine\
+geração, grafos de atenção sobre áudio bruto) e os \textit{backbones} SSL WavLM
+e HuBERT (4\textordfeminine\ geração) ficam atrás não só de
+Res2Net/Conformer/AST, mas também do Random Forest, um classificador clássico
+sobre vetor tabular. AASIST registra EER de \num{8,31}\%, RawGAT-ST de
+\num{16,27}\%, WavLM de \num{13,47}\% e HuBERT de \num{9,73}\%, valores
+superiores aos reportados pela literatura de referência em condições ASVspoof.
+Essa inversão não invalida os modelos: ela reflete diferenças de escopo entre o
+\textit{benchmark} deste trabalho e os artigos originais. As implementações de
+AASIST/RawGAT-ST são variantes alinhadas aos artigos, não réplicas exatas; WavLM
+e HuBERT são avaliados com \textit{backbone} congelado e apenas a cabeça de
+classificação treinada (Seção~\ref{subsec:ssl_raw}), o que restringe seu poder
+discriminativo; e o \textit{corpus} deste trabalho, em português e com XTTS como
+único gerador da fração Fake Voices, é distinto e mais restrito que o ASVspoof,
+que combina dezenas de sistemas de ataque. A hierarquia observada é, portanto,
+específica deste protocolo e não constitui refutação dos resultados publicados
+para essas arquiteturas.
 
-\begin{warningbox}{WavLM com desempenho inferior ao HuBERT: hipóteses}
-WavLM (93,87\%) ficou abaixo de HuBERT (98,93\%) apesar de ser
-arquiteturalmente mais sofisticado. Três hipóteses são levantadas para
-trabalhos futuros: (1)~o número de épocas de \textit{fine-tuning} pode ser
-insuficiente para que o WavLM explore sua capacidade adicional; (2)~a taxa de
-aprendizado padrão pode ser subótima para o WavLM nesta escala de dados; e
-(3)~a base de 15.000 amostras pode ser pequena demais para que a arquitetura
-mais complexa generalize melhor que a mais simples. Um experimento de ablação
-com taxas de aprendizado distintas para cada modelo SSL é recomendado.
-\end{warningbox}
-
-O caso que ainda exige maior controle operacional foi o Spectrogram
-Transformer: a avaliação do melhor arquivo de modelo alcançou 97,69\% no teste limpo,
-mas o histórico de treino caiu de 96,49\% de melhor validação para 50,00\%
-no fim do treinamento. Isso sugere instabilidade de otimização, sensibilidade
-a hiperparâmetros e necessidade de restaurar obrigatoriamente o melhor
-\textit{checkpoint} para inferência.
-
-% ------------------------------------------------------------------
-\subsection{Eficiência Computacional}
-% ------------------------------------------------------------------
-
-A Tabela~\ref{tab:eficiencia_modelos} detalha parâmetros, tamanho e latência por
-arquitetura; as Figuras~\ref{fig:benchmark_latency} e~\ref{fig:benchmark_size}
-ilustram, respectivamente, a latência média de inferência e o tamanho dos
-arquivos treinados.
-
-\begin{table}[H]
-\centering
-\caption{Parâmetros, tamanho, latência e desempenho por arquitetura.
-Latência reportada como média de 30 medições. DP = desvio padrão; células
-``---'' indicam desvio não registrado nesta versão do \textit{benchmark},
-previsto para a próxima rodada.}
-\label{tab:eficiencia_modelos}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{lcccccc}
-\toprule
-\textbf{Modelo} & \textbf{Parâmetros} & \textbf{Tam. MB} &
-\textbf{Lat. média (ms)} & \textbf{DP Lat. (ms)} & \textbf{Acurácia} & \textbf{EER} \\
-\midrule
-WavLM Original & 4.018.755 & 15,42 & 36,20 & --- & 93,87\% & 5,78\% \\
-HuBERT Original & 90.609.283 & 346,11 & 59,06 & --- & 98,93\% & 0,93\% \\
-RawNet2 & 3.460.866 & 13,37 & 47,07 & --- & 98,04\% & 2,00\% \\
-Sonic Sleuth & 2.083.394 & 8,11 & 31,52 & --- & 100,00\% & 0,00\% \\
-AASIST & 1.859.842 & 7,27 & 52,35 & --- & 92,80\% & 7,16\% \\
-RawGAT-ST & 306.560 & 1,27 & 38,22 & --- & 83,29\% & 16,36\% \\
-Conformer & 15.925.122 & 61,27 & 50,56 & --- & 99,87\% & 0,04\% \\
-Hybrid CNN-Transformer & 1.822.479 & 7,15 & 37,72 & --- & 97,33\% & 2,76\% \\
-Spectrogram Transformer & 87.403.522 & 333,91 & 52,59 & --- & 97,69\% & 2,18\% \\
-EfficientNet-LSTM & 5.706.917 & 22,62 & 48,33 & --- & 92,89\% & 7,11\% \\
-MultiscaleCNN & 48.967.630 & 187,83 & 71,03 & --- & 99,96\% & 0,09\% \\
-Ensemble & 3.019.782 & 11,98 & 41,63 & --- & 98,18\% & 1,82\% \\
-SVM & n.a. & 10,43 & 0,95 & --- & 96,62\% & 3,38\% \\
-Random Forest & n.a. & 154,59 & 37,75 & --- & 98,04\% & 2,04\% \\
-\bottomrule
-\end{tabular}}
-\end{table}
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.95\textwidth]{figures/benchmark_latency.png}
-    \caption{Latência média de inferência por arquitetura.}
-    \label{fig:benchmark_latency}
-\end{figure}
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.95\textwidth]{figures/benchmark_size.png}
-    \caption{Tamanho dos arquivos treinados por arquitetura.}
-    \label{fig:benchmark_size}
-\end{figure}
-
-O WavLM Original e o HuBERT Original apresentam os maiores arquivos de modelo, próximos de
-\SI{361}{\mega\byte}, por incorporarem \textit{backbones} SSL de
-aproximadamente 94,5 milhões de parâmetros. Para demonstrações em tempo real,
-Sonic Sleuth, Hybrid CNN-Transformer, SVM e Ensemble oferecem melhor
-equilíbrio entre desempenho, tamanho e tempo de resposta.
-
-\subsection{Síntese de Pareto e Recomendação Operacional}
-
-Para uso prático, a escolha do modelo não deve considerar apenas acurácia. A
-Tabela~\ref{tab:pareto_operacional} resume os principais pontos de Pareto entre
-desempenho, latência, tamanho e robustez.
-
-\begin{table}[H]
-\centering
-\caption{Síntese operacional de Pareto para seleção de modelos.}
-\label{tab:pareto_operacional}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{llll}
-\toprule
-\textbf{Critério} & \textbf{Modelo(s)} & \textbf{Evidência principal} & \textbf{Uso recomendado} \\
-\midrule
-Máx.\ acurácia limpa & Sonic Sleuth; MultiscaleCNN; Conformer & 100,00\%, 99,96\% e 99,87\% & Referência no benchmark \\
-Melhor robustez a \SI{10}{\decibel} & Sonic Sleuth; MultiscaleCNN; Conformer & 99,78\%, 99,16\% e 97,60\% sob AWGN & Ambientes com ruído \\
-Equilíbrio neural leve & Sonic Sleuth; Ensemble; Hybrid CNN-Transformer & 8,11--11,98 MB e acurácia acima de 97\% & Demo Gradio e API \\
-Menor latência & SVM & 0,95 ms e 10,43 MB & Linha de base rápida em CPU \\
-Modelo clássico robusto & Random Forest; SVM & 98,04\% e 96,62\% no limpo & Comparação interpretável \\
-Pesquisa SSL & HuBERT; WavLM & Backbones originais CUDA & Comparação com literatura \\
-Risco de instabilidade & Spectrogram Transformer; Hybrid CNN-Transformer & Queda de validação no histórico & Exigir melhor \textit{checkpoint} \\
-\bottomrule
-\end{tabular}}
-\end{table}
-
-A Tabela~\ref{tab:decisao_final_modelos} registra a decisão final de uso de cada
-arquitetura no sistema e na apresentação.
-
-\begin{table}[H]
-\centering
-\caption{Decisão final por arquitetura para uso no sistema e na apresentação.}
-\label{tab:decisao_final_modelos}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{lll}
-\toprule
-\textbf{Modelo} & \textbf{Decisão} & \textbf{Justificativa} \\
-\midrule
-Sonic Sleuth & Modelo prioritário & Melhor acurácia e robustez, com arquivo compacto \\
-MultiscaleCNN & Modelo neural de alta acurácia & 99,96\% no limpo e 99,16\% a 10 dB \\
-Conformer & Modelo Transformer prioritário & 99,87\% no limpo, EER 0,04\% e robustez elevada \\
-HuBERT Original & Referência SSL & \textit{Backbone} original viável, acurácia de 98,93\% e custo elevado \\
-RawNet2 & Funcional (áudio bruto) & Convergência estável e acurácia de 98,04\% \\
-Random Forest & Linha de base clássica complementar & Acurácia de 98,04\%, porém maior arquivo de modelo \\
-Ensemble & Funcional (ressalva robustez) & Acurácia de 98,18\% no teste limpo; queda acentuada sob AWGN \\
-Spectrogram Transformer & Requer controle de \textit{checkpoint} & Acurácia de 97,69\%, mas validação final instável \\
-Hybrid CNN-Transformer & Funcional (com ressalva) & Acurácia de 97,33\%, com queda de validação no histórico \\
-SVM & Linha de base clássica leve & Menor latência, queda moderada sob ruído forte \\
-WavLM Original & Referência SSL experimental & Desempenho inferior ao HuBERT neste preset \\
-EfficientNet-LSTM & Funcional (não prioritário) & Acurácia abaixo dos líderes e latência intermediária \\
-AASIST & Funcional (grafos) & Treino corrigido; desempenho consistente, abaixo dos líderes \\
-RawGAT-ST & Funcional (grafos) & Arquitetura executável, mas menor desempenho do ciclo atual \\
-\bottomrule
-\end{tabular}}
-\end{table}
-
-% ------------------------------------------------------------------
-\subsection{Robustez a Ruído}
-% ------------------------------------------------------------------
+\subsubsection*{Robustez a Ruído: o Achado Central}
 
 A Tabela~\ref{tab:robustez_awgn} e a Figura~\ref{fig:benchmark_robustness}
-apresentam a acurácia dos modelos sob ruído AWGN em diferentes níveis de SNR.
+revelam uma dissociação entre acurácia em condição limpa e robustez sob ruído. O
+Random Forest, segundo colocado no conjunto limpo, degrada para \num{93,51}\% a
+30\,dB, \num{84,53}\% a 20\,dB e \num{68,04}\% a 10\,dB de SNR. RawGAT-ST cai a
+\num{53,20}\%, WavLM Original a \num{52,58}\% e HuBERT Original a
+\num{50,67}\%, valores próximos do acaso (\num{50}\%) para uma tarefa binária
+balanceada. Em contraste, Conformer (\num{98,44}\% a 10\,dB), AST
+(\num{97,38}\%) e Res2Net (\num{96,18}\%) preservam desempenho elevado em todos
+os níveis de ruído testados.
 
-\begin{table}[H]
-\centering
-\caption{Acurácia sob ruído AWGN em diferentes SNRs.}
-\label{tab:robustez_awgn}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{lcccc}
-\toprule
-\textbf{Modelo} & \textbf{Limpo} & \textbf{\SI{30}{\decibel}} & \textbf{\SI{20}{\decibel}} & \textbf{\SI{10}{\decibel}} \\
-\midrule
-WavLM Original & 93,87\% & 94,04\% & 93,73\% & 92,44\% \\
-HuBERT Original & 98,93\% & 98,89\% & 98,76\% & 98,44\% \\
-RawNet2 & 98,04\% & 97,16\% & 95,47\% & 88,62\% \\
-Sonic Sleuth & 100,00\% & 100,00\% & 100,00\% & 99,78\% \\
-AASIST & 92,80\% & 92,71\% & 90,98\% & 63,73\% \\
-RawGAT-ST & 83,29\% & 82,84\% & 80,27\% & 55,07\% \\
-Conformer & 99,87\% & 99,87\% & 99,78\% & 97,60\% \\
-Hybrid CNN-Transformer & 97,33\% & 96,89\% & 94,27\% & 78,53\% \\
-Spectrogram Transformer & 97,69\% & 97,64\% & 97,24\% & 96,00\% \\
-EfficientNet-LSTM & 92,89\% & 92,98\% & 92,93\% & 88,76\% \\
-MultiscaleCNN & 99,96\% & 99,96\% & 99,91\% & 99,16\% \\
-Ensemble & 98,18\% & 73,91\% & 54,58\% & 50,09\% \\
-SVM & 96,62\% & 95,64\% & 88,49\% & 67,20\% \\
-Random Forest & 98,04\% & 93,87\% & 85,78\% & 68,00\% \\
-\bottomrule
-\end{tabular}}
-\end{table}
+Essa dissociação é o resultado analiticamente mais relevante deste
+\textit{benchmark}: acurácia em distribuição fechada não é um indicador
+suficiente de qualidade. Modelos que aprendem representações tempo-frequência
+densas (Conformer, AST, Res2Net) mantêm-se discriminativos sob degradação do
+sinal, ao passo que classificadores baseados em estatísticas agregadas de curto
+alcance (Random Forest) ou em \textit{embeddings} SSL congelados (WavLM, HuBERT)
+parecem explorar pistas mais frágeis, possivelmente associadas a amplitude,
+canal ou codificação. A presença de RASTA-PLP no vetor tabular foi incorporada
+justamente para reduzir sensibilidade a variações lentas de canal; ainda assim,
+a robustez de SVM e Random Forest permanece inferior à das melhores arquiteturas
+espectro-temporais.
 
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=\textwidth]{figures/benchmark_robustness.png}
-    \caption{Degradação de acurácia sob ruído AWGN.}
-    \label{fig:benchmark_robustness}
-\end{figure}
+\subsubsection*{Vazamento de Domínio e Separabilidade}
 
-A robustez sob ruído é heterogênea. No ciclo atual, Sonic Sleuth,
-MultiscaleCNN, HuBERT Original, Conformer e Spectrogram Transformer mantiveram
-acurácia superior a 96\% mesmo em \SI{10}{\decibel}. Em contraste, Ensemble,
-RawGAT-ST, AASIST, SVM e Random Forest apresentaram maior degradação em SNRs
-baixos.
+Os valores de AUC-ROC muito próximos de \num{1,000} (Res2Net, Conformer) e os
+picos de acurácia de validação de até \num{100}\% (Conformer, época 17 ---
+Tabela~\ref{tab:estabilidade_treinamento}) devem ser lidos à luz da análise de
+vazamento de domínio da Seção~\ref{sec:vazamento}. Separabilidade quase perfeita
+é compatível tanto com um detector genuinamente eficaz quanto com um
+classificador que explora correlações espúrias entre fonte, canal e rótulo. A
+queda acentuada de RawGAT-ST e dos modelos SSL sob ruído sugere que algumas
+representações são mais sensíveis a pistas frágeis, mas não permite descartar a
+hipótese de vazamento para os modelos de melhor desempenho limpo. A confirmação
+exige validação \textit{cross-dataset} com fontes disjuntas
+(Seção~\ref{sec:trabalhos_futuros}).
 
-O SVM apresentou queda moderada sob AWGN: alcançou 96,62\% no áudio limpo,
-95,64\% em \SI{30}{\decibel}, 88,49\% em \SI{20}{\decibel} e 67,20\% em
-\SI{10}{\decibel}. A degradação tem explicação direta: o SVM com kernel RBF
-aprende uma fronteira de decisão ajustada à distribuição das características
-do conjunto limpo (médias, variâncias e coeficientes espectrais padronizados).
-Ruído AWGN desloca sistematicamente essas estatísticas: o centroide espectral
-se move para frequências mais altas, a planura espectral aumenta e o HNR cai,
-reduzindo a margem de separação do classificador.
-Em trabalhos futuros, essa linha de base deve ser reavaliada com:
-(1)~extração de características robustas a ruído, por exemplo RASTA-PLP ou MFCC
-com pré-ênfase adaptativa); (2)~adição de exemplos ruidosos no treinamento
-(\textit{data augmentation}); e (3)~calibração do limiar de decisão por nível
-de SNR estimado em tempo de inferência.
+\subsubsection*{Eficiência Computacional e Trade-offs}
 
-% ------------------------------------------------------------------
-\subsection{Estabilidade do Treinamento}
-\label{sec:estabilidade}
-% ------------------------------------------------------------------
+A Tabela~\ref{tab:eficiencia_modelos} e as
+Figuras~\ref{fig:benchmark_latency_size}
+e~\ref{fig:benchmark_accuracy_latency_tradeoff} mostram que desempenho e custo
+computacional não são monotonicamente relacionados. RawGAT-ST é o modelo mais
+compacto (\num{241024} parâmetros, \num{1,02}\,MB), mas também o de pior
+acurácia e robustez; SVM alia baixíssima latência (\num{1,02}\,ms) a acurácia
+competitiva (\num{96,00}\%), tornando-se atrativo para cenários restritos desde
+que a robustez a ruído não seja crítica. Conformer, o modelo mais robusto sob
+ruído, ocupa posição intermediária de custo (\num{15,9}~milhões de parâmetros,
+\num{61,27}\,MB, \num{59,21}\,ms), enquanto AST, segundo em robustez, é o modelo
+mais pesado do conjunto (\num{87,4}~milhões de parâmetros, \num{333,91}\,MB).
+Não há, portanto, um único modelo dominante em todas as dimensões: a escolha
+depende de qual restrição, latência, memória ou robustez, é prioritária na
+aplicação-alvo.
+
+\subsubsection*{Estabilidade de Treinamento}
 
 A Tabela~\ref{tab:estabilidade_treinamento} e a
-Figura~\ref{fig:training_stability} resumem, por arquitetura neural, a melhor
-validação, a validação final e a queda de desempenho ao longo do orçamento
-máximo de 100 épocas.
+Figura~\ref{fig:training_stability} mostram que a maioria dos modelos neurais
+converge de forma estável, com quedas entre o pico de validação e o valor final
+inferiores a \num{2}\%. Duas exceções merecem nota: RawGAT-ST converge
+precocemente (pico na época \num{6}), consistente com sua baixa acurácia e
+robustez; e o Conformer atinge \num{100,00}\% de acurácia de validação já na
+época \num{17}, sinal de que a tarefa de validação é, nesse ponto, quase
+trivialmente separável. Esse resultado reforça a leitura cautelosa sobre
+vazamento de domínio discutida acima, em vez de ser apenas um indicador positivo
+de convergência.
 
-\begin{table}[H]
-\centering
-\caption{Estabilidade dos modelos neurais durante o orçamento máximo de 100 épocas.}
-\label{tab:estabilidade_treinamento}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{lccccc}
-\toprule
-\textbf{Modelo} & \textbf{Melhor val.} & \textbf{Época} &
-\textbf{Val. final} & \textbf{Queda} & \textbf{Observação} \\
-\midrule
-WavLM Original & 95,47\% & 20 & 94,67\% & 0,80\% & estável \\
-HuBERT Original & 99,29\% & 23 & 99,24\% & 0,04\% & estável \\
-RawNet2 & 98,13\% & 61 & 97,87\% & 0,27\% & estável \\
-Sonic Sleuth & 99,96\% & 68 & 99,91\% & 0,04\% & estável \\
-AASIST & 93,96\% & 69 & 92,49\% & 1,47\% & estável \\
-RawGAT-ST & 84,27\% & 4 & 80,00\% & 4,27\% & estável \\
-Conformer & 99,96\% & 38 & 99,91\% & 0,04\% & estável \\
-Hybrid CNN-Transformer & 97,20\% & 18 & 76,49\% & 20,71\% & estável \\
-Spectrogram Transformer & 96,49\% & 7 & 50,00\% & 46,49\% & \textcolor{dangerred}{\textit{checkpoint} obrigatório} \\
-EfficientNet-LSTM & 91,96\% & 40 & 88,31\% & 3,64\% & estável \\
-MultiscaleCNN & 99,96\% & 71 & 99,87\% & 0,09\% & estável \\
-Ensemble & 98,49\% & 33 & 97,78\% & 0,71\% & estável \\
-\bottomrule
-\end{tabular}}
-\end{table}
+\subsubsection*{Ressalva sobre Execução Única}
 
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.95\textwidth]{figures/training_stability.png}
-    \caption{Melhor validação, validação final e queda de desempenho por arquitetura neural.}
-    \label{fig:training_stability}
-\end{figure}
+Todos os resultados reportados correspondem a uma única execução por modelo, sem
+repetição sobre múltiplas sementes aleatórias de inicialização e
+particionamento. Diferenças pequenas entre modelos próximos, como Res2Net e
+Conformer, empatados em \num{99,69}\% de acurácia, não devem ser interpretadas
+como estatisticamente significativas. A magnitude dos efeitos discutidos acima
+(robustez a ruído e diferença entre famílias de modelos) é suficiente para uma
+interpretação qualitativa, mas comparações finas entre os modelos de melhor
+colocação exigiriam múltiplas execuções com relato de média e desvio-padrão.
 
-A análise de estabilidade mostra que a maioria das arquiteturas manteve
-diferença controlada entre a melhor validação e o fim do treinamento. O
-Spectrogram Transformer é o caso mais crítico, com queda de 46,49 pontos
-percentuais entre a melhor validação e a validação final. O Hybrid
-CNN-Transformer também merece auditoria de \textit{checkpoint}, com queda de
-20,71 pontos percentuais apesar da acurácia de 97,33\% no teste limpo. Ambos são
-candidatos a novo ciclo de regularização, redução de taxa de aprendizado,
-aumento de \textit{dropout} e \textit{weight decay}.
+A leitura das métricas deve ser feita, portanto, com parcimônia: os resultados
+caracterizam desempenho em distribuição fechada e dependem do \textit{corpus},
+das fontes de geração e do protocolo de particionamento utilizado. A eficiência
+computacional, a estabilidade e, sobretudo, a robustez a ruído são parte
+essencial da interpretação, não apenas complementos gráficos ao desempenho no
+conjunto limpo.
+
+
+
 
 % =====================================================================
-%  7. DISCUSSÃO
-% =====================================================================
-\section{Discussão}
-\label{sec:discussao}
-
-Do ponto de vista prático, os resultados sugerem três perfis de uso. Para
-máxima acurácia na base atual, Sonic Sleuth, MultiscaleCNN e Conformer são as
-opções de maior acurácia. Para inferência leve e integração em demonstrações, SVM e
-Sonic Sleuth são particularmente atraentes. Para estudo de representações
-modernas e comparação com a literatura, WavLM, HuBERT, RawNet2, AASIST,
-RawGAT-ST e Spectrogram Transformer são essenciais.
-
-\subsection{Comparação Qualitativa com a Literatura}
-
-Os resultados seguem tendências observadas na literatura, mas não devem ser
-comparados numericamente de forma direta com trabalhos avaliados em outras
-bases de dados. Como referência qualitativa: o AASIST reporta EER inferior
-a 0,83\% no ASVspoof 2019 LA \cite{jung2022aasist}; o RawNet2 reporta EER de
-4,8\% no mesmo protocolo \cite{tak2021rawnet2}. Os EERs observados neste
-trabalho (AASIST: 7,16\%, RawNet2: 2,00\%) são plausíveis para uma base
-menor e menos diversa, mas a comparação direta é inválida pela diferença de
-conjunto de dados. Modelos SSL como WavLM e HuBERT representam o estado moderno
-de aprendizado auto-supervisionado; o desempenho distinto entre WavLM (93,87\%)
-e HuBERT (98,93\%) pode refletir diferenças de ajuste fino, custo de
-\textit{backbone} e adequação ao domínio do conjunto de dados, não uma
-limitação intrínseca da família SSL.
-
-O desempenho do Conformer e o resultado competitivo do modelo híbrido
-CNN-Transformer são coerentes com a hipótese de que a combinação de convolução
-local e atenção global captura artefatos espectro-temporais de forma eficiente,
-embora o histórico de validação desse modelo exija controle rigoroso de
-\textit{checkpoint}.
-
-\subsection{Ameaças à Validade e Limitações}
-\label{sec:ameacas_validade}
-
-\begin{itemize}
-    \item \textbf{Validade interna --- risco de vazamento por falante}:
-    se amostras do mesmo falante, canal, gerador ou segmento original
-    aparecerem em partições diferentes, modelos podem aprender artefatos de
-    origem em vez de propriedades gerais de áudio sintético. Isso é
-    especialmente relevante para os resultados de 100\%, que podem refletir
-    memorização de fonte. A divisão estratificada deve evoluir para separação
-    por falante/fonte quando esses metadados estiverem completos.
-
-    \item \textbf{Validade externa}: os resultados refletem a base consolidada
-    de 15.000 amostras usada neste \textit{benchmark}. A generalização para
-    outros idiomas, microfones, codecs,
-    vocoders, plataformas TTS/VC e condições de ruído precisa ser medida em
-    bases externas (ASVspoof, WaveFake, In-the-Wild).
-
-    \item \textbf{Ausência de testes estatísticos entre modelos}: diferenças
-    pequenas no topo da classificação (por exemplo, 99,87\% e 99,96\%) não são
-    estatisticamente testadas. Um teste de McNemar pareado sobre o conjunto de
-    teste ou bootstrap de intervalos de confiança da diferença entre modelos é
-    necessário para afirmar que essas diferenças são significativas.
-
-    \item \textbf{Metadados da base}: número de falantes, gênero, idioma,
-    licenças e durações originais ainda devem ser consolidados no manifesto.
-
-    \item \textbf{Validade de construção}: acurácia, F1, AUC e EER descrevem
-    aspectos complementares, mas não substituem análise operacional de limiar.
-    Em uso real, falsos negativos e falsos positivos têm custos distintos.
-
-    \item \textbf{Robustez}: a queda sob AWGN indica que o treinamento deve
-    incorporar ruído, codec e reverberação.
-
-    \item \textbf{Custo computacional}: WavLM e HuBERT originais exigem maior
-    armazenamento e dependem de GPU para treinamento viável.
-
-    \item \textbf{Interpretabilidade}: SHAP e análises locais por segmento
-    ainda devem ser integradas ao relatório final.
-
-    \item \textbf{Idioma}: o manifesto atual da base consolidada não documenta
-    a proporção de amostras em português brasileiro. Um sistema treinado
-    predominantemente em inglês pode ter viés de idioma que inflacione métricas
-    e falhe em cenários reais de uso no Brasil.
-\end{itemize}
-
-\subsection{Considerações Éticas e LGPD}
-\label{sec:etica_lgpd}
-
-Sistemas de detecção de voz sintética devem ser tratados como ferramentas de
-apoio, não como mecanismos definitivos de acusação ou autenticação de pessoas.
-Falsos negativos podem permitir que áudios sintéticos sejam aceitos como reais;
-falsos positivos podem prejudicar usuários legítimos, especialmente em
-contextos educacionais, jornalísticos, jurídicos ou de atendimento. Por isso,
-decisões sensíveis devem envolver revisão humana, registro de evidências e
-calibração explícita de limiar.
-
-Como o dado analisado é voz, há implicações diretas de privacidade. Uma
-implantação aderente à LGPD deve coletar apenas o áudio necessário, informar a
-finalidade do tratamento, evitar retenção desnecessária, proteger os arquivos
-gerados e respeitar consentimento, base legal e direitos do titular. O
-processamento local reduz exposição a terceiros, mas não elimina a necessidade
-de governança, controle de acesso e descarte seguro dos arquivos de entrada.
-
-Adicionalmente, conforme antecipado na introdução (Seção~\ref{sec:introducao}),
-o conhecimento sobre quais características acústicas são discriminativas pode
-ser usado para criar sistemas de síntese mais difíceis de detectar. A
-publicação responsável deste trabalho deve ser acompanhada de monitoramento
-da literatura adversarial e reavaliação periódica do \textit{pipeline} contra novos
-geradores.
-
-\subsection{Trabalhos Futuros}
-\label{sec:trabalhos_futuros}
-
-\begin{itemize}
-    \item Reexecutar o Spectrogram Transformer com \textit{checkpoint}
-    obrigatório, \textit{learning rate} menor, \textit{weight decay},
-    \textit{dropout} maior e \textit{early stopping} guiado apenas por
-    validação, preservando o teste final como avaliação independente.
-    \item Incluir ASVspoof 2019/2021/5, WaveFake e In-the-Wild no preset
-    completo de validação externa.
-    \item Implementar divisão por falante e por gerador para eliminar risco
-    de vazamento de dados nos resultados mais altos.
-    \item Conduzir testes estatísticos pareados (McNemar, bootstrap) para
-    validar diferenças de classificação entre arquiteturas próximas.
-    \item Investigar por que WavLM obteve desempenho inferior ao HuBERT,
-    via ablação de taxa de aprendizado e número de épocas de \textit{fine-tuning}.
-    \item Implementar validação \textit{cross-dataset} e ablações por família
-    de características para medir quais atributos sustentam cada arquitetura.
-    \item Adicionar aumento de dados com AWGN, codecs, reverberação e
-    variação de ganho no treinamento de todos os modelos.
-    \item Consolidar relatório automático em HTML/PDF com métricas, matrizes
-    de confusão, curvas ROC/PR, curvas de treinamento e exemplos de inferência.
-    \item Integrar SHAP, Grad-CAM espectral ou análise por oclusão temporal
-    para explicar decisões dos modelos neurais.
-    \item Documentar metadados completos da base consolidada e de cada fonte
-    de áudio (falantes, idioma, licenças, durações, verificação de duplicatas).
-    \item Registrar desvio padrão e percentil 95 de latência em todas as
-    rodadas de benchmark.
-    \item Expandir a documentação ética para uso com dados de voz em contexto
-    brasileiro (LGPD), incluindo retenção, consentimento e revisão humana.
-\end{itemize}
-
-% =====================================================================
-%  8. CONCLUSÕES
+%  6. CONCLUSÕES
 % =====================================================================
 \section{Conclusões}
 \label{sec:conclusao}
 
-Este trabalho desenvolveu e avaliou um \textit{pipeline} modular de código
-aberto para detecção de áudio sintético, cobrindo processamento de dados,
-extração de características, treinamento, inferência, \textit{benchmark} e
-geração de relatórios. A versão consolidada demonstra que o sistema é capaz de
-treinar, auditar e comparar quatorze arquiteturas heterogêneas sob as mesmas
-condições experimentais.
+Este trabalho desenvolveu e avaliou um \textit{pipeline} modular e de código
+aberto para detecção de áudio sintético em português, submetendo \num{11}
+modelos heterogêneos --- de classificadores estatísticos clássicos a redes
+espectro-temporais e \textit{backbones} auto-supervisionados --- a um protocolo
+comum de treinamento, inferência e \textit{benchmark}. Nesse sentido, os
+objetivos específicos delineados na Seção~\ref{sec:introducao} foram atendidos:
+consolidou-se uma base balanceada com particionamento reprodutível,
+implementou-se o pré-processamento acústico e a extração de características, e
+os modelos foram comparados sob métricas de acurácia, F1-score, AUC-ROC, EER,
+$t$-DCF, latência, tamanho de artefato e robustez a ruído.
 
-Os resultados confirmam desempenho elevado de modelos espectrais e híbridos no
-protocolo controlado, com destaque para Sonic Sleuth, MultiscaleCNN,
-Conformer, HuBERT Original, RawNet2 e as linhas de base clássicas otimizadas. A
-principal contribuição não é a classificação final em si, mas a consolidação de um
-processo reprodutível para treinar, comparar e documentar arquiteturas de
-detecção de áudio sintético.
+No conjunto de teste limpo, as arquiteturas espectro-temporais densas
+lideraram: Res2Net e Conformer alcançaram \num{99,69}\% de acurácia
+(EER de \num{0,44}\% e \num{0,27}\%, respectivamente, com AUC-ROC
+$\approx 1{,}000$), seguidas por AST (\num{98,71}\%) e pelo \textit{Random
+Forest} (\num{98,18}\%). Esse ordenamento confirma que representações
+tempo-frequência ricas, associadas a mecanismos de atenção ou convoluções
+multi-escala, capturam de modo eficaz os artefatos de síntese presentes no
+\textit{corpus} avaliado.
 
-Três limitações abertas merecem atenção prioritária antes de qualquer uso em
-produção: (1)~a ausência de separação por falante na divisão treino/teste, que
-pode inflar os resultados mais elevados; (2)~a falta de validação em bases
-externas como ASVspoof e WaveFake; e (3)~a queda sob ruído de parte dos
-classificadores, especialmente Ensemble, RawGAT-ST, AASIST, SVM e Random
-Forest em \SI{10}{\decibel}.
+Contudo, o achado analiticamente mais relevante emerge do contraste entre
+desempenho limpo e robustez sob ruído. Enquanto Conformer e AST preservaram
+acurácia acima de \num{97}\% a \SI{10}{\decibel} de SNR, o \textit{Random
+Forest} --- segundo colocado em condições limpas --- degradou para
+\num{68,04}\%, e RawGAT-ST e os \textit{backbones} SSL aproximaram-se do acaso
+(\num{53,20}\%, \num{52,58}\% e \num{50,67}\%). Essa dissociação evidencia que a
+acurácia em distribuição fechada é um indicador insuficiente de qualidade:
+modelos que atingem pontuações quase perfeitas podem apoiar-se em atalhos
+frágeis, ao passo que a robustez sob perturbação revela quais representações são
+de fato discriminativas.
 
-Do ponto de vista ético, retomando o alerta da Seção~\ref{sec:introducao}, o
-conhecimento produzido neste trabalho deve ser utilizado com responsabilidade:
-sistemas de detecção automatizada de voz sintética têm aplicações legítimas
-urgentes no contexto brasileiro, mas também podem ser usados para aprimorar
-os próprios sistemas de síntese que buscam detectar. A revisão humana das
-decisões e a governança dos dados de voz são recomendações irrenunciáveis para
-qualquer implantação responsável.
+A leitura conjunta desses resultados com a análise de vazamento de domínio
+(Seção~\ref{sec:vazamento}) recomenda cautela interpretativa. Os valores de
+AUC-ROC próximos da unidade, os picos de acurácia de validação de até
+\num{100}\% e a alta separabilidade geral são compatíveis com a hipótese de que
+parte do sinal aprendido decorre de correlações espúrias entre fonte, canal e
+rótulo, e não exclusivamente das assinaturas do processo de síntese. Assim, as
+métricas reportadas devem ser entendidas como limite superior de desempenho
+\textit{in-domain}, não como estimativa de generalização para cenários reais.
+
+Por fim, os \textit{backbones} auto-supervisionados WavLM e HuBERT ficaram
+abaixo das arquiteturas espectro-temporais (\num{86,09}\% e \num{90,18}\%),
+resultado atribuído à estratégia de manter o \textit{backbone} congelado e
+treinar apenas a cabeça de classificação. Esse comportamento não contradiz a
+literatura, mas delimita a condição sob a qual os modelos SSL foram avaliados e
+aponta o ajuste fino integral como etapa necessária para explorar seu potencial.
+
+\subsection*{Principais Contribuições}
+
+\begin{itemize}
+    \item Um \textit{pipeline} reprodutível e de código aberto que padroniza
+    pré-processamento, treinamento, inferência e geração automática de
+    relatórios de \textit{benchmark} para detecção de áudio sintético em
+    português.
+    \item Uma comparação empírica de \num{11} arquiteturas heterogêneas sob
+    protocolo único, contemplando eficiência computacional e robustez a ruído
+    AWGN, em \textit{corpus} de fala em português brasileiro.
+    \item Uma análise crítica de vazamento de domínio que documenta os vieses de
+    fonte e canal do protocolo e relativiza as métricas obtidas, contribuindo
+    para a interpretação responsável de resultados em detecção de
+    \textit{deepfakes}.
+\end{itemize}
+
+\subsection*{Limitações}
+
+As conclusões restringem-se a um cenário de distribuição fechada. As principais
+limitações são: (i) a ausência de disjunção estrita de locutores em parte do
+\textit{corpus}; (ii) o pareamento assimétrico entre fontes reais e sintéticas,
+que induz vazamento de domínio; (iii) a avaliação dos modelos SSL apenas com
+\textit{backbone} congelado; (iv) o uso de um $t$-DCF na forma de \textit{proxy}
+interno, sem acoplamento a um sistema ASV oficial; e (v) resultados de execução
+única por modelo, sem repetição sobre múltiplas sementes aleatórias, o que
+impede estimar variância entre execuções e limita a significância estatística
+de diferenças pequenas entre os modelos de melhor colocação.
+
+\subsection*{Trabalhos Futuros}
+\label{sec:trabalhos_futuros}
+
+Como continuidade, recomenda-se ampliar a validação para partições estritamente
+disjuntas por locutor e por base de origem, incluir ensaios com geradores não
+vistos (\textit{cross-dataset}) e consolidar os experimentos com modelos
+auto-supervisionados ajustados integralmente em GPU, particularmente WavLM e
+HuBERT. Destaca-se ainda a pertinência de adotar o $t$-DCF padronizado acoplado
+a um sistema ASV de referência, incorporar métricas de calibração e
+explicabilidade local (SHAP, GradCAM) e conduzir testes de robustez contra
+compressão, reverberação e ruído real de canal, aproximando o protocolo
+experimental de cenários operacionais de biometria de voz.
+
+
 
 \newpage
+
+
 % =====================================================================
 %  REFERÊNCIAS
 % =====================================================================
 \begin{thebibliography}{99}
 
-\bibitem{baevski2020wav2vec}
-BAEVSKI, A. et al.
-wav2vec 2.0: A Framework for Self-Supervised Learning of Speech
-Representations.
-\textbf{Advances in Neural Information Processing Systems (NeurIPS)},
-v.~33, p.~12449--12460, 2020.
+\bibitem{cortes1995support}
+CORTES, C.; VAPNIK, V.
+Support-vector networks.
+\textbf{Machine Learning},
+v.~20, p.~273--297, 1995.
 
-\bibitem{bartusiak2022}
-BARTUSIAK, E. R. et al.
-Frequency Domain-based Detection of Generated Speech.
-In: \textbf{IEEE International Workshop on Information Forensics and Security
-(WIFS)}, p.~1--6, 2022.
+\bibitem{breiman2001random}
+BREIMAN, L.
+Random Forests.
+\textbf{Machine Learning},
+v.~45, p.~5--32, 2001.
+
+\bibitem{muller2022warning}
+MÜLLER, N.~M. et al.
+Warning: Humans cannot reliably detect speech deepfakes.
+\textbf{PLoS ONE},
+v.~17, n.~8, e0271552, 2022.
+
+\bibitem{heidari2024deepfake}
+HEIDARI, A.; CELEBI, M.~E.
+Deepfake detection using deep learning methods: A systematic and comprehensive
+review.
+\textbf{WIREs Data Mining and Knowledge Discovery},
+v.~14, n.~2, e1520, 2024.
 
 \bibitem{bird2023realtime}
 BIRD, J. J.; LOTFI, A.
@@ -1825,12 +1581,43 @@ Real-time Detection of AI-Generated Speech for DeepFake Voice Conversion.
 Disponível em: \url{https://arxiv.org/abs/2308.12734}.
 Acesso em: 15 jun.\ 2025.
 
-\bibitem{chen2022wavlm}
-CHEN, S. et al.
-WavLM: Large-Scale Self-Supervised Pre-Training for Full Stack Speech
-Processing.
-\textbf{IEEE Journal of Selected Topics in Signal Processing},
-v.~16, n.~6, p.~1505--1518, 2022.
+\bibitem{shen2018natural}
+SHEN, J. et al.
+Natural TTS Synthesis by Conditioning WaveNet on Mel Spectrogram Predictions.
+In: \textbf{IEEE International Conference on Acoustics, Speech and Signal
+Processing (ICASSP)}, p.~4779--4783, 2018.
+
+\bibitem{ren2019fastspeech}
+REN, Y. et al.
+FastSpeech: Fast, Robust and Controllable Text to Speech.
+In: \textbf{Advances in Neural Information Processing Systems (NeurIPS)},
+v.~32, 2019.
+
+\bibitem{kim2021conditional}
+KIM, J.; KONG, J.; SON, J.
+Conditional Variational Autoencoder with Adversarial Learning for End-to-End
+Text-to-Speech.
+In: \textbf{International Conference on Machine Learning (ICML)},
+p.~5530--5540, 2021.
+
+\bibitem{casanova2022yourtts}
+CASANOVA, E. et al.
+YourTTS: Towards Zero-Shot Multi-Speaker TTS and Zero-Shot Voice Conversion
+for everyone.
+In: \textbf{International Conference on Machine Learning (ICML)},
+p.~2709--2720, 2022.
+
+\bibitem{oord2016wavenet}
+VAN DEN OORD, A. et al.
+WaveNet: A generative model for raw audio.
+\textbf{arXiv preprint} arXiv:1609.03499, 2016.
+
+\bibitem{pindrop2025}
+PINDROP.
+Deepfake Trends to Look Out for in 2025.
+2025.
+Disponível em: \url{https://www.pindrop.com/article/deepfake-trends/}.
+Acesso em: 15 jun.\ 2025.
 
 \bibitem{dfrlab2024}
 FARRUGIA, B.
@@ -1848,130 +1635,22 @@ The challenges of identifying deepfakes ahead of the 2024 Brazil election.
 Disponível em: \url{https://dfrlab.org/2024/10/02/brazil-election-ai-research/}.
 Acesso em: 15 jun.\ 2025.
 
-\bibitem{gao2021res2net}
-GAO, S. et al.
-Res2Net: A New Multi-Scale Backbone Architecture.
-\textbf{IEEE Transactions on Pattern Analysis and Machine Intelligence},
-v.~43, n.~2, p.~652--662, 2021.
-
-\bibitem{gong2021ast}
-GONG, Y.; CHUNG, Y.; GLASS, J.
-AST: Audio Spectrogram Transformer.
-In: \textbf{Proc.\ Interspeech 2021}, p.~571--575, 2021.
-
-\bibitem{gulati2020conformer}
-GULATI, A. et al.
-Conformer: Convolution-augmented Transformer for Speech Recognition.
-In: \textbf{Proc.\ Interspeech 2020}, p.~5036--5040, 2020.
-
-\bibitem{heidari2024deepfake}
-HEIDARI, A.; CELEBI, M.~E.
-Deepfake detection using deep learning methods: A systematic and comprehensive
-review.
-\textbf{WIREs Data Mining and Knowledge Discovery},
-v.~14, n.~2, e1520, 2024.
-
-\bibitem{hsu2021hubert}
-HSU, W.-N. et al.
-HuBERT: Self-Supervised Speech Representation Learning by Masked Prediction
-of Hidden Units.
-\textbf{IEEE/ACM Transactions on Audio, Speech, and Language Processing},
-v.~29, p.~3451--3460, 2021.
-
-\bibitem{jung2022aasist}
-JUNG, J.~W. et al.
-AASIST: Audio Anti-Spoofing using Integrated Spectro-Temporal Graph Attention
-Networks.
-In: \textbf{IEEE International Conference on Acoustics, Speech and Signal
-Processing (ICASSP)}, p.~6367--6371, 2022.
-
-\bibitem{kameoka2018stargan}
-KAMEOKA, H. et al.
-StarGAN-VC: Non-parallel many-to-many voice conversion using star generative
-adversarial networks.
-In: \textbf{IEEE Spoken Language Technology Workshop (SLT)},
-p.~266--273, 2018.
-
-\bibitem{kingma2015adam}
-KINGMA, D.~P.; BA, J.
-Adam: A Method for Stochastic Optimization.
-In: \textbf{International Conference on Learning Representations (ICLR)},
-2015.
-
-\bibitem{lundberg2017unified}
-LUNDBERG, S.~M.; LEE, S.-I.
-A Unified Approach to Interpreting Model Predictions.
-In: \textbf{Advances in Neural Information Processing Systems (NeurIPS)},
-v.~30, p.~4765--4774, 2017.
-
-\bibitem{muller2022warning}
-MÜLLER, N.~M. et al.
-Warning: Humans cannot reliably detect speech deepfakes.
-\textbf{PLoS ONE},
-v.~17, n.~8, e0271552, 2022.
-
-\bibitem{oord2016wavenet}
-VAN DEN OORD, A. et al.
-WaveNet: A generative model for raw audio.
-\textbf{arXiv preprint} arXiv:1609.03499, 2016.
-
-\bibitem{pham2024deepfake}
-PHAM, L. et al.
-Deepfake Audio Detection Using Spectrogram-based Feature and Ensemble of Deep
-Learning Models.
-In: \textbf{IEEE International Symposium on the Internet of Sounds (IS2)},
-p.~1--5, 2024.
-Disponível em: \url{https://arxiv.org/abs/2407.01777}.
-Acesso em: 15 jun.\ 2025.
-
-\bibitem{pindrop2025}
-PINDROP.
-Deepfake Trends to Look Out for in 2025.
-2025.
-Disponível em: \url{https://www.pindrop.com/article/deepfake-trends/}.
-Acesso em: 15 jun.\ 2025.
-
-\bibitem{sahidullah2015comparison}
-SAHIDULLAH, M. et al.
-A Comparison of Features for Synthetic Speech Detection.
-In: \textbf{Proc.\ Interspeech 2015}, p.~2087--2091, 2015.
-
-\bibitem{shen2018natural}
-SHEN, J. et al.
-Natural TTS Synthesis by Conditioning WaveNet on Mel Spectrogram Predictions.
-In: \textbf{IEEE International Conference on Acoustics, Speech and Signal
-Processing (ICASSP)}, p.~4779--4783, 2018.
-
-\bibitem{tak2021rawgatst}
-TAK, H. et al.
-End-to-End Spectro-Temporal Graph Attention Networks for Speaker Verification
-Anti-Spoofing and Speech Deepfake Detection.
-In: \textbf{Proc.\ ASVspoof 2021 Workshop}, p.~1--8, 2021.
-
-\bibitem{tak2021rawnet2}
-TAK, H. et al.
-End-to-End Anti-Spoofing with RawNet2.
-In: \textbf{IEEE International Conference on Acoustics, Speech and Signal
-Processing (ICASSP)}, p.~6369--6373, 2021.
-
-\bibitem{todisco2016new}
-TODISCO, M.; DELGADO, H.; EVANS, N.
-A New Feature for Automatic Speaker Verification Anti-Spoofing:
-Constant Q Cepstral Coefficients.
-In: \textbf{Proc.\ Odyssey 2016 --- The Speaker and Language Recognition
-Workshop}, p.~283--290, 2016.
-
 \bibitem{todisco2019asvspoof}
 TODISCO, M. et al.
 ASVspoof 2019: Future Horizons in Spoofed and Fake Speech Detection.
 In: \textbf{Proc.\ Interspeech 2019}, p.~1008--1012, 2019.
 
-\bibitem{wang2023vall}
-WANG, C. et al.
-VALL-E: Neural Codec Language Models are Zero-Shot Text-to-Speech Synthesizers.
-\textbf{arXiv preprint} arXiv:2301.02111, 2023.
-Disponível em: \url{https://arxiv.org/abs/2301.02111}.
-Acesso em: 15 jun.\ 2025.
+\bibitem{yamagishi2021asvspoof}
+YAMAGISHI, J. et al.
+ASVspoof 2021: Accelerating Progress in Spoofed and Deepfake Speech Detection.
+In: \textbf{Proc.\ ASVspoof 2021 Workshop}, p.~47--54, 2021.
+
+\bibitem{kinnunen2018tdcf}
+KINNUNEN, T. et al.
+t-DCF: a Detection Cost Function for the Tandem Assessment of Spoofing
+Countermeasures and Automatic Speaker Verification.
+In: \textbf{Proc.\ Odyssey 2018 --- The Speaker and Language Recognition
+Workshop}, p.~312--319, 2018.
 
 \bibitem{wang2024asvspoof5}
 WANG, X. et al.
@@ -1981,22 +1660,210 @@ Scale.
 Disponível em: \url{https://arxiv.org/abs/2408.08739}.
 Acesso em: 15 jun.\ 2025.
 
+\bibitem{yi2022add}
+YI, J. et al.
+ADD 2022: The First Audio Deep Synthesis Detection Challenge.
+In: \textbf{IEEE International Conference on Acoustics, Speech and Signal
+Processing (ICASSP)}, p.~9216--9220, 2022.
+
+\bibitem{wang2023vall}
+WANG, C. et al.
+VALL-E: Neural Codec Language Models are Zero-Shot Text-to-Speech Synthesizers.
+\textbf{arXiv preprint} arXiv:2301.02111, 2023.
+Disponível em: \url{https://arxiv.org/abs/2301.02111}.
+Acesso em: 15 jun.\ 2025.
+
+\bibitem{kameoka2018stargan}
+KAMEOKA, H. et al.
+StarGAN-VC: Non-parallel many-to-many voice conversion using star generative
+adversarial networks.
+In: \textbf{IEEE Spoken Language Technology Workshop (SLT)},
+p.~266--273, 2018.
+
 \bibitem{wu2015asvspoof}
 WU, Z. et al.
 ASVspoof 2015: the First Automatic Speaker Verification Spoofing and
 Countermeasures Challenge.
 In: \textbf{Proc.\ Interspeech 2015}, p.~2037--2041, 2015.
 
-\bibitem{yamagishi2021asvspoof}
-YAMAGISHI, J. et al.
-ASVspoof 2021: Accelerating Progress in Spoofed and Deepfake Speech Detection.
-In: \textbf{Proc.\ ASVspoof 2021 Workshop}, p.~47--54, 2021.
+\bibitem{sahidullah2015comparison}
+SAHIDULLAH, M. et al.
+A Comparison of Features for Synthetic Speech Detection.
+In: \textbf{Proc.\ Interspeech 2015}, p.~2087--2091, 2015.
 
-\bibitem{yi2022add}
-YI, J. et al.
-ADD 2022: The First Audio Deep Synthesis Detection Challenge.
+\bibitem{todisco2016new}
+TODISCO, M.; DELGADO, H.; EVANS, N.
+A New Feature for Automatic Speaker Verification Anti-Spoofing:
+Constant Q Cepstral Coefficients.
+In: \textbf{Proc.\ Odyssey 2016 --- The Speaker and Language Recognition
+Workshop}, p.~283--290, 2016.
+
+\bibitem{hermansky1994rasta}
+HERMANSKY, H.; MORGAN, N.
+RASTA Processing of Speech.
+\textbf{IEEE Transactions on Speech and Audio Processing},
+v.~2, n.~4, p.~578--589, 1994.
+
+\bibitem{gao2021res2net}
+GAO, S. et al.
+Res2Net: A New Multi-Scale Backbone Architecture.
+\textbf{IEEE Transactions on Pattern Analysis and Machine Intelligence},
+v.~43, n.~2, p.~652--662, 2021.
+
+\bibitem{lavrentyeva2017audio}
+LAVRENTYEVA, G. et al.
+Audio Replay Attack Detection with Deep Learning Frameworks.
+In: \textbf{Proc.\ Interspeech 2017}, p.~82--86, 2017.
+
+\bibitem{tak2021rawnet2}
+TAK, H. et al.
+End-to-End Anti-Spoofing with RawNet2.
 In: \textbf{IEEE International Conference on Acoustics, Speech and Signal
-Processing (ICASSP)}, p.~9216--9220, 2022.
+Processing (ICASSP)}, p.~6369--6373, 2021.
+
+\bibitem{jung2022aasist}
+JUNG, J.~W. et al.
+AASIST: Audio Anti-Spoofing using Integrated Spectro-Temporal Graph Attention
+Networks.
+In: \textbf{IEEE International Conference on Acoustics, Speech and Signal
+Processing (ICASSP)}, p.~6367--6371, 2022.
+
+\bibitem{chen2022wavlm}
+CHEN, S. et al.
+WavLM: Large-Scale Self-Supervised Pre-Training for Full Stack Speech
+Processing.
+\textbf{IEEE Journal of Selected Topics in Signal Processing},
+v.~16, n.~6, p.~1505--1518, 2022.
+
+\bibitem{hsu2021hubert}
+HSU, W.-N. et al.
+HuBERT: Self-Supervised Speech Representation Learning by Masked Prediction
+of Hidden Units.
+\textbf{IEEE/ACM Transactions on Audio, Speech, and Language Processing},
+v.~29, p.~3451--3460, 2021.
+
+\bibitem{baevski2020wav2vec}
+BAEVSKI, A. et al.
+wav2vec 2.0: A Framework for Self-Supervised Learning of Speech
+Representations.
+\textbf{Advances in Neural Information Processing Systems (NeurIPS)},
+v.~33, p.~12449--12460, 2020.
+
+\bibitem{hochreiter1997lstm}
+HOCHREITER, S.; SCHMIDHUBER, J.
+Long Short-Term Memory.
+\textbf{Neural Computation},
+v.~9, n.~8, p.~1735--1780, 1997.
+
+\bibitem{vaswani2017attention}
+VASWANI, A. et al.
+Attention Is All You Need.
+In: \textbf{Advances in Neural Information Processing Systems (NeurIPS)},
+v.~30, 2017.
+
+\bibitem{dosovitskiy2021vit}
+DOSOVITSKIY, A. et al.
+An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale.
+In: \textbf{International Conference on Learning Representations (ICLR)}, 2021.
+
+\bibitem{gong2021ast}
+GONG, Y.; CHUNG, Y.; GLASS, J.
+AST: Audio Spectrogram Transformer.
+In: \textbf{Proc.\ Interspeech 2021}, p.~571--575, 2021.
+
+\bibitem{brspeechdf_card}
+AKCIT-DEEPFAKE.
+BRSpeech-DF dataset card.
+\textbf{Hugging Face Datasets}, 2026.
+Disponível em: \url{https://huggingface.co/datasets/AKCIT-Deepfake/BRSpeech-DF}.
+Acesso em: 27 jun.\ 2026.
+
+\bibitem{pratap2020mls}
+PRATAP, V. et al.
+MLS: A Large-Scale Multilingual Dataset for Speech Research.
+\textbf{Proc. Interspeech 2020}, p.~2757--2761, 2020.
+Disponível em: \url{https://www.openslr.org/94/}.
+Acesso em: 28 jun.\ 2026.
+
+\bibitem{ttspt_card}
+CASANOVA, E. et al.
+TTS-Portuguese Corpus.
+\textbf{Dataset público para síntese de fala em português brasileiro}, 2020.
+Disponível em: \url{https://github.com/Edresson/TTS-Portuguese-Corpus}.
+Acesso em: 28 jun.\ 2026.
+
+\bibitem{fakevoices_card}
+UNFAKE.
+Fake Voices dataset card.
+\textbf{Hugging Face Datasets}, 2026.
+Disponível em: \url{https://huggingface.co/datasets/unfake/fake_voices}.
+Acesso em: 27 jun.\ 2026.
+
+\bibitem{tak2021rawgatst}
+TAK, H. et al.
+End-to-End Spectro-Temporal Graph Attention Networks for Speaker Verification
+Anti-Spoofing and Speech Deepfake Detection.
+In: \textbf{Proc.\ ASVspoof 2021 Workshop}, p.~1--8, 2021.
+
+\bibitem{gulati2020conformer}
+GULATI, A. et al.
+Conformer: Convolution-augmented Transformer for Speech Recognition.
+In: \textbf{Proc.\ Interspeech 2020}, p.~5036--5040, 2020.
+
+\bibitem{hassani2021cct}
+HASSANI, A. et al.
+Escaping the Big Data Paradigm with Compact Transformers.
+\textbf{arXiv preprint} arXiv:2104.05704, 2021.
+Disponível em: \url{https://arxiv.org/abs/2104.05704}.
+Acesso em: 28 jun.\ 2026.
+
+\bibitem{lundberg2017unified}
+LUNDBERG, S.~M.; LEE, S.-I.
+A Unified Approach to Interpreting Model Predictions.
+In: \textbf{Advances in Neural Information Processing Systems (NeurIPS)},
+v.~30, p.~4765--4774, 2017.
+
+\bibitem{kingma2015adam}
+KINGMA, D.~P.; BA, J.
+Adam: A Method for Stochastic Optimization.
+In: \textbf{International Conference on Learning Representations (ICLR)},
+2015.
+
+\bibitem{arik2017}
+ARIK, S.~O. et al.
+Deep Voice: Real-time neural text-to-speech.
+In: \textbf{International Conference on Machine Learning (ICML)}, 2017.
+
+\bibitem{dudley1939}
+DUDLEY, H.
+The vocoder.
+\textbf{Bell Labs Record},
+v.~18, n.~4, p.~122--126, 1939.
+
+\bibitem{hunt1996}
+HUNT, A.~J.; BLACK, A.~W.
+Unit selection in a concatenative speech synthesis system using a large
+speech database.
+In: \textbf{IEEE International Conference on Acoustics, Speech, and Signal
+Processing (ICASSP)}, 1996.
+
+\bibitem{jia2018}
+JIA, Y. et al.
+Transfer learning from speaker verification to multispeaker text-to-speech
+synthesis.
+In: \textbf{Advances in Neural Information Processing Systems (NeurIPS)},
+v.~31, 2018.
+
+\bibitem{klatt1987}
+KLATT, D.~H.
+Review of text-to-speech conversion for English.
+\textbf{The Journal of the Acoustical Society of America},
+v.~82, n.~3, p.~737--793, 1987.
+
+\bibitem{wang2017}
+WANG, Y. et al.
+Tacotron: Towards end-to-end speech synthesis.
+In: \textbf{Proc.\ Interspeech 2017}, 2017.
 
 \end{thebibliography}
 
@@ -2006,18 +1873,18 @@ Processing (ICASSP)}, p.~9216--9220, 2022.
 \clearpage
 \appendix
 
+
 \section{Configurações Detalhadas do Pipeline}
 
 \subsection{Hiperparâmetros Consolidados}
 
-O preset final do \textit{benchmark} utiliza orçamento máximo de 100 épocas
-para modelos neurais, batch adaptado ao consumo de VRAM, precisão mista quando
-segura, \textit{early stopping} e salvamento do melhor \textit{checkpoint}.
-Modelos SSL originais utilizam seus
-\textit{backbones} reais via PyTorch/CUDA. Os modelos clássicos utilizam busca
-de hiperparâmetros com validação cruzada antes do ajuste final. A
-Tabela~\ref{tab:hiperparametros_consolidados} resume os principais
-hiperparâmetros por família de modelo.
+O preset final do \textit{benchmark} utiliza 100 épocas para modelos neurais,
+batch adaptado ao consumo de VRAM, precisão mista quando segura e salvamento
+do melhor \textit{checkpoint}. O preset contempla WavLM Original e HuBERT
+Original como modelos SSL no escopo principal do trabalho. Os modelos clássicos
+utilizam busca de hiperparâmetros com validação cruzada antes do ajuste final.
+A Tabela~\ref{tab:hiperparametros_consolidados} resume esses parâmetros por
+família de arquitetura.
 
 \begin{table}[H]
 \centering
@@ -2028,49 +1895,26 @@ hiperparâmetros por família de modelo.
 \toprule
 \textbf{Família} & \textbf{Entrada} & \textbf{Treinamento} & \textbf{Observação} \\
 \midrule
-WavLM/HuBERT & Áudio bruto \SI{16}{\kilo\hertz} & até 100 épocas + cabeça supervisionada & \textit{Backbone} original salvo localmente \\
-RawNet2 & PCM $80{.}000\times1$ & até 100 épocas, GPU, GRU + SincNet & Convergente no preset GPU \\
-AASIST/RawGAT-ST & Espectro-temporal & até 100 épocas, atenção em grafos & Feedback e checkpoints por época \\
-Conformer/Hybrid & Espectrograma & até 100 épocas, Adam/AdamW & Conformer estável; Hybrid exige \textit{checkpoint} \\
-Spectrogram Transformer & Espectrograma & até 100 épocas & Acurácia de 97,69\%; validação instável \\
-EfficientNet-LSTM & Espectrograma 2D & até 100 épocas, transferência parcial & Boa convergência, maior latência \\
-MultiscaleCNN/Ensemble & Características espectrais & até 100 épocas & Acurácia elevada na base limpa \\
-SVM & Características tabulares & GridSearchCV + SVC RBF & Modelo leve; queda sob AWGN forte \\
-Random Forest & Características tabulares & GridSearchCV + \texttt{n\_jobs=-1} & Paralelismo CPU \\
+WavLM Original & Áudio bruto 16\,kHz & 100 épocas + cabeça supervisionada & \textit{Backbone} SSL pré-treinado \\
+HuBERT Original & Áudio bruto 16\,kHz & 100 épocas + cabeça supervisionada & Representações SSL por unidades ocultas \\
+RawNet2 & PCM $80.000\times1$ & 100 épocas, GPU, GRU + SincNet & Convergente no preset GPU \\
+AASIST/RawGAT-ST & Áudio bruto & 100 épocas, atenção em grafos & Grafos espectrais e temporais derivados internamente \\
+Conformer/CCT & Espectrograma & 100 épocas, Adam/AdamW \cite{kingma2015adam} & Modelagem local-global \\
+AST & Espectrograma & 100 épocas & Transformer espectral \\
+Res2Net & Features espectrais & 100 épocas & Topologia multi-escala \\
+SVM & Features tabulares & GridSearchCV + SVC RBF & Modelo leve e alta acurácia \\
+Random Forest & Features tabulares & GridSearchCV + \texttt{n\_jobs=-1} & Paralelismo CPU \\
 \bottomrule
 \end{tabular}}
 \end{table}
 
-\subsection{Organização dos Arquivos Gerados}
+\subsection{Organização dos Artefatos}
 
 Cada arquitetura possui diretório próprio em \path{results/}, contendo
 modelo treinado, configuração, histórico de treinamento, métricas em JSON/CSV,
 matriz de confusão, curvas ROC/PR, gráficos de acurácia e perda, resultados de
 robustez e relatório Markdown. Os gráficos consolidados utilizados no TCC
-ficam em \path{figures/}. A Tabela~\ref{tab:rastreabilidade_artefatos} resume a
-rastreabilidade dos principais arquivos gerados.
-
-\begin{table}[H]
-\centering
-\caption{Rastreabilidade dos principais arquivos gerados pelo \textit{benchmark}.}
-\label{tab:rastreabilidade_artefatos}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{lll}
-\toprule
-\textbf{Arquivo ou grupo} & \textbf{Padrão de caminho} & \textbf{Finalidade} \\
-\midrule
-Conjunto de dados consolidado & \path{app/datasets/benchmark_audio_raw_balanced_15k.npz} & Entrada única do \textit{benchmark} \\
-Modelo neural & \path{app/models/bench_<modelo>.keras} & Inferência padrão na Gradio/API \\
-Modelo clássico & \path{app/models/bench_<modelo>.pkl} & \textit{Pipeline} sklearn com scaler e classificador \\
-Configuração & \path{app/models/bench_<modelo>_config.json} & Contrato de entrada e hiperparâmetros \\
-Backbones SSL & \path{app/models/benchmark_final/<modelo>/} & Arquivos completos de WavLM/HuBERT \\
-Métricas & \path{results/<run>/architectures/<modelo>/metrics.json} & Accuracy, F1, AUC, EER, latência e robustez \\
-Relatório & \path{results/<run>/tcc_report.md} & Registro textual para auditoria e TCC \\
-Figuras consolidadas & \path{tcc_overleaf/figures/*.png} & Gráficos usados no artigo \\
-Matrizes de confusão & \path{tcc_overleaf/figures/confusion_matrices/*.png} & Erros por classe e por arquitetura \\
-\bottomrule
-\end{tabular}}
-\end{table}
+ficam em \path{figures/}.
 
 \section{Implementação de Referência}
 
@@ -2081,7 +1925,7 @@ treinamento, inferência, cálculo de métricas e geração dos relatórios.
 
 \begin{table}[H]
 \centering
-\caption{Módulos reais do XFakeSong referenciados pelo \textit{benchmark}.}
+\caption{Módulos reais do \textit{pipeline} referenciados pelo \textit{benchmark}.}
 \label{tab:modulos_pipeline_real}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lll}
@@ -2101,13 +1945,14 @@ Relatórios & \path{benchmarks/report.py} & Consolida tabelas, figuras e Markdow
 \end{tabular}}
 \end{table}
 
-Neste contexto, XFakeSong é o nome do sistema de detecção de áudio sintético
-desenvolvido pelo autor como produto deste trabalho de conclusão de curso.
+Neste contexto, o \textit{pipeline} de detecção de áudio sintético descrito
+neste trabalho corresponde à implementação de referência desenvolvida pelo
+autor como parte deste Trabalho de Conclusão de Curso.
 
 \section{Comandos de Execução e Reprodutibilidade}
 
 Os comandos a seguir sintetizam o fluxo operacional usado para repetir o
-\textit{pipeline}, executar modelos isolados e gerar os arquivos do artigo.
+\textit{pipeline}, executar modelos isolados e gerar os arquivos do TCC.
 
 \begin{itemize}
     \item \textbf{Preparar pastas locais:}
@@ -2120,14 +1965,14 @@ Os comandos a seguir sintetizam o fluxo operacional usado para repetir o
     python main.py --gradio
     \end{quote}
 
-    \item \textbf{Construir base bruta e divisões balanceadas:}
+    \item \textbf{Preservar o dataset original consolidado:}
     \begin{quote}\footnotesize\ttfamily
-    python scripts/build\_dataset.py --target 7500
+    dir app\textbackslash datasets\textbackslash benchmark\_audio\_raw\_balanced\_15k.npz
     \end{quote}
 
-    \item \textbf{Executar o \textit{pipeline} completo do TCC:}
+    \item \textbf{Executar o \textit{pipeline} completo do TCC com o NPZ original:}
     \begin{quote}\footnotesize\ttfamily
-    python scripts/run\_tcc\_pipeline.py --download --target-per-class 7500\\
+    python scripts/run\_tcc\_pipeline.py\\
     --full-benchmark --epochs 100 --device-profile gpu\\
     --npz app/datasets/benchmark\_audio\_raw\_balanced\_15k.npz
     \end{quote}
@@ -2150,113 +1995,12 @@ Os comandos a seguir sintetizam o fluxo operacional usado para repetir o
     pytest tests/
     \end{quote}
 
-    \item \textbf{Compilar o artigo:}
+    \item \textbf{Compilar o TCC:}
     \begin{quote}\footnotesize\ttfamily
     pdflatex main.tex
     \end{quote}
 \end{itemize}
 
-\section{Matrizes de Confusão Completas}
 
-As Figuras~\ref{fig:confusion_all_neural_a} e
-\ref{fig:confusion_all_neural_b} apresentam as matrizes de confusão completas
-dos quatorze modelos avaliados.
-
-\begin{figure}[H]
-    \centering
-    \begin{subfigure}[b]{0.32\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{figures/confusion_matrices/wavlm_original.png}
-        \caption{WavLM}
-    \end{subfigure}
-    \hfill
-    \begin{subfigure}[b]{0.32\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{figures/confusion_matrices/hubert_original.png}
-        \caption{HuBERT}
-    \end{subfigure}
-    \hfill
-    \begin{subfigure}[b]{0.32\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{figures/confusion_matrices/rawnet2.png}
-        \caption{RawNet2}
-    \end{subfigure}
-
-    \vspace{0.25cm}
-    \begin{subfigure}[b]{0.32\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{figures/confusion_matrices/sonic_sleuth.png}
-        \caption{Sonic Sleuth}
-    \end{subfigure}
-    \hfill
-    \begin{subfigure}[b]{0.32\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{figures/confusion_matrices/aasist.png}
-        \caption{AASIST}
-    \end{subfigure}
-    \hfill
-    \begin{subfigure}[b]{0.32\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{figures/confusion_matrices/rawgat_st.png}
-        \caption{RawGAT-ST}
-    \end{subfigure}
-
-    \vspace{0.25cm}
-    \begin{subfigure}[b]{0.32\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{figures/confusion_matrices/conformer.png}
-        \caption{Conformer}
-    \end{subfigure}
-    \hfill
-    \begin{subfigure}[b]{0.32\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{figures/confusion_matrices/hybrid_cnn_transformer.png}
-        \caption{Hybrid CNN-Transformer}
-    \end{subfigure}
-    \hfill
-    \begin{subfigure}[b]{0.32\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{figures/confusion_matrices/spectrogram_transformer.png}
-        \caption{Spectrogram Transformer}
-    \end{subfigure}
-    \caption{Matrizes de confusão, parte 1: SSL, raw-audio, grafos e Transformers.}
-    \label{fig:confusion_all_neural_a}
-\end{figure}
-
-\begin{figure}[H]
-    \centering
-    \begin{subfigure}[b]{0.32\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{figures/confusion_matrices/efficientnet_lstm.png}
-        \caption{EfficientNet-LSTM}
-    \end{subfigure}
-    \hfill
-    \begin{subfigure}[b]{0.32\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{figures/confusion_matrices/multiscalecnn.png}
-        \caption{MultiscaleCNN}
-    \end{subfigure}
-    \hfill
-    \begin{subfigure}[b]{0.32\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{figures/confusion_matrices/ensemble.png}
-        \caption{Ensemble}
-    \end{subfigure}
-
-    \vspace{0.25cm}
-    \begin{subfigure}[b]{0.32\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{figures/confusion_matrices/svm.png}
-        \caption{SVM}
-    \end{subfigure}
-    \hfill
-    \begin{subfigure}[b]{0.32\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{figures/confusion_matrices/random_forest.png}
-        \caption{Random Forest}
-    \end{subfigure}
-    \caption{Matrizes de confusão, parte 2: espectrais, Ensemble e linhas de base clássicas.}
-    \label{fig:confusion_all_neural_b}
-\end{figure}
 
 \end{document}

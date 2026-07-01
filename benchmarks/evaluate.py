@@ -17,10 +17,10 @@ def evaluate_scores(y_true: np.ndarray, p_fake: np.ndarray,
 
     P2 — também reporta `accuracy_at_eer`: a acurácia no LIMIAR ÓTIMO (ponto de
     EER), separando "falha de calibração/limiar" de "falha de separabilidade".
-    Modelos cujos scores deslocam sob ruído (ex.: o Ensemble, cujo score colapsa
-    para ~0 mantendo AUC alta) despencam no limiar fixo 0.5 mas permanecem
-    separáveis — `accuracy_at_eer` revela esse teto, enquanto `accuracy` mostra a
-    decisão operável real. A distância entre os dois mede o quanto é só limiar.
+    Modelos cujos scores deslocam sob ruído podem despencar no limiar fixo 0.5
+    mesmo quando permanecem parcialmente separáveis — `accuracy_at_eer` revela
+    esse teto, enquanto `accuracy` mostra a decisão operável real. A distância
+    entre os dois mede o quanto é só limiar.
 
     Retorna dict com: accuracy, accuracy_at_eer, precision, recall, f1, auc_roc,
     eer, eer_threshold, min_tdcf, n, n_pos, n_neg.

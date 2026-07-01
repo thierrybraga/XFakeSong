@@ -64,13 +64,14 @@ class Bottle2neck(layers.Layer):
     expansion = 4
 
     def __init__(self, planes, base_width=26, scale=4, stride=1,
-                 stype='normal', **kwargs):
+                 stype='normal', use_se=True, **kwargs):
         super(Bottle2neck, self).__init__(**kwargs)
         self.planes = planes
         self.base_width = base_width
         self.scale = scale
         self.stride = stride
         self.stype = stype
+        self.use_se = bool(use_se)
 
         # Width of each group: w = planes * (baseWidth / 64)
         width = int(tf.math.floor(planes * (base_width / 64.0)))
@@ -99,9 +100,12 @@ class Bottle2neck(layers.Layer):
         )
         self.bn3 = layers.BatchNormalization(name='bn3')
 
-        # SE-block after multi-scale convolutions, before residual addition
-        self.se_block = SqueezeExcitationBlock2D(
-            reduction=16, name='se_block'
+        # SE-block is an optional optimized variant. Default True at layer
+        # level preserves backwards compatibility with old saved models that
+        # were serialized before `use_se` existed.
+        self.se_block = (
+            SqueezeExcitationBlock2D(reduction=16, name='se_block')
+            if self.use_se else None
         )
 
         # Average pool for the pass-through group at stage transitions
@@ -167,8 +171,9 @@ class Bottle2neck(layers.Layer):
         out = self.conv3(out)
         out = self.bn3(out, training=training)
 
-        # SE-block: channel recalibration after multi-scale convolutions
-        out = self.se_block(out, training=training)
+        # Optional SE-block: Res2Net-SE optimized variant, not pure Res2Net.
+        if self.se_block is not None:
+            out = self.se_block(out, training=training)
 
         # Residual connection
         if self.downsample is not None:
@@ -188,6 +193,7 @@ class Bottle2neck(layers.Layer):
             'scale': self.scale,
             'stride': self.stride,
             'stype': self.stype,
+            'use_se': self.use_se,
         })
         return config
 
@@ -228,7 +234,7 @@ class SafeInputReshapeLayer(layers.Layer):
 # ---------------------------------------------------------------------------
 
 def _make_res2net_layer(x, planes, num_blocks, stride=1, base_width=26,
-                        scale=4, layer_name='layer'):
+                        scale=4, layer_name='layer', use_se=False):
     """Build one stage of Res2Net with multiple Bottle2neck blocks.
 
     Args:
@@ -242,7 +248,7 @@ def _make_res2net_layer(x, planes, num_blocks, stride=1, base_width=26,
     """
     # First block may downsample (stride=2) and is 'stage' type
     x = Bottle2neck(
-        planes, base_width=base_width, scale=scale,
+        planes, base_width=base_width, scale=scale, use_se=use_se,
         stride=stride, stype='stage',
         name=f'{layer_name}_block_0'
     )(x)
@@ -250,15 +256,15 @@ def _make_res2net_layer(x, planes, num_blocks, stride=1, base_width=26,
     # Remaining blocks are 'normal' type
     for i in range(1, num_blocks):
         x = Bottle2neck(
-            planes, base_width=base_width, scale=scale,
+            planes, base_width=base_width, scale=scale, use_se=use_se,
             stride=1, stype='normal',
             name=f'{layer_name}_block_{i}'
         )(x)
     return x
 
 
-def _create_res2net_model(input_shape, num_classes=1, base_width=26, scale=8,
-                          layer_config=None, dropout_rate=0.2,
+def _create_res2net_model(input_shape, num_classes=1, base_width=26, scale=4,
+                          layer_config=None, dropout_rate=0.2, use_se=False,
                           architecture='multiscale_cnn'):
     """Create Res2Net model (paper-faithful).
 
@@ -276,9 +282,10 @@ def _create_res2net_model(input_shape, num_classes=1, base_width=26, scale=8,
         input_shape: (samples,) for raw audio, (H, W) or (H, W, C) for spectrogram
         num_classes: Number of output classes
         base_width: Width per scale group (paper: 26)
-        scale: Number of scale groups (default: 8, paper: 4)
+        scale: Number of scale groups (paper: 4)
         layer_config: List of block counts per stage (paper Res2Net-50: [3,4,6,3])
         dropout_rate: Dropout before classifier
+        use_se: If True, enables the optimized Res2Net-SE variant.
         architecture: Model name
     """
     if layer_config is None:
@@ -321,22 +328,22 @@ def _create_res2net_model(input_shape, num_classes=1, base_width=26, scale=8,
     # Layer1: planes=64, no downsampling (stride=1)
     x = _make_res2net_layer(x, planes=64, num_blocks=layer_config[0],
                             stride=1, base_width=base_width, scale=scale,
-                            layer_name='layer1')
+                            layer_name='layer1', use_se=use_se)
 
     # Layer2: planes=128, downsampling (stride=2)
     x = _make_res2net_layer(x, planes=128, num_blocks=layer_config[1],
                             stride=2, base_width=base_width, scale=scale,
-                            layer_name='layer2')
+                            layer_name='layer2', use_se=use_se)
 
     # Layer3: planes=256, downsampling (stride=2)
     x = _make_res2net_layer(x, planes=256, num_blocks=layer_config[2],
                             stride=2, base_width=base_width, scale=scale,
-                            layer_name='layer3')
+                            layer_name='layer3', use_se=use_se)
 
     # Layer4: planes=512, downsampling (stride=2)
     x = _make_res2net_layer(x, planes=512, num_blocks=layer_config[3],
                             stride=2, base_width=base_width, scale=scale,
-                            layer_name='layer4')
+                            layer_name='layer4', use_se=use_se)
 
     # ---- Classification head ----
     # Paper: GlobalAvgPool → FC(num_classes)
@@ -364,7 +371,10 @@ def _create_res2net_model(input_shape, num_classes=1, base_width=26, scale=8,
         metrics=['accuracy']
     )
 
-    logger.info(f"Res2Net model created: config={layer_config}, scale={scale}, baseWidth={base_width}, params={model.count_params()}")
+    logger.info(
+        f"Res2Net model created: config={layer_config}, scale={scale}, "
+        f"baseWidth={base_width}, use_se={use_se}, params={model.count_params()}"
+    )
     return model
 
 
@@ -380,6 +390,7 @@ def _create_res2net_lite(input_shape, num_classes=1, architecture='multiscale_cn
         scale=4,
         layer_config=[2, 2, 2, 2],  # Res2Net-18 equivalent
         dropout_rate=0.15,
+        use_se=False,
         architecture=architecture
     )
 
@@ -394,7 +405,9 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
 
     Variants:
         'multiscale_cnn': Paper-faithful Res2Net-50 (Gao et al., 2021)
-                          scale=8, baseWidth=26, [3,4,6,3] blocks, SE-blocks, log-mel front-end
+                          scale=4, baseWidth=26, [3,4,6,3] blocks, no SE
+        'multiscale_cnn_se'/'multiscale_cnn_optimized': optimized Res2Net-SE
+                          scale=8, baseWidth=26, [3,4,6,3] blocks
         'multiscale_cnn_lite': Lightweight Res2Net-18 variant
                                scale=4, baseWidth=16, [2,2,2,2] blocks
 
@@ -403,8 +416,20 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
         num_classes: Number of output classes
         architecture: Architecture variant name
     """
+    if architecture == 'default':
+        architecture = 'multiscale_cnn'
+
     if architecture == 'multiscale_cnn_lite':
         return _create_res2net_lite(input_shape, num_classes, architecture)
+    elif architecture in {'multiscale_cnn_se', 'multiscale_cnn_optimized'}:
+        kwargs.setdefault('scale', 8)
+        kwargs.setdefault('use_se', True)
+        return _create_res2net_model(
+            input_shape=input_shape,
+            num_classes=num_classes,
+            architecture=architecture,
+            **kwargs
+        )
     else:
         return _create_res2net_model(
             input_shape=input_shape,

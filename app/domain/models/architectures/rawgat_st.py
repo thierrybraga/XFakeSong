@@ -45,7 +45,8 @@ logger.setLevel(logging.INFO)
 
 def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architecture: str = "rawgat_st",
                  dropout_rate: float = 0.2, l2_reg_strength: float = 0.0005,
-                 attention_heads: int = 8, hidden_dim: int = 512, num_layers: int = 6) -> models.Model:
+                 attention_heads: int = 8, hidden_dim: int = 512, num_layers: int = 6,
+                 temporal_pool_stride: int = 4, fusion_mode: str = "multiply") -> models.Model:
     """
     Cria e compila um modelo Keras baseado na arquitetura especificada.
 
@@ -55,7 +56,10 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         architecture: O tipo de arquitetura.
 
     Variantes suportadas:
-        - "rawgat_st" (DEFAULT): Paper-faithful (SincNet + GAT spectro-temporal)
+        - "rawgat_st" (DEFAULT): SincNet + GAT espectro-temporal, fusao por produto
+          element-wise e downsampling temporal moderado para manter viabilidade.
+        - "rawgat_st_paper": sem downsampling temporal extra e sem concat extra.
+        - "rawgat_st_fast"/"rawgat_st_stable": variante otimizada anterior.
         - "cnn_gru_simple" / "default" (alias legado): CNN 2D + Bi-GRU + Attention
         - "cnn_baseline" | "bidirectional_gru" | "resnet_gru" | "transformer"
 
@@ -67,10 +71,18 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
 
     x = AudioFeatureNormalization(axis=-1, name="audio_norm_layer")(x)
 
-    # Alias "default" -> "rawgat_st" (paper-faithful) por consistência com aasist.
+    # Alias "default" -> "rawgat_st" por consistência com AASIST.
     # O comportamento antigo (CNN+Bi-GRU) está disponível via "cnn_gru_simple".
     if architecture == "default":
         architecture = "rawgat_st"
+    elif architecture == "rawgat_st_paper":
+        architecture = "rawgat_st"
+        temporal_pool_stride = 1
+        fusion_mode = "multiply"
+    elif architecture in {"rawgat_st_fast", "rawgat_st_stable", "rawgat_st_optimized"}:
+        architecture = "rawgat_st"
+        temporal_pool_stride = 8
+        fusion_mode = "concat"
 
     if architecture == "cnn_gru_simple":
         x = apply_reshape_for_cnn(x, input_shape)
@@ -205,7 +217,7 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
             num_classes = 2
         # ================================================================
         # RawGAT-ST: End-to-End Spectro-Temporal Graph Attention Networks
-        # (Tak et al., 2021) — IMPLEMENTAÇÃO FIEL AO PAPER.
+        # (Tak et al., 2021) — implementação Keras alinhada ao paper.
         #
         # Antes: recebia ESPECTROGRAMA, simulava SincNet com Conv2D (kernels
         # 1×15/1×9/1×5) e aplicava GAT genérico — divergia do paper.
@@ -242,15 +254,17 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         spectral_nodes = layers.Permute(
             (2, 1), name="rawgat_spectral_transpose")(encoder_out)  # (B, 128, T')
         temporal_nodes = encoder_out                                # (B, T', 128)
-        # O GAT materializa atenção densa N x N. Em clips de 5s, T' ainda
-        # passa de milhares de nós; reduzimos o grafo temporal antes da
-        # atenção para manter o treino viável em GPUs de 12 GB.
-        temporal_nodes = layers.AveragePooling1D(
-            pool_size=8,
-            strides=8,
-            padding="same",
-            name="rawgat_temporal_graph_downsample",
-        )(temporal_nodes)
+        # O GAT materializa atenção densa N x N. O default usa downsampling
+        # moderado para não inviabilizar batch/GPU; a variante rawgat_st_paper
+        # define stride=1 e remove esta aproximação.
+        temporal_pool_stride = max(1, int(temporal_pool_stride))
+        if temporal_pool_stride > 1:
+            temporal_nodes = layers.AveragePooling1D(
+                pool_size=temporal_pool_stride,
+                strides=temporal_pool_stride,
+                padding="same",
+                name="rawgat_temporal_graph_downsample",
+            )(temporal_nodes)
 
         # --- 4. Graph Attention em cada grafo ---
         spectral_nodes = GATConvLayer(
@@ -275,12 +289,20 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
             name="rawgat_readout_temporal")(temporal_nodes)
 
         # --- 7. Fusão espectro-temporal: multiplicação element-wise ---
-        # (assinatura do RawGAT-ST). Concatena também os readouts individuais
-        # para estabilidade numérica (evita perda de info quando o produto ≈ 0).
+        # (assinatura do RawGAT-ST). A variante *_fast concatena tambem os
+        # readouts individuais para preservar a receita otimizada anterior.
         fused = layers.Multiply(name="rawgat_graph_fusion")(
             [spec_readout, temp_readout])
-        x = layers.Concatenate(name="rawgat_fusion_concat")(
-            [fused, spec_readout, temp_readout])
+        fusion_mode = str(fusion_mode).lower()
+        if fusion_mode in {"multiply", "paper", "elementwise"}:
+            x = fused
+        elif fusion_mode in {"concat", "stable", "optimized"}:
+            x = layers.Concatenate(name="rawgat_fusion_concat")(
+                [fused, spec_readout, temp_readout])
+        else:
+            raise ValueError(
+                "fusion_mode deve ser 'multiply'/'paper' ou 'concat'/'stable'."
+            )
 
         # --- 8. Classificador ---
         x = layers.Dense(128, activation="relu", name="rawgat_fc")(x)
@@ -304,14 +326,18 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
             metrics=["accuracy"],
         )
         logger.info(
-            "RawGAT-ST model created (paper-faithful: SincNet + Gs/Gt GAT + "
-            "fusão element-wise)"
+            "RawGAT-ST model created (SincNet + Gs/Gt GAT, fusion=%s, "
+            "temporal_pool_stride=%d)",
+            fusion_mode,
+            temporal_pool_stride,
         )
         return model
 
     else:
         raise ValueError(
-            f"Arquitetura '{architecture}' não reconhecida. Escolha 'default', 'cnn_baseline', 'bidirectional_gru', 'resnet_gru', 'transformer', ou 'rawgat_st'.")
+            f"Arquitetura '{architecture}' não reconhecida. Escolha 'default', "
+            "'rawgat_st', 'rawgat_st_paper', 'rawgat_st_fast', "
+            "'cnn_baseline', 'bidirectional_gru', 'resnet_gru' ou 'transformer'.")
 
     # Camadas densas com regularização aprimorada
     x = layers.Dense(hidden_dim, activation='relu',

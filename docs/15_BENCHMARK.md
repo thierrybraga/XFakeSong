@@ -90,8 +90,12 @@ do artigo e relatórios consolidados junto ao repositório de modelos.
 
 ### Resultados numéricos usados no artigo
 
-O benchmark atual usa dataset balanceado de 15.000 amostras, split estratificado
-70/15/15 e 2.250 amostras de teste. Os modelos neurais finais foram treinados
+O benchmark atual usa o dataset nominal de 15k
+`app/datasets/benchmark_audio_raw_balanced_15k.npz`, gerado pelo tier
+`medium`, com 15.000 amostras alvo, split estratificado 70/15/15 e 2.250
+amostras de teste. O arquivo `.npz` consolidado tem 2.769,01 MiB e foi
+exportado a partir de 15.000 WAVs ativos em PCM linear, 16 bits, mono e
+16 kHz. Os modelos neurais finais foram treinados
 por 100 épocas quando aplicável; SVM e RandomForest usam GridSearchCV + ajuste
 final.
 
@@ -209,14 +213,41 @@ de saída continua o mesmo: `run_summary.json`, `run_summary.md`,
 
 ## Roteiro oficial do dataset robusto
 
-O benchmark do TCC atual parte de um conjunto balanceado 1:1 com `7.500`
-áudios reais e `7.500` áudios fake, totalizando 15.000 amostras. A rota padrão
-é:
+O benchmark do TCC atual usa o tier `medium`, balanceado 1:1 com `7.500`
+áudios reais e `7.500` áudios fake, totalizando 15.000 amostras alvo. Em
+27/06/2026, Common Voice/FLEURS no Hugging Face não entregaram a cota real
+PT-BR: a tentativa PT-BR estrita validada ficou em **9.008 amostras**
+(4.504/4.504). A consolidação canônica de 15k, portanto, usa reforço real fora
+do HF e registra a composição efetiva no manifesto.
+
+### Estatísticas do dataset consolidado
+
+Revisão local: **28/06/2026**.
+
+| Item | Valor |
+|---|---:|
+| WAVs ativos | 15.000 |
+| Real / fake | 7.500 / 7.500 |
+| Tamanho dos WAVs ativos | 3.746,26 MiB |
+| Duração dos WAVs ativos | 2.045,61 min / 34,09 h |
+| Tamanho do NPZ | 2.769,01 MiB |
+| Duração efetiva no NPZ | 1.250,00 min / 20,83 h |
+| Formato dos WAVs | WAV PCM linear, 16 bits, mono, 16 kHz |
+| Entrada raw no NPZ | `(80000, 1)` por amostra |
+| Chaves de falante no ativo | 73 |
+
+| Classe | Fonte | Arquivos | MiB | Minutos | Falantes/chaves |
+|---|---|---:|---:|---:|---:|
+| real | BRSpeech-DF bonafide | 3.750 | 847,84 | 462,95 | 1 fallback |
+| real | MLS Portuguese | 1.875 | 894,37 | 488,40 | 21 |
+| real | TTS-Portuguese Corpus | 1.875 | 645,12 | 352,28 | 1 |
+| fake | BRSpeech-DF spoof | 3.750 | 836,65 | 456,84 | 1 fallback |
+| fake | Fake Voices XTTS | 3.750 | 522,27 | 285,15 | 50 |
 
 1. baixar BRSpeech-DF e separar `bonafide` em real e `spoof` em fake;
-2. completar a classe real com Common Voice PT-BR e FLEURS PT-BR;
-3. usar CETUC/OpenSLR como fallback real quando Common Voice/FLEURS não
-   entregarem a cota planejada;
+2. completar a classe real com MLS Portuguese e TTS-Portuguese Corpus;
+3. manter Common Voice/FLEURS/CETUC apenas como legado local quando já existirem
+   ou voltarem a ficar disponíveis;
 4. completar a classe fake com Fake Voices XTTS;
 5. normalizar tudo para WAV mono 16 kHz, remover arquivos inválidos,
    silenciosos, fora de duração e duplicados;
@@ -238,13 +269,13 @@ O preset mais completo para novas rodadas é **Benchmark Robusto Recomendado**:
 
 | Classe | Fontes recomendadas |
 |---|---|
-| Real | BRSpeech-DF bonafide, FLEURS, Common Voice PT, ASVspoof 2019 bonafide, In-the-Wild bonafide |
+| Real | BRSpeech-DF bonafide, MLS Portuguese, TTS-Portuguese Corpus, ASVspoof 2019 bonafide, In-the-Wild bonafide |
 | Fake | BRSpeech-DF spoof, Fake Voices, WaveFake, ASVspoof 2019 spoof, In-the-Wild spoof |
 
 Esse preset aumenta diversidade de idioma, falantes, geradores e vocoders. Para
-o TCC, registre sempre a composição efetiva, porque fontes como Common Voice,
-ASVspoof 5 e alguns mirrors podem exigir login, aceite de termos ou variar por
-release.
+o TCC, registre sempre a composição efetiva: MLS é português/LibriVox e não
+PT-BR estrito; TTS-Portuguese é PT-BR, mas single-speaker; Common Voice/FLEURS
+ficam como fontes legadas enquanto estiverem indisponíveis no HF.
 
 O `.npz` exportado pelo pipeline inclui os metadados usados pelo benchmark:
 
@@ -254,7 +285,7 @@ O `.npz` exportado pelo pipeline inclui os metadados usados pelo benchmark:
 | `metadata_json.dataset_catalog` | Snapshot do catálogo usado naquela execução |
 | `metadata_json.splits.<split>.source_summary` | Composição por fonte em treino, validação e teste |
 | `groups` | Fonte por amostra, derivada do prefixo; usada em `--group-split` e `--cross-generator` |
-| `speaker_ids` | Falante por amostra (tier `large`); usado em `--speaker-split` e `--unseen-speaker` |
+| `speaker_ids` | Falante por amostra; usa ID real do manifesto quando disponível e fallback por fonte quando não disponível |
 
 ### Tiers e protocolos de split
 
@@ -264,22 +295,24 @@ protocolos correspondentes:
 
 | Tier | `build_dataset` | Protocolo de avaliação no benchmark |
 |------|-----------------|-------------------------------------|
-| test / small / medium | `--tier test\|small\|medium` | split estratificado (default) |
-| large | `--tier large` | `--speaker-split` (usuários não vistos) ou `--unseen-speaker <id>` (holdout de falante) |
+| test / small | `--tier test\|small` | split estratificado para smoke/iteração |
+| medium | `--tier medium` | benchmark canônico 15k, split estratificado |
+| large | `--tier large` | auditoria 20k com `--speaker-split` ou `--unseen-speaker <id>` |
 
 Protocolos anti-vazamento disponíveis no `run_benchmark.py` / `run_tcc_pipeline.py`:
 
 - `--group-split` / `--cross-generator <gerador>` — disjunto por **fonte/gerador**
   (preset `group_tcc` / `cross_generator_tcc`).
 - `--speaker-split` / `--unseen-speaker <falante>` — disjunto por **falante**
-  (preset `unseen_speaker_tcc`), exige um `.npz` com `speaker_ids` (tier `large`).
+  (preset `unseen_speaker_tcc`), exige um `.npz` com `speaker_ids` úteis; é
+  recomendado no tier `large`.
 
 ```bash
-# tier large ponta a ponta com protocolo de usuário não visto
-python scripts/run_tcc_pipeline.py --download --tier large \
-    --full-benchmark --epochs 100 --device-profile gpu --speaker-split \
-    --out results/tcc_large_unseen \
-    --npz app/datasets/benchmark_audio_raw_large.npz
+# tier medium ponta a ponta: benchmark canônico 15k
+python scripts/run_tcc_pipeline.py --download --tier medium \
+    --full-benchmark --epochs 100 --device-profile gpu \
+    --out results/tcc_medium_15k \
+    --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
 O script `scripts/build_dataset.py` arquiva excedentes em

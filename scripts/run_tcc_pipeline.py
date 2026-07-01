@@ -394,7 +394,8 @@ def _write_dataset_docs(
         f"- Alvo: `{args.target_per_class}` amostras reais + "
         f"`{args.target_per_class}` amostras fake.",
         f"- Total planejado: `{args.target_per_class * 2}` amostras.",
-        "- Fontes reais: BRSpeech-DF bonafide + CommonVoice/FLEURS PT-BR.",
+        "- Fontes reais: BRSpeech-DF bonafide + MLS/TTS-Portuguese "
+        "(CV/FLEURS somente se ja existirem localmente).",
         "- Fontes fake: BRSpeech-DF spoof + Fake Voices XTTS.",
         "- Split: estratificado 70/15/15.",
         "",
@@ -445,7 +446,7 @@ def main() -> int:
     parser.add_argument(
         "--tcc-full-dataset",
         action="store_true",
-        help="preset de dataset ideal do TCC: 10.000 real + 10.000 fake, full benchmark e API",
+        help="preset canonico do TCC: tier medium, 7.500 real + 7.500 fake, full benchmark e API",
     )
     parser.add_argument(
         "--tier", choices=["test", "small", "medium", "large"], default=None,
@@ -458,7 +459,7 @@ def main() -> int:
         action="store_true",
         help="com --skip-download, não normaliza/recria splits; apenas exporta os splits existentes",
     )
-    parser.add_argument("--target-per-class", type=int, default=10000)
+    parser.add_argument("--target-per-class", type=int, default=7500)
     parser.add_argument("--skip-real-cv", action="store_true")
     parser.add_argument("--full-benchmark", action="store_true", help="usa preset completo do benchmark")
     parser.add_argument("--model", default=None, help="executa benchmark de uma única arquitetura")
@@ -485,7 +486,7 @@ def main() -> int:
     parser.add_argument("--sample-rate", type=int, default=16000)
     parser.add_argument("--duration-sec", type=float, default=5.0)
     parser.add_argument("--max-per-class-export", type=int, default=None)
-    parser.add_argument("--npz", default="app/datasets/benchmark_audio_raw.npz")
+    parser.add_argument("--npz", default="app/datasets/benchmark_audio_raw_balanced_15k.npz")
     parser.add_argument("--out", default=None)
     args = parser.parse_args()
 
@@ -493,7 +494,8 @@ def main() -> int:
         parser.error("Use --model para um único modelo ou --archs para vários, não ambos.")
 
     if args.tcc_full_dataset:
-        args.target_per_class = 10000
+        args.tier = args.tier or "medium"
+        args.target_per_class = 7500
         args.full_benchmark = True
         args.api = True
         if not args.download and not args.skip_download:

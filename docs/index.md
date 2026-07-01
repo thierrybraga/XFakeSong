@@ -44,7 +44,7 @@ fontes canônicas de cada assunto.
 | --- | --- |
 | Artigo para Overleaf | `tcc_overleaf/main.tex` |
 | Pacote Overleaf | `tcc_overleaf.zip` |
-| Dataset do benchmark atual | `app/datasets/benchmark_audio_raw_balanced_15k.npz` |
+| Dataset do benchmark atual | `app/datasets/benchmark_audio_raw_balanced_15k.npz` — 15.000 amostras, 2.769,01 MiB |
 | Modelos default da aplicação | `app/models/bench_*` |
 | Modelos completos por arquitetura | `app/models/benchmark_final/` |
 | Métricas, gráficos e relatórios | `results/` |
