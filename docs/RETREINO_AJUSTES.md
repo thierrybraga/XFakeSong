@@ -1,8 +1,19 @@
 # Retreino com Ajustes — pós `clean_benchmark_full_20260626`
 
 Documento de rastreio dos ajustes de hiperparâmetros aplicados após o
-diagnóstico do último benchmark (14 modelos). Os ajustes já estão **aplicados no
-código**; o retreino precisa ser executado em máquina com GPU + dataset.
+diagnóstico do último benchmark (14 modelos). Os ajustes estão **aplicados no
+código**. Os 4 modelos do escopo oficial do TCC que precisavam de retreino
+(RawGAT-ST, AASIST, WavLM Original, HuBERT Original) foram **retreinados e
+promovidos em 2026-07-02** — ver
+["Retreino de 2026-07-02 — concluído"](#retreino-de-2026-07-02--concluído)
+abaixo. Ensemble e EfficientNet-LSTM não fazem parte da tabela consolidada do
+TCC (11 modelos) e seu retreino permanece pendente. RandomForest também não
+foi retreinado com o novo grid regularizado (`random_forest.py`); o número
+atual no TCC vem do run anterior ao ajuste — a robustez fraca sob ruído
+(68,04% @10dB) já é discutida no texto como limitação estrutural do vetor
+tabular, não como defeito de treino a corrigir, mas o retreino com o grid
+ajustado ainda não foi feito e poderia mudar esse número (overfitting
+diagnosticado via `mean_train_score=1.0` no tuning).
 
 ## Resumo do diagnóstico
 
@@ -67,6 +78,54 @@ retreinados.
 > Importante: promova um modelo só se ele melhorar (ou empatar) o baseline,
 > especialmente a robustez a 10 dB. Caso contrário, mantenha o artefato anterior.
 
+## Diagnóstico do retreino de 2026-06-30 (`official_retrain_selected_20260630`)
+
+**Achado crítico — imagem Docker desatualizada.** O `benchmark_plan.json`
+gravado pela execução do RawGAT-ST registra os hiperparâmetros **antigos**
+(LR 1e-4, dropout 0.2, l2 1e-4, `use_augmentation: false`), apesar de o
+repositório conter os valores ajustados desde 2026-06-21 (`ba37c6f`) e de
+`optimize_hyperparameters: true`. A execução rodou na imagem
+`xfakesong/benchmark:nvidia` construída antes dos ajustes — ou seja, **os
+ajustes deste documento nunca foram aplicados de fato** nesse run. O sintoma
+original se repetiu idêntico (val_loss mínima na época 6 subindo de 0.35 para
+1.20 na época 31; recall 0.08 @10dB).
+
+Checklist obrigatório antes de qualquer novo retreino via Docker:
+
+1. `make build-nocache` (ou rebuild explícito da imagem de benchmark);
+2. `python scripts/run_benchmark.py --plan-only` e conferir no plano gravado
+   os hparams ajustados (RawGAT-ST: LR 5e-5/dropout 0.35/l2 1e-3/aug on;
+   AASIST: LR 3e-4/l2 2e-4/aug on);
+3. conferir que o plano registra o split por falante quando `--speaker-split`
+   for passado.
+
+**Runner SSL corrigido (WavLM/HuBERT Original).** O
+`scripts/run_wavlm_original_benchmark.py` treinava a cabeça só com áudio
+limpo (AWGN apenas na avaliação), rodava as 100 épocas sem early stopping
+(val_loss mínima ~época 13) e decidia com threshold 0.5 sobre scores
+descalibrados — robustez colapsava (recall ~0.08 @10dB; HuBERT 0.507 de
+acurácia ≈ acaso). Correções aplicadas no runner (todas ligadas por default,
+com flags `--no-*` para desligar):
+
+- `--train-augmentation` / `--train-aug-snr 30 20 10 5`: anexa cópias do
+  treino com AWGN (paridade com `classical_noise_augmentation` do caminho
+  Keras);
+- `--early-stopping` / `--early-stopping-patience 15`: monitora val_loss
+  (val com ruído) e restaura os melhores pesos;
+- `--calibrate-under-noise` / `--calibration-snr 20 10`: threshold de decisão
+  no EER da validação com ruído (espelha `calibrate_under_noise` do
+  `settings.py`); o threshold é persistido no `.pt`, no `_config.json` e nas
+  métricas.
+
+**Escopo do TCC pendente à época deste diagnóstico** (consolidado
+`tcc_consolidated_20260701`): RawGAT-ST, AASIST, WavLM Original e HuBERT
+Original — `bash scripts/retrain_ajustado.sh --tcc-pending`
+(Windows: `scripts\retrain_ajustado.bat tcc-pending`). Conformer, Res2Net,
+AST, RawNet2, CCT e os clássicos não precisam de retreino. **Concluído em
+2026-07-02** — ver
+["Retreino de 2026-07-02 — concluído"](#retreino-de-2026-07-02--concluído)
+abaixo.
+
 ## Qualidade de treino (P1) — status
 
 Ajustes de qualidade aplicados para o retreino dos novos modelos:
@@ -84,8 +143,55 @@ Ajustes de qualidade aplicados para o retreino dos novos modelos:
 3. **Early stopping `val_loss` + `restore_best_weights` — JÁ ATIVO.** Callbacks do
    `ModelTrainer` usam `monitor="val_loss"`, `restore_best_weights=True` e
    paciência da config/registry (RawGAT-ST/AASIST já com paciência maior).
-4. **Split disjunto por falante (tier `large`) — APLICADO.**
-   `run_models_sequential.py` ganhou `--speaker-split`/`--group-split` (repassados
-   ao `run_benchmark.py`) e os scripts `retrain_ajustado.sh/.bat` já passam
-   `--speaker-split` (requer `.npz` tier large com `speaker_ids`; cai para o
-   estratificado com aviso se ausente).
+4. **Split disjunto por falante (tier `large`) — disponível, mas OFF por
+   padrão nos scripts de retreino do TCC.** `run_models_sequential.py` tem
+   `--speaker-split`/`--group-split` (repassados ao `run_benchmark.py`), mas
+   `retrain_ajustado.sh/.bat` **não** passam mais `--speaker-split` por
+   padrão desde 2026-07-02: o TCC documenta particionamento estratificado
+   70/15/15 para os 11 modelos da tabela, e rodar um subconjunto com split
+   por locutor gera um teste menor e desbalanceado, **não comparável** ao
+   baseline dos demais modelos (confirmado empiricamente: RawGAT-ST caiu de
+   n=2250 balanceado para n=863 com 525/338 quando testado com
+   `--speaker-split`). Use `--with-speaker-split` (`.sh`) ou
+   `with-speaker-split` (`.bat`) para o protocolo exploratório disjunto por
+   locutor, fora da tabela oficial do TCC.
+
+## Retreino de 2026-07-02 — concluído
+
+Escopo: RawGAT-ST, AASIST, WavLM Original e HuBERT Original — os 4 modelos
+pendentes do consolidado `tcc_consolidated_20260701`. Execução em duas etapas
+devido a dois problemas operacionais encontrados e corrigidos durante o
+processo:
+
+1. **AASIST estourou o timeout.** A primeira chamada de
+   `run_models_sequential.py` não passou `--timeout-min`, herdando o default
+   de 60 min; AASIST precisa de ~160 min para 120 épocas e foi interrompido
+   sem salvar artefato. `retrain_ajustado.sh/.bat` passaram a fixar
+   `--timeout-min 480`.
+2. **RawGAT-ST rodou com `--speaker-split` na primeira tentativa**, gerando
+   um resultado não comparável (ver item 4 acima). Corrigido relançando
+   RawGAT-ST e AASIST sem `--speaker-split`, com o mesmo particionamento
+   estratificado 70/15/15 do restante da tabela.
+
+Resultado final (mesmo protocolo dos demais 7 modelos, `n=2250` balanceado no
+teste; `results/retune_ajustado_20260701_2051/` para WavLM/HuBERT Original,
+`results/retune_ajustado_fix_20260701_2303/` para RawGAT-ST/AASIST,
+consolidado em `results/tcc_consolidated_20260702/`):
+
+| Modelo | Acc. limpa (antes → depois) | EER (antes → depois) | Acc. @10dB (antes → depois) |
+| --- | ---: | ---: | ---: |
+| AASIST | 91,69% → 92,49% | 8,31% → 7,42% | 71,38% → 88,93% |
+| RawGAT-ST | 83,56% → 86,98% | 16,27% → 12,80% | 53,20% → 82,93% |
+| HuBERT Original | 90,18% → 88,76% | 9,73% → 11,29% | 50,67% → 80,98% |
+| WavLM Original | 86,09% → 84,67% | 13,47% → 15,24% | 52,58% → 75,91% |
+
+Todos os 4 modelos convergiram (`converged: True`) e ganharam robustez
+substancial a 10 dB, à custa de perda marginal de acurácia/EER no conjunto
+limpo (WavLM e HuBERT) — *trade-off* esperado ao expor o classificador a
+ruído no treino. Artefatos sincronizados para `app/models/benchmark_final/`
+(11/11 modelos, `python scripts/sync_completed_benchmark_artifacts.py`) e
+tabelas/figuras do TCC regeneradas (`python scripts/update_tcc_latex.py`).
+`tcc_overleaf/main.tex` (Seção 5 — Análise dos Resultados — e Conclusão)
+reescrito para refletir os números corrigidos; a narrativa de robustez a
+ruído deixou de apontar RawGAT-ST/SSL como os mais frágeis e passou a
+identificar SVM/Random Forest como os modelos menos robustos do conjunto.

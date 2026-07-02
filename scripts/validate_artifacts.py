@@ -18,6 +18,34 @@ def _slug(name: str) -> str:
     return "".join(ch if ch.isalnum() else "_" for ch in name.lower()).strip("_")
 
 
+def _compact(name: str) -> str:
+    return "".join(ch for ch in name.lower() if ch.isalnum())
+
+
+# Formas alternativas (aliases) sob as quais um artefato bench_<...>.* pode
+# aparecer para a mesma arquitetura. Duas convencoes de nome coexistem no
+# projeto: o nome interno do registry (ex.: "SpectrogramTransformer",
+# "Hybrid CNN-Transformer", "MultiscaleCNN") usado por ALL_TCC_ARCHITECTURES,
+# e o nome de exibicao do TCC (ex.: "AST", "CCT", "Res2Net") usado por
+# consolidate_results.py/sync_completed_benchmark_artifacts.py. O
+# ModelLoader real (app/domain/services/detection/model_loader.py) descobre
+# modelos via glob("benchmark_final/*/bench_*.*") e nao depende do nome da
+# subpasta nem de qual das duas convencoes foi usada no arquivo -- so o
+# validador precisa reconhecer ambas para nao gerar falso-positivo.
+_ARCH_NAME_ALIASES: dict[str, set[str]] = {
+    "hybridcnntransformer": {"hybridcnntransformer", "cct"},
+    "spectrogramtransformer": {"spectrogramtransformer", "ast"},
+    "multiscalecnn": {"multiscalecnn", "res2net"},
+    "wavlmoriginal": {"wavlmoriginal", "wavlm"},
+    "hubertoriginal": {"hubertoriginal", "hubert"},
+}
+
+
+def _accepted_compacts(arch: str) -> set[str]:
+    compact = _compact(arch)
+    return _ARCH_NAME_ALIASES.get(compact, {compact})
+
+
 def _load_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
@@ -42,7 +70,9 @@ def main() -> int:
     parser.add_argument("--strict", action="store_true", help="Return non-zero on warnings.")
     args = parser.parse_args()
 
-    from benchmarks.config import ALL_TCC_ARCHITECTURES
+    from benchmarks.config import ALL_TCC_ARCHITECTURES, SSL_DOCKER_ARCHITECTURES
+
+    tcc_architectures = [*ALL_TCC_ARCHITECTURES, *SSL_DOCKER_ARCHITECTURES]
 
     models_dir = _resolve(args.models_dir)
     results_dir = _resolve(args.results_dir)
@@ -62,15 +92,25 @@ def main() -> int:
     else:
         warnings.append(f"missing benchmark_final dir: {benchmark_final}")
 
-    for arch in ALL_TCC_ARCHITECTURES:
-        slug = _slug(arch)
-        candidates = [
-            benchmark_final / slug,
-            benchmark_final / slug.replace("wavlm", "wavlm_original"),
-            benchmark_final / slug.replace("hubert", "hubert_original"),
-        ]
-        if not any(path.exists() for path in candidates):
-            warnings.append(f"missing model directory for {arch}: {candidates[0]}")
+    # Descobre os artefatos bench_*.* realmente presentes sob
+    # benchmark_final/*/, do mesmo jeito que o ModelLoader de producao
+    # (glob("benchmark_final/*/bench_*.*"), independente do nome da
+    # subpasta). Evita falso-positivo quando o sync usou a convencao de
+    # nome de exibicao do TCC (ex.: "ast/bench_spectrogramtransformer.keras")
+    # em vez do nome interno do registry.
+    found_compacts: set[str] = set()
+    if benchmark_final.is_dir():
+        for ext in ("*.keras", "*.h5", "*.pkl", "*.pt"):
+            for artifact in benchmark_final.glob(f"*/bench_{ext}"):
+                stem = artifact.stem[len("bench_") :] if artifact.stem.startswith("bench_") else artifact.stem
+                found_compacts.add(_compact(stem))
+
+    for arch in tcc_architectures:
+        if not (_accepted_compacts(arch) & found_compacts):
+            warnings.append(
+                f"missing model artifact for {arch}: nenhum bench_*.* sob "
+                f"{benchmark_final}/*/ corresponde a {sorted(_accepted_compacts(arch))}"
+            )
 
     result_files = sorted(results_dir.rglob("results.json")) if results_dir.exists() else []
     if result_files:

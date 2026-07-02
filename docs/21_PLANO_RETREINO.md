@@ -1,8 +1,18 @@
 # 21 — Plano de Reajuste e Retreino de Modelos
 
 > Plano técnico derivado da análise de robustez/generalização (jun/2026).
-> Mapeia cada recomendação a **arquivos e mudanças concretas**. Nenhum código
-> foi alterado ainda — este documento é o checklist de execução.
+> Mapeia cada recomendação a **arquivos e mudanças concretas**.
+>
+> **Atualização 2026-07-02**: os itens de Prioridade 2 específicos de
+> RawGAT-ST, AASIST, WavLM Original e HuBERT Original (augmentation de ruído
+> casada com o teste, calibração de threshold, hiperparâmetros) foram
+> executados e promovidos ao artigo — ver
+> [`docs/RETREINO_AJUSTES.md`](RETREINO_AJUSTES.md#retreino-de-2026-07-02--concluído)
+> para os números finais e o que exatamente foi corrigido. Os números de
+> WavLM/HuBERT citados neste documento (ex.: "colapsa a 51%/50% em 10 dB") são
+> do diagnóstico original e **não refletem mais o estado atual**. Os itens de
+> Prioridade 0 (split disjunto por falante/gerador, protocolo cross-generator)
+> permanecem pendentes.
 
 ## 0. Causa-raiz (ler antes de tudo)
 

@@ -1,7 +1,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
+    color-scheme: dark;
     --xf-bg:            #0f172a;
+    --xf-bg-elev:       rgba(15, 23, 42, 0.4);
+    --xf-track:         rgba(15, 23, 42, 0.7);
     --xf-surface:       #1e293b;
     --xf-surface-hover: #334155;
     --xf-border:        #334155;
@@ -15,7 +18,9 @@
     --xf-success:       #10b981;
     --xf-warning:       #f59e0b;
     --xf-danger:        #ef4444;
-    --xf-gradient:      linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%);
+    /* Gradiente ligeiramente mais escuro que a marca (#3b82f6→#06b6d4) para
+       manter contraste AA do texto branco sobre a extremidade ciano. */
+    --xf-gradient:      linear-gradient(135deg, #2563eb 0%, #0891b2 100%);
     --xf-radius:        10px;
     --xf-radius-lg:     16px;
     --xf-shadow:        0 4px 24px rgba(0, 0, 0, 0.25);
@@ -30,6 +35,11 @@
     min-height: 100vh !important;
     background: var(--xf-bg) !important;
     color: var(--xf-text) !important;
+}
+
+::selection {
+    background: var(--xf-primary-glow);
+    color: var(--xf-text);
 }
 
 h1, h2, h3, h4, h5 {
@@ -319,6 +329,7 @@ button.primary:focus { animation: pulseGlow 1.5s infinite !important; }
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
+.kpi-primary::before { background: var(--xf-gradient); }
 .kpi-success::before { background: linear-gradient(135deg, var(--xf-success), #34d399); }
 .kpi-info::before    { background: linear-gradient(135deg, var(--xf-accent), #67e8f9); }
 .kpi-neutral::before { background: linear-gradient(135deg, var(--xf-text-muted), var(--xf-border-light)); }
@@ -416,6 +427,7 @@ button.primary:focus { animation: pulseGlow 1.5s infinite !important; }
 .result-fake     { color: var(--xf-danger)  !important; font-weight: 600 !important; }
 .result-ood      { color: var(--xf-warning) !important; font-weight: 600 !important; }
 .result-uncertain { color: #8b5cf6           !important; font-weight: 600 !important; }
+body[data-theme="light"] .result-uncertain { color: #7c3aed !important; }
 
 /* ===== UI Fase 2 — Training Wizard ===== */
 
@@ -465,9 +477,10 @@ button.primary:focus { animation: pulseGlow 1.5s infinite !important; }
     font-weight: 600;
 }
 .wizard-stepper .step-done .step-circle {
-    background: var(--xf-success);
+    /* verde mais escuro que --xf-success para contraste AA do ✓ branco */
+    background: #059669;
     color: #fff;
-    border-color: var(--xf-success);
+    border-color: #059669;
 }
 .wizard-stepper .step-done .step-label {
     color: var(--xf-success);
@@ -490,19 +503,58 @@ button.primary:focus { animation: pulseGlow 1.5s infinite !important; }
    as variáveis :root quando o atributo está presente.
    Default permanece dark (sem o atributo) — compatibilidade total. */
 body[data-theme="light"] {
+    color-scheme: light;
     --xf-bg:            #f8fafc;
+    --xf-bg-elev:       rgba(15, 23, 42, 0.04);
+    --xf-track:         rgba(15, 23, 42, 0.12);
     --xf-surface:       #ffffff;
     --xf-surface-hover: #f1f5f9;
     --xf-border:        #e2e8f0;
     --xf-border-light:  #cbd5e1;
     --xf-text:          #0f172a;
-    --xf-text-muted:    #64748b;
+    --xf-text-muted:    #475569;
     --xf-primary:       #2563eb;
     --xf-primary-hover: #1d4ed8;
     --xf-primary-glow:  rgba(37, 99, 235, 0.18);
-    --xf-accent:        #0891b2;
+    /* Tons escurecidos p/ manter contraste AA sobre superfícies claras */
+    --xf-accent:        #0e7490;
+    --xf-success:       #059669;
+    --xf-warning:       #b45309;
+    --xf-danger:        #dc2626;
+    --xf-gradient:      linear-gradient(135deg, #2563eb 0%, #0e7490 100%);
     --xf-shadow:        0 2px 12px rgba(0, 0, 0, 0.06);
     --xf-shadow-lg:     0 4px 24px rgba(0, 0, 0, 0.08);
+
+    /* Sobrescreve as variáveis internas do Gradio (o tema Python fixa valores
+       escuros para light e dark) — sem isto dropdowns, sliders, checkboxes,
+       áudio e outros componentes nativos permanecem escuros no modo claro. */
+    --body-background-fill:            #f8fafc;
+    --background-fill-primary:         #ffffff;
+    --background-fill-secondary:       #f1f5f9;
+    --block-background-fill:           #ffffff;
+    --panel-background-fill:           #ffffff;
+    --border-color-primary:            #e2e8f0;
+    --block-border-color:              #e2e8f0;
+    --body-text-color:                 #0f172a;
+    --body-text-color-subdued:         #475569;
+    --block-title-text-color:          #0f172a;
+    --block-label-text-color:          #475569;
+    --input-background-fill:           #ffffff;
+    --input-border-color:              #cbd5e1;
+    --input-border-color-focus:        #2563eb;
+    --input-placeholder-color:         #94a3b8;
+    --button-secondary-background-fill: #ffffff;
+    --button-secondary-text-color:     #0f172a;
+    --button-secondary-border-color:   #cbd5e1;
+    --checkbox-background-color:       #ffffff;
+    --checkbox-border-color:           #cbd5e1;
+    --table-even-background-fill:      #ffffff;
+    --table-odd-background-fill:       #f8fafc;
+    --block-shadow:                    0 2px 12px rgba(0, 0, 0, 0.06);
+    --color-accent:                    #2563eb;
+    --color-accent-soft:               rgba(37, 99, 235, 0.12);
+    --link-text-color:                 #1d4ed8;
+    --link-text-color-hover:           #1e40af;
 }
 body[data-theme="light"] .gradio-container {
     background: var(--xf-bg) !important;
@@ -567,10 +619,10 @@ body[data-theme="light"] .status-pill .dot {
 }
 
 /* Borda lateral colorida por nível */
-.notif-item.notif-success  { border-left-color: #10b981; }
-.notif-item.notif-info     { border-left-color: #06b6d4; }
-.notif-item.notif-warning  { border-left-color: #f59e0b; }
-.notif-item.notif-error    { border-left-color: #ef4444; }
+.notif-item.notif-success  { border-left-color: var(--xf-success); }
+.notif-item.notif-info     { border-left-color: var(--xf-accent); }
+.notif-item.notif-warning  { border-left-color: var(--xf-warning); }
+.notif-item.notif-error    { border-left-color: var(--xf-danger); }
 .notif-item.notif-critical {
     border-left-color: #dc2626;
     background: rgba(220, 38, 38, 0.04);
@@ -660,10 +712,10 @@ body[data-theme="light"] .status-pill .dot {
     font-size: 0.85rem;
     margin-left: 8px;
 }
-.field-status.success { background: rgba(16, 185, 129, 0.12); color: #10b981; }
-.field-status.warning { background: rgba(245, 158, 11, 0.12); color: #f59e0b; }
-.field-status.error   { background: rgba(239, 68, 68, 0.12); color: #ef4444; }
-.field-status.info    { background: rgba(6, 182, 212, 0.12); color: #06b6d4; }
+.field-status.success { background: rgba(16, 185, 129, 0.12); color: var(--xf-success); }
+.field-status.warning { background: rgba(245, 158, 11, 0.12); color: var(--xf-warning); }
+.field-status.error   { background: rgba(239, 68, 68, 0.12); color: var(--xf-danger); }
+.field-status.info    { background: rgba(6, 182, 212, 0.12); color: var(--xf-accent); }
 
 /* GPU diagnóstico (Dashboard) */
 .gpu-diag {
@@ -688,13 +740,13 @@ body[data-theme="light"] .status-pill .dot {
     font-weight: 600;
     border-left: 3px solid;
 }
-.gpu-diag-info    { background: rgba(6, 182, 212, 0.10);  border-color: #06b6d4; color: #06b6d4; }
-.gpu-diag-warning { background: rgba(245, 158, 11, 0.10); border-color: #f59e0b; color: #f59e0b; }
-.gpu-diag-error   { background: rgba(239, 68, 68, 0.10);  border-color: #ef4444; color: #ef4444; }
+.gpu-diag-info    { background: rgba(6, 182, 212, 0.10);  border-color: var(--xf-accent); color: var(--xf-accent); }
+.gpu-diag-warning { background: rgba(245, 158, 11, 0.10); border-color: var(--xf-warning); color: var(--xf-warning); }
+.gpu-diag-error   { background: rgba(239, 68, 68, 0.10);  border-color: var(--xf-danger); color: var(--xf-danger); }
 .gpu-diag .badge {
     display: inline-block;
     background: rgba(59, 130, 246, 0.15);
-    color: #3b82f6;
+    color: var(--xf-primary);
     border: 1px solid rgba(59, 130, 246, 0.3);
     border-radius: 4px;
     padding: 1px 6px;
@@ -1572,12 +1624,12 @@ body[data-theme="light"] .status-pill .dot {
     overflow: hidden;
     border: 0;
     border-radius: 999px;
-    background: rgba(15, 23, 42, 0.7);
+    background: var(--xf-track);
 }
 
 .tl-progress::-webkit-progress-bar {
     border-radius: 999px;
-    background: rgba(15, 23, 42, 0.7);
+    background: var(--xf-track);
 }
 
 .tl-progress::-webkit-progress-value {
@@ -1618,7 +1670,7 @@ body[data-theme="light"] .status-pill .dot {
     border: 1px solid rgba(148, 163, 184, 0.2);
     border-radius: 8px;
     padding: 10px 12px;
-    background: rgba(15, 23, 42, 0.4);
+    background: var(--xf-bg-elev);
 }
 
 .tl-card-label {
@@ -1700,12 +1752,12 @@ body[data-theme="light"] .status-pill .dot {
     height: 14px;
     border: 0;
     border-radius: 4px;
-    background: rgba(15, 23, 42, 0.7);
+    background: var(--xf-track);
 }
 
 .dataset-balance-progress::-webkit-progress-bar {
     border-radius: 4px;
-    background: rgba(15, 23, 42, 0.7);
+    background: var(--xf-track);
 }
 
 .dataset-balance-progress::-webkit-progress-value {

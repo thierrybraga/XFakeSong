@@ -12,27 +12,38 @@ sintético. A metodologia integra pré-processamento, extração de característ
 acústicas, treinamento supervisionado, inferência e geração automática de
 relatórios de benchmark.
 
-O experimento consolidado avalia **14 arquiteturas** sobre o tier `medium`
-canônico de 15k, com **15.000 amostras alvo** de áudio, divididas em 70/15/15
-para treino, validação e teste. As janelas foram padronizadas em **16 kHz**, mono e
-**5 s**. A base ativa consolidada contém 15.000 WAVs PCM lineares, 16 bits,
-mono, 16 kHz, somando **2.045,61 min** de áudio validado; o `.npz` canônico tem
-**2.769,01 MiB** e representa **1.250,00 min** após o corte/padding de 5 s por
-amostra. Modelos
-neurais foram treinados em GPU NVIDIA RTX 3060 via WSL2/CUDA; SVM e Random
-Forest foram otimizados por validação cruzada em CPU.
+O harness de benchmark suporta **14 arquiteturas**; o recorte oficial
+consolidado no artigo (`tcc_overleaf/main.tex`) usa **11** delas, sobre o
+tier `medium` canônico de 15k, com **15.000 amostras alvo** de áudio,
+divididas em 70/15/15 para treino, validação e teste. As janelas foram
+padronizadas em **16 kHz**, mono e **5 s**. A base ativa consolidada contém
+15.000 WAVs PCM lineares, 16 bits, mono, 16 kHz, somando **2.045,61 min** de
+áudio validado; o `.npz` canônico tem **2.769,01 MiB** e representa
+**1.250,00 min** após o corte/padding de 5 s por amostra. Modelos neurais
+foram treinados em GPU NVIDIA RTX 3060 via WSL2/CUDA; SVM e Random Forest
+foram otimizados por validação cruzada em CPU.
 
-Principais resultados no conjunto de teste limpo:
+Principais resultados no conjunto de teste limpo (recorte oficial dos 11
+modelos, atualizado em 2026-07-02 — fonte de verdade em
+`tcc_overleaf/tabelas_benchmark.tex`, não editar esta tabela à mão):
 
-| Modelo | Accuracy | EER | AUC-ROC | Decisão |
-|---|---:|---:|---:|---|
-| Conformer | 100,00% | 0,00% | 1,000 | Demonstração principal |
-| Sonic Sleuth | 100,00% | 0,00% | 1,000 | Opção leve e estável |
-| Hybrid CNN-Transformer | 99,96% | 0,00% | 1,000 | Melhor compromisso neural |
-| MultiscaleCNN | 99,73% | 0,18% | 1,000 | Comparação convolucional |
-| SVM | 99,02% | 0,98% | 1,000 | Baseline rápido em CPU |
-| Random Forest | 98,18% | 1,91% | 0,999 | Baseline clássico complementar |
-| Spectrogram Transformer | 71,51% | 28,67% | 0,807 | Requer novo ajuste |
+| Modelo | Accuracy | EER | AUC-ROC | Acc.\ @10dB |
+|---|---:|---:|---:|---:|
+| Res2Net | 99,69% | 0,44% | 1,000 | 96,18% |
+| Conformer | 99,69% | 0,27% | 1,000 | 98,44% |
+| AST | 98,71% | 1,33% | 0,995 | 97,38% |
+| Random Forest | 98,18% | 1,69% | 0,998 | 68,04% |
+| RawNet2 | 97,38% | 2,89% | 0,998 | 90,80% |
+| SVM | 96,00% | 4,31% | 0,991 | 66,44% |
+| CCT | 96,04% | 3,91% | 0,991 | 81,20% |
+| AASIST | 92,49% | 7,42% | 0,926 | 88,93% |
+| HuBERT Original | 88,76% | 11,29% | 0,963 | 80,98% |
+| RawGAT-ST | 86,98% | 12,80% | 0,951 | 82,93% |
+| WavLM Original | 84,67% | 15,24% | 0,930 | 75,91% |
+
+Sonic Sleuth, Ensemble e EfficientNet-LSTM são suportados pelo harness mas
+não integram o recorte oficial (ver `docs/15_BENCHMARK.md` e
+`docs/RETREINO_AJUSTES.md`).
 
 ## Objetivos
 
@@ -383,47 +394,65 @@ $$
 | CUDA | Usado no WSL2/Linux para modelos neurais |
 | CPU | Usada para SVM/Random Forest e validação cruzada |
 | Frameworks | TensorFlow/Keras, PyTorch, scikit-learn |
-| Épocas neurais | 100 |
+| Épocas neurais | até 120 (parada antecipada quando aplicável) |
 | Métricas | Accuracy, F1, AUC-ROC, EER, latência, robustez |
 
 ## Robustez a ruído
 
 O benchmark aplica AWGN no espaço de entrada do modelo, mantendo o mesmo
 protocolo para arquiteturas de áudio bruto, espectrograma e features
-tabulares.
+tabulares. Recorte oficial dos 11 modelos, atualizado em 2026-07-02 (fonte de
+verdade: `tcc_overleaf/tabelas_benchmark.tex`, `Tabela~\ref{tab:robustez_awgn}`):
 
 | Modelo | Limpo | 30 dB | 20 dB | 10 dB |
 |---|---:|---:|---:|---:|
-| Conformer | 100,00% | 100,00% | 99,91% | 94,18% |
-| Sonic Sleuth | 100,00% | 100,00% | 100,00% | 83,24% |
-| Hybrid CNN-Transformer | 99,96% | 99,96% | 99,64% | 88,49% |
-| MultiscaleCNN | 99,73% | 99,73% | 99,56% | 82,04% |
-| Ensemble | 95,82% | 77,69% | 67,60% | 52,00% |
-| SVM | 99,02% | 50,00% | 50,00% | 50,00% |
+| Conformer | 99,69% | 99,73% | 99,69% | 98,44% |
+| AST | 98,71% | 98,76% | 98,67% | 97,38% |
+| Res2Net | 99,69% | 99,64% | 99,60% | 96,18% |
+| RawNet2 | 97,38% | 96,84% | 94,40% | 90,80% |
+| AASIST | 92,49% | 92,76% | 92,67% | 88,93% |
+| RawGAT-ST | 86,98% | 86,89% | 86,62% | 82,93% |
+| CCT | 96,04% | 95,64% | 93,60% | 81,20% |
+| HuBERT Original | 88,76% | 87,07% | 85,47% | 80,98% |
+| WavLM Original | 84,67% | 81,33% | 79,47% | 75,91% |
+| Random Forest | 98,18% | 93,51% | 84,53% | 68,04% |
+| SVM | 96,00% | 95,07% | 87,42% | 66,44% |
 
-O SVM apresentou queda para desempenho próximo ao acaso sob ruído, sugerindo
-dependência forte da distribuição limpa das características.
+SVM e Random Forest são hoje os modelos menos robustos a 10 dB do recorte,
+apesar de figurarem entre os melhores no conjunto limpo — a robustez sob
+ruído depende mais de o treinamento incluir exemplos ruidosos compatíveis
+com o teste do que da família arquitetural em si (ver
+`docs/RETREINO_AJUSTES.md`).
 
 ## Estabilidade de treinamento
 
+Recorte oficial, atualizado em 2026-07-02 (fonte de verdade:
+`Tabela~\ref{tab:estabilidade_treinamento}` em `tabelas_benchmark.tex`):
+
 | Modelo | Melhor validação | Época | Validação final | Queda | Status |
 |---|---:|---:|---:|---:|---|
-| Conformer | 100,00% | 49 | 99,82% | 0,18% | Estável |
-| Hybrid CNN-Transformer | 99,78% | 96 | 99,78% | 0,00% | Estável |
-| MultiscaleCNN | 100,00% | 69 | 100,00% | 0,00% | Estável |
-| AASIST | 94,13% | 100 | 94,13% | 0,00% | Estável |
-| Ensemble | 98,71% | 62 | 95,56% | 3,16% | Estável |
-| Spectrogram Transformer | 98,00% | 11 | 72,98% | 25,02% | Checkpoint obrigatório |
+| Conformer | 100,00% | 17 | 99,64% | 0,36% | Estável |
+| Res2Net | 99,91% | 40 | 99,73% | 0,18% | Estável |
+| AST | 99,16% | 29 | 99,07% | 0,09% | Estável |
+| RawNet2 | 98,18% | 62 | 97,56% | 0,62% | Estável |
+| AASIST | 92,76% | 104 | 92,40% | 0,36% | Estável |
+| RawGAT-ST | 89,16% | 21 | 87,29% | 1,87% | Convergência precoce |
+| HuBERT Original | 84,92% | 17 | 84,24% | 0,68% | Estável |
+| CCT | 95,91% | 30 | 92,13% | 3,78% | Flutuação moderada |
+| WavLM Original | 79,72% | 10 | 78,99% | 0,73% | Estável |
+
+Random Forest e SVM não têm trajetória por época (ajuste via
+`GridSearchCV` + validação cruzada, não aplicável).
 
 ## Discussão
 
 Os resultados sugerem três perfis de uso:
 
-- **Máxima acurácia no conjunto atual**: Conformer, Sonic Sleuth, Hybrid
-  CNN-Transformer e MultiscaleCNN.
-- **Inferência leve e demonstração**: SVM e Sonic Sleuth.
-- **Pesquisa e comparação com literatura moderna**: WavLM, HuBERT, RawNet2,
-  AASIST e RawGAT-ST.
+- **Máxima acurácia e robustez no conjunto atual**: Conformer, Res2Net e AST.
+- **Inferência leve e demonstração**: SVM e RandomForest (atenção: robustez a
+  ruído baixa, ver tabela acima).
+- **Pesquisa e comparação com literatura moderna**: WavLM Original, HuBERT
+  Original, RawNet2, AASIST e RawGAT-ST.
 
 Alto desempenho no conjunto limpo não elimina a necessidade de validação
 externa. A base é balanceada e controlada, o que favorece separabilidade. Os

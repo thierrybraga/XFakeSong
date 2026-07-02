@@ -221,9 +221,16 @@ def _write_model_card(path: Path, payload: dict[str, Any]) -> None:
         "",
         f"- Backbone: `{payload['model_name']}`",
         f"- Backbone congelado: `{payload['freeze_backbone']}`",
-        f"- Epocas da cabeca: `{payload['epochs']}`",
+        f"- Epocas da cabeca: `{payload['epochs']}` "
+        f"(treinadas: `{payload.get('epochs_trained', '?')}`, "
+        f"melhor: `{payload.get('best_epoch', '?')}`)",
         f"- Batch embeddings: `{payload['feature_batch_size']}`",
         f"- Batch treino: `{payload['train_batch_size']}`",
+        f"- Augmentation de ruido no treino: "
+        f"`{payload.get('train_augmentation', False)}` "
+        f"(SNRs `{payload.get('train_aug_snr_db', [])}` dB)",
+        f"- Threshold de decisao calibrado: "
+        f"`{payload.get('decision_threshold', 0.5)}`",
         f"- Artefato: `{payload['artifact']}`",
         f"- Backbone local: `{payload['backbone_artifact']}`",
     ]
@@ -301,6 +308,43 @@ def main() -> int:
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--dropout", type=float, default=0.2)
     parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10])
+    parser.add_argument(
+        "--train-augmentation",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Anexa copias do treino com AWGN (paridade com o caminho Keras; "
+        "sem isso o recall colapsa sob ruido).",
+    )
+    parser.add_argument(
+        "--train-aug-snr",
+        nargs="+",
+        type=int,
+        default=[30, 20, 10, 5],
+        help="SNRs (dB) das copias de treino com ruido.",
+    )
+    parser.add_argument(
+        "--early-stopping",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Interrompe o treino quando a val_loss para de melhorar e "
+        "restaura os melhores pesos.",
+    )
+    parser.add_argument("--early-stopping-patience", type=int, default=15)
+    parser.add_argument(
+        "--calibrate-under-noise",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Calibra o threshold de decisao (EER) em validacao com ruido, "
+        "espelhando calibrate_under_noise do settings.py.",
+    )
+    parser.add_argument(
+        "--calibration-snr",
+        nargs="+",
+        type=int,
+        default=[20, 10],
+        help="SNRs (dB) da validacao com ruido usada no early stopping e "
+        "na calibracao do threshold.",
+    )
     parser.add_argument("--latency-runs", type=int, default=10)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
@@ -419,14 +463,45 @@ def main() -> int:
     Z_val = embed(X_val, "val")
     Z_test = embed(X_test, "test")
 
+    # Augmentation de ruido no treino da cabeca: o teste de robustez avalia
+    # 30/20/10 dB, mas treinar apenas com audio limpo colapsa o recall sob
+    # ruido (recall ~0.08 @10dB no retreino de 2026-06-30). Anexa copias com
+    # AWGN — mesma estrategia do classical_noise_augmentation do runner Keras.
+    Z_train_fit = Z_train
+    y_train_fit = y_train
+    if args.train_augmentation and args.train_aug_snr:
+        aug_chunks = [Z_train]
+        for snr in args.train_aug_snr:
+            noisy = _add_awgn_raw(X_train, snr, seed=args.seed + 1000 + int(snr))
+            aug_chunks.append(embed(noisy, f"train_snr_{snr}"))
+        Z_train_fit = np.concatenate(aug_chunks, axis=0)
+        y_train_fit = np.tile(y_train, len(aug_chunks))
+        logger.info(
+            "Treino aumentado com ruido: %d -> %d amostras (SNRs %s)",
+            len(y_train), len(y_train_fit), args.train_aug_snr,
+        )
+
+    # Validacao de monitoramento (early stopping + calibracao) inclui copias
+    # com ruido — espelha calibrate_under_noise/calibration_snr_db do
+    # settings.py usado no caminho Keras.
+    Z_val_monitor = Z_val
+    y_val_monitor = y_val
+    if args.calibrate_under_noise and args.calibration_snr:
+        val_chunks = [Z_val]
+        for snr in args.calibration_snr:
+            noisy_val = _add_awgn_raw(X_val, snr, seed=args.seed + 2000 + int(snr))
+            val_chunks.append(embed(noisy_val, f"val_snr_{snr}"))
+        Z_val_monitor = np.concatenate(val_chunks, axis=0)
+        y_val_monitor = np.tile(y_val, len(val_chunks))
+
     train_ds = TensorDataset(
-        torch.from_numpy(Z_train), torch.from_numpy(y_train.astype("int64"))
+        torch.from_numpy(Z_train_fit), torch.from_numpy(y_train_fit.astype("int64"))
     )
     train_loader = DataLoader(
         train_ds, batch_size=args.train_batch_size, shuffle=True, drop_last=False
     )
-    val_x = torch.from_numpy(Z_val).to(device)
-    val_y = torch.from_numpy(y_val.astype("int64")).to(device)
+    val_x = torch.from_numpy(Z_val_monitor).to(device)
+    val_y = torch.from_numpy(y_val_monitor.astype("int64")).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.AdamW(
         classifier.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay
@@ -440,6 +515,10 @@ def main() -> int:
     }
     logger.info("Treinando cabeca %s por %d epocas", arch_meta["display"], args.epochs)
     started_train = time.time()
+    best_val_loss = float("inf")
+    best_epoch = 0
+    best_state: dict[str, Any] | None = None
+    epochs_without_improvement = 0
     for epoch in range(1, args.epochs + 1):
         classifier.train()
         losses = []
@@ -481,6 +560,35 @@ def main() -> int:
             val_acc,
         )
 
+        # Early stopping em val_loss (val com ruido) + restore_best_weights,
+        # como nos callbacks do ModelTrainer. Sem isto a cabeca roda as 100
+        # epocas superajustando (val_loss minima ~ep13 nos runs anteriores).
+        if val_loss < best_val_loss - 1e-5:
+            best_val_loss = val_loss
+            best_epoch = epoch
+            best_state = {
+                k: v.detach().clone() for k, v in classifier.state_dict().items()
+            }
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
+            if (
+                args.early_stopping
+                and epochs_without_improvement >= args.early_stopping_patience
+            ):
+                logger.info(
+                    "Early stopping na epoca %d (melhor val_loss=%.4f na epoca %d)",
+                    epoch,
+                    best_val_loss,
+                    best_epoch,
+                )
+                break
+
+    epochs_trained = len(history["loss"])
+    if best_state is not None:
+        classifier.load_state_dict(best_state)
+        logger.info("Pesos restaurados da melhor epoca (%d)", best_epoch)
+
     train_time_s = round(time.time() - started_train, 3)
 
     def predict_scores_from_embeddings(Z: np.ndarray) -> np.ndarray:
@@ -497,23 +605,50 @@ def main() -> int:
                 scores.append(torch.softmax(logits, dim=1)[:, 1].cpu().numpy())
         return _finite_scores(np.concatenate(scores))
 
+    # Calibra o ponto de operacao no val com ruido (threshold no EER) em vez
+    # do 0.5 ingenuo — corrige o vies "tudo real" sob ruido observado com
+    # scores descalibrados (eer_threshold ~0.44 nos runs anteriores).
+    decision_threshold = 0.5
+    calibration_info: dict[str, Any] = {
+        "calibrated_under_noise": bool(args.calibrate_under_noise),
+        "calibration_snr_db": [int(s) for s in args.calibration_snr],
+        "threshold_source": "default_0.5",
+    }
+    if args.calibrate_under_noise:
+        val_scores = predict_scores_from_embeddings(Z_val_monitor)
+        val_eval = _evaluate_scores(y_val_monitor, val_scores)
+        thr = val_eval.get("eer_threshold")
+        if thr is not None and np.isfinite(thr):
+            decision_threshold = float(thr)
+            calibration_info["threshold_source"] = "val_noisy_eer"
+            calibration_info["val_eer"] = val_eval.get("eer")
+    calibration_info["decision_threshold"] = decision_threshold
+    logger.info(
+        "Threshold de decisao: %.4f (%s)",
+        decision_threshold,
+        calibration_info["threshold_source"],
+    )
+
     scores_clean = predict_scores_from_embeddings(Z_test)
-    clean = _evaluate_scores(y_test, scores_clean)
+    clean = _evaluate_scores(y_test, scores_clean, threshold=decision_threshold)
 
     robustness: dict[str, dict[str, float]] = {}
     for snr in args.snr:
         noisy = _add_awgn_raw(X_test, snr, seed=args.seed + int(snr))
         Z_noisy = embed(noisy, f"snr_{snr}")
         robustness[str(snr)] = _evaluate_scores(
-            y_test, predict_scores_from_embeddings(Z_noisy)
+            y_test,
+            predict_scores_from_embeddings(Z_noisy),
+            threshold=decision_threshold,
         )
 
     test_tensor = torch.from_numpy(Z_test).to(device)
     y_test_tensor = torch.from_numpy(y_test.astype("int64")).to(device)
     with torch.no_grad():
         logits_test = classifier(test_tensor)
-        y_pred = logits_test.argmax(dim=1).detach().cpu().numpy()
         test_loss = float(criterion(logits_test, y_test_tensor).detach().cpu())
+    # Predicao final com o threshold calibrado (consistente com clean/robustez)
+    y_pred = (scores_clean >= decision_threshold).astype(int)
 
     cm = confusion_matrix(y_test, y_pred, labels=[0, 1])
     tn, fp, fn, tp = [float(v) for v in cm.ravel()]
@@ -537,6 +672,7 @@ def main() -> int:
         "false_negative_rate": float(fn / max(fn + tp, 1.0)),
         "total_samples": float(len(y_test)),
         "test_loss": test_loss,
+        "decision_threshold": decision_threshold,
     }
 
     artifact = models_dir / arch_meta["artifact"]
@@ -556,6 +692,10 @@ def main() -> int:
             "history": history,
             "clean_metrics": clean,
             "training_config": vars(args),
+            "decision_threshold": decision_threshold,
+            "calibration": calibration_info,
+            "best_epoch": best_epoch,
+            "epochs_trained": epochs_trained,
         },
         artifact,
     )
@@ -569,8 +709,14 @@ def main() -> int:
         "input_shape": [16000, 1],
         "freeze_backbone": args.freeze_backbone,
         "epochs": args.epochs,
+        "epochs_trained": epochs_trained,
+        "best_epoch": best_epoch,
         "feature_batch_size": args.feature_batch_size,
         "train_batch_size": args.train_batch_size,
+        "train_augmentation": bool(args.train_augmentation),
+        "train_aug_snr_db": [int(s) for s in args.train_aug_snr],
+        "decision_threshold": decision_threshold,
+        "calibration": calibration_info,
     }
     (models_dir / f"bench_{arch_meta['compact']}_config.json").write_text(
         json.dumps(_json_safe(config_payload), indent=2, ensure_ascii=False),
@@ -680,8 +826,15 @@ def main() -> int:
                     "learning_rate": args.learning_rate,
                     "weight_decay": args.weight_decay,
                     "dropout": args.dropout,
+                    "train_augmentation": bool(args.train_augmentation),
+                    "train_aug_snr_db": [int(s) for s in args.train_aug_snr],
+                    "early_stopping": bool(args.early_stopping),
+                    "early_stopping_patience": args.early_stopping_patience,
+                    "calibrate_under_noise": bool(args.calibrate_under_noise),
+                    "calibration_snr_db": [int(s) for s in args.calibration_snr],
                     "fallback_used": False,
                 },
+                "calibration": calibration_info,
                 "model_parameters": {
                     "backbone_params": _count_torch_params(backbone),
                     "classifier_params": _count_torch_params(classifier),
@@ -697,8 +850,9 @@ def main() -> int:
                 "model_artifact": str(artifact),
                 "backbone_artifact": str(backbone_dir),
                 "training_artifacts_dir": str(arch_out),
-                "epochs": args.epochs,
-                "wall_time_s": None,
+                "epochs": epochs_trained,
+                "best_epoch": best_epoch,
+                "wall_time_s": train_time_s,
                 "input_preparation": {
                     "input_type": "raw_audio",
                     "original_shape": data.original_shape,

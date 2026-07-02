@@ -37,10 +37,14 @@ fluxograma, modelos, resultados, discussão, limitações e comandos de reprodu�
 
 ### Modelos treinados consolidados
 
-Os 14 diretórios finais em `app/models/benchmark_final/` preservam o artefato
-completo de cada arquitetura, incluindo backbones SSL quando aplicável. No topo
-de `app/models/`, ficam os arquivos carregáveis diretamente pela interface e
-pela API (`.keras`/`.pkl`) e seus respectivos `bench_*_config.json`.
+Os diretórios finais em `app/models/benchmark_final/` preservam o artefato
+completo de cada arquitetura promovida, incluindo backbones SSL quando
+aplicável — atualmente os **11** modelos do recorte oficial do artigo
+(2026-07-02); o harness suporta até 14 arquiteturas (tabela abaixo), mas só
+promove/sincroniza as que efetivamente completam um run
+(`scripts/sync_completed_benchmark_artifacts.py`). No topo de `app/models/`,
+ficam os arquivos carregáveis diretamente pela interface e pela API
+(`.keras`/`.pkl`) e seus respectivos `bench_*_config.json`.
 
 | Arquitetura | Artefato principal | Diretório completo |
 |---|---|---|
@@ -95,26 +99,41 @@ O benchmark atual usa o dataset nominal de 15k
 `medium`, com 15.000 amostras alvo, split estratificado 70/15/15 e 2.250
 amostras de teste. O arquivo `.npz` consolidado tem 2.769,01 MiB e foi
 exportado a partir de 15.000 WAVs ativos em PCM linear, 16 bits, mono e
-16 kHz. Os modelos neurais finais foram treinados
-por 100 épocas quando aplicável; SVM e RandomForest usam GridSearchCV + ajuste
+16 kHz. Os modelos neurais finais foram treinados por até 120 épocas quando
+aplicável (parada antecipada); SVM e RandomForest usam GridSearchCV + ajuste
 final.
 
-| Modelo | Accuracy | AUC ROC | EER | Decisão prática |
-|---|---:|---:|---:|---|
-| Conformer | 100,00% | 1,0000 | 0,00% | Demonstração principal de maior qualidade |
-| Sonic Sleuth | 100,00% | 1,0000 | 0,00% | Demo leve/estável |
-| Hybrid CNN-Transformer | 99,96% | 1,0000 | 0,00% | Melhor compromisso neural para Gradio/API |
-| MultiscaleCNN | 99,73% | 1,0000 | 0,18% | Comparação neural convolucional |
-| SVM | 99,02% | 0,9995 | 0,98% | Baseline rápido em CPU |
-| RandomForest | 98,18% | 0,9986 | 1,91% | Baseline clássico complementar |
-| RawNet2 | 96,36% | 0,9961 | 3,56% | Modelo raw-audio funcional |
-| Ensemble | 95,82% | 0,9970 | 4,18% | Fusão multi-feature, robustez com ressalvas |
-| RawGAT-ST | 95,29% | 0,9940 | 4,71% | Comparação com atenção em grafos |
-| AASIST | 93,64% | 0,9918 | 6,36% | Comparação com arquitetura GAT |
-| HuBERT Original | 92,71% | 0,9708 | 7,29% | Referência SSL |
-| EfficientNet-LSTM | 91,16% | 0,9721 | 9,07% | Transfer learning funcional, não prioritário para demo |
-| WavLM Original | 86,36% | 0,9240 | 13,64% | Referência SSL experimental |
-| SpectrogramTransformer | 71,51% | 0,7779 | 28,49% | Candidato a novo tuning |
+> **Fonte única dos números**: a tabela de resultados usada no artigo é
+> gerada automaticamente em `tcc_overleaf/tabelas_benchmark.tex`
+> (`Tabela~\ref{tab:resultados_consolidados}` de `main.tex`) a partir de
+> `results/<run>/benchmark_summary.json`, via
+> `python scripts/consolidate_results.py <runs...> --prefer-last --copy-to tcc_overleaf/figures`
+> seguido de `python scripts/update_tcc_latex.py`. Não duplique esses valores
+> aqui à mão — copie o retrato mais recente do artigo quando precisar de
+> referência rápida, mas trate `tabelas_benchmark.tex` como a fonte de
+> verdade. Recorte oficial do artigo (**11 modelos**, atualizado em
+> 2026-07-02, conjunto de teste limpo):
+
+| Modelo | Accuracy | AUC ROC | EER | Acc.\ @10dB |
+|---|---:|---:|---:|---:|
+| Res2Net | 99,69% | 1,000 | 0,44% | 96,18% |
+| Conformer | 99,69% | 1,000 | 0,27% | 98,44% |
+| AST | 98,71% | 0,995 | 1,33% | 97,38% |
+| Random Forest | 98,18% | 0,998 | 1,69% | 68,04% |
+| RawNet2 | 97,38% | 0,998 | 2,89% | 90,80% |
+| SVM | 96,00% | 0,991 | 4,31% | 66,44% |
+| CCT | 96,04% | 0,991 | 3,91% | 81,20% |
+| AASIST | 92,49% | 0,926 | 7,42% | 88,93% |
+| HuBERT Original | 88,76% | 0,963 | 11,29% | 80,98% |
+| RawGAT-ST | 86,98% | 0,951 | 12,80% | 82,93% |
+| WavLM Original | 84,67% | 0,930 | 15,24% | 75,91% |
+
+Sonic Sleuth, Ensemble e EfficientNet-LSTM são suportados pelo harness (14
+arquiteturas ao todo, ver seções abaixo) mas **não** integram o recorte
+oficial dos 11 modelos do artigo — Sonic Sleuth por suspeita de vazamento de
+dados não auditada (`scripts/audit_dataset_leakage.py`), e Ensemble/
+EfficientNet-LSTM por estarem fora do escopo consolidado
+(`docs/RETREINO_AJUSTES.md`).
 
 ## Como rodar
 

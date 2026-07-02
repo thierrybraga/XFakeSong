@@ -79,6 +79,8 @@ _HEAD_HTML = """
  content="Ferramenta profissional para análise de integridade de áudio e
  detecção de deepfakes.">
 <meta property="og:type" content="website">
+<meta property="og:locale" content="pt_BR">
+<meta name="theme-color" content="#0f172a">
 """
 # noqa: E501
 
@@ -140,8 +142,10 @@ theme = gr.themes.Base(
     body_text_color_subdued="#94a3b8",
     body_text_color_subdued_dark="#94a3b8",
     # Buttons
-    button_primary_background_fill="linear-gradient(135deg, #3b82f6, #06b6d4)",
-    button_primary_background_fill_hover="linear-gradient(135deg, #2563eb, #0891b2)",
+    # Gradiente levemente mais escuro que a marca para manter contraste AA
+    # do texto branco sobre a extremidade ciano (espelha --xf-gradient no CSS).
+    button_primary_background_fill="linear-gradient(135deg, #2563eb, #0891b2)",
+    button_primary_background_fill_hover="linear-gradient(135deg, #1d4ed8, #0e7490)",
     button_primary_text_color="#ffffff",
     button_secondary_background_fill="#1e293b",
     button_secondary_text_color="#f1f5f9",
@@ -353,7 +357,7 @@ with gr.Blocks(
                     create_features_tab()
                     create_history_tab()
 
-        # Auto-refresh do status bar a cada 60s
+        # Auto-refresh do status bar a cada 15s
         try:
             _sb_timer = gr.Timer(15.0)
             _sb_timer.tick(
@@ -453,6 +457,20 @@ with gr.Blocks(
                     try {
                         const saved = localStorage.getItem('xf_theme') || 'dark';
                         document.body.setAttribute('data-theme', saved);
+                    } catch(e) {}
+                    // A11y: os toggles da toolbar são botões só-com-emoji;
+                    // adiciona rótulos acessíveis para leitores de tela.
+                    try {
+                        const sel = 'button.toolbar-toggle';
+                        const labels = [
+                            'Alternar tema claro/escuro',
+                            'Alternar idioma (PT/EN)',
+                        ];
+                        document.querySelectorAll(sel).forEach((btn, i) => {
+                            const label = labels[i] || 'Alternar';
+                            btn.setAttribute('aria-label', label);
+                            btn.setAttribute('title', label);
+                        });
                     } catch(e) {}
                     return [];
                 }""",

@@ -118,7 +118,14 @@ def build_results_table(rows: list[dict]) -> str:
     table_rows = []
     for row in rows:
         key = row["key"]
-        training = "CV+fit" if key in {"SVM", "RandomForest"} else "100"
+        # Epocas efetivamente treinadas (early stopping) vindas do summary —
+        # o valor fixo "100" anterior contradizia a tabela de estabilidade
+        # (ex.: AASIST com pico de validacao na epoca 104 de um run de 120).
+        if key in {"SVM", "RandomForest"}:
+            training = "CV+fit"
+        else:
+            epochs = row.get("epochs")
+            training = str(int(epochs)) if epochs else "--"
         table_rows.append(
             "        "
             + " & ".join(

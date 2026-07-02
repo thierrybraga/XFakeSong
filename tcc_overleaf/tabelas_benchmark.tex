@@ -18,15 +18,15 @@ Modelo & Acur. & EER & $t$-DCF$^\ast$ & AUC & F1 & Lat.\,(ms) & Treino & Status 
 \hline
         Random Forest & 98,18\% & 1,69\% & 0,0446 & 0,998 & 98,18\% & 46,47 & CV+fit & \textcolor{successgreen}{OK} \\
         SVM & 96,00\% & 4,31\% & 0,1126 & 0,991 & 96,03\% & 1,02 & CV+fit & \textcolor{successgreen}{OK} \\
-        CCT & 96,04\% & 3,91\% & 0,1012 & 0,991 & 96,07\% & 53,37 & 100 & \textcolor{successgreen}{OK} \\
-        AST & 98,71\% & 1,33\% & 0,0349 & 0,995 & 98,71\% & 43,35 & 100 & \textcolor{successgreen}{OK} \\
-        Res2Net & 99,69\% & 0,44\% & 0,0075 & 1,000 & 99,69\% & 42,75 & 100 & \textcolor{successgreen}{OK} \\
-        Conformer & 99,69\% & 0,27\% & 0,0076 & 1,000 & 99,69\% & 59,21 & 100 & \textcolor{successgreen}{OK} \\
+        CCT & 96,04\% & 3,91\% & 0,1012 & 0,991 & 96,07\% & 53,37 & 48 & \textcolor{successgreen}{OK} \\
+        AST & 98,71\% & 1,33\% & 0,0349 & 0,995 & 98,71\% & 43,35 & 49 & \textcolor{successgreen}{OK} \\
+        Res2Net & 99,69\% & 0,44\% & 0,0075 & 1,000 & 99,69\% & 42,75 & 55 & \textcolor{successgreen}{OK} \\
+        Conformer & 99,69\% & 0,27\% & 0,0076 & 1,000 & 99,69\% & 59,21 & 39 & \textcolor{successgreen}{OK} \\
         RawNet2 & 97,38\% & 2,89\% & 0,0576 & 0,998 & 97,37\% & 80,71 & 100 & \textcolor{successgreen}{OK} \\
-        AASIST & 91,69\% & 8,31\% & 0,2574 & 0,917 & 91,88\% & 57,08 & 100 & \textcolor{successgreen}{OK} \\
-        RawGAT-ST & 83,56\% & 16,27\% & 0,4353 & 0,920 & 84,01\% & 37,51 & 100 & \textcolor{successgreen}{OK} \\
-        WavLM Original & 86,09\% & 13,47\% & 1,0000 & 0,937 & 85,66\% & 9,17 & 100 & \textcolor{successgreen}{OK} \\
-        HuBERT Original & 90,18\% & 9,73\% & 0,7031 & 0,969 & 90,02\% & 6,64 & 100 & \textcolor{successgreen}{OK} \\
+        AASIST & 92,49\% & 7,42\% & 0,2098 & 0,926 & 92,46\% & 39,57 & 120 & \textcolor{successgreen}{OK} \\
+        RawGAT-ST & 86,98\% & 12,80\% & 0,3373 & 0,951 & 87,64\% & 30,33 & 46 & \textcolor{successgreen}{OK} \\
+        WavLM Original & 84,67\% & 15,24\% & 0,7876 & 0,930 & 84,69\% & 8,48 & 25 & \textcolor{successgreen}{OK} \\
+        HuBERT Original & 88,76\% & 11,29\% & 0,6427 & 0,963 & 88,75\% & 6,41 & 32 & \textcolor{successgreen}{OK} \\
 \hline
 \end{tabular}
 }
@@ -51,10 +51,10 @@ Modelo & Parâmetros & Tam.\,(MB) & Lat.\,(ms) & Acur. & EER \\
         Res2Net & 23.707.438 & 91,01 & 42,75 & 99,69\% & 0,44\% \\
         Conformer & 15.925.122 & 61,27 & 59,21 & 99,69\% & 0,27\% \\
         RawNet2 & 7.004.418 & 26,89 & 80,71 & 97,38\% & 2,89\% \\
-        AASIST & 1.859.842 & 7,27 & 57,08 & 91,69\% & 8,31\% \\
-        RawGAT-ST & 241.024 & 1,02 & 37,51 & 83,56\% & 16,27\% \\
-        WavLM Original & 94.579.314 & 360,88 & 9,17 & 86,09\% & 13,47\% \\
-        HuBERT Original & 94.569.090 & 360,83 & 6,64 & 90,18\% & 9,73\% \\
+        AASIST & 1.859.842 & 7,27 & 39,57 & 92,49\% & 7,42\% \\
+        RawGAT-ST & 241.024 & 1,02 & 30,33 & 86,98\% & 12,80\% \\
+        WavLM Original & 94.579.314 & 360,88 & 8,48 & 84,67\% & 15,24\% \\
+        HuBERT Original & 94.569.090 & 360,83 & 6,41 & 88,76\% & 11,29\% \\
 \hline
 \end{tabular}
 }
@@ -76,10 +76,10 @@ Modelo & Limpo & 30\,dB & 20\,dB & 10\,dB \\
         Res2Net & 99,69\% & 99,64\% & 99,60\% & 96,18\% \\
         Conformer & 99,69\% & 99,73\% & 99,69\% & 98,44\% \\
         RawNet2 & 97,38\% & 96,84\% & 94,40\% & 90,80\% \\
-        AASIST & 91,69\% & 91,73\% & 91,33\% & 71,38\% \\
-        RawGAT-ST & 83,56\% & 83,64\% & 82,44\% & 53,20\% \\
-        WavLM Original & 86,09\% & 73,20\% & 65,16\% & 52,58\% \\
-        HuBERT Original & 90,18\% & 78,76\% & 62,13\% & 50,67\% \\
+        AASIST & 92,49\% & 92,76\% & 92,67\% & 88,93\% \\
+        RawGAT-ST & 86,98\% & 86,89\% & 86,62\% & 82,93\% \\
+        WavLM Original & 84,67\% & 81,33\% & 79,47\% & 75,91\% \\
+        HuBERT Original & 88,76\% & 87,07\% & 85,47\% & 80,98\% \\
 \hline
 \end{tabular}
 }
@@ -101,10 +101,10 @@ Modelo & Val.\,pico & Época & Val.\,final & Queda & Nota \\
         Res2Net & 99,91\% & 40 & 99,73\% & 0,18\% & estável \\
         Conformer & 100,00\% & 17 & 99,64\% & 0,36\% & estável \\
         RawNet2 & 98,18\% & 62 & 97,56\% & 0,62\% & estável \\
-        AASIST & 92,04\% & 51 & 91,87\% & 0,18\% & estável \\
-        RawGAT-ST & 85,07\% & 6 & 83,42\% & 1,64\% & convergência precoce \\
-        WavLM Original & 86,76\% & 13 & 85,24\% & 1,51\% & estável \\
-        HuBERT Original & 91,07\% & 25 & 89,73\% & 1,33\% & estável \\
+        AASIST & 92,76\% & 104 & 92,40\% & 0,36\% & estável \\
+        RawGAT-ST & 89,16\% & 21 & 87,29\% & 1,87\% & convergência precoce \\
+        WavLM Original & 79,72\% & 10 & 78,99\% & 0,73\% & estável \\
+        HuBERT Original & 84,92\% & 17 & 84,24\% & 0,68\% & estável \\
 \hline
 \end{tabular}
 }
@@ -155,6 +155,6 @@ Modelo & Val.\,pico & Época & Val.\,final & Queda & Nota \\
 
 \begin{figure}[ht]\centering
 \includegraphics[width=\textwidth]{figures/confusion_matrices_article.png}
-\caption{Matrizes de confusão dos onze modelos avaliados neste trabalho.}
+\caption{Matrizes de confusão dos onze modelos avaliados no artigo.}
 \label{fig:confusion_matrices_article}
 \end{figure}
