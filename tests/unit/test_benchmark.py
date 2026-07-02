@@ -542,12 +542,19 @@ def test_neural_benchmark_plan_uses_curated_hyperparameters():
     from benchmarks import BenchmarkConfig, plan_benchmark
 
     with tempfile.TemporaryDirectory() as td:
+        # WavLM/HuBERT (Original) rodam por um runner PyTorch/transformers
+        # dedicado (scripts/run_wavlm_original_benchmark.py), fora do
+        # caminho benchmarks.runner:keras que plan_benchmark cobre; e
+        # EfficientNet-LSTM/Ensemble/Sonic Sleuth ficam fora do recorte
+        # oficial de 11 modelos do TCC (ver ARCH_ALIASES/NEURAL_BENCHMARK_
+        # HPARAMS em benchmarks/planning.py — só RawNet2, AASIST, RawGAT-ST,
+        # Conformer, CCT, AST, Res2Net, SVM, RandomForest).
         cfg = BenchmarkConfig.neural_tcc(
             architectures=[
-                "WavLM",
+                "RawGAT-ST",
                 "AASIST",
                 "SpectrogramTransformer",
-                "EfficientNet-LSTM",
+                "Conformer",
             ],
             output_dir=td,
             synthetic_n=24,
@@ -557,17 +564,18 @@ def test_neural_benchmark_plan_uses_curated_hyperparameters():
         )
         plan = plan_benchmark(cfg, write=True)
 
-        wavlm = plan["architectures"]["WavLM"]["training_config"]
+        rawgatst = plan["architectures"]["RawGAT-ST"]["training_config"]
         aasist = plan["architectures"]["AASIST"]["training_config"]
         ast = plan["architectures"]["SpectrogramTransformer"]["training_config"]
-        efficientnet = plan["architectures"]["EfficientNet-LSTM"]["training_config"]
+        conformer = plan["architectures"]["Conformer"]["training_config"]
 
         assert plan["preset"] == "neural_tcc"
-        assert wavlm["learning_rate"] == 1e-4
-        assert wavlm["batch_size"] <= 4
-        assert wavlm["use_augmentation"] is False
-        assert wavlm["use_mixed_precision"] is False
-        assert aasist["learning_rate"] == 1e-4
+        assert rawgatst["learning_rate"] == 5e-5
+        assert rawgatst["input_domain"] == "raw_audio"
+        assert rawgatst["batch_size"] <= 4
+        assert rawgatst["use_augmentation"] is True
+        assert rawgatst["use_mixed_precision"] is False
+        assert aasist["learning_rate"] == 3e-4
         assert aasist["input_domain"] == "raw_audio"
         assert aasist["batch_size"] <= 4
         assert ast["learning_rate"] == 2e-5
@@ -582,11 +590,12 @@ def test_neural_benchmark_plan_uses_curated_hyperparameters():
         assert ast["early_stopping_patience"] == 20
         assert ast["epochs"] == 7
         assert ast["recommended_epochs"] == 100
-        assert efficientnet["learning_rate"] == 1e-4
-        assert efficientnet["optimizer"] == "Adam"
-        assert efficientnet["lstm_units"] == 128
-        assert efficientnet["pretrained"] is True
-        assert efficientnet["batch_size"] <= 8
+        assert conformer["learning_rate"] == 1e-4
+        assert conformer["optimizer"] == "AdamW"
+        assert conformer["weight_decay"] == 1e-4
+        assert conformer["warmup_steps"] == 1500
+        assert conformer["clipnorm"] == 1.0
+        assert conformer["batch_size"] <= 16
 
 
 def test_rawnet2_100e_preset_uses_benchmark_hparams():

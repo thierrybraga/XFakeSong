@@ -8,11 +8,18 @@ from app.core.dataset_catalog import (
 
 
 def test_gradio_download_catalog_has_all_expected_sources():
+    # MLS Portuguese, TTS-Portuguese Corpus e CORAA ASR foram adicionados ao
+    # catalogo depois deste teste ser escrito -- sao, alias, as duas fontes
+    # reais usadas (com BRSpeech-DF) no dataset de 15k do TCC (main.tex,
+    # Tabela dataset_fontes; ver tambem build_dataset.py::COMPOSITION).
     expected = {
         "BRSpeech-DF",
         "Fake Voices",
         "FLEURS",
         "CETUC",
+        "MLS Portuguese",
+        "TTS-Portuguese Corpus",
+        "CORAA ASR",
         "MLAAD-PT",
         "Common Voice PT",
         "ASVspoof 2019",

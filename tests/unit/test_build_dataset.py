@@ -31,10 +31,14 @@ def test_step_balance_archives_excess_without_deleting(tmp_path, monkeypatch):
     assert len(list((overflow_dir / "fake").glob("*.wav"))) == 2
 
 
-def test_public_real_source_prefixes_include_common_voice_and_fleurs():
+def test_public_real_source_prefixes_include_mls_and_tts_portuguese():
+    """COMPOSITION reflete a fonte real canonica do dataset de 15k usado no
+    TCC (main.tex, Tabela dataset_fontes): MLS Portuguese + TTS-Portuguese
+    Corpus, nao Common Voice PT/FLEURS (que download_datasets.py tambem
+    suporta, mas nao compoem o recorte de 15k efetivamente treinado)."""
     public_real = build_dataset.COMPOSITION["sources"]["real"][1]
 
-    assert "cvpt" in public_real["file_prefix"]
-    assert "fleurs" in public_real["file_prefix"]
-    assert "--common-voice-pt" in public_real["args"]
-    assert "--fleurs" in public_real["args"]
+    assert "mlspt" in public_real["file_prefix"]
+    assert "ttsport" in public_real["file_prefix"]
+    assert "--mls-portuguese" in public_real["args"]
+    assert "--tts-portuguese" in public_real["args"]

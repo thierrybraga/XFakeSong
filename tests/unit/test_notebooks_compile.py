@@ -86,10 +86,14 @@ def test_all_architectures_notebook_documents_full_benchmark_contract():
         _NB / "pipeline" / "04_all_architectures_full_benchmark.ipynb"
     )
     assert "RUN_FULL_BENCHMARK = False" in text
-    assert "TARGET_PER_CLASS = 10_000" in text
+    # Dataset dimensionado por tier (test/small/medium/large), nao mais por
+    # uma constante TARGET_PER_CLASS solta -- ver docs/12_DATASETS.md. O
+    # tier "large" (usado aqui) equivale a 10k amostras/classe.
+    assert 'TIER = "large"' in text
+    assert "10k/classe" in text or "10.000" in text
     assert "XFAKE_STORAGE_DIR" in text
     assert "--download" in text
-    assert "--target-per-class" in text
+    assert "--tier" in text
     assert "--archs" in text
     for arch in (
         "WavLM",

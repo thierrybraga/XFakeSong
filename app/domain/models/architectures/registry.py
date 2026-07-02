@@ -331,11 +331,22 @@ class ArchitectureRegistry:
                     "augmentation_strength": 0.45,
                 },
                 input_requirements={
-                    "input_type": "spectrogram",
-                    "type": "features",
-                    "format": "spectrogram",
-                    "min_sequence_length": 100,
-                    "feature_dim": 80,
+                    # AJUSTE: era "spectrogram", divergindo do contrato real
+                    # em architecture_factory_registry (factory.py) e da
+                    # implementação (ensemble.py computa Mel/LFCC/CQT
+                    # internamente via camadas TF custom a partir de audio
+                    # bruto — SharedSTFTLayer et al.). feature_preparer.py usa
+                    # este registry como fallback de inferencia quando o
+                    # input_contract do modelo salvo esta ausente; a entrada
+                    # divergente fazia esse fallback preparar espectrograma
+                    # em vez de audio bruto.
+                    "input_type": "raw_audio",
+                    "type": "audio",
+                    "format": "raw",
+                    "sample_rate": 16000,
+                    "min_sequence_length": 16000,
+                    "target_sequence_length": 16000,
+                    "crop_strategy": "center",
                 },
             )
         )

@@ -48,10 +48,12 @@ def test_detection_service_integration_flow(integration_models_dir):
     # Initialize service with temp models dir
     service = DetectionService(models_dir=str(integration_models_dir))
 
-    # Verify model loaded
-    assert "test_model_AASIST" in service.loaded_models
-    model_info = service.loaded_models["test_model_AASIST"]
-    assert model_info.architecture == "AASIST"
+    # ModelLoader descobre os artefatos sem carregar os pesos no startup
+    # (evita N forward-passes na inicializacao) -- loaded_models so e
+    # populado sob demanda, no primeiro get_model()/detect_single() de cada
+    # modelo. Verificamos a descoberta aqui; o carregamento efetivo (e o
+    # ModelInfo.architecture) e verificado apos detect_single, abaixo.
+    assert "test_model_AASIST" in service.get_available_models()
 
     # Create dummy audio data
     audio_data = AudioData(
@@ -80,3 +82,9 @@ def test_detection_service_integration_flow(integration_models_dir):
     assert result.status == ProcessingStatus.SUCCESS
     assert result.data.model_name == "test_model_AASIST"
     assert "is_fake" in result.data.__dict__ or hasattr(result.data, "is_fake")
+
+    # detect_single aciona o carregamento lazy: agora o modelo deve estar
+    # efetivamente carregado.
+    assert "test_model_AASIST" in service.loaded_models
+    model_info = service.loaded_models["test_model_AASIST"]
+    assert model_info.architecture == "AASIST"

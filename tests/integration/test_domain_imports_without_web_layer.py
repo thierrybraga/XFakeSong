@@ -57,8 +57,11 @@ _COLAB_SIM = textwrap.dedent(
     assert 'fastapi' not in sys.modules, 'fastapi foi importado no caminho de domínio'
     assert 'starlette' not in sys.modules, 'starlette foi importado no caminho de domínio'
 
-    # E o factory ainda constrói um modelo (Ensemble é leve):
-    m = create_model_by_name('Ensemble', input_shape=(100, 80), num_classes=1)
+    # E o factory ainda constrói um modelo (Ensemble é leve). Ensemble consome
+    # audio bruto (computa Mel/LFCC/CQT internamente via camadas TF custom) —
+    # ver architecture_factory_registry: input_type=raw_audio,
+    # target_sequence_length=16000.
+    m = create_model_by_name('Ensemble', input_shape=(16000, 1), num_classes=1)
     assert m.count_params() > 0
     print('CERT_OK', m.count_params())
     """

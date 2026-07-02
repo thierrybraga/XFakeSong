@@ -87,9 +87,14 @@ def test_architecture_builds_and_forwards(architecture):
 
 # Arquiteturas de espectrograma — o adaptador do benchmark precisa AUMENTAR
 # entradas minúsculas para um tamanho treinável.
+# Ensemble NÃO entra aqui: apesar do nome sugerir fusão de espectrogramas,
+# o input_requirements real (architecture_factory_registry) é raw_audio —
+# o modelo computa Mel/LFCC/CQT internamente via camadas TF custom
+# (SharedSTFTLayer et al. em app/domain/models/architectures/ensemble.py),
+# então prepare_for_architecture roteia por _to_raw_audio, não _to_spectrogram.
 SPECTROGRAM_ARCHS = [
     "Sonic Sleuth", "Conformer", "Hybrid CNN-Transformer",
-    "SpectrogramTransformer", "EfficientNet-LSTM", "MultiscaleCNN", "Ensemble",
+    "SpectrogramTransformer", "EfficientNet-LSTM", "MultiscaleCNN",
 ]
 
 
