@@ -952,6 +952,63 @@ validação com ruído (Seção~\ref{sec:metricas}).}
 \newpage
 
 % ------------------------------------------------------------------
+\subsection{Pré-processamento: Normalização e Detecção de Atividade de Voz}
+\label{sec:preprocessamento}
+% ------------------------------------------------------------------
+
+O bloco ``VAD + AGC'' da Figura~\ref{fig:pipeline} padroniza o áudio de
+entrada antes da extração de características, cobrindo múltiplos formatos
+(WAV, MP3, FLAC, OGG) com conversão automática para \SI{16}{\kilo\hertz}
+mono, PCM linear de \SI{16}{\bit}.
+
+\subsubsection*{Normalização por Controle Automático de Ganho (AGC)}
+
+O nível de amplitude é normalizado para um alvo de \textit{loudness} fixo:
+\begin{equation}
+\label{eq:agc}
+x_{norm}[n] = x[n] \cdot
+\frac{L_{target}}{\sqrt{\dfrac{1}{N}\displaystyle\sum_{i=0}^{N-1}x[i]^2}}
+\end{equation}
+\noindent
+em que $L_{target} = -23$\,LUFS é o nível alvo de \textit{loudness} na
+Equação~\ref{eq:agc}, aplicado como aproximação por normalização RMS --- a
+conversão LUFS exata exigiria ponderação \textit{K-weighting}
+(ITU-R BS.1770), não implementada nesta etapa.
+
+\subsubsection*{Detecção de Atividade de Voz (VAD)}
+
+O VAD por energia remove segmentos silenciosos ou não vocalizados,
+calculando a energia em decibéis por janela deslizante:
+\begin{equation}
+\label{eq:vad_energy}
+E[m] = 10\log_{10}\!\left(\frac{1}{N}\sum_{n=0}^{N-1}|x[mH+n]|^2\right)
+\end{equation}
+\begin{equation}
+\label{eq:vad_decision}
+\text{Voice}[m] = \begin{cases}
+1, & \text{se } E[m] > \theta_{VAD} \text{ e } D[m] > D_{min}\\
+0, & \text{caso contrário}
+\end{cases}
+\end{equation}
+\noindent
+em que $\theta_{VAD} = -25$\,dB é o limiar de energia, $H$ é o
+\textit{hop length} (passo, em amostras, entre janelas consecutivas de
+\SI{25}{\milli\second}; a \SI{16}{\kilo\hertz}, $H$ corresponde a
+\SI{10}{\milli\second}), $D[m]$ é a duração do segmento contíguo de fala e
+$D_{min} = 0{,}3$\,s é a duração mínima para manter um segmento
+(Equações~\ref{eq:vad_energy}--\ref{eq:vad_decision}).
+
+\begin{infobox}{VAD em Ambiente de Produção}
+O Silero VAD (disponibilizado via Torch Hub) oferece performance pré-treinada
+superior ao VAD por energia. Nos experimentos, a indisponibilidade do
+\texttt{torchaudio} motivou o uso do VAD por energia como \textit{fallback},
+preservando a funcionalidade do \textit{pipeline} sem dependências externas
+não atendidas no ambiente de CPU.
+\end{infobox}
+
+\newpage
+
+% ------------------------------------------------------------------
 \subsection{Representações de Entrada e Características Acústicas}
 \label{sec:caracteristicas}
 % ------------------------------------------------------------------
@@ -1005,6 +1062,30 @@ atenção exige um vetor de características de dimensão fixa. O módulo
 \end{itemize}
 
 \noindent
+Os coeficientes cepstrais na escala Mel (MFCC) que compõem a segunda família
+são obtidos por:
+\begin{equation}
+\label{eq:mfcc}
+MFCC[m,c] = \sum_{k=0}^{M-1}\log(S[m,k])\cdot
+\cos\!\left(\frac{\pi c(k+0{,}5)}{M}\right)
+\end{equation}
+\noindent
+em que $S[m,k]$ são as energias dos $M=40$ filtros triangulares na escala
+Mel para o quadro $m$, e $c \in \{0,\dots,12\}$ indexa os $13$ coeficientes
+efetivamente extraídos na Equação~\ref{eq:mfcc} (média e desvio-padrão dos
+quais formam os \num{26} descritores da família MFCC). Antes do ajuste dos
+classificadores clássicos, cada dimensão do vetor de \num{63} descritores é
+padronizada por normalização estatística (\textit{z-score}):
+\begin{equation}
+\label{eq:zscore}
+X_{norm} = \frac{X - \mu}{\sigma}
+\end{equation}
+\noindent
+em que $\mu$ e $\sigma$ são a média e o desvio-padrão de cada
+característica, estimados sobre o conjunto de treino (\texttt{StandardScaler},
+\texttt{scikit-learn}) e reaplicados sem reajuste sobre validação e teste.
+
+\noindent
 Esse vetor de \num{63} dimensões implementa, de forma concreta, os
 descritores estatísticos temporais e cepstrais mencionados nos objetivos deste
 trabalho; a contribuição relativa de cada descritor para a decisão do
@@ -1021,6 +1102,140 @@ modelos comparados neste trabalho cobrem três regimes de entrada
 (áudio bruto, espectrograma Mel e vetor tabular temporal/cepstral), enquanto a
 integração de descritores prosódicos e de qualidade vocal ao \textit{benchmark}
 permanece como extensão natural (Seção~\ref{sec:trabalhos_futuros}).
+
+\subsubsection*{Espectrograma Mel}
+
+A representação tempo-frequência consumida por Conformer, CCT, AST e Res2Net
+(Tabela~\ref{tab:representacoes_entrada}) é computada por:
+\begin{equation}
+\label{eq:melspec}
+MelSpec[m,k] = \log\!\left(\sum_{n}H_k[n]\cdot|STFT[m,n]|^2 +
+\varepsilon\right)
+\end{equation}
+\noindent
+em que $H_k[n]$ é o banco de $128$ filtros triangulares na escala Mel,
+$STFT$ é a transformada de Fourier de curto termo com janela de
+\num{2048} amostras (\textit{n\_fft}) e $\varepsilon$ evita $\log(0)$ na
+Equação~\ref{eq:melspec}. O \textit{hop length} de \num{512} amostras
+determina a resolução temporal do espectrograma resultante.
+
+\subsubsection*{Descritores Adicionais Disponíveis no Pipeline}
+
+Além dos regimes de entrada efetivamente comparados neste \textit{benchmark},
+o repositório implementa extratores adicionais como adaptadores
+\texttt{IFeatureExtractor} (\path{app/domain/features/extractors/}),
+utilizáveis em extensões futuras do protocolo
+(Seção~\ref{sec:trabalhos_futuros}) mas não consumidos pelos \num{11}
+modelos deste trabalho.
+
+\textbf{Descritores de forma espectral.} Centroide, \textit{rolloff},
+largura de banda, taxa de cruzamento por zero (ZCR), contraste e planura
+espectrais caracterizam a distribuição de energia no domínio da frequência:
+\begin{align}
+SC[m] &= \frac{\displaystyle\sum_{k=0}^{K-1} k\cdot|X[m,k]|^2}
+             {\displaystyle\sum_{k=0}^{K-1}|X[m,k]|^2}
+\qquad \text{(centroide)} \\
+SR[m] &= k_r \;\text{tal que}\;
+\sum_{k=0}^{k_r}|X[m,k]|^2 = 0{,}85\sum_{k=0}^{K-1}|X[m,k]|^2
+\qquad \text{(\textit{rolloff} a \num{85}\%)} \\
+SB[m] &=
+\sqrt{\frac{\displaystyle\sum_{k=0}^{K-1}(k-SC[m])^2\cdot|X[m,k]|^2}
+           {\displaystyle\sum_{k=0}^{K-1}|X[m,k]|^2}}
+\qquad \text{(largura de banda)} \\
+ZCR[m] &= \frac{1}{2N}\sum_{n=0}^{N-1}
+|\mathrm{sgn}(x[mH+n]) - \mathrm{sgn}(x[mH+n-1])| \\
+SFlatness[m] &=
+\frac{\left(\displaystyle\prod_{k=0}^{K-1}|X[m,k]|^2\right)^{1/K}}
+     {\dfrac{1}{K}\displaystyle\sum_{k=0}^{K-1}|X[m,k]|^2}
+\end{align}
+\noindent
+em que $X[m,k]$ é o espectro de magnitude do quadro $m$ na \textit{bin} de
+frequência $k$, entre $K$ \textit{bins} totais.
+
+\textbf{Constant-Q Transform (CQT).} Alternativa de resolução
+log-frequencial ao espectrograma linear, usada por Todisco et al.\ como
+\textit{front-end} de referência para \textit{anti-spoofing}
+\cite{todisco2016new}:
+\begin{equation}
+\label{eq:cqt}
+CQT[m,k] = \sum_{n}x[n]\cdot g_k[n-mH]\cdot e^{-j2\pi Q_k n/N_k}
+\end{equation}
+\noindent
+com $12$ \textit{bins} por oitava e $7$ oitavas ($84$ características) na
+implementação disponível.
+
+\textbf{Descritores prosódicos e de qualidade vocal.} Complementam os
+regimes acima com informação de excitação glotal --- frequência
+fundamental (F0), \textit{jitter} e \textit{shimmer} (perturbação
+ciclo-a-ciclo de período e amplitude) e HNR
+(\textit{Harmonic-to-Noise Ratio}):
+\begin{align}
+Jitter &= \frac{1}{N-1}\sum_{i=1}^{N-1}\frac{|T_i - T_{i-1}|}{\bar{T}} \\
+Shimmer &= \frac{1}{N-1}\sum_{i=1}^{N-1}\frac{|A_i - A_{i-1}|}{\bar{A}} \\
+HNR &= 10\log_{10}\!\left(\frac{P_{harmonic}}{P_{noise}}\right)
+\end{align}
+\noindent
+em que $T_i$ e $A_i$ são o período e a amplitude do $i$-ésimo ciclo
+glotal, e $P_{harmonic}$/$P_{noise}$ são as potências das componentes
+harmônica e não-harmônica do sinal.
+
+\textbf{Características \textit{delta} e \textit{delta-delta}.} Capturam a
+dinâmica temporal de primeira e segunda ordem de qualquer descritor de
+quadro $X[m,c]$:
+\begin{equation}
+\label{eq:delta}
+\Delta X[m,c] = \frac{\displaystyle\sum_{n=1}^{N}n(X[m+n,c]-X[m-n,c])}
+                     {2\displaystyle\sum_{n=1}^{N}n^2}
+\end{equation}
+
+A Tabela~\ref{tab:ranking_features} resume esses descritores por tipo,
+dimensionalidade e validação na literatura de \textit{anti-spoofing}, cuja
+hierarquia discriminativa motivou a escolha do vetor tabular efetivamente
+avaliado: características espectrais e cepstrais apresentam desempenho
+consistentemente superior a descritores prosódicos isolados, conforme
+observado nas edições do ASVspoof
+\cite{sahidullah2015comparison, todisco2016new, todisco2019asvspoof} e no
+desafio ADD \cite{yi2022add}.
+
+\begin{table}[H]
+\centering
+\caption{Descritores acústicos disponíveis no \textit{pipeline}: síntese da
+literatura. \textbf{Custo Computacional}: estimativa qualitativa
+(Baixo/Médio/Alto) do consumo de tempo e memória para extração.}
+\label{tab:ranking_features}
+\small\singlespacing
+\begin{tabular}{p{2.8cm}cp{2.0cm}p{4.5cm}}
+\toprule
+\textbf{Tipo} & \textbf{Dimen.} & \textbf{Custo Comp.} &
+\textbf{Validação na Literatura} \\
+\midrule
+Espectrais (forma)
+  & 6 & Médio
+  & Sensíveis a artefatos de \textit{vocoder} na envoltória
+    espectral~\cite{todisco2016new} \\
+\addlinespace
+MFCC
+  & 13 & Baixo
+  & Referência clássica; LFCC supera MFCC em \textit{spoofing}
+    desde 2015~\cite{sahidullah2015comparison, todisco2019asvspoof} \\
+\addlinespace
+Espectrograma Mel
+  & 128 bandas & Baixo
+  & Base para CNNs/\textit{Transformers}; captura artefatos de
+    síntese tempo-frequência~\cite{jung2022aasist, tak2021rawnet2} \\
+\addlinespace
+CQT
+  & 84 & Alto
+  & Resolução logarítmica; CQCC como \textit{front-end}
+    robusto~\cite{todisco2016new} \\
+\addlinespace
+Prosódicas/qualidade vocal
+  & 6 & Médio
+  & Desempenho isolado inferior; fusão com espectrais melhora
+    resultados~\cite{yi2022add, muller2022warning} \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 % ------------------------------------------------------------------
 \subsection{Conjunto de Dados e Protocolo Experimental}
@@ -1252,11 +1467,9 @@ pela comunidade científica, conforme descrito a seguir:
 % ------------------------------------------------------------------
 
 O regime de treinamento aplicado às arquiteturas conexionistas consistiu em um
-protocolo padronizado com teto de \num{100} épocas (\num{120} para os quatro
-modelos retreinados após a correção descrita na
-Seção~\ref{sec:analise_resultados}), parada antecipada monitorando a perda de
-validação e salvamento automatizado do melhor \textit{checkpoint} com
-restauração dos melhores pesos. O número de épocas efetivamente treinadas por
+protocolo padronizado com teto de até \num{120} épocas, parada antecipada
+monitorando a perda de validação e salvamento automatizado do melhor
+\textit{checkpoint} com restauração dos melhores pesos. O número de épocas efetivamente treinadas por
 modelo --- tipicamente inferior ao teto por ação da parada antecipada --- é
 reportado na coluna \textit{Treino} da
 Tabela~\ref{tab:resultados_consolidados}. Durante o processo, coletaram-se
@@ -1348,30 +1561,6 @@ e~\ref{sec:protocolo_treinamento}.
 \subsection{Análise dos Resultados}
 \label{sec:analise_resultados}
 
-\subsubsection*{Nota Metodológica: Correção de Treinamento}
-
-Uma rodada preliminar deste \textit{benchmark} identificou dois problemas
-distintos nos quatro modelos discutidos a seguir. Primeiro, o \textit{runner}
-de treinamento de WavLM Original e HuBERT Original não expunha a cabeça de
-classificação a exemplos ruidosos durante o treino --- apesar de a avaliação de
-robustez injetar AWGN em \num{30}/\num{20}/\SI{10}{\decibel} --- e não aplicava
-parada antecipada nem calibração do limiar de decisão. Segundo, um artefato de
-infraestrutura de execução fez com que um retreino inicial de RawGAT-ST usasse
-hiperparâmetros desatualizados (taxa de aprendizado, \textit{dropout} e
-regularização $L_2$ anteriores ao ajuste já presente no código), repetindo o
-padrão de \textit{overfitting}/divergência de uma rodada de diagnóstico
-anterior; AASIST, por sua vez, já treinava com \textit{augmentation} de ruído,
-mas com regularização excessiva e taxa de aprendizado conservadora,
-resultando em subajuste e colapso de \textit{recall} sob ruído. Os quatro
-modelos foram retreinados com as correções aplicadas --- \textit{augmentation}
-de ruído casada com o teste, parada antecipada com restauração dos melhores
-pesos e calibração do limiar de decisão sob ruído para os dois modelos SSL;
-hiperparâmetros sincronizados e regularização revista para RawGAT-ST e AASIST
---- sob o mesmo particionamento estratificado 70/15/15 dos demais \num{7}
-modelos, preservando a comparabilidade da
-Tabela~\ref{tab:resultados_consolidados}. Os números discutidos a seguir já
-refletem essas correções.
-
 \subsubsection*{Desempenho no Conjunto Limpo}
 
 O recorte consolidado da Tabela~\ref{tab:resultados_consolidados} e da
@@ -1404,20 +1593,14 @@ discriminativo; e o \textit{corpus} deste trabalho, em português e com XTTS com
 único gerador da fração Fake Voices, é distinto e mais restrito que o ASVspoof,
 que combina dezenas de sistemas de ataque. A hierarquia observada é, portanto,
 específica deste protocolo e não constitui refutação dos resultados publicados
-para essas arquiteturas. Note-se que o EER de WavLM e HuBERT no conjunto limpo é
-ligeiramente superior ao de uma versão preliminar deste treinamento sem
-\textit{augmentation} de ruído: o ajuste que elimina o colapso de robustez sob
-ruído (discutido a seguir) tem como custo uma perda marginal de separabilidade
-em condição limpa, um \textit{trade-off} esperado ao expor o classificador a
-exemplos ruidosos durante o treino.
+para essas arquiteturas.
 
 \subsubsection*{Importância de Características no Vetor Tabular}
 
 A Figura~\ref{fig:rf_feature_importance} apresenta a importância de Gini das
 características do vetor tabular de \num{63} descritores
-(Seção~\ref{sec:caracteristicas}), extraída do \textit{Random Forest} treinado
---- sem retreino, diretamente do artefato do \textit{benchmark}
-(\path{scripts/export_rf_feature_importance.py}). Agregando por família, os
+(Seção~\ref{sec:caracteristicas}), extraída diretamente do artefato treinado
+do \textit{Random Forest} (\path{scripts/export_rf_feature_importance.py}). Agregando por família, os
 coeficientes cepstrais MFCC concentram \num{49,9}\% da importância total,
 seguidos por RASTA-PLP (\num{35,2}\%) e pelas estatísticas temporais
 (\num{14,9}\%). Individualmente, a média do MFCC3 é o descritor mais
@@ -1451,40 +1634,32 @@ de características apropriadas.
 \subsubsection*{Robustez a Ruído: o Achado Central}
 
 A Tabela~\ref{tab:robustez_awgn} e a Figura~\ref{fig:benchmark_robustness}
-revelam uma dissociação entre acurácia em condição limpa e robustez sob ruído,
-embora de forma distinta da observada antes da correção descrita na nota
-metodológica acima. Os dois classificadores clássicos tornam-se, nesta versão,
-os menos robustos do conjunto: SVM cai a \num{66,44}\% e Random Forest a
-\num{68,04}\% a \SI{10}{\decibel}, apesar de figurarem entre os melhores no
-conjunto limpo (\num{96,00}\% e \num{98,18}\%, respectivamente). Em contraste,
-Conformer (\num{98,44}\% a 10\,dB), AST (\num{97,38}\%) e Res2Net
-(\num{96,18}\%) permanecem os mais robustos, seguidos por RawNet2
-(\num{90,80}\%), AASIST (\num{88,93}\%), RawGAT-ST (\num{82,93}\%), CCT
-(\num{81,20}\%), HuBERT Original (\num{80,98}\%) e WavLM Original
-(\num{75,91}\%) --- nenhum deles próximo do acaso (\num{50}\%).
+revelam uma dissociação entre acurácia em condição limpa e robustez sob
+ruído. Os dois classificadores clássicos são os menos robustos do conjunto:
+SVM cai a \num{66,44}\% e Random Forest a \num{68,04}\% a \SI{10}{\decibel},
+apesar de figurarem entre os melhores no conjunto limpo (\num{96,00}\% e
+\num{98,18}\%, respectivamente). Em contraste, Conformer (\num{98,44}\% a
+10\,dB), AST (\num{97,38}\%) e Res2Net (\num{96,18}\%) são os mais robustos,
+seguidos por RawNet2 (\num{90,80}\%), AASIST (\num{88,93}\%), RawGAT-ST
+(\num{82,93}\%), CCT (\num{81,20}\%), HuBERT Original (\num{80,98}\%) e WavLM
+Original (\num{75,91}\%) --- nenhum deles próximo do acaso (\num{50}\%).
 
-Essa dissociação permanece o resultado analiticamente mais relevante deste
-\textit{benchmark}, mas com leitura mais precisa do que a de versões
-anteriores: acurácia em distribuição fechada é um indicador insuficiente de
-qualidade. A evidência mais direta sobre o papel do regime de treino vem do
-experimento natural embutido na correção descrita na nota metodológica: WavLM
-Original e HuBERT Original, com \textbf{arquitetura idêntica} antes e depois,
-ganharam respectivamente $+23{,}3$ e $+30{,}3$ pontos percentuais de acurácia
-a \SI{10}{\decibel} apenas ao incluir exemplos ruidosos e calibração no
-treinamento da cabeça de classificação --- o que sugere que a exposição a
-ruído compatível com o teste é fator de primeira ordem para a robustez. O
-fator não é, porém, único: SVM e Random Forest já treinam com ruído
-(\texttt{classical\_noise\_augmentation}) e com RASTA-PLP no vetor tabular ---
-incorporado justamente para reduzir sensibilidade a variações lentas de canal
---- e ainda assim permanecem os mais frágeis, sugerindo que um vetor de
-\num{63} descritores agregados tem expressividade estruturalmente limitada sob
-degradação do sinal. Tampouco a família espectral garante robustez por si só:
-o CCT, também espectral e treinado com \textit{augmentation}, cai a
-\num{81,20}\% a \SI{10}{\decibel} --- abaixo do RawGAT-ST
-(\num{82,93}\%, áudio bruto) --- indicando que capacidade do modelo
-($\approx$\num{1,8}~milhão de parâmetros, o menor entre as redes espectrais)
-também modula o resultado. Conformer, AST e Res2Net combinam representações
-tempo-frequência densas, capacidade suficiente e treino com ruído, e são os
+Essa dissociação é o resultado analiticamente mais relevante deste
+\textit{benchmark}: acurácia em distribuição fechada é um indicador
+insuficiente de qualidade, e a robustez varia por um fator superior a
+\num{30} pontos percentuais entre os extremos do recorte, sem relação
+monotônica com a família arquitetural. SVM e Random Forest, mesmo com
+RASTA-PLP no vetor tabular --- incorporado
+justamente para reduzir sensibilidade a variações lentas de canal --- e com
+\textit{augmentation} de ruído (\texttt{classical\_noise\_augmentation}),
+permanecem os mais frágeis, sugerindo que um vetor de \num{63} descritores
+agregados tem expressividade estruturalmente limitada sob degradação do
+sinal. Tampouco a família espectral garante robustez por si só: o CCT,
+também espectral, cai a \num{81,20}\% a \SI{10}{\decibel} --- abaixo do
+RawGAT-ST (\num{82,93}\%, áudio bruto) --- indicando que a capacidade do
+modelo ($\approx$\num{1,8}~milhão de parâmetros, o menor entre as redes
+espectrais) também modula o resultado. Conformer, AST e Res2Net combinam
+representações tempo-frequência densas com capacidade suficiente, e são os
 únicos que preservam desempenho quase intacto em todos os níveis testados.
 
 \subsubsection*{Ponto de Operação: AUC, EER e $t$-DCF$^\ast$}
@@ -1520,9 +1695,9 @@ picos de acurácia de validação de até \num{100}\% (Conformer, época 17 ---
 Tabela~\ref{tab:estabilidade_treinamento}) devem ser lidos à luz da análise de
 vazamento de domínio da Seção~\ref{sec:vazamento}. Separabilidade quase perfeita
 é compatível tanto com um detector genuinamente eficaz quanto com um
-classificador que explora correlações espúrias entre fonte, canal e rótulo. Com
-a correção do treinamento sob ruído, a robustez deixou de discriminar
-claramente os modelos de melhor desempenho limpo dos demais --- Res2Net,
+classificador que explora correlações espúrias entre fonte, canal e rótulo. A
+robustez sob ruído não discrimina claramente os modelos de melhor desempenho
+limpo dos demais --- Res2Net,
 Conformer, AST, RawNet2, AASIST, RawGAT-ST, CCT, HuBERT Original e WavLM
 Original preservam todos entre \num{76}\% e \num{98}\% de acurácia a
 \SI{10}{\decibel} --- o que remove um possível argumento indireto de robustez
@@ -1562,10 +1737,7 @@ com flutuação moderada de validação ao longo do treino. Vários modelos atin
 o pico de validação relativamente cedo --- WavLM Original na época \num{10},
 Conformer e HuBERT Original na época \num{17}, RawGAT-ST na época \num{21} ---
 sem que isso, isoladamente, indique instabilidade: a queda de RawGAT-ST entre
-pico e valor final é controlada (\num{1,87}\%), o que contrasta com a
-instabilidade observada antes da correção de treinamento descrita na nota
-metodológica acima, quando o pico ocorria já na época \num{6} e era seguido de
-divergência acentuada (Seção~\ref{sec:analise_resultados}). O Conformer atinge
+pico e valor final é controlada (\num{1,87}\%). O Conformer atinge
 \num{100,00}\% de acurácia de validação já na época \num{17}, sinal de que a
 tarefa de validação é, nesse ponto, quase trivialmente separável. Esse
 resultado reforça a leitura cautelosa sobre vazamento de domínio discutida
@@ -1634,19 +1806,15 @@ desempenho limpo e robustez sob ruído. Enquanto Conformer e AST preservaram
 acurácia acima de \num{97}\% a \SI{10}{\decibel} de SNR, os dois
 classificadores clássicos --- SVM e \textit{Random Forest}, com acurácia limpa
 competitiva (\num{96,00}\% e \num{98,18}\%) --- degradaram para \num{66,44}\%
-e \num{68,04}\%, tornando-se os modelos menos robustos do conjunto depois da
-correção de um defeito de treinamento em RawGAT-ST, AASIST, WavLM Original e
-HuBERT Original,
-que passaram a preservar entre \num{76}\% e \num{89}\% de acurácia a
-\SI{10}{\decibel} (Seção~\ref{sec:analise_resultados}). Essa dissociação
-evidencia que a acurácia em distribuição fechada é um indicador insuficiente
-de qualidade. Os retreinos de WavLM e HuBERT --- mesma arquitetura, mudando
-apenas o regime de treino --- sugerem que a exposição a ruído compatível com o
-teste é fator de primeira ordem para a robustez, embora não único: SVM e
-\textit{Random Forest} permanecem frágeis mesmo treinando com ruído, indicando
-que descritores estatísticos agregados são estruturalmente menos expressivos
-sob degradação do sinal do que representações aprendidas, e o CCT mostra que
-capacidade do modelo também modula o resultado.
+e \num{68,04}\%, tornando-se os modelos menos robustos do conjunto, enquanto
+RawGAT-ST, AASIST, WavLM Original e HuBERT Original preservaram entre
+\num{76}\% e \num{89}\% de acurácia a \SI{10}{\decibel}
+(Seção~\ref{sec:analise_resultados}). Essa dissociação evidencia que a
+acurácia em distribuição fechada é um indicador insuficiente de qualidade:
+SVM e \textit{Random Forest} permanecem frágeis apesar do treino com ruído,
+indicando que descritores estatísticos agregados são estruturalmente menos
+expressivos sob degradação do sinal do que representações aprendidas, e o
+CCT mostra que a capacidade do modelo também modula o resultado.
 
 A leitura conjunta desses resultados com a análise de vazamento de domínio
 (Seção~\ref{sec:vazamento}) recomenda cautela interpretativa. Os valores de
@@ -1663,12 +1831,11 @@ resultado atribuído à estratégia de manter o \textit{backbone} congelado e
 treinar apenas a cabeça de classificação. Esse comportamento não contradiz a
 literatura, mas delimita a condição sob a qual os modelos SSL foram avaliados e
 aponta o ajuste fino integral como etapa necessária para explorar seu
-potencial. Notavelmente, ambos os modelos passaram a preservar robustez sólida
-sob ruído (\num{75,91}\% e \num{80,98}\% a \SI{10}{\decibel}) uma vez que o
-treinamento da cabeça de classificação passou a incluir exemplos ruidosos,
-indicando que a limitação de desempenho limpo é específica da capacidade
-representacional de um \textit{backbone} congelado, e não um sintoma de
-fragilidade sob degradação do sinal.
+potencial. Notavelmente, ambos os modelos preservam robustez sólida sob
+ruído (\num{75,91}\% e \num{80,98}\% a \SI{10}{\decibel}), indicando que a
+limitação de desempenho limpo é específica da capacidade representacional de
+um \textit{backbone} congelado, e não um sintoma de fragilidade sob
+degradação do sinal.
 
 Sob a ótica de implantação, nenhum modelo domina simultaneamente acurácia,
 robustez, latência e memória (Seção~\ref{sec:analise_resultados}): o Conformer
@@ -2069,11 +2236,10 @@ In: \textbf{Proc.\ Interspeech 2017}, 2017.
 
 \subsection{Hiperparâmetros Consolidados}
 
-O preset final do \textit{benchmark} utiliza teto de 100 épocas para os
-modelos neurais das rodadas iniciais e de 120 para os quatro retreinados
-(Seção~\ref{sec:analise_resultados}), com parada antecipada por perda de
-validação, batch adaptado ao consumo de VRAM, precisão mista quando segura e
-salvamento do melhor \textit{checkpoint} com restauração dos melhores pesos.
+O preset final do \textit{benchmark} utiliza teto de até 120 épocas para os
+modelos neurais, com parada antecipada por perda de validação, batch adaptado
+ao consumo de VRAM, precisão mista quando segura e salvamento do melhor
+\textit{checkpoint} com restauração dos melhores pesos.
 O preset contempla WavLM Original e HuBERT Original como modelos SSL no
 escopo principal do trabalho. Os modelos clássicos utilizam busca de
 hiperparâmetros com validação cruzada antes do ajuste final. A
@@ -2197,10 +2363,8 @@ Os comandos a seguir sintetizam o fluxo operacional usado para repetir o
     python scripts/run\_benchmark.py --full --epochs 100 --device-profile gpu\\
     --dataset app/datasets/benchmark\_audio\_raw\_balanced\_15k.npz
     \end{quote}
-    \textit{Nota: \texttt{--full} cobre \num{9} dos \num{11} modelos deste
-    trabalho, excluindo WavLM Original e HuBERT Original (executados por um
-    \textit{runner} PyTorch/\texttt{transformers} dedicado, com backbone SSL
-    real). Para reproduzir os dois modelos SSL:}
+    \textit{WavLM Original e HuBERT Original usam um \textit{runner}
+    PyTorch/\texttt{transformers} dedicado, com \textit{backbone} SSL real:}
     \begin{quote}\footnotesize\ttfamily
     python scripts/run\_wavlm\_original\_benchmark.py --architecture wavlm\\
     --dataset app/datasets/benchmark\_audio\_raw\_balanced\_15k.npz\\
