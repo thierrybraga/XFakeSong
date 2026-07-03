@@ -38,18 +38,20 @@
 \usepackage{url}
 \usepackage{setspace}
 \usepackage{caption}
-% Fallback leve de unidades (evita dependência do siunitx).
-\newcommand{\SI}[2]{#1\,#2}
-\newcommand{\SIrange}[3]{#1--#2\,#3}
-\newcommand{\num}[1]{#1}
-\newcommand{\kilo}{k}
-\newcommand{\milli}{m}
-\newcommand{\hertz}{Hz}
-\newcommand{\second}{s}
-\newcommand{\decibel}{dB}
-\newcommand{\percent}{\%}
-\newcommand{\bit}{bit}
-\newcommand{\lufs}{LUFS}
+% siunitx real: disponível em qualquer instalação TeX Live completa
+% (garantido no Overleaf). \num/\SI seguem a convenção pt-BR (decimal
+% por vírgula, milhar por ponto a partir de 5 dígitos); unidades
+% kilo/hertz/second/milli/percent já são nativas do pacote.
+\usepackage{siunitx}
+\sisetup{
+  output-decimal-marker = {,},
+  input-decimal-markers = {,},
+  group-separator       = {.},
+  group-minimum-digits  = 5
+}
+\DeclareSIUnit{\decibel}{dB}
+\DeclareSIUnit{\bit}{bit}
+\DeclareSIUnit{\lufs}{LUFS}
 \usepackage{hyperref} % deve ser o último
 
 % =====================================================================
@@ -290,7 +292,7 @@ relatórios de \textit{benchmark}. A versão experimental consolidada avalia
 auto-supervisionados (SSL), redes de áudio bruto, grafos de atenção,
 \textit{Transformers} espectrais, redes convolucionais multi-escala e
 classificadores estatísticos clássicos. Os experimentos utilizaram um
-\textit{corpus} balanceado de \num{15.000} amostras de fala em português, com
+\textit{corpus} balanceado de \num{15000} amostras de fala em português, com
 partição estratificada 70/15/15 e janelas monofônicas padronizadas em
 \SI{16}{\kilo\hertz} e \SI{5}{\second}. Os modelos neurais foram treinados em
 perfil GPU (WSL2/CUDA), com métricas de inferência extraídas no ambiente de
@@ -337,8 +339,8 @@ stratified 70/15/15 split and \SI{16}{\kilo\hertz} mono \SI{5}{\second} windows.
 Neural models were trained on a GPU profile (WSL2/CUDA), with inference metrics
 extracted in each model's execution environment (CPU or GPU, depending on the
 family); SVM and Random Forest were optimized through cross-validation. On the clean test set, Res2Net and Conformer achieved
-\num{99.69}\% accuracy, followed by Audio Spectrogram Transformer
-(\num{98.71}\%), Random Forest (\num{98.18}\%), and RawNet2 (\num{97.38}\%).
+99.69\% accuracy, followed by Audio Spectrogram Transformer
+(98.71\%), Random Forest (98.18\%), and RawNet2 (97.38\%).
 Under additive noise at \SI{10}{\decibel} SNR, Conformer, AST, and Res2Net
 preserved over \num{96}\% accuracy while the classical classifiers degraded to
 \num{66}--\num{68}\% --- showing that closed-distribution accuracy is an
@@ -1230,7 +1232,7 @@ filtros triangulares na escala Mel, $STFT$ é a transformada de Fourier de
 curto termo com janela de \num{2048} amostras (\textit{n\_fft}) e
 $\varepsilon$ evita $\log(0)$ na Equação~\ref{eq:melspec}. O
 \textit{hop length} de \num{512} amostras determina a resolução temporal: para
-as janelas de \SI{5}{\second} (\num{80.000} amostras), o mapa resultante tem
+as janelas de \SI{5}{\second} (\num{80000} amostras), o mapa resultante tem
 dimensão $128 \times 157$.
 
 \subsubsection*{Descritores Adicionais Disponíveis no Pipeline}
@@ -1360,7 +1362,7 @@ Prosódicas / qualidade vocal
 \subsubsection{Composição e Proveniência}
 
 O protocolo experimental desta pesquisa fundamenta-se em um \textit{corpus}
-composto por \num{15.000} amostras de áudio em português, balanceado entre as
+composto por \num{15000} amostras de áudio em português, balanceado entre as
 classes (\SI{50}{\percent} \textit{bonafide} e \SI{50}{\percent}
 \textit{spoof}). A classe genuína (\textit{bonafide}) reúne subconjuntos
 provenientes do BRSpeech-DF~\cite{brspeechdf_card}, amostras de leitura do
@@ -1375,7 +1377,7 @@ estratégias de amostragem empregadas.
 
 \begin{table}[tbp]
 \centering
-\caption{Composição analítica da base de dados ($\num{15.000}$ amostras)
+\caption{Composição analítica da base de dados ($\num{15000}$ amostras)
 estratificada por classe e proveniência estrutural. A disjunção de locutores
 entre as partições de treino/validação/teste não é garantida
 (Seção~\ref{sec:vazamento}).}
@@ -1385,12 +1387,12 @@ entre as partições de treino/validação/teste não é garantida
 \toprule
 \textbf{Classe} & \textbf{Fonte Original} & \textbf{Volume (Amostras)} & \textbf{Identificação do Locutor} \\
 \midrule
-\textit{Bonafide} & BRSpeech-DF & \num{3.750} & Não individualizada \\
-\textit{Bonafide} & MLS Portuguese & \num{1.875} & \num{21} locutores identificados \\
-\textit{Bonafide} & TTS-Portuguese Corpus & \num{1.875} & Locutor único \\
+\textit{Bonafide} & BRSpeech-DF & \num[group-minimum-digits=4]{3750} & Não individualizada \\
+\textit{Bonafide} & MLS Portuguese & \num[group-minimum-digits=4]{1875} & \num{21} locutores identificados \\
+\textit{Bonafide} & TTS-Portuguese Corpus & \num[group-minimum-digits=4]{1875} & Locutor único \\
 \addlinespace
-\textit{Spoof} & BRSpeech-DF & \num{3.750} & Não individualizada \\
-\textit{Spoof} & Fake Voices (XTTS) & \num{3.750} & \num{50} locutores identificados \\
+\textit{Spoof} & BRSpeech-DF & \num[group-minimum-digits=4]{3750} & Não individualizada \\
+\textit{Spoof} & Fake Voices (XTTS) & \num[group-minimum-digits=4]{3750} & \num{50} locutores identificados \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1421,20 +1423,20 @@ formalizados na Tabela~\ref{tab:prep_part}.
 Taxa de amostragem & \SI{16}{\kilo\hertz} \\
 Formato e Resolução quantizada & Monofônico, PCM linear de \SI{16}{\bit} \\
 Janelamento temporal canônico & \SI{5}{\second} (ajustado via truncamento ou \textit{zero-padding}) \\
-Dimensionalidade do vetor & $\mathbf{x} \in \mathbb{R}^{\num{80.000} \times 1}$ (domínio do tempo discreto) \\
+Dimensionalidade do vetor & $\mathbf{x} \in \mathbb{R}^{\num{80000} \times 1}$ (domínio do tempo discreto) \\
 Representações de entrada & \textit{Raw-audio}, Espectrogramas Mel ou vetor tabular (MFCC + RASTA-PLP) \\
 \midrule
 \multicolumn{2}{c}{\textbf{Particionamento Estratificado}} \\
 \midrule
 Distribuição dos subconjuntos & \SI{70}{\percent} Treinamento, \SI{15}{\percent} Validação, \SI{15}{\percent} Teste \\
-Cardinalidade por partição & \num{10.500} (Tr), \num{2.250} (Vl), \num{2.250} (Te) \\
+Cardinalidade por partição & \num{10500} (Tr), \num[group-minimum-digits=4]{2250} (Vl), \num[group-minimum-digits=4]{2250} (Te) \\
 Avaliação de robustez (Ruído) & Injeção de AWGN ($SNR$ de \num{30}, \num{20} e \SI{10}{\decibel}) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 A matriz unidimensional resultante ($\mathbf{x} \in
-\mathbb{R}^{\num{80.000} \times 1}$) atua como estrutura canônica de entrada
+\mathbb{R}^{\num{80000} \times 1}$) atua como estrutura canônica de entrada
 tanto para o processamento direto ponta a ponta (\textit{end-to-end}) quanto
 para os módulos extratores de representações tempo-frequência. Em paralelo, a
 inserção controlada de Ruído Branco Gaussiano Aditivo (AWGN) no conjunto de
@@ -1677,9 +1679,9 @@ Ambiente de avaliação de inferência & Heterogêneo por modelo: CPU (CCT, Conf
 Modelos conexionistas profundos & Abstração TensorFlow/Keras com persistência de \textit{checkpoints} \\
 Modelos baseados em SSL & WavLM Original e HuBERT Original via \texttt{transformers} \\
 Modelos estatísticos clássicos & Processamento multi-core via Scikit-Learn com validação cruzada \\
-Volume do \textit{corpus} consolidado & \num{15.000} amostras balanceadas (\num{7.500} reais / \num{7.500} sintéticas) \\
-Particionamento de dados (\textit{Split}) & Razão 70/15/15 (\num{10.500} treino, \num{2.250} validação, \num{2.250} teste) \\
-Especificação padrão de sinal & Monofônico, \SI{16}{\kilo\hertz}, \SI{5}{\second} ($\mathbf{x} \in \mathbb{R}^{\num{80.000} \times 1}$ em \textit{raw-audio}) \\
+Volume do \textit{corpus} consolidado & \num{15000} amostras balanceadas (\num[group-minimum-digits=4]{7500} reais / \num[group-minimum-digits=4]{7500} sintéticas) \\
+Particionamento de dados (\textit{Split}) & Razão 70/15/15 (\num{10500} treino, \num[group-minimum-digits=4]{2250} validação, \num[group-minimum-digits=4]{2250} teste) \\
+Especificação padrão de sinal & Monofônico, \SI{16}{\kilo\hertz}, \SI{5}{\second} ($\mathbf{x} \in \mathbb{R}^{\num{80000} \times 1}$ em \textit{raw-audio}) \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1724,12 +1726,12 @@ de \num{0,44}\% e \num{0,27}\%, respectivamente). Em seguida aparecem AST
 (\num{98,71}\%), Random Forest (\num{98,18}\%) e RawNet2 (\num{97,38}\%),
 indicando que redes neurais profundas e classificadores estatísticos otimizados
 extraem padrões discriminativos relevantes no cenário experimental controlado
-(QP1). Com \num{2.250} amostras de teste, uma acurácia de \num{99,69}\%
+(QP1). Com \num[group-minimum-digits=4]{2250} amostras de teste, uma acurácia de \num{99,69}\%
 corresponde a cerca de \num{7} amostras mal classificadas, e a diferença de EER
 entre Res2Net e Conformer equivale a aproximadamente duas amostras. Res2Net e
 Conformer devem, portanto, ser tratados como \textbf{empate técnico}, e não
 como ordenamento estrito entre primeiro e segundo colocados. O teste exato de
-McNemar sobre as predições pareadas confirma essa leitura: dos \num{2.250}
+McNemar sobre as predições pareadas confirma essa leitura: dos \num[group-minimum-digits=4]{2250}
 casos de teste, apenas \num{6} são acertados exclusivamente pelo Res2Net e
 \num{6} exclusivamente pelo Conformer ($p = 1{,}0$); o mesmo vale para o par
 SVM--CCT (\num{72} contra \num{71} desacordos, $p \approx 1{,}0$). Já a
@@ -1927,7 +1929,7 @@ valores absolutos não formam um \textit{ranking} único entre famílias; os
 \num{8,48}\,ms do WavLM Original e os \num{6,41}\,ms do HuBERT Original, por
 exemplo, refletem inferência em GPU e não são comparáveis aos \num{59,21}\,ms
 do Conformer em CPU. Feita a ressalva, RawGAT-ST é o modelo mais compacto do
-conjunto (\num{241.024} parâmetros, \num{1,02}\,MB) e, apesar disso, mantém
+conjunto (\num{241024} parâmetros, \num{1,02}\,MB) e, apesar disso, mantém
 acurácia limpa de \num{86,98}\% e robustez de \num{82,93}\% a
 \SI{10}{\decibel}; SVM alia latência mínima em CPU (\num{1,02}\,ms) a acurácia
 competitiva em condição limpa (\num{96,00}\%), mas é, junto com o Random
@@ -1964,7 +1966,7 @@ particionamento. Diferenças pequenas entre modelos próximos, como Res2Net e
 Conformer, empatados em \num{99,69}\% de acurácia, não devem ser interpretadas
 como estatisticamente significativas. Uma régua útil é o intervalo de
 confiança de Wilson a \num{95}\% para a acurácia, que quantifica apenas a
-incerteza amostral do conjunto de teste ($n = \num{2.250}$): ele varia de
+incerteza amostral do conjunto de teste ($n = \num[group-minimum-digits=4]{2250}$): ele varia de
 $\pm 0{,}24$ ponto percentual nos modelos de topo (\num{99,69}\% $\rightarrow$
 $[\num{99,36}\%;\, \num{99,85}\%]$) a $\pm 1{,}5$ ponto nos de menor acurácia
 (\num{84,67}\% $\rightarrow$ $[\num{83,12}\%;\, \num{86,10}\%]$). Sob essa
