@@ -88,7 +88,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "result_key": "WavLM Original",
         "display_name": "WavLM Original",
         "variant": "microsoft/wavlm-base:frozen_backbone",
-        "runner": "scripts.run_wavlm_original_benchmark:ssl_original",
+        "runner": "scripts.benchmark.run_wavlm_original_benchmark:ssl_original",
         "input_type": "raw_audio_16khz_16000",
     },
     {
@@ -96,7 +96,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "result_key": "HuBERT Original",
         "display_name": "HuBERT Original",
         "variant": "facebook/hubert-base-ls960:frozen_backbone",
-        "runner": "scripts.run_wavlm_original_benchmark:ssl_original",
+        "runner": "scripts.benchmark.run_wavlm_original_benchmark:ssl_original",
         "input_type": "raw_audio_16khz_16000",
     },
 ]

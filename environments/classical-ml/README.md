@@ -9,7 +9,7 @@ Environment for CPU-oriented classical models:
 Recommended command:
 
 ```bash
-python scripts/train_classical.py \
+python scripts/training/train_by_family.py --family classical-ml \
   --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
   --epochs 100 \
   --out results/classical_benchmark

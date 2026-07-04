@@ -12,7 +12,7 @@ em `docs/`. Em caso de divergencia, AGENTS.md + docs/ prevalecem.
 | --- | --- |
 | Arquitetura e limites de camadas | [AGENTS.md](AGENTS.md), [docs/03_ARQUITETURA.md](docs/03_ARQUITETURA.md) |
 | Desenvolvimento e padroes | [docs/05_GUIA_DEV.md](docs/05_GUIA_DEV.md) |
-| Testes | [docs/06_TESTES.md](docs/06_TESTES.md) |
+| Testes | [docs/06_QUALIDADE_TESTES.md](docs/06_QUALIDADE_TESTES.md) |
 | Arquiteturas neurais | [docs/08_ARQUITETURAS.md](docs/08_ARQUITETURAS.md) |
 | Treinamento e hiperparametros | [docs/10_TREINAMENTO.md](docs/10_TREINAMENTO.md) |
 | Benchmark e metricas | [docs/15_BENCHMARK.md](docs/15_BENCHMARK.md) |
@@ -60,22 +60,24 @@ XFakeSong/
 │   ├── dataset.yaml, inference.yaml
 │   └── training/           # presets de treino por familia + retune_ajustado.yaml
 ├── benchmarks/             # motor do benchmark (runner, evaluate, planning, report...)
-├── scripts/                # CLIs de build/dataset/treino/benchmark/sync (ver abaixo)
+├── scripts/                # CLIs por categoria: dataset/, training/, benchmark/, reporting/, ops/ (ver scripts/README.md)
 ├── app/                    # codigo-fonte (Clean Architecture)
 │   ├── domain/             # regras de negocio puras (sem frameworks de UI)
 │   │   ├── features/       # extractors/, adapters/, registry de features
 │   │   ├── models/         # architectures/, training/, inference/
 │   │   └── services/       # DetectionService, TrainingService, UploadService, ...
-│   ├── application/        # casos de uso + pipeline (stages/workflows/dto)
+│   ├── application/        # pipeline/orchestrator.py — orquestra estagios (Chain of Responsibility)
 │   ├── core/               # infra transversal: config/, training/, utils/, interfaces/
-│   ├── interfaces/         # entrada: gradio/ (8 abas) e cli/
+│   ├── interfaces/         # entrada: gradio/ (5 secoes role-based: Painel, Detectar, Investigar, Treinar, Gerenciar) e cli/
 │   ├── routers/            # endpoints FastAPI
 │   ├── schemas/            # modelos Pydantic (request/response)
 │   ├── models/             # artefatos treinados (.keras/.pkl) — benchmark_final/
+│   ├── static/, templates/ # assets CSS e templates Jinja2 servidos por app/main_fastapi.py
+│   ├── utils/               # colab.py — helper isolado so para execucao via Google Colab (nao confundir com core/utils/)
 │   └── datasets/           # dados (real/ e fake/) e .npz de benchmark (nao versionado)
-├── docs/                   # documentacao MkDocs (01_..15_, RETREINO_AJUSTES.md)
+├── docs/                   # documentacao MkDocs (00_..30_, RETREINO_AJUSTES.md) — indice completo em docs/index.md
 ├── notebooks/, figures/, tcc_overleaf/   # material academico (TCC)
-└── tests/                  # unit/, integration/, api/ espelhando app/
+└── tests/                  # unit/, integration/, api/, functional/ espelhando app/
 ```
 
 **Regra de ouro**: `app/domain/` nunca importa de `app/interfaces/`, `app/routers/`
@@ -156,13 +158,13 @@ make train-nvidia     # perfil TensorFlow/Keras em GPU (Docker)
 make train-cpu        # perfil classical/CPU (Docker)
 
 # Sequencial, um modelo por vez (timeout, --resume, log por modelo):
-python scripts/run_models_sequential.py \
+python scripts/benchmark/run_models_sequential.py \
   --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
   --models AASIST Ensemble --epochs 100 --snr 30 20 10 \
   --device-profile gpu --out results/<run> --resume
 
 # Um modelo isolado:
-python scripts/run_benchmark.py --model AASIST --dataset <npz> --out results/bench_aasist
+python scripts/benchmark/run_benchmark.py --model AASIST --dataset <npz> --out results/bench_aasist
 ```
 
 Pre-requisitos: dataset `.npz` em `app/datasets/`, TensorFlow/PyTorch e GPU
@@ -171,7 +173,7 @@ Pre-requisitos: dataset `.npz` em `app/datasets/`, TensorFlow/PyTorch e GPU
 ### Retreino dos modelos ajustados
 Apos diagnostico de um benchmark, os ajustes ficam aplicados no codigo
 (registry + arquiteturas) e o retreino dos modelos afetados roda por:
-`bash scripts/retrain_ajustado.sh` (ou `scripts\retrain_ajustado.bat` no
+`bash scripts/training/retrain_ajustado.sh` (ou `scripts\training\retrain_ajustado.bat` no
 Windows), config em `configs/training/retune_ajustado.yaml`. Mapa
 diagnostico->ajuste e checklist de verificacao em
 [docs/RETREINO_AJUSTES.md](docs/RETREINO_AJUSTES.md).
@@ -187,14 +189,14 @@ latencia) e artefatos (figuras, tabelas LaTeX, summary.md, tcc_report.md).
 
 ```bash
 make benchmark-nvidia                       # benchmark completo (Docker/WSL2 GPU)
-python scripts/run_benchmark.py --full --dataset <npz>
-python scripts/run_clean_benchmark_pipeline.py   # run limpo, sem misturar artefatos
-python scripts/run_benchmark.py --plan-only      # valida e grava benchmark_plan.* sem treinar
+python scripts/benchmark/run_benchmark.py --full --dataset <npz>
+python scripts/benchmark/run_clean_benchmark_pipeline.py   # run limpo, sem misturar artefatos
+python scripts/benchmark/run_benchmark.py --plan-only      # valida e grava benchmark_plan.* sem treinar
 
 # Pos-processamento:
-python scripts/consolidate_results.py --results results/<run>
-python scripts/validate_artifacts.py  --results results/<run>
-python scripts/sync_completed_benchmark_artifacts.py --results results/<run>
+python scripts/reporting/consolidate_results.py --results results/<run>
+python scripts/reporting/validate_artifacts.py  --results results/<run>
+python scripts/reporting/sync_completed_benchmark_artifacts.py --results results/<run>
 ```
 
 Os artefatos promovidos ficam em `app/models/benchmark_final/<arch>/` com

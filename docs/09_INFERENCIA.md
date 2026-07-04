@@ -1,164 +1,166 @@
 # Documentação de Inferência das Arquiteturas
 
-Este documento detalha os métodos de inferência e o fluxo de dados para cada arquitetura implementada no projeto XFakeSong. Todas as arquiteturas seguem uma interface unificada para facilitar a integração no pipeline de detecção, mas diferem significativamente em seus requisitos de entrada e processamento interno.
+Este documento descreve o fluxo real de inferência do XFakeSong: descoberta do
+artefato, resolução do contrato de entrada, preparação do tensor e
+pós-processamento da predição. A fonte de verdade para a entrada de um modelo
+treinado é sempre o `input_contract` salvo no `_config.json`; quando ele não
+existe, o sistema cai para o `input_requirements` do registry e, por último,
+para heurísticas de shape.
 
-## Interface Unificada
+## Fluxo Atual
 
-Todas as arquiteturas expõem uma função de fábrica `create_model` e retornam um objeto que implementa (ou emula) a interface do Keras/TensorFlow.
-
-### Assinatura Padrão
-```python
-def create_model(input_shape: Tuple[int, ...], num_classes: int, architecture: str, **kwargs) -> Model
+```text
+arquivo/AudioData
+  -> ModelLoader: descobre .keras/.h5/.pkl/.pt
+  -> ModelInfo: arquitetura, input_shape, input_contract, scaler, temperatura
+  -> FeaturePreparer: raw_audio | spectrogram | tabular
+  -> Predictor: TensorFlow | PyTorch SSL original | sklearn
+  -> p_fake, p_real, threshold, confidence, OOD
 ```
 
-### Método de Inferência
-A inferência é realizada através do método padrão `.predict()`:
-```python
-predictions = model.predict(input_data)
-# Saída: Array de probabilidades (N, num_classes) ou (N, 1) para binário
+`ModelLoader` procura artefatos na raiz de `app/models/` e em
+`app/models/benchmark_final/<slug>/bench_*`. Modelos TensorFlow são carregados
+sob demanda com `custom_objects`; modelos sklearn carregam o scaler lateral
+quando existe; artefatos `.pt` de WavLM/HuBERT originais usam wrapper PyTorch
+lazy.
+
+## Resolução do Contrato de Entrada
+
+`FeaturePreparer._resolve_input_requirements` aplica esta prioridade:
+
+1. `input_contract` do treino: `input_type`, `format`, `input_shape`,
+   `feature_frontend`, `sample_rate`, `n_fft`, `hop_length`, `n_mels`, `n_lfcc`.
+2. `ArchitectureRegistry.input_requirements`: fallback genérico para modelos
+   sem contrato.
+3. Inferência pelo `input_shape`: modelos legados com shape `(T, F)` são tratados
+   como espectrograma; shape `(T, 1)` tende a raw audio.
+
+Todo caminho reamostra para o `sample_rate` do contrato, por padrão `16 kHz`,
+antes de calcular SincConv, STFT, LFCC ou features tabulares.
+
+## Preparação de Features
+
+### Raw Audio
+
+Usado por AASIST, RawGAT-ST, RawNet2, WavLM, HuBERT, Ensemble e por variantes de
+arquiteturas que aceitam forma de onda direta.
+
+1. Downmix para mono.
+2. Normalização peak.
+3. Center-crop ou zero-pad para o tamanho do `input_shape`.
+4. Saída como `(T,)` ou `(T, 1)`, espelhando o artefato treinado.
+
+### Espectrograma
+
+Usado por Conformer, SpectrogramTransformer, Hybrid CNN-Transformer,
+MultiscaleCNN, Sonic Sleuth e EfficientNet-LSTM quando o contrato pede
+`input_type="spectrogram"`.
+
+O front-end é calculado em `app/domain/services/detection/audio_preprocessing.py`
+com `tf.signal`, o mesmo núcleo usado no treino:
+
+| Campo | Padrão atual | Observação |
+|---|---:|---|
+| `sample_rate` | 16000 | reamostrado antes do front-end |
+| `n_fft` | 512 | janela Hann no caminho unificado |
+| `hop_length` | 128 | paridade treino/inferência |
+| `n_mels` | 80 | log-mel legado |
+| `n_lfcc` | 80 | LFCC dos treinos novos |
+
+`feature_frontend="lfcc"` usa banco linear + log + DCT-II, preservando mais
+resolução em altas frequências. Modelos legados sem `feature_frontend` continuam
+em `logmel` para não quebrar paridade com o treino antigo.
+
+### Tabular Segmentado
+
+Usado por SVM e Random Forest. Quando o artefato não declara `feature_types`, o
+fallback robusto é:
+
+```text
+spectral + cepstral + temporal + prosodic
 ```
 
----
+O áudio é dividido em segmentos de 1 s, sem overlap, com normalização por
+segmento. Cada segmento gera features e a agregação padrão é `mean`; também são
+suportadas `median`, `std` e `all` (`mean + std + min + max`). O vetor final é
+ajustado para a dimensão esperada pelo scaler/modelo por truncamento ou padding.
 
-## 1. Arquiteturas Baseadas em Features (Espectrogramas)
+## Inferência por Backend
 
-Estas arquiteturas esperam como entrada tensores representando características tempo-frequência (espectrogramas, MFCCs, etc.).
+### TensorFlow/Keras
 
-### Pré-requisitos Comuns
-*   **Input Shape:** `(time_steps, feature_bins)` ou `(time_steps, feature_bins, channels)`
-*   **Normalização:** Geralmente esperam dados normalizados externamente, mas muitas possuem camadas de `BatchNormalization` ou `AudioFeatureNormalization` na entrada.
+1. `prepare_batch_for_model` adiciona batch e ajusta shape.
+2. Se existir ONNX ao lado do artefato e `onnxruntime` estiver disponível, ele é
+   tentado primeiro.
+3. Caso contrário, usa `tf.function` com XLA quando a arquitetura permite.
+4. Arquiteturas com `tf.signal` in-graph ou graph attention dinâmico pulam XLA:
+   Sonic Sleuth, Ensemble, WavLM, HuBERT, AASIST e RawGAT-ST.
+5. Saídas são normalizadas para probabilidade: softmax para logits 2D, sigmoid
+   para saída escalar.
+6. Aplica `temperature` calibrada, `eer_threshold` quando presente e calcula
+   `ood_score` baseado em entropia/energia.
 
-### 1.1 AASIST (Anti-spoofing Audio Spoofing and Deepfake Detection)
-*   **Tipo de Entrada:** Espectrograma.
-*   **Fluxo de Inferência:**
-    1.  **Normalização:** Camada `AudioFeatureNormalization`.
-    2.  **Adaptação:** `apply_reshape_for_cnn` para garantir formato 4D `(batch, time, freq, 1)`.
-    3.  **Extração de Features:** Blocos convolucionais multi-escala (SincNet-like ou CNN padrão).
-    4.  **Modelagem Temporal:** Camadas GRU (Gated Recurrent Units) ou Atenção em Grafo (GAT).
-    5.  **Classificação:** Camadas densas com regularização L2 e Dropout -> Softmax.
-*   **Saída:** Probabilidade de ser `Real` vs `Fake`.
+### PyTorch SSL Original
 
-### 1.2 RawGAT-ST
-*   **Tipo de Entrada:** Espectrograma.
-*   **Fluxo de Inferência:**
-    1.  Similar ao AASIST, mas foca no uso de **Graph Attention Networks (GAT)** para modelar relações espectro-temporais complexas.
-    2.  Utiliza mecanismos de atenção para ponderar a importância de diferentes regiões do espectrograma.
+Artefatos `bench_wavlm_original.pt` e `bench_hubert_original.pt` carregam
+`torch`/`transformers` apenas na primeira predição. O wrapper normaliza cada
+waveform para 16.000 amostras, executa o backbone original congelado
+(`WavLMModel` ou `HubertModel`) e aplica o classificador salvo no checkpoint.
 
-### 1.3 EfficientNet-LSTM & MultiscaleCNN
-*   **Tipo de Entrada:** Espectrograma.
-*   **Fluxo de Inferência:**
-    1.  **Feature Extraction:** Backbone CNN (EfficientNet ou CNN customizada multi-escala) extrai mapas de características visuais do espectrograma.
-    2.  **Temporal Aggregation:** Camadas LSTM ou Global Pooling processam a sequência de features.
-    3.  **Head:** Classificador denso.
+### Scikit-learn
 
-### 1.4 Transformadores (SpectrogramTransformer, Conformer)
-*   **Tipo de Entrada:** Espectrograma.
-*   **Fluxo de Inferência:**
-    1.  **Embedding:** Projeção linear das features de frequência + Positional Encoding.
-    2.  **Atenção:** Múltiplos blocos de Self-Attention (Transformer) ou Convolução + Atenção (Conformer).
-    3.  **Pooling:** Global Average Pooling.
-    4.  **Head:** MLP Classificador.
+SVM e Random Forest recebem vetor 2D `(batch, n_features)`. Se existir scaler
+lateral (`*_scaler.pkl`), ele transforma o vetor antes de `predict_proba`.
+A convenção de classe é índice `0 = real`, índice `1 = fake`.
 
----
+## Tabela de Entradas por Arquitetura
 
-## 2. Arquiteturas Baseadas em Áudio Bruto (Raw Audio)
+| Arquitetura | Contrato principal | Front-end de inferência | Observação |
+|---|---|---|---|
+| AASIST | raw audio | SincConv + grafos no modelo | default alinhado ao paper; variantes legadas podem usar espectrograma |
+| RawGAT-ST | raw audio | SincNet + grafos espectral/temporal | reescrito para raw audio |
+| RawNet2 | raw audio | SincNet + FMS + GRU | normalização/corte no preparador |
+| WavLM | raw audio | TF fallback ou PyTorch original | WavLM real é PyTorch-only |
+| HuBERT | raw audio | TF HuBERT quando disponível ou fallback | `.pt` original usa `HubertModel` |
+| Ensemble | raw audio | STFT compartilhado + Mel/LFCC/CQT/MFCC | variantes feature, score, lite e adaptive |
+| Sonic Sleuth | raw ou espectrograma | LFCC/MFCC/CQT in-model quando raw | default LFCC |
+| EfficientNet-LSTM | raw ou espectrograma | mel + delta + resize | tenta EfficientNetB0 ImageNet; fallback offline |
+| MultiscaleCNN | espectrograma | log-mel/LFCC via contrato | Res2Net-style |
+| Conformer | espectrograma | log-mel/LFCC via contrato | encoder Conformer com rel-pos |
+| Hybrid CNN-Transformer | espectrograma | CCT tokenizer | aceita fallback raw em variantes |
+| SpectrogramTransformer | espectrograma | ConvStem + patches | AST treinado do zero |
+| SVM | tabular | segmented aggregated features | scaler + SVC RBF |
+| Random Forest | tabular | segmented aggregated features | scaler opcional + RF |
 
-Estas arquiteturas operam diretamente sobre a forma de onda do áudio (waveform), aprendendo filtros diretamente dos dados.
+## Saída Padronizada
 
-### Pré-requisitos Comuns
-*   **Input Shape:** `(samples, 1)` ou `(samples,)`.
-*   **Taxa de Amostragem:** Fixa (geralmente 16kHz). O modelo pode conter camadas de reamostragem, mas recomenda-se enviar na taxa correta.
+A resposta de predição sempre expõe:
 
-### 2.1 RawNet2
-*   **Tipo de Entrada:** Áudio Bruto (Waveform).
-*   **Processamento Interno (In-Graph):**
-    1.  **Resampling:** `AudioResamplingLayer` (garante 16kHz).
-    2.  **Normalização:** `AudioNormalizationLayer` (Média 0, Std 1).
-*   **Fluxo de Inferência:**
-    1.  **SincNet/Conv1D:** Primeira camada aprende filtros passa-banda diretamente do sinal.
-    2.  **Residual Blocks:** Blocos residuais com FMS (Feature Map Scaling).
-    3.  **GRU:** Modelagem temporal das features extraídas.
-    4.  **Head:** Classificador.
+| Campo | Significado |
+|---|---|
+| `is_deepfake` | decisão binária usando `eer_threshold` quando calibrado |
+| `confidence` | probabilidade da classe predita |
+| `p_fake` / `p_real` | probabilidades explícitas |
+| `temperature_applied` | temperatura de calibração pós-hoc |
+| `classification_threshold` | threshold usado para `p_fake` |
+| `ood_score` / `is_ood` | score e flag OOD quando há limiar no contrato |
 
-### 2.2 HuBERT (Hidden Unit BERT)
-*   **Tipo de Entrada:** Áudio Bruto.
-*   **Fluxo de Inferência:**
-    1.  **Feature Encoder:** CNNs 1D que reduzem a dimensionalidade temporal (simulando tokenização).
-    2.  **Transformer Encoder:** Camadas de atenção (BERT-like) para capturar contexto global.
-    3.  **Projection:** Projeção final para a tarefa de classificação binária (fine-tuning).
-    *Nota:* A implementação utiliza uma versão otimizada compatível com Keras 3, simulando a estrutura do HuBERT original.
+## Incerteza e TTA
 
-### 2.3 WavLM
-*   **Tipo de Entrada:** Áudio Bruto.
-*   **Fluxo de Inferência:**
-    1.  Similar ao HuBERT, mas treinado com tarefas de "Masked Prediction" e "Denoising", tornando-o robusto a variações de canal e ruído.
-    2.  Utiliza um backbone pré-treinado (congelado ou fine-tuned) seguido de um classificador MLP.
+`Predictor.predict_with_uncertainty` usa Monte Carlo Dropout para modelos
+TensorFlow com dropout ativo e retorna incerteza epistêmica, entropia preditiva
+e flag `is_uncertain`. `predict_batch(..., use_tta=True)` aplica pequenas
+perturbações de ruído, deslocamento temporal e volume, depois faz média das
+predições.
 
-### 2.4 Sonic Sleuth
-*   **Tipo de Entrada:** Áudio Bruto.
-*   **Fluxo de Inferência:**
-    1.  Arquitetura leve customizada que combina convoluções 1D eficientes com mecanismos de atenção simplificados.
-    2.  Focada em inferência rápida para cenários de recursos limitados.
+## ONNX
 
----
-
-## 3. Machine Learning Clássico
-
-Modelos baseados em `scikit-learn` encapsulados para seguir a interface do projeto.
-
-### 3.1 SVM (Support Vector Machine)
-*   **Tipo de Entrada:** Features Tabulares (Vetor de características globais).
-*   **Wrapper:** Classe `SVMModel`.
-*   **Fluxo de Inferência:**
-    1.  **Pipeline:** `StandardScaler` (padronização média/desvio) -> `SVC` (Kernel RBF padrão).
-    2.  **Predict:** O método `.predict()` do wrapper delega para o pipeline do sklearn.
-    3.  **Probabilidades:** Usa `predict_proba` se `probability=True`, caso contrário retorna a classe direta.
-
-### 3.2 Random Forest
-*   **Tipo de Entrada:** Features Tabulares.
-*   **Wrapper:** Classe `RandomForestModel`.
-*   **Fluxo de Inferência:**
-    1.  **Pipeline:** Opcionalmente inclui normalização (embora árvores não exijam estritamente).
-    2.  **Ensemble:** Agregação de múltiplas árvores de decisão.
-    3.  **Saída:** Média das predições das árvores (voto majoritário ou média de probabilidades).
-
----
-
-## Tabela Resumo de Inputs
-
-| Arquitetura | Tipo de Entrada | Formato Esperado (Exemplo) | Pré-processamento Crítico |
-| :--- | :--- | :--- | :--- |
-| **AASIST** | Features | `(batch, time, freq)` | Normalização de Features |
-| **RawGAT-ST** | Features | `(batch, time, freq)` | Normalização de Features |
-| **RawNet2** | Áudio Bruto | `(batch, samples, 1)` | N/A (Feito no modelo) |
-| **HuBERT** | Áudio Bruto | `(batch, samples, 1)` | Resampling 16kHz |
-| **WavLM** | Áudio Bruto | `(batch, samples, 1)` | Resampling 16kHz |
-| **Conformer** | Features | `(batch, time, freq)` | Positional Encoding (Interno) |
-| **Sonic Sleuth** | Áudio Bruto | `(batch, samples,)` | LFCC/MFCC/CQT extraído no modelo |
-| **EfficientNet-LSTM** | Áudio Bruto / Espectrograma | `(batch, samples,)` | Mel + Delta (interno) → resize 224×224 |
-| **MultiscaleCNN** | Áudio Bruto / Espectrograma | `(batch, time, freq)` | STFT + log-mel (interno) |
-| **SpectrogramTransformer** | Áudio Bruto / Espectrograma | `(batch, time, freq)` | STFT + ConvStem (interno) |
-| **Ensemble** | Áudio Bruto | `(batch, samples,)` | Mel/LFCC/CQT/MFCC extraído no modelo |
-| **Hybrid CNN-Transformer** | Áudio Bruto / Espectrograma | `(batch, samples,)` | Mel + CCT Tokenizer (interno) |
-| **SVM** | Features (Flat) | `(batch, n_features)` | Scaling (Interno no Pipeline) |
-| **RandomForest** | Features (Flat) | `(batch, n_features)` | N/A |
-
-## Considerações de Implementação
-
-*   **Batching:** Todos os modelos esperam a primeira dimensão como o tamanho do lote (`batch_size`). Para inferência de uma única amostra, deve-se expandir a dimensão: `input[np.newaxis, ...]`.
-*   **GPU vs CPU:** As arquiteturas Deep Learning (Keras) detectam automaticamente a presença de GPU. A camada `GRU` padrão já utiliza o kernel cuDNN automaticamente quando as condições são atendidas (ativações padrão, sem `recurrent_dropout`). `CuDNNGRU` foi removido nas versões recentes do Keras/TF e não é mais necessário.
-*   **Segurança:** O carregamento de pesos utiliza `safe_normalization` e verificações de integridade para evitar execução de código malicioso em arquivos `.h5` ou `.keras`.
-
-## Otimizações de Performance (Sprint 3)
-
-*   **XLA JIT (Sprint 3.1):** O `Predictor` envolve cada modelo Keras em `tf.function(jit_compile=True, reduce_retracing=True)` cacheada em `ModelInfo.jit_predict_fn`. 1.5–3× speedup em arquiteturas suportadas (MultiscaleCNN, EfficientNet-LSTM, Conformer, CCT, SpectrogramTransformer, RawNet2). Arquiteturas com STFT in-graph ou graph attention dinâmico (Sonic Sleuth, Ensemble, WavLM, HuBERT, AASIST, RawGAT-ST) usam predict padrão (fallback automático).
-*   **Model warm-up (Sprint 3.3):** Ao carregar um modelo TensorFlow, o `ModelLoader` faz 1 forward pass com tensor de zeros — força alocação de memória GPU, JIT compile, layer init. A primeira inferência real fica 5–10× mais rápida. Flag `model_info.warmed_up=True` indica sucesso.
-*   **ONNX export (Sprint 3.4):** Modelos podem ser exportados para `.onnx` (FP32) e `.onnx INT8` durante o treino (flags `export_onnx`, `export_onnx_int8` em `TrainingConfig`). Use `OnnxInferenceSession` para deploy 2–3× mais rápido em CPU e 4× menor footprint. Requer `pip install tf2onnx onnxruntime`.
+Modelos TensorFlow podem ter um `.onnx` FP32 ao lado do `.keras`. Quando a sessão
+ONNX falha por shape/op não suportado, o fallback para TensorFlow é automático.
 
 ```python
-# Inferência via ONNX Runtime (sem TensorFlow no deploy)
 from app.domain.models.inference.onnx_export import OnnxInferenceSession
 
-with OnnxInferenceSession('app/models/model_int8.onnx') as session:
-    predictions = session.predict(features)  # (N, K)
+with OnnxInferenceSession("app/models/model.onnx") as session:
+    predictions = session.predict(features)
 ```

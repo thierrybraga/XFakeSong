@@ -1,4 +1,4 @@
-from scripts import build_dataset
+from scripts.dataset import build_dataset
 
 
 def _touch_wavs(directory, prefix, count):

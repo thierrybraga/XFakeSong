@@ -79,10 +79,10 @@ Ajustes de código **aplicados e testados** (`tests/unit/test_retraining_adjustm
 | P2 augmentation reativada (RawNet2, SpectrogramTransformer) | ✅ feito | [runner.py](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/runner.py) |
 | P1 hiperparâmetros + restauração de checkpoint | ✅ feito | [spectrogram_transformer.py](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/models/architectures/spectrogram_transformer.py), [runner.py](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/runner.py) |
 | P0 `groups` ponta-a-ponta + split por grupo | ✅ feito | [data.py](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/data.py), [secure_training_pipeline.py](https://github.com/thierrybraga/XFakeSong/blob/main/app/core/training/secure_training_pipeline.py) |
-| P0.4 protocolo cross-generator + CLI/presets | ✅ feito | [config.py](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/config.py), [run_benchmark.py](https://github.com/thierrybraga/XFakeSong/blob/main/scripts/run_benchmark.py) |
+| P0.4 protocolo cross-generator + CLI/presets | ✅ feito | [config.py](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/config.py), [run_benchmark.py](https://github.com/thierrybraga/XFakeSong/blob/main/scripts/benchmark/run_benchmark.py) |
 | P2 SVM/RF: RASTA-PLP + augmentation ruidoso (espaço de feature) | ✅ feito | [data.py](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/data.py), [runner.py](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/runner.py) |
 | P2 Ensemble: reponderar fusão por robustez (`weights="robustness"`) | ✅ feito | [detection_service.py](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/services/detection_service.py) |
-| P2 WavLM: harness de ablação de fine-tuning (LR/épocas) | ✅ feito | [ablate_wavlm_finetune.py](https://github.com/thierrybraga/XFakeSong/blob/main/scripts/ablate_wavlm_finetune.py) |
+| P2 WavLM: harness de ablação de fine-tuning (LR/épocas) | ✅ feito | [ablate_wavlm_finetune.py](https://github.com/thierrybraga/XFakeSong/blob/main/scripts/training/ablate_wavlm_finetune.py) |
 | P3 MultiscaleCNN: módulo de pruning por magnitude | ✅ feito | [magnitude_pruning.py](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/models/training/magnitude_pruning.py) |
 
 **Achados da execução (importantes para a banca):**
@@ -104,17 +104,17 @@ Ajustes de código **aplicados e testados** (`tests/unit/test_retraining_adjustm
 
 ```bash
 # Reteste cross-generator (P0.4) — o mais importante antes da defesa
-python scripts/run_benchmark.py --full \
+python scripts/benchmark/run_benchmark.py --full \
   --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
   --cross-generator fkvoice --out results/bench_xgen
 
 # Split disjunto por fonte (P0) — use se houver mais grupos/falantes no futuro
-python scripts/run_benchmark.py --full \
+python scripts/benchmark/run_benchmark.py --full \
   --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
   --group-split --out results/bench_group
 
 # Retreino padrão (in-distribution) com augmentation SNR + P1/P2 já aplicados
-python scripts/run_benchmark.py --full \
+python scripts/benchmark/run_benchmark.py --full \
   --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
   --out results/bench_indist
 ```
@@ -123,7 +123,7 @@ python scripts/run_benchmark.py --full \
 
 ```bash
 # Ablação de fine-tuning do WavLM (varre LR; baseline HuBERT)
-python scripts/ablate_wavlm_finetune.py \
+python scripts/training/ablate_wavlm_finetune.py \
   --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
   --lrs 1e-5 3e-5 1e-4 --epochs 30 --out results/ablation_wavlm
 
@@ -152,7 +152,7 @@ splits por versões **agrupadas**. Sem isto, P1/P2/P3 medem números potencialme
 vazados.
 
 ### P0.1 — Capturar a fonte por amostra na extração
-- [ ] Em [scripts/build_dataset.py](https://github.com/thierrybraga/XFakeSong/blob/main/scripts/build_dataset.py): derivar um
+- [ ] Em [scripts/dataset/build_dataset.py](https://github.com/thierrybraga/XFakeSong/blob/main/scripts/dataset/build_dataset.py): derivar um
   `group_id` por arquivo (falante quando houver; senão gerador/fonte:
   `brspeech`, `mlspt:<leitor>`, `ttsport_single_speaker`, `fkvoice:<falante>`).
 - [ ] Salvar no `.npz` um array `groups` alinhado a `X/y`

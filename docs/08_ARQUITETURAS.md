@@ -1,6 +1,11 @@
 # Arquiteturas Neurais
 
-O XFakeSong implementa **14 arquiteturas** de detecção de deepfake, organizadas em três categorias de acordo com o tipo de entrada. Todos os modelos expõem a interface unificada `create_model(input_shape, num_classes, **kwargs)` via `app/domain/models/architectures/factory.py`.
+O XFakeSong implementa **14 arquiteturas** de detecção de deepfake, organizadas
+por contrato de entrada: áudio bruto, espectrograma/LFCC e features tabulares.
+Todos os modelos expõem a interface unificada
+`create_model(input_shape, num_classes, **kwargs)` via
+`app/domain/models/architectures/factory.py` ou pelo registry canônico em
+`app/domain/models/architectures/registry.py`.
 
 !!! warning "Fallback SSL no caminho TensorFlow (importante para o TCC)"
     No caminho TensorFlow do benchmark, **WavLM** e **HuBERT** podem rodar como
@@ -25,15 +30,15 @@ O XFakeSong implementa **14 arquiteturas** de detecção de deepfake, organizada
 | 1 | WavLM | Áudio bruto | microsoft/wavlm-base | `app/domain/models/architectures/wavlm.py` |
 | 2 | HuBERT | Áudio bruto | Hidden-Unit BERT | `app/domain/models/architectures/hubert.py` |
 | 3 | RawNet2 | Áudio bruto | RawNet2 (2021) | `app/domain/models/architectures/rawnet2.py` |
-| 4 | Sonic Sleuth | Espectrograma | Alshehri et al. (2024) | `app/domain/models/architectures/sonic_sleuth.py` |
-| 5 | AASIST | Espectrograma | GAT spectro-temporal | `app/domain/models/architectures/aasist.py` |
+| 4 | Sonic Sleuth | Áudio bruto ou espectrograma | Alshehri et al. (2024) | `app/domain/models/architectures/sonic_sleuth.py` |
+| 5 | AASIST | Áudio bruto | Jung et al., ICASSP 2022 | `app/domain/models/architectures/aasist.py` |
 | 6 | RawGAT-ST | Áudio bruto | SincNet + Graph Attention espectro-temporal | `app/domain/models/architectures/rawgat_st.py` |
 | 7 | Conformer | Espectrograma | Conv + Transformer | `app/domain/models/architectures/conformer.py` |
 | 8 | Hybrid CNN-Transformer (CCT) | Espectrograma | Bartusiak & Delp (2022) | `app/domain/models/architectures/hybrid_cnn_transformer.py` |
 | 9 | Spectrogram Transformer | Espectrograma | ViT adaptado para áudio | `app/domain/models/architectures/spectrogram_transformer.py` |
-| 10 | EfficientNet-LSTM | Espectrograma | Transfer learning | `app/domain/models/architectures/efficientnet_lstm.py` |
+| 10 | EfficientNet-LSTM | Áudio bruto ou espectrograma | Transfer learning | `app/domain/models/architectures/efficientnet_lstm.py` |
 | 11 | MultiscaleCNN (Res2Net) | Espectrograma | Gao et al. TPAMI 2021 | `app/domain/models/architectures/multiscale_cnn.py` |
-| 12 | Ensemble | Espectrograma | Pham et al. (2024) | `app/domain/models/architectures/ensemble.py` |
+| 12 | Ensemble | Áudio bruto | Pham et al. (2024) | `app/domain/models/architectures/ensemble.py` |
 | 13 | SVM | Features tabulares | scikit-learn SVC | `app/domain/models/architectures/svm.py` |
 | 14 | Random Forest | Features tabulares | scikit-learn RF | `app/domain/models/architectures/random_forest.py` |
 
@@ -47,8 +52,8 @@ benchmark de 15.000 amostras.
 
 | Família | Modelos | Papel no experimento |
 |---|---|---|
-| SSL e áudio bruto | WavLM, HuBERT, RawNet2 | Comparação com representações modernas e forma de onda direta |
-| Grafos | AASIST, RawGAT-ST | Modelagem explícita de dependências espectro-temporais |
+| SSL e áudio bruto | WavLM, HuBERT, RawNet2, AASIST, RawGAT-ST, Ensemble | Comparação com representações modernas, SincNet, fusão multi-feature e forma de onda direta |
+| Grafos | AASIST, RawGAT-ST | Modelagem explícita de dependências espectro-temporais sobre front-end aprendido |
 | Espectrograma + atenção | Conformer, Hybrid CNN-Transformer, Spectrogram Transformer | Avaliação de convolução local + atenção global |
 | CNN e fusão | Sonic Sleuth, EfficientNet-LSTM, MultiscaleCNN, Ensemble | Frentes espectrais, transferência e fusão multi-feature |
 | Clássicos | SVM, Random Forest | Baselines interpretáveis e rápidos em CPU |
@@ -57,30 +62,34 @@ benchmark de 15.000 amostras.
 
 | Modelo | Decisão no artigo | Observação |
 |---|---|---|
-| Conformer | Demonstração principal | Maior qualidade e robustez sob AWGN |
-| Sonic Sleuth | Demonstração leve | Acurácia máxima, artefato pequeno e baixa latência |
-| Hybrid CNN-Transformer | Pronto para Gradio/API | Melhor compromisso neural entre acurácia, tamanho e latência |
-| MultiscaleCNN | Comparação neural | Alta acurácia, mas artefato maior |
+| Conformer | Demonstração principal | Maior qualidade e robustez sob AWGN no recorte oficial |
+| Sonic Sleuth | Suportado fora do recorte oficial | Artefato carregável existe na raiz `app/models/`, mas não integra os 11 finais do artigo |
+| Hybrid CNN-Transformer | Recorte oficial como CCT | Melhor compromisso neural entre acurácia, tamanho e latência |
+| MultiscaleCNN | Recorte oficial como Res2Net | Alta acurácia, artefato maior |
 | SVM | Baseline rápido | Excelente latência; frágil sob ruído AWGN |
 | Random Forest | Baseline complementar | Bom desempenho, maior custo que SVM |
 | RawNet2 | Estudo raw-audio | Convergente no preset GPU |
-| Ensemble | Funcional com ressalva | Bom limpo, queda acentuada sob ruído |
+| Ensemble | Suportado pelo registry/harness | Fora do recorte oficial sincronizado atual |
 | RawGAT-ST | Comparação em grafos | Estável e relativamente robusto |
 | AASIST | Comparação em grafos | Receita de treino corrigida e consistente |
 | HuBERT Original | Referência SSL funcional | Backbone original viável, custo elevado |
-| EfficientNet-LSTM | Funcional | Maior latência e abaixo dos líderes |
+| EfficientNet-LSTM | Suportado pela Gradio/API | Fora do recorte oficial sincronizado atual |
 | WavLM Original | Referência SSL experimental | Acurácia inferior a HuBERT no benchmark atual |
-| Spectrogram Transformer | Requer novo ajuste | Instabilidade entre melhor validação e avaliação final |
+| Spectrogram Transformer | Recorte oficial como AST | Estável após retreino selecionado |
 
-Os artefatos finais ficam em `app/models/bench_*` e
-`app/models/benchmark_final/<arquitetura>/`. A rastreabilidade completa está em
+Os artefatos carregáveis ficam em `app/models/bench_*`; os 11 modelos finais do
+artigo ficam em `app/models/benchmark_final/<slug_do_manifesto>/`. A
+rastreabilidade completa está em
 [Benchmark e Resultados](15_BENCHMARK.md) e [Estudo Experimental](20_ESTUDO_EXPERIMENTAL.md).
 
 ---
 
 ## Arquiteturas de Áudio Bruto (Raw Audio)
 
-Estas arquiteturas operam diretamente sobre a forma de onda (waveform) — entrada: `(batch, samples, 1)`, taxa de amostragem de 16 kHz.
+Estas arquiteturas operam diretamente sobre a forma de onda (waveform) —
+entrada típica `(batch, samples)` ou `(batch, samples, 1)`, taxa de amostragem
+de 16 kHz. Quando o artefato tem `input_contract`, ele prevalece sobre esta
+classificação.
 
 ### 1. WavLM
 
@@ -109,33 +118,49 @@ Aprende filtros diretamente da forma de onda, sem transformações de pré-proce
 - **Blocos Residuais**: Feature Map Scaling (FMS) como mecanismo de atenção de canal leve.
 - **Pré-processamento in-model**: `AudioResamplingLayer` (→ 16 kHz) + `AudioNormalizationLayer` (μ=0, σ=1).
 
+### 4. AASIST
+
+Implementação alinhada ao AASIST: áudio bruto → SincConv → encoder residual →
+grafos espectro-temporais heterogêneos → classificação.
+
+- **Front-end**: `SincConvLayer` aprende filtros passa-banda diretamente da
+  waveform.
+- **Encoder**: 6 blocos residuais, paridade com a receita atual do paper.
+- **Grafo**: atenção heterogênea espectral/temporal e fusão antes do head.
+- **Loss/saída**: suporta AM-Softmax/saída linear; o `Predictor` normaliza logits
+  para probabilidades quando necessário.
+
+### 5. RawGAT-ST
+
+Variante reescrita para seguir o RawGAT-ST: SincNet sobre áudio bruto, grafo
+espectral, grafo temporal e fusão element-wise dos readouts.
+
+- **Entrada default**: `raw_audio`; variantes legadas em espectrograma continuam
+  disponíveis para compatibilidade.
+- **Grafo**: readouts espectral e temporal independentes, combinados por produto
+  ou modo configurado.
+- **Treino**: recebe as mesmas augmentations de domínio raw-audio que AASIST e
+  RawNet2.
+
 ---
 
 ## Arquiteturas Baseadas em Espectrograma
 
 Entrada: `(batch, time_steps, freq_bins)` ou `(batch, time_steps, freq_bins, 1)`.
 
-### 4. Sonic Sleuth
+### 6. Sonic Sleuth
 
-Arquitetura leve baseada em LFCC, MFCC e CQT. Melhor resultado: **98,27% accuracy / EER 0,016** no ASVspoof 2019 + In-the-Wild + FakeAVCeleb.
+Arquitetura leve baseada em LFCC, MFCC e CQT. A referência reporta melhor
+resultado com LFCC: **98,27% accuracy / EER 0,016** no ASVspoof 2019 +
+In-the-Wild + FakeAVCeleb.
 
-- **Pipeline**: 3× Conv2D(32→64→128, 3×3) + MaxPool → Flatten → Dense(256) → Dense(128) → Dropout(0.1) → Dense(1, sigmoid).
-
-### 5. AASIST
-
-Modela o áudio como grafo — aprende relações espectro-temporais explicitamente via Graph Attention Networks.
-
-- **GraphAttentionLayer**: nós = características, arestas = correlações entre segmentos.
-- **Pipeline**: CNN Encoder → Graph Attention → GRU → Classificação binária.
-- **Pré-processamento in-model**: `AudioFeatureNormalization` + reshape 4D.
-
-### 6. RawGAT-ST
-
-Variante fiel ao RawGAT-ST com SincNet sobre áudio bruto, grafo espectral,
-grafo temporal e fusão element-wise dos readouts.
-
-- Utiliza `GraphAttentionLayer` e `AttentionLayer` customizadas.
-- Blocos residuais para extração de features locais antes da modelagem global por grafo.
+- **Variantes**: `sonic_sleuth` (LFCC), `sonic_sleuth_mfcc`,
+  `sonic_sleuth_cqt`, `sonic_sleuth_lfcc_cqt`.
+- **Front-end in-model**: LFCC/MFCC/CQT via `tf.signal`; CQT é aproximada por
+  filtros log-espaçados sobre STFT para compatibilidade em grafo TensorFlow.
+- **Backbone atual**: versão aprimorada do paper com 5 blocos
+  Conv2D+BatchNorm+ReLU+MaxPool, SE blocks e residuais nos blocos finais. A
+  topologia de 3 blocos da referência permanece como base conceitual.
 
 ### 7. Conformer
 
@@ -164,8 +189,12 @@ ViT adaptado para espectrogramas de áudio com `ConvolutionStemLayer` para extra
 
 Transfer learning + modelagem temporal sequencial.
 
-- **Backbone**: EfficientNetB0 (`weights=None`).
-- **Fine-tuning**: As últimas 3 camadas do backbone são descongeladas (`efficientnet.layers[-3:]`).
+- **Front-end**: aceita áudio bruto ou espectrograma; no raw, calcula mel
+  spectrogram (`n_fft=512`, `hop=160`, `n_mels=128`) e deltas.
+- **Backbone**: tenta EfficientNetB0 com pesos ImageNet; se offline ou
+  indisponível, cai para `weights=None`.
+- **Fine-tuning**: com ImageNet, congela o backbone e deixa treináveis `block7`
+  e `top_*`; sem pesos, treina do zero.
 - **Pré-processamento in-model**: `MelSpectrogramFrontEnd` → `DeltaFeatureLayer` (3 canais) → resize para (224, 224, 3).
 - **Temporal**: Bi-LSTM[256, 128] + `AttentionLayer` sobre features extraídas pelo backbone.
 
@@ -214,9 +243,9 @@ Encapsulados para seguir a interface do projeto, úteis como baseline e em cená
 | WavLM | Áudio bruto | `(batch, samples,)` | Resampling 16 kHz |
 | HuBERT | Áudio bruto | `(batch, samples,)` | Resampling 16 kHz |
 | RawNet2 | Áudio bruto | `(batch, samples,)` | SincNet + pré-ênfase (interno) |
-| Sonic Sleuth | Áudio bruto | `(batch, samples,)` | LFCC/MFCC/CQT extraído no modelo |
-| AASIST | Espectrograma | `(batch, time, freq)` | `AudioFeatureNormalization` |
+| AASIST | Áudio bruto | `(batch, samples, 1)` | SincConv + grafos AASIST |
 | RawGAT-ST | Áudio bruto | `(batch, samples, 1)` | SincConv + GAT espectral/temporal |
+| Sonic Sleuth | Áudio bruto ou espectrograma | `(batch, samples,)` ou `(batch, time, freq)` | LFCC/MFCC/CQT extraído no modelo quando raw |
 | Conformer | Espectrograma | `(batch, time, freq)` | Subsampling 4× + Positional Enc. |
 | Hybrid CNN-T | Áudio bruto / Espectrograma | `(batch, samples,)` | Mel 128 bins → CCT Tokenizer |
 | SpectrogramTransformer | Áudio bruto / Espectrograma | `(batch, time, freq)` | STFT → ConvStem → Patches |

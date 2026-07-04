@@ -214,7 +214,7 @@ habilitado.
 
 ```bash
 # Validar configuração sem build
-python scripts/docker_build.py train-nvidia config
+python scripts/ops/docker_build.py train-nvidia config
 
 # Inferência
 docker compose -f docker/compose/inference.cpu.yml up --build inference-api
@@ -331,7 +331,8 @@ pip install -r requirements.txt
 
 ### `TypeError: unhashable type: 'dict'` ao acessar `/` no browser
 
-**Sintoma**: API funciona (`/api/v1/system/health` retorna 200) mas o Gradio (`/`) retorna HTTP 500 com stack trace incluindo:
+**Sintoma**: API funciona (`/api/v1/system/health` retorna 200), mas a UI
+Gradio (`/gradio`) retorna HTTP 500 com stack trace incluindo:
 ```
 File ".../gradio/routes.py", line 432, in main
     return templates.TemplateResponse(...)
@@ -383,7 +384,7 @@ pip install 'huggingface_hub>=0.25,<1.0'
 O `requirements.txt` já fixa `huggingface_hub>=0.25,<1.0` (teto firme `<1.0`; piso
 `0.25` é a exigência do `datasets`, então a faixa satisfaz **gradio E datasets**).
 
-**Verificação**: `python scripts/doctor.py` mostra na seção *Compatibilidade de versões*:
+**Verificação**: `python scripts/ops/doctor.py` mostra na seção *Compatibilidade de versões*:
 ```
 OK  gradio=4.44.1, huggingface_hub=0.36.2 (compatíveis)
 ```
@@ -398,8 +399,8 @@ Antes de abrir um problema, rode o doctor — ele cobre Python, dependências (d
 *ausente* de *import quebrado*), compatibilidade de versões, **GPU/CUDA** (hardware NVIDIA,
 visibilidade pelo TensorFlow e dicas acionáveis por SO) e porta:
 ```bash
-python scripts/doctor.py          # diagnóstico completo
-python scripts/doctor.py --fix    # tenta reinstalar deps faltantes
+python scripts/ops/doctor.py          # diagnóstico completo
+python scripts/ops/doctor.py --fix    # tenta reinstalar deps faltantes
 ```
 No Linux/WSL o `./start.sh doctor` faz o equivalente em shell (e checa Docker + toolkit).
 
@@ -461,8 +462,12 @@ Ou adicione `.gitattributes`:
 ### Permissões em volumes montados
 O container roda como `appuser` (UID 1000). Se seus diretórios estiverem com outro owner:
 ```bash
-sudo chown -R 1000:1000 ./app/models ./app/results ./logs ./data
+sudo chown -R 1000:1000 ./app/models ./results ./app/results ./logs ./data
 ```
+
+Nos perfis segmentados em `docker/compose/`, os resultados regeneráveis ficam
+em `./results`. No compose legado da raiz, `./app/results` ainda é montado por
+compatibilidade.
 
 ### GPU NVIDIA — Container Toolkit
 ```bash
@@ -503,7 +508,8 @@ docker run -d \
     --name xfakesong_app \
     -p 7860:7860 \
     -v $(pwd)/app/models:/app/app/models \
-    -v $(pwd)/app/results:/app/app/results \
+    -v $(pwd)/app/datasets:/app/app/datasets \
+    -v $(pwd)/results:/app/results \
     -v $(pwd)/logs:/app/logs \
     -v $(pwd)/data:/app/data \
     xfakesong:latest
@@ -525,11 +531,11 @@ TensorFlow, PyTorch, FFmpeg, GPU, healthcheck e Storage.
 3. Envie os modelos de `app/models/` para um Model Repo:
 
 ```bash
-python scripts/upload_models_to_hf.py \
+python scripts/ops/upload_models_to_hf.py \
   --repo-id SEU_USUARIO/xfakesong-models \
   --dry-run
 
-python scripts/upload_models_to_hf.py \
+python scripts/ops/upload_models_to_hf.py \
   --repo-id SEU_USUARIO/xfakesong-models \
   --private
 ```
@@ -564,8 +570,8 @@ Guia completo: [Deploy Hugging Face](11_DEPLOY_HUGGINGFACE.md).
 make test               # suíte rápida, exclui smoke
 make test-cov           # cobertura app + benchmarks
 # ou diretamente
-./scripts/run_tests.sh fast
-./scripts/run_tests.sh cov
+./scripts/ops/run_tests.sh fast
+./scripts/ops/run_tests.sh cov
 ```
 
 ---
@@ -602,11 +608,12 @@ make env                # via Makefile
 XFakeSong/
 ├── app/
 │   ├── models/         # Modelos treinados (.keras, .onnx, scaler.pkl) [VOLUME]
-│   ├── results/        # Resultados de inferência batch [VOLUME]
+│   ├── datasets/       # Datasets reais/fake, raw, splits e NPZs [VOLUME]
 │   └── ...
 ├── data/
-│   ├── real/           # Áudios genuínos [VOLUME]
-│   └── fake/           # Áudios sintéticos [VOLUME]
+│   ├── app.db          # SQLite local
+│   └── uploads/        # Uploads runtime da API/Gradio
+├── results/            # Resultados regeneráveis de benchmark/treino
 ├── logs/               # Logs da aplicação [VOLUME]
 ├── .venv/              # Virtualenv local (ignorado no Docker)
 ├── Dockerfile          # Multi-stage build
@@ -646,7 +653,9 @@ start.bat rebuild       # Windows
 ## 💡 Dicas de produção
 
 - **Memory**: ML models pesados (Ensemble, WavLM) requerem 8GB+. Ajuste `DOCKER_MEMORY_LIMIT`.
-- **Healthcheck**: configurado com `start_period: 180s` (TF + 14 modelos demoram em CPU) e `interval: 30s`. Usa `/api/v1/system/health` (não depende do Gradio renderizado).
+- **Healthcheck**: configurado com `start_period: 180s` (TensorFlow e descoberta
+  de modelos podem demorar em CPU) e `interval: 30s`. Usa
+  `/api/v1/system/health` (não depende do Gradio renderizado).
 - **Logs**: rotação automática (10MB × 5 arquivos) via `logging.options` no compose.
 - **Signal handling**: `tini` como PID 1 garante shutdown limpo do Gradio em `docker stop`.
 - **Não-root**: container roda como `appuser` (UID 1000), sem privilégios elevados.

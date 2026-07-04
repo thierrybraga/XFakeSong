@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 TESTS = ROOT / "tests"
-DOC = ROOT / "docs" / "06_TESTES.md"
+DOC = ROOT / "docs" / "06_QUALIDADE_TESTES.md"
 CATEGORIES = ("unit", "api", "functional", "integration", "smoke")
 
 
@@ -28,8 +28,8 @@ def test_test_documentation_counts_match_tree():
 def test_test_documentation_mentions_standard_entrypoints():
     text = DOC.read_text(encoding="utf-8")
     for term in (
-        "./scripts/run_tests.sh fast",
-        "./scripts/run_tests.sh cov",
+        "./scripts/ops/run_tests.sh fast",
+        "./scripts/ops/run_tests.sh cov",
         "make test",
         "pytest -m smoke tests/smoke/",
         ".github/workflows/ci.yml",

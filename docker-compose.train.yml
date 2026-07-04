@@ -43,7 +43,7 @@ services:
       context: .
       dockerfile: environments/classical-ml/Dockerfile.cpu
     image: xfakesong:classical-ml
-    command: ["python", "scripts/train_classical.py"]
+    command: ["python", "scripts/training/train_by_family.py", "--family", "classical-ml"]
 
   tensorflow-keras:
     <<: *train-common
@@ -59,7 +59,7 @@ services:
             - driver: nvidia
               count: ${NVIDIA_GPU_COUNT:-all}
               capabilities: [gpu, compute, utility]
-    command: ["python", "scripts/train_tensorflow.py"]
+    command: ["python", "scripts/training/train_by_family.py", "--family", "tensorflow-keras"]
 
   pytorch-audio:
     <<: *train-common
@@ -75,7 +75,7 @@ services:
             - driver: nvidia
               count: ${NVIDIA_GPU_COUNT:-all}
               capabilities: [gpu, compute, utility]
-    command: ["python", "scripts/train_pytorch.py"]
+    command: ["python", "scripts/training/train_by_family.py", "--family", "pytorch-audio"]
 
   ssl-transformers:
     <<: *train-common
@@ -91,7 +91,7 @@ services:
             - driver: nvidia
               count: ${NVIDIA_GPU_COUNT:-all}
               capabilities: [gpu, compute, utility]
-    command: ["python", "scripts/train_ssl.py"]
+    command: ["python", "scripts/training/train_by_family.py", "--family", "ssl-transformers"]
 
   inference-api:
     working_dir: /app

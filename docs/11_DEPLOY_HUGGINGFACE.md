@@ -67,7 +67,7 @@ Arquivos usados no deploy:
 | `Dockerfile` | build multi-stage da aplicação |
 | `docker-entrypoint.sh` | prepara diretórios e sincroniza modelos |
 | `main.py` | inicia Gradio/FastAPI com `python main.py --gradio` |
-| `scripts/sync_hf_models.py` | baixa artefatos do Model Hub para `app/models` |
+| `scripts/ops/sync_hf_models.py` | baixa artefatos do Model Hub para `app/models` |
 | `requirements.txt` | dependências TensorFlow, PyTorch e runtime |
 
 ## 2. Publicar os Modelos no Model Hub
@@ -81,7 +81,7 @@ consolidados em `app/models/`.
 Faça uma simulação:
 
 ```bash
-python scripts/upload_models_to_hf.py \
+python scripts/ops/upload_models_to_hf.py \
   --repo-id SEU_USUARIO/xfakesong-models \
   --dry-run
 ```
@@ -89,7 +89,7 @@ python scripts/upload_models_to_hf.py \
 Envie os modelos:
 
 ```bash
-python scripts/upload_models_to_hf.py \
+python scripts/ops/upload_models_to_hf.py \
   --repo-id SEU_USUARIO/xfakesong-models \
   --private
 ```
@@ -123,7 +123,7 @@ app/models/
 Faça o plano de upload sem enviar arquivos:
 
 ```bash
-python scripts/upload_models_to_hf.py \
+python scripts/ops/upload_models_to_hf.py \
   --repo-id SEU_USUARIO/xfakesong-benchmark-models \
   --dry-run
 ```
@@ -133,7 +133,7 @@ Envie os modelos pré-treinados:
 ```bash
 export HF_TOKEN=hf_xxx
 
-python scripts/upload_models_to_hf.py \
+python scripts/ops/upload_models_to_hf.py \
   --repo-id SEU_USUARIO/xfakesong-benchmark-models \
   --private \
   --commit-message "Upload benchmark 15k pretrained models"
@@ -145,7 +145,7 @@ Remova a flag para publicar abertamente.
 Para anexar resultados e pacote acadêmico ao mesmo Model Hub:
 
 ```bash
-python scripts/upload_models_to_hf.py \
+python scripts/ops/upload_models_to_hf.py \
   --repo-id SEU_USUARIO/xfakesong-benchmark-models \
   --private \
   --include-results \
@@ -162,7 +162,7 @@ Para baixar os modelos em uma máquina local, Docker ou Space:
 export MODEL_REPO_ID=SEU_USUARIO/xfakesong-benchmark-models
 export HF_TOKEN=hf_xxx        # apenas se o repo for privado
 
-python scripts/sync_hf_models.py \
+python scripts/ops/sync_hf_models.py \
   --repo-id "$MODEL_REPO_ID" \
   --models-dir app/models \
   --force
@@ -174,7 +174,7 @@ No Windows PowerShell:
 $env:MODEL_REPO_ID="SEU_USUARIO/xfakesong-benchmark-models"
 $env:HF_TOKEN="hf_xxx"
 
-python scripts/sync_hf_models.py `
+python scripts/ops/sync_hf_models.py `
   --repo-id $env:MODEL_REPO_ID `
   --models-dir app/models `
   --force
@@ -183,7 +183,7 @@ python scripts/sync_hf_models.py `
 Após o download, valide:
 
 ```bash
-python scripts/sync_hf_models.py \
+python scripts/ops/sync_hf_models.py \
   --repo-id SEU_USUARIO/xfakesong-benchmark-models \
   --models-dir app/models
 
@@ -218,7 +218,7 @@ No Space, abra **Settings → Variables and secrets**.
 | Variable | `XFAKE_CREATE_DEFAULT_MODELS` | `false` |
 | Secret | `HF_TOKEN` | token com leitura do model repo, se privado |
 
-No boot, `docker-entrypoint.sh` executa `scripts/sync_hf_models.py`. Se
+No boot, `docker-entrypoint.sh` executa `scripts/ops/sync_hf_models.py`. Se
 `MODEL_REPO_ID` estiver definido, os modelos são sincronizados para
 `app/models`. Se não estiver definido, o app usa os modelos já presentes no
 projeto.
@@ -343,7 +343,9 @@ DEEPFAKE_MODELS_DIR=/data/models
 4. Configurar `ENABLE_TRAINING=false`.
 5. Selecionar CPU Upgrade, T4 ou L4.
 6. Abrir a aba **Detectar**.
-7. Confirmar que os 14 modelos aparecem.
+7. Confirmar que os modelos publicados aparecem. No recorte oficial atual,
+   isso corresponde aos 11 modelos sincronizados em `benchmark_final`; modelos
+   extras aparecem somente se também forem publicados no Model Hub/local.
 8. Testar inferência com um áudio curto.
 
 ### 6.2 Demonstração com Persistência
@@ -374,7 +376,7 @@ ou GPU Space temporário com Storage Bucket:
 export XFAKE_STORAGE_DIR=/data
 export XFAKE_CREATE_DEFAULT_MODELS=false
 
-python scripts/run_tcc_pipeline.py \
+python scripts/benchmark/run_tcc_pipeline.py \
   --download \
   --target-per-class 7500 \
   --full-benchmark \
@@ -413,7 +415,7 @@ Artefatos esperados:
 
 - Logs mostram `sync_hf_models`.
 - Se `MODEL_REPO_ID` estiver definido, não há artefatos ausentes.
-- A aba **Detectar** lista 14 modelos.
+- A aba **Detectar** lista os modelos publicados/sincronizados.
 - O startup não carrega todos os pesos de uma vez; os modelos são carregados sob
   demanda.
 
@@ -423,7 +425,7 @@ Artefatos esperados:
 - A aba **Treinar** está desativada quando `ENABLE_TRAINING=false`.
 - Upload de áudio funciona.
 - O fluxo de uso das abas segue o guia
-  [Interface Gradio](23_INTERFACE_GRADIO.md).
+  [Frontend Gradio](23_FRONTEND_GRADIO.md).
 
 ### Inferência
 
@@ -465,7 +467,7 @@ Os nomes dos endpoints podem mudar conforme a composição da interface. Use
 
 | Tema | Documento |
 | --- | --- |
-| Uso da interface e abas | [Interface Gradio](23_INTERFACE_GRADIO.md) |
+| Uso da interface e abas | [Frontend Gradio](23_FRONTEND_GRADIO.md) |
 | Publicação GitHub Pages + Hugging Face | [GitHub Pages e Hugging Face](24_PUBLICACAO_GITHUB_HF.md) |
 | Modelos e artefatos do benchmark | [Benchmark e Resultados](15_BENCHMARK.md) |
 | Notebooks de benchmark/treino/inferência | [Guia de Notebooks](16_NOTEBOOKS.md) |

@@ -57,8 +57,8 @@ mesmo `.npz`:
 splits, e todos os modelos passam a usá-lo automaticamente:
 
 ```bash
-python scripts/build_dataset.py --skip-download --target <N>   # dedup→balance→splits
-python scripts/export_npz_from_splits.py \
+python scripts/dataset/build_dataset.py --skip-download --target <N>   # dedup→balance→splits
+python scripts/dataset/export_npz_from_splits.py \
     --out app/datasets/benchmark_audio_raw_balanced_15k.npz --sample-rate 16000 --duration-sec 5.0
 ```
 

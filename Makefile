@@ -113,11 +113,11 @@ benchmark-nvidia:  ## Executa benchmark completo NVIDIA/WSL2
 
 .PHONY: docker-config
 docker-config:  ## Valida configuração Compose dos perfis segmentados
-	$(PYTHON) scripts/docker_build.py inference-cpu config
-	$(PYTHON) scripts/docker_build.py inference-nvidia config
-	$(PYTHON) scripts/docker_build.py train-cpu config
-	$(PYTHON) scripts/docker_build.py train-nvidia config
-	$(PYTHON) scripts/docker_build.py benchmark-nvidia config
+	$(PYTHON) scripts/ops/docker_build.py inference-cpu config
+	$(PYTHON) scripts/ops/docker_build.py inference-nvidia config
+	$(PYTHON) scripts/ops/docker_build.py train-cpu config
+	$(PYTHON) scripts/ops/docker_build.py train-nvidia config
+	$(PYTHON) scripts/ops/docker_build.py benchmark-nvidia config
 
 # =====================================================================
 # Desenvolvimento local (Python venv)
@@ -159,8 +159,8 @@ format:  ## Formata com black + isort
 	.venv/bin/black app/ tests/
 	.venv/bin/isort app/ tests/
 
-# Runner padronizado (escolhe o python do venv). Veja docs/06_TESTES.md.
-RUN_TESTS := ./scripts/run_tests.sh
+# Runner padronizado (escolhe o python do venv). Veja docs/06_QUALIDADE_TESTES.md.
+RUN_TESTS := ./scripts/ops/run_tests.sh
 
 .PHONY: test
 test:  ## Roda a suíte rápida (tudo EXCETO smoke) — run padrão da CI
@@ -220,8 +220,8 @@ deploy-hf:  ## Deploy para Hugging Face Spaces
 
 .PHONY: doctor
 doctor:  ## Diagnóstico do ambiente (deps, porta, db)
-	$(PYTHON) scripts/doctor.py
+	$(PYTHON) scripts/ops/doctor.py
 
 .PHONY: doctor-fix
 doctor-fix:  ## Diagnóstico + tenta corrigir automaticamente
-	$(PYTHON) scripts/doctor.py --fix
+	$(PYTHON) scripts/ops/doctor.py --fix

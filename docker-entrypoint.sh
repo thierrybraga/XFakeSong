@@ -37,7 +37,7 @@ echo "[entrypoint] GRADIO_SERVER_PORT=${GRADIO_SERVER_PORT:-7860}"
 # MODEL_REPO_ID/XFAKE_MODEL_REPO_ID estiver definido. Sem essa variável, é no-op
 # e usa os artefatos já empacotados/montados em app/models.
 if [ "${XFAKE_SYNC_MODELS_ON_BOOT:-true}" != "false" ]; then
-    python scripts/sync_hf_models.py || {
+    python scripts/ops/sync_hf_models.py || {
         echo "[entrypoint] WARN: model sync failed; continuing with local files." >&2
     }
 fi

@@ -49,7 +49,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
       - name: Suíte rápida (exclui smoke) + cobertura
-        run: bash scripts/run_tests.sh cov
+        run: bash scripts/ops/run_tests.sh cov
 
   security:
     name: Segurança (bandit bloqueia HIGH + pip-audit advisório)
@@ -95,7 +95,7 @@ jobs:
         run: docker build --build-arg TF_VARIANT=cpu -t xfakesong:ci .
       - name: Validar compose segmentado
         run: |
-          python scripts/docker_build.py inference-cpu config
-          python scripts/docker_build.py train-cpu config
-          python scripts/docker_build.py train-nvidia config
-          python scripts/docker_build.py benchmark-nvidia config
+          python scripts/ops/docker_build.py inference-cpu config
+          python scripts/ops/docker_build.py train-cpu config
+          python scripts/ops/docker_build.py train-nvidia config
+          python scripts/ops/docker_build.py benchmark-nvidia config

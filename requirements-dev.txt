@@ -42,3 +42,6 @@ ipython>=8.18
 jupyter>=1.0
 ipdb>=0.13
 rich>=13.7
+
+# --- XAI (analise de explicabilidade: scripts/reporting/run_shap_analysis.py) ---
+shap>=0.44

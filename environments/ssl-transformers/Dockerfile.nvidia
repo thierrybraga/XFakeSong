@@ -28,4 +28,4 @@ RUN pip install --upgrade pip setuptools wheel \
 
 COPY . .
 
-CMD ["python", "scripts/train_ssl.py", "--help"]
+CMD ["python", "scripts/training/train_by_family.py", "--family", "ssl-transformers", "--help"]

@@ -1779,7 +1779,7 @@ custa mais do que rejeitar um usuário genuíno
 A Figura~\ref{fig:rf_feature_importance} apresenta a importância de Gini das
 características do vetor tabular de \num{63} descritores
 (Seção~\ref{sec:caracteristicas}), extraída diretamente do artefato treinado
-do \textit{Random Forest} (\path{scripts/export_rf_feature_importance.py}). Agregando por família, os
+do \textit{Random Forest} (\path{scripts/reporting/export_rf_feature_importance.py}). Agregando por família, os
 coeficientes cepstrais MFCC concentram \num{49,9}\% da importância total,
 seguidos por RASTA-PLP (\num{35,2}\%) e pelas estatísticas temporais
 (\num{14,9}\%). Individualmente, a média do MFCC3 é o descritor mais
@@ -1867,7 +1867,7 @@ subestimaria seu valor operacional.
 \caption[Distribuições da pontuação por classe para AASIST e RawGAT-ST]{%
 Distribuições da pontuação $p_{\mathrm{fake}}$ por classe verdadeira
 para AASIST e RawGAT-ST no conjunto de teste limpo, em escala logarítmica
-(geradas por \texttt{scripts/export\_tcc\_extra\_figures.py}). A cabeça
+(geradas por \texttt{scripts/reporting/export\_tcc\_extra\_figures.py}). A cabeça
 AM-Softmax do AASIST concentra \num{99,9}\% dos \textit{scores} nos extremos
 do intervalo.}
 \label{fig:score_distributions_gat}
@@ -1879,7 +1879,7 @@ do intervalo.}
 \caption[Curvas DET dos onze modelos no conjunto de teste limpo]{%
 Curvas DET (\textit{Detection Error Tradeoff}) dos \num{11} modelos
 no conjunto de teste limpo, em eixos probit (geradas por
-\texttt{scripts/export\_tcc\_extra\_figures.py}). O platô de
+\texttt{scripts/reporting/export\_tcc\_extra\_figures.py}). O platô de
 $P_{miss} \approx 7\%$ do AASIST evidencia a cauda de \textit{spoofs} com
 pontuação saturada no extremo incorreto.}
 \label{fig:benchmark_det_curves}
@@ -2561,7 +2561,7 @@ treinamento, inferência, cálculo de métricas e geração dos relatórios.
 \textbf{Etapa} & \textbf{Módulo} & \textbf{Responsabilidade} \\
 \midrule
 Orquestração & \path{benchmarks/runner.py} & Executa preparação, treino, inferência, métricas e persistência \\
-Entrada operacional & \path{scripts/run_benchmark.py} & Rodadas individuais ou múltiplas via linha de comando \\
+Entrada operacional & \path{scripts/benchmark/run_benchmark.py} & Rodadas individuais ou múltiplas via linha de comando \\
 Treinamento & \path{app/domain/services/training_service.py} & Cria o modelo, aplica callbacks, treina e salva arquivos gerados \\
 Fábrica de arquiteturas & \path{app/domain/models/architectures/factory.py} & Normaliza aliases e instancia as arquiteturas avaliadas \\
 Carregamento de modelos & \path{app/domain/services/detection/model_loader.py} & Recarrega modelos Keras/sklearn e contratos de entrada \\
@@ -2600,28 +2600,31 @@ Os comandos a seguir sintetizam o fluxo operacional usado para repetir o
 
     \item \textbf{Executar o \textit{pipeline} completo do TCC com o NPZ original:}
     \begin{quote}\footnotesize\ttfamily
-    python scripts/run\_tcc\_pipeline.py\\
+    python scripts/benchmark/run\_tcc\_pipeline.py\\
     --full-benchmark --epochs 100 --device-profile gpu\\
     --npz app/datasets/benchmark\_audio\_raw\_balanced\_15k.npz
     \end{quote}
 
     \item \textbf{Executar benchmark completo com o NPZ consolidado:}
     \begin{quote}\footnotesize\ttfamily
-    python scripts/run\_benchmark.py --full --epochs 100 --device-profile gpu\\
+    python scripts/benchmark/run\_benchmark.py --full --epochs 100\\
+    --device-profile gpu\\
     --dataset app/datasets/benchmark\_audio\_raw\_balanced\_15k.npz
     \end{quote}
     \textit{WavLM Original e HuBERT Original usam um \textit{runner}
     PyTorch/\texttt{transformers} dedicado, com \textit{backbone} SSL real:}
     \begin{quote}\footnotesize\ttfamily
-    python scripts/run\_wavlm\_original\_benchmark.py --architecture wavlm\\
+    python scripts/benchmark/run\_wavlm\_original\_benchmark.py\\
+    --architecture wavlm\\
     --dataset app/datasets/benchmark\_audio\_raw\_balanced\_15k.npz\\
-    python scripts/run\_wavlm\_original\_benchmark.py --architecture hubert\\
+    python scripts/benchmark/run\_wavlm\_original\_benchmark.py\\
+    --architecture hubert\\
     --dataset app/datasets/benchmark\_audio\_raw\_balanced\_15k.npz
     \end{quote}
 
     \item \textbf{Executar benchmark de um modelo individual:}
     \begin{quote}\footnotesize\ttfamily
-    python scripts/run\_benchmark.py --model Conformer --epochs 100\\
+    python scripts/benchmark/run\_benchmark.py --model Conformer --epochs 100\\
     --device-profile gpu\\
     --dataset app/datasets/benchmark\_audio\_raw\_balanced\_15k.npz
     \end{quote}

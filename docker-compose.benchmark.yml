@@ -55,7 +55,7 @@ services:
               capabilities: [gpu, compute, utility]
     command:
       - python
-      - scripts/run_models_sequential.py
+      - scripts/benchmark/run_models_sequential.py
       - --dataset
       - app/datasets/benchmark_audio_raw_balanced_15k.npz
       - --out

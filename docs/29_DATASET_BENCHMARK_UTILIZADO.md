@@ -111,8 +111,8 @@ pipeline não inventa IDs: `speaker_ids` usa fallback por fonte (`brspeech`,
 A tabela deve ser gerada após o download/splits:
 
 ```powershell
-python scripts/rebuild_speaker_manifest.py --dataset-dir app/datasets
-python scripts/export_speaker_table.py --dataset-dir app/datasets --scope all
+python scripts/dataset/rebuild_speaker_manifest.py --dataset-dir app/datasets
+python scripts/dataset/export_speaker_table.py --dataset-dir app/datasets --scope all
 ```
 
 Campos principais em `app/datasets/speaker_table.csv`:
@@ -139,7 +139,7 @@ Reconstrução canônica do dataset medium 15k:
 ```powershell
 $env:DOCKER_TRAIN_CPU_LIMIT='8'
 docker compose -f docker\compose\benchmark.nvidia.yml --env-file .env run --rm benchmark `
-  python scripts/run_tcc_pipeline.py `
+  python scripts/benchmark/run_tcc_pipeline.py `
     --download `
     --tier medium `
     --full-benchmark `
@@ -154,7 +154,7 @@ Auditoria de falantes:
 
 ```powershell
 docker compose -f docker\compose\benchmark.nvidia.yml --env-file .env run --rm benchmark `
-  python scripts/audit_speaker_manifest.py --dataset-dir app/datasets --scope splits `
+  python scripts/dataset/audit_speaker_manifest.py --dataset-dir app/datasets --scope splits `
     --json-out app/datasets/speaker_audit.json
 ```
 
@@ -162,7 +162,7 @@ Benchmark sequencial sobre o NPZ canônico:
 
 ```powershell
 docker compose -f docker\compose\benchmark.nvidia.yml --env-file .env run --rm benchmark `
-  python scripts/run_models_sequential.py `
+  python scripts/benchmark/run_models_sequential.py `
     --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz `
     --out results/benchmark_15k_medium `
     --epochs 100 `

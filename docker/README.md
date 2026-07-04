@@ -21,12 +21,12 @@ Container Toolkit on Linux. Validate with:
 docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
 ```
 
-Use `scripts/docker_build.py` for a stable CLI over these files.
+Use `scripts/ops/docker_build.py` for a stable CLI over these files.
 
 ```bash
-python scripts/docker_build.py inference-cpu config
-python scripts/docker_build.py inference-nvidia up
-python scripts/docker_build.py benchmark-nvidia run
+python scripts/ops/docker_build.py inference-cpu config
+python scripts/ops/docker_build.py inference-nvidia up
+python scripts/ops/docker_build.py benchmark-nvidia run
 ```
 
 Runtime paths are standardized across profiles:

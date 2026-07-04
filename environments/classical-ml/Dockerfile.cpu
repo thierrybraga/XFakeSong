@@ -22,5 +22,5 @@ RUN pip install --upgrade pip setuptools wheel \
 
 COPY . .
 
-CMD ["python", "scripts/train_classical.py", "--help"]
+CMD ["python", "scripts/training/train_by_family.py", "--family", "classical-ml", "--help"]
 

@@ -58,7 +58,7 @@ Variáveis de ambiente úteis (ver `settings.py` e `app/core/middleware.py`):
   métricas por arquitetura e cópia da execução original). Ignorado.
 - **Material acadêmico**: `tcc_overleaf/main.tex` é a fonte única; `tcc_overleaf.zip`
   contém o pacote limpo para Overleaf, sem PDF nem auxiliares LaTeX.
-- **Notebooks**: `notebooks/` — gerados por `scripts/build_notebooks.py`
+- **Notebooks**: `notebooks/` — gerados por `scripts/ops/build_notebooks.py`
   (fonte de verdade; não edite o `.ipynb` à mão).
 
 ## Como adicionar uma arquitetura
@@ -69,7 +69,7 @@ Variáveis de ambiente úteis (ver `settings.py` e `app/core/middleware.py`):
    `input_requirements` correto (`input_type`: `raw_audio` ou `spectrogram`).
 3. Garanta que o **wizard** e o **benchmark** reconhecem o nome (o smoke
    `tests/smoke/test_all_architectures.py` valida a criação de todas).
-4. Adicione um notebook em `MODELS` de `scripts/build_notebooks.py` e regenere.
+4. Adicione um notebook em `MODELS` de `scripts/ops/build_notebooks.py` e regenere.
 
 ## Como adicionar um extrator de features
 
@@ -94,14 +94,14 @@ Adicione com **versão mínima** (e upper bound quando houver major arriscado) a
 
 ## Testes e gates de CI
 
-Espelhe a estrutura de `app/` em `tests/` (ver [Testes e Qualidade](06_TESTES.md)):
+Espelhe a estrutura de `app/` em `tests/` (ver [Qualidade e Testes](06_QUALIDADE_TESTES.md)):
 
 ```bash
-./scripts/run_tests.sh fast        # suíte rápida (sem smoke)
-./scripts/run_tests.sh cov         # + cobertura
+./scripts/ops/run_tests.sh fast        # suíte rápida (sem smoke)
+./scripts/ops/run_tests.sh cov         # + cobertura
 mkdocs build --strict              # docs
 bandit -r app benchmarks scripts -lll   # SAST (bloqueia HIGH)
-python scripts/build_notebooks.py  # regenera notebooks
+python scripts/ops/build_notebooks.py  # regenera notebooks
 ```
 
 A CI (`.github/workflows/ci.yml`) roda testes+cobertura, docs, segurança

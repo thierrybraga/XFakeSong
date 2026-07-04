@@ -26,4 +26,4 @@ RUN pip install --upgrade pip setuptools wheel \
 
 COPY . .
 
-CMD ["python", "scripts/train_pytorch.py", "--help"]
+CMD ["python", "scripts/training/train_by_family.py", "--family", "pytorch-audio", "--help"]

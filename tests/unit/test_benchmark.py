@@ -427,7 +427,7 @@ def test_report_creates_graph_placeholders_when_scores_are_missing():
 
 
 def test_tcc_pipeline_verifies_per_architecture_artifacts(tmp_path):
-    from scripts.run_tcc_pipeline import _verify_outputs
+    from scripts.benchmark.run_tcc_pipeline import _verify_outputs
 
     results = {
         "architectures": {
@@ -543,7 +543,7 @@ def test_neural_benchmark_plan_uses_curated_hyperparameters():
 
     with tempfile.TemporaryDirectory() as td:
         # WavLM/HuBERT (Original) rodam por um runner PyTorch/transformers
-        # dedicado (scripts/run_wavlm_original_benchmark.py), fora do
+        # dedicado (scripts/benchmark/run_wavlm_original_benchmark.py), fora do
         # caminho benchmarks.runner:keras que plan_benchmark cobre; e
         # EfficientNet-LSTM/Ensemble/Sonic Sleuth ficam fora do recorte
         # oficial de 11 modelos do TCC (ver ARCH_ALIASES/NEURAL_BENCHMARK_

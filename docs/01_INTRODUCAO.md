@@ -55,11 +55,11 @@ em [Features de Áudio](04_FEATURES.md).
   de treino, gestão de datasets e perfis de voz.
 - **API FastAPI** (`/api/v1`): detecção single/multi-model, incerteza
   (MC Dropout), features, treino, datasets e perfis. Ver
-  [API Reference](07_API_REFERENCE.md).
+  [API REST e Comunicação](07_API_COMUNICACAO.md).
 
 ### 5. Benchmark do TCC
 
-`scripts/run_tcc_pipeline.py` automatiza dataset → split → treino → inferência →
+`scripts/benchmark/run_tcc_pipeline.py` automatiza dataset → split → treino → inferência →
 **métricas, tabelas LaTeX e figuras PNG** (`tcc_report.md`, `dataset.md`).
 Métricas padrão da área: acurácia, AUC-ROC, **EER** e **min-tDCF**. Ver
 [Benchmark e Resultados](15_BENCHMARK.md).

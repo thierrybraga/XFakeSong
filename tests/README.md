@@ -1,7 +1,7 @@
 # Testes XFakeSong
 
 Esta pasta contém a suíte pytest do projeto. A documentação completa está em
-[`docs/06_TESTES.md`](../docs/06_TESTES.md).
+[`docs/06_QUALIDADE_TESTES.md`](../docs/06_QUALIDADE_TESTES.md).
 
 ## Categorias
 
@@ -18,12 +18,12 @@ Os markers são aplicados automaticamente por `tests/conftest.py`.
 ## Comandos
 
 ```bash
-./scripts/run_tests.sh fast
-./scripts/run_tests.sh unit
-./scripts/run_tests.sh api
-./scripts/run_tests.sh integration
-./scripts/run_tests.sh smoke
-./scripts/run_tests.sh cov
+./scripts/ops/run_tests.sh fast
+./scripts/ops/run_tests.sh unit
+./scripts/ops/run_tests.sh api
+./scripts/ops/run_tests.sh integration
+./scripts/ops/run_tests.sh smoke
+./scripts/ops/run_tests.sh cov
 ```
 
 `pytest tests/` exclui `smoke` por padrão via `pyproject.toml`.
@@ -35,5 +35,5 @@ Os markers são aplicados automaticamente por `tests/conftest.py`.
 - Mocke rede, downloads, pesos grandes e I/O caro.
 - Não grave artefatos versionáveis em `app/models/`, `results/` ou datasets reais.
 - Funções auxiliares não coletáveis devem começar com `_`.
-- Notebooks ativos são gerados por `scripts/build_notebooks.py`; teste com
+- Notebooks ativos são gerados por `scripts/ops/build_notebooks.py`; teste com
   `pytest tests/unit/test_notebooks_compile.py -q`.

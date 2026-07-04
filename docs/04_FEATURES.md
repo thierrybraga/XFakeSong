@@ -39,8 +39,8 @@ ditado pelo `input_contract` gravado no treino (ver
 
 | Classe de modelo | Front-end em produção | Observação |
 | --- | --- | --- |
-| Neurais **raw-audio** (AASIST, RawGAT-ST, RawNet2, WavLM, HuBERT) | forma de onda bruta (front-end aprendido: SincNet / SSL) | sem features tabulares |
-| Neurais **spectrogram** (MultiscaleCNN, EfficientNet-LSTM, SpectrogramTransformer, Conformer, Hybrid, Ensemble, Sonic Sleuth) | **log-mel** ou **LFCC** (campo `feature_frontend` do contrato) | calculado on-the-fly via `tf.signal` |
+| Neurais **raw-audio** (AASIST, RawGAT-ST, RawNet2, WavLM, HuBERT, Ensemble) | forma de onda bruta (front-end aprendido ou in-model: SincNet / SSL / STFT compartilhado) | sem features tabulares |
+| Neurais **spectrogram** (MultiscaleCNN, EfficientNet-LSTM, SpectrogramTransformer, Conformer, Hybrid, Sonic Sleuth quando treinado como spec) | **log-mel** ou **LFCC** (campo `feature_frontend` do contrato) | calculado on-the-fly via `tf.signal` |
 | **Clássicos** (SVM, RandomForest) | features tabulares **segmentadas e agregadas**: `SPECTRAL`, `CEPSTRAL`, `TEMPORAL`, `PROSODIC` | vetor 1-D por amostra |
 
 As demais famílias — `PERCEPTUAL`, `FORMANT`, `VOICE_QUALITY`, `COMPLEXITY`,
@@ -62,6 +62,56 @@ Adapters  →  envolvem extratores do domínio e expõem extract(AudioData) → 
 ```
 
 Todos os extratores são registrados com **chaves `FeatureType` enum** — sem strings legadas.
+
+---
+
+## Processo de Extração na Inferência
+
+O caminho de inferência não extrai "todas as features" para todos os modelos.
+Ele prepara somente o tensor que o artefato treinado espera:
+
+1. `ModelLoader` lê o `_config.json` lateral ao artefato e monta `ModelInfo`.
+2. `FeaturePreparer` resolve `input_contract` > registry > inferência por shape.
+3. O áudio é reamostrado para o `sample_rate` do contrato, normalmente `16 kHz`.
+4. O despacho segue `input_type`:
+   - `raw_audio`: normalização peak + center-crop/zero-pad + waveform `(T,)` ou `(T, 1)`;
+   - `spectrogram`: `prepare_audio_for_model` calcula log-mel ou LFCC via `tf.signal`;
+   - `tabular`: `extract_segmented_features` gera vetor agregado para SVM/RF.
+
+### Front-end espectral unificado
+
+`app/domain/services/detection/audio_preprocessing.py` centraliza o front-end
+usado por treino e inferência:
+
+| Parâmetro | Padrão | Uso |
+|---|---:|---|
+| `DEFAULT_SAMPLE_RATE` | 16000 | taxa-alvo antes do front-end |
+| `DEFAULT_N_FFT` | 512 | janela STFT |
+| `DEFAULT_HOP` | 128 | passo STFT no caminho unificado |
+| `DEFAULT_N_MELS` | 80 | log-mel legado |
+| `DEFAULT_FRONTEND` | `lfcc` | padrão para treinos novos |
+| `DEFAULT_N_LFCC` | 80 | preserva shape `(T, 80, 1)` |
+
+Modelos novos devem gravar `feature_frontend="lfcc"` ou `"logmel"` no
+`input_contract`. Modelos antigos sem esse campo usam `logmel` por fallback para
+manter paridade com o treino já realizado.
+
+### Extração segmentada para SVM/RF
+
+Os modelos clássicos recebem vetor tabular. Na inferência, se o artefato não
+declara `feature_types`, o fallback é `spectral`, `cepstral`, `temporal` e
+`prosodic`. O core segmenta o áudio em janelas de 1 s, sem overlap, normaliza os
+segmentos e agrega por `mean` por padrão. Métodos aceitos:
+
+| `aggregate_method` | Saída |
+|---|---|
+| `mean` | média por coluna de feature |
+| `median` | mediana por coluna |
+| `std` | desvio padrão por coluna |
+| `all` | concatena média, desvio, mínimo e máximo |
+
+Desde a correção do core, `extract_segmented_features` respeita
+`config.feature_types`; só extrai todas as famílias quando a lista vem vazia.
 
 ---
 

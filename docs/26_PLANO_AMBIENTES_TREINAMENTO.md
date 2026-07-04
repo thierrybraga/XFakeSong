@@ -71,7 +71,7 @@ Hoje o projeto ainda parte de um runtime centralizado:
 | --- | --- |
 | Dependencias | `requirements.txt`, `requirements-base.txt`, `requirements-cpu.txt`, `requirements-dev.txt` |
 | Docker | Principal: `docker/compose/*.yml`; legado: `Dockerfile`, `docker-compose.yml`, `docker-compose.gpu.yml`, `docker-compose.benchmark.yml`, `docker-compose.train.yml` |
-| Benchmark | `scripts/run_tcc_pipeline.py`, `scripts/run_benchmark.py`, `benchmarks/` |
+| Benchmark | `scripts/benchmark/run_tcc_pipeline.py`, `scripts/benchmark/run_benchmark.py`, `benchmarks/` |
 | Dataset principal | `app/datasets/benchmark_audio_raw_balanced_15k.npz` |
 | Modelos default | `app/models/bench_*` e `app/models/benchmark_final/` |
 | Resultados | `results/`, `results/tcc_consolidated/`, `reports/` |
@@ -119,13 +119,11 @@ XFakeSong/
 │       └── README.md
 │
 ├── scripts/
-│   ├── train_classical.py
-│   ├── train_tensorflow.py
-│   ├── train_pytorch.py
-│   ├── train_ssl.py
-│   ├── benchmark_all.py
-│   ├── validate_artifacts.py
-│   └── export_model_card.py
+│   ├── training/
+│   │   └── train_by_family.py   # --family {classical-ml,tensorflow-keras,pytorch-audio,ssl-transformers}
+│   └── reporting/
+│       ├── validate_artifacts.py
+│       └── export_model_card.py
 │
 ├── configs/
 │   ├── training/
@@ -204,14 +202,14 @@ incompativeis.
 | Treino NVIDIA | `docker/compose/train.nvidia.yml` | `Dockerfile.nvidia` por familia | NVIDIA CUDA via Linux/WSL2 |
 | Benchmark NVIDIA | `docker/compose/benchmark.nvidia.yml` | `Dockerfile` raiz com `TF_VARIANT=gpu` | benchmark sequencial completo |
 
-Use `scripts/docker_build.py` como entrada padronizada para validar ou executar
+Use `scripts/ops/docker_build.py` como entrada padronizada para validar ou executar
 os perfis:
 
 ```bash
-python scripts/docker_build.py inference-cpu config
-python scripts/docker_build.py train-cpu config
-python scripts/docker_build.py train-nvidia config
-python scripts/docker_build.py benchmark-nvidia run
+python scripts/ops/docker_build.py inference-cpu config
+python scripts/ops/docker_build.py train-cpu config
+python scripts/ops/docker_build.py train-nvidia config
+python scripts/ops/docker_build.py benchmark-nvidia run
 ```
 
 ## Fases de migracao
@@ -252,12 +250,15 @@ inferencia sem baixar dependencias em tempo de execucao.
 
 ### P3 - Entrypoints de treinamento
 
-- Criar scripts por familia: `train_classical.py`, `train_tensorflow.py`,
-  `train_pytorch.py` e `train_ssl.py`. **Implementado como wrappers de
-  `scripts/run_models_sequential.py`.**
-- Criar utilitarios de consolidacao: `benchmark_all.py`,
-  `validate_artifacts.py` e `export_model_card.py`. **Implementado como camada
-  leve sobre o pipeline atual.**
+- Entrypoint unico por familia: `scripts/training/train_by_family.py
+  --family {classical-ml,tensorflow-keras,pytorch-audio,ssl-transformers}`.
+  **Implementado como camada fina sobre
+  `scripts/benchmark/run_models_sequential.py`** (os antigos wrappers
+  `train_classical/tensorflow/pytorch/ssl.py` foram consolidados nesse CLI).
+- Criar utilitarios de consolidacao: `validate_artifacts.py` e
+  `export_model_card.py` (em `scripts/reporting/`). **Implementado como camada
+  leve sobre o pipeline atual**; a execucao de todas as arquiteturas em lote e
+  papel de `scripts/benchmark/run_models_sequential.py`.
 - Permitir treino por arquitetura individual e por preset.
 - Padronizar logs de progresso, checkpoints, early stopping e exportacao de
   artefatos.
@@ -300,7 +301,7 @@ e independente das dependencias de treinamento.
 ## Comandos-alvo
 
 ```bash
-# Inferencia local
+# Inferencia local pelo compose legado da raiz
 docker compose up --build app
 
 # Inferencia usando o ambiente dedicado
@@ -309,25 +310,25 @@ docker compose -f docker/compose/inference.nvidia.yml up --build inference-api
 
 # Treino classico
 docker compose -f docker/compose/train.cpu.yml run --rm classical-ml \
-  python scripts/train_classical.py --models SVM --config configs/training/classical.yaml
+  python scripts/training/train_by_family.py --family classical-ml --models SVM --config configs/training/classical.yaml
 
 # Treino TensorFlow/Keras com GPU
 docker compose -f docker/compose/train.nvidia.yml run --rm tensorflow-keras \
-  python scripts/train_tensorflow.py --models MultiscaleCNN --epochs 100
+  python scripts/training/train_by_family.py --family tensorflow-keras --models MultiscaleCNN --epochs 100
 
 # Treino PyTorch audio com GPU
 docker compose -f docker/compose/train.nvidia.yml run --rm pytorch-audio \
-  python scripts/train_pytorch.py --models RawNet2 --epochs 100
+  python scripts/training/train_by_family.py --family pytorch-audio --models RawNet2 --epochs 100
 
 # Treino SSL/Transformers com GPU
 docker compose -f docker/compose/train.nvidia.yml run --rm ssl-transformers \
-  python scripts/train_ssl.py --models WavLM --epochs 100
+  python scripts/training/train_by_family.py --family ssl-transformers --models WavLM --epochs 100
 
 # Benchmark NVIDIA completo
 docker compose -f docker/compose/benchmark.nvidia.yml run --rm benchmark
 
 # Validacao de artefatos
-python scripts/validate_artifacts.py --models-dir app/models --results-dir results
+python scripts/reporting/validate_artifacts.py --models-dir app/models --results-dir results
 ```
 
 ## Regras de compatibilidade

@@ -38,30 +38,37 @@ fluxograma, modelos, resultados, discussão, limitações e comandos de reprodu�
 ### Modelos treinados consolidados
 
 Os diretórios finais em `app/models/benchmark_final/` preservam o artefato
-completo de cada arquitetura promovida, incluindo backbones SSL quando
-aplicável — atualmente os **11** modelos do recorte oficial do artigo
-(2026-07-02); o harness suporta até 14 arquiteturas (tabela abaixo), mas só
-promove/sincroniza as que efetivamente completam um run
-(`scripts/sync_completed_benchmark_artifacts.py`). No topo de `app/models/`,
-ficam os arquivos carregáveis diretamente pela interface e pela API
-(`.keras`/`.pkl`) e seus respectivos `bench_*_config.json`.
+completo de cada modelo promovido, incluindo backbones SSL quando aplicável.
+No checkout atual, o manifesto `app/models/benchmark_final_manifest.json` e o
+índice `app/models/benchmark_final/index.json` registram **11** modelos
+sincronizados para o recorte oficial do artigo (2026-07-02). O registry e o
+harness continuam suportando 14 arquiteturas, mas apenas modelos que completam
+um run entram no diretório final via
+`scripts/reporting/sync_completed_benchmark_artifacts.py`.
 
-| Arquitetura | Artefato principal | Diretório completo |
+No topo de `app/models/`, ficam os arquivos carregáveis diretamente pela
+interface e pela API (`.keras`/`.pkl`) e seus respectivos
+`bench_*_config.json`. Alguns modelos suportados existem apenas nessa raiz no
+checkout atual; a tabela diferencia os modelos finais do artigo dos artefatos
+de demonstração/suporte.
+
+| Modelo | Artefato principal | Diretório final |
 |---|---|---|
-| AASIST | `app/models/bench_aasist.keras` | `app/models/benchmark_final/aasist/` |
-| Conformer | `app/models/bench_conformer.keras` | `app/models/benchmark_final/conformer/` |
-| EfficientNet-LSTM | `app/models/bench_efficientnet_lstm.keras` | `app/models/benchmark_final/efficientnet_lstm/` |
-| Ensemble | `app/models/bench_ensemble.keras` | `app/models/benchmark_final/ensemble/` |
-| HuBERT Original | `app/models/benchmark_final/hubert_original/bench_hubert_original.pt` | `app/models/benchmark_final/hubert_original/` |
-| Hybrid CNN-Transformer | `app/models/bench_hybrid_cnn_transformer.keras` | `app/models/benchmark_final/hybrid_cnn_transformer/` |
-| MultiscaleCNN | `app/models/bench_multiscalecnn.keras` | `app/models/benchmark_final/multiscalecnn/` |
-| RandomForest | `app/models/bench_randomforest.pkl` | `app/models/benchmark_final/randomforest/` |
-| RawGAT-ST | `app/models/bench_rawgat_st.keras` | `app/models/benchmark_final/rawgat_st/` |
-| RawNet2 | `app/models/bench_rawnet2.keras` | `app/models/benchmark_final/rawnet2/` |
-| Sonic Sleuth | `app/models/bench_sonic_sleuth.keras` | `app/models/benchmark_final/sonic_sleuth/` |
-| SpectrogramTransformer | `app/models/bench_spectrogramtransformer.keras` | `app/models/benchmark_final/spectrogramtransformer/` |
+| Random Forest | `app/models/bench_randomforest.pkl` | `app/models/benchmark_final/random_forest/` |
 | SVM | `app/models/bench_svm.pkl` | `app/models/benchmark_final/svm/` |
+| CCT (Hybrid CNN-Transformer) | `app/models/bench_hybrid_cnn_transformer.keras` | `app/models/benchmark_final/cct/` |
+| AST (SpectrogramTransformer) | `app/models/bench_spectrogramtransformer.keras` | `app/models/benchmark_final/ast/` |
+| Res2Net (MultiscaleCNN) | `app/models/bench_multiscalecnn.keras` | `app/models/benchmark_final/res2net/` |
+| Conformer | `app/models/bench_conformer.keras` | `app/models/benchmark_final/conformer/` |
+| RawNet2 | `app/models/bench_rawnet2.keras` | `app/models/benchmark_final/rawnet2/` |
+| AASIST | `app/models/bench_aasist.keras` | `app/models/benchmark_final/aasist/` |
+| RawGAT-ST | `app/models/bench_rawgat_st.keras` | `app/models/benchmark_final/rawgat_st/` |
 | WavLM Original | `app/models/benchmark_final/wavlm_original/bench_wavlm_original.pt` | `app/models/benchmark_final/wavlm_original/` |
+| HuBERT Original | `app/models/benchmark_final/hubert_original/bench_hubert_original.pt` | `app/models/benchmark_final/hubert_original/` |
+
+Artefatos carregáveis pela Gradio/API que existem na raiz `app/models/` mas não
+estão no recorte final sincronizado de `benchmark_final/` neste checkout:
+`bench_efficientnet_lstm.keras`, `bench_sonic_sleuth.keras` e `bench_wavlm.keras`.
 
 WavLM Original e HuBERT Original são artefatos PyTorch/SSL completos; por isso
 ficam preservados no diretório completo com o backbone (`wavlm_backbone/` ou
@@ -74,7 +81,7 @@ A fonte oficial para publicação é `app/models/`, pois é a mesma pasta usada
 pela Gradio/API como default. Antes de enviar, verifique o plano de upload:
 
 ```bash
-python scripts/upload_models_to_hf.py \
+python scripts/ops/upload_models_to_hf.py \
     --repo-id SEU_USUARIO/xfakesong-models \
     --dry-run
 ```
@@ -82,7 +89,7 @@ python scripts/upload_models_to_hf.py \
 Depois envie para um repositório do tipo **Model**:
 
 ```bash
-python scripts/upload_models_to_hf.py \
+python scripts/ops/upload_models_to_hf.py \
     --repo-id SEU_USUARIO/xfakesong-models \
     --private
 ```
@@ -107,8 +114,8 @@ final.
 > gerada automaticamente em `tcc_overleaf/tabelas_benchmark.tex`
 > (`Tabela~\ref{tab:resultados_consolidados}` de `main.tex`) a partir de
 > `results/<run>/benchmark_summary.json`, via
-> `python scripts/consolidate_results.py <runs...> --prefer-last --copy-to tcc_overleaf/figures`
-> seguido de `python scripts/update_tcc_latex.py`. Não duplique esses valores
+> `python scripts/reporting/consolidate_results.py <runs...> --prefer-last --copy-to tcc_overleaf/figures`
+> seguido de `python scripts/reporting/update_tcc_latex.py`. Não duplique esses valores
 > aqui à mão — copie o retrato mais recente do artigo quando precisar de
 > referência rápida, mas trate `tabelas_benchmark.tex` como a fonte de
 > verdade. Recorte oficial do artigo (**11 modelos**, atualizado em
@@ -131,7 +138,7 @@ final.
 Sonic Sleuth, Ensemble e EfficientNet-LSTM são suportados pelo harness (14
 arquiteturas ao todo, ver seções abaixo) mas **não** integram o recorte
 oficial dos 11 modelos do artigo — Sonic Sleuth por suspeita de vazamento de
-dados não auditada (`scripts/audit_dataset_leakage.py`), e Ensemble/
+dados não auditada (`scripts/dataset/audit_dataset_leakage.py`), e Ensemble/
 EfficientNet-LSTM por estarem fora do escopo consolidado
 (`docs/RETREINO_AJUSTES.md`).
 
@@ -139,11 +146,11 @@ EfficientNet-LSTM por estarem fora do escopo consolidado
 
 ```bash
 # 1) Verificação do harness (sintético, 1 época) — segundos:
-python scripts/run_benchmark.py --quick
+python scripts/benchmark/run_benchmark.py --quick
 
 # 2) Pipeline completo do TCC: download, processamento, split, treino,
 #    inferência, gráficos PNG e relatórios Markdown:
-python scripts/run_tcc_pipeline.py \
+python scripts/benchmark/run_tcc_pipeline.py \
     --download \
     --target-per-class 7500 \
     --full-benchmark \
@@ -153,14 +160,14 @@ python scripts/run_tcc_pipeline.py \
     --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
 
 # 3) Execução do TCC direto no benchmark, usando dataset real .npz já exportado:
-python scripts/run_benchmark.py \
+python scripts/benchmark/run_benchmark.py \
     --full \
     --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
     --epochs 100 \
     --device-profile gpu
 
 # 4) Benchmark neural completo, sem SVM/RF:
-python scripts/run_benchmark.py \
+python scripts/benchmark/run_benchmark.py \
     --neural \
     --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
     --epochs 100 \
@@ -168,7 +175,7 @@ python scripts/run_benchmark.py \
     --out results/bench_neural_tcc
 
 # 5) Sob medida:
-python scripts/run_benchmark.py \
+python scripts/benchmark/run_benchmark.py \
     --archs WavLM HuBERT RawNet2 "Sonic Sleuth" AASIST RawGAT-ST Conformer \
     "Hybrid CNN-Transformer" SpectrogramTransformer EfficientNet-LSTM \
     MultiscaleCNN Ensemble SVM RandomForest \
@@ -176,7 +183,7 @@ python scripts/run_benchmark.py \
     --epochs 100 --snr 30 20 10 --api --out results/bench_tcc
 
 # 6) Modelo individual:
-python scripts/run_benchmark.py \
+python scripts/benchmark/run_benchmark.py \
     --model AASIST \
     --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
     --epochs 100 \
@@ -191,7 +198,7 @@ isolar uma execução. Caminhos relativos são resolvidos a partir da raiz do
 projeto, mesmo quando o comando é chamado de outro diretório.
 
 Para usar os modelos treinados na demonstração visual, consulte
-[Interface Gradio](23_INTERFACE_GRADIO.md). Para publicar modelos e demo,
+[Frontend Gradio](23_FRONTEND_GRADIO.md). Para publicar modelos e demo,
 consulte [GitHub Pages e Hugging Face](24_PUBLICACAO_GITHUB_HF.md).
 
 ### Execução por família de ambiente
@@ -202,17 +209,17 @@ e aproveitar GPU/CPU de forma controlada.
 
 | Família | Preset | Comando |
 |---|---|---|
-| Clássicos | `configs/training/classical.yaml` | `python scripts/train_classical.py` |
-| TensorFlow/Keras | `configs/training/tensorflow.yaml` | `python scripts/train_tensorflow.py` |
-| PyTorch áudio | `configs/training/pytorch.yaml` | `python scripts/train_pytorch.py` |
-| SSL/Transformers | `configs/training/ssl.yaml` | `python scripts/train_ssl.py` |
+| Clássicos | `configs/training/classical.yaml` | `python scripts/training/train_by_family.py --family classical-ml` |
+| TensorFlow/Keras | `configs/training/tensorflow.yaml` | `python scripts/training/train_by_family.py --family tensorflow-keras` |
+| PyTorch áudio | `configs/training/pytorch.yaml` | `python scripts/training/train_by_family.py --family pytorch-audio` |
+| SSL/Transformers | `configs/training/ssl.yaml` | `python scripts/training/train_by_family.py --family ssl-transformers` |
 
 ```bash
 # Revisão sem iniciar treino
-python scripts/train_tensorflow.py --plan-only
+python scripts/training/train_by_family.py --family tensorflow-keras --plan-only
 
 # Modelo individual dentro da família TensorFlow/Keras
-python scripts/train_tensorflow.py \
+python scripts/training/train_by_family.py --family tensorflow-keras \
     --models SpectrogramTransformer \
     --epochs 100 \
     --device-profile gpu \
@@ -225,7 +232,7 @@ docker compose -f docker/compose/train.nvidia.yml run --rm ssl-transformers
 docker compose -f docker/compose/benchmark.nvidia.yml run --rm benchmark
 ```
 
-Cada wrapper delega para `scripts/run_models_sequential.py`; por isso o padrão
+Cada wrapper delega para `scripts/benchmark/run_models_sequential.py`; por isso o padrão
 de saída continua o mesmo: `run_summary.json`, `run_summary.md`,
 `<modelo>/run.log`, `<modelo>/results.json` e
 `<modelo>/architectures/<modelo>/*.png`.
@@ -280,7 +287,7 @@ Revisão local: **28/06/2026**.
 
 O catálogo único de datasets fica em `app/core/dataset_catalog.py` e é usado
 pela aba Gradio **Datasets/Download**, pela documentação e pelo exportador
-`scripts/run_tcc_pipeline.py`. Ele registra, para cada fonte: tipo (`real`,
+`scripts/benchmark/run_tcc_pipeline.py`. Ele registra, para cada fonte: tipo (`real`,
 `fake` ou `both`), flag de download, prefixos de arquivo, licença, idioma,
 quantidade/duração conhecida, falantes e uso recomendado no benchmark.
 
@@ -328,20 +335,20 @@ Protocolos anti-vazamento disponíveis no `run_benchmark.py` / `run_tcc_pipeline
 
 ```bash
 # tier medium ponta a ponta: benchmark canônico 15k
-python scripts/run_tcc_pipeline.py --download --tier medium \
+python scripts/benchmark/run_tcc_pipeline.py --download --tier medium \
     --full-benchmark --epochs 100 --device-profile gpu \
     --out results/tcc_medium_15k \
     --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
-O script `scripts/build_dataset.py` arquiva excedentes em
+O script `scripts/dataset/build_dataset.py` arquiva excedentes em
 `app/datasets/overflow/` por padrão, em vez de apagar os WAVs brutos. Use
 `--delete-excess` apenas quando o descarte destrutivo for intencional.
 
 Comando completo recomendado:
 
 ```bash
-python scripts/run_tcc_pipeline.py \
+python scripts/benchmark/run_tcc_pipeline.py \
     --download \
     --target-per-class 7500 \
     --full-benchmark \
@@ -354,7 +361,7 @@ python scripts/run_tcc_pipeline.py \
 Para um ensaio rápido do roteiro sem downloads:
 
 ```bash
-python scripts/run_tcc_pipeline.py \
+python scripts/benchmark/run_tcc_pipeline.py \
     --smoke \
     --epochs 1 \
     --batch-size 4 \
@@ -365,7 +372,7 @@ python scripts/run_tcc_pipeline.py \
 Para revisar tudo antes de iniciar o treinamento longo:
 
 ```bash
-python scripts/run_benchmark.py \
+python scripts/benchmark/run_benchmark.py \
     --full \
     --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
     --epochs 100 \
@@ -376,7 +383,7 @@ python scripts/run_benchmark.py \
 Para revisar um modelo individual:
 
 ```bash
-python scripts/run_benchmark.py \
+python scripts/benchmark/run_benchmark.py \
     --model RawNet2 \
     --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
     --out results/bench_rawnet2 \
@@ -411,10 +418,12 @@ O preset oficial é `full_tcc`:
 - API: probe habilitado no preset completo.
 
 Para treinar apenas os modelos neurais, use o preset `neural_tcc`
-(`--neural` ou `--preset neural_tcc`). Ele roda as 12 arquiteturas neurais:
-WavLM, HuBERT, RawNet2, Sonic Sleuth, AASIST, RawGAT-ST, Conformer,
-Hybrid CNN-Transformer, SpectrogramTransformer, EfficientNet-LSTM,
-MultiscaleCNN e Ensemble. SVM/RF ficam reservados para o baseline clássico.
+(`--neural` ou `--preset neural_tcc`). No `run_benchmark.py` esse preset cobre
+as arquiteturas neurais Keras do manifesto oficial direto
+(`Hybrid CNN-Transformer`, `SpectrogramTransformer`, `MultiscaleCNN`,
+`Conformer`, `RawNet2`, `AASIST` e `RawGAT-ST`). WavLM Original e HuBERT
+Original são executados pelo runner SSL dedicado usado pelo orquestrador
+sequencial, enquanto SVM/RF ficam reservados ao baseline clássico.
 
 Antes do treino, o preflight aplica hiperparâmetros recomendados por
 arquitetura e adapta o `batch_size` ao perfil de dispositivo:
@@ -459,7 +468,7 @@ continua gerando os mesmos artefatos (`results.json`, `tcc_report.md`,
 selecionado.
 
 ```bash
-python scripts/run_tcc_pipeline.py \
+python scripts/benchmark/run_tcc_pipeline.py \
     --skip-download \
     --skip-preprocess \
     --model SpectrogramTransformer \
@@ -477,7 +486,7 @@ sequencial. Ele executa um modelo por vez, cria uma subpasta por modelo, grava
 `run.log`, aplica timeout e permite retomar com `--resume`.
 
 ```bash
-python scripts/run_models_sequential.py \
+python scripts/benchmark/run_models_sequential.py \
     --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
     --out results/sequential_15k \
     --device-profile gpu \
@@ -487,7 +496,7 @@ python scripts/run_models_sequential.py \
 Rodar somente os modelos neurais:
 
 ```bash
-python scripts/run_models_sequential.py \
+python scripts/benchmark/run_models_sequential.py \
     --neural-only \
     --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
     --out results/sequential_neural_15k \
@@ -498,7 +507,7 @@ python scripts/run_models_sequential.py \
 Revisar planos neurais antes do treino:
 
 ```bash
-python scripts/run_models_sequential.py \
+python scripts/benchmark/run_models_sequential.py \
     --neural-only \
     --plan-only \
     --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
@@ -513,7 +522,7 @@ segundos por modelo mesmo sem iniciar treino.
 Retomar somente modelos pendentes:
 
 ```bash
-python scripts/run_models_sequential.py \
+python scripts/benchmark/run_models_sequential.py \
     --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
     --out results/sequential_15k \
     --device-profile gpu \
@@ -524,7 +533,7 @@ python scripts/run_models_sequential.py \
 Executar um subconjunto:
 
 ```bash
-python scripts/run_models_sequential.py \
+python scripts/benchmark/run_models_sequential.py \
     --models AASIST RawNet2 Conformer \
     --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
     --out results/sequential_neural_subset

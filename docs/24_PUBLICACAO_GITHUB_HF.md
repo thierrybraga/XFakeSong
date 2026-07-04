@@ -47,7 +47,7 @@ O deploy recomendado é **Docker Space**, não Gradio SDK simples.
 | SDK | `docker` |
 | Porta | `app_port: 7860` |
 | Startup | `python main.py --gradio` via `docker-entrypoint.sh` |
-| Modelos | Model Hub separado, sincronizado por `scripts/sync_hf_models.py` |
+| Modelos | Model Hub separado, sincronizado por `scripts/ops/sync_hf_models.py` |
 | Variável de modelos | `MODEL_REPO_ID=SEU_USUARIO/xfakesong-models` |
 | Storage opcional | `/data` com `XFAKE_STORAGE_DIR=/data` |
 | Demo pública | `ENABLE_TRAINING=false` |
@@ -101,11 +101,11 @@ Esse diretório deve conter os modelos pré-treinados com o dataset do benchmark
 (`benchmark_audio_raw_balanced_15k.npz`) antes do upload.
 
 ```bash
-python scripts/upload_models_to_hf.py \
+python scripts/ops/upload_models_to_hf.py \
   --repo-id SEU_USUARIO/xfakesong-models \
   --dry-run
 
-python scripts/upload_models_to_hf.py \
+python scripts/ops/upload_models_to_hf.py \
   --repo-id SEU_USUARIO/xfakesong-models \
   --private
 ```
@@ -122,7 +122,7 @@ Para baixar novamente os modelos do Hub:
 
 ```bash
 MODEL_REPO_ID=SEU_USUARIO/xfakesong-models \
-python scripts/sync_hf_models.py \
+python scripts/ops/sync_hf_models.py \
   --models-dir app/models \
   --force
 ```
@@ -149,7 +149,7 @@ flowchart LR
 - `mkdocs.yml` inclui todas as páginas novas.
 - `docs/15_BENCHMARK.md` documenta dataset, hiperparâmetros, saídas e modelos.
 - `docs/16_NOTEBOOKS.md` documenta todos os notebooks ativos.
-- `docs/23_INTERFACE_GRADIO.md` documenta abas e fluxos da UI.
+- `docs/23_FRONTEND_GRADIO.md` documenta abas, fluxos da UI e serving de inferência.
 - `docs/11_DEPLOY_HUGGINGFACE.md` detalha GPU Spaces e Storage.
 - `app/models/` contém os modelos default usados na apresentação.
 - O Space tem `MODEL_REPO_ID` e `HF_TOKEN` quando o Model Hub é privado.

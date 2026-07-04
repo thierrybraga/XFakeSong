@@ -35,7 +35,7 @@ pip install -r requirements.txt
 pip install 'tensorflow[and-cuda]'      # habilita CUDA/cuDNN p/ a GPU
 
 # Validar GPU + ambiente (não treina):
-bash scripts/retrain_wsl2.sh --check
+bash scripts/training/retrain_wsl2.sh --check
 ```
 
 > Observação de E/S: treinar lendo o `.npz` de 2.769,01 MiB via `/mnt/d` (disco
@@ -57,26 +57,26 @@ docker compose -f docker/compose/benchmark.nvidia.yml run --rm benchmark
 
 ## Executar o retreino + benchmark
 
-O driver [scripts/retrain_wsl2.sh](https://github.com/thierrybraga/XFakeSong/blob/main/scripts/retrain_wsl2.sh) encapsula tudo:
+O driver [scripts/training/retrain_wsl2.sh](https://github.com/thierrybraga/XFakeSong/blob/main/scripts/training/retrain_wsl2.sh) encapsula tudo:
 
 ```bash
 # Retreino in-distribution dos modelos do artigo + HuBERT Original SSL:
-bash scripts/retrain_wsl2.sh --indist
+bash scripts/training/retrain_wsl2.sh --indist
 
 # Reteste cross-generator (segura o XTTS/fkvoice fora do treino) — P0.4:
-bash scripts/retrain_wsl2.sh --xgen fkvoice
+bash scripts/training/retrain_wsl2.sh --xgen fkvoice
 
 # Ambos em sequência:
-bash scripts/retrain_wsl2.sh --indist --xgen fkvoice
+bash scripts/training/retrain_wsl2.sh --indist --xgen fkvoice
 
 # Uma única arquitetura (ex.: o P1 obrigatório):
-bash scripts/retrain_wsl2.sh --model SpectrogramTransformer --indist
+bash scripts/training/retrain_wsl2.sh --model SpectrogramTransformer --indist
 ```
 
 Equivalente "cru" (sem o driver), via orquestrador:
 
 ```bash
-python scripts/run_clean_benchmark_pipeline.py \
+python scripts/benchmark/run_clean_benchmark_pipeline.py \
   --phase full \
   --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
   --epochs 100 \
@@ -89,12 +89,12 @@ python scripts/run_clean_benchmark_pipeline.py \
 ### HuBERT Original em WSL/Docker
 
 O HuBERT real não deve passar pelo fallback Keras. No fluxo Docker, ele é
-roteado para `scripts/run_wavlm_original_benchmark.py`, baixa
+roteado para `scripts/benchmark/run_wavlm_original_benchmark.py`, baixa
 `facebook/hubert-base-ls960`, congela o backbone (`--freeze-backbone`) e treina
 somente a cabeça classificadora PyTorch sobre embeddings SSL.
 
 ```bash
-python scripts/run_clean_benchmark_pipeline.py \
+python scripts/benchmark/run_clean_benchmark_pipeline.py \
   --models "HuBERT Original" \
   --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
   --epochs 100 \
@@ -108,7 +108,7 @@ python scripts/run_clean_benchmark_pipeline.py \
 Para revisar sem iniciar treino nem baixar pesos:
 
 ```bash
-python scripts/run_models_sequential.py \
+python scripts/benchmark/run_models_sequential.py \
   --models "HuBERT Original" \
   --plan-only \
   --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz
@@ -117,7 +117,7 @@ python scripts/run_models_sequential.py \
 ### Ablação do WavLM (opcional, P2)
 
 ```bash
-python scripts/ablate_wavlm_finetune.py \
+python scripts/training/ablate_wavlm_finetune.py \
   --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
   --lrs 1e-5 3e-5 1e-4 --epochs 30 --out results/ablation_wavlm
 ```
@@ -148,11 +148,11 @@ e escreve o fragmento de tabelas. Manualmente, o fluxo é:
 ```bash
 # 1) Consolidar os resultados → benchmark_summary.json + figuras nomeadas do TCC
 #    (sobrescreve as antigas). Aceita um run completo OU vários runs por arquitetura.
-python scripts/consolidate_results.py results/retrain_wsl2_indist \
+python scripts/reporting/consolidate_results.py results/retrain_wsl2_indist \
     --out results/tcc_consolidated --copy-to tcc_overleaf/figures
 
 # 2) Gerar as TABELAS data-driven (fragmento .tex, NÃO mexe na prosa da tese)
-python scripts/update_tcc_latex.py \
+python scripts/reporting/update_tcc_latex.py \
     --summary results/tcc_consolidated/benchmark_summary.json \
     --output tcc_overleaf/tabelas_benchmark.tex --figures-dir figures
 
@@ -160,7 +160,7 @@ python scripts/update_tcc_latex.py \
 #    e recompilar.
 ```
 
-[scripts/consolidate_results.py](https://github.com/thierrybraga/XFakeSong/blob/main/scripts/consolidate_results.py) deriva tudo
+[scripts/reporting/consolidate_results.py](https://github.com/thierrybraga/XFakeSong/blob/main/scripts/reporting/consolidate_results.py) deriva tudo
 de `results/<run>/results.json` (acurácia/AUC/EER/robustez, latência/tamanho,
 matrizes de confusão a partir de `scores_clean`+`y_test`, e a estabilidade a
 partir do `history`). Gera exatamente os nomes que o TCC usa:

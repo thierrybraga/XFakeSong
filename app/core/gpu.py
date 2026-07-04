@@ -734,7 +734,7 @@ def probe_gpu_status() -> Dict[str, Any]:
 
     Diferente de `setup_gpu()`, NÃO altera estado global do TensorFlow
     (não aplica memory growth nem mixed precision) — pensado para
-    diagnósticos como o `scripts/doctor.py`, que não devem mexer no runtime.
+    diagnósticos como o `scripts/ops/doctor.py`, que não devem mexer no runtime.
 
     Se `setup_gpu()` já rodou, reaproveita o resultado em cache; senão faz
     uma detecção leve na hora.

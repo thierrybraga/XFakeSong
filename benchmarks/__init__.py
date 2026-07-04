@@ -19,8 +19,8 @@ Uso programático:
     results = run_benchmark(cfg)
 
 Uso por CLI:
-    python scripts/run_benchmark.py --quick
-    python scripts/run_benchmark.py --dataset data.npz --archs MultiscaleCNN SVM RandomForest
+    python scripts/benchmark/run_benchmark.py --quick
+    python scripts/benchmark/run_benchmark.py --dataset data.npz --archs MultiscaleCNN SVM RandomForest
 """
 
 from __future__ import annotations

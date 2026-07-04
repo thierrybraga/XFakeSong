@@ -10,20 +10,20 @@ ficam em `environments/`, os presets em `configs/training/` e os entrypoints em
 
 | Família | Config | Entrypoint | Modelos |
 |---|---|---|---|
-| `classical-ml` | `configs/training/classical.yaml` | `scripts/train_classical.py` | SVM, RandomForest |
-| `tensorflow-keras` | `configs/training/tensorflow.yaml` | `scripts/train_tensorflow.py` | Sonic Sleuth, EfficientNet-LSTM, MultiscaleCNN, SpectrogramTransformer |
-| `pytorch-audio` | `configs/training/pytorch.yaml` | `scripts/train_pytorch.py` | RawNet2, AASIST, RawGAT-ST, Conformer, Hybrid CNN-Transformer |
-| `ssl-transformers` | `configs/training/ssl.yaml` | `scripts/train_ssl.py` | WavLM, HuBERT |
+| `classical-ml` | `configs/training/classical.yaml` | `scripts/training/train_by_family.py --family classical-ml` | SVM, RandomForest |
+| `tensorflow-keras` | `configs/training/tensorflow.yaml` | `scripts/training/train_by_family.py --family tensorflow-keras` | Sonic Sleuth, EfficientNet-LSTM, MultiscaleCNN, SpectrogramTransformer |
+| `pytorch-audio` | `configs/training/pytorch.yaml` | `scripts/training/train_by_family.py --family pytorch-audio` | RawNet2, AASIST, RawGAT-ST, Conformer, Hybrid CNN-Transformer |
+| `ssl-transformers` | `configs/training/ssl.yaml` | `scripts/training/train_by_family.py --family ssl-transformers` | WavLM, HuBERT |
 
 ```bash
-python scripts/train_classical.py --plan-only
-python scripts/train_tensorflow.py --models MultiscaleCNN --epochs 100 --device-profile gpu
-python scripts/train_pytorch.py --models Conformer RawNet2 --epochs 100 --device-profile gpu
-python scripts/train_ssl.py --models WavLM HuBERT --epochs 100 --device-profile gpu
+python scripts/training/train_by_family.py --family classical-ml --plan-only
+python scripts/training/train_by_family.py --family tensorflow-keras --models MultiscaleCNN --epochs 100 --device-profile gpu
+python scripts/training/train_by_family.py --family pytorch-audio --models Conformer RawNet2 --epochs 100 --device-profile gpu
+python scripts/training/train_by_family.py --family ssl-transformers --models WavLM HuBERT --epochs 100 --device-profile gpu
 ```
 
-Todos os entrypoints chamam `scripts/run_models_sequential.py`, que executa
-`scripts/run_benchmark.py --model <nome>` para cada arquitetura, salvando logs,
+Todos os entrypoints chamam `scripts/benchmark/run_models_sequential.py`, que executa
+`scripts/benchmark/run_benchmark.py --model <nome>` para cada arquitetura, salvando logs,
 modelos, métricas e figuras em pasta própria por modelo.
 
 ## 1. Pipeline de Treinamento
@@ -64,7 +64,7 @@ O parâmetro `num_classes` pode ser passado no `config`; se omitido, é inferido
 
 O tamanho e a composição do dataset são padronizados em **tiers** definidos em
 `app/core/dataset_catalog.py` (`DATASET_TIERS`) — fonte única de verdade
-compartilhada por `scripts/build_dataset.py`, pela aba Datasets do Gradio, pelo
+compartilhada por `scripts/dataset/build_dataset.py`, pela aba Datasets do Gradio, pelo
 benchmark e pela documentação. Escolher um tier pré-configura tamanho, fontes e
 estratégia de split. Detalhes de fontes/licenças em
 [docs/12_DATASETS.md](12_DATASETS.md).
@@ -84,12 +84,12 @@ estratégia de split. Detalhes de fontes/licenças em
 **Montar um tier** (download + balanceamento + splits + `dataset_config.json`):
 
 ```bash
-python scripts/build_dataset.py --tier small     # 5.000/classe, 10k total
-python scripts/build_dataset.py --tier medium    # 7.500/classe, 15k canônico
-python scripts/build_dataset.py --tier large     # 10.000/classe, split por falante
+python scripts/dataset/build_dataset.py --tier small     # 5.000/classe, 10k total
+python scripts/dataset/build_dataset.py --tier medium    # 7.500/classe, 15k canônico
+python scripts/dataset/build_dataset.py --tier large     # 10.000/classe, split por falante
 
 # override do tamanho mantendo fontes/split do tier:
-python scripts/build_dataset.py --tier medium --target 7500
+python scripts/dataset/build_dataset.py --tier medium --target 7500
 ```
 
 **Como o tier afeta o treino:**
@@ -104,7 +104,7 @@ python scripts/build_dataset.py --tier medium --target 7500
 - **Pipeline de ponta a ponta** (download → benchmark) por tier:
 
 ```bash
-python scripts/run_tcc_pipeline.py --download --tier medium --full-benchmark \
+python scripts/benchmark/run_tcc_pipeline.py --download --tier medium --full-benchmark \
   --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
@@ -369,15 +369,15 @@ Baseados no TCC (Seção 6.1, Tabela 10) e em `get_recommended_hyperparameters()
 
 | Arquitetura | Batch | LR | Épocas | Dropout | L2 | Observação |
 |-------------|-------|----|--------|---------|-----|------------|
-| **AASIST** | 16 | 8e-4 | 100 | 0.2 | 1e-4 | attention_heads=12, hidden=512 |
-| **RawGAT-ST** | 24 | 8e-4 | 100 | 0.2 | 1e-4 | — |
+| **AASIST** | 16 | 8e-4 | 100 | 0.2 | 1e-4 | raw audio + SincConv + grafos; encoder residual |
+| **RawGAT-ST** | 24 | 8e-4 | 100 | 0.2 | 1e-4 | raw audio + grafo espectral/temporal |
 | **MultiscaleCNN** | 64 | 2e-3 | 100 | 0.5 | 5e-4 | hidden 128/256 |
 | **SpectrogramTransformer** | 16 | 1e-4 | 100 | 0.1 | 1e-5 | WarmupCosineDecay (warmup=1000) — Sprint 2.2 |
 | **Conformer** | 32 | 1e-3 | 100 | 0.3 | 1e-4 | attention_heads=8, WarmupCosineDecay (warmup=1000) |
-| **EfficientNet-LSTM** | 32 | 5e-4 | 100 | 0.4 | 2e-4 | fine-tune últimas 3 camadas |
+| **EfficientNet-LSTM** | 32 | 5e-4 | 100 | 0.4 | 2e-4 | tenta ImageNet; fine-tune bloco final quando disponível |
 | **Hybrid CNN-T** | 32 | 1e-3 | 100 | 0.2 | 1e-4 | CCT + WarmupCosineDecay (warmup=1500) — Sprint 2.2 |
-| **RawNet2** | 24 | 8e-4 | 100 | 0.3 | 1e-4 | conv_filters=[64,128,256], gru=128 |
-| **WavLM / HuBERT** | 8–16 | 1e-4 | 20–50 | 0.1 | 1e-4 | backbone congelado; fine-tune head |
+| **RawNet2** | 24 | 8e-4 | 100 | 0.3 | 1e-4 | SincNet/FMS; GRU 1024 no preset atual |
+| **WavLM / HuBERT** | 8–16 | 1e-4 | 20–50 | 0.1 | 1e-4 | backbone congelado ou fine-tune parcial; fallback reportado |
 | **Sonic Sleuth** | 32 | 1e-3 | 100 | 0.1 | 1e-4 | — |
 | **Ensemble (adaptive)** | 32 | 1e-3 | 50 | 0.3 | 1e-4 | parte de modelos pré-treinados |
 | **SVM** | Full | N/A | N/A | — | — | StandardScaler obrigatório |
@@ -400,10 +400,13 @@ Baseados no TCC (Seção 6.1, Tabela 10) e em `get_recommended_hyperparameters()
 
 ### 3.3 EfficientNet-LSTM
 
-- Backbone `EfficientNetB0` (`weights=None` — treinado do zero)
-- Fine-tuning: **últimas 3 camadas** descongeladas (`efficientnet.layers[-3:]`)
-- Pré-processamento in-model: `MelSpectrogramFrontEnd` → `DeltaFeatureLayer` (3 canais) → resize 224×224×3
-- Sequência temporal via Bi-LSTM[256, 128] + `AttentionLayer`
+- Backbone `EfficientNetB0`: tenta pesos ImageNet; se o ambiente estiver offline
+  ou o download falhar, cai para `weights=None`.
+- Fine-tuning: com ImageNet, congela o backbone e deixa treináveis `block7` e
+  `top_*`; no fallback sem pesos, treina do zero.
+- Pré-processamento in-model: `MelSpectrogramFrontEnd` → `DeltaFeatureLayer`
+  (3 canais) → resize 224×224×3.
+- Sequência temporal via Bi-LSTM[256, 128] + `AttentionLayer`.
 
 ### 3.4 MultiscaleCNN (Res2Net-50)
 

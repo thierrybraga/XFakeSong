@@ -188,6 +188,8 @@ app/models/*.pkl
 app/models/*.keras
 app/models/*.onnx
 app/models/*.json
+# Scalers regenerados a cada treino (nao sao "modelo final" promovido, ao contrario de benchmark_final/)
+app/models/scalers/*.pkl
 app/results/
 datasets/
 logs/
@@ -199,6 +201,17 @@ temp/
 !app/models/.gitkeep
 !app/results/.gitkeep
 !logs/.gitkeep
+
+# Cache de bind-mount do Docker (huggingface/torch/tensorflow) — regeneravel.
+/cache/
+
+# Checkpoints brutos de treino dentro de benchmark_final/*/results/ (GBs:
+# best_checkpoint.keras, backbones .bin/.pt). O artefato "final" promovido
+# fica em benchmark_final/<arch>/bench_*.{keras,pkl} + results/*.{json,csv,png,pdf,md}.
+app/models/benchmark_final/*/results/models/
+
+# Backups de reparo pontual de artefatos (nao versionar).
+*.stale-*.bak
 
 # Runtime artifacts
 app.db
@@ -213,3 +226,7 @@ instance/
 
 # Logs de runtime (launcher.log, diagnósticos pytest, etc.)
 .logs/
+
+# Pacote Overleaf regeneravel (copia de main.tex + figuras para upload)
+tcc_overleaf/final/
+tcc_overleaf/*.zip

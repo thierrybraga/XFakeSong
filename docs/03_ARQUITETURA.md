@@ -16,11 +16,13 @@ Camada central — contém toda a lógica de negócio. Não depende de framework
 ### 2. Application (Aplicação)
 *Caminho: `app/application/`*
 
-Orquestração e casos de uso. Coordena domain sem conter regras de negócio.
+Orquestração de fluxos. Coordena domain sem conter regras de negócio.
 
-- **`pipeline/`**: Orquestrador de estágios sequenciais (UploadStage → FeatureExtractionStage → DetectionStage).
-- **`use_cases/`**: Casos de uso específicos.
-- **`dto/`**: Data Transfer Objects para comunicação entre camadas.
+- **`pipeline/orchestrator.py`**: `DeepfakePipelineOrchestrator` — orquestrador de
+  estágios sequenciais (UploadStage → FeatureExtractionStage → DetectionStage)
+  via Chain of Responsibility. É o único submódulo hoje; não há `use_cases/`
+  nem `dto/` separados — os casos de uso concretos vivem em `domain/services/`
+  e são chamados diretamente por routers/Gradio (ver "Fluxo de produção" acima).
 
 ### 3. Core (Núcleo/Infraestrutura)
 *Caminho: `app/core/`*
@@ -149,10 +151,8 @@ Cada `PipelineStage` retorna um `PipelineResult` com `status`, `data`, `error` e
 ```
 XFakeSong/
 ├── app/                            # Código-fonte principal
-│   ├── application/                # Casos de uso e pipeline
-│   │   ├── dto/
-│   │   ├── pipeline/               # Orquestrador + estágios
-│   │   └── use_cases/
+│   ├── application/                # Orquestração de fluxos
+│   │   └── pipeline/               # orchestrator.py — Chain of Responsibility de estágios
 │   │
 │   ├── core/                       # Infraestrutura transversal
 │   │   ├── auth/                   # JWT, auth handler
@@ -218,8 +218,16 @@ XFakeSong/
 │   │   ├── voice_profiles.py
 │   │   └── system.py
 │   │
-│   └── schemas/                    # Modelos Pydantic (request/response)
-│       └── api_models.py
+│   ├── schemas/                    # Modelos Pydantic (request/response)
+│   │   └── api_models.py
+│   │
+│   ├── static/                     # Assets estáticos (CSS do tema) servidos via FastAPI StaticFiles
+│   ├── templates/                  # Templates Jinja2 (index.html, páginas de loading)
+│   ├── utils/                      # colab.py — helper isolado só para execução via Google Colab
+│   │                               #   (não confundir com app/core/utils/, que tem os utilitários centrais)
+│   ├── main_fastapi.py             # Entry point FastAPI real por trás do Gradio (monta StaticFiles/Jinja2)
+│   ├── deploy_hf.py                # Script de deploy para Hugging Face Spaces
+│   └── gradio_schema_patch.py      # Monkey-patch de compatibilidade da lib Gradio
 │
 ├── docs/                           # Documentação
 ├── docker/compose/                 # Perfis Docker segmentados por uso/dispositivo
@@ -249,3 +257,6 @@ XFakeSong/
 - **`app/models/`** — raiz técnica usada por treino/inferência; `benchmark_final/` guarda os modelos finais consolidados.
 - **`docker/compose/`** — caminho principal para novos builds Docker; os `docker-compose*.yml` da raiz são compatibilidade legada.
 - **`tests/`** — espelha a estrutura de `app/` com camadas `unit/`, `integration/`, `api/` e `functional/`.
+- **`app/utils/` × `app/core/utils/`** — não são a mesma coisa: `app/utils/`
+  só tem `colab.py` (helper de execução via Google Colab); os utilitários
+  centrais (áudio, arquivos, sistema, VAD) ficam em `app/core/utils/`.

@@ -328,7 +328,7 @@ PRESET_SELECTIONS: Dict[str, List[str]] = {
 # Tiers de dataset (test / small / medium / large)
 # ---------------------------------------------------------------------------
 # Fonte unica de verdade para o TAMANHO/FINALIDADE de um dataset, consumida pela
-# UI Gradio, por scripts/build_dataset.py, pelo benchmark e pela documentacao.
+# UI Gradio, por scripts/dataset/build_dataset.py, pelo benchmark e pela documentacao.
 # Os limiares de prontidao por familia de modelo ficam em MODEL_READINESS_TIERS
 # (mais abaixo) — Classico >=300, CNN leve >=1000, CNN/RNN >=2000,
 # Transformer >=4000, Ensemble >=6000 por classe.

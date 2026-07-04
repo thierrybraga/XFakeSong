@@ -853,7 +853,7 @@ def create_dataset_management_tab():
                         + "\n\n"
                         "> Os tiers são a fonte única de verdade do tamanho/finalidade "
                         "do dataset (`app/core/dataset_catalog.py`), compartilhada com "
-                        "`scripts/build_dataset.py --tier ...`, o benchmark e a "
+                        "`scripts/dataset/build_dataset.py --tier ...`, o benchmark e a "
                         "documentação. Detalhes em `docs/12_DATASETS.md`."
                     )
 
@@ -1011,14 +1011,14 @@ def create_dataset_management_tab():
                         return
 
                     try:
-                        import scripts.download_datasets as dl_mod
+                        import scripts.dataset.download_datasets as dl_mod
                     except ImportError as exc:
                         yield (
                             _balance_bar_html(data["real_count"], data["fake_count"]),
                             "",
                             _assess_training_readiness(data["real_count"], data["fake_count"]),
                             f"Erro de importação:\n{exc}",
-                            "❌ Não foi possível importar scripts/download_datasets.py",
+                            "❌ Não foi possível importar scripts/dataset/download_datasets.py",
                         )
                         return
 
@@ -1274,7 +1274,7 @@ def create_dataset_management_tab():
                         )
 
                 def _get_pp_module():
-                    import scripts.preprocess_dataset as pp
+                    import scripts.dataset.preprocess_dataset as pp
                     return pp
 
                 def handle_validate():

@@ -16,7 +16,7 @@ PyTorch ports can coexist during migration.
 Recommended command:
 
 ```bash
-python scripts/train_pytorch.py \
+python scripts/training/train_by_family.py --family pytorch-audio \
   --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
   --epochs 100 \
   --device-profile gpu \

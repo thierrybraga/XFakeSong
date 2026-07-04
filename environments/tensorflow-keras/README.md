@@ -10,7 +10,7 @@ Environment for TensorFlow/Keras training:
 Recommended command:
 
 ```bash
-python scripts/train_tensorflow.py \
+python scripts/training/train_by_family.py --family tensorflow-keras \
   --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
   --epochs 100 \
   --device-profile gpu \

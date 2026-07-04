@@ -9,7 +9,7 @@ Este guia reúne os principais datasets públicos para detecção de deepfakes d
 O XFakeSong organiza a montagem do dataset em **quatro tiers** com finalidade
 bem definida. Eles são a **fonte única de verdade** de tamanho/finalidade
 (`app/core/dataset_catalog.py` → `DATASET_TIERS`), compartilhada por
-`scripts/build_dataset.py`, pela interface Gradio, pelo benchmark e por esta
+`scripts/dataset/build_dataset.py`, pela interface Gradio, pelo benchmark e por esta
 documentação — escolher um tier pré-configura tamanho, fontes e estratégia de
 split de forma consistente em todo o sistema.
 
@@ -18,7 +18,7 @@ split de forma consistente em todo o sistema.
 | **test** | 100 | 200 | **Smoke** — validar que treino e modelo funcionam de ponta a ponta. Não mede desempenho. | BRSpeech-DF + Fake Voices | 70/15/15 estratificado | — |
 | **small** | 5.000 | 10.000 | **Treino rápido robusto**. Habilita clássicos, CNNs leves e principais redes neurais. | BRSpeech-DF + Fake Voices | 70/15/15 estratificado | parcial |
 | **medium** | 7.500 | 15.000 | **Benchmark canônico viável** do XFakeSong/TCC. Habilita as 14 arquiteturas sob protocolo balanceado. | BRSpeech-DF + MLS Portuguese + TTS-Portuguese + Fake Voices | 70/15/15 estratificado | parcial |
-| **large** | 10.000 | 20.000 | **Completo** com falantes identificados e **usuários não vistos**. Habilita todas as 14 arquiteturas (Ensemble). | BRSpeech-DF + MLS Portuguese + TTS-Portuguese + Fake Voices | **disjunto por falante** + cross-generator | **sim** |
+| **large** | 10.000 | 20.000 | **Completo** com falantes identificados e **usuários não vistos**. Habilita todas as 14 arquiteturas suportadas pelo catálogo/harness (incluindo Ensemble). | BRSpeech-DF + MLS Portuguese + TTS-Portuguese + Fake Voices | **disjunto por falante** + cross-generator | **sim** |
 
 ### Descrição detalhada
 
@@ -96,13 +96,13 @@ um tier pré-preenche o **alvo por classe** e as **fontes**, e mostra a descriç
 
 ```bash
 # Monta o dataset de um tier (download + balanceamento + splits + config)
-python scripts/build_dataset.py --tier test       # smoke, ~segundos
-python scripts/build_dataset.py --tier small       # 5.000/classe, 10k total
-python scripts/build_dataset.py --tier medium      # 7.500/classe, 15k canônico
-python scripts/build_dataset.py --tier large       # 10.000/classe, split por falante
+python scripts/dataset/build_dataset.py --tier test       # smoke, ~segundos
+python scripts/dataset/build_dataset.py --tier small       # 5.000/classe, 10k total
+python scripts/dataset/build_dataset.py --tier medium      # 7.500/classe, 15k canônico
+python scripts/dataset/build_dataset.py --tier large       # 10.000/classe, split por falante
 
 # Override manual do tamanho de um tier (mantém fontes/split do tier):
-python scripts/build_dataset.py --tier medium --target 7500
+python scripts/dataset/build_dataset.py --tier medium --target 7500
 ```
 
 O `dataset_config.json` resultante registra `tier`, `split_strategy`,
@@ -111,17 +111,17 @@ tier `large`, o `splits_metadata.json` registra `unseen_in_test` (falantes só n
 teste) e a verificação de vazamento `leakage_overlap_train_test`.
 
 **Benchmark (protocolo de usuário não visto):** o `.npz` exportado por
-`scripts/run_tcc_pipeline.py` inclui o array `speaker_ids`. Ative o protocolo com:
+`scripts/benchmark/run_tcc_pipeline.py` inclui o array `speaker_ids`. Ative o protocolo com:
 
 ```bash
 # split disjunto por falante (usuários não vistos)
-python scripts/run_benchmark.py --full --dataset SEU_large.npz --speaker-split
+python scripts/benchmark/run_benchmark.py --full --dataset SEU_large.npz --speaker-split
 
 # holdout de um falante específico (teste = só ele + reais reservados)
-python scripts/run_benchmark.py --full --dataset SEU_large.npz --unseen-speaker "fkvoice:<id>"
+python scripts/benchmark/run_benchmark.py --full --dataset SEU_large.npz --unseen-speaker "fkvoice:<id>"
 
 # pipeline ponta a ponta canônico do benchmark
-python scripts/run_tcc_pipeline.py --download --tier medium --full-benchmark \
+python scripts/benchmark/run_tcc_pipeline.py --download --tier medium --full-benchmark \
   --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
@@ -157,7 +157,7 @@ Fluxo:
 2. Escolha um **preset** (ex.: "PT-BR Completo", "Internacional Padrão") ou marque fontes manualmente.
 3. Ajuste o **alvo por classe** (slider, 100–10 000). O plano de download recalcula automaticamente.
 4. A tabela **Plano de Download** mostra quantas amostras `real`/`fake` virão de cada fonte e o ratio estimado pós-download.
-5. O painel **Prontidão para Treinamento** indica quais dos 14 modelos ficarão habilitados (Clássico ≥300, CNN Leve ≥1 000, CNN/RNN ≥2 000, Transformer ≥4 000, Ensemble ≥6 000 por classe).
+5. O painel **Prontidão para Treinamento** indica quais famílias das 14 arquiteturas suportadas ficarão habilitadas (Clássico ≥300, CNN Leve ≥1 000, CNN/RNN ≥2 000, Transformer ≥4 000, Ensemble ≥6 000 por classe).
 6. Clique em **Iniciar Download Balanceado**. A barra e a prontidão atualizam ao vivo após cada fonte.
 
 **Presets disponíveis:**
@@ -199,7 +199,7 @@ as contagens realmente baixadas.
 | In-the-Wild | both | `--in-the-wild` | `itw_` | majoritariamente inglês | ~20,8 h real + ~17,2 h fake | 58 celebridades/falantes | Apache-2.0 | Validação externa realista |
 | ASVspoof 5 | both | `--asvspoof5` | `asv5_` | inglês/multifonte | protocolo ASVspoof 5; mirror HF ~142 GB | ~2.000 falantes | consultar README/LICENSE oficiais | Referência moderna; pode exigir login/aceite |
 
-O `.npz` exportado por `scripts/run_tcc_pipeline.py` inclui:
+O `.npz` exportado por `scripts/benchmark/run_tcc_pipeline.py` inclui:
 
 - `metadata_json.source_summary`: contagem por fonte, classe e horas estimadas
   pelas janelas exportadas;
@@ -207,26 +207,26 @@ O `.npz` exportado por `scripts/run_tcc_pipeline.py` inclui:
 - `groups`: vetor alinhado às amostras, derivado do prefixo de origem, usado
   por `--group-split` e `--cross-generator`.
 
-### 2. Linha de comando — `scripts/download_datasets.py`
+### 2. Linha de comando — `scripts/dataset/download_datasets.py`
 
 ```bash
 # Atalhos
-python scripts/download_datasets.py --all --max-samples 2000        # PT-BR (brspeech+cetuc+fake-voices)
-python scripts/download_datasets.py --all-intl --max-samples 2000   # Internacional (asvspoof2019+wavefake+in-the-wild)
+python scripts/dataset/download_datasets.py --all --max-samples 2000        # PT-BR (brspeech+cetuc+fake-voices)
+python scripts/dataset/download_datasets.py --all-intl --max-samples 2000   # Internacional (asvspoof2019+wavefake+in-the-wild)
 
 # Fontes individuais
-python scripts/download_datasets.py --brspeech --max-samples 1000
-python scripts/download_datasets.py --cetuc --max-samples 1000
-python scripts/download_datasets.py --fake-voices --max-speakers 20
-python scripts/download_datasets.py --fleurs --max-samples 500
-python scripts/download_datasets.py --mls-portuguese --max-samples 3000
-python scripts/download_datasets.py --tts-portuguese --max-samples 1000
-python scripts/download_datasets.py --mlaad-pt --max-samples 500
-python scripts/download_datasets.py --common-voice-pt --max-samples 1000
-python scripts/download_datasets.py --asvspoof2019 --max-samples 2000
-python scripts/download_datasets.py --wavefake --max-samples 2000
-python scripts/download_datasets.py --in-the-wild --max-samples 1000
-python scripts/download_datasets.py --asvspoof5 --max-samples 2000
+python scripts/dataset/download_datasets.py --brspeech --max-samples 1000
+python scripts/dataset/download_datasets.py --cetuc --max-samples 1000
+python scripts/dataset/download_datasets.py --fake-voices --max-speakers 20
+python scripts/dataset/download_datasets.py --fleurs --max-samples 500
+python scripts/dataset/download_datasets.py --mls-portuguese --max-samples 3000
+python scripts/dataset/download_datasets.py --tts-portuguese --max-samples 1000
+python scripts/dataset/download_datasets.py --mlaad-pt --max-samples 500
+python scripts/dataset/download_datasets.py --common-voice-pt --max-samples 1000
+python scripts/dataset/download_datasets.py --asvspoof2019 --max-samples 2000
+python scripts/dataset/download_datasets.py --wavefake --max-samples 2000
+python scripts/dataset/download_datasets.py --in-the-wild --max-samples 1000
+python scripts/dataset/download_datasets.py --asvspoof5 --max-samples 2000
 ```
 
 | Flag | Tipo | Prefixo arquivo | Licença |
@@ -263,11 +263,11 @@ python scripts/download_datasets.py --asvspoof5 --max-samples 2000
 Sempre rode o pré-processamento **antes de treinar**:
 
 ```bash
-python scripts/preprocess_dataset.py --validate         # relatório de integridade
-python scripts/preprocess_dataset.py --normalize        # reamostra/normaliza + remove corrompidos
-python scripts/preprocess_dataset.py --remove-duplicates # MD5
-python scripts/preprocess_dataset.py --create-splits    # train/val/test estratificado
-python scripts/preprocess_dataset.py --full             # tudo acima
+python scripts/dataset/preprocess_dataset.py --validate         # relatório de integridade
+python scripts/dataset/preprocess_dataset.py --normalize        # reamostra/normaliza + remove corrompidos
+python scripts/dataset/preprocess_dataset.py --remove-duplicates # MD5
+python scripts/dataset/preprocess_dataset.py --create-splits    # train/val/test estratificado
+python scripts/dataset/preprocess_dataset.py --full             # tudo acima
 ```
 
 Pela UI: aba **Dataset → Preprocessamento → Pipeline Completo**.
@@ -327,7 +327,7 @@ exigir o pacote `torchcodec` (que depende de torch + FFmpeg e é problemático n
 Windows). **Você NÃO precisa instalar torchcodec** — o XFakeSong desativa o decode
 automático (`Audio(decode=False)`) e decodifica os bytes com `soundfile`
 internamente. Se ainda vir esse erro, atualize o repositório para a versão com a
-correção (`cast_no_decode` / `extract_audio` em `scripts/download_datasets.py`).
+correção (`cast_no_decode` / `extract_audio` em `scripts/dataset/download_datasets.py`).
 
 ### MLAAD demora muito / não encontra PT
 MLAAD é multilíngue (~160 K amostras). O script tem um **cap de iterações**; se
@@ -413,10 +413,10 @@ app/datasets/
 
 **Fluxo recomendado de ponta a ponta:**
 1. **Escolher um tier e montar**: UI **Datasets → Download → Escolher Tier** ou
-   `python scripts/build_dataset.py --tier <test|small|medium|large>` (faz
+   `python scripts/dataset/build_dataset.py --tier <test|small|medium|large>` (faz
    download balanceado + validação/normalização + splits + `dataset_config.json`).
-   Para fontes avulsas: `python scripts/download_datasets.py --all --max-samples 2000`.
-2. **(Opcional) re-criar splits**: `python scripts/preprocess_dataset.py --full`
+   Para fontes avulsas: `python scripts/dataset/download_datasets.py --all --max-samples 2000`.
+2. **(Opcional) re-criar splits**: `python scripts/dataset/preprocess_dataset.py --full`
    (adicione `--speaker-disjoint` para o protocolo de usuários não vistos).
 3. **Treinar**: UI **Treinar** (wizard) — escolha um modelo compatível com o tamanho do seu dataset.
 

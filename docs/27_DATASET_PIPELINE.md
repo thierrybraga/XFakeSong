@@ -5,7 +5,7 @@ do `.npz`, passando pela interface Gradio, pelo benchmark e pelo treino. Inclui 
 resultado da auditoria de consistencia entre essas pecas.
 
 Fonte unica de verdade: **`app/core/dataset_catalog.py`** (`DATASET_CATALOG` +
-`DATASET_TIERS`). Esse modulo e importado por `scripts/build_dataset.py`, pela aba
+`DATASET_TIERS`). Esse modulo e importado por `scripts/dataset/build_dataset.py`, pela aba
 Datasets do Gradio (`app/interfaces/gradio/tabs/dataset_management.py`), pelo
 benchmark e pela documentacao — garantindo que tamanho, fontes e split nao
 divirjam entre os componentes.
@@ -86,13 +86,13 @@ run_tcc_pipeline.py --download --tier <t> --full-benchmark
 Comandos:
 
 ```bash
-python scripts/build_dataset.py --tier small        # 5.000/classe, 10k total
-python scripts/build_dataset.py --tier medium       # 7.500/classe, 15k canonico
-python scripts/build_dataset.py --tier large        # 10.000/classe, split por falante
-python scripts/build_dataset.py --tier medium --target 7500   # override explicito
+python scripts/dataset/build_dataset.py --tier small        # 5.000/classe, 10k total
+python scripts/dataset/build_dataset.py --tier medium       # 7.500/classe, 15k canonico
+python scripts/dataset/build_dataset.py --tier large        # 10.000/classe, split por falante
+python scripts/dataset/build_dataset.py --tier medium --target 7500   # override explicito
 
 # ponta a ponta (download + npz + benchmark) no tier medium canonico:
-python scripts/run_tcc_pipeline.py --download --tier medium --full-benchmark \
+python scripts/benchmark/run_tcc_pipeline.py --download --tier medium --full-benchmark \
   --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 

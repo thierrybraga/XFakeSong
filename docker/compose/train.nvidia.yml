@@ -46,7 +46,7 @@ services:
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
     image: xfakesong/classical-ml:cpu
-    command: ["python", "scripts/train_classical.py", "--device-profile", "cpu"]
+    command: ["python", "scripts/training/train_by_family.py", "--family", "classical-ml", "--device-profile", "cpu"]
 
   tensorflow-keras:
     <<: *train-common
@@ -56,7 +56,7 @@ services:
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
     image: xfakesong/tensorflow-keras:nvidia
-    command: ["python", "scripts/train_tensorflow.py", "--device-profile", "gpu"]
+    command: ["python", "scripts/training/train_by_family.py", "--family", "tensorflow-keras", "--device-profile", "gpu"]
 
   pytorch-audio:
     <<: *train-common
@@ -66,7 +66,7 @@ services:
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
     image: xfakesong/pytorch-audio:nvidia
-    command: ["python", "scripts/train_pytorch.py", "--device-profile", "gpu"]
+    command: ["python", "scripts/training/train_by_family.py", "--family", "pytorch-audio", "--device-profile", "gpu"]
 
   ssl-transformers:
     <<: *train-common
@@ -76,4 +76,4 @@ services:
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
     image: xfakesong/ssl-transformers:nvidia
-    command: ["python", "scripts/train_ssl.py", "--device-profile", "gpu"]
+    command: ["python", "scripts/training/train_by_family.py", "--family", "ssl-transformers", "--device-profile", "gpu"]

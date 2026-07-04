@@ -518,7 +518,7 @@ python main.py --gradio
 ```
 
 ```bash
-python scripts/run_tcc_pipeline.py \
+python scripts/benchmark/run_tcc_pipeline.py \
   --download \
   --target-per-class 7500 \
   --full-benchmark \
@@ -528,7 +528,7 @@ python scripts/run_tcc_pipeline.py \
 ```
 
 ```bash
-python scripts/run_benchmark.py \
+python scripts/benchmark/run_benchmark.py \
   --full \
   --epochs 100 \
   --device-profile gpu \
@@ -536,7 +536,7 @@ python scripts/run_benchmark.py \
 ```
 
 ```bash
-python scripts/run_benchmark.py \
+python scripts/benchmark/run_benchmark.py \
   --model Conformer \
   --epochs 100 \
   --device-profile gpu \

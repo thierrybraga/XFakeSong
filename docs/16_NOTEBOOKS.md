@@ -62,7 +62,7 @@ notebooks/
 agora parametrizado por **tier** (ver [docs/12_DATASETS.md](12_DATASETS.md)):
 
 ```bash
-python scripts/run_tcc_pipeline.py \
+python scripts/benchmark/run_tcc_pipeline.py \
   --download \
   --tier medium \
   --full-benchmark \
@@ -91,7 +91,7 @@ ponta a ponta. Ele:
 - executa um smoke test antes do treino pesado;
 - usa um **tier** de dataset (`--tier medium` no benchmark canônico: `7.500`
   reais + `7.500` fake);
-- chama `scripts/run_tcc_pipeline.py --download --tier <tier> --archs`
+- chama `scripts/benchmark/run_tcc_pipeline.py --download --tier <tier> --archs`
   com as 14 arquiteturas;
 - audita `dataset.md`, `dataset_manifest.json`, `results.json`, `results.csv`,
   `predictions_clean.csv`, figuras PNG agregadas e artefatos por arquitetura;
@@ -141,7 +141,7 @@ Os notebooks ativos (`00_index`, `features/`, `models/`, `pipeline/`) são
 **gerados programaticamente** por:
 
 ```bash
-python scripts/build_notebooks.py
+python scripts/ops/build_notebooks.py
 ```
 
 O gerador valida com `compile()` **todas** as células de código antes de gravar

@@ -51,14 +51,20 @@ app/
 │   ├── features/    # Extração de features (extractors/, adapters/, registry)
 │   ├── models/      # Arquiteturas neurais (architectures/, training/, inference/)
 │   └── services/    # DetectionService, TrainingService, UploadService, etc.
-├── application/     # Casos de uso, Pipeline (stages/, workflows/, dto/)
+├── application/     # Orquestração — pipeline/orchestrator.py (Chain of Responsibility)
 ├── core/            # Infraestrutura transversal (config, utils, interfaces, training)
 ├── interfaces/      # Adaptadores de entrada
-│   ├── gradio/      # Interface web com 8 abas
+│   ├── gradio/      # Interface web com 5 seções role-based (Painel, Detectar, Investigar, Treinar, Gerenciar)
 │   └── cli/         # CLI com menus interativos
 ├── routers/         # Endpoints FastAPI (detection, training, features, etc.)
 └── schemas/         # Modelos Pydantic (request/response)
 ```
+
+Fora das cinco camadas, `app/` também tem: `static/` (CSS servido via
+FastAPI `StaticFiles`), `templates/` (Jinja2 para a página inicial e loading),
+`core/utils/` (utilitários centrais) vs `utils/colab.py` (helper isolado só
+para execução via Google Colab — não confundir os dois), e os entry points
+`main_fastapi.py`, `deploy_hf.py`, `gradio_schema_patch.py`.
 
 **Fluxo de produção (direto):**
 ```
@@ -150,22 +156,18 @@ Para datasets públicos (ASVspoof, WaveFake, In-the-Wild, etc.), consulte [`docs
 
 ## Documentação
 
-Toda a documentação técnica está em `docs/`, gerada via MkDocs Material (`mkdocs.yml`).
+Toda a documentação técnica está em `docs/`, gerada via MkDocs Material
+(`mkdocs.yml`). [`docs/index.md`](docs/index.md) é o índice canônico e
+completo (30 documentos) — consulte-o em vez de duplicar a lista aqui. Os
+mais usados no dia a dia de desenvolvimento:
 
 | Arquivo | Conteúdo |
 |---------|----------|
-| `01_INTRODUCAO.md` | Visão geral e funcionalidades |
-| `02_INSTALACAO_CONFIGURACAO.md` | Setup local, Docker e HF Spaces |
 | `03_ARQUITETURA.md` | Clean Architecture e estrutura de pastas |
 | `04_FEATURES.md` | Todos os tipos de features e como adicionar novos |
 | `05_GUIA_DEV.md` | Padrões de código, logging, convenções |
-| `06_TESTES.md` | Estratégia de testes e CI/CD |
-| `07_API_REFERENCE.md` | Endpoints REST da API |
+| `06_QUALIDADE_TESTES.md` | Estratégia de testes e CI/CD |
 | `08_ARQUITETURAS.md` | Arquiteturas neurais detalhadas |
-| `09_INFERENCIA.md` | Fluxo de inferência por arquitetura |
 | `10_TREINAMENTO.md` | Configuração de treinamento e hiperparâmetros |
-| `11_DEPLOY_HUGGINGFACE.md` | Deploy no HF Spaces |
-| `12_DATASETS.md` | Datasets públicos com links e licenças |
-| `13_COLAB_GUIDE.md` | Execução via Google Colab |
-| `14_REVISAO_ARQUITETURAS.md` | Auditoria técnica das arquiteturas versus literatura |
 | `15_BENCHMARK.md` | Benchmark, métricas e geração de resultados para TCC |
+| `RETREINO_AJUSTES.md` | Ajustes de hiperparâmetros pós-diagnóstico e retreinos aplicados |

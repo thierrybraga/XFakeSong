@@ -19,19 +19,22 @@ fontes canônicas de cada assunto.
 | Trabalhar com extração de features | [Features de Áudio](04_FEATURES.md) |
 | Contribuir com código | [Guia do Desenvolvedor](05_GUIA_DEV.md) |
 | Planejar a separação de ambientes de treino | [Plano de Ambientes de Treinamento](26_PLANO_AMBIENTES_TREINAMENTO.md) |
-| Validar qualidade e testes | [Testes e Qualidade](06_TESTES.md) |
-| Integrar via HTTP | [API Reference](07_API_REFERENCE.md) |
+| Validar qualidade e testes | [Qualidade e Testes](06_QUALIDADE_TESTES.md) |
+| Integrar via HTTP e entender comunicação interna | [API REST e Comunicação](07_API_COMUNICACAO.md) |
 | Comparar as arquiteturas neurais | [Arquiteturas Neurais](08_ARQUITETURAS.md) |
 | Rodar predição com modelos treinados | [Inferência](09_INFERENCIA.md) |
 | Treinar modelos | [Treinamento](10_TREINAMENTO.md) |
-| Usar a interface Gradio e suas abas | [Interface Gradio](23_INTERFACE_GRADIO.md) |
+| Usar a interface Gradio, suas abas e o serving de inferência | [Frontend Gradio](23_FRONTEND_GRADIO.md) |
 | Publicar no Hugging Face Spaces | [Deploy Hugging Face](11_DEPLOY_HUGGINGFACE.md) |
 | Publicar documentação e demo | [GitHub Pages e Hugging Face](24_PUBLICACAO_GITHUB_HF.md) |
 | Preparar datasets | [Datasets Públicos](12_DATASETS.md) |
 | Executar no Google Colab | [Guia Google Colab](13_COLAB_GUIDE.md) |
 | Auditar a aderência das arquiteturas | [Revisão das Arquiteturas](14_REVISAO_ARQUITETURAS.md) |
 | Rodar o benchmark consolidado | [Benchmark e Resultados](15_BENCHMARK.md) |
+| Consolidar ordem de execução e configs do pipeline de benchmark | [Auditoria do Pipeline de Benchmark](30_AUDITORIA_PIPELINE.md) |
+| Rastrear ajustes de hiperparâmetros pós-diagnóstico e retreinos aplicados | [Retreino com Ajustes](RETREINO_AJUSTES.md) |
 | Acompanhar correções metodológicas do benchmark | [Plano de Correções do Benchmark](25_PLANO_CORRECOES.md) |
+| Retreinar com GPU via WSL2/Docker Desktop | [Retreino em WSL2](22_RETREINO_WSL2.md) |
 | Ler a fundamentação e análise experimental no GitHub Pages | [Estudo Experimental](20_ESTUDO_EXPERIMENTAL.md) |
 | Estudar com os notebooks | [Guia de Notebooks](16_NOTEBOOKS.md) |
 | Entender CI/CD e segurança | [CI/CD e Segurança](17_CICD_SEGURANCA.md) |
@@ -62,7 +65,7 @@ consolidadas a partir do trabalho:
 - resultados, artefatos, modelos treinados e rastreabilidade em
   [Benchmark e Resultados](15_BENCHMARK.md);
 - uso da interface, abas, notificações e fluxos de análise em
-  [Interface Gradio](23_INTERFACE_GRADIO.md);
+  [Frontend Gradio](23_FRONTEND_GRADIO.md);
 - publicação coordenada de documentação e demonstração em
   [GitHub Pages e Hugging Face](24_PUBLICACAO_GITHUB_HF.md);
 - plano de separação de ambientes Docker e dependências por família em
@@ -118,9 +121,9 @@ flowchart LR
 ```bash
 python main.py --bootstrap-dirs                 # cria a estrutura de diretórios
 python main.py --gradio                         # sobe a UI Gradio + API em :7860
-./scripts/run_tests.sh fast                     # suíte rápida (sem smoke)
+./scripts/ops/run_tests.sh fast                     # suíte rápida (sem smoke)
 docker compose up --build -d                    # produção (Docker)
-python scripts/run_tcc_pipeline.py --smoke --epochs 1 --batch-size 4
+python scripts/benchmark/run_tcc_pipeline.py --smoke --epochs 1 --batch-size 4
 ```
 
 Para detalhes de ambiente, dependências e variáveis `.env`, veja

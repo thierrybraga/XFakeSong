@@ -1,7 +1,8 @@
 # Retreino com Ajustes — pós `clean_benchmark_full_20260626`
 
 Documento de rastreio dos ajustes de hiperparâmetros aplicados após o
-diagnóstico do último benchmark (14 modelos). Os ajustes estão **aplicados no
+diagnóstico do benchmark completo do harness (14 arquiteturas suportadas; 11
+modelos no recorte consolidado atual). Os ajustes estão **aplicados no
 código**. Os 4 modelos do escopo oficial do TCC que precisavam de retreino
 (RawGAT-ST, AASIST, WavLM Original, HuBERT Original) foram **retreinados e
 promovidos em 2026-07-02** — ver
@@ -31,7 +32,7 @@ diagnosticado via `mean_train_score=1.0` no tuning).
 Mantidos sem alteração (sólidos e robustos): **Conformer, HuBERT,
 SpectrogramTransformer, WavLM, RawNet2**.
 **Sonic Sleuth** (1.0 perfeito) — auditar vazamento antes de confiar
-(`scripts/audit_dataset_leakage.py`), não retreinado por ora.
+(`scripts/dataset/audit_dataset_leakage.py`), não retreinado por ora.
 
 ## Ajustes aplicados
 
@@ -57,10 +58,10 @@ recalibram a decisão do Ensemble pós-treino.
 
 ```bash
 # Linux / WSL2 / Docker GPU
-bash scripts/retrain_ajustado.sh
+bash scripts/training/retrain_ajustado.sh
 
 # Windows
-scripts\retrain_ajustado.bat
+scripts\training\retrain_ajustado.bat
 ```
 
 Roda apenas os 8 modelos ajustados (um por vez, `--resume`, 120 épocas, SNR
@@ -69,11 +70,11 @@ retreinados.
 
 ## Verificação (antes de promover)
 
-1. `python scripts/consolidate_results.py --results results/retune_ajustado_<data>`
-2. `python scripts/validate_artifacts.py --results results/retune_ajustado_<data>`
+1. `python scripts/reporting/consolidate_results.py --results results/retune_ajustado_<data>`
+2. `python scripts/reporting/validate_artifacts.py --results results/retune_ajustado_<data>`
 3. Comparar `accuracy`/`f1`/`eer` e a curva de robustez (10 dB) com o baseline.
 4. Só então sincronizar para `app/models/benchmark_final`:
-   `python scripts/sync_completed_benchmark_artifacts.py --results results/retune_ajustado_<data>`
+   `python scripts/reporting/sync_completed_benchmark_artifacts.py --results results/retune_ajustado_<data>`
 
 > Importante: promova um modelo só se ele melhorar (ou empatar) o baseline,
 > especialmente a robustez a 10 dB. Caso contrário, mantenha o artefato anterior.
@@ -93,14 +94,14 @@ original se repetiu idêntico (val_loss mínima na época 6 subindo de 0.35 para
 Checklist obrigatório antes de qualquer novo retreino via Docker:
 
 1. `make build-nocache` (ou rebuild explícito da imagem de benchmark);
-2. `python scripts/run_benchmark.py --plan-only` e conferir no plano gravado
+2. `python scripts/benchmark/run_benchmark.py --plan-only` e conferir no plano gravado
    os hparams ajustados (RawGAT-ST: LR 5e-5/dropout 0.35/l2 1e-3/aug on;
    AASIST: LR 3e-4/l2 2e-4/aug on);
 3. conferir que o plano registra o split por falante quando `--speaker-split`
    for passado.
 
 **Runner SSL corrigido (WavLM/HuBERT Original).** O
-`scripts/run_wavlm_original_benchmark.py` treinava a cabeça só com áudio
+`scripts/benchmark/run_wavlm_original_benchmark.py` treinava a cabeça só com áudio
 limpo (AWGN apenas na avaliação), rodava as 100 épocas sem early stopping
 (val_loss mínima ~época 13) e decidia com threshold 0.5 sobre scores
 descalibrados — robustez colapsava (recall ~0.08 @10dB; HuBERT 0.507 de
@@ -119,8 +120,8 @@ com flags `--no-*` para desligar):
 
 **Escopo do TCC pendente à época deste diagnóstico** (consolidado
 `tcc_consolidated_20260701`): RawGAT-ST, AASIST, WavLM Original e HuBERT
-Original — `bash scripts/retrain_ajustado.sh --tcc-pending`
-(Windows: `scripts\retrain_ajustado.bat tcc-pending`). Conformer, Res2Net,
+Original — `bash scripts/training/retrain_ajustado.sh --tcc-pending`
+(Windows: `scripts\training\retrain_ajustado.bat tcc-pending`). Conformer, Res2Net,
 AST, RawNet2, CCT e os clássicos não precisam de retreino. **Concluído em
 2026-07-02** — ver
 ["Retreino de 2026-07-02 — concluído"](#retreino-de-2026-07-02--concluído)
@@ -189,8 +190,8 @@ Todos os 4 modelos convergiram (`converged: True`) e ganharam robustez
 substancial a 10 dB, à custa de perda marginal de acurácia/EER no conjunto
 limpo (WavLM e HuBERT) — *trade-off* esperado ao expor o classificador a
 ruído no treino. Artefatos sincronizados para `app/models/benchmark_final/`
-(11/11 modelos, `python scripts/sync_completed_benchmark_artifacts.py`) e
-tabelas/figuras do TCC regeneradas (`python scripts/update_tcc_latex.py`).
+(11/11 modelos, `python scripts/reporting/sync_completed_benchmark_artifacts.py`) e
+tabelas/figuras do TCC regeneradas (`python scripts/reporting/update_tcc_latex.py`).
 `tcc_overleaf/main.tex` (Seção 5 — Análise dos Resultados — e Conclusão)
 reescrito para refletir os números corrigidos; a narrativa de robustez a
 ruído deixou de apontar RawGAT-ST/SSL como os mais frágeis e passou a

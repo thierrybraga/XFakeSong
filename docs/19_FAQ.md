@@ -18,7 +18,7 @@ Para o passo a passo completo de instalação e os erros detalhados, veja
     a variante certa de requirements: `requirements.txt` (padrão),
     `requirements-cpu.txt` (CPU, ~250 MB menor) ou GPU via
     `tensorflow[and-cuda]`. As três compartilham `requirements-base.txt`.
-    Rode `python scripts/doctor.py` para um diagnóstico completo.
+    Rode `python scripts/ops/doctor.py` para um diagnóstico completo.
 
 ??? question "Preciso de GPU?"
     Não. SVM, Random Forest e a inspeção dos modelos rodam em CPU. Para treinar

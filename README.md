@@ -75,7 +75,7 @@ python main.py --gradio
 
 A interface Gradio fica disponível em `http://localhost:7860/gradio/`.
 O uso das abas, análises e notificações está documentado em
-[docs/23_INTERFACE_GRADIO.md](docs/23_INTERFACE_GRADIO.md).
+[docs/23_FRONTEND_GRADIO.md](docs/23_FRONTEND_GRADIO.md).
 
 ## Runtime Local
 
@@ -110,20 +110,20 @@ ser executado via WSL2/Docker Desktop GPU usando os perfis `*-nvidia`.
 
 | Família | Modelos | Entrada |
 | --- | --- | --- |
-| `classical-ml` | SVM, RandomForest | `python scripts/train_classical.py` |
-| `tensorflow-keras` | Sonic Sleuth, EfficientNet-LSTM, MultiscaleCNN, SpectrogramTransformer | `python scripts/train_tensorflow.py` |
-| `pytorch-audio` | RawNet2, AASIST, RawGAT-ST, Conformer, Hybrid CNN-Transformer | `python scripts/train_pytorch.py` |
-| `ssl-transformers` | WavLM, HuBERT | `python scripts/train_ssl.py` |
+| `classical-ml` | SVM, RandomForest | `python scripts/training/train_by_family.py --family classical-ml` |
+| `tensorflow-keras` | Sonic Sleuth, EfficientNet-LSTM, MultiscaleCNN, SpectrogramTransformer | `python scripts/training/train_by_family.py --family tensorflow-keras` |
+| `pytorch-audio` | RawNet2, AASIST, RawGAT-ST, Conformer, Hybrid CNN-Transformer | `python scripts/training/train_by_family.py --family pytorch-audio` |
+| `ssl-transformers` | WavLM, HuBERT | `python scripts/training/train_by_family.py --family ssl-transformers` |
 | `inference-api` | Gradio/FastAPI com modelos treinados | `python main.py --gradio` |
 
-Todos os wrappers usam `scripts/run_models_sequential.py`, preservando pasta
+Todos os wrappers usam `scripts/benchmark/run_models_sequential.py`, preservando pasta
 própria por modelo, logs, retomada, `results.json`, figuras e artefatos.
 
 ```bash
-python scripts/train_classical.py --plan-only
-python scripts/train_tensorflow.py --models MultiscaleCNN --epochs 100 --device-profile gpu
-python scripts/train_pytorch.py --models Conformer RawNet2 --epochs 100 --device-profile gpu
-python scripts/train_ssl.py --models WavLM HuBERT --epochs 100 --device-profile gpu
+python scripts/training/train_by_family.py --family classical-ml --plan-only
+python scripts/training/train_by_family.py --family tensorflow-keras --models MultiscaleCNN --epochs 100 --device-profile gpu
+python scripts/training/train_by_family.py --family pytorch-audio --models Conformer RawNet2 --epochs 100 --device-profile gpu
+python scripts/training/train_by_family.py --family ssl-transformers --models WavLM HuBERT --epochs 100 --device-profile gpu
 ```
 
 Execução via Docker por perfil:
@@ -146,9 +146,9 @@ docker compose -f docker/compose/inference.nvidia.yml up --build inference-api
 Também há um helper único:
 
 ```bash
-python scripts/docker_build.py train-nvidia config
-python scripts/docker_build.py inference-cpu up
-python scripts/docker_build.py benchmark-nvidia run
+python scripts/ops/docker_build.py train-nvidia config
+python scripts/ops/docker_build.py inference-cpu up
+python scripts/ops/docker_build.py benchmark-nvidia run
 ```
 
 Via `make`, os targets de Docker usam os mesmos perfis segmentados:
@@ -171,13 +171,13 @@ O plano técnico e os critérios de aceite estão em
 Validação rápida do harness, sem download de dataset:
 
 ```bash
-python scripts/run_tcc_pipeline.py --smoke --epochs 1 --batch-size 4
+python scripts/benchmark/run_tcc_pipeline.py --smoke --epochs 1 --batch-size 4
 ```
 
 Execução completa planejada para o TCC:
 
 ```bash
-python scripts/run_tcc_pipeline.py ^
+python scripts/benchmark/run_tcc_pipeline.py ^
   --download ^
   --tier medium ^
   --full-benchmark ^
@@ -192,7 +192,7 @@ No Windows com GPU, use o perfil Docker/WSL2:
 ```powershell
 $env:DOCKER_TRAIN_CPU_LIMIT='8'
 docker compose -f docker\compose\benchmark.nvidia.yml --env-file .env run --rm benchmark `
-  python scripts/run_tcc_pipeline.py `
+  python scripts/benchmark/run_tcc_pipeline.py `
     --download `
     --tier medium `
     --full-benchmark `
@@ -228,7 +228,7 @@ são ancorados na raiz do projeto.
 Para revisar o plano sem iniciar treinamento:
 
 ```bash
-python scripts/run_benchmark.py --full ^
+python scripts/benchmark/run_benchmark.py --full ^
   --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz ^
   --epochs 100 ^
   --out results/benchmark_15k_medium ^
@@ -238,7 +238,7 @@ python scripts/run_benchmark.py --full ^
 Benchmark de um modelo individual:
 
 ```bash
-python scripts/run_benchmark.py --model AASIST ^
+python scripts/benchmark/run_benchmark.py --model AASIST ^
   --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz ^
   --epochs 100 ^
   --out results/bench_aasist
@@ -250,9 +250,9 @@ Para detalhes do desenho experimental, consulte
 Para auditar falantes depois de montar o dataset:
 
 ```bash
-python scripts/rebuild_speaker_manifest.py --dataset-dir app/datasets
-python scripts/export_speaker_table.py --dataset-dir app/datasets --scope all
-python scripts/audit_speaker_manifest.py --dataset-dir app/datasets --scope splits
+python scripts/dataset/rebuild_speaker_manifest.py --dataset-dir app/datasets
+python scripts/dataset/export_speaker_table.py --dataset-dir app/datasets --scope all
+python scripts/dataset/audit_speaker_manifest.py --dataset-dir app/datasets --scope splits
 ```
 
 ## Publicar Modelos no Hugging Face
@@ -261,11 +261,11 @@ Depois de consolidar os artefatos em `app/models/`, envie os modelos finais
 para um repositório do tipo **Model** no Hugging Face Hub:
 
 ```bash
-python scripts/upload_models_to_hf.py \
+python scripts/ops/upload_models_to_hf.py \
   --repo-id SEU_USUARIO/xfakesong-models \
   --dry-run
 
-python scripts/upload_models_to_hf.py \
+python scripts/ops/upload_models_to_hf.py \
   --repo-id SEU_USUARIO/xfakesong-models \
   --private
 ```
@@ -280,7 +280,7 @@ Para baixar modelos pré-treinados do benchmark em outra máquina ou no Space:
 
 ```bash
 MODEL_REPO_ID=SEU_USUARIO/xfakesong-models \
-python scripts/sync_hf_models.py --models-dir app/models --force
+python scripts/ops/sync_hf_models.py --models-dir app/models --force
 ```
 
 Use `HF_TOKEN` se o repositório de modelos for privado.
@@ -299,7 +299,7 @@ Space:
 | Variable | `DEEPFAKE_MODELS_DIR` | `app/models` |
 | Secret | `HF_TOKEN` | token com leitura do model repo, se privado |
 
-No boot, `scripts/sync_hf_models.py` sincroniza os artefatos do Model Hub para
+No boot, `scripts/ops/sync_hf_models.py` sincroniza os artefatos do Model Hub para
 `app/models`. Se `MODEL_REPO_ID` não estiver definido, a aplicação usa os
 modelos já empacotados/localmente disponíveis. O frontend lista os modelos sem
 carregar todos os pesos no startup; cada modelo é carregado sob demanda ao ser
@@ -362,17 +362,19 @@ A documentação técnica está em `docs/` e é publicada via MkDocs:
 | Pipeline e auditoria de dataset | [Dataset Pipeline](docs/27_DATASET_PIPELINE.md) |
 | Estudo experimental no GitHub Pages | [Estudo Experimental](docs/20_ESTUDO_EXPERIMENTAL.md) |
 | Notebooks | [Guia de Notebooks](docs/16_NOTEBOOKS.md) |
-| Interface Gradio e abas | [Interface Gradio](docs/23_INTERFACE_GRADIO.md) |
+| Frontend Gradio e abas | [Frontend Gradio](docs/23_FRONTEND_GRADIO.md) |
 | GitHub Pages e Hugging Face | [Publicação GitHub/HF](docs/24_PUBLICACAO_GITHUB_HF.md) |
 | Dúvidas frequentes | [Perguntas Frequentes (FAQ)](docs/19_FAQ.md) |
+
+Índice completo (30 documentos): [docs/index.md](docs/index.md).
 
 ## Comandos Essenciais
 
 ```bash
 python main.py --bootstrap-dirs
 python main.py --gradio
-./scripts/run_tests.sh fast
-./scripts/run_tests.sh cov
+./scripts/ops/run_tests.sh fast
+./scripts/ops/run_tests.sh cov
 docker compose up --build -d
 docker compose logs -f
 docker compose down
