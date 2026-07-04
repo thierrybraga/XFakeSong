@@ -943,12 +943,24 @@ class SincConvLayer(layers.Layer):
         n_expanded = tf.expand_dims(n, 1)           # (kernel_size, 1)
 
         # Band-pass filter = high_pass - low_pass
-        # h(n) = 2*f_high*sinc(2*pi*f_high*n) - 2*f_low*sinc(2*pi*f_low*n)
+        # h(n) = 2*f_high*sinc(2*pi*f_high*n/fs) - 2*f_low*sinc(2*pi*f_low*n/fs)
+        # com sinc(x) = sin(x)/x. Para f̂ = 2f/fs (freq. normalizada) e n em
+        # AMOSTRAS, o argumento correto é π·f̂·n = 2π·f·n/fs.
+        #
+        # BUG FIX (filtros degenerados): a versão anterior passava
+        # `f̂·n·sample_rate` = 2·f·n como argumento — faltava o fator π e
+        # sobrava um ×fs (~5·10³ vezes maior). O seno aliasava em argumentos
+        # da ordem de 10⁵–10⁶ e os "passa-banda mel-inicializados" viravam um
+        # banco pseudo-aleatório fixo — as frequências aprendíveis (low/band)
+        # deixavam de definir bordas de banda reais. A SincNetLayer (RawNet2)
+        # sempre esteve correta; esta camada (AASIST/RawGAT-ST) não.
+        # Modelos treinados antes desta correção precisam de RETREINO para
+        # se beneficiar (scripts/training/retrain_ajustado.sh).
         f_low = 2.0 * low_expanded / self.sample_rate
         f_high = 2.0 * high_expanded / self.sample_rate
 
-        band_pass_low = f_low * self._sinc(f_low * n_expanded * self.sample_rate)
-        band_pass_high = f_high * self._sinc(f_high * n_expanded * self.sample_rate)
+        band_pass_low = f_low * self._sinc(np.pi * f_low * n_expanded)
+        band_pass_high = f_high * self._sinc(np.pi * f_high * n_expanded)
 
         band_pass = band_pass_high - band_pass_low  # (kernel_size, n_filters)
 

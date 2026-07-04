@@ -26,8 +26,21 @@ class TemperatureScaler:
     def calibrate(self, model, val_features: np.ndarray, val_labels: np.ndarray):
         """Learn optimal temperature on validation set using NLL minimization."""
         try:
-            # Get logits (pre-softmax) from model
             predictions = model.predict(val_features, verbose=0)
+
+            # CORREÇÃO: `model.predict` retorna PROBABILIDADES (pós
+            # softmax/sigmoid) na maioria dos modelos; dividi-las por T e
+            # reaplicar softmax/sigmoid não é temperature scaling. Recupera
+            # logits primeiro (log p para softmax; logit p para sigmoid) —
+            # `normalize_logits_to_probs` cobre os modelos que já emitem
+            # logits crus (ex.: AASIST/AM-Softmax).
+            probs = normalize_logits_to_probs(predictions)
+            eps = 1e-7
+            probs = np.clip(probs, eps, 1.0 - eps)
+            if probs.shape[-1] > 1:
+                logits = np.log(probs)
+            else:
+                logits = np.log(probs / (1.0 - probs))
 
             # Grid search for optimal temperature (simple but effective)
             best_temp = 1.0
@@ -35,7 +48,7 @@ class TemperatureScaler:
 
             for temp in np.arange(0.5, 5.0, 0.1):
                 # Apply temperature scaling
-                scaled = predictions / temp
+                scaled = logits / temp
                 if scaled.shape[-1] > 1:
                     scaled_probs = tf.nn.softmax(scaled).numpy()
                 else:
@@ -873,17 +886,20 @@ class Predictor:
             # 1. Original
             all_predictions.append(_run_prediction(batch_features))
 
-            # 2. Small Gaussian noise (positive)
+            # 2. Small Gaussian noise
             if n_augmentations >= 2:
                 noisy = batch_features + np.random.normal(
                     0, 0.005, batch_features.shape).astype(np.float32)
                 all_predictions.append(_run_prediction(noisy))
 
-            # 3. Small Gaussian noise (negative)
-            if n_augmentations >= 3:
-                noisy_neg = batch_features - np.random.normal(
-                    0, 0.005, batch_features.shape).astype(np.float32)
-                all_predictions.append(_run_prediction(noisy_neg))
+            # 3. Time shift para trás (a versão anterior usava "ruído
+            # negativo", estatisticamente idêntico ao item 2 — perturbação
+            # duplicada sem ganho de diversidade).
+            if n_augmentations >= 3 and batch_features.ndim >= 2:
+                shift_back = max(1, batch_features.shape[1] // 50)
+                all_predictions.append(
+                    _run_prediction(np.roll(batch_features, -shift_back, axis=1))
+                )
 
             # 4. Time shift (small circular shift)
             if n_augmentations >= 4 and batch_features.ndim >= 2:
@@ -896,8 +912,14 @@ class Predictor:
                 vol = batch_features * np.random.uniform(0.95, 1.05)
                 all_predictions.append(_run_prediction(vol.astype(np.float32)))
 
-            # Average predictions
-            avg_predictions = np.mean(all_predictions, axis=0)
+            # CORREÇÃO (contrato divergente do caminho principal): as saídas
+            # eram promediadas CRUAS (para AASIST, média de LOGITS ±15 —
+            # depois interpretados como probabilidade), sem eer_threshold e
+            # sem p_fake/p_real no resultado. Agora: normaliza CADA passe
+            # para probabilidade antes da média, aplica a mesma temperatura e
+            # o mesmo limiar do caminho sem TTA e devolve o mesmo contrato.
+            all_probs = [normalize_logits_to_probs(p) for p in all_predictions]
+            avg_predictions = np.mean(all_probs, axis=0)
 
             # Sprint 1.4: Calibração per-model (preferida) com fallback ao
             # temperature_scaler global (compatibilidade com código antigo).
@@ -906,19 +928,29 @@ class Predictor:
                 model_temp = float(self.temperature_scaler.temperature)
             avg_predictions = apply_temperature_scaling(avg_predictions, model_temp)
 
+            fake_threshold = _get_numeric_attr(model_info, 'eer_threshold', 0.5)
+
             results = []
             for i in range(len(avg_predictions)):
                 pred = avg_predictions[i]
-                if pred.shape[-1] == 1:
-                    confidence = float(pred[0] if pred.ndim > 0 else pred)
-                    is_deepfake = confidence > 0.5
+                if np.ndim(pred) == 0 or pred.shape[-1] == 1:
+                    p_fake = _as_probability(
+                        pred[0] if np.ndim(pred) > 0 else pred
+                    )
+                    p_real = _as_probability(1.0 - p_fake)
                 else:
-                    confidence = float(np.max(pred))
-                    is_deepfake = np.argmax(pred) == 1
+                    p_fake = _as_probability(pred[1])
+                    p_real = _as_probability(pred[0])
+
+                is_deepfake = bool(p_fake > fake_threshold)
+                confidence = _as_probability(p_fake if is_deepfake else p_real)
 
                 results.append({
                     'is_deepfake': is_deepfake,
-                    'confidence': confidence,
+                    'confidence': float(confidence),
+                    'p_fake': float(p_fake),
+                    'p_real': float(p_real),
+                    'classification_threshold': fake_threshold,
                     'tta_applied': True,
                     'n_augmentations': len(all_predictions),
                     'temperature_applied': model_temp,

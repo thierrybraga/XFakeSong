@@ -164,6 +164,88 @@ class FeaturePreparer:
             audio_data = self._ensure_sample_rate(audio_data, _target_sr)
 
             # ────────────────────────────────────────────────────────────
+            # PATH BENCHMARK (paridade com benchmarks/data.py): modelos
+            # promovidos declaram `feature_frontend` benchmark_* no
+            # input_contract e são preparados pela MESMA função usada no
+            # treino (app/domain/features/benchmark_frontend). Sem isso, a
+            # inferência usava um front-end diferente (log-magnitude-mel,
+            # hop 128, sem z-score) e as métricas do benchmark não se
+            # transferiam para a predição do app.
+            # ────────────────────────────────────────────────────────────
+            _contract_bm = (
+                model_info.input_contract
+                if isinstance(model_info.input_contract, dict)
+                else {}
+            )
+            _bm_frontend = _contract_bm.get("feature_frontend")
+            from app.domain.features.benchmark_frontend import (
+                BENCHMARK_FRONTENDS,
+                FRONTEND_LOGMEL,
+                FRONTEND_RAW,
+                FRONTEND_TABULAR,
+                prepare_single,
+            )
+
+            if _bm_frontend in BENCHMARK_FRONTENDS:
+                samples = np.asarray(audio_data.samples, dtype=np.float32)
+                if samples.ndim > 1:
+                    samples = (
+                        samples.mean(axis=-1)
+                        if samples.shape[-1] > 1
+                        else samples.reshape(-1)
+                    )
+                shape = tuple(model_info.input_shape or ())
+                features = prepare_single(
+                    samples,
+                    _bm_frontend,
+                    sample_rate=_target_sr,
+                    feature_dim=int(
+                        _contract_bm.get("feature_dim")
+                        or (shape[1] if len(shape) >= 2 else 80)
+                    ),
+                    time_steps=int(
+                        _contract_bm.get("time_steps")
+                        or (shape[0] if shape else 100)
+                    ),
+                    target_sequence_length=int(
+                        _contract_bm.get("target_sequence_length")
+                        or (shape[0] if shape else 16000)
+                    ),
+                    source_samples=int(
+                        _contract_bm.get("source_samples") or 80000
+                    ),
+                    add_channel_dim=bool(len(shape) == 3 and shape[-1] == 1),
+                )
+                if _bm_frontend == FRONTEND_TABULAR:
+                    expected = int(shape[0]) if shape else features.size
+                    if int(features.size) != expected:
+                        return {
+                            "status": "error",
+                            "error": (
+                                f"Vetor tabular com {features.size} features, "
+                                f"modelo espera {expected} — contrato e "
+                                "front-end do benchmark divergem; regenere o "
+                                "contrato/retreine (sem ajuste silencioso)."
+                            ),
+                        }
+                    features = features.reshape(1, -1)
+                metadata = {
+                    "feature_type": {
+                        FRONTEND_RAW: "raw",
+                        FRONTEND_LOGMEL: "benchmark_log_mel",
+                        FRONTEND_TABULAR: "benchmark_tabular_63",
+                    }[_bm_frontend],
+                    "feature_frontend": _bm_frontend,
+                    "features_shape": tuple(np.asarray(features).shape),
+                    "feature_count_total": int(np.asarray(features).size),
+                    "sample_rate": audio_data.sample_rate,
+                    "duration_s": audio_data.duration,
+                    "channels": audio_data.channels,
+                    "config_feature_types": [_bm_frontend],
+                }
+                return {"status": "ok", "features": features, "metadata": metadata}
+
+            # ────────────────────────────────────────────────────────────
             # PATH UNIFICADO (input_type): bate exatamente com o
             # pipeline de treino do training_wizard, usando tf.signal.
             # Cobre os 12 modelos TensorFlow registrados.
@@ -474,19 +556,56 @@ class FeaturePreparer:
 
                         feature_adjustment = "none"
                         original_feature_count = int(features.size)
-                        if expected_dim:
+                        if expected_dim and int(features.size) != int(expected_dim):
+                            # CORREÇÃO (skew mascarado): o ajuste silencioso por
+                            # truncamento/zero-padding fazia o modelo receber um
+                            # vetor com SEMÂNTICA diferente do treino sem nenhum
+                            # erro (foi assim que um artefato de 64 features
+                            # passou despercebido). Dimensão divergente agora é
+                            # ERRO; o escape explícito via
+                            # XFAKESONG_ALLOW_FEATURE_ADJUST=1 preserva o
+                            # comportamento antigo para emergências.
+                            import os
+
                             expected_dim = int(expected_dim)
-                            if features.size > expected_dim:
-                                features = features[:expected_dim]
-                                feature_names = list(feature_names)[:expected_dim]
-                                feature_adjustment = "truncated"
-                            elif features.size < expected_dim:
-                                features = np.pad(
-                                    features,
-                                    (0, expected_dim - features.size),
-                                    mode="constant",
+                            if os.environ.get(
+                                "XFAKESONG_ALLOW_FEATURE_ADJUST"
+                            ) == "1":
+                                if features.size > expected_dim:
+                                    features = features[:expected_dim]
+                                    feature_names = list(feature_names)[
+                                        :expected_dim
+                                    ]
+                                    feature_adjustment = "truncated"
+                                else:
+                                    features = np.pad(
+                                        features,
+                                        (0, expected_dim - features.size),
+                                        mode="constant",
+                                    )
+                                    feature_adjustment = "padded"
+                                logger.warning(
+                                    "Ajuste de features FORÇADO por env "
+                                    "(%d → %d, %s) — predição sem paridade "
+                                    "com o treino.",
+                                    original_feature_count,
+                                    expected_dim,
+                                    feature_adjustment,
                                 )
-                                feature_adjustment = "padded"
+                            else:
+                                return {
+                                    "status": "error",
+                                    "error": (
+                                        f"Extração produziu {features.size} "
+                                        f"features, modelo espera "
+                                        f"{expected_dim}. Front-end de "
+                                        "inferência não corresponde ao do "
+                                        "treino — regenere o input_contract "
+                                        "(scripts/reporting/"
+                                        "rebuild_inference_contracts.py) ou "
+                                        "retreine o modelo."
+                                    ),
+                                }
 
                         # Metadados
                         metadata = {

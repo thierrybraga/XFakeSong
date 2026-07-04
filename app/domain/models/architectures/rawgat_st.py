@@ -27,15 +27,10 @@ from app.domain.models.architectures.layers import (
     residual_block,
 )
 
-# Configure logger for RawGAT-ST
+# Convenção do projeto: logger de módulo sem handlers manuais (a configuração
+# de handlers/formatters é responsabilidade da aplicação; handlers locais
+# duplicavam linhas de log).
 logger = logging.getLogger(__name__)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter(
-        "%(asctime)s %(levelname)s [RawGAT-ST] %(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-logger.setLevel(logging.INFO)
 
 # ============================ CAMADAS CUSTOMIZADAS ======================
 

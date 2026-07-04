@@ -73,6 +73,7 @@ python scripts/<categoria>/<nome>.py [opções]
 | `export_model_card.py` | Exporta o model card Markdown consolidado dos artefatos treinados (`app/models/MODEL_CARD.md`). |
 | `export_rf_feature_importance.py` | Extrai `feature_importances_` do Random Forest promovido e gera figura+tabela LaTeX (63 descritores). |
 | `export_tcc_extra_figures.py` | Gera curvas DET e distribuições de score (AASIST×RawGAT-ST) a partir de `predictions_clean.csv`. |
+| `rebuild_inference_contracts.py` | Regenera os sidecars `bench_*_config.json` dos modelos promovidos a partir do run real (`metrics.json` + `predictions_clean.csv`): `eer_threshold` verdadeiro e `input_contract` completo com `feature_frontend` do benchmark. |
 | `run_shap_analysis.py` | **XAI**: análise SHAP dos clássicos (RF/SVM sobre o vetor tabular) e mapas de ativação Grad-CAM das redes espectrais Keras; ver `app/core/xai/`. |
 
 ## ops/ — operação, infraestrutura e qualidade

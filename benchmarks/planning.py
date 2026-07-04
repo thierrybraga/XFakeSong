@@ -65,8 +65,8 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "epochs": 100,
         "dropout_rate": 0.2,
         "l2_reg_strength": 2e-4,
-        "attention_heads": 12,
-        "hidden_units": 512,
+        # (attention_heads/hidden_units removidos: o create_model do AASIST
+        # não os aceita — eram filtrados pela assinatura, config morto.)
         "optimizer": "AdamW",
         "scheduler": "architecture_default",
         "use_augmentation": True,

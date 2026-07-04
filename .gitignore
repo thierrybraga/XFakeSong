@@ -230,3 +230,6 @@ instance/
 # Pacote Overleaf regeneravel (copia de main.tex + figuras para upload)
 tcc_overleaf/final/
 tcc_overleaf/*.zip
+
+# Backups locais de sidecars regenerados (rebuild_inference_contracts.py)
+*.stale.bak

@@ -1151,10 +1151,13 @@ resume essa correspondência.
 \textbf{Representação} & \textbf{Modelos} & \textbf{Observação} \\
 \midrule
 Áudio bruto (\textit{raw-audio}) & WavLM, HuBERT, RawNet2, AASIST, RawGAT-ST &
-Forma de onda normalizada, sem extrator externo \\
+Forma de onda com \textit{z-score} por amostra, sem extrator externo;
+RawNet2/AASIST/RawGAT-ST consomem recorte central de \SI{1}{\second}
+(\num{16000} amostras), WavLM/HuBERT a janela integral \\
 \addlinespace
 Espectrograma Mel & Conformer, CCT, AST, Res2Net &
-Representação tempo-frequência para camadas convolucionais/atenção \\
+Mapa $100 \times 80$ em dB (ref.\ máx.) com \textit{z-score} por amostra
+(Equação~\ref{eq:melspec}) \\
 \addlinespace
 Vetor tabular (\num{63} descritores) & SVM, \textit{Random Forest} &
 Estatísticas de amplitude, MFCC e RASTA-PLP \\
@@ -1223,17 +1226,25 @@ A representação tempo-frequência consumida por Conformer, CCT, AST e Res2Net
 (Tabela~\ref{tab:representacoes_entrada}) é computada por:
 \begin{equation}
 \label{eq:melspec}
-MelSpec[m,k] = \log\!\left(\sum_{f}H_k[f]\cdot|STFT[m,f]|^2 +
-\varepsilon\right)
+MelSpec[m,k] = 10\log_{10}\!\left(\frac{\sum_{f}H_k[f]\cdot|STFT[m,f]|^2 +
+\varepsilon}{\max_{m',k'} P[m',k']}\right)
 \end{equation}
 \noindent
-em que $f$ indexa as \textit{bins} de frequência, $H_k[f]$ é o banco de $128$
-filtros triangulares na escala Mel, $STFT$ é a transformada de Fourier de
-curto termo com janela de \num{2048} amostras (\textit{n\_fft}) e
-$\varepsilon$ evita $\log(0)$ na Equação~\ref{eq:melspec}. O
-\textit{hop length} de \num{512} amostras determina a resolução temporal: para
-as janelas de \SI{5}{\second} (\num{80000} amostras), o mapa resultante tem
-dimensão $128 \times 157$.
+em que $f$ indexa as \textit{bins} de frequência, $H_k[f]$ é o banco de
+$80$ filtros triangulares na escala Mel, $STFT$ é a transformada de Fourier
+de curto termo com janela de \num{512} amostras (\textit{n\_fft}),
+$\varepsilon$ evita $\log(0)$ e o denominador referencia a escala em decibéis
+ao máximo do próprio mapa de potência $P$ da amostra
+(Equação~\ref{eq:melspec}). O \textit{hop length} é dimensionado
+dinamicamente para produzir exatamente \num{100} quadros por janela de
+\SI{5}{\second} (\num{80000} amostras $\Rightarrow$ \textit{hop} de
+\num{800}), resultando em mapas de dimensão fixa $100 \times 80$,
+padronizados em seguida por normalização \textit{z-score} por amostra ---
+mesma normalização aplicada, na entrada em áudio bruto, aos modelos
+AASIST, RawGAT-ST e RawNet2, que consomem um \textbf{recorte central de
+\SI{1}{\second}} (\num{16000} amostras) da janela de \SI{5}{\second} para
+conter o custo quadrático da atenção em grafos e o comprimento da sequência
+da GRU.
 
 \subsubsection*{Descritores Adicionais Disponíveis no Pipeline}
 
@@ -1337,7 +1348,7 @@ MFCC
     desde 2015~\cite{sahidullah2015comparison, todisco2019asvspoof} \\
 \addlinespace
 Espectrograma Mel
-  & 128 bandas & Baixo
+  & 80 bandas & Baixo
   & Base para CNNs/\textit{Transformers}; captura artefatos de
     síntese tempo-frequência~\cite{jung2022aasist, tak2021rawnet2} \\
 \addlinespace

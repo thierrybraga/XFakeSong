@@ -257,6 +257,13 @@ class ModelLoader:
         if bench_final.is_dir():
             for ext in ("bench_*.keras", "bench_*.h5", "bench_*.pkl", "bench_*.pt"):
                 files.extend(bench_final.glob(f"*/{ext}"))
+            # SSL originais (WavLM/HuBERT reais em PyTorch): o runner dedicado
+            # grava `bench_<arch>_original.pt` em results/models/. Sem este
+            # glob, o Gradio só enxergava o FALLBACK CNN-1D Keras homônimo
+            # (bench_wavlm.keras) — rotulado como SSL sem sê-lo.
+            files.extend(
+                bench_final.glob("*/results/models/bench_*_original.pt")
+            )
         seen: set = set()
         unique: List[Path] = []
         for fp in files:

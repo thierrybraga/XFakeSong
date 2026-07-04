@@ -441,13 +441,10 @@ def _architecture_input_contract(architecture: str) -> tuple[str, Dict[str, Any]
 
 
 def _fit_length(flat: np.ndarray, target_len: int) -> np.ndarray:
-    if flat.shape[1] == target_len:
-        return flat
-    if flat.shape[1] > target_len:
-        start = max(0, (flat.shape[1] - target_len) // 2)
-        return flat[:, start : start + target_len]
-    repeats = int(np.ceil(target_len / max(1, flat.shape[1])))
-    return np.tile(flat, (1, repeats))[:, :target_len]
+    # Fonte única treino<->inferência: app/domain/features/benchmark_frontend.
+    from app.domain.features.benchmark_frontend import fit_length_tile
+
+    return fit_length_tile(flat, target_len)
 
 
 def _resize_axis(X: np.ndarray, target: int, axis: int) -> np.ndarray:
@@ -464,10 +461,9 @@ def _resize_axis(X: np.ndarray, target: int, axis: int) -> np.ndarray:
 
 
 def _normalize_per_sample(X: np.ndarray) -> np.ndarray:
-    flat = X.reshape(len(X), -1)
-    mean = flat.mean(axis=1, keepdims=True)
-    std = flat.std(axis=1, keepdims=True)
-    return ((flat - mean) / np.maximum(std, 1e-6)).reshape(X.shape).astype("float32")
+    from app.domain.features.benchmark_frontend import normalize_per_sample
+
+    return normalize_per_sample(X)
 
 
 def _looks_like_raw_audio(X: np.ndarray) -> bool:
@@ -490,69 +486,18 @@ def _to_tabular_features(X: np.ndarray) -> np.ndarray:
     if not _looks_like_raw_audio(arr):
         return arr
 
-    flat = _audio_flat(arr)
-    feats = [
-        flat.mean(axis=1),
-        flat.std(axis=1),
-        np.mean(np.abs(flat), axis=1),
-        np.sqrt(np.mean(flat ** 2, axis=1)),
-        flat.min(axis=1),
-        flat.max(axis=1),
-        np.percentile(flat, 25, axis=1),
-        np.percentile(flat, 50, axis=1),
-        np.percentile(flat, 75, axis=1),
-        np.mean(np.diff(flat, axis=1) ** 2, axis=1),
-        np.mean(np.signbit(flat[:, 1:]) != np.signbit(flat[:, :-1]), axis=1),
-    ]
-    try:
-        import librosa
+    # Fonte única do vetor de 63 descritores (11 temporais + 26 MFCC +
+    # 26 RASTA-PLP): app/domain/features/benchmark_frontend — a MESMA função
+    # usada pela inferência do app (paridade por construção).
+    from app.domain.features.benchmark_frontend import tabular_features_batch
 
-        mfcc_stats = []
-        for y in flat:
-            mfcc = librosa.feature.mfcc(y=y, sr=16000, n_mfcc=13)
-            mfcc_stats.append(np.concatenate([mfcc.mean(axis=1), mfcc.std(axis=1)]))
-        feats.append(np.asarray(mfcc_stats, dtype="float32").T)
-    except Exception:
-        pass
-
-    # P2 — RASTA-PLP: características robustas a ruído/canal para os modelos
-    # clássicos (SVM/RF), que colapsavam a ~50% sob ruído. O filtro RASTA
-    # remove variações lentas (efeitos de canal), tornando o vetor de features
-    # mais estável sob degradação. Reusa o extrator do domínio.
-    feats.append(_rasta_plp_stats(flat))
-
-    return np.vstack(feats).T.astype("float32")
+    return tabular_features_batch(arr)
 
 
 def _rasta_plp_stats(flat: np.ndarray, n_plp: int = 13) -> np.ndarray:
-    """Estatísticas (média/desvio por coeficiente) de RASTA-PLP por amostra.
+    from app.domain.features.benchmark_frontend import _rasta_plp_stats as _impl
 
-    Retorna shape (2*n_plp, N) para empilhar com as demais features. Degrada
-    para zeros se a extração falhar (mantém o vetor de features consistente).
-    """
-    try:
-        from app.domain.features.extractors.cepstral.components.plp import (
-            extract_rasta_plp_features,
-        )
-    except Exception:
-        return np.zeros((2 * n_plp, len(flat)), dtype="float32")
-
-    rows = []
-    for y in flat:
-        try:
-            feats = extract_rasta_plp_features(
-                y.astype("float32"), sr=16000, frame_length=512,
-                hop_length=256, n_plp=n_plp,
-            )
-            rp = np.asarray(feats.get("rasta_plp"))
-            if rp.ndim != 2 or rp.shape[0] != n_plp:
-                raise ValueError("forma RASTA-PLP inesperada")
-            rows.append(np.concatenate([rp.mean(axis=1), rp.std(axis=1)]))
-        except Exception:
-            rows.append(np.zeros(2 * n_plp, dtype="float32"))
-    arr = np.nan_to_num(np.asarray(rows, dtype="float32"), nan=0.0,
-                        posinf=0.0, neginf=0.0)
-    return arr.T
+    return _impl(flat, n_plp=n_plp)
 
 
 def _to_raw_audio(X: np.ndarray, requirements: Dict[str, Any]) -> np.ndarray:
@@ -571,34 +516,20 @@ def _to_raw_audio(X: np.ndarray, requirements: Dict[str, Any]) -> np.ndarray:
         or requirements.get("target_sequence_length")
         or max(flat.shape[1], min_len)
     )
-    raw = _fit_length(flat, max(1, target_len))
-    raw = _normalize_per_sample(raw)
-    return raw[..., np.newaxis]
+    from app.domain.features.benchmark_frontend import raw_audio_batch
+
+    return raw_audio_batch(flat, target_len=max(1, target_len))
 
 
 def _raw_audio_to_logmel(X: np.ndarray, requirements: Dict[str, Any]) -> np.ndarray:
-    import librosa
+    from app.domain.features.benchmark_frontend import log_mel_batch
 
-    flat = _audio_flat(X)
-    sample_rate = int(requirements.get("sample_rate") or 16000)
-    feature_dim = int(requirements.get("feature_dim") or 80)
-    time_steps = int(requirements.get("min_sequence_length") or 100)
-    hop_length = max(64, int(np.ceil(flat.shape[1] / max(time_steps, 1))))
-
-    specs = []
-    for y in flat:
-        mel = librosa.feature.melspectrogram(
-            y=y.astype("float32"),
-            sr=sample_rate,
-            n_fft=512,
-            hop_length=hop_length,
-            n_mels=feature_dim,
-            power=2.0,
-        )
-        mel_db = librosa.power_to_db(mel + 1e-10, ref=np.max).T
-        mel_db = _resize_axis(mel_db[np.newaxis, ...], max(1, time_steps), axis=1)[0]
-        specs.append(mel_db[:, :feature_dim])
-    return _normalize_per_sample(np.asarray(specs, dtype="float32"))
+    return log_mel_batch(
+        X,
+        sample_rate=int(requirements.get("sample_rate") or 16000),
+        feature_dim=int(requirements.get("feature_dim") or 80),
+        time_steps=int(requirements.get("min_sequence_length") or 100),
+    )
 
 
 def _to_spectrogram(X: np.ndarray, requirements: Dict[str, Any]) -> np.ndarray:

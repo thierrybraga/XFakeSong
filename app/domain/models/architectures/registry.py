@@ -11,7 +11,7 @@ from functools import lru_cache
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
 
-from .architecture_patcher import patch_architecture_for_safety, validate_model_safety
+from .architecture_patcher import patch_architecture_for_safety
 
 logger = logging.getLogger(__name__)
 
@@ -183,15 +183,17 @@ class ArchitectureRegistry:
                     "augmentation_strength": 0.3,
                 },
                 input_requirements={
-                    "input_type": "raw_audio",
-                    "type": "audio",
-                    "format": "raw",
+                    # CORREÇÃO: a implementação (efficientnet_lstm.py) consome
+                    # ESPECTROGRAMA (redimensionado p/ o backbone EfficientNet);
+                    # o valor antigo "raw_audio" divergia do contrato real da
+                    # factory e da própria rede.
+                    "input_type": "spectrogram",
+                    "type": "features",
+                    "format": "spectrogram",
+                    "min_sequence_length": 100,
+                    "feature_dim": 80,
                     "sample_rate": 16000,
-                    "min_sequence_length": 16000,
-                    "target_sequence_length": 16000,
-                    "crop_strategy": "center",
                     "max_duration": 5.0,
-                    "preprocessing": "normalize",
                 },
             )
         )
@@ -316,11 +318,13 @@ class ArchitectureRegistry:
                 ],
                 default_params={
                     "dropout_rate": 0.3,
-                    "use_mfcc_branch": True,
-                    "use_cross_attention": True,
-                    "use_gated_fusion": True,
-                    "use_se_blocks": True,
-                    "aux_loss_weight": 0.3,
+                    # (use_mfcc_branch/use_cross_attention/use_gated_fusion/
+                    # use_se_blocks/aux_loss_weight removidos: NENHUM builder
+                    # de ensemble.py os aceita como parâmetro — eram specs
+                    # documentais sem efeito, e o repasse cego via **kwargs
+                    # quebrava a criação com TypeError. Os quatro branches +
+                    # cross-attention + gated fusion são fixos na variante
+                    # "ensemble"; ver _create_ensemble_feature_fusion.)
                     # Training params
                     # AJUSTE (retune): falha catastrofica de robustez - a 10dB a
                     # acc vira 0.50 e recall->0 (predicts tudo como "real"). Precisa
@@ -737,18 +741,11 @@ class ArchitectureRegistry:
         # Criar modelo
         model = create_model_func(input_shape, num_classes, **params)
 
-        # Aplicar correções de segurança se solicitado
+        # Validação de leakage REAL (Lambdas de pré-processamento suspeitas).
+        # NOTA: BatchNormalization não é mais tratada como leakage nem
+        # reescrita automaticamente — ver docstring de architecture_patcher.
         if safe_mode:
-            is_safe, issues = validate_model_safety(model)
-            if not is_safe:
-                logger.warning(
-                    f"Modelo {architecture_name} possui problemas de data leakage: {issues}"
-                )
-                logger.info("Aplicando correções automáticas...")
-                model = patch_architecture_for_safety(model, normalization_type="layer")
-                logger.info("Correções aplicadas com sucesso")
-            else:
-                logger.info(f"Modelo {architecture_name} já está seguro")
+            model = patch_architecture_for_safety(model)
 
         return model
 
@@ -768,7 +765,15 @@ class ArchitectureRegistry:
         if sequence_length < requirements.get("min_sequence_length", 0):
             return False
 
-        if feature_dim < requirements.get("min_feature_dim", 0):
+        # CORREÇÃO: a chave era "min_feature_dim", que nenhuma arquitetura
+        # define (a validação sempre passava). O contrato real usa
+        # "feature_dim" com igualdade exata (mesma regra da factory).
+        expected_feature_dim = requirements.get("feature_dim")
+        if (
+            expected_feature_dim
+            and feature_dim not in (None, 1)
+            and int(feature_dim) != int(expected_feature_dim)
+        ):
             return False
 
         return True

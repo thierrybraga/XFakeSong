@@ -38,11 +38,11 @@ tests/
 └── smoke/               # 5 arquivos, opt-in
 ```
 
-Total atual: **56 arquivos de teste**.
+Total atual: **57 arquivos de teste**.
 
 | Categoria | Marcador | Arquivos | Objetivo | Run padrão |
 |---|---:|---:|---|---|
-| Unit | `unit` | 38 | Componentes isolados, utilitários, treinamento, benchmark, notebooks, segurança local | Sim |
+| Unit | `unit` | 39 | Componentes isolados, utilitários, treinamento, benchmark, notebooks, segurança local | Sim |
 | API | `api` | 5 | Contratos FastAPI com `TestClient` e serviços mockados | Sim |
 | Functional | `functional` | 2 | Fluxos de usuário e rotas/frontend | Sim |
 | Integration | `integration` | 6 | Cooperação real entre serviços, podendo treinar modelos pequenos | Sim |
@@ -93,6 +93,8 @@ Cobertura principal:
 - modelos e treino: architectures, trainer, save/load, classical fit,
   RawBoost, mixed precision, device/GPU support;
 - benchmark: dados, métricas, relatórios, API probe, gráficos e artefatos TCC;
+- paridade treino<->inferencia do front-end do benchmark
+  (`tests/unit/test_benchmark_frontend.py`);
 - XAI: contrato tabular (63 descritores), Grad-CAM (2D/1D, busca
   automática de camada) e wrappers SHAP (`tests/unit/test_xai.py`);
 - notebooks: estrutura, contratos de entrada, geração e compilação;

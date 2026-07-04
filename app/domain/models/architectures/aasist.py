@@ -30,15 +30,10 @@ from app.domain.models.architectures.layers import (
     residual_block,
 )
 
-# Configure logger for AASIST
+# Convenção do projeto: logger de módulo sem handlers manuais (a configuração
+# de handlers/formatters é responsabilidade da aplicação; handlers locais
+# duplicavam linhas de log).
 logger = logging.getLogger(__name__)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter(
-        "%(asctime)s %(levelname)s [AASIST] %(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-logger.setLevel(logging.INFO)
 
 # ============================ CAMADAS CUSTOMIZADAS ======================
 # Estas camadas devem ser importadas em predictor.py também.
@@ -326,12 +321,18 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
                 tf.keras.losses.categorical_crossentropy(smoothed, y_pred, from_logits=True)
             )
 
-        # AJUSTE (retune): subajuste (val_acc travada ~0.92). LR 1e-4->3e-4 e
-        # weight_decay 0.01->1e-3 (regularizacao estava forte demais p/ o LR
-        # baixo, otimizacao nao saia do plato).
+        # AJUSTE (retune): subajuste (val_acc travada ~0.92). LR 1e-4->3e-4
+        # (regularizacao estava forte demais p/ o LR baixo).
+        #
+        # CORREÇÃO (fiação de hiperparâmetros): o weight_decay era um valor
+        # FIXO (1e-3) e o `l2_reg_strength` recebido do registry/planning
+        # (retune: 2e-4) era silenciosamente ignorado nesta variante — o
+        # ajuste documentado nunca chegava ao otimizador. Agora o parâmetro
+        # é consumido de fato (mesmo padrão do RawGAT-ST). O artefato AASIST
+        # promovido no benchmark atual foi treinado com o valor fixo antigo.
         optimizer = tf.keras.optimizers.AdamW(
             learning_rate=0.0003,
-            weight_decay=0.001,
+            weight_decay=l2_reg_strength,
             global_clipnorm=1.0,  # previne gradientes explosivos
         )
 
