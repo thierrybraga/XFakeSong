@@ -8,14 +8,14 @@ app/domain/services/feature_extraction/
 import logging
 from typing import Any, Dict, List, Optional
 
-from app.core.interfaces.audio import (
+from app.core.contracts.audio import (
     AudioData,
     AudioFeatures,
     FeatureType,
     IFeatureExtractor,
 )
-from app.core.interfaces.base import ProcessingResult, ProcessingStatus
-from app.core.interfaces.services import IFeatureExtractionService
+from app.core.contracts.base import ProcessingResult, ProcessingStatus
+from app.core.contracts.services import IFeatureExtractionService
 from app.domain.services.feature_extraction.core import FeatureExtractorCore
 from app.domain.services.feature_extraction.extractor_loader import ExtractorLoader
 from app.domain.services.feature_extraction.types import (

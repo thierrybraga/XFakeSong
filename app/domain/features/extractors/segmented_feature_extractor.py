@@ -21,8 +21,8 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 # Importações do projeto
-from ....core.interfaces.audio import AudioData
-from ....core.interfaces.base import ProcessingResult, ProcessingStatus
+from ....core.contracts.audio import AudioData
+from ....core.contracts.base import ProcessingResult, ProcessingStatus
 from ..models.segmented_features import SegmentedFeatures
 from .cepstral.cepstral_features import CepstralFeatureExtractor
 from .complexity.complexity_features import ComplexityFeatureExtractor

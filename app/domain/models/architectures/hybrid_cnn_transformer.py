@@ -382,6 +382,17 @@ def _create_cct_model(
     dropout_rate: float = 0.1,
     stochastic_depth_rate: float = 0.1,
     use_positional_emb: bool = True,
+    # AJUSTE 2026-07-14: otimizador parametrizado (antes era hardcoded
+    # lr=1e-3/decay=50000 — mesmo mismatch de decay_steps que degradou o AST:
+    # com batch 32 o benchmark tem ~65.7k passos em 100 épocas e o LR zerava
+    # na época ~76). LR de pico 1e-3→3e-4: pico alto + colapso sob ruído
+    # (EER 37% limpo → 53% @10dB, AUC 0.46 < acaso) indicam mínimo instável.
+    learning_rate: float = 3e-4,
+    warmup_steps: int = 1500,
+    decay_steps: int = 50000,
+    weight_decay: float = 1e-4,
+    alpha: float = 1e-7,
+    clipnorm: float = 1.0,
     architecture: str = 'hybrid_cnn_transformer'
 ) -> models.Model:
     """Create CCT model for audio deepfake detection.
@@ -462,11 +473,14 @@ def _create_cct_model(
     representation = layers.Dropout(dropout_rate, name='head_dropout')(representation)
 
     # Cabeça PADRONIZADA: num_classes>=2 → softmax N-unidades (convenção única).
+    # dtype='float32': sob mixed_float16, softmax+crossentropy em float16
+    # satura/perde precisão e pode degradar o treino. Mesma correção já
+    # aplicada em AASIST/RawGAT-ST.
     if num_classes == 1:
-        outputs = layers.Dense(1, activation='sigmoid', name='output')(representation)
+        outputs = layers.Dense(1, activation='sigmoid', name='output', dtype='float32')(representation)
         loss = 'binary_crossentropy'
     else:
-        outputs = layers.Dense(num_classes, activation='softmax', name='output')(representation)
+        outputs = layers.Dense(num_classes, activation='softmax', name='output', dtype='float32')(representation)
         loss = 'sparse_categorical_crossentropy'
 
     model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
@@ -476,12 +490,12 @@ def _create_cct_model(
     # P1: clipnorm=1.0 elimina o gap val→teste (0.97→0.76) por divergência tardia.
     from app.domain.models.training.optimization import create_warmup_cosine_optimizer
     optimizer = create_warmup_cosine_optimizer(
-        initial_learning_rate=1e-3,
-        warmup_steps=1500,
-        decay_steps=50000,
-        weight_decay=1e-4,
-        alpha=1e-7,
-        clipnorm=1.0,
+        initial_learning_rate=learning_rate,
+        warmup_steps=warmup_steps,
+        decay_steps=decay_steps,
+        weight_decay=weight_decay,
+        alpha=alpha,
+        clipnorm=clipnorm,
     )
 
     model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
@@ -489,7 +503,9 @@ def _create_cct_model(
     logger.info(
         f"CCT model created: transformer_layers={transformer_layers}, heads={num_heads}, "
         f"dim={projection_dim}, params={model.count_params()} "
-        f"(WarmupCosineDecay: warmup=1500, decay=50000, clipnorm=1.0)"
+        f"(WarmupCosineDecay: lr={learning_rate}, warmup={warmup_steps}, "
+        f"decay={decay_steps}, weight_decay={weight_decay}, alpha={alpha}, "
+        f"clipnorm={clipnorm})"
     )
     return model
 

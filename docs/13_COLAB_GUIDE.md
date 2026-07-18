@@ -13,14 +13,14 @@ detecta o ambiente, clona o repositório e instala as dependências de áudio.
 Abra qualquer notebook pela URL `colab.research.google.com/github/…`:
 
 ```
-https://colab.research.google.com/github/thierrybraga/XFakeSong/blob/main/notebooks/<caminho>
+https://colab.research.google.com/github/thierrybraga/XFakeSong/blob/main/docs/notebooks/<caminho>
 ```
 
 Exemplos:
 
-- Treinar um modelo: `notebooks/pipeline/02_training_model.ipynb`
-- Estudar uma arquitetura: `notebooks/models/05_aasist.ipynb`
-- Índice de tudo: `notebooks/00_index.ipynb`
+- Treinar um modelo: `docs/notebooks/pipeline/02_training_model.ipynb`
+- Estudar uma arquitetura: `docs/notebooks/models/05_aasist.ipynb`
+- Índice de tudo: `docs/notebooks/00_index.ipynb`
 
 ### 1.2. Selecionar GPU e rodar o setup
 
@@ -42,17 +42,17 @@ Os notebooks ficam organizados por finalidade:
 
 | Caminho | Objetivo | Runtime |
 |---|---|---|
-| `notebooks/00_index.ipynb` | Índice executável e mapa dos notebooks | CPU |
-| `notebooks/features/01_feature_extraction_study.ipynb` | Estudo do front-end real LFCC/log-mel/raw e features clássicas MFCC, centroid, bandwidth, ZCR e RMS | CPU |
-| `notebooks/pipeline/01_benchmark_tcc_full_pipeline.ipynb` | Download, processamento, split, treino, inferência e relatório do TCC | GPU recomendada |
-| `notebooks/pipeline/02_training_model.ipynb` | Treino prático de um modelo pelo benchmark | CPU para SVM/RF, GPU para neurais |
-| `notebooks/pipeline/03_inference.ipynb` | Leitura de predições e fluxo de inferência | CPU ou GPU |
-| `notebooks/models/*.ipynb` | Um notebook de estudo para cada arquitetura | CPU para inspeção, GPU para treino |
+| `docs/notebooks/00_index.ipynb` | Índice executável e mapa dos notebooks | CPU |
+| `docs/notebooks/features/01_feature_extraction_study.ipynb` | Estudo do front-end real LFCC/log-mel/raw e features clássicas MFCC, centroid, bandwidth, ZCR e RMS | CPU |
+| `docs/notebooks/pipeline/01_benchmark_tcc_full_pipeline.ipynb` | Download, processamento, split, treino, inferência e relatório do TCC | GPU recomendada |
+| `docs/notebooks/pipeline/02_training_model.ipynb` | Treino prático de um modelo pelo benchmark | CPU para SVM/RF, GPU para neurais |
+| `docs/notebooks/pipeline/03_inference.ipynb` | Leitura de predições e fluxo de inferência | CPU ou GPU |
+| `docs/notebooks/models/*.ipynb` | Um notebook de estudo para cada arquitetura | CPU para inspeção, GPU para treino |
 
 Para o experimento completo do TCC, comece por
-`notebooks/pipeline/01_benchmark_tcc_full_pipeline.ipynb`. Ele documenta o
+`docs/notebooks/pipeline/01_benchmark_tcc_full_pipeline.ipynb`. Ele documenta o
 roteiro consolidado com `7.500` amostras reais + `7.500` amostras fake,
-exportado como `app/datasets/benchmark_audio_raw_balanced_15k.npz`.
+exportado como `data/datasets/benchmark_audio_raw_balanced_15k.npz`.
 
 ---
 
@@ -78,7 +78,7 @@ exportado como `app/datasets/benchmark_audio_raw_balanced_15k.npz`.
 
 ## 4. Executando a Inferência ou Demo
 
-1. Abra `notebooks/pipeline/03_inference.ipynb` para estudar predições,
+1. Abra `docs/notebooks/pipeline/03_inference.ipynb` para estudar predições,
    scores e artefatos do benchmark.
 2. Para interface visual, rode `python main.py --gradio` em uma célula do
    Colab ou no terminal local.

@@ -1,10 +1,10 @@
-"""Cobertura de `app/core/utils/system_utils.py` (filesystem com tmp_path)."""
+"""Cobertura de `app/utils/system_utils.py` (filesystem com tmp_path)."""
 
 import os
 import time
 from pathlib import Path
 
-from app.core.utils.system_utils import bootstrap_dirs, cleanup_workspace
+from app.utils.system_utils import bootstrap_dirs, cleanup_workspace
 
 _SIXTY_DAYS = 60 * 60 * 24 * 60
 

@@ -10,13 +10,13 @@ from typing import Any, Dict, List
 import librosa
 import numpy as np
 
-from .....core.interfaces.audio import (
+from .....core.contracts.audio import (
     AudioData,
     AudioFeatures,
     FeatureType,
     IFeatureExtractor,
 )
-from .....core.interfaces.base import ProcessingResult, ProcessingStatus
+from .....core.contracts.base import ProcessingResult, ProcessingStatus
 
 
 class MelSpectrogramExtractor(IFeatureExtractor):

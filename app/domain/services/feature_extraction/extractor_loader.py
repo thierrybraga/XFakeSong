@@ -1,20 +1,10 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from app.core.interfaces.audio import (
-    AudioData,
-    AudioFeatures,
-    FeatureType,
-    IFeatureExtractor,
-)
-from app.core.interfaces.base import ProcessingResult
+from app.core.contracts.audio import FeatureType, IFeatureExtractor
 from app.domain.features.extractor_registry import ExtractorComplexity, ExtractorSpec
 
 logger = logging.getLogger(__name__)
-
-from app.domain.features.extractor_registry import get_extractor_registry
-
-MODULAR_COMPONENTS_AVAILABLE = False  # plugin_system removido — plugins desabilitados
 
 
 class ExtractorLoader:
@@ -27,17 +17,6 @@ class ExtractorLoader:
         self._modular_enabled = False
         self.extractor_registry = None
         self.plugin_manager = None
-
-        if MODULAR_COMPONENTS_AVAILABLE:
-            try:
-                self.extractor_registry = get_extractor_registry()
-                self.plugin_manager = get_plugin_manager()
-                self._modular_enabled = True
-                self._load_plugins()
-            except Exception as e:
-                logger.warning(
-                    f"Erro ao inicializar componentes modulares: {e}")
-                self._modular_enabled = False
 
         self._register_extractors()
 

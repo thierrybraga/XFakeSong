@@ -3,12 +3,14 @@
 Os notebooks foram reorganizados para separar estudo, execução do benchmark,
 treinamento, inferência, análise de features e execução completa de todas as
 arquiteturas. A estrutura facilita revisar cada arquitetura isoladamente e
-também oferece um caderno único para o experimento final.
+também oferece um caderno único para o experimento final. A partir desta
+organização, a documentação e os notebooks passaram a compartilhar a mesma
+estrutura de navegação e referência.
 
 !!! tip "Rodar no Google Colab (com GPU)"
     Todos os notebooks são **auto-suficientes no Colab**: a primeira célula
     detecta o ambiente, clona o repositório e instala as dependências. Abra por
-    `colab.research.google.com/github/thierrybraga/XFakeSong/blob/main/notebooks/<caminho>`,
+    `colab.research.google.com/github/thierrybraga/XFakeSong/blob/main/docs/notebooks/<caminho>`,
     selecione um runtime com **GPU** e rode a 1ª célula. Os notebooks de modelo
     **treinam por padrão** (defina `XFAKE_RUN_EVAL=0` para pular). Passo a passo
     no [Guia Google Colab](13_COLAB_GUIDE.md).
@@ -18,6 +20,7 @@ também oferece um caderno único para o experimento final.
 ```text
 notebooks/
 ├── 00_index.ipynb
+├── README.md
 ├── features/
 │   └── 01_feature_extraction_study.ipynb
 ├── pipeline/
@@ -69,7 +72,7 @@ python scripts/benchmark/run_tcc_pipeline.py \
   --epochs 100 \
   --device-profile gpu \
   --out results/tcc_medium_15k \
-  --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
+  --npz data/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
 Esse roteiro reproduz o benchmark consolidado do TCC: o tier `medium` monta

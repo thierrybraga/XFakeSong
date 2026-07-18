@@ -19,7 +19,7 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DATASETS_DIR = ROOT / "app" / "datasets"
+DATASETS_DIR = ROOT / "data" / "datasets"
 FKVOICE_RE = re.compile(r"^fkvoice_(\d+)\.wav$", re.IGNORECASE)
 
 
@@ -134,11 +134,11 @@ def _inspect_brspeech_columns(dataset_dir: Path) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Gera app/datasets/speaker_manifest.json com IDs reais disponíveis."
+        description="Gera data/datasets/speaker_manifest.json com IDs reais disponíveis."
     )
-    parser.add_argument("--dataset-dir", default="app/datasets")
-    parser.add_argument("--out", default="app/datasets/speaker_manifest.json")
-    parser.add_argument("--report", default="app/datasets/speaker_manifest_report.json")
+    parser.add_argument("--dataset-dir", default="data/datasets")
+    parser.add_argument("--out", default="data/datasets/speaker_manifest.json")
+    parser.add_argument("--report", default="data/datasets/speaker_manifest_report.json")
     parser.add_argument(
         "--fkvoice-block-size",
         type=int,

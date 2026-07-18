@@ -4,7 +4,7 @@ Referencia unica do ciclo de vida do dataset no XFakeSong — do download a cria
 do `.npz`, passando pela interface Gradio, pelo benchmark e pelo treino. Inclui o
 resultado da auditoria de consistencia entre essas pecas.
 
-Fonte unica de verdade: **`app/core/dataset_catalog.py`** (`DATASET_CATALOG` +
+Fonte unica de verdade: **`app/domain/dataset_metadata/dataset_catalog.py`** (`DATASET_CATALOG` +
 `DATASET_TIERS`). Esse modulo e importado por `scripts/dataset/build_dataset.py`, pela aba
 Datasets do Gradio (`app/interfaces/gradio/tabs/dataset_management.py`), pelo
 benchmark e pela documentacao — garantindo que tamanho, fontes e split nao
@@ -93,7 +93,7 @@ python scripts/dataset/build_dataset.py --tier medium --target 7500   # override
 
 # ponta a ponta (download + npz + benchmark) no tier medium canonico:
 python scripts/benchmark/run_tcc_pipeline.py --download --tier medium --full-benchmark \
-  --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
+  --npz data/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
 ### Esquema do `.npz` canonico

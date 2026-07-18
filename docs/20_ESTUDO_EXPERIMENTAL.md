@@ -304,7 +304,7 @@ $$
 
 ## Dataset consolidado
 
-O benchmark utiliza `app/datasets/benchmark_audio_raw_balanced_15k.npz`.
+O benchmark utiliza `data/datasets/benchmark_audio_raw_balanced_15k.npz`.
 
 | Atributo | Valor |
 |---|---:|
@@ -504,7 +504,7 @@ arquivos de entrada.
 |---|---|---|
 | Fonte do artigo | `tcc_overleaf/main.tex` | Fonte única para Overleaf |
 | Figuras finais | `tcc_overleaf/figures/*.png` | Gráficos usados no artigo |
-| Dataset consolidado | `app/datasets/benchmark_audio_raw_balanced_15k.npz` | Entrada única do benchmark |
+| Dataset consolidado | `data/datasets/benchmark_audio_raw_balanced_15k.npz` | Entrada única do benchmark |
 | Modelos padrão | `app/models/bench_*` | Inferência na Gradio/API |
 | Modelos completos | `app/models/benchmark_final/<modelo>/` | Artefatos finais por arquitetura |
 | Métricas | `results/<run>/architectures/<modelo>/metrics.json` | Auditoria por modelo |
@@ -524,7 +524,7 @@ python scripts/benchmark/run_tcc_pipeline.py \
   --full-benchmark \
   --epochs 100 \
   --device-profile gpu \
-  --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
+  --npz data/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
 ```bash
@@ -532,7 +532,7 @@ python scripts/benchmark/run_benchmark.py \
   --full \
   --epochs 100 \
   --device-profile gpu \
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz
+  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
 ```bash
@@ -540,7 +540,7 @@ python scripts/benchmark/run_benchmark.py \
   --model Conformer \
   --epochs 100 \
   --device-profile gpu \
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz
+  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
 ## Matrizes de confusão completas

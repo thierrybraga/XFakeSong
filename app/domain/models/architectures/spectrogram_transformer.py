@@ -8,7 +8,6 @@ import tensorflow as tf
 from tensorflow.keras import layers, models
 
 from app.domain.models.architectures.layers import (
-    ConvolutionStemLayer,
     ResizeLayer,
     STFTLayer,
     ensure_flat_input,
@@ -164,15 +163,29 @@ class PositionalEncoding(layers.Layer):
 
 
 class SpectrogramTransformerBlock(layers.Layer):
-    """Transformer block optimized for spectrogram analysis."""
+    """Transformer block optimized for spectrogram analysis.
+
+    norm_style:
+        'pre'  — pre-LN (ViT/AST real: LayerNorm ANTES da atenção/FFN, residual
+                 puro). É o formato do paper e o único estável para 12 blocos
+                 treinados do zero: em post-LN a magnitude dos residuais cresce
+                 com a profundidade e o treino degrada lentamente até colapsar
+                 (accuracy → chute aleatório), como observado no benchmark.
+        'post' — comportamento legado (LayerNorm depois do residual). Mantido
+                 como default APENAS para desserializar modelos .keras antigos
+                 sem alterar sua saída; novos builds usam 'pre'.
+    """
 
     def __init__(self, embed_dim: int, num_heads: int, ff_dim: int,
-                 dropout_rate: float = 0.1, **kwargs):
+                 dropout_rate: float = 0.1, norm_style: str = 'post', **kwargs):
         super(SpectrogramTransformerBlock, self).__init__(**kwargs)
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.ff_dim = ff_dim
         self.dropout_rate = dropout_rate
+        if norm_style not in ('pre', 'post'):
+            raise ValueError(f"norm_style inválido: {norm_style!r}")
+        self.norm_style = norm_style
 
         # Multi-head self-attention
         self.attention = layers.MultiHeadAttention(
@@ -197,7 +210,19 @@ class SpectrogramTransformerBlock(layers.Layer):
         self.dropout2 = layers.Dropout(dropout_rate)
 
     def call(self, inputs, training=None):
-        # Self-attention with residual connection
+        if self.norm_style == 'pre':
+            # Pre-LN (ViT/AST): x = x + Attn(LN(x)); x = x + FFN(LN(x))
+            attn_input = self.layernorm1(inputs)
+            attn_output = self.attention(
+                attn_input, attn_input, training=training)
+            attn_output = self.dropout1(attn_output, training=training)
+            out1 = inputs + tf.cast(attn_output, inputs.dtype)
+
+            ffn_output = self.ffn(self.layernorm2(out1), training=training)
+            ffn_output = self.dropout2(ffn_output, training=training)
+            return out1 + tf.cast(ffn_output, out1.dtype)
+
+        # Post-LN legado (compat com modelos salvos)
         attn_output = self.attention(inputs, inputs, training=training)
         attn_output = self.dropout1(attn_output, training=training)
         attn_output = tf.cast(attn_output, inputs.dtype)
@@ -217,7 +242,8 @@ class SpectrogramTransformerBlock(layers.Layer):
             'embed_dim': self.embed_dim,
             'num_heads': self.num_heads,
             'ff_dim': self.ff_dim,
-            'dropout_rate': self.dropout_rate
+            'dropout_rate': self.dropout_rate,
+            'norm_style': self.norm_style
         })
         return config
 
@@ -264,11 +290,17 @@ def create_spectrogram_transformer_model(
     # sobreajuste. Mais regularização (dropout 0.1→0.3, weight_decay 1e-5→1e-4)
     # e LR de pico menor (1e-4→5e-5) reduzem o gap de generalização. Combinado
     # com restauração obrigatória do melhor checkpoint e augmentation SNR.
+    # AJUSTE 2026-07-14: mesmo após o fix de decay_steps o treino degradava
+    # lentamente até chute aleatório (EER final ~51%). Dois ajustes:
+    # (1) blocos agora são pre-LN (ViT/AST real; post-LN a 12 blocos do zero
+    #     é instável) e (2) LR de pico 5e-5→1e-5 e weight_decay 1e-4→1e-5
+    #     — 87M params do zero pedem passo menor. Sincronizado com registry.py
+    #     e benchmarks/planning.py.
     dropout_rate: float = 0.3,
-    learning_rate: float = 5e-5,
+    learning_rate: float = 1e-5,
     warmup_steps: int = 2000,
     decay_steps: int = 50000,
-    weight_decay: float = 1e-4,
+    weight_decay: float = 1e-5,
     alpha: float = 1e-7,
     clipnorm: float = 1.0,
     pretrained: bool = False,
@@ -372,44 +404,42 @@ def create_spectrogram_transformer_model(
     # Positional encoding (learned)
     x = PositionalEncoding(num_patches + 1, embed_dim, name='pos_encoding')(x)
 
-    # Transformer blocks (Standard ViT-Base)
+    # Transformer blocks (Standard ViT-Base, pre-LN como no paper).
     for i in range(num_blocks):
         x = SpectrogramTransformerBlock(
             embed_dim=embed_dim,
             num_heads=num_heads,
             ff_dim=ff_dim,
             dropout_rate=dropout_rate,
+            norm_style='pre',
             name=f'ast_block_{i}'
         )(x)
 
-    # Final LayerNorm before head
+    # Final LayerNorm before head (obrigatório com pre-LN)
     x = layers.LayerNormalization(epsilon=1e-6, name='final_norm')(x)
 
     # Extract class token for classification (Standard ViT/AST)
     class_token_output = x[:, 0, :]
 
-    # Classification head with residual connections
-    # First dense block with skip connection
-    skip1 = layers.Dense(1024, name='ast_head_skip1')(class_token_output)
-    x = layers.Dense(1024, activation='gelu', name='ast_head_dense')(class_token_output)
-    x = layers.Dropout(dropout_rate, name='ast_head_dropout')(x)
-    x = layers.Add(name='ast_head_residual1')([x, skip1])
-
-    # Second dense block with skip connection
-    skip2 = layers.Dense(256, name='ast_head_skip2')(x)
-    x = layers.Dense(256, activation='gelu', name='classifier_dense2')(x)
-    x = layers.Dropout(dropout_rate * 0.5, name='classifier_dropout2')(x)
-    x = layers.Add(name='ast_head_residual2')([x, skip2])
+    # Cabeça do paper: AST usa APENAS LayerNorm + camada linear sobre o CLS.
+    # A cabeça anterior (2 blocos Dense 1024/256 com skips lineares, ~1M
+    # params extras) não existe no paper e só ampliava o sobreajuste
+    # (gap val→teste) sem ganho de representação.
+    x = layers.Dropout(dropout_rate, name='ast_head_dropout')(class_token_output)
 
     # Output layer
+    # dtype='float32': sob mixed_float16, softmax+crossentropy em float16
+    # satura/perde precisão e pode colapsar o treino (rede "morta" após a
+    # 1a epoca). Mesma correção já aplicada em AASIST/RawGAT-ST.
     if num_classes == 1:
-        outputs = layers.Dense(1, activation='sigmoid', name='output')(x)
+        outputs = layers.Dense(1, activation='sigmoid', name='output', dtype='float32')(x)
         loss = 'binary_crossentropy'
     else:
         outputs = layers.Dense(
             num_classes,
             activation='softmax',
-            name='output')(x)
+            name='output',
+            dtype='float32')(x)
         loss = 'sparse_categorical_crossentropy'
 
     # Create model

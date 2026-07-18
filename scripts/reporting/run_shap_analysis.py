@@ -7,7 +7,7 @@ artefatos já treinados (``app/models/bench_*``), sem retreinar nada:
 1. **SHAP** — Random Forest via ``TreeExplainer`` (exato) e SVM via
    ``KernelExplainer`` (agnóstico, custo controlado por k-means no
    background), ambos sobre o vetor tabular de 63 descritores
-   (``app/core/xai/tabular.py``). Gera *beeswarm*, barras de importância
+   (``app/domain/xai/tabular.py``). Gera *beeswarm*, barras de importância
    média |SHAP| e CSV consolidado.
 2. **Grad-CAM** — mapas de ativação das redes espectrais Keras (Res2Net,
    Conformer, CCT, AST) sobre espectrogramas Mel do conjunto de teste,
@@ -19,7 +19,7 @@ explicadas pertencem ao MESMO conjunto de teste das métricas reportadas.
 Uso:
     # análise completa com o dataset canônico:
     python scripts/reporting/run_shap_analysis.py \
-        --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz
+        --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz
 
     # smoke rápido sem dataset real (dados sintéticos, sem artefatos):
     python scripts/reporting/run_shap_analysis.py --synthetic --skip-gradcam
@@ -109,7 +109,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--dataset",
-        default="app/datasets/benchmark_audio_raw_balanced_15k.npz",
+        default="data/datasets/benchmark_audio_raw_balanced_15k.npz",
         help="NPZ canônico de áudio bruto do benchmark.",
     )
     parser.add_argument(
@@ -238,7 +238,7 @@ def run_shap(args: argparse.Namespace, data, out_dir: Path) -> list[str]:
     import matplotlib.pyplot as plt
     import shap
 
-    from app.core.xai import (
+    from app.domain.xai import (
         explain_with_kernel_shap,
         explain_with_tree_shap,
         split_sklearn_pipeline,
@@ -376,7 +376,7 @@ def run_gradcam(args: argparse.Namespace, data, out_dir: Path) -> list[str]:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    from app.core.xai import compute_gradcam_auto, heatmap_to_input_grid
+    from app.domain.xai import compute_gradcam_auto, heatmap_to_input_grid
 
     generated: list[str] = []
     for arch in args.archs:
@@ -474,7 +474,7 @@ def main(argv: list[str] | None = None) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if not args.skip_shap:
-        from app.core.xai import shap_available
+        from app.domain.xai import shap_available
 
         if not shap_available():
             raise SystemExit(

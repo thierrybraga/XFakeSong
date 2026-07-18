@@ -30,7 +30,7 @@ from .exceptions import (
     UnsupportedFormatError,
     ValidationError,
 )
-from .interfaces.audio import (
+from .contracts.audio import (
     AudioData,
     AudioFeatures,
     AudioFormat,
@@ -41,7 +41,7 @@ from .interfaces.audio import (
     IFeatureExtractor,
     IModelArchitecture,
 )
-from .interfaces.base import (
+from .contracts.base import (
     IConfigurable,
     IExtractor,
     ILoggable,
@@ -52,7 +52,7 @@ from .interfaces.base import (
     ProcessingResult,
     ProcessingStatus,
 )
-from .interfaces.services import (
+from .contracts.services import (
     DatasetMetadata,
     DatasetType,
     IAudioRepository,
@@ -69,8 +69,8 @@ from .interfaces.services import (
     StorageType,
 )
 
-# Importar utilitários
-from .utils.helpers import (
+# Importar utilitários (consolidados em app/utils/, fora de app/core/)
+from ..utils.helpers import (
     ensure_directory,
     format_duration,
     format_file_size,

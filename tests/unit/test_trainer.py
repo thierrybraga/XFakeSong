@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 from app.domain.models.training.trainer import ModelTrainer
 from app.core.config.settings import TrainingConfig
 
-from app.core.interfaces.base import ProcessingStatus
+from app.core.contracts.base import ProcessingStatus
 
 
 @pytest.fixture

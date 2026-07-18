@@ -64,7 +64,7 @@ atalho de fonte só some com o protocolo cross-generator (P0.1).
 
 ```bash
 python scripts/benchmark/run_benchmark.py --full \
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
   --cross-generator fkvoice \
   --out results/xgen_fkvoice_20260626 --verbose
 ```
@@ -78,7 +78,7 @@ deixa de ser 0,00% (degradar é o resultado *honesto*).
 
 ```bash
 python scripts/benchmark/run_benchmark.py --full \
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
   --group-split \
   --out results/group_split_20260626 --verbose
 ```

@@ -250,7 +250,7 @@ artefatos de inferência:
 | Banco SQLite | `data/app.db` | `/app/data/app.db` |
 | Uploads Gradio/API | `data/uploads/` | `/app/data/uploads/` |
 | Resultados regeneráveis | `results/` | `/app/results/` |
-| Datasets de benchmark | `app/datasets/` | `/app/app/datasets/` |
+| Datasets de benchmark | `data/datasets/` | `/app/data/datasets/` |
 | Modelos da inferência | `app/models/` | `/app/app/models/` |
 | Modelos finais consolidados | `app/models/benchmark_final/` | `/app/app/models/benchmark_final/` |
 
@@ -508,7 +508,7 @@ docker run -d \
     --name xfakesong_app \
     -p 7860:7860 \
     -v $(pwd)/app/models:/app/app/models \
-    -v $(pwd)/app/datasets:/app/app/datasets \
+    -v $(pwd)/data/datasets:/app/data/datasets \
     -v $(pwd)/results:/app/results \
     -v $(pwd)/logs:/app/logs \
     -v $(pwd)/data:/app/data \

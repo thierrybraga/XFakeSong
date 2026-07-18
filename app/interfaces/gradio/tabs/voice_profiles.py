@@ -13,7 +13,14 @@ import logging
 from pathlib import Path
 
 # FE.8: helpers compartilhados (força backend Agg para matplotlib)
-from app.interfaces.gradio.utils.plotting import get_service_lock  # noqa: F401
+from app.interfaces.gradio.utils.plotting import (
+    PLOT_BG,
+    PLOT_FACE,
+    PLOT_GRID,
+    PLOT_TEXT,
+    get_service_lock,
+    style_ax,
+)
 
 import numpy as np  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
@@ -117,25 +124,9 @@ def _refresh_profiles_table():
     return table_data, gr.update(choices=choices), gr.update(choices=choices), gr.update(choices=choices)
 
 
-# Design tokens (dark theme) para plots
-_BG = "#0f172a"
-_FACE = "#1e293b"
-_TEXT = "#f1f5f9"
-_GRID = "#334155"
-
-
-def _style_ax(ax, fig, title):
-    """Aplica dark theme a um eixo matplotlib."""
-    fig.patch.set_facecolor(_BG)
-    ax.set_facecolor(_FACE)
-    ax.set_title(title, color=_TEXT, fontweight="600", fontsize=12, pad=10)
-    ax.tick_params(colors=_TEXT, labelsize=9)
-    for lbl in (ax.xaxis.label, ax.yaxis.label):
-        lbl.set_color(_TEXT)
-        lbl.set_fontsize(10)
-    for sp in ax.spines.values():
-        sp.set_color(_GRID)
-    ax.grid(True, color=_GRID, alpha=0.3, linewidth=0.5)
+# Estilo dos plots vem do módulo compartilhado utils.plotting (style_ax),
+# em vez de reimplementar a mesma paleta dark theme localmente.
+_style_ax = style_ax
 
 
 def create_voice_profiles_tab():
@@ -159,7 +150,7 @@ def create_voice_profiles_tab():
             #  Sub-tab 1: Gerenciar Perfis                                  #
             # ============================================================ #
             with gr.Tab("📋 Gerenciar Perfis"):
-                with gr.Row():
+                with gr.Row(elem_classes="responsive-grid"):
                     with gr.Column(scale=1):
                         gr.Markdown("#### Criar Novo Perfil")
                         profile_name = gr.Textbox(
@@ -205,7 +196,7 @@ def create_voice_profiles_tab():
                             interactive=False,
                             label="Perfis",
                         )
-                        with gr.Row():
+                        with gr.Row(elem_classes="action-row"):
                             refresh_btn = gr.Button("🔄 Atualizar Lista")
                             delete_id = gr.Number(
                                 label="ID para excluir", precision=0
@@ -221,7 +212,7 @@ def create_voice_profiles_tab():
             #  Sub-tab 2: Dataset de Voz                                    #
             # ============================================================ #
             with gr.Tab("🎵 Dataset de Voz"):
-                with gr.Row():
+                with gr.Row(elem_classes="responsive-grid"):
                     with gr.Column(scale=1):
                         dataset_profile_dd = gr.Dropdown(
                             label="Selecionar Perfil",
@@ -250,7 +241,7 @@ def create_voice_profiles_tab():
                             interactive=False,
                             label="Amostras no Dataset",
                         )
-                        with gr.Row():
+                        with gr.Row(elem_classes="action-row"):
                             sample_to_remove = gr.Textbox(
                                 label="Nome do arquivo para remover"
                             )
@@ -263,7 +254,7 @@ def create_voice_profiles_tab():
             #  Sub-tab 3: Treinar Modelo                                    #
             # ============================================================ #
             with gr.Tab("🧠 Treinar Modelo"):
-                with gr.Row():
+                with gr.Row(elem_classes="responsive-grid"):
                     with gr.Column(scale=1):
                         train_profile_dd = gr.Dropdown(
                             label="Selecionar Perfil",
@@ -301,10 +292,10 @@ def create_voice_profiles_tab():
                             interactive=False,
                             autoscroll=True,
                         )
-                        with gr.Row():
+                        with gr.Row(elem_classes="responsive-grid plot-grid"):
                             train_loss_plot = gr.Plot(label="Loss")
                             train_acc_plot = gr.Plot(label="Accuracy")
-                        with gr.Row():
+                        with gr.Row(elem_classes="responsive-grid plot-grid"):
                             train_cm_plot = gr.Plot(label="Confusion Matrix")
                             train_metrics_json = gr.JSON(
                                 label="Métricas Finais"
@@ -314,7 +305,7 @@ def create_voice_profiles_tab():
             #  Sub-tab 4: Verificar Voz                                     #
             # ============================================================ #
             with gr.Tab("🔍 Verificar Voz"):
-                with gr.Row():
+                with gr.Row(elem_classes="responsive-grid"):
                     with gr.Column(scale=1):
                         verify_profile_dd = gr.Dropdown(
                             label="Selecionar Perfil (com modelo treinado)",
@@ -578,9 +569,8 @@ def create_voice_profiles_tab():
                 cm_fig = None
 
                 try:
-                    import matplotlib
-                    matplotlib.use('Agg')
-
+                    # Backend Agg já é fixado globalmente na importação de
+                    # app.interfaces.gradio.utils.plotting.
                     # Loss plot (só se houver history — DL only)
                     if history and history.get("loss"):
                         loss_fig = Figure(figsize=(6, 4))
@@ -592,8 +582,8 @@ def create_voice_profiles_tab():
                                 color='#ef4444', linewidth=2, linestyle='--')
                         ax.set_xlabel('Época')
                         ax.set_ylabel('Loss')
-                        ax.legend(facecolor=_FACE, edgecolor=_GRID,
-                                  labelcolor=_TEXT, fontsize=9)
+                        ax.legend(facecolor=PLOT_FACE, edgecolor=PLOT_GRID,
+                                  labelcolor=PLOT_TEXT, fontsize=9)
                         loss_fig.tight_layout()
 
                         # Accuracy plot
@@ -606,8 +596,8 @@ def create_voice_profiles_tab():
                                  color='#f59e0b', linewidth=2, linestyle='--')
                         ax2.set_xlabel('Época')
                         ax2.set_ylabel('Accuracy')
-                        ax2.legend(facecolor=_FACE, edgecolor=_GRID,
-                                   labelcolor=_TEXT, fontsize=9)
+                        ax2.legend(facecolor=PLOT_FACE, edgecolor=PLOT_GRID,
+                                   labelcolor=PLOT_TEXT, fontsize=9)
                         acc_fig.tight_layout()
 
                     # Confusion Matrix plot
@@ -615,28 +605,28 @@ def create_voice_profiles_tab():
                     if cm:
                         cm_fig = Figure(figsize=(5, 4))
                         ax3 = cm_fig.add_subplot(111)
-                        cm_fig.patch.set_facecolor(_BG)
-                        ax3.set_facecolor(_FACE)
+                        cm_fig.patch.set_facecolor(PLOT_BG)
+                        ax3.set_facecolor(PLOT_FACE)
                         cm_arr = np.array(cm)
                         im = ax3.imshow(cm_arr, cmap='magma', interpolation='nearest')
-                        ax3.set_title("Confusion Matrix", color=_TEXT,
+                        ax3.set_title("Confusion Matrix", color=PLOT_TEXT,
                                       fontweight="600", fontsize=12, pad=10)
                         labels = ["Real", "Fake"]
                         ax3.set_xticks([0, 1])
                         ax3.set_yticks([0, 1])
-                        ax3.set_xticklabels(labels, color=_TEXT, fontsize=10)
-                        ax3.set_yticklabels(labels, color=_TEXT, fontsize=10)
-                        ax3.set_xlabel("Predito", color=_TEXT, fontsize=10)
-                        ax3.set_ylabel("Real", color=_TEXT, fontsize=10)
+                        ax3.set_xticklabels(labels, color=PLOT_TEXT, fontsize=10)
+                        ax3.set_yticklabels(labels, color=PLOT_TEXT, fontsize=10)
+                        ax3.set_xlabel("Predito", color=PLOT_TEXT, fontsize=10)
+                        ax3.set_ylabel("Real", color=PLOT_TEXT, fontsize=10)
                         # Anotar valores
                         for i in range(2):
                             for j in range(2):
-                                color = _TEXT if cm_arr[i, j] < cm_arr.max() * 0.6 else _BG
+                                color = PLOT_TEXT if cm_arr[i, j] < cm_arr.max() * 0.6 else PLOT_BG
                                 ax3.text(j, i, str(cm_arr[i, j]),
                                          ha='center', va='center',
                                          color=color, fontsize=16, fontweight='bold')
                         for sp in ax3.spines.values():
-                            sp.set_color(_GRID)
+                            sp.set_color(PLOT_GRID)
                         cm_fig.tight_layout()
 
                 except Exception as e:
@@ -722,13 +712,4 @@ def create_voice_profiles_tab():
             fn=handle_verify,
             inputs=[verify_profile_dd, verify_audio],
             outputs=[verify_result, verify_confidence, verify_details],
-        )
-
-        # ── Carregar perfis ao iniciar ──
-
-        demo_load = refresh_btn
-        demo_load.click(
-            fn=handle_refresh,
-            outputs=[profiles_table, dataset_profile_dd,
-                     train_profile_dd, verify_profile_dd],
         )

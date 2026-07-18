@@ -1,7 +1,7 @@
 param(
     [int]$Epochs = 100,
     [int]$TimeoutMin = 240,
-    [string]$Dataset = "app/datasets/benchmark_audio_raw_balanced_15k.npz",
+    [string]$Dataset = "data/datasets/benchmark_audio_raw_balanced_15k.npz",
     [string]$Out = "results/large_benchmark_full"
 )
 

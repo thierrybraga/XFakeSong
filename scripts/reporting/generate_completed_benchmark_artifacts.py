@@ -326,7 +326,7 @@ def main() -> int:
     parser.add_argument(
         "--dataset",
         type=Path,
-        default=ROOT / "app" / "datasets" / "benchmark_audio_raw_balanced_15k.npz",
+        default=ROOT / "data" / "datasets" / "benchmark_audio_raw_balanced_15k.npz",
     )
     parser.add_argument(
         "--models-dir",
@@ -342,7 +342,19 @@ def main() -> int:
     parser.add_argument("--latency-runs", type=int, default=10)
     parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10])
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument(
+        "--allow-legacy-unsafe-evaluation",
+        action="store_true",
+        help="autoriza o fluxo legado não comparável (somente auditoria histórica)",
+    )
     args = parser.parse_args()
+    if not args.allow_legacy_unsafe_evaluation:
+        parser.error(
+            "script bloqueado para resultados acadêmicos: ele reconstrói o teste e "
+            "aplica AWGN após o frontend. Use run_models_sequential.py e "
+            "consolidate_results.py; para auditoria histórica, passe explicitamente "
+            "--allow-legacy-unsafe-evaluation"
+        )
 
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,

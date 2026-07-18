@@ -2,13 +2,13 @@ from typing import Any, Dict, List
 
 import numpy as np
 
-from app.core.interfaces.audio import (
+from app.core.contracts.audio import (
     AudioData,
     AudioFeatures,
     FeatureType,
     IFeatureExtractor,
 )
-from app.core.interfaces.base import ProcessingResult, ProcessingStatus
+from app.core.contracts.base import ProcessingResult, ProcessingStatus
 from app.domain.features.extractors.speech.speech_features import SpeechFeatureExtractor
 
 

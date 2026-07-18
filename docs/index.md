@@ -45,12 +45,12 @@ fontes canônicas de cada assunto.
 
 | Item | Local |
 | --- | --- |
-| Artigo para Overleaf | `tcc_overleaf/main.tex` |
-| Pacote Overleaf | `tcc_overleaf.zip` |
-| Dataset do benchmark atual | `app/datasets/benchmark_audio_raw_balanced_15k.npz` — 15.000 amostras, 2.769,01 MiB |
-| Modelos default da aplicação | `app/models/bench_*` |
-| Modelos completos por arquitetura | `app/models/benchmark_final/` |
-| Métricas, gráficos e relatórios | `results/` |
+| Artigo para Overleaf | [results/01_papaer/main.tex](../results/01_papaer/main.tex) |
+| Pacote Overleaf | [results/01_papaer/tcc_overleaf_final.zip](../results/01_papaer/tcc_overleaf_final.zip) |
+| Dataset do benchmark atual | [data/datasets/benchmark_audio_raw_balanced_15k.npz](../data/datasets/benchmark_audio_raw_balanced_15k.npz) — 15.000 amostras, 2.769,01 MiB |
+| Modelos default da aplicação | [app/models](../app/models) |
+| Modelos completos por arquitetura | [app/models/benchmark_final](../app/models/benchmark_final) |
+| Métricas, gráficos e relatórios | [results](../results) |
 
 ## Estudo experimental no GitHub Pages
 

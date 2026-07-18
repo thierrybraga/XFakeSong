@@ -1,0 +1,55 @@
+# syntax=docker/dockerfile:1.7
+# =====================================================================
+# XFakeSong — ambiente de inferência: Gradio + FastAPI (CPU)
+# Mapa completo dos 5 ambientes: docker/environments/README.md
+# =====================================================================
+ARG PYTHON_VERSION=3.11
+
+FROM python:${PYTHON_VERSION}-slim
+
+LABEL org.opencontainers.image.title="xfakesong-inference-api" \
+      org.opencontainers.image.description="XFakeSong — inferência Gradio/FastAPI (CPU)" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.source="https://github.com/thierrybraga/XFakeSong"
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONIOENCODING=utf-8 \
+    TF_CPP_MIN_LOG_LEVEL=2 \
+    GRADIO_ANALYTICS_ENABLED=False \
+    GRADIO_SERVER_NAME=0.0.0.0 \
+    GRADIO_SERVER_PORT=7860 \
+    MPLBACKEND=Agg \
+    NUMBA_CACHE_DIR=/tmp/numba_cache \
+    HF_HOME=/app/cache/huggingface \
+    TORCH_HOME=/app/cache/torch
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        libsndfile1 \
+        libgomp1 \
+        curl \
+        tini \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY requirements-base.txt requirements-cpu.txt ./
+RUN pip install --upgrade pip setuptools wheel \
+    && pip install -r requirements-cpu.txt \
+    && pip install torch==2.5.1 transformers==4.45.2
+
+COPY . .
+
+EXPOSE 7860
+
+# start_period 180s: dá tempo do TF/Keras + carregamento dos 13 modelos
+# terminar antes do primeiro health check contar como falha.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=5 \
+    CMD curl -fsSL -o /dev/null --max-time 5 \
+            http://127.0.0.1:7860/api/v1/system/health \
+        || curl -fsSL -o /dev/null --max-time 5 \
+            http://127.0.0.1:7860/ \
+        || exit 1
+
+ENTRYPOINT ["tini", "--"]
+CMD ["python", "main.py", "--gradio", "--gradio-port", "7860"]

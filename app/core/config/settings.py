@@ -35,15 +35,15 @@ class PathConfig:
     """Configurações de caminhos."""
 
     base_dir: Path = field(default_factory=lambda: Path("."))
-    data_dir: Path = field(default_factory=lambda: Path("./app/datasets"))
+    data_dir: Path = field(default_factory=lambda: Path("./data/datasets"))
     logs_dir: Path = field(default_factory=lambda: Path("./logs"))
     temp_dir: Path = field(default_factory=lambda: Path("./data/temp"))
     models_dir: Path = field(default_factory=lambda: Path("./app/models"))
 
     # Subdiretórios de dados
-    datasets_dir: Path = field(default_factory=lambda: Path("./app/datasets"))
-    features_dir: Path = field(default_factory=lambda: Path("./app/datasets/features"))
-    samples_dir: Path = field(default_factory=lambda: Path("./app/datasets"))
+    datasets_dir: Path = field(default_factory=lambda: Path("./data/datasets"))
+    features_dir: Path = field(default_factory=lambda: Path("./data/datasets/features"))
+    samples_dir: Path = field(default_factory=lambda: Path("./data/datasets"))
 
     # Diretórios de upload
     uploads_dir: Path = field(default_factory=lambda: Path("./data/uploads"))

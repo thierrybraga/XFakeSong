@@ -7,7 +7,7 @@ Preenche o passo que faltava entre o benchmark e o TCC: lê um ou mais
 `main.tex` referencia — sobrescrevendo as antigas. Tudo é derivado dos
 resultados do treinamento; nada é hardcoded.
 
-Saídas (em --out, default results/tcc_consolidated):
+Saídas (em --out, default results/02_outputs/tcc_consolidated):
     benchmark_summary.json
     figures/benchmark_accuracy_auc.png
     figures/benchmark_eer.png
@@ -28,7 +28,7 @@ Exemplos:
 
     # Copiar as figuras para o Overleaf após consolidar:
     python scripts/reporting/consolidate_results.py results/retrain_wsl2_indist \
-        --copy-to tcc_overleaf/figures
+        --copy-to results/01_paper/figures
 """
 
 from __future__ import annotations
@@ -151,6 +151,9 @@ def collect_rows(paths: List[str], prefer_last: bool = False):
             key, slug, display = canon
             clean = a.get("clean", {}) or {}
             eff = a.get("efficiency", {}) or {}
+            dataset_info = data.get("dataset", {}) or {}
+            run_config = data.get("config", {}) or {}
+            training_config = a.get("training_config", {}) or {}
             row = {
                 "model": display,
                 "key": key,
@@ -169,6 +172,25 @@ def collect_rows(paths: List[str], prefer_last: bool = False):
                 "best_val": _best_val(a.get("history")),
                 "final_val": _final_val(a.get("history")),
                 "epochs": a.get("epochs"),
+                "epochs_budget": training_config.get("epochs_budget", training_config.get("epochs")),
+                "training_config": training_config,
+                "noise_protocol": (
+                    a.get("noise_protocol")
+                    or training_config.get("noise_protocol")
+                    or a.get("input_preparation")
+                ),
+                "input_preparation": a.get("input_preparation"),
+                "decision_threshold": run_config.get("decision_threshold", 0.5),
+                "seed": run_config.get("seed"),
+                "dataset": {
+                    "name": dataset_info.get("name"),
+                    "source": dataset_info.get("source"),
+                    "n_total": dataset_info.get("n_total"),
+                    "n_test": dataset_info.get("n_test"),
+                    "split_source": dataset_info.get("split_source"),
+                    "split_overlap_audit": dataset_info.get("split_overlap_audit"),
+                    "provenance_overlap_audit": dataset_info.get("provenance_overlap_audit"),
+                },
             }
             # Se o mesmo modelo aparecer em vários runs, o padrão mantém o de
             # maior AUC. Para consolidações finais, --prefer-last permite que
@@ -532,8 +554,13 @@ def _confusion_matrix_for_row(row, extras):
         return None
 
     y_true = np.asarray(y_test).astype(int)
-    thr = (row.get("robustness", {}).get("clean_threshold")
-           or _eer_threshold(row))
+    thr = row.get("decision_threshold", 0.5)
+    try:
+        thr = float(thr)
+    except (TypeError, ValueError):
+        thr = 0.5
+    if not np.isfinite(thr):
+        thr = 0.5
     y_pred = (score_arr >= thr).astype(int)
     cm = np.zeros((2, 2), dtype=int)
     for t, p in zip(y_true, y_pred):
@@ -632,10 +659,10 @@ def main() -> int:
     p = argparse.ArgumentParser(description="Consolida resultados → resumo + figuras do TCC")
     p.add_argument("inputs", nargs="+",
                    help="diretórios de run ou results.json (aceita globs)")
-    p.add_argument("--out", default="results/tcc_consolidated",
-                   help="pasta de saída (default: results/tcc_consolidated)")
-    p.add_argument("--copy-to", default=None,
-                   help="copia as figuras geradas para esta pasta (ex.: tcc_overleaf/figures)")
+    p.add_argument("--out", default="results/02_outputs/tcc_consolidated",
+                   help="pasta de saída (default: results/02_outputs/tcc_consolidated)")
+    p.add_argument("--copy-to", default="results/01_paper/figures",
+                   help="copia as figuras para o artigo (default: results/01_paper/figures)")
     p.add_argument("--no-figures", action="store_true",
                    help="gera só o benchmark_summary.json")
     p.add_argument(

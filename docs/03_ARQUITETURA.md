@@ -10,45 +10,42 @@ O sistema XFakeSong segue os princípios da **Clean Architecture** (Arquitetura 
 Camada central — contém toda a lógica de negócio. Não depende de frameworks externos.
 
 - **`features/`**: Extração de características de áudio (extratores, registry, adapters).
-- **`models/`**: Arquiteturas neurais e ML clássico (WavLM, HuBERT, AASIST, etc.).
+- **`models/`**: Arquiteturas neurais e ML clássico (WavLM, HuBERT, AASIST, etc.); `models/training/`
+  inclui o pipeline de treinamento seguro e validação cruzada temporal (`secure_training_pipeline.py`).
 - **`services/`**: Serviços de negócio (DetectionService, TrainingService, UploadService, etc.).
+- **`dataset_metadata/`**: Catálogo de datasets e manifesto de falantes (conhecimento
+  de domínio sobre a construção do corpus, não infraestrutura genérica).
+- **`xai/`**: Explicabilidade dos modelos (Grad-CAM, wrapper SHAP, contrato do vetor tabular).
 
-### 2. Application (Aplicação)
-*Caminho: `app/application/`*
-
-Orquestração de fluxos. Coordena domain sem conter regras de negócio.
-
-- **`pipeline/orchestrator.py`**: `DeepfakePipelineOrchestrator` — orquestrador de
-  estágios sequenciais (UploadStage → FeatureExtractionStage → DetectionStage)
-  via Chain of Responsibility. É o único submódulo hoje; não há `use_cases/`
-  nem `dto/` separados — os casos de uso concretos vivem em `domain/services/`
-  e são chamados diretamente por routers/Gradio (ver "Fluxo de produção" acima).
-
-### 3. Core (Núcleo/Infraestrutura)
+### 2. Core (Núcleo/Infraestrutura)
 *Caminho: `app/core/`*
 
-Funcionalidades transversais usadas por todas as camadas.
+Funcionalidades transversais usadas por todas as camadas — nada específico do
+domínio de deteção de deepfake mora aqui.
 
-- **`interfaces/`**: Contratos abstratos base (SOLID) — `audio.py`, `base.py`, `services.py`.
+- **`contracts/`**: Contratos abstratos base (SOLID) — `audio.py`, `base.py`, `services.py`.
 - **`config/`**: Configuração centralizada via `settings.py` + `.env`.
-- **`training/`**: Pipeline de treinamento seguro e validação cruzada temporal.
-- **`utils/`**: Utilitários de áudio, arquivos e sistema.
+- **`db/`**: Banco de dados — `session.py` (engine/sessões SQLAlchemy) e `setup.py` (criação de tabelas e seed).
 - **`auth/`**, **`security.py`**, **`middleware.py`**: Segurança, rate-limiting e CORS.
+- **`feedback.py`**, **`gpu.py`**, **`performance.py`**, **`version_check.py`**,
+  **`exceptions.py`**: notificações/histórico, setup de GPU, configuração de
+  runtime, checagem de versões e hierarquia de exceções.
 
-### 4. Interfaces (Adaptadores de Entrada)
+Utilitários de áudio, arquivos, sistema e VAD ficam em `app/utils/`
+(fora de `app/core/` — ver seção "Estrutura de Diretórios").
+
+### 3. Interfaces (Adaptadores de Entrada)
 *Caminho: `app/interfaces/`*
 
-Adapta entradas externas (usuário, HTTP, CLI) para o domínio.
+Adapta entradas externas (usuário, HTTP, CLI) para o domínio. Três interfaces:
 
 - **`gradio/`**: Interface web com 5 seções role-based (Painel, Detectar, Investigar, Treinar, Gerenciar).
 - **`cli/`**: Interface de linha de comando com menus interativos.
-
-### 5. Routers (API REST)
-*Caminho: `app/routers/`*
-
-Endpoints FastAPI organizados por domínio.
-
-- `detection.py`, `training.py`, `features.py`, `datasets.py`, `history.py`, `voice_profiles.py`, `system.py`
+- **`web/`**: API REST FastAPI (`main_fastapi.py` + `routers/` organizados por
+  domínio — `detection.py`, `training.py`, `features.py`, `datasets.py`,
+  `history.py`, `voice_profiles.py`, `system.py` — e `schemas/` com os
+  modelos Pydantic de request/response), além de `static/`/`templates/` para
+  a página HTML de entrada.
 
 ---
 
@@ -56,7 +53,7 @@ Endpoints FastAPI organizados por domínio.
 
 ```mermaid
 graph TD
-    U[Usuário] -->|HTTP POST| R[app/routers/detection.py]
+    U[Usuário] -->|HTTP POST| R[app/interfaces/web/routers/detection.py]
     U -->|Gradio UI| G[app/interfaces/gradio/]
     U -->|CLI| C[app/interfaces/cli/]
 
@@ -117,30 +114,12 @@ Esse fluxo é implementado por serviços reais do projeto:
 | Inferência | `app/domain/services/detection/predictor.py` |
 | Métricas e relatórios | `app/domain/models/training/metrics.py`, `benchmarks/report.py` |
 
-## Padrão Pipeline
-
-O orquestrador (`DeepfakePipelineOrchestrator`) gerencia estágios sequenciais via padrão **Chain of Responsibility**:
-
-```
-UploadStage → FeatureExtractionStage → TrainingStage / DetectionStage → PipelineResult
-```
-
-Cada `PipelineStage` retorna um `PipelineResult` com `status`, `data`, `error` e `execution_time`. Se um estágio falha (`ProcessingStatus.ERROR`), o pipeline é interrompido.
-
-!!! note "Pipeline orquestrado × fluxo de produção"
-    O pipeline orquestrado (`app/application/pipeline/`) é usado para fluxos
-    customizados. O fluxo de produção padrão chama `DetectionService`
-    diretamente via routers e Gradio.
-
----
-
 ## Padrões de Design Utilizados
 
 | Padrão | Onde | Propósito |
 |--------|------|-----------|
 | Registry | `extractor_registry.py`, `architectures/registry.py` | Descoberta dinâmica de extratores e modelos |
 | Factory | `architectures/factory.py` | Criação de modelos por nome/string |
-| Pipeline | `application/pipeline/` | Processamento sequencial com rollback |
 | Singleton | `app/dependencies.py` | Serviços compartilhados via `lru_cache` |
 | Strategy | `IFeatureExtractor` implementations | Algoritmos de extração intercambiáveis |
 
@@ -151,21 +130,21 @@ Cada `PipelineStage` retorna um `PipelineResult` com `status`, `data`, `error` e
 ```
 XFakeSong/
 ├── app/                            # Código-fonte principal
-│   ├── application/                # Orquestração de fluxos
-│   │   └── pipeline/               # orchestrator.py — Chain of Responsibility de estágios
-│   │
-│   ├── core/                       # Infraestrutura transversal
+│   ├── core/                       # Infraestrutura transversal (genérica, sem regras de negócio)
 │   │   ├── auth/                   # JWT, auth handler
 │   │   ├── config/                 # settings.py (SystemConfig)
 │   │   ├── exceptions.py           # Exceções customizadas de domínio
-│   │   ├── interfaces/             # Contratos abstratos SOLID
+│   │   ├── contracts/              # Contratos abstratos SOLID
 │   │   │   ├── audio.py            # AudioData, AudioFeatures, FeatureType
 │   │   │   ├── base.py             # ProcessingResult, ProcessingStatus
 │   │   │   └── services.py         # IDetectionService, ITrainingService, etc.
+│   │   ├── db/                     # session.py (engine/sessões) e setup.py (create_all/seed)
+│   │   ├── feedback.py             # Hub de notificações/histórico (usado pela UI Gradio)
+│   │   ├── gpu.py                  # Setup de GPU (memory growth, mixed precision)
 │   │   ├── middleware.py           # CORS, error handlers
+│   │   ├── performance.py          # Configuração de runtime (TF32, threads)
 │   │   ├── security.py             # Rate limiter, sanitização
-│   │   ├── training/               # Secure training pipeline, CV temporal
-│   │   └── utils/                  # Audio, file, system utils
+│   │   └── version_check.py        # Checagem de compatibilidade de versões
 │   │
 │   ├── datasets/                   # Áudios para treinamento
 │   │   ├── fake/
@@ -189,45 +168,46 @@ XFakeSong/
 │   │   │   ├── architectures/      # 14 arquiteturas (ver docs/08_ARQUITETURAS.md)
 │   │   │   │   ├── factory.py      # Criação por nome
 │   │   │   │   └── registry.py     # Registro de arquiteturas
-│   │   │   ├── training/           # Configurações de treinamento otimizadas
+│   │   │   ├── training/           # Configurações de treinamento otimizadas +
+│   │   │   │                      #   secure_training_pipeline.py (split/scaler anti-leakage)
 │   │   │   └── inference/          # Helpers de inferência
 │   │   │
-│   │   └── services/               # Serviços de negócio
-│   │       ├── detection_service.py
-│   │       ├── training_service.py
-│   │       ├── feature_extraction_service.py
-│   │       ├── upload_service.py
-│   │       ├── audio_segmentation_service.py
-│   │       ├── voice_profile_service.py
-│   │       ├── forensic_visualization.py
-│   │       ├── shap_interpreter.py
-│   │       └── plugin_system.py
+│   │   ├── services/               # Serviços de negócio
+│   │   │   ├── detection_service.py
+│   │   │   ├── training_service.py
+│   │   │   ├── feature_extraction_service.py
+│   │   │   ├── upload_service.py
+│   │   │   ├── voice_profile_service.py
+│   │   │   └── forensic_visualization.py
+│   │   │
+│   │   ├── dataset_metadata/       # dataset_catalog.py, speaker_manifest.py
+│   │   └── xai/                    # gradcam.py, shap_explainer.py, tabular.py
 │   │
-│   ├── interfaces/                 # Adaptadores de entrada
+│   ├── interfaces/                 # As 3 interfaces de entrada do projeto
 │   │   ├── gradio/                 # Interface web (5 seções role-based)
+│   │   │   ├── app.py              # Monta `demo` (gr.Blocks) — a app unificada é montada 1x em web/main_fastapi.py
+│   │   │   ├── schema_patch.py     # Monkey-patch de compatibilidade Pydantic v2 + Gradio v4
 │   │   │   └── tabs/               # dashboard, detection, forensic_analysis, training_wizard, ...
-│   │   └── cli/                    # Interface CLI com menus
-│   │       └── menus/
+│   │   ├── cli/                    # Interface CLI com menus
+│   │   │   └── menus/
+│   │   └── web/                    # API REST FastAPI
+│   │       ├── main_fastapi.py     # App unificada: FastAPI + StaticFiles/Jinja2 + routers + demo Gradio montado em /gradio
+│   │       ├── routers/            # Endpoints por domínio
+│   │       │   ├── detection.py    # POST /api/v1/detection/analyze
+│   │       │   ├── training.py     # POST /api/v1/training/start
+│   │       │   ├── features.py     # POST /api/v1/features/extract
+│   │       │   ├── datasets.py
+│   │       │   ├── history.py
+│   │       │   ├── voice_profiles.py
+│   │       │   └── system.py
+│   │       ├── schemas/            # Modelos Pydantic (request/response)
+│   │       │   └── api_models.py
+│   │       ├── static/             # Assets estáticos (CSS do tema) servidos via FastAPI StaticFiles
+│   │       └── templates/          # Templates Jinja2 (index.html, páginas de loading)
 │   │
-│   ├── routers/                    # Endpoints FastAPI
-│   │   ├── detection.py            # POST /api/v1/detection/analyze
-│   │   ├── training.py             # POST /api/v1/training/start
-│   │   ├── features.py             # POST /api/v1/features/extract
-│   │   ├── datasets.py
-│   │   ├── history.py
-│   │   ├── voice_profiles.py
-│   │   └── system.py
-│   │
-│   ├── schemas/                    # Modelos Pydantic (request/response)
-│   │   └── api_models.py
-│   │
-│   ├── static/                     # Assets estáticos (CSS do tema) servidos via FastAPI StaticFiles
-│   ├── templates/                  # Templates Jinja2 (index.html, páginas de loading)
-│   ├── utils/                      # colab.py — helper isolado só para execução via Google Colab
-│   │                               #   (não confundir com app/core/utils/, que tem os utilitários centrais)
-│   ├── main_fastapi.py             # Entry point FastAPI real por trás do Gradio (monta StaticFiles/Jinja2)
-│   ├── deploy_hf.py                # Script de deploy para Hugging Face Spaces
-│   └── gradio_schema_patch.py      # Monkey-patch de compatibilidade da lib Gradio
+│   ├── utils/                      # Utilitários centrais (áudio, arquivos, sistema, VAD) +
+│   │                               #   colab.py (helper isolado só para execução via Google Colab)
+│   └── deploy_hf.py                # Script de deploy para Hugging Face Spaces
 │
 ├── docs/                           # Documentação
 ├── docker/compose/                 # Perfis Docker segmentados por uso/dispositivo
@@ -240,7 +220,6 @@ XFakeSong/
 ├── app/models/benchmark_final/     # Modelos finais consolidados por arquitetura
 ├── tests/                          # Testes (unit/, integration/, api/, functional/)
 ├── scripts/                        # Scripts utilitários
-├── gradio_app.py                   # App unificado (FastAPI + Gradio via Uvicorn)
 ├── main.py                         # Entry point (CLI ou --gradio)
 ├── app.py                          # Entry point para Hugging Face Spaces
 └── requirements.txt
@@ -248,15 +227,16 @@ XFakeSong/
 
 ### Pontos-chave
 
-- **`app/domain/`** — nunca importa de `app/interfaces/`, `app/routers/` ou frameworks externos diretamente.
-- **`app/core/interfaces/`** — define os contratos SOLID que garantem desacoplamento; consulte aqui para entender o "contrato" de cada componente.
+- **`app/domain/`** — nunca importa de `app/interfaces/` (gradio, cli ou web) nem de frameworks externos diretamente.
+- **`app/core/contracts/`** — define os contratos SOLID que garantem desacoplamento; consulte aqui para entender o "contrato" de cada componente. Nome deliberadamente distinto de `app/interfaces/` (adaptadores de entrada) para evitar ambiguidade.
 - **`app/dependencies.py`** — singletons via `lru_cache`; ponto único para obter instâncias dos serviços.
-- **`app/datasets/`** — espera subpastas `real/` e `fake/` para treinamento supervisionado.
+- **`data/datasets/`** — espera subpastas `real/` e `fake/` para treinamento supervisionado.
 - **`data/`** — runtime local persistente (`data/app.db`, `data/uploads/`); não deve receber código-fonte.
 - **`results/`** — artefatos regeneráveis de benchmark, gráficos e relatórios.
 - **`app/models/`** — raiz técnica usada por treino/inferência; `benchmark_final/` guarda os modelos finais consolidados.
 - **`docker/compose/`** — caminho principal para novos builds Docker; os `docker-compose*.yml` da raiz são compatibilidade legada.
 - **`tests/`** — espelha a estrutura de `app/` com camadas `unit/`, `integration/`, `api/` e `functional/`.
-- **`app/utils/` × `app/core/utils/`** — não são a mesma coisa: `app/utils/`
-  só tem `colab.py` (helper de execução via Google Colab); os utilitários
-  centrais (áudio, arquivos, sistema, VAD) ficam em `app/core/utils/`.
+- **`app/utils/`** — pacote único de utilitários: audio_utils/file_utils/helpers/
+  silero_vad/system_utils (centrais) + colab.py (helper isolado, só para
+  execução via Google Colab). Antes dividido entre `app/utils/` e
+  `app/core/utils/` — consolidado num único lugar.

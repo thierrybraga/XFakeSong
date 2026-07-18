@@ -42,12 +42,11 @@ python scripts/ops/docker_build.py train-nvidia config
 | Camada | Mecanismo | Onde |
 | --- | --- | --- |
 | **Headers HTTP** | `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy` em toda resposta; HSTS/CSP opt-in via env | `app/core/middleware.py` |
-| **Extração de arquivos** | ZIP/TAR validados contra path traversal (Zip Slip / CVE-2007-4559); `filter='data'` no tar | `app/core/utils/file_utils.py` (`safe_extract_zip/tar`) |
-| **Rate limiting** | `slowapi` por IP, decorators nas rotas sensíveis | `app/core/security.py` + `app/routers/*` |
+| **Extração de arquivos** | ZIP/TAR validados contra path traversal (Zip Slip / CVE-2007-4559); `filter='data'` no tar | `app/utils/file_utils.py` (`safe_extract_zip/tar`) |
+| **Rate limiting** | `slowapi` por IP, decorators nas rotas sensíveis | `app/core/security.py` + `app/interfaces/web/routers/*` |
 | **Host / CORS** | `TrustedHostMiddleware` (anti DNS-rebinding), CORS configurável por env | `app/core/security.py` |
 | **Upload** | limite por `Content-Length` (413), sanitização de filename | `app/core/middleware.py`, `app/core/security.py` |
 | **Erros** | RFC 7807 (Problem Details); handler genérico nunca vaza stack interno | `app/core/exceptions.py` |
-| **Auth** | mensagem genérica anti-enumeração na recuperação de senha | `app/domain/services/auth_service.py` |
 
 ### Variáveis de ambiente de segurança
 

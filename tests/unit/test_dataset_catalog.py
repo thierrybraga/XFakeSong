@@ -1,4 +1,4 @@
-from app.core.dataset_catalog import (
+from app.domain.dataset_metadata.dataset_catalog import (
     DATASET_CATALOG,
     PRESET_SELECTIONS,
     infer_dataset_from_path,

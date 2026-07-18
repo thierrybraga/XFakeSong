@@ -74,10 +74,15 @@ def test_ocsoftmax_loss_finite_and_grad():
 # ───────────────────────── refinos de arquitetura ─────────────────────────
 
 def test_aasist_has_six_residual_blocks():
+    """O default 'aasist' (paper-faithful, _build_paper_aasist) usa o encoder
+    2D estilo RawNet2 com 6 ResidualBlock2D (canais 32,32,64,64,64,64) via
+    _build_aasist_encoder — nomeados 'aasist_encoder_N', não 'res_block_N'
+    (essa era a convenção só do 'aasist_legacy' 1D)."""
     from app.domain.models.architectures import aasist
+    from app.domain.models.architectures.layers import ResidualBlock2D
 
     m = aasist.create_model(input_shape=(48000, 1), num_classes=2, architecture="aasist")
-    n = sum(1 for lyr in m.layers if "res_block" in lyr.name)
+    n = sum(1 for lyr in m.layers if isinstance(lyr, ResidualBlock2D))
     assert n == 6  # paridade com o paper (RawNet2 encoder)
 
 

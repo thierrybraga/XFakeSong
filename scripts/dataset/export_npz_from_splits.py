@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Exporta um .npz de áudio bruto a partir de app/datasets/splits.
+"""Exporta um .npz de áudio bruto a partir de data/datasets/splits.
 
 Uso típico depois de `scripts/dataset/build_dataset.py --tier medium`:
 
     python scripts/dataset/export_npz_from_splits.py \
-        --out app/datasets/benchmark_audio_raw_balanced_15k.npz
+        --out data/datasets/benchmark_audio_raw_balanced_15k.npz
 """
 
 from __future__ import annotations
@@ -24,12 +24,12 @@ def main() -> int:
     )
     parser.add_argument(
         "--splits-dir",
-        default="app/datasets/splits",
+        default="data/datasets/splits",
         help="Diretório com train/val/test já preparados.",
     )
     parser.add_argument(
         "--out",
-        default="app/datasets/benchmark_audio_raw_balanced_15k.npz",
+        default="data/datasets/benchmark_audio_raw_balanced_15k.npz",
         help="Arquivo .npz de saída.",
     )
     parser.add_argument("--sample-rate", type=int, default=16000)

@@ -1,7 +1,7 @@
 import pytest
 from pathlib import Path
 from app.domain.services.upload_service import AudioUploadService
-from app.core.interfaces.base import ProcessingStatus, DatasetType
+from app.core.contracts.base import ProcessingStatus, DatasetType
 
 
 @pytest.fixture

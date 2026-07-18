@@ -12,10 +12,9 @@ framework):
 | Camada | Pasta | Conteúdo |
 | --- | --- | --- |
 | Domínio | `app/domain/` | Modelos/arquiteturas, serviços (detecção, treino, features), regras de negócio |
-| Casos de uso | `app/application/` | Orquestração de fluxos (pipelines) |
-| Core | `app/core/` | Config, logging, segurança, middleware, exceções, GPU, utilitários |
-| Interfaces | `app/interfaces/` | UI Gradio (`gradio/tabs/`, `gradio/utils/`) e CLI |
-| API HTTP | `app/routers/` + `app/schemas/` | Rotas FastAPI e modelos Pydantic |
+| Core | `app/core/` | Config, logging, segurança, middleware, exceções, GPU, utilitários, `contracts/` (interfaces SOLID) |
+| Interfaces | `app/interfaces/` | UI Gradio (`gradio/tabs/`, `gradio/utils/`), CLI e Web (FastAPI) |
+| API HTTP | `app/interfaces/web/routers/` + `app/interfaces/web/schemas/` | Rotas FastAPI e modelos Pydantic |
 
 Regra prática: bibliotecas externas (librosa, TF, sklearn) entram via
 adaptadores; o domínio permanece testável sem elas.
@@ -75,7 +74,7 @@ Variáveis de ambiente úteis (ver `settings.py` e `app/core/middleware.py`):
 
 1. Crie o extrator em `app/domain/features/extractors/<família>/` e o adapter
    em `app/domain/features/adapters/`.
-2. Use uma chave do enum `FeatureType` (`app/core/interfaces/audio.py`).
+2. Use uma chave do enum `FeatureType` (`app/core/contracts/audio.py`).
 3. Registre no `FeatureExtractorRegistry`. Detalhes em
    [Features de Áudio](04_FEATURES.md).
 

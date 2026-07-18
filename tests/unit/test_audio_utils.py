@@ -1,10 +1,10 @@
-"""Cobertura de `app/core/utils/audio_utils.py` (numpy puro)."""
+"""Cobertura de `app/utils/audio_utils.py` (numpy puro)."""
 
 import logging
 
 import numpy as np
 
-from app.core.utils.audio_utils import (
+from app.utils.audio_utils import (
     normalize_audio,
     pad_or_truncate,
     preprocess_legacy,

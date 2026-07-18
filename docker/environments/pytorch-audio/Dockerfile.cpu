@@ -1,0 +1,37 @@
+# syntax=docker/dockerfile:1.7
+# =====================================================================
+# XFakeSong — ambiente de treino: pytorch-audio (Conformer, Hybrid CNN-
+# Transformer, RawNet2, AASIST, RawGAT-ST — implementações Keras/TF; torch é
+# reservado para portes nativos futuros)
+# Mapa completo dos 5 ambientes: docker/environments/README.md
+# =====================================================================
+ARG PYTHON_VERSION=3.11
+
+FROM python:${PYTHON_VERSION}-slim
+
+LABEL org.opencontainers.image.title="xfakesong-pytorch-audio" \
+      org.opencontainers.image.description="XFakeSong — treino audio (CPU)" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.source="https://github.com/thierrybraga/XFakeSong"
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONIOENCODING=utf-8 \
+    MPLBACKEND=Agg
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        libsndfile1 \
+        libgomp1 \
+        tini \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY docker/environments/pytorch-audio/requirements.txt /tmp/requirements.txt
+RUN pip install --upgrade pip setuptools wheel \
+    && pip install -r /tmp/requirements.txt
+
+COPY . .
+
+ENTRYPOINT ["tini", "--"]
+CMD ["python", "scripts/training/train_by_family.py", "--family", "pytorch-audio", "--help"]

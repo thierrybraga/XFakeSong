@@ -35,7 +35,7 @@ def run_api_probe(max_endpoints: int = 8) -> Dict[str, Any]:
     try:
         from fastapi.testclient import TestClient
 
-        from app.main_fastapi import app
+        from app.interfaces.web.main_fastapi import app
     except Exception as e:  # noqa: BLE001
         return {"status": "unavailable", "error": str(e)}
 

@@ -5,7 +5,8 @@ family: classical-ml
 models:
   - RandomForest
   - SVM
-dataset: app/datasets/benchmark_audio_raw_balanced_15k.npz
+# Dataset canonico: data/datasets/ (raiz consolidada em 2026-07-14; app/datasets foi descontinuado).
+dataset: data/datasets/benchmark_audio_raw_balanced_15k.npz
 output_dir: results/classical_benchmark
 models_dir: app/models
 epochs: 100

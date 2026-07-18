@@ -38,7 +38,6 @@ from app.interfaces.gradio.utils.plotting import (
     PLOT_TEXT,
     PLOT_TEXT_MUTED,
     PLOT_WARNING,
-    close_all_figures,
     close_fig,
     confirm_destructive,
     get_service_lock,
@@ -47,7 +46,6 @@ from app.interfaces.gradio.utils.plotting import (
     notify_info,
     safe_tight_layout,
     style_ax,
-    style_legend,
 )
 
 __all__ = [
@@ -66,14 +64,12 @@ __all__ = [
     "PLOT_TEXT",
     "PLOT_TEXT_MUTED",
     "PLOT_WARNING",
-    "close_all_figures",
     "close_fig",
     "confirm_destructive",
     "get_service_lock",
     "make_figure",
     "safe_tight_layout",
     "style_ax",
-    "style_legend",
     # i18n
     "get_language",
     "set_language",

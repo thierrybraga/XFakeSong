@@ -63,7 +63,7 @@ O parâmetro `num_classes` pode ser passado no `config`; se omitido, é inferido
 ### 1.2.1 Datasets de treino — tiers `small` / `medium` / `large`
 
 O tamanho e a composição do dataset são padronizados em **tiers** definidos em
-`app/core/dataset_catalog.py` (`DATASET_TIERS`) — fonte única de verdade
+`app/domain/dataset_metadata/dataset_catalog.py` (`DATASET_TIERS`) — fonte única de verdade
 compartilhada por `scripts/dataset/build_dataset.py`, pela aba Datasets do Gradio, pelo
 benchmark e pela documentação. Escolher um tier pré-configura tamanho, fontes e
 estratégia de split. Detalhes de fontes/licenças em
@@ -77,7 +77,7 @@ estratégia de split. Detalhes de fontes/licenças em
 | `large` | 10.000 | 20.000 | **disjunto por falante** + cross-generator | todas as 14 + auditoria de falantes | execução estendida |
 
 > O `.npz` canônico do benchmark
-> (`app/datasets/benchmark_audio_raw_balanced_15k.npz`, ~15k) corresponde ao tier
+> (`data/datasets/benchmark_audio_raw_balanced_15k.npz`, ~15k) corresponde ao tier
 > **`medium`** (7.500/classe). Use `large` quando o objetivo for uma auditoria
 > estendida de 20k com protocolo de falantes não vistos.
 
@@ -105,7 +105,7 @@ python scripts/dataset/build_dataset.py --tier medium --target 7500
 
 ```bash
 python scripts/benchmark/run_tcc_pipeline.py --download --tier medium --full-benchmark \
-  --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
+  --npz data/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
 Recomendação prática: prototipe hiperparâmetros em `small`, produza os números
@@ -172,28 +172,6 @@ result = tune_hyperparameters(
 print(f"Best: {result['best_params']} → {result['best_score']:.4f}")
 ```
 
-### 1.9 MLflow Tracking (Sprint 4.3)
-
-```python
-from app.domain.models.training.mlflow_tracking import MLflowTracker
-
-with MLflowTracker(
-    experiment_name='aasist_runs',
-    tags={'architecture': 'AASIST', 'dataset': 'ASVspoof2019'},
-) as tracker:
-    tracker.log_config(config)
-    result = trainer.train(model, train_data, validation_data)
-    tracker.log_training_result(result.data)
-    tracker.log_calibration_params(
-        temperature=trainer._calibrated_temperature,
-        ood_threshold=trainer._ood_threshold,
-        eer_threshold=trainer._eer_threshold,
-        eer_value=trainer._eer_value,
-    )
-
-# Visualizar: mlflow ui (http://localhost:5000)
-```
-
 ### 1.10 Multi-Model Fusion (Sprint 4.4)
 
 ```python
@@ -209,95 +187,6 @@ print(f"Consenso: is_fake={fused.is_fake}, conf={fused.confidence:.3f}")
 print(f"Acordo entre modelos: {fused.metadata['model_agreement']:.2%}")
 for r in fused.metadata['per_model']:
     print(f"  {r['model']}: {r['fake_prob']:.3f}")
-```
-
-### 1.11 Knowledge Distillation (Sprint 5.1)
-
-Treine um modelo leve (Sonic Sleuth) a partir de um teacher grande (Ensemble):
-
-```python
-from app.domain.models.architectures.factory import create_model_by_name
-from app.domain.models.training.knowledge_distillation import (
-    DistillationConfig, distill_from_teacher,
-)
-
-# Cria student leve (Sonic Sleuth ~3M params vs Ensemble ~25M)
-student = create_model_by_name('Sonic Sleuth', input_shape=(16000,), num_classes=2)
-
-config = DistillationConfig(
-    temperature=4.0,    # soft targets do teacher
-    alpha=0.3,          # 30% hard labels + 70% soft targets do teacher
-    epochs=50,
-    learning_rate=1e-3,
-)
-
-student_trained, result = distill_from_teacher(
-    teacher_model_path='app/models/Ensemble_v1.keras',
-    student_model=student,
-    X_train=X_train, y_train=y_train,
-    validation_data=(X_val, y_val),
-    config=config,
-)
-
-print(f"Compression ratio: {result['compression_ratio']:.1f}×")
-print(f"Best val_loss: {result['best_val_loss']:.4f}")
-```
-
-### 1.12 Quantization-Aware Training (Sprint 5.2)
-
-```python
-from app.domain.models.training.quantization_aware import (
-    apply_qat, fine_tune_qat, convert_qat_to_tflite_int8,
-    create_representative_dataset,
-)
-
-# 1. Aplica QAT ao modelo treinado em FP32
-qat_model = apply_qat(trained_model, quantize_all=True)
-
-# 2. Fine-tune com LR baixo (calibra ranges de quantização)
-fine_tune_qat(
-    qat_model, X_train, y_train,
-    validation_data=(X_val, y_val),
-    epochs=10, learning_rate=1e-5,
-)
-
-# 3. Converte para TFLite INT8 (deploy mobile)
-rep_data = create_representative_dataset(X_train, n_samples=100)
-convert_qat_to_tflite_int8(qat_model, 'model_qat_int8.tflite',
-                            representative_dataset=rep_data)
-# Tipicamente: 95-99% da accuracy FP32, 4× menor, 2-3× mais rápido em CPU
-```
-
-### 1.13 Streaming Inference (Sprint 5.3)
-
-Detecção em tempo real a partir de chunks de áudio (microfone, stream):
-
-```python
-from app.domain.models.inference.streaming_inference import (
-    StreamingDetector, StreamingConfig,
-)
-
-detector = StreamingDetector(
-    detection_service=service,
-    model_name='AASIST_v1',
-    config=StreamingConfig(
-        window_seconds=3.0,    # janela analisada
-        hop_seconds=1.0,       # latência de detecção
-        ema_alpha=0.3,         # smoothing dos scores
-    ),
-)
-
-# Loop principal (PyAudio, WebSocket, file stream...)
-for chunk in audio_stream:  # chunks de ~100ms
-    result = detector.push(chunk)
-    if result is not None:
-        print(f"t={result.timestamp:.2f}s  "
-              f"is_fake={result.is_fake}  "
-              f"smooth_conf={result.smoothed_confidence:.3f}")
-
-# Decisão final após N inferências
-final_score = detector.get_aggregate_score(last_n=10)
-print(f"Score final: {final_score:.3f}")
 ```
 
 ### 1.14 MC Dropout para Uncertainty (Sprint 5.4)
@@ -334,9 +223,6 @@ Definidos em `_prepare_callbacks()`:
 | `TensorBoard` | Histogramas + gráfico (se `tensorboard_dir` passado) |
 | `CSVLogger` | Histórico em CSV (se `csv_log_path` passado) |
 
-O módulo `OptimizedTrainingConfig` (`optimized_training_config.py`) adiciona callbacks adicionais:
-`AdvancedEarlyStopping`, `GradientClippingCallback`, `LossMonitoringCallback`, `OverfittingDetectionCallback`.
-
 ### 1.5 Data Augmentation
 
 `AudioAugmenter` (`app/domain/models/training/augmentation.py`) implementa 7 técnicas via `tf.data.Dataset.map()`:
@@ -365,7 +251,8 @@ O módulo `OptimizedTrainingConfig` (`optimized_training_config.py`) adiciona ca
 
 ## 2. Hiperparâmetros por Arquitetura
 
-Baseados no TCC (Seção 6.1, Tabela 10) e em `get_recommended_hyperparameters()`:
+Baseados no TCC (Seção 6.1, Tabela 10) e em `get_recommended_hyperparameters()`
+(`app/domain/models/training/hyperparameter_defaults.py`):
 
 | Arquitetura | Batch | LR | Épocas | Dropout | L2 | Observação |
 |-------------|-------|----|--------|---------|-----|------------|

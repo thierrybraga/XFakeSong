@@ -32,7 +32,7 @@ sys.path.insert(0, PROJECT_ROOT)
 
 # Fake packages para evitar app/__init__ chain (sqlalchemy)
 for _fake_pkg in [
-    "app", "app.core", "app.core.interfaces",
+    "app", "app.core", "app.core.contracts",
     "app.domain", "app.domain.models", "app.domain.models.architectures",
     "app.domain.services", "app.domain.services.detection",
 ]:

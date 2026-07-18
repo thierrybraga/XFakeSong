@@ -37,6 +37,12 @@ from app.interfaces.gradio.utils.plotting import (
     safe_tight_layout,
     style_ax,
 )
+from app.interfaces.gradio.utils.training_wizard_presenter import (
+    get_model_catalog as _get_model_catalog,
+    render_model_cards_html as _render_model_cards_html,
+    step_visibility as _step_visibility,
+    stepper_html as _stepper_html,
+)
 
 logger = logging.getLogger("gradio_training_wizard")
 
@@ -829,188 +835,6 @@ def _scan_dataset(path_str: str) -> dict:
 
 
 # =====================================================================
-# Cards de modelos (Step 2)
-# =====================================================================
-
-
-def _get_model_catalog() -> List[dict]:
-    """Catálogo de arquiteturas para o Step 2 com info amigável."""
-    try:
-        from app.domain.models.architectures.registry import architecture_registry
-
-        archs = architecture_registry.list_architectures()
-    except Exception:
-        archs = [
-            "AASIST",
-            "RawGAT-ST",
-            "RawNet2",
-            "Sonic Sleuth",
-            "WavLM",
-            "HuBERT",
-            "Conformer",
-            "Hybrid CNN-Transformer",
-            "SpectrogramTransformer",
-            "EfficientNet-LSTM",
-            "MultiscaleCNN",
-            "Ensemble",
-        ]
-
-    # Categoria + descrição amigável
-    catalog = {
-        "AASIST": (
-            "🕸️",
-            "Graph Attention",
-            "Spectro-temporal GAT + HS-GAL. EER 0.83% em ASVspoof. Recomendado para máxima accuracy.",
-        ),
-        "RawGAT-ST": (
-            "🕸️",
-            "Graph Attention",
-            "Variante do AASIST com foco temporal. Bom para áudios curtos.",
-        ),
-        "RawNet2": (
-            "🌊",
-            "Raw audio",
-            "SincNet + ResBlocks + GRU. Trabalha direto na waveform.",
-        ),
-        "Sonic Sleuth": (
-            "🎯",
-            "Lightweight",
-            "Modelo leve (~3M params). 98.27% accuracy. Ideal para edge.",
-        ),
-        "WavLM": (
-            "🤖",
-            "SSL Backbone",
-            "Self-supervised. Robusto a ruído e canal. Requer mais GPU.",
-        ),
-        "HuBERT": (
-            "🤖",
-            "SSL Backbone",
-            "Hidden-Unit BERT. Aprende fonemas auto-supervisionado.",
-        ),
-        "Conformer": (
-            "⚡",
-            "Transformer + Conv",
-            "Conv local + Self-Attention global. Estado-da-arte em speech.",
-        ),
-        "Hybrid CNN-Transformer": (
-            "⚡",
-            "Transformer + Conv",
-            "CCT. CNN tokenizer + Transformer. 91.47% accuracy.",
-        ),
-        "SpectrogramTransformer": (
-            "🔭",
-            "Vision Transformer",
-            "ViT adaptado para espectrogramas (AST).",
-        ),
-        "EfficientNet-LSTM": (
-            "📊",
-            "Transfer Learning",
-            "EfficientNet + Bi-LSTM. Bom baseline com transfer learning.",
-        ),
-        "MultiscaleCNN": (
-            "🔍",
-            "CNN multi-escala",
-            "Res2Net-50. Multi-scale hierárquico dentro do bloco residual.",
-        ),
-        "Ensemble": (
-            "🎼",
-            "Fusão multi-feature",
-            "4 branches (Mel+LFCC+CQT+MFCC) + fusão. EER 3%.",
-        ),
-    }
-
-    out = []
-    for arch in archs:
-        icon, category, desc = catalog.get(arch, ("🔧", "Outro", f"Arquitetura {arch}"))
-        out.append(
-            {
-                "name": arch,
-                "icon": icon,
-                "category": category,
-                "description": desc,
-            }
-        )
-
-    # ML clássico (sklearn)
-    out.append(
-        {
-            "name": "SVM",
-            "icon": "📐",
-            "category": "Classical ML",
-            "description": "Support Vector Machine. Baseline rápido com features tabulares.",
-        }
-    )
-    out.append(
-        {
-            "name": "Random Forest",
-            "icon": "🌳",
-            "category": "Classical ML",
-            "description": "Ensemble de árvores. Robusto, paraleliza em CPU multi-core.",
-        }
-    )
-    return out
-
-
-def _render_model_cards_html(selected: str = "") -> str:
-    """HTML grid de cards de modelos, com card selecionado destacado."""
-    cards = _get_model_catalog()
-    html = '<div class="model-grid">'
-    for m in cards:
-        is_sel = "model-card-selected" if m["name"] == selected else ""
-        html += f"""
-        <div class="model-card {is_sel}" data-arch="{m["name"]}">
-            <div class="model-icon">{m["icon"]}</div>
-            <div class="model-name">{m["name"]}</div>
-            <div class="model-category">{m["category"]}</div>
-            <div class="model-desc">{m["description"]}</div>
-        </div>
-        """
-    html += "</div>"
-    return html
-
-
-# =====================================================================
-# Step navigation
-# =====================================================================
-
-
-def _step_visibility(current: int):
-    """Retorna 4 visibilidades para os 4 gr.Groups dos steps."""
-    return [gr.update(visible=(i == current)) for i in range(1, 5)]
-
-
-def _stepper_html(current: int) -> str:
-    """Indicador visual de progresso (passos 1-4)."""
-    steps = [
-        ("1", "Dataset"),
-        ("2", "Modelo"),
-        ("3", "Hiperparâmetros"),
-        ("4", "Treinar"),
-    ]
-    html = '<div class="wizard-stepper">'
-    for i, (num, label) in enumerate(steps, start=1):
-        if i < current:
-            state = "done"
-            icon = "✓"
-        elif i == current:
-            state = "active"
-            icon = num
-        else:
-            state = "pending"
-            icon = num
-        html += f"""
-        <div class="step step-{state}">
-            <div class="step-circle">{icon}</div>
-            <div class="step-label">{label}</div>
-        </div>
-        """
-        if i < len(steps):
-            html += '<div class="step-connector"></div>'
-    html += "</div>"
-    return html
-
-
-# =====================================================================
 # Step 4: training execution
 # =====================================================================
 
@@ -1113,7 +937,7 @@ def _run_training(
             raise ValueError(f"Arquitetura '{arch}' não registrada no factory.")
         input_type = spec.input_requirements.get("input_type", "spectrogram")
 
-        # BUG FIX: o usuário costuma apontar para `app/datasets/`, que contém
+        # BUG FIX: o usuário costuma apontar para `data/datasets/`, que contém
         # subpastas que NÃO são classes: `raw/` (caches de download),
         # `splits/` (duplica real+fake já divididos), `features/`, etc.
         # audio_dataset_from_directory trata CADA subpasta como uma classe →
@@ -2155,7 +1979,7 @@ def _run_classical_training(arch: str, dataset_path: str, progress):
         from sklearn.model_selection import train_test_split
         from sklearn.preprocessing import StandardScaler
 
-        from app.core.interfaces.audio import AudioData, FeatureType
+        from app.core.contracts.audio import AudioData, FeatureType
         from app.domain.services.feature_extraction_service import (
             AudioFeatureExtractionService,
             ExtractionConfig,
@@ -2507,10 +2331,10 @@ def create_training_wizard_tab():
                 "Os demais (`spoof`, `fake`, etc.) são tratados como FAKE."
             )
 
-            with gr.Row():
+            with gr.Row(elem_classes="action-row"):
                 dataset_path_s1 = gr.Textbox(
                     label="Caminho do Dataset",
-                    value="app/datasets",
+                    value="data/datasets",
                     placeholder="ex: /data/asvspoof2019",
                     scale=4,
                 )
@@ -2518,7 +2342,7 @@ def create_training_wizard_tab():
 
             scan_output = gr.Markdown("*Aguardando validação...*")
 
-            with gr.Row():
+            with gr.Row(elem_classes="action-row"):
                 gr.Button("← Voltar", interactive=False, scale=1)  # placeholder
                 next_s1_btn = gr.Button(
                     "Próximo →",
@@ -2544,7 +2368,7 @@ def create_training_wizard_tab():
                 interactive=True,
             )
 
-            with gr.Row():
+            with gr.Row(elem_classes="action-row"):
                 back_s2_btn = gr.Button("← Voltar", scale=1)
                 next_s2_btn = gr.Button("Próximo →", variant="primary", scale=1)
 
@@ -2556,7 +2380,7 @@ def create_training_wizard_tab():
                 "Expanda **Opções Avançadas** para flags dos Sprints 1-5."
             )
 
-            with gr.Row():
+            with gr.Row(elem_classes="responsive-grid"):
                 epochs_s3 = gr.Slider(
                     1,
                     200,
@@ -2615,7 +2439,7 @@ def create_training_wizard_tab():
                     info="Calibra threshold de classificação no val set.",
                 )
 
-            with gr.Row():
+            with gr.Row(elem_classes="action-row"):
                 back_s3_btn = gr.Button("← Voltar", scale=1)
                 next_s3_btn = gr.Button(
                     "Iniciar Treinamento →",
@@ -2634,7 +2458,7 @@ def create_training_wizard_tab():
                 "Aguardando início do treinamento…</div></div>"
             )
 
-            with gr.Row():
+            with gr.Row(elem_classes="responsive-grid"):
                 with gr.Column(scale=1):
                     history_plot = gr.Plot(
                         label="Loss, Accuracy & Matriz de Confusão"
@@ -2648,11 +2472,11 @@ def create_training_wizard_tab():
                     )
 
             with gr.Accordion("Avaliação do Treinamento", open=True):
-                with gr.Row():
+                with gr.Row(elem_classes="responsive-grid responsive-grid-3 plot-grid"):
                     eval_roc_plot = gr.Plot(label="Curva ROC")
                     eval_cm_plot = gr.Plot(label="Matriz de Confusão")
                     eval_pr_plot = gr.Plot(label="Curva Precisão-Recall")
-                with gr.Row():
+                with gr.Row(elem_classes="responsive-grid responsive-grid-3 plot-grid"):
                     eval_det_plot = gr.Plot(label="Curva DET / EER")
                     eval_threshold_plot = gr.Plot(label="Otimização de Threshold")
                     eval_class_acc_plot = gr.Plot(label="Acurácia por Classe")
@@ -2666,7 +2490,7 @@ def create_training_wizard_tab():
                     "O pré-processamento do treino é gravado junto (garante que "
                     "a inferência use exatamente as mesmas features)."
                 )
-                with gr.Row():
+                with gr.Row(elem_classes="action-row"):
                     save_name = gr.Textbox(
                         label="Nome do modelo",
                         placeholder="ex: aasist_ptbr_v1",
@@ -2679,7 +2503,7 @@ def create_training_wizard_tab():
                     )
                 save_status = gr.Markdown("")
 
-            with gr.Row():
+            with gr.Row(elem_classes="action-row"):
                 back_s4_btn = gr.Button("← Novo Treino", scale=1)
                 gr.HTML('<div class="xf-spacer"></div>')
 
@@ -2777,8 +2601,8 @@ def create_training_wizard_tab():
             for update in _run_training(
                 arch=arch,
                 dataset_path=(scan_state or {}).get("class_names")
-                and (scan_state.get("path") or "app/datasets")
-                or "app/datasets",
+                and (scan_state.get("path") or "data/datasets")
+                or "data/datasets",
                 epochs=int(epochs),
                 batch_size=int(batch),
                 lr=float(lr),

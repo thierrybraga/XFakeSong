@@ -5,7 +5,7 @@ Este orquestrador chama `scripts/benchmark/run_benchmark.py --model <nome>` para
 arquitetura. Cada modelo recebe uma pasta própria, log próprio e status próprio.
 
 Exemplos:
-  python scripts/benchmark/run_models_sequential.py --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz
+  python scripts/benchmark/run_models_sequential.py --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz
   python scripts/benchmark/run_models_sequential.py --models SVM RandomForest --timeout-min 20
   python scripts/benchmark/run_models_sequential.py --neural-only --resume --device-profile gpu
   python scripts/benchmark/run_models_sequential.py --neural-only --plan-only
@@ -14,13 +14,17 @@ Exemplos:
 from __future__ import annotations
 
 import argparse
+import ast
+import hashlib
 import json
 import os
 import queue
+import struct
 import subprocess
 import sys
 import threading
 import time
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +39,6 @@ from benchmarks.config import (  # noqa: E402
     DOCKER_TRAINING_ARCHITECTURES,
     NEURAL_DOCKER_ARCHITECTURES,
 )
-
 
 SSL_ORIGINAL_MODELS = {
     "wavlm": {
@@ -60,6 +63,94 @@ SSL_ORIGINAL_MODELS = {
     },
 }
 
+
+def _npy_shape(member) -> tuple[int, ...]:
+    """Lê apenas o cabeçalho NPY dentro do NPZ, sem descompactar os tensores."""
+
+    if member.read(6) != b"\x93NUMPY":
+        raise ValueError("membro NPZ sem cabeçalho NPY válido")
+    major, _minor = member.read(2)
+    size_fmt = "<H" if major == 1 else "<I"
+    size = struct.calcsize(size_fmt)
+    header_len = struct.unpack(size_fmt, member.read(size))[0]
+    header = ast.literal_eval(member.read(header_len).decode("latin1").strip())
+    return tuple(int(v) for v in header["shape"])
+
+
+def _inspect_npz(path: Path) -> dict[str, Any]:
+    """Valida estrutura e cria identidade leve do teste congelado."""
+
+    with zipfile.ZipFile(path) as archive:
+        names = set(archive.namelist())
+        required = {
+            "X_train.npy", "y_train.npy", "X_val.npy",
+            "y_val.npy", "X_test.npy", "y_test.npy",
+        }
+        predefined = required.issubset(names)
+        y_members = (
+            ["y_train.npy", "y_val.npy", "y_test.npy"]
+            if predefined else ["y.npy"]
+        )
+        if not all(name in names for name in y_members):
+            raise ValueError("NPZ sem rótulos completos X/y ou train/val/test")
+        counts = {}
+        for name in y_members:
+            with archive.open(name) as member:
+                shape = _npy_shape(member)
+            counts[name.removesuffix(".npy")] = int(shape[0])
+        test_identity = None
+        if predefined:
+            parts = []
+            for name in ("X_test.npy", "y_test.npy"):
+                info = archive.getinfo(name)
+                parts.append(f"{name}:{info.CRC:08x}:{info.file_size}")
+            test_identity = hashlib.sha256("|".join(parts).encode("ascii")).hexdigest()
+    return {
+        "predefined_splits": predefined,
+        "split_counts": counts,
+        "sample_count": int(sum(counts.values())),
+        "test_archive_identity_sha256": test_identity,
+        "test_archive_identity_method": "sha256(zip_member_name_crc32_uncompressed_size)",
+    }
+
+def _sha256_file(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(chunk_size), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _validate_test_lock(
+    dataset_path: Path,
+    inspection: dict[str, Any],
+    lock_path: Path,
+) -> dict[str, Any]:
+    if not lock_path.exists():
+        raise ValueError(
+            f"selo do teste não encontrado: {lock_path}. Gere um novo teste intocado "
+            "e execute scripts/dataset/freeze_benchmark_test.py antes do treino."
+        )
+    payload = json.loads(lock_path.read_text(encoding="utf-8"))
+    required_true = (
+        payload.get("declared_untouched") is True
+        and payload.get("created_before_training") is True
+    )
+    if not required_true:
+        raise ValueError("selo não declara teste intocado e criado antes do treino")
+    if int(payload.get("dataset_size_bytes", -1)) != dataset_path.stat().st_size:
+        raise ValueError("dataset mudou de tamanho após o selo do teste")
+    expected_test = inspection.get("test_archive_identity_sha256")
+    if payload.get("test_archive_identity_sha256") != expected_test:
+        raise ValueError("partição de teste difere daquela registrada no selo")
+    actual_dataset_sha256 = _sha256_file(dataset_path)
+    if payload.get("dataset_sha256") != actual_dataset_sha256:
+        raise ValueError("SHA-256 do dataset difere daquele registrado no selo")
+    return {
+        **payload,
+        "lock_path": str(lock_path.resolve()),
+        "validated": True,
+    }
 
 def _slug(name: str) -> str:
     return "".join(ch if ch.isalnum() else "_" for ch in name.lower()).strip("_")
@@ -120,7 +211,7 @@ def _tail_text(path: Path, max_lines: int = 40) -> str:
 def _build_command(args: argparse.Namespace, model: str, model_dir: Path) -> list[str]:
     ssl_meta = _ssl_meta(model)
     if ssl_meta is not None:
-        return [
+        cmd = [
             sys.executable,
             str(ssl_meta["runner"]),
             "--architecture",
@@ -132,15 +223,29 @@ def _build_command(args: argparse.Namespace, model: str, model_dir: Path) -> lis
             "--epochs",
             str(args.epochs),
             "--train-batch-size",
-            str(args.batch_size),
+            str(args.ssl_train_batch_size),
             "--feature-batch-size",
             str(args.ssl_feature_batch_size),
             "--latency-runs",
             str(args.latency_runs),
+            "--seed",
+            str(args.seed),
             "--snr",
             *[str(v) for v in args.snr],
+            "--train-aug-snr",
+            *[str(v) for v in args.train_aug_snr],
+            "--waveform-noise-batch-size",
+            str(args.waveform_noise_batch_size),
             "--freeze-backbone",
+            "--no-calibrate-under-noise",
+            "--no-early-stopping",
         ]
+        cmd.append(
+            "--train-augmentation"
+            if args.waveform_train_augmentation
+            else "--no-train-augmentation"
+        )
+        return cmd
 
     cmd = [
         sys.executable,
@@ -159,9 +264,22 @@ def _build_command(args: argparse.Namespace, model: str, model_dir: Path) -> lis
         args.device_profile,
         "--latency-runs",
         str(args.latency_runs),
+        "--seed",
+        str(args.seed),
         "--snr",
         *[str(v) for v in args.snr],
+        "--train-aug-snr",
+        *[str(v) for v in args.train_aug_snr],
+        "--train-noise-copies",
+        str(args.train_noise_copies),
+        "--waveform-noise-batch-size",
+        str(args.waveform_noise_batch_size),
     ]
+    cmd.append(
+        "--waveform-train-augmentation"
+        if args.waveform_train_augmentation
+        else "--no-waveform-train-augmentation"
+    )
     if args.api:
         cmd.append("--api")
     else:
@@ -176,6 +294,10 @@ def _build_command(args: argparse.Namespace, model: str, model_dir: Path) -> lis
         cmd.append("--speaker-split")
     if getattr(args, "group_split", False):
         cmd.append("--group-split")
+    if getattr(args, "cross_generator", None):
+        cmd.extend(["--cross-generator", str(args.cross_generator)])
+    if getattr(args, "codec_eval", None):
+        cmd.extend(["--codec-eval", *[str(c) for c in args.codec_eval]])
     return cmd
 
 
@@ -206,7 +328,8 @@ def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, 
             "train_batch_size": args.batch_size,
             "feature_batch_size": args.ssl_feature_batch_size,
             "latency_runs": args.latency_runs,
-            "snr": args.snr,
+            "seed": args.seed,
+        "snr": args.snr,
             "freeze_backbone": True,
             "fit_strategy": "frozen_backbone_embedding_then_classifier_fit",
             "command": cmd,
@@ -253,7 +376,9 @@ def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, 
             "log_tail": "",
         }
 
-    with log_path.open("w", encoding="utf-8", errors="replace") as log:
+    # Append preserva o histórico quando o contêiner reinicia e o
+    # BackupAndRestore retoma uma execução incompleta.
+    with log_path.open("a", encoding="utf-8", errors="replace") as log:
         log.write("COMMAND:\n")
         log.write(" ".join(cmd) + "\n\n")
         log.flush()
@@ -265,7 +390,16 @@ def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, 
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
-                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                # TF_USE_LEGACY_KERAS=0: transformers.modeling_tf_utils seta
+                # =1 no processo que o importa; se o pai estiver poluído, o
+                # filho carregaria tensorflow.keras como Keras 2 (tf_keras) e
+                # o código Keras 3 do projeto quebraria. O runner SSL
+                # (PyTorch) não usa tf.keras — pinar 0 é seguro p/ ambos.
+                env={
+                    **os.environ,
+                    "PYTHONIOENCODING": "utf-8",
+                    "TF_USE_LEGACY_KERAS": "0",
+                },
             )
             output_queue: queue.Queue[str | None] = queue.Queue()
 
@@ -315,6 +449,15 @@ def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, 
     results_path = model_dir / "results.json"
     if results_path.exists():
         data = _load_json(results_path, {})
+        if args.academic_protocol and getattr(args, "validated_test_lock", None):
+            data["academic_protocol_guard"] = {
+                "test_lock": args.validated_test_lock,
+                "test_split_sha256": (data.get("dataset") or {}).get(
+                    "test_split_sha256"
+                ),
+                "validated_before_training": True,
+            }
+            _write_json(results_path, data)
         metrics = (data.get("architectures") or {}).get(model, {})
         if not metrics:
             metrics = next(iter((data.get("architectures") or {}).values()), {})
@@ -364,7 +507,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--dataset",
-        default="app/datasets/benchmark_audio_raw_balanced_15k.npz",
+        default="data/datasets/benchmark_audio_raw_balanced_15k.npz",
         help="Dataset .npz usado por todos os modelos.",
     )
     parser.add_argument(
@@ -381,10 +524,62 @@ def main() -> int:
     parser.add_argument("--classical-only", action="store_true",
                         help="roda somente SVM e RandomForest")
     parser.add_argument("--out", default="results/sequential_benchmark")
-    parser.add_argument("--epochs", type=int, default=20)
+    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument(
+        "--test-lock",
+        default=None,
+        help="manifesto que sela o novo teste antes do treino (default: <dataset>.test-lock.json)",
+    )
+    parser.add_argument(
+        "--academic-protocol",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="exige teste predefinido/congelado e controles acadêmicos padronizados",
+    )
+    parser.add_argument("--min-samples", type=int, default=15000,
+                        help="cardinalidade mínima do benchmark acadêmico")
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--device-profile", choices=["auto", "cpu", "gpu"], default="auto")
     parser.add_argument("--latency-runs", type=int, default=30)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--seeds",
+        nargs="+",
+        type=int,
+        default=None,
+        help=(
+            "Rigor acadêmico: roda a suíte COMPLETA uma vez por semente "
+            "(ex.: --seeds 42 43 44), em subdiretórios seed_<n>/ — permite "
+            "reportar média±desvio e testes pareados. Com splits predefinidos "
+            "congelados, a semente só muda RNG de treino/ruído (teste fixo). "
+            "Sobrepõe --seed."
+        ),
+    )
+    parser.add_argument(
+        "--cross-generator",
+        metavar="GERADOR",
+        default=None,
+        help=(
+            "Reteste cross-generator (ex.: fkvoice): segura o gerador fora do "
+            "treino (repassado ao run_benchmark). Experimento separado do "
+            "benchmark principal — não combine com --academic-protocol."
+        ),
+    )
+    parser.add_argument(
+        "--codec-eval",
+        nargs="+",
+        default=None,
+        choices=["mp3", "opus"],
+        metavar="CODEC",
+        help=(
+            "Robustez a codec com perdas (round-trip ffmpeg na forma de onda; "
+            "repassado ao run_benchmark). Ex.: --codec-eval mp3 opus"
+        ),
+    )
+    parser.add_argument(
+        "--ssl-train-batch-size", type=int, default=128,
+        help="batch customizado das cabeças SSL",
+    )
     parser.add_argument(
         "--ssl-feature-batch-size",
         type=int,
@@ -392,6 +587,17 @@ def main() -> int:
         help="batch para extracao de embeddings HuBERT/WavLM no runner SSL",
     )
     parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10])
+    parser.add_argument(
+        "--train-aug-snr", nargs="+", type=int, default=[30, 20, 10],
+        help="SNRs balanceados na cópia ruidosa de treino",
+    )
+    parser.add_argument("--train-noise-copies", type=int, default=1)
+    parser.add_argument("--waveform-noise-batch-size", type=int, default=64)
+    parser.add_argument(
+        "--waveform-train-augmentation",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
     parser.add_argument("--timeout-min", type=float, default=60.0)
     parser.add_argument("--resume", action="store_true", help="pula modelos já concluídos")
     parser.add_argument("--plan-only", action="store_true",
@@ -421,12 +627,142 @@ def main() -> int:
     if not dataset_path.exists():
         parser.error(f"Dataset não encontrado: {dataset_path}")
     args.dataset = str(dataset_path)
+    try:
+        npz_inspection = _inspect_npz(dataset_path)
+    except (OSError, ValueError, zipfile.BadZipFile) as exc:
+        parser.error(f"NPZ inválido: {exc}")
+    sample_count = int(npz_inspection["sample_count"])
+    test_lock = None
+    lock_path = (
+        Path(args.test_lock).resolve()
+        if args.test_lock
+        else dataset_path.with_suffix(dataset_path.suffix + ".test-lock.json")
+    )
+    if args.academic_protocol:
+        try:
+            test_lock = _validate_test_lock(dataset_path, npz_inspection, lock_path)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            parser.error(f"teste acadêmico não selado: {exc}")
+    args.validated_test_lock = test_lock
+    if args.min_samples > 0 and sample_count < args.min_samples:
+        parser.error(
+            f"Dataset insuficiente: {sample_count} amostras; "
+            f"mínimo acadêmico={args.min_samples}. Use o NPZ em data/datasets."
+        )
 
     root_out = Path(args.out)
     if not root_out.is_absolute():
         root_out = ROOT / root_out
     root_out.mkdir(parents=True, exist_ok=True)
 
+    if args.epochs <= 0:
+        parser.error("--epochs deve ser positivo")
+    if args.train_noise_copies < 0:
+        parser.error("--train-noise-copies deve ser >= 0")
+    if args.academic_protocol:
+        if args.epochs != 100:
+            parser.error("protocolo acadêmico exige exatamente 100 épocas")
+        if not npz_inspection["predefined_splits"]:
+            parser.error(
+                "protocolo acadêmico exige X_train/y_train/X_val/y_val/X_test/y_test "
+                "predefinidos; um split gerado por semente alteraria o teste"
+            )
+        if args.snr != [30, 20, 10] or args.train_aug_snr != [30, 20, 10]:
+            parser.error("protocolo acadêmico exige SNRs 30, 20 e 10 dB nessa ordem")
+        if not args.waveform_train_augmentation or args.train_noise_copies != 1:
+            parser.error("protocolo acadêmico exige uma cópia AWGN de treino por amostra")
+        if args.group_split or args.speaker_split:
+            parser.error(
+                "split por grupo/falante deve ser executado como experimento separado; "
+                "não pode substituir o teste congelado do benchmark principal"
+            )
+        if getattr(args, "cross_generator", None):
+            parser.error(
+                "cross-generator altera o teste; execute como experimento "
+                "separado, sem --academic-protocol"
+            )
+
+    seeds = list(args.seeds) if args.seeds else [int(args.seed)]
+    if len(seeds) != len(set(seeds)):
+        parser.error("--seeds contém sementes repetidas")
+    base_out = root_out
+    exit_codes: list[int] = []
+    for sd in seeds:
+        args.seed = int(sd)
+        suite_out = base_out if len(seeds) == 1 else base_out / f"seed_{sd}"
+        suite_out.mkdir(parents=True, exist_ok=True)
+        if len(seeds) > 1:
+            _emit(f"===== SEMENTE {sd} -> {suite_out} =====")
+        exit_codes.append(
+            _run_suite(
+                args,
+                selected_models,
+                suite_out,
+                npz_inspection,
+                sample_count,
+                dataset_path,
+                test_lock,
+            )
+        )
+    if len(seeds) > 1:
+        _write_json(
+            base_out / "seeds_manifest.json",
+            {
+                "seeds": seeds,
+                "suite_dirs": [f"seed_{sd}" for sd in seeds],
+                "note": (
+                    "Teste idêntico entre sementes quando o NPZ traz splits "
+                    "predefinidos; a semente varia inicialização/ordem/ruído "
+                    "de treino. Reporte média±desvio e testes pareados."
+                ),
+            },
+        )
+    return max(exit_codes) if exit_codes else 2
+
+
+def _run_suite(
+    args: argparse.Namespace,
+    selected_models: list[str],
+    root_out: Path,
+    npz_inspection: dict[str, Any],
+    sample_count: int,
+    dataset_path: Path,
+    test_lock: dict[str, Any] | None,
+) -> int:
+    protocol_manifest = {
+        "protocol_version": "waveform-awgn-v2",
+        "standardized_controls": {
+            "epochs": int(args.epochs),
+            "minimum_dataset_samples": int(args.min_samples),
+            "fixed_epoch_budget": True,
+            "early_stopping": False,
+            "checkpoint_selection": "minimum_clean_validation_loss",
+            "decision_threshold": 0.5,
+            "seed": int(args.seed),
+            "split_policy": (
+                "predefined_frozen_npz" if args.academic_protocol
+                else "preserve_predefined_else_stratified_70_15_15"
+            ),
+            "fail_on_exact_split_overlap": True,
+            "waveform_awgn_before_frontend": True,
+            "test_snr_db": [int(v) for v in args.snr],
+            "train_aug_snr_db": [int(v) for v in args.train_aug_snr],
+            "train_noise_copies": int(args.train_noise_copies),
+            "waveform_noise_batch_size": int(args.waveform_noise_batch_size),
+            "latency_runs": int(args.latency_runs),
+        },
+        "dataset_preflight": npz_inspection,
+        "test_lock": test_lock,
+        "academic_protocol": bool(args.academic_protocol),
+        "model_specific_hyperparameters_preserved": [
+            "learning_rate", "batch_size", "optimizer", "scheduler", "dropout",
+            "weight_decay", "l2", "architecture_parameters",
+        ],
+    }
+    root_out.joinpath("benchmark_protocol.json").write_text(
+        json.dumps(protocol_manifest, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
     summary_path = root_out / "run_summary.json"
     summary = _load_json(summary_path, {})
     completed = {
@@ -438,12 +774,22 @@ def main() -> int:
     summary = {
         "status": "running",
         "dataset": str(dataset_path),
+        "dataset_samples": sample_count,
+        "dataset_preflight": npz_inspection,
+        "test_lock": test_lock,
+        "academic_protocol": bool(args.academic_protocol),
         "device_profile": args.device_profile,
         "timeout_min": args.timeout_min,
         "epochs": args.epochs,
         "batch_size": args.batch_size,
+        "ssl_train_batch_size": args.ssl_train_batch_size,
         "ssl_feature_batch_size": args.ssl_feature_batch_size,
+        "seed": args.seed,
         "snr": args.snr,
+        "train_aug_snr": args.train_aug_snr,
+        "train_noise_copies": args.train_noise_copies,
+        "waveform_train_augmentation": args.waveform_train_augmentation,
+        "standardized_controls": protocol_manifest["standardized_controls"],
         "models": summary.get("models", []),
     }
 

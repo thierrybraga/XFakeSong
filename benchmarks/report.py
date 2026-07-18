@@ -140,7 +140,7 @@ def _table_robustez(results) -> str:
     return (
         "\\begin{table}[H]\n\\centering\n"
         "\\caption{Robustez sob ruído AWGN (acurácia e EER por SNR). "
-        "Ruído aplicado no espaço de entrada do modelo.}\n"
+        "AWGN aplicado à forma de onda antes do frontend de cada modelo.}\n"
         "\\label{tab:bench_robustez}\n\\small\\singlespacing\n"
         f"\\begin{{tabular}}{{{cols}}}\n\\toprule\n"
         f"\\multirow{{2}}{{*}}{{\\textbf{{Arquitetura}}}} & "
@@ -293,6 +293,77 @@ def _fig_roc(results, out: Path) -> None:
     _legend_outside(ax)
     ax.grid(alpha=0.3)
     _save_fig(fig, out / "roc.png")
+    plt.close(fig)
+
+
+def _fig_det(results, out: Path) -> None:
+    """Curva DET (Martin et al., 1997) — padrão da área de anti-spoofing.
+
+    Eixos FPR×FNR em escala de desvio-normal (probit); a curva de um sistema
+    com scores gaussianos vira reta, e a região de interesse (erros baixos)
+    ganha resolução — complementa a ROC (rigor acadêmico, 2026-07-14).
+    """
+    import matplotlib.pyplot as plt
+    from scipy.stats import norm
+    from sklearn.metrics import roc_curve
+
+    y = np.asarray(results["dataset"].get("y_test", []))
+    items = [(n, r) for n, r in _ok_items(results) if r.get("scores_clean")]
+    if y.size == 0 or not items or len(np.unique(y)) < 2:
+        _write_placeholder_figure(
+            out / "det.png",
+            "Curvas DET",
+            "Dados insuficientes para plotar DET (y_test/scores limpos).",
+        )
+        return
+
+    def _eer_key(item):
+        e = item[1]["clean"].get("eer")
+        return e if isinstance(e, (int, float)) and np.isfinite(e) else 1.0
+
+    items.sort(key=_eer_key)
+    styles = _series_styles(len(items))
+    fig, ax = plt.subplots(figsize=(6.4, 5))
+    ticks = np.array([0.001, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.4])
+    lo, hi = norm.ppf(ticks[0]), norm.ppf(ticks[-1])
+    plotted = 0
+    for (name, r), st in zip(items, styles):
+        s = np.asarray(r["scores_clean"], dtype=float)
+        if len(s) != len(y) or not np.isfinite(s).all():
+            continue
+        fpr, tpr, _ = roc_curve(y, s)
+        fnr = 1.0 - tpr
+        # Clip p/ evitar ppf(0)/ppf(1) = ±inf nas extremidades da curva.
+        x = norm.ppf(np.clip(fpr, ticks[0], ticks[-1]))
+        yv = norm.ppf(np.clip(fnr, ticks[0], ticks[-1]))
+        eer = r["clean"].get("eer")
+        ax.plot(x, yv, lw=1.6, color=st["color"], linestyle=st["linestyle"],
+                label=f"{name} (EER={_pct(eer).replace(chr(92), '')})")
+        plotted += 1
+    if plotted == 0:
+        plt.close(fig)
+        _write_placeholder_figure(
+            out / "det.png", "Curvas DET",
+            "Nenhum vetor de scores compatível com y_test.",
+        )
+        return
+    diag = norm.ppf(ticks)
+    ax.plot(diag, diag, "--", color="#94a3b8", lw=1)  # linha de EER
+    tickpos = norm.ppf(ticks)
+    ticklabels = [f"{t * 100:g}" for t in ticks]
+    ax.set_xticks(tickpos)
+    ax.set_xticklabels(ticklabels)
+    ax.set_yticks(tickpos)
+    ax.set_yticklabels(ticklabels)
+    ax.set_xlim(lo, hi)
+    ax.set_ylim(lo, hi)
+    ax.set_aspect("equal")
+    ax.set_xlabel("Taxa de falsos positivos (%)")
+    ax.set_ylabel("Taxa de falsos negativos (%)")
+    ax.set_title("Curvas DET (conjunto de teste limpo, escala probit)")
+    _legend_outside(ax)
+    ax.grid(alpha=0.3)
+    _save_fig(fig, out / "det.png")
     plt.close(fig)
 
 
@@ -490,6 +561,7 @@ def _fig_convergencia(results, out: Path) -> None:
 
 def _fig_confusion_matrices(results, out: Path) -> None:
     import math
+
     import matplotlib.pyplot as plt
     from sklearn.metrics import confusion_matrix
 
@@ -1133,6 +1205,7 @@ def write_all(results: Dict[str, Any], output_dir: str) -> None:
 
     for fig_fn in (
         _fig_roc,
+        _fig_det,
         _fig_robustez,
         _fig_eficiencia,
         _fig_convergencia,

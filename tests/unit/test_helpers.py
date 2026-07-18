@@ -1,4 +1,4 @@
-"""Cobertura das funções utilitárias de `app/core/utils/helpers.py`.
+"""Cobertura das funções utilitárias de `app/utils/helpers.py`.
 
 Complementa `test_core_utils.py` (que cobre safe_filename, get_file_hash,
 format_file_size e format_duration) exercitando o restante: I/O JSON,
@@ -11,8 +11,8 @@ import logging
 import numpy as np
 import pytest
 
-import app.core.utils.helpers as helpers
-from app.core.utils.helpers import (
+import app.utils.helpers as helpers
+from app.utils.helpers import (
     ProgressTracker,
     chunk_list,
     create_unique_id,

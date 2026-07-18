@@ -44,7 +44,9 @@ logger = logging.getLogger("DatasetPreprocessor")
 BASE_DIR = Path(__file__).resolve().parents[2]
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
-DATASETS_DIR = BASE_DIR / "app" / "datasets"
+# Consolidado 2026-07-14: raiz canônica é data/datasets (settings.paths.datasets_dir);
+# o antigo app/datasets causou fragmentação (stub de 64 amostras homônimo do dataset real).
+DATASETS_DIR = BASE_DIR / "data" / "datasets"
 REAL_DIR = DATASETS_DIR / "real"
 FAKE_DIR = DATASETS_DIR / "fake"
 SPLITS_DIR = DATASETS_DIR / "splits"
@@ -391,7 +393,7 @@ def create_splits(train_ratio=0.70, val_ratio=0.15, test_ratio=0.15,
     # Grupos de falante (para split disjunto e/ou estatistica de usuarios nao vistos)
     groups = None
     try:
-        from app.core.speaker_manifest import speaker_for_path
+        from app.domain.dataset_metadata.speaker_manifest import speaker_for_path
 
         groups = np.array([speaker_for_path(f) for f in files], dtype=object)
     except Exception as exc:

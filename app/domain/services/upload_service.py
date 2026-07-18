@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from ...core.interfaces.audio import AudioFormat
-from ...core.interfaces.base import ProcessingResult, ProcessingStatus
-from ...core.interfaces.services import DatasetMetadata, DatasetType, IUploadService
-from ...core.utils.helpers import ensure_directory, get_file_hash, safe_filename
+from ...core.contracts.audio import AudioFormat
+from ...core.contracts.base import ProcessingResult, ProcessingStatus
+from ...core.contracts.services import DatasetMetadata, DatasetType, IUploadService
+from ...utils.helpers import ensure_directory, get_file_hash, safe_filename
 
 
 def ensure_directory_exists(path: str) -> None:

@@ -146,10 +146,16 @@ def optimize_svm_hyperparameters(
     Otimiza hiperparâmetros do SVM usando Grid Search.
     """
     if param_grid is None:
+        # AJUSTE (retune): grid anterior permitia C=100/gamma=1 com kernel
+        # 'poly' -> fronteira de baixo viés/alta variancia, mesmo padrao de
+        # overfitting diagnosticado no Random Forest (robustez 0.96->0.664
+        # sob ruido @10dB). Remove 'poly' (grau/coef0 nao explorados, mais
+        # instavel) e limita C/gamma a faixas que regularizam mais, buscando
+        # generalizar melhor sob ruido.
         param_grid = {
-            'svm__kernel': ['linear', 'rbf', 'poly'],
-            'svm__C': [0.1, 1, 10, 100],
-            'svm__gamma': ['scale', 'auto', 0.001, 0.01, 0.1, 1]
+            'svm__kernel': ['linear', 'rbf'],
+            'svm__C': [0.1, 1, 10],
+            'svm__gamma': ['scale', 'auto', 0.001, 0.01, 0.1]
         }
 
     return optimize_hyperparameters(

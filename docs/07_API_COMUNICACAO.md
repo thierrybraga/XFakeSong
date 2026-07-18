@@ -21,9 +21,10 @@ python main.py --gradio
 | ReDoc | `http://localhost:7860/api/redoc` |
 | OpenAPI Schema | `http://localhost:7860/api/openapi.json` |
 
-`gradio_app.py` é o entry point unificado usado por `python main.py --gradio`.
-`app/main_fastapi.py` também monta FastAPI, `StaticFiles`, templates Jinja2 e,
-fora de pytest/modo API-only, a UI Gradio em `/gradio`.
+`app/interfaces/gradio/app.py` é o entry point unificado usado por
+`python main.py --gradio`. `app/interfaces/web/main_fastapi.py` também monta
+FastAPI, `StaticFiles`, templates Jinja2 e, fora de pytest/modo API-only, a UI
+Gradio em `/gradio`.
 
 Para subir só a API sem montar Gradio, use `XFAKE_API_ONLY=true` ou
 `XFAKE_SKIP_GRADIO=true`.
@@ -34,7 +35,7 @@ Para subir só a API sem montar Gradio, use `XFAKE_API_ONLY=true` ou
 sequenceDiagram
     participant Browser as Browser/Cliente
     participant Gradio as app/interfaces/gradio
-    participant API as app/routers
+    participant API as app/interfaces/web/routers
     participant Services as app/domain/services
     participant Models as app/domain/models
 
@@ -54,7 +55,7 @@ Regras de acoplamento:
 - `app/domain/` não importa FastAPI, Gradio nem routers.
 - Gradio chama serviços de domínio diretamente quando a ação é local/interativa.
 - A API expõe os mesmos serviços via `TestClient`/HTTP, com schemas em
-  `app/schemas/api_models.py`.
+  `app/interfaces/web/schemas/api_models.py`.
 - Dependências compartilhadas saem de `app/dependencies.py`, que usa singletons
   cacheados.
 

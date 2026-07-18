@@ -5,14 +5,14 @@ benchmark (``benchmarks/data.py``) para treinar os modelos promovidos em
 ``app/models/benchmark_final``:
 
 - **raw**: janela center-crop (ou repetição p/ clipes curtos) + z-score por
-  amostra + canal — consumida por AASIST/RawGAT-ST/RawNet2 (alvo 16000 ≙ 1 s);
+  amostra + canal — AASIST/RawGAT-ST usam 64.600 amostras e multicrop;
 - **log-mel**: librosa ``melspectrogram`` (n_fft=512, hop dinâmico p/ fixar
   ``time_steps`` quadros), ``power_to_db(ref=max)`` POR AMOSTRA e z-score por
   amostra — mapa ``(time_steps, feature_dim)`` = (100, 80) — consumida por
   Conformer/Res2Net/AST/CCT;
 - **tabular-63**: 11 estatísticas temporais + 26 MFCC + 26 RASTA-PLP —
   consumida por SVM/Random Forest (nomes canônicos em
-  ``app/core/xai/tabular.py``).
+  ``app/domain/xai/tabular.py``).
 
 Por que aqui: a inferência do app usava um front-end próprio
 (``audio_preprocessing.py``: log-magnitude-mel, hop 128, sem z-score) que NÃO
@@ -43,12 +43,18 @@ DEFAULT_SOURCE_SAMPLES = 80000
 DEFAULT_SAMPLE_RATE = 16000
 DEFAULT_FEATURE_DIM = 80
 DEFAULT_TIME_STEPS = 100
-DEFAULT_RAW_TARGET = 16000  # recorte central de 1 s (AASIST/RawGAT/RawNet2)
+DEFAULT_RAW_TARGET = 64600  # protocolo AASIST/RawGAT-ST: ~4.04 s @ 16 kHz
 
 N_TABULAR_FEATURES = 63
 
 
-def fit_length_tile(flat: np.ndarray, target_len: int) -> np.ndarray:
+def fit_length_tile(
+    flat: np.ndarray,
+    target_len: int,
+    *,
+    crop_strategy: str = "center",
+    seed: Optional[int] = None,
+) -> np.ndarray:
     """Ajusta ``(N, T)`` para ``target_len``: center-crop ou repetição (tile).
 
     Semântica idêntica a ``benchmarks/data.py::_fit_length`` — clipes curtos
@@ -60,8 +66,18 @@ def fit_length_tile(flat: np.ndarray, target_len: int) -> np.ndarray:
     if flat.shape[1] == target_len:
         return flat
     if flat.shape[1] > target_len:
-        start = max(0, (flat.shape[1] - target_len) // 2)
-        return flat[:, start : start + target_len]
+        available = flat.shape[1] - target_len
+        strategy = str(crop_strategy).lower()
+        if strategy == "center":
+            start = max(0, available // 2)
+            return flat[:, start : start + target_len]
+        if strategy == "random":
+            rng = np.random.default_rng(seed)
+            starts = rng.integers(0, available + 1, size=len(flat))
+            return np.stack(
+                [row[start : start + target_len] for row, start in zip(flat, starts)]
+            )
+        raise ValueError("crop_strategy deve ser 'center' ou 'random'")
     repeats = int(np.ceil(target_len / max(1, flat.shape[1])))
     return np.tile(flat, (1, repeats))[:, :target_len]
 
@@ -87,10 +103,21 @@ def _resize_time_axis(X: np.ndarray, target: int) -> np.ndarray:
     return np.pad(X, pad_width, mode="edge")
 
 
-def raw_audio_batch(X: np.ndarray, target_len: int = DEFAULT_RAW_TARGET) -> np.ndarray:
+def raw_audio_batch(
+    X: np.ndarray,
+    target_len: int = DEFAULT_RAW_TARGET,
+    *,
+    crop_strategy: str = "center",
+    seed: Optional[int] = None,
+) -> np.ndarray:
     """Janela raw do benchmark: ``(N, ·)`` → ``(N, target_len, 1)`` z-scored."""
     flat = np.asarray(X, dtype="float32").reshape(len(X), -1)
-    raw = fit_length_tile(flat, max(1, int(target_len)))
+    raw = fit_length_tile(
+        flat,
+        max(1, int(target_len)),
+        crop_strategy=crop_strategy,
+        seed=seed,
+    )
     raw = normalize_per_sample(raw)
     return raw[..., np.newaxis]
 
@@ -98,6 +125,47 @@ def raw_audio_batch(X: np.ndarray, target_len: int = DEFAULT_RAW_TARGET) -> np.n
 def raw_audio_single(y: np.ndarray, target_len: int = DEFAULT_RAW_TARGET) -> np.ndarray:
     """Versão single-sample de :func:`raw_audio_batch` → ``(target_len, 1)``."""
     return raw_audio_batch(np.asarray(y, dtype="float32")[np.newaxis, :], target_len)[0]
+
+
+def raw_audio_multicrop_batch(
+    X: np.ndarray,
+    target_len: int = DEFAULT_RAW_TARGET,
+    *,
+    num_crops: int = 3,
+) -> np.ndarray:
+    """Retorna (N, C, target_len, 1) com crops início/centro/fim."""
+    flat = np.asarray(X, dtype="float32").reshape(len(X), -1)
+    target_len = max(1, int(target_len))
+    num_crops = max(1, int(num_crops))
+    batches = []
+    for row in flat:
+        if len(row) <= target_len:
+            crop = fit_length_tile(row[np.newaxis, :], target_len)[0]
+            crops = np.repeat(crop[np.newaxis, :], num_crops, axis=0)
+        else:
+            maximum = len(row) - target_len
+            starts = np.rint(
+                np.linspace(0, maximum, num=num_crops)
+            ).astype(int)
+            crops = np.stack(
+                [row[start : start + target_len] for start in starts]
+            )
+        batches.append(normalize_per_sample(crops))
+    return np.asarray(batches, dtype="float32")[..., np.newaxis]
+
+
+def raw_audio_single_multicrop(
+    y: np.ndarray,
+    target_len: int = DEFAULT_RAW_TARGET,
+    *,
+    num_crops: int = 3,
+) -> np.ndarray:
+    """Versão single-sample multicrop: (C, target_len, 1)."""
+    return raw_audio_multicrop_batch(
+        np.asarray(y, dtype="float32")[np.newaxis, :],
+        target_len,
+        num_crops=num_crops,
+    )[0]
 
 
 def log_mel_batch(
@@ -187,7 +255,7 @@ def _rasta_plp_stats(flat: np.ndarray, n_plp: int = 13) -> np.ndarray:
 def tabular_features_batch(X: np.ndarray) -> np.ndarray:
     """Vetor tabular de 63 descritores do benchmark: ``(N, ·)`` → ``(N, 63)``.
 
-    Ordem canônica (nomes em ``app/core/xai/tabular.py``): 11 estatísticas
+    Ordem canônica (nomes em ``app/domain/xai/tabular.py``): 11 estatísticas
     temporais, 26 MFCC (média+desvio de 13), 26 RASTA-PLP (média+desvio de 13).
     """
     flat = np.asarray(X, dtype="float32").reshape(len(X), -1)
@@ -245,6 +313,7 @@ def prepare_single(
     target_sequence_length: int = DEFAULT_RAW_TARGET,
     source_samples: int = DEFAULT_SOURCE_SAMPLES,
     add_channel_dim: Optional[bool] = None,
+    raw_num_crops: int = 1,
 ) -> np.ndarray:
     """Roteia uma amostra pelo front-end do benchmark declarado no contrato.
 
@@ -255,6 +324,12 @@ def prepare_single(
             modelo espera ``(T, F, 1)``; ``None`` mantém ``(T, F)``.
     """
     if feature_frontend == FRONTEND_RAW:
+        if int(raw_num_crops) > 1:
+            return raw_audio_single_multicrop(
+                y,
+                target_len=target_sequence_length,
+                num_crops=raw_num_crops,
+            )
         return raw_audio_single(y, target_len=target_sequence_length)
     if feature_frontend == FRONTEND_LOGMEL:
         spec = log_mel_single(

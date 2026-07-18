@@ -1,3 +1,5 @@
+name: xfakesong-benchmark-nvidia
+
 services:
   benchmark:
     build:
@@ -44,11 +46,17 @@ services:
               capabilities: [gpu, compute, utility]
     healthcheck:
       disable: true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     command:
       - python
       - scripts/benchmark/run_models_sequential.py
+      # Dataset canônico: data/datasets/ (raiz consolidada em 2026-07-14).
       - --dataset
-      - app/datasets/benchmark_audio_raw_balanced_15k.npz
+      - data/datasets/benchmark_audio_raw_balanced_15k.npz
       - --out
       - results/clean_benchmark_latest
       - --epochs

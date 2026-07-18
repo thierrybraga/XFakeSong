@@ -10,9 +10,9 @@ from typing import Dict, List, Optional, Union
 
 import numpy as np
 
-from ...core.interfaces.audio import AudioData, DeepfakeDetectionResult, FeatureType
-from ...core.interfaces.base import ProcessingResult, ProcessingStatus
-from ...core.interfaces.services import IDetectionService
+from ...core.contracts.audio import AudioData, DeepfakeDetectionResult, FeatureType
+from ...core.contracts.base import ProcessingResult, ProcessingStatus
+from ...core.contracts.services import IDetectionService
 from ..models.architectures.registry import get_architecture_info
 from .detection.feature_preparer import FeaturePreparer
 from .detection.model_loader import ModelInfo, ModelLoader
@@ -27,22 +27,31 @@ logger = logging.getLogger(__name__)
 # robustez AWGN: acurácia ~10 dB). Usados para reponderar a fusão multi-modelo
 # favorecendo os modelos prontos para campo. Chave = substring normalizada do
 # nome do modelo; valor = peso relativo (não precisa somar 1, é normalizado).
+# BUG FIX: valores desatualizados de antes do retreino de 2026-07 — em
+# particular "multiscale" (Res2Net) e "spectrogram" (AST) estavam sub-
+# ponderados (0.82/0.50) apesar de serem o 3º e o 2º modelos mais robustos
+# do conjunto. Atualizados = acurácia @10dB / 100 da tabela "Robustez a
+# ruído AWGN" em tcc_overleaf/tabelas_benchmark.tex (fonte:
+# scripts/reporting/consolidate_results.py); regenerar junto do TCC a cada
+# retreino. Sonic Sleuth/EfficientNet-LSTM/Ensemble ficam fora da tabela
+# oficial de 11 modelos (retreino pendente / suspeita de vazamento não
+# auditada) — mantidos com a estimativa anterior, não medida nesta rodada.
 ROBUSTNESS_PRIORS: Dict[str, float] = {
-    "conformer": 0.94,
-    "rawgat": 0.88,
-    "hybrid": 0.88,
-    "aasist": 0.84,
+    "conformer": 0.98,
+    "rawgat": 0.84,
+    "hybrid": 0.89,
+    "aasist": 0.89,
     "sonic": 0.83,
-    "multiscale": 0.82,
+    "multiscale": 0.96,
     "efficientnet": 0.82,
-    "hubert": 0.55,
-    "randomforest": 0.55,
-    "random_forest": 0.55,
+    "hubert": 0.81,
+    "randomforest": 0.68,
+    "random_forest": 0.68,
     "ensemble": 0.52,
-    "wavlm": 0.51,
-    "rawnet": 0.50,
-    "svm": 0.50,
-    "spectrogram": 0.50,
+    "wavlm": 0.76,
+    "rawnet": 0.91,
+    "svm": 0.66,
+    "spectrogram": 0.97,
 }
 _ROBUSTNESS_DEFAULT = 0.6
 
@@ -343,7 +352,7 @@ class DetectionService(IDetectionService):
                          segmented: bool = False) -> ProcessingResult[DeepfakeDetectionResult]:
         """Detecta deepfake de arquivo."""
         try:
-            from ...core.utils.helpers import validate_audio_file
+            from ...utils.helpers import validate_audio_file
             fp = Path(file_path)
             if not validate_audio_file(fp):
                 return ProcessingResult(
@@ -411,7 +420,7 @@ class DetectionService(IDetectionService):
 
             # Usar predict single para compatibilidade simples aqui
             prediction_result = self.predictor.predict(
-                model_info, features)
+                model_info, features, device=self.device)
 
             if prediction_result.status != ProcessingStatus.SUCCESS:
                 return prediction_result
@@ -436,87 +445,138 @@ class DetectionService(IDetectionService):
 
     def _predict_segmented(self, audio_data: AudioData, model_info: ModelInfo,
                            model_name: str, feature_types: List, normalize: bool) -> ProcessingResult[DeepfakeDetectionResult]:
-        """Realiza predição segmentada (janelamento)."""
+        """Realiza predição segmentada (janelamento) para áudios longos.
+
+        BUG FIX: a versão anterior sempre fatiava o áudio bruto em janelas
+        ``(seq_len, 1)`` e pulava direto para ``predictor.predict_batch``,
+        ignorando ``feature_frontend``. Isso só era válido para os 3 modelos
+        raw-audio de 1s (AASIST/RawGAT-ST/RawNet2); para os espectrais
+        (Conformer/CCT/AST/Res2Net, que esperam mapa Mel ``(100,80)``) e
+        tabulares (SVM/Random Forest, vetor de 63 descritores) o modelo
+        recebia um tensor com shape/semântica errado, e nenhum dos casos
+        reamostrava para 16 kHz. Agora cada janela passa pelo mesmo
+        ``FeaturePreparer``/``Predictor`` do caminho não segmentado — mesma
+        paridade treino/inferência, resample e calibração por modelo — só
+        que repetido por janela com *soft voting* sobre ``p_fake``.
+        """
         try:
-            target_shape = model_info.input_shape
-            seq_len = target_shape[0] if len(target_shape) >= 1 else 0
+            contract = (
+                model_info.input_contract
+                if isinstance(model_info.input_contract, dict) else {}
+            )
+            # Janela nativa do benchmark (5 s @16 kHz; benchmark_frontend
+            # recorta/ajusta internamente para o que cada modelo precisa —
+            # 1 s cru, mapa Mel ou vetor tabular). Modelos legados sem
+            # feature_frontend usam o input_shape diretamente, como antes.
+            window_samples = int(contract.get("source_samples") or 0)
+            if not window_samples:
+                target_shape = model_info.input_shape or ()
+                window_samples = (
+                    int(target_shape[0])
+                    if target_shape and target_shape[0] else 80000
+                )
+            window_samples = max(window_samples, 16000)
 
-            # Se seq_len for 0 ou muito pequeno, não faz sentido segmentar por janelas de input
-            if seq_len < 100:
-                # Tentar usar duração fixa de 3s se não tiver seq_len definido no input shape
-                seq_len = 16000 * 3
-
+            sr = int(audio_data.sample_rate or 16000)
             samples = np.asarray(audio_data.samples, dtype=np.float32)
             if samples.ndim > 1:
-                samples = samples[:, 0]
-
-            if normalize:
-                max_abs = np.max(np.abs(samples)) or 1.0
-                samples = samples / max_abs
-
-            # Janelamento com sobreposição de 50%
-            hop = max(seq_len // 2, 1)
-            start = 0
-
-            windows = []
-
-            # Se o áudio for menor que uma janela, processa como único
-            if samples.shape[0] < seq_len:
-                # Pad
-                window = np.pad(samples, (0, seq_len - samples.shape[0]), mode='constant')
-                features_win = window.reshape(seq_len, 1)
-                windows.append(features_win)
-            else:
-                while start < samples.shape[0]:
-                    end = start + seq_len
-                    window = samples[start:end]
-
-                    # Ignorar janelas muito pequenas no final (< 10%) ou fazer pad? Vamos fazer pad.
-                    if window.shape[0] < seq_len:
-                         window = np.pad(window, (0, seq_len - window.shape[0]), mode='constant')
-
-                    features_win = window.reshape(seq_len, 1)
-                    windows.append(features_win)
-
-                    start += hop
-
-            if not windows:
-                 return ProcessingResult(
-                    status=ProcessingStatus.ERROR,
-                    errors=["Falha ao gerar janelas de predição"]
+                samples = (
+                    samples.mean(axis=-1)
+                    if samples.shape[-1] > 1 else samples.reshape(-1)
                 )
 
-            # Processar janelas em lote
-            batch_result = self.predictor.predict_batch(model_info, windows)
-            if batch_result.status != ProcessingStatus.SUCCESS:
-                return ProcessingResult(status=ProcessingStatus.ERROR, errors=batch_result.errors)
+            try:
+                arch_info = get_architecture_info(model_info.architecture)
+            except Exception:
+                arch_info = None
 
-            window_preds = [d['confidence'] for d in batch_result.data]
+            import dataclasses
 
-            # Média das confianças (Soft Voting)
-            avg_conf = float(np.mean(window_preds))
-            is_fake = avg_conf > 0.5
+            hop = max(window_samples // 2, 1)  # sobreposição de 50%
+            total = samples.shape[0]
+
+            window_p_fake: List[float] = []
+            window_threshold = 0.5
+            errors = 0
+            windows_total = 0
+            start = 0
+            while start < max(total, 1):
+                chunk = samples[start:start + window_samples]
+                if chunk.shape[0] < window_samples:
+                    chunk = np.pad(
+                        chunk, (0, window_samples - chunk.shape[0]),
+                        mode="constant",
+                    )
+                windows_total += 1
+
+                window_audio = dataclasses.replace(
+                    audio_data,
+                    samples=chunk,
+                    sample_rate=sr,
+                    duration=float(window_samples / sr) if sr else 0.0,
+                )
+                prepared = self.feature_preparer.prepare_input(
+                    window_audio, model_info, arch_info)
+                if prepared['status'] == 'ok':
+                    pred_result = self.predictor.predict(
+                        model_info, prepared['features'], device=self.device)
+                    if pred_result.status == ProcessingStatus.SUCCESS:
+                        pred = pred_result.data
+                        window_p_fake.append(
+                            float(pred.get('p_fake', pred.get('confidence', 0.5)))
+                        )
+                        window_threshold = float(
+                            pred.get('classification_threshold', window_threshold)
+                        )
+                    else:
+                        errors += 1
+                else:
+                    errors += 1
+
+                if total <= window_samples:
+                    break
+                start += hop
+
+            if not window_p_fake:
+                return ProcessingResult(
+                    status=ProcessingStatus.ERROR,
+                    errors=[
+                        f"Falha ao gerar predições segmentadas "
+                        f"({errors}/{windows_total} janela(s) com erro)"
+                    ],
+                )
+
+            avg_p_fake = float(np.mean(window_p_fake))
+            avg_p_real = 1.0 - avg_p_fake
+            is_fake = avg_p_fake >= window_threshold
+            confidence = avg_p_fake if is_fake else avg_p_real
 
             extraction_info = {
-                'feature_type': 'raw_segmented',
-                'windows_used': len(window_preds),
-                'duration_s': audio_data.duration
+                'feature_type': 'segmented_windowed',
+                'feature_frontend': contract.get('feature_frontend'),
+                'windows_used': len(window_p_fake),
+                'windows_total': windows_total,
+                'window_errors': errors,
+                'window_seconds': round(window_samples / sr, 2) if sr else None,
+                'duration_s': audio_data.duration,
+                'classification_threshold': window_threshold,
             }
 
             result = DeepfakeDetectionResult(
                 is_fake=is_fake,
-                confidence=avg_conf,
+                confidence=confidence,
                 probabilities={
-                    'fake': avg_conf,
-                    'real': 1.0 - avg_conf},
+                    'fake': avg_p_fake,
+                    'real': avg_p_real},
                 model_name=model_name,
-                features_used=['raw'],
+                features_used=[contract.get('feature_frontend') or 'raw'],
                 metadata=extraction_info
             )
             return ProcessingResult(
                 status=ProcessingStatus.SUCCESS, data=result)
 
         except Exception as e:
+            logger.exception("Erro na predição segmentada")
             return ProcessingResult(
                 status=ProcessingStatus.ERROR,
                 errors=[f"Erro na segmentação: {str(e)}"]
@@ -647,7 +707,7 @@ class DetectionService(IDetectionService):
                 max_idx = int(np.argmax(distances))
                 fused_prob = float(fake_probs[max_idx])
 
-            fused_is_fake = fused_prob > 0.5
+            fused_is_fake = fused_prob >= 0.5
 
             # Métricas auxiliares
             fake_votes = sum(1 for r in per_model_results if r['is_fake'])
@@ -685,7 +745,7 @@ class DetectionService(IDetectionService):
     def save_analysis_result(self, result: DeepfakeDetectionResult, filename: str) -> bool:
         """Persiste o resultado da análise no banco de dados."""
         try:
-            from app.core.database import SessionLocal
+            from app.core.db.session import SessionLocal
             from ...domain.models.analysis import AnalysisResult
 
             metadata = result.metadata or {}

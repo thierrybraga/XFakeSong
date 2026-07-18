@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.callbacks import (
+    BackupAndRestore,
     CSVLogger,
     EarlyStopping,
     ModelCheckpoint,
@@ -21,17 +22,14 @@ from tensorflow.keras.callbacks import (
 )
 
 from app.core.config.settings import TrainingConfig
-from app.core.interfaces.audio import IModelTrainer
-from app.core.interfaces.base import ProcessingResult, ProcessingStatus
+from app.core.contracts.audio import IModelTrainer
+from app.core.contracts.base import ProcessingResult, ProcessingStatus
 from app.core.performance import optimize_tf_dataset
-from app.core.training.secure_training_pipeline import (
-    SecureTrainingConfig,
-    SecureTrainingPipeline,
-)
 
 from .augmentation import AudioAugmenter
 from .metrics import MetricsCalculator
 from .optimization import OptimizerFactory
+from .secure_training_pipeline import SecureTrainingConfig, SecureTrainingPipeline
 
 _save_logger = logging.getLogger(__name__)
 _progress_logger = logging.getLogger("training.progress")
@@ -222,15 +220,30 @@ class ModelTrainer(IModelTrainer):
         *,
         batch_size: int,
         purpose: str,
+        shuffle: bool = False,
     ) -> tuple[tf.data.Dataset, bool]:
-        """Cria dataset sem materializar arrays grandes como Tensor constante."""
+        """Cria dataset sem materializar arrays grandes como Tensor constante.
+
+        AJUSTE 2026-07-14 (`shuffle`): o Keras IGNORA `shuffle=True` do fit()
+        quando `x` é um tf.data.Dataset — o caminho sem augmentation treinava
+        com ordem de batches FIXA em todas as épocas. No benchmark isso é
+        agravado pelo protocolo AWGN: o treino é [bloco limpo | bloco ruidoso]
+        concatenados, então cada época via primeiro só amostras limpas e
+        depois só ruidosas. `shuffle=True` (usar apenas no treino) embaralha
+        por época nos dois caminhos (tensor_slices e generator).
+        """
         X = np.asarray(X)
         y = np.asarray(y)
         bytes_total = int(X.nbytes + y.nbytes)
         large_threshold = 256 * 1024 * 1024
 
         if bytes_total <= large_threshold:
-            return tf.data.Dataset.from_tensor_slices((X, y)).batch(batch_size), False
+            dataset = tf.data.Dataset.from_tensor_slices((X, y))
+            if shuffle:
+                dataset = dataset.shuffle(
+                    buffer_size=len(y), seed=42, reshuffle_each_iteration=True
+                )
+            return dataset.batch(batch_size), False
 
         self.logger.info(
             "Dataset %s grande (%.1f MB) — usando generator em batches para "
@@ -243,12 +256,16 @@ class ModelTrainer(IModelTrainer):
         y_shape = (None,) + tuple(y.shape[1:])
         x_dtype = tf.as_dtype(X.dtype)
         y_dtype = tf.as_dtype(y.dtype)
+        rng = np.random.default_rng(42)
 
         def batch_generator():
             n = len(y)
+            # Permutação nova a cada passagem (época): o estado do rng
+            # persiste no closure entre reinvocações do generator (repeat()).
+            order = rng.permutation(n) if shuffle else np.arange(n)
             for start in range(0, n, batch_size):
-                end = min(start + batch_size, n)
-                yield X[start:end], y[start:end]
+                idx = order[start:start + batch_size]
+                yield X[idx], y[idx]
 
         n_batches = int(np.ceil(len(y) / max(1, batch_size)))
         dataset = tf.data.Dataset.from_generator(
@@ -375,6 +392,7 @@ class ModelTrainer(IModelTrainer):
                     y_train,
                     batch_size=self.config.batch_size,
                     purpose="train",
+                    shuffle=True,
                 )
                 if train_streaming:
                     train_dataset = train_dataset.repeat()
@@ -587,6 +605,10 @@ class ModelTrainer(IModelTrainer):
             y_pred = model.predict(
                 X_test, batch_size=self.config.batch_size, verbose=0
             )
+            from app.domain.services.detection.predictor import (
+                normalize_logits_to_probs,
+            )
+            y_pred = normalize_logits_to_probs(y_pred)
             # Suporta saídas (N,1) sigmoid e (N,K) softmax
             y_pred_classes = (
                 np.argmax(y_pred, axis=1)
@@ -727,13 +749,32 @@ class ModelTrainer(IModelTrainer):
 
         # Model checkpoint
         if "checkpoint_path" in kwargs:
+            # AJUSTE 2026-07-14: quando o caminho termina em `.weights.h5`,
+            # salva SÓ os pesos — o save de modelo completo serializava grafo
+            # + estado do otimizador (~3× os pesos; ~1 GB por melhoria de
+            # época no AST) e dependia da desserialização de camadas custom.
+            # A restauração já usa load_weights, que aceita ambos os formatos.
+            ckpt_path = str(kwargs["checkpoint_path"])
             callbacks.append(
                 ModelCheckpoint(
-                    filepath=kwargs["checkpoint_path"],
+                    filepath=ckpt_path,
                     monitor="val_loss",
                     save_best_only=True,
-                    save_weights_only=False,
+                    save_weights_only=ckpt_path.endswith(".weights.h5"),
                     verbose=int(getattr(self.config, "verbose", 1)),
+                )
+            )
+
+        # Recuperacao de falhas de infraestrutura (reinicio do host/Docker).
+        # Diferentemente do melhor checkpoint, o backup preserva tambem o
+        # estado do otimizador e a epoca concluida, permitindo que fit()
+        # retome sem transformar a continuacao em um novo experimento.
+        if "backup_dir" in kwargs:
+            callbacks.append(
+                BackupAndRestore(
+                    backup_dir=str(kwargs["backup_dir"]),
+                    save_freq="epoch",
+                    delete_checkpoint=True,
                 )
             )
 
@@ -935,21 +976,49 @@ class ModelTrainer(IModelTrainer):
 
     @staticmethod
     def _add_awgn(X: np.ndarray, snr_db: float, seed: int = 0) -> np.ndarray:
-        """AWGN a um SNR alvo (por amostra). Paridade com benchmarks/data.add_awgn."""
+        """AWGN a um SNR alvo (por amostra). Paridade EXATA com
+        benchmarks/data.add_awgn: a potência REALIZADA do ruído é normalizada
+        por amostra (antes só a potência esperada era calibrada — SNR
+        realizado desviava ~0,4% em janelas de 80k amostras; agora o SNR
+        realizado é idêntico ao alvo, como no protocolo do benchmark)."""
         rng = np.random.default_rng(seed)
         X = np.asarray(X, dtype="float32")
         flat = X.reshape(len(X), -1)
         sig_power = np.mean(flat ** 2, axis=1, keepdims=True)
         snr_lin = 10.0 ** (float(snr_db) / 10.0)
-        noise_std = np.sqrt(sig_power / max(snr_lin, 1e-12))
-        noise = rng.standard_normal(flat.shape).astype("float32") * noise_std
+
+        unit_noise = rng.standard_normal(flat.shape).astype("float32")
+        unit_power = np.mean(unit_noise ** 2, axis=1, keepdims=True)
+        target_power = sig_power / max(snr_lin, 1e-12)
+        scale = np.sqrt(target_power / np.maximum(unit_power, 1e-12))
+        noise = unit_noise * scale
         return (flat + noise).reshape(X.shape).astype("float32")
+
+    @staticmethod
+    def _looks_like_waveform(X: np.ndarray) -> bool:
+        """Heurística de forma de onda (paridade com benchmarks.data).
+
+        (N, T) ou (N, T, 1) com T >= 1000 amostras. Espectrogramas do projeto
+        têm (T~100, F~80) e nunca batem esse critério.
+        """
+        arr = np.asarray(X)
+        if arr.ndim == 2:
+            return arr.shape[1] >= 1000
+        if arr.ndim == 3 and arr.shape[-1] == 1:
+            return arr.shape[1] >= 1000
+        return False
 
     def _build_calibration_set(self, validation_data):
         """Val limpo + cópias com AWGN para calibrar sob ruído.
 
         Gated por `calibrate_under_noise` (default True) nos SNRs de
         `calibration_snr_db`. Retorna `(X, y)`; em falha, devolve o val original.
+
+        Protocolo AWGN (2026-07-14): o ruído só é fisicamente válido na FORMA
+        DE ONDA. Para modelos espectrais/tabulares (val já em log-mel ou
+        features), adicionar AWGN aqui perturbaria o domínio errado — nesses
+        casos a calibração usa apenas o val limpo (mesma regra que o benchmark
+        aplica ao desativar calibrate_under_noise).
         """
         if validation_data is None:
             return validation_data
@@ -957,6 +1026,13 @@ class ModelTrainer(IModelTrainer):
             return validation_data
         snrs = list(getattr(self.config, "calibration_snr_db", []) or [])
         if not snrs:
+            return validation_data
+        if not self._looks_like_waveform(validation_data[0]):
+            self.logger.info(
+                "Calibração sob ruído pulada: entrada de validação não é forma "
+                "de onda (AWGN só é aplicado no domínio do waveform; ver "
+                "protocolo 2026-07-12). Calibrando com val limpo."
+            )
             return validation_data
         try:
             X_val, y_val = validation_data
@@ -1052,6 +1128,7 @@ class ModelTrainer(IModelTrainer):
             from app.domain.services.detection.predictor import (
                 apply_temperature_scaling,
                 compute_energy_score,
+                normalize_logits_to_probs,
             )
 
             X_val, _ = validation_data
@@ -1059,6 +1136,7 @@ class ModelTrainer(IModelTrainer):
                 X_val, batch_size=self.config.batch_size, verbose=0
             )
             # Aplica mesma temperatura que será usada em inferência
+            predictions = normalize_logits_to_probs(predictions)
             predictions = apply_temperature_scaling(predictions, temperature)
             energy_scores = compute_energy_score(predictions, temperature=temperature)
 
@@ -1085,6 +1163,10 @@ class ModelTrainer(IModelTrainer):
 
         # Predições
         y_pred = model.predict(X_val, batch_size=self.config.batch_size, verbose=0)
+        from app.domain.services.detection.predictor import (
+            normalize_logits_to_probs,
+        )
+        y_pred = normalize_logits_to_probs(y_pred)
         # Suporta saídas (N,1) sigmoid e (N,K) softmax
         y_pred_classes = (
             np.argmax(y_pred, axis=1)
@@ -1122,12 +1204,14 @@ class ModelTrainer(IModelTrainer):
         try:
             from app.domain.services.detection.predictor import (
                 apply_temperature_scaling,
+                normalize_logits_to_probs,
             )
 
             X_val, y_val = validation_data
             predictions = model.predict(
                 X_val, batch_size=self.config.batch_size, verbose=0
             )
+            predictions = normalize_logits_to_probs(predictions)
             predictions = apply_temperature_scaling(predictions, temperature)
 
             # Extrai score de probabilidade da classe "fake" (índice 1)
@@ -1258,6 +1342,37 @@ class ModelTrainer(IModelTrainer):
             # Temperatura calibrada (Sprint 1.4) — aplicada na inferência pelo Predictor
             "temperature": float(getattr(self, "_calibrated_temperature", 1.0)),
         }
+
+        # Persiste o contrato canônico da arquitetura (frontend, crop e janela).
+        # Sem esta fusão, AASIST/RawGAT-ST perdiam a política multicrop ao salvar.
+        if architecture:
+            try:
+                from app.domain.models.architectures.registry import (
+                    get_architecture_info,
+                )
+
+                architecture_info = get_architecture_info(architecture)
+                requirements = (
+                    dict(architecture_info.input_requirements)
+                    if architecture_info is not None
+                    else {}
+                )
+                for key in (
+                    "input_type",
+                    "feature_frontend",
+                    "target_sequence_length",
+                    "source_samples",
+                    "crop_strategy",
+                    "sample_rate",
+                    "preprocessing",
+                ):
+                    if key in requirements:
+                        contract[key] = requirements[key]
+            except Exception as exc:
+                self.logger.debug(
+                    "Contrato do registry não pôde ser incorporado: %s", exc
+                )
+
         # Sprint 2.5: OOD threshold (energy-based). None se desabilitado/falhou.
         ood_t = getattr(self, "_ood_threshold", None)
         if ood_t is not None:

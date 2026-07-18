@@ -107,7 +107,15 @@ class AudioAugmenter:
         is_raw = rank == 2 or (rank == 3 and int(x_shape[-1]) == 1)
         common = [self._add_noise, self._time_shift, self._volume_change]
         if is_raw:
-            return common + [self._rawboost, self._codec_simulation]
+            return [
+                self._add_noise,
+                self._time_shift,
+                self._volume_change,
+                self._rawboost,
+                self._codec_simulation,
+                self._room_impulse_response,
+                self._dynamic_range_compression,
+            ]
         return common + [self._frequency_mask, self._time_mask]
 
     def _add_noise(self, audio_features: tf.Tensor,
@@ -400,73 +408,118 @@ class AudioAugmenter:
         Applies multi-domain noise: convolutive + impulsive + stationary.
         This is one of the most effective augmentations for deepfake detection.
         """
-        # Component 1: Linear convolutive noise (simulates channel effects)
-        noise_len = tf.random.uniform([], 3, 9, dtype=tf.int32)
-        conv_noise = tf.random.normal([noise_len], stddev=0.01)
-        conv_noise = conv_noise / (tf.reduce_sum(tf.abs(conv_noise)) + 1e-8)
+        from app.domain.models.training.rawboost import rawboost_tf
 
-        if len(audio_features.shape) == 1:
-            # 1D raw audio
-            padded = tf.pad(audio_features, [[noise_len // 2, noise_len // 2]])
-            # Simple correlation (approximate convolution)
-            augmented = audio_features + tf.random.normal(tf.shape(audio_features), stddev=0.003)
-        else:
-            augmented = audio_features
-
-        # Component 2: Impulsive signal-dependent additive noise
-        impulse_mask = tf.cast(
-            tf.random.uniform(tf.shape(augmented)) > 0.95,
-            tf.float32
-        )
-        impulse_noise = impulse_mask * augmented * tf.random.normal(
-            tf.shape(augmented), stddev=0.1
-        )
-        augmented = augmented + impulse_noise
-
-        # Component 3: Stationary signal-independent additive noise (colored noise)
-        stationary_noise = tf.random.normal(tf.shape(augmented), stddev=0.002)
-        augmented = augmented + stationary_noise
-
+        rank = audio_features.shape.rank
+        waveform = tf.cast(audio_features, tf.float32)
+        if rank == 2 and audio_features.shape[-1] == 1:
+            waveform = tf.squeeze(waveform, axis=-1)
+        augmented = rawboost_tf(waveform, sr=16000, algo=4, p=1.0)
+        if rank == 2 and audio_features.shape[-1] == 1:
+            augmented = tf.expand_dims(augmented, axis=-1)
         return augmented, label
+
+    @staticmethod
+    def _waveform_view(audio_features: tf.Tensor):
+        waveform = tf.cast(audio_features, tf.float32)
+        restore_channel = (
+            audio_features.shape.rank == 2
+            and audio_features.shape[-1] == 1
+        )
+        if restore_channel:
+            waveform = tf.squeeze(waveform, axis=-1)
+        return waveform, restore_channel
+
+    @staticmethod
+    def _restore_waveform(waveform: tf.Tensor, restore_channel: bool) -> tf.Tensor:
+        if restore_channel:
+            return tf.expand_dims(waveform, axis=-1)
+        return waveform
 
     def _codec_simulation(self, audio_features: tf.Tensor,
                           label: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
-        """Simulates lossy codec compression artifacts (MP3/AAC).
+        """Codec differentiable: band-limit, decimation and mu-law quantization."""
+        waveform, restore_channel = self._waveform_view(audio_features)
+        framed = waveform[tf.newaxis, :, tf.newaxis]
 
-        Applies low-pass filtering + quantization noise to simulate
-        the artifacts introduced by lossy audio codecs.
-        Improves robustness to compressed audio in the wild.
-        """
-        # Simulate codec quality (lower = more lossy)
-        quality = tf.random.uniform([], 0.3, 0.9)
+        def _resample(factor: int) -> tf.Tensor:
+            reduced = tf.nn.avg_pool1d(
+                framed,
+                ksize=factor,
+                strides=factor,
+                padding="SAME",
+            )
+            reconstructed = tf.repeat(reduced, repeats=factor, axis=1)
+            return reconstructed[:, :tf.shape(waveform)[0], 0][0]
 
-        # Low-pass filter effect: smooth high frequencies
-        # Use a simple moving average as low-pass approximation
-        kernel_size = tf.cast((1.0 - quality) * 5 + 1, tf.int32)
-        kernel_size = tf.maximum(kernel_size, 1)
+        reconstructed = tf.switch_case(
+            tf.random.uniform([], 0, 3, dtype=tf.int32),
+            branch_fns={
+                0: lambda: _resample(2),
+                1: lambda: _resample(3),
+                2: lambda: _resample(4),
+            },
+        )
 
-        if len(audio_features.shape) >= 2:
-            # For 2D features (spectrogram), add small quantization noise
-            # scaled by (1-quality) to simulate compression artifacts
-            quant_noise = tf.random.uniform(
-                tf.shape(audio_features), -1.0, 1.0
-            ) * (1.0 - quality) * 0.05
-            augmented = audio_features + quant_noise
+        mu = tf.cast(
+            tf.random.uniform([], 63, 256, dtype=tf.int32),
+            tf.float32,
+        )
+        peak = tf.maximum(tf.reduce_max(tf.abs(reconstructed)), 1e-6)
+        normalized = tf.clip_by_value(reconstructed / peak, -1.0, 1.0)
+        companded = (
+            tf.sign(normalized)
+            * tf.math.log1p(mu * tf.abs(normalized))
+            / tf.math.log1p(mu)
+        )
+        quantized = (
+            tf.round((companded + 1.0) * mu / 2.0) * 2.0 / mu - 1.0
+        )
+        decoded = (
+            tf.sign(quantized)
+            * tf.math.expm1(tf.abs(quantized) * tf.math.log1p(mu))
+            / mu
+        ) * peak
+        decoded = tf.where(tf.math.is_finite(decoded), decoded, waveform)
+        return self._restore_waveform(decoded, restore_channel), label
 
-            # Slight energy reduction in high-frequency bins (codec artifact)
-            if len(audio_features.shape) == 2:
-                freq_dim = tf.shape(audio_features)[1]
-                freq_range = tf.cast(tf.range(freq_dim), tf.float32) / tf.cast(freq_dim, tf.float32)
-                attenuation = 1.0 - (1.0 - quality) * 0.3 * freq_range
-                augmented = augmented * tf.expand_dims(attenuation, 0)
-        else:
-            # For 1D audio, add quantization noise
-            quant_noise = tf.random.uniform(
-                tf.shape(audio_features), -1.0, 1.0
-            ) * (1.0 - quality) * 0.02
-            augmented = audio_features + quant_noise
+    def _room_impulse_response(self, audio_features: tf.Tensor,
+                               label: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+        """Convolução com RIR sintética causal de decaimento aleatório."""
+        waveform, restore_channel = self._waveform_view(audio_features)
+        taps = 257
+        time = tf.range(taps, dtype=tf.float32) / 16000.0
+        decay_seconds = tf.random.uniform([], 0.04, 0.35)
+        envelope = tf.exp(-time / decay_seconds)
+        rir = tf.random.normal([taps], stddev=0.12) * envelope
+        rir = tf.tensor_scatter_nd_add(rir, [[0]], [1.0])
+        rir = rir / tf.maximum(tf.reduce_sum(tf.abs(rir)), 1e-6)
+        reverberant = tf.nn.conv1d(
+            waveform[tf.newaxis, :, tf.newaxis],
+            rir[:, tf.newaxis, tf.newaxis],
+            stride=1,
+            padding="SAME",
+        )[0, :, 0]
+        dry_wet = tf.random.uniform([], 0.25, 0.75)
+        augmented = (1.0 - dry_wet) * waveform + dry_wet * reverberant
+        return self._restore_waveform(augmented, restore_channel), label
 
-        return augmented, label
+    def _dynamic_range_compression(
+        self,
+        audio_features: tf.Tensor,
+        label: tf.Tensor,
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
+        """Compressão suave que não é anulada pelo z-score de amplitude."""
+        waveform, restore_channel = self._waveform_view(audio_features)
+        drive = tf.random.uniform([], 1.5, 8.0)
+        peak = tf.maximum(tf.reduce_max(tf.abs(waveform)), 1e-6)
+        normalized = waveform / peak
+        compressed = (
+            tf.sign(normalized)
+            * tf.math.log1p(drive * tf.abs(normalized))
+            / tf.math.log1p(drive)
+        ) * peak
+        return self._restore_waveform(compressed, restore_channel), label
 
     def get_augmentation_summary(self) -> Dict[str, Any]:
         """Retorna resumo das configurações de augmentation."""
@@ -482,6 +535,7 @@ class AudioAugmenter:
             "techniques_available": [
                 "noise_addition", "time_shift", "volume_change",
                 "frequency_mask", "time_mask", "mixup", "cutmix",
-                "rawboost", "codec_simulation"
+                "rawboost", "codec_simulation", "room_impulse_response",
+                "dynamic_range_compression"
             ]
         }

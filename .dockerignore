@@ -61,6 +61,10 @@ temp/
 results/
 
 # --- Data e modelos pesados (volumes montados em runtime) ---
+# cache/ (HF Hub/Torch/TF) usa symlinks internos que o build context do
+# Docker não consegue transferir de forma confiável ("invalid file request") —
+# sempre montado via volume (../../cache/*:/app/cache/*), nunca baked-in.
+cache/
 data/
 datasets/
 app/datasets/

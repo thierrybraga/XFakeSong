@@ -5,7 +5,7 @@ import pandas as pd
 from sqlalchemy import desc
 
 import gradio as gr
-from app.core.database import SessionLocal
+from app.core.db.session import SessionLocal
 from app.domain.models.analysis import AnalysisResult
 
 logger = logging.getLogger(__name__)
@@ -208,7 +208,7 @@ def create_history_tab():
             "realizadas.",
         )
 
-        with gr.Row():
+        with gr.Row(elem_classes="responsive-grid responsive-grid-3"):
             with gr.Column(scale=2):
                 search_box = gr.Textbox(
                     label="Buscar por Nome do Arquivo",
@@ -230,7 +230,7 @@ def create_history_tab():
                     value="Todos",
                 )
 
-        with gr.Row():
+        with gr.Row(elem_classes="action-row"):
             refresh_btn = gr.Button("Atualizar Lista", variant="primary")
             export_btn = gr.Button("Exportar CSV", variant="secondary")
 
@@ -254,7 +254,7 @@ def create_history_tab():
         # Estado para guardar o ID selecionado
         selected_id = gr.State(None)
 
-        with gr.Row():
+        with gr.Row(elem_classes="action-row"):
             delete_btn = gr.Button(
                 "🗑️ Excluir Análise", variant="stop", interactive=False
             )

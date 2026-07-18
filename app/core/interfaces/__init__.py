@@ -1,58 +1,10 @@
-"""Interfaces do sistema"""
+"""Backward-compatible aliases for core contracts.
 
-from .audio import (
-    AudioData,
-    AudioFeatures,
-    AudioFormat,
-    DeepfakeDetectionResult,
-    FeatureType,
-    IAudioLoader,
-    IDeepfakeDetector,
-    IFeatureExtractor,
-    IModelArchitecture,
-)
-from .base import (
-    IConfigurable,
-    IExtractor,
-    ILoggable,
-    IMonitorable,
-    IProcessor,
-    IRepository,
-    IValidator,
-    ProcessingResult,
-    ProcessingStatus,
-)
-from .services import (
-    DatasetMetadata,
-    DatasetType,
-    IAudioRepository,
-    IDatasetRepository,
-    IDetectionService,
-    IFeatureExtractionService,
-    IFeatureRepository,
-    IModelRepository,
-    IMonitoringService,
-    INotificationService,
-    ITrainingService,
-    IUploadService,
-    ModelMetadata,
-    StorageType,
-)
+The canonical package is :mod:`app.core.contracts`. This module exists so older
+notebooks, scripts, and examples that still import ``app.core.interfaces`` keep
+working during the architecture migration.
+"""
 
-__all__ = [
-    # Base
-    "ProcessingStatus", "ProcessingResult", "IProcessor", "IValidator",
-    "IExtractor", "IRepository", "IConfigurable", "ILoggable", "IMonitorable",
-
-    # Audio
-    "AudioFormat", "FeatureType", "AudioData", "AudioFeatures",
-    "DeepfakeDetectionResult", "IAudioLoader", "IFeatureExtractor",
-    "IModelArchitecture", "IDeepfakeDetector",
-
-    # Services
-    "DatasetType", "StorageType", "DatasetMetadata", "ModelMetadata",
-    "IAudioRepository", "IFeatureRepository", "IModelRepository",
-    "IDatasetRepository", "IUploadService", "IFeatureExtractionService",
-    "ITrainingService", "IDetectionService", "INotificationService",
-    "IMonitoringService"
-]
+from app.core.contracts.audio import *  # noqa: F403
+from app.core.contracts.base import *  # noqa: F403
+from app.core.contracts.services import *  # noqa: F403

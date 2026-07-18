@@ -167,14 +167,23 @@ def audio_to_lfcc(
 
 
 def normalize_audio(samples: np.ndarray) -> np.ndarray:
-    """Normalização peak (mesmo método do wizard)."""
+    """AGC por RMS/LUFS (Equação 5 do TCC — mesma implementação de
+    ``app.utils.silero_vad.apply_agc``).
+
+    BUG FIX (paridade treino/inferência, Limitação (viii) do TCC): esta
+    função fazia normalização por PICO (``x / max(|x|)``), divergindo da AGC
+    por RMS/LUFS documentada na Seção de Pré-processamento e usada na
+    construção do corpus de treino/teste (``silero_vad.py::apply_agc``).
+    Delega para a mesma implementação em vez de duplicar a fórmula, evitando
+    novo drift entre os dois pontos.
+    """
     samples = np.asarray(samples, dtype=np.float32)
     if samples.ndim > 1:
         samples = samples.mean(axis=-1)  # downmix para mono
-    max_abs = float(np.max(np.abs(samples)))
-    if max_abs > 0:
-        samples = samples / max_abs
-    return samples
+
+    from app.utils.silero_vad import apply_agc
+
+    return apply_agc(samples)
 
 
 def pad_or_truncate_audio(

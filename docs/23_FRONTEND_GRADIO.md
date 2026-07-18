@@ -23,9 +23,10 @@ docker compose up --build -d
 | Healthcheck | `http://localhost:7860/api/v1/system/health` |
 | OpenAPI | `http://localhost:7860/api/docs` |
 
-`gradio_app.py` monta o app unificado usado pelo comando principal. O módulo
-`app/main_fastapi.py` também monta FastAPI, templates, assets estáticos e, fora
-de pytest/modo API-only, a UI Gradio em `/gradio`.
+`app/interfaces/gradio/app.py` monta o app unificado usado pelo comando
+principal. O módulo `app/interfaces/web/main_fastapi.py` também monta
+FastAPI, templates, assets estáticos e, fora de pytest/modo API-only, a UI
+Gradio em `/gradio`.
 
 ## Configurações Necessárias
 
@@ -53,7 +54,7 @@ flowchart LR
     Browser["Browser"] --> Gradio["app/interfaces/gradio"]
     Browser --> HTTP["/api/v1/*"]
     Gradio --> Services["domain/services"]
-    HTTP --> Routers["app/routers"]
+    HTTP --> Routers["app/interfaces/web/routers"]
     Routers --> Services
     Services --> Models["domain/models + app/models"]
     Services --> Results["resultado, gráficos, JSON técnico"]
@@ -66,7 +67,7 @@ integração.
 
 ## Estrutura da UI
 
-O arquivo `gradio_app.py` organiza a experiência em cinco seções:
+O arquivo `app/interfaces/gradio/app.py` organiza a experiência em cinco seções:
 
 | Seção | Arquivos principais | Papel |
 |---|---|---|

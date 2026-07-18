@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 
@@ -32,6 +32,15 @@ class BenchmarkData:
     # disjunto por falante e protocolo holdout-speaker (usuários não vistos).
     # None quando o dataset não carrega identificação de falante.
     speakers: np.ndarray | None = None
+    # Índices das partições fornecidas no NPZ. Preservá-los impede que runners
+    # diferentes reconstruam conjuntos de treino/validação/teste distintos.
+    predefined_split_indices: Dict[str, np.ndarray] | None = None
+    # Índices efetivamente usados pela chamada mais recente de
+    # ``stratified_split``. Diferentemente de ``predefined_split_indices``,
+    # estes refletem também protocolos por grupo, falante ou holdout.
+    last_split_indices: Dict[str, np.ndarray] | None = field(
+        default=None, init=False, repr=False
+    )
 
     @classmethod
     def synthetic(cls, n: int = 360, shape: Tuple[int, int] = (32, 16),
@@ -58,12 +67,45 @@ class BenchmarkData:
         data = np.load(p, allow_pickle=False)
         xs, ys = [], []
         used_keys: list[tuple[str, str]] = []
-        for xk, yk in (("X_train", "y_train"), ("X_val", "y_val"),
-                       ("X_test", "y_test"), ("X", "y")):
+        split_indices: Dict[str, np.ndarray] | None = None
+        has_predefined = all(
+            key in data
+            for key in ("X_train", "y_train", "X_val", "y_val", "X_test", "y_test")
+        )
+        if has_predefined:
+            pairs = (
+                ("X_train", "y_train"),
+                ("X_val", "y_val"),
+                ("X_test", "y_test"),
+            )
+        elif "X" in data and "y" in data:
+            pairs = (("X", "y"),)
+        else:
+            pairs = tuple(
+                (xk, yk)
+                for xk, yk in (
+                    ("X_train", "y_train"),
+                    ("X_val", "y_val"),
+                    ("X_test", "y_test"),
+                )
+                if xk in data and yk in data
+            )
+        offset = 0
+        if has_predefined:
+            split_indices = {}
+        for xk, yk in pairs:
             if xk in data and yk in data:
-                xs.append(np.asarray(data[xk], dtype="float32"))
-                ys.append(np.asarray(data[yk]))
+                x_part = np.asarray(data[xk], dtype="float32")
+                y_part = np.asarray(data[yk])
+                xs.append(x_part)
+                ys.append(y_part)
                 used_keys.append((xk, yk))
+                if split_indices is not None:
+                    split_name = xk.removeprefix("X_")
+                    split_indices[split_name] = np.arange(
+                        offset, offset + len(y_part), dtype="int64"
+                    )
+                    offset += len(y_part)
         if not xs:
             raise ValueError(
                 f"{path}: esperado X_train/y_train (ou X/y) no .npz; "
@@ -95,6 +137,7 @@ class BenchmarkData:
         loaded = cls(
             X=X, y=y, name=p.stem, metadata=metadata,
             groups=groups, speakers=speakers,
+            predefined_split_indices=split_indices,
         )
         loaded.validate()
         return loaded
@@ -158,7 +201,7 @@ class BenchmarkData:
         splits = (metadata or {}).get("splits") or {}
         key_to_split = {"X_train": "train", "X_val": "val", "X_test": "test"}
         try:
-            from app.core.speaker_manifest import speaker_for_path
+            from app.domain.dataset_metadata.speaker_manifest import speaker_for_path
         except Exception:
             return None
         speakers: list[str] = []
@@ -194,30 +237,8 @@ class BenchmarkData:
             )
 
     def prepare_for_architecture(self, architecture: str) -> "BenchmarkData":
-        """Retorna uma visão de X compatível com o contrato da arquitetura.
-
-        O benchmark aceita datasets `.npz` homogêneos, mas o preset completo
-        mistura arquiteturas raw, espectrograma e clássicas. Esta etapa adapta
-        a forma do tensor para cada família mantendo `y` e a ordem das amostras.
-        """
-        input_type, requirements = _architecture_input_contract(architecture)
-        if _is_classical_arch(architecture):
-            prepared = _to_tabular_features(self.X)
-            actual_type = (
-                "tabular_audio_features"
-                if _looks_like_raw_audio(self.X)
-                else "tabular_flattened"
-            )
-        elif input_type == "raw_audio":
-            prepared = _to_raw_audio(self.X, requirements)
-            actual_type = "raw_audio"
-        elif input_type == "spectrogram":
-            prepared = _to_spectrogram(self.X, requirements)
-            actual_type = "spectrogram"
-        else:
-            prepared = np.asarray(self.X, dtype="float32")
-            actual_type = input_type or "unchanged"
-
+        """Retorna uma visão de X compatível com o contrato da arquitetura."""
+        prepared, actual_type = prepare_input_for_architecture(self.X, architecture)
         meta = dict(self.metadata or {})
         meta.update(
             {
@@ -234,6 +255,7 @@ class BenchmarkData:
             metadata=meta,
             groups=self.groups,
             speakers=self.speakers,
+            predefined_split_indices=self.predefined_split_indices,
         )
 
     def stratified_split(
@@ -245,6 +267,7 @@ class BenchmarkData:
         holdout_generator: str | None = None,
         speaker_split: bool = False,
         holdout_speaker: str | None = None,
+        preserve_predefined: bool = True,
     ):
         """Divisão 70/15/15. Suporta cinco modos (precedência nesta ordem):
 
@@ -268,6 +291,21 @@ class BenchmarkData:
             return self._grouped_split(seed, val_frac, test_frac, groups=self.speakers)
         if group_split and self.groups is not None:
             return self._grouped_split(seed, val_frac, test_frac)
+        if preserve_predefined and self.predefined_split_indices:
+            required = {"train", "val", "test"}
+            if required.issubset(self.predefined_split_indices):
+                tr = self.predefined_split_indices["train"]
+                va = self.predefined_split_indices["val"]
+                te = self.predefined_split_indices["test"]
+                self.last_split_indices = {
+                    "train": np.asarray(tr, dtype="int64"),
+                    "val": np.asarray(va, dtype="int64"),
+                    "test": np.asarray(te, dtype="int64"),
+                }
+                return (
+                    self.X[tr], self.y[tr], self.X[va], self.y[va],
+                    self.X[te], self.y[te],
+                )
         try:
             from sklearn.model_selection import train_test_split
 
@@ -290,6 +328,11 @@ class BenchmarkData:
             test_idx, val_idx, train_idx = (
                 idx[:n_test], idx[n_test:n_test + n_val], idx[n_test + n_val:]
             )
+        self.last_split_indices = {
+            "train": np.asarray(train_idx, dtype="int64"),
+            "val": np.asarray(val_idx, dtype="int64"),
+            "test": np.asarray(test_idx, dtype="int64"),
+        }
         return (
             self.X[train_idx], self.y[train_idx],
             self.X[val_idx], self.y[val_idx],
@@ -338,6 +381,11 @@ class BenchmarkData:
             shuffled = rng.permutation(trainval_idx)
             n_val = max(1, int(len(shuffled) * val_frac))
             val_idx, train_idx = shuffled[:n_val], shuffled[n_val:]
+        self.last_split_indices = {
+            "train": np.asarray(train_idx, dtype="int64"),
+            "val": np.asarray(val_idx, dtype="int64"),
+            "test": np.asarray(test_idx, dtype="int64"),
+        }
         Xtr, ytr = self._select(train_idx)
         Xv, yv = self._select(val_idx)
         Xte, yte = self._select(test_idx)
@@ -389,6 +437,11 @@ class BenchmarkData:
             n_val = max(1, int(len(shuffled) * val_frac))
             val_idx, tr_idx = shuffled[:n_val], shuffled[n_val:]
 
+        self.last_split_indices = {
+            "train": np.asarray(tr_idx, dtype="int64"),
+            "val": np.asarray(val_idx, dtype="int64"),
+            "test": np.asarray(test_idx, dtype="int64"),
+        }
         Xtr, ytr = self._select(tr_idx)
         Xv, yv = self._select(val_idx)
         Xte, yte = self._select(test_idx)
@@ -396,21 +449,74 @@ class BenchmarkData:
 
     @staticmethod
     def add_awgn(X: np.ndarray, snr_db: float, seed: int = 0) -> np.ndarray:
-        """Adiciona ruído gaussiano branco aditivo a um SNR alvo (por amostra).
+        """Adiciona AWGN com SNR realizado igual ao alvo, por amostra.
 
-        Para modelos raw-audio (X = forma de onda) isto é AWGN no áudio; para
-        modelos de espectrograma (X = log-mel/LFCC) é uma aproximação do AWGN
-        em espaço de entrada — escolha deliberada para um teste uniforme e
-        reprodutível em todas as arquiteturas (documentado no relatório).
+        Esta função opera no domínio recebido. No protocolo científico do
+        benchmark, deve receber exclusivamente a forma de onda canônica; a
+        conversão para log-Mel ou descritores tabulares ocorre depois.
         """
         rng = np.random.default_rng(seed)
         X = np.asarray(X, dtype="float32")
         flat = X.reshape(len(X), -1)
-        sig_power = np.mean(flat ** 2, axis=1, keepdims=True)  # (N,1)
+        sig_power = np.mean(flat ** 2, axis=1, keepdims=True)
         snr_lin = 10.0 ** (float(snr_db) / 10.0)
-        noise_std = np.sqrt(sig_power / max(snr_lin, 1e-12))
-        noise = rng.standard_normal(flat.shape).astype("float32") * noise_std
+
+        unit_noise = rng.standard_normal(flat.shape).astype("float32")
+        unit_power = np.mean(unit_noise ** 2, axis=1, keepdims=True)
+        target_power = sig_power / max(snr_lin, 1e-12)
+        scale = np.sqrt(target_power / np.maximum(unit_power, 1e-12))
+        noise = unit_noise * scale
         return (flat + noise).reshape(X.shape).astype("float32")
+
+    @staticmethod
+    def balanced_snr_assignments(
+        n_samples: int,
+        snr_levels_db: list[int] | tuple[int, ...],
+        seed: int = 0,
+    ) -> np.ndarray:
+        """Distribui níveis de SNR globalmente, com diferença máxima de um."""
+
+        levels = np.asarray(list(snr_levels_db), dtype="float32")
+        if levels.size == 0:
+            raise ValueError("snr_levels_db não pode ser vazio")
+        assigned = np.resize(levels, int(n_samples)).copy()
+        np.random.default_rng(seed).shuffle(assigned)
+        return assigned
+
+    @staticmethod
+    def add_awgn_assigned(
+        X: np.ndarray,
+        assigned_snr_db: np.ndarray,
+        seed: int = 0,
+    ) -> np.ndarray:
+        """Aplica o nível previamente atribuído a cada forma de onda."""
+
+        X = np.asarray(X, dtype="float32")
+        assigned = np.asarray(assigned_snr_db, dtype="float32").ravel()
+        if len(X) != len(assigned):
+            raise ValueError("assigned_snr_db deve ter uma entrada por amostra")
+        noisy = np.empty_like(X, dtype="float32")
+        for offset, snr in enumerate(np.unique(assigned).tolist()):
+            mask = assigned == snr
+            noisy[mask] = BenchmarkData.add_awgn(
+                X[mask], float(snr), seed=seed + 1009 * (offset + 1)
+            )
+        return noisy
+
+    @staticmethod
+    def add_awgn_mixed(
+        X: np.ndarray,
+        snr_levels_db: list[int] | tuple[int, ...],
+        seed: int = 0,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Gera uma cópia ruidosa por amostra com SNRs balanceados."""
+
+        X = np.asarray(X, dtype="float32")
+        assigned = BenchmarkData.balanced_snr_assignments(
+            len(X), snr_levels_db, seed=seed
+        )
+        noisy = BenchmarkData.add_awgn_assigned(X, assigned, seed=seed)
+        return noisy, assigned
 
 
 def _slug(name: str) -> str:
@@ -439,6 +545,47 @@ def _architecture_input_contract(architecture: str) -> tuple[str, Dict[str, Any]
         pass
     return "spectrogram", {}
 
+
+def prepare_input_for_architecture(
+    X: np.ndarray,
+    architecture: str,
+    *,
+    crop_strategy: str = "center",
+    seed: Optional[int] = None,
+) -> tuple[np.ndarray, str]:
+    """Aplica o frontend de ``architecture`` a um lote ainda no domínio bruto.
+
+    É a fronteira usada pelo novo protocolo AWGN: primeiro o ruído é adicionado
+    à forma de onda; somente depois esta função produz raw-audio normalizado,
+    log-Mel ou o vetor tabular de 63 descritores.
+    """
+    input_type, requirements = _architecture_input_contract(architecture)
+    if _is_classical_arch(architecture):
+        prepared = _to_tabular_features(X)
+        actual_type = (
+            "tabular_audio_features" if _looks_like_raw_audio(X)
+            else "tabular_flattened"
+        )
+    elif input_type == "raw_audio":
+        prepared = _to_raw_audio(
+            X,
+            requirements,
+            crop_strategy=crop_strategy,
+            seed=seed,
+        )
+        actual_type = "raw_audio"
+    elif input_type == "spectrogram":
+        prepared = _to_spectrogram(X, requirements)
+        actual_type = "spectrogram"
+    else:
+        prepared = np.asarray(X, dtype="float32")
+        actual_type = input_type or "unchanged"
+    return np.asarray(prepared, dtype="float32"), actual_type
+
+
+def looks_like_raw_audio(X: np.ndarray) -> bool:
+    """API pública para validar se um lote contém formas de onda."""
+    return _looks_like_raw_audio(X)
 
 def _fit_length(flat: np.ndarray, target_len: int) -> np.ndarray:
     # Fonte única treino<->inferência: app/domain/features/benchmark_frontend.
@@ -500,7 +647,13 @@ def _rasta_plp_stats(flat: np.ndarray, n_plp: int = 13) -> np.ndarray:
     return _impl(flat, n_plp=n_plp)
 
 
-def _to_raw_audio(X: np.ndarray, requirements: Dict[str, Any]) -> np.ndarray:
+def _to_raw_audio(
+    X: np.ndarray,
+    requirements: Dict[str, Any],
+    *,
+    crop_strategy: str = "center",
+    seed: Optional[int] = None,
+) -> np.ndarray:
     arr = np.asarray(X, dtype="float32")
     flat = arr.reshape(len(arr), -1)
     min_len = int(
@@ -518,7 +671,12 @@ def _to_raw_audio(X: np.ndarray, requirements: Dict[str, Any]) -> np.ndarray:
     )
     from app.domain.features.benchmark_frontend import raw_audio_batch
 
-    return raw_audio_batch(flat, target_len=max(1, target_len))
+    return raw_audio_batch(
+        flat,
+        target_len=max(1, target_len),
+        crop_strategy=crop_strategy,
+        seed=seed,
+    )
 
 
 def _raw_audio_to_logmel(X: np.ndarray, requirements: Dict[str, Any]) -> np.ndarray:

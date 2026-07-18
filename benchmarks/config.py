@@ -6,7 +6,6 @@ import dataclasses
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-
 # Manifesto oficial do recorte experimental. Ele fixa nomes, variantes e
 # runners usados no TCC; listas derivadas abaixo devem ser consumidas pelos
 # scripts para evitar divergência entre treino, consolidação e LaTeX.
@@ -168,7 +167,7 @@ class BenchmarkConfig:
         default_factory=lambda: ["MultiscaleCNN", "SVM"]
     )
     dataset_path: Optional[str] = None
-    epochs: int = 20
+    epochs: int = 100
     batch_size: int = 32
     seed: int = 42
     snr_levels_db: List[int] = field(default_factory=lambda: [30, 20, 10])
@@ -206,11 +205,36 @@ class BenchmarkConfig:
     # Tier informativo do dataset (test/small/medium/large/custom), só para o plano.
     tier: Optional[str] = None
 
-    # P2 — augmentation ruidoso para os modelos clássicos (SVM/RF). Anexa
-    # cópias do conjunto de treino com AWGN nos MESMOS níveis de SNR avaliados
-    # (mesmo espaço de feature em que a robustez é medida), atacando o colapso
-    # a ~50% sob ruído.
-    classical_noise_augmentation: bool = True
+    # Protocolo AWGN canônico: o ruído é aplicado à forma de onda antes de
+    # qualquer frontend. Uma cópia ruidosa por amostra mantém o custo de memória
+    # em ~2x e distribui os níveis de SNR de forma balanceada e reprodutível.
+    waveform_noise_augmentation: bool = True
+    train_aug_snr_db: List[int] = field(default_factory=lambda: [30, 20, 10])
+    train_noise_copies: int = 1
+    waveform_noise_batch_size: int = 64
+    # Em datasets reais, recusa NPZs que já contenham apenas features quando há
+    # avaliação AWGN. Datasets sintéticos internos continuam aceitos para smoke.
+    strict_waveform_awgn: bool = True
+    # Compatibilidade com execuções antigas. Mantido desligado: ativá-lo volta
+    # a adicionar ruído no vetor tabular e invalida o protocolo comparável.
+    classical_noise_augmentation: bool = False
+
+    # Controles metodológicos comuns. Os hiperparâmetros arquiteturais continuam
+    # específicos, mas todos os modelos neurais usam o mesmo orçamento e a mesma
+    # regra de seleção: 100 épocas completas e melhor checkpoint em val limpa.
+    fixed_epoch_budget: bool = True
+    select_best_checkpoint: bool = True
+    decision_threshold: float = 0.5
+    # Rigor acadêmico (2026-07-14): IC 95% de bootstrap (EER/AUC/accuracy)
+    # nas métricas limpas e de robustez. 1000 reamostragens ≈ segundos por
+    # condição; 0 desliga (testes/smokes).
+    bootstrap_ci_samples: int = 1000
+    # Robustez a CODEC com perdas (round-trip via ffmpeg, na forma de onda,
+    # antes dos frontends — mesmo ponto do AWGN). Ex.: ["mp3", "opus"].
+    # Desligado por padrão (custo: ~2 chamadas ffmpeg por amostra de teste).
+    codec_eval: List[str] = field(default_factory=list)
+    preserve_predefined_splits: bool = True
+    fail_on_split_overlap: bool = True
 
     @classmethod
     def quick(cls, **overrides) -> "BenchmarkConfig":

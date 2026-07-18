@@ -32,6 +32,13 @@ _COLAB_SIM = textwrap.dedent(
     """
     import os, sys, importlib.abc
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    # Um Colab limpo NÃO tem TF_USE_LEGACY_KERAS. Se algum teste anterior do
+    # processo-pai importou transformers.modeling_tf_utils, ele seta
+    # TF_USE_LEGACY_KERAS=1 no os.environ — herdado por este subprocesso, o
+    # tensorflow.keras viraria Keras 2 (tf_keras) e o código Keras 3 do
+    # projeto quebraria (ex.: MultiHeadAttention.build(q, v)). Pinar '0'
+    # reproduz o ambiente limpo que este teste simula.
+    os.environ['TF_USE_LEGACY_KERAS'] = '0'
 
     BLOCK = {'fastapi', 'starlette', 'python_multipart', 'multipart'}
 

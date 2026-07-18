@@ -1,18 +1,23 @@
+name: xfakesong-inference-cpu
+
 services:
   inference-api:
     build:
       context: ../..
-      dockerfile: environments/inference-api/Dockerfile.cpu
+      dockerfile: docker/environments/inference-api/Dockerfile.cpu
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
     image: xfakesong/inference-api:cpu
     container_name: xfakesong_inference_cpu
     working_dir: /app
+    restart: unless-stopped
+    stop_grace_period: 30s
+    stop_signal: SIGTERM
     ports:
       - "${GRADIO_PORT:-7860}:7860"
     volumes:
       - ../../app/models:/app/app/models
-      - ../../app/datasets:/app/app/datasets
+      - ../../data/datasets:/app/data/datasets
       - ../../results:/app/results
       - ../../data:/app/data
       - ../../cache/huggingface:/app/cache/huggingface
@@ -34,4 +39,9 @@ services:
         limits:
           cpus: "${DOCKER_CPU_LIMIT:-4.0}"
           memory: ${DOCKER_MEMORY_LIMIT:-8G}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     command: ["python", "main.py", "--gradio", "--gradio-port", "7860"]

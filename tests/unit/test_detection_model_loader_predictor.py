@@ -17,6 +17,38 @@ class _FixedSklearnModel:
         return np.tile(np.array([[0.52, 0.48]], dtype=float), (len(X), 1))
 
 
+class _FixedTensorflowModel:
+    def predict(self, X, verbose=0):
+        del verbose
+        values = np.asarray(X, dtype="float32").mean(axis=(1, 2))
+        return np.stack([1.0 - values, values], axis=-1)
+
+
+def test_tensorflow_predictor_averages_declared_multicrop():
+    info = ModelInfo(
+        name="bench_aasist",
+        architecture="AASIST",
+        model=_FixedTensorflowModel(),
+        scaler=None,
+        input_shape=(4, 1),
+        model_type="tensorflow",
+        input_contract={"crop_strategy": "train_random_eval_multicrop"},
+        eer_threshold=0.5,
+    )
+    crops = np.stack([
+        np.full((4, 1), 0.2, dtype="float32"),
+        np.full((4, 1), 0.6, dtype="float32"),
+        np.full((4, 1), 0.8, dtype="float32"),
+    ])
+
+    result = Predictor().predict(info, crops)
+
+    assert result.status.value == "success"
+    assert result.data["tta_crops"] == 3
+    assert np.isclose(result.data["p_fake"], (0.2 + 0.6 + 0.8) / 3)
+    assert result.data["is_deepfake"] is True
+
+
 def test_sklearn_predictor_uses_model_eer_threshold():
     info = ModelInfo(
         name="bench_randomforest",

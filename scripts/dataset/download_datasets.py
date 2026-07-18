@@ -64,7 +64,7 @@ logging.basicConfig(
 logger = logging.getLogger("DownloadDatasets")
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-DATASETS_DIR = BASE_DIR / "app" / "datasets"
+DATASETS_DIR = BASE_DIR / "data" / "datasets"
 REAL_DIR = DATASETS_DIR / "real"
 FAKE_DIR = DATASETS_DIR / "fake"
 RAW_DIR = DATASETS_DIR / "raw"
@@ -233,14 +233,14 @@ def next_index(directory: Path, prefix: str) -> int:
 def record_speaker_safe(target_path: Path, speaker_id) -> None:
     """Registra o falante de um WAV recém-salvo (best-effort, nunca quebra o download).
 
-    Aditivo: alimenta `app/datasets/speaker_manifest.json` para qualquer tier
+    Aditivo: alimenta `data/datasets/speaker_manifest.json` para qualquer tier
     quando a fonte expoe falante. No-op silencioso se o
     modulo nao estiver disponivel ou o id de falante for vazio.
     """
     if not speaker_id:
         return
     try:
-        from app.core.speaker_manifest import record_speaker
+        from app.domain.dataset_metadata.speaker_manifest import record_speaker
 
         record_speaker(target_path, speaker_id)
     except Exception:
@@ -851,7 +851,7 @@ def _download_cetuc_openslr(max_samples: int) -> None:
             return
 
     logger.info("Extraindo CETUC...")
-    from app.core.utils.file_utils import safe_extract_tar
+    from app.utils.file_utils import safe_extract_tar
     with tarfile.open(str(dest), "r:gz") as tar:
         safe_extract_tar(tar, cetuc_raw)
 
@@ -954,7 +954,7 @@ def download_mls_portuguese(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     marker = raw_dir / ".extracted"
     if not marker.exists():
         logger.info("MLS Portuguese: extraindo pacote opus...")
-        from app.core.utils.file_utils import safe_extract_tar
+        from app.utils.file_utils import safe_extract_tar
 
         with tarfile.open(str(archive), "r:gz") as tar:
             safe_extract_tar(tar, raw_dir)
@@ -983,7 +983,7 @@ def download_tts_portuguese(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     marker = raw_dir / ".extracted"
     if not marker.exists():
         logger.info("TTS-Portuguese: extraindo ZIP...")
-        from app.core.utils.file_utils import safe_extract_zip
+        from app.utils.file_utils import safe_extract_zip
 
         with zipfile.ZipFile(str(archive), "r") as zf:
             safe_extract_zip(zf, raw_dir)

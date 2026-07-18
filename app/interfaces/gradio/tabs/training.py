@@ -70,13 +70,13 @@ def create_training_tab():
 
                     try:
                         # Diretórios
-                        base_dir = Path("app/datasets/raw")
+                        base_dir = Path("data/datasets/raw")
                         if base_dir.exists():
                             shutil.rmtree(base_dir)
                         base_dir.mkdir(parents=True, exist_ok=True)
 
                         # Extrair (valida contra zip slip — upload não confiável)
-                        from app.core.utils.file_utils import safe_extract_zip
+                        from app.utils.file_utils import safe_extract_zip
                         with zipfile.ZipFile(zip_path.name, 'r') as zip_ref:
                             safe_extract_zip(zip_ref, base_dir)
 
@@ -93,7 +93,7 @@ def create_training_tab():
                         else:
                             root_dir = base_dir
 
-                        processed_dir = Path("app/datasets/processed")
+                        processed_dir = Path("data/datasets/processed")
                         if processed_dir.exists():
                             shutil.rmtree(processed_dir)
                         processed_dir.mkdir(parents=True, exist_ok=True)
@@ -159,7 +159,7 @@ def create_training_tab():
                         )
                         extractor = SegmentedFeatureExtractor(config)
 
-                        processed_dir = Path("app/datasets/processed")
+                        processed_dir = Path("data/datasets/processed")
                         if not processed_dir.exists():
                             yield (
                                 "Erro",
@@ -307,7 +307,7 @@ def create_training_tab():
                                 "Caminho do Dataset (Raiz com pastas "
                                 "'real' e 'fake')"
                             ),
-                            value="app/datasets"
+                            value="data/datasets"
                         )
                         with gr.Row():
                             dl_epochs = gr.Slider(
@@ -362,7 +362,7 @@ def create_training_tab():
 
                 def update_arch_params(arch_name):
                     try:
-                        from app.domain.models.training.optimized_training_config import (  # noqa
+                        from app.domain.models.training.hyperparameter_defaults import (  # noqa
                             load_hyperparameters_json
                         )
                         root_dir = Path(

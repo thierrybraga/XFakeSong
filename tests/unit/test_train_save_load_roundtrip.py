@@ -27,7 +27,7 @@ import pytest
 @pytest.fixture(scope="module")
 def trained_dir():
     """Treina um modelo via TrainingService e devolve (models_dir, metadata)."""
-    from app.core.interfaces.base import ProcessingStatus
+    from app.core.contracts.base import ProcessingStatus
     from app.domain.services.training_service import TrainingService
 
     rng = np.random.default_rng(0)
@@ -105,7 +105,7 @@ def test_predictor_recognizes_and_predicts(trained_dir):
     mi = loader.get_model("rt_probe")
 
     sample = np.random.default_rng(1).standard_normal((32, 16)).astype("float32")
-    from app.core.interfaces.base import ProcessingStatus
+    from app.core.contracts.base import ProcessingStatus
 
     pr = Predictor().predict(mi, sample)
     assert pr.status == ProcessingStatus.SUCCESS, pr.errors
@@ -133,7 +133,7 @@ def test_aasist_save_load_roundtrip_uses_serializable_layers(tmp_path):
     assert loaded.input_shape == (None, 1024, 1)
     assert loaded.output_shape == (None, 2)
     assert any(
-        layer.name == "sinc_abs" and layer.__class__.__name__ == "MagnitudeLayer"
+        layer.name == "aasist_sinc_abs" and layer.__class__.__name__ == "MagnitudeLayer"
         for layer in loaded.layers
     )
     assert not any(layer.__class__.__name__ == "Lambda" for layer in loaded.layers)

@@ -1,11 +1,11 @@
-"""Testes do módulo XAI (app/core/xai): Grad-CAM, SHAP e contrato tabular."""
+"""Testes do módulo XAI (app/domain/xai): Grad-CAM, SHAP e contrato tabular."""
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from app.core.xai.tabular import (
+from app.domain.xai.tabular import (
     N_FEATURES,
     extract_sklearn_estimator,
     feature_group,
@@ -86,12 +86,12 @@ class TestGradCAM:
         return tf.keras.Model(inputs, outputs)
 
     def test_find_last_conv_layer(self, tiny_conv_model):
-        from app.core.xai.gradcam import find_last_conv_layer
+        from app.domain.xai.gradcam import find_last_conv_layer
 
         assert find_last_conv_layer(tiny_conv_model) == "conv_b"
 
     def test_gradcam_shapes_and_range(self, tiny_conv_model):
-        from app.core.xai.gradcam import compute_gradcam, resize_heatmap
+        from app.domain.xai.gradcam import compute_gradcam, resize_heatmap
 
         rng = np.random.default_rng(42)
         batch = rng.normal(size=(3, 16, 12, 1)).astype("float32")
@@ -106,7 +106,7 @@ class TestGradCAM:
 
     def test_gradcam_without_conv_raises(self):
         tf = pytest.importorskip("tensorflow")
-        from app.core.xai.gradcam import find_last_conv_layer
+        from app.domain.xai.gradcam import find_last_conv_layer
 
         inputs = tf.keras.Input(shape=(10,))
         outputs = tf.keras.layers.Dense(1, activation="sigmoid")(inputs)
@@ -117,7 +117,7 @@ class TestGradCAM:
     def test_gradcam_auto_on_conv1d_model(self):
         """Modelos Conv1D (Conformer-like) produzem CAM 1D valido."""
         tf = pytest.importorskip("tensorflow")
-        from app.core.xai.gradcam import compute_gradcam_auto, heatmap_to_input_grid
+        from app.domain.xai.gradcam import compute_gradcam_auto, heatmap_to_input_grid
 
         inputs = tf.keras.Input(shape=(20, 8))
         x = tf.keras.layers.Conv1D(4, 3, padding="same", name="c1d")(inputs)
@@ -137,7 +137,7 @@ class TestGradCAM:
     def test_heatmap_grid_reconstruction_from_tokens(self):
         """CAM de tokens (B, n) reconstroi grade quando n fatora bem."""
         pytest.importorskip("tensorflow")
-        from app.core.xai.gradcam import _best_grid, heatmap_to_input_grid
+        from app.domain.xai.gradcam import _best_grid, heatmap_to_input_grid
 
         assert _best_grid(18, 16 / 12) == (6, 3)
         assert _best_grid(13, 1.0) is None  # primo -> faixa temporal
@@ -149,7 +149,7 @@ class TestGradCAM:
 
 class TestShapWrapper:
     def test_shap_available_is_bool(self):
-        from app.core.xai.shap_explainer import shap_available
+        from app.domain.xai.shap_explainer import shap_available
 
         assert isinstance(shap_available(), bool)
 
@@ -157,7 +157,7 @@ class TestShapWrapper:
         pytest.importorskip("shap")
         from sklearn.ensemble import RandomForestClassifier
 
-        from app.core.xai.shap_explainer import explain_with_tree_shap
+        from app.domain.xai.shap_explainer import explain_with_tree_shap
 
         rng = np.random.default_rng(7)
         X = rng.normal(size=(80, 6))
@@ -175,7 +175,7 @@ class TestShapWrapper:
         pytest.importorskip("shap")
         from sklearn.linear_model import LogisticRegression
 
-        from app.core.xai.shap_explainer import explain_with_kernel_shap
+        from app.domain.xai.shap_explainer import explain_with_kernel_shap
 
         rng = np.random.default_rng(11)
         X = rng.normal(size=(60, 4))

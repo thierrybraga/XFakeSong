@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 _ROOT = Path(__file__).resolve().parents[2]
-_NB = _ROOT / "notebooks"
+_NB = _ROOT / "docs" / "notebooks"
 
 
 def _active_notebooks():

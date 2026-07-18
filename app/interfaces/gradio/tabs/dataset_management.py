@@ -18,7 +18,7 @@ import numpy as np
 
 import gradio as gr
 
-from app.core.dataset_catalog import (
+from app.domain.dataset_metadata.dataset_catalog import (
     MODEL_READINESS_TIERS,
     PRESET_SELECTIONS,
     dataset_reference_markdown,
@@ -36,7 +36,7 @@ logger = logging.getLogger("gradio_dataset_management")
 # Paths
 # ---------------------------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent
-DATASETS_DIR = BASE_DIR / "app" / "datasets"
+DATASETS_DIR = BASE_DIR / "data" / "datasets"
 REAL_DIR = DATASETS_DIR / "real"
 FAKE_DIR = DATASETS_DIR / "fake"
 SPLITS_DIR = DATASETS_DIR / "splits"
@@ -284,7 +284,7 @@ def _assess_training_readiness(real_count: int, fake_count: int) -> str:
     lines.append("| Tier | Modelos | Mín/classe | Status |")
     lines.append("|------|---------|:----------:|:------:|")
 
-    # Fonte unica: app/core/dataset_catalog.py::MODEL_READINESS_TIERS
+    # Fonte unica: app/domain/dataset_metadata/dataset_catalog.py::MODEL_READINESS_TIERS
     for _tier in MODEL_READINESS_TIERS:
         tier_name, models, required = _tier.name, _tier.models, _tier.min_per_class
         if per_class >= required:
@@ -669,13 +669,13 @@ def create_dataset_management_tab():
                 with gr.Row():
                     kpi_md = gr.Markdown("*Clique em Atualizar para carregar...*")
 
-                with gr.Row():
+                with gr.Row(elem_classes="responsive-grid plot-grid"):
                     with gr.Column(scale=1):
                         plot_class = gr.Plot(label="Distribuição por Classe")
                     with gr.Column(scale=1):
                         plot_source = gr.Plot(label="Fontes de Dados")
 
-                with gr.Row():
+                with gr.Row(elem_classes="responsive-grid plot-grid"):
                     with gr.Column(scale=1):
                         plot_duration = gr.Plot(label="Distribuição de Durações")
                     with gr.Column(scale=1):
@@ -685,7 +685,7 @@ def create_dataset_management_tab():
                             interactive=False,
                         )
 
-                with gr.Row():
+                with gr.Row(elem_classes="responsive-grid"):
                     with gr.Column(scale=2):
                         meta_json = gr.JSON(label="Metadata (splits_metadata.json)")
                     with gr.Column(scale=1):
@@ -764,13 +764,13 @@ def create_dataset_management_tab():
                 gr.Markdown("### Download e Balanceamento de Datasets")
 
                 # ── Barra de balanço em tempo real ─────────────────────
-                with gr.Row():
+                with gr.Row(elem_classes="action-row"):
                     with gr.Column(scale=4):
                         dl_balance_html = gr.HTML(value=_balance_bar_html(0, 0))
                     with gr.Column(scale=1, min_width=120):
                         dl_bal_refresh = gr.Button("↻ Atualizar", size="sm")
 
-                with gr.Row():
+                with gr.Row(elem_classes="responsive-grid"):
                     # ── Painel de configuração (esquerda) ───────────────
                     with gr.Column(scale=1):
 
@@ -852,7 +852,7 @@ def create_dataset_management_tab():
                         tier_reference_markdown()
                         + "\n\n"
                         "> Os tiers são a fonte única de verdade do tamanho/finalidade "
-                        "do dataset (`app/core/dataset_catalog.py`), compartilhada com "
+                        "do dataset (`app/domain/dataset_metadata/dataset_catalog.py`), compartilhada com "
                         "`scripts/dataset/build_dataset.py --tier ...`, o benchmark e a "
                         "documentação. Detalhes em `docs/12_DATASETS.md`."
                     )
@@ -1251,7 +1251,7 @@ def create_dataset_management_tab():
                     "Valide, normalize, remova duplicatas e crie splits train/val/test."
                 )
 
-                with gr.Row():
+                with gr.Row(elem_classes="responsive-grid"):
                     with gr.Column(scale=1):
                         pp_validate_btn = gr.Button("Validar Dataset", variant="secondary")
                         pp_normalize_btn = gr.Button("Normalizar Áudio", variant="secondary")

@@ -8,7 +8,7 @@ O sistema usa o padrão **Registry** (`FeatureExtractorRegistry`) para gerenciar
 
 ### Tipos de Features (`FeatureType`)
 
-Definido canonicamente em `app/core/interfaces/audio.py`:
+Definido canonicamente em `app/core/contracts/audio.py`:
 
 | Valor | Descrição |
 |-------|-----------|
@@ -27,7 +27,7 @@ Definido canonicamente em `app/core/interfaces/audio.py`:
 !!! note
     `app/domain/features/types.py` e `app/domain/features/interfaces.py` são
     re-exports que apontam para a fonte canônica em
-    `app/core/interfaces/audio.py`.
+    `app/core/contracts/audio.py`.
 
 ---
 
@@ -235,8 +235,8 @@ Métricas de estabilidade e textura da fonação.
 ## Adicionando um Novo Extrator
 
 ```python
-from app.core.interfaces.audio import AudioData, AudioFeatures, FeatureType, IFeatureExtractor
-from app.core.interfaces.base import ProcessingResult, ProcessingStatus
+from app.core.contracts.audio import AudioData, AudioFeatures, FeatureType, IFeatureExtractor
+from app.core.contracts.base import ProcessingResult, ProcessingStatus
 from app.domain.features.extractor_registry import (
     extractor_registry, ExtractorSpec, ExtractorComplexity
 )

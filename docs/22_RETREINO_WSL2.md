@@ -9,7 +9,7 @@
 
 - `tf.config.list_physical_devices("GPU")` retorna **vazio** no Windows nativo
   (TF ≥2.11). Sob WSL2 + `tensorflow[and-cuda]`, a RTX 3060 é exposta.
-- O **dataset já existe** no repo (`app/datasets/benchmark_audio_raw_balanced_15k.npz`,
+- O **dataset já existe** no repo (`data/datasets/benchmark_audio_raw_balanced_15k.npz`,
   2.769,01 MiB). Ele deriva de 15.000 WAVs ativos em PCM linear, 16 bits,
   mono, 16 kHz, somando 2.045,61 min de áudio validado — **não há download**.
 - Os ajustes de código (P0–P3) já estão aplicados; aqui só se **executa**.
@@ -40,7 +40,7 @@ bash scripts/training/retrain_wsl2.sh --check
 
 > Observação de E/S: treinar lendo o `.npz` de 2.769,01 MiB via `/mnt/d` (disco
 > Windows) é mais lento que copiar para o filesystem do WSL2. Para máxima
-> velocidade: `cp app/datasets/benchmark_audio_raw_balanced_15k.npz ~/ds.npz`
+> velocidade: `cp data/datasets/benchmark_audio_raw_balanced_15k.npz ~/ds.npz`
 > e use `--dataset ~/ds.npz`.
 
 ## Caminho B — container GPU (Docker Desktop + WSL2 backend)
@@ -78,7 +78,7 @@ Equivalente "cru" (sem o driver), via orquestrador:
 ```bash
 python scripts/benchmark/run_clean_benchmark_pipeline.py \
   --phase full \
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
   --epochs 100 \
   --batch-size 32 \
   --device-profile gpu \
@@ -96,7 +96,7 @@ somente a cabeça classificadora PyTorch sobre embeddings SSL.
 ```bash
 python scripts/benchmark/run_clean_benchmark_pipeline.py \
   --models "HuBERT Original" \
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
   --epochs 100 \
   --batch-size 32 \
   --ssl-feature-batch-size 16 \
@@ -111,14 +111,15 @@ Para revisar sem iniciar treino nem baixar pesos:
 python scripts/benchmark/run_models_sequential.py \
   --models "HuBERT Original" \
   --plan-only \
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz
+  --no-academic-protocol \
+  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
 ### Ablação do WavLM (opcional, P2)
 
 ```bash
 python scripts/training/ablate_wavlm_finetune.py \
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
   --lrs 1e-5 3e-5 1e-4 --epochs 30 --out results/ablation_wavlm
 ```
 

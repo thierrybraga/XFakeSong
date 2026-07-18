@@ -2,22 +2,27 @@
 
 from __future__ import annotations
 
+import csv
+import hashlib
+import json
 import logging
 import os
 import platform
 import re
-import csv
-import json
 import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 import numpy as np
 
 from benchmarks.config import BenchmarkConfig
-from benchmarks.data import BenchmarkData
+from benchmarks.data import (
+    BenchmarkData,
+    looks_like_raw_audio,
+    prepare_input_for_architecture,
+)
 from benchmarks.efficiency import count_params, file_size_mb, measure_latency_ms
 from benchmarks.evaluate import evaluate_scores
 from benchmarks.planning import (
@@ -30,6 +35,11 @@ logger = logging.getLogger("benchmark")
 
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+# O projeto é Keras 3-nativo. transformers.modeling_tf_utils seta
+# TF_USE_LEGACY_KERAS=1 no processo que o importa; se herdado antes do
+# import do TensorFlow, tf.keras vira Keras 2 (tf_keras) e as camadas
+# custom quebram. setdefault protege processos iniciados de shell limpa.
+os.environ.setdefault("TF_USE_LEGACY_KERAS", "0")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -297,6 +307,234 @@ def _stratified_test_labels(
     return y[test_idx]
 
 
+
+def _audit_split_overlap(raw_splits, fail_on_overlap: bool = True) -> Dict[str, Any]:
+    """Detecta amostras binariamente idênticas entre treino, validação e teste."""
+
+    names = ("train", "val", "test")
+    arrays = (raw_splits[0], raw_splits[2], raw_splits[4])
+    labels = (raw_splits[1], raw_splits[3], raw_splits[5])
+    fingerprints: Dict[str, set[str]] = {}
+    split_fingerprints: Dict[str, Any] = {
+        "method": "sha256_ordered_blake2b_sample_hashes_and_labels"
+    }
+    for name, values, y in zip(names, arrays, labels):
+        current: set[str] = set()
+        ordered = hashlib.sha256()
+        y_arr = np.ascontiguousarray(np.asarray(y, dtype="int64"))
+        ordered.update(str(np.asarray(values).shape).encode("ascii"))
+        ordered.update(y_arr.view(np.uint8))
+        for sample in np.asarray(values):
+            contiguous = np.ascontiguousarray(sample)
+            digest_bytes = hashlib.blake2b(
+                contiguous.view(np.uint8), digest_size=16
+            ).digest()
+            current.add(digest_bytes.hex())
+            ordered.update(digest_bytes)
+        fingerprints[name] = current
+        split_fingerprints[name] = {
+            "n": int(len(y_arr)),
+            "sha256": ordered.hexdigest(),
+        }
+
+    pair_counts = {
+        "train_val": len(fingerprints["train"] & fingerprints["val"]),
+        "train_test": len(fingerprints["train"] & fingerprints["test"]),
+        "val_test": len(fingerprints["val"] & fingerprints["test"]),
+    }
+    total = sum(pair_counts.values())
+    audit = {
+        "method": "blake2b-128_exact_array_bytes",
+        "pairwise_overlap_counts": pair_counts,
+        "split_fingerprints": split_fingerprints,
+        "passed": total == 0,
+    }
+    if total and fail_on_overlap:
+        raise ValueError(
+            "Contaminação entre partições: amostras idênticas detectadas "
+            f"{pair_counts}. Corrija o NPZ antes do benchmark."
+        )
+    return audit
+
+
+
+def _split_fingerprint(raw_splits) -> Dict[str, Any]:
+    """SHA-256 determinístico da identidade e ordem de cada partição."""
+
+    result: Dict[str, Any] = {"method": "sha256_ordered_array_bytes_and_labels"}
+    for name, X, y in (
+        ("train", raw_splits[0], raw_splits[1]),
+        ("val", raw_splits[2], raw_splits[3]),
+        ("test", raw_splits[4], raw_splits[5]),
+    ):
+        digest = hashlib.sha256()
+        y_arr = np.ascontiguousarray(np.asarray(y, dtype="int64"))
+        digest.update(str(np.asarray(X).shape).encode("ascii"))
+        digest.update(y_arr.view(np.uint8))
+        for sample in np.asarray(X):
+            contiguous = np.ascontiguousarray(sample)
+            digest.update(contiguous.view(np.uint8))
+        result[name] = {"n": int(len(y_arr)), "sha256": digest.hexdigest()}
+    return result
+
+
+def _audit_split_provenance(data: BenchmarkData) -> Dict[str, Any]:
+    """Relata sobreposição de fonte/locutor nas partições efetivamente usadas."""
+
+    indices = data.last_split_indices or {}
+    required = {"train", "val", "test"}
+    if not required.issubset(indices):
+        return {"available": False, "reason": "no_effective_split_indices"}
+    result: Dict[str, Any] = {"available": True}
+    for field, values in (("groups", data.groups), ("speakers", data.speakers)):
+        if values is None:
+            result[field] = {"available": False}
+            continue
+        sets = {
+            split: set(np.asarray(values)[indices[split]].astype(str).tolist())
+            for split in ("train", "val", "test")
+        }
+        intersections = {
+            "train_val": sorted(sets["train"] & sets["val"]),
+            "train_test": sorted(sets["train"] & sets["test"]),
+            "val_test": sorted(sets["val"] & sets["test"]),
+        }
+        result[field] = {
+            "available": True,
+            "unique_counts": {key: len(value) for key, value in sets.items()},
+            "overlap_counts": {
+                key: len(value) for key, value in intersections.items()
+            },
+            "train_test_examples": intersections["train_test"][:10],
+            "disjoint": all(not value for value in intersections.values()),
+        }
+    return result
+
+
+def _audit_predefined_provenance(data: BenchmarkData) -> Dict[str, Any]:
+    """Alias legado; audita agora as partições efetivamente usadas."""
+
+    return _audit_split_provenance(data)
+
+
+def _prepare_protocol_splits(
+    arch: str,
+    cfg: BenchmarkConfig,
+    raw_splits,
+):
+    """Prepara treino/val/teste preservando AWGN no domínio da forma de onda."""
+    Xtr_raw, ytr, Xv_raw, yv, Xte_raw, yte = raw_splits
+    waveform_domain = (
+        looks_like_raw_audio(Xtr_raw)
+        and looks_like_raw_audio(Xv_raw)
+        and looks_like_raw_audio(Xte_raw)
+    )
+    if (
+        cfg.strict_waveform_awgn
+        and cfg.dataset_path
+        and cfg.snr_levels_db
+        and not waveform_domain
+    ):
+        raise ValueError(
+            "O protocolo exige formas de onda no NPZ para aplicar AWGN antes "
+            "dos frontends. Use um dataset raw-audio ou desative "
+            "strict_waveform_awgn explicitamente para testes legados."
+        )
+
+    Xtr_clean, input_type = prepare_input_for_architecture(
+        Xtr_raw,
+        arch,
+        crop_strategy="random",
+        seed=cfg.seed,
+    )
+    Xv, _ = prepare_input_for_architecture(Xv_raw, arch)
+    Xte, _ = prepare_input_for_architecture(Xte_raw, arch)
+    Xtr_parts = [Xtr_clean]
+    ytr_parts = [np.asarray(ytr)]
+    assigned_counts: dict[str, int] = {}
+
+    # AJUSTE 2026-07-15 (diagnóstico do retreino 20260714): AASIST/RawGAT-ST
+    # overfitavam a cópia AWGN ESTÁTICA (mesma realização toda época — AASIST:
+    # val_acc pico 88,8% na época 11 caindo a 79,5% na 100). Para esses dois,
+    # a cópia estática é substituída por augmentation DINÂMICO na forma de
+    # onda (AudioAugmenter por época, domínio fisicamente válido — mesmo
+    # regime do run de 2026-07-07 em que o AASIST fez 95,8%). Custo por época
+    # idêntico (2× o treino limpo). Demais arquiteturas seguem o protocolo
+    # padrão (1 cópia AWGN estática, augmenter interno desligado).
+    dynamic_aug_archs = {"aasist", "rawgatst"}
+    use_dynamic_augmenter = (
+        waveform_domain and _compact_slug(arch) in dynamic_aug_archs
+    )
+    use_train_noise = (
+        waveform_domain
+        and not use_dynamic_augmenter
+        and cfg.waveform_noise_augmentation
+        and cfg.train_noise_copies > 0
+        and bool(cfg.train_aug_snr_db)
+    )
+    if use_train_noise:
+        noise_batch = max(1, int(cfg.waveform_noise_batch_size))
+        for copy_index in range(int(cfg.train_noise_copies)):
+            prepared_chunks = []
+            base_seed = cfg.seed + 10000 + copy_index
+            assigned = BenchmarkData.balanced_snr_assignments(
+                len(Xtr_raw), cfg.train_aug_snr_db, seed=base_seed
+            )
+            for start in range(0, len(Xtr_raw), noise_batch):
+                stop = min(start + noise_batch, len(Xtr_raw))
+                assigned_chunk = assigned[start:stop]
+                noisy_chunk = BenchmarkData.add_awgn_assigned(
+                    Xtr_raw[start:stop], assigned_chunk, seed=base_seed + start
+                )
+                prepared_chunk, _ = prepare_input_for_architecture(
+                    noisy_chunk,
+                    arch,
+                    crop_strategy="random",
+                    seed=base_seed + start,
+                )
+                prepared_chunks.append(prepared_chunk)
+            noisy_prepared = np.concatenate(prepared_chunks, axis=0)
+            Xtr_parts.append(noisy_prepared)
+            ytr_parts.append(np.asarray(ytr))
+            values, counts = np.unique(assigned, return_counts=True)
+            for value, count in zip(values, counts):
+                key = str(int(value))
+                assigned_counts[key] = assigned_counts.get(key, 0) + int(count)
+
+    Xtr = np.concatenate(Xtr_parts, axis=0)
+    ytr_fit = np.concatenate(ytr_parts, axis=0)
+    protocol = {
+        "evaluation_domain": "waveform" if waveform_domain else "input_space_fallback",
+        "frontend_after_noise": bool(waveform_domain),
+        "training_augmentation_domain": (
+            "waveform_dynamic_augmenter"
+            if use_dynamic_augmenter
+            else ("waveform" if use_train_noise else "disabled")
+        ),
+        "train_aug_snr_db": [int(v) for v in cfg.train_aug_snr_db],
+        "train_noise_copies": int(cfg.train_noise_copies if use_train_noise else 0),
+        "waveform_noise_batch_size": int(cfg.waveform_noise_batch_size),
+        "assigned_snr_counts": assigned_counts,
+        "clean_train_samples": int(len(ytr)),
+        "fit_train_samples": int(len(ytr_fit)),
+        "input_type": input_type,
+        "original_shape": list(np.asarray(Xtr_raw).shape[1:]),
+        "prepared_shape": list(np.asarray(Xtr_clean).shape[1:]),
+        "train_crop_strategy": "random" if input_type == "raw_audio" else None,
+        "eval_crop_strategy": "multicrop" if input_type == "raw_audio" else None,
+        "eval_num_crops": 3 if input_type == "raw_audio" else 1,
+    }
+    return (
+        Xtr,
+        ytr_fit,
+        Xv,
+        np.asarray(yv),
+        Xte,
+        np.asarray(yte),
+        int(len(ytr)),
+        protocol,
+    )
+
 def _run_neural(
     arch: str,
     cfg: BenchmarkConfig,
@@ -308,7 +546,8 @@ def _run_neural(
     from app.core.interfaces.base import ProcessingStatus
     from app.domain.services.training_service import TrainingService
 
-    Xtr, ytr, Xv, yv, _Xte, _yte = splits
+    Xtr, ytr, Xv, yv, _Xte, _yte = splits[:6]
+    protocol = splits[7] if len(splits) > 7 else {}
     name = f"bench_{_slug(arch)}"
     npz = tmp / "ds.npz"
     np.savez(npz, X_train=Xtr, y_train=ytr, X_val=Xv, y_val=yv)
@@ -325,13 +564,15 @@ def _run_neural(
         "progress_label": arch,
     }
     train_config.update(cfg.training_overrides.get(arch, {}))
+    # O orçamento é um controle experimental, não um hiperparâmetro do modelo.
+    train_config["epochs"] = int(cfg.epochs)
     train_config["model_name"] = name
     train_config["verbose"] = 0
     compact = _compact_slug(arch)
     if compact == "rawnet2":
-        # P2 — RawNet2 colapsava a ~50% sob ruído por treinar SEM augmentation.
-        # Com o ruído agora calibrado por SNR (+ RawBoost/codec para raw-audio),
-        # habilitar augmentation é o conserto direto da fragilidade a ruído.
+        # Mantém os hiperparâmetros do retreino anterior. No protocolo comum,
+        # o aumento interno será desligado após esta seleção porque a cópia
+        # ruidosa já foi gerada no domínio da forma de onda.
         train_config.update(
             {
                 "learning_rate": 1e-4,
@@ -340,13 +581,25 @@ def _run_neural(
             }
         )
     elif compact in {"aasist", "rawgatst"}:
-        # AJUSTE (retune): antes forçava learning_rate=1e-4 e
-        # use_augmentation=False aqui, sobrescrevendo os ajustes já feitos em
-        # aasist.py/rawgat_st.py/registry.py (ver docs/RETREINO_AJUSTES.md) e
-        # anulando o efeito do retreino de 2026-06-30. Agora só liga
-        # augmentation e deixa o LR fluir de cfg.training_overrides
-        # (benchmarks/planning.py, já sincronizado com os defaults tunados).
-        train_config.update({"use_augmentation": True})
+        # Compile-respect: LR e CosineDecay pertencem ao construtor.
+        model_params = train_config.setdefault("parameters", {})
+        for key in (
+            "learning_rate",
+            "min_learning_rate",
+            "decay_steps",
+            "dropout_rate",
+            "l2_reg_strength",
+            "classifier_head",
+        ):
+            if key in train_config:
+                model_params.setdefault(key, train_config[key])
+        train_config.pop("learning_rate", None)
+        train_config.update(
+            {
+                "use_augmentation": True,
+                "reduce_lr_on_plateau": False,
+            }
+        )
     elif compact == "efficientnetlstm":
         model_params = train_config.setdefault("parameters", {})
         if "dropout_rate" in train_config:
@@ -364,40 +617,71 @@ def _run_neural(
         train_config.update({"learning_rate": 1e-4})
     elif compact in {"hybridcnntransformer", "conformer", "spectrogramtransformer"}:
         train_config.update({"reduce_lr_on_plateau": False})
-        if compact in {"conformer", "spectrogramtransformer"}:
-            model_params = train_config.setdefault("parameters", {})
-            for key in (
-                "learning_rate",
-                "weight_decay",
-                "warmup_steps",
-                "decay_steps",
-                "alpha",
-                "dropout_rate",
-            ):
-                if key in train_config:
-                    model_params.setdefault(key, train_config[key])
-            train_config.pop("learning_rate", None)
-        if compact == "conformer":
-            model_params = train_config.setdefault("parameters", {})
+        # Compile-respect: LR/schedule vão ao CONSTRUTOR da arquitetura
+        # (WarmupCosineDecay próprio), não ao TrainingConfig — inclusive o
+        # CCT (2026-07-14; antes o compile do CCT era hardcoded e o
+        # learning_rate/decay_steps do plano nunca chegavam ao modelo).
+        model_params = train_config.setdefault("parameters", {})
+        for key in (
+            "learning_rate",
+            "weight_decay",
+            "warmup_steps",
+            "decay_steps",
+            "alpha",
+            "dropout_rate",
+        ):
+            if key in train_config:
+                model_params.setdefault(key, train_config[key])
+        train_config.pop("learning_rate", None)
+        if compact in {"conformer", "hybridcnntransformer"}:
             for key in ("clipnorm", "label_smoothing"):
                 if key in train_config:
                     model_params.setdefault(key, train_config[key])
         elif compact == "spectrogramtransformer":
             # P1 — retreino obrigatório. Liga augmentation (ruído SNR + SpecAug)
-            # e força a restauração do MELHOR checkpoint (val_loss), atacando o
-            # colapso val→teste por sobreajuste. Hiperparâmetros mais
-            # regularizados vêm dos defaults da arquitetura (dropout 0.3,
-            # weight_decay 1e-4, lr de pico 5e-5).
+            # e força a restauração do MELHOR checkpoint (val_loss, agora
+            # GUARDADA — validada no val antes de aceitar), atacando o colapso
+            # val→teste por sobreajuste. Hiperparâmetros vêm do plano/defaults
+            # (2026-07-14: pre-LN, lr de pico 1e-5, weight_decay 1e-5).
             train_config.update(
                 {"use_augmentation": True, "checkpoint_best": True}
             )
 
+    # Controles experimentais comuns; não alteram LR, dropout, regularização,
+    # otimizador, scheduler ou batch customizados por arquitetura.
+    train_config["calibrate_under_noise"] = False
+    if cfg.fixed_epoch_budget:
+        train_config["early_stopping"] = False
+    # O AWGN científico já foi aplicado à forma de onda antes do frontend.
+    # Desativa o AudioAugmenter legado para impedir novo ruído no log-Mel ou
+    # em outra representação. SpecAugment/RawBoost são ablações separadas.
+    # Exceção (2026-07-15): AASIST/RawGAT-ST usam o AudioAugmenter DINÂMICO
+    # na forma de onda no lugar da cópia estática (ver
+    # _prepare_protocol_splits) — para eles use_augmentation permanece True.
+    if protocol.get("training_augmentation_domain") == "waveform":
+        train_config["use_augmentation"] = False
+        train_config["waveform_noise_protocol"] = protocol
+    elif protocol.get("training_augmentation_domain") == "waveform_dynamic_augmenter":
+        train_config["use_augmentation"] = True
+        train_config["waveform_noise_protocol"] = protocol
+
     checkpoint_path = None
-    if bool(train_config.pop("checkpoint_best", False)):
+    checkpoint_requested = bool(train_config.pop("checkpoint_best", False))
+    if cfg.select_best_checkpoint or checkpoint_requested:
         checkpoint_dir = arch_dir / "models"
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        checkpoint_path = checkpoint_dir / "best_checkpoint.keras"
+        # `.weights.h5` → ModelCheckpoint salva SÓ os pesos (2026-07-14):
+        # o artefato serve apenas à restauração guardada via load_weights;
+        # o modelo completo de inferência é salvo separadamente pelo
+        # TrainingService (save_inference_keras).
+        checkpoint_path = checkpoint_dir / "best_checkpoint.weights.h5"
         train_config["checkpoint_path"] = str(checkpoint_path)
+
+    # Backup operacional separado do checkpoint de selecao cientifica.
+    # Preserva pesos, otimizador e contador de epocas para retomada apos
+    # reinicio do host/Docker. E removido automaticamente ao concluir fit().
+    backup_dir = arch_dir / "training_backup"
+    train_config["backup_dir"] = str(backup_dir)
 
     res = svc.train_model(
         architecture=arch,
@@ -412,9 +696,35 @@ def _run_neural(
     if model is None:
         raise RuntimeError("TrainingService não retornou o modelo treinado em memória")
 
+    # AJUSTE 2026-07-14 (rigor da avaliação): modelos com saída LINEAR emitem
+    # LOGITS crus (ex.: AASIST/AMSoftmax, faixa ≈[-15, 15]). Antes, pred[:, 1]
+    # ia direto para _finite_scores, que CLIPA em [0, 1] — quantizando os
+    # scores em ~{0, 1} (observado: 4 valores distintos em 2250 predições) e
+    # invalidando EER/ROC/min-tDCF, que exigem scores contínuos. Além do clip,
+    # o ranking de p_fake é monotônico em (z1 − z0), não em z1 isolado.
+    # Normaliza (softmax/sigmoid) ANTES de extrair p_fake.
+    try:
+        import tensorflow as _tf
+
+        _last_act = getattr(model.layers[-1], "activation", None)
+        _from_logits = (
+            _last_act is None or _last_act is _tf.keras.activations.linear
+        )
+    except Exception:
+        _from_logits = False
+
+    def _normalize_probs(pred: np.ndarray) -> np.ndarray:
+        if not _from_logits:
+            return pred
+        if pred.ndim > 1 and pred.shape[-1] > 1:
+            z = pred - pred.max(axis=-1, keepdims=True)
+            e = np.exp(z)
+            return e / e.sum(axis=-1, keepdims=True)
+        return 1.0 / (1.0 + np.exp(-pred))
+
     def predict_p_fake(X: np.ndarray) -> np.ndarray:
         pred = model.predict(np.asarray(X, dtype="float32"), verbose=0)
-        pred = np.asarray(pred, dtype="float64")
+        pred = _normalize_probs(np.asarray(pred, dtype="float64"))
         if pred.ndim > 1 and pred.shape[-1] > 1:
             return pred[:, 1]
         return pred.reshape(-1)
@@ -464,7 +774,9 @@ def _run_classical(
     models_dir: Path,
 ):
     """Treina um modelo clássico (SVM/RF) diretamente (sklearn)."""
-    Xtr, ytr, Xv, yv, _Xte, _yte = splits
+    Xtr, ytr, Xv, yv, _Xte, _yte = splits[:6]
+    clean_train_count = int(splits[6]) if len(splits) > 6 else len(ytr)
+    protocol = splits[7] if len(splits) > 7 else {}
     n_features = int(np.asarray(Xtr).reshape(len(Xtr), -1).shape[1])
 
     if "svm" in arch.lower():
@@ -497,12 +809,14 @@ def _run_classical(
         )
         y_fit = np.concatenate([y_train, np.asarray(yv).ravel()], axis=0)
 
-    # P2 — augmentation ruidoso (SVM/RF): anexa cópias do treino com AWGN nos
-    # mesmos SNRs avaliados. Feito no espaço de feature em que a robustez é
-    # medida (BenchmarkData.add_awgn opera sobre o vetor de features tabular),
-    # então o treino passa a ver a degradação que antes só aparecia no teste.
+    # Compatibilidade legada, desativada por padrão. A comparação científica
+    # usa exclusivamente a cópia ruidosa produzida na forma de onda em
+    # _prepare_protocol_splits; ruído direto no vetor tabular não é AWGN acústico.
     aug_snrs = []
-    if getattr(cfg, "classical_noise_augmentation", True):
+    if (
+        getattr(cfg, "classical_noise_augmentation", False)
+        and protocol.get("training_augmentation_domain") != "waveform"
+    ):
         aug_snrs = list(cfg.snr_levels_db)
     if aug_snrs:
         extra_X = [BenchmarkData.add_awgn(X_fit_2d, snr, seed=cfg.seed + i)
@@ -519,8 +833,8 @@ def _run_classical(
     if cfg.optimize_hyperparameters:
         tuning = _run_classical_tuning(
             arch=arch,
-            X=X_train_2d,
-            y=y_train,
+            X=X_train_2d[:clean_train_count],
+            y=y_train[:clean_train_count],
             output_dir=arch_dir,
             seed=cfg.seed,
         )
@@ -599,44 +913,129 @@ def _run_classical(
     }
 
 
-def _benchmark_one(arch: str, cfg: BenchmarkConfig, splits) -> Dict[str, Any]:
-    """Roda uma arquitetura ponta-a-ponta; nunca propaga exceção."""
-    _Xtr, _ytr, _Xv, _yv, Xte, yte = splits
+def _benchmark_one(arch: str, cfg: BenchmarkConfig, raw_splits) -> Dict[str, Any]:
+    """Treina e avalia uma arquitetura com perturbações no áudio canônico."""
+    raw_Xte, raw_yte = raw_splits[4], raw_splits[5]
     t0 = time.time()
     models_dir = _models_dir(cfg, arch)
     try:
+        splits = _prepare_protocol_splits(arch, cfg, raw_splits)
+        _Xtr, _ytr, _Xv, _yv, Xte, yte = splits[:6]
+        protocol = dict(splits[7])
         with tempfile.TemporaryDirectory(prefix="bench_") as td:
             tmp = Path(td)
             is_classical = _is_classical_arch(arch)
-            r = (_run_classical if is_classical else _run_neural)(
-                arch, cfg, splits, tmp, models_dir
-            )
+            if is_classical:
+                r = _run_classical(arch, cfg, splits, tmp, models_dir)
+            else:
+                r = _run_neural(arch, cfg, splits, tmp, models_dir)
             predict_p_fake: Callable = r["predict_p_fake"]
 
-            # --- Limpo ---
-            pf_clean = _finite_scores(predict_p_fake(Xte))
-            clean = evaluate_scores(yte, pf_clean)
+            use_multicrop = (
+                protocol.get("input_type") == "raw_audio"
+                and _compact_slug(arch) in {"aasist", "rawgatst"}
+            )
+
+            def predict_eval(
+                prepared: np.ndarray,
+                raw_waveforms: Optional[np.ndarray] = None,
+            ) -> np.ndarray:
+                if not use_multicrop or raw_waveforms is None:
+                    return _finite_scores(predict_p_fake(prepared))
+                from app.domain.features.benchmark_frontend import (
+                    raw_audio_multicrop_batch,
+                )
+
+                crops = raw_audio_multicrop_batch(
+                    raw_waveforms,
+                    target_len=int(np.asarray(Xte).shape[1]),
+                    num_crops=3,
+                )
+                n_samples, n_crops = crops.shape[:2]
+                flat_crops = crops.reshape(
+                    n_samples * n_crops, *crops.shape[2:]
+                )
+                crop_scores = _finite_scores(predict_p_fake(flat_crops))
+                return crop_scores.reshape(n_samples, n_crops).mean(axis=1)
+
+            n_boot = int(getattr(cfg, "bootstrap_ci_samples", 0) or 0)
+            pf_clean = predict_eval(Xte, raw_Xte)
+            clean = evaluate_scores(
+                yte,
+                pf_clean,
+                threshold=cfg.decision_threshold,
+                n_bootstrap=n_boot,
+            )
             converged = (
                 not np.isnan(clean.get("auc_roc", float("nan")))
                 and clean["auc_roc"] >= cfg.converge_auc_threshold
                 and clean.get("accuracy", 0.0) >= cfg.converge_accuracy_threshold
             )
 
-            # --- Robustez AWGN ---
             robustness: Dict[str, Any] = {}
             for snr in cfg.snr_levels_db:
-                Xn = BenchmarkData.add_awgn(Xte, snr, seed=cfg.seed)
+                if protocol["evaluation_domain"] == "waveform":
+                    # Semente da AVALIAÇÃO: seed+20000+snr — mesma realização
+                    # de ruído para todas as arquiteturas (comparabilidade) e
+                    # espaço disjunto do ruído de TREINO (seed+10000+start
+                    # +1009*(nível+1) em _prepare_protocol_splits): com os
+                    # defaults (batch 64, 3 SNRs) nenhuma colisão de semente
+                    # treino↔teste é possível. Manter os offsets 10000/20000
+                    # ao mexer em qualquer um dos dois lados.
+                    noisy_raw = BenchmarkData.add_awgn(
+                        raw_Xte, snr, seed=cfg.seed + 20000 + int(snr)
+                    )
+                    Xn, _ = prepare_input_for_architecture(noisy_raw, arch)
+                else:
+                    Xn = BenchmarkData.add_awgn(
+                        Xte, snr, seed=cfg.seed + 20000 + int(snr)
+                    )
+                    noisy_raw = None
                 robustness[str(snr)] = evaluate_scores(
-                    yte,
-                    _finite_scores(predict_p_fake(Xn)),
+                    raw_yte,
+                    predict_eval(Xn, noisy_raw),
+                    threshold=cfg.decision_threshold,
+                    n_bootstrap=n_boot,
                 )
 
-            # --- Eficiência ---
+            # Robustez a CODEC (opt-in): round-trip com perdas na FORMA DE
+            # ONDA, antes dos frontends — mesmo ponto do protocolo do AWGN.
+            # Determinístico (sem semente); mesma degradação p/ todas as
+            # arquiteturas (comparabilidade pareada).
+            codec_robustness: Dict[str, Any] = {}
+            codecs = list(getattr(cfg, "codec_eval", []) or [])
+            if codecs and protocol["evaluation_domain"] == "waveform":
+                from benchmarks.perturbations import codec_roundtrip
+
+                for codec in codecs:
+                    try:
+                        degraded = codec_roundtrip(raw_Xte, codec)
+                        Xc, _ = prepare_input_for_architecture(degraded, arch)
+                        codec_robustness[codec] = evaluate_scores(
+                            raw_yte,
+                            predict_eval(Xc, degraded),
+                            threshold=cfg.decision_threshold,
+                            n_bootstrap=n_boot,
+                        )
+                    except Exception as exc:  # noqa: BLE001 — opt-in, não derruba o run
+                        logger.warning(
+                            "[%s] avaliação de codec '%s' falhou: %s",
+                            arch, codec, exc,
+                        )
+                        codec_robustness[codec] = {
+                            "status": "error", "error": str(exc)
+                        }
+            elif codecs:
+                logger.warning(
+                    "[%s] codec_eval ignorado: avaliação não está no domínio "
+                    "da forma de onda.", arch,
+                )
+
             latency = measure_latency_ms(
                 r["predict_fn"], Xte[0], runs=cfg.latency_runs
             )
-
             training_config = dict(r.get("training_config") or {})
+            training_config.setdefault("waveform_noise_protocol", protocol)
             history = r.get("history")
             effective_epochs = r.get("epochs")
             if history:
@@ -657,6 +1056,8 @@ def _benchmark_one(arch: str, cfg: BenchmarkConfig, splits) -> Dict[str, Any]:
                 "status": "ok",
                 "type": "classical" if is_classical else "neural",
                 "input_shape": list(np.asarray(Xte).shape[1:]),
+                "input_preparation": protocol,
+                "noise_protocol": protocol,
                 "converged": bool(converged),
                 "convergence_criteria": {
                     "auc_roc_min": cfg.converge_auc_threshold,
@@ -665,6 +1066,7 @@ def _benchmark_one(arch: str, cfg: BenchmarkConfig, splits) -> Dict[str, Any]:
                 "clean": clean,
                 "scores_clean": [round(float(v), 6) for v in pf_clean],
                 "robustness": robustness,
+                "codec_robustness": codec_robustness,
                 "efficiency": {
                     "params": r["params"],
                     "size_mb": r["size_mb"],
@@ -692,6 +1094,19 @@ def _benchmark_one(arch: str, cfg: BenchmarkConfig, splits) -> Dict[str, Any]:
 def _load_and_validate_data(cfg: BenchmarkConfig) -> BenchmarkData:
     if cfg.dataset_path:
         data = BenchmarkData.from_npz(cfg.dataset_path)
+        # Guarda de sanidade (2026-07-14): um stub de smoke com 64 amostras
+        # foi encontrado com o MESMO nome do dataset real de 15k — um run
+        # completo sobre ele terminaria sem nenhum erro visível. Não falha
+        # (NPZs de smoke pequenos são legítimos), mas avisa alto e deixa
+        # rastro no log do run.
+        if len(data.y) < 1000:
+            logger.warning(
+                "Dataset '%s' tem apenas %d amostras — se isto é um "
+                "benchmark científico, confira se o caminho não aponta para "
+                "um stub de smoke (dataset real: data/datasets/, ~15k).",
+                data.name,
+                len(data.y),
+            )
     else:
         data = BenchmarkData.synthetic(
             cfg.synthetic_n, cfg.synthetic_shape, cfg.seed
@@ -730,27 +1145,23 @@ def run_benchmark(cfg: BenchmarkConfig) -> Dict[str, Any]:
     write_benchmark_plan(plan, cfg.output_dir)
     apply_plan_to_config(cfg, plan)
 
-    # Rótulos do teste held-out para o resumo do dataset. Sob split por
-    # grupo/cross-generator, reproduz a MESMA partição (label-only, sem copiar
-    # o X grande) para que balance_test/y_test reflitam o protocolo real.
-    _protocol_split = (
-        cfg.group_split or cfg.holdout_generator
-        or cfg.speaker_split or cfg.holdout_speaker
+    # Uma única partição no domínio bruto é reutilizada por todas as famílias.
+    # Isso garante as mesmas amostras e as mesmas realizações de AWGN antes dos
+    # frontends raw/log-Mel/tabular.
+    raw_splits = data.stratified_split(
+        cfg.seed,
+        group_split=cfg.group_split,
+        holdout_generator=cfg.holdout_generator,
+        speaker_split=cfg.speaker_split,
+        holdout_speaker=cfg.holdout_speaker,
+        preserve_predefined=cfg.preserve_predefined_splits,
     )
-    if _protocol_split and (data.groups is not None or data.speakers is not None):
-        label_view = BenchmarkData(
-            X=np.zeros((len(data.y), 1), dtype="float32"),
-            y=data.y, name=data.name, groups=data.groups, speakers=data.speakers,
-        )
-        _, _, _, _, _, y_test_base = label_view.stratified_split(
-            cfg.seed,
-            group_split=cfg.group_split,
-            holdout_generator=cfg.holdout_generator,
-            speaker_split=cfg.speaker_split,
-            holdout_speaker=cfg.holdout_speaker,
-        )
-    else:
-        y_test_base = _stratified_test_labels(data.y, cfg.seed)
+    split_overlap_audit = _audit_split_overlap(
+        raw_splits, fail_on_overlap=cfg.fail_on_split_overlap
+    )
+    split_fingerprints = split_overlap_audit["split_fingerprints"]
+    provenance_overlap_audit = _audit_split_provenance(data)
+    y_test_base = np.asarray(raw_splits[5])
     n_test = len(y_test_base)
     logger.info(
         "Dataset '%s': %d amostras | teste held-out: %d", data.name,
@@ -760,16 +1171,7 @@ def run_benchmark(cfg: BenchmarkConfig) -> Dict[str, Any]:
     per_arch: Dict[str, Any] = {}
     for arch in cfg.architectures:
         logger.info("=== Benchmark: %s ===", arch)
-        prepared = data.prepare_for_architecture(arch)
-        splits = prepared.stratified_split(
-            cfg.seed,
-            group_split=cfg.group_split,
-            holdout_generator=cfg.holdout_generator,
-            speaker_split=cfg.speaker_split,
-            holdout_speaker=cfg.holdout_speaker,
-        )
-        per_arch[arch] = _benchmark_one(arch, cfg, splits)
-        per_arch[arch]["input_preparation"] = prepared.metadata or {}
+        per_arch[arch] = _benchmark_one(arch, cfg, raw_splits)
 
     results: Dict[str, Any] = {
         "config": cfg.to_dict(),
@@ -781,6 +1183,17 @@ def run_benchmark(cfg: BenchmarkConfig) -> Dict[str, Any]:
             "n_test": int(n_test),
             "input_shape": list(np.asarray(data.X).shape[1:]),
             "metadata": data.metadata or {},
+            "split_source": (
+                "predefined_npz"
+                if data.predefined_split_indices and cfg.preserve_predefined_splits
+                and not any((cfg.group_split, cfg.holdout_generator,
+                             cfg.speaker_split, cfg.holdout_speaker))
+                else "generated_by_protocol"
+            ),
+            "split_overlap_audit": split_overlap_audit,
+            "split_fingerprints": split_fingerprints,
+            "test_split_sha256": split_fingerprints["test"]["sha256"],
+            "provenance_overlap_audit": provenance_overlap_audit,
             "source": (data.metadata or {}).get("source"),
             "balance_test": {
                 "real": int((y_test_base == 0).sum()),

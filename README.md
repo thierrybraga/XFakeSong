@@ -34,7 +34,7 @@ fluxo local, auditável e repetível:
    relatórios Markdown com imagens PNG.
 
 O benchmark consolidado do TCC usa o tier `medium`, exportado como
-`app/datasets/benchmark_audio_raw_balanced_15k.npz`, com alvo de `7.500`
+`data/datasets/benchmark_audio_raw_balanced_15k.npz`, com alvo de `7.500`
 amostras reais + `7.500` amostras fake. A revisão local de 28/06/2026 usa
 BRSpeech-DF, Fake Voices, MLS Portuguese e TTS-Portuguese Corpus:
 
@@ -56,10 +56,10 @@ Os tiers de dataset são:
 | `large` | 20.000 | auditoria estendida e protocolo de falantes não vistos |
 
 Excedentes baixados durante a curadoria são arquivados em
-`app/datasets/overflow/`, preservando os WAVs brutos para novas rotas.
-IDs reais de falantes são registrados em `app/datasets/speaker_manifest.json`
+`data/datasets/overflow/`, preservando os WAVs brutos para novas rotas.
+IDs reais de falantes são registrados em `data/datasets/speaker_manifest.json`
 quando a fonte expõe esse metadado; a tabela consolidada por arquivo fica em
-`app/datasets/speaker_table.csv`.
+`data/datasets/speaker_table.csv`.
 
 ## Início Rápido
 
@@ -103,7 +103,7 @@ start.bat
 ## Ambientes de Treinamento
 
 O projeto possui uma estrutura consolidada por família computacional em
-`environments/`, com requirements, Dockerfiles e READMEs dedicados.
+`docker/environments/`, com requirements, Dockerfiles e READMEs dedicados.
 
 No Windows nativo, TensorFlow roda em CPU. Treino/benchmark com GPU NVIDIA deve
 ser executado via WSL2/Docker Desktop GPU usando os perfis `*-nvidia`.
@@ -184,7 +184,7 @@ python scripts/benchmark/run_tcc_pipeline.py ^
   --epochs 100 ^
   --device-profile gpu ^
   --out results/benchmark_15k_medium ^
-  --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
+  --npz data/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
 No Windows com GPU, use o perfil Docker/WSL2:
@@ -199,7 +199,7 @@ docker compose -f docker\compose\benchmark.nvidia.yml --env-file .env run --rm b
     --epochs 100 `
     --batch-size 32 `
     --device-profile gpu `
-    --npz app/datasets/benchmark_audio_raw_balanced_15k.npz `
+    --npz data/datasets/benchmark_audio_raw_balanced_15k.npz `
     --out results/benchmark_15k_medium
 ```
 
@@ -210,8 +210,8 @@ Saídas principais:
 | `benchmark_plan.md` / `benchmark_plan.json` | preset, dataset e hiperparâmetros efetivos antes do treino |
 | `dataset.md` | composição, split, processamento e hiperparâmetros globais |
 | `dataset_manifest.json` | manifesto estruturado do dataset |
-| `app/datasets/speaker_manifest.json` | IDs reais de falante quando a fonte fornece o metadado |
-| `app/datasets/speaker_table.csv` | tabela por arquivo com classe, fonte, split, falante, duração e tamanho |
+| `data/datasets/speaker_manifest.json` | IDs reais de falante quando a fonte fornece o metadado |
+| `data/datasets/speaker_table.csv` | tabela por arquivo com classe, fonte, split, falante, duração e tamanho |
 | `results.json` / `results.csv` | métricas completas por arquitetura |
 | `tcc_report.md` | relatório final com métricas, inferências e imagens PNG |
 | `figures/*.png` | gráficos agregados |
@@ -229,7 +229,7 @@ Para revisar o plano sem iniciar treinamento:
 
 ```bash
 python scripts/benchmark/run_benchmark.py --full ^
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz ^
+  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz ^
   --epochs 100 ^
   --out results/benchmark_15k_medium ^
   --plan-only
@@ -239,7 +239,7 @@ Benchmark de um modelo individual:
 
 ```bash
 python scripts/benchmark/run_benchmark.py --model AASIST ^
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz ^
+  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz ^
   --epochs 100 ^
   --out results/bench_aasist
 ```
@@ -250,9 +250,9 @@ Para detalhes do desenho experimental, consulte
 Para auditar falantes depois de montar o dataset:
 
 ```bash
-python scripts/dataset/rebuild_speaker_manifest.py --dataset-dir app/datasets
-python scripts/dataset/export_speaker_table.py --dataset-dir app/datasets --scope all
-python scripts/dataset/audit_speaker_manifest.py --dataset-dir app/datasets --scope splits
+python scripts/dataset/rebuild_speaker_manifest.py --dataset-dir data/datasets
+python scripts/dataset/export_speaker_table.py --dataset-dir data/datasets --scope all
+python scripts/dataset/audit_speaker_manifest.py --dataset-dir data/datasets --scope splits
 ```
 
 ## Publicar Modelos no Hugging Face
@@ -321,7 +321,7 @@ O benchmark cobre 14 arquiteturas/baselines:
 Os notebooks foram reorganizados para estudo e reprodução:
 
 ```text
-notebooks/
+docs/notebooks/
 ├── 00_index.ipynb
 ├── features/
 │   └── 01_feature_extraction_study.ipynb
@@ -335,10 +335,10 @@ notebooks/
     └── 14_random_forest.ipynb
 ```
 
-Cada notebook em `notebooks/models/` documenta uma arquitetura, seu contrato de
+Cada notebook em `docs/notebooks/models/` documenta uma arquitetura, seu contrato de
 entrada, objetivo de estudo e célula prática de inspeção. O diretório
-`notebooks/pipeline/` contém o notebook do benchmark completo, um notebook de
-treino e um notebook de inferência. O diretório `notebooks/features/` concentra
+`docs/notebooks/pipeline/` contém o notebook do benchmark completo, um notebook de
+treino e um notebook de inferência. O diretório `docs/notebooks/features/` concentra
 a extração e estudo de features acústicas.
 
 ## Documentação

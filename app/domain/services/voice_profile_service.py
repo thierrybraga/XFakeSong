@@ -32,7 +32,7 @@ import joblib
 import librosa
 import numpy as np
 
-from app.core.database import SessionLocal
+from app.core.db.session import SessionLocal
 from app.domain.models.voice_profile import VoiceProfile
 
 logger = logging.getLogger(__name__)

@@ -34,6 +34,8 @@ try:
 except Exception:
     pass
 
+from benchmarks.data import BenchmarkData
+
 logger = logging.getLogger("ssl_original_benchmark")
 
 
@@ -99,59 +101,25 @@ class _LoadedData:
 
 
 def _load_dataset(path: str, seed: int):
-    from sklearn.model_selection import train_test_split
+    """Carrega o NPZ preservando partições oficiais quando disponíveis."""
 
     p = Path(path)
-    if not p.exists():
-        raise FileNotFoundError(f"Dataset nao encontrado: {path}")
-    raw = np.load(p, allow_pickle=False)
-    xs: list[np.ndarray] = []
-    ys: list[np.ndarray] = []
-    for xk, yk in (("X_train", "y_train"), ("X_val", "y_val"),
-                   ("X_test", "y_test"), ("X", "y")):
-        if xk in raw and yk in raw:
-            xs.append(np.asarray(raw[xk], dtype="float32"))
-            ys.append(np.asarray(raw[yk]))
-    if not xs:
-        raise ValueError(
-            f"{path}: esperado X_train/y_train ou X/y; chaves={list(raw.keys())}"
-        )
-
-    X = np.concatenate(xs, axis=0)
-    y = np.concatenate(ys, axis=0)
-    if y.ndim > 1 and y.shape[-1] > 1:
-        y = np.argmax(y, axis=-1)
-    y = y.ravel().astype("int64")
-    original_shape = list(X.shape[1:])
-    flat = X.reshape(len(X), -1).astype("float32")
-    X = _fit_length(flat, 16000)[..., np.newaxis].astype("float32")
-    labels = set(np.unique(y).astype(int).tolist())
-    if labels != {0, 1}:
-        raise ValueError(f"Labels esperados {{0,1}}, encontrados {sorted(labels)}")
-
-    metadata: dict[str, Any] = {"source": str(p), "npz_path": str(p)}
-    if "metadata_json" in raw:
-        try:
-            meta_raw = raw["metadata_json"]
-            if hasattr(meta_raw, "item"):
-                meta_raw = meta_raw.item()
-            metadata.update(json.loads(str(meta_raw)))
-        except Exception:
-            metadata["metadata_parse_error"] = True
-
-    idx = np.arange(len(y))
-    train_idx, temp_idx = train_test_split(
-        idx, test_size=0.30, stratify=y, random_state=seed
+    data = BenchmarkData.from_npz(str(p))
+    splits = data.stratified_split(seed=seed, preserve_predefined=True)
+    metadata = dict(data.metadata or {"source": str(p), "npz_path": str(p)})
+    metadata["split_source"] = (
+        "predefined_npz" if data.predefined_split_indices else "stratified_seed"
     )
-    val_idx, test_idx = train_test_split(
-        temp_idx, test_size=0.50, stratify=y[temp_idx], random_state=seed
+    from benchmarks.runner import _audit_split_provenance
+    metadata["provenance_overlap_audit"] = _audit_split_provenance(data)
+    loaded = _LoadedData(
+        data.X,
+        data.y,
+        data.name,
+        metadata,
+        list(np.asarray(data.X).shape[1:]),
     )
-    data = _LoadedData(X, y, p.stem, metadata, original_shape)
-    return data, (
-        X[train_idx], y[train_idx],
-        X[val_idx], y[val_idx],
-        X[test_idx], y[test_idx],
-    )
+    return loaded, splits
 
 
 def _normalize_wave_batch(x: np.ndarray) -> np.ndarray:
@@ -166,14 +134,8 @@ def _normalize_wave_batch(x: np.ndarray) -> np.ndarray:
 
 
 def _add_awgn_raw(X: np.ndarray, snr_db: float, seed: int) -> np.ndarray:
-    rng = np.random.default_rng(seed)
-    X = np.asarray(X, dtype="float32")
-    flat = X.reshape(len(X), -1)
-    sig_power = np.mean(flat ** 2, axis=1, keepdims=True)
-    snr_lin = 10.0 ** (float(snr_db) / 10.0)
-    noise_std = np.sqrt(sig_power / max(snr_lin, 1e-12))
-    noise = rng.standard_normal(flat.shape).astype("float32") * noise_std
-    return (flat + noise).reshape(X.shape).astype("float32")
+    """AWGN canônico no domínio da forma de onda."""
+    return BenchmarkData.add_awgn(X, snr_db=snr_db, seed=seed)
 
 
 def _count_torch_params(module) -> int:
@@ -238,55 +200,30 @@ def _write_model_card(path: Path, payload: dict[str, Any]) -> None:
 
 
 def _evaluate_scores(
-    y_true: np.ndarray, p_fake: np.ndarray, threshold: float = 0.5
+    y_true: np.ndarray, p_fake: np.ndarray, threshold: float = 0.5,
+    n_bootstrap: int = 1000
 ) -> dict[str, float]:
-    from sklearn.metrics import (
-        accuracy_score,
-        f1_score,
-        precision_score,
-        recall_score,
-        roc_auc_score,
-        roc_curve,
-    )
+    """Delegado ao evaluate_scores canônico do benchmark.
 
-    y_true = np.asarray(y_true).ravel().astype(int)
-    p_fake = _finite_scores(p_fake)
-    y_pred = (p_fake >= threshold).astype(int)
-    n_pos = int((y_true == 1).sum())
-    n_neg = int((y_true == 0).sum())
-    out: dict[str, float] = {
-        "accuracy": float(accuracy_score(y_true, y_pred)),
-        "precision": float(precision_score(y_true, y_pred, zero_division=0)),
-        "recall": float(recall_score(y_true, y_pred, zero_division=0)),
-        "f1": float(f1_score(y_true, y_pred, zero_division=0)),
-        "n": int(len(y_true)),
-        "n_pos": n_pos,
-        "n_neg": n_neg,
-        "nonfinite_scores": int((~np.isfinite(np.asarray(p_fake))).sum()),
-    }
-    if n_pos > 0 and n_neg > 0:
-        out["auc_roc"] = float(roc_auc_score(y_true, p_fake))
-        fpr, tpr, thresholds = roc_curve(y_true, p_fake)
-        fnr = 1.0 - tpr
-        idx = int(np.nanargmin(np.abs(fnr - fpr)))
-        out["eer"] = float((fpr[idx] + fnr[idx]) / 2.0)
-        out["eer_threshold"] = float(thresholds[idx])
-        p_target = 0.01
-        risks = p_target * fnr + (1.0 - p_target) * fpr
-        out["min_tdcf"] = float(np.nanmin(risks) / max(p_target, 1e-12))
-    else:
-        out["auc_roc"] = float("nan")
-        out["eer"] = float("nan")
-        out["eer_threshold"] = float("nan")
-        out["min_tdcf"] = float("nan")
-    return out
+    AJUSTE 2026-07-14: este runner tinha uma implementação própria de EER e
+    principalmente de min t-DCF (fórmula simplificada com p_target=0.01),
+    DIFERENTE do t-DCF ASVspoof2019 CM-only do MetricsCalculator usado para
+    os outros 9 modelos — os números de WavLM/HuBERT Original não eram
+    comparáveis na tabela consolidada. benchmarks.evaluate importa apenas
+    numpy/sklearn (sem TensorFlow), então é seguro neste runner PyTorch.
+    """
+    from benchmarks.evaluate import evaluate_scores
+
+    return evaluate_scores(
+        y_true, p_fake, threshold=threshold, n_bootstrap=n_bootstrap
+    )
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--dataset",
-        default="app/datasets/benchmark_audio_raw_balanced_15k.npz",
+        default="data/datasets/benchmark_audio_raw_balanced_15k.npz",
         help="Dataset .npz balanceado com audio bruto.",
     )
     parser.add_argument(
@@ -319,31 +256,31 @@ def main() -> int:
         "--train-aug-snr",
         nargs="+",
         type=int,
-        default=[30, 20, 10, 5],
+        default=[30, 20, 10],
         help="SNRs (dB) das copias de treino com ruido.",
     )
+    parser.add_argument("--waveform-noise-batch-size", type=int, default=64)
     parser.add_argument(
         "--early-stopping",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Interrompe o treino quando a val_loss para de melhorar e "
-        "restaura os melhores pesos.",
+        default=False,
+        help="Ablação: interrompe antes das 100 épocas; o protocolo principal "
+        "sempre restaura o melhor checkpoint em validação limpa.",
     )
     parser.add_argument("--early-stopping-patience", type=int, default=15)
     parser.add_argument(
         "--calibrate-under-noise",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Calibra o threshold de decisao (EER) em validacao com ruido, "
-        "espelhando calibrate_under_noise do settings.py.",
+        default=False,
+        help="Calibra opcionalmente o threshold em validação com ruído; "
+        "desativado por padrão para manter o limiar comum de 0,5.",
     )
     parser.add_argument(
         "--calibration-snr",
         nargs="+",
         type=int,
         default=[20, 10],
-        help="SNRs (dB) da validacao com ruido usada no early stopping e "
-        "na calibracao do threshold.",
+        help="SNRs (dB) da validação ruidosa usada somente quando a calibração opcional está ativa.",
     )
     parser.add_argument("--latency-runs", type=int, default=10)
     parser.add_argument("--seed", type=int, default=42)
@@ -353,6 +290,29 @@ def main() -> int:
         default=True,
         help="Congela o backbone original e treina apenas a cabeca.",
     )
+    # AJUSTE 2026-07-15 (acurácia): antes o SSL via só 1 s central (16000)
+    # dos 5 s — os espectrais veem os 5 s inteiros. 4 s quadruplica a
+    # evidência por clipe a custo pequeno (T≈199 frames no transformer).
+    parser.add_argument(
+        "--target-samples",
+        type=int,
+        default=64000,
+        help="Janela da forma de onda em amostras @16 kHz (legado: 16000).",
+    )
+    parser.add_argument(
+        "--layer-pooling",
+        choices=["weighted", "last"],
+        default="weighted",
+        help="'weighted' = soma ponderada aprendida sobre TODAS as camadas "
+        "(padrão SUPERB; camadas intermediárias carregam os artefatos); "
+        "'last' = comportamento legado.",
+    )
+    parser.add_argument(
+        "--time-pooling",
+        choices=["meanstd", "mean"],
+        default="meanstd",
+        help="Pooling temporal por camada: média⊕desvio (default) ou média.",
+    )
     args = parser.parse_args()
 
     arch_meta = {
@@ -360,7 +320,10 @@ def main() -> int:
             "display": "WavLM Original",
             "compact": "wavlm_original",
             "model_class": "WavLMModel",
-            "default_model": "microsoft/wavlm-base",
+            # AJUSTE 2026-07-15 (acurácia): base→base-plus. Mesmo tamanho/
+            # arquitetura, pré-treinado em 94k h (vs 960 h) — ganho documentado
+            # em robustez/anti-spoofing sem custo de inferência.
+            "default_model": "microsoft/wavlm-base-plus",
             "default_out": "results/benchmark_wavlm_original_gpu_100e",
             "artifact": "bench_wavlm_original.pt",
         },
@@ -414,10 +377,10 @@ def main() -> int:
 
     logger.info("Carregando dataset: %s", args.dataset)
     data, splits = _load_dataset(args.dataset, args.seed)
+    from benchmarks.runner import _audit_split_overlap
+    split_overlap_audit = _audit_split_overlap(splits, fail_on_overlap=True)
+    split_fingerprints = split_overlap_audit["split_fingerprints"]
     X_train, y_train, X_val, y_val, X_test, y_test = splits
-    X_train = _normalize_wave_batch(X_train)
-    X_val = _normalize_wave_batch(X_val)
-    X_test = _normalize_wave_batch(X_test)
 
     logger.info("Carregando %s: %s", arch_meta["display"], args.model_name)
     backbone = BackboneModel.from_pretrained(args.model_name).to(device)
@@ -425,18 +388,34 @@ def main() -> int:
     for param in backbone.parameters():
         param.requires_grad = not args.freeze_backbone
 
+    from app.domain.models.inference.ssl_head import (
+        build_ssl_classifier,
+        pool_hidden_states,
+    )
+
     hidden_size = int(backbone.config.hidden_size)
-    classifier = nn.Sequential(
-        nn.Dropout(args.dropout),
-        nn.Linear(hidden_size, 256),
-        nn.ReLU(),
-        nn.Dropout(args.dropout),
-        nn.Linear(256, 2),
-    ).to(device)
+    # Contrato de embedding (2026-07-15): gravado no checkpoint e honrado
+    # pelo wrapper de inferência (TorchSSLOriginalModel) — paridade garantida.
+    num_hidden_layers = int(getattr(backbone.config, "num_hidden_layers", 12))
+    feature_dim = hidden_size * (2 if args.time_pooling == "meanstd" else 1)
+    embedding_config = {
+        "target_samples": int(args.target_samples),
+        "layer_pooling": args.layer_pooling,
+        "time_pooling": args.time_pooling,
+        "num_layers": (
+            num_hidden_layers + 1 if args.layer_pooling == "weighted" else 1
+        ),
+        "feature_dim": int(feature_dim),
+    }
+    logger.info("Contrato de embedding: %s", embedding_config)
+    classifier = build_ssl_classifier(embedding_config, args.dropout).to(device)
+
+    need_hidden_states = args.layer_pooling == "weighted"
 
     def embed(X: np.ndarray, label: str) -> np.ndarray:
         backbone.eval()
-        Xn = _normalize_wave_batch(X)
+        raw = np.asarray(X, dtype="float32").reshape(len(X), -1)
+        Xn = _normalize_wave_batch(_fit_length(raw, int(args.target_samples)))
         ds = TensorDataset(torch.from_numpy(Xn))
         loader = DataLoader(ds, batch_size=args.feature_batch_size, shuffle=False)
         chunks = []
@@ -447,8 +426,10 @@ def main() -> int:
                 with torch.amp.autocast(
                     "cuda", enabled=(device.type == "cuda"), dtype=torch.float16
                 ):
-                    outp = backbone(xb)
-                    pooled = outp.last_hidden_state.mean(dim=1)
+                    outp = backbone(
+                        xb, output_hidden_states=need_hidden_states
+                    )
+                    pooled = pool_hidden_states(outp, embedding_config)
                 chunks.append(pooled.detach().float().cpu().numpy())
                 if step == 1 or step % 50 == 0 or step == len(loader):
                     logger.info(
@@ -463,27 +444,45 @@ def main() -> int:
     Z_val = embed(X_val, "val")
     Z_test = embed(X_test, "test")
 
-    # Augmentation de ruido no treino da cabeca: o teste de robustez avalia
-    # 30/20/10 dB, mas treinar apenas com audio limpo colapsa o recall sob
-    # ruido (recall ~0.08 @10dB no retreino de 2026-06-30). Anexa copias com
-    # AWGN — mesma estrategia do classical_noise_augmentation do runner Keras.
+    # Uma cópia AWGN por amostra é criada na forma de onda canônica antes
+    # do recorte e da extração de embeddings, como nas demais arquiteturas.
     Z_train_fit = Z_train
     y_train_fit = y_train
+    assigned_snr_counts: dict[str, int] = {}
     if args.train_augmentation and args.train_aug_snr:
-        aug_chunks = [Z_train]
-        for snr in args.train_aug_snr:
-            noisy = _add_awgn_raw(X_train, snr, seed=args.seed + 1000 + int(snr))
-            aug_chunks.append(embed(noisy, f"train_snr_{snr}"))
-        Z_train_fit = np.concatenate(aug_chunks, axis=0)
-        y_train_fit = np.tile(y_train, len(aug_chunks))
+        if args.waveform_noise_batch_size <= 0:
+            raise ValueError("--waveform-noise-batch-size deve ser > 0")
+        base_seed = args.seed + 10000
+        assigned = BenchmarkData.balanced_snr_assignments(
+            len(X_train), args.train_aug_snr, seed=base_seed
+        )
+        noisy_embedding_chunks = []
+        for start in range(0, len(X_train), args.waveform_noise_batch_size):
+            stop = min(start + args.waveform_noise_batch_size, len(X_train))
+            noisy_chunk = BenchmarkData.add_awgn_assigned(
+                X_train[start:stop],
+                assigned[start:stop],
+                seed=base_seed + start,
+            )
+            noisy_embedding_chunks.append(
+                embed(noisy_chunk, f"train_awgn_{start}_{stop}")
+            )
+        Z_train_noisy = np.concatenate(noisy_embedding_chunks, axis=0)
+        Z_train_fit = np.concatenate([Z_train, Z_train_noisy], axis=0)
+        y_train_fit = np.tile(y_train, 2)
+        values, counts = np.unique(assigned, return_counts=True)
+        assigned_snr_counts = {
+            str(int(value)): int(count)
+            for value, count in zip(values, counts)
+        }
         logger.info(
-            "Treino aumentado com ruido: %d -> %d amostras (SNRs %s)",
+            "Treino aumentado no waveform: %d -> %d amostras (SNRs %s; %s)",
             len(y_train), len(y_train_fit), args.train_aug_snr,
+            assigned_snr_counts,
         )
 
-    # Validacao de monitoramento (early stopping + calibracao) inclui copias
-    # com ruido — espelha calibrate_under_noise/calibration_snr_db do
-    # settings.py usado no caminho Keras.
+    # A seleção do checkpoint usa validação limpa. Validação ruidosa só é
+    # construída se a ablação de calibração for solicitada explicitamente.
     Z_val_monitor = Z_val
     y_val_monitor = y_val
     if args.calibrate_under_noise and args.calibration_snr:
@@ -605,9 +604,8 @@ def main() -> int:
                 scores.append(torch.softmax(logits, dim=1)[:, 1].cpu().numpy())
         return _finite_scores(np.concatenate(scores))
 
-    # Calibra o ponto de operacao no val com ruido (threshold no EER) em vez
-    # do 0.5 ingenuo — corrige o vies "tudo real" sob ruido observado com
-    # scores descalibrados (eer_threshold ~0.44 nos runs anteriores).
+    # A comparação principal usa o limiar comum de 0,5. A calibração em
+    # validação ruidosa permanece disponível apenas como ablação explícita.
     decision_threshold = 0.5
     calibration_info: dict[str, Any] = {
         "calibrated_under_noise": bool(args.calibrate_under_noise),
@@ -634,7 +632,7 @@ def main() -> int:
 
     robustness: dict[str, dict[str, float]] = {}
     for snr in args.snr:
-        noisy = _add_awgn_raw(X_test, snr, seed=args.seed + int(snr))
+        noisy = _add_awgn_raw(X_test, snr, seed=args.seed + 20000 + int(snr))
         Z_noisy = embed(noisy, f"snr_{snr}")
         robustness[str(snr)] = _evaluate_scores(
             y_test,
@@ -687,8 +685,13 @@ def main() -> int:
             "classifier_state_dict": classifier.state_dict(),
             "freeze_backbone": args.freeze_backbone,
             "hidden_size": hidden_size,
+            # Contrato de embedding (2026-07-15): o wrapper de inferência
+            # (TorchSSLOriginalModel) reconstrói janela/pooling/cabeça a
+            # partir daqui. Checkpoints sem esta chave caem no legado
+            # (16000 / last / mean).
+            "embedding_config": embedding_config,
             "labels": {"real": 0, "fake": 1},
-            "input_shape": [16000, 1],
+            "input_shape": [int(args.target_samples), 1],
             "history": history,
             "clean_metrics": clean,
             "training_config": vars(args),
@@ -715,6 +718,14 @@ def main() -> int:
         "train_batch_size": args.train_batch_size,
         "train_augmentation": bool(args.train_augmentation),
         "train_aug_snr_db": [int(s) for s in args.train_aug_snr],
+        "noise_protocol": {
+            "evaluation_domain": "waveform",
+            "frontend_after_noise": True,
+            "training_augmentation_domain": "waveform" if args.train_augmentation else "disabled",
+            "train_noise_copies": 1 if args.train_augmentation else 0,
+            "waveform_noise_batch_size": args.waveform_noise_batch_size,
+            "assigned_snr_counts": assigned_snr_counts,
+        },
         "decision_threshold": decision_threshold,
         "calibration": calibration_info,
     }
@@ -726,21 +737,29 @@ def main() -> int:
 
     latency_ms = None
     if args.latency_runs > 0:
-        x_latency = torch.from_numpy(X_test[:1]).to(device)
+        latency_raw = np.asarray(X_test[:1], dtype="float32").reshape(1, -1)
+        latency_x = _normalize_wave_batch(
+            _fit_length(latency_raw, int(args.target_samples))
+        )
+        x_latency = torch.from_numpy(latency_x).to(device)
         backbone.eval()
         classifier.eval()
-        for _ in range(2):
+
+        def _latency_forward() -> None:
             with torch.no_grad():
-                pooled = backbone(x_latency).last_hidden_state.mean(dim=1)
-                _ = classifier(pooled)
+                outp = backbone(
+                    x_latency, output_hidden_states=need_hidden_states
+                )
+                _ = classifier(pool_hidden_states(outp, embedding_config))
+
+        for _ in range(2):
+            _latency_forward()
         times = []
         for _ in range(args.latency_runs):
             if device.type == "cuda":
                 torch.cuda.synchronize()
             t0 = time.perf_counter()
-            with torch.no_grad():
-                pooled = backbone(x_latency).last_hidden_state.mean(dim=1)
-                _ = classifier(pooled)
+            _latency_forward()
             if device.type == "cuda":
                 torch.cuda.synchronize()
             times.append((time.perf_counter() - t0) * 1000.0)
@@ -763,6 +782,10 @@ def main() -> int:
             "device_profile": "gpu" if device.type == "cuda" else "cpu",
             "model_name": args.model_name,
             "runner": "scripts/benchmark/run_wavlm_original_benchmark.py",
+            "decision_threshold": decision_threshold,
+            "fixed_epoch_budget": not bool(args.early_stopping),
+            "checkpoint_selection": "minimum_clean_validation_loss",
+            "validation_condition": "clean",
         },
         "preflight": {
             "status": "ok",
@@ -794,6 +817,13 @@ def main() -> int:
             },
             "y_test": y_test.astype(int).tolist(),
             "metadata": _json_safe(data.metadata or {}),
+            "split_source": (data.metadata or {}).get("split_source"),
+            "split_overlap_audit": split_overlap_audit,
+            "split_fingerprints": split_fingerprints,
+            "test_split_sha256": split_fingerprints["test"]["sha256"],
+            "provenance_overlap_audit": (
+                (data.metadata or {}).get("provenance_overlap_audit")
+            ),
         },
         "architectures": {
             arch_meta["display"]: {
@@ -808,6 +838,17 @@ def main() -> int:
                 "clean": clean,
                 "scores_clean": scores_clean.tolist(),
                 "robustness": robustness,
+                "noise_protocol": {
+                    "evaluation_domain": "waveform",
+                    "frontend_after_noise": True,
+                    "training_augmentation_domain": (
+                        "waveform" if args.train_augmentation else "disabled"
+                    ),
+                    "train_aug_snr_db": [int(s) for s in args.train_aug_snr],
+                    "train_noise_copies": 1 if args.train_augmentation else 0,
+                    "waveform_noise_batch_size": args.waveform_noise_batch_size,
+                    "assigned_snr_counts": assigned_snr_counts,
+                },
                 "efficiency": {
                     "params": params,
                     "size_mb": size_mb,
@@ -828,6 +869,16 @@ def main() -> int:
                     "dropout": args.dropout,
                     "train_augmentation": bool(args.train_augmentation),
                     "train_aug_snr_db": [int(s) for s in args.train_aug_snr],
+                    "noise_protocol": {
+                        "evaluation_domain": "waveform",
+                        "frontend_after_noise": True,
+                        "training_augmentation_domain": (
+                            "waveform" if args.train_augmentation else "disabled"
+                        ),
+                        "train_noise_copies": 1 if args.train_augmentation else 0,
+                        "waveform_noise_batch_size": args.waveform_noise_batch_size,
+                        "assigned_snr_counts": assigned_snr_counts,
+                    },
                     "early_stopping": bool(args.early_stopping),
                     "early_stopping_patience": args.early_stopping_patience,
                     "calibrate_under_noise": bool(args.calibrate_under_noise),

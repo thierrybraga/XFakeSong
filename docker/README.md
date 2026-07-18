@@ -1,44 +1,35 @@
-# XFakeSong Docker Profiles
+# Docker e ambientes
 
-Docker assets are organized by execution profile:
+Os artefatos Docker foram organizados por perfil de execução, com a estrutura
+principal concentrada em [docker/compose](compose).
 
-| Profile | Compose file | Purpose |
+## Perfis principais
+
+| Perfil | Compose file | Objetivo |
 | --- | --- | --- |
-| Inference CPU/onboard | `docker/compose/inference.cpu.yml` | Gradio/FastAPI with trained models, no CUDA |
-| Inference NVIDIA | `docker/compose/inference.nvidia.yml` | Gradio/FastAPI with CUDA-capable TensorFlow |
-| Training CPU/onboard | `docker/compose/train.cpu.yml` | Classical ML and CPU smoke training |
-| Training NVIDIA/WSL2 | `docker/compose/train.nvidia.yml` | Neural/SSL training with NVIDIA GPU |
-| Benchmark NVIDIA/WSL2 | `docker/compose/benchmark.nvidia.yml` | Full sequential benchmark |
+| Inferência CPU | [docker/compose/inference.cpu.yml](compose/inference.cpu.yml) | Gradio/FastAPI com modelos treinados, sem CUDA |
+| Inferência NVIDIA | [docker/compose/inference.nvidia.yml](compose/inference.nvidia.yml) | Gradio/FastAPI com suporte CUDA/TensorFlow |
+| Treino CPU | [docker/compose/train.cpu.yml](compose/train.cpu.yml) | Treino clássico e smoke em CPU |
+| Treino NVIDIA | [docker/compose/train.nvidia.yml](compose/train.nvidia.yml) | Treino neural/SSL com GPU |
+| Benchmark NVIDIA | [docker/compose/benchmark.nvidia.yml](compose/benchmark.nvidia.yml) | Benchmark sequencial completo |
 
-CPU/onboard means the container does not request GPU devices. This is the
-portable profile for Windows native Docker, Intel/AMD integrated graphics and
-machines without NVIDIA CUDA.
+## Estrutura de pastas
 
-NVIDIA profiles require WSL2/Docker Desktop GPU support on Windows, or NVIDIA
-Container Toolkit on Linux. Validate with:
+- [compose/](compose): perfis de execução recomendados para novos builds.
+- [build.env.example](build.env.example): variáveis comuns para build.
+- [../Dockerfile](../Dockerfile): imagem principal do runtime.
+- [../docker-entrypoint.sh](../docker-entrypoint.sh): bootstrap do container.
+- [environments/](environments): definições específicas por família de ambiente.
 
-```bash
-docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
-```
+## Caminhos padrão
 
-Use `scripts/ops/docker_build.py` for a stable CLI over these files.
-
-```bash
-python scripts/ops/docker_build.py inference-cpu config
-python scripts/ops/docker_build.py inference-nvidia up
-python scripts/ops/docker_build.py benchmark-nvidia run
-```
-
-Runtime paths are standardized across profiles:
-
-| Host path | Container path | Use |
+| Host | Container | Uso |
 | --- | --- | --- |
-| `data/app.db` | `/app/data/app.db` | SQLite runtime database |
-| `data/uploads/` | `/app/data/uploads/` | Gradio/API uploads |
-| `results/` | `/app/results/` | Regenerable benchmark outputs |
-| `app/datasets/` | `/app/app/datasets/` | Benchmark/training datasets |
-| `app/models/` | `/app/app/models/` | Inference model root |
-| `app/models/benchmark_final/` | `/app/app/models/benchmark_final/` | Consolidated trained models |
+| [data](../data) | /app/data | banco SQLite, uploads e dados persistidos |
+| [results](../results) | /app/results | saídas de benchmark e artefatos regeneráveis |
+| [data/datasets](../data/datasets) | /app/data/datasets | datasets de treino e benchmark |
+| [app/models](../app/models) | /app/app/models | modelos de inferência |
 
-Root-level `docker-compose*.yml` files are legacy compatibility aliases. Prefer
-`docker/compose/*.yml` for new builds and CI validation.
+Os arquivos raiz com prefixo docker-compose são compatibilidade legada. Para
+novos fluxos, prefira os arquivos em [docker/compose](compose) e as definições
+em [docker/environments](environments).

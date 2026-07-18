@@ -17,7 +17,7 @@ def test_save_model_excludes_optimizer(tmp_path):
     import tensorflow as tf
 
     from app.core.config.settings import TrainingConfig
-    from app.core.interfaces.base import ProcessingStatus
+    from app.core.contracts.base import ProcessingStatus
     from app.domain.models.training.trainer import ModelTrainer
 
     # Modelo com parâmetros suficientes p/ o estado do Adam pesar no arquivo.
@@ -85,7 +85,7 @@ class _FakeOnnx:
 
 
 def test_predictor_prefers_onnx_session_when_present():
-    from app.core.interfaces.base import ProcessingStatus
+    from app.core.contracts.base import ProcessingStatus
     from app.domain.services.detection.predictor import Predictor
 
     mi = _tiny_model_info()
@@ -97,7 +97,7 @@ def test_predictor_prefers_onnx_session_when_present():
 
 
 def test_predictor_falls_back_to_tf_on_onnx_error():
-    from app.core.interfaces.base import ProcessingStatus
+    from app.core.contracts.base import ProcessingStatus
     from app.domain.services.detection.predictor import Predictor
 
     mi = _tiny_model_info()
@@ -111,7 +111,7 @@ def test_predictor_falls_back_to_tf_on_onnx_error():
 
 
 def test_predictor_no_onnx_uses_tf():
-    from app.core.interfaces.base import ProcessingStatus
+    from app.core.contracts.base import ProcessingStatus
     from app.domain.services.detection.predictor import Predictor
 
     mi = _tiny_model_info()  # onnx_session None (default)

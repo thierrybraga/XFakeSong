@@ -1,7 +1,7 @@
 import logging
 import importlib
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Union
 
 import joblib
@@ -121,17 +121,34 @@ class TorchSSLOriginalModel:
         for candidate in candidates:
             if candidate.exists():
                 return candidate
+
+        # Nenhum diretório local encontrado — comum quando o checkout não
+        # inclui os pesos do backbone (ex.: modelo retreinado em outra
+        # máquina/container, com `backbone_artifact` apontando para um path
+        # que só existia lá). Como freeze_backbone=true, o backbone é sempre
+        # o checkpoint pré-treinado stock; cai para o repo_id do HF Hub em
+        # `model_name`, que from_pretrained baixa/usa do cache local.
+        hub_model_name = self.metadata.get("model_name")
+        if hub_model_name:
+            # PurePosixPath (não Path): no Windows, Path("org/repo") normaliza
+            # a barra para "org\\repo", quebrando o formato repo_id do HF Hub.
+            return PurePosixPath(hub_model_name)
         return candidates[0]
 
-    @staticmethod
-    def _normalize_wave_batch(features: np.ndarray) -> np.ndarray:
+    def _normalize_wave_batch(self, features: np.ndarray) -> np.ndarray:
         x = np.asarray(features, dtype=np.float32)
         if x.ndim == 1:
             x = x[np.newaxis, :]
         if x.ndim == 3 and x.shape[-1] == 1:
             x = x[..., 0]
         flat = x.reshape(len(x), -1)
-        target_len = 16000
+        # Janela definida pelo contrato de embedding do checkpoint
+        # (2026-07-15); artefatos legados caem em 16000 (1 s).
+        target_len = int(
+            (getattr(self, "embedding_config", None) or {}).get(
+                "target_samples", 16000
+            )
+        )
         if flat.shape[1] > target_len:
             start = max(0, (flat.shape[1] - target_len) // 2)
             flat = flat[:, start:start + target_len]
@@ -186,12 +203,17 @@ class TorchSSLOriginalModel:
                 checkpoint.get("training_config", {}).get("dropout", 0.2),
             )
         )
-        self.classifier = nn.Sequential(
-            nn.Dropout(dropout),
-            nn.Linear(hidden_size, 256),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(256, 2),
+        # Contrato de embedding (2026-07-15): janela/pooling/cabeça vêm do
+        # checkpoint — paridade exata com o treino. Artefatos antigos (sem a
+        # chave) caem no legado 16000/last/mean com a cabeça Sequential.
+        from app.domain.models.inference.ssl_head import (
+            build_ssl_classifier,
+            resolve_embedding_config,
+        )
+
+        self.embedding_config = resolve_embedding_config(checkpoint, hidden_size)
+        self.classifier = build_ssl_classifier(
+            self.embedding_config, dropout
         ).to(self.device)
         self.classifier.load_state_dict(checkpoint["classifier_state_dict"])
         self.classifier.eval()
@@ -204,6 +226,10 @@ class TorchSSLOriginalModel:
         assert self.backbone is not None
         assert self.classifier is not None
 
+        from app.domain.models.inference.ssl_head import pool_hidden_states
+
+        emb_cfg = getattr(self, "embedding_config", None) or {}
+        need_hidden = str(emb_cfg.get("layer_pooling", "last")) == "weighted"
         x = self._normalize_wave_batch(features)
         outputs = []
         with self.torch.no_grad():
@@ -213,10 +239,10 @@ class TorchSSLOriginalModel:
                 )
                 backbone_out = self.backbone(
                     xb,
-                    output_hidden_states=False,
+                    output_hidden_states=need_hidden,
                     return_dict=True,
                 )
-                pooled = backbone_out.last_hidden_state.mean(dim=1)
+                pooled = pool_hidden_states(backbone_out, emb_cfg)
                 logits = self.classifier(pooled)
                 probs = self.torch.softmax(logits, dim=1)
                 outputs.append(probs.detach().cpu().numpy())
@@ -334,7 +360,13 @@ class ModelLoader:
                     'AttentionLayer': AttentionLayer,
                     'GraphAttentionLayer': GraphAttentionLayer,
                     'SliceLayer': SliceLayer,
-                    'SafeInstanceNormalization': SafeInstanceNormalization
+                    'SafeInstanceNormalization': SafeInstanceNormalization,
+                    # Compat: artefatos salvos antes da migração para
+                    # AxisMaxAbsLayer/MagnitudeLayer (Lambda(tf.abs, ...) cru,
+                    # não localizável pelo registry do Keras 3 mesmo com
+                    # safe_mode=False). Ex.: bench_aasist/bench_rawgat_st
+                    # promovidos em 2026-07-15, antes do fix de serialização.
+                    'abs': tf.abs,
                 }
                 try:
                     from app.domain.models.architectures.wavlm import (
@@ -628,7 +660,45 @@ class ModelLoader:
         if model_name in self.loaded_models:
             return self.loaded_models[model_name]
 
-        # Lazy loading: busca nos formatos suportados (ordem de preferência)
+        # BUG FIX (ordem de prioridade): benchmark_final/<arch>/ é tentado
+        # ANTES da raiz solta de models_dir, não depois. Dois problemas
+        # motivam isso, confirmados por smoke test:
+        # (a) deploy limpo — os modelos PROMOVIDOS só existem sob
+        #     benchmark_final/<arch>/bench_<arch>.*; a raiz é gitignored
+        #     (regenerada por treino local) enquanto benchmark_final/ é
+        #     versionado justamente para servir sem retreino;
+        # (b) mesmo quando a raiz existe (ambiente de dev pós-treino local),
+        #     seu sidecar `_config.json` é o gravado PELO TREINO, sem o
+        #     `feature_frontend` que `rebuild_inference_contracts.py`
+        #     escreve só em benchmark_final/ — para SVM/RandomForest não há
+        #     sidecar nenhum na raiz (treino clássico não grava um), e para
+        #     os modelos TF o input_contract da raiz carece de
+        #     `feature_frontend`, fazendo o FeaturePreparer cair no caminho
+        #     legado (sem paridade treino/inferência) silenciosamente.
+        # benchmark_final/ é sempre o contrato correto e completo; a raiz é
+        # só fallback para modelos nunca promovidos (ex.: treinados via
+        # wizard do Gradio, fora do pipeline de benchmark). Busca dedicada
+        # (não via _discover_model_files, cuja ordem intercala raiz e
+        # benchmark_final e não garante esta prioridade para stems em
+        # comum).
+        bench_final = self.models_dir / "benchmark_final"
+        if bench_final.is_dir():
+            promoted_candidates = []
+            for suffix in ("keras", "h5", "pkl", "pt"):
+                promoted_candidates.extend(
+                    bench_final.glob(f"*/{model_name}.{suffix}")
+                )
+            promoted_candidates.extend(
+                bench_final.glob(f"*/results/models/{model_name}.pt")
+            )
+            for model_file in promoted_candidates:
+                try:
+                    self._load_single_model(model_file)
+                    return self.loaded_models.get(model_name)
+                except Exception as e:
+                    logger.warning(
+                        f"Falha ao carregar modelo '{model_name}' de {model_file}: {e}")
+
         for suffix in ('.keras', '.h5', '.pkl', '.pt'):
             model_file = self.models_dir / f"{model_name}{suffix}"
             if model_file.exists():

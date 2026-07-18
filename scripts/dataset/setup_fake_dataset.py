@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gera amostras de áudio sintético para testes rápidos de pipeline.
 
-Cria N arquivos WAV em app/datasets/fake/ contendo senóides + ruído
+Cria N arquivos WAV em data/datasets/fake/ contendo senóides + ruído
 branco — útil para validar que o pipeline de treino/inferência funciona
 sem precisar de um dataset real.
 
@@ -17,7 +17,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-FAKE_DIR = BASE_DIR / "app" / "datasets" / "fake"
+FAKE_DIR = BASE_DIR / "data" / "datasets" / "fake"
 SAMPLE_RATE = 16000
 DURATION = 3  # segundos
 

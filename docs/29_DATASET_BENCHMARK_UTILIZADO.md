@@ -16,11 +16,11 @@ Histórico da decisão:
 
 O arquivo canônico gerado por esse tier é:
 
-`app/datasets/benchmark_audio_raw_balanced_15k.npz`
+`data/datasets/benchmark_audio_raw_balanced_15k.npz`
 
-Os WAVs ativos consolidados ficam em `app/datasets/real/` e
-`app/datasets/fake/`. O `.npz` é derivado dos splits em
-`app/datasets/splits/` e padroniza cada amostra em janela de 5,0 s.
+Os WAVs ativos consolidados ficam em `data/datasets/real/` e
+`data/datasets/fake/`. O `.npz` é derivado dos splits em
+`data/datasets/splits/` e padroniza cada amostra em janela de 5,0 s.
 
 O tier `small` fica reservado para execução rápida de 10k, e o tier `large`
 fica reservado para execução estendida de 20k com protocolo de falantes não
@@ -40,7 +40,7 @@ vistos.
 | Item | Valor |
 | --- | --- |
 | Tier | `medium` |
-| Arquivo | `app/datasets/benchmark_audio_raw_balanced_15k.npz` |
+| Arquivo | `data/datasets/benchmark_audio_raw_balanced_15k.npz` |
 | Amostras alvo | 15.000 |
 | Classes | 7.500 real + 7.500 fake |
 | Split alvo | 10.500 treino + 2.250 validação + 2.250 teste |
@@ -53,9 +53,9 @@ vistos.
 | Formato dos WAVs ativos | WAV PCM linear, 16 bits, mono, 16 kHz, sem compressão |
 | Modulação/codificação | PCM (`Pulse-Code Modulation`) linear em arquivo RIFF/WAV |
 | Arrays | `X_train`, `y_train`, `X_val`, `y_val`, `X_test`, `y_test`, `groups`, `speaker_ids`, `metadata_json` |
-| Diretório de splits | `app/datasets/splits/` |
-| Tabela de falantes | `app/datasets/speaker_table.csv` |
-| Manifesto de falantes | `app/datasets/speaker_manifest.json` |
+| Diretório de splits | `data/datasets/splits/` |
+| Tabela de falantes | `data/datasets/speaker_table.csv` |
+| Manifesto de falantes | `data/datasets/speaker_manifest.json` |
 
 Com janela padronizada de 5 s, o tier medium representa aproximadamente
 **1.250 min** ou **20,83 h** de áudio exportado no `.npz`.
@@ -111,11 +111,11 @@ pipeline não inventa IDs: `speaker_ids` usa fallback por fonte (`brspeech`,
 A tabela deve ser gerada após o download/splits:
 
 ```powershell
-python scripts/dataset/rebuild_speaker_manifest.py --dataset-dir app/datasets
-python scripts/dataset/export_speaker_table.py --dataset-dir app/datasets --scope all
+python scripts/dataset/rebuild_speaker_manifest.py --dataset-dir data/datasets
+python scripts/dataset/export_speaker_table.py --dataset-dir data/datasets --scope all
 ```
 
-Campos principais em `app/datasets/speaker_table.csv`:
+Campos principais em `data/datasets/speaker_table.csv`:
 
 | Campo | Descrição |
 | --- | --- |
@@ -146,7 +146,7 @@ docker compose -f docker\compose\benchmark.nvidia.yml --env-file .env run --rm b
     --epochs 100 `
     --batch-size 32 `
     --device-profile gpu `
-    --npz app/datasets/benchmark_audio_raw_balanced_15k.npz `
+    --npz data/datasets/benchmark_audio_raw_balanced_15k.npz `
     --out results/benchmark_15k_medium
 ```
 
@@ -154,8 +154,8 @@ Auditoria de falantes:
 
 ```powershell
 docker compose -f docker\compose\benchmark.nvidia.yml --env-file .env run --rm benchmark `
-  python scripts/dataset/audit_speaker_manifest.py --dataset-dir app/datasets --scope splits `
-    --json-out app/datasets/speaker_audit.json
+  python scripts/dataset/audit_speaker_manifest.py --dataset-dir data/datasets --scope splits `
+    --json-out data/datasets/speaker_audit.json
 ```
 
 Benchmark sequencial sobre o NPZ canônico:
@@ -163,7 +163,8 @@ Benchmark sequencial sobre o NPZ canônico:
 ```powershell
 docker compose -f docker\compose\benchmark.nvidia.yml --env-file .env run --rm benchmark `
   python scripts/benchmark/run_models_sequential.py `
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz `
+    --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz `
+    --test-lock data/datasets/benchmark_audio_raw_balanced_15k.npz.test-lock.json `
     --out results/benchmark_15k_medium `
     --epochs 100 `
     --batch-size 32 `

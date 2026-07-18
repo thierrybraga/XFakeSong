@@ -11,13 +11,13 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from app.core.interfaces.audio import (
+from app.core.contracts.audio import (
     AudioData,
     AudioFeatures,
     FeatureType,
     IFeatureExtractor,
 )
-from app.core.interfaces.base import ProcessingResult
+from app.core.contracts.base import ProcessingResult
 from app.domain.features.extractors.complexity.measures.chaos import (
     compute_correlation_dimension_optimized,
     compute_lyapunov_exponent_optimized,

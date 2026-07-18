@@ -40,7 +40,9 @@ logger = logging.getLogger("BuildDataset")
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = BASE_DIR / "scripts"
-DATASETS_DIR = BASE_DIR / "app" / "datasets"
+# Consolidado 2026-07-14: raiz canônica é data/datasets (settings.paths.datasets_dir);
+# o antigo app/datasets causou fragmentação (stub de 64 amostras homônimo do dataset real).
+DATASETS_DIR = BASE_DIR / "data" / "datasets"
 REAL_DIR = DATASETS_DIR / "real"
 FAKE_DIR = DATASETS_DIR / "fake"
 OVERFLOW_DIR = DATASETS_DIR / "overflow"
@@ -50,13 +52,13 @@ if str(BASE_DIR) not in sys.path:
 
 
 def _load_dataset_catalog():
-    """Carrega o catálogo sem importar app.core inteiro.
+    """Carrega o catálogo sem importar app.domain inteiro.
 
-    O pacote app.core puxa interfaces de áudio e exige numpy no import. Este
+    O pacote app.domain puxa interfaces de áudio e exige numpy no import. Este
     script precisa mostrar --help e orquestrar Docker mesmo quando o Python
     nativo ainda não tem as dependências ML instaladas.
     """
-    module_path = BASE_DIR / "app" / "core" / "dataset_catalog.py"
+    module_path = BASE_DIR / "app" / "domain" / "dataset_metadata" / "dataset_catalog.py"
     spec = importlib.util.spec_from_file_location("xfake_dataset_catalog", module_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Falha ao carregar catálogo: {module_path}")
@@ -307,7 +309,7 @@ def step_balance(target_per_class: int, delete_excess: bool = False):
     """
     Garante balanceamento 1:1 entre classes.
     Se uma classe tiver mais que target_per_class, arquiva o excesso em
-    app/datasets/overflow/ por padrão, mantendo os WAVs brutos recuperáveis.
+    data/datasets/overflow/ por padrão, mantendo os WAVs brutos recuperáveis.
     Use --delete-excess apenas quando quiser descarte destrutivo.
     """
     logger.info("\n" + "=" * 60)
@@ -408,7 +410,7 @@ def save_dataset_config(target_per_class: int, train_r: float, val_r: float, tes
 
     speakers_summary = {}
     try:
-        from app.core.speaker_manifest import summarize_speakers
+        from app.domain.dataset_metadata.speaker_manifest import summarize_speakers
 
         speakers_summary = summarize_speakers(active_paths)
     except Exception as exc:  # noqa: BLE001
@@ -424,7 +426,7 @@ def save_dataset_config(target_per_class: int, train_r: float, val_r: float, tes
         "speakers": speakers_summary,
         "balancing_strategy": (
             "1:1 (real:fake), conjunto ativo limitado por classe; "
-            "excedentes arquivados em app/datasets/overflow por padrão"
+            "excedentes arquivados em data/datasets/overflow por padrão"
         ),
         "target_per_class": target_per_class,
         "total_samples": real_total + fake_total,
@@ -564,7 +566,7 @@ def main():
     )
     parser.add_argument(
         "--delete-excess", action="store_true",
-        help="Remove excedentes em vez de arquivar em app/datasets/overflow",
+        help="Remove excedentes em vez de arquivar em data/datasets/overflow",
     )
     parser.add_argument(
         "--status", action="store_true",
@@ -661,8 +663,8 @@ def main():
     logger.info("BUILD CONCLUIDO")
     logger.info("=" * 60)
     logger.info(f"  Dataset: {real_total + fake_total} amostras ({real_total} real + {fake_total} fake)")
-    logger.info(f"  Splits : app/datasets/splits/train/ | val/ | test/")
-    logger.info(f"  Config : app/datasets/dataset_config.json")
+    logger.info(f"  Splits : data/datasets/splits/train/ | val/ | test/")
+    logger.info(f"  Config : data/datasets/dataset_config.json")
     logger.info("\nProximo passo (Fase 2):")
     logger.info("  python scripts/training/train_advanced.py --model conformer --epochs 100")
     logger.info("  (ou use a interface Gradio: python main.py --gradio)")

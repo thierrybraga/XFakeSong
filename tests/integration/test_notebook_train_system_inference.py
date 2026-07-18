@@ -24,8 +24,8 @@ import pytest
 
 pytest.importorskip("tensorflow")
 
-from app.core.interfaces.audio import AudioData  # noqa: E402
-from app.core.interfaces.base import ProcessingStatus  # noqa: E402
+from app.core.contracts.audio import AudioData  # noqa: E402
+from app.core.contracts.base import ProcessingStatus  # noqa: E402
 
 SR = 16000
 
@@ -71,7 +71,21 @@ def test_notebook_trained_model_runs_in_detection_pipeline(
     res = TrainingService(models_dir=str(models_dir)).train_model(
         architecture=architecture,
         dataset_path=str(npz),
-        config={"epochs": 1, "batch_size": 32, "model_name": name},
+        # BUG FIX: sem `use_mixed_precision`, o ModelTrainer auto-detecta
+        # (GPU com Compute Capability >= 7.0 → mixed_float16). Nesta GPU
+        # (CC 8.6), isso expôs um bug de dtype pré-existente no caminho
+        # residual do `ResidualBlock1D` (RawNet2): o `AddV2` do atalho
+        # mistura float32/float16 ao recarregar o `.keras` salvo logo em
+        # seguida (`tf.keras.models.load_model` re-traça o grafo). Não é
+        # bug deste teste nem do modelo RawNet2 PROMOVIDO (treinado via
+        # benchmarks/, carrega normalmente em produção) — é específico do
+        # treino via TrainingService/wizard com auto-detecção. O propósito
+        # deste teste é validar compatibilidade notebook→pipeline de
+        # detecção, não precisão mista, então fixamos float32 aqui.
+        config={
+            "epochs": 1, "batch_size": 32, "model_name": name,
+            "use_mixed_precision": False,
+        },
     )
     assert res.status == ProcessingStatus.SUCCESS, res.errors
 

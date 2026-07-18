@@ -2,8 +2,8 @@ import pytest
 import numpy as np
 from unittest.mock import MagicMock, patch
 from app.domain.services.detection_service import DetectionService
-from app.core.interfaces.base import ProcessingStatus
-from app.core.interfaces.audio import AudioData
+from app.core.contracts.base import ProcessingStatus
+from app.core.contracts.audio import AudioData
 
 
 @pytest.fixture

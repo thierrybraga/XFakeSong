@@ -31,7 +31,9 @@ import numpy as np
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = BASE_DIR / "scripts"
-DATASETS_DIR = BASE_DIR / "app" / "datasets"
+# Consolidado 2026-07-14: raiz canônica é data/datasets (settings.paths.datasets_dir);
+# o antigo app/datasets causou fragmentação (stub de 64 amostras homônimo do dataset real).
+DATASETS_DIR = BASE_DIR / "data" / "datasets"
 SPLITS_DIR = DATASETS_DIR / "splits"
 
 LOGGER = logging.getLogger("TCCPipeline")
@@ -39,12 +41,12 @@ LOGGER = logging.getLogger("TCCPipeline")
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from app.core.dataset_catalog import (  # noqa: E402
+from app.domain.dataset_metadata.dataset_catalog import (  # noqa: E402
     DATASET_CATALOG,
     infer_prefix_from_path,
     summarize_dataset_paths,
 )
-from app.core.speaker_manifest import speaker_for_path  # noqa: E402
+from app.domain.dataset_metadata.speaker_manifest import speaker_for_path  # noqa: E402
 
 
 def _run(cmd: list[str], description: str, log_path: Path) -> None:
@@ -464,7 +466,7 @@ def main() -> int:
     parser.add_argument("--full-benchmark", action="store_true", help="usa preset completo do benchmark")
     parser.add_argument("--model", default=None, help="executa benchmark de uma única arquitetura")
     parser.add_argument("--archs", nargs="+", default=None)
-    parser.add_argument("--epochs", type=int, default=20)
+    parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--device-profile", choices=["auto", "cpu", "gpu"], default="auto")
     parser.add_argument("--no-optimize-hparams", action="store_true")
@@ -481,12 +483,21 @@ def main() -> int:
                              "testa nele (protocolo de usuário não visto)")
     parser.add_argument("--skip-benchmark-preflight", action="store_true")
     parser.add_argument("--latency-runs", type=int, default=30)
+    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10])
+    parser.add_argument("--train-aug-snr", nargs="+", type=int, default=[30, 20, 10])
+    parser.add_argument("--train-noise-copies", type=int, default=1)
+    parser.add_argument("--waveform-noise-batch-size", type=int, default=64)
+    parser.add_argument(
+        "--waveform-train-augmentation",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
     parser.add_argument("--api", action="store_true")
     parser.add_argument("--sample-rate", type=int, default=16000)
     parser.add_argument("--duration-sec", type=float, default=5.0)
     parser.add_argument("--max-per-class-export", type=int, default=None)
-    parser.add_argument("--npz", default="app/datasets/benchmark_audio_raw_balanced_15k.npz")
+    parser.add_argument("--npz", default="data/datasets/benchmark_audio_raw_balanced_15k.npz")
     parser.add_argument("--out", default=None)
     args = parser.parse_args()
 
@@ -504,7 +515,7 @@ def main() -> int:
     # Tier define o tamanho do dataset; sincroniza para o manifesto refletir a
     # realidade e ativa o protocolo de falante não visto no tier large.
     if args.tier:
-        from app.core.dataset_catalog import get_tier
+        from app.domain.dataset_metadata.dataset_catalog import get_tier
 
         _tier = get_tier(args.tier)
         if _tier is not None:
@@ -572,7 +583,7 @@ def main() -> int:
         counts = _split_counts(SPLITS_DIR)
         if not all(counts[s]["real"] and counts[s]["fake"] for s in ("train", "val", "test")):
             raise RuntimeError(
-                "Splits incompletos em app/datasets/splits. "
+                "Splits incompletos em data/datasets/splits. "
                 "Execute com --download ou remova --skip-preprocess."
             )
         LOGGER.info("Splits encontrados: %s", counts)
@@ -597,11 +608,24 @@ def main() -> int:
         args.device_profile,
         "--latency-runs",
         str(args.latency_runs),
+        "--seed",
+        str(args.seed),
         "--snr",
         *[str(v) for v in args.snr],
+        "--train-aug-snr",
+        *[str(v) for v in args.train_aug_snr],
+        "--train-noise-copies",
+        str(args.train_noise_copies),
+        "--waveform-noise-batch-size",
+        str(args.waveform_noise_batch_size),
         "--out",
         str(output_dir),
     ]
+    bench_cmd.append(
+        "--waveform-train-augmentation"
+        if args.waveform_train_augmentation
+        else "--no-waveform-train-augmentation"
+    )
     if args.full_benchmark:
         bench_cmd.insert(2, "--full")
     if args.no_optimize_hparams:

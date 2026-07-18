@@ -52,8 +52,8 @@ services:
     volumes:
       # Persistência — paths são interpolados pelo Compose corretamente no Windows
       - ./app/models:/app/app/models
-      - ./app/results:/app/app/results
-      - ./app/datasets:/app/app/datasets
+      - ./results:/app/results
+      - ./data/datasets:/app/data/datasets
       - ./logs:/app/logs
       - ./data:/app/data
 

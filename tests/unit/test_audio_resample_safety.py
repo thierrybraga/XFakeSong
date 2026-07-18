@@ -11,7 +11,7 @@ import numpy as np
 
 
 def _audio(sr, seconds=3.0, freq=150.0):
-    from app.core.interfaces.audio import AudioData
+    from app.core.contracts.audio import AudioData
 
     n = int(sr * seconds)
     y = (0.3 * np.sin(2 * np.pi * freq * np.arange(n) / sr)).astype("float32")
@@ -40,7 +40,7 @@ def test_ensure_sample_rate_idempotent():
 
 def test_prepare_input_resamples_for_raw_model():
     """Áudio 44.1 kHz → modelo raw deve receber exatamente (48000, 1)."""
-    from app.core.interfaces.audio import AudioData  # noqa: F401
+    from app.core.contracts.audio import AudioData  # noqa: F401
     from app.domain.models.architectures import rawnet2
     from app.domain.services.detection.feature_preparer import FeaturePreparer
     from app.domain.services.detection.model_loader import ModelInfo

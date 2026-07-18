@@ -234,7 +234,7 @@ def _default_train_fn(
     """
     from pathlib import Path
 
-    from app.core.interfaces.base import ProcessingStatus
+    from app.core.contracts.base import ProcessingStatus
     from app.domain.services.training_service import TrainingService
 
     service = TrainingService(models_dir="app/models/optuna_trials")

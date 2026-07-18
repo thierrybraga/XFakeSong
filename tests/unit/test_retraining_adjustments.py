@@ -132,8 +132,16 @@ def test_robustness_fusion_weights_favor_robust_models():
     w = robustness_fusion_weights(names)
     assert sum(w) == pytest.approx(1.0)
     wmap = dict(zip(names, w))
+    # Modelos robustos (Conformer/AASIST/RawNet2) devem pesar mais que o
+    # menos robusto do recorte (SVM). Não comparamos AASIST diretamente
+    # contra RawNet2: com os priors atuais (robustez @10dB medida —
+    # ver ROBUSTNESS_PRIORS em detection_service.py) eles ficam muito
+    # próximos (89,20% vs. 90,80%) e a ordem entre os dois já inverteu uma
+    # vez com o retreino de 2026-07; fixar essa ordem fina no teste seria
+    # reacoplar o teste a um valor que legitimamente muda a cada retreino.
     assert wmap["Conformer"] > wmap["SVM"]
-    assert wmap["AASIST"] > wmap["RawNet2"]
+    assert wmap["AASIST"] > wmap["SVM"]
+    assert wmap["RawNet2"] > wmap["SVM"]
 
 
 def test_robustness_weights_unknown_model_is_neutral():

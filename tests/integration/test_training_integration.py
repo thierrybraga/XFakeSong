@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 import numpy as np
 from app.domain.services.training_service import TrainingService
-from app.core.interfaces.base import ProcessingStatus, ProcessingResult
+from app.core.contracts.base import ProcessingStatus, ProcessingResult
 from app.domain.models.architectures.registry import ArchitectureInfo
 
 

@@ -125,7 +125,7 @@ def main() -> int:
         "",
         "## Dataset",
         "",
-        "The default benchmark dataset is `app/datasets/benchmark_audio_raw_balanced_15k.npz`, with balanced real/fake classes when available.",
+        "The default benchmark dataset is `data/datasets/benchmark_audio_raw_balanced_15k.npz`, with balanced real/fake classes when available.",
         "",
         "## Artifacts",
         "",

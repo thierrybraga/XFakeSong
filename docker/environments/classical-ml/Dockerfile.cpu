@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1.7
+# =====================================================================
+# XFakeSong — ambiente de treino: classical-ml (SVM, RandomForest)
+# Mapa completo dos 5 ambientes: docker/environments/README.md
+# =====================================================================
+ARG PYTHON_VERSION=3.11
+
+FROM python:${PYTHON_VERSION}-slim
+
+LABEL org.opencontainers.image.title="xfakesong-classical-ml" \
+      org.opencontainers.image.description="XFakeSong — treino classical ML (SVM, RandomForest)" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.source="https://github.com/thierrybraga/XFakeSong"
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONIOENCODING=utf-8 \
+    PIP_NO_CACHE_DIR=1 \
+    MPLBACKEND=Agg
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        libsndfile1 \
+        libgomp1 \
+        tini \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY docker/environments/classical-ml/requirements.txt /tmp/requirements.txt
+RUN pip install --upgrade pip setuptools wheel \
+    && pip install -r /tmp/requirements.txt
+
+COPY . .
+
+ENTRYPOINT ["tini", "--"]
+CMD ["python", "scripts/training/train_by_family.py", "--family", "classical-ml", "--help"]

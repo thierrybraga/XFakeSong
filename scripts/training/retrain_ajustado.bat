@@ -17,12 +17,12 @@ REM ao baseline -- confirmado em 2026-07-01 (RawGAT-ST: n=2250 balanceado ->
 REM n=863 com 525/338). Passe "with-speaker-split" como 2o argumento para o
 REM protocolo exploratorio disjunto por locutor (fora da tabela oficial).
 REM
-REM Pre-requisitos: dataset em app\datasets\benchmark_audio_raw_balanced_15k.npz,
+REM Pre-requisitos: dataset em data\datasets\benchmark_audio_raw_balanced_15k.npz,
 REM ambiente com TensorFlow/PyTorch + GPU (ver docs\10_TREINAMENTO.md).
 setlocal
 cd /d "%~dp0..\.."
 
-set "DATASET=app/datasets/benchmark_audio_raw_balanced_15k.npz"
+set "DATASET=data/datasets/benchmark_audio_raw_balanced_15k.npz"
 for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd"') do set STAMP=%%i
 set "OUT=results/retune_ajustado_%STAMP%"
 REM 480min: AASIST/RawGAT-ST precisam de ~160min so de treino (120 epocas);

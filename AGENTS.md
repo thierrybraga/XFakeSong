@@ -43,40 +43,38 @@ docker-compose down
 
 ## Arquitetura
 
-O projeto segue **Clean Architecture** com cinco camadas:
+O projeto segue **Clean Architecture** com quatro camadas:
 
 ```
 app/
 ├── domain/          # Regras de negócio puras — sem dependência de frameworks
 │   ├── features/    # Extração de features (extractors/, adapters/, registry)
-│   ├── models/      # Arquiteturas neurais (architectures/, training/, inference/)
-│   └── services/    # DetectionService, TrainingService, UploadService, etc.
-├── application/     # Orquestração — pipeline/orchestrator.py (Chain of Responsibility)
-├── core/            # Infraestrutura transversal (config, utils, interfaces, training)
-├── interfaces/      # Adaptadores de entrada
-│   ├── gradio/      # Interface web com 5 seções role-based (Painel, Detectar, Investigar, Treinar, Gerenciar)
-│   └── cli/         # CLI com menus interativos
-├── routers/         # Endpoints FastAPI (detection, training, features, etc.)
-└── schemas/         # Modelos Pydantic (request/response)
+│   ├── models/      # Arquiteturas neurais (architectures/, training/ com
+│   │                #   secure_training_pipeline.py, inference/)
+│   ├── services/    # DetectionService, TrainingService, UploadService, etc.
+│   ├── dataset_metadata/  # Catálogo de datasets e manifesto de falantes
+│   └── xai/         # Explicabilidade dos modelos (Grad-CAM, SHAP, contrato tabular)
+├── core/            # Infraestrutura transversal (config, db, auth, contracts)
+│   └── contracts/   # Contratos abstratos SOLID (IFeatureExtractor, IDetectionService, ...)
+└── interfaces/      # As 3 interfaces de entrada do projeto
+    ├── gradio/      # app.py (montagem unificada), schema_patch.py, 5 seções role-based
+    │                # (Painel, Detectar, Investigar, Treinar, Gerenciar) em tabs/, utils/
+    ├── cli/         # CLI com menus interativos (context.py, menus/)
+    └── web/         # FastAPI: main_fastapi.py, routers/ (endpoints), schemas/
+                      # (Pydantic request/response), static/, templates/ (Jinja2)
 ```
 
-Fora das cinco camadas, `app/` também tem: `static/` (CSS servido via
-FastAPI `StaticFiles`), `templates/` (Jinja2 para a página inicial e loading),
-`core/utils/` (utilitários centrais) vs `utils/colab.py` (helper isolado só
-para execução via Google Colab — não confundir os dois), e os entry points
-`main_fastapi.py`, `deploy_hf.py`, `gradio_schema_patch.py`.
+Fora dessas camadas, `app/` também tem: `utils/` (utilitários centrais de
+áudio/arquivos/sistema/VAD + `colab.py`, helper isolado só para execução via
+Google Colab), e `dependencies.py`/`deploy_hf.py` (compartilhados entre
+interfaces, por isso ficam em `app/` e não dentro de uma interface específica).
 
-**Fluxo de produção (direto):**
+**Fluxo de produção:**
 ```
-HTTP/Gradio → routers/ ou interfaces/ → domain/services/ → domain/models/ → resultado
-```
-
-**Fluxo via pipeline orquestrado (customizável):**
-```
-Input → UploadStage → FeatureExtractionStage → DetectionStage → PipelineResult
+HTTP/Gradio → interfaces/web/routers/ ou interfaces/gradio/ → domain/services/ → domain/models/ → resultado
 ```
 
-**Regra de ouro**: código em `app/domain/` nunca importa de `app/interfaces/`, `app/routers/` ou frameworks externos diretamente. Novas bibliotecas externas entram via wrapper em `app/core/` ou `app/domain/features/adapters/`.
+**Regra de ouro**: código em `app/domain/` nunca importa de `app/interfaces/` (gradio, cli ou web) nem de frameworks externos diretamente. Novas bibliotecas externas entram via wrapper em `app/core/` ou `app/domain/features/adapters/`. `app/core/contracts/` (contratos abstratos) e `app/interfaces/` (adaptadores de entrada: Gradio/CLI/Web) têm nomes deliberadamente distintos para não confundir as duas camadas.
 
 ---
 
@@ -143,9 +141,10 @@ Copie `.env.example` para `.env` antes de executar.
 
 ## Datasets
 
-Coloque áudios em:
+Coloque áudios em (raiz canônica consolidada em 2026-07-14 — antes havia
+fragmentação com `app/datasets/`):
 ```
-app/datasets/
+data/datasets/
 ├── real/    # Áudios genuínos
 └── fake/    # Áudios sintéticos/deepfake
 ```

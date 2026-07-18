@@ -1,6 +1,6 @@
 import dataclasses
-import inspect
 import importlib as _stdlib_importlib
+import inspect
 import json
 import logging
 import types
@@ -11,8 +11,8 @@ from typing import Any, Dict
 import numpy as np
 
 from app.core.config.settings import TrainingConfig
-from app.core.interfaces.base import ProcessingStatus
-from app.core.interfaces.services import (
+from app.core.contracts.base import ProcessingStatus
+from app.core.contracts.services import (
     ITrainingService,
     ModelMetadata,
     ProcessingResult,
@@ -175,6 +175,67 @@ class TrainingService(ITrainingService):
                 f"Verifique se train/val foram split do mesmo dataset."
             )
 
+    @staticmethod
+    def _guarded_checkpoint_restore(
+        model,
+        checkpoint_file: Path,
+        validation_data,
+        batch_size: int = 32,
+    ) -> bool:
+        """Restaura o melhor checkpoint SOMENTE se ele não degradar no val set.
+
+        O critério "melhor por val_loss" do ModelCheckpoint pode selecionar uma
+        época ruim/instável, e uma restauração corrompida pode até produzir NaN
+        (observado no Res2Net: EER 14,9% → 50% após restaurar o checkpoint).
+        Estratégia: snapshot dos pesos em memória → load_weights → reavalia a
+        val_loss; se ela ficar não-finita ou pior que a dos pesos em memória,
+        reverte o snapshot. Retorna True se o checkpoint foi mantido.
+        """
+        def _val_loss() -> float:
+            if validation_data is None:
+                return float("nan")
+            X_val, y_val = validation_data
+            metrics = model.evaluate(
+                X_val, y_val, batch_size=batch_size, verbose=0, return_dict=True
+            )
+            return float(metrics.get("loss", float("nan")))
+
+        baseline_weights = model.get_weights()
+        baseline_loss = _val_loss()
+        try:
+            model.load_weights(str(checkpoint_file))
+        except Exception as e:
+            # load_weights pode falhar no MEIO da atribuição, deixando o
+            # modelo meio-carregado — sempre reverter o snapshot completo.
+            model.set_weights(baseline_weights)
+            logger.warning(
+                "Falha ao carregar checkpoint %s; pesos em memória mantidos: %s",
+                checkpoint_file, e,
+            )
+            return False
+
+        if validation_data is None:
+            return True
+
+        ckpt_loss = _val_loss()
+        if not np.isfinite(ckpt_loss) or (
+            np.isfinite(baseline_loss) and ckpt_loss > baseline_loss + 1e-6
+        ):
+            model.set_weights(baseline_weights)
+            logger.warning(
+                "Checkpoint %s descartado: val_loss=%s pior/não-finita vs "
+                "pesos em memória (val_loss=%s). Pesos finais mantidos.",
+                checkpoint_file, ckpt_loss, baseline_loss,
+            )
+            return False
+
+        logger.info(
+            "Checkpoint validado no val set: val_loss=%.6g "
+            "(pesos finais em memória: %.6g)",
+            ckpt_loss, baseline_loss,
+        )
+        return True
+
     def train_model(self, architecture: str, dataset_path: str,
                     config: Dict[str, Any]) -> ProcessingResult[ModelMetadata]:
         """
@@ -256,18 +317,32 @@ class TrainingService(ITrainingService):
 
             # 3. Instanciar Modelo
             try:
-                if config.get("use_mixed_precision") is False:
+                # A política de precisão precisa valer ANTES do create_model:
+                # camadas capturam o dtype policy na construção e o compile
+                # decide o loss scaling nesse momento. Antes, só o caso False
+                # era tratado — com True, a política efetiva dependia do que a
+                # arquitetura ANTERIOR no mesmo processo tinha deixado no
+                # global policy (não-determinismo entre runs --full e runs
+                # sequenciais por processo).
+                if config.get("use_mixed_precision") is not None:
+                    policy = (
+                        "mixed_float16"
+                        if config.get("use_mixed_precision")
+                        else "float32"
+                    )
                     try:
                         import tensorflow as tf
 
-                        tf.keras.mixed_precision.set_global_policy("float32")
-                        logger.warning(
-                            "Mixed precision desabilitado antes da instanciação "
-                            "do modelo."
+                        tf.keras.mixed_precision.set_global_policy(policy)
+                        logger.info(
+                            "Política de precisão '%s' definida antes da "
+                            "instanciação do modelo.",
+                            policy,
                         )
                     except Exception as e:
                         logger.warning(
-                            f"Falha ao definir política float32 antes do modelo: {e}"
+                            f"Falha ao definir política '{policy}' antes do "
+                            f"modelo: {e}"
                         )
                 module = importlib.import_module(arch_info.module_path)
                 create_model_fn = getattr(module, arch_info.function_name)
@@ -359,7 +434,12 @@ class TrainingService(ITrainingService):
             # kwargs para callbacks podem ser passados via config
             callback_kwargs = {
                 key: config[key]
-                for key in ("checkpoint_path", "tensorboard_dir", "csv_log_path")
+                for key in (
+                    "checkpoint_path",
+                    "backup_dir",
+                    "tensorboard_dir",
+                    "csv_log_path",
+                )
                 if config.get(key)
             }
             train_result = trainer.train(
@@ -380,10 +460,24 @@ class TrainingService(ITrainingService):
                 checkpoint_file = Path(checkpoint_path)
                 if checkpoint_file.exists():
                     try:
-                        import tensorflow as tf
-
-                        model = tf.keras.models.load_model(str(checkpoint_file))
-                        if validation_data is not None:
+                        # load_weights (não load_model) evita depender da
+                        # desserialização de losses customizadas (ex.:
+                        # label_smoothing_loss como closure local, não
+                        # registrada via @keras.saving.register_keras_serializable),
+                        # que falhava silenciosamente e mantinha os pesos da
+                        # última época em vez do melhor checkpoint (val_loss).
+                        #
+                        # Restauração GUARDADA: o "melhor" checkpoint pode ser
+                        # pior que os pesos em memória (ou até produzir NaN —
+                        # observado no Res2Net: EER 14,9% → 50% após restaurar).
+                        # Valida no val set e reverte se a restauração degradar.
+                        restored = self._guarded_checkpoint_restore(
+                            model,
+                            checkpoint_file,
+                            validation_data,
+                            batch_size=int(config.get("batch_size", 32) or 32),
+                        )
+                        if restored and validation_data is not None:
                             trainer._calibrated_temperature = (
                                 trainer._auto_calibrate_temperature(
                                     model, validation_data
@@ -406,9 +500,10 @@ class TrainingService(ITrainingService):
                                     model, validation_data
                                 )
                             )
-                        logger.info(
-                            f"Melhor checkpoint restaurado: {checkpoint_file}"
-                        )
+                        if restored:
+                            logger.info(
+                                f"Melhor checkpoint restaurado: {checkpoint_file}"
+                            )
                     except Exception as e:
                         logger.warning(
                             "Checkpoint encontrado, mas não pôde ser restaurado; "

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gerador dos notebooks de estudo/reprodução do XFakeSong (TCC).
 
-Reconstrói, de forma reprodutível, os notebooks ATIVOS em `notebooks/`
+Reconstrói, de forma reprodutível, os notebooks ATIVOS em `docs/notebooks/`
 (`00_index`, `features/`, `models/`, `pipeline/`) com células limpas:
 
 - markdown sem indentação espúria (que vira bloco de código no Jupyter) e em
@@ -530,7 +530,7 @@ def build_models():
                por padrão (defina `XFAKE_RUN_EVAL=0` para pular).
 
             Para treino com o seu próprio dataset, use
-            `notebooks/pipeline/02_training_model.ipynb`.
+            `docs/notebooks/pipeline/02_training_model.ipynb`.
             """),
             code(BOOTSTRAP),
             *ssl_setup,
@@ -567,7 +567,7 @@ def build_models():
 
             - **Treino rápido:** use `epochs=2` apenas para validar fluxo.
             - **Treino para TCC:** use o preset do benchmark completo em
-              `notebooks/pipeline/01_benchmark_tcc_full_pipeline.ipynb`.
+              `docs/notebooks/pipeline/01_benchmark_tcc_full_pipeline.ipynb`.
             - **Entrada preparada:** confira a célula de `BenchmarkData` acima;
               ela mostra o shape real usado no harness.
             - **Arquivos esperados no relatório:** `architectures/{slug}/metrics.json`,
@@ -692,7 +692,7 @@ def build_pipeline():
 
         RUN_FULL_PIPELINE = False
         OUTPUT_DIR = ROOT / "results" / "tcc_full_20k"
-        DATASET_NPZ = ROOT / "app" / "datasets" / "benchmark_audio_raw_20k.npz"
+        DATASET_NPZ = ROOT / "data" / "datasets" / "benchmark_audio_raw_20k.npz"
 
         cmd = [
             sys.executable,
@@ -714,14 +714,14 @@ def build_pipeline():
         ```bash
         python scripts/benchmark/run_tcc_pipeline.py --tcc-full-dataset \\
             --out results/tcc_full_20k \\
-            --npz app/datasets/benchmark_audio_raw_20k.npz
+            --npz data/datasets/benchmark_audio_raw_20k.npz
         ```
 
         Ou o benchmark direto sobre um `.npz` já exportado (veja como gerar o
         dataset em `docs/12_DATASETS.md`):
 
         ```bash
-        python scripts/benchmark/run_benchmark.py --full --dataset app/datasets/SEU_DATASET.npz
+        python scripts/benchmark/run_benchmark.py --full --dataset data/datasets/SEU_DATASET.npz
         ```
 
         Veja `docs/15_BENCHMARK.md` para o mapeamento saída → tabela/figura do TCC.
@@ -786,7 +786,7 @@ def build_pipeline():
         """),
         md("## 2. Treinar via TrainingService"),
         code("""
-        from app.core.interfaces.base import ProcessingStatus
+        from app.core.contracts.base import ProcessingStatus
         from app.domain.services.training_service import TrainingService
 
         models_dir = workdir / "models"
@@ -807,7 +807,7 @@ def build_pipeline():
         - O `.keras` é salvo **sem o estado do otimizador** (~3× menor, load mais
           rápido, saída idêntica) — ver `trainer.save_inference_keras`.
         - O `nb_demo_config.json` carrega o `input_contract` (temperatura/EER/OOD
-          calibrados) lido na inferência. Ver `notebooks/pipeline/03_inference.ipynb`.
+          calibrados) lido na inferência. Ver `docs/notebooks/pipeline/03_inference.ipynb`.
         """),
         md("""
         ## 3. Treinar com um dataset REAL (download) — opcional
@@ -826,7 +826,7 @@ def build_pipeline():
 
         DOWNLOAD_REAL = False          # → True para baixar + treinar com dados reais
         TIER = "test"                  # tier de dataset (test=smoke ~100/classe). Ver docs/12.
-        REAL_NPZ = ROOT / "app" / "datasets" / "nb_real.npz"
+        REAL_NPZ = ROOT / "data" / "datasets" / "nb_real.npz"
 
         if DOWNLOAD_REAL:
             # 1. datasets compatível (a 4.x quebra o download de áudio).
@@ -865,7 +865,7 @@ def build_pipeline():
         Treinar salva o par **`nb_demo.keras` + `nb_demo_config.json`** em
         `models_dir`. Esse par é tudo que o `DetectionService` (o pipeline de
         detecção da API e do Gradio) precisa para carregar e inferir — veja
-        `notebooks/pipeline/03_inference.ipynb`, Seção 3, para o `detect_single`
+        `docs/notebooks/pipeline/03_inference.ipynb`, Seção 3, para o `detect_single`
         ponta a ponta a partir de áudio bruto.
 
         O app principal — tanto o Gradio (`python main.py --gradio`) quanto a API —
@@ -896,7 +896,7 @@ def build_pipeline():
         code("""
         import tempfile
         import numpy as np
-        from app.core.interfaces.base import ProcessingStatus
+        from app.core.contracts.base import ProcessingStatus
         from app.domain.services.training_service import TrainingService
 
         rng = np.random.default_rng(1)
@@ -950,7 +950,7 @@ def build_pipeline():
         roda, sem adaptação, no sistema principal.
         """),
         code("""
-        from app.core.interfaces.audio import AudioData
+        from app.core.contracts.audio import AudioData
         from app.domain.services.detection_service import DetectionService
 
         # Mesma instância que o app cria — só muda o models_dir (aponta p/ o do

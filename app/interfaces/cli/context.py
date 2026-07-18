@@ -4,9 +4,7 @@ from pathlib import Path
 from typing import List
 
 from app.core.config.settings import TrainingConfig
-from app.domain.models.training.trainer import ModelTrainer
 from app.domain.services.detection_service import DetectionService
-from app.domain.services.feature_extraction_service import AudioFeatureExtractionService
 
 
 @dataclass
@@ -16,19 +14,17 @@ class AppContext:
     datasets_dir: Path
     models_dir: Path
     results_dir: Path
-    feature_service: AudioFeatureExtractionService
     detection_service: DetectionService
-    trainer: ModelTrainer
     training_config: TrainingConfig
     available_architectures: List[str]
     logger: logging.Logger
 
     def __init__(self):
-        self.app_dir = Path(__file__).resolve(
-        ).parent.parent.parent.parent / "app"
-        self.datasets_dir = self.app_dir / "datasets"
+        repo_root = Path(__file__).resolve().parent.parent.parent.parent
+        self.app_dir = repo_root / "app"
+        self.datasets_dir = repo_root / "data" / "datasets"
         self.models_dir = self.app_dir / "models"
-        self.results_dir = self.app_dir / "results"
+        self.results_dir = repo_root / "results"
 
         # Criar diretórios se não existirem
         self.models_dir.mkdir(exist_ok=True, parents=True)
@@ -38,7 +34,6 @@ class AppContext:
         (self.datasets_dir / "features").mkdir(exist_ok=True)
 
         # Inicializar serviços
-        self.feature_service = AudioFeatureExtractionService()
         self.detection_service = DetectionService(self.models_dir)
 
         # Criar configuração de treinamento
@@ -48,7 +43,6 @@ class AppContext:
             learning_rate=0.001,
             validation_split=0.2
         )
-        self.trainer = ModelTrainer(self.training_config)
 
         # Arquiteturas disponíveis
         self.available_architectures = [

@@ -17,8 +17,8 @@ except ImportError:
     # Fallback para imports básicos
     from app.domain.features.interfaces import IFeatureExtractor
 
-from .....core.interfaces.audio import AudioData, AudioFeatures, FeatureType
-from .....core.interfaces.base import ProcessingResult, ProcessingStatus
+from .....core.contracts.audio import AudioData, AudioFeatures, FeatureType
+from .....core.contracts.base import ProcessingResult, ProcessingStatus
 from .components.delta import DeltaFeaturesExtractor
 from .components.lpcc import extract_lpcc_features
 from .components.mel import MelSpectrogramExtractor

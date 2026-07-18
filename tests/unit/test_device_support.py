@@ -52,7 +52,7 @@ def test_detection_service_can_skip_default_models(tmp_path) -> None:
 
 def test_main_fastapi_api_only_flag(monkeypatch) -> None:
     """Flag XFAKE_API_ONLY centraliza o modo API sem Gradio/GPU eager."""
-    import app.main_fastapi as main_fastapi
+    import app.interfaces.web.main_fastapi as main_fastapi
 
     monkeypatch.setenv("XFAKE_API_ONLY", "1")
     assert main_fastapi._api_only_mode() is True

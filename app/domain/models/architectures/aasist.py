@@ -17,13 +17,17 @@ from app.domain.models.architectures.layers import (
     AMSoftmaxLayer,
     AttentionLayer,
     AudioFeatureNormalization,
+    AxisMaxAbsLayer,
     GATConvLayer,
     GraphPoolLayer,
     GraphReadoutLayer,
+    HeterogeneousStackGraphAttentionLayer,
     HSGALLayer,
     MagnitudeLayer,
     ResidualBlock1D,
+    ResidualBlock2D,
     SincConvLayer,
+    SpectralPositionEmbedding,
     apply_gru_block,
     apply_reshape_for_cnn,
     flatten_features_for_gru,
@@ -38,17 +42,173 @@ logger = logging.getLogger(__name__)
 # ============================ CAMADAS CUSTOMIZADAS ======================
 # Estas camadas devem ser importadas em predictor.py também.
 
+
+def _build_aasist_encoder(x: tf.Tensor, dropout_rate: float) -> tf.Tensor:
+    """RawNet2 2D encoder que preserva os eixos espectral e temporal."""
+    x = SincConvLayer(
+        n_filters=70, kernel_size=129, sample_rate=16000,
+        name="aasist_sinc",
+    )(x)
+    x = MagnitudeLayer(name="aasist_sinc_abs")(x)
+    x = layers.Permute((2, 1), name="aasist_sinc_to_spectrogram")(x)
+    x = layers.Reshape(
+        (int(x.shape[1]), int(x.shape[2]), 1),
+        name="aasist_sinc_map",
+    )(x)
+    x = layers.MaxPooling2D(
+        pool_size=(3, 3), strides=(3, 3), padding="same",
+        name="aasist_front_pool",
+    )(x)
+    x = layers.BatchNormalization(name="aasist_front_bn")(x)
+    x = layers.Activation("selu", name="aasist_front_selu")(x)
+    for index, channels in enumerate((32, 32, 64, 64, 64, 64), start=1):
+        x = ResidualBlock2D(
+            channels, pool_size=(1, 3), name=f"aasist_encoder_{index}"
+        )(x)
+        if index in {2, 4}:
+            x = layers.Dropout(
+                dropout_rate * 0.5, name=f"aasist_encoder_drop_{index}"
+            )(x)
+    return x
+
+
+def _build_paper_aasist(
+    input_tensor: tf.Tensor,
+    x: tf.Tensor,
+    num_classes: int,
+    dropout_rate: float,
+    l2_reg_strength: float,
+    classifier_head: str,
+    learning_rate: float,
+    min_learning_rate: float,
+    decay_steps: int,
+) -> models.Model:
+    """AASIST com mapa 2D, master node, quatro HS-GALs e MGO."""
+    if num_classes < 2:
+        num_classes = 2
+    if len(x.shape) == 2:
+        x = layers.Reshape((-1, 1), name="aasist_reshape_raw")(x)
+    elif len(x.shape) != 3 or x.shape[-1] != 1:
+        x = layers.Reshape((-1, 1), name="aasist_reshape_raw")(x)
+
+    encoded = _build_aasist_encoder(x, dropout_rate)
+    # AxisMaxAbsLayer (não layers.Lambda com lambda Python crua): Keras 3
+    # recusa desserializar Lambda de função Python em safe_mode (default),
+    # o que quebrava o load do modelo salvo. Mesma computação exata
+    # (max(|x|, axis)), só a forma de serializar muda.
+    spectral = AxisMaxAbsLayer(
+        axis=2, name="aasist_spectral_nodes",
+    )(encoded)
+    temporal = AxisMaxAbsLayer(
+        axis=1, name="aasist_temporal_nodes",
+    )(encoded)
+    spectral = SpectralPositionEmbedding(name="aasist_spectral_position")(spectral)
+    spectral = GATConvLayer(
+        out_features=64, num_heads=1, dropout_rate=dropout_rate,
+        name="aasist_gat_spectral",
+    )(spectral)
+    temporal = GATConvLayer(
+        out_features=64, num_heads=1, dropout_rate=dropout_rate,
+        name="aasist_gat_temporal",
+    )(temporal)
+    spectral = GraphPoolLayer(0.5, name="aasist_pool_spectral")(spectral)
+    temporal = GraphPoolLayer(0.7, name="aasist_pool_temporal")(temporal)
+
+    s1, t1, m1 = HeterogeneousStackGraphAttentionLayer(
+        32, dropout_rate, name="aasist_hsgal_11"
+    )([spectral, temporal])
+    s1 = GraphPoolLayer(0.5, name="aasist_hpool_s1")(s1)
+    t1 = GraphPoolLayer(0.5, name="aasist_hpool_t1")(t1)
+    s1_aug, t1_aug, m1_aug = HeterogeneousStackGraphAttentionLayer(
+        32, dropout_rate, name="aasist_hsgal_12"
+    )([s1, t1, m1])
+    s1 = layers.Add(name="aasist_residual_s1")([s1, s1_aug])
+    t1 = layers.Add(name="aasist_residual_t1")([t1, t1_aug])
+    m1 = layers.Add(name="aasist_residual_m1")([m1, m1_aug])
+
+    s2, t2, m2 = HeterogeneousStackGraphAttentionLayer(
+        32, dropout_rate, name="aasist_hsgal_21"
+    )([spectral, temporal])
+    s2 = GraphPoolLayer(0.5, name="aasist_hpool_s2")(s2)
+    t2 = GraphPoolLayer(0.5, name="aasist_hpool_t2")(t2)
+    s2_aug, t2_aug, m2_aug = HeterogeneousStackGraphAttentionLayer(
+        32, dropout_rate, name="aasist_hsgal_22"
+    )([s2, t2, m2])
+    s2 = layers.Add(name="aasist_residual_s2")([s2, s2_aug])
+    t2 = layers.Add(name="aasist_residual_t2")([t2, t2_aug])
+    m2 = layers.Add(name="aasist_residual_m2")([m2, m2_aug])
+
+    spectral = layers.Maximum(name="aasist_mgo_spectral")([s1, s2])
+    temporal = layers.Maximum(name="aasist_mgo_temporal")([t1, t2])
+    master = layers.Maximum(name="aasist_mgo_master")([m1, m2])
+    readout = layers.Concatenate(name="aasist_extended_readout")([
+        layers.GlobalMaxPooling1D(name="aasist_temporal_max")(
+            MagnitudeLayer(name="aasist_temporal_abs")(temporal)
+        ),
+        layers.GlobalAveragePooling1D(name="aasist_temporal_mean")(temporal),
+        layers.GlobalMaxPooling1D(name="aasist_spectral_max")(
+            MagnitudeLayer(name="aasist_spectral_abs")(spectral)
+        ),
+        layers.GlobalAveragePooling1D(name="aasist_spectral_mean")(spectral),
+        layers.Flatten(name="aasist_master_readout")(master),
+    ])
+    readout = layers.Dropout(dropout_rate, name="aasist_readout_dropout")(readout)
+
+    head = str(classifier_head).lower()
+    if head in {"am_softmax", "amsoftmax", "cosface"}:
+        output = AMSoftmaxLayer(
+            num_classes, scale=15.0, margin=0.35, name="output_layer"
+        )(readout)
+    elif head in {"cross_entropy", "ce", "dense"}:
+        output = layers.Dense(
+            num_classes, activation=None, dtype="float32", name="output_layer"
+        )(readout)
+    else:
+        raise ValueError("classifier_head deve ser 'cross_entropy' ou 'am_softmax'")
+
+    output = layers.Activation(
+        "linear", dtype="float32", name="output_cast"
+    )(output)
+    model = models.Model(input_tensor, output, name="AASIST")
+    schedule = tf.keras.optimizers.schedules.CosineDecay(
+        initial_learning_rate=float(learning_rate),
+        decay_steps=max(1, int(decay_steps)),
+        alpha=float(min_learning_rate) / max(float(learning_rate), 1e-12),
+    )
+    model.compile(
+        optimizer=tf.keras.optimizers.AdamW(
+            learning_rate=schedule,
+            weight_decay=l2_reg_strength,
+            global_clipnorm=1.0,
+        ),
+        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+        metrics=["accuracy"],
+    )
+    return model
+
+
 # ============================ FUNÇÕES DE CONSTRUÇÃO DE MODELOS ==========
 
 
-def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architecture: str = "aasist",
-                 dropout_rate: float = 0.2, l2_reg_strength: float = 0.0005,
-                 hidden_dim: int = 512, num_layers: int = 8) -> models.Model:
+def create_model(
+    input_shape: Tuple[int, ...],
+    num_classes: int = 2,
+    architecture: str = "aasist",
+    dropout_rate: float = 0.2,
+    l2_reg_strength: float = 0.0005,
+    hidden_dim: int = 512,
+    num_layers: int = 8,
+    classifier_head: str = "cross_entropy",
+    learning_rate: float = 1e-4,
+    min_learning_rate: float = 5e-6,
+    decay_steps: int = 100_000,
+) -> models.Model:
     """
     Cria e compila um modelo Keras baseado na arquitetura especificada.
 
     Variantes suportadas:
-        - "aasist" (DEFAULT): Paper-faithful (SincConv + GAT + HS-GAL + AM-Softmax)
+        - "aasist" (DEFAULT): encoder 2D + GAT S/T + master node + MGO
+        - "aasist_legacy": implementação 1D anterior, para checkpoints antigos
         - "cnn_gru_simple" / "default" (alias legado): CNN 2D + Bi-GRU + Attention
         - "cnn_baseline": CNN 2D simples + flatten
         - "bidirectional_gru": Bi-GRU + Attention (sem CNN)
@@ -184,6 +344,19 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         x = layers.GlobalAveragePooling1D(name="transformer_avg_pool")(x)
 
     elif architecture == "aasist":
+        return _build_paper_aasist(
+            input_tensor=input_tensor,
+            x=x,
+            num_classes=num_classes,
+            dropout_rate=dropout_rate,
+            l2_reg_strength=l2_reg_strength,
+            classifier_head=classifier_head,
+            learning_rate=learning_rate,
+            min_learning_rate=min_learning_rate,
+            decay_steps=decay_steps,
+        )
+
+    elif architecture == "aasist_legacy":
         # A cabeça AM-Softmax é inerentemente multi-classe: com num_classes=1
         # a CCE sobre 1 logit é identicamente zero (modelo não aprende).
         # Promove para 2 classes (real/fake) — o Predictor já entende ambas
@@ -347,7 +520,10 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
 
     else:
         raise ValueError(
-            f"Arquitetura '{architecture}' não reconhecida. Escolha 'default', 'cnn_baseline', 'bidirectional_gru', 'resnet_gru', 'transformer', ou 'aasist'.")
+            f"Arquitetura '{architecture}' não reconhecida. Escolha 'default', "
+            "'cnn_baseline', 'bidirectional_gru', 'resnet_gru', 'transformer', "
+            "'aasist' ou 'aasist_legacy'."
+        )
 
     # Camadas densas com regularização aprimorada
     x = layers.Dense(hidden_dim, activation='relu',

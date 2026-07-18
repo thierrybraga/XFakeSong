@@ -33,7 +33,7 @@ sys.path.insert(0, PROJECT_ROOT)
 
 # Fake packages para evitar app/__init__ chain (sqlalchemy/etc)
 for _fake_pkg in [
-    "app", "app.core", "app.core.interfaces",
+    "app", "app.core", "app.core.contracts",
     "app.domain", "app.domain.models", "app.domain.models.architectures",
     "app.domain.services", "app.domain.services.detection",
 ]:
@@ -83,7 +83,7 @@ def _run_arch_integrated(arch: str) -> dict:
     audio_pre_mod = importlib.import_module("app.domain.services.detection.audio_preprocessing")
 
     try:
-        from app.core.interfaces.audio import AudioData  # type: ignore
+        from app.core.contracts.audio import AudioData  # type: ignore
     except Exception:
         from dataclasses import dataclass, field
 

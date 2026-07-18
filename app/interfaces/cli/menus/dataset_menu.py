@@ -2,6 +2,8 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+import librosa
+
 from app.domain.features.exporters.csv_feature_exporter import (
     CSVExportConfig,
     CSVFeatureExporter,
@@ -214,8 +216,12 @@ class DatasetMenu(BaseMenu):
             real_dir = samples_dir / "real"
             fake_dir = samples_dir / "fake"
 
-            spectral_extractor = SpectralFeatureExtractor()
-            temporal_extractor = TemporalFeatureExtractor()
+            # BUG FIX: os extratores usavam o sample_rate default (22050 Hz)
+            # dos construtores, divergindo do 16 kHz usado no librosa.load()
+            # abaixo — as chamadas librosa.feature.*(sr=self.sr, ...) internas
+            # ficavam calibradas para uma taxa que não é a do sinal real.
+            spectral_extractor = SpectralFeatureExtractor(sr=16000)
+            temporal_extractor = TemporalFeatureExtractor(sr=16000)
 
             csv_config = CSVExportConfig(
                 output_base_dir="datasets/features",
@@ -249,16 +255,10 @@ class DatasetMenu(BaseMenu):
 
             for audio_file in files:
                 try:
-                    import librosa
-                    audio_data, sample_rate = librosa.load(
-                        audio_file, sr=16000)
+                    audio_data, _ = librosa.load(audio_file, sr=16000)
 
-                    spectral_dict = spectral_extractor.extract_features(
-                        audio_data,
-                        sample_rate) if label == 'fake' else spectral_extractor.extract_features(audio_data)
-                    temporal_dict = temporal_extractor.extract_features(
-                        audio_data,
-                        sample_rate) if label == 'fake' else temporal_extractor.extract_features(audio_data)
+                    spectral_dict = spectral_extractor.extract_features(audio_data)
+                    temporal_dict = temporal_extractor.extract_features(audio_data)
 
                     spectral_features = self._normalize_dict(
                         spectral_dict, 'spectral_feature')
@@ -281,6 +281,8 @@ class DatasetMenu(BaseMenu):
 
                 except Exception as e:
                     print(f"⚠️ Erro ao processar {audio_file.name}: {e}")
+                    self.context.logger.error(
+                        f"Erro ao processar {audio_file.name}: {e}")
         return processed_count
 
     def _normalize_dict(self, data, prefix):

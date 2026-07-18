@@ -1,4 +1,4 @@
-"""Cobertura de `app/core/utils/file_utils.py`.
+"""Cobertura de `app/utils/file_utils.py`.
 
 Operações de arquivo puras, exercitadas com `tmp_path` (sem tocar o ambiente
 real): hashing, info, busca por extensão, cópia/movimentação segura, extração
@@ -11,7 +11,7 @@ import zipfile
 
 import pytest
 
-from app.core.utils import file_utils as fu
+from app.utils import file_utils as fu
 
 
 # ── básicos ───────────────────────────────────────────────────────────────

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Type
 
-from app.core.interfaces.audio import FeatureType, IFeatureExtractor  # noqa: F401
+from app.core.contracts.audio import FeatureType, IFeatureExtractor  # noqa: F401
 from app.domain.features.extractors.cepstral.cepstral_features import (
     CepstralFeatureExtractor,
 )

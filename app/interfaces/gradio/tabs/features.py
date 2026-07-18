@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
 import gradio as gr  # noqa: E402
-from app.core.interfaces.audio import AudioData, FeatureType  # noqa: E402
+from app.core.contracts.audio import AudioData, FeatureType  # noqa: E402
 from app.domain.services.feature_extraction_service import (  # noqa: E402
     AudioFeatureExtractionService,
     ExtractionConfig,
@@ -51,7 +51,7 @@ def create_features_tab():
             "extraídas de um arquivo de áudio.",
         )
 
-        with gr.Row():
+        with gr.Row(elem_classes="responsive-grid"):
             with gr.Column(scale=1):
                 audio_input = gr.Audio(
                     type="filepath", label="Arquivo de Áudio")
@@ -69,7 +69,7 @@ def create_features_tab():
                     with gr.Tab("Visualização Gráfica"):
                         gr.Markdown("#### Forma de Onda")
                         wave_output = gr.Plot(label="Waveform")
-                        with gr.Row():
+                        with gr.Row(elem_classes="responsive-grid plot-grid"):
                             with gr.Column():
                                 gr.Markdown("#### Feature Heatmap")
                                 plot_output = gr.Plot(

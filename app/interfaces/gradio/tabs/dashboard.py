@@ -10,12 +10,23 @@ from __future__ import annotations
 import logging
 import platform
 import sys
+import threading
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import gradio as gr
 
 logger = logging.getLogger("gradio_dashboard")
+
+# Cache do tamanho dos datasets: um rglob+stat completo pode ter dezenas de
+# milhares de arquivos, e em volumes bind-mounted (Docker no Windows/WSL2)
+# cada stat() cruza a fronteira do filesystem — travar isso de forma síncrona
+# na construção da UI (ou a cada tick do Timer de 30s) prende o boot do app
+# por minutos. O cálculo real roda em background e fica em cache.
+_DATASET_SIZE_CACHE_TTL = 300.0
+_dataset_size_cache = {"value": 0.0, "computed_at": 0.0, "computing": False}
+_dataset_size_lock = threading.Lock()
 
 
 # =====================================================================
@@ -51,7 +62,7 @@ def _count_analyses_24h() -> int:
     try:
         from sqlalchemy import func
 
-        from app.core.database import SessionLocal
+        from app.core.db.session import SessionLocal
         from app.domain.models.analysis import AnalysisResult
 
         with SessionLocal() as db:
@@ -68,9 +79,25 @@ def _count_analyses_24h() -> int:
 
 
 def _datasets_size_gb() -> float:
-    """Calcula tamanho total dos diretórios de datasets em GB."""
+    """Tamanho cacheado dos diretórios de datasets em GB.
+
+    Retorna o último valor calculado (0.0 na primeira chamada) e dispara o
+    recálculo em background se o cache estiver vencido — nunca bloqueia a
+    thread chamadora.
+    """
+    now = time.monotonic()
+    with _dataset_size_lock:
+        stale = now - _dataset_size_cache["computed_at"] > _DATASET_SIZE_CACHE_TTL
+        if stale and not _dataset_size_cache["computing"]:
+            _dataset_size_cache["computing"] = True
+            threading.Thread(target=_refresh_datasets_size_gb, daemon=True).start()
+        return _dataset_size_cache["value"]
+
+
+def _refresh_datasets_size_gb() -> None:
+    """Calcula o tamanho real dos datasets (chamado em thread separada)."""
     total = 0
-    for d in [Path("data"), Path("app/datasets"), Path("datasets")]:
+    for d in [Path("data/datasets"), Path("data"), Path("datasets")]:
         if not d.exists():
             continue
         try:
@@ -79,13 +106,16 @@ def _datasets_size_gb() -> float:
                     total += p.stat().st_size
         except Exception as e:
             logger.debug(f"datasets_size erro em {d}: {e}")
-    return round(total / (1024**3), 2)
+    with _dataset_size_lock:
+        _dataset_size_cache["value"] = round(total / (1024**3), 2)
+        _dataset_size_cache["computed_at"] = time.monotonic()
+        _dataset_size_cache["computing"] = False
 
 
 def _recent_analyses(limit: int = 5) -> list:
     """Últimas N análises do histórico."""
     try:
-        from app.core.database import SessionLocal
+        from app.core.db.session import SessionLocal
         from app.domain.models.analysis import AnalysisResult
 
         with SessionLocal() as db:
@@ -165,7 +195,7 @@ def _system_status() -> dict:
         "db_ok": False,
     }
     try:
-        from app.core.database import check_database_health
+        from app.core.db.session import check_database_health
 
         status["db_ok"] = bool(check_database_health())
     except Exception:
@@ -306,7 +336,7 @@ def create_dashboard_tab():
         kpi_html = gr.HTML(_render_kpi_row(), elem_id="dashboard_kpis")
 
         # 2 colunas: histórico recente + status do sistema
-        with gr.Row():
+        with gr.Row(elem_classes="responsive-grid"):
             with gr.Column(scale=2):
                 gr.Markdown("### Últimas Análises")
                 recent_html = gr.HTML(

@@ -1,14 +1,8 @@
 import json
-from datetime import datetime
 
-import joblib
 import numpy as np
 
-from app.core.training.secure_training_pipeline import (
-    SecureTrainingConfig,
-    SecureTrainingPipeline,
-)
-from app.domain.models.architectures.factory import BaseArchitectureFactory
+from app.domain.services.training_service import TrainingService
 from app.interfaces.cli.menus.base_menu import BaseMenu
 
 
@@ -95,72 +89,58 @@ class TrainingMenu(BaseMenu):
             print(f"\n📊 Dados carregados: {len(features)} amostras")
             print("🚀 Iniciando treinamento...")
 
-            secure_config = SecureTrainingConfig(
-                test_size=0.2,
-                validation_size=0.2,
-                random_state=42,
-                normalize_features=True,
-                feature_selection=False
+            X = np.asarray(features, dtype=np.float32)
+            y = np.asarray(labels)
+
+            # Split treino/validação com embaralhamento (os dados chegam
+            # ordenados: primeiro todas as amostras 'real', depois 'fake' —
+            # sem shuffle, o split viraria 100% de uma classe em cada lado).
+            rng = np.random.RandomState(42)
+            indices = rng.permutation(len(X))
+            split_at = max(1, int(len(X) * 0.8))
+            train_idx, val_idx = indices[:split_at], indices[split_at:]
+
+            # TrainingService espera um dataset .npz (X_train/y_train/X_val/
+            # y_val), não o JSON de features — gera um arquivo derivado.
+            dataset_path = (
+                self.context.datasets_dir / "features" / "train_dataset.npz"
+            )
+            np.savez(
+                dataset_path,
+                X_train=X[train_idx], y_train=y[train_idx],
+                X_val=X[val_idx], y_val=y[val_idx],
             )
 
-            pipeline = SecureTrainingPipeline(secure_config)
+            training_service = TrainingService(
+                models_dir=str(self.context.models_dir))
+            result = training_service.train_model(
+                architecture=selected_arch,
+                dataset_path=str(dataset_path),
+                config={"epochs": epochs, "batch_size": batch_size},
+            )
 
-            X = np.array(features)
-            y = np.array(labels)
-
-            train_result = pipeline.prepare_data(X, y)
-            if train_result.status.name != "SUCCESS":
-                print(
-                    f"❌ Erro na preparação dos dados: {train_result.message}")
+            if not result.is_success:
+                print(f"❌ Erro no treinamento: {'; '.join(result.errors)}")
                 return
 
-            factory = BaseArchitectureFactory()
-            model = factory.create_model(
-                selected_arch,
-                input_shape=(X.shape[1],),
-                num_classes=2
-            )
+            metadata = result.data
+            print("\n✅ Modelo treinado com sucesso!")
+            print(f"📁 Salvo em: {metadata.file_path}")
+            print(f"📊 Acurácia: {metadata.accuracy:.2%}")
 
-            training_result = pipeline.train_model(
-                model,
-                train_result.data['X_train'],
-                train_result.data['y_train'],
-                train_result.data['X_val'],
-                train_result.data['y_val'],
-                epochs=epochs,
-                batch_size=batch_size
-            )
-
-            if training_result.status.name == "SUCCESS":
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                model_name = f"{selected_arch}_{timestamp}"
-                model_path = self.context.models_dir / f"{model_name}.h5"
-
-                model.save(str(model_path))
-
-                if hasattr(pipeline, 'scaler') and pipeline.scaler:
-                    scaler_path = self.context.models_dir / \
-                        f"{model_name}_scaler.pkl"
-                    joblib.dump(pipeline.scaler, scaler_path)
-
-                print("\n✅ Modelo treinado com sucesso!")
-                print(f"📁 Salvo em: {model_path}")
-                print(
-                    f"📊 Acurácia: {training_result.data.get('accuracy', 'N/A')}")
-
-                report_path = self.context.results_dir / \
-                    f"training_report_{model_name}.json"
-                with open(report_path, 'w') as f:
-                    json.dump({
-                        'model_name': model_name,
-                        'architecture': selected_arch,
-                        'training_config': {
-                            'epochs': epochs,
-                            'batch_size': batch_size
-                        },
-                        'results': training_result.data,
-                        'timestamp': datetime.now().isoformat()
-                    }, f, indent=2)
+            report_path = self.context.results_dir / \
+                f"training_report_{metadata.name}.json"
+            with open(report_path, 'w') as f:
+                json.dump({
+                    'model_name': metadata.name,
+                    'architecture': selected_arch,
+                    'training_config': {
+                        'epochs': epochs,
+                        'batch_size': batch_size
+                    },
+                    'results': metadata.metrics,
+                    'timestamp': metadata.created_at.isoformat()
+                }, f, indent=2)
 
         except Exception as e:
             print(f"❌ Erro durante o treinamento: {e}")
@@ -169,7 +149,8 @@ class TrainingMenu(BaseMenu):
     def list_trained_models(self):
         """Lista os modelos já treinados."""
         print("\n📋 Modelos Treinados:")
-        models = list(self.context.models_dir.glob("*.h5"))
+        models = list(self.context.models_dir.glob("*.keras")) + \
+            list(self.context.models_dir.glob("*.h5"))
         if not models:
             print("   Nenhum modelo encontrado.")
         else:

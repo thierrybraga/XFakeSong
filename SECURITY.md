@@ -30,7 +30,7 @@ divulgação pública.
   auditadas por `pip-audit` na CI.
 - **Extração de arquivos**: ZIP/TAR são extraídos com validação contra path
   traversal (Zip Slip / CVE-2007-4559) — ver `safe_extract_zip`/`safe_extract_tar`
-  em `app/core/utils/file_utils.py`.
+  em `app/utils/file_utils.py`.
 - **Headers HTTP**: respostas incluem `X-Content-Type-Options`,
   `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` e
   `Cross-Origin-Opener-Policy`; HSTS e CSP são opt-in via env.

@@ -1,0 +1,24 @@
+# Docker, ambientes e execução
+
+Este guia consolida a visão operacional do projeto para Docker, ambientes de treino/inferência e execução local.
+
+## Pontos de entrada
+
+- [main.py](../main.py): ponto de entrada principal do CLI e da interface Gradio.
+- [app/interfaces/gradio/app.py](../app/interfaces/gradio/app.py): montagem da interface unificada.
+- [app.py](../app.py): entrada para Hugging Face Spaces.
+- [docker-entrypoint.sh](../docker-entrypoint.sh): bootstrap do container.
+
+## Estrutura recomendada
+
+- [docker/compose](../docker/compose): perfis de execução recomendados.
+- [environments](../environments): definições específicas por ambiente.
+- [results](../results): artefatos regeneráveis do benchmark.
+- [app/models](../app/models): modelos inferidos e exportados.
+
+## Fluxos principais
+
+- Inferência local: `python main.py --gradio`
+- Inferência Docker: `docker compose -f docker/compose/inference.cpu.yml up --build inference-api`
+- Treino Docker: `docker compose -f docker/compose/train.nvidia.yml run --rm tensorflow-keras`
+- Benchmark Docker: `docker compose -f docker/compose/benchmark.nvidia.yml run --rm benchmark`

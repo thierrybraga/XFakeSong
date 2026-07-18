@@ -38,6 +38,16 @@ def test_gradio_detection_tabs_share_api_singleton(monkeypatch):
     # Criação controlada e leve: sem modelos default, dir app/models (vazio em CI).
     monkeypatch.setenv("XFAKE_CREATE_DEFAULT_MODELS", "false")
     monkeypatch.setenv("DEEPFAKE_DEVICE", "CPU")
+    # BUG FIX (teste flaky por ambiente): faltava isolar as variáveis que
+    # `_env_path` consulta para `models_dir` — containers de treino/benchmark
+    # definem DEEPFAKE_MODELS_DIR como caminho ABSOLUTO (ex.: /app/app/models),
+    # o que faz a asserção abaixo (que espera o default relativo "app/models")
+    # falhar dependendo de QUAL ambiente roda o teste, não de um bug real.
+    for _var in (
+        "MODELS_DIR", "DEEPFAKE_MODELS_DIR", "XFAKE_MODELS_DIR",
+        "XFAKE_STORAGE_DIR", "DEEPFAKE_STORAGE_DIR",
+    ):
+        monkeypatch.delenv(_var, raising=False)
 
     from app.dependencies import get_detection_service as api_get
 

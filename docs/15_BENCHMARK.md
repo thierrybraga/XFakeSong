@@ -18,18 +18,18 @@ Overleaf:
 
 | Artefato | Caminho |
 |---|---|
-| Fonte principal do artigo | `tcc_overleaf/main.tex` |
-| Pacote Overleaf limpo | `tcc_overleaf.zip` |
-| Figuras usadas no artigo | `tcc_overleaf/figures/*.png` |
-| Matrizes de confusão por arquitetura | `tcc_overleaf/figures/confusion_matrices/*.png` |
-| Dataset do benchmark atual | `app/datasets/benchmark_audio_raw_balanced_15k.npz` |
+| Fonte principal do artigo | `results/01_paper/main.tex` |
+| Manifesto de geração e hashes | `results/01_paper/paper_build_manifest.json` |
+| Figuras usadas no artigo | `results/01_paper/figures/*.png` |
+| Matrizes de confusão por arquitetura | `results/01_paper/figures/confusion_matrices/*.png` |
+| Dataset do benchmark atual | `data/datasets/benchmark_audio_raw_balanced_15k.npz` |
 | Modelos default da Gradio/API | `app/models/bench_*` |
 | Modelos completos por arquitetura | `app/models/benchmark_final/<arquitetura>/` |
 | Manifesto dos modelos consolidados | `app/models/benchmark_final_manifest.json` |
 | Resultados e relatórios de benchmark | `results/<run>/` |
 
 Não há PDFs versionados como fonte de verdade. O PDF deve ser gerado a partir de
-`tcc_overleaf/main.tex` no Overleaf ou localmente com `pdflatex`.
+`results/01_paper/main.tex` no Overleaf ou localmente com `pdflatex`.
 
 A versão navegável da fundamentação e análise experimental está em
 [Estudo Experimental](20_ESTUDO_EXPERIMENTAL.md), incluindo equações,
@@ -102,19 +102,20 @@ do artigo e relatórios consolidados junto ao repositório de modelos.
 ### Resultados numéricos usados no artigo
 
 O benchmark atual usa o dataset nominal de 15k
-`app/datasets/benchmark_audio_raw_balanced_15k.npz`, gerado pelo tier
+`data/datasets/benchmark_audio_raw_balanced_15k.npz`, gerado pelo tier
 `medium`, com 15.000 amostras alvo, split estratificado 70/15/15 e 2.250
 amostras de teste. O arquivo `.npz` consolidado tem 2.769,01 MiB e foi
 exportado a partir de 15.000 WAVs ativos em PCM linear, 16 bits, mono e
-16 kHz. Os modelos neurais finais foram treinados por até 120 épocas quando
-aplicável (parada antecipada); SVM e RandomForest usam GridSearchCV + ajuste
+16 kHz. Os resultados consolidados anteriores usaram orçamentos e parada
+antecipada heterogêneos; o protocolo corrigido executa 100 épocas completas
+para todas as redes e restaura o melhor checkpoint em validação limpa; SVM e RandomForest usam GridSearchCV + ajuste
 final.
 
 > **Fonte única dos números**: a tabela de resultados usada no artigo é
-> gerada automaticamente em `tcc_overleaf/tabelas_benchmark.tex`
+> gerada automaticamente em `results/01_paper/tabelas_benchmark.tex`
 > (`Tabela~\ref{tab:resultados_consolidados}` de `main.tex`) a partir de
 > `results/<run>/benchmark_summary.json`, via
-> `python scripts/reporting/consolidate_results.py <runs...> --prefer-last --copy-to tcc_overleaf/figures`
+> `python scripts/reporting/consolidate_results.py <runs...> --prefer-last --copy-to results/01_paper/figures`
 > seguido de `python scripts/reporting/update_tcc_latex.py`. Não duplique esses valores
 > aqui à mão — copie o retrato mais recente do artigo quando precisar de
 > referência rápida, mas trate `tabelas_benchmark.tex` como a fonte de
@@ -157,19 +158,19 @@ python scripts/benchmark/run_tcc_pipeline.py \
     --epochs 100 \
     --device-profile gpu \
     --out results/tcc_full_15k \
-    --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
+    --npz data/datasets/benchmark_audio_raw_balanced_15k.npz
 
 # 3) Execução do TCC direto no benchmark, usando dataset real .npz já exportado:
 python scripts/benchmark/run_benchmark.py \
     --full \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
     --epochs 100 \
     --device-profile gpu
 
 # 4) Benchmark neural completo, sem SVM/RF:
 python scripts/benchmark/run_benchmark.py \
     --neural \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
     --epochs 100 \
     --device-profile gpu \
     --out results/bench_neural_tcc
@@ -179,13 +180,13 @@ python scripts/benchmark/run_benchmark.py \
     --archs WavLM HuBERT RawNet2 "Sonic Sleuth" AASIST RawGAT-ST Conformer \
     "Hybrid CNN-Transformer" SpectrogramTransformer EfficientNet-LSTM \
     MultiscaleCNN Ensemble SVM RandomForest \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
     --epochs 100 --snr 30 20 10 --api --out results/bench_tcc
 
 # 6) Modelo individual:
 python scripts/benchmark/run_benchmark.py \
     --model AASIST \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
     --epochs 100 \
     --out results/bench_aasist
 ```
@@ -278,14 +279,14 @@ Revisão local: **28/06/2026**.
 5. normalizar tudo para WAV mono 16 kHz, remover arquivos inválidos,
    silenciosos, fora de duração e duplicados;
 6. criar split estratificado 70/15/15;
-7. exportar `app/datasets/benchmark_audio_raw_balanced_15k.npz`;
+7. exportar `data/datasets/benchmark_audio_raw_balanced_15k.npz`;
 8. executar o preflight (`benchmark_plan.json`/`.md`) com preset, ambiente,
    dataset e hiperparâmetros efetivos;
 9. treinar, inferir e gerar relatórios/gráficos para as 14 arquiteturas.
 
 ### Catálogo de fontes usado no benchmark
 
-O catálogo único de datasets fica em `app/core/dataset_catalog.py` e é usado
+O catálogo único de datasets fica em `app/domain/dataset_metadata/dataset_catalog.py` e é usado
 pela aba Gradio **Datasets/Download**, pela documentação e pelo exportador
 `scripts/benchmark/run_tcc_pipeline.py`. Ele registra, para cada fonte: tipo (`real`,
 `fake` ou `both`), flag de download, prefixos de arquivo, licença, idioma,
@@ -338,11 +339,11 @@ Protocolos anti-vazamento disponíveis no `run_benchmark.py` / `run_tcc_pipeline
 python scripts/benchmark/run_tcc_pipeline.py --download --tier medium \
     --full-benchmark --epochs 100 --device-profile gpu \
     --out results/tcc_medium_15k \
-    --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
+    --npz data/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
 O script `scripts/dataset/build_dataset.py` arquiva excedentes em
-`app/datasets/overflow/` por padrão, em vez de apagar os WAVs brutos. Use
+`data/datasets/overflow/` por padrão, em vez de apagar os WAVs brutos. Use
 `--delete-excess` apenas quando o descarte destrutivo for intencional.
 
 Comando completo recomendado:
@@ -355,7 +356,7 @@ python scripts/benchmark/run_tcc_pipeline.py \
     --epochs 100 \
     --device-profile gpu \
     --out results/tcc_full_15k \
-    --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
+    --npz data/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
 Para um ensaio rápido do roteiro sem downloads:
@@ -374,7 +375,7 @@ Para revisar tudo antes de iniciar o treinamento longo:
 ```bash
 python scripts/benchmark/run_benchmark.py \
     --full \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
     --epochs 100 \
     --out results/tcc_full_15k \
     --plan-only
@@ -385,7 +386,7 @@ Para revisar um modelo individual:
 ```bash
 python scripts/benchmark/run_benchmark.py \
     --model RawNet2 \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
     --out results/bench_rawnet2 \
     --plan-only
 ```
@@ -411,8 +412,8 @@ O preset oficial é `full_tcc`:
   Conformer, Hybrid CNN-Transformer, SpectrogramTransformer,
   EfficientNet-LSTM, MultiscaleCNN, Ensemble, SVM e RandomForest;
 - dataset: `.npz` balanceado exportado do split 70/15/15;
-- épocas globais do benchmark TCC: `100` por padrão nos presets completos,
-  ajustável com `--epochs`;
+- orçamento comum: 100 épocas completas para todas as redes e cabeças SSL;
+- seleção uniforme: melhor checkpoint pela menor val_loss limpa;
 - robustez: AWGN em `30`, `20` e `10` dB;
 - latência: mediana de `30` execuções por arquitetura;
 - API: probe habilitado no preset completo.
@@ -435,27 +436,30 @@ arquitetura e adapta o `batch_size` ao perfil de dispositivo:
 - `--no-optimize-hparams`: desliga recomendações por arquitetura e usa os
   valores globais `--epochs`/`--batch-size`.
 
-Hiperparâmetros neurais efetivos do benchmark:
+Hiperparâmetros neurais efetivos do recorte principal:
 
-| Arquitetura | Entrada | Batch base | LR | Dropout | L2 | Observação |
+| Arquitetura | Entrada | Batch | LR | Dropout | Regularização | Otimizador |
 |---|---|---:|---:|---:|---:|---|
-| WavLM | raw audio | 1 em GPU / 4 em CPU | 1e-5 | 0.2 | 1e-4 | sem augmentation/mixed precision; batch conservador por VRAM; backbone SSL ou fallback reportado |
-| HuBERT | raw audio | 1 em GPU / 4 em CPU | 1e-5 | 0.2 | 1e-4 | `from_pt=True` quando backbone real existe; fallback reportado |
-| RawNet2 | raw audio | 24 | 1e-5 | 0.3 | 1e-4 | LR conservador para Sinc/GRU |
-| Sonic Sleuth | espectrograma/features | 32 | 1e-3 | 0.3 | 1e-4 | ReduceLROnPlateau |
-| AASIST | espectrograma | 16 | 1e-4 | 0.2 | 1e-4 | mantém loss/margem da arquitetura |
-| RawGAT-ST | raw audio | 16 | 1e-4 | 0.2 | 1e-4 | SincNet + GAT espectral/temporal com LR estável |
-| Conformer | espectrograma | 32 | 1e-3 | 0.3 | 1e-4 | WarmupCosineDecay |
-| Hybrid CNN-Transformer | espectrograma | 32 | 1e-3 | 0.2 | 1e-4 | 3 blocos residuais + 2 camadas Transformer |
-| SpectrogramTransformer | espectrograma | 16 | 1e-4 | 0.1 | 1e-5 | AST com batch conservador por memória |
-| EfficientNet-LSTM | espectrograma | 32 | 5e-4 | 0.4 | 2e-4 | transfer learning + Bi-LSTM |
-| MultiscaleCNN | espectrograma | 64 | 2e-3 | 0.5 | 5e-4 | baseline neural convolucional |
-| Ensemble | espectrograma/features | 32 | 1e-3 | 0.3 | 1e-4 | 100 épocas no benchmark neural completo |
+| RawNet2 | raw audio | 16 | 1e-4 | 0.30 | L2 1e-4 | Adam |
+| AASIST | raw audio | 16 | 3e-4 | 0.20 | L2 2e-4 | AdamW |
+| RawGAT-ST | raw audio | 16 | 5e-5 | 0.35 | L2 1e-3 | AdamW |
+| Conformer | log-Mel | 32 | 1e-4 | 0.30 | wd 1e-4 | AdamW |
+| CCT | log-Mel | 32 | 1e-3 | 0.20 | L2 1e-4 | AdamW |
+| AST | log-Mel | 8 | 2e-5 | 0.25 | wd 5e-5 | AdamW |
+| Res2Net | log-Mel | 32 (cap GPU) | 2e-3 | 0.50 | L2 5e-4 | AdamW |
+| WavLM Original | raw audio/SSL | 128 | 1e-3 | 0.20 | wd 1e-4 | AdamW |
+| HuBERT Original | raw audio/SSL | 128 | 1e-3 | 0.20 | wd 1e-4 | AdamW |
 
-O campo `epochs` no plano é sempre o valor solicitado no CLI (`--epochs`),
-enquanto `recommended_epochs` documenta a receita completa por arquitetura.
-Assim, o mesmo pipeline serve para smoke test (`--epochs 1`), piloto
-(`--epochs 20`) e treinamento final (`--epochs 100`).
+Esses valores permanecem específicos por modelo. Os controles comuns são:
+100 épocas completas, early stopping desativado, restauração do checkpoint de
+menor val_loss limpa, limiar 0,5, semente 42, uma cópia AWGN de treino processada em lotes de 64 formas de onda e
+balanceada em 30/20/10 dB e AWGN de teste nos mesmos níveis antes do frontend.
+SVM e Random Forest mantêm suas grades próprias de validação cruzada e não usam
+o conceito de época.
+O campo epochs do plano é um controle global e sobrescreve somente o orçamento
+de iterações, nunca os hiperparâmetros customizados. O preset acadêmico usa
+100; valores menores são destinados apenas a smoke tests ou pilotos e não
+devem alimentar as tabelas finais.
 
 O pipeline completo chama esse preflight automaticamente antes de iniciar o
 benchmark. Use `--skip-benchmark-preflight` apenas para depuração local.
@@ -472,7 +476,7 @@ python scripts/benchmark/run_tcc_pipeline.py \
     --skip-download \
     --skip-preprocess \
     --model SpectrogramTransformer \
-    --npz app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --npz data/datasets/benchmark_audio_raw_balanced_15k.npz \
     --out results/bench_spectrogram_transformer
 ```
 
@@ -485,9 +489,19 @@ Para rodar todas as arquiteturas de forma resiliente, use o orquestrador
 sequencial. Ele executa um modelo por vez, cria uma subpasta por modelo, grava
 `run.log`, aplica timeout e permite retomar com `--resume`.
 
+No modo acadêmico (padrão), o runner exige `train/val/test` predefinidos e um
+selo SHA-256 criado **antes** do primeiro treino. O teste legado não deve ser
+selado: regenere um novo NPZ intocado e então execute:
+
+```bash
+python scripts/dataset/freeze_benchmark_test.py \
+    --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --declare-untouched
+```
 ```bash
 python scripts/benchmark/run_models_sequential.py \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --test-lock data/datasets/benchmark_audio_raw_balanced_15k.npz.test-lock.json \
     --out results/sequential_15k \
     --device-profile gpu \
     --timeout-min 90
@@ -498,7 +512,8 @@ Rodar somente os modelos neurais:
 ```bash
 python scripts/benchmark/run_models_sequential.py \
     --neural-only \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --test-lock data/datasets/benchmark_audio_raw_balanced_15k.npz.test-lock.json \
     --out results/sequential_neural_15k \
     --device-profile gpu \
     --timeout-min 90
@@ -510,7 +525,8 @@ Revisar planos neurais antes do treino:
 python scripts/benchmark/run_models_sequential.py \
     --neural-only \
     --plan-only \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --test-lock data/datasets/benchmark_audio_raw_balanced_15k.npz.test-lock.json \
     --out results/sequential_neural_plan \
     --device-profile cpu
 ```
@@ -523,7 +539,8 @@ Retomar somente modelos pendentes:
 
 ```bash
 python scripts/benchmark/run_models_sequential.py \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --test-lock data/datasets/benchmark_audio_raw_balanced_15k.npz.test-lock.json \
     --out results/sequential_15k \
     --device-profile gpu \
     --timeout-min 90 \
@@ -535,7 +552,8 @@ Executar um subconjunto:
 ```bash
 python scripts/benchmark/run_models_sequential.py \
     --models AASIST RawNet2 Conformer \
-    --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
+    --test-lock data/datasets/benchmark_audio_raw_balanced_15k.npz.test-lock.json \
     --out results/sequential_neural_subset
 ```
 
@@ -547,8 +565,9 @@ Por padrão, o CLI do benchmark imprime apenas o resumo final e avisos
 importantes. Use `--verbose` para depuração detalhada de treino, registry,
 factories e salvamento de modelos.
 
-O `.npz` deve conter `X_train`/`y_train` (e opcionalmente `X_val`/`X_test`); o
-harness **reconcatena e re-divide 70/15/15 estratificado** com semente fixa,
+No protocolo acadêmico, o `.npz` deve conter obrigatoriamente
+`X_train/y_train`, `X_val/y_val` e `X_test/y_test`; o harness preserva essas
+partições e aborta se o selo não corresponder ao arquivo. Fora do modo acadêmico,
 garantindo um conjunto de teste *held-out* controlado. Sem `--dataset`, usa um
 dataset sintético separável (apenas para validar o harness).
 
@@ -569,9 +588,20 @@ dataset sintético separável (apenas para validar o harness).
 | Convergência | flag por arquitetura (AUC ≥ limiar) + curva de validação |
 | API (`--api`) | status + latência por endpoint (lê a superfície OpenAPI real) |
 
-O ruído AWGN é aplicado no **espaço de entrada** do modelo (forma de onda para
-raw-audio; espectrograma para os demais) — escolha deliberada para um teste
-uniforme e reprodutível em todas as arquiteturas, documentada no relatório.
+O protocolo de retreino aplica AWGN exclusivamente à **forma de onda canônica**,
+após a divisão treino/validação/teste e antes de qualquer frontend. A mesma
+realização ruidosa é então convertida para raw-audio, log-Mel ou o vetor tabular
+de 63 descritores. Uma cópia ruidosa por amostra de treino distribui, de forma
+balanceada e reprodutível, os SNRs de 30, 20 e 10 dB. O modo estrito rejeita
+NPZs reais que contenham somente features, evitando regressão silenciosa para o
+protocolo legado no espaço de entrada. O loader preserva partições explícitas
+e audita duplicatas binariamente idênticas entre elas com BLAKE2b, abortando
+em caso de sobreposição.
+
+A auditoria de proveniência do corpus atual encontra as 4 fontes e os 73
+identificadores disponíveis em treino, validação e teste. Esse fato deve ser
+reportado como limitação do benchmark in-domain; identificadores agregados
+impedem garantir disjunção retrospectiva por pessoa para todo o corpus.
 
 ## Saídas → mapeamento para as tabelas/figuras do TCC
 
@@ -602,9 +632,9 @@ default para serem reutilizados diretamente pela interface e pela API:
 | `architectures/<modelo>/*.json/csv/md/png` | Métricas, predições, robustez, resumo e figuras individuais |
 | `results.csv` / `results.json` | Dados brutos (reprodutibilidade / anexos) |
 | `summary.md` | Resumo legível (ambiente, dataset, tabela-resumo, API) |
-| `tcc_overleaf/main.tex` | Artigo consolidado para Overleaf |
-| `tcc_overleaf/figures/*.png` | Figuras finais referenciadas pelo artigo |
-| `tcc_overleaf.zip` | Pacote limpo para upload no Overleaf |
+| `results/01_paper/main.tex` | Artigo consolidado para Overleaf |
+| `results/01_paper/figures/*.png` | Figuras finais referenciadas pelo artigo |
+| `results/01_paper/paper_build_manifest.json` | Proveniência e hashes do artigo gerado |
 
 Cada arquitetura possui uma pasta própria em `architectures/<modelo>/`.
 Exemplo para SVM:
@@ -656,24 +686,31 @@ default. Em builds Docker/Hugging Face, preserve esse diretório ou configure
 `MODELS_DIR`, `DEEPFAKE_MODELS_DIR` ou `XFAKE_MODELS_DIR` apontando para uma
 pasta persistente equivalente.
 
-O pacote do artigo fica separado dos modelos:
+O pacote ativo do artigo fica separado dos modelos:
 
-```text
-tcc_overleaf/
-├── main.tex
-├── README_OVERLEAF.md
-└── figures/
-    ├── benchmark_accuracy_auc.png
-    ├── benchmark_eer.png
-    ├── benchmark_latency.png
-    ├── benchmark_robustness.png
-    ├── benchmark_size.png
-    ├── training_stability.png
-    └── confusion_matrices/
-```
+    results/01_paper/
+    ├── main.tex
+    ├── tabelas_benchmark.tex
+    ├── paper_build_manifest.json
+    ├── main.pdf
+    └── figures/
+        ├── benchmark_accuracy_auc.png
+        ├── benchmark_eer.png
+        ├── benchmark_latency.png
+        ├── benchmark_robustness.png
+        ├── benchmark_size.png
+        ├── training_stability.png
+        └── confusion_matrices/
 
-O arquivo `tcc_overleaf.zip` deve conter somente `main.tex`, README e figuras,
-sem PDF, `.aux`, `.log`, `.out` ou `.toc`.
+Após o retreino, gere todo o material com um único comando:
+
+    python scripts/reporting/build_paper_from_benchmark.py results/retrain_waveform_awgn
+
+O comando rejeita modelos ausentes, histórico neural diferente de 100 épocas,
+SNRs incompletos, AWGN fora da forma de onda, scores desalinhados ao teste ou
+artefatos CSV/JSON ausentes. Em seguida, consolida os resultados, copia figuras,
+gera tabelas_benchmark.tex, valida sua inclusão no main.tex, compila o PDF e
+grava hashes SHA-256 em paper_build_manifest.json.
 
 ## Reprodutibilidade
 

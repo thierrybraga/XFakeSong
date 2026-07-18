@@ -56,8 +56,9 @@ services:
     command:
       - python
       - scripts/benchmark/run_models_sequential.py
+      # Dataset canônico: data/datasets/ (raiz consolidada em 2026-07-14).
       - --dataset
-      - app/datasets/benchmark_audio_raw_balanced_15k.npz
+      - data/datasets/benchmark_audio_raw_balanced_15k.npz
       - --out
       - results/clean_benchmark_latest
       - --epochs

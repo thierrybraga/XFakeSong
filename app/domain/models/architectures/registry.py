@@ -7,11 +7,9 @@ disponíveis no sistema, facilitando a integração com o pipeline de detecção
 import inspect
 import logging
 import re
-from functools import lru_cache
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any, Dict, List, Tuple
-
-from .architecture_patcher import patch_architecture_for_safety
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +70,9 @@ class ArchitectureRegistry:
                 description="Anti-spoofing Audio Spoofing and Deepfake Detection - configuração otimizada para reduzir overfitting",
                 supported_variants=[
                     "aasist",
+                    "aasist_legacy",
                     "default",
+                    "cnn_gru_simple",
                     "cnn_baseline",
                     "bidirectional_gru",
                     "resnet_gru",
@@ -83,8 +83,16 @@ class ArchitectureRegistry:
                     # AJUSTE (retune): subajuste (val_loss travada ~1.0, acc ~0.92)
                     # + recall colapsa sob ruido (0.29 @10dB). Reduz regularizacao
                     # excessiva e reforca augmentation p/ robustez.
+                    # CORREÇÃO 2026-07-15: learning_rate/l2_reg_strength tinham
+                    # revertido para 1e-4/1e-4 (drift silencioso vs. o retune
+                    # documentado aqui e em benchmarks/planning.py). Restaurado
+                    # para 3e-4/2e-4 — mantém as 3 fontes de hparams em sincronia.
                     "dropout_rate": 0.2,
                     "l2_reg_strength": 0.0002,
+                    "classifier_head": "cross_entropy",
+                    "learning_rate": 0.0003,
+                    "min_learning_rate": 0.000005,
+                    "decay_steps": 100000,
                     "hidden_dim": 512,
                     "num_layers": 8,
                     # Training params (used by pipeline, not by create_model)
@@ -99,8 +107,10 @@ class ArchitectureRegistry:
                     "format": "raw",
                     "sample_rate": 16000,
                     "min_sequence_length": 16000,
-                    "target_sequence_length": 16000,
-                    "crop_strategy": "center",
+                    "target_sequence_length": 64600,
+                    "crop_strategy": "train_random_eval_multicrop",
+                    "feature_frontend": "benchmark_raw_v1",
+                    "source_samples": 80000,
                     "max_duration": 4.0,
                     "preprocessing": "normalize",
                 },
@@ -116,6 +126,7 @@ class ArchitectureRegistry:
                 description="End-to-End Spectro-Temporal Graph Attention (Tak et al., 2021) — SincNet sobre áudio bruto + grafo espectral (Gs) e temporal (Gt) com fusão element-wise",
                 supported_variants=[
                     "rawgat_st",
+                    "rawgat_st_legacy",
                     "default",
                     "rawgat_st_paper",
                     "rawgat_st_fast",
@@ -135,6 +146,9 @@ class ArchitectureRegistry:
                     # augmentation e paciencia maior p/ achar minimo melhor.
                     "dropout_rate": 0.35,
                     "l2_reg_strength": 0.001,
+                    "learning_rate": 0.00005,
+                    "min_learning_rate": 0.000005,
+                    "decay_steps": 100000,
                     "attention_heads": 8,
                     "hidden_dim": 512,
                     "num_layers": 6,
@@ -154,8 +168,10 @@ class ArchitectureRegistry:
                     "format": "raw",
                     "sample_rate": 16000,
                     "min_sequence_length": 16000,
-                    "target_sequence_length": 16000,
-                    "crop_strategy": "center",
+                    "target_sequence_length": 64600,
+                    "crop_strategy": "train_random_eval_multicrop",
+                    "feature_frontend": "benchmark_raw_v1",
+                    "source_samples": 80000,
                     "max_duration": 4.0,
                     "preprocessing": "normalize",
                 },
@@ -213,10 +229,15 @@ class ArchitectureRegistry:
                 ],
                 default_params={
                     # create_model params: base_width, scale, layer_config, dropout_rate
+                    # AJUSTE 2026-07-14: dropout 0.2->0.5 — overfit severo
+                    # (train 100% / val 64,5%); o 0.5 do plano de benchmark
+                    # nunca chegava ao modelo (config morto). Acompanha
+                    # Adam->AdamW com weight_decay real no builder
+                    # (multiscale_cnn.py). Em sincronia com planning.py.
                     "base_width": 26,
                     "scale": 4,
                     "use_se": False,
-                    "dropout_rate": 0.2,
+                    "dropout_rate": 0.5,
                     # Training params (used by pipeline, not by create_model)
                     "patience": 15,
                     "lr_patience": 8,
@@ -246,6 +267,12 @@ class ArchitectureRegistry:
                 ],
                 default_params={
                     # create_model params: AST/ViT-Base trained from scratch.
+                    # AJUSTE 2026-07-14: blocos pre-LN (paper) + LR de pico
+                    # 5e-5→1e-5 e weight_decay 1e-4→1e-5 — o treino degradava
+                    # lentamente até chute aleatório (EER final ~51%) mesmo
+                    # após o fix de decay_steps. Em sincronia com
+                    # spectrogram_transformer.py::create_spectrogram_transformer_model
+                    # e benchmarks/planning.py.
                     "patch_size": (16, 16),
                     "stride": (10, 10),
                     "embed_dim": 768,
@@ -253,10 +280,10 @@ class ArchitectureRegistry:
                     "num_heads": 12,
                     "ff_dim": 3072,
                     "dropout_rate": 0.3,
-                    "learning_rate": 5e-5,
+                    "learning_rate": 1e-5,
                     "warmup_steps": 2000,
                     "decay_steps": 50000,
-                    "weight_decay": 1e-4,
+                    "weight_decay": 1e-5,
                     "alpha": 1e-7,
                     "clipnorm": 1.0,
                     "pretrained": False,
@@ -637,7 +664,7 @@ class ArchitectureRegistry:
     ) -> Dict[str, Any]:
         """Obtém a configuração ativa do banco de dados (ou default se falhar)."""
         try:
-            from app.core.database import SessionLocal
+            from app.core.db.session import SessionLocal
             from app.domain.models.architecture_config import ArchitectureConfig
 
             db_session = SessionLocal()
@@ -745,6 +772,11 @@ class ArchitectureRegistry:
         # NOTA: BatchNormalization não é mais tratada como leakage nem
         # reescrita automaticamente — ver docstring de architecture_patcher.
         if safe_mode:
+            # Import tardio: architecture_patcher exige TensorFlow no topo do
+            # arquivo. Um import eager aqui forçaria TF em qualquer consumidor
+            # de registry.py (incl. ambientes classical-ml sem TF instalado).
+            from .architecture_patcher import patch_architecture_for_safety
+
             model = patch_architecture_for_safety(model)
 
         return model
@@ -781,7 +813,7 @@ class ArchitectureRegistry:
     def sync_defaults_to_db(self):
         """Sincroniza os parâmetros padrão do registry para o banco de dados."""
         try:
-            from app.core.database import SessionLocal
+            from app.core.db.session import SessionLocal
             from app.domain.models.architecture_config import ArchitectureConfig
 
             db_session = SessionLocal()

@@ -13,13 +13,16 @@ import tensorflow as tf
 from tensorflow.keras import layers, models, regularizers
 
 from app.domain.models.architectures.layers import (
+    AdaptiveGraphResize,
     AttentionLayer,
     AudioFeatureNormalization,
+    AxisMaxAbsLayer,
     GATConvLayer,
     GraphPoolLayer,
     GraphReadoutLayer,
     MagnitudeLayer,
     ResidualBlock1D,
+    ResidualBlock2D,
     SincConvLayer,
     apply_gru_block,
     apply_reshape_for_cnn,
@@ -35,13 +38,166 @@ logger = logging.getLogger(__name__)
 # ============================ CAMADAS CUSTOMIZADAS ======================
 
 
+def _rawgat_frontend(x: tf.Tensor) -> tf.Tensor:
+    """Converte áudio bruto em um mapa Sinc espectro-temporal 2D."""
+    x = SincConvLayer(
+        n_filters=70,
+        kernel_size=129,
+        sample_rate=16000,
+        name="rawgat_sinc",
+    )(x)
+    x = MagnitudeLayer(name="rawgat_sinc_abs")(x)
+    x = layers.Permute((2, 1), name="rawgat_sinc_to_spectrogram")(x)
+    x = layers.Reshape(
+        (int(x.shape[1]), int(x.shape[2]), 1),
+        name="rawgat_sinc_map",
+    )(x)
+    x = layers.MaxPooling2D(
+        pool_size=(3, 3),
+        strides=(3, 3),
+        padding="same",
+        name="rawgat_front_pool",
+    )(x)
+    x = layers.BatchNormalization(name="rawgat_front_bn")(x)
+    return layers.Activation("selu", name="rawgat_front_selu")(x)
+
+
+def _rawgat_encoder_branch(
+    x: tf.Tensor,
+    prefix: str,
+    dropout_rate: float,
+) -> tf.Tensor:
+    """Encoder RawNet2 independente para um dos dois grafos."""
+    for index, channels in enumerate((32, 32, 64, 64, 64, 64), start=1):
+        x = ResidualBlock2D(
+            channels,
+            pool_size=(1, 3),
+            name=f"{prefix}_encoder_{index}",
+        )(x)
+        if index in {2, 4}:
+            x = layers.Dropout(
+                dropout_rate * 0.5,
+                name=f"{prefix}_encoder_drop_{index}",
+            )(x)
+    return x
+
+
+def _build_paper_rawgat(
+    input_tensor: tf.Tensor,
+    x: tf.Tensor,
+    num_classes: int,
+    dropout_rate: float,
+    l2_reg_strength: float,
+    learning_rate: float,
+    min_learning_rate: float,
+    decay_steps: int,
+) -> models.Model:
+    """RawGAT-ST: grafos S/T separados, fusão multiplicativa e terceiro GAT."""
+    if num_classes < 2:
+        num_classes = 2
+    if len(x.shape) == 2:
+        x = layers.Reshape((-1, 1), name="rawgat_reshape_raw")(x)
+    elif len(x.shape) != 3 or x.shape[-1] != 1:
+        x = layers.Reshape((-1, 1), name="rawgat_reshape_raw")(x)
+
+    front = _rawgat_frontend(x)
+    spectral_map = _rawgat_encoder_branch(front, "rawgat_spectral", dropout_rate)
+    temporal_map = _rawgat_encoder_branch(front, "rawgat_temporal", dropout_rate)
+
+    # AxisMaxAbsLayer (não layers.Lambda com lambda Python crua): Keras 3
+    # recusa desserializar Lambda de função Python em safe_mode (default),
+    # o que quebrava o load do modelo salvo. Mesma computação exata.
+    spectral = AxisMaxAbsLayer(
+        axis=2, name="rawgat_spectral_nodes",
+    )(spectral_map)
+    temporal = AxisMaxAbsLayer(
+        axis=1, name="rawgat_temporal_nodes",
+    )(temporal_map)
+    # A fusão multiplicativa e os logits de atenção são numericamente
+    # sensíveis em float16. Mantemos somente o encoder 2D em mixed precision
+    # e promovemos o pipeline gráfico para float32.
+    spectral = layers.Activation(
+        "linear", dtype="float32", name="rawgat_spectral_graph_float32"
+    )(spectral)
+    temporal = layers.Activation(
+        "linear", dtype="float32", name="rawgat_temporal_graph_float32"
+    )(temporal)
+    spectral = GATConvLayer(
+        out_features=64, num_heads=1, dropout_rate=dropout_rate,
+        name="rawgat_gat_spectral", dtype="float32",
+    )(spectral)
+    temporal = GATConvLayer(
+        out_features=64, num_heads=1, dropout_rate=dropout_rate,
+        name="rawgat_gat_temporal", dtype="float32",
+    )(temporal)
+    spectral = GraphPoolLayer(
+        0.81, name="rawgat_pool_spectral", dtype="float32"
+    )(spectral)
+    temporal = GraphPoolLayer(
+        0.64, name="rawgat_pool_temporal", dtype="float32"
+    )(temporal)
+    spectral = AdaptiveGraphResize(
+        12, name="rawgat_align_spectral", dtype="float32"
+    )(spectral)
+    temporal = AdaptiveGraphResize(
+        12, name="rawgat_align_temporal", dtype="float32"
+    )(temporal)
+
+    fused = layers.Multiply(
+        name="rawgat_graph_fusion", dtype="float32"
+    )([spectral, temporal])
+    fused = GATConvLayer(
+        out_features=32, num_heads=1, dropout_rate=dropout_rate,
+        name="rawgat_gat_spectro_temporal", dtype="float32",
+    )(fused)
+    fused = GraphPoolLayer(
+        0.64, name="rawgat_pool_spectro_temporal", dtype="float32"
+    )(fused)
+    readout = GraphReadoutLayer(
+        name="rawgat_readout", dtype="float32"
+    )(fused)
+    readout = layers.Dropout(
+        dropout_rate, name="rawgat_readout_dropout", dtype="float32"
+    )(readout)
+    output = layers.Dense(
+        num_classes, activation=None, dtype="float32", name="output_layer"
+    )(readout)
+    model = models.Model(input_tensor, output, name="RawGAT_ST")
+    schedule = tf.keras.optimizers.schedules.CosineDecay(
+        initial_learning_rate=float(learning_rate),
+        decay_steps=max(1, int(decay_steps)),
+        alpha=float(min_learning_rate) / max(float(learning_rate), 1e-12),
+    )
+    model.compile(
+        optimizer=tf.keras.optimizers.AdamW(
+            learning_rate=schedule,
+            weight_decay=l2_reg_strength,
+            global_clipnorm=0.7,
+        ),
+        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+        metrics=["accuracy"],
+    )
+    return model
+
+
 # ============================ FUNÇÕES DE CONSTRUÇÃO DE MODELOS ==========
 
 
-def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architecture: str = "rawgat_st",
-                 dropout_rate: float = 0.2, l2_reg_strength: float = 0.0005,
-                 attention_heads: int = 8, hidden_dim: int = 512, num_layers: int = 6,
-                 temporal_pool_stride: int = 4, fusion_mode: str = "multiply") -> models.Model:
+def create_model(
+    input_shape: Tuple[int, ...],
+    num_classes: int = 2,
+    architecture: str = "rawgat_st",
+    dropout_rate: float = 0.35,
+    l2_reg_strength: float = 0.001,
+    attention_heads: int = 8,
+    hidden_dim: int = 512,
+    num_layers: int = 6,
+    temporal_pool_stride: int = 4,
+    fusion_mode: str = "multiply",
+    learning_rate: float = 5e-5,
+    min_learning_rate: float = 5e-6,
+    decay_steps: int = 100_000,
+) -> models.Model:
     """
     Cria e compila um modelo Keras baseado na arquitetura especificada.
 
@@ -51,10 +207,9 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         architecture: O tipo de arquitetura.
 
     Variantes suportadas:
-        - "rawgat_st" (DEFAULT): SincNet + GAT espectro-temporal, fusao por produto
-          element-wise e downsampling temporal moderado para manter viabilidade.
-        - "rawgat_st_paper": sem downsampling temporal extra e sem concat extra.
-        - "rawgat_st_fast"/"rawgat_st_stable": variante otimizada anterior.
+        - "rawgat_st"/"rawgat_st_paper": encoder 2D duplo + três GATs
+        - "rawgat_st_legacy": implementação 1D anterior para checkpoints antigos
+        - "rawgat_st_fast"/"rawgat_st_stable": aliases do legado otimizado
         - "cnn_gru_simple" / "default" (alias legado): CNN 2D + Bi-GRU + Attention
         - "cnn_baseline" | "bidirectional_gru" | "resnet_gru" | "transformer"
 
@@ -72,10 +227,8 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         architecture = "rawgat_st"
     elif architecture == "rawgat_st_paper":
         architecture = "rawgat_st"
-        temporal_pool_stride = 1
-        fusion_mode = "multiply"
     elif architecture in {"rawgat_st_fast", "rawgat_st_stable", "rawgat_st_optimized"}:
-        architecture = "rawgat_st"
+        architecture = "rawgat_st_legacy"
         temporal_pool_stride = 8
         fusion_mode = "concat"
 
@@ -201,6 +354,18 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 2, architectur
         x = layers.GlobalAveragePooling1D(name="transformer_avg_pool")(x)
 
     elif architecture == "rawgat_st":
+        return _build_paper_rawgat(
+            input_tensor=input_tensor,
+            x=x,
+            num_classes=num_classes,
+            dropout_rate=dropout_rate,
+            l2_reg_strength=l2_reg_strength,
+            learning_rate=learning_rate,
+            min_learning_rate=min_learning_rate,
+            decay_steps=decay_steps,
+        )
+
+    elif architecture == "rawgat_st_legacy":
         # Cabeça softmax multi-classe: com num_classes=1, softmax de 1 unidade
         # emite constante 1.0 e a CCE é identicamente zero (não aprende).
         # Promove para 2 classes (real/fake).

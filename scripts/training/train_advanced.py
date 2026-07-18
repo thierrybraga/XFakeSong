@@ -75,7 +75,7 @@ def load_audio(path: Path, max_samples: int = None) -> np.ndarray:
         max_samples = MAX_AUDIO_SAMPLES
 
     import librosa
-    from app.core.utils.silero_vad import preprocess_audio
+    from app.utils.silero_vad import preprocess_audio
 
     y, _ = librosa.load(str(path), sr=SAMPLE_RATE, mono=True)
     y = y.astype(np.float32)
@@ -89,7 +89,7 @@ def load_audio(path: Path, max_samples: int = None) -> np.ndarray:
 
 
 def load_split(split_dir: Path, max_per_class: int = None) -> tuple:
-    """Carrega uma split (train/val/test) de app/datasets/splits/{split}/."""
+    """Carrega uma split (train/val/test) de data/datasets/splits/{split}/."""
     X, y = [], []
     for label, subdir in [(0, "real"), (1, "fake")]:
         class_dir = split_dir / subdir
@@ -120,7 +120,7 @@ def prepare_splits(splits_dir: Path, datasets_dir: Path) -> bool:
        len(list((splits_dir / "train" / "real").glob("*.wav"))) > 0:
         return True
 
-    logger.info("Splits nao encontrados. Criando a partir de app/datasets/...")
+    logger.info("Splits nao encontrados. Criando a partir de data/datasets/...")
     real_count = len(list((datasets_dir / "real").glob("*.wav")))
     fake_count = len(list((datasets_dir / "fake").glob("*.wav")))
 
@@ -299,7 +299,7 @@ def train_model(
     model_path = (models_dir or RESULTS_DIR / "models") / f"{arch_name}_best.h5"
     model_path.parent.mkdir(parents=True, exist_ok=True)
 
-    from app.domain.models.training.optimized_training_config import get_recommended_hyperparameters
+    from app.domain.models.training.hyperparameter_defaults import get_recommended_hyperparameters
     hp = get_recommended_hyperparameters(arch_name.replace("_", "-").title())
     lr = hp.get("learning_rate", 0.001)
     l2 = hp.get("l2_reg_strength", 0.0001)
@@ -522,8 +522,8 @@ def main():
     models_dir = RESULTS_DIR / "models"
     models_dir.mkdir(exist_ok=True)
 
-    splits_dir   = BASE_DIR / "app" / "datasets" / "splits"
-    datasets_dir = BASE_DIR / "app" / "datasets"
+    splits_dir   = BASE_DIR / "data" / "datasets" / "splits"
+    datasets_dir = BASE_DIR / "data" / "datasets"
 
     # Garantir splits existem
     if not prepare_splits(splits_dir, datasets_dir):

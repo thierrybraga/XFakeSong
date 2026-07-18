@@ -56,7 +56,7 @@ Para o passo a passo completo de instalação e os erros detalhados, veja
 
 ??? question "Que formato de dataset o treino espera?"
     Um `.npz` com `X_train`/`y_train` (ou `X`/`y`), ou as pastas
-    `app/datasets/real/` e `app/datasets/fake/`. Veja
+    `data/datasets/real/` e `data/datasets/fake/`. Veja
     [Treinamento](10_TREINAMENTO.md) e [Datasets Públicos](12_DATASETS.md).
 
 ??? question "O treino diverge (loss vira NaN)"

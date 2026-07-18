@@ -13,6 +13,9 @@ def test_rawgatst_is_raw_audio_in_registry():
 
     info = reg.get_architecture("RawGAT-ST")
     assert info.input_requirements.get("input_type") == "raw_audio"
+    assert info.input_requirements["target_sequence_length"] == 64600
+    assert info.input_requirements["crop_strategy"] == "train_random_eval_multicrop"
+    assert "rawgat_st_legacy" in info.supported_variants
 
 
 def test_rawgatst_builds_and_trains_no_nan():
@@ -28,7 +31,13 @@ def test_rawgatst_builds_and_trains_no_nan():
     x = (0.3 * np.random.randn(4, 48000, 1)).astype("float32")
     y = m.predict(x, verbose=0)
     assert np.all(np.isfinite(y))
-    assert np.allclose(y.sum(axis=1), 1.0, atol=1e-3)  # softmax 2-u
+    probabilities = tf.nn.softmax(y, axis=-1).numpy()
+    assert np.allclose(probabilities.sum(axis=1), 1.0, atol=1e-3)
+    layer_names = {layer.name for layer in m.layers}
+    assert "rawgat_spectral_encoder_6" in layer_names
+    assert "rawgat_temporal_encoder_6" in layer_names
+    assert "rawgat_gat_spectro_temporal" in layer_names
+    assert "rawgat_graph_fusion" in layer_names
 
     h = m.fit(x, np.array([0, 1, 0, 1]), epochs=1, batch_size=2, verbose=0)
     assert np.isfinite(h.history["loss"][0])
@@ -36,6 +45,29 @@ def test_rawgatst_builds_and_trains_no_nan():
         bool(tf.reduce_all(tf.math.is_finite(w)))
         for w in m.weights if "float" in str(w.dtype)
     )
+
+
+def test_aasist_paper_topology_and_contract():
+    from app.domain.models.architectures import aasist
+    from app.domain.models.architectures.registry import architecture_registry as reg
+
+    info = reg.get_architecture("AASIST")
+    assert info.input_requirements["target_sequence_length"] == 64600
+    assert info.input_requirements["crop_strategy"] == "train_random_eval_multicrop"
+    assert "aasist_legacy" in info.supported_variants
+
+    model = aasist.create_model(
+        input_shape=(16000, 1),
+        num_classes=2,
+        architecture="aasist",
+        decay_steps=10,
+    )
+    names = {layer.name for layer in model.layers}
+    assert "aasist_encoder_6" in names
+    assert "aasist_hsgal_22" in names
+    assert "aasist_mgo_master" in names
+    assert "aasist_extended_readout" in names
+    assert model.output_shape == (None, 2)
 
 
 # ───────────────── SSL → AASIST back-end ─────────────────

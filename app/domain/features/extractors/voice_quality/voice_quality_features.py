@@ -7,13 +7,13 @@ from typing import Dict, List
 import librosa
 import numpy as np
 
-from app.core.interfaces.audio import (
+from app.core.contracts.audio import (
     AudioData,
     AudioFeatures,
     FeatureType,
     IFeatureExtractor,
 )
-from app.core.interfaces.base import ProcessingResult, ProcessingStatus
+from app.core.contracts.base import ProcessingResult, ProcessingStatus
 
 from .components.noise import extract_noise_features
 from .components.perturbation import extract_perturbation_features

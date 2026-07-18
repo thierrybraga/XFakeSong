@@ -4,13 +4,20 @@ from typing import Any, Dict, Tuple
 import gradio as gr
 from sqlalchemy.orm.attributes import flag_modified
 
-from app.core.database import SessionLocal
+from app.core.db.session import SessionLocal
 from app.domain.models.architecture_config import ArchitectureConfig
 
 # Global state for hyperparameters (cache local da sessão)
 hp_state: Dict[str, Dict[str, Any]] = {}
 
 logger = logging.getLogger("hyperparameters")
+
+# Nº de campos gr.update(...) retornados após `merged`/`hp` no caminho de
+# sucesso de `optimize_default` e `load_defaults` (mesmo layout de campos
+# nos dois). Usado no fallback de erro para devolver a mesma aridade de
+# outputs que o Gradio espera — se um campo for adicionado/removido em UMA
+# das duas funções, atualize esta constante E a outra função em conjunto.
+_NUM_HP_UPDATE_FIELDS = 26
 
 
 def optimize_default(
@@ -242,7 +249,7 @@ def optimize_default(
     except Exception as e:
         logger.error(f"Erro ao salvar hiperparâmetros: {e}")
         # Retorna erro e updates vazios (sem alteração)
-        return ({"error": str(e)},) + (gr.update(),) * 26
+        return ({"error": str(e)},) + (gr.update(),) * _NUM_HP_UPDATE_FIELDS
     finally:
         db.close()
 
@@ -374,6 +381,6 @@ def load_defaults(architecture: str) -> Tuple:
         )
     except Exception as e:
         logger.error(f"Erro ao carregar defaults: {e}")
-        return ({"error": str(e)},) + (gr.update(),) * 26
+        return ({"error": str(e)},) + (gr.update(),) * _NUM_HP_UPDATE_FIELDS
     finally:
         db.close()

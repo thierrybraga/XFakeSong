@@ -8,7 +8,7 @@ Este guia reúne os principais datasets públicos para detecção de deepfakes d
 
 O XFakeSong organiza a montagem do dataset em **quatro tiers** com finalidade
 bem definida. Eles são a **fonte única de verdade** de tamanho/finalidade
-(`app/core/dataset_catalog.py` → `DATASET_TIERS`), compartilhada por
+(`app/domain/dataset_metadata/dataset_catalog.py` → `DATASET_TIERS`), compartilhada por
 `scripts/dataset/build_dataset.py`, pela interface Gradio, pelo benchmark e por esta
 documentação — escolher um tier pré-configura tamanho, fontes e estratégia de
 split de forma consistente em todo o sistema.
@@ -35,11 +35,11 @@ split de forma consistente em todo o sistema.
   teste robustos, com diversidade real adicional fora do HF
   (MLS Portuguese/TTS-Portuguese) e fake independente (Fake Voices XTTS).
   Common Voice/FLEURS ficam como legado local quando já existirem. É o tier padrão para gerar
-  `app/datasets/benchmark_audio_raw_balanced_15k.npz`.
+  `data/datasets/benchmark_audio_raw_balanced_15k.npz`.
 - **`large` — 20k + falantes não vistos (10.000/classe).** Tier estendido para
   auditoria de generalização. Além do volume que habilita **todas as 14 arquiteturas**
   (incluindo o Ensemble, ≥6.000/classe), ele:
-  - **identifica falantes** num sidecar `app/datasets/speaker_manifest.json`
+  - **identifica falantes** num sidecar `data/datasets/speaker_manifest.json`
     (Fake Voices por falante do ZIP, Common Voice por `client_id`, In-the-Wild
     por celebridade, ASVspoof pelo `speaker` do protocolo). Fontes que não
     expõem falante caem para o nível de **fonte** (`<prefixo>`);
@@ -122,7 +122,7 @@ python scripts/benchmark/run_benchmark.py --full --dataset SEU_large.npz --unsee
 
 # pipeline ponta a ponta canônico do benchmark
 python scripts/benchmark/run_tcc_pipeline.py --download --tier medium --full-benchmark \
-  --npz app/datasets/benchmark_audio_raw_balanced_15k.npz
+  --npz data/datasets/benchmark_audio_raw_balanced_15k.npz
 ```
 
 > Quando os falantes de uma fonte são correlacionados à classe (ex.: fonte pura
@@ -144,7 +144,7 @@ python scripts/benchmark/run_tcc_pipeline.py --download --tier medium --full-ben
 
 ## Download via XFakeSong
 
-O XFakeSong oferece **dois caminhos** para popular `app/datasets/real/` e `app/datasets/fake/`:
+O XFakeSong oferece **dois caminhos** para popular `data/datasets/real/` e `data/datasets/fake/`:
 
 ### 1. Interface Gradio (recomendado) — Download balanceado
 
@@ -177,7 +177,7 @@ Fluxo:
 ### Catálogo usado pela Gradio e pelo benchmark
 
 A aba Gradio **Datasets/Download** e o pipeline de benchmark usam o catálogo
-central `app/core/dataset_catalog.py`. Esse catálogo documenta tipo de classe,
+central `app/domain/dataset_metadata/dataset_catalog.py`. Esse catálogo documenta tipo de classe,
 comando de download, licença, duração, falantes e uso recomendado. Quando uma
 fonte não publica um valor estável por idioma, o campo fica marcado como
 “não informado” ou “variável”; nesses casos, o manifesto do benchmark registra
@@ -394,10 +394,10 @@ fakes se precisar de volume rapidamente.
 
 ## Organização no Projeto
 
-O XFakeSong usa estrutura de dois estágios em `app/datasets/`:
+O XFakeSong usa estrutura de dois estágios em `data/datasets/`:
 
 ```
-app/datasets/
+data/datasets/
 ├── real/                   # Áudios genuínos (16 kHz mono PCM-16)
 ├── fake/                   # Áudios sintéticos/deepfake
 ├── raw/                    # Caches de download (ZIPs, parquet) antes da normalização

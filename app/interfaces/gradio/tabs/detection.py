@@ -44,7 +44,7 @@ import numpy as np  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
 
 import gradio as gr  # noqa: E402
-from app.core.interfaces.audio import AudioData  # noqa: E402
+from app.core.contracts.audio import AudioData  # noqa: E402
 
 # Configurar logging
 logger = logging.getLogger("gradio_detection_tab")
@@ -95,30 +95,6 @@ except ImportError as e:
         f"Usando modo demonstração."
     )
     MODELS_AVAILABLE = False
-
-
-# ── Estilo dark para plots ───────────────────────────────────────
-_PLOT_BG = "#0f172a"
-_PLOT_FACE = "#1e293b"
-_PLOT_TEXT = "#f1f5f9"
-_PLOT_GRID = "#334155"
-_PLOT_ACCENT = "#3b82f6"
-_PLOT_ACCENT2 = "#06b6d4"
-_PLOT_DANGER = "#ef4444"
-
-
-def _style_ax(ax, fig, title=""):
-    """Aplica estilo dark consistente a um eixo matplotlib."""
-    fig.patch.set_facecolor(_PLOT_BG)
-    ax.set_facecolor(_PLOT_FACE)
-    ax.set_title(title, color=_PLOT_TEXT, fontweight="600", fontsize=12, pad=10)
-    ax.tick_params(colors=_PLOT_TEXT, labelsize=9)
-    for lbl in (ax.xaxis.label, ax.yaxis.label):
-        lbl.set_color(_PLOT_TEXT)
-        lbl.set_fontsize(10)
-    for spine in ax.spines.values():
-        spine.set_color(_PLOT_GRID)
-    ax.grid(True, color=_PLOT_GRID, alpha=0.3, linewidth=0.5)
 
 
 def get_waveform_plot(y, sr):
@@ -697,7 +673,7 @@ def create_detection_tab():
         with gr.Accordion("🔬 Pré-visualização forense", open=False):
             plot_waveform = gr.Plot(label="Forma de Onda")
 
-            with gr.Row():
+            with gr.Row(elem_classes="responsive-grid plot-grid"):
                 with gr.Column(min_width=400):
                     plot_spectrogram = gr.Plot(label="Espectrograma Mel")
                 with gr.Column(min_width=400):
@@ -873,7 +849,7 @@ def create_detection_tab():
             label="Arquivos de Áudio",
             file_types=["audio"],
         )
-        with gr.Row():
+        with gr.Row(elem_classes="action-row"):
             batch_btn = gr.Button(
                 "🔍 Analisar Lote", variant="primary", size="lg")
             export_btn = gr.Button(
@@ -882,7 +858,7 @@ def create_detection_tab():
         batch_summary = gr.Markdown(
             value="*Envie arquivos para iniciar a análise em lote.*")
 
-        with gr.Row():
+        with gr.Row(elem_classes="responsive-grid plot-grid"):
             with gr.Column():
                 plot_pie = gr.Plot(label="Distribuição de Resultados")
             with gr.Column():

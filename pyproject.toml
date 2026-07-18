@@ -77,4 +77,4 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-"app/routers/*.py" = ["B008"]
+"app/interfaces/web/routers/*.py" = ["B008"]

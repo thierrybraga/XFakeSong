@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import platform
 from pathlib import Path
 from typing import Any, Dict
@@ -11,7 +10,6 @@ from typing import Any, Dict
 import numpy as np
 
 from benchmarks.config import BenchmarkConfig
-
 
 CLASSICAL_ARCHES = {"svm", "randomforest"}
 HEAVY_ARCHES = {
@@ -51,27 +49,38 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "early_stopping": False,
         "reduce_lr_on_plateau": False,
         "recommended_epochs": 100,
-        "notes": "Raw waveform + Sinc/GRU: recorte central 1s, mixed precision desligado; LR segue o compile da arquitetura.",
+        "notes": "Raw waveform + Sinc/GRU: recorte central 1s, mixed precision desligado; LR segue o compile da arquitetura. 2026-07-14: topologia corrigida p/ paridade com o paper — MaxPool(3) após cada bloco residual (GRU passa a ver ~7 passos, não ~590) e FMS mul+add.",
     },
     "aasist": {
         "model_family": "neural",
         "input_domain": "raw_audio",
-        "batch_size": 16,
+        "batch_size": 24,
         # AJUSTE (retune): LR 1e-4->3e-4 e l2 1e-4->2e-4, em sincronia com
         # aasist.py::create_model e registry.py::default_params (ver
         # docs/RETREINO_AJUSTES.md). Augmentation ligado — subajuste + colapso
         # de recall sob ruído (0.29 @10dB) no diagnóstico original.
+        # CORREÇÃO 2026-07-15: o valor estava revertido para 1e-4/1e-4 (drift
+        # silencioso — o comentário acima já documentava 3e-4/2e-4 como a
+        # decisão vigente). Restaurado para bater com o que o comentário e o
+        # docs/RETREINO_AJUSTES.md sempre descreveram.
         "learning_rate": 3e-4,
+        "min_learning_rate": 5e-6,
+        "decay_steps": 100000,
         "epochs": 100,
         "dropout_rate": 0.2,
         "l2_reg_strength": 2e-4,
+        "classifier_head": "cross_entropy",
         # (attention_heads/hidden_units removidos: o create_model do AASIST
         # não os aceita — eram filtrados pela assinatura, config morto.)
         "optimizer": "AdamW",
-        "scheduler": "architecture_default",
+        "scheduler": "CosineDecay",
         "use_augmentation": True,
+        "use_mixed_precision": True,
         "recommended_epochs": 100,
-        "notes": "Raw waveform + Sinc/GAT/HS-GAL; recorte central 1s para conter custo quadrático do GAT temporal. Mantém compile-respect: loss/margem da própria arquitetura e LR estável.",
+        "notes": (
+            "Sinc 2D + GAT S/T + master/HS-GAL/MGO; janela 64.600, crop "
+            "aleatório no treino e multicrop na avaliação."
+        ),
     },
     "rawgatst": {
         "model_family": "neural",
@@ -83,15 +92,24 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         # Augmentation ligado — pior modelo do recorte, overfit/divergência
         # após a época 4 no diagnóstico original.
         "learning_rate": 5e-5,
+        "min_learning_rate": 5e-6,
+        "decay_steps": 100000,
         "epochs": 100,
         "dropout_rate": 0.35,
         "l2_reg_strength": 1e-3,
         "optimizer": "AdamW",
-        "scheduler": "architecture_default",
+        "scheduler": "CosineDecay",
         "use_augmentation": True,
+        # A/B retunado em 2026-07-17: o híbrido oscilou até loss=6.75,
+        # enquanto o controle float32 ficou em loss=0.63/0.69/0.64 e
+        # val_loss=0.58/0.58/0.58. Mantém o pipeline confirmatório em
+        # float32; a implementação híbrida permanece disponível para estudo.
         "use_mixed_precision": False,
         "recommended_epochs": 100,
-        "notes": "Raw waveform + SincNet/GAT; segue a factory atual com entrada de áudio bruto e recorte central do benchmark.",
+        "notes": (
+            "Dois encoders 2D + GAT S/T + produto + terceiro GAT; janela "
+            "64.600, crop aleatório no treino e multicrop na avaliação."
+        ),
     },
     "conformer": {
         "model_family": "neural",
@@ -117,30 +135,54 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "model_family": "neural",
         "input_domain": "spectrogram",
         "batch_size": 32,
-        "learning_rate": 1e-3,
+        # AJUSTE 2026-07-14: LR 1e-3->3e-4 e schedule agora passado ao
+        # construtor do CCT (antes o compile era hardcoded lr=1e-3 e
+        # decay_steps=50000 — com batch 32 sao ~657 passos/epoca x 100 =
+        # 65700 passos reais, o LR zerava (alpha) na epoca ~76; mesmo
+        # mismatch de decay_steps ja diagnosticado no AST). Colapso sob
+        # ruido (AUC 0.46 @10dB) tratado com pico de LR menor + retreino
+        # com a copia ruidosa do protocolo.
+        "learning_rate": 3e-4,
         "epochs": 100,
         "dropout_rate": 0.2,
         "l2_reg_strength": 1e-4,
-        "base_filters": 64,
-        "num_residual_blocks": 3,
-        "num_transformer_layers": 2,
-        "attention_heads": 8,
+        "weight_decay": 1e-4,
+        "warmup_steps": 1500,
+        "decay_steps": 65700,
+        "alpha": 1e-7,
+        "clipnorm": 1.0,
+        # (base_filters/num_residual_blocks/num_transformer_layers/
+        # attention_heads removidos: o builder CCT usa projection_dim/
+        # num_heads/transformer_layers/conv_channels do registry — as chaves
+        # antigas nunca chegavam ao modelo, eram config morto.)
         "optimizer": "AdamW",
         "scheduler": "WarmupCosineDecay",
         "reduce_lr_on_plateau": False,
         "recommended_epochs": 100,
+        "notes": "CCT compile-respect: LR/warmup/decay/weight_decay/clipnorm passados ao construtor (2026-07-14).",
     },
     "spectrogramtransformer": {
         "model_family": "neural",
         "input_domain": "spectrogram",
         "batch_size": 8,
-        "learning_rate": 2e-5,
+        # AJUSTE 2026-07-14: LR 2e-5->1e-5 e weight_decay 5e-5->1e-5. Mesmo
+        # com decay_steps corrigido o treino degradava lentamente ate chute
+        # aleatorio (EER final ~51%); 87M params do zero pedem passo menor.
+        # Acompanha a mudanca estrutural p/ blocos pre-LN (paper) em
+        # spectrogram_transformer.py — em sincronia com registry.py.
+        "learning_rate": 1e-5,
         "epochs": 100,
         "dropout_rate": 0.25,
-        "l2_reg_strength": 5e-5,
-        "weight_decay": 5e-5,
+        "l2_reg_strength": 1e-5,
+        "weight_decay": 1e-5,
         "warmup_steps": 3000,
-        "decay_steps": 100000,
+        # decay_steps cobre o total real de passos (100 epocas x 2625
+        # passos/epoca, ja considerando o 1 copy de ruido do
+        # train_noise_copies=1 que dobra 10500->21000 amostras). O valor
+        # antigo (100000) fazia o LR zerar (alpha=1e-6) por volta da epoca
+        # 38 e o treino degradava ate accuracy=chute aleatorio dali ate a
+        # epoca 100 (diagnosticado em 2026-07-13).
+        "decay_steps": 262500,
         "alpha": 1e-6,
         "clipnorm": 1.0,
         "optimizer": "AdamW",
@@ -151,20 +193,28 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "checkpoint_best": True,
         "reduce_lr_on_plateau": False,
         "recommended_epochs": 100,
-        "notes": "AST conforme a implementação do artigo: arquitetura inalterada, LR/weight_decay menores, warmup maior, clipnorm=1.0 (gradiente) e checkpoint obrigatório para evitar divergência/salvar o estado final colapsado.",
+        "notes": "AST pre-LN (paper) com cabeça linear sobre o CLS; LR de pico 1e-5 e weight_decay 1e-5 (2026-07-14), warmup 3000, clipnorm=1.0 e checkpoint obrigatório com restauração guardada (validada no val).",
     },
     "multiscalecnn": {
         "model_family": "neural",
         "input_domain": "spectrogram",
         "batch_size": 64,
-        "learning_rate": 2e-3,
+        # AJUSTE 2026-07-14: LR 2e-3->1e-3 (alinha com o compile do builder)
+        # e regularização EFETIVA contra o overfit train 100% / val 64,5%:
+        # o dropout_rate/l2_reg_strength antigos deste plano eram config
+        # morto (nunca chegavam ao create_model). Agora o dropout 0.5 flui
+        # pelo registry (default_params) e o weight_decay real vem do AdamW
+        # do builder (multiscale_cnn.py, default 1e-2 acoplado ao LR).
+        "learning_rate": 1e-3,
         "epochs": 100,
         "dropout_rate": 0.5,
-        "l2_reg_strength": 5e-4,
-        "hidden_units": "128/256",
+        "weight_decay": 1e-2,
+        # (l2_reg_strength/hidden_units removidos: nenhum caminho os
+        # consumia para esta arquitetura — config morto.)
         "optimizer": "AdamW",
         "scheduler": "ReduceLROnPlateau",
         "recommended_epochs": 100,
+        "notes": "Res2Net-50 com AdamW (weight decay real) + dropout 0.5 e checkpoint com restauração guardada (2026-07-14).",
     },
 }
 
@@ -221,13 +271,21 @@ def _fit_to_device(params: Dict[str, Any], arch: str, device: Dict[str, Any]) ->
     else:
         if compact == "rawnet2":
             cap = 16
-        elif compact in {"rawgatst", "aasist", "spectrogramtransformer"}:
+        elif compact == "aasist":
+            cap = 24
+        elif compact == "rawgatst":
+            cap = 16
+        elif compact == "spectrogramtransformer":
             cap = 16
         else:
             cap = 32
         tuned["batch_size"] = min(batch, cap)
         tuned["device_adjustment"] = "gpu_vram_safe_cap"
-        if compact not in {"rawnet2", "aasist", "rawgatst"}:
+        if compact == "aasist":
+            # Sinc e logits permanecem float32 nas próprias camadas; o encoder
+            # 2D/GAT usa Tensor Cores com loss scaling automático do Keras.
+            tuned["use_mixed_precision"] = True
+        elif compact != "rawnet2":
             tuned.setdefault("use_mixed_precision", True)
         else:
             tuned["use_mixed_precision"] = False
@@ -293,6 +351,15 @@ def _merge_effective_hparams(
         params["epochs_source"] = "benchmark_cli"
 
     params.update(cfg.training_overrides.get(arch, {}))
+    if compact not in CLASSICAL_ARCHES:
+        # Controles do protocolo sobrescrevem apenas aspectos de comparabilidade.
+        params["epochs"] = int(cfg.epochs)
+        params["epochs_source"] = "standardized_benchmark_budget"
+        params["early_stopping"] = not bool(cfg.fixed_epoch_budget)
+        params["select_best_checkpoint"] = bool(cfg.select_best_checkpoint)
+        params["validation_condition"] = "clean"
+        params["calibrate_under_noise"] = False
+        params["decision_threshold"] = float(cfg.decision_threshold)
     return params
 
 
@@ -331,6 +398,16 @@ def build_benchmark_plan(cfg: BenchmarkConfig, data: Any | None = None) -> Dict[
             "latency_runs": int(cfg.latency_runs),
             "run_api_probe": bool(cfg.run_api_probe),
             "optimize_hyperparameters": bool(cfg.optimize_hyperparameters),
+            "standardized_controls": {
+                "epochs": int(cfg.epochs),
+                "fixed_epoch_budget": bool(cfg.fixed_epoch_budget),
+                "select_best_checkpoint": bool(cfg.select_best_checkpoint),
+                "validation_condition": "clean",
+                "decision_threshold": float(cfg.decision_threshold),
+                "preserve_predefined_splits": bool(cfg.preserve_predefined_splits),
+                "fail_on_split_overlap": bool(cfg.fail_on_split_overlap),
+                "waveform_awgn_before_frontend": True,
+            },
             "convergence": {
                 "auc_roc_min": float(cfg.converge_auc_threshold),
                 "accuracy_min": float(cfg.converge_accuracy_threshold),

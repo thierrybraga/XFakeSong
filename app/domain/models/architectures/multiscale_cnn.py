@@ -22,8 +22,8 @@ from typing import Tuple
 import tensorflow as tf
 from tensorflow.keras import layers, models
 
-from app.core.utils.audio_utils import preprocess_legacy as preprocess
 from app.domain.models.architectures.layers import (
+    LogMelFromMagnitudeLayer,
     ResizeLayer,
     SqueezeExcitationBlock2D,
     SqueezeExciteBlock,
@@ -31,6 +31,7 @@ from app.domain.models.architectures.layers import (
     ensure_flat_input,
     is_raw_audio,
 )
+from app.utils.audio_utils import preprocess_legacy as preprocess
 
 logger = logging.getLogger(__name__)
 
@@ -265,6 +266,7 @@ def _make_res2net_layer(x, planes, num_blocks, stride=1, base_width=26,
 
 def _create_res2net_model(input_shape, num_classes=1, base_width=26, scale=4,
                           layer_config=None, dropout_rate=0.2, use_se=False,
+                          learning_rate=1e-3, weight_decay=1e-2,
                           architecture='multiscale_cnn'):
     """Create Res2Net model (paper-faithful).
 
@@ -286,6 +288,12 @@ def _create_res2net_model(input_shape, num_classes=1, base_width=26, scale=4,
         layer_config: List of block counts per stage (paper Res2Net-50: [3,4,6,3])
         dropout_rate: Dropout before classifier
         use_se: If True, enables the optimized Res2Net-SE variant.
+        learning_rate: LR do AdamW (antes Adam fixo em 1e-3)
+        weight_decay: weight decay ACOPLADO do AdamW Keras (multiplicado pelo
+            LR a cada passo). Equivale ao wd=1e-4 do SGD do paper na escala
+            deste treino. AJUSTE 2026-07-14: overfit severo (train 100% /
+            val 64,5%) sem nenhuma regularização efetiva — o l2_reg_strength
+            do plano de benchmark nunca chegava ao modelo.
         architecture: Model name
     """
     if layer_config is None:
@@ -298,20 +306,17 @@ def _create_res2net_model(input_shape, num_classes=1, base_width=26, scale=4,
         audio = ensure_flat_input(inputs, input_shape)
         # STFT -> magnitude spectrogram (batch, time, freq, 1)
         x = STFTLayer(name='stft_layer', add_channel_dim=False)(audio)
-        # Log-mel spectrogram: apply mel filterbank then log scaling via Lambda
-        def apply_log_mel(mag):
-            mel_w = tf.signal.linear_to_mel_weight_matrix(
-                num_mel_bins=128,
-                num_spectrogram_bins=1025,
-                sample_rate=16000,
-                lower_edge_hertz=0.0,
-                upper_edge_hertz=8000.0,
-            )
-            mel = tf.matmul(mag, mel_w)       # (batch, time, 128)
-            log_mel = tf.math.log(mel + 1e-6)
-            return tf.expand_dims(log_mel, axis=-1)  # (batch, time, 128, 1)
-
-        x = layers.Lambda(apply_log_mel, name='log_mel')(x)
+        # Log-mel: mel filterbank + log scaling. LogMelFromMagnitudeLayer
+        # (não layers.Lambda com closure local) — closures locais não são
+        # localizáveis pelo desserializador do Keras 3 em safe_mode.
+        x = LogMelFromMagnitudeLayer(
+            num_mel_bins=128,
+            num_spectrogram_bins=1025,
+            sample_rate=16000,
+            lower_edge_hertz=0.0,
+            upper_edge_hertz=8000.0,
+            name='log_mel',
+        )(x)
         x = ResizeLayer(target_height=128, target_width=128, name='resize_layer')(x)
     else:
         x = SafeInputReshapeLayer(input_shape, name='safe_input_reshape')(inputs)
@@ -350,21 +355,27 @@ def _create_res2net_model(input_shape, num_classes=1, base_width=26, scale=4,
     x = layers.GlobalAveragePooling2D(name='global_avg_pool')(x)
     x = layers.Dropout(dropout_rate, name='classifier_dropout')(x)
 
+    # dtype='float32': sob mixed_float16, softmax+crossentropy em float16
+    # satura/perde precisão e pode colapsar o treino (rede "morta" após a
+    # 1a epoca). Mesma correção já aplicada em AASIST/RawGAT-ST.
     if num_classes == 1:
-        outputs = layers.Dense(1, activation='sigmoid', name='output')(x)
+        outputs = layers.Dense(1, activation='sigmoid', name='output', dtype='float32')(x)
         loss = 'binary_crossentropy'
     else:
-        outputs = layers.Dense(num_classes, activation='softmax', name='output')(x)
+        outputs = layers.Dense(num_classes, activation='softmax', name='output', dtype='float32')(x)
         loss = 'sparse_categorical_crossentropy'
 
     model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
 
-    # Paper uses SGD with momentum; Adam is a common alternative for audio tasks
-    # AJUSTE (retune): clipnorm=1.0 evita os NaN de val_loss nas epocas 4-8
-    # observados no treino anterior (LR inicial alto + sem clipping).
+    # Paper uses SGD with momentum + weight decay; AdamW é a alternativa
+    # equivalente para áudio. clipnorm=1.0 evita os NaN de val_loss nas
+    # épocas 4-8 observados no treino anterior (LR inicial alto + sem clip).
+    # AJUSTE 2026-07-14: Adam→AdamW com weight_decay real — antes não havia
+    # NENHUMA regularização de pesos e o modelo decorava o treino (100%).
     model.compile(
-        optimizer=tf.keras.optimizers.Adam(
-            learning_rate=1e-3,
+        optimizer=tf.keras.optimizers.AdamW(
+            learning_rate=learning_rate,
+            weight_decay=weight_decay,
             clipnorm=1.0,
         ),
         loss=loss,
@@ -373,7 +384,8 @@ def _create_res2net_model(input_shape, num_classes=1, base_width=26, scale=4,
 
     logger.info(
         f"Res2Net model created: config={layer_config}, scale={scale}, "
-        f"baseWidth={base_width}, use_se={use_se}, params={model.count_params()}"
+        f"baseWidth={base_width}, use_se={use_se}, lr={learning_rate}, "
+        f"weight_decay={weight_decay}, params={model.count_params()}"
     )
     return model
 

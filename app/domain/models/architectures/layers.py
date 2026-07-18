@@ -8,6 +8,22 @@ from app.domain.models.architectures.safe_normalization import SafeInstanceNorma
 
 logger = logging.getLogger(__name__)
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
+class ChannelMeanLayer(layers.Layer):
+    """mean(x, axis=-1, keepdims=True) como camada serializável.
+
+    Substitui `layers.Lambda(lambda t: tf.reduce_mean(t, axis=-1, ...))` em
+    `ensure_flat_input` — mesma razão de `AxisMaxAbsLayer` (Lambda de função
+    Python não sobrevive ao load em safe_mode, o default do Keras 3).
+    """
+
+    def call(self, inputs):
+        return tf.reduce_mean(inputs, axis=-1, keepdims=True)
+
+    def get_config(self):
+        return super().get_config()
+
+
 def is_raw_audio(input_shape):
     """
     Check if input shape corresponds to raw audio.
@@ -28,8 +44,11 @@ def ensure_flat_input(x, input_shape=None):
     """Ensure input is (batch, time, 1) or (batch, time)."""
     if len(x.shape) == 3 and x.shape[-1] > 1:
         # If we have channels, we might want to take the first one or mean?
-        # For now assume it's mono or we take mean
-        return layers.Lambda(lambda t: tf.reduce_mean(t, axis=-1, keepdims=True), name="ensure_flat_mean")(x)
+        # For now assume it's mono or we take mean.
+        # ChannelMeanLayer (não layers.Lambda com lambda Python crua): mesma
+        # razão de AxisMaxAbsLayer — Lambda de função Python não é
+        # recarregável em safe_mode (default do Keras 3).
+        return ChannelMeanLayer(name="ensure_flat_mean")(x)
     return x
 
 def apply_gru_block(x, units, return_sequences=True, go_backwards=False, dropout_rate=0.0, name=None):
@@ -202,6 +221,82 @@ class MagnitudeLayer(layers.Layer):
         return super().get_config()
 
 @tf.keras.utils.register_keras_serializable(package="XFakeSong")
+class LogMelFromMagnitudeLayer(layers.Layer):
+    """Espectro de magnitude -> log-mel, como camada serializável.
+
+    Substitui closures locais (`def apply_log_mel(mag): ...`) passadas a
+    `layers.Lambda` no branch de áudio bruto do Res2Net/MultiscaleCNN — mesma
+    razão de `AxisMaxAbsLayer` (closures/funções locais não são localizáveis
+    pelo desserializador do Keras 3 em safe_mode).
+    """
+
+    def __init__(
+        self,
+        num_mel_bins: int = 128,
+        num_spectrogram_bins: int = 1025,
+        sample_rate: int = 16000,
+        lower_edge_hertz: float = 0.0,
+        upper_edge_hertz: float = 8000.0,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.num_mel_bins = int(num_mel_bins)
+        self.num_spectrogram_bins = int(num_spectrogram_bins)
+        self.sample_rate = int(sample_rate)
+        self.lower_edge_hertz = float(lower_edge_hertz)
+        self.upper_edge_hertz = float(upper_edge_hertz)
+
+    def call(self, mag):
+        mel_w = tf.signal.linear_to_mel_weight_matrix(
+            num_mel_bins=self.num_mel_bins,
+            num_spectrogram_bins=self.num_spectrogram_bins,
+            sample_rate=self.sample_rate,
+            lower_edge_hertz=self.lower_edge_hertz,
+            upper_edge_hertz=self.upper_edge_hertz,
+        )
+        mel = tf.matmul(mag, mel_w)
+        log_mel = tf.math.log(mel + 1e-6)
+        return tf.expand_dims(log_mel, axis=-1)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "num_mel_bins": self.num_mel_bins,
+            "num_spectrogram_bins": self.num_spectrogram_bins,
+            "sample_rate": self.sample_rate,
+            "lower_edge_hertz": self.lower_edge_hertz,
+            "upper_edge_hertz": self.upper_edge_hertz,
+        })
+        return config
+
+
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
+class AxisMaxAbsLayer(layers.Layer):
+    """max(|x|, axis=axis) como camada serializável.
+
+    Substitui `layers.Lambda(lambda v: tf.reduce_max(tf.abs(v), axis=N))`
+    usado em AASIST/RawGAT-ST para extrair os nós espectral/temporal do
+    encoder 2D. Uma Lambda com função Python crua não é reconstruível pelo
+    carregador SAFE MODE do Keras 3 (`ValueError: ... Lambda layer whose
+    function is a Python lambda ... disallowed by default`) — o modelo
+    treina e salva normalmente, mas falha ao ser recarregado sem
+    `safe_mode=False`. Mesma computação, sem o risco de execução de código
+    arbitrário na desserialização.
+    """
+
+    def __init__(self, axis: int, **kwargs):
+        super().__init__(**kwargs)
+        self.axis = int(axis)
+
+    def call(self, inputs):
+        return tf.reduce_max(tf.abs(inputs), axis=self.axis)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({"axis": self.axis})
+        return config
+
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class RepeatChannelLayer(layers.Layer):
     def __init__(self, repeats=3, axis=-1, **kwargs):
         super(RepeatChannelLayer, self).__init__(**kwargs)
@@ -271,11 +366,14 @@ def create_classification_head(x, num_classes, dropout_rate=0.3, hidden_dims=Non
         current_dropout = dropout_rate * (0.5 ** (i > 0)) # 0.3, 0.15, 0.15...
         x = layers.Dropout(current_dropout, name=f'classifier_dropout{i+1}')(x)
 
+    # dtype='float32': sob mixed_float16, softmax+crossentropy em float16
+    # satura/perde precisão e pode colapsar o treino (rede "morta" após a
+    # 1a epoca). Mesma correção já aplicada em AASIST/RawGAT-ST.
     if num_classes == 1:
-        outputs = layers.Dense(1, activation='sigmoid', name='output')(x)
+        outputs = layers.Dense(1, activation='sigmoid', name='output', dtype='float32')(x)
         loss = 'binary_crossentropy'
     else:
-        outputs = layers.Dense(num_classes, activation='softmax', name='output')(x)
+        outputs = layers.Dense(num_classes, activation='softmax', name='output', dtype='float32')(x)
         loss = 'sparse_categorical_crossentropy'
 
     return outputs, loss
@@ -499,17 +597,33 @@ class FeatureMapScalingLayer(layers.Layer):
     """
     Feature Map Scaling (FMS) block from RawNet2 paper.
     Similar to SE-block but specific to RawNet2.
+
+    scale_mode:
+        'mul_add' — forma do paper (Tak et al., 2021 / implementação oficial
+                    ASVspoof): y = sigmoid(FC(GAP(x))); out = x*y + y. O termo
+                    aditivo evita que o empilhamento de FMS encolha a evidência
+                    (motivo pelo qual o modo 'mul2' foi criado como paliativo).
+        'mul2'    — comportamento legado (out = x * 2*sigmoid, kernel zeros).
+                    Mantido como DEFAULT apenas para desserializar modelos
+                    .keras antigos sem alterar sua saída; novos builds do
+                    RawNet2 passam 'mul_add'.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, scale_mode: str = 'mul2', **kwargs):
         super(FeatureMapScalingLayer, self).__init__(**kwargs)
+        if scale_mode not in ('mul2', 'mul_add'):
+            raise ValueError(f"scale_mode inválido: {scale_mode!r}")
+        self.scale_mode = scale_mode
 
     def build(self, input_shape):
         self.channels = input_shape[-1]
+        # 'mul2' zera o kernel para o gate nascer em 1.0 (2*sigmoid(0)).
+        # 'mul_add' usa a inicialização padrão, como na implementação oficial.
+        initializer = 'zeros' if self.scale_mode == 'mul2' else 'glorot_uniform'
         self.dense = layers.Dense(
             self.channels,
             activation='sigmoid',
-            kernel_initializer='zeros',
+            kernel_initializer=initializer,
             bias_initializer='zeros',
         )
         super(FeatureMapScalingLayer, self).build(input_shape)
@@ -521,13 +635,16 @@ class FeatureMapScalingLayer(layers.Layer):
         y = self.dense(y)
         # Reshape for broadcasting
         y = tf.expand_dims(y, axis=1)
-        # Feature Map Scaling from RawNet2 is multiplicative. Center the
-        # sigmoid gate at 1.0 on initialization (2 * sigmoid(0)) so stacking FMS
-        # blocks does not shrink the waveform evidence before the GRU.
+        if self.scale_mode == 'mul_add':
+            # Paper: escala multiplicativa + deslocamento aditivo.
+            return inputs * y + y
+        # Legado: multiplicativo puro com gate centrado em 1.0 na inicialização.
         return inputs * (2.0 * y)
 
     def get_config(self):
-        return super(FeatureMapScalingLayer, self).get_config()
+        config = super(FeatureMapScalingLayer, self).get_config()
+        config.update({'scale_mode': self.scale_mode})
+        return config
 
 
 class SincNetLayer(layers.Layer):
@@ -1040,6 +1157,9 @@ class ResidualBlock1D(layers.Layer):
         if self.skip_conv is not None:
             shortcut = self.skip_conv(inputs)
 
+        # Ver ResidualBlock2D: mesmo risco de dtype divergente sob mixed
+        # precision na reconstrução simbólica do modelo salvo.
+        shortcut = tf.cast(shortcut, x.dtype)
         return x + shortcut
 
     def get_config(self):
@@ -1222,6 +1342,15 @@ class GraphPoolLayer(layers.Layer):
         gate = tf.expand_dims(gate, -1)        # (batch, k, 1)
 
         return selected_features * gate
+
+    def compute_output_shape(self, input_shape):
+        nodes = input_shape[1]
+        pooled_nodes = (
+            max(int(nodes * self.ratio), 1)
+            if nodes is not None
+            else None
+        )
+        return tf.TensorShape((input_shape[0], pooled_nodes, input_shape[-1]))
 
     def get_config(self):
         config = super(GraphPoolLayer, self).get_config()
@@ -1887,3 +2016,195 @@ tf.keras.utils.get_custom_objects().update({
     'GatedFusionLayer': GatedFusionLayer,
     'XFakeSong>GatedFusionLayer': GatedFusionLayer,
 })
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
+class ResidualBlock2D(layers.Layer):
+    """Bloco residual 2D para os encoders AASIST/RawGAT-ST fiéis."""
+
+    def __init__(self, out_channels, kernel_size=(3, 3), pool_size=(1, 3),
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.out_channels = int(out_channels)
+        self.kernel_size = tuple(kernel_size)
+        self.pool_size = tuple(pool_size)
+
+    def build(self, input_shape):
+        self.bn1 = layers.BatchNormalization(name=f"{self.name}_bn1")
+        self.conv1 = layers.Conv2D(
+            self.out_channels, self.kernel_size, padding="same",
+            use_bias=False, name=f"{self.name}_conv1",
+        )
+        self.bn2 = layers.BatchNormalization(name=f"{self.name}_bn2")
+        self.conv2 = layers.Conv2D(
+            self.out_channels, self.kernel_size, padding="same",
+            use_bias=False, name=f"{self.name}_conv2",
+        )
+        self.skip_conv = None
+        if input_shape[-1] != self.out_channels:
+            self.skip_conv = layers.Conv2D(
+                self.out_channels, 1, padding="same", use_bias=False,
+                name=f"{self.name}_skip",
+            )
+        self.pool = layers.MaxPooling2D(
+            pool_size=self.pool_size, strides=self.pool_size,
+            padding="same", name=f"{self.name}_pool",
+        )
+        super().build(input_shape)
+
+    def call(self, inputs, training=None):
+        x = self.bn1(inputs, training=training)
+        x = tf.nn.selu(x)
+        x = self.conv1(x)
+        x = self.bn2(x, training=training)
+        x = tf.nn.selu(x)
+        x = self.conv2(x)
+        shortcut = self.skip_conv(inputs) if self.skip_conv is not None else inputs
+        # Sob mixed_float16, a reconstrução simbólica do modelo salvo (Keras 3
+        # traça call() com uma policy de dtype diferente da usada no treino)
+        # pode entregar `x` e `shortcut` em dtypes distintos, quebrando o Add
+        # (float32 x float16). Cast explícito evita depender da policy global.
+        shortcut = tf.cast(shortcut, x.dtype)
+        return self.pool(x + shortcut)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "out_channels": self.out_channels,
+            "kernel_size": self.kernel_size,
+            "pool_size": self.pool_size,
+        })
+        return config
+
+
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
+class SpectralPositionEmbedding(layers.Layer):
+    """Embedding posicional treinável para os nós espectrais."""
+
+    def build(self, input_shape):
+        if input_shape[1] is None or input_shape[-1] is None:
+            raise ValueError("SpectralPositionEmbedding exige dimensões estáticas")
+        self.position = self.add_weight(
+            name="position",
+            shape=(1, int(input_shape[1]), int(input_shape[-1])),
+            initializer="random_normal",
+            trainable=True,
+        )
+        super().build(input_shape)
+
+    def call(self, inputs):
+        return inputs + tf.cast(self.position, inputs.dtype)
+
+
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
+class AdaptiveGraphResize(layers.Layer):
+    """Projeção aprendível do eixo de nós para tamanho comum S/T."""
+
+    def __init__(self, target_nodes=12, **kwargs):
+        super().__init__(**kwargs)
+        self.target_nodes = int(target_nodes)
+
+    def build(self, input_shape):
+        if input_shape[1] is None:
+            raise ValueError(
+                "AdaptiveGraphResize exige número de nós estático"
+            )
+        self.projection = layers.Dense(
+            self.target_nodes,
+            use_bias=True,
+            name=f"{self.name}_node_projection",
+        )
+        # Build explícito: como a camada define compute_output_shape(), o
+        # Keras 3 pode montar o grafo funcional via inferência de shape sem
+        # nunca tracejar call() — o que deixaria `projection` com built=False
+        # (sem variáveis) até a primeira chamada real.
+        self.projection.build((input_shape[0], input_shape[-1], input_shape[1]))
+        super().build(input_shape)
+
+    def call(self, inputs):
+        transposed = tf.transpose(inputs, [0, 2, 1])
+        projected = self.projection(transposed)
+        return tf.transpose(projected, [0, 2, 1])
+
+    def compute_output_shape(self, input_shape):
+        return tf.TensorShape(
+            (input_shape[0], self.target_nodes, input_shape[-1])
+        )
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({"target_nodes": self.target_nodes})
+        return config
+
+
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
+class HeterogeneousStackGraphAttentionLayer(layers.Layer):
+    """HS-GAL com tipos espectral/temporal e master (stack) node."""
+
+    def __init__(self, out_features=32, dropout_rate=0.2,
+                 negative_slope=0.2, **kwargs):
+        super().__init__(**kwargs)
+        self.out_features = int(out_features)
+        self.dropout_rate = float(dropout_rate)
+        self.negative_slope = float(negative_slope)
+
+    def build(self, input_shape):
+        self.spec_projection = layers.Dense(
+            self.out_features, use_bias=False, name=f"{self.name}_spec_proj"
+        )
+        self.temp_projection = layers.Dense(
+            self.out_features, use_bias=False, name=f"{self.name}_temp_proj"
+        )
+        self.master_projection = layers.Dense(
+            self.out_features, use_bias=False, name=f"{self.name}_master_proj"
+        )
+        self.type_embeddings = self.add_weight(
+            name="type_embeddings", shape=(2, self.out_features),
+            initializer="random_normal", trainable=True,
+        )
+        self.master_seed = None
+        if len(input_shape) != 3:
+            self.master_seed = self.add_weight(
+                name="master_seed", shape=(1, 1, self.out_features),
+                initializer="random_normal", trainable=True,
+            )
+        self.gat = GATConvLayer(
+            out_features=self.out_features, num_heads=1, concat_heads=True,
+            dropout_rate=self.dropout_rate, negative_slope=self.negative_slope,
+            name=f"{self.name}_gat",
+        )
+        self.norm = layers.LayerNormalization(name=f"{self.name}_norm")
+        self.dropout = layers.Dropout(self.dropout_rate)
+        super().build(input_shape)
+
+    def call(self, inputs, training=None):
+        if len(inputs) == 3:
+            spectral_nodes, temporal_nodes, master = inputs
+            master = self.master_projection(master)
+        else:
+            spectral_nodes, temporal_nodes = inputs
+            batch = tf.shape(spectral_nodes)[0]
+            if self.master_seed is None:
+                raise RuntimeError("master_seed não foi inicializado")
+            master = tf.tile(self.master_seed, [batch, 1, 1])
+
+        spectral_nodes = self.spec_projection(spectral_nodes)
+        temporal_nodes = self.temp_projection(temporal_nodes)
+        spectral_nodes = spectral_nodes + self.type_embeddings[0][None, None, :]
+        temporal_nodes = temporal_nodes + self.type_embeddings[1][None, None, :]
+        n_spec = tf.shape(spectral_nodes)[1]
+        nodes = tf.concat([master, spectral_nodes, temporal_nodes], axis=1)
+        updated = self.gat(self.dropout(nodes, training=training), training=training)
+        updated = self.norm(nodes + updated)
+        return (
+            updated[:, 1:1 + n_spec, :],
+            updated[:, 1 + n_spec:, :],
+            updated[:, :1, :],
+        )
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "out_features": self.out_features,
+            "dropout_rate": self.dropout_rate,
+            "negative_slope": self.negative_slope,
+        })
+        return config

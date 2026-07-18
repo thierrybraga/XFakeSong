@@ -12,29 +12,34 @@ import numpy as np
 import pandas as pd
 
 import gradio as gr
-from app.core.interfaces.audio import AudioData
+from app.core.contracts.audio import AudioData
 from app.domain.services.forensic_visualization import (
     AudioForensicVisualizer,
     BatchAnalysisVisualizer,
 )
 from app.interfaces.gradio.utils.components import page_header
+from app.interfaces.gradio.utils.plotting import get_service_lock
 
 logger = logging.getLogger("gradio_forensic_tab")
 
-# Singleton para servico de deteccao
+# Singleton para servico de deteccao (mesmo padrão thread-safe de detection.py)
 _detection_service = None
+_service_lock = get_service_lock("forensic_detection_service")
 
 
 def _get_detection_service():
     global _detection_service
-    if _detection_service is None:
-        try:
-            # Mesmo singleton (app/models) da API/Detectar/wizard — ver detection.py.
-            from app.dependencies import get_detection_service as _shared
-            _detection_service = _shared()
-        except Exception as e:
-            logger.warning(f"Detection service unavailable: {e}")
-            return None
+    if _detection_service is not None:
+        return _detection_service
+    with _service_lock:
+        if _detection_service is None:
+            try:
+                # Mesmo singleton (app/models) da API/Detectar/wizard — ver detection.py.
+                from app.dependencies import get_detection_service as _shared
+                _detection_service = _shared()
+            except Exception as e:
+                logger.warning(f"Detection service unavailable: {e}")
+                return None
     return _detection_service
 
 
@@ -385,7 +390,7 @@ def create_forensic_analysis_tab():
         )
 
         # ===== Input Section =====
-        with gr.Row():
+        with gr.Row(elem_classes="responsive-grid"):
             with gr.Column(scale=1):
                 audio_input = gr.Audio(
                     type="filepath",
@@ -412,7 +417,7 @@ def create_forensic_analysis_tab():
                 gr.Markdown("#### Comparação Multi-Espectrograma")
                 plot_multi_spec = gr.Plot(
                     label="Mel / STFT / CQT / LFCC")
-                with gr.Row():
+                with gr.Row(elem_classes="responsive-grid plot-grid"):
                     with gr.Column():
                         gr.Markdown("#### Espectro de Fase")
                         plot_phase = gr.Plot(
@@ -427,7 +432,7 @@ def create_forensic_analysis_tab():
                 gr.Markdown("#### Envelope Espectral & Formantes")
                 plot_formants = gr.Plot(
                     label="Espectrograma com trilhas de formantes F1-F4")
-                with gr.Row():
+                with gr.Row(elem_classes="responsive-grid plot-grid"):
                     with gr.Column():
                         gr.Markdown("#### Zero-Crossing Rate")
                         plot_zcr = gr.Plot(
@@ -442,7 +447,7 @@ def create_forensic_analysis_tab():
                 gr.Markdown("#### Contorno de Energia")
                 plot_energy = gr.Plot(
                     label="RMS Energy com deteccao de silencio")
-                with gr.Row():
+                with gr.Row(elem_classes="responsive-grid plot-grid"):
                     with gr.Column():
                         gr.Markdown("#### HNR Temporal")
                         plot_hnr = gr.Plot(
@@ -466,7 +471,7 @@ def create_forensic_analysis_tab():
                     "#### Visualizações baseadas no modelo de detecção\n"
                     "*Requer modelo treinado carregado.*"
                 )
-                with gr.Row():
+                with gr.Row(elem_classes="responsive-grid plot-grid"):
                     with gr.Column():
                         plot_radar = gr.Plot(
                             label="Importância Relativa de Features")

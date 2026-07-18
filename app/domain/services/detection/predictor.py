@@ -1,10 +1,10 @@
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import tensorflow as tf
 
-from app.core.interfaces.base import ProcessingResult, ProcessingStatus
+from app.core.contracts.base import ProcessingResult, ProcessingStatus
 
 from .model_loader import ModelInfo
 from .utils import prepare_batch_for_model
@@ -82,6 +82,42 @@ class TemperatureScaler:
         if self.temperature == 1.0:
             return predictions
         return predictions / self.temperature
+
+
+def apply_posthoc_calibration(
+    p_fake: float, input_contract: Optional[Dict[str, Any]]
+) -> float:
+    """Aplica calibração Platt/isotonic pós-hoc a p_fake, se configurada.
+
+    Complementa o temperature scaling (que só reescala logits): Platt ajusta
+    escala E deslocamento (sigmoid(a*logit(p)+b)); isotonic é uma função
+    monotônica não-paramétrica. Ambas preservam o ranking (EER inalterado),
+    só corrigem a calibração de confiança (ECE). Config em
+    ``input_contract["calibration"]``, ausente = passthrough.
+    """
+    if not input_contract or not isinstance(input_contract, dict):
+        return p_fake
+    calib = input_contract.get("calibration")
+    if not calib or not isinstance(calib, dict):
+        return p_fake
+    method = calib.get("method")
+    eps = 1e-7
+    p = float(np.clip(p_fake, eps, 1.0 - eps))
+    try:
+        if method == "platt":
+            a = float(calib["a"])
+            b = float(calib["b"])
+            logit = np.log(p / (1.0 - p))
+            return float(1.0 / (1.0 + np.exp(-(a * logit + b))))
+        if method == "isotonic":
+            xs = calib.get("x")
+            ys = calib.get("y")
+            if not xs or not ys:
+                return p_fake
+            return float(np.interp(p, xs, ys))
+    except Exception as e:
+        logger.warning(f"Calibração pós-hoc falhou: {e}. Usando p_fake bruto.")
+    return p_fake
 
 
 def predict_with_mc_dropout(
@@ -520,7 +556,7 @@ class Predictor:
                 else:
                     p_fake = float(pred[1])
                     p_real = float(pred[0])
-                is_fake = bool(p_fake > fake_threshold)
+                is_fake = bool(p_fake >= fake_threshold)
                 confidence = p_fake if is_fake else p_real
 
                 results.append({
@@ -568,6 +604,79 @@ class Predictor:
             data=batch_result.data[0]
         )
 
+    def _predict_declared_multicrop(
+        self,
+        model_info: ModelInfo,
+        features_list: List[np.ndarray],
+        device: str = None,
+    ) -> Optional[ProcessingResult[List[Dict[str, Any]]]]:
+        """Achata crops, prediz uma vez e agrega p(fake) por áudio."""
+        expected = tuple(model_info.input_shape or ())
+        if not expected:
+            return None
+
+        arrays = [np.asarray(features, dtype=np.float32) for features in features_list]
+        has_multicrop = any(
+            array.ndim == len(expected) + 1
+            and tuple(array.shape[1:]) == expected
+            for array in arrays
+        )
+        if not has_multicrop:
+            return None
+
+        flattened: List[np.ndarray] = []
+        group_sizes: List[int] = []
+        for array in arrays:
+            if array.ndim == len(expected) + 1 and tuple(array.shape[1:]) == expected:
+                crops = list(array)
+            elif tuple(array.shape) == expected:
+                crops = [array]
+            else:
+                return None
+            flattened.extend(crops)
+            group_sizes.append(len(crops))
+
+        crop_result = self._predict_tensorflow_batch(
+            model_info,
+            flattened,
+            device,
+        )
+        if crop_result.status != ProcessingStatus.SUCCESS:
+            return crop_result
+
+        aggregated = []
+        cursor = 0
+        for size in group_sizes:
+            crop_rows = crop_result.data[cursor:cursor + size]
+            cursor += size
+            p_fake = float(np.mean([row["p_fake"] for row in crop_rows]))
+            p_real = 1.0 - p_fake
+            first = crop_rows[0]
+            threshold = float(first.get("classification_threshold", 0.5))
+            is_deepfake = bool(p_fake >= threshold)
+            confidence = p_fake if is_deepfake else p_real
+            ood_threshold = first.get("ood_threshold")
+            ood_score = float(np.mean([row["ood_score"] for row in crop_rows]))
+            aggregated.append({
+                "is_deepfake": is_deepfake,
+                "confidence": float(confidence),
+                "p_fake": p_fake,
+                "p_real": p_real,
+                "temperature_applied": first.get("temperature_applied", 1.0),
+                "ood_score": ood_score,
+                "is_ood": bool(
+                    ood_threshold is not None
+                    and ood_score < float(ood_threshold)
+                ),
+                "ood_threshold": ood_threshold,
+                "classification_threshold": threshold,
+                "tta_crops": size,
+            })
+        return ProcessingResult(
+            status=ProcessingStatus.SUCCESS,
+            data=aggregated,
+        )
+
     def predict_batch(self, model_info: ModelInfo,
                       features_list: List[np.ndarray],
                       device: str = None,
@@ -578,6 +687,13 @@ class Predictor:
                 return ProcessingResult(status=ProcessingStatus.SUCCESS, data=[])
 
             if model_info.model_type == 'tensorflow':
+                multicrop_result = self._predict_declared_multicrop(
+                    model_info,
+                    features_list,
+                    device,
+                )
+                if multicrop_result is not None:
+                    return multicrop_result
                 if use_tta:
                     return self._predict_tensorflow_batch_with_tta(
                         model_info, features_list, device)
@@ -692,8 +808,11 @@ class Predictor:
                     p_fake = _as_probability(pred[1])
                     p_real = _as_probability(pred[0])
 
+                p_fake = apply_posthoc_calibration(p_fake, model_info.input_contract)
+                p_real = 1.0 - p_fake
+
                 # Decisão usa threshold adaptativo (EER se disponível, senão 0.5)
-                is_deepfake = bool(p_fake > fake_threshold)
+                is_deepfake = bool(p_fake >= fake_threshold)
                 # confidence reportada é a probabilidade da CLASSE PREDITA
                 # (mais intuitivo para o usuário: "estou 87% confiante de FAKE"
                 # ou "estou 87% confiante de REAL", em vez de sempre reportar
@@ -761,7 +880,7 @@ class Predictor:
                     p_fake = _as_probability(pred[1])
                     p_real = _as_probability(pred[0])
 
-                is_deepfake = bool(p_fake > fake_threshold)
+                is_deepfake = bool(p_fake >= fake_threshold)
                 confidence = _as_probability(p_fake if is_deepfake else p_real)
                 ood_score = float(ood_scores[i])
                 is_ood = (
@@ -821,7 +940,9 @@ class Predictor:
                 for i in range(len(probas)):
                     p_real = float(probas[i][0])
                     p_fake = float(probas[i][1]) if len(probas[i]) > 1 else 1.0 - p_real
-                    is_deepfake = bool(p_fake > fake_threshold)
+                    p_fake = apply_posthoc_calibration(p_fake, model_info.input_contract)
+                    p_real = 1.0 - p_fake
+                    is_deepfake = bool(p_fake >= fake_threshold)
                     confidence = p_fake if is_deepfake else p_real
                     results.append({
                         'is_deepfake': is_deepfake,
@@ -942,7 +1063,7 @@ class Predictor:
                     p_fake = _as_probability(pred[1])
                     p_real = _as_probability(pred[0])
 
-                is_deepfake = bool(p_fake > fake_threshold)
+                is_deepfake = bool(p_fake >= fake_threshold)
                 confidence = _as_probability(p_fake if is_deepfake else p_real)
 
                 results.append({

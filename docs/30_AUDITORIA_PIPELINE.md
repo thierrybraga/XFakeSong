@@ -51,7 +51,7 @@ mesmo `.npz`:
   estratificada e reprodutível (semente fixa, `val=0.15`/`test=0.15`) — o teste é
   idêntico para todos os modelos, independente do split original do `.npz`.
 - Todos os presets `configs/training/*.yaml` apontam para
-  `app/datasets/benchmark_audio_raw_balanced_15k.npz` (nome canônico).
+  `data/datasets/benchmark_audio_raw_balanced_15k.npz` (nome canônico).
 
 **Atualizar o dataset = regerar esse `.npz`** (não versionado) a partir dos
 splits, e todos os modelos passam a usá-lo automaticamente:
@@ -59,7 +59,7 @@ splits, e todos os modelos passam a usá-lo automaticamente:
 ```bash
 python scripts/dataset/build_dataset.py --skip-download --target <N>   # dedup→balance→splits
 python scripts/dataset/export_npz_from_splits.py \
-    --out app/datasets/benchmark_audio_raw_balanced_15k.npz --sample-rate 16000 --duration-sec 5.0
+    --out data/datasets/benchmark_audio_raw_balanced_15k.npz --sample-rate 16000 --duration-sec 5.0
 ```
 
 > **Decisão consolidada: 15k total (7.500 real / 7.500 fake)**, nome canônico

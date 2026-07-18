@@ -41,7 +41,7 @@ services:
     <<: *train-common
     build:
       context: .
-      dockerfile: environments/classical-ml/Dockerfile.cpu
+      dockerfile: docker/environments/classical-ml/Dockerfile.cpu
     image: xfakesong:classical-ml
     command: ["python", "scripts/training/train_by_family.py", "--family", "classical-ml"]
 
@@ -49,7 +49,7 @@ services:
     <<: *train-common
     build:
       context: .
-      dockerfile: environments/tensorflow-keras/Dockerfile.nvidia
+      dockerfile: docker/environments/tensorflow-keras/Dockerfile.nvidia
     image: xfakesong:tensorflow-keras-gpu
     shm_size: 2gb
     deploy:
@@ -65,7 +65,7 @@ services:
     <<: *train-common
     build:
       context: .
-      dockerfile: environments/pytorch-audio/Dockerfile.nvidia
+      dockerfile: docker/environments/pytorch-audio/Dockerfile.nvidia
     image: xfakesong:pytorch-audio-gpu
     shm_size: 2gb
     deploy:
@@ -81,7 +81,7 @@ services:
     <<: *train-common
     build:
       context: .
-      dockerfile: environments/ssl-transformers/Dockerfile.nvidia
+      dockerfile: docker/environments/ssl-transformers/Dockerfile.nvidia
     image: xfakesong:ssl-transformers-gpu
     shm_size: 2gb
     deploy:
@@ -97,7 +97,7 @@ services:
     working_dir: /app
     build:
       context: .
-      dockerfile: environments/inference-api/Dockerfile.cpu
+      dockerfile: docker/environments/inference-api/Dockerfile.cpu
     image: xfakesong:inference-api
     ports:
       - "${GRADIO_PORT:-7860}:7860"

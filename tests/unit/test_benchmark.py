@@ -41,6 +41,68 @@ def test_awgn_preserves_shape_and_is_finite():
     assert far > near
 
 
+def test_awgn_realized_snr_matches_target_per_sample():
+    from benchmarks.data import BenchmarkData
+
+    X = np.random.default_rng(7).standard_normal((6, 4000)).astype("float32")
+    noisy = BenchmarkData.add_awgn(X, snr_db=20, seed=11)
+    signal_power = np.mean(X ** 2, axis=1)
+    noise_power = np.mean((noisy - X) ** 2, axis=1)
+    measured = 10.0 * np.log10(signal_power / noise_power)
+    assert np.allclose(measured, 20.0, atol=1e-3)
+
+
+def test_mixed_awgn_is_balanced_and_reproducible():
+    from benchmarks.data import BenchmarkData
+
+    X = np.random.default_rng(3).standard_normal((10, 1000)).astype("float32")
+    noisy_a, assigned_a = BenchmarkData.add_awgn_mixed(
+        X, [30, 20, 10], seed=42
+    )
+    noisy_b, assigned_b = BenchmarkData.add_awgn_mixed(
+        X, [30, 20, 10], seed=42
+    )
+    assert np.array_equal(assigned_a, assigned_b)
+    assert np.array_equal(noisy_a, noisy_b)
+    counts = np.unique(assigned_a, return_counts=True)[1]
+    assert counts.max() - counts.min() <= 1
+
+
+def test_protocol_adds_noise_before_frontend(monkeypatch):
+    from benchmarks import BenchmarkConfig, runner
+
+    rng = np.random.default_rng(5)
+    raw_splits = (
+        rng.standard_normal((8, 2000)).astype("float32"),
+        np.array([0, 1] * 4),
+        rng.standard_normal((4, 2000)).astype("float32"),
+        np.array([0, 1] * 2),
+        rng.standard_normal((4, 2000)).astype("float32"),
+        np.array([0, 1] * 2),
+    )
+    seen = []
+
+    def fake_frontend(X, _arch, **_kwargs):
+        seen.append(np.asarray(X).copy())
+        return np.asarray(X)[:, :4], "tabular_audio_features"
+
+    monkeypatch.setattr(runner, "prepare_input_for_architecture", fake_frontend)
+    cfg = BenchmarkConfig(
+        architectures=["SVM"],
+        dataset_path="raw.npz",
+        train_aug_snr_db=[30, 20, 10],
+        train_noise_copies=1,
+        strict_waveform_awgn=True,
+    )
+    prepared = runner._prepare_protocol_splits("SVM", cfg, raw_splits)
+
+    assert len(seen) == 4  # treino/val/teste limpos + treino ruidoso
+    assert seen[0].shape == seen[3].shape == raw_splits[0].shape
+    assert not np.array_equal(seen[0], seen[3])
+    assert prepared[7]["evaluation_domain"] == "waveform"
+    assert prepared[7]["frontend_after_noise"] is True
+    assert len(prepared[1]) == 2 * len(raw_splits[1])
+
 def test_benchmark_data_validation_rejects_bad_labels():
     from benchmarks.data import BenchmarkData
 
@@ -101,6 +163,10 @@ def test_prepare_raw_audio_center_crops_long_clips_for_rawnet2():
 
 
 def test_prepare_raw_audio_center_crops_long_clips_for_aasist():
+    """AASIST usa janela 64.600 (~4,04s, protocolo ASVspoof2021 baseline
+    compartilhado com RawGAT-ST) + crop_strategy multicrop na avaliação —
+    diferente do RawNet2 (1s, sem TTA). Ver registry.py::input_requirements
+    e tests/unit/test_p2_rawgatst_sslaasist.py."""
     from benchmarks.data import BenchmarkData
 
     rng = np.random.default_rng(34)
@@ -110,9 +176,9 @@ def test_prepare_raw_audio_center_crops_long_clips_for_aasist():
     )
     raw = d.prepare_for_architecture("AASIST")
 
-    assert raw.X.shape == (8, 16000, 1)
+    assert raw.X.shape == (8, 64600, 1)
     assert raw.metadata["input_type"] == "raw_audio"
-    assert raw.metadata["prepared_shape"] == [16000, 1]
+    assert raw.metadata["prepared_shape"] == [64600, 1]
 
 
 def test_prepare_raw_audio_center_crops_long_clips_for_ensemble():
@@ -578,15 +644,20 @@ def test_neural_benchmark_plan_uses_curated_hyperparameters():
         assert aasist["learning_rate"] == 3e-4
         assert aasist["input_domain"] == "raw_audio"
         assert aasist["batch_size"] <= 4
-        assert ast["learning_rate"] == 2e-5
+        # AJUSTE 2026-07-14: LR/WD reduzidos (pre-LN + 87M params do zero).
+        assert ast["learning_rate"] == 1e-5
         assert ast["batch_size"] <= 8
-        assert ast["l2_reg_strength"] == 5e-5
-        assert ast["weight_decay"] == 5e-5
+        assert ast["l2_reg_strength"] == 1e-5
+        assert ast["weight_decay"] == 1e-5
         assert ast["use_augmentation"] is False
         assert ast["warmup_steps"] == 3000
         assert ast["clipnorm"] == 1.0
         assert ast["checkpoint_best"] is True
-        assert ast["early_stopping"] is True
+        # Protocolo 2026-07-12: orçamento fixo de 100 épocas —
+        # fixed_epoch_budget=True desliga o early stopping no controle
+        # experimental comum e a seleção fica por melhor checkpoint (val).
+        assert ast["early_stopping"] is False
+        assert ast["select_best_checkpoint"] is True
         assert ast["early_stopping_patience"] == 20
         assert ast["epochs"] == 7
         assert ast["recommended_epochs"] == 100
@@ -640,11 +711,14 @@ def test_benchmark_plan_is_written_before_training():
 
 def test_all_architectures_benchmark_smoke_contract(monkeypatch):
     """CI smoke barato: valida nomes, preparo, métricas e artefatos sem treino pesado."""
-    from benchmarks import BenchmarkConfig, run_benchmark
     import benchmarks.runner as runner
+    from benchmarks import BenchmarkConfig, run_benchmark
 
     def fake_run_neural(_arch, _cfg, splits, _tmp, _models_dir):
-        _Xtr, _ytr, _Xv, _yv, Xte, _yte = splits
+        # Protocolo 2026-07-12: _prepare_protocol_splits retorna 8 itens
+        # (6 arrays + clean_train_count + protocol) — mesmo fatiamento do
+        # runner real (_run_neural usa splits[:6]).
+        _Xtr, _ytr, _Xv, _yv, Xte, _yte = splits[:6]
         p = np.linspace(0.1, 0.9, len(Xte), dtype="float32")
 
         return {
@@ -863,3 +937,75 @@ def test_svm_optimized_benchmark_reports_real_fit_strategy(monkeypatch):
         report = (Path(td) / "tcc_report.md").read_text("utf-8")
         assert "Treino executado: `CV 36+fit`" in report
         assert "Épocas executadas: `100`" not in report
+
+
+def test_npz_predefined_splits_are_preserved_without_duplicate_aggregate(tmp_path):
+    from benchmarks.data import BenchmarkData
+
+    train_x = np.arange(8 * 1000, dtype="float32").reshape(8, 1000)
+    val_x = np.arange(8 * 1000, 12 * 1000, dtype="float32").reshape(4, 1000)
+    test_x = np.arange(12 * 1000, 16 * 1000, dtype="float32").reshape(4, 1000)
+    train_y = np.array([0, 1] * 4)
+    val_y = np.array([0, 1] * 2)
+    test_y = np.array([0, 1] * 2)
+    path = tmp_path / "predefined.npz"
+    np.savez(
+        path,
+        X_train=train_x,
+        y_train=train_y,
+        X_val=val_x,
+        y_val=val_y,
+        X_test=test_x,
+        y_test=test_y,
+        X=np.zeros((2, 1000), dtype="float32"),
+        y=np.array([0, 1]),
+    )
+
+    data = BenchmarkData.from_npz(str(path))
+    splits = data.stratified_split(seed=999, preserve_predefined=True)
+
+    assert len(data.y) == 16
+    np.testing.assert_array_equal(splits[0], train_x)
+    np.testing.assert_array_equal(splits[2], val_x)
+    np.testing.assert_array_equal(splits[4], test_x)
+
+
+def test_split_overlap_audit_rejects_exact_contamination():
+    from benchmarks.runner import _audit_split_overlap
+
+    shared = np.ones((1, 1000), dtype="float32")
+    train = np.concatenate([shared, np.zeros((1, 1000), dtype="float32")])
+    val = np.full((2, 1000), 2.0, dtype="float32")
+    test = np.concatenate([shared, np.full((1, 1000), 3.0, dtype="float32")])
+    y = np.array([0, 1])
+
+    with pytest.raises(ValueError, match="Contaminação entre partições"):
+        _audit_split_overlap((train, y, val, y, test, y), fail_on_overlap=True)
+
+
+def test_plan_preserves_model_hparams_but_forces_common_training_controls():
+    from benchmarks.config import BenchmarkConfig
+    from benchmarks.planning import build_benchmark_plan
+
+    cfg = BenchmarkConfig(
+        architectures=["Conformer"],
+        epochs=100,
+        device_profile="cpu",
+        training_overrides={
+            "Conformer": {
+                "epochs": 17,
+                "learning_rate": 7e-5,
+                "dropout_rate": 0.37,
+            }
+        },
+    )
+    plan = build_benchmark_plan(cfg)
+    effective = plan["architectures"]["Conformer"]["training_config"]
+
+    assert effective["epochs"] == 100
+    assert effective["early_stopping"] is False
+    assert effective["select_best_checkpoint"] is True
+    assert effective["validation_condition"] == "clean"
+    assert effective["decision_threshold"] == 0.5
+    assert effective["learning_rate"] == 7e-5
+    assert effective["dropout_rate"] == 0.37

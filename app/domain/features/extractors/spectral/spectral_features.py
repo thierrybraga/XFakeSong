@@ -13,8 +13,8 @@ import numpy as np
 
 from app.domain.features.interfaces import IFeatureExtractor
 
-from .....core.interfaces.audio import AudioData, AudioFeatures, FeatureType
-from .....core.interfaces.base import ProcessingResult, ProcessingStatus
+from .....core.contracts.audio import AudioData, AudioFeatures, FeatureType
+from .....core.contracts.base import ProcessingResult, ProcessingStatus
 from .components.advanced import (
     compute_spectral_crest,
     compute_spectral_decrease,

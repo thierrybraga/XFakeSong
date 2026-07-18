@@ -15,7 +15,7 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 
-from app.core.utils.audio_utils import normalize_audio, pad_or_truncate
+from app.utils.audio_utils import normalize_audio, pad_or_truncate
 from app.domain.models.architectures.layers import (
     AttentionPoolingLayer,
     create_classification_head,

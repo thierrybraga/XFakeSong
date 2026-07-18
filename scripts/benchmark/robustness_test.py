@@ -30,7 +30,7 @@ sys.path.insert(0, str(BASE_DIR))
 
 SAMPLE_RATE = 16_000
 MAX_AUDIO_SAMPLES = 16_000
-SPLITS_DIR = BASE_DIR / "app" / "datasets" / "splits"
+SPLITS_DIR = BASE_DIR / "data" / "datasets" / "splits"
 MODELS_DIR = BASE_DIR / "results" / "models"
 OUTPUT_PATH = BASE_DIR / "results" / "robustness_results.json"
 
@@ -45,18 +45,29 @@ MODELS_TO_TEST = {
 # Utilidades
 # ---------------------------------------------------------------------------
 
-def add_awgn(audio: np.ndarray, snr_db: float) -> np.ndarray:
-    """Adiciona ruido branco gaussiano para atingir SNR alvo (dB)."""
-    signal_power = np.mean(audio ** 2) + 1e-10
-    noise_power  = signal_power / (10 ** (snr_db / 10.0))
-    noise = np.random.randn(len(audio)).astype(np.float32) * np.sqrt(noise_power)
-    return np.clip(audio + noise, -1.0, 1.0)
+def add_awgn(audio: np.ndarray, snr_db: float, seed: int = 42) -> np.ndarray:
+    """AWGN canônico (delegado a benchmarks.data.BenchmarkData.add_awgn).
+
+    AJUSTE 2026-07-14: a implementação local anterior divergia do protocolo —
+    (1) fazia np.clip(x+ruído, -1, 1), que DISTORCE o ruído (deixa de ser
+    gaussiano e o SNR realizado sobe, especialmente a 10 dB, onde ~ +/-3σ
+    é cortado com frequência); (2) não normalizava a potência REALIZADA do
+    ruído (SNR realizado ≠ alvo por amostra); (3) usava o RNG global sem
+    semente (irreprodutível). Agora delega à mesma função usada pelo
+    benchmark oficial.
+    """
+    from benchmarks.data import BenchmarkData
+
+    audio = np.asarray(audio, dtype=np.float32)
+    return BenchmarkData.add_awgn(
+        audio[np.newaxis, :], snr_db, seed=seed
+    )[0]
 
 
 def load_split(split: str = "test") -> tuple:
     """Carrega split (test) com VAD/AGC simplificado."""
     import librosa
-    from app.core.utils.silero_vad import preprocess_audio
+    from app.utils.silero_vad import preprocess_audio
 
     split_dir = SPLITS_DIR / split
     X, y = [], []
@@ -167,9 +178,15 @@ def main():
         arch_results["clean"] = clean_metrics
         logger.info(f"  [clean] Acuracia={clean_metrics['accuracy_pct']:.1f}%  EER={clean_metrics['eer_pct']:.1f}%  AUC={clean_metrics['auc_roc']:.3f}")
 
-        # Avaliacao com ruido por SNR
+        # Avaliacao com ruido por SNR — chamada canônica em LOTE: uma
+        # realização independente por amostra e a MESMA convenção de semente
+        # do benchmark oficial (seed + 20000 + snr), reprodutível.
+        from benchmarks.data import BenchmarkData
+
         for snr in SNR_LEVELS:
-            X_noisy = np.stack([add_awgn(x, snr) for x in X_clean])
+            X_noisy = BenchmarkData.add_awgn(
+                np.asarray(X_clean, dtype=np.float32), snr, seed=42 + 20000 + int(snr)
+            )
             metrics = compute_metrics(model, X_noisy, y_test)
             arch_results[f"snr_{snr}db"] = metrics
             logger.info(f"  [SNR {snr:2d}dB] Acuracia={metrics['accuracy_pct']:.1f}%  EER={metrics['eer_pct']:.1f}%  AUC={metrics['auc_roc']:.3f}")

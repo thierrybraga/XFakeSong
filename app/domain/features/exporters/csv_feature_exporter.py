@@ -15,7 +15,7 @@ from typing import Any, Dict, List
 
 import numpy as np
 
-from app.core.interfaces.base import ProcessingResult, ProcessingStatus
+from app.core.contracts.base import ProcessingResult, ProcessingStatus
 from app.domain.features.models.segmented_features import SegmentedFeatures
 
 logger = logging.getLogger(__name__)

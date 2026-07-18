@@ -50,8 +50,7 @@ docker compose up --build -d            # alternativa direta
 ```
 XFakeSong/
 ├── main.py                 # entrypoint (--gradio | --bootstrap-dirs | --deploy | --port)
-├── app.py                  # entrada para Hugging Face Spaces
-├── gradio_app.py           # montagem da interface Gradio
+├── app.py                  # entrada para Hugging Face Spaces (importa app/interfaces/gradio/app.py)
 ├── Makefile                # build/up/down, train-*, benchmark-*, test-*, lint/format
 ├── Dockerfile              # imagem multi-stage (CPU/GPU)
 ├── docker-compose*.yml     # compose raiz + .train / .gpu / .benchmark
@@ -64,25 +63,28 @@ XFakeSong/
 ├── app/                    # codigo-fonte (Clean Architecture)
 │   ├── domain/             # regras de negocio puras (sem frameworks de UI)
 │   │   ├── features/       # extractors/, adapters/, registry de features
-│   │   ├── models/         # architectures/, training/, inference/
-│   │   └── services/       # DetectionService, TrainingService, UploadService, ...
-│   ├── application/        # pipeline/orchestrator.py — orquestra estagios (Chain of Responsibility)
-│   ├── core/               # infra transversal: config/, training/, utils/, interfaces/
-│   ├── interfaces/         # entrada: gradio/ (5 secoes role-based: Painel, Detectar, Investigar, Treinar, Gerenciar) e cli/
-│   ├── routers/            # endpoints FastAPI
-│   ├── schemas/            # modelos Pydantic (request/response)
+│   │   ├── models/         # architectures/, training/ (inclui secure_training_pipeline.py), inference/
+│   │   ├── services/       # DetectionService, TrainingService, UploadService, ...
+│   │   ├── dataset_metadata/  # dataset_catalog.py, speaker_manifest.py (catalogo/manifesto do dataset)
+│   │   └── xai/            # gradcam.py, shap_explainer.py, tabular.py (explicabilidade dos modelos)
+│   ├── core/               # infra transversal: config/, db/, auth/, contracts/ (interfaces SOLID)
+│   ├── interfaces/         # as 3 interfaces de entrada do projeto:
+│   │   ├── gradio/         # app.py (montagem, ex-gradio_app.py raiz), schema_patch.py, 5 abas role-based (tabs/), utils/
+│   │   ├── cli/            # menu interativo (context.py, menus/)
+│   │   └── web/            # FastAPI: main_fastapi.py, routers/, schemas/, static/, templates/
 │   ├── models/             # artefatos treinados (.keras/.pkl) — benchmark_final/
-│   ├── static/, templates/ # assets CSS e templates Jinja2 servidos por app/main_fastapi.py
-│   ├── utils/               # colab.py — helper isolado so para execucao via Google Colab (nao confundir com core/utils/)
-│   └── datasets/           # dados (real/ e fake/) e .npz de benchmark (nao versionado)
+│   └── utils/              # audio_utils/file_utils/helpers/silero_vad/system_utils (centrais)
+│                           #   + colab.py (helper isolado so para execucao via Google Colab)
+├── data/datasets/          # RAIZ CANONICA dos dados (real/, fake/, raw/, .npz) — nao versionado.
+│                           #   (app/datasets/ foi descontinuado em 2026-07-14 — causava fragmentacao)
 ├── docs/                   # documentacao MkDocs (00_..30_, RETREINO_AJUSTES.md) — indice completo em docs/index.md
 ├── notebooks/, figures/, tcc_overleaf/   # material academico (TCC)
 └── tests/                  # unit/, integration/, api/, functional/ espelhando app/
 ```
 
-**Regra de ouro**: `app/domain/` nunca importa de `app/interfaces/`, `app/routers/`
-ou frameworks de UI. Bibliotecas externas entram via wrapper em `app/core/` ou
-`app/domain/features/adapters/`.
+**Regra de ouro**: `app/domain/` nunca importa de `app/interfaces/` (gradio, cli
+ou web) nem de frameworks de UI. Bibliotecas externas entram via wrapper em
+`app/core/` ou `app/domain/features/adapters/`.
 
 ---
 
@@ -94,7 +96,7 @@ ou frameworks de UI. Bibliotecas externas entram via wrapper em `app/core/` ou
 | Registro/hiperparametros default das 14 arquiteturas | `app/domain/models/architectures/registry.py` (`ArchitectureRegistry`, `default_params`) |
 | Implementacao de cada arquitetura | `architectures/<nome>.py` (`create_model(...)` compila o modelo) |
 | Camadas customizadas (SincConv, GAT, AMSoftmax...) | `architectures/layers.py` |
-| Orquestracao de treino | `app/domain/services/training_service.py`, `app/core/training/` |
+| Orquestracao de treino | `app/domain/services/training_service.py`, `app/domain/models/training/secure_training_pipeline.py` |
 | Deteccao/inferencia | `app/domain/services/detection_service.py` |
 | Extracao de features | `app/domain/features/` (implementar `IFeatureExtractor`, registrar no registry) |
 | Config global de treino (LR, early stop, augmentation, calibracao) | `app/core/config/settings.py` (`TrainingConfig`) |
@@ -158,8 +160,9 @@ make train-nvidia     # perfil TensorFlow/Keras em GPU (Docker)
 make train-cpu        # perfil classical/CPU (Docker)
 
 # Sequencial, um modelo por vez (timeout, --resume, log por modelo):
+# Dataset canônico: data/datasets/ (raiz consolidada em 2026-07-14).
 python scripts/benchmark/run_models_sequential.py \
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
   --models AASIST Ensemble --epochs 100 --snr 30 20 10 \
   --device-profile gpu --out results/<run> --resume
 
@@ -167,7 +170,7 @@ python scripts/benchmark/run_models_sequential.py \
 python scripts/benchmark/run_benchmark.py --model AASIST --dataset <npz> --out results/bench_aasist
 ```
 
-Pre-requisitos: dataset `.npz` em `app/datasets/`, TensorFlow/PyTorch e GPU
+Pre-requisitos: dataset `.npz` em `data/datasets/`, TensorFlow/PyTorch e GPU
 (ver [docs/10_TREINAMENTO.md](docs/10_TREINAMENTO.md)).
 
 ### Retreino dos modelos ajustados

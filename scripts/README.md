@@ -74,7 +74,7 @@ python scripts/<categoria>/<nome>.py [opções]
 | `export_rf_feature_importance.py` | Extrai `feature_importances_` do Random Forest promovido e gera figura+tabela LaTeX (63 descritores). |
 | `export_tcc_extra_figures.py` | Gera curvas DET e distribuições de score (AASIST×RawGAT-ST) a partir de `predictions_clean.csv`. |
 | `rebuild_inference_contracts.py` | Regenera os sidecars `bench_*_config.json` dos modelos promovidos a partir do run real (`metrics.json` + `predictions_clean.csv`): `eer_threshold` verdadeiro e `input_contract` completo com `feature_frontend` do benchmark. |
-| `run_shap_analysis.py` | **XAI**: análise SHAP dos clássicos (RF/SVM sobre o vetor tabular) e mapas de ativação Grad-CAM das redes espectrais Keras; ver `app/core/xai/`. |
+| `run_shap_analysis.py` | **XAI**: análise SHAP dos clássicos (RF/SVM sobre o vetor tabular) e mapas de ativação Grad-CAM das redes espectrais Keras; ver `app/domain/xai/`. |
 
 ## ops/ — operação, infraestrutura e qualidade
 
@@ -87,7 +87,7 @@ python scripts/<categoria>/<nome>.py [opções]
 | `build_smoke_test.sh` | Smoke test do build Docker completo. |
 | `sync_hf_models.py` | Baixa modelos treinados do HF Hub para `app/models` (no-op sem `MODEL_REPO_ID`; usado no boot de Spaces). |
 | `upload_models_to_hf.py` | Publica artefatos consolidados no HF Hub (dry-run sem credenciais; nunca imprime token). |
-| `build_notebooks.py` | Regenera os notebooks de estudo/reprodução em `notebooks/` com API real do projeto. |
+| `build_notebooks.py` | Regenera os notebooks de estudo/reprodução em `docs/notebooks/` com API real do projeto. |
 | `setup_gpu_windows.bat` | Configuração de GPU/CUDA em Windows nativo. |
 | `run_large_dataset_and_benchmark.ps1` | Fluxo Windows: build da imagem, dataset tier `large`, auditoria e benchmark sequencial. |
 

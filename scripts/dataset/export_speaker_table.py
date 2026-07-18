@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Exporta tabela consolidada de falantes do dataset.
 
-Gera CSV/JSONL com uma linha por WAV encontrado em `app/datasets`, incluindo
+Gera CSV/JSONL com uma linha por WAV encontrado em `data/datasets`, incluindo
 classe, split, fonte, speaker_id, speaker_key, status do ID, tamanho e duração.
 IDs reais vêm de `speaker_manifest.json`; quando não há entrada no manifesto, o
 status fica `fallback_source` e o speaker_key cai para o prefixo da fonte.
@@ -18,7 +18,7 @@ from typing import Iterable
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DATASETS_DIR = ROOT / "app" / "datasets"
+DATASETS_DIR = ROOT / "data" / "datasets"
 
 
 def _load_manifest(dataset_dir: Path) -> dict[str, dict]:
@@ -86,16 +86,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Gera tabela CSV/JSONL de IDs de falante por arquivo."
     )
-    parser.add_argument("--dataset-dir", default="app/datasets")
+    parser.add_argument("--dataset-dir", default="data/datasets")
     parser.add_argument("--scope", choices=["active", "splits", "all"], default="all")
     parser.add_argument(
         "--csv-out",
-        default="app/datasets/speaker_table.csv",
+        default="data/datasets/speaker_table.csv",
         help="CSV de saída.",
     )
     parser.add_argument(
         "--jsonl-out",
-        default="app/datasets/speaker_table.jsonl",
+        default="data/datasets/speaker_table.jsonl",
         help="JSONL de saída.",
     )
     args = parser.parse_args()

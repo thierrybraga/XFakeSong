@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 
 def main() -> int:
     try:
-        logger.info("Importando gradio_app...")
-        import gradio_app  # noqa: F401, E402
+        logger.info("Importando app.interfaces.gradio.app...")
+        import app.interfaces.gradio.app as gradio_app  # noqa: F401, E402
 
         logger.info("OK: gradio_app importado sem erros")
 

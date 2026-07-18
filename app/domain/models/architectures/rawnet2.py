@@ -20,7 +20,6 @@ from typing import Tuple
 import tensorflow as tf
 from tensorflow.keras import layers, models
 
-from app.core.utils.audio_utils import preprocess_legacy as preprocess
 from app.domain.models.architectures.layers import (
     AudioNormalizationLayer,
     FeatureMapScalingLayer,
@@ -28,8 +27,8 @@ from app.domain.models.architectures.layers import (
     PreEmphasisLayer,
     ResidualBlock1D,
     SincNetLayer,
-    create_classification_head,
 )
+from app.utils.audio_utils import preprocess_legacy as preprocess
 
 logger = logging.getLogger(__name__)
 
@@ -129,13 +128,18 @@ def _create_rawnet2_model(
     x = layers.MaxPooling1D(pool_size=3)(x)
 
     # 3. Residual Blocks + FMS
+    # Paridade com o paper/implementação oficial (baseline ASVspoof 2021):
+    # MaxPool(3) após CADA bloco residual e FMS na forma mul+add (x*y + y).
+    # AJUSTE 2026-07-14: antes o pooling só existia após os blocos 2 e 4
+    # (i in [1, 3]) → a GRU recebia ~590 passos temporais em vez de ~7
+    # (com recorte de 1 s), o que explica tanto o treino lento (~130 min)
+    # quanto o EER de 32,7% limpo vs baseline 2,89%: GRU(1024) não aprende
+    # dependências sobre sequências tão longas de features quase-cruas.
     for i, filters in enumerate(res_filters):
         x = ResidualBlock1D(out_channels=filters, name=f'res_block_{i + 1}')(x)
-        x = FeatureMapScalingLayer(name=f'fms_{i + 1}')(x)
-
-        # Max pooling after some blocks to reduce temporal dimension
-        if i in [1, 3]:
-            x = layers.MaxPooling1D(pool_size=3)(x)
+        x = FeatureMapScalingLayer(
+            scale_mode='mul_add', name=f'fms_{i + 1}')(x)
+        x = layers.MaxPooling1D(pool_size=3, name=f'res_pool_{i + 1}')(x)
 
     # 4. Temporal Modeling (GRU)
     # Paridade com o paper "Improved RawNet": UMA camada GRU(1024) — antes

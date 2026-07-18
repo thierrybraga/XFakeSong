@@ -98,13 +98,13 @@ def create_optimization_tab():
         )
 
         # --- Seção de Hardware ---
-        with gr.Row():
+        with gr.Row(elem_classes="responsive-grid"):
             with gr.Column():
                 gr.Markdown("#### 🖥️ Configuração de Hardware")
                 devices = get_available_devices()
                 default_dev = devices[0] if devices else "CPU"
 
-                with gr.Row():
+                with gr.Row(elem_classes="action-row"):
                     device_dropdown = gr.Dropdown(
                         choices=devices,
                         label="Dispositivo de Processamento",
@@ -127,7 +127,7 @@ def create_optimization_tab():
 
         gr.Markdown("---")  # Separator
 
-        with gr.Row():
+        with gr.Row(elem_classes="responsive-grid"):
             with gr.Column(scale=1):
                 arch_choices = architecture_registry.list_architectures()
                 opt_arch = gr.Dropdown(
@@ -246,7 +246,7 @@ def create_optimization_tab():
                 "`optuna` instalado. ⚠️ Pode levar **vários minutos** — treina um "
                 "modelo por trial."
             )
-            with gr.Row():
+            with gr.Row(elem_classes="responsive-grid"):
                 with gr.Column(scale=1):
                     tune_arch = gr.Dropdown(
                         choices=arch_choices,
@@ -255,9 +255,9 @@ def create_optimization_tab():
                     )
                     tune_dataset = gr.Textbox(
                         label="Dataset (.npz com X_train/y_train)",
-                        placeholder="ex.: app/datasets/features/train.npz",
+                        placeholder="ex.: data/datasets/features/train.npz",
                     )
-                    with gr.Row():
+                    with gr.Row(elem_classes="responsive-grid"):
                         tune_trials = gr.Number(
                             label="Nº de trials", value=10, precision=0
                         )

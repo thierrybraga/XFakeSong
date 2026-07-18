@@ -2,7 +2,7 @@
 
 dataset:
   canonical_tier: medium
-  canonical_npz: app/datasets/benchmark_audio_raw_balanced_15k.npz
+  canonical_npz: data/datasets/benchmark_audio_raw_balanced_15k.npz
   sample_rate: 16000
   duration_sec: 5.0
   split:
@@ -37,4 +37,4 @@ dataset:
     raw_dir: datasets/raw
     processed_dir: datasets/processed
     manifests_dir: datasets/manifests
-    splits_dir: app/datasets/splits
+    splits_dir: data/datasets/splits

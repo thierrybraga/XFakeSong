@@ -4,7 +4,7 @@ from pathlib import Path
 # Adicionar diretório raiz ao PYTHONPATH para garantir importações corretas
 sys.path.insert(0, str(Path(__file__).parent))
 
-from gradio_app import demo  # noqa: E402
+from app.interfaces.gradio.app import demo  # noqa: E402
 
 if __name__ == "__main__":
     # Hugging Face Spaces disponibiliza a porta na variável de ambiente

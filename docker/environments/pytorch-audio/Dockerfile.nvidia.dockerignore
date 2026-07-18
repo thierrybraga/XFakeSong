@@ -1,0 +1,120 @@
+# ============================================================
+# Contexto de build para AMBIENTES DE TREINO (classical-ml, tensorflow-keras,
+# pytorch-audio, ssl-transformers) — arquivo espelhado em cada
+# docker/environments/<env>/Dockerfile.{cpu,nvidia}.dockerignore.
+#
+# Difere do .dockerignore raiz em dois pontos:
+#   1. NÃO reinclui app/models/benchmark_final/** nem bench_*.keras/pkl —
+#      containers de treino só ESCREVEM modelos (via o volume montado por
+#      docker/compose/train.*.yml: ../..:/app), nunca precisam ler os ~3GB de
+#      checkpoints já promovidos. A regra do raiz existe só para empacotar o
+#      inference-api.
+#   2. INCLUI benchmarks/ (excluído no raiz como "dev/docs") — é import direto
+#      de scripts/training/train_by_family.py -> scripts/benchmark/*.
+# ============================================================
+
+# --- VCS ---
+.git/
+.gitignore
+.gitattributes
+.github/
+.gitlab-ci.yml
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+.venv-wsl/
+.venv_wsl/
+venv/
+env/
+ENV/
+.python-version
+*.egg-info/
+*.egg
+.eggs/
+build/
+dist/
+pip-wheel-metadata/
+
+# --- Caches / Test artifacts ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+.hypothesis/
+nosetests.xml
+coverage.xml
+*.cover
+.cache/
+
+# --- IDE / Editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# --- Logs / Temp ---
+logs/
+*.log
+tmp/
+temp/
+results/
+
+# --- Dados e modelos (montados em runtime — nunca baked-in em imagem de treino) ---
+cache/
+data/
+datasets/
+app/datasets/
+app/models/
+app/results/
+models/
+
+# --- Dev / docs (não necessários para treino) ---
+docs/
+mkdocs.yml
+site/
+notebooks/
+*.ipynb
+.ipynb_checkpoints/
+tests/
+
+# --- Claude / IA assist (memory local) ---
+.claude/
+CLAUDE.md
+
+# --- Docker próprios ---
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# --- Env / secrets ---
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# --- OS ---
+.AppleDouble
+.LSOverride
+Icon?
+
+# --- Misc ---
+*.bak
+*.tmp
+*.zip
+*.tar.gz
+*.7z
+mlruns/
+.mlflow/
+wandb/

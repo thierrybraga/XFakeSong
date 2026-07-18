@@ -22,8 +22,8 @@ from benchmarks.config import (  # noqa: E402
     OFFICIAL_TCC_RESULT_ORDER,
 )
 
-SUMMARY = Path("results/tcc_consolidated/benchmark_summary.json")
-OUTPUT = Path("tcc_overleaf/tabelas_benchmark.tex")
+SUMMARY = ROOT / "results" / "02_outputs" / "tcc_consolidated" / "benchmark_summary.json"
+OUTPUT = ROOT / "results" / "01_paper" / "tabelas_benchmark.tex"
 FIGURES_DIR = "figures"
 
 MODEL_ORDER = list(OFFICIAL_TCC_RESULT_ORDER)
@@ -39,15 +39,6 @@ KEY_ALIAS = {
     "HuBERT": "HuBERT Original",
 }
 
-BEST_EPOCH = {
-    "RawNet2": 55,
-    "AASIST": 51,
-    "RawGAT-ST": 3,
-    "Conformer": 17,
-    "CCT": 30,
-    "AST": 50,
-    "Res2Net": 25,
-}
 
 
 def pct(value: float | None) -> str:
@@ -105,6 +96,30 @@ def model_rows(data: list[dict]) -> list[dict]:
     return [by_key[key] for key in MODEL_ORDER if key in by_key]
 
 
+
+def academic_protocol_issues(rows: list[dict]) -> list[str]:
+    """Valida os controles que tornam as tabelas comparáveis."""
+
+    issues: list[str] = []
+    for row in rows:
+        key = row["key"]
+        dataset = row.get("dataset") or {}
+        noise = row.get("noise_protocol") or {}
+        if dataset.get("n_total") != 15000:
+            issues.append(f"{key}: dataset n_total={dataset.get('n_total')}, esperado 15000")
+        overlap = dataset.get("split_overlap_audit") or {}
+        if overlap.get("passed") is not True:
+            issues.append(f"{key}: auditoria de duplicatas ausente ou reprovada")
+        if noise.get("evaluation_domain") != "waveform":
+            issues.append(f"{key}: AWGN não registrado no domínio waveform")
+        if noise.get("frontend_after_noise") is not True:
+            issues.append(f"{key}: frontend_after_noise não confirmado")
+        threshold = row.get("decision_threshold")
+        if threshold is None or abs(float(threshold) - 0.5) > 1e-9:
+            issues.append(f"{key}: limiar={threshold}, esperado 0.5")
+        if key not in {"SVM", "RandomForest"} and row.get("epochs") != 100:
+            issues.append(f"{key}: épocas executadas={row.get('epochs')}, esperado 100")
+    return issues
 def tdcf_value(row: dict) -> float | None:
     return (
         row.get("min_tdcf")
@@ -188,12 +203,10 @@ def build_robustness_table(rows: list[dict]) -> str:
     return "\n".join(table_rows)
 
 
-def stability_note(key: str, drop: float | None) -> str:
-    if key == "RawGAT-ST":
-        return "convergência precoce"
-    if key == "CCT" and drop is not None and drop >= 0.03:
-        return "flutuação moderada"
-    return "estável"
+def stability_note(_key: str, drop: float | None) -> str:
+    if drop is None:
+        return "sem histórico"
+    return "descritivo; 1 execução"
 
 
 def build_stability_table(rows: list[dict]) -> str:
@@ -216,7 +229,7 @@ def build_stability_table(rows: list[dict]) -> str:
                 + r" \\"
             )
             continue
-        best_epoch = row.get("best_epoch") or BEST_EPOCH.get(key)
+        best_epoch = row.get("best_epoch")
         drop = None
         if row.get("best_val") is not None and row.get("final_val") is not None:
             drop = max(0.0, row["best_val"] - row["final_val"])
@@ -250,7 +263,7 @@ def tables_fragment(
 % Recorte oficial: Random Forest, SVM, CCT, AST, Res2Net, Conformer,
 % RawNet2, AASIST, RawGAT-ST, WavLM Original e HuBERT Original.
 % Nao editar a mao; regenerar com:
-%   python scripts/reporting/consolidate_results.py <runs...> --prefer-last --copy-to tcc_overleaf/figures
+%   python scripts/reporting/consolidate_results.py <runs...> --prefer-last --copy-to results/01_paper/figures
 %   python scripts/reporting/update_tcc_latex.py
 % ====================================================================
 
@@ -289,7 +302,7 @@ Modelo & Parâmetros & Tam.\,(MB) & Lat.\,(ms) & Acur. & EER \\
 
 \begin{{table}}[ht]
 \centering
-\caption{{Robustez a ruído AWGN por modelo consolidado.}}
+\caption{{Robustez a ruído AWGN, aplicada à forma de onda antes dos frontends, por modelo consolidado.}}
 \label{{tab:robustez_awgn}}
 \resizebox{{\textwidth}}{{!}}{{%
 \begin{{tabular}}{{lcccc}}
@@ -304,7 +317,7 @@ Modelo & Limpo & 30\,dB & 20\,dB & 10\,dB \\
 
 \begin{{table}}[ht]
 \centering
-\caption{{Estabilidade de treinamento (validação).}}
+\caption{{Resumo descritivo das curvas de validação em execução única.}}
 \label{{tab:estabilidade_treinamento}}
 \resizebox{{\textwidth}}{{!}}{{%
 \begin{{tabular}}{{lccccc}}
@@ -325,7 +338,7 @@ Modelo & Val.\,pico & Época & Val.\,final & Queda & Nota \\
 
 \begin{{figure}}[ht]\centering
 \includegraphics[width=\textwidth]{{{fd}/benchmark_robustness.png}}
-\caption{{Robustez a ruído (acurácia vs.\ SNR).}}
+\caption{{Robustez a AWGN na forma de onda (acurácia vs.\ SNR).}}
 \label{{fig:benchmark_robustness}}
 \end{{figure}}
 
@@ -356,7 +369,7 @@ Modelo & Val.\,pico & Época & Val.\,final & Queda & Nota \\
 
 \begin{{figure}}[ht]\centering
 \includegraphics[width=0.95\textwidth]{{{fd}/training_stability.png}}
-\caption{{Resumo de estabilidade e convergência dos onze modelos consolidados. Modelos clássicos são indicados como ajuste por validação cruzada, sem trajetória temporal por época.}}
+\caption{{Resumo descritivo das curvas de validação em execução única; a diferença pico--final não demonstra, isoladamente, estabilidade de otimização. Modelos clássicos não possuem trajetória por época.}}
 \label{{fig:training_stability}}
 \end{{figure}}
 
@@ -380,6 +393,10 @@ def main() -> None:
                         help="arquivo .tex de saída")
     parser.add_argument("--figures-dir", default=FIGURES_DIR,
                         help="diretório das figuras visto pelo main.tex")
+    parser.add_argument("--allow-incomplete", action="store_true",
+                        help="permite gerar fragmento com menos de 11 modelos")
+    parser.add_argument("--allow-legacy", action="store_true",
+                        help="ignora validações do protocolo acadêmico")
     parser.add_argument("--source", default=None,
                         help="aceito por compatibilidade; não é reescrito")
     parser.add_argument("--in-place", action="store_true",
@@ -400,8 +417,15 @@ def main() -> None:
             f"ERRO: summary não encontrado: {summary}. "
             "Rode antes scripts/reporting/consolidate_results.py."
         )
-
     rows = model_rows(json.loads(summary.read_text(encoding="utf-8")))
+    if len(rows) != len(MODEL_ORDER) and not args.allow_incomplete:
+        sys.exit(
+            f"ERRO: summary contém {len(rows)}/{len(MODEL_ORDER)} modelos oficiais. "
+            "Use --allow-incomplete somente para depuração."
+        )
+    issues = academic_protocol_issues(rows)
+    if issues and not args.allow_legacy:
+        sys.exit("ERRO: protocolo acadêmico inválido:\n- " + "\n- ".join(issues))
     fragment = tables_fragment(
         results_table=build_results_table(rows),
         efficiency_table=build_efficiency_table(rows),

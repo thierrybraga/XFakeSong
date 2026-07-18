@@ -1,61 +1,24 @@
-"""Módulo de arquiteturas de modelos."""
+"""Módulo de arquiteturas de modelos.
 
-# Importar todas as arquiteturas disponíveis
-from . import (
-    aasist,
-    architecture_patcher,
-    conformer,
-    efficientnet_lstm,
-    ensemble,
-    multiscale_cnn,
-    random_forest,
-    rawgat_st,
-    registry,
-    safe_normalization,
-    spectrogram_transformer,
-    svm,
-    transforms,
-)
+Import eager restrito a submódulos livres de TensorFlow (svm, random_forest,
+registry). Os módulos Keras/TF individuais (aasist, conformer, etc.) e os
+helpers que dependem de `tensorflow.keras` (architecture_patcher,
+safe_normalization, transforms) NUNCA devem ser importados aqui: qualquer
+consumidor deste pacote — incluindo o ambiente Docker "classical-ml"
+(SVM/RandomForest puros, sem TF instalado) — herdaria TensorFlow como
+dependência obrigatória.
 
-# Importar funções de correção de arquiteturas
-from .architecture_patcher import (
-    ArchitecturePatcher,
-    patch_architecture_for_safety,
-    validate_model_safety,
-)
-
-# Importar registry functions para conveniência
-from .registry import (
-    architecture_registry,
-    create_model_by_name,
-    create_safe_model_by_name,
-    get_architecture_info,
-    get_available_architectures,
-    validate_architecture_input,
-)
-
-# Importar funções de normalização segura
-from .safe_normalization import (
-    SafeGroupNormalization,
-    SafeInstanceNormalization,
-    SafeLayerNormalization,
-    get_safe_normalization_layer,
-)
+`create_model_by_name`/`ArchitectureRegistry.create_model` (registry.py) já
+carregam esses módulos sob demanda via `__import__`/import local. Precisa de
+`SafeInstanceNormalization`, `ArchitecturePatcher` etc.? Importe direto do
+submódulo: `from app.domain.models.architectures.safe_normalization import ...`.
+"""
+from . import random_forest, registry, svm
 
 __all__ = [
-    "aasist",
-    "rawgat_st",
-    "efficientnet_lstm",
-    "multiscale_cnn",
-    "spectrogram_transformer",
-    "conformer",
-    "ensemble",
     "svm",
     "random_forest",
-    "transforms",
     "registry",
-    "safe_normalization",
-    "architecture_patcher",
     # Registry functions
     "architecture_registry",
     "get_available_architectures",
@@ -63,13 +26,14 @@ __all__ = [
     "create_safe_model_by_name",
     "get_architecture_info",
     "validate_architecture_input",
-    # Safe normalization
-    "SafeInstanceNormalization",
-    "SafeLayerNormalization",
-    "SafeGroupNormalization",
-    "get_safe_normalization_layer",
-    # Architecture patching
-    "ArchitecturePatcher",
-    "patch_architecture_for_safety",
-    "validate_model_safety"
 ]
+
+# Importar registry functions para conveniência (registry.py não depende de TF).
+from .registry import (  # noqa: E402
+    architecture_registry,
+    create_model_by_name,
+    create_safe_model_by_name,
+    get_architecture_info,
+    get_available_architectures,
+    validate_architecture_input,
+)

@@ -32,9 +32,12 @@ ataca a origem em vez dos sintomas modelo a modelo.
   - RawNet2 → `use_augmentation=False` — [benchmarks/runner.py:331](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/runner.py)
   - AASIST / RawGAT-ST → `use_augmentation=False` — [benchmarks/runner.py:339](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/runner.py)
   - SpectrogramTransformer → `use_augmentation=False` — [benchmarks/runner.py:379](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/runner.py)
-- Já existe um helper de ruído **SNR-correto** (potência do sinal × fator),
-  porém **não usado** pelo `AudioAugmenter`:
-  `add_gaussian_noise` — [app/domain/models/augmentation/components/time_domain.py:7](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/models/augmentation/components/time_domain.py).
+- **[RESOLVIDO]** `AudioAugmenter._add_noise` já amostra SNR alvo e deriva o
+  desvio-padrão da potência do sinal — ver
+  [augmentation.py:113](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/models/training/augmentation.py).
+  A pasta `app/domain/models/augmentation/` (implementação paralela e não
+  usada das mesmas técnicas) foi removida na consolidação de código
+  redundante; não há mais duplicata a sincronizar.
 
 > Consequência: os modelos são **testados** com ruído calibrado que **nunca
 > viram no treino**. Logo, qualquer "augmentation ruidoso" recomendado precisa
@@ -45,7 +48,7 @@ ataca a origem em vez dos sintomas modelo a modelo.
 
 - Todos os splits hoje são **estratificados apenas por classe** (real/fake),
   sem agrupamento por falante/gerador:
-  - `SecureDataSplitter._stratified_split` — [app/core/training/secure_training_pipeline.py:86](https://github.com/thierrybraga/XFakeSong/blob/main/app/core/training/secure_training_pipeline.py)
+  - `SecureDataSplitter._stratified_split` — [app/domain/models/training/secure_training_pipeline.py:86](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/models/training/secure_training_pipeline.py)
   - `BenchmarkData.stratified_split` — [benchmarks/data.py:145](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/data.py)
   - `runner._stratified_test_labels` — [benchmarks/runner.py:267](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/runner.py)
 - A identidade de **falante/gerador** agora é propagada por `groups`,
@@ -78,7 +81,7 @@ Ajustes de código **aplicados e testados** (`tests/unit/test_retraining_adjustm
 | P2.0 ruído calibrado por SNR (casa treino↔teste) | ✅ feito | [augmentation.py](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/models/training/augmentation.py), [settings.py](https://github.com/thierrybraga/XFakeSong/blob/main/app/core/config/settings.py) |
 | P2 augmentation reativada (RawNet2, SpectrogramTransformer) | ✅ feito | [runner.py](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/runner.py) |
 | P1 hiperparâmetros + restauração de checkpoint | ✅ feito | [spectrogram_transformer.py](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/models/architectures/spectrogram_transformer.py), [runner.py](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/runner.py) |
-| P0 `groups` ponta-a-ponta + split por grupo | ✅ feito | [data.py](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/data.py), [secure_training_pipeline.py](https://github.com/thierrybraga/XFakeSong/blob/main/app/core/training/secure_training_pipeline.py) |
+| P0 `groups` ponta-a-ponta + split por grupo | ✅ feito | [data.py](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/data.py), [secure_training_pipeline.py](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/models/training/secure_training_pipeline.py) |
 | P0.4 protocolo cross-generator + CLI/presets | ✅ feito | [config.py](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/config.py), [run_benchmark.py](https://github.com/thierrybraga/XFakeSong/blob/main/scripts/benchmark/run_benchmark.py) |
 | P2 SVM/RF: RASTA-PLP + augmentation ruidoso (espaço de feature) | ✅ feito | [data.py](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/data.py), [runner.py](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/runner.py) |
 | P2 Ensemble: reponderar fusão por robustez (`weights="robustness"`) | ✅ feito | [detection_service.py](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/services/detection_service.py) |
@@ -105,17 +108,17 @@ Ajustes de código **aplicados e testados** (`tests/unit/test_retraining_adjustm
 ```bash
 # Reteste cross-generator (P0.4) — o mais importante antes da defesa
 python scripts/benchmark/run_benchmark.py --full \
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
   --cross-generator fkvoice --out results/bench_xgen
 
 # Split disjunto por fonte (P0) — use se houver mais grupos/falantes no futuro
 python scripts/benchmark/run_benchmark.py --full \
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
   --group-split --out results/bench_group
 
 # Retreino padrão (in-distribution) com augmentation SNR + P1/P2 já aplicados
 python scripts/benchmark/run_benchmark.py --full \
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
   --out results/bench_indist
 ```
 
@@ -124,7 +127,7 @@ python scripts/benchmark/run_benchmark.py --full \
 ```bash
 # Ablação de fine-tuning do WavLM (varre LR; baseline HuBERT)
 python scripts/training/ablate_wavlm_finetune.py \
-  --dataset app/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
   --lrs 1e-5 3e-5 1e-4 --epochs 30 --out results/ablation_wavlm
 
 # Pruning do MultiscaleCNN (requer: pip install tensorflow-model-optimization)
@@ -170,9 +173,9 @@ vazados.
   train/val/test. Manter o caminho atual como fallback sem `groups`.
 - [ ] `runner._stratified_test_labels` ([benchmarks/runner.py:267](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/runner.py)):
   espelhar a lógica agrupada para o teste held-out.
-- [ ] `SecureDataSplitter` ([app/core/training/secure_training_pipeline.py:34](https://github.com/thierrybraga/XFakeSong/blob/main/app/core/training/secure_training_pipeline.py)):
+- [ ] `SecureDataSplitter` ([app/domain/models/training/secure_training_pipeline.py:34](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/models/training/secure_training_pipeline.py)):
   adicionar `use_group_split` + leitura de `metadata['groups']` em
-  `split_data` ([:41](https://github.com/thierrybraga/XFakeSong/blob/main/app/core/training/secure_training_pipeline.py)).
+  `split_data` ([:41](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/models/training/secure_training_pipeline.py)).
 
 ### P0.4 — Protocolo cross-generator explícito
 - [ ] Adicionar modo de avaliação "cross-generator": treinar sem o gerador XTTS
@@ -189,7 +192,7 @@ vazados.
 
 ### Spectrogram Transformer (colapso val 98% → teste 71,5%)
 Hiperparâmetros atuais: `lr=0.0003, dropout=0.1, l2=0.0001`
-([optimized_training_config.py:271](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/models/training/optimized_training_config.py)).
+([hyperparameter_defaults.py:55](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/models/training/hyperparameter_defaults.py)).
 
 - [ ] **Val disjunto por fonte** (P0) — provável causa real do colapso.
 - [ ] **Restaurar melhor checkpoint** — garantir `restore_best_weights=True`
@@ -199,7 +202,7 @@ Hiperparâmetros atuais: `lr=0.0003, dropout=0.1, l2=0.0001`
   **default** para este modelo.
 - [ ] **LR menor + weight decay maior + mais dropout**: em
   `get_recommended_hyperparameters["SpectrogramTransformer"]`
-  ([optimized_training_config.py:271](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/models/training/optimized_training_config.py)) →
+  ([hyperparameter_defaults.py:55](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/models/training/hyperparameter_defaults.py)) →
   `dropout_rate 0.1 → 0.3`, `weight_decay` explícito (ex. `0.01–0.05`),
   `learning_rate 3e-4 → 1e-4`.
 - [ ] **Reativar `reduce_lr_on_plateau`** — hoje desligado p/ este modelo
@@ -220,9 +223,10 @@ Aplicar a **todos** os modelos P2 antes dos ajustes específicos.
 - [ ] Reescrever `AudioAugmenter._add_noise`
   ([augmentation.py:104](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/models/training/augmentation.py)) para
   **amostrar um SNR alvo** (ex. uniforme em 5–40 dB) e derivar `noise_std` da
-  potência do sinal — reutilizar a fórmula de
-  [components/time_domain.py:7](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/models/augmentation/components/time_domain.py)
-  e de [data.py:177](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/data.py) (mesma definição usada no teste).
+  potência do sinal — reutilizar a mesma definição de
+  [data.py:177](https://github.com/thierrybraga/XFakeSong/blob/main/benchmarks/data.py) (mesma definição usada no teste).
+  **[RESOLVIDO]** já implementado assim em
+  [augmentation.py:113](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/models/training/augmentation.py).
 - [ ] Adicionar `snr_range_db` ao `augmentation_config`
   ([settings.py:183](https://github.com/thierrybraga/XFakeSong/blob/main/app/core/config/settings.py)).
 - [ ] Garantir cobertura de reverberação/codec p/ raw-audio: já existem
@@ -276,13 +280,14 @@ Aplicar a **todos** os modelos P2 antes dos ajustes específicos.
 
 ### EfficientNet-LSTM — 91%, maior latência, 82% em 10 dB
 - [ ] Retune de baixa prioridade (augmentation P2.0 + ajuste de `dropout`/`lstm_units`
-  — [optimized_training_config.py:287](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/models/training/optimized_training_config.py)).
+  — [hyperparameter_defaults.py:71](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/models/training/hyperparameter_defaults.py)).
 
 ### MultiscaleCNN — 99,73% mas 82% em 10 dB e 188 MB
 - [ ] Augmentation P2.0.
-- [ ] **Pruning + quantização**: usar
-  [app/domain/models/training/quantization_aware.py](https://github.com/thierrybraga/XFakeSong/blob/main/app/domain/models/training/quantization_aware.py)
-  (QAT→tflite int8) para reduzir os 188 MB.
+- [ ] **Pruning + quantização** (QAT→tflite int8) para reduzir os 188 MB — o
+  protótipo `quantization_aware.py` foi removido por estar sem uso (nunca
+  integrado ao pipeline); reimplementar via `tensorflow-model-optimization`
+  se este item for priorizado.
 
 ---
 

@@ -9,7 +9,7 @@ Exemplos:
     python scripts/benchmark/run_benchmark.py --quick
 
     # Execução do TCC (9 modelos do artigo + API), dataset real .npz:
-    python scripts/benchmark/run_benchmark.py --full --dataset app/datasets/brspeech_df.npz
+    python scripts/benchmark/run_benchmark.py --full --dataset data/datasets/brspeech_df.npz
 
     # Sob medida:
     python scripts/benchmark/run_benchmark.py --archs RawNet2 AASIST SVM RandomForest \
@@ -65,6 +65,28 @@ def main() -> int:
     p.add_argument("--epochs", type=int, help="épocas de treino por arquitetura")
     p.add_argument("--snr", nargs="+", type=int, metavar="DB",
                    help="níveis de SNR (dB) do teste de robustez")
+    p.add_argument(
+        "--waveform-train-augmentation",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="gera augmentation AWGN na forma de onda antes do frontend",
+    )
+    p.add_argument(
+        "--train-aug-snr", nargs="+", type=int, metavar="DB",
+        help="níveis de SNR distribuídos nas cópias ruidosas de treino",
+    )
+    p.add_argument(
+        "--train-noise-copies", type=int,
+        help="número de cópias ruidosas balanceadas por amostra (default: 1)",
+    )
+    p.add_argument(
+        "--waveform-noise-batch-size", type=int,
+        help="lote da geração AWGN em forma de onda (não altera hiperparâmetros do modelo)",
+    )
+    p.add_argument(
+        "--allow-feature-space-awgn", action="store_true",
+        help="permite fallback legado para NPZ sem forma de onda (não usar no artigo)",
+    )
     p.add_argument("--out", metavar="DIR", help="pasta de saída dos artefatos")
     p.add_argument(
         "--models-dir",
@@ -106,6 +128,13 @@ def main() -> int:
     p.add_argument("--unseen-speaker", metavar="FALANTE", default=None,
                    help="tier large: segura este falante fora do treino e o usa "
                         "como teste (protocolo de usuário não visto)")
+    p.add_argument("--codec-eval", nargs="+", default=None,
+                   metavar="CODEC", choices=["mp3", "opus"],
+                   help="robustez a codec com perdas (round-trip ffmpeg na "
+                        "forma de onda, mesmo ponto do AWGN). Ex.: mp3 opus")
+    p.add_argument("--bootstrap-ci", type=int, default=None,
+                   help="nº de reamostragens do IC 95%% de bootstrap "
+                        "(default: 1000; 0 desliga)")
     args = p.parse_args()
 
     from benchmarks import BenchmarkConfig, plan_benchmark, run_benchmark
@@ -148,6 +177,20 @@ def main() -> int:
         cfg.epochs = args.epochs
     if args.snr:
         cfg.snr_levels_db = args.snr
+    if args.waveform_train_augmentation is not None:
+        cfg.waveform_noise_augmentation = args.waveform_train_augmentation
+    if args.train_aug_snr:
+        cfg.train_aug_snr_db = args.train_aug_snr
+    if args.waveform_noise_batch_size is not None:
+        if args.waveform_noise_batch_size <= 0:
+            p.error("--waveform-noise-batch-size deve ser > 0")
+        cfg.waveform_noise_batch_size = args.waveform_noise_batch_size
+    if args.train_noise_copies is not None:
+        if args.train_noise_copies < 0:
+            p.error("--train-noise-copies deve ser >= 0")
+        cfg.train_noise_copies = args.train_noise_copies
+    if args.allow_feature_space_awgn:
+        cfg.strict_waveform_awgn = False
     if args.out:
         cfg.output_dir = args.out
     if args.models_dir:
@@ -179,6 +222,12 @@ def main() -> int:
         cfg.holdout_speaker = args.unseen_speaker
     if args.device_profile:
         cfg.device_profile = args.device_profile
+    if args.codec_eval:
+        cfg.codec_eval = list(args.codec_eval)
+    if args.bootstrap_ci is not None:
+        if args.bootstrap_ci < 0:
+            p.error("--bootstrap-ci deve ser >= 0")
+        cfg.bootstrap_ci_samples = args.bootstrap_ci
     if args.no_optimize_hparams:
         cfg.optimize_hyperparameters = False
     if args.no_early_stopping:

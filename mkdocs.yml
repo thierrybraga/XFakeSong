@@ -110,6 +110,11 @@ nav:
     - Perguntas Frequentes (FAQ): 19_FAQ.md
   - Arquitetura:
     - Visão Geral e Estrutura: 03_ARQUITETURA.md
+    - Arquitetura Modular: Architecture.md
+    - Módulos: Modules.md
+    - Estrutura de Pastas: FolderStructure.md
+    - Padrões Arquiteturais: Patterns.md
+    - Grafo de Dependências: DependencyGraph.md
     - Features de Áudio: 04_FEATURES.md
   - Modelos:
     - Arquiteturas Neurais: 08_ARQUITETURAS.md
@@ -130,6 +135,9 @@ nav:
     - Frontend Gradio e Fluxos: 23_FRONTEND_GRADIO.md
   - Desenvolvimento:
     - Guia do Desenvolvedor: 05_GUIA_DEV.md
+    - Padrões de Código: CodingStandards.md
+    - Convenções: Conventions.md
+    - Relatório de Refatoração: RefactoringReport.md
     - Plano de Ambientes de Treinamento: 26_PLANO_AMBIENTES_TREINAMENTO.md
     - API REST e Comunicação: 07_API_COMUNICACAO.md
     - CI/CD e Segurança: 17_CICD_SEGURANCA.md

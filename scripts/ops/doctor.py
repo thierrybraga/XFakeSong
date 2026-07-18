@@ -347,7 +347,7 @@ def check_port(port: int = 7860) -> Tuple[bool, List[str]]:
 def check_writable_dirs() -> Tuple[bool, List[str]]:
     """Diretórios críticos writable?"""
     section("Diretórios writable")
-    dirs = ["logs", "app/models", "app/results", "data"]
+    dirs = ["logs", "app/models", "results", "data"]
     errors = []
     for d in dirs:
         p = Path(d)
@@ -366,13 +366,13 @@ def check_db_init() -> Tuple[bool, List[str]]:
     """Pode inicializar o banco?"""
     section("Banco de dados")
     try:
-        from app.core.database import check_database_health
+        from app.core.db.session import check_database_health
         if check_database_health():
             ok("DB acessível")
         else:
             warn("check_database_health retornou False")
     except ImportError as e:
-        warn(f"app.core.database indisponível (deps faltando?): {e}")
+        warn(f"app.core.db.session indisponível (deps faltando?): {e}")
     except Exception as e:
         err(f"Erro DB: {type(e).__name__}: {e}")
         return False, ["db_error"]

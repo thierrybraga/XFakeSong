@@ -108,11 +108,11 @@ def main():
         try:
             app_dir = Path(__file__).parent / "app"
             dirs = [
-                app_dir / "datasets",
+                Path(__file__).parent / "data" / "datasets",
                 app_dir / "models",
-                app_dir / "results",
-                app_dir / "datasets" / "samples",
-                app_dir / "datasets" / "features",
+                Path(__file__).parent / "results",
+                Path(__file__).parent / "data" / "datasets" / "samples",
+                Path(__file__).parent / "data" / "datasets" / "features",
             ]
             for d in dirs:
                 d.mkdir(parents=True, exist_ok=True)
@@ -126,13 +126,10 @@ def main():
     if args.gui:
         logger.info("Iniciando interface gráfica unificada...")
         try:
-            # Importar e lançar a aplicação Unificada (Flask + Gradio)
+            # Importar e lançar a aplicação Unificada (FastAPI + Gradio)
             import uvicorn
 
-            from gradio_app import create_unified_app
-
-            # Criar app unificado
-            app = create_unified_app(args.port)
+            from app.interfaces.web.main_fastapi import app
 
             # Iniciar servidor Uvicorn
             logger.info(f"Servidor iniciado em http://0.0.0.0:{args.port}")

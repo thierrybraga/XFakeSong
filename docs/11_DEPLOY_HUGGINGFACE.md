@@ -75,7 +75,7 @@ Arquivos usados no deploy:
 Os pesos devem ficar em um repositório separado do tipo **Model** para evitar
 rebuilds pesados do Space e permitir atualização independente dos modelos.
 O conteúdo publicado deve corresponder aos modelos treinados no dataset do
-benchmark (`app/datasets/benchmark_audio_raw_balanced_15k.npz`) e aos artefatos
+benchmark (`data/datasets/benchmark_audio_raw_balanced_15k.npz`) e aos artefatos
 consolidados em `app/models/`.
 
 Faça uma simulação:

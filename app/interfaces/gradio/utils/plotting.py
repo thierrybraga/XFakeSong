@@ -42,7 +42,6 @@ PLOT_FACE = "#1e293b"
 PLOT_TEXT = "#f1f5f9"
 PLOT_TEXT_MUTED = "#94a3b8"
 PLOT_GRID = "#334155"
-PLOT_GRID_LIGHT = "#475569"
 PLOT_ACCENT = "#3b82f6"
 PLOT_ACCENT2 = "#06b6d4"
 PLOT_SUCCESS = "#10b981"
@@ -96,21 +95,6 @@ def style_ax(ax, fig: Figure, title: str = "", xlabel: str = "", ylabel: str = "
 _style_ax = style_ax
 
 
-def style_legend(ax, loc: str = "best") -> None:
-    """Aplica estilo dark a uma legenda existente em ax."""
-    try:
-        leg = ax.get_legend()
-        if leg is None:
-            leg = ax.legend(loc=loc)
-        if leg is not None:
-            leg.get_frame().set_facecolor(PLOT_FACE)
-            leg.get_frame().set_edgecolor(PLOT_GRID)
-            for text in leg.get_texts():
-                text.set_color(PLOT_TEXT)
-    except Exception as e:
-        logger.debug(f"style_legend falhou: {e}")
-
-
 # =====================================================================
 # Gestão de memória (FE.2: leak fix)
 # =====================================================================
@@ -128,14 +112,6 @@ def close_fig(fig: Optional[Figure]) -> None:
         plt.close(fig)
     except Exception as e:
         logger.debug(f"close_fig falhou: {e}")
-
-
-def close_all_figures() -> None:
-    """Fecha TODAS as figures matplotlib abertas. Usar com cuidado."""
-    try:
-        plt.close("all")
-    except Exception as e:
-        logger.debug(f"close_all_figures falhou: {e}")
 
 
 @contextmanager
@@ -204,6 +180,8 @@ def get_service_lock(name: str) -> threading.Lock:
 from app.interfaces.gradio.utils.notifications import (  # noqa: E402, F401
     notify_error,
     notify_info,
+    notify_success,
+    notify_warning,
 )
 
 
@@ -249,17 +227,9 @@ def confirm_destructive(
             f"⚠ Tem certeza que deseja remover **{item_label}**?\n"
             f"Esta ação não pode ser desfeita. Clique novamente para confirmar."
         )
-        try:
-            import gradio as gr
-            gr.Warning(f"Confirme: clique novamente para remover {item_label}")
-        except Exception:
-            pass
+        notify_warning(f"Confirme: clique novamente para remover {item_label}")
         return (True, msg)
     else:
         # 2ª chamada — executa
-        try:
-            import gradio as gr
-            gr.Info(f"✓ {item_label} removido")
-        except Exception:
-            pass
+        notify_success(f"✓ {item_label} removido")
         return (False, f"✓ {item_label} removido com sucesso")

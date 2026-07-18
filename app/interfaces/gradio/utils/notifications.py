@@ -4,7 +4,7 @@ Substitui os helpers ad-hoc `notify_error`/`notify_info` por uma API
 estruturada com:
 
 - **5 níveis semânticos**: success, info, warning, error, critical
-- **History ring buffer**: últimas 50 notificações em memória (deque)
+- **Histórico**: mantido em `app.core.feedback` (fonte única de verdade)
 - **ActionableError**: erros com sugestão de fix + link (opcional)
 - **Backwards compat**: `notify_error`/`notify_info` continuam funcionando
 - **Auto-toast**: integração transparente com `gr.Info`/`gr.Warning`/`gr.Error`
@@ -32,12 +32,10 @@ Uso típico:
 from __future__ import annotations
 
 import logging
-import threading
 import time
-from collections import deque
 from dataclasses import dataclass, field
 from html import escape
-from typing import Deque, List, Literal, Optional
+from typing import List, Literal, Optional
 
 from app.core.feedback import (
     clear_feedback_events,
@@ -65,12 +63,6 @@ _LEVEL_COLORS = {
     "error": "#ef4444",
     "critical": "#dc2626",
 }
-
-# Ring buffer global (compartilhado entre threads do Gradio queue)
-_history_lock = threading.Lock()
-_history: Deque["Notification"] = deque(maxlen=50)
-_unread_count: int = 0
-
 
 # =====================================================================
 # Modelos
@@ -120,16 +112,6 @@ class ActionableError:
     hint: str
     error_code: Optional[str] = None
     link: Optional[str] = None
-
-    def to_notification(self) -> Notification:
-        return Notification(
-            level="error",
-            title=self.title,
-            message=self.message,
-            error_code=self.error_code,
-            hint=self.hint,
-            link=self.link,
-        )
 
 
 # =====================================================================
@@ -288,8 +270,8 @@ def _emit_toast(note: Notification) -> None:
             text += f"\n💡 {note.hint}"
 
         if note.level in ("error", "critical"):
-            # gr.Error é raised → causa toast mas também interrompe.
-            # Para notification não-bloqueante, usamos gr.Warning.
+            # Não usamos gr.Error aqui pois ele interromperia a execução do
+            # callback — para um toast não-bloqueante, usamos gr.Warning.
             gr.Warning(text)
         elif note.level == "warning":
             gr.Warning(text)
@@ -330,7 +312,6 @@ def notify_error(
     *,
     hint: Optional[str] = None,
     error_code: Optional[str] = None,
-    log_exception: bool = True,  # backwards compat
     **kwargs,
 ) -> Notification:
     """Compatível com `notify_error(message)` legado.
@@ -341,9 +322,7 @@ def notify_error(
         title: título explícito (se omitido, usa message).
         hint: sugestão de fix.
         error_code: código.
-        log_exception: backwards compat (sempre logamos errors agora).
     """
-    _ = log_exception  # parâmetro mantido por compat
     if not title:
         title = message or "Erro"
         message = ""

@@ -37,7 +37,7 @@ from benchmarks.config import (  # noqa: E402
     OFFICIAL_TCC_MODEL_MANIFEST,
 )
 
-DEFAULT_DATASET = ROOT / "app" / "datasets" / "benchmark_audio_raw_balanced_15k.npz"
+DEFAULT_DATASET = ROOT / "data" / "datasets" / "benchmark_audio_raw_balanced_15k.npz"
 DEFAULT_MODELS_DIR = ROOT / "app" / "models"
 DEFAULT_RESULTS_DIR = ROOT / "results"
 DEFAULT_IMAGE = "xfakesong:benchmark-gpu"

@@ -8,13 +8,26 @@ código**. Os 4 modelos do escopo oficial do TCC que precisavam de retreino
 promovidos em 2026-07-02** — ver
 ["Retreino de 2026-07-02 — concluído"](#retreino-de-2026-07-02--concluído)
 abaixo. Ensemble e EfficientNet-LSTM não fazem parte da tabela consolidada do
-TCC (11 modelos) e seu retreino permanece pendente. RandomForest também não
-foi retreinado com o novo grid regularizado (`random_forest.py`); o número
-atual no TCC vem do run anterior ao ajuste — a robustez fraca sob ruído
-(68,04% @10dB) já é discutida no texto como limitação estrutural do vetor
-tabular, não como defeito de treino a corrigir, mas o retreino com o grid
-ajustado ainda não foi feito e poderia mudar esse número (overfitting
-diagnosticado via `mean_train_score=1.0` no tuning).
+TCC (11 modelos) e seu retreino permanece pendente. RandomForest e SVM também
+não foram retreinados com os novos grids regularizados (`random_forest.py`,
+`svm.py`); os números atuais no TCC vêm do run anterior ao ajuste — a
+robustez fraca sob ruído (RandomForest 68,04%, SVM 66,44% @10dB — os dois
+piores do recorte atual de 11 modelos) já é discutida no texto como
+limitação estrutural do vetor tabular, não como defeito de treino a corrigir,
+mas o retreino com os grids ajustados ainda não foi feito e poderia mudar
+esses números (overfitting diagnosticado via `mean_train_score=1.0` no
+tuning do RandomForest; grid do SVM permitia C=100/gamma=1/kernel `poly`,
+mesmo padrão de baixa regularização).
+
+> **Pendência não documentada (2026-07-04):** o commit `07a654d` corrigiu um
+> bug de aliasing no `SincConvLayer` (argumento do sinc `2·f·n` → `π·f̂·n`,
+> que degenerava os filtros passa-banda em banco quase aleatório) usado por
+> **AASIST e RawGAT-ST**. Esse fix veio *depois* do retreino de 2026-07-02
+> descrito abaixo — ou seja, os modelos atualmente promovidos em
+> `benchmark_final/aasist` e `benchmark_final/rawgat_st` ainda foram
+> treinados com o bug. A própria mensagem do commit recomenda retreino;
+> ainda não foi executado (nenhum `results/` mais novo que
+> `tcc_consolidated_20260702` além de uma rodada de XAI).
 
 ## Resumo do diagnóstico
 
@@ -24,7 +37,7 @@ diagnosticado via `mean_train_score=1.0` no tuning).
 | AASIST | Subajuste | `val_acc` travada ~0.92; recall colapsa a 0.29 @10dB |
 | Ensemble | Colapso de robustez | acc 0.50 e recall ~0 @10dB (prediz tudo "real") |
 | RandomForest | Overfitting | `mean_train_score=1.0` no tuning; robustez 0.98→0.68 |
-| SVM | Robustez fraca | 0.966→0.672 @10dB |
+| SVM | Overfitting (grid permitia C=100/gamma=1/poly) | robustez 0.966→0.672 @10dB (2º pior do recorte atual) |
 | Hybrid CNN-Transformer | Robustez moderada | 0.973→0.785 @10dB |
 | EfficientNet-LSTM | Acurácia limpa baixa | 0.929 (robusto, mas baixo) |
 | MultiscaleCNN | Instabilidade de treino | `val_loss=NaN` épocas 4–8 (recuperou) |
@@ -47,6 +60,7 @@ SpectrogramTransformer, WavLM, RawNet2**.
 | EfficientNet-LSTM | `registry.py` | dropout 0.3→0.25; patience 15→20 |
 | MultiscaleCNN | `multiscale_cnn.py` | Adam `clipnorm=1.0` (anti-NaN) |
 | RandomForest | `random_forest.py` | grid regularizado: max_depth sem `None`/30; `min_samples_leaf` [2,4,8]; `min_samples_split` [5,10,20] |
+| SVM | `svm.py` | grid regularizado: remove kernel `poly`; `C` teto 100→10; `gamma` teto 1→0.1 |
 
 Augmentation de ruído no treino (controlada por `use_augmentation`/`snr_range_db`
 = (5,40) em `app/core/config/settings.py`) já cobre a faixa de robustez avaliada
@@ -196,3 +210,575 @@ tabelas/figuras do TCC regeneradas (`python scripts/reporting/update_tcc_latex.p
 reescrito para refletir os números corrigidos; a narrativa de robustez a
 ruído deixou de apontar RawGAT-ST/SSL como os mais frágeis e passou a
 identificar SVM/Random Forest como os modelos menos robustos do conjunto.
+
+## Retreino de 2026-07-06/07 — SincConv, CCT e grids regularizados
+
+Escopo: RawGAT-ST, AASIST, CCT (Hybrid CNN-Transformer), Random Forest e SVM —
+os 5 modelos com pendência de retreino identificados na revisão técnica de
+2026-07-04 (`07a654d`, bug de aliasing no `SincConvLayer`) e nesta sessão
+(grid regularizado do SVM, análogo ao já aplicado ao Random Forest). Ensemble
+e EfficientNet-LSTM foram *tentados* no mesmo run, mas **falharam por design**:
+`benchmarks/planning.py::_base_recommended_hparams` levanta `ValueError` para
+qualquer arquitetura fora do recorte oficial do artigo (9 neurais + SVM/RF) —
+achado não documentado até então. Confirmado com o usuário: os dois
+permanecem fora do escopo, sem alteração de código para reabri-los.
+
+Execução: `results/retune_ajustado_20260706_1933/` (120 épocas, SNR 30/20/10,
+`--models RawGAT-ST AASIST Ensemble "Hybrid CNN-Transformer" EfficientNet-LSTM
+RandomForest SVM` via `run_models_sequential.py` em Docker/GPU RTX 3060).
+
+| Modelo | Acc. limpa (antes → depois) | EER (antes → depois) | Acc. @10dB (antes → depois) |
+| --- | ---: | ---: | ---: |
+| RawGAT-ST | 86,98% → 92,76% | 12,80% → 7,16% | 82,93% → 83,96% |
+| AASIST | 92,49% → 95,82% | 7,42% → 4,18% | 88,93% → 89,20% |
+| CCT | 96,04% → 97,60% | 3,91% → 2,40% | 81,20% → 89,24% |
+| Random Forest | 98,18% → 98,18% (idêntico) | 1,69% → 1,69% | 68,04% → 68,04% (idêntico) |
+| SVM | 96,00% → 96,00% (idêntico) | 4,31% → 4,31% | 66,44% → 66,44% (idêntico) |
+
+**Achado relevante:** Random Forest e SVM retornaram métricas **bit-a-bit
+idênticas** às anteriores, apesar dos grids regularizados (`random_forest.py`,
+`svm.py`). O ótimo por CV já caía dentro da faixa restrita em ambos os casos —
+a fragilidade sob ruído desses dois classificadores **não é overfitting de
+hiperparâmetro**, e sim limitação estrutural do vetor tabular de 63
+descritores agregados (consistente com a discussão já presente no TCC). Já
+RawGAT-ST/AASIST (fix do `SincConv`) e CCT (dropout/profundidade
+estocástica/augmentation mais agressivos) melhoraram de forma real, tanto
+limpo quanto sob ruído — CCT deixou de ser o pior espectral (81,20% @10dB) e
+passou a ficar acima do RawGAT-ST (89,24% vs. 83,96%), invertendo uma
+comparação que estava no texto do TCC.
+
+**Achado de calibração (importante para produção):** os scores brutos do
+AASIST retreinado saturam quase totalmente em 0/1 (apenas 4 valores distintos
+em 2250 amostras de teste — cabeça AM-Softmax + `mixed_float16`), o que faz o
+recálculo ingênuo de `eer_threshold` por `scripts/reporting/rebuild_inference_contracts.py`
+(cruzamento FPR=FNR sobre `predictions_clean.csv`) cair num limiar degenerado
+(`0.0`, que classificaria tudo como "fake" em produção). O próprio treino já
+calcula uma calibração melhor — `temperature`/`ood_threshold`/`eer_threshold`
+sob ruído (`calibrate_under_noise=True`) — gravada no config raiz
+(`app/models/bench_<arch>_config.json`), mas esse script a descarta ao
+reconstruir o sidecar promovido (ele só preserva `feature_frontend`/
+`input_shape`, não foi projetado para saber de calibração). Corrigido
+manualmente para RawGAT-ST/AASIST/CCT: os sidecars promovidos agora mesclam o
+`feature_frontend` correto (do rebuild) com a calibração real do treino (do
+config raiz). **Se `rebuild_inference_contracts.py` for rodado de novo para
+esses 3 modelos, refazer essa mesclagem** — ou, melhor, ajustar o script para
+preservar `temperature`/`ood_threshold`/`eer_threshold` do config raiz quando
+ele for mais recente que o smoke-test que o script foi feito para substituir.
+
+Consolidado em `results/tcc_consolidated_20260707/` (11 modelos: os 5 acima +
+Conformer/AST/RawNet2/Res2Net/WavLM Original/HuBERT Original, inalterados),
+sincronizado para `app/models/benchmark_final/` e `tcc_overleaf/tabelas_benchmark.tex`
+regenerado. `main.tex` revisado (ranking de robustez, decomposição de erros,
+McNemar SVM×CCT — que deixou de ser empate estatístico, p≈0,0019 — e
+estabilidade de treinamento) para refletir os números novos; compilação via
+`latexmk -pdf` validada sem erros.
+
+---
+
+## 2026-07-12 — protocolo canônico de AWGN na forma de onda
+
+Uma auditoria do benchmark identificou que a rodada consolidada até 2026-07-07
+aplicava ruído em domínios diferentes: forma de onda para modelos raw/SSL,
+log-Mel para redes espectrais e vetor de 63 descritores para SVM/Random Forest.
+Essas perturbações não são fisicamente equivalentes. Portanto, as comparações
+de robustez e as atribuições causais registradas acima são **históricas e
+provisórias**; não devem ser usadas como ranking entre famílias antes do novo
+retreino.
+
+O protocolo corrigido foi implementado com as seguintes garantias:
+
+1. divisão treino/validação/teste antes de qualquer aumento;
+2. AWGN aplicado apenas à forma de onda canônica de 5 s/16 kHz;
+3. SNR realizada normalizada por amostra;
+4. mesma semente e mesma realização ruidosa para todas as famílias;
+5. uma cópia ruidosa por amostra de treino, balanceada em 30/20/10 dB;
+6. validação limpa e limiar comum de 0,5;
+7. orçamento uniforme de 100 épocas completas, sem early stopping;
+8. restauração do melhor checkpoint por val_loss limpa para todas as redes;
+9. preservação das partições explícitas do NPZ e auditoria BLAKE2b;
+7. frontends raw, log-Mel e tabular executados somente após a perturbação;
+8. falha explícita, no modo estrito, quando o NPZ contém somente features;
+9. aumento interno em log-Mel/features desativado na comparação principal.
+
+O retreino integral é necessário, pois a correção altera tanto os dados de
+ajuste quanto a avaliação sob ruído. Execute na raiz do repositório:
+
+    python scripts/benchmark/run_models_sequential.py --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz --test-lock data/datasets/benchmark_audio_raw_balanced_15k.npz.test-lock.json --epochs 100 --device-profile gpu --seed 42 --snr 30 20 10 --train-aug-snr 30 20 10 --train-noise-copies 1 --waveform-noise-batch-size 64 --waveform-train-augmentation --timeout-min 120 --out results/retrain_waveform_awgn
+
+Para retomada após interrupção, repita o comando com a opção --resume. Antes
+de substituir tabelas e pesos promovidos, confirme em cada
+benchmark_result.json que noise_protocol.evaluation_domain seja waveform,
+noise_protocol.frontend_after_noise seja true e
+noise_protocol.training_augmentation_domain seja waveform.
+
+O orquestrador grava benchmark_protocol.json com os controles comuns e mantém
+os hiperparâmetros específicos de cada arquitetura no benchmark_plan.json.
+
+---
+
+## 2026-07-14 — revisão pós-retreino AWGN: AST, CCT, RawNet2, Res2Net e checkpoint guardado
+
+Diagnóstico do retreino sob o protocolo canônico de AWGN (2026-07-12) apontou
+4 arquiteturas degradadas e 1 bug sistêmico de seleção de checkpoint. Mapa
+diagnóstico → ajuste (todos **aplicados no código**; retreino pendente):
+
+| Modelo | Sintoma | Causa identificada | Ajuste aplicado |
+| --- | --- | --- | --- |
+| AST (SpectrogramTransformer) | Degrada lentamente até chute aleatório (EER final ~51%) mesmo após o fix de `decay_steps` | Blocos **post-LN** (LayerNorm depois do residual) — instáveis a 12 blocos treinados do zero; ViT/AST reais são pre-LN. LR de pico alto p/ 87M params do zero. Cabeça não-paper (2 blocos Dense 1024/256 c/ skips, ~1M params extras) ampliava sobreajuste | `spectrogram_transformer.py`: blocos **pre-LN** (`norm_style='pre'`; `'post'` mantido só p/ desserializar modelos antigos), cabeça do paper (LN→dropout→Dense), LR 5e-5→**1e-5**, weight_decay 1e-4→**1e-5** (sincronizado em `registry.py` e `planning.py`, que ia de 2e-5→1e-5) |
+| CCT (Hybrid CNN-Transformer) | Colapsa sob ruído: EER 37% limpo → 53% @10dB; AUC 0,46 (< acaso) @10dB | Compile **hardcoded** (lr=1e-3, `decay_steps=50000`): mesmo mismatch de `decay_steps` do AST — com batch 32 são ~65.700 passos reais e o LR zerava na época ~76; o `learning_rate` do plano de benchmark nunca chegava ao modelo | `hybrid_cnn_transformer.py`: otimizador parametrizado (lr/warmup/decay/wd/alpha/clipnorm); LR de pico 1e-3→**3e-4**; `planning.py`: `decay_steps=65700`; `runner.py`: parâmetros roteados ao construtor (mesmo caminho do Conformer/AST) |
+| RawNet2 | EER 32,7% limpo (baseline 2,89%); 100 épocas em ~130 min | Topologia divergia do paper: MaxPool(3) só após os blocos 2 e 4 → a GRU recebia **~590 passos** temporais (paper: ~7 com recorte de 1 s); FMS multiplicativo-puro (paliativo `x·2σ`) em vez do mul+add do paper | `rawnet2.py`: MaxPool(3) após **cada** bloco residual; `layers.py`: FMS com `scale_mode='mul_add'` (`x·y + y`, forma oficial; `'mul2'` mantido como default da camada só p/ compat com modelos salvos) |
+| Res2Net (MultiscaleCNN) | Overfit severo (train 100% / val 64,5%) | **Nenhuma regularização efetiva**: o `dropout_rate=0.5` e o `l2_reg_strength` do plano eram config morto (nunca chegavam ao `create_model`; valia o dropout 0,2 do registry e Adam sem weight decay) | `multiscale_cnn.py`: Adam→**AdamW** com `weight_decay` real (default 1e-2 acoplado ao LR); `registry.py`: dropout 0,2→**0,5** (agora efetivo em todos os caminhos); `planning.py`: LR 2e-3→1e-3, chaves mortas removidas |
+| Todos (bug sistêmico) | "Melhor checkpoint" (val_loss) pior que a última época; no Res2Net a restauração produziu **NaN** (EER 14,9%→50%) | `training_service.py` restaurava o checkpoint às cegas; um `load_weights` que falha no meio deixa o modelo meio-carregado, e o critério val_loss pode escolher época ruim | Restauração **guardada**: snapshot dos pesos → `load_weights` → reavalia `val_loss` no val; se não-finita ou pior que os pesos em memória, reverte o snapshot (`_guarded_checkpoint_restore`) |
+| Todos (reprodutibilidade) | Política de precisão dependia da ordem das arquiteturas no processo | `use_mixed_precision=True` só era aplicado DEPOIS do `create_model` (camadas capturam o dtype na construção); o caso False já era tratado antes | `training_service.py`: política (`mixed_float16`/`float32`) definida **antes** da instanciação para qualquer valor explícito |
+
+Sem ajuste (variância normal de treino, sem sinal de bug): **Conformer**
+(EER 1,24% vs 0,27%, AUC 0,996), **AASIST** (12,0% vs 4,18%) e **RawGAT-ST**
+(18,3% vs 7,16%) — beneficiam-se do checkpoint guardado e podem ser
+reexecutados no mesmo run para nova amostra.
+
+Retreino: mesmo comando do protocolo de 2026-07-12 (acima), com `--models
+SpectrogramTransformer "Hybrid CNN-Transformer" RawNet2 MultiscaleCNN` no
+mínimo. Antes de rodar via Docker, `make build-nocache` (ver checklist de
+2026-06-30) e `--plan-only` para conferir no plano: AST lr 1e-5/wd 1e-5,
+CCT lr 3e-4/decay 65700, Res2Net lr 1e-3/dropout 0.5.
+
+### Revisão sistêmica adicional (mesma data)
+
+Auditoria de ambientes, protocolo AWGN, benchmark e inferência:
+
+1. **Dataset errado nos composes/presets (crítico).**
+   `app/datasets/benchmark_audio_raw_balanced_15k.npz` é um **stub de smoke
+   com 64 amostras de 1 s** criado em 2026-07-11 com o MESMO nome do dataset
+   real (15k × 5 s, com `groups`/`speaker_ids`, em `data/datasets/`).
+   `docker/compose/benchmark.nvidia.yml`, `docker-compose.benchmark.yml`,
+   os 5 presets de `configs/training/*.yaml` (incluindo
+   `retune_ajustado.yaml`!), o comando do CLAUDE.md e os READMEs de
+   `docker/environments/*` apontavam para o stub — `make benchmark-nvidia`
+   rodaria 100 épocas sobre 64 amostras sem nenhum erro visível. Todos
+   corrigidos para `data/datasets/`. Os runs anteriores NÃO foram afetados
+   (usaram `run_models_sequential.py`/`retrain_ajustado.sh`, cujos defaults
+   já eram `data/datasets/`; ex.: AST registrou 2625 passos/época = 21000
+   amostras). O stub permanece em `app/datasets/` — considerar renomear
+   para algo inequívoco (ex.: `benchmark_smoke_64x1s.npz`).
+2. **min t-DCF incomparável no runner SSL.** O
+   `run_wavlm_original_benchmark.py` calculava EER/min-tDCF com uma fórmula
+   própria simplificada (`p_target=0.01`), diferente do t-DCF ASVspoof2019
+   CM-only do `MetricsCalculator` usado nos outros 9 modelos. Agora delega a
+   `benchmarks.evaluate.evaluate_scores` (mesmas métricas, incl.
+   `accuracy_at_eer`). **Os min-tDCF históricos de WavLM/HuBERT Original não
+   são comparáveis aos demais** — recalcular a partir de
+   `predictions_clean.csv` ou no próximo retreino.
+3. **Calibração sob ruído fora do domínio do waveform.** O
+   `ModelTrainer._build_calibration_set` adicionava AWGN no ESPAÇO DE ENTRADA
+   do val — para modelos espectrais/tabulares treinados pelo app isso é ruído
+   em log-mel/features (o domínio errado que o protocolo de 2026-07-12
+   baniu). Agora a calibração ruidosa só ocorre quando o val é forma de onda
+   ((N,T)/(N,T,1) com T≥1000); caso contrário calibra com val limpo. O
+   benchmark não era afetado (já desativava `calibrate_under_noise`).
+4. **Conferências sem achado:** AWGN por amostra com SNR realizado
+   normalizado (`add_awgn`), mesma semente/realização de ruído entre famílias
+   (`seed+20000+snr` idêntico no runner Keras e no SSL), limiar comum 0,5 no
+   runner SSL (calibração é ablação opt-in), frontends raw/log-mel/tabular
+   aplicados somente após o ruído, `evaluate_scores` com `accuracy_at_eer`,
+   inferência com paridade de frontend via `feature_frontend` no
+   input_contract + temperatura/EER/OOD do contrato.
+
+### Revisão do processo de aplicação do AWGN (mesma data)
+
+Auditoria da MATEMÁTICA e mecânica do ruído em todos os aplicadores, com
+verificação numérica (SNR realizado vs alvo por amostra):
+
+| Aplicador | Estado | Ação |
+| --- | --- | --- |
+| `benchmarks/data.py::add_awgn` (canônico) | SNR realizado EXATO (normaliza a potência realizada do ruído por amostra); silêncio → sem ruído, sem NaN | nenhum ajuste |
+| `add_awgn_assigned`/`balanced_snr_assignments` | atribuição 3500/3500/3500 exata e reprodutível | nenhum ajuste |
+| `ModelTrainer._add_awgn` (calibração) | calibrava só a potência ESPERADA (~0,4% de desvio) apesar de prometer paridade | normalização exata — agora byte-idêntico ao canônico com a mesma semente |
+| `scripts/benchmark/robustness_test.py::add_awgn` | **divergente**: `np.clip(x+ruído, ±1)` distorcia o ruído (não-gaussiano, SNR realizado sobe a 10 dB), sem normalização realizada, RNG global sem semente, e o call-site geraria a MESMA realização p/ todas as amostras | delegado ao canônico, em lote, com a convenção de semente do benchmark (`seed+20000+snr`) |
+| `AudioAugmenter._add_noise` (augmentation legado) | potência esperada (desvio <1% em 16k amostras) — aceitável p/ augmentation, coberto por teste (±0,5 dB) | mantido |
+| runner SSL `_add_awgn_raw` | já delegava ao canônico | nenhum ajuste |
+
+Invariantes verificados e documentados no código: espaços de semente
+treino (`seed+10000+start+1009·nível`) e avaliação (`seed+20000+snr`)
+disjuntos nos defaults (batch 64, SNRs 30/20/10) — comentário no runner
+fixa o contrato. Caveat inerente ao protocolo (não é bug): o SNR alvo é
+GLOBAL na janela de 5 s; no recorte central de 1 s das arquiteturas raw o
+SNR local pode desviar (medido: ±0,1 dB em sinal estacionário; maior em
+fala real onde a energia é não-uniforme) — é o comportamento padrão de
+protocolos de SNR global.
+
+### Melhorias de pipeline (mesma data)
+
+1. **Shuffle por época no treino (afeta TODOS os retreinos).** O Keras ignora
+   `shuffle=True` quando `x` é um `tf.data.Dataset`, e o caminho sem
+   augmentation (o do benchmark) não embaralhava NADA: ordem de batches fixa
+   em todas as épocas e, pior, o treino do protocolo AWGN é
+   `[bloco limpo | bloco ruidoso]` concatenados — cada época via primeiro só
+   amostras limpas e depois só ruidosas. `ModelTrainer._array_dataset` agora
+   embaralha por época (buffer completo no caminho pequeno; permutação por
+   passagem no caminho generator/streaming), somente no treino (val
+   preservado). Isso muda a dinâmica de TODOS os próximos treinos — mais um
+   motivo para retreinar antes de comparar com números antigos.
+2. **Checkpoint weights-only.** O `ModelCheckpoint` salvava o MODELO COMPLETO
+   (grafo + otimizador, ~3× os pesos; ~1 GB por melhoria de época no AST) a
+   cada novo melhor val_loss. O benchmark agora grava
+   `best_checkpoint.weights.h5` (só pesos) e o trainer decide
+   `save_weights_only` pela extensão; a restauração guardada usa
+   `load_weights`, que aceita ambos os formatos.
+3. **Guarda de tamanho de dataset.** `run_benchmark` loga aviso destacado
+   quando um NPZ real tem <1000 amostras (defesa contra o stub do item 1 da
+   revisão sistêmica).
+## 2026-07-15 (tarde) — correções pós-auditoria de fidelidade aos papers
+
+Auditoria arquitetura-por-arquitetura (AASIST, RawGAT-ST, RawNet2, CCT,
+WavLM/HuBERT Original, MultiscaleCNN) contra as referências bibliográficas,
+com verificação de EER/Acc/robustez e do pipeline de ruído. Nenhuma camada,
+bloco ou conexão de nenhum paper foi alterada — todas as correções abaixo são
+serialização, hiperparâmetro-drift ou testes obsoletos.
+
+**Retratação importante:** a análise anterior (mesma tarde) apontou o
+multicrop TTA (3 janelas na avaliação) de AASIST/RawGAT-ST como uma possível
+assimetria a corrigir. Investigação mais profunda encontrou testes dedicados
+(`test_p2_rawgatst_sslaasist.py`, `test_detection_model_loader_predictor.py`)
+provando que é uma funcionalidade **deliberada e já testada** (janela 64.600
+amostras ≈ 4,04s — o mesmo comprimento usado pelos baselines oficiais do
+ASVspoof2021 para RawNet2/AASIST/RawGAT-ST — com average de 3 crops
+início/centro/fim), cabeada tanto no benchmark quanto na inferência de
+produção (`Predictor`). **Não foi alterada.** Recomendação anterior de
+"padronizar/remover" está revogada.
+
+### Correções aplicadas
+
+1. **Bug de produção — Lambda não-serializável (AASIST, RawGAT-ST,
+   MultiscaleCNN).** `_build_paper_aasist`/`_build_paper_rawgat` usavam
+   `layers.Lambda(lambda v: tf.reduce_max(tf.abs(v), axis=N))` e
+   `layers.Lambda(tf.abs, ...)` para extrair os nós espectral/temporal;
+   MultiscaleCNN usava `layers.Lambda(apply_log_mel)` (closure local) no
+   branch de áudio bruto. O Keras 3 **recusa por padrão** desserializar
+   `Lambda` com função Python/closure (proteção contra execução de código
+   arbitrário) — os modelos treinavam e salvavam normalmente, mas
+   `tf.keras.models.load_model(path)` (sem `safe_mode=False`) falhava. A
+   inferência de produção (`model_loader.py::TorchSSLOriginalModel`/
+   `ModelLoader`) já usa `safe_mode=False` e não era afetada, mas
+   `ModelTrainer.load_model` (sem essa flag) e qualquer reload externo
+   quebrariam. Corrigido com camadas serializáveis dedicadas —
+   `AxisMaxAbsLayer` e `LogMelFromMagnitudeLayer` (`layers.py`), reaproveitando
+   `MagnitudeLayer` já existente — **mesma computação exata**, só a forma de
+   serializar muda. Verificado: `model.save()` → `load_model()` (safe_mode
+   padrão) funciona para os dois, zero camadas `Lambda` remanescentes.
+2. **Augmentation raw-audio incompleta.** `AudioAugmenter._select_techniques`
+   omitia `_volume_change` no branch raw-audio, apesar do próprio docstring
+   do método listar "ruído, shift, **volume**, RawBoost, codec" como o
+   conjunto esperado — a lista retornada não incluía volume. Afeta
+   AASIST/RawGAT-ST (únicos consumidores do augmenter dinâmico no benchmark).
+   Adicionado.
+3. **Drift de hiperparâmetro silencioso (AASIST).**
+   `benchmarks/planning.py` e `registry.py::default_params` tinham
+   `learning_rate`/`l2_reg_strength` revertidos para 1e-4/1e-4, contradizendo
+   o próprio comentário adjacente ("AJUSTE (retune): LR 1e-4->3e-4 e l2
+   1e-4->2e-4") e este documento. Verificado contra o `benchmark_plan.json`
+   real do retreino de 20260715: o valor EFETIVAMENTE usado já era 3e-4/2e-4
+   (outra fonte, não identificada com certeza, já aplicava o valor correto em
+   tempo de execução) — ou seja, **o retreino de hoje não foi afetado por
+   este drift**; a correção alinha os arquivos-fonte para reprodutibilidade
+   futura, sem mudar o comportamento já observado.
+4. **4 testes obsoletos corrigidos** (nenhum indicava bug de comportamento,
+   todos ficaram desatualizados quando `_build_paper_aasist`/janela 64.600
+   viraram o default): assinatura de mock sem `crop_strategy`/`seed`;
+   expectativa de janela 16.000 para AASIST (correto: 64.600); nome de
+   camada `sinc_abs` da variante legada (correto no default:
+   `aasist_sinc_abs`); busca por nome `res_block` em vez do tipo
+   `ResidualBlock2D` (default nomeia `aasist_encoder_N`).
+
+### Necessidade de retreino — reavaliada
+
+Nenhuma das correções acima muda pesos, otimizador ou dado visto durante o
+treino do retreino de 20260715 (item 3 confirmado sem efeito prático; itens
+1 e 4 são serialização/teste, não treino). **Único item com efeito real em
+um retreino futuro** é a técnica `_volume_change` adicionada (item 2) —
+impacto esperado pequeno. Conclusão: **nenhum modelo precisa de retreino
+por causa das correções desta seção.** AASIST/RawGAT-ST continuam sendo os
+dois mais fracos da tabela (ver seção anterior) — isso é uma característica
+de desempenho já registrada, não uma pendência introduzida agora. Retreiná-los
+para captar o ganho marginal do volume_change é opcional, baixa prioridade.
+
+## Retreino de 2026-07-14/15 — CONCLUÍDO (11/11 ok)
+
+Run: `results/retrain_full_20260714/` (seed 42, confirmatory_v2 com test-lock,
+protocolo waveform-AWGN, todos os fixes desta data ativos, +codec-eval mp3/opus,
++IC bootstrap 95%, ~16 h em RTX 3060). Consolidado em
+`results/retrain_full_20260714/consolidated/`.
+
+| Modelo | EER novo [IC95] | EER anterior | Acc@10dB | Situação |
+| --- | --- | --- | --- | --- |
+| Conformer | **0,18%** [0,00–0,36] | 0,27% | 98,0% | ✅ empata/melhora baseline; artefato de limiar sumiu (acc 99,8% @0,5) |
+| Res2Net | **0,36%** [0,09–0,58] | 0,44% (13/07: 50%, NaN) | 97,5% | ✅ recuperado; overfit sanado (val 99,8%) |
+| SVM | **0,58%** [0,31–1,16] | 4,31% (protocolo antigo) | 93,8% | ✅ primeiro número válido do protocolo waveform |
+| CCT | **0,71%** [0,40–1,16] | 2,40% (13/07: 37%) | 95,0% | ✅ recuperado; melhor da história dele |
+| AST | **0,98%** [0,53–1,47] | 1,33% (13/07: 51%) | 93,2% | ✅ recuperado; sem degradação (val máx ép. 53 mantida até 100) |
+| RandomForest | 2,09% [1,47–2,71] | 1,69% | 92,4% | ≈ empate no limpo; robustez muito acima sob protocolo novo |
+| RawNet2 | **2,71%** [2,09–3,47] | 2,89% (13/07: 32,7%) | 93,0% | ✅ recuperado (pooling paper); 192 min (antes: timeout) |
+| HuBERT Original | **9,29%** [8,03–10,44] | 11,29% | 75,9% | ✅ melhora; t-DCF agora comparável (0,239) |
+| AASIST | 9,51% [8,22–10,71] | 4,18% (INVÁLIDO: 4 scores) | 82,1% | ⚠️ primeiro EER VÁLIDO (1133 scores distintos); acc 87,9% < 95,8% histórico — investigar/nova semente antes de promover |
+| RawGAT-ST | 9,56% [8,22–10,84] | 7,16% (13/07: 18,3%) | 80,8% | ⚠️ melhorou vs 13/07 mas abaixo do promovido — não promover |
+| WavLM Original | **13,16%** [11,85–14,62] | 15,24% | 72,5% | ✅ melhora |
+
+Achados de codec (novos): clássicos e espectrais quase imunes a MP3 64k;
+Opus 24k triplica o EER do RandomForest (2,1→6,0%) e custa ~1–2 pp aos
+espectrais. Promoção para `benchmark_final/`: pendente de decisão (critério:
+melhorar/empatar baseline; AASIST/RawGAT-ST ficam de fora por ora — atenção:
+o baseline do AASIST é incomparável por causa dos scores quantizados).
+
+## 2026-07-15 — melhorias de acurácia: AASIST, RawGAT-ST, WavLM e HuBERT
+
+Diagnóstico sobre o run 20260714 e ajustes aplicados nos 4 modelos mais
+fracos da tabela:
+
+| Modelo | Diagnóstico (evidência) | Ajuste |
+| --- | --- | --- |
+| AASIST | Overfit à cópia AWGN **estática** (mesma realização toda época): val_acc pico 88,8% na ÉPOCA 11 → 79,5% na 100 (train 99,2%). O run bom de 2026-07-07 (95,8%) treinava com augmentation dinâmico | Cópia estática substituída por **AudioAugmenter dinâmico na forma de onda** (domínio válido; custo por época idêntico). `training_augmentation_domain: waveform_dynamic_augmenter` no protocolo |
+| RawGAT-ST | Mesmo padrão mais brando (val_acc máx 91,8% @ep30; val_loss mín @ep8) | Idem AASIST |
+| WavLM Original | Via só **1 s central** dos 5 s (`_fit_length(raw, 16000)`) e **apenas a última camada** mean-pooled — as camadas intermediárias carregam os artefatos (SUPERB) | Janela 4 s (`--target-samples 64000`), **weighted-layer-sum** sobre as 13 hidden_states + **mean⊕std** pooling (`--layer-pooling weighted --time-pooling meanstd`), backbone `wavlm-base-plus` (94k h, mesmo tamanho). Contrato gravado no `.pt` (`embedding_config`) e honrado pelo wrapper de inferência via módulo compartilhado `app/domain/models/inference/ssl_head.py` (paridade por construção; artefatos antigos caem no legado) |
+| HuBERT Original | Idem WavLM (1 s / última camada) | Idem (backbone mantido `hubert-base-ls960`) |
+
+Retreino dos 4: `results/retrain_weak4_20260715/` (mesmo protocolo/test-lock
+do run 20260714; demais 7 modelos NÃO são re-treinados — seus resultados de
+20260714 permanecem os vigentes). **CONCLUÍDO** (WavLM precisou de 2 retries
+por permissão do cache HF em bind-mount Docker/Windows — ver nota abaixo).
+
+### Resultados finais (substituem as linhas de AASIST/RawGAT-ST/WavLM/HuBERT de 20260714)
+
+| Modelo | EER novo [IC95] | EER 20260714 | EER histórico | Acc@10dB | Nota |
+| --- | --- | --- | --- | --- | --- |
+| AASIST | **4,89%** [3,92–5,73] | 9,51% (1º válido) | 4,18% (inválido: scores quantizados) | 88,7% | ✅ recuperado; val_acc não degrada mais (máx 95,5%@ep34 vs 88,8%@ep11→79,5% antes) |
+| RawGAT-ST | **6,22%** [5,20–7,20] | 9,56% | 7,16% | 84,0% | ✅ melhora vs 20260714; ainda abaixo do baseline — não promover ainda |
+| WavLM Original | **0,36%** [0,09–0,58] | 13,16% | 15,24% | 98,8% | ✅✅ ganho de 36×; validado (ver nota de shortcut) |
+| HuBERT Original | **0,18%** [0,00–0,44] | 9,29% | 11,29% | 96,8% | ✅✅ ganho de 52×; validado (ver nota de shortcut) |
+
+**Nota sobre o ganho SSL (validação anti-shortcut):** o salto de WavLM/HuBERT é
+grande o bastante para exigir escrutínio — o dataset tem confounder de fonte
+documentado (mlspt/ttsport 100% real, fkvoice 100% fake; só `brspeech` tem
+as duas classes do MESMO locutor/canal). Isolando **apenas** as 1118 amostras
+de `brspeech` no teste (onde a fonte não pode ajudar em nada), o EER
+permanece baixo (HuBERT: 0,45%; WavLM: 0,45%) — confirma detecção real de
+artefato de síntese, não exploração do atalho de fonte. Achado colateral: o
+AASIST tem EER 5,9% no mesmo recorte `brspeech`-isolado vs. 9,5% geral —
+generaliza pior para fontes não vistas misturadas no treino do que discrimina
+dentro da fonte mais representada.
+
+**Nota operacional:** WavLM (`wavlm-base-plus`, nunca baixado antes) falhou
+2× com `PermissionError` ao criar `models--microsoft--wavlm-base-plus/` sob
+`cache/huggingface/hub/` — o bind-mount Docker Desktop/Windows permite
+leitura/escrita em diretórios pré-existentes mas não a CRIAÇÃO de novos
+diretórios de topo pelo UID do container. Contornado pré-criando a árvore
+(`hub/models--microsoft--wavlm-base-plus/{blobs,snapshots,refs}` e
+`hub/.locks/models--microsoft--wavlm-base-plus/`) a partir do host antes de
+relançar. Necessário sempre que um modelo HF **novo** (nunca baixado) for
+usado pela primeira vez neste ambiente.
+
+### Rigor acadêmico aplicado ao benchmark (mesma data)
+
+Correções derivadas da análise metodológica para o artigo:
+
+1. **Scores de logits clipados (bug de avaliação — afetava o AASIST).**
+   `_run_neural.predict_p_fake` extraía `pred[:, 1]` direto da saída do
+   modelo; para saídas LINEARES (AASIST/AMSoftmax, logits ≈[-15, 15]) o
+   `_finite_scores` clipava em [0, 1], quantizando os scores em ~{0, 1}
+   (os "4 valores distintos em 2250 predições") e invalidando
+   EER/ROC/min-tDCF. Agora a saída linear é normalizada
+   (softmax/sigmoid) antes da extração. **EER/AUC/t-DCF históricos do
+   AASIST no benchmark Keras estão contaminados por esse clip** — o
+   retreino/reexecução produz os primeiros números válidos.
+2. **IC 95% de bootstrap** (EER/AUC/accuracy; 1000 reamostragens,
+   percentil) em `evaluate_scores` — ligado por default no benchmark
+   (`BenchmarkConfig.bootstrap_ci_samples`) e no runner SSL; `--bootstrap-ci`
+   no CLI. Com n=2250, o IC do EER é ~±0,5–1 pp — sem ele o ranking fino
+   não é interpretável.
+3. **ECE (calibração, 15 bins)** reportado em toda avaliação.
+4. **Curva DET** (escala probit, padrão da área) em `report.py`
+   (`figures/det.png`), ao lado da ROC.
+5. **Multi-sementes**: `run_models_sequential --seeds 42 43 44` roda a
+   suíte completa por semente em `seed_<n>/` + `seeds_manifest.json` —
+   com splits predefinidos congelados o teste é idêntico entre sementes
+   (só varia RNG de treino/ruído): média±desvio e testes pareados.
+6. **Cross-generator no orquestrador**: `--cross-generator fkvoice`
+   repassado ao `run_benchmark` (bloqueado sob `--academic-protocol`,
+   que exige o teste congelado).
+7. **Robustez a codec com perdas**: `--codec-eval mp3 opus` (round-trip
+   ffmpeg na forma de onda, mesmo ponto do protocolo do AWGN;
+   `benchmarks/perturbations.py`; resultado em `codec_robustness` no
+   results.json). MP3 64k e Opus 24k ≈ mensageria/VoIP.
+8. **Auditoria de shortcut de fonte**:
+   `scripts/dataset/audit_source_shortcut.py` mede se um RandomForest
+   prevê a FONTE (brspeech/fkvoice/mlspt/ttsport) a partir dos mesmos 63
+   descritores — quantifica o confounder fonte↔classe (mlspt/ttsport só
+   real; fkvoice só fake) e o teto de acurácia real/fake atingível sem
+   detectar síntese. Reportar como ameaça à validade.
+
+Pendências NÃO-código do artigo (operacionais): tabela principal
+speaker-disjoint (rodar com `--speaker-split`), avaliação cross-dataset
+(ASVspoof/In-the-Wild), 3+ sementes no retreino, declaração de
+licenças/ética do dataset.
+
+### Consolidação de artefatos (mesma data)
+
+Raiz canônica de dados consolidada em **`data/datasets/`** (settings já
+apontava para lá; 15+ scripts e as abas Gradio hardcodavam `app/datasets`,
+origem da fragmentação e do stub de 64 amostras). Removidos, após verificação
+por hash MD5 (~16,4 GB liberados):
+
+- `app/models/bench_*.{keras,pkl}` da raiz: 8 arquivos byte-idênticos aos
+  promovidos em `benchmark_final/` (~690 MB). Sidecars `*_config.json` da
+  raiz mantidos (proveniência de calibração).
+- `data/datasets/splits/**/*.wav`: 15.000/15.000 cópias byte-idênticas de
+  `real/`+`fake/` (~3,7 GB). A atribuição exata arquivo→split foi preservada
+  em `splits/splits_files_manifest.json` (novo) + `splits_metadata.json`;
+  regeneração via `preprocess_dataset.py --create-splits` (e os NPZs já
+  embutem os splits).
+- `results/**/best_checkpoint.keras`: 18 checkpoints intra-run de execuções
+  concluídas (~12 GB; o do AST tinha 1,7 GB cada). Métricas, histórico,
+  scores e figuras dos runs intactos.
+- `app/datasets/benchmark_audio_raw_balanced_15k.npz` (o stub de 64
+  amostras) e o diretório `app/datasets/`; `app/results/` vazio
+  (`doctor.py` atualizado).
+- Bug pré-existente corrigido de carona: `speaker_manifest.py` resolvia o
+  sidecar para `app/app/datasets/` (diretório fantasma — `BASE_DIR` subia só
+  até `app/`); agora aponta para `data/datasets/speaker_manifest.json` real.
+
+Os dois NPZs grandes NÃO são duplicatas (o `confirmatory_v2` difere em
+~1,4 MB e tem rotation/test-lock próprios) — ambos mantidos.
+`data/datasets/raw/` (29 GB de caches-fonte) mantido: é a origem para
+regenerar `real/`+`fake/`, não uma duplicata.
+
+## 2026-07-15/16 — AASIST e RawGAT-ST: revisão estrutural
+
+Os nomes padrão agora selecionam as topologias espectro-temporais completas;
+os builders 1D anteriores permanecem disponíveis como aasist_legacy e
+rawgat_st_legacy para carregar checkpoints e executar ablações.
+
+| Componente | AASIST | RawGAT-ST |
+| --- | --- | --- |
+| Janela raw | 64.600 amostras (~4,04 s), crop aleatório no treino | idem |
+| Encoder | mapa Sinc 2D + 6 blocos residuais | dois encoders 2D independentes, 6 blocos cada |
+| Grafos | S/T + master node; 2 pilhas de 2 HS-GAL; MGO | GAT S + GAT T, alinhamento de nós, produto e terceiro GAT |
+| Head | cross-entropy em logits por padrão; AM-Softmax opcional | cross-entropy em logits |
+| Otimizador | AdamW, LR 1e-4, CosineDecay até 5e-6 | idem, clip global 0,7 |
+| Avaliação | média de três crops (início/centro/fim) antes do limiar EER | idem |
+
+Augmentation raw por época passa a sortear AWGN por SNR, RawBoost completo
+(LnL+ISD+SSI), simulação diferenciável de codec, RIR sintética, deslocamento
+temporal e compressão dinâmica. O benchmark move LR/decay para os parâmetros
+do construtor e desliga ReduceLROnPlateau, preservando o scheduler interno.
+
+Impacto esperado, a confirmar por novo retreino multi-semente:
+
+- menor EER por maior cobertura temporal e média multicrop;
+- menor gap treino-validação por encoder/grafos fiéis e augmentation dinâmica;
+- maior acurácia e recall em 10/20 dB e após codec;
+- scores contínuos em logits, convertidos por softmax antes de EER/AUC.
+
+As métricas históricas acima não foram reescritas: elas pertencem aos
+checkpoints anteriores. Esta seção documenta a configuração do próximo
+retreino confirmatório, não um resultado já medido.
+
+4. **Contaminação Keras 2 via transformers (bug latente de ambiente).**
+   `transformers.modeling_tf_utils` seta `TF_USE_LEGACY_KERAS=1` no
+   `os.environ` do processo que o importa. Qualquer SUBPROCESSO herdado
+   depois disso carrega `tensorflow.keras` como **Keras 2 (tf_keras)** — e o
+   código Keras 3 do projeto quebra (ex.:
+   `MultiHeadAttention.build(q, v)` do CrossAttentionFusionLayer;
+   descoberto por falha ordem-dependente em
+   `test_domain_imports_without_web_layer` na suíte combinada). Blindado em
+   3 camadas: `run_models_sequential` pina `TF_USE_LEGACY_KERAS=0` no env
+   dos filhos; `benchmarks/runner.py` faz `setdefault("0")` antes do import
+   do TF; e o teste simula o Colab limpo pinando `0` no subprocesso.
+
+## 2026-07-18 — Avaliação final dos 11 modelos promovidos: necessidade de retreino
+
+Reavaliação pedida explicitamente pelo usuário sobre o conjunto já promovido em
+`app/models/benchmark_final/` (`results/final_consolidated_20260715/`, que
+mescla `retrain_full_20260714` + `retrain_weak4_20260715` — a fonte vigente,
+ver seções acima). Antes de concluir, confirmado que o retreino confirmatório
+de AASIST/RawGAT-ST de outra sessão (`results/retrain_aasist_rawgat_confirmatory_20260715/`,
+container `xfakesong_retrain_rawgat_float32_resilient_20260718`) **não tem
+resultado válido ainda** — `run_summary.json` mostra `status: running` e
+`AASIST: timeout` (57.600 s = 16 h). Nenhum dado supera os números abaixo.
+
+| Modelo | EER [IC95] | Baseline histórico | Δ | Acc | AUC | ECE | Acc@30/20/10dB | MP3/Opus EER |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Conformer | 0,18% [0,00–0,36] | 0,27% | −0,09 | 99,82% | 1,0000 | 1,88% | 99,6/99,5/98,0% | 0,27/0,76% |
+| HuBERT Original | 0,18% [0,00–0,44] | 11,29% | −11,11 | 99,87% | 1,0000 | 0,32% | 99,4/98,9/96,8% | — |
+| MultiscaleCNN (Res2Net) | 0,36% [0,09–0,58] | 0,44% | −0,08 | 99,69% | 0,9999 | 0,37% | 99,2/99,0/97,5% | 0,40/0,71% |
+| WavLM Original | 0,36% [0,09–0,58] | 15,24% | −14,88 | 99,69% | 1,0000 | 0,35% | 99,5/99,6/98,8% | — |
+| SVM | 0,58% [0,31–1,16] | 4,31% (protocolo antigo) | −3,73 | 99,24% | 0,9998 | 0,98% | 98,0/96,0/93,8% | 1,47/0,84% |
+| Hybrid CNN-Transformer (CCT) | 0,71% [0,40–1,16] | 2,40% | −1,69 | 99,20% | 0,9993 | 0,77% | 98,8/98,0/95,0% | 0,93/1,16% |
+| SpectrogramTransformer (AST) | 0,98% [0,53–1,47] | 1,33% | −0,35 | 99,02% | 0,9977 | 0,97% | 97,8/96,4/93,2% | 1,16/2,00% |
+| RandomForest | 2,09% [1,47–2,71] | 1,69% | +0,40 | 97,82% | 0,9989 | **11,28%** | 95,7/94,2/92,4% | 2,40/5,96% |
+| RawNet2 | 2,71% [2,09–3,47] | 2,89% | −0,18 | 97,16% | 0,9977 | 0,81% | 95,5/95,3/93,0% | 4,18/4,09% |
+| AASIST | 4,89% [3,92–5,73] | N/A (histórico inválido) | — | 95,02% | 0,9900 | 4,45% | 93,0/91,5/88,7% (11,4% EER@10dB) | 7,56/8,00% |
+| RawGAT-ST | 6,22% [5,20–7,20] | 7,16% | −0,94 | 93,60% | 0,9865 | 3,37% | 93,3/91,1/84,0% (15,4% EER@10dB) | 8,49/8,44% |
+
+Diagnóstico adicional (curvas treino×validação, `history.json` de cada run):
+
+- **RandomForest — ECE 11,28%**, um patamar acima de todos os outros 10
+  modelos (o segundo pior é o AASIST neural, 4,45%; a mediana dos outros 9
+  fica abaixo de 1%). Acurácia/EER estão em linha com o baseline (empate
+  dentro do IC), então não é um problema de discriminação — é o score de
+  probabilidade não refletir a confiança real. Também é o que mais degrada
+  sob Opus (2,09%→5,96% EER, ~2,9×). **Ação recomendada: recalibrar
+  (Platt/isotonic ou temperatura) o RandomForest antes da próxima promoção —
+  não é um retreino do zero.**
+- **AASIST**: gap treino−validação de +5,42 pp e pico de val_accuracy na
+  época 34/100 (val final 93,42%, abaixo do pico) — consistente com o
+  diagnóstico já registrado de que este é historicamente o modelo mais
+  instável dos 11, não uma regressão nova. É o número **válido** mais fraco
+  do conjunto (EER quase 3× o próximo pior, RawGAT-ST) e o que mais degrada
+  a 10 dB (11,4% EER) e sob codec (7,6–8,0%).
+- **RawGAT-ST**: gap +3,15 pp, pico na época 42/100. Mesmo padrão, mais
+  brando. É o único cujo IC95 superior (7,20%) encosta no baseline anterior
+  (7,16%) — a melhoria de −0,94 pp não é estatisticamente contundente, mas
+  também não há regressão. Pior robustez a 10 dB do conjunto (15,4% EER,
+  quase triplica o valor limpo).
+- Os outros 8 modelos: gap treino−validação ≤1,1 pp, sem sinal de overfit ou
+  instabilidade, ECE baixo, degradação suave e monotônica com o ruído.
+
+### Veredito
+
+**Nenhum modelo tem bug pendente que invalide o resultado atual — nenhum
+retreino é obrigatório.** Dois itens de acompanhamento, nenhum bloqueante:
+
+1. **RandomForest**: recalibrar (não retreinar) por causa do ECE alto —
+   prioridade média, é uma correção de pós-processamento barata.
+2. **AASIST/RawGAT-ST**: continuam sendo os dois mais fracos do conjunto e os
+   que mais perdem sob ruído/codec — característica de desempenho já
+   registrada (não uma pendência nova). Retreiná-los é **opcional, baixa
+   prioridade**, salvo se a sessão concorrente já em andamento (retreino
+   confirmatório multi-semente) produzir um resultado válido que os supere —
+   nesse caso, reavaliar promoção quando aquele run terminar.
+
+Este veredito reavalia e confirma a conclusão da seção "Necessidade de
+retreino — reavaliada" acima, agora sobre o conjunto final de 11 modelos já
+promovidos (não apenas os 4 ajustados), com o achado novo do ECE do
+RandomForest.
+
+## 2026-07-18 — encerramento do retreino confirmatório
+
+O retreino confirmatório foi encerrado por solicitação do usuário durante a
+consolidação do projeto na branch `main`. As execuções Docker do XFakeSong
+foram interrompidas e tiveram a política de reinício automático desativada.
+
+- **AASIST:** o treino chegou a concluir e o melhor checkpoint da época 35 foi
+  preservado em
+  `results/retrain_aasist_rawgat_confirmatory_20260715/aasist/architectures/aasist/models/`.
+  A avaliação confirmatória completa não foi concluída.
+- **RawGAT-ST:** a execução resiliente float32 foi interrompida ainda na época
+  1, no batch 108 de 656. A política híbrida (encoder em mixed precision e
+  pipeline gráfico em float32) havia sido rejeitada no smoke por instabilidade.
+  Portanto, não existe resultado confirmatório final válido a promover.
+- A tentativa anterior interrompida por reinicialização do host permanece
+  preservada em
+  `results/retrain_aasist_rawgat_confirmatory_20260715/rawgat_st_interrupted_host_reboot_20260718/`.
+
+Consequentemente, as métricas promovidas continuam sendo as do conjunto
+`results/final_consolidated_20260715/`: AASIST com **95,02% de acurácia e
+4,89% de EER**, e RawGAT-ST com **93,60% de acurácia e 6,22% de EER**. Esses
+números não são resultados do confirmatório interrompido.

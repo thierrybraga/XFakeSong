@@ -3,8 +3,8 @@ import numpy as np
 import tensorflow as tf
 import json
 from app.domain.services.detection_service import DetectionService
-from app.core.interfaces.audio import AudioData
-from app.core.interfaces.base import ProcessingStatus
+from app.core.contracts.audio import AudioData
+from app.core.contracts.base import ProcessingStatus
 
 
 @pytest.fixture

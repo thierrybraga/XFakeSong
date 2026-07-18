@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock
 
-from app.core.interfaces.base import ProcessingStatus
+from app.core.contracts.base import ProcessingStatus
 
 
 def test_list_models(client):

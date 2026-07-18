@@ -47,7 +47,7 @@ class TestParityWithBenchmarkData:
 
     def test_tabular_parity_and_contract(self, raw_batch):
         pytest.importorskip("librosa")
-        from app.core.xai.tabular import N_FEATURES
+        from app.domain.xai.tabular import N_FEATURES
         from benchmarks import data as bd
 
         ref = bd._to_tabular_features(raw_batch)
@@ -66,6 +66,31 @@ class TestParityWithBenchmarkData:
         assert float(np.abs(fitted).min()) > 0.0
 
 
+class TestRawCropPolicy:
+    def test_default_window_matches_paper_protocol(self):
+        assert bf.DEFAULT_RAW_TARGET == 64600
+
+    def test_random_crop_is_seeded_per_sample(self, raw_batch):
+        first = bf.raw_audio_batch(
+            raw_batch, target_len=64600, crop_strategy="random", seed=7
+        )
+        second = bf.raw_audio_batch(
+            raw_batch, target_len=64600, crop_strategy="random", seed=7
+        )
+        center = bf.raw_audio_batch(raw_batch, target_len=64600)
+        np.testing.assert_array_equal(first, second)
+        assert not np.array_equal(first, center)
+
+    def test_multicrop_start_center_end(self, raw_batch):
+        crops = bf.raw_audio_multicrop_batch(
+            raw_batch, target_len=64600, num_crops=3
+        )
+        assert crops.shape == (3, 3, 64600, 1)
+        assert np.all(np.isfinite(crops))
+        assert np.allclose(crops.mean(axis=(2, 3)), 0.0, atol=1e-4)
+        assert np.allclose(crops.std(axis=(2, 3)), 1.0, atol=1e-3)
+
+
 class TestPrepareSingleDispatch:
     def test_raw_frontend(self):
         y = np.random.default_rng(0).normal(size=24000).astype("float32")
@@ -74,6 +99,15 @@ class TestPrepareSingleDispatch:
         # z-score por amostra
         assert abs(float(out.mean())) < 1e-4
         assert abs(float(out.std()) - 1.0) < 1e-3
+
+    def test_raw_frontend_multicrop(self):
+        y = np.random.default_rng(3).normal(size=80000).astype("float32")
+        out = bf.prepare_single(
+            y, bf.FRONTEND_RAW,
+            target_sequence_length=64600,
+            raw_num_crops=3,
+        )
+        assert out.shape == (3, 64600, 1)
 
     def test_logmel_frontend_with_channel(self):
         pytest.importorskip("librosa")
@@ -94,7 +128,7 @@ class TestFeaturePreparerBenchmarkPath:
 
     @staticmethod
     def _make_audio(n=80000):
-        from app.core.interfaces.audio import AudioData
+        from app.core.contracts.audio import AudioData
 
         rng = np.random.default_rng(7)
         samples = (rng.normal(size=n) * 0.2).astype("float32")
@@ -117,6 +151,8 @@ class TestFeaturePreparerBenchmarkPath:
         pytest.importorskip("librosa")
         from unittest.mock import MagicMock
 
+        from app.utils.silero_vad import apply_agc
+
         audio, samples = self._make_audio()
         preparer = self._make_preparer()
         model_info = MagicMock()
@@ -130,8 +166,15 @@ class TestFeaturePreparerBenchmarkPath:
         }
         result = preparer.prepare_input(audio, model_info, arch_info=None)
         assert result["status"] == "ok"
+        # BUG FIX (Limitação (viii) do TCC): o FeaturePreparer agora aplica a
+        # mesma AGC por RMS/LUFS da construção do corpus (Eq. 5) antes de
+        # delegar ao front-end compartilhado — não mais os `samples` crus.
+        # Numericamente inconsequente aqui (dB ref-max + z-score por amostra
+        # são invariantes a reescala linear, a menos de ruído de ponto
+        # flutuante ~1e-6 no termo epsilon do log), mas a referência precisa
+        # espelhar o passo de AGC para a igualdade se manter exata.
         np.testing.assert_array_equal(
-            result["features"], bf.log_mel_single(samples)
+            result["features"], bf.log_mel_single(apply_agc(samples))
         )
         assert result["metadata"]["feature_frontend"] == bf.FRONTEND_LOGMEL
 

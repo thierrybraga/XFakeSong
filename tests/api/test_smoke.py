@@ -220,11 +220,16 @@ def test_training_architectures_ok(client):
 
 
 def test_training_status_not_found_returns_proper_response(client):
-    """Job inexistente retorna status='not_found' (não 500)."""
+    """Job inexistente retorna 404 (não 500, e não um falso 200 'not_found').
+
+    BUG FIX: antes retornava TrainingResponse(status="not_found") com HTTP
+    200, o que enganava clientes que checam apenas o status code — mesmo
+    antipadrão já corrigido em start_training (comentário API.8).
+    """
     resp = client.get("/api/v1/training/status/00000000-0000-0000-0000-000000000000")
-    assert resp.status_code == 200
+    assert resp.status_code == 404
     body = resp.json()
-    assert body["status"] == "not_found"
+    assert body["error_code"] == "NOT_FOUND"
 
 
 # ────────────────────────────────────────────────────────────────────────
@@ -234,7 +239,7 @@ def test_training_status_not_found_returns_proper_response(client):
 
 def test_prediction_result_exposes_new_fields():
     """PredictionResult deve aceitar (mas não exigir) campos Sprint 1.4/2.5/4.5."""
-    from app.schemas.api_models import PredictionResult
+    from app.interfaces.web.schemas.api_models import PredictionResult
 
     p = PredictionResult(
         is_fake=True,
@@ -257,7 +262,7 @@ def test_prediction_result_exposes_new_fields():
 
 def test_prediction_result_backward_compatible():
     """Clientes antigos sem os campos novos continuam funcionando."""
-    from app.schemas.api_models import PredictionResult
+    from app.interfaces.web.schemas.api_models import PredictionResult
 
     p = PredictionResult(
         is_fake=False,
@@ -273,7 +278,7 @@ def test_prediction_result_backward_compatible():
 
 def test_multi_model_request_validates_fusion():
     """MultiModelDetectionRequest deve rejeitar fusion inválido."""
-    from app.schemas.api_models import MultiModelDetectionRequest
+    from app.interfaces.web.schemas.api_models import MultiModelDetectionRequest
 
     with pytest.raises(Exception):
         MultiModelDetectionRequest(model_names=["a", "b"], fusion="unknown_strategy")
@@ -285,7 +290,7 @@ def test_multi_model_request_validates_fusion():
 
 def test_multi_model_request_min_2_models():
     """multi-model exige ≥2 modelos."""
-    from app.schemas.api_models import MultiModelDetectionRequest
+    from app.interfaces.web.schemas.api_models import MultiModelDetectionRequest
 
     with pytest.raises(Exception):
         MultiModelDetectionRequest(model_names=["only_one"])
@@ -293,7 +298,7 @@ def test_multi_model_request_min_2_models():
 
 def test_uncertainty_request_n_samples_bounds():
     """UncertaintyRequest valida n_samples ∈ [5, 200]."""
-    from app.schemas.api_models import UncertaintyRequest
+    from app.interfaces.web.schemas.api_models import UncertaintyRequest
 
     req = UncertaintyRequest(n_samples=20)
     assert req.n_samples == 20
@@ -306,7 +311,7 @@ def test_uncertainty_request_n_samples_bounds():
 
 def test_cross_validation_request_validates_n_folds():
     """CrossValidationRequest valida n_folds ∈ [2, 20] e architecture."""
-    from app.schemas.api_models import CrossValidationRequest
+    from app.interfaces.web.schemas.api_models import CrossValidationRequest
 
     req = CrossValidationRequest(
         architecture="aasist",
@@ -328,7 +333,7 @@ def test_cross_validation_request_validates_n_folds():
 
 def test_onnx_export_request_validates_opset():
     """OnnxExportRequest valida opset ∈ [9, 20] e exige model_name."""
-    from app.schemas.api_models import OnnxExportRequest
+    from app.interfaces.web.schemas.api_models import OnnxExportRequest
 
     req = OnnxExportRequest(model_name="AASIST_v1", quantize_int8=True)
     assert req.opset == 13  # default
@@ -342,7 +347,7 @@ def test_onnx_export_request_validates_opset():
 
 def test_onnx_export_response_optional_int8():
     """OnnxExportResponse aceita resultado só FP32 (sem INT8)."""
-    from app.schemas.api_models import OnnxExportResponse
+    from app.interfaces.web.schemas.api_models import OnnxExportResponse
 
     r = OnnxExportResponse(
         success=True, onnx_path="x.onnx", size_mb=4.2, message="ok"

@@ -7,8 +7,8 @@ quando so a identidade de locutor mudou.
 
 Uso:
     python scripts/dataset/update_npz_speaker_ids.py \
-        --npz app/datasets/benchmark_audio_raw_balanced_15k.npz \
-        --manifest app/datasets/speaker_manifest.json
+        --npz data/datasets/benchmark_audio_raw_balanced_15k.npz \
+        --manifest data/datasets/speaker_manifest.json
 """
 
 from __future__ import annotations
@@ -29,8 +29,8 @@ import sys
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.core.dataset_catalog import infer_prefix_from_path  # noqa: E402
-from app.core.speaker_manifest import speaker_for_path  # noqa: E402
+from app.domain.dataset_metadata.dataset_catalog import infer_prefix_from_path  # noqa: E402
+from app.domain.dataset_metadata.speaker_manifest import speaker_for_path  # noqa: E402
 
 
 def _read_metadata(data: np.lib.npyio.NpzFile) -> dict:
@@ -86,7 +86,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--npz",
-        default="app/datasets/benchmark_audio_raw_balanced_15k.npz",
+        default="data/datasets/benchmark_audio_raw_balanced_15k.npz",
         help="NPZ de entrada e saída.",
     )
     parser.add_argument(

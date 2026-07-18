@@ -17,7 +17,7 @@ def count_params(model) -> Optional[int]:
     try:
         return int(model.count_params())
     except Exception as exc:
-        logger.warning("Medição de latência falhou: %s", exc)
+        logger.warning("Contagem de parâmetros falhou: %s", exc)
         return None
 
 

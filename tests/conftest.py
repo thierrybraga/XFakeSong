@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from app.core.interfaces.base import ProcessingResult, ProcessingStatus
+from app.core.contracts.base import ProcessingResult, ProcessingStatus
 from app.dependencies import (
     get_detection_service,
     get_training_service,
@@ -14,8 +14,8 @@ from app.dependencies import (
 from app.domain.services.detection_service import DetectionService
 from app.domain.services.training_service import TrainingService
 from app.domain.services.upload_service import AudioUploadService
-from app.main_fastapi import app
-from app.schemas.api_models import DatasetMetadata
+from app.interfaces.web.main_fastapi import app
+from app.interfaces.web.schemas.api_models import DatasetMetadata
 
 _TEST_CATEGORIES = ("unit", "api", "functional", "integration", "smoke")
 
@@ -31,6 +31,39 @@ def pytest_collection_modifyitems(config, items):
 
 # Configurar API Key para testes
 os.environ["XFAKESONG_API_KEY"] = "test-api-key"
+
+
+@pytest.fixture(autouse=True)
+def _reset_tf_mixed_precision_policy():
+    """BUG FIX (flakiness sistêmica por estado global do Keras): a suíte
+
+    completa expôs testes que passam isolados mas falham quando rodados
+    depois de outro teste que chama
+    ``tf.keras.mixed_precision.set_global_policy("mixed_float16")`` sem
+    reverter — a política é global de PROCESSO, não de teste, então vaza
+    para qualquer teste seguinte na mesma sessão pytest.
+
+    Dois sintomas já confirmados (causa raiz idêntica, reproduzida
+    isoladamente): ``test_trainer_preserves_precompiled_loss_and_optimizer``
+    (o Keras encapsula o otimizador precompilado num ``LossScaleOptimizer``
+    ao chamar ``model.compile()`` sob a política vazada) e
+    ``test_architecture_builds_and_forwards`` para AASIST/RawGAT-ST/Ensemble
+    (camadas customizadas — ``SincConvLayer`` e afins — produzem saída
+    não-finita sob ``float16``). Reseta para ``float32`` antes de cada teste
+    e restaura a política anterior depois, para não mascarar os testes que
+    *de fato* querem exercitar mixed precision (ex.:
+    ``test_sinc_layers_mixed_precision.py``, que já gerencia a própria
+    política com ``try/finally``).
+    """
+    try:
+        import tensorflow as tf
+    except ImportError:
+        yield
+        return
+    original = tf.keras.mixed_precision.global_policy()
+    tf.keras.mixed_precision.set_global_policy("float32")
+    yield
+    tf.keras.mixed_precision.set_global_policy(original)
 
 
 @pytest.fixture

@@ -15,7 +15,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DATASETS_DIR = ROOT / "app" / "datasets"
+DATASETS_DIR = ROOT / "data" / "datasets"
 
 
 def _prefix(path: Path) -> str:
@@ -39,12 +39,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Audita cobertura de IDs reais de falantes por arquivo."
     )
-    parser.add_argument("--dataset-dir", default="app/datasets")
+    parser.add_argument("--dataset-dir", default="data/datasets")
     parser.add_argument(
         "--scope",
         choices=["active", "splits"],
         default="active",
-        help="active usa real/ + fake/; splits usa app/datasets/splits/.",
+        help="active usa real/ + fake/; splits usa data/datasets/splits/.",
     )
     parser.add_argument(
         "--min-identified-ratio",
@@ -54,7 +54,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--json-out",
-        default="app/datasets/speaker_audit.json",
+        default="data/datasets/speaker_audit.json",
         help="Relatório JSON gerado.",
     )
     args = parser.parse_args()

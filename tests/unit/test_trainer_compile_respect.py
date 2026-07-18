@@ -29,6 +29,14 @@ import tensorflow as tf  # noqa: E402
 from app.core.config.settings import TrainingConfig  # noqa: E402
 from app.domain.models.training.trainer import ModelTrainer  # noqa: E402
 
+# Os testes abaixo chamam `model.compile(...)` ANTES de construir o
+# `ModelTrainer` (para simular um modelo já compilado pela arquitetura) —
+# sensíveis a uma política global `mixed_float16` vazada de outro teste
+# (o Keras encapsularia o otimizador num `LossScaleOptimizer` nesse
+# `compile()`, antes do `ModelTrainer(use_mixed_precision=False)` resetar a
+# política, tarde demais). Isolado pela fixture autouse
+# `_reset_tf_mixed_precision_policy` em `tests/conftest.py`.
+
 
 def _tiny_data(n=48, dim=8, seed=0):
     rng = np.random.default_rng(seed)

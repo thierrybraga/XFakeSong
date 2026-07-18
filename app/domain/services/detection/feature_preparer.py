@@ -3,8 +3,8 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 
-from app.core.interfaces.audio import AudioData, FeatureType
-from app.core.interfaces.base import ProcessingStatus
+from app.core.contracts.audio import AudioData, FeatureType
+from app.core.contracts.base import ProcessingStatus
 from app.domain.features.extractors.mel.mel_spectrogram import MelSpectrogramExtractor
 from app.domain.models.architectures.registry import load_hyperparameters_json
 from app.domain.services.feature_extraction_service import (
@@ -194,6 +194,22 @@ class FeaturePreparer:
                         if samples.shape[-1] > 1
                         else samples.reshape(-1)
                     )
+
+                # BUG FIX (paridade treino/inferência, Limitação (viii) do
+                # TCC): `AudioData.from_file` só faz `librosa.load` — nenhuma
+                # AGC é aplicada antes daqui. Para raw/log-mel isso é
+                # inconsequente (z-score/dB-ref-max por amostra, aplicados
+                # dentro de `prepare_single`, são invariantes a qualquer
+                # reescala linear prévia), mas para o vetor tabular (SVM/
+                # Random Forest) as 11 estatísticas temporais (média, RMS,
+                # min/máx, percentis) são calculadas direto sobre `samples`
+                # sem normalização nenhuma — a AGC muda o resultado de fato.
+                # Aplica a mesma AGC por RMS/LUFS (Eq. 5 do TCC) usada na
+                # construção do corpus, via `app.utils.silero_vad`.
+                from app.utils.silero_vad import apply_agc
+
+                samples = apply_agc(samples)
+
                 shape = tuple(model_info.input_shape or ())
                 features = prepare_single(
                     samples,
@@ -215,6 +231,13 @@ class FeaturePreparer:
                         _contract_bm.get("source_samples") or 80000
                     ),
                     add_channel_dim=bool(len(shape) == 3 and shape[-1] == 1),
+                    raw_num_crops=(
+                        3
+                        if "multicrop" in str(
+                            _contract_bm.get("crop_strategy", "")
+                        ).lower()
+                        else 1
+                    ),
                 )
                 if _bm_frontend == FRONTEND_TABULAR:
                     expected = int(shape[0]) if shape else features.size

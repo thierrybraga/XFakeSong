@@ -29,7 +29,8 @@ class InferenceMenu(BaseMenu):
         """Analisa um único arquivo de áudio."""
         print("\n🎵 Análise de Arquivo Único")
 
-        model_files = list(self.context.models_dir.glob("*.h5"))
+        model_files = list(self.context.models_dir.glob("*.keras")) + \
+            list(self.context.models_dir.glob("*.h5"))
         if not model_files:
             print("❌ Nenhum modelo treinado encontrado.")
             return
@@ -62,13 +63,13 @@ class InferenceMenu(BaseMenu):
             print(f"📊 Modelo: {selected_model.stem}")
 
             try:
-                result = self.context.detection_service.detect_deepfake(
-                    audio_path, selected_model.stem)
+                result = self.context.detection_service.detect_from_file(
+                    audio_path, model_name=selected_model.stem)
 
-                if result.status.name == "SUCCESS":
+                if result.is_success:
                     prediction = result.data
-                    confidence = prediction.get('confidence', 0)
-                    is_fake = prediction.get('is_deepfake', False)
+                    confidence = prediction.confidence
+                    is_fake = prediction.is_fake
 
                     print("\n📊 Resultado da Análise:")
                     print(
@@ -82,14 +83,15 @@ class InferenceMenu(BaseMenu):
                     else:
                         print("   ❌ Baixa confiança")
                 else:
-                    print(f"❌ Erro na análise: {result.message}")
+                    print(f"❌ Erro na análise: {'; '.join(result.errors)}")
 
             except Exception as e:
                 print(f"❌ Erro ao analisar áudio: {e}")
                 self.context.logger.error(f"Erro na inferência: {e}")
 
-        except ValueError:
-            print("❌ Entrada inválida!")
+        except Exception as e:
+            print(f"❌ Erro inesperado: {e}")
+            self.context.logger.error(f"Erro na análise de áudio: {e}")
 
     def analyze_batch_audio(self):
         """Analisa múltiplos arquivos de áudio."""

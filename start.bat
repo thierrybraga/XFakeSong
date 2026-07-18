@@ -1,8 +1,12 @@
 @echo off
 REM ====================================================================
 REM XFakeSong Launcher (Windows)
-REM Uso: start.bat [test|prod|gpu|stop|logs|rebuild|clean|status|install|bootstrap]
+REM Uso: start.bat [auto|test|prod|gpu|stop|logs|rebuild|clean|status|install|bootstrap]
 REM Sem argumento: abre menu interativo.
+REM "auto" (recomendado) detecta GPU NVIDIA (nvidia-smi) e usa
+REM docker/compose/inference.nvidia.yml, com fallback automatico para
+REM docker/compose/inference.cpu.yml se o build/up da GPU falhar (driver ou
+REM NVIDIA Container Toolkit ausente no host/WSL2).
 REM ====================================================================
 chcp 65001 >nul 2>&1
 SETLOCAL EnableDelayedExpansion EnableExtensions
@@ -30,6 +34,7 @@ IF "%DC%"=="" (
 
 REM Dispatcher de argumentos
 IF /I "%~1"=="test"      GOTO MODE_TEST
+IF /I "%~1"=="auto"      GOTO MODE_PROD_AUTO
 IF /I "%~1"=="prod"      GOTO MODE_PROD
 IF /I "%~1"=="gpu"       GOTO MODE_PROD_GPU
 IF /I "%~1"=="stop"      GOTO MODE_STOP
@@ -52,31 +57,33 @@ ECHO                              XFAKESONG LAUNCHER
 ECHO ===============================================================================
 ECHO.
 ECHO  [1]  Modo TESTE (Python local)
-ECHO  [2]  Modo PRODUCAO (Docker)
-ECHO  [3]  Modo PRODUCAO + GPU (NVIDIA)
-ECHO  [4]  Stop containers
-ECHO  [5]  Ver logs (follow)
-ECHO  [6]  Rebuild SEM cache
-ECHO  [7]  Status / health
-ECHO  [8]  Limpeza profunda (down -v + prune)
-ECHO  [9]  Instalar dependencias locais
-ECHO  [10] Bootstrap diretorios
-ECHO  [11] Deploy Hugging Face Spaces
+ECHO  [2]  Modo PRODUCAO (Docker, auto GPU/CPU)  [RECOMENDADO]
+ECHO  [3]  Modo PRODUCAO - forcar CPU
+ECHO  [4]  Modo PRODUCAO - forcar GPU (NVIDIA)
+ECHO  [5]  Stop containers
+ECHO  [6]  Ver logs (follow)
+ECHO  [7]  Rebuild SEM cache
+ECHO  [8]  Status / health
+ECHO  [9]  Limpeza profunda (down -v + prune)
+ECHO  [10] Instalar dependencias locais
+ECHO  [11] Bootstrap diretorios
+ECHO  [12] Deploy Hugging Face Spaces
 ECHO  [0]  Sair
 ECHO.
 SET /P "OPTION=Escolha uma opcao: "
 
 IF "%OPTION%"=="1"  GOTO MODE_TEST
-IF "%OPTION%"=="2"  GOTO MODE_PROD
-IF "%OPTION%"=="3"  GOTO MODE_PROD_GPU
-IF "%OPTION%"=="4"  GOTO MODE_STOP
-IF "%OPTION%"=="5"  GOTO MODE_LOGS
-IF "%OPTION%"=="6"  GOTO MODE_REBUILD
-IF "%OPTION%"=="7"  GOTO MODE_STATUS
-IF "%OPTION%"=="8"  GOTO MODE_CLEAN
-IF "%OPTION%"=="9"  GOTO INSTALL_DEPS
-IF "%OPTION%"=="10" GOTO BOOTSTRAP
-IF "%OPTION%"=="11" GOTO DEPLOY
+IF "%OPTION%"=="2"  GOTO MODE_PROD_AUTO
+IF "%OPTION%"=="3"  GOTO MODE_PROD
+IF "%OPTION%"=="4"  GOTO MODE_PROD_GPU
+IF "%OPTION%"=="5"  GOTO MODE_STOP
+IF "%OPTION%"=="6"  GOTO MODE_LOGS
+IF "%OPTION%"=="7"  GOTO MODE_REBUILD
+IF "%OPTION%"=="8"  GOTO MODE_STATUS
+IF "%OPTION%"=="9"  GOTO MODE_CLEAN
+IF "%OPTION%"=="10" GOTO INSTALL_DEPS
+IF "%OPTION%"=="11" GOTO BOOTSTRAP
+IF "%OPTION%"=="12" GOTO DEPLOY
 IF "%OPTION%"=="0"  GOTO EOF
 
 ECHO Opcao invalida!
@@ -149,12 +156,20 @@ python main.py --gradio --gradio-port 7860
 GOTO MENU_RETURN
 
 REM ====================================================================
+REM MODO PRODUCAO: detecta GPU NVIDIA automaticamente (nvidia-smi + WSL2/
+REM NVIDIA Container Toolkit) e usa docker/compose/inference.{cpu,nvidia}.yml.
+REM "gpu"/"prod" forcam um perfil especifico; sem argumento, auto-detecta com
+REM fallback automatico para CPU se o perfil GPU falhar (driver/toolkit ausente).
 :MODE_PROD
-SET "GPU=0"
+SET "FORCE_PROFILE=cpu"
 GOTO MODE_PROD_RUN
 
 :MODE_PROD_GPU
-SET "GPU=1"
+SET "FORCE_PROFILE=gpu"
+GOTO MODE_PROD_RUN
+
+:MODE_PROD_AUTO
+SET "FORCE_PROFILE="
 GOTO MODE_PROD_RUN
 
 :MODE_PROD_RUN
@@ -170,33 +185,56 @@ IF "%COMPOSE_OK%"=="0" (
     GOTO MENU_RETURN
 )
 
-ECHO Compose detectado: %DC%
-IF "%GPU%"=="1" (
-    ECHO GPU mode habilitado ^(NVIDIA^)
-    SET "COMPOSE_FILES=-f docker-compose.yml -f docker-compose.gpu.yml"
+IF "%FORCE_PROFILE%"=="" (
+    CALL :DETECT_GPU
+    IF "!HAS_GPU!"=="1" (SET "PROFILE=gpu") ELSE (SET "PROFILE=cpu")
 ) ELSE (
-    SET "COMPOSE_FILES=-f docker-compose.yml"
+    SET "PROFILE=%FORCE_PROFILE%"
 )
 
+IF "%PROFILE%"=="gpu" (
+    ECHO GPU NVIDIA detectada — perfil GPU ^(docker/compose/inference.nvidia.yml^)
+    SET "COMPOSE_FILE=docker\compose\inference.nvidia.yml"
+    SET "CONTAINER=xfakesong_inference_nvidia"
+) ELSE (
+    ECHO Perfil CPU — docker/compose/inference.cpu.yml
+    SET "COMPOSE_FILE=docker\compose\inference.cpu.yml"
+    SET "CONTAINER=xfakesong_inference_cpu"
+)
+ECHO Compose detectado: %DC%
 ECHO.
 ECHO Build + Up...
-%DC% %COMPOSE_FILES% up --build -d
+%DC% -f %COMPOSE_FILE% up --build -d
 IF ERRORLEVEL 1 (
-    ECHO Falha no docker compose up. Veja a saida acima.
-    GOTO MENU_RETURN
+    IF "%PROFILE%"=="gpu" (
+        ECHO.
+        ECHO Falha no perfil GPU ^(driver/NVIDIA Container Toolkit ausente no host?^).
+        ECHO Aplicando fallback automatico para CPU...
+        SET "COMPOSE_FILE=docker\compose\inference.cpu.yml"
+        SET "CONTAINER=xfakesong_inference_cpu"
+        SET "PROFILE=cpu"
+        %DC% -f !COMPOSE_FILE! up --build -d
+        IF ERRORLEVEL 1 (
+            ECHO Falha tambem no perfil CPU. Veja a saida acima.
+            GOTO MENU_RETURN
+        )
+    ) ELSE (
+        ECHO Falha no docker compose up. Veja a saida acima.
+        GOTO MENU_RETURN
+    )
 )
 
-CALL :WAIT_HEALTHY
+CALL :WAIT_HEALTHY %CONTAINER%
 IF ERRORLEVEL 1 (
     ECHO.
     ECHO Container nao ficou healthy a tempo. Logs:
-    %DC% logs --tail=50 app
+    %DC% -f %COMPOSE_FILE% logs --tail=50 inference-api
     GOTO MENU_RETURN
 )
 
 ECHO.
 ECHO ===============================================================
-ECHO   Aplicacao rodando em http://localhost:7860
+ECHO   Aplicacao rodando em http://localhost:7860  ^(perfil: %PROFILE%^)
 ECHO ===============================================================
 ECHO.
 ECHO Comandos uteis:
@@ -207,12 +245,16 @@ ECHO.
 GOTO MENU_RETURN
 
 REM ====================================================================
+REM Stop/logs/rebuild re-detectam GPU (mesma logica do MODE_PROD_RUN) para
+REM saber qual dos dois perfis (docker/compose/inference.{cpu,nvidia}.yml)
+REM esta ativo — sem precisar persistir estado entre invocacoes do .bat.
 :MODE_STOP
 CLS
 ECHO Parando containers...
 CALL :CHECK_DOCKER_RUNNING
 IF ERRORLEVEL 1 GOTO MENU_RETURN
-%DC% down
+CALL :DETECT_ACTIVE_PROFILE
+%DC% -f %COMPOSE_FILE% down
 IF ERRORLEVEL 1 GOTO MENU_RETURN
 ECHO Containers parados.
 GOTO MENU_RETURN
@@ -222,9 +264,10 @@ REM ====================================================================
 CLS
 CALL :CHECK_DOCKER_RUNNING
 IF ERRORLEVEL 1 GOTO MENU_RETURN
+CALL :DETECT_ACTIVE_PROFILE
 ECHO Pressione Ctrl+C para sair dos logs...
 ECHO.
-%DC% logs -f --tail=100 app
+%DC% -f %COMPOSE_FILE% logs -f --tail=100 inference-api
 GOTO MENU_RETURN
 
 REM ====================================================================
@@ -233,12 +276,13 @@ CLS
 ECHO Forcando rebuild SEM cache...
 CALL :CHECK_DOCKER_RUNNING
 IF ERRORLEVEL 1 GOTO MENU_RETURN
+CALL :DETECT_ACTIVE_PROFILE
 
-%DC% down
-%DC% build --no-cache --pull
+%DC% -f %COMPOSE_FILE% down
+%DC% -f %COMPOSE_FILE% build --no-cache --pull
 IF ERRORLEVEL 1 GOTO MENU_RETURN
-%DC% up -d
-CALL :WAIT_HEALTHY
+%DC% -f %COMPOSE_FILE% up -d
+CALL :WAIT_HEALTHY %CONTAINER%
 GOTO MENU_RETURN
 
 REM ====================================================================
@@ -254,7 +298,10 @@ IF /I NOT "%CONFIRM%"=="y" GOTO MENU_RETURN
 CALL :CHECK_DOCKER_RUNNING
 IF ERRORLEVEL 1 GOTO MENU_RETURN
 
-%DC% down -v --remove-orphans
+REM Desce os dois perfis (CPU/GPU) — nao sabemos qual estava ativo, e down
+REM num compose file cujo container ja nao existe e um no-op inofensivo.
+%DC% -f docker\compose\inference.cpu.yml down -v --remove-orphans
+%DC% -f docker\compose\inference.nvidia.yml down -v --remove-orphans 2>nul
 docker image prune -f
 docker builder prune -f
 ECHO Limpeza concluida.
@@ -265,8 +312,10 @@ REM ====================================================================
 CLS
 CALL :CHECK_DOCKER_RUNNING
 IF ERRORLEVEL 1 GOTO MENU_RETURN
-ECHO --- Compose status ---
-%DC% ps
+ECHO --- Compose status (CPU) ---
+%DC% -f docker\compose\inference.cpu.yml ps
+ECHO --- Compose status (GPU) ---
+%DC% -f docker\compose\inference.nvidia.yml ps
 ECHO.
 ECHO --- docker stats (snapshot) ---
 docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}" 2>nul
@@ -321,8 +370,10 @@ ECHO Uso: start.bat [comando]
 ECHO.
 ECHO Comandos:
 ECHO   test       Roda Python local em .venv
-ECHO   prod       Sobe Docker em modo producao
-ECHO   gpu        Sobe Docker em producao com GPU (NVIDIA)
+ECHO   auto       Sobe Docker detectando GPU NVIDIA automaticamente
+ECHO              (fallback para CPU se driver/toolkit ausente)  [RECOMENDADO]
+ECHO   prod       Sobe Docker forcando perfil CPU
+ECHO   gpu        Sobe Docker forcando perfil GPU (NVIDIA)
 ECHO   stop       Para containers
 ECHO   logs       Tail dos logs do container
 ECHO   rebuild    Force rebuild sem cache
@@ -380,7 +431,39 @@ IF NOT ERRORLEVEL 1 (
 SET "DC="
 EXIT /B 1
 
+:DETECT_GPU
+REM Heuristica leve: nvidia-smi no PATH + lista >=1 GPU. Funciona tanto em
+REM Windows nativo (driver NVIDIA instalado) quanto dentro do WSL2 (o
+REM driver do host expoe nvidia-smi.exe via PATH dentro da distro). NAO
+REM garante que o NVIDIA Container Toolkit esteja configurado no Docker —
+REM por isso MODE_PROD_RUN sempre tem fallback automatico para CPU se o
+REM "up" do perfil GPU falhar.
+SET "HAS_GPU=0"
+where nvidia-smi >nul 2>&1
+IF ERRORLEVEL 1 EXIT /B 0
+nvidia-smi -L >nul 2>&1
+IF NOT ERRORLEVEL 1 SET "HAS_GPU=1"
+EXIT /B 0
+
+:DETECT_ACTIVE_PROFILE
+REM Descobre qual perfil (cpu/gpu) esta ativo checando qual container foi
+REM criado por um MODE_PROD_RUN anterior — evita persistir estado em disco
+REM entre invocacoes separadas do .bat (ex.: "start.bat gpu" e depois
+REM "start.bat stop" em outra janela).
+docker inspect xfakesong_inference_nvidia >nul 2>&1
+IF NOT ERRORLEVEL 1 (
+    SET "COMPOSE_FILE=docker\compose\inference.nvidia.yml"
+    SET "CONTAINER=xfakesong_inference_nvidia"
+    EXIT /B 0
+)
+SET "COMPOSE_FILE=docker\compose\inference.cpu.yml"
+SET "CONTAINER=xfakesong_inference_cpu"
+EXIT /B 0
+
 :WAIT_HEALTHY
+REM %1 = nome do container a monitorar (default xfakesong_inference_cpu)
+SET "HEALTH_CONTAINER=%~1"
+IF "%HEALTH_CONTAINER%"=="" SET "HEALTH_CONTAINER=xfakesong_inference_cpu"
 REM Aguarda container ficar healthy com timeout de 300s
 SET "MAX_WAIT=300"
 SET "ELAPSED=0"
@@ -389,7 +472,7 @@ ECHO.
 ECHO Aguardando container ficar healthy (max %MAX_WAIT%s)...
 
 :WAIT_HEALTHY_LOOP
-FOR /F "delims=" %%H IN ('docker inspect -f "{{.State.Health.Status}}" xfakesong_app 2^>nul') DO SET "STATUS=%%H"
+FOR /F "delims=" %%H IN ('docker inspect -f "{{.State.Health.Status}}" %HEALTH_CONTAINER% 2^>nul') DO SET "STATUS=%%H"
 
 IF "%STATUS%"=="" (
     ECHO   Container nao encontrado.

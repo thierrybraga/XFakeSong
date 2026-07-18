@@ -35,7 +35,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
-DATASET="${DATASET:-app/datasets/benchmark_audio_raw_balanced_15k.npz}"
+DATASET="${DATASET:-data/datasets/benchmark_audio_raw_balanced_15k.npz}"
 STAMP="$(date +%Y%m%d)"
 OUT="results/retune_ajustado_${STAMP}"
 EPOCHS=120

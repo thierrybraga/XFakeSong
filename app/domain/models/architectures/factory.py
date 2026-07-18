@@ -275,8 +275,8 @@ class ArchitectureFactoryRegistry:
     # Saída esperada por arquitetura — única informação que NÃO vive no
     # ArchitectureRegistry; todo o resto é derivado dele (fonte única).
     _OUTPUT_REQUIREMENTS = {
-        "AASIST": {"type": "classification", "activation": "softmax"},
-        "RawGAT-ST": {"type": "classification", "activation": "softmax"},
+        "AASIST": {"type": "classification", "activation": "logits"},
+        "RawGAT-ST": {"type": "classification", "activation": "logits"},
         "EfficientNet-LSTM": {"type": "classification", "activation": "softmax"},
         "MultiscaleCNN": {"type": "classification", "activation": "softmax"},
         "SpectrogramTransformer": {"type": "classification", "activation": "sigmoid"},
