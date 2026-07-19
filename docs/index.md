@@ -31,6 +31,7 @@ fontes canônicas de cada assunto.
 | Aplicar o protocolo acadêmico de dataset | [Protocolo de Dataset v2](DATASET_PROTOCOL_V2.md) |
 | Executar no Google Colab | [Guia Google Colab](13_COLAB_GUIDE.md) |
 | Auditar a aderência das arquiteturas | [Revisão das Arquiteturas](14_REVISAO_ARQUITETURAS.md) |
+| Consultar a metodologia canônica da versão final | [Protocolo Final de ML](28_PROTOCOLO_FINAL.md) |
 | Rodar o benchmark consolidado | [Benchmark e Resultados](15_BENCHMARK.md) |
 | Consolidar ordem de execução e configs do pipeline de benchmark | [Auditoria do Pipeline de Benchmark](30_AUDITORIA_PIPELINE.md) |
 | Rastrear ajustes de hiperparâmetros pós-diagnóstico e retreinos aplicados | [Retreino com Ajustes](RETREINO_AJUSTES.md) |

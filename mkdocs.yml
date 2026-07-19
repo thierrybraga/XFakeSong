@@ -126,6 +126,7 @@ nav:
     - Fluxos de Inferência: 09_INFERENCIA.md
     - Treinamento: 10_TREINAMENTO.md
   - Avaliação:
+    - Protocolo Final de ML: 28_PROTOCOLO_FINAL.md
     - Benchmark e Resultados: 15_BENCHMARK.md
     - Estudo Experimental: 20_ESTUDO_EXPERIMENTAL.md
     - Guia de Notebooks: 16_NOTEBOOKS.md

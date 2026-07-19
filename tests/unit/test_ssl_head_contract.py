@@ -85,7 +85,11 @@ def test_resolve_embedding_config_reads_checkpoint_contract():
 
 
 def test_protocol_swaps_static_copy_for_dynamic_augmenter():
-    """AASIST/RawGAT-ST: sem cópia AWGN estática; augmenter dinâmico ligado."""
+    """AASIST/RawGAT-ST com `architecture_specific_augmentation=True`:
+    sem cópia AWGN estática, augmenter dinâmico ligado. Este é o regime dos
+    resultados promovidos (retrain_weak4_20260715); desde o protocolo v2 ele
+    é OPT-IN — o default comparável usa cópia estática uniforme p/ todas as
+    arquiteturas e o regime dinâmico deve ser reportado como ablação."""
     pytest.importorskip("tensorflow")
     from benchmarks.config import BenchmarkConfig
     from benchmarks.runner import _prepare_protocol_splits
@@ -96,7 +100,9 @@ def test_protocol_swaps_static_copy_for_dynamic_augmenter():
 
     raw = (_split(8), np.array([0, 1] * 4), _split(4),
            np.array([0, 1] * 2), _split(4), np.array([0, 1] * 2))
-    cfg = BenchmarkConfig(bootstrap_ci_samples=0)
+    cfg = BenchmarkConfig(
+        bootstrap_ci_samples=0, architecture_specific_augmentation=True
+    )
 
     splits = _prepare_protocol_splits("AASIST", cfg, raw)
     protocol = splits[7]
@@ -104,7 +110,14 @@ def test_protocol_swaps_static_copy_for_dynamic_augmenter():
     # Sem cópia estática: fit == treino limpo.
     assert protocol["fit_train_samples"] == protocol["clean_train_samples"]
 
+    # Mesmo com o flag ligado, arquiteturas fora do conjunto dinâmico seguem
+    # o protocolo padrão (cópia AWGN estática).
     splits2 = _prepare_protocol_splits("Conformer", cfg, raw)
     protocol2 = splits2[7]
     assert protocol2["training_augmentation_domain"] == "waveform"
     assert protocol2["fit_train_samples"] == 2 * protocol2["clean_train_samples"]
+
+    # Default (flag desligado): AASIST também usa a cópia estática uniforme.
+    cfg_default = BenchmarkConfig(bootstrap_ci_samples=0)
+    protocol3 = _prepare_protocol_splits("AASIST", cfg_default, raw)[7]
+    assert protocol3["training_augmentation_domain"] == "waveform"

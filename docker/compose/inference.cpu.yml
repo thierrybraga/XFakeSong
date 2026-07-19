@@ -32,6 +32,10 @@ services:
       DATABASE_URL: sqlite:////app/data/app.db
       DEEPFAKE_UPLOADS_DIR: /app/data/uploads
       DEEPFAKE_MODELS_DIR: /app/app/models
+      # Producao serve APENAS os 11 modelos promovidos em benchmark_final/;
+      # sem isso o boot fabrica um SVM default destreinado na raiz de
+      # app/models (visto em 2026-07-19), que pode sombrear o SVM promovido.
+      XFAKE_CREATE_DEFAULT_MODELS: "false"
       HF_HOME: /app/cache/huggingface
       TORCH_HOME: /app/cache/torch
     deploy:

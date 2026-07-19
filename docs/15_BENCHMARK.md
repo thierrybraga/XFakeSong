@@ -128,22 +128,24 @@ final.
 > seguido de `python scripts/reporting/update_tcc_latex.py`. Não duplique esses valores
 > aqui à mão — copie o retrato mais recente do artigo quando precisar de
 > referência rápida, mas trate `tabelas_benchmark.tex` como a fonte de
-> verdade. Recorte oficial do artigo (**11 modelos**, atualizado em
-> 2026-07-02, conjunto de teste limpo):
+> verdade. Recorte oficial do artigo (**11 modelos**, run final consolidado
+> de 2026-07-15, `results/final_consolidated_20260715/`, teste limpo com
+> test-lock; escopo **in-domain** — ver
+> [Protocolo Final de ML](28_PROTOCOLO_FINAL.md)):
 
 | Modelo | Accuracy | AUC ROC | EER | Acc.\ @10dB |
 |---|---:|---:|---:|---:|
-| Res2Net | 99,69% | 1,000 | 0,44% | 96,18% |
-| Conformer | 99,69% | 1,000 | 0,27% | 98,44% |
-| AST | 98,71% | 0,995 | 1,33% | 97,38% |
-| Random Forest | 98,18% | 0,998 | 1,69% | 68,04% |
-| RawNet2 | 97,38% | 0,998 | 2,89% | 90,80% |
-| SVM | 96,00% | 0,991 | 4,31% | 66,44% |
-| CCT | 96,04% | 0,991 | 3,91% | 81,20% |
-| AASIST | 92,49% | 0,926 | 7,42% | 88,93% |
-| HuBERT Original | 88,76% | 0,963 | 11,29% | 80,98% |
-| RawGAT-ST | 86,98% | 0,951 | 12,80% | 82,93% |
-| WavLM Original | 84,67% | 0,930 | 15,24% | 75,91% |
+| Conformer | 99,82% | 1,000 | 0,18% | 98,0% |
+| HuBERT Original | 99,87% | 1,000 | 0,18% | 96,8% |
+| Res2Net | 99,69% | 1,000 | 0,36% | 97,5% |
+| WavLM Original | 99,69% | 1,000 | 0,36% | 98,8% |
+| SVM | 99,24% | 1,000 | 0,58% | 93,8% |
+| CCT | 99,20% | 0,999 | 0,71% | 95,0% |
+| AST | 99,02% | 0,998 | 0,98% | 93,2% |
+| Random Forest | 97,82% | 0,999 | 2,09% | 92,4% |
+| RawNet2 | 97,16% | 0,998 | 2,71% | 93,0% |
+| AASIST | 95,02% | 0,990 | 4,89% | 88,7% |
+| RawGAT-ST | 93,60% | 0,987 | 6,22% | 84,0% |
 
 Sonic Sleuth, Ensemble e EfficientNet-LSTM são suportados pelo harness (14
 arquiteturas ao todo, ver seções abaixo) mas **não** integram o recorte

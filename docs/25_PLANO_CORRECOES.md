@@ -1,5 +1,9 @@
 # 25 — Plano de Ação: Correções do Benchmark
 
+> **Documento histórico (plano já executado).** Métricas citadas aqui foram
+> supersedidas; a versão final está em
+> [28_PROTOCOLO_FINAL.md](28_PROTOCOLO_FINAL.md).
+
 > Criado em 2026-06-26. Origem: análise crítica dos resultados consolidados
 > (`results/tcc_consolidated/benchmark_summary.json`, corrida `20260626`).
 > Relacionado: [21_PLANO_RETREINO.md](21_PLANO_RETREINO.md),

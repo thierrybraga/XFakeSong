@@ -1,5 +1,11 @@
 # Retreino com Ajustes — pós `clean_benchmark_full_20260626`
 
+> **Documento histórico (trilha de auditoria).** Registra diagnósticos,
+> planos e retreinos intermediários em ordem cronológica; métricas citadas em
+> seções antigas foram **supersedidas**. A metodologia e os números válidos
+> da versão final estão em [28_PROTOCOLO_FINAL.md](28_PROTOCOLO_FINAL.md)
+> (fonte: `results/final_consolidated_20260715/`).
+
 Documento de rastreio dos ajustes de hiperparâmetros aplicados após o
 diagnóstico do benchmark completo do harness (14 arquiteturas suportadas; 11
 modelos no recorte consolidado atual). Os ajustes estão **aplicados no

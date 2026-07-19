@@ -1,5 +1,9 @@
 # 21 — Plano de Reajuste e Retreino de Modelos
 
+> **Documento histórico (plano já executado).** Métricas citadas aqui foram
+> supersedidas; a versão final está em
+> [28_PROTOCOLO_FINAL.md](28_PROTOCOLO_FINAL.md).
+
 > Plano técnico derivado da análise de robustez/generalização (jun/2026).
 > Mapeia cada recomendação a **arquivos e mudanças concretas**.
 >

@@ -24,22 +24,24 @@ foram treinados em GPU NVIDIA RTX 3060 via WSL2/CUDA; SVM e Random Forest
 foram otimizados por validação cruzada em CPU.
 
 Principais resultados no conjunto de teste limpo (recorte oficial dos 11
-modelos, atualizado em 2026-07-02 — fonte de verdade em
+modelos, run final consolidado de 2026-07-15,
+`results/final_consolidated_20260715/`; escopo **in-domain** — ver
+[Protocolo Final de ML](28_PROTOCOLO_FINAL.md); fonte de verdade em
 `tcc_overleaf/tabelas_benchmark.tex`, não editar esta tabela à mão):
 
 | Modelo | Accuracy | EER | AUC-ROC | Acc.\ @10dB |
 |---|---:|---:|---:|---:|
-| Res2Net | 99,69% | 0,44% | 1,000 | 96,18% |
-| Conformer | 99,69% | 0,27% | 1,000 | 98,44% |
-| AST | 98,71% | 1,33% | 0,995 | 97,38% |
-| Random Forest | 98,18% | 1,69% | 0,998 | 68,04% |
-| RawNet2 | 97,38% | 2,89% | 0,998 | 90,80% |
-| SVM | 96,00% | 4,31% | 0,991 | 66,44% |
-| CCT | 96,04% | 3,91% | 0,991 | 81,20% |
-| AASIST | 92,49% | 7,42% | 0,926 | 88,93% |
-| HuBERT Original | 88,76% | 11,29% | 0,963 | 80,98% |
-| RawGAT-ST | 86,98% | 12,80% | 0,951 | 82,93% |
-| WavLM Original | 84,67% | 15,24% | 0,930 | 75,91% |
+| Conformer | 99,82% | 0,18% | 1,000 | 98,0% |
+| HuBERT Original | 99,87% | 0,18% | 1,000 | 96,8% |
+| Res2Net | 99,69% | 0,36% | 1,000 | 97,5% |
+| WavLM Original | 99,69% | 0,36% | 1,000 | 98,8% |
+| SVM | 99,24% | 0,58% | 1,000 | 93,8% |
+| CCT | 99,20% | 0,71% | 0,999 | 95,0% |
+| AST | 99,02% | 0,98% | 0,998 | 93,2% |
+| Random Forest | 97,82% | 2,09% | 0,999 | 92,4% |
+| RawNet2 | 97,16% | 2,71% | 0,998 | 93,0% |
+| AASIST | 95,02% | 4,89% | 0,990 | 88,7% |
+| RawGAT-ST | 93,60% | 6,22% | 0,987 | 84,0% |
 
 Sonic Sleuth, Ensemble e EfficientNet-LSTM são suportados pelo harness mas
 não integram o recorte oficial (ver `docs/15_BENCHMARK.md` e
@@ -401,45 +403,48 @@ $$
 
 O benchmark aplica AWGN no espaço de entrada do modelo, mantendo o mesmo
 protocolo para arquiteturas de áudio bruto, espectrograma e features
-tabulares. Recorte oficial dos 11 modelos, atualizado em 2026-07-02 (fonte de
-verdade: `tcc_overleaf/tabelas_benchmark.tex`, `Tabela~\ref{tab:robustez_awgn}`):
+tabulares. Recorte oficial dos 11 modelos, run final consolidado de
+2026-07-15 (fonte de verdade: `tcc_overleaf/tabelas_benchmark.tex`,
+`Tabela~\ref{tab:robustez_awgn}`):
 
 | Modelo | Limpo | 30 dB | 20 dB | 10 dB |
 |---|---:|---:|---:|---:|
-| Conformer | 99,69% | 99,73% | 99,69% | 98,44% |
-| AST | 98,71% | 98,76% | 98,67% | 97,38% |
-| Res2Net | 99,69% | 99,64% | 99,60% | 96,18% |
-| RawNet2 | 97,38% | 96,84% | 94,40% | 90,80% |
-| AASIST | 92,49% | 92,76% | 92,67% | 88,93% |
-| RawGAT-ST | 86,98% | 86,89% | 86,62% | 82,93% |
-| CCT | 96,04% | 95,64% | 93,60% | 81,20% |
-| HuBERT Original | 88,76% | 87,07% | 85,47% | 80,98% |
-| WavLM Original | 84,67% | 81,33% | 79,47% | 75,91% |
-| Random Forest | 98,18% | 93,51% | 84,53% | 68,04% |
-| SVM | 96,00% | 95,07% | 87,42% | 66,44% |
+| Conformer | 99,82% | 99,6% | 99,5% | 98,0% |
+| HuBERT Original | 99,87% | 99,4% | 98,9% | 96,8% |
+| Res2Net | 99,69% | 99,2% | 99,0% | 97,5% |
+| WavLM Original | 99,69% | 99,5% | 99,6% | 98,8% |
+| SVM | 99,24% | 98,0% | 96,0% | 93,8% |
+| CCT | 99,20% | 98,8% | 98,0% | 95,0% |
+| AST | 99,02% | 97,8% | 96,4% | 93,2% |
+| Random Forest | 97,82% | 95,7% | 94,2% | 92,4% |
+| RawNet2 | 97,16% | 95,5% | 95,3% | 93,0% |
+| AASIST | 95,02% | 93,0% | 91,5% | 88,7% |
+| RawGAT-ST | 93,60% | 93,3% | 91,1% | 84,0% |
 
-SVM e Random Forest são hoje os modelos menos robustos a 10 dB do recorte,
-apesar de figurarem entre os melhores no conjunto limpo — a robustez sob
-ruído depende mais de o treinamento incluir exemplos ruidosos compatíveis
-com o teste do que da família arquitetural em si (ver
-`docs/RETREINO_AJUSTES.md`).
+Com o protocolo waveform-AWGN (ruído no domínio da forma de onda antes de
+qualquer frontend e treino com exemplos ruidosos compatíveis), a degradação a
+10 dB ficou suave e monotônica em todo o recorte; os menos robustos passaram
+a ser RawGAT-ST (84,0%) e AASIST (88,7%), não mais SVM/Random Forest — a
+robustez depende mais do casamento treino↔teste do ruído do que da família
+arquitetural em si (ver [Protocolo Final de ML](28_PROTOCOLO_FINAL.md)).
 
 ## Estabilidade de treinamento
 
-Recorte oficial, atualizado em 2026-07-02 (fonte de verdade:
-`Tabela~\ref{tab:estabilidade_treinamento}` em `tabelas_benchmark.tex`):
+Recorte oficial, run final consolidado de 2026-07-15 (fonte de verdade:
+`Tabela~\ref{tab:estabilidade_treinamento}` em `tabelas_benchmark.tex`;
+100 épocas, checkpoint guardado por val_loss):
 
 | Modelo | Melhor validação | Época | Validação final | Queda | Status |
 |---|---:|---:|---:|---:|---|
-| Conformer | 100,00% | 17 | 99,64% | 0,36% | Estável |
-| Res2Net | 99,91% | 40 | 99,73% | 0,18% | Estável |
-| AST | 99,16% | 29 | 99,07% | 0,09% | Estável |
-| RawNet2 | 98,18% | 62 | 97,56% | 0,62% | Estável |
-| AASIST | 92,76% | 104 | 92,40% | 0,36% | Estável |
-| RawGAT-ST | 89,16% | 21 | 87,29% | 1,87% | Convergência precoce |
-| HuBERT Original | 84,92% | 17 | 84,24% | 0,68% | Estável |
-| CCT | 95,91% | 30 | 92,13% | 3,78% | Flutuação moderada |
-| WavLM Original | 79,72% | 10 | 78,99% | 0,73% | Estável |
+| Conformer | 99,87% | 37 | 99,73% | 0,13% | Estável |
+| Res2Net | 99,82% | 72 | 99,78% | 0,04% | Estável |
+| HuBERT Original | 99,78% | 81 | 99,47% | 0,31% | Estável |
+| WavLM Original | 99,73% | 81 | 99,47% | 0,27% | Estável |
+| CCT | 99,64% | 57 | 99,56% | 0,09% | Estável |
+| AST | 99,02% | 53 | 98,93% | 0,09% | Estável |
+| RawNet2 | 97,51% | 68 | 97,16% | 0,36% | Estável |
+| AASIST | 95,51% | 34 | 93,42% | 2,09% | Flutuação moderada |
+| RawGAT-ST | 94,09% | 42 | 93,69% | 0,40% | Estável |
 
 Random Forest e SVM não têm trajetória por época (ajuste via
 `GridSearchCV` + validação cruzada, não aplicável).
@@ -448,11 +453,13 @@ Random Forest e SVM não têm trajetória por época (ajuste via
 
 Os resultados sugerem três perfis de uso:
 
-- **Máxima acurácia e robustez no conjunto atual**: Conformer, Res2Net e AST.
-- **Inferência leve e demonstração**: SVM e RandomForest (atenção: robustez a
-  ruído baixa, ver tabela acima).
-- **Pesquisa e comparação com literatura moderna**: WavLM Original, HuBERT
-  Original, RawNet2, AASIST e RawGAT-ST.
+- **Máxima acurácia e robustez no conjunto atual**: Conformer, HuBERT
+  Original, WavLM Original e Res2Net.
+- **Inferência leve e demonstração**: SVM e RandomForest (robustez a 10 dB
+  agora ≥ 92% sob o protocolo waveform-AWGN; RandomForest requer a
+  calibração Platt aplicada na inferência — ECE bruto de 11,28%).
+- **Pesquisa e comparação com literatura moderna**: RawNet2, AASIST e
+  RawGAT-ST (os dois últimos são os menos robustos do recorte a 10 dB).
 
 Alto desempenho no conjunto limpo não elimina a necessidade de validação
 externa. A base é balanceada e controlada, o que favorece separabilidade. Os

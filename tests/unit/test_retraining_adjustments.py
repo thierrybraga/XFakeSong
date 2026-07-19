@@ -15,15 +15,14 @@ def _toy_dataset(n=600, seed=0):
 
     rng = np.random.default_rng(seed)
     X = rng.standard_normal((n, 8, 4)).astype("float32")
-    groups, y = [], []
-    for i in range(n):
-        r = i % 3
-        if r == 0:
-            groups.append("brspeech"); y.append(i % 2)
-        elif r == 1:
-            groups.append("cvpt"); y.append(0)
-        else:
-            groups.append("fkvoice"); y.append(1)
+    # 6 fontes, TODAS com as duas classes: o protocolo v2 exige que cada
+    # partição contenha real e fake mesmo sob split disjunto por grupo. O
+    # fixture antigo (3 fontes, cvpt só real e fkvoice só fake) tornava o
+    # split em 3 partições insatisfazível — e o pipeline agora falha cedo
+    # nesse caso em vez de aceitar partições de classe única.
+    sources = ["brspeech", "cvpt", "fkvoice", "mlspt", "ttsport", "extra"]
+    groups = [sources[i % len(sources)] for i in range(n)]
+    y = [(i // len(sources)) % 2 for i in range(n)]
     return BenchmarkData(
         X=X, y=np.array(y), name="toy", groups=np.array(groups)
     )

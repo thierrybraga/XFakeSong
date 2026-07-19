@@ -65,6 +65,17 @@ vistos.
 | Tabela de falantes | `data/datasets/speaker_table.csv` |
 | Manifesto de falantes | `data/datasets/speaker_manifest.json` |
 
+### Variante confirmatória (usada no run final)
+
+`data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz` — mesmo
+corpus e contrato acima, com **rotação confirmatória dos splits**
+(`split_strategy: confirmatory_rotation_from_legacy_train`, seed 20260712) e
+selo de teste próprio (`xfakesong-test-lock`). Foi o artefato usado no run
+final consolidado (`results/final_consolidated_20260715/`, promovido em
+`app/models/benchmark_final/`). Limitação registrada no próprio metadata: o
+novo teste deriva do mesmo corpus consolidado (teste confirmatório interno,
+não avaliação externa).
+
 Com janela padronizada de 5 s, o tier medium representa aproximadamente
 **1.250 min** ou **20,83 h** de áudio exportado no `.npz`.
 
@@ -185,6 +196,11 @@ docker compose -f docker\compose\benchmark.nvidia.yml --env-file .env run --rm b
 
 ## Limitações e Regras de Interpretação
 
+- **Confundimento fonte-classe**: MLS Portuguese e TTS-Portuguese só aparecem
+  como reais e Fake Voices só como fake; apenas BRSpeech-DF tem as duas
+  classes. Todos os resultados são portanto **in-domain** — ver a ressalva de
+  validade no [Protocolo Final de ML](28_PROTOCOLO_FINAL.md) e as garantias
+  exigidas pelo [Protocolo de Dataset v2](DATASET_PROTOCOL_V2.md).
 - `medium` é o benchmark canônico de 15k, mas não promete split disjunto por
   falante; ele é estratificado.
 - `large` é o tier correto quando a pergunta experimental exige usuários não

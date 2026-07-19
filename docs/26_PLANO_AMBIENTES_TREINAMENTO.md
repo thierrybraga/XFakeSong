@@ -1,5 +1,10 @@
 # 26 - Plano de Refatoracao de Ambientes de Treinamento
 
+> **Documento histórico (plano já executado).** A estrutura descrita foi
+> implementada e consolidada; o estado atual está em
+> [02_INSTALACAO_CONFIGURACAO.md](02_INSTALACAO_CONFIGURACAO.md) e
+> [03_ARQUITETURA.md](03_ARQUITETURA.md).
+
 Este documento define o plano de acao para separar ambientes de treinamento,
 inferencia, benchmark e publicacao do XFakeSong por familia computacional. O
 objetivo e reduzir conflitos de dependencias, melhorar reprodutibilidade
