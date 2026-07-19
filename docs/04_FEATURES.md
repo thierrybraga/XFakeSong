@@ -74,7 +74,7 @@ Ele prepara somente o tensor que o artefato treinado espera:
 2. `FeaturePreparer` resolve `input_contract` > registry > inferência por shape.
 3. O áudio é reamostrado para o `sample_rate` do contrato, normalmente `16 kHz`.
 4. O despacho segue `input_type`:
-   - `raw_audio`: normalização peak + center-crop/zero-pad + waveform `(T,)` ou `(T, 1)`;
+   - `raw_audio`: amplitude preservada + center-crop/tile (sem zero-pad) + waveform `(T,)` ou `(T, 1)`;
    - `spectrogram`: `prepare_audio_for_model` calcula log-mel ou LFCC via `tf.signal`;
    - `tabular`: `extract_segmented_features` gera vetor agregado para SVM/RF.
 

@@ -1,5 +1,13 @@
 # Dataset utilizado no treino e benchmark
 
+> **Nota de reprodutibilidade:** as contagens abaixo documentam o recorte 15k
+> legado. Elas não provam independência por conteúdo, falante ou domínio. Para
+> novos resultados acadêmicos, regenere o NPZ segundo o
+> [Protocolo acadêmico de dataset v2](DATASET_PROTOCOL_V2.md), verifique o
+> oráculo de fonte, os vetores hierárquicos e crie um novo selo de teste v2
+> antes de qualquer treinamento.
+
+
 Data da revisão local: **28/06/2026**.
 
 O benchmark canônico do XFakeSong usa o tier **`medium`**. O alvo consolidado é

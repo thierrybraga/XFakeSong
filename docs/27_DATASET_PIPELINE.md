@@ -104,8 +104,13 @@ python scripts/benchmark/run_tcc_pipeline.py --download --tier medium --full-ben
 |---|---|
 | `X_train`,`X_val`,`X_test` | audio bruto `(amostras, 1)` por split |
 | `y_train`,`y_val`,`y_test` | rotulos `0=real`, `1=fake` |
-| `groups` | fonte/gerador por amostra (do prefixo) |
-| `speaker_ids` | falante por amostra; usa `speaker_manifest.json` quando ha ID real e cai para fonte quando nao ha |
+| `groups`,`source_ids` | fonte explícita por amostra |
+| `speaker_ids`,`speaker_known` | falante e indicador de cobertura; desconhecido nunca vira fonte coletiva |
+| `utterance_ids`,`text_ids` | enunciado e conteúdo para disjunção/auditoria |
+| `generator_ids`,`generator_known` | gerador e indicador de cobertura |
+| `cluster_ids` | unidade do bootstrap: enunciado, falante ou amostra |
+| `sample_paths` | identidade e ordem das amostras |
+| `original_num_samples_*`,`window_start_*` | rastreabilidade da janela temporal por split |
 | `metadata_json` | splits, contagens, `paths`, `source_summary`, duracao, sample_rate |
 
 ---
@@ -114,18 +119,16 @@ python scripts/benchmark/run_tcc_pipeline.py --download --tier medium --full-ben
 
 `benchmarks/data.py::BenchmarkData.from_npz` e o ponto de uniao:
 
-- **Concatena** `X_train+X_val+X_test` (ou `X/y`) e **re-divide de forma
-  estratificada e reprodutivel** (`stratified_split`, `val_frac=0.15`,
-  `test_frac=0.15`, semente fixa) — o conjunto de teste do benchmark e controlado,
-  independente de como o `.npz` foi originalmente splitado.
-- Extrai `groups` e `speaker_ids` (ou deriva dos `paths`/`speaker_manifest`).
+- **Concatena** `X_train+X_val+X_test` para uma visão comum, mas preserva por
+  padrão os índices predefinidos; o teste congelado não é redividido por seed.
+- Carrega os vetores hierárquicos somente quando o alinhamento é exato.
 - Habilita os protocolos avancados via `run_benchmark.py`:
   `--speaker-split` (disjunto por falante), `--unseen-speaker <fonte:id>` (holdout
   de falante) e holdout de gerador (cross-generator, XTTS=`fkvoice`).
 
-Ou seja: o mesmo `.npz` serve treino e benchmark; o benchmark apenas reimpoe seu
-proprio split estratificado/por-falante para garantir reprodutibilidade e o
-protocolo de usuario nao visto.
+Protocolos por grupo/falante/holdout são experimentos separados e fail-closed:
+metadados ausentes, grupo inexistente ou impossibilidade de manter as classes
+interrompem a execução em vez de cair para um split aleatório.
 
 ---
 

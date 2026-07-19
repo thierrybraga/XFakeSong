@@ -46,7 +46,10 @@ from app.domain.dataset_metadata.dataset_catalog import (  # noqa: E402
     infer_prefix_from_path,
     summarize_dataset_paths,
 )
-from app.domain.dataset_metadata.speaker_manifest import speaker_for_path  # noqa: E402
+from app.domain.dataset_metadata.speaker_manifest import (  # noqa: E402
+    metadata_id_for_path,
+    sample_metadata_for_path,
+)
 
 
 def _run(cmd: list[str], description: str, log_path: Path) -> None:
@@ -81,19 +84,28 @@ def _split_counts(splits_dir: Path) -> dict[str, dict[str, int]]:
     return counts
 
 
-def _load_wav(path: Path, sample_rate: int, samples: int) -> np.ndarray:
+def _load_wav(path: Path, sample_rate: int, samples: int) -> tuple[np.ndarray, int, int]:
+    """Decode audio with the same center-crop/tile policy as runtime."""
     import librosa
 
-    y, _ = librosa.load(str(path), sr=sample_rate, mono=True)
+    y, _ = librosa.load(
+        str(path), sr=sample_rate, mono=True, res_type="soxr_hq"
+    )
     y = np.asarray(y, dtype="float32")
     if not np.all(np.isfinite(y)):
         y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
-    peak = float(np.max(np.abs(y))) if y.size else 0.0
-    if peak > 1e-6:
-        y = y / peak
-    if len(y) >= samples:
-        return y[:samples].astype("float32")
-    return np.pad(y, (0, samples - len(y))).astype("float32")
+    original_samples = int(len(y))
+    if original_samples == 0:
+        raise ValueError(f"Audio vazio: {path}")
+    if original_samples >= samples:
+        start = (original_samples - samples) // 2
+        return y[start:start + samples].astype("float32"), original_samples, start
+    repeats = int(math.ceil(samples / original_samples))
+    return (
+        np.tile(y, repeats)[:samples].astype("float32"),
+        original_samples,
+        0,
+    )
 
 
 def _collect_split(
@@ -101,26 +113,44 @@ def _collect_split(
     sample_rate: int,
     duration_sec: float,
     max_per_class: int | None,
-) -> tuple[np.ndarray, np.ndarray, list[str]]:
+    seed: int,
+) -> tuple[np.ndarray, np.ndarray, list[str], np.ndarray, np.ndarray]:
     samples = int(sample_rate * duration_sec)
-    X, y, paths = [], [], []
+    X, y, paths, lengths, starts = [], [], [], [], []
     for label, cls in ((0, "real"), (1, "fake")):
         files = sorted((split_dir / cls).glob("*.wav"))
-        if max_per_class is not None:
-            files = files[:max_per_class]
+        if max_per_class is not None and len(files) > max_per_class:
+            rng = np.random.default_rng(seed + label)
+            selected = np.sort(
+                rng.choice(len(files), size=max_per_class, replace=False)
+            )
+            files = [files[int(index)] for index in selected]
         for wav in files:
             try:
-                X.append(_load_wav(wav, sample_rate, samples))
+                audio, original_samples, window_start = _load_wav(
+                    wav, sample_rate, samples
+                )
+                X.append(audio)
                 y.append(label)
                 paths.append(str(wav.relative_to(BASE_DIR)))
+                lengths.append(original_samples)
+                starts.append(window_start)
             except Exception as exc:  # noqa: BLE001
                 LOGGER.warning("Falha ao carregar %s: %s", wav, exc)
     if not X:
-        return np.empty((0, samples, 1), dtype="float32"), np.empty((0,), dtype="int64"), []
+        return (
+            np.empty((0, samples, 1), dtype="float32"),
+            np.empty((0,), dtype="int64"),
+            [],
+            np.empty((0,), dtype="int64"),
+            np.empty((0,), dtype="int64"),
+        )
     return (
         np.asarray(X, dtype="float32")[..., np.newaxis],
         np.asarray(y, dtype="int64"),
         paths,
+        np.asarray(lengths, dtype="int64"),
+        np.asarray(starts, dtype="int64"),
     )
 
 
@@ -130,16 +160,23 @@ def export_npz_from_splits(
     sample_rate: int,
     duration_sec: float,
     max_per_class: int | None,
+    seed: int = 42,
 ) -> Path:
     out_npz.parent.mkdir(parents=True, exist_ok=True)
     arrays = {}
     all_paths: list[str] = []
+    all_labels: list[np.ndarray] = []
+    split_seed = {"train": seed, "val": seed + 1000, "test": seed + 2000}
     meta = {
         "source": str(splits_dir.relative_to(BASE_DIR)),
         "sample_rate": sample_rate,
         "duration_sec": duration_sec,
         "format": "raw_audio",
         "splits": {},
+        "resampling": "soxr_hq",
+        "window_policy": "center_crop_or_tile_no_zero_padding",
+        "amplitude_policy": "preserve",
+        "selection_seed": seed,
         "dataset_catalog": {
             name: {
                 "type": info.source_type,
@@ -153,17 +190,21 @@ def export_npz_from_splits(
         },
     }
     for split in ("train", "val", "test"):
-        X, y, paths = _collect_split(
+        X, y, paths, lengths, starts = _collect_split(
             splits_dir / split,
             sample_rate=sample_rate,
             duration_sec=duration_sec,
             max_per_class=max_per_class,
+            seed=split_seed[split],
         )
         if len(y) == 0:
             raise RuntimeError(f"Split vazio: {splits_dir / split}")
         arrays[f"X_{split}"] = X
         arrays[f"y_{split}"] = y
+        arrays[f"original_num_samples_{split}"] = lengths
+        arrays[f"window_start_{split}"] = starts
         all_paths.extend(paths)
+        all_labels.append(y)
         meta["splits"][split] = {
             "samples": int(len(y)),
             "real": int(np.sum(y == 0)),
@@ -180,15 +221,127 @@ def export_npz_from_splits(
             list(X.shape[1:]),
         )
     meta["source_summary"] = summarize_dataset_paths(all_paths, duration_sec)
-    arrays["groups"] = np.asarray(
-        [infer_prefix_from_path(path) for path in all_paths],
-        dtype="U64",
-    )
-    # Falante por amostra (tier large / usuários não vistos). Cai para o nível de
-    # fonte quando o speaker_manifest não cobre o arquivo.
-    arrays["speaker_ids"] = np.asarray(
-        [speaker_for_path(path) for path in all_paths],
+    sample_meta = [sample_metadata_for_path(path) for path in all_paths]
+    sources = np.asarray(
+        [
+            str(item.get("source") or infer_prefix_from_path(path)).lower()
+            for path, item in zip(all_paths, sample_meta)
+        ],
         dtype="U128",
+    )
+    labels = np.concatenate(all_labels)
+    label_aliases = {
+        "0": 0,
+        "real": 0,
+        "bonafide": 0,
+        "bona_fide": 0,
+        "1": 1,
+        "fake": 1,
+        "spoof": 1,
+    }
+    manifest_labels: list[int | None] = []
+    for item in sample_meta:
+        value = item.get("label")
+        if value is None:
+            manifest_labels.append(None)
+            continue
+        key = str(value).strip().lower()
+        if key not in label_aliases:
+            raise RuntimeError(f"Rotulo invalido no manifesto: {value!r}")
+        manifest_labels.append(label_aliases[key])
+    conflicts = [
+        all_paths[index]
+        for index, value in enumerate(manifest_labels)
+        if value is not None and value != int(labels[index])
+    ]
+    if conflicts:
+        preview = ", ".join(conflicts[:5])
+        raise RuntimeError(
+            f"Conflito entre pasta e manifesto em {len(conflicts)} amostras: {preview}"
+        )
+    coverage_fields = (
+        "speaker_id",
+        "utterance_id",
+        "text_id",
+        "generator_id",
+        "source_revision",
+    )
+    meta["provenance_coverage"] = {
+        field: {
+            "known": int(sum(bool(item.get(field)) for item in sample_meta)),
+            "total": len(sample_meta),
+            "ratio": sum(bool(item.get(field)) for item in sample_meta)
+            / max(len(sample_meta), 1),
+        }
+        for field in coverage_fields
+    }
+    meta["manifest_label_coverage"] = sum(
+        value is not None for value in manifest_labels
+    ) / max(len(manifest_labels), 1)
+    source_class_counts: dict[str, dict[str, int]] = {}
+    for source in sorted(set(sources.tolist())):
+        source_labels = labels[sources == source]
+        source_class_counts[source] = {
+            "real": int(np.sum(source_labels == 0)),
+            "fake": int(np.sum(source_labels == 1)),
+        }
+    source_oracle_correct = sum(
+        max(counts["real"], counts["fake"])
+        for counts in source_class_counts.values()
+    )
+    source_oracle_accuracy = source_oracle_correct / max(len(labels), 1)
+    meta["source_class_audit"] = {
+        "counts": source_class_counts,
+        "majority_oracle_accuracy": source_oracle_accuracy,
+        "confounded": bool(source_oracle_accuracy > 0.55),
+    }
+    if source_oracle_accuracy > 0.55:
+        LOGGER.warning(
+            "Fonte prediz rotulo com acuracia %.2f%%; resultados apenas in-domain",
+            source_oracle_accuracy * 100.0,
+        )
+
+    arrays["sample_paths"] = np.asarray(all_paths, dtype="U512")
+    arrays["groups"] = sources
+    arrays["source_ids"] = sources
+    arrays["speaker_ids"] = np.asarray(
+        [metadata_id_for_path(path, "speaker_id") for path in all_paths],
+        dtype="U256",
+    )
+    arrays["speaker_known"] = np.asarray(
+        [bool(item.get("speaker_known")) for item in sample_meta], dtype=bool
+    )
+    arrays["utterance_ids"] = np.asarray(
+        [metadata_id_for_path(path, "utterance_id") for path in all_paths],
+        dtype="U256",
+    )
+    arrays["text_ids"] = np.asarray(
+        [metadata_id_for_path(path, "text_id") for path in all_paths],
+        dtype="U512",
+    )
+    arrays["generator_ids"] = np.asarray(
+        [metadata_id_for_path(path, "generator_id") for path in all_paths],
+        dtype="U256",
+    )
+    arrays["generator_known"] = np.asarray(
+        [bool(item.get("generator_known")) for item in sample_meta], dtype=bool
+    )
+    arrays["cluster_ids"] = np.asarray(
+        [
+            metadata_id_for_path(path, "text_id")
+            if item.get("text_known")
+            else (
+                metadata_id_for_path(path, "utterance_id")
+                if item.get("utterance_known")
+                else (
+                    metadata_id_for_path(path, "speaker_id")
+                    if item.get("speaker_known")
+                    else f"sample:{Path(path).name}"
+                )
+            )
+            for path, item in zip(all_paths, sample_meta)
+        ],
+        dtype="U256",
     )
     arrays["metadata_json"] = np.asarray(json.dumps(meta, ensure_ascii=False))
     np.savez_compressed(out_npz, **arrays)
@@ -593,6 +746,7 @@ def main() -> int:
             sample_rate=args.sample_rate,
             duration_sec=args.duration_sec,
             max_per_class=args.max_per_class_export,
+            seed=args.seed,
         )
 
     bench_cmd = [

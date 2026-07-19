@@ -4,10 +4,10 @@ Este guia consolida a visão operacional do projeto para Docker, ambientes de tr
 
 ## Pontos de entrada
 
-- [main.py](../main.py): ponto de entrada principal do CLI e da interface Gradio.
-- [app/interfaces/gradio/app.py](../app/interfaces/gradio/app.py): montagem da interface unificada.
-- [app.py](../app.py): entrada para Hugging Face Spaces.
-- [docker-entrypoint.sh](../docker/environments/inference-api/docker-entrypoint.sh): bootstrap do container.
+- `main.py`: ponto de entrada principal do CLI e da interface Gradio.
+- `app/interfaces/gradio/app.py`: montagem da interface unificada.
+- `app.py`: entrada para Hugging Face Spaces.
+- `docker/environments/inference-api/docker-entrypoint.sh`: bootstrap do container.
 
 ## Estrutura recomendada
 

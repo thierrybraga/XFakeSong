@@ -782,3 +782,20 @@ Consequentemente, as métricas promovidas continuam sendo as do conjunto
 `results/final_consolidated_20260715/`: AASIST com **95,02% de acurácia e
 4,89% de EER**, e RawGAT-ST com **93,60% de acurácia e 6,22% de EER**. Esses
 números não são resultados do confirmatório interrompido.
+
+## 2026-07-19 — ressalva metodologica do protocolo de dataset v2
+
+As metricas promovidas acima foram medidas no artefato historico de 15 mil
+amostras. A auditoria posterior demonstrou que esse conjunto e balanceado por
+classe, mas confundido por fonte: MLS e TTS-Portuguese aparecem apenas como
+reais, enquanto Fake Voices aparece apenas como fake. Tambem nao havia
+cobertura integral de falante, texto, enunciado e gerador para sustentar todos
+os protocolos de disjuncao hoje exigidos.
+
+Por isso, os valores de AASIST (95,02% de acuracia; 4,89% de EER) e RawGAT-ST
+(93,60%; 6,22%) permanecem validos somente como resultados **in-domain do
+protocolo legado**. Eles nao devem ser reinterpretados como metricas do
+dataset v2 nem como evidencia cross-domain. Nenhuma metrica v2 foi inferida ou
+fabricada nesta correcao: um novo numero so pode ser publicado depois de
+reconstruir e selar o NPZ v2, satisfazer o oraculo de fonte e executar o
+benchmark completo com bootstrap por cluster.

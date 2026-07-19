@@ -1,5 +1,24 @@
 # XFakeSong benchmark dataset defaults.
 
+protocol:
+  version: xfakesong-dataset-v2
+  claim_scope: in_domain
+  raw_audio_immutable: true
+  require_exact_class_target: true
+  require_explicit_speaker_ids_for_speaker_split: true
+  require_explicit_holdout_group: true
+  source_oracle_warning_threshold: 0.55
+  preprocessing:
+    sample_rate: 16000
+    mono: true
+    resampler: soxr_hq
+    vad: disabled
+    amplitude: preserve_with_anticlip_attenuation_only
+    duration_filter_sec: [1.0, 30.0]
+    short_window: tile
+    long_window: center_crop
+    exact_duplicate_hash: sha256_decoded_mono_pcm16
+
 dataset:
   canonical_tier: medium
   canonical_npz: data/datasets/benchmark_audio_raw_balanced_15k.npz
@@ -29,12 +48,21 @@ dataset:
       target_total: 15000
       split_strategy: stratified
       canonical_benchmark: true
+      source_quotas:
+        real:
+          brspeech: 3750
+          mlspt: 1875
+          ttsport: 1875
+        fake:
+          brspeech: 3750
+          fkvoice: 3750
     large:
       target_per_class: 10000
       target_total: 20000
       split_strategy: speaker_disjoint
   artifacts:
-    raw_dir: datasets/raw
-    processed_dir: datasets/processed
-    manifests_dir: datasets/manifests
+    raw_real_dir: data/datasets/real
+    raw_fake_dir: data/datasets/fake
+    processed_dir: data/datasets/processed
+    manifests_dir: data/datasets
     splits_dir: data/datasets/splits

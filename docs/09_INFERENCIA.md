@@ -47,7 +47,7 @@ arquiteturas que aceitam forma de onda direta.
 
 1. Downmix para mono.
 2. Normalização peak.
-3. Center-crop ou zero-pad para o tamanho do `input_shape`.
+3. Center-crop para áudios longos ou repetição (`tile`) para curtos, sem zero-padding.
 4. Saída como `(T,)` ou `(T, 1)`, espelhando o artefato treinado.
 
 ### Espectrograma

@@ -54,7 +54,7 @@ def main() -> int:
         )
 
     payload = {
-        "protocol_version": "xfakesong-test-lock-v1",
+        "protocol_version": "xfakesong-test-lock-v2",
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "dataset_path": str(dataset),
         "dataset_size_bytes": dataset.stat().st_size,

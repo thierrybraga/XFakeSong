@@ -24,7 +24,7 @@ import json
 import logging
 import threading
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 logger = logging.getLogger("speaker_manifest")
 
@@ -33,8 +33,13 @@ logger = logging.getLogger("speaker_manifest")
 # `parent.parent.parent / "app" / "datasets"` resolvia para app/app/datasets
 # (caminho inexistente) — o sidecar era gravado num diretório fantasma.
 BASE_DIR = Path(__file__).resolve().parents[3]
+
 DATASETS_DIR = BASE_DIR / "data" / "datasets"
 SPEAKER_MANIFEST_PATH = DATASETS_DIR / "speaker_manifest.json"
+
+class MissingSampleMetadataError(ValueError):
+    """Raised when a strict scientific protocol lacks required provenance."""
+
 
 # Cache em memoria + lock; grava em disco de forma preguicosa (atexit + periodico)
 # para nao sofrer I/O por arquivo durante downloads de dezenas de milhares de WAVs.
@@ -48,6 +53,23 @@ _ATEXIT_REGISTERED = False
 
 def _basename(path: str | Path) -> str:
     return Path(str(path).replace("\\", "/")).name
+
+
+def _manifest_key(path: str | Path) -> str:
+    """Keep real/fake homonyms separate while surviving split relocation."""
+    normalized = str(path).replace("\\", "/")
+    parts = [part.lower() for part in normalized.split("/") if part]
+    basename = _basename(path)
+    for label in ("real", "fake"):
+        if label in parts:
+            return f"{label}/{basename}"
+    return basename
+
+
+def _entry_for_path(path: str | Path) -> Dict[str, Any]:
+    manifest = load_manifest()
+    return manifest.get(_manifest_key(path)) or manifest.get(_basename(path)) or {}
+
 
 
 def _infer_prefix(path: str | Path) -> str:
@@ -110,11 +132,11 @@ def record_speaker(
     sid = (str(speaker_id).strip() if speaker_id is not None else "")
     if not sid:
         return  # sem falante -> usa fallback por fonte na leitura
-    name = _basename(path)
+    key = _manifest_key(path)
     src = (source or _infer_prefix(path)).strip().lower()
     with _LOCK:
         manifest = load_manifest()
-        manifest[name] = {"speaker_id": sid, "source": src}
+        manifest.setdefault(key, {}).update({"speaker_id": sid, "source": src})
         _DIRTY = True
         _PENDING += 1
         if not _ATEXIT_REGISTERED:
@@ -124,17 +146,103 @@ def record_speaker(
             flush()
 
 
-def speaker_for_path(path: str | Path) -> str:
+def record_sample_metadata(
+    path: str | Path,
+    *,
+    speaker_id: Optional[str] = None,
+    source: Optional[str] = None,
+    utterance_id: Optional[str] = None,
+    text_id: Optional[str] = None,
+    generator_id: Optional[str] = None,
+    vocoder_id: Optional[str] = None,
+    codec: Optional[str] = None,
+    channel: Optional[str] = None,
+    source_revision: Optional[str] = None,
+    label: Optional[int | str] = None,
+) -> None:
+    """Record hierarchical sample provenance without inventing missing IDs."""
+    global _DIRTY, _PENDING, _ATEXIT_REGISTERED
+    key = _manifest_key(path)
+    src = (source or _infer_prefix(path)).strip().lower()
+    values: Dict[str, Any] = {
+        "source": src,
+        "speaker_id": speaker_id,
+        "utterance_id": utterance_id,
+        "text_id": text_id,
+        "generator_id": generator_id,
+        "vocoder_id": vocoder_id,
+        "codec": codec,
+        "channel": channel,
+        "source_revision": source_revision,
+        "label": label,
+    }
+    clean = {
+        key: (str(value).strip() if key != "label" else value)
+        for key, value in values.items()
+        if value is not None and str(value).strip()
+    }
+    with _LOCK:
+        manifest = load_manifest()
+        manifest.setdefault(key, {}).update(clean)
+        _DIRTY = True
+        _PENDING += 1
+        if not _ATEXIT_REGISTERED:
+            atexit.register(flush)
+            _ATEXIT_REGISTERED = True
+        if _PENDING >= _FLUSH_EVERY:
+            flush()
+
+
+def sample_metadata_for_path(path: str | Path) -> Dict[str, Any]:
+    """Return explicit provenance plus source/status fields for one sample."""
+    entry = dict(_entry_for_path(path))
+    entry.setdefault("source", _infer_prefix(path))
+    entry["speaker_known"] = bool(entry.get("speaker_id"))
+    entry["utterance_known"] = bool(entry.get("utterance_id"))
+    entry["text_known"] = bool(entry.get("text_id"))
+    entry["generator_known"] = bool(entry.get("generator_id"))
+    return entry
+
+
+def metadata_id_for_path(
+    path: str | Path,
+    field: str,
+    *,
+    strict: bool = False,
+) -> str:
+    """Return a namespaced identity and fail when strict metadata is absent."""
+    allowed = {
+        "speaker_id", "utterance_id", "text_id", "generator_id",
+        "vocoder_id", "source",
+    }
+    if field not in allowed:
+        raise ValueError(f"Unsupported sample metadata field: {field}")
+    meta = sample_metadata_for_path(path)
+    value = meta.get(field)
+    source = str(meta.get("source") or _infer_prefix(path)).lower()
+    if value:
+        return f"{source}:{value}" if field != "source" else str(value).lower()
+    if strict:
+        raise MissingSampleMetadataError(
+            f"{_basename(path)} has no explicit {field}; "
+            "the requested disjoint protocol cannot be guaranteed"
+        )
+    return f"unknown:{field}:{source}:{_basename(path)}"
+
+
+def speaker_for_path(path: str | Path, *, strict: bool = False) -> str:
     """Chave de falante alinhavel a uma amostra.
 
     Retorna `<fonte>:<speaker_id>` quando conhecido; caso contrario, o nivel de
     FONTE (`<prefixo>`) — grupo mais fino disponivel para aquela amostra.
     """
-    manifest = load_manifest()
-    entry = manifest.get(_basename(path))
+    entry = _entry_for_path(path)
     if entry and entry.get("speaker_id"):
         src = entry.get("source") or _infer_prefix(path)
         return f"{src}:{entry['speaker_id']}"
+    if strict:
+        return metadata_id_for_path(path, "speaker_id", strict=True)
+    # Compatibility only. Scientific protocols must call strict=True.
     return _infer_prefix(path)
 
 

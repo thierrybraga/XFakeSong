@@ -28,6 +28,7 @@ fontes canônicas de cada assunto.
 | Publicar no Hugging Face Spaces | [Deploy Hugging Face](11_DEPLOY_HUGGINGFACE.md) |
 | Publicar documentação e demo | [GitHub Pages e Hugging Face](24_PUBLICACAO_GITHUB_HF.md) |
 | Preparar datasets | [Datasets Públicos](12_DATASETS.md) |
+| Aplicar o protocolo acadêmico de dataset | [Protocolo de Dataset v2](DATASET_PROTOCOL_V2.md) |
 | Executar no Google Colab | [Guia Google Colab](13_COLAB_GUIDE.md) |
 | Auditar a aderência das arquiteturas | [Revisão das Arquiteturas](14_REVISAO_ARQUITETURAS.md) |
 | Rodar o benchmark consolidado | [Benchmark e Resultados](15_BENCHMARK.md) |
@@ -45,9 +46,9 @@ fontes canônicas de cada assunto.
 
 | Item | Local |
 | --- | --- |
-| Artigo para Overleaf | [results/01_papaer/main.tex](../results/01_papaer/main.tex) |
-| Pacote Overleaf | [results/01_papaer/tcc_overleaf_final.zip](../results/01_papaer/tcc_overleaf_final.zip) |
-| Dataset do benchmark atual | [data/datasets/benchmark_audio_raw_balanced_15k.npz](../data/datasets/benchmark_audio_raw_balanced_15k.npz) — 15.000 amostras, 2.769,01 MiB |
+| Artigo para Overleaf | `results/01_paper/main.tex` |
+| Pacote Overleaf | `results/01_paper/tcc_overleaf_final.zip` |
+| Dataset do benchmark atual | `data/datasets/benchmark_audio_raw_balanced_15k.npz` — 15.000 amostras, 2.769,01 MiB |
 | Modelos default da aplicação | [app/models](../app/models) |
 | Modelos completos por arquitetura | [app/models/benchmark_final](../app/models/benchmark_final) |
 | Métricas, gráficos e relatórios | [results](../results) |

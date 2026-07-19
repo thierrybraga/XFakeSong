@@ -32,6 +32,14 @@ class BenchmarkData:
     # disjunto por falante e protocolo holdout-speaker (usuários não vistos).
     # None quando o dataset não carrega identificação de falante.
     speakers: np.ndarray | None = None
+    # Hierarquia de proveniencia para auditoria, bootstrap e relatorios.
+    utterances: np.ndarray | None = None
+    texts: np.ndarray | None = None
+    generators: np.ndarray | None = None
+    cluster_ids: np.ndarray | None = None
+    speaker_known: np.ndarray | None = None
+    generator_known: np.ndarray | None = None
+    sample_paths: np.ndarray | None = None
     # Índices das partições fornecidas no NPZ. Preservá-los impede que runners
     # diferentes reconstruam conjuntos de treino/validação/teste distintos.
     predefined_split_indices: Dict[str, np.ndarray] | None = None
@@ -58,8 +66,8 @@ class BenchmarkData:
 
     @classmethod
     def from_npz(cls, path: str) -> "BenchmarkData":
-        """Carrega de um .npz. Concatena X_train/X_val/X_test se presentes e
-        re-divide de forma estratificada (test set controlado e reprodutível).
+        """Carrega de um .npz e preserva os indices train/val/test predefinidos.
+        A concatenacao cria uma visao comum sem alterar o teste congelado.
         """
         p = Path(path)
         if not p.exists():
@@ -134,9 +142,24 @@ class BenchmarkData:
         # `paths` do metadata (mesma ordem de concatenação: train→val→test→X).
         groups = cls._extract_groups(data, metadata, used_keys, n=len(y))
         speakers = cls._extract_speakers(data, metadata, used_keys, n=len(y))
+        utterances = cls._extract_aligned(data, "utterance_ids", len(y), str)
+        texts = cls._extract_aligned(data, "text_ids", len(y), str)
+        generators = cls._extract_aligned(data, "generator_ids", len(y), str)
+        cluster_ids = cls._extract_aligned(data, "cluster_ids", len(y), str)
+        speaker_known = cls._extract_aligned(data, "speaker_known", len(y), bool)
+        generator_known = cls._extract_aligned(data, "generator_known", len(y), bool)
+        sample_paths = cls._extract_aligned(data, "sample_paths", len(y), str)
         loaded = cls(
             X=X, y=y, name=p.stem, metadata=metadata,
-            groups=groups, speakers=speakers,
+            groups=groups,
+            speakers=speakers,
+            utterances=utterances,
+            texts=texts,
+            generators=generators,
+            cluster_ids=cluster_ids,
+            speaker_known=speaker_known,
+            generator_known=generator_known,
+            sample_paths=sample_paths,
             predefined_split_indices=split_indices,
         )
         loaded.validate()
@@ -153,6 +176,21 @@ class BenchmarkData:
         base = str(path).replace("\\", "/").rsplit("/", 1)[-1].lower()
         m = re.match(r"([a-z]+)", base)
         return m.group(1) if m else "unknown"
+
+    @staticmethod
+    def _extract_aligned(
+        data: Any,
+        key: str,
+        n: int,
+        dtype: type = str,
+    ) -> np.ndarray | None:
+        """Return an explicit per-sample vector only when alignment is exact."""
+        if key not in getattr(data, "files", []):
+            return None
+        values = np.asarray(data[key]).ravel()
+        if len(values) != n:
+            return None
+        return values.astype(dtype)
 
     @classmethod
     def _extract_groups(
@@ -225,6 +263,20 @@ class BenchmarkData:
             raise ValueError(f"{self.name}: len(X)={len(X)} difere de len(y)={len(y)}")
         if not np.isfinite(X).all():
             raise ValueError(f"{self.name}: X contém NaN ou Inf")
+        aligned = {
+            "groups": self.groups,
+            "speakers": self.speakers,
+            "utterances": self.utterances,
+            "texts": self.texts,
+            "generators": self.generators,
+            "cluster_ids": self.cluster_ids,
+            "speaker_known": self.speaker_known,
+            "generator_known": self.generator_known,
+            "sample_paths": self.sample_paths,
+        }
+        for key, values in aligned.items():
+            if values is not None and len(values) != len(y):
+                raise ValueError(f"{self.name}: {key} desalinhado ({len(values)} != {len(y)})")
         if not np.isfinite(y).all():
             raise ValueError(f"{self.name}: y contém NaN ou Inf")
         labels, counts = np.unique(y.ravel().astype("int64"), return_counts=True)
@@ -255,6 +307,13 @@ class BenchmarkData:
             metadata=meta,
             groups=self.groups,
             speakers=self.speakers,
+            utterances=self.utterances,
+            texts=self.texts,
+            generators=self.generators,
+            cluster_ids=self.cluster_ids,
+            speaker_known=self.speaker_known,
+            generator_known=self.generator_known,
+            sample_paths=self.sample_paths,
             predefined_split_indices=self.predefined_split_indices,
         )
 
@@ -279,6 +338,20 @@ class BenchmarkData:
         - **group_split**: mantém fonte/gerador DISJUNTO entre train/val/test.
         - **estratificada** (default): preserva a proporção de classes.
         """
+        if holdout_speaker is not None and self.speakers is None:
+            raise ValueError("holdout_speaker exige speaker_ids explicitos")
+        if speaker_split and self.speakers is None:
+            raise ValueError("speaker_split exige speaker_ids explicitos")
+        if (holdout_speaker is not None or speaker_split) and (
+            self.speaker_known is None or not np.all(self.speaker_known)
+        ):
+            raise ValueError(
+                "Protocolo por falante recusado: cobertura speaker_known incompleta"
+            )
+        if holdout_generator is not None and self.groups is None:
+            raise ValueError("holdout_generator exige grupos de proveniencia")
+        if group_split and self.groups is None:
+            raise ValueError("group_split exige grupos de proveniencia")
         if holdout_speaker is not None and self.speakers is not None:
             return self._cross_generator_split(
                 holdout_speaker, seed, val_frac, groups=self.speakers
@@ -297,6 +370,7 @@ class BenchmarkData:
                 tr = self.predefined_split_indices["train"]
                 va = self.predefined_split_indices["val"]
                 te = self.predefined_split_indices["test"]
+                self._validate_partition_indices(tr, va, te)
                 self.last_split_indices = {
                     "train": np.asarray(tr, dtype="int64"),
                     "val": np.asarray(va, dtype="int64"),
@@ -319,15 +393,11 @@ class BenchmarkData:
                 temp_idx, test_size=rel_test,
                 stratify=self.y[temp_idx], random_state=seed,
             )
-        except Exception:
-            # Fallback sem estratificação (datasets minúsculos)
-            rng = np.random.default_rng(seed)
-            idx = rng.permutation(len(self.y))
-            n_test = max(1, int(len(idx) * test_frac))
-            n_val = max(1, int(len(idx) * val_frac))
-            test_idx, val_idx, train_idx = (
-                idx[:n_test], idx[n_test:n_test + n_val], idx[n_test + n_val:]
-            )
+        except Exception as exc:
+            raise RuntimeError(
+                "Split estratificado inviavel; aumente o dataset ou corrija os rotulos"
+            ) from exc
+        self._validate_partition_indices(train_idx, val_idx, test_idx)
         self.last_split_indices = {
             "train": np.asarray(train_idx, dtype="int64"),
             "val": np.asarray(val_idx, dtype="int64"),
@@ -343,6 +413,34 @@ class BenchmarkData:
         idx = np.asarray(idx, dtype=int)
         return self.X[idx], self.y[idx]
 
+    def _validate_partition_indices(
+        self,
+        train_idx: np.ndarray,
+        val_idx: np.ndarray,
+        test_idx: np.ndarray,
+    ) -> None:
+        """Recusa partições vazias, sobrepostas ou sem as duas classes."""
+        partitions = {
+            "train": np.asarray(train_idx, dtype="int64"),
+            "val": np.asarray(val_idx, dtype="int64"),
+            "test": np.asarray(test_idx, dtype="int64"),
+        }
+        for name, indices in partitions.items():
+            if len(indices) == 0:
+                raise ValueError(f"Particao {name} vazia")
+            labels = set(np.asarray(self.y)[indices].astype(int).tolist())
+            if labels != {0, 1}:
+                raise ValueError(
+                    f"Particao {name} deve conter real e fake; "
+                    f"rotulos={sorted(labels)}"
+                )
+        names = tuple(partitions)
+        for pos, left in enumerate(names):
+            for right in names[pos + 1:]:
+                overlap = np.intersect1d(partitions[left], partitions[right])
+                if len(overlap):
+                    raise ValueError(f"Particoes {left}/{right} sobrepostas")
+
     def _grouped_split(self, seed: int, val_frac: float, test_frac: float,
                        groups: np.ndarray | None = None):
         """Split disjunto por grupo via StratifiedGroupKFold (anti-vazamento).
@@ -357,6 +455,11 @@ class BenchmarkData:
         groups = np.asarray(self.groups if groups is None else groups)
         idx = np.arange(len(self.y))
         n_groups = len(np.unique(groups))
+        if n_groups < 3:
+            raise ValueError(
+                "Split por grupo exige pelo menos 3 grupos explicitos; "
+                f"encontrados={n_groups}"
+            )
         # nº de folds limitado pelo nº de grupos; teste = 1 fold.
         n_splits = max(2, min(round(1.0 / max(test_frac, 1e-6)), n_groups))
         sgkf = StratifiedGroupKFold(
@@ -377,10 +480,8 @@ class BenchmarkData:
             )
             train_idx, val_idx = trainval_idx[tr_rel], trainval_idx[val_rel]
         else:
-            rng = np.random.default_rng(seed)
-            shuffled = rng.permutation(trainval_idx)
-            n_val = max(1, int(len(shuffled) * val_frac))
-            val_idx, train_idx = shuffled[:n_val], shuffled[n_val:]
+            raise ValueError("Split por grupo nao consegue criar validacao disjunta")
+        self._validate_partition_indices(train_idx, val_idx, test_idx)
         self.last_split_indices = {
             "train": np.asarray(train_idx, dtype="int64"),
             "val": np.asarray(val_idx, dtype="int64"),
@@ -408,8 +509,10 @@ class BenchmarkData:
         groups = np.asarray(self.groups if groups is None else groups)
         held = np.char.lower(groups.astype(str)) == holdout_generator.lower()
         if not held.any():
-            # gerador inexistente → cai no split estratificado padrão
-            return self.stratified_split(seed=seed, val_frac=val_frac)
+            available = sorted(set(groups.astype(str).tolist()))
+            raise ValueError(
+                f"Grupo holdout inexistente: {holdout_generator}; disponiveis={available}"
+            )
 
         idx = np.arange(len(self.y))
         held_idx = idx[held]
@@ -432,11 +535,12 @@ class BenchmarkData:
                 trainval_idx, test_size=val_frac, stratify=y_tv,
                 random_state=seed,
             )
-        except Exception:
-            shuffled = rng.permutation(trainval_idx)
-            n_val = max(1, int(len(shuffled) * val_frac))
-            val_idx, tr_idx = shuffled[:n_val], shuffled[n_val:]
+        except Exception as exc:
+            raise RuntimeError(
+                "Holdout nao permite train/val estratificados com ambas as classes"
+            ) from exc
 
+        self._validate_partition_indices(tr_idx, val_idx, test_idx)
         self.last_split_indices = {
             "train": np.asarray(tr_idx, dtype="int64"),
             "val": np.asarray(val_idx, dtype="int64"),

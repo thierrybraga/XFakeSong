@@ -76,6 +76,7 @@ TARGET_SR = 16_000
 MIN_DURATION = 1.0
 MAX_DURATION = 30.0
 DEFAULT_MAX_SAMPLES = 5_000
+RESAMPLE_TYPE = "soxr_hq"
 AUDIO_EXTENSIONS = {".wav", ".flac", ".mp3", ".ogg", ".opus", ".m4a"}
 MLS_PORTUGUESE_URL = "https://dl.fbaipublicfiles.com/mls/mls_portuguese_opus.tar.gz"
 TTS_PORTUGUESE_URL = (
@@ -230,21 +231,37 @@ def next_index(directory: Path, prefix: str) -> int:
     return max_idx + 1
 
 
-def record_speaker_safe(target_path: Path, speaker_id) -> None:
-    """Registra o falante de um WAV recém-salvo (best-effort, nunca quebra o download).
-
-    Aditivo: alimenta `data/datasets/speaker_manifest.json` para qualquer tier
-    quando a fonte expoe falante. No-op silencioso se o
-    modulo nao estiver disponivel ou o id de falante for vazio.
-    """
-    if not speaker_id:
-        return
+def record_sample_metadata_safe(target_path: Path, **metadata) -> None:
+    """Persist sample provenance; log failures instead of discarding metadata."""
     try:
-        from app.domain.dataset_metadata.speaker_manifest import record_speaker
+        from app.domain.dataset_metadata.speaker_manifest import record_sample_metadata
 
-        record_speaker(target_path, speaker_id)
-    except Exception:
-        pass
+        record_sample_metadata(target_path, **metadata)
+    except Exception as exc:
+        logger.warning("Falha ao registrar proveniencia de %s: %s", target_path, exc)
+_HF_REVISIONS: dict[str, str | None] = {}
+
+
+def hf_source_revision(repo_id: str) -> str | None:
+    """Resolve and cache the immutable Hub commit SHA for provenance."""
+    if repo_id in _HF_REVISIONS:
+        return _HF_REVISIONS[repo_id]
+    try:
+        from huggingface_hub import HfApi
+
+        revision = str(HfApi().dataset_info(repo_id).sha)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Revisao HF indisponivel para %s: %s", repo_id, exc)
+        revision = None
+    _HF_REVISIONS[repo_id] = revision
+    return revision
+
+
+
+def record_speaker_safe(target_path: Path, speaker_id) -> None:
+    """Backward-compatible speaker-only provenance helper."""
+    if speaker_id:
+        record_sample_metadata_safe(target_path, speaker_id=speaker_id)
 
 
 def speaker_from_record(record) -> str | None:
@@ -581,7 +598,10 @@ def process_audio(audio_array, sample_rate: int) -> tuple[np.ndarray | None, boo
     if sample_rate != TARGET_SR:
         try:
             audio_array = librosa.resample(
-                audio_array, orig_sr=sample_rate, target_sr=TARGET_SR
+                audio_array,
+                orig_sr=sample_rate,
+                target_sr=TARGET_SR,
+                res_type=RESAMPLE_TYPE,
             )
         except Exception as e:
             logger.debug(f"  resample falhou ({sample_rate}→{TARGET_SR}): {e}")
@@ -606,8 +626,10 @@ def process_audio(audio_array, sample_rate: int) -> tuple[np.ndarray | None, boo
     if abs_max < 1e-6:
         return None, False
 
-    # 8. Normalização: peak → 0.95 (evita clipping no PCM 16-bit)
-    return (audio_array / abs_max * 0.95).astype(np.float32), True
+    # Preserve loudness. Attenuate only values that would clip when encoded.
+    if abs_max > 1.0:
+        audio_array = audio_array / abs_max * 0.999
+    return audio_array.astype(np.float32), True
 
 
 def print_report() -> None:
@@ -657,6 +679,7 @@ def download_brspeech(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
 
     samples_per_class = max_samples // 2
     real_count = count_wavs(REAL_DIR, "brspeech")
+    source_revision = hf_source_revision("AKCIT-Deepfake/BRSpeech-DF")
     fake_count = count_wavs(FAKE_DIR, "brspeech")
 
     if real_count >= samples_per_class and fake_count >= samples_per_class:
@@ -697,7 +720,20 @@ def download_brspeech(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
                 audio, ok = process_audio(_arr, _sr)
                 if not ok:
                     continue
-                if safe_write_wav(target_dir / f"{prefix}_{idx:05d}.wav", audio):
+                target_path = target_dir / f"{prefix}_{idx:05d}.wav"
+                if safe_write_wav(target_path, audio):
+                    record_sample_metadata_safe(
+                        target_path,
+                        source="brspeech",
+                        speaker_id=speaker_from_record(item),
+                        utterance_id=item.get("id") or item.get("utterance_id"),
+                        text_id=item.get("text") or item.get("sentence"),
+                        generator_id=(
+                            item.get("model") if not is_real else "bonafide"
+                        ),
+                        source_revision=source_revision,
+                        label=0 if is_real else 1,
+                    )
                     current += 1
                     idx += 1
                     if current % 50 == 0:
@@ -705,7 +741,14 @@ def download_brspeech(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
 
         except Exception as e:
             logger.warning(f"  Streaming falhou ({e}), tentando parquet direto...")
-            current = _download_brspeech_parquet(data_dir, target_dir, prefix, current, samples_per_class)
+            current = _download_brspeech_parquet(
+                data_dir,
+                target_dir,
+                prefix,
+                current,
+                samples_per_class,
+                source_revision=source_revision,
+            )
 
         if is_real:
             real_count = current
@@ -718,6 +761,8 @@ def download_brspeech(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
 def _download_brspeech_parquet(
     data_dir: str, target_dir: Path, prefix: str,
     current_count: int, max_count: int,
+    *,
+    source_revision: str | None = None,
 ) -> int:
     """Fallback: download parquet direto via HuggingFace Hub."""
     try:
@@ -742,6 +787,7 @@ def _download_brspeech_parquet(
             local_path = hf_hub_download("AKCIT-Deepfake/BRSpeech-DF", pf,
                                           repo_type="dataset", cache_dir=cache_dir)
             df = pd.read_parquet(local_path)
+            metadata_by_name = {}
             idx_box = [idx]
 
             def _jobs():
@@ -751,11 +797,20 @@ def _download_brspeech_parquet(
                         continue
                     path = target_dir / f"{prefix}_{idx_box[0]:05d}.wav"
                     idx_box[0] += 1
+                    metadata_by_name[path.name] = {
+                        "source": "brspeech",
+                        "speaker_id": speaker_from_record(row),
+                        "utterance_id": row.get("id") or row.get("utterance_id"),
+                        "text_id": row.get("text") or row.get("sentence"),
+                        "generator_id": row.get("model") if data_dir == "spoof" else "bonafide",
+                        "source_revision": source_revision,
+                        "label": 1 if data_dir == "spoof" else 0,
+                    }
                     yield (audio_info["bytes"], path, speaker_from_record(row))
 
             written = parallel_decode_write(_jobs(), limit=max(0, max_count - count))
             for wav_path, speaker_id in written:
-                record_speaker_safe(wav_path, speaker_id)
+                record_sample_metadata_safe(wav_path, **metadata_by_name[wav_path.name])
             count += len(written)
             idx = idx_box[0]
         except Exception as e:
@@ -893,6 +948,7 @@ def _ingest_audio_tree(
     prefix: str,
     max_samples: int,
     speaker_prefix: str,
+    source_revision: str | None = None,
 ) -> int:
     """Converte uma arvore de audio real em WAVs normalizados."""
     existing = count_wavs(REAL_DIR, prefix)
@@ -912,7 +968,9 @@ def _ingest_audio_tree(
         if count >= max_samples:
             break
         try:
-            y, sr = librosa.load(str(audio_path), sr=TARGET_SR, mono=True)
+            y, sr = librosa.load(
+                str(audio_path), sr=TARGET_SR, mono=True, res_type=RESAMPLE_TYPE
+            )
         except Exception as e:  # noqa: BLE001
             logger.debug(f"  librosa.load falhou em {audio_path.name}: {e}")
             continue
@@ -921,9 +979,14 @@ def _ingest_audio_tree(
             continue
         out_path = REAL_DIR / f"{prefix}_{idx:05d}.wav"
         if safe_write_wav(out_path, audio):
-            record_speaker_safe(
+            relative_audio = audio_path.relative_to(raw_dir)
+            record_sample_metadata_safe(
                 out_path,
-                _speaker_from_audio_path(audio_path.relative_to(raw_dir), speaker_prefix),
+                source=prefix,
+                speaker_id=_speaker_from_audio_path(relative_audio, speaker_prefix),
+                utterance_id=str(relative_audio).replace("\\", "/"),
+                source_revision=source_revision,
+                label=0,
             )
             count += 1
             idx += 1
@@ -960,7 +1023,13 @@ def download_mls_portuguese(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
             safe_extract_tar(tar, raw_dir)
         marker.write_text("ok", encoding="utf-8")
 
-    _ingest_audio_tree(raw_dir, "mlspt", max_samples, "mlspt")
+    _ingest_audio_tree(
+        raw_dir,
+        "mlspt",
+        max_samples,
+        "mlspt",
+        source_revision=MLS_PORTUGUESE_URL,
+    )
 
 
 def download_tts_portuguese(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
@@ -989,7 +1058,13 @@ def download_tts_portuguese(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
             safe_extract_zip(zf, raw_dir)
         marker.write_text("ok", encoding="utf-8")
 
-    _ingest_audio_tree(raw_dir, "ttsport", max_samples, "ttsport_single_speaker")
+    _ingest_audio_tree(
+        raw_dir,
+        "ttsport",
+        max_samples,
+        "ttsport_single_speaker",
+        source_revision=TTS_PORTUGUESE_URL,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1010,6 +1085,7 @@ def download_fake_voices(max_speakers: int = 20, max_per_speaker: int = 100) -> 
 
     api = HfApi()
     all_files = api.list_repo_files("unfake/fake_voices", repo_type="dataset")
+    source_revision = hf_source_revision("unfake/fake_voices")
     zip_files = [f for f in all_files if f.endswith(".zip")]
     logger.info(f"{len(zip_files)} ZIPs encontrados")
 
@@ -1054,12 +1130,12 @@ def download_fake_voices(max_speakers: int = 20, max_per_speaker: int = 100) -> 
             continue
         try:
             idx_box = [idx]
+            metadata_by_name = {}
             with zipfile.ZipFile(local_path, "r") as zf:
                 wav_names = [n for n in zf.namelist() if n.lower().endswith(".wav")]
 
                 def _jobs():
-                    # Lê os bytes na thread principal (zipfile não é thread-safe);
-                    # o decode/resample/gravação roda nas threads do pool.
+                    # Le os bytes na thread principal; zipfile nao e thread-safe.
                     for wav_name in wav_names:
                         try:
                             with zf.open(wav_name) as af:
@@ -1069,13 +1145,24 @@ def download_fake_voices(max_speakers: int = 20, max_per_speaker: int = 100) -> 
                             continue
                         path = FAKE_DIR / f"fkvoice_{idx_box[0]:05d}.wav"
                         idx_box[0] += 1
+                        metadata_by_name[path.name] = {
+                            "utterance_id": f"{speaker}/{wav_name}",
+                        }
                         yield (raw, path, speaker)
 
                 written = parallel_decode_write(
                     _jobs(), limit=max_per_speaker, workers=workers
                 )
             for fk_path, spk in written:
-                record_speaker_safe(fk_path, spk)
+                record_sample_metadata_safe(
+                    fk_path,
+                    source="fkvoice",
+                    speaker_id=spk,
+                    utterance_id=metadata_by_name.get(fk_path.name, {}).get("utterance_id"),
+                    generator_id="xtts_v2",
+                    source_revision=source_revision,
+                    label=1,
+                )
             total_count += len(written)
             idx = idx_box[0]
             logger.info(f"    {len(written)} amostras do falante {speaker}")

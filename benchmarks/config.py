@@ -209,6 +209,11 @@ class BenchmarkConfig:
     # qualquer frontend. Uma cópia ruidosa por amostra mantém o custo de memória
     # em ~2x e distribui os níveis de SNR de forma balanceada e reprodutível.
     waveform_noise_augmentation: bool = True
+    # False usa a mesma copia AWGN estatica para todas as arquiteturas. True
+    # habilita otimizacoes por arquitetura e deve ser reportado como ablacao,
+    # nunca misturado a tabela comparativa principal.
+    architecture_specific_augmentation: bool = False
+
     train_aug_snr_db: List[int] = field(default_factory=lambda: [30, 20, 10])
     train_noise_copies: int = 1
     waveform_noise_batch_size: int = 64
@@ -232,6 +237,10 @@ class BenchmarkConfig:
     # Robustez a CODEC com perdas (round-trip via ffmpeg, na forma de onda,
     # antes dos frontends — mesmo ponto do AWGN). Ex.: ["mp3", "opus"].
     # Desligado por padrão (custo: ~2 chamadas ffmpeg por amostra de teste).
+    # Atalho de dominio: a classe majoritaria por fonte nao pode superar este
+    # limite em execucoes academicas.
+    source_oracle_threshold: float = 0.55
+    fail_on_source_shortcut: bool = False
     codec_eval: List[str] = field(default_factory=list)
     preserve_predefined_splits: bool = True
     fail_on_split_overlap: bool = True

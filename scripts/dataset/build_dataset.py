@@ -26,6 +26,7 @@ import argparse
 import importlib.util
 import json
 import logging
+import random
 import shutil
 import subprocess
 import sys
@@ -216,27 +217,24 @@ def step_download(target_per_class: int, skip_real_cv: bool = False):
     else:
         logger.info(f"BRSpeech-DF ja tem {brspeech_real} real + {brspeech_fake} fake. Pulando.")
 
-    # --- Reforço real público (apenas real)
+    # --- Reforco real com quotas independentes; uma fonte nao pode consumir a
+    # quota da outra por ter sido baixada primeiro.
     if not skip_real_cv:
-        # CommonVoice/FLEURS foram mantidos como prefixos legados se já existirem
-        # localmente, mas o download novo usa fontes diretas fora do HF.
-        public_prefixes = ["mlspt", "ttsport", "cvpt", "cv", "fleurs", "cetuc"]
-        public_real = count_wavs(REAL_DIR, public_prefixes)
-        if public_real < half:
-            remaining = half - public_real
+        mls_goal = target_per_class // 4
+        tts_goal = target_per_class - half - mls_goal
+        mls_count = count_wavs(REAL_DIR, ["mlspt"])
+        if mls_count < mls_goal:
             run(
                 [sys.executable, str(SCRIPTS_DIR / "dataset" / "download_datasets.py"),
-                 "--mls-portuguese", "--max-samples", str(remaining)],
-                f"MLS Portuguese (faltam {remaining} reais publicos)",
+                 "--mls-portuguese", "--max-samples", str(mls_goal)],
+                f"MLS Portuguese (alvo contratual: {mls_goal})",
             )
-
-        public_real = count_wavs(REAL_DIR, public_prefixes)
-        if public_real < half:
-            remaining = half - public_real
+        tts_count = count_wavs(REAL_DIR, ["ttsport"])
+        if tts_count < tts_goal:
             run(
                 [sys.executable, str(SCRIPTS_DIR / "dataset" / "download_datasets.py"),
-                 "--tts-portuguese", "--max-samples", str(remaining)],
-                f"TTS-Portuguese fallback PT-BR (faltam {remaining} reais publicos)",
+                 "--tts-portuguese", "--max-samples", str(tts_goal)],
+                f"TTS-Portuguese (alvo contratual: {tts_goal})",
             )
 
     # --- Fake Voices XTTS
@@ -253,30 +251,58 @@ def step_download(target_per_class: int, skip_real_cv: bool = False):
         logger.info(f"Fake Voices XTTS ja tem {xtts_fake} amostras. Pulando.")
 
 
-def _excess_round_robin(files: list[Path], keep_n: int) -> list[Path]:
-    """Escolhe quais arquivos REMOVER mantendo um mix proporcional por fonte.
+def _source_key(path: Path) -> str:
+    """Return a stable source family from the canonical file prefix."""
+    prefix = path.stem.split("_", 1)[0].lower()
+    aliases = {"fakevoice": "fkvoice", "mls": "mlspt", "tts": "ttsport"}
+    return aliases.get(prefix, prefix)
 
-    Em vez de cortar a cauda alfabética (que zeraria um gerador inteiro, p.ex.
-    todos os `fkvoice_*`), agrupa por prefixo de fonte e mantém os primeiros
-    `keep_n` em ordem round-robin entre as fontes — preservando a diversidade
-    de geradores (importante para o protocolo cross-generator).
-    """
-    if keep_n >= len(files):
-        return []
+
+def _excess_round_robin(
+    files: list[Path],
+    keep_n: int,
+    *,
+    seed: int = 42,
+    quotas: dict[str, int] | None = None,
+) -> list[Path]:
+    """Choose files to archive using seeded, auditable source quotas."""
     by_prefix: dict[str, list[Path]] = {}
-    for f in files:
-        prefix = f.stem.split("_", 1)[0]
-        by_prefix.setdefault(prefix, []).append(f)
-    order = sorted(by_prefix)  # determinístico
-    kept: list[Path] = []
-    i = 0
-    while len(kept) < keep_n and any(by_prefix[p] for p in order):
-        bucket = by_prefix[order[i % len(order)]]
-        if bucket:
-            kept.append(bucket.pop(0))
-        i += 1
+    for path in files:
+        by_prefix.setdefault(_source_key(path), []).append(path)
+
+    rng = random.Random(seed)
+    for bucket in by_prefix.values():
+        rng.shuffle(bucket)
+
+    if quotas is not None:
+        if sum(quotas.values()) != keep_n:
+            raise ValueError(
+                f"A soma das quotas ({sum(quotas.values())}) difere do alvo ({keep_n})"
+            )
+        missing = {
+            source: quota - len(by_prefix.get(source, []))
+            for source, quota in quotas.items()
+            if len(by_prefix.get(source, [])) < quota
+        }
+        if missing:
+            raise RuntimeError(f"Fontes sem amostras suficientes: {missing}")
+        kept = [
+            path
+            for source in sorted(quotas)
+            for path in by_prefix.get(source, [])[: quotas[source]]
+        ]
+    else:
+        order = sorted(by_prefix)
+        kept = []
+        cursor = 0
+        while len(kept) < keep_n and any(by_prefix[p] for p in order):
+            source = order[cursor % len(order)]
+            if by_prefix[source]:
+                kept.append(by_prefix[source].pop())
+            cursor += 1
+
     kept_set = set(kept)
-    return [f for f in files if f not in kept_set]
+    return [path for path in files if path not in kept_set]
 
 
 def _archive_or_delete(files: list[Path], label: str, delete_excess: bool) -> int:
@@ -305,7 +331,14 @@ def _archive_or_delete(files: list[Path], label: str, delete_excess: bool) -> in
     return moved
 
 
-def step_balance(target_per_class: int, delete_excess: bool = False):
+def step_balance(
+    target_per_class: int,
+    delete_excess: bool = False,
+    *,
+    seed: int = 42,
+    real_quotas: dict[str, int] | None = None,
+    fake_quotas: dict[str, int] | None = None,
+):
     """
     Garante balanceamento 1:1 entre classes.
     Se uma classe tiver mais que target_per_class, arquiva o excesso em
@@ -325,20 +358,43 @@ def step_balance(target_per_class: int, delete_excess: bool = False):
     logger.info(f"  Antes: {real_count} real + {fake_count} fake")
 
     # Calcular alvo: minimo entre target e o que existe, garantindo igualdade
-    effective_target = min(target_per_class, real_count, fake_count)
-
-    if effective_target < 100:
-        logger.warning(
-            f"  ATENCAO: Apenas {effective_target} amostras por classe disponíveis. "
-            "Execute os downloads primeiro."
+    deficits = {
+        label: target_per_class - count
+        for label, count in (("real", real_count), ("fake", fake_count))
+        if count < target_per_class
+    }
+    if deficits:
+        raise RuntimeError(
+            "Dataset incompleto; alvo nao reduzido. " f"Faltantes: {deficits}"
         )
-        return real_count, fake_count
+    effective_target = target_per_class
+
 
     # Remover excesso de REAL
+    # Valida a composicao mesmo quando a contagem total ja coincide com o alvo.
+    if real_quotas is not None:
+        _excess_round_robin(
+            real_files,
+            effective_target,
+            seed=seed,
+            quotas=real_quotas,
+        )
+    if fake_quotas is not None:
+        _excess_round_robin(
+            fake_files,
+            effective_target,
+            seed=seed + 1,
+            quotas=fake_quotas,
+        )
     if real_count > effective_target:
         excess = real_count - effective_target
         # Round-robin por fonte preserva a diversidade (não zera um gerador).
-        to_remove = _excess_round_robin(real_files, effective_target)
+        to_remove = _excess_round_robin(
+            real_files,
+            effective_target,
+            seed=seed,
+            quotas=real_quotas,
+        )
         moved = _archive_or_delete(to_remove, "real", delete_excess)
         action = "removidos" if delete_excess else "arquivados"
         logger.info(f"  Real: {action} {moved}/{excess} arquivos excedentes")
@@ -346,7 +402,12 @@ def step_balance(target_per_class: int, delete_excess: bool = False):
     # Remover excesso de FAKE
     if fake_count > effective_target:
         excess = fake_count - effective_target
-        to_remove = _excess_round_robin(fake_files, effective_target)
+        to_remove = _excess_round_robin(
+            fake_files,
+            effective_target,
+            seed=seed + 1,
+            quotas=fake_quotas,
+        )
         moved = _archive_or_delete(to_remove, "fake", delete_excess)
         action = "removidos" if delete_excess else "arquivados"
         logger.info(f"  Fake: {action} {moved}/{excess} arquivos excedentes")
@@ -357,16 +418,23 @@ def step_balance(target_per_class: int, delete_excess: bool = False):
 
     logger.info(f"  Depois: {real_final} real + {fake_final} fake (ratio {ratio:.3f})")
 
-    if abs(ratio - 1.0) > 0.05:
-        logger.warning("  AVISO: Ratio fora de 5% de 1.0. Verifique os downloads.")
-    else:
-        logger.info("  Balanceamento OK (ratio dentro de 5% de 1:1)")
+    if real_final != target_per_class or fake_final != target_per_class:
+        raise RuntimeError(
+            f"Pos-condicao invalida: real={real_final}, fake={fake_final}, "
+            f"alvo={target_per_class}"
+        )
+    logger.info("  Balanceamento exato e reproduzivel confirmado")
 
     return real_final, fake_final
 
 
-def step_preprocess(train_ratio: float, val_ratio: float, test_ratio: float,
-                    speaker_disjoint: bool = False):
+def step_preprocess(
+    train_ratio: float,
+    val_ratio: float,
+    test_ratio: float,
+    speaker_disjoint: bool = False,
+    expected_per_class: int | None = None,
+):
     """Roda o pipeline de pre-processamento com os ratios corretos."""
     cmd = [
         sys.executable, str(SCRIPTS_DIR / "dataset" / "preprocess_dataset.py"),
@@ -377,6 +445,8 @@ def step_preprocess(train_ratio: float, val_ratio: float, test_ratio: float,
     ]
     if speaker_disjoint:
         cmd.append("--speaker-disjoint")
+    if expected_per_class is not None:
+        cmd.extend(["--expected-per-class", str(expected_per_class)])
     run(
         cmd,
         f"Pre-processamento + splits {int(train_ratio*100)}/{int(val_ratio*100)}/{int(test_ratio*100)}"
@@ -417,7 +487,7 @@ def save_dataset_config(target_per_class: int, train_r: float, val_r: float, tes
         logger.warning(f"Resumo de falantes indisponivel: {exc}")
 
     config = {
-        "version": "1.1",
+        "version": "2.0",
         "description": "Dataset PT-BR para deteccao de deepfake de audio — TCC UFSJ 2026",
         "tier": tier or "custom",
         "tier_purpose": tier_info.purpose if tier_info else "alvo manual via --target",
@@ -512,10 +582,14 @@ def save_dataset_config(target_per_class: int, train_r: float, val_r: float, tes
             "duration_range_sec": [1.0, 30.0],
         },
         "preprocessing": {
-            "vad": "Silero VAD (torch.hub)",
-            "agc": "Peak normalization 0.95 headroom",
-            "resampling": "librosa (kaiser_best)",
-            "duplicate_removal": "MD5 hash",
+            "pipeline_version": "xfakesong-audio-canonical-v2",
+            "vad": "disabled; no undocumented speech trimming",
+            "amplitude": "preserved; attenuation only when peak exceeds 1.0",
+            "resampling": "librosa with soxr_hq, mono, 16 kHz",
+            "duration_filter_sec": [1.0, 30.0],
+            "raw_layer": "immutable",
+            "processed_layer": "data/datasets/processed",
+            "duplicate_removal": "SHA-256 of decoded mono PCM16; cross-label conflict aborts",
         },
     }
 
@@ -573,6 +647,10 @@ def main():
         help="Apenas mostrar status atual do dataset",
     )
 
+    parser.add_argument(
+        "--seed", type=int, default=42,
+        help="Semente da selecao dentro de cada fonte (default: 42)",
+    )
     args = parser.parse_args()
 
     # Resolver tier → tamanho/fontes/split/falante (override manual via --target).
@@ -630,27 +708,43 @@ def main():
     else:
         logger.info("\n>>> ETAPA 1: DOWNLOADS (pulado)")
 
-    # --- Etapa 1.5: Dedup ANTES do balance
-    # O preprocess (--full) tambem deduplica, mas DEPOIS do balance — o que
-    # remove duplicatas ja contadas no 1:1 e reintroduz desbalanceamento
-    # (ex.: real 10000 -> 7500 apos dedup, com fake intacto). Deduplicar aqui,
-    # antes de balancear, garante que o balanceamento opere sobre dados unicos.
-    if not args.only_splits:
-        logger.info("\n>>> ETAPA 1.5: DEDUP (antes do balance)")
-        run(
-            [sys.executable, str(SCRIPTS_DIR / "dataset" / "preprocess_dataset.py"),
-             "--remove-duplicates"],
-            "Remocao de duplicatas por hash (pre-balance)",
-        )
+    # A deduplicacao e executada somente depois da canonicalizacao, dentro de
+    # --full; a contagem exata e revalidada antes da criacao dos splits.
 
     # --- Etapa 2: Balanceamento
     if not args.only_splits:
         logger.info("\n>>> ETAPA 2: BALANCEAMENTO")
-        step_balance(target_per_class, delete_excess=args.delete_excess)
+        half = target_per_class // 2
+        real_quotas = (
+            {"brspeech": target_per_class}
+            if skip_real_cv
+            else {
+                "brspeech": half,
+                "mlspt": target_per_class // 4,
+                "ttsport": target_per_class - half - target_per_class // 4,
+            }
+        )
+        fake_quotas = {
+            "brspeech": half,
+            "fkvoice": target_per_class - half,
+        }
+        step_balance(
+            target_per_class,
+            delete_excess=args.delete_excess,
+            seed=args.seed,
+            real_quotas=real_quotas,
+            fake_quotas=fake_quotas,
+        )
 
     # --- Etapa 3: Pre-processamento + Splits
     logger.info("\n>>> ETAPA 3: PRE-PROCESSAMENTO + SPLITS")
-    step_preprocess(train_r, val_r, test_r, speaker_disjoint=speaker_disjoint)
+    step_preprocess(
+        train_r,
+        val_r,
+        test_r,
+        speaker_disjoint=speaker_disjoint,
+        expected_per_class=target_per_class,
+    )
 
     # --- Etapa 4: Salvar config
     logger.info("\n>>> ETAPA 4: SALVAR CONFIG")

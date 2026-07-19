@@ -87,6 +87,11 @@ def main() -> int:
         "--allow-feature-space-awgn", action="store_true",
         help="permite fallback legado para NPZ sem forma de onda (não usar no artigo)",
     )
+    p.add_argument(
+        "--architecture-specific-augmentation",
+        action="store_true",
+        help="habilita aumento otimizado por arquitetura; usar apenas em ablação",
+    )
     p.add_argument("--out", metavar="DIR", help="pasta de saída dos artefatos")
     p.add_argument(
         "--models-dir",
@@ -128,6 +133,10 @@ def main() -> int:
     p.add_argument("--unseen-speaker", metavar="FALANTE", default=None,
                    help="tier large: segura este falante fora do treino e o usa "
                         "como teste (protocolo de usuário não visto)")
+    p.add_argument(
+        "--fail-on-source-shortcut", action="store_true",
+        help="recusa dataset em que a fonte prediz o rotulo acima de 55%",
+    )
     p.add_argument("--codec-eval", nargs="+", default=None,
                    metavar="CODEC", choices=["mp3", "opus"],
                    help="robustez a codec com perdas (round-trip ffmpeg na "
@@ -181,6 +190,8 @@ def main() -> int:
         cfg.waveform_noise_augmentation = args.waveform_train_augmentation
     if args.train_aug_snr:
         cfg.train_aug_snr_db = args.train_aug_snr
+    if args.architecture_specific_augmentation:
+        cfg.architecture_specific_augmentation = True
     if args.waveform_noise_batch_size is not None:
         if args.waveform_noise_batch_size <= 0:
             p.error("--waveform-noise-batch-size deve ser > 0")
@@ -222,6 +233,8 @@ def main() -> int:
         cfg.holdout_speaker = args.unseen_speaker
     if args.device_profile:
         cfg.device_profile = args.device_profile
+    if args.fail_on_source_shortcut:
+        cfg.fail_on_source_shortcut = True
     if args.codec_eval:
         cfg.codec_eval = list(args.codec_eval)
     if args.bootstrap_ci is not None:

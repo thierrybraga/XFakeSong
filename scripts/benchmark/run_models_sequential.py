@@ -101,16 +101,28 @@ def _inspect_npz(path: Path) -> dict[str, Any]:
         test_identity = None
         if predefined:
             parts = []
-            for name in ("X_test.npy", "y_test.npy"):
+            identity_members = ["X_test.npy", "y_test.npy"]
+            identity_members.extend(
+                name for name in (
+                    "cluster_ids.npy", "source_ids.npy", "sample_paths.npy"
+                ) if name in names
+            )
+            for name in identity_members:
                 info = archive.getinfo(name)
                 parts.append(f"{name}:{info.CRC:08x}:{info.file_size}")
             test_identity = hashlib.sha256("|".join(parts).encode("ascii")).hexdigest()
+    has_cluster_ids = "cluster_ids.npy" in names
+    has_source_ids = "source_ids.npy" in names or "groups.npy" in names
+    has_sample_paths = "sample_paths.npy" in names
     return {
         "predefined_splits": predefined,
         "split_counts": counts,
         "sample_count": int(sum(counts.values())),
         "test_archive_identity_sha256": test_identity,
         "test_archive_identity_method": "sha256(zip_member_name_crc32_uncompressed_size)",
+        "has_cluster_ids": has_cluster_ids,
+        "has_source_ids": has_source_ids,
+        "has_sample_paths": has_sample_paths,
     }
 
 def _sha256_file(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
@@ -298,6 +310,8 @@ def _build_command(args: argparse.Namespace, model: str, model_dir: Path) -> lis
         cmd.extend(["--cross-generator", str(args.cross_generator)])
     if getattr(args, "codec_eval", None):
         cmd.extend(["--codec-eval", *[str(c) for c in args.codec_eval]])
+    if getattr(args, "academic_protocol", False):
+        cmd.append("--fail-on-source-shortcut")
     return cmd
 
 
@@ -669,6 +683,14 @@ def main() -> int:
             )
         if args.snr != [30, 20, 10] or args.train_aug_snr != [30, 20, 10]:
             parser.error("protocolo acadêmico exige SNRs 30, 20 e 10 dB nessa ordem")
+        if not npz_inspection["has_cluster_ids"]:
+            parser.error(
+                "protocolo acadêmico exige cluster_ids para IC por cluster"
+            )
+        if not npz_inspection["has_source_ids"]:
+            parser.error(
+                "protocolo acadêmico exige source_ids/groups para auditoria de domínio"
+            )
         if not args.waveform_train_augmentation or args.train_noise_copies != 1:
             parser.error("protocolo acadêmico exige uma cópia AWGN de treino por amostra")
         if args.group_split or args.speaker_split:

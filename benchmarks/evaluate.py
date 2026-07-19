@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict
+from typing import Any, Dict
 
 import numpy as np
 
@@ -36,8 +36,9 @@ def _bootstrap_cis(
     threshold: float,
     n_bootstrap: int,
     seed: int = 12345,
-) -> Dict[str, float]:
-    """IC 95% percentil por bootstrap (reamostragem com reposição dos pares).
+    cluster_ids: np.ndarray | None = None,
+) -> Dict[str, Any]:
+    """IC 95% percentil por bootstrap de clusters ou, sem IDs, amostras.
 
     Rigor acadêmico (2026-07-14): com n≈2250 o IC do EER é ~±0,5–1 pp —
     sem ele, diferenças finas entre modelos não são interpretáveis.
@@ -49,9 +50,24 @@ def _bootstrap_cis(
     rng = np.random.default_rng(seed)
     mc = MetricsCalculator()
     n = len(y_true)
+    clusters = None
+    unique_clusters = None
+    if cluster_ids is not None:
+        clusters = np.asarray(cluster_ids).astype(str).ravel()
+        if len(clusters) != n:
+            raise ValueError("cluster_ids desalinhado com y_true")
+        unique_clusters = np.unique(clusters)
+        if len(unique_clusters) < 2:
+            raise ValueError("bootstrap por cluster exige pelo menos 2 clusters")
     eers, aucs, accs = [], [], []
     for _ in range(int(n_bootstrap)):
-        idx = rng.integers(0, n, n)
+        if clusters is None:
+            idx = rng.integers(0, n, n)
+        else:
+            chosen = rng.choice(
+                unique_clusters, size=len(unique_clusters), replace=True
+            )
+            idx = np.concatenate([np.flatnonzero(clusters == group) for group in chosen])
         yb, pb = y_true[idx], p_fake[idx]
         if yb.min() == yb.max():  # reamostra sem ambas as classes: descarta
             continue
@@ -63,7 +79,7 @@ def _bootstrap_cis(
             )
         except Exception:
             continue
-    out: Dict[str, float] = {}
+    out: Dict[str, Any] = {}
     for name, values in (("eer", eers), ("auc_roc", aucs), ("accuracy", accs)):
         if values:
             lo, hi = np.percentile(values, [2.5, 97.5])
@@ -71,12 +87,16 @@ def _bootstrap_cis(
             out[f"{name}_ci95_high"] = float(hi)
     if eers:
         out["bootstrap_samples"] = int(len(eers))
+    out["bootstrap_unit"] = "cluster" if clusters is not None else "sample"
+    if unique_clusters is not None:
+        out["bootstrap_clusters"] = int(len(unique_clusters))
     return out
 
 
 def evaluate_scores(y_true: np.ndarray, p_fake: np.ndarray,
                     threshold: float = 0.5,
-                    n_bootstrap: int = 0) -> Dict[str, float]:
+                    n_bootstrap: int = 0,
+                    cluster_ids: np.ndarray | None = None) -> Dict[str, Any]:
     """Métricas de detecção a partir de y_true ∈ {0,1} e p_fake ∈ [0,1].
 
     Reaproveita o MetricsCalculator do pipeline para EER e min-tDCF (mesma
@@ -166,6 +186,55 @@ def evaluate_scores(y_true: np.ndarray, p_fake: np.ndarray,
         out["min_tdcf"] = float("nan")
 
     if n_bootstrap and n_pos > 0 and n_neg > 0:
-        out.update(_bootstrap_cis(y_true, p_fake, threshold, n_bootstrap))
+        out.update(
+            _bootstrap_cis(
+                y_true,
+                p_fake,
+                threshold,
+                n_bootstrap,
+                cluster_ids=cluster_ids,
+            )
+        )
 
     return out
+
+
+def evaluate_grouped_scores(
+    y_true: np.ndarray,
+    p_fake: np.ndarray,
+    groups: np.ndarray,
+    threshold: float = 0.5,
+) -> Dict[str, Any]:
+    """Report per-domain, macro and worst-group metrics without pooling bias."""
+    y_true = np.asarray(y_true).ravel().astype(int)
+    p_fake = np.asarray(p_fake, dtype="float64").ravel()
+    groups = np.asarray(groups).astype(str).ravel()
+    if not (len(y_true) == len(p_fake) == len(groups)):
+        raise ValueError("y_true, p_fake e groups devem estar alinhados")
+
+    per_group: Dict[str, Dict[str, Any]] = {}
+    for group in sorted(set(groups.tolist())):
+        mask = groups == group
+        per_group[group] = evaluate_scores(
+            y_true[mask], p_fake[mask], threshold=threshold, n_bootstrap=0
+        )
+
+    def _finite_values(metric: str) -> list[float]:
+        values = []
+        for result in per_group.values():
+            value = result.get(metric)
+            if value is not None and np.isfinite(value):
+                values.append(float(value))
+        return values
+
+    accuracies = _finite_values("accuracy")
+    eers = _finite_values("eer")
+    aucs = _finite_values("auc_roc")
+    return {
+        "per_group": per_group,
+        "n_groups": len(per_group),
+        "macro_accuracy": float(np.mean(accuracies)) if accuracies else float("nan"),
+        "macro_eer": float(np.mean(eers)) if eers else float("nan"),
+        "macro_auc_roc": float(np.mean(aucs)) if aucs else float("nan"),
+        "worst_group_accuracy": min(accuracies) if accuracies else float("nan"),
+    }

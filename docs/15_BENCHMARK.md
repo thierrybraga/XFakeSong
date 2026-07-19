@@ -1,5 +1,14 @@
 # 15 — Sistema de Benchmark, Modelos Treinados e Resultados
 
+> **Validade do artefato:** o NPZ 15k histórico é um artefato legado e
+> in-domain. As garantias de conteúdo/falante disjunto, bootstrap por cluster,
+> janela sem zero-padding e selo v2 só se aplicam a um NPZ regenerado após as
+> correções de julho de 2026. Consulte o
+> [Protocolo acadêmico de dataset v2](DATASET_PROTOCOL_V2.md). O modo
+> `--academic-protocol` recusa artefatos sem `cluster_ids`/`source_ids` ou com
+> atalho fonte-rótulo acima do limite.
+
+
 O pacote `benchmarks/` gera, de forma **reprodutível** e usando
 o **pipeline real** (`TrainingService → ModelLoader → Predictor →
 MetricsCalculator`) e a **API** (FastAPI `TestClient`), os dados empíricos do

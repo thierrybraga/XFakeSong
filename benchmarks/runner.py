@@ -24,7 +24,7 @@ from benchmarks.data import (
     prepare_input_for_architecture,
 )
 from benchmarks.efficiency import count_params, file_size_mb, measure_latency_ms
-from benchmarks.evaluate import evaluate_scores
+from benchmarks.evaluate import evaluate_grouped_scores, evaluate_scores
 from benchmarks.planning import (
     apply_plan_to_config,
     build_benchmark_plan,
@@ -411,6 +411,49 @@ def _audit_split_provenance(data: BenchmarkData) -> Dict[str, Any]:
     return result
 
 
+def _audit_source_label_shortcut(
+    data: BenchmarkData,
+    *,
+    threshold: float = 0.55,
+    fail: bool = False,
+) -> Dict[str, Any]:
+    """Measure how accurately a source-majority oracle predicts the label."""
+    if data.groups is None:
+        audit = {
+            "available": False,
+            "passed": False,
+            "reason": "source_ids_missing",
+        }
+        if fail:
+            raise ValueError("Auditoria fonte-rotulo exige source_ids explicitos")
+        return audit
+
+    groups = np.asarray(data.groups).astype(str)
+    labels = np.asarray(data.y).astype(int)
+    counts: Dict[str, Dict[str, int]] = {}
+    correct = 0
+    for source in sorted(set(groups.tolist())):
+        source_labels = labels[groups == source]
+        real_n = int(np.sum(source_labels == 0))
+        fake_n = int(np.sum(source_labels == 1))
+        counts[source] = {"real": real_n, "fake": fake_n}
+        correct += max(real_n, fake_n)
+    accuracy = correct / max(len(labels), 1)
+    audit = {
+        "available": True,
+        "method": "source_majority_oracle",
+        "accuracy": accuracy,
+        "threshold": float(threshold),
+        "counts": counts,
+        "passed": bool(accuracy <= threshold),
+    }
+    if fail and not audit["passed"]:
+        raise ValueError(
+            f"Atalho fonte-rotulo: oraculo={accuracy:.4f} > limite={threshold:.4f}"
+        )
+    return audit
+
+
 def _audit_predefined_provenance(data: BenchmarkData) -> Dict[str, Any]:
     """Alias legado; audita agora as partições efetivamente usadas."""
 
@@ -463,7 +506,9 @@ def _prepare_protocol_splits(
     # padrão (1 cópia AWGN estática, augmenter interno desligado).
     dynamic_aug_archs = {"aasist", "rawgatst"}
     use_dynamic_augmenter = (
-        waveform_domain and _compact_slug(arch) in dynamic_aug_archs
+        waveform_domain
+        and cfg.architecture_specific_augmentation
+        and _compact_slug(arch) in dynamic_aug_archs
     )
     use_train_noise = (
         waveform_domain
@@ -913,10 +958,19 @@ def _run_classical(
     }
 
 
-def _benchmark_one(arch: str, cfg: BenchmarkConfig, raw_splits) -> Dict[str, Any]:
+def _benchmark_one(
+    arch: str,
+    cfg: BenchmarkConfig,
+    raw_splits,
+    eval_context: Dict[str, np.ndarray] | None = None,
+) -> Dict[str, Any]:
     """Treina e avalia uma arquitetura com perturbações no áudio canônico."""
     raw_Xte, raw_yte = raw_splits[4], raw_splits[5]
     t0 = time.time()
+    eval_context = eval_context or {}
+    cluster_ids = eval_context.get("cluster_ids")
+    source_ids = eval_context.get("source_ids")
+    generator_ids = eval_context.get("generator_ids")
     models_dir = _models_dir(cfg, arch)
     try:
         splits = _prepare_protocol_splits(arch, cfg, raw_splits)
@@ -965,7 +1019,20 @@ def _benchmark_one(arch: str, cfg: BenchmarkConfig, raw_splits) -> Dict[str, Any
                 pf_clean,
                 threshold=cfg.decision_threshold,
                 n_bootstrap=n_boot,
+                cluster_ids=cluster_ids,
             )
+            grouped_clean: Dict[str, Any] = {}
+            if source_ids is not None:
+                grouped_clean["source"] = evaluate_grouped_scores(
+                    yte, pf_clean, source_ids, threshold=cfg.decision_threshold
+                )
+            generator_known = eval_context.get("generator_known")
+            if generator_ids is not None and (
+                generator_known is None or np.all(generator_known)
+            ):
+                grouped_clean["generator"] = evaluate_grouped_scores(
+                    yte, pf_clean, generator_ids, threshold=cfg.decision_threshold
+                )
             converged = (
                 not np.isnan(clean.get("auc_roc", float("nan")))
                 and clean["auc_roc"] >= cfg.converge_auc_threshold
@@ -996,6 +1063,7 @@ def _benchmark_one(arch: str, cfg: BenchmarkConfig, raw_splits) -> Dict[str, Any
                     predict_eval(Xn, noisy_raw),
                     threshold=cfg.decision_threshold,
                     n_bootstrap=n_boot,
+                    cluster_ids=cluster_ids,
                 )
 
             # Robustez a CODEC (opt-in): round-trip com perdas na FORMA DE
@@ -1016,6 +1084,7 @@ def _benchmark_one(arch: str, cfg: BenchmarkConfig, raw_splits) -> Dict[str, Any
                             predict_eval(Xc, degraded),
                             threshold=cfg.decision_threshold,
                             n_bootstrap=n_boot,
+                            cluster_ids=cluster_ids,
                         )
                     except Exception as exc:  # noqa: BLE001 — opt-in, não derruba o run
                         logger.warning(
@@ -1064,6 +1133,7 @@ def _benchmark_one(arch: str, cfg: BenchmarkConfig, raw_splits) -> Dict[str, Any
                     "accuracy_min": cfg.converge_accuracy_threshold,
                 },
                 "clean": clean,
+                "grouped_clean": grouped_clean,
                 "scores_clean": [round(float(v), 6) for v in pf_clean],
                 "robustness": robustness,
                 "codec_robustness": codec_robustness,
@@ -1119,6 +1189,11 @@ def plan_benchmark(cfg: BenchmarkConfig, write: bool = True) -> Dict[str, Any]:
     """Valida dataset/configuração e grava o plano antes de treinar."""
     _normalize_project_paths(cfg)
     data = _load_and_validate_data(cfg)
+    _audit_source_label_shortcut(
+        data,
+        threshold=cfg.source_oracle_threshold,
+        fail=cfg.fail_on_source_shortcut,
+    )
     plan = build_benchmark_plan(cfg, data)
     if write:
         write_benchmark_plan(plan, cfg.output_dir)
@@ -1141,6 +1216,11 @@ def run_benchmark(cfg: BenchmarkConfig) -> Dict[str, Any]:
         pass
 
     data = _load_and_validate_data(cfg)
+    source_shortcut_audit = _audit_source_label_shortcut(
+        data,
+        threshold=cfg.source_oracle_threshold,
+        fail=cfg.fail_on_source_shortcut,
+    )
     plan = build_benchmark_plan(cfg, data)
     write_benchmark_plan(plan, cfg.output_dir)
     apply_plan_to_config(cfg, plan)
@@ -1161,6 +1241,22 @@ def run_benchmark(cfg: BenchmarkConfig) -> Dict[str, Any]:
     )
     split_fingerprints = split_overlap_audit["split_fingerprints"]
     provenance_overlap_audit = _audit_split_provenance(data)
+    if not data.last_split_indices or "test" not in data.last_split_indices:
+        raise RuntimeError("Indices do teste indisponiveis para auditoria agrupada")
+    test_idx = np.asarray(data.last_split_indices["test"], dtype="int64")
+    eval_context: Dict[str, np.ndarray] = {}
+    context_vectors = {
+        "cluster_ids": data.cluster_ids,
+        "source_ids": data.groups,
+        "generator_ids": data.generators,
+        "generator_known": data.generator_known,
+    }
+    for name, values in context_vectors.items():
+        if values is not None:
+            aligned = np.asarray(values)
+            if len(aligned) != len(data.y):
+                raise RuntimeError(f"Vetor {name} desalinhado antes da avaliacao")
+            eval_context[name] = aligned[test_idx]
     y_test_base = np.asarray(raw_splits[5])
     n_test = len(y_test_base)
     logger.info(
@@ -1171,7 +1267,7 @@ def run_benchmark(cfg: BenchmarkConfig) -> Dict[str, Any]:
     per_arch: Dict[str, Any] = {}
     for arch in cfg.architectures:
         logger.info("=== Benchmark: %s ===", arch)
-        per_arch[arch] = _benchmark_one(arch, cfg, raw_splits)
+        per_arch[arch] = _benchmark_one(arch, cfg, raw_splits, eval_context)
 
     results: Dict[str, Any] = {
         "config": cfg.to_dict(),
@@ -1194,6 +1290,7 @@ def run_benchmark(cfg: BenchmarkConfig) -> Dict[str, Any]:
             "split_fingerprints": split_fingerprints,
             "test_split_sha256": split_fingerprints["test"]["sha256"],
             "provenance_overlap_audit": provenance_overlap_audit,
+            "source_shortcut_audit": source_shortcut_audit,
             "source": (data.metadata or {}).get("source"),
             "balance_test": {
                 "real": int((y_test_base == 0).sum()),

@@ -40,6 +40,7 @@ def main() -> int:
         default=None,
         help="Limite opcional por classe em cada split (debug/smoke).",
     )
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
     splits_dir = Path(args.splits_dir)
@@ -60,6 +61,7 @@ def main() -> int:
         sample_rate=int(args.sample_rate),
         duration_sec=float(args.duration_sec),
         max_per_class=args.max_per_class,
+        seed=args.seed,
     )
     print(f"NPZ pronto: {out_npz}")
     return 0

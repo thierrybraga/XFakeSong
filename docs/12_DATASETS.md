@@ -253,7 +253,7 @@ python scripts/dataset/download_datasets.py --asvspoof5 --max-samples 2000
 - Sanitização de **NaN/Inf** (arquivos corrompidos são descartados, não salvos).
 - Rejeição de áudios silenciosos (peak < 1e-6) e fora de duração (1–30 s).
 - Rejeição de magnitudes absurdas (int16 não-normalizado).
-- Normalização de pico para 0.95 (evita clipping).
+- Preservação de amplitude; somente atenuação anti-clipping quando o pico excede 1,0.
 - Indexação livre de colisão (`next_index` — não sobrescreve arquivos existentes ao re-rodar).
 
 ---
@@ -265,7 +265,7 @@ Sempre rode o pré-processamento **antes de treinar**:
 ```bash
 python scripts/dataset/preprocess_dataset.py --validate         # relatório de integridade
 python scripts/dataset/preprocess_dataset.py --normalize        # reamostra/normaliza + remove corrompidos
-python scripts/dataset/preprocess_dataset.py --remove-duplicates # MD5
+python scripts/dataset/preprocess_dataset.py --remove-duplicates # SHA-256 do PCM decodificado
 python scripts/dataset/preprocess_dataset.py --create-splits    # train/val/test estratificado
 python scripts/dataset/preprocess_dataset.py --full             # tudo acima
 ```
