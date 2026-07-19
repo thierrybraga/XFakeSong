@@ -31,8 +31,6 @@ python scripts/<categoria>/<nome>.py [opções]
 | `build_dataset.py` | Orquestra a Fase 1: composição balanceada real/fake por fonte (tiers `small/medium/large`) e splits estratificados em `app/datasets/splits`. |
 | `preprocess_dataset.py` | Valida e normaliza WAVs (16 kHz mono, amplitude, duração 1–30 s, remoção de corrompidos/duplicatas) com relatório detalhado. |
 | `export_npz_from_splits.py` | Exporta os splits para um `.npz` canônico de áudio bruto (`benchmark_audio_raw_balanced_15k.npz`). |
-| `setup_fake_dataset.py` | Gera WAVs sintéticos (senóides+ruído) para smoke tests do pipeline sem dataset real. |
-| `update_npz_speaker_ids.py` | Atualiza o array `speaker_ids` de um NPZ existente a partir do `speaker_manifest.json`. |
 | `rebuild_speaker_manifest.py` | Reconstrói `speaker_manifest.json` a partir de metadados locais rastreáveis (sem inventar falantes). |
 | `audit_speaker_manifest.py` | Audita a cobertura de IDs reais de falante no dataset ativo; falha abaixo do mínimo configurado. |
 | `export_speaker_table.py` | Exporta CSV/JSONL com uma linha por WAV (classe, split, fonte, speaker, duração). |
@@ -43,8 +41,8 @@ python scripts/<categoria>/<nome>.py [opções]
 | Script | Função |
 | --- | --- |
 | `train_advanced.py` | Pipeline de treinamento por arquitetura nas splits PT-BR, com métricas completas por modelo. |
-| `train_by_family.py` | Entrypoint único por família (`--family {classical-ml,tensorflow-keras,pytorch-audio,ssl-transformers}`), lendo presets de `configs/training/*.yaml` e delegando a `benchmark/run_models_sequential.py`. Substitui os antigos `train_classical/tensorflow/pytorch/ssl.py`. |
-| `retrain_ajustado.sh` / `.bat` | Retreino dos modelos ajustados pós-diagnóstico (config `configs/training/retune_ajustado.yaml`; ver `docs/RETREINO_AJUSTES.md`). |
+| `train_by_family.py` | Entrypoint único por família (`--family {classical-tabular,spectral-convolutional,spectral-attention,waveform-end-to-end,ssl-pretrained,extended}`), lendo presets de `configs/training/*.yaml` e delegando a `benchmark/run_models_sequential.py`. Substitui os antigos `train_classical/tensorflow/pytorch/ssl.py`. |
+| `retrain_ajustado.sh` / `.bat` | Retreino dos modelos ajustados pós-diagnóstico (config `configs/training/retune_ajustado.yaml`; ver `docs/evaluation/retraining-adjustments.md`). |
 | `retrain_wsl2.sh` | Fluxo de retreino completo sob WSL2/GPU com consolidação e atualização do LaTeX ao final. |
 | `ablate_wavlm_finetune.py` | Ablação exploratória de fine-tuning do WavLM (fora do recorte do TCC). |
 
@@ -64,10 +62,11 @@ python scripts/<categoria>/<nome>.py [opções]
 
 | Script | Função |
 | --- | --- |
+| `build_paper_from_benchmark.py` | **Entrypoint canônico do artigo**: encadeia consolidate → validate → tabelas → `pdflatex` num comando só (orquestrador fino; não reimplementa lógica). |
 | `consolidate_results.py` | Lê `results.json` de um ou mais runs, monta `benchmark_summary.json` e (re)gera todas as figuras nomeadas do TCC. |
-| `update_tcc_latex.py` | Gera o fragmento `tcc_overleaf/tabelas_benchmark.tex` a partir do sumário consolidado (fonte única das tabelas do TCC). |
+| `update_tcc_latex.py` | Gera o fragmento `results/paper/tabelas_benchmark.tex` a partir do sumário consolidado (fonte única das tabelas do TCC). |
 | `validate_artifacts.py` | Valida artefatos de modelos/resultados (presença, esquema, coerência) sem carregar pesos. |
-| `sync_completed_benchmark_artifacts.py` | Promove modelos/resultados concluídos para `app/models/benchmark_final/<arch>/`. |
+| `sync_completed_benchmark_artifacts.py` | Promove modelos concluídos para `app/models/benchmark_final/<arch>/`. |
 | `generate_completed_benchmark_artifacts.py` | Regera relatórios/figuras apenas-avaliação a partir de modelos já treinados (`app/models/bench_*`). |
 | `materialize_benchmark_artifacts.py` | Materializa manifestos locais de artefatos treinados (fluxo Docker/WSL com bind mount). |
 | `export_model_card.py` | Exporta o model card Markdown consolidado dos artefatos treinados (`app/models/MODEL_CARD.md`). |
@@ -99,7 +98,7 @@ consolidação (funcionalidade preservada):
 | Removido | Use no lugar |
 | --- | --- |
 | `benchmark_all.py` | `scripts/benchmark/run_models_sequential.py` (mesmos flags) |
-| `train_classical.py` | `scripts/training/train_by_family.py --family classical-ml` |
-| `train_tensorflow.py` | `scripts/training/train_by_family.py --family tensorflow-keras` |
-| `train_pytorch.py` | `scripts/training/train_by_family.py --family pytorch-audio` |
-| `train_ssl.py` | `scripts/training/train_by_family.py --family ssl-transformers` |
+| `train_classical.py` | `scripts/training/train_by_family.py --family classical-tabular` |
+| `train_tensorflow.py` | `scripts/training/train_by_family.py --family spectral-attention` |
+| `train_pytorch.py` | `scripts/training/train_by_family.py --family waveform-end-to-end` |
+| `train_ssl.py` | `scripts/training/train_by_family.py --family ssl-pretrained` |
