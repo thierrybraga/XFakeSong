@@ -149,7 +149,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--summary",
-        default="results/clean_benchmark_full_20260626/run_summary.json",
+        required=True,
+        help=(
+            "Caminho para o run_summary.json do benchmark a promover "
+            "(ex.: results/<run>/run_summary.json). Sem default: adivinhar "
+            "um 'run atual' é frágil — ver docs/05_GUIA_DEV.md."
+        ),
     )
     parser.add_argument("--final-dir", default="app/models/benchmark_final")
     args = parser.parse_args()

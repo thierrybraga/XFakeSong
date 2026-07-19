@@ -22,7 +22,7 @@ adaptadores; o domínio permanece testável sem elas.
 ## Logging
 
 Configurado em `app/core/feedback.py::configure_logging` (chamado no startup de
-`app/main_fastapi.py`). O arquivo padrão é **`system.log`** na raiz; os
+`app/interfaces/web/main_fastapi.py`). O arquivo padrão é **`system.log`** na raiz; os
 diretórios e nível vêm de `app/core/config/settings.py` (`LoggingConfig`,
 `logs_dir = ./app/logs`).
 
@@ -54,7 +54,17 @@ Variáveis de ambiente úteis (ver `settings.py` e `app/core/middleware.py`):
   Preserva backbones SSL, README dos modelos originais e artefatos auxiliares.
 - **Manifesto de modelos**: `app/models/benchmark_final_manifest.json`.
 - **Resultados/benchmark**: `results/` (figuras, JSON/CSV, relatórios,
-  métricas por arquitetura e cópia da execução original). Ignorado.
+  métricas por arquitetura e cópia da execução original). Ignorado (gitignore).
+  **Convenção de nome para runs novos** (aplica-se daqui pra frente — não é
+  uma reorganização retroativa dos runs existentes):
+  `results/<descrição_curta>_<AAAAMMDD>/`, com `run_summary.json`/`.md` na
+  raiz do run e uma subpasta por arquitetura (`<run>/<arquitetura>/results.json`,
+  `predictions_clean.csv`, `figures/`, etc. — o formato que
+  `scripts/benchmark/run_models_sequential.py` já produz). A promoção para
+  `app/models/benchmark_final/` acontece **só** via
+  `scripts/reporting/sync_completed_benchmark_artifacts.py --summary
+  results/<run>/run_summary.json` (o script exige `--summary` explícito, sem
+  adivinhar qual é o "run atual").
 - **Material acadêmico**: `tcc_overleaf/main.tex` é a fonte única; `tcc_overleaf.zip`
   contém o pacote limpo para Overleaf, sem PDF nem auxiliares LaTeX.
 - **Notebooks**: `notebooks/` — gerados por `scripts/ops/build_notebooks.py`

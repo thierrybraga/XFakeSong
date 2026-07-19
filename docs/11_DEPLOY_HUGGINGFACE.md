@@ -64,8 +64,8 @@ Arquivos usados no deploy:
 
 | Arquivo | Função |
 | --- | --- |
-| `Dockerfile` | build multi-stage da aplicação |
-| `docker-entrypoint.sh` | prepara diretórios e sincroniza modelos |
+| `Dockerfile` (raiz) | build multi-stage — existe só aqui porque HF Spaces exige esse nome/caminho |
+| `docker/environments/inference-api/docker-entrypoint.sh` | prepara diretórios e sincroniza modelos (copiado para a imagem pelo `Dockerfile` acima) |
 | `main.py` | inicia Gradio/FastAPI com `python main.py --gradio` |
 | `scripts/ops/sync_hf_models.py` | baixa artefatos do Model Hub para `app/models` |
 | `requirements.txt` | dependências TensorFlow, PyTorch e runtime |

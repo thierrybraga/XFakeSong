@@ -3,10 +3,14 @@
 #
 # This file intentionally excludes most training-only dependencies. TensorFlow
 # and Torch are kept because current trained artifacts may require both loaders.
+#
+# NOTA: requirements-base.txt é instalado separadamente pelo Dockerfile (via
+# `-r requirements-base.txt -r <este arquivo>` num único pip install) — não
+# referenciado aqui com `-r ../../...` porque a profundidade relativa
+# (docker/environments/inference-api/) é fácil de contar errado e falha
+# silenciosamente só no build (já aconteceu: `-r ../../` faltava um nível).
 
--r ../../requirements-base.txt
+-r requirements-torch.txt
 
 tensorflow-cpu>=2.16,<2.22
-torch==2.5.1
-transformers==4.45.2
 

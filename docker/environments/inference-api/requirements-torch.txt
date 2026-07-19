@@ -1,0 +1,8 @@
+# XFakeSong - pin torch/transformers compartilhado entre Dockerfile.cpu e
+# Dockerfile.nvidia (torch não faz parte de requirements-cpu.txt/base.txt
+# porque nem toda família de treino precisa dele; inference-api precisa
+# servir os 11 modelos promovidos, incluindo WavLM/HuBERT originais em
+# PyTorch). Pin conservador: versões mais novas causaram segfault
+# torch.dynamo/triton no container GPU (ver requirements.txt na raiz).
+torch==2.5.1
+transformers==4.45.2

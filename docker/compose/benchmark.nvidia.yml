@@ -4,10 +4,9 @@ services:
   benchmark:
     build:
       context: ../..
-      dockerfile: Dockerfile
+      dockerfile: docker/environments/inference-api/Dockerfile.nvidia
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
-        TF_VARIANT: gpu
     image: xfakesong/benchmark:nvidia
     container_name: xfakesong_benchmark_nvidia
     working_dir: /app

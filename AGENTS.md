@@ -33,10 +33,10 @@ isort app/ tests/
 flake8 app/ tests/
 bandit -r app/
 
-# Docker (produção)
-docker-compose up --build -d
-docker-compose logs -f
-docker-compose down
+# Docker (produção) — perfis segmentados em docker/compose/*.yml
+make build && make up      # ou: docker compose -f docker/compose/inference.cpu.yml up --build -d
+make logs
+make down
 ```
 
 ---
@@ -85,7 +85,7 @@ HTTP/Gradio → interfaces/web/routers/ ou interfaces/gradio/ → domain/service
 | ML / DL | Keras 3, TensorFlow, scikit-learn |
 | Áudio | librosa, soundfile, scipy, numpy |
 | Interface | Gradio 4.x |
-| API | FastAPI (em desenvolvimento) |
+| API | FastAPI (implementada: routers, middleware de segurança, rate limiting) |
 | Deploy | Docker, Hugging Face Spaces |
 | Qualidade | black, isort, flake8, bandit, pytest, pytest-cov |
 

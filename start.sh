@@ -47,7 +47,11 @@ readonly APP_NAME="XFakeSong"
 readonly DEFAULT_PORT="7860"
 readonly HEALTH_TIMEOUT="300"
 readonly HEALTH_INTERVAL="5"
-readonly CONTAINER_NAME="xfakesong_app"
+# CONTAINER_NAME e COMPOSE_FILE não são readonly: dependem do perfil
+# (cpu/nvidia) ativo, resolvido em tempo de execução por
+# detect_active_profile() — mesma lógica de start.bat (:DETECT_ACTIVE_PROFILE).
+CONTAINER_NAME="xfakesong_inference_cpu"
+COMPOSE_FILE="docker/compose/inference.cpu.yml"
 readonly PY_MIN_MINOR="11"   # Python 3.11 é a referência (compatível 3.11–3.12)
 readonly PY_MAX_MINOR="12"   # teto: torch==2.5.1 não tem wheels p/ Python 3.13
 
@@ -365,6 +369,20 @@ get_compose() {
     fatal "Docker Compose não encontrado. Instale Docker >= 20.10 ou docker-compose."
 }
 
+# Descobre qual perfil (cpu/gpu) está ativo checando qual container foi
+# criado por um run_docker anterior — evita persistir estado em disco entre
+# invocações separadas do script (ex.: "start.sh gpu" numa janela e depois
+# "start.sh stop" noutra). Mesma lógica de start.bat (:DETECT_ACTIVE_PROFILE).
+detect_active_profile() {
+    if docker inspect xfakesong_inference_nvidia >/dev/null 2>&1; then
+        COMPOSE_FILE="docker/compose/inference.nvidia.yml"
+        CONTAINER_NAME="xfakesong_inference_nvidia"
+    else
+        COMPOSE_FILE="docker/compose/inference.cpu.yml"
+        CONTAINER_NAME="xfakesong_inference_cpu"
+    fi
+}
+
 wait_for_healthy() {
     local elapsed=0
     info "Aguardando container healthy (timeout ${HEALTH_TIMEOUT}s)..."
@@ -382,7 +400,8 @@ wait_for_healthy() {
                 echo; success "Container healthy após ${elapsed}s"; return 0 ;;
             unhealthy)
                 echo; error "Container ficou unhealthy"
-                "${COMPOSE_CMD[@]}" logs --tail=50 app || true; return 1 ;;
+                "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" logs --tail=50 inference-api || true
+                return 1 ;;
             no-healthcheck)
                 echo; warn "Container sem HEALTHCHECK configurado"; return 0 ;;
             "")
@@ -752,11 +771,10 @@ run_docker() {
     ensure_docker
     get_compose
 
-    local compose_args=(-f docker-compose.yml)
-
     if [[ "$gpu_mode" == "1" ]]; then
-        [[ -f docker-compose.gpu.yml ]] || fatal "docker-compose.gpu.yml não encontrado"
-        compose_args+=(-f docker-compose.gpu.yml)
+        COMPOSE_FILE="docker/compose/inference.nvidia.yml"
+        CONTAINER_NAME="xfakesong_inference_nvidia"
+        [[ -f "$COMPOSE_FILE" ]] || fatal "$COMPOSE_FILE não encontrado"
         info "Modo GPU ativo — validando pré-requisitos..."
 
         # 1) Driver no host (em WSL2 vem do Windows; em Linux nativo, instalado)
@@ -779,10 +797,13 @@ run_docker() {
         else
             success "NVIDIA Container Toolkit detectado"
         fi
+    else
+        COMPOSE_FILE="docker/compose/inference.cpu.yml"
+        CONTAINER_NAME="xfakesong_inference_cpu"
     fi
 
     info "Buildando e iniciando containers..."
-    "${COMPOSE_CMD[@]}" "${compose_args[@]}" up --build -d
+    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up --build -d
 
     wait_for_healthy
     success "Aplicação disponível em http://localhost:${DEFAULT_PORT}"
@@ -792,25 +813,28 @@ stop_containers() {
     show_header
     ensure_docker
     get_compose
-    "${COMPOSE_CMD[@]}" down
+    detect_active_profile
+    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" down
     success "Containers parados e removidos"
 }
 
 show_logs() {
     ensure_docker
     get_compose
-    "${COMPOSE_CMD[@]}" logs -f --tail=100 app
+    detect_active_profile
+    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" logs -f --tail=100 inference-api
 }
 
 rebuild() {
     show_header
     ensure_docker
     get_compose
+    detect_active_profile
 
-    info "Rebuild completo sem cache..."
-    "${COMPOSE_CMD[@]}" down
-    "${COMPOSE_CMD[@]}" build --no-cache --pull
-    "${COMPOSE_CMD[@]}" up -d
+    info "Rebuild completo sem cache (perfil: ${COMPOSE_FILE})..."
+    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" down
+    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" build --no-cache --pull
+    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d
     wait_for_healthy
     success "Rebuild concluído"
 }
@@ -821,7 +845,10 @@ show_status() {
     get_compose
 
     echo
-    "${COMPOSE_CMD[@]}" ps
+    echo "--- Compose status (CPU) ---"
+    "${COMPOSE_CMD[@]}" -f docker/compose/inference.cpu.yml ps
+    echo "--- Compose status (GPU) ---"
+    "${COMPOSE_CMD[@]}" -f docker/compose/inference.nvidia.yml ps
     echo
 
     timeout 5 docker stats \
@@ -845,7 +872,10 @@ clean_environment() {
 
     confirm 'Continuar?' || { info "Operação cancelada"; return 0; }
 
-    "${COMPOSE_CMD[@]}" down -v --remove-orphans
+    # Desce os dois perfis (CPU/GPU) — não sabemos qual estava ativo, e down
+    # num compose file cujo container já não existe é um no-op inofensivo.
+    "${COMPOSE_CMD[@]}" -f docker/compose/inference.cpu.yml down -v --remove-orphans
+    "${COMPOSE_CMD[@]}" -f docker/compose/inference.nvidia.yml down -v --remove-orphans 2>/dev/null || true
     docker image prune -f
     docker builder prune -f
 
@@ -895,7 +925,7 @@ run_doctor() {
 
     check_item 'Docker daemon'              'docker info'
     check_item 'Docker Compose'             'docker compose version || docker-compose version'
-    check_item 'docker-compose.yml'         '[ -f docker-compose.yml ]'
+    check_item 'docker/compose/inference.cpu.yml' '[ -f docker/compose/inference.cpu.yml ]'
 
     if is_wsl; then
         check_item 'WSL2'                   'is_wsl'

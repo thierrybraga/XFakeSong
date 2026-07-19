@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =====================================================================
-# XFakeSong — Docker container entrypoint
+# XFakeSong — Docker container entrypoint (inference-api)
 # Executado como appuser (UID/GID 1000). PID 1 é tini.
 # =====================================================================
 set -euo pipefail

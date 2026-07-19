@@ -7,12 +7,12 @@ cientifica e manter a aplicacao Gradio/FastAPI estavel para demonstracao e
 inferencia com modelos ja treinados.
 
 !!! note "Estado de implementacao"
-    A estrutura base ja foi materializada em `environments/`,
+    A estrutura por familia ja e o unico caminho de build:
+    `docker/environments/*/Dockerfile.{cpu,nvidia}`, `docker/compose/*.yml`,
     `configs/training/`, `configs/dataset.yaml`, `configs/inference.yaml`,
-    `docker/compose/*.yml`, `Makefile` e `scripts/train_*.py`. O Dockerfile,
-    os requirements raiz e os arquivos `docker-compose*.yml` da raiz permanecem
-    como compatibilidade legada enquanto os ambientes por familia passam por
-    validacao incremental.
+    `Makefile` e `scripts/train_*.py`. O `Dockerfile` da raiz nao e legado —
+    existe so para o deploy no Hugging Face Spaces (SDK Docker exige esse
+    nome/caminho especifico), nao e usado por dev/treino/benchmark local.
 
 ## Estrategia central
 
@@ -70,16 +70,17 @@ Hoje o projeto ainda parte de um runtime centralizado:
 | Area | Estado atual |
 | --- | --- |
 | Dependencias | `requirements.txt`, `requirements-base.txt`, `requirements-cpu.txt`, `requirements-dev.txt` |
-| Docker | Principal: `docker/compose/*.yml`; legado: `Dockerfile`, `docker-compose.yml`, `docker-compose.gpu.yml`, `docker-compose.benchmark.yml`, `docker-compose.train.yml` |
+| Docker | `docker/compose/*.yml` (perfis segmentados) + `docker/environments/*/Dockerfile.{cpu,nvidia}` |
 | Benchmark | `scripts/benchmark/run_tcc_pipeline.py`, `scripts/benchmark/run_benchmark.py`, `benchmarks/` |
 | Dataset principal | `data/datasets/benchmark_audio_raw_balanced_15k.npz` |
 | Modelos default | `app/models/bench_*` e `app/models/benchmark_final/` |
 | Resultados | `results/`, `results/tcc_consolidated/`, `reports/` |
 | Documentacao | `docs/` via MkDocs Material |
 
-A pasta `environments/` ja existe como camada de consolidacao. Cada ambiente
-possui requirements, Dockerfile(s) e README. A validacao completa deve ocorrer
-por smoke test e benchmark por familia antes de remover os arquivos legados.
+A pasta `docker/environments/` e a camada de consolidacao. Cada ambiente
+possui requirements, Dockerfile(s) e README. Os arquivos `docker-compose*.yml`
+da raiz foram removidos (redundantes com `docker/compose/*.yml`); o `Dockerfile`
+da raiz permanece so pelo requisito de deploy do Hugging Face Spaces.
 
 ## Arquitetura-alvo
 
@@ -169,9 +170,6 @@ XFakeSong/
 │       ├── train.nvidia.yml
 │       └── benchmark.nvidia.yml
 │
-├── docker-compose.yml              # legado/compatibilidade
-├── docker-compose.train.yml        # legado/compatibilidade
-├── docker-compose.gpu.yml          # legado/compatibilidade
 ├── Makefile                        # atalhos para docker/compose/*.yml
 ├── README.md
 └── docs/
@@ -196,11 +194,11 @@ incompativeis.
 
 | Perfil | Compose | Dockerfiles | Hardware |
 | --- | --- | --- | --- |
-| Inferencia CPU/onboard | `docker/compose/inference.cpu.yml` | `environments/inference-api/Dockerfile.cpu` | CPU, Intel/AMD integrado, sem CUDA |
-| Inferencia NVIDIA | `docker/compose/inference.nvidia.yml` | `environments/inference-api/Dockerfile.nvidia` | NVIDIA CUDA via Linux/WSL2 |
+| Inferencia CPU/onboard | `docker/compose/inference.cpu.yml` | `docker/environments/inference-api/Dockerfile.cpu` | CPU, Intel/AMD integrado, sem CUDA |
+| Inferencia NVIDIA | `docker/compose/inference.nvidia.yml` | `docker/environments/inference-api/Dockerfile.nvidia` | NVIDIA CUDA via Linux/WSL2 |
 | Treino CPU/onboard | `docker/compose/train.cpu.yml` | `Dockerfile.cpu` por familia | CPU, smoke tests, SVM/RF |
 | Treino NVIDIA | `docker/compose/train.nvidia.yml` | `Dockerfile.nvidia` por familia | NVIDIA CUDA via Linux/WSL2 |
-| Benchmark NVIDIA | `docker/compose/benchmark.nvidia.yml` | `Dockerfile` raiz com `TF_VARIANT=gpu` | benchmark sequencial completo |
+| Benchmark NVIDIA | `docker/compose/benchmark.nvidia.yml` | `docker/environments/inference-api/Dockerfile.nvidia` | benchmark sequencial completo |
 
 Use `scripts/ops/docker_build.py` como entrada padronizada para validar ou executar
 os perfis:
@@ -356,7 +354,7 @@ python scripts/reporting/validate_artifacts.py --models-dir app/models --results
 
 ## Checklist de aceite final
 
-- [x] `environments/` criado com cinco familias documentadas.
+- [x] `docker/environments/` criado com cinco familias documentadas.
 - [x] Cada familia possui requirements e Dockerfile CPU/NVIDIA nomeado por perfil.
 - [x] Perfis Compose segmentados em `docker/compose/`.
 - [ ] Cada familia possui Dockerfile validado por build completo.

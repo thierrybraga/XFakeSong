@@ -159,45 +159,24 @@ O **Dashboard → 🎮 Diagnóstico de GPU** mostra qual situação você está 
 
 ## 🐳 Docker — Detalhes
 
-### Imagem multi-stage
+### Imagens por família (`docker/environments/`)
 
-O `Dockerfile` usa **multi-stage build**:
-1. **Stage builder**: instala `gcc`, `build-essential`, compila wheels Python.
-2. **Stage runtime**: apenas runtime libs (`ffmpeg`, `libsndfile1`, `tini`, `curl`) + venv pronto do builder.
-
-Resultado: imagem final ~60% menor que single-stage. Sem `gcc` em produção.
-
-### docker-compose legado
-
-```yaml
-# Comando base
-docker compose up -d
-
-# Com GPU
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
-
-# Forçar rebuild
-docker compose build --no-cache --pull
-
-# Logs
-docker compose logs -f app
-
-# Stop e cleanup
-docker compose down -v --remove-orphans
-```
-
-Esses arquivos da raiz (`docker-compose.yml`, `docker-compose.gpu.yml`,
-`docker-compose.benchmark.yml` e `docker-compose.train.yml`) são mantidos como
-compatibilidade. Para novos builds, use os perfis segmentados descritos abaixo.
+Cada Dockerfile é **single-stage** (`python:3.11-slim` + runtime libs via apt
++ `pip install` de wheels pré-compilados — nada compila localmente, então o
+estágio builder separado do antigo `Dockerfile` multi-stage não trazia
+benefício real e foi removido). Todas as imagens rodam como usuário não-root
+(`appuser`, UID/GID 1000) e usam um `docker-entrypoint.sh` compartilhado
+(`docker/environments/inference-api/docker-entrypoint.sh`) que faz bootstrap
+idempotente de diretórios, checa writability dos volumes montados (comum
+falhar no Windows/WSL2 — ver aviso explícito no log) e sincroniza modelos do
+Hugging Face Hub no boot quando `XFAKE_SYNC_MODELS_ON_BOOT` está setado.
 
 **Importante**: usar `docker compose` (v2, espaço) e não `docker-compose` (v1, hífen). Os scripts `start.bat`/`start.sh` detectam ambos automaticamente.
 
 ### Perfis Docker segmentados
 
-Para novos builds, prefira os arquivos em `docker/compose/`. Eles separam
-inferência, treino CPU/onboard, treino NVIDIA e benchmark. Os arquivos
-`docker-compose.yml`, `docker-compose.gpu.yml`, `docker-compose.benchmark.yml` e
-`docker-compose.train.yml` continuam disponíveis por compatibilidade.
+Todo build usa os arquivos em `docker/compose/`, que separam inferência,
+treino CPU/onboard, treino NVIDIA e benchmark.
 
 | Perfil | Compose | Uso |
 |---|---|---|
@@ -608,27 +587,28 @@ make env                # via Makefile
 XFakeSong/
 ├── app/
 │   ├── models/         # Modelos treinados (.keras, .onnx, scaler.pkl) [VOLUME]
-│   ├── datasets/       # Datasets reais/fake, raw, splits e NPZs [VOLUME]
 │   └── ...
 ├── data/
 │   ├── app.db          # SQLite local
+│   ├── datasets/       # Datasets reais/fake, raw, splits e NPZs [VOLUME]
 │   └── uploads/        # Uploads runtime da API/Gradio
 ├── results/            # Resultados regeneráveis de benchmark/treino
 ├── logs/               # Logs da aplicação [VOLUME]
 ├── .venv/              # Virtualenv local (ignorado no Docker)
-├── Dockerfile          # Multi-stage build
 ├── docker/
 │   ├── build.env.example
+│   ├── environments/
+│   │   ├── inference-api/     # Dockerfile.{cpu,nvidia} + docker-entrypoint.sh
+│   │   ├── tensorflow-keras/
+│   │   ├── pytorch-audio/
+│   │   ├── ssl-transformers/
+│   │   └── classical-ml/
 │   └── compose/
 │       ├── inference.cpu.yml
 │       ├── inference.nvidia.yml
 │       ├── train.cpu.yml
 │       ├── train.nvidia.yml
 │       └── benchmark.nvidia.yml
-├── docker-compose.yml          # Base
-├── docker-compose.gpu.yml      # Override GPU legado
-├── docker-compose.train.yml    # Alias legado de treino NVIDIA
-├── docker-entrypoint.sh        # Entrypoint do container
 ├── Makefile                    # Comandos uniformes
 ├── start.bat / start.sh        # Launchers
 ├── requirements.txt            # Deps runtime

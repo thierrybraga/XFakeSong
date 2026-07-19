@@ -24,4 +24,4 @@ PyTorch e transformers SSL.
 - [results](../results): métricas, figuras e relatórios.
 - [cache](../cache): caches externos de Hugging Face, Torch e TensorFlow.
 
-Prefira os perfis segmentados em [docker/compose](../docker/compose) para novos builds e CI.
+Todo build (dev, treino, benchmark, CI) usa os perfis em [docker/compose](../docker/compose).

@@ -10,24 +10,11 @@ import os
 import sys
 from pathlib import Path
 
+from app.core.hf_compat import ensure_hf_folder_shim
 from app.core.performance import configure_runtime_environment
 
 configure_runtime_environment()
-
-# === Compatibilidade huggingface_hub ===
-# HfFolder foi removido em versoes >= 0.16. Criar shim ANTES de qualquer
-# import que possa transitivamente precisar de HfFolder.
-try:
-    from huggingface_hub import HfFolder  # noqa: F401
-except ImportError:
-    import huggingface_hub
-
-    class _HfFolder:
-        """Shim para HfFolder removido em huggingface_hub >= 0.16."""
-
-        pass
-
-    huggingface_hub.HfFolder = _HfFolder
+ensure_hf_folder_shim()
 
 # Adicionar diretório raiz ao PYTHONPATH
 sys.path.insert(0, str(Path(__file__).parent))

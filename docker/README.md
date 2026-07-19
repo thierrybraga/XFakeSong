@@ -15,11 +15,11 @@ principal concentrada em [docker/compose](compose).
 
 ## Estrutura de pastas
 
-- [compose/](compose): perfis de execução recomendados para novos builds.
+- [compose/](compose): perfis de execução, único caminho de build do projeto.
 - [build.env.example](build.env.example): variáveis comuns para build.
-- [../Dockerfile](../Dockerfile): imagem principal do runtime.
-- [../docker-entrypoint.sh](../docker-entrypoint.sh): bootstrap do container.
-- [environments/](environments): definições específicas por família de ambiente.
+- [environments/](environments): Dockerfiles por família de ambiente;
+  [environments/inference-api/docker-entrypoint.sh](environments/inference-api/docker-entrypoint.sh)
+  é o bootstrap do container (dirs, writability, sync de modelos do HF Hub).
 
 ## Caminhos padrão
 
@@ -30,6 +30,5 @@ principal concentrada em [docker/compose](compose).
 | [data/datasets](../data/datasets) | /app/data/datasets | datasets de treino e benchmark |
 | [app/models](../app/models) | /app/app/models | modelos de inferência |
 
-Os arquivos raiz com prefixo docker-compose são compatibilidade legada. Para
-novos fluxos, prefira os arquivos em [docker/compose](compose) e as definições
-em [docker/environments](environments).
+Todo fluxo (dev, treino, benchmark, deploy) usa os arquivos em
+[docker/compose](compose) e as definições em [docker/environments](environments).

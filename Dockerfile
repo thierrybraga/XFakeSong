@@ -1,7 +1,14 @@
 # syntax=docker/dockerfile:1.7
 # =====================================================================
-# XFakeSong — Multi-stage Dockerfile
+# XFakeSong — Dockerfile de deploy no Hugging Face Spaces
 # =====================================================================
+# Existe SÓ neste caminho (raiz) porque HF Spaces (SDK Docker) exige um
+# arquivo chamado literalmente `Dockerfile` na raiz do repo — não é o
+# Dockerfile usado por dev/treino/benchmark local, que vivem em
+# docker/environments/*/Dockerfile.{cpu,nvidia} + docker/compose/*.yml
+# (ver docs/02_INSTALACAO_CONFIGURACAO.md). Também validado no CI
+# (.github/workflows/ci.yml, job "docker") por PR.
+#
 # Stage 1 (builder): instala dependências de compilação e gera wheels
 # Stage 2 (runtime): imagem slim com apenas runtime libs + wheels
 # Resultado: ~60% menor que single-stage, sem gcc/dev libs em produção
@@ -159,8 +166,8 @@ RUN mkdir -p \
         /app \
         /tmp/numba_cache /tmp/matplotlib /tmp/huggingface /tmp/gradio
 
-# Entrypoint
-COPY --chown=appuser:appuser docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+# Entrypoint (fonte única, compartilhada com docker/environments/inference-api/)
+COPY --chown=appuser:appuser docker/environments/inference-api/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Código da aplicação (em layer separada do venv para cache eficiente)

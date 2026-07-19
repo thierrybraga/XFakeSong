@@ -7,12 +7,12 @@ Este guia consolida a visão operacional do projeto para Docker, ambientes de tr
 - [main.py](../main.py): ponto de entrada principal do CLI e da interface Gradio.
 - [app/interfaces/gradio/app.py](../app/interfaces/gradio/app.py): montagem da interface unificada.
 - [app.py](../app.py): entrada para Hugging Face Spaces.
-- [docker-entrypoint.sh](../docker-entrypoint.sh): bootstrap do container.
+- [docker-entrypoint.sh](../docker/environments/inference-api/docker-entrypoint.sh): bootstrap do container.
 
 ## Estrutura recomendada
 
-- [docker/compose](../docker/compose): perfis de execução recomendados.
-- [environments](../environments): definições específicas por ambiente.
+- [docker/compose](../docker/compose): perfis de execução.
+- [docker/environments](../docker/environments): Dockerfiles por família de ambiente.
 - [results](../results): artefatos regeneráveis do benchmark.
 - [app/models](../app/models): modelos inferidos e exportados.
 

@@ -107,6 +107,14 @@ train-cpu:  ## Executa perfil de treino CPU/classical
 train-nvidia:  ## Executa perfil de treino NVIDIA TensorFlow/Keras
 	$(DC) -f $(TRAIN_NVIDIA_COMPOSE) run --rm tensorflow-keras
 
+.PHONY: train-pytorch
+train-pytorch:  ## Executa perfil de treino NVIDIA PyTorch (RawNet2/AASIST/RawGAT-ST/Conformer/Hybrid)
+	$(DC) -f $(TRAIN_NVIDIA_COMPOSE) run --rm pytorch-audio
+
+.PHONY: train-ssl
+train-ssl:  ## Executa perfil de treino NVIDIA SSL (WavLM/HuBERT originais)
+	$(DC) -f $(TRAIN_NVIDIA_COMPOSE) run --rm ssl-transformers
+
 .PHONY: benchmark-nvidia
 benchmark-nvidia:  ## Executa benchmark completo NVIDIA/WSL2
 	$(DC) -f $(BENCHMARK_NVIDIA_COMPOSE) run --rm benchmark

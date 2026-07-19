@@ -4,38 +4,28 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-# === Compatibilidade huggingface_hub ===
-# Gradio v4 ainda importa HfFolder, removido em huggingface_hub recente.
-try:
-    from huggingface_hub import HfFolder  # noqa: F401
-except ImportError:
-    import huggingface_hub
+from app.core.hf_compat import ensure_hf_folder_shim
 
-    class _HfFolder:
-        """Shim para HfFolder removido em huggingface_hub >= 0.16."""
+ensure_hf_folder_shim()  # antes de qualquer import que precise de Gradio
 
-        pass
+from fastapi import FastAPI, Request  # noqa: E402
+from fastapi.responses import HTMLResponse  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from fastapi.templating import Jinja2Templates  # noqa: E402
+from slowapi import _rate_limit_exceeded_handler  # noqa: E402
+from slowapi.errors import RateLimitExceeded  # noqa: E402
 
-    huggingface_hub.HfFolder = _HfFolder
-
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-
-from app.core.db.setup import init_db
-from app.core.exceptions import setup_exception_handlers
-from app.core.feedback import configure_logging
-from app.core.gpu import describe_gpu_setup, setup_gpu
-from app.core.middleware import setup_middleware
-from app.core.performance import configure_runtime_environment
-from app.core.security import limiter, setup_security
-from app.core.version_check import check_versions
+from app.core.db.setup import init_db  # noqa: E402
+from app.core.exceptions import setup_exception_handlers  # noqa: E402
+from app.core.feedback import configure_logging  # noqa: E402
+from app.core.gpu import describe_gpu_setup, setup_gpu  # noqa: E402
+from app.core.middleware import setup_middleware  # noqa: E402
+from app.core.performance import configure_runtime_environment  # noqa: E402
+from app.core.security import limiter, setup_security  # noqa: E402
+from app.core.version_check import check_versions  # noqa: E402
 
 # API.3: importa ALL_ROUTERS (inclui voice_profiles que faltava antes!).
-from app.interfaces.web.routers import ALL_ROUTERS
+from app.interfaces.web.routers import ALL_ROUTERS  # noqa: E402
 
 configure_logging(level=_l.INFO, log_file="system.log", force=False)
 configure_runtime_environment()

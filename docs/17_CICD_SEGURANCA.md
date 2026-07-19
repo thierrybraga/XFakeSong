@@ -31,7 +31,7 @@ Para reproduzir os gates localmente:
 ./scripts/ops/run_tests.sh cov                 # testes + cobertura
 mkdocs build --strict                      # docs
 bandit -r app benchmarks scripts -lll      # SAST (HIGH)
-docker build --build-arg TF_VARIANT=cpu .  # valida o Dockerfile legado
+docker build --build-arg TF_VARIANT=cpu .  # valida o Dockerfile (deploy HF Spaces)
 python scripts/ops/docker_build.py inference-cpu config
 python scripts/ops/docker_build.py train-cpu config
 python scripts/ops/docker_build.py train-nvidia config

@@ -234,7 +234,7 @@ XFakeSong/
 - **`data/`** — runtime local persistente (`data/app.db`, `data/uploads/`); não deve receber código-fonte.
 - **`results/`** — artefatos regeneráveis de benchmark, gráficos e relatórios.
 - **`app/models/`** — raiz técnica usada por treino/inferência; `benchmark_final/` guarda os modelos finais consolidados.
-- **`docker/compose/`** — caminho principal para novos builds Docker; os `docker-compose*.yml` da raiz são compatibilidade legada.
+- **`docker/compose/`** — perfis Docker segmentados por família/uso (inferência, treino CPU/NVIDIA, benchmark); único caminho de build do projeto.
 - **`tests/`** — espelha a estrutura de `app/` com camadas `unit/`, `integration/`, `api/` e `functional/`.
 - **`app/utils/`** — pacote único de utilitários: audio_utils/file_utils/helpers/
   silero_vad/system_utils (centrais) + colab.py (helper isolado, só para
