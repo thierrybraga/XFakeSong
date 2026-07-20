@@ -650,7 +650,7 @@ def main() -> int:
     parser.add_argument("--sample-rate", type=int, default=16000)
     parser.add_argument("--duration-sec", type=float, default=5.0)
     parser.add_argument("--max-per-class-export", type=int, default=None)
-    parser.add_argument("--npz", default="data/datasets/benchmark_audio_raw_balanced_15k.npz")
+    parser.add_argument("--npz", default="data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz")
     parser.add_argument("--out", default=None)
     args = parser.parse_args()
 
@@ -680,7 +680,7 @@ def main() -> int:
         parser.error("Use --download para baixar/preparar ou --skip-download para usar splits existentes.")
 
     output_dir = Path(args.out) if args.out else (
-        BASE_DIR / "results" / "tcc_pipeline" / time.strftime("%Y%m%d_%H%M%S")
+        BASE_DIR / "data" / "results" / "tcc_pipeline" / time.strftime("%Y%m%d_%H%M%S")
     )
     if not output_dir.is_absolute():
         output_dir = BASE_DIR / output_dir

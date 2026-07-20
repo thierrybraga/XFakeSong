@@ -4,7 +4,7 @@
 # docker/environments/<env>/Dockerfile.{cpu,nvidia}.dockerignore.
 #
 # Difere do .dockerignore raiz em dois pontos:
-#   1. NÃO reinclui app/models/benchmark_final/** nem bench_*.keras/pkl —
+#   1. NÃO reinclui data/models/benchmark_final/** nem bench_*.keras/pkl —
 #      containers de treino só ESCREVEM modelos (via o volume montado por
 #      docker/compose/train.*.yml: ../..:/app), nunca precisam ler os ~3GB de
 #      checkpoints já promovidos. A regra do raiz existe só para empacotar o
@@ -64,19 +64,18 @@ coverage.xml
 Thumbs.db
 
 # --- Logs / Temp ---
-logs/
+data/logs/
 *.log
 tmp/
 temp/
-results/
+data/results/
 
 # --- Dados e modelos (montados em runtime — nunca baked-in em imagem de treino) ---
 cache/
 data/
 datasets/
 app/datasets/
-app/models/
-app/results/
+data/models/
 models/
 
 # --- Dev / docs (não necessários para treino) ---

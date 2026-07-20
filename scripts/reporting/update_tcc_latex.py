@@ -22,8 +22,8 @@ from benchmarks.config import (  # noqa: E402
     OFFICIAL_TCC_RESULT_ORDER,
 )
 
-SUMMARY = ROOT / "results" / "02_outputs" / "tcc_consolidated" / "benchmark_summary.json"
-OUTPUT = ROOT / "results" / "01_paper" / "tabelas_benchmark.tex"
+SUMMARY = ROOT / "data" / "results" / "paper" / "consolidated" / "benchmark_summary.json"
+OUTPUT = ROOT / "data" / "results" / "paper" / "tabelas_benchmark.tex"
 FIGURES_DIR = "figures"
 
 MODEL_ORDER = list(OFFICIAL_TCC_RESULT_ORDER)
@@ -263,7 +263,7 @@ def tables_fragment(
 % Recorte oficial: Random Forest, SVM, CCT, AST, Res2Net, Conformer,
 % RawNet2, AASIST, RawGAT-ST, WavLM Original e HuBERT Original.
 % Nao editar a mao; regenerar com:
-%   python scripts/reporting/consolidate_results.py <runs...> --prefer-last --copy-to results/01_paper/figures
+%   python scripts/reporting/consolidate_results.py <runs...> --prefer-last --copy-to data/results/paper/figures
 %   python scripts/reporting/update_tcc_latex.py
 % ====================================================================
 

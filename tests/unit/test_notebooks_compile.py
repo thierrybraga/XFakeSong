@@ -87,7 +87,7 @@ def test_all_architectures_notebook_documents_full_benchmark_contract():
     )
     assert "RUN_FULL_BENCHMARK = False" in text
     # Dataset dimensionado por tier (test/small/medium/large), nao mais por
-    # uma constante TARGET_PER_CLASS solta -- ver docs/12_DATASETS.md. O
+    # uma constante TARGET_PER_CLASS solta -- ver docs/data/public-datasets.md. O
     # tier "large" (usado aqui) equivale a 10k amostras/classe.
     assert 'TIER = "large"' in text
     assert "10k/classe" in text or "10.000" in text

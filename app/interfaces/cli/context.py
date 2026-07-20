@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 
+from app.core.config.paths import resolve_results_dir
 from app.core.config.settings import TrainingConfig
 from app.domain.services.detection_service import DetectionService
 
@@ -10,6 +11,7 @@ from app.domain.services.detection_service import DetectionService
 @dataclass
 class AppContext:
     """Contexto da aplicação compartilhado entre os menus."""
+
     app_dir: Path
     datasets_dir: Path
     models_dir: Path
@@ -23,8 +25,8 @@ class AppContext:
         repo_root = Path(__file__).resolve().parent.parent.parent.parent
         self.app_dir = repo_root / "app"
         self.datasets_dir = repo_root / "data" / "datasets"
-        self.models_dir = self.app_dir / "models"
-        self.results_dir = repo_root / "results"
+        self.models_dir = repo_root / "data" / "models"
+        self.results_dir = resolve_results_dir(repo_root)
 
         # Criar diretórios se não existirem
         self.models_dir.mkdir(exist_ok=True, parents=True)
@@ -38,17 +40,23 @@ class AppContext:
 
         # Criar configuração de treinamento
         self.training_config = TrainingConfig(
-            batch_size=32,
-            epochs=100,
-            learning_rate=0.001,
-            validation_split=0.2
+            batch_size=32, epochs=100, learning_rate=0.001, validation_split=0.2
         )
 
         # Arquiteturas disponíveis
         self.available_architectures = [
-            "aasist", "conformer", "efficientnet_lstm", "ensemble",
-            "multiscale_cnn", "rawgat_st", "spectrogram_transformer",
-            "hubert", "rawnet2", "wavlm", "hybrid_cnn_transformer", "sonic_sleuth"
+            "aasist",
+            "conformer",
+            "efficientnet_lstm",
+            "ensemble",
+            "multiscale_cnn",
+            "rawgat_st",
+            "spectrogram_transformer",
+            "hubert",
+            "rawnet2",
+            "wavlm",
+            "hybrid_cnn_transformer",
+            "sonic_sleuth",
         ]
 
         self.logger = logging.getLogger("XfakeSongCLI")

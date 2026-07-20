@@ -20,7 +20,7 @@ mitigado com o reteste cross-generator / speaker-disjoint).
 Uso:
     python scripts/dataset/audit_source_shortcut.py \
         --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
-        --max-per-source 500 --out results/04_helpers/source_shortcut.json
+        --max-per-source 500 --out data/results/04_helpers/source_shortcut.json
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ def main() -> int:
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
-        "--out", default="results/04_helpers/source_shortcut.json"
+        "--out", default="data/results/04_helpers/source_shortcut.json"
     )
     args = parser.parse_args()
 

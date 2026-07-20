@@ -8,7 +8,7 @@ rodar apos ``consolidate_results.py`` e antes de
 ``sync_completed_benchmark_artifacts.py``.
 
 Uso:
-    python scripts/reporting/validate_artifacts.py --results results/<run>
+    python scripts/reporting/validate_artifacts.py --results data/results/<run>
     python scripts/reporting/validate_artifacts.py --strict
 """
 
@@ -23,6 +23,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from app.core.config.paths import resolve_results_dir
 
 
 def _slug(name: str) -> str:
@@ -76,8 +78,8 @@ def main() -> int:
         description="Check trained model folders, manifests, metrics and figures.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--models-dir", default="app/models")
-    parser.add_argument("--results-dir", default="results")
+    parser.add_argument("--models-dir", default="data/models")
+    parser.add_argument("--results-dir", default=None)
     parser.add_argument("--strict", action="store_true", help="Return non-zero on warnings.")
     args = parser.parse_args()
 
@@ -86,8 +88,12 @@ def main() -> int:
     tcc_architectures = [*ALL_TCC_ARCHITECTURES, *SSL_DOCKER_ARCHITECTURES]
 
     models_dir = _resolve(args.models_dir)
-    results_dir = _resolve(args.results_dir)
-    manifest = models_dir / "benchmark_final_manifest.json"
+    results_dir = (
+        _resolve(args.results_dir)
+        if args.results_dir
+        else resolve_results_dir(ROOT)
+    )
+    manifest = models_dir / "registry.json"
     benchmark_final = models_dir / "benchmark_final"
 
     warnings: list[str] = []

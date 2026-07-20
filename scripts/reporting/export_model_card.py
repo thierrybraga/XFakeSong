@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Exporta o model card Markdown dos artefatos treinados consolidados.
 
-Le ``app/models/benchmark_final/index.json`` (e os ``metrics.json`` por
-arquitetura) e gera ``app/models/MODEL_CARD.md`` com metricas, escopo,
+Le ``data/models/registry.json`` (e os ``metrics.json`` por
+arquitetura) e gera ``data/models/MODEL_CARD.md`` com metricas, escopo,
 limitacoes e instrucoes de uso — sem retreinar nem carregar pesos.
 
 Uso:
@@ -96,18 +96,21 @@ def _metric_rows(results: Any) -> list[tuple[str, Any]]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Generate MODEL_CARD.md for app/models or a HF model repo.",
+        description="Generate MODEL_CARD.md for data/models or a HF model repo.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--models-dir", default="app/models")
-    parser.add_argument("--results-json", default="results/tcc_consolidated/benchmark_summary.json")
+    parser.add_argument("--models-dir", default="data/models")
+    parser.add_argument(
+        "--results-json",
+        default="data/results/paper/consolidated/benchmark_summary.json",
+    )
     parser.add_argument("--out", default=None)
     args = parser.parse_args()
 
     models_dir = _resolve(args.models_dir)
     results_json = _resolve(args.results_json)
     out = _resolve(args.out) if args.out else models_dir / "MODEL_CARD.md"
-    manifest = _load_json(models_dir / "benchmark_final_manifest.json")
+    manifest = _load_json(models_dir / "registry.json")
     results = _load_json(results_json)
 
     lines = [
@@ -154,7 +157,7 @@ def main() -> int:
         "",
         "## Loading",
         "",
-        "Use `scripts/ops/sync_hf_models.py` to download these artifacts into `app/models`, then start the interface with `python main.py --gradio`.",
+        "Use `scripts/ops/sync_hf_models.py` to download these artifacts into `data/models`, then start the interface with `python main.py --gradio`.",
         "",
         "## Limitations",
         "",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import platform
 from pathlib import Path
@@ -57,12 +58,12 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "batch_size": 24,
         # AJUSTE (retune): LR 1e-4->3e-4 e l2 1e-4->2e-4, em sincronia com
         # aasist.py::create_model e registry.py::default_params (ver
-        # docs/RETREINO_AJUSTES.md). Augmentation ligado — subajuste + colapso
+        # docs/evaluation/retraining-adjustments.md). Augmentation ligado — subajuste + colapso
         # de recall sob ruído (0.29 @10dB) no diagnóstico original.
         # CORREÇÃO 2026-07-15: o valor estava revertido para 1e-4/1e-4 (drift
         # silencioso — o comentário acima já documentava 3e-4/2e-4 como a
         # decisão vigente). Restaurado para bater com o que o comentário e o
-        # docs/RETREINO_AJUSTES.md sempre descreveram.
+        # docs/evaluation/retraining-adjustments.md sempre descreveram.
         "learning_rate": 3e-4,
         "min_learning_rate": 5e-6,
         "decay_steps": 100000,
@@ -88,7 +89,7 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "batch_size": 16,
         # AJUSTE (retune): LR 1e-4->5e-5, dropout 0.2->0.35 e l2 1e-4->1e-3,
         # em sincronia com rawgat_st.py::create_model e
-        # registry.py::default_params (ver docs/RETREINO_AJUSTES.md).
+        # registry.py::default_params (ver docs/evaluation/retraining-adjustments.md).
         # Augmentation ligado — pior modelo do recorte, overfit/divergência
         # após a época 4 no diagnóstico original.
         "learning_rate": 5e-5,
@@ -404,6 +405,8 @@ def build_benchmark_plan(cfg: BenchmarkConfig, data: Any | None = None) -> Dict[
                 "select_best_checkpoint": bool(cfg.select_best_checkpoint),
                 "validation_condition": "clean",
                 "decision_threshold": float(cfg.decision_threshold),
+                "metric_threshold_policy": cfg.metric_threshold_policy,
+                "experiment_scope": cfg.experiment_scope,
                 "preserve_predefined_splits": bool(cfg.preserve_predefined_splits),
                 "fail_on_split_overlap": bool(cfg.fail_on_split_overlap),
                 "waveform_awgn_before_frontend": True,
@@ -428,6 +431,18 @@ def apply_plan_to_config(cfg: BenchmarkConfig, plan: Dict[str, Any]) -> Benchmar
 def write_benchmark_plan(plan: Dict[str, Any], output_dir: str | Path) -> None:
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
+    normalized = json.dumps(
+        plan, sort_keys=True, ensure_ascii=True, separators=(",", ":"), default=str
+    )
+    effective = {
+        "schema": "xfakesong-effective-training-config-v1",
+        "sha256": hashlib.sha256(normalized.encode("utf-8")).hexdigest(),
+        "plan": plan,
+    }
+    (out / "effective_training_config.json").write_text(
+        json.dumps(effective, indent=2, ensure_ascii=False, default=str),
+        encoding="utf-8",
+    )
     (out / "benchmark_plan.json").write_text(
         json.dumps(plan, indent=2, ensure_ascii=False, default=str),
         encoding="utf-8",

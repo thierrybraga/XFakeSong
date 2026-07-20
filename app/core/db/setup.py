@@ -1,8 +1,11 @@
 import logging
 
+from sqlalchemy import text
+
 from app.core.db.session import Base, SessionLocal, engine
 
 logger = logging.getLogger(__name__)
+SCHEMA_VERSION = 2
 
 
 def _load_domain_models():
@@ -16,6 +19,12 @@ def _load_domain_models():
     from app.domain.models import (  # noqa: F401
         AnalysisResult,
         ArchitectureConfig,
+        ArtifactRecord,
+        ConfigurationEntry,
+        ExperimentRun,
+        MetricRecord,
+        ModelRun,
+        SystemSnapshot,
         TrainingJob,
         User,
     )
@@ -37,7 +46,8 @@ def seed_architectures():
             return
 
         logger.info(
-            "Populando banco de dados com configurações de arquitetura padrão...")
+            "Populando banco de dados com configurações de arquitetura padrão..."
+        )
 
         architectures = architecture_registry.get_all_architectures()
 
@@ -48,7 +58,7 @@ def seed_architectures():
                 variant_name="default",
                 description=info.description,
                 parameters=info.default_params,
-                is_active=True
+                is_active=True,
             )
             db.add(default_config)
 
@@ -62,13 +72,19 @@ def seed_architectures():
         db.close()
 
 
-def init_db():
-    """Inicializa o banco de dados (Cria tabelas se não existirem)."""
+def init_db(*, raise_on_error: bool = False) -> bool:
+    """Inicializa/migra o schema e informa se a operação foi concluída."""
     try:
         _load_domain_models()
         Base.metadata.create_all(bind=engine)
+        if engine.dialect.name == "sqlite":
+            with engine.begin() as connection:
+                connection.execute(text(f"PRAGMA user_version={SCHEMA_VERSION}"))
         seed_architectures()
-        logger.info(
-            "Banco de dados SQLite inicializado e tabelas criadas.")
+        logger.info("Banco de dados SQLite inicializado e tabelas criadas.")
+        return True
     except Exception as e:
         logger.error(f"Erro ao inicializar banco de dados: {e}")
+        if raise_on_error:
+            raise
+        return False

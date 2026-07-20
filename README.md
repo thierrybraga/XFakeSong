@@ -34,7 +34,7 @@ fluxo local, auditável e repetível:
    relatórios Markdown com imagens PNG.
 
 O benchmark consolidado do TCC usa o tier `medium`, exportado como
-`data/datasets/benchmark_audio_raw_balanced_15k.npz`, com alvo de `7.500`
+`data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz`, com alvo de `7.500`
 amostras reais + `7.500` amostras fake. A revisão local de 28/06/2026 usa
 BRSpeech-DF, Fake Voices, MLS Portuguese e TTS-Portuguese Corpus:
 
@@ -75,7 +75,7 @@ python main.py --gradio
 
 A interface Gradio fica disponível em `http://localhost:7860/gradio/`.
 O uso das abas, análises e notificações está documentado em
-[docs/23_FRONTEND_GRADIO.md](docs/23_FRONTEND_GRADIO.md).
+[docs/interfaces/gradio.md](docs/interfaces/gradio.md).
 
 ## Runtime Local
 
@@ -85,13 +85,13 @@ Os caminhos padrão são mantidos separados para evitar artefatos soltos na raiz
 | --- | --- |
 | Banco SQLite local | `data/app.db` |
 | Uploads da API/Gradio | `data/uploads/` |
-| Resultados regeneráveis | `results/` |
-| Raiz de modelos usada pela inferência | `app/models/` |
-| Modelos finais consolidados | `app/models/benchmark_final/` |
+| Resultados regeneráveis | `data/results/` |
+| Raiz de modelos usada pela inferência | `data/models/` |
+| Modelos finais consolidados | `data/models/benchmark_final/` |
 
-`DEEPFAKE_MODELS_DIR` deve continuar apontando para `app/models`; os modelos
-treinados prontos para demonstração ficam em `app/models/benchmark_final/` e
-também são materializados como `app/models/bench_*` quando necessário pelo
+`DEEPFAKE_MODELS_DIR` deve continuar apontando para `data/models`; os modelos
+treinados prontos para demonstração ficam em `data/models/benchmark_final/` e
+também são materializados como `data/models/bench_*` quando necessário pelo
 loader.
 
 No Windows, o menu interativo também pode ser iniciado com:
@@ -108,22 +108,22 @@ O projeto possui uma estrutura consolidada por família computacional em
 No Windows nativo, TensorFlow roda em CPU. Treino/benchmark com GPU NVIDIA deve
 ser executado via WSL2/Docker Desktop GPU usando os perfis `*-nvidia`.
 
-| Família | Modelos | Entrada |
-| --- | --- | --- |
-| `classical-ml` | SVM, RandomForest | `python scripts/training/train_by_family.py --family classical-ml` |
-| `tensorflow-keras` | Sonic Sleuth, EfficientNet-LSTM, MultiscaleCNN, SpectrogramTransformer | `python scripts/training/train_by_family.py --family tensorflow-keras` |
-| `pytorch-audio` | RawNet2, AASIST, RawGAT-ST, Conformer, Hybrid CNN-Transformer | `python scripts/training/train_by_family.py --family pytorch-audio` |
-| `ssl-transformers` | WavLM, HuBERT | `python scripts/training/train_by_family.py --family ssl-transformers` |
-| `inference-api` | Gradio/FastAPI com modelos treinados | `python main.py --gradio` |
-
+| Família metodológica | Modelos oficiais |
+| --- | --- |
+| `classical-tabular` | RandomForest, SVM |
+| `spectral-convolutional` | MultiscaleCNN |
+| `spectral-attention` | Conformer, Hybrid CNN-Transformer, SpectrogramTransformer |
+| `waveform-end-to-end` | RawNet2, AASIST, RawGAT-ST |
+| `ssl-pretrained` | WavLM Original, HuBERT Original |
+| `extended` | Sonic Sleuth, EfficientNet-LSTM, Ensemble (fora do artigo) |
 Todos os wrappers usam `scripts/benchmark/run_models_sequential.py`, preservando pasta
 própria por modelo, logs, retomada, `results.json`, figuras e artefatos.
 
 ```bash
-python scripts/training/train_by_family.py --family classical-ml --plan-only
-python scripts/training/train_by_family.py --family tensorflow-keras --models MultiscaleCNN --epochs 100 --device-profile gpu
-python scripts/training/train_by_family.py --family pytorch-audio --models Conformer RawNet2 --epochs 100 --device-profile gpu
-python scripts/training/train_by_family.py --family ssl-transformers --models WavLM HuBERT --epochs 100 --device-profile gpu
+python scripts/training/train_by_family.py --family classical-tabular --plan-only
+python scripts/training/train_by_family.py --family spectral-convolutional --models MultiscaleCNN --epochs 100 --device-profile gpu
+python scripts/training/train_by_family.py --family waveform-end-to-end --models RawNet2 AASIST --epochs 100 --device-profile gpu
+python scripts/training/train_by_family.py --family ssl-pretrained --models "WavLM Original" "HuBERT Original" --epochs 100 --device-profile gpu
 ```
 
 Execução via Docker por perfil:
@@ -164,7 +164,7 @@ make docker-config      # valida todos os compose segmentados
 ```
 
 O plano técnico e os critérios de aceite estão em
-[docs/26_PLANO_AMBIENTES_TREINAMENTO.md](docs/26_PLANO_AMBIENTES_TREINAMENTO.md).
+[docs/archive/training-environments-plan.md](docs/archive/training-environments-plan.md).
 
 ## Benchmark do TCC
 
@@ -183,8 +183,8 @@ python scripts/benchmark/run_tcc_pipeline.py ^
   --full-benchmark ^
   --epochs 100 ^
   --device-profile gpu ^
-  --out results/benchmark_15k_medium ^
-  --npz data/datasets/benchmark_audio_raw_balanced_15k.npz
+  --out data/results/benchmark_15k_medium ^
+  --npz data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz
 ```
 
 No Windows com GPU, use o perfil Docker/WSL2:
@@ -199,8 +199,8 @@ docker compose -f docker\compose\benchmark.nvidia.yml --env-file .env run --rm b
     --epochs 100 `
     --batch-size 32 `
     --device-profile gpu `
-    --npz data/datasets/benchmark_audio_raw_balanced_15k.npz `
-    --out results/benchmark_15k_medium
+    --npz data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz `
+    --out data/results/benchmark_15k_medium
 ```
 
 Saídas principais:
@@ -214,12 +214,12 @@ Saídas principais:
 | `data/datasets/speaker_table.csv` | tabela por arquivo com classe, fonte, split, falante, duração e tamanho |
 | `results.json` / `results.csv` | métricas completas por arquitetura |
 | `tcc_report.md` | relatório final com métricas, inferências e imagens PNG |
-| `figures/*.png` | gráficos agregados |
+| `data/results/<run>/figures/*.png` | gráficos agregados |
 | `architectures/<modelo>/*.png` | matriz de confusão, ROC, scores e convergência por modelo |
-| `app/models/bench_*` | modelos/configs salvos por padrão para uso direto na Gradio/API |
-| `app/models/benchmark_final/` | cópia completa dos modelos finais por arquitetura |
-| `tcc_overleaf/main.tex` | fonte acadêmica para Overleaf |
-| `tcc_overleaf.zip` | pacote limpo com `.tex` e figuras, sem PDF/auxiliares |
+| `data/models/bench_*` | modelos/configs salvos por padrão para uso direto na Gradio/API |
+| `data/models/benchmark_final/` | cópia completa dos modelos finais por arquitetura |
+| `data/results/paper/main.tex` | fonte acadêmica do artigo (LaTeX) |
+| `data/results/paper.zip` | pacote limpo com `.tex` e figuras, sem PDF/auxiliares |
 
 Use `--models-dir outro/diretorio` apenas quando quiser isolar os modelos de uma
 execução específica. Caminhos relativos de `--out`, `--models-dir` e `--dataset`
@@ -229,9 +229,9 @@ Para revisar o plano sem iniciar treinamento:
 
 ```bash
 python scripts/benchmark/run_benchmark.py --full ^
-  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz ^
+  --dataset data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz ^
   --epochs 100 ^
-  --out results/benchmark_15k_medium ^
+  --out data/results/benchmark_15k_medium ^
   --plan-only
 ```
 
@@ -239,13 +239,13 @@ Benchmark de um modelo individual:
 
 ```bash
 python scripts/benchmark/run_benchmark.py --model AASIST ^
-  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz ^
+  --dataset data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz ^
   --epochs 100 ^
-  --out results/bench_aasist
+  --out data/results/bench_aasist
 ```
 
 Para detalhes do desenho experimental, consulte
-[docs/15_BENCHMARK.md](docs/15_BENCHMARK.md).
+[docs/evaluation/benchmark.md](docs/evaluation/benchmark.md).
 
 Para auditar falantes depois de montar o dataset:
 
@@ -257,7 +257,7 @@ python scripts/dataset/audit_speaker_manifest.py --dataset-dir data/datasets --s
 
 ## Publicar Modelos no Hugging Face
 
-Depois de consolidar os artefatos em `app/models/`, envie os modelos finais
+Depois de consolidar os artefatos em `data/models/`, envie os modelos finais
 para um repositório do tipo **Model** no Hugging Face Hub:
 
 ```bash
@@ -271,16 +271,16 @@ python scripts/ops/upload_models_to_hf.py \
 ```
 
 Use `HF_TOKEN` ou `HUGGINGFACE_HUB_TOKEN` como variável de ambiente. O script
-envia `app/models/bench_*`, `app/models/benchmark_final/` e o manifesto dos
-modelos; opções extras permitem anexar `tcc_overleaf/` e resultados
+envia `data/models/bench_*`, `data/models/benchmark_final/` e o manifesto dos
+modelos; opções extras permitem anexar `data/results/paper/` e resultados
 consolidados. O passo a passo completo está em
-[docs/11_DEPLOY_HUGGINGFACE.md](docs/11_DEPLOY_HUGGINGFACE.md).
+[docs/deployment/hugging-face-spaces.md](docs/deployment/hugging-face-spaces.md).
 
 Para baixar modelos pré-treinados do benchmark em outra máquina ou no Space:
 
 ```bash
 MODEL_REPO_ID=SEU_USUARIO/xfakesong-models \
-python scripts/ops/sync_hf_models.py --models-dir app/models --force
+python scripts/ops/sync_hf_models.py --models-dir data/models --force
 ```
 
 Use `HF_TOKEN` se o repositório de modelos for privado.
@@ -296,11 +296,11 @@ Space:
 | Variable | `MODEL_REPO_ID` | `SEU_USUARIO/xfakesong-models` |
 | Variable | `ENABLE_TRAINING` | `false` |
 | Variable | `XFAKE_SYNC_MODELS_ON_BOOT` | `true` |
-| Variable | `DEEPFAKE_MODELS_DIR` | `app/models` |
+| Variable | `DEEPFAKE_MODELS_DIR` | `data/models` |
 | Secret | `HF_TOKEN` | token com leitura do model repo, se privado |
 
 No boot, `scripts/ops/sync_hf_models.py` sincroniza os artefatos do Model Hub para
-`app/models`. Se `MODEL_REPO_ID` não estiver definido, a aplicação usa os
+`data/models`. Se `MODEL_REPO_ID` não estiver definido, a aplicação usa os
 modelos já empacotados/localmente disponíveis. O frontend lista os modelos sem
 carregar todos os pesos no startup; cada modelo é carregado sob demanda ao ser
 selecionado para inferência.
@@ -348,25 +348,25 @@ A documentação técnica está em `docs/` e é publicada via MkDocs:
 
 | Objetivo | Documento |
 | --- | --- |
-| Conceitos da área (anti-spoofing) | [Conceitos e Fundamentos](docs/00_CONCEITOS.md) |
-| Visão geral | [Introdução](docs/01_INTRODUCAO.md) |
-| Instalação local, Docker e HF Spaces | [Instalação e Configuração](docs/02_INSTALACAO_CONFIGURACAO.md) |
-| Arquitetura do sistema | [Arquitetura](docs/03_ARQUITETURA.md) |
-| Extração de features | [Features de Áudio](docs/04_FEATURES.md) |
-| Modelos | [Arquiteturas](docs/08_ARQUITETURAS.md) |
-| Treinamento | [Treinamento](docs/10_TREINAMENTO.md) |
-| Inferência | [Inferência](docs/09_INFERENCIA.md) |
-| Datasets | [Datasets Públicos](docs/12_DATASETS.md) |
-| Benchmark e resultados | [Benchmark e Resultados](docs/15_BENCHMARK.md) |
-| Dataset usado no benchmark | [Dataset do Benchmark Utilizado](docs/29_DATASET_BENCHMARK_UTILIZADO.md) |
-| Pipeline e auditoria de dataset | [Dataset Pipeline](docs/27_DATASET_PIPELINE.md) |
-| Estudo experimental no GitHub Pages | [Estudo Experimental](docs/20_ESTUDO_EXPERIMENTAL.md) |
-| Notebooks | [Guia de Notebooks](docs/16_NOTEBOOKS.md) |
-| Frontend Gradio e abas | [Frontend Gradio](docs/23_FRONTEND_GRADIO.md) |
-| GitHub Pages e Hugging Face | [Publicação GitHub/HF](docs/24_PUBLICACAO_GITHUB_HF.md) |
-| Dúvidas frequentes | [Perguntas Frequentes (FAQ)](docs/19_FAQ.md) |
+| Conceitos da área (anti-spoofing) | [Conceitos e Fundamentos](docs/getting-started/concepts.md) |
+| Visão geral | [Introdução](docs/getting-started/introduction.md) |
+| Instalação local, Docker e HF Spaces | [Instalação e Configuração](docs/getting-started/installation.md) |
+| Arquitetura do sistema | [Arquitetura](docs/architecture/overview.md) |
+| Extração de features | [Features de Áudio](docs/architecture/audio-features.md) |
+| Modelos | [Arquiteturas](docs/models/architectures.md) |
+| Treinamento | [Treinamento](docs/models/training.md) |
+| Inferência | [Inferência](docs/models/inference.md) |
+| Datasets | [Datasets Públicos](docs/data/public-datasets.md) |
+| Benchmark e resultados | [Benchmark e Resultados](docs/evaluation/benchmark.md) |
+| Dataset usado no benchmark | [Dataset do Benchmark Utilizado](docs/data/benchmark-dataset.md) |
+| Pipeline e auditoria de dataset | [Dataset Pipeline](docs/data/pipeline-and-audit.md) |
+| Estudo experimental no GitHub Pages | [Estudo Experimental](docs/evaluation/experimental-study.md) |
+| Notebooks | [Guia de Notebooks](docs/evaluation/notebooks.md) |
+| Frontend Gradio e abas | [Frontend Gradio](docs/interfaces/gradio.md) |
+| GitHub Pages e Hugging Face | [Publicação GitHub/HF](docs/deployment/github-pages-and-hugging-face.md) |
+| Dúvidas frequentes | [Perguntas Frequentes (FAQ)](docs/reference/faq.md) |
 
-Índice completo (30 documentos): [docs/index.md](docs/index.md).
+Índice canônico e completo: [docs/index.md](docs/index.md).
 
 ## Comandos Essenciais
 

@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-PAPER_DIR = ROOT / "results" / "01_paper"
-CONSOLIDATED_DIR = ROOT / "results" / "02_outputs" / "tcc_consolidated"
+PAPER_DIR = ROOT / "data" / "results" / "paper"
+CONSOLIDATED_DIR = ROOT / "data" / "results" / "paper" / "consolidated"
 FINAL_DIR = PAPER_DIR / "final"
 
 
@@ -201,7 +201,7 @@ def main() -> int:
             cwd=PAPER_DIR,
         )
 
-    # Fonte canônica única: results/01_paper. A pasta final é apenas um espelho
+    # Fonte canônica única: data/results/paper. A pasta final é apenas um espelho
     # de distribuição regenerado, nunca uma segunda fonte editável.
     FINAL_DIR.mkdir(parents=True, exist_ok=True)
     shutil.copy2(main_tex, FINAL_DIR / "main.tex")
@@ -215,7 +215,7 @@ def main() -> int:
     shutil.copytree(PAPER_DIR / "figures", FINAL_DIR / "figures", dirs_exist_ok=True)
     (FINAL_DIR / "README.md").write_text(
         "# Espelho gerado\n\n"
-        "Não edite esta pasta. A fonte canônica é `results/01_paper/main.tex`; "
+        "Não edite esta pasta. A fonte canônica é `data/results/paper/main.tex`; "
         "regenere este espelho com `build_paper_from_benchmark.py`.\n",
         encoding="utf-8",
     )

@@ -17,17 +17,17 @@ REM ao baseline -- confirmado em 2026-07-01 (RawGAT-ST: n=2250 balanceado ->
 REM n=863 com 525/338). Passe "with-speaker-split" como 2o argumento para o
 REM protocolo exploratorio disjunto por locutor (fora da tabela oficial).
 REM
-REM Pre-requisitos: dataset em data\datasets\benchmark_audio_raw_balanced_15k.npz,
-REM ambiente com TensorFlow/PyTorch + GPU (ver docs\10_TREINAMENTO.md).
+REM Pre-requisitos: dataset em data\datasets\benchmark_audio_raw_balanced_15k_confirmatory_v2.npz,
+REM ambiente com TensorFlow/PyTorch + GPU (ver docs/models/training.md).
 setlocal
 cd /d "%~dp0..\.."
 
-set "DATASET=data/datasets/benchmark_audio_raw_balanced_15k.npz"
+set "DATASET=data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz"
 for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd"') do set STAMP=%%i
-set "OUT=results/retune_ajustado_%STAMP%"
-REM 480min: AASIST/RawGAT-ST precisam de ~160min so de treino (120 epocas);
+set "OUT=data/results/retune_ajustado_%STAMP%"
+REM 480min: AASIST/RawGAT-ST precisam de ~160min so de treino (100 epocas);
 REM sem timeout explicito o script usa o default de 60min e o modelo estoura
-REM antes de terminar (visto em 2026-07-01 com AASIST: timeout aos 43/120).
+REM antes de terminar (visto em 2026-07-01 com AASIST: timeout aos 43).
 set "TIMEOUT_MIN=480"
 
 if not exist "%DATASET%" (
@@ -35,12 +35,17 @@ if not exist "%DATASET%" (
   exit /b 1
 )
 
-set MODELS="RawGAT-ST" "AASIST" "Ensemble" "Hybrid CNN-Transformer" "EfficientNet-LSTM" "MultiscaleCNN" "RandomForest" "SVM"
+set MODELS="RawGAT-ST" "AASIST" "Hybrid CNN-Transformer" "MultiscaleCNN" "RandomForest" "SVM"
 if /i "%~1"=="tcc-pending" set MODELS="RawGAT-ST" "AASIST" "WavLM Original" "HuBERT Original"
+set "SCOPE_FLAGS="
+if /i "%~1"=="extended" (
+  set MODELS="Ensemble" "EfficientNet-LSTM"
+  set "SCOPE_FLAGS=--scope extended --no-academic-protocol --no-optimize-hparams"
+)
 
 set "SPEAKER_SPLIT_FLAG="
-if /i "%~1"=="with-speaker-split" set "SPEAKER_SPLIT_FLAG=--speaker-split"
-if /i "%~2"=="with-speaker-split" set "SPEAKER_SPLIT_FLAG=--speaker-split"
+if /i "%~1"=="with-speaker-split" set "SPEAKER_SPLIT_FLAG=--speaker-split --no-academic-protocol"
+if /i "%~2"=="with-speaker-split" set "SPEAKER_SPLIT_FLAG=--speaker-split --no-academic-protocol"
 
 echo == Dataset : %DATASET%
 echo == Saida   : %OUT%
@@ -51,10 +56,11 @@ python scripts\benchmark\run_models_sequential.py ^
   --dataset "%DATASET%" ^
   --models %MODELS% ^
   --out "%OUT%" ^
-  --epochs 120 ^
+  --epochs 100 ^
   --snr 30 20 10 ^
   --device-profile gpu ^
   --timeout-min %TIMEOUT_MIN% ^
+  %SCOPE_FLAGS% ^
   %SPEAKER_SPLIT_FLAG% ^
   --resume
 

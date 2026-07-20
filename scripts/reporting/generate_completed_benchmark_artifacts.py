@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate benchmark reports for models that are already trained.
 
-This is intentionally evaluation-only: it loads existing ``app/models/bench_*``
+This is intentionally evaluation-only: it loads existing ``data/models/bench_*``
 artifacts, evaluates them on the canonical benchmark test split, and writes the
 same report/figure bundle produced by the full benchmark runner. Missing models
 are recorded as pending instead of being trained.
@@ -336,7 +336,7 @@ def main() -> int:
     parser.add_argument(
         "--out",
         type=Path,
-        default=ROOT / "results" / "benchmark_completed_partial",
+        default=ROOT / "data" / "results" / "benchmark_completed_partial",
     )
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--latency-runs", type=int, default=10)

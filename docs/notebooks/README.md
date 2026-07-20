@@ -27,16 +27,16 @@ O experimento oficial do TCC usa `scripts/benchmark/run_tcc_pipeline.py --downlo
 7.500 amostras fake (`data/datasets/benchmark_audio_raw_balanced_15k.npz`).
 Para treinar e auditar todas as arquiteturas em um único caderno, use
 `pipeline/04_all_architectures_full_benchmark.ipynb`. A documentação de
-referência para o fluxo completo está em [docs/15_BENCHMARK.md](../15_BENCHMARK.md).
+referência para o fluxo completo está em [docs/evaluation/benchmark.md](../evaluation/benchmark.md).
 
 ## Relação com documentação e interface
 
 | Tema | Documento |
 |---|---|
-| Benchmark, dataset, artefatos e gráficos | `docs/15_BENCHMARK.md` |
-| Uso das abas Gradio e fluxos de análise | `docs/23_FRONTEND_GRADIO.md` |
-| Deploy em Hugging Face Spaces | `docs/11_DEPLOY_HUGGINGFACE.md` |
-| GitHub Pages e publicação coordenada | `docs/24_PUBLICACAO_GITHUB_HF.md` |
+| Benchmark, dataset, artefatos e gráficos | `docs/evaluation/benchmark.md` |
+| Uso das abas Gradio e fluxos de análise | `docs/interfaces/gradio.md` |
+| Deploy em Hugging Face Spaces | `docs/deployment/hugging-face-spaces.md` |
+| GitHub Pages e publicação coordenada | `docs/deployment/github-pages-and-hugging-face.md` |
 
 ## Geração e validação
 

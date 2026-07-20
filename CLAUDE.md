@@ -10,14 +10,14 @@ em `docs/`. Em caso de divergencia, AGENTS.md + docs/ prevalecem.
 
 | Tema | Fonte canonica |
 | --- | --- |
-| Arquitetura e limites de camadas | [AGENTS.md](AGENTS.md), [docs/03_ARQUITETURA.md](docs/03_ARQUITETURA.md) |
-| Desenvolvimento e padroes | [docs/05_GUIA_DEV.md](docs/05_GUIA_DEV.md) |
-| Testes | [docs/06_QUALIDADE_TESTES.md](docs/06_QUALIDADE_TESTES.md) |
-| Arquiteturas neurais | [docs/08_ARQUITETURAS.md](docs/08_ARQUITETURAS.md) |
-| Treinamento e hiperparametros | [docs/10_TREINAMENTO.md](docs/10_TREINAMENTO.md) |
-| Benchmark e metricas | [docs/15_BENCHMARK.md](docs/15_BENCHMARK.md) |
-| Datasets | [docs/12_DATASETS.md](docs/12_DATASETS.md) |
-| Retreino apos diagnostico | [docs/RETREINO_AJUSTES.md](docs/RETREINO_AJUSTES.md) |
+| Arquitetura e limites de camadas | [AGENTS.md](AGENTS.md), [docs/architecture/overview.md](docs/architecture/overview.md) |
+| Desenvolvimento e padroes | [docs/development/developer-guide.md](docs/development/developer-guide.md) |
+| Testes | [docs/development/quality-and-testing.md](docs/development/quality-and-testing.md) |
+| Arquiteturas neurais | [docs/models/architectures.md](docs/models/architectures.md) |
+| Treinamento e hiperparametros | [docs/models/training.md](docs/models/training.md) |
+| Benchmark e metricas | [docs/evaluation/benchmark.md](docs/evaluation/benchmark.md) |
+| Datasets | [docs/data/public-datasets.md](docs/data/public-datasets.md) |
+| Retreino apos diagnostico | [docs/evaluation/retraining-adjustments.md](docs/evaluation/retraining-adjustments.md) |
 
 ---
 
@@ -78,7 +78,7 @@ XFakeSong/
 ├── data/datasets/          # RAIZ CANONICA dos dados (real/, fake/, raw/, .npz) — nao versionado.
 │                           #   (app/datasets/ foi descontinuado em 2026-07-14 — causava fragmentacao)
 ├── docs/                   # documentacao MkDocs (00_..30_, RETREINO_AJUSTES.md) — indice completo em docs/index.md
-├── notebooks/, figures/, tcc_overleaf/   # material academico (TCC)
+├── notebooks/, data/results/paper/   # material academico (TCC)
 └── tests/                  # unit/, integration/, api/, functional/ espelhando app/
 ```
 
@@ -164,14 +164,14 @@ make train-cpu        # perfil classical/CPU (Docker)
 python scripts/benchmark/run_models_sequential.py \
   --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
   --models AASIST Ensemble --epochs 100 --snr 30 20 10 \
-  --device-profile gpu --out results/<run> --resume
+  --device-profile gpu --out data/results/<run> --resume
 
 # Um modelo isolado:
-python scripts/benchmark/run_benchmark.py --model AASIST --dataset <npz> --out results/bench_aasist
+python scripts/benchmark/run_benchmark.py --model AASIST --dataset <npz> --out data/results/bench_aasist
 ```
 
 Pre-requisitos: dataset `.npz` em `data/datasets/`, TensorFlow/PyTorch e GPU
-(ver [docs/10_TREINAMENTO.md](docs/10_TREINAMENTO.md)).
+(ver [docs/models/training.md](docs/models/training.md)).
 
 ### Retreino dos modelos ajustados
 Apos diagnostico de um benchmark, os ajustes ficam aplicados no codigo
@@ -179,7 +179,7 @@ Apos diagnostico de um benchmark, os ajustes ficam aplicados no codigo
 `bash scripts/training/retrain_ajustado.sh` (ou `scripts\training\retrain_ajustado.bat` no
 Windows), config em `configs/training/retune_ajustado.yaml`. Mapa
 diagnostico->ajuste e checklist de verificacao em
-[docs/RETREINO_AJUSTES.md](docs/RETREINO_AJUSTES.md).
+[docs/evaluation/retraining-adjustments.md](docs/evaluation/retraining-adjustments.md).
 
 ---
 
@@ -197,13 +197,13 @@ python scripts/benchmark/run_clean_benchmark_pipeline.py   # run limpo, sem mist
 python scripts/benchmark/run_benchmark.py --plan-only      # valida e grava benchmark_plan.* sem treinar
 
 # Pos-processamento:
-python scripts/reporting/consolidate_results.py --results results/<run>
-python scripts/reporting/validate_artifacts.py  --results results/<run>
-python scripts/reporting/sync_completed_benchmark_artifacts.py --results results/<run>
+python scripts/reporting/consolidate_results.py --results data/results/<run>
+python scripts/reporting/validate_artifacts.py  --results data/results/<run>
+python scripts/reporting/sync_completed_benchmark_artifacts.py --results data/results/<run>
 ```
 
-Os artefatos promovidos ficam em `app/models/benchmark_final/<arch>/` com
-`results/` (metrics.json, results.csv/json, predictions_clean.csv,
+Os artefatos promovidos ficam em `data/models/benchmark_final/<arch>/` com
+`data/results/` (metrics.json, results.csv/json, predictions_clean.csv,
 robustness.csv, figuras, tabelas .tex) e `index.json` consolidado.
 Promova um modelo apenas se ele melhorar (ou empatar) o baseline, com atencao
 especial a robustez a 10 dB.
@@ -231,6 +231,6 @@ Scripts uteis: `build_dataset.py`, `preprocess_dataset.py`,
   `create_model` da arquitetura; flags globais em `settings.py`.
 - Testes espelham `app/` em `tests/unit|integration|api/`; rode `make test`
   (a CI usa essa suite rapida) antes de abrir PR.
-- `.gitignore` ignora `results/`, `app/results/`, `app/models/*.keras|*.pkl`,
+- `.gitignore` ignora `data/results/`, `data/models/*.keras|*.pkl`,
   `logs/` e caches — artefatos de treino sao regeneraveis, nao versione.
 - Copie `.env.example` para `.env` antes de executar.

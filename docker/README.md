@@ -26,9 +26,9 @@ principal concentrada em [docker/compose](compose).
 | Host | Container | Uso |
 | --- | --- | --- |
 | [data](../data) | /app/data | banco SQLite, uploads e dados persistidos |
-| [results](../results) | /app/results | saídas de benchmark e artefatos regeneráveis |
+| [data/results](../data/results) | /app/data/results | saídas de benchmark e artefatos regeneráveis |
 | [data/datasets](../data/datasets) | /app/data/datasets | datasets de treino e benchmark |
-| [app/models](../app/models) | /app/app/models | modelos de inferência |
+| [data/models](../data/models) | /app/data/models | modelos de inferência |
 
 Todo fluxo (dev, treino, benchmark, deploy) usa os arquivos em
 [docker/compose](compose) e as definições em [docker/environments](environments).

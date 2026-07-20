@@ -8,6 +8,8 @@ ARG PYTHON_VERSION=3.11
 
 FROM python:${PYTHON_VERSION}-slim
 
+ARG PYTHON_VERSION
+
 LABEL org.opencontainers.image.title="xfakesong-inference-api" \
       org.opencontainers.image.description="XFakeSong — inferência Gradio/FastAPI (NVIDIA GPU)" \
       org.opencontainers.image.licenses="MIT" \
@@ -27,6 +29,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     TORCH_HOME=/app/cache/torch \
     NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+# tensorflow[and-cuda] installs NVIDIA runtime libraries inside site-packages.
+# Publish them to the dynamic loader so GPU discovery works without a manual
+# LD_LIBRARY_PATH in docker compose or docker run.
+ENV NVIDIA_PIP_LIBS=/usr/local/lib/python${PYTHON_VERSION}/site-packages/nvidia
+ENV LD_LIBRARY_PATH=${NVIDIA_PIP_LIBS}/cuda_cupti/lib:${NVIDIA_PIP_LIBS}/cuda_nvrtc/lib:${NVIDIA_PIP_LIBS}/cusparse/lib:${NVIDIA_PIP_LIBS}/nccl/lib:${NVIDIA_PIP_LIBS}/cuda_runtime/lib:${NVIDIA_PIP_LIBS}/cudnn/lib:${NVIDIA_PIP_LIBS}/cufft/lib:${NVIDIA_PIP_LIBS}/cusolver/lib:${NVIDIA_PIP_LIBS}/cublas/lib:${NVIDIA_PIP_LIBS}/nvjitlink/lib:${NVIDIA_PIP_LIBS}/curand/lib
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
@@ -56,7 +64,7 @@ COPY docker/environments/inference-api/docker-entrypoint.sh /usr/local/bin/docke
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 COPY . .
-RUN mkdir -p /app/logs /app/app/models /app/app/results /app/data/fake /app/data/real \
+RUN mkdir -p /app/data/logs /app/data/models /app/data/datasets/fake /app/data/datasets/real \
         /tmp/numba_cache /tmp/matplotlib /tmp/huggingface /tmp/gradio \
     && chown -R appuser:appuser /app /tmp/numba_cache /tmp/matplotlib /tmp/huggingface /tmp/gradio
 

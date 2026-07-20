@@ -23,7 +23,11 @@ DB_PATH = os.getenv("DATABASE_URL", f"sqlite:///{DEFAULT_DB_FILE}")
 
 if DB_PATH.startswith("sqlite:///") and DB_PATH != "sqlite:///:memory:":
     sqlite_target = Path(DB_PATH.replace("sqlite:///", "", 1))
+    if not sqlite_target.is_absolute():
+        sqlite_target = BASE_DIR / sqlite_target
+    sqlite_target = sqlite_target.resolve()
     sqlite_target.parent.mkdir(parents=True, exist_ok=True)
+    DB_PATH = f"sqlite:///{sqlite_target.as_posix()}"
 
 # Pool configurável via env
 POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "5"))
@@ -43,6 +47,7 @@ engine = create_engine(DB_PATH, **_engine_kwargs)
 
 # Ativar WAL mode e foreign keys no SQLite para melhor concorrência
 if "sqlite" in DB_PATH:
+
     @event.listens_for(engine, "connect")
     def _set_sqlite_pragma(dbapi_conn, connection_record):
         cursor = dbapi_conn.cursor()
@@ -51,11 +56,13 @@ if "sqlite" in DB_PATH:
         cursor.execute("PRAGMA busy_timeout=5000")
         cursor.close()
 
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
 # ── Dependencies ───────────────────────────────────────────────────────
+
 
 def get_db():
     """Dependency para FastAPI (request lifecycle) — auto-close."""

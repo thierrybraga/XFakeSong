@@ -14,7 +14,7 @@ python scripts/training/train_by_family.py --family tensorflow-keras \
   --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
   --epochs 100 \
   --device-profile gpu \
-  --out results/tensorflow_benchmark
+  --out data/results/tensorflow_benchmark
 ```
 
 GPU Docker:

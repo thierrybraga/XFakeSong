@@ -1,6 +1,6 @@
 """Gera figuras extras do TCC a partir dos artefatos promovidos.
 
-Figuras geradas em ``tcc_overleaf/figures/``:
+Figuras geradas em ``data/results/paper/figures/``:
 
 - ``benchmark_det_curves.png``: curvas DET (FNR x FPR, eixos probit) dos 11
   modelos consolidados, calculadas a partir de ``predictions_clean.csv``.
@@ -31,14 +31,14 @@ logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
 RESULTS_ROOT = ROOT / "app" / "models" / "benchmark_final"
-FIGURES_DIR = ROOT / "tcc_overleaf" / "figures"
+FIGURES_DIR = ROOT / "data/results/paper" / "figures"
 
 MODELS: List[Tuple[str, str]] = [
-    ("random_forest", "Random Forest"),
+    ("randomforest", "Random Forest"),
     ("svm", "SVM"),
-    ("cct", "CCT"),
-    ("ast", "AST"),
-    ("res2net", "Res2Net"),
+    ("hybrid_cnn_transformer", "CCT"),
+    ("spectrogramtransformer", "AST"),
+    ("multiscalecnn", "Res2Net"),
     ("conformer", "Conformer"),
     ("rawnet2", "RawNet2"),
     ("aasist", "AASIST"),

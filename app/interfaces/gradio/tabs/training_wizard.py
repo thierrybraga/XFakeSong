@@ -54,7 +54,7 @@ MODELS_DIR = Path(
     or os.getenv("DEEPFAKE_MODELS_DIR")
     or os.getenv("XFAKE_MODELS_DIR")
     or (_STORAGE_DIR and str(Path(_STORAGE_DIR) / "models"))
-    or "app/models"
+    or str(Path(__file__).resolve().parents[4] / "data" / "models")
 )
 
 # Holder do ÚLTIMO modelo treinado com sucesso nesta sessão do servidor.
@@ -73,7 +73,7 @@ def _slugify_model_name(name: str) -> str:
 
 
 def _save_trained_model(name: str) -> tuple[bool, str]:
-    """Persiste o último modelo treinado em app/models/ (.keras + _config.json).
+    """Persiste o último modelo treinado em data/models/ (.keras + _config.json).
 
     O config inclui o input_contract (n_fft/hop/n_mels/sample_rate) para que a
     INFERÊNCIA reproduza exatamente as features usadas no treino — caso
@@ -216,11 +216,18 @@ def _history_figure(train_loss, val_loss, train_acc, val_acc):
 
     # ── Loss ──
     style_ax(ax[0], fig, "Loss")
-    ax[0].plot(range(1, len(tl) + 1), tl, label="treino",
-               color=PLOT_ACCENT, marker="o", ms=3)
+    ax[0].plot(
+        range(1, len(tl) + 1), tl, label="treino", color=PLOT_ACCENT, marker="o", ms=3
+    )
     if vl:
-        ax[0].plot(range(1, len(vl) + 1), vl, label="validação",
-                   color=PLOT_DANGER, marker="o", ms=3)
+        ax[0].plot(
+            range(1, len(vl) + 1),
+            vl,
+            label="validação",
+            color=PLOT_DANGER,
+            marker="o",
+            ms=3,
+        )
     ax[0].set_xlabel("Época")
     if 1 <= len(tl) <= 20:
         ax[0].set_xticks(list(range(1, len(tl) + 1)))
@@ -228,11 +235,18 @@ def _history_figure(train_loss, val_loss, train_acc, val_acc):
 
     # ── Accuracy ──
     style_ax(ax[1], fig, "Accuracy")
-    ax[1].plot(range(1, len(ta) + 1), ta, label="treino",
-               color=PLOT_ACCENT, marker="o", ms=3)
+    ax[1].plot(
+        range(1, len(ta) + 1), ta, label="treino", color=PLOT_ACCENT, marker="o", ms=3
+    )
     if va:
-        ax[1].plot(range(1, len(va) + 1), va, label="validação",
-                   color=PLOT_DANGER, marker="o", ms=3)
+        ax[1].plot(
+            range(1, len(va) + 1),
+            va,
+            label="validação",
+            color=PLOT_DANGER,
+            marker="o",
+            ms=3,
+        )
     ax[1].set_xlabel("Época")
     ax[1].set_ylim(0.0, 1.02)
     if 1 <= len(ta) <= 20:
@@ -321,13 +335,10 @@ def _prediction_labels_and_scores(predictions):
     labels = np.argmax(pred, axis=-1).astype("int32")
     scores_src = pred
     row_sums = np.sum(scores_src, axis=-1)
-    if (
-        scores_src.size
-        and (
-            float(scores_src.min()) < 0.0
-            or float(scores_src.max()) > 1.0
-            or not np.allclose(row_sums, 1.0, atol=1e-3)
-        )
+    if scores_src.size and (
+        float(scores_src.min()) < 0.0
+        or float(scores_src.max()) > 1.0
+        or not np.allclose(row_sums, 1.0, atol=1e-3)
     ):
         scores_src = scores_src - np.max(scores_src, axis=-1, keepdims=True)
         exp = np.exp(scores_src)
@@ -421,7 +432,9 @@ def _roc_figure(y_true, y_scores):
     y_true = _normalize_true_labels(y_true)
     y_scores = np.asarray(y_scores, dtype="float32").reshape(-1)
     if len(np.unique(y_true)) < 2:
-        return _message_figure("Curva ROC", "ROC indisponível: validação tem uma única classe.")
+        return _message_figure(
+            "Curva ROC", "ROC indisponível: validação tem uma única classe."
+        )
     fpr, tpr, _ = roc_curve(y_true, y_scores)
     roc_auc = auc(fpr, tpr)
     fig, ax = plt.subplots(figsize=(8, 5))
@@ -468,7 +481,9 @@ def _det_figure(y_true, y_scores):
 
     y_true = _normalize_true_labels(y_true)
     if len(np.unique(y_true)) < 2:
-        return _message_figure("Curva DET / EER", "DET indisponível: validação tem uma única classe.")
+        return _message_figure(
+            "Curva DET / EER", "DET indisponível: validação tem uma única classe."
+        )
     try:
         from app.domain.services.forensic_visualization import (
             TrainingAnalyticsVisualizer,
@@ -500,7 +515,9 @@ def _threshold_figure(y_true, y_scores):
             y_true, np.asarray(y_scores, dtype="float32").reshape(-1)
         )
     except Exception as exc:
-        return _message_figure("Otimização de Threshold", f"Falha ao gerar threshold:\n{exc}")
+        return _message_figure(
+            "Otimização de Threshold", f"Falha ao gerar threshold:\n{exc}"
+        )
 
 
 def _class_accuracy_figure(y_true, y_pred):
@@ -546,7 +563,9 @@ def _lr_schedule_figure(lr_history):
 
         return TrainingAnalyticsVisualizer().plot_lr_schedule(lr_history)
     except Exception as exc:
-        return _message_figure("Schedule de Learning Rate", f"Falha ao gerar LR:\n{exc}")
+        return _message_figure(
+            "Schedule de Learning Rate", f"Falha ao gerar LR:\n{exc}"
+        )
 
 
 def _training_eval_figures(y_true, y_pred, y_scores, lr_history=None):
@@ -590,22 +609,36 @@ def _history_confusion_figure_from_history(
     fig, ax = plt.subplots(1, 3, figsize=(16, 4))
 
     style_ax(ax[0], fig, "Loss")
-    ax[0].plot(range(1, len(tl) + 1), tl, label="treino",
-               color=PLOT_ACCENT, marker="o", ms=3)
+    ax[0].plot(
+        range(1, len(tl) + 1), tl, label="treino", color=PLOT_ACCENT, marker="o", ms=3
+    )
     if vl:
-        ax[0].plot(range(1, len(vl) + 1), vl, label="validação",
-                   color=PLOT_DANGER, marker="o", ms=3)
+        ax[0].plot(
+            range(1, len(vl) + 1),
+            vl,
+            label="validação",
+            color=PLOT_DANGER,
+            marker="o",
+            ms=3,
+        )
     ax[0].set_xlabel("Época")
     if 1 <= len(tl) <= 20:
         ax[0].set_xticks(list(range(1, len(tl) + 1)))
     ax[0].legend()
 
     style_ax(ax[1], fig, "Accuracy")
-    ax[1].plot(range(1, len(ta) + 1), ta, label="treino",
-               color=PLOT_ACCENT, marker="o", ms=3)
+    ax[1].plot(
+        range(1, len(ta) + 1), ta, label="treino", color=PLOT_ACCENT, marker="o", ms=3
+    )
     if va:
-        ax[1].plot(range(1, len(va) + 1), va, label="validação",
-                   color=PLOT_DANGER, marker="o", ms=3)
+        ax[1].plot(
+            range(1, len(va) + 1),
+            va,
+            label="validação",
+            color=PLOT_DANGER,
+            marker="o",
+            ms=3,
+        )
     ax[1].set_xlabel("Época")
     ax[1].set_ylim(0.0, 1.02)
     if 1 <= len(ta) <= 20:
@@ -1123,6 +1156,7 @@ def _run_training(
 
             def _augment(a, lab):
                 return rawboost_tf(a, sr=SAMPLE_RATE, algo=4, p=0.7), lab
+
         else:
             _feat_prep = _prep_spec
 
@@ -1144,8 +1178,8 @@ def _run_training(
                 pass
             return ds
 
-        train_ds = _maybe_cache(train_ds)   # featurização cacheada (sem aug)
-        val_ds = _maybe_cache(val_ds)       # val não tem augmentation → seguro
+        train_ds = _maybe_cache(train_ds)  # featurização cacheada (sem aug)
+        val_ds = _maybe_cache(val_ds)  # val não tem augmentation → seguro
 
         # Augmentation DEPOIS do cache → re-randomiza a cada época.
         train_ds = train_ds.map(_augment, num_parallel_calls=tf.data.AUTOTUNE)
@@ -1617,9 +1651,9 @@ def _run_training(
         class _LiveQueueCb(tf.keras.callbacks.Callback):
             def on_epoch_end(self, epoch, logs=None):
                 try:
-                    lr = float(tf.keras.backend.get_value(
-                        self.model.optimizer.learning_rate
-                    ))
+                    lr = float(
+                        tf.keras.backend.get_value(self.model.optimizer.learning_rate)
+                    )
                     lr_history.append(lr)
                 except Exception:
                     pass
@@ -2460,9 +2494,7 @@ def create_training_wizard_tab():
 
             with gr.Row(elem_classes="responsive-grid"):
                 with gr.Column(scale=1):
-                    history_plot = gr.Plot(
-                        label="Loss, Accuracy & Matriz de Confusão"
-                    )
+                    history_plot = gr.Plot(label="Loss, Accuracy & Matriz de Confusão")
                 with gr.Column(scale=1):
                     logs_box = gr.TextArea(
                         label="Log por época",

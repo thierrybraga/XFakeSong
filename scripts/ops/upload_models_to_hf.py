@@ -58,7 +58,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--source",
         default=str(DEFAULT_SOURCE),
-        help="Local folder to upload. Defaults to app/models.",
+        help="Local folder to upload. Defaults to data/models.",
     )
     parser.add_argument(
         "--path-in-repo",
@@ -81,14 +81,16 @@ def parse_args() -> argparse.Namespace:
         help="Only list files that would be uploaded. No token required.",
     )
     parser.add_argument(
-        "--include-overleaf",
+        "--include-paper",
+        "--include-overleaf",  # alias legado, mantido por compatibilidade
+        dest="include_paper",
         action="store_true",
-        help="Also upload tcc_overleaf/ to tcc_overleaf/.",
+        help="Also upload data/results/paper/ to data/results/paper/.",
     )
     parser.add_argument(
         "--include-results",
         action="store_true",
-        help="Also upload curated benchmark reports and figures from results/.",
+        help="Also upload curated benchmark reports and figures from data/results/.",
     )
     parser.add_argument(
         "--allow-pattern",
@@ -214,9 +216,9 @@ def upload_curated_results(
     ignore_patterns: list[str],
 ) -> None:
     candidates = [
-        PROJECT_ROOT / "results" / "tcc_consolidated",
-        PROJECT_ROOT / "results" / "model_manifest.json",
-        PROJECT_ROOT / "results" / "MODEL_AUDIT.md",
+        PROJECT_ROOT / "data" / "results" / "paper" / "consolidated",
+        PROJECT_ROOT / "data" / "results" / "model_manifest.json",
+        PROJECT_ROOT / "data" / "results" / "MODEL_AUDIT.md",
     ]
     for candidate in candidates:
         if candidate.is_dir():
@@ -225,14 +227,14 @@ def upload_curated_results(
                 folder_path=candidate,
                 repo_id=args.repo_id,
                 repo_type=args.repo_type,
-                path_in_repo=f"results/{candidate.name}",
-                commit_message=f"{args.commit_message}: results/{candidate.name}",
+                path_in_repo=f"data/results/{candidate.name}",
+                commit_message=f"{args.commit_message}: data/results/{candidate.name}",
                 revision=args.revision,
                 allow_patterns=None,
                 ignore_patterns=ignore_patterns,
             )
         elif candidate.is_file():
-            path_in_repo = f"results/{candidate.name}"
+            path_in_repo = f"data/results/{candidate.name}"
             kwargs = {
                 "path_or_fileobj": str(candidate),
                 "path_in_repo": path_in_repo,
@@ -255,14 +257,14 @@ def main() -> None:
     ignore_patterns = DEFAULT_IGNORE_PATTERNS + list(args.ignore_patterns or [])
 
     print_plan("modelos", source, args.path_in_repo)
-    if args.include_overleaf:
-        overleaf = PROJECT_ROOT / "tcc_overleaf"
-        if overleaf.is_dir():
-            print_plan("overleaf", overleaf, "tcc_overleaf")
+    if args.include_paper:
+        paper = PROJECT_ROOT / "data/results/paper"
+        if paper.is_dir():
+            print_plan("artigo", paper, "data/results/paper")
     if args.include_results:
-        results = PROJECT_ROOT / "results" / "tcc_consolidated"
+        results = PROJECT_ROOT / "data" / "results" / "paper" / "consolidated"
         if results.is_dir():
-            print_plan("resultados", results, "results/tcc_consolidated")
+            print_plan("resultados", results, "data/results/paper/consolidated")
 
     if args.dry_run:
         print("\nDry-run concluido. Nenhum arquivo foi enviado.")
@@ -302,16 +304,16 @@ def main() -> None:
         ignore_patterns=ignore_patterns,
     )
 
-    if args.include_overleaf:
-        overleaf = PROJECT_ROOT / "tcc_overleaf"
-        if overleaf.is_dir():
+    if args.include_paper:
+        paper = PROJECT_ROOT / "data/results/paper"
+        if paper.is_dir():
             upload_folder(
                 api,
-                folder_path=overleaf,
+                folder_path=paper,
                 repo_id=args.repo_id,
                 repo_type=args.repo_type,
-                path_in_repo="tcc_overleaf",
-                commit_message=f"{args.commit_message}: tcc_overleaf",
+                path_in_repo="data/results/paper",
+                commit_message=f"{args.commit_message}: data/results/paper",
                 revision=args.revision,
                 allow_patterns=None,
                 ignore_patterns=ignore_patterns,

@@ -1,17 +1,18 @@
 """Regressão: TODAS as interfaces leem/gravam modelos no MESMO diretório.
 
 Antes havia divergência: o `TrainingService` (default), o wizard do Gradio, a
-injeção de dependência da API e o CLI usavam `app/models`, mas o **default** do
+injeção de dependência da API e o CLI usavam `data/models`, mas o **default** do
 `DetectionService` era `models` (raiz). As abas Detectar/Investigar do Gradio
 instanciavam com esse default e liam um diretório VAZIO — um modelo treinado pelo
-wizard (salvo em `app/models`) nunca aparecia na detecção.
+wizard (salvo em `data/models`) nunca aparecia na detecção.
 
 Estes testes travam:
-1. o default do `DetectionService` aponta para `app/models`;
+1. o default do `DetectionService` aponta para `data/models`;
 2. as abas Gradio de detecção/forense reusam o MESMO singleton da API
    (`app.dependencies.get_detection_service`), para que o reload do wizard
    propague o modelo recém-treinado sem reiniciar o app.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,31 +22,35 @@ import pytest
 pytest.importorskip("tensorflow")
 
 
-def test_detection_service_default_dir_is_app_models():
+def test_detection_service_default_dir_is_data_models():
     from app.domain.services.detection_service import DetectionService
 
     ds = DetectionService(create_default_models=False)  # usa o default
-    assert ds.models_dir == Path("app/models"), (
-        f"default models_dir deveria ser app/models, veio {ds.models_dir}"
-    )
+    expected = Path(__file__).resolve().parents[2] / "data" / "models"
+    assert (
+        ds.models_dir == expected
+    ), f"default models_dir deveria ser data/models, veio {ds.models_dir}"
 
 
 def test_gradio_detection_tabs_share_api_singleton(monkeypatch):
-    """As abas Detectar e Investigar devem reusar o singleton da API (app/models),
+    """As abas Detectar e Investigar devem reusar o singleton da API (data/models),
     não criar um `DetectionService()` próprio lendo o dir default antigo."""
     pytest.importorskip("gradio")
 
-    # Criação controlada e leve: sem modelos default, dir app/models (vazio em CI).
+    # Criação controlada e leve: sem modelos default, dir data/models (vazio em CI).
     monkeypatch.setenv("XFAKE_CREATE_DEFAULT_MODELS", "false")
     monkeypatch.setenv("DEEPFAKE_DEVICE", "CPU")
     # BUG FIX (teste flaky por ambiente): faltava isolar as variáveis que
     # `_env_path` consulta para `models_dir` — containers de treino/benchmark
-    # definem DEEPFAKE_MODELS_DIR como caminho ABSOLUTO (ex.: /app/app/models),
-    # o que faz a asserção abaixo (que espera o default relativo "app/models")
+    # definem DEEPFAKE_MODELS_DIR como caminho ABSOLUTO (ex.: /app/data/models),
+    # o que faz a asserção abaixo (que espera o default relativo "data/models")
     # falhar dependendo de QUAL ambiente roda o teste, não de um bug real.
     for _var in (
-        "MODELS_DIR", "DEEPFAKE_MODELS_DIR", "XFAKE_MODELS_DIR",
-        "XFAKE_STORAGE_DIR", "DEEPFAKE_STORAGE_DIR",
+        "MODELS_DIR",
+        "DEEPFAKE_MODELS_DIR",
+        "XFAKE_MODELS_DIR",
+        "XFAKE_STORAGE_DIR",
+        "DEEPFAKE_STORAGE_DIR",
     ):
         monkeypatch.delenv(_var, raising=False)
 
@@ -67,6 +72,6 @@ def test_gradio_detection_tabs_share_api_singleton(monkeypatch):
     assert shared is not None
     assert detect_tab_get() is shared, "aba Detectar não usa o singleton da API"
     assert forensic_get() is shared, "aba Investigar não usa o singleton da API"
-    assert shared.models_dir == Path("app/models")
+    assert shared.models_dir == Path(__file__).resolve().parents[2] / "data" / "models"
 
     api_get.cache_clear()  # não vaza o singleton para outros testes

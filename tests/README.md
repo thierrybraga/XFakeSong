@@ -1,7 +1,7 @@
 # Testes XFakeSong
 
 Esta pasta contém a suíte pytest do projeto. A documentação completa está em
-[`docs/06_QUALIDADE_TESTES.md`](../docs/06_QUALIDADE_TESTES.md).
+[`docs/development/quality-and-testing.md`](../docs/development/quality-and-testing.md).
 
 ## Categorias
 
@@ -33,7 +33,7 @@ Os markers são aplicados automaticamente por `tests/conftest.py`.
 - Crie arquivos como `tests/<categoria>/test_<assunto>.py`.
 - Use `tmp_path` para arquivos temporários.
 - Mocke rede, downloads, pesos grandes e I/O caro.
-- Não grave artefatos versionáveis em `app/models/`, `results/` ou datasets reais.
+- Não grave artefatos versionáveis em `data/models/`, `data/results/` ou datasets reais.
 - Funções auxiliares não coletáveis devem começar com `_`.
 - Notebooks ativos são gerados por `scripts/ops/build_notebooks.py`; teste com
   `pytest tests/unit/test_notebooks_compile.py -q`.

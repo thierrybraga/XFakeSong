@@ -52,12 +52,15 @@ def _load_custom_architecture_modules() -> None:
         try:
             importlib.import_module(module_name)
         except Exception as exc:  # noqa: BLE001 - best-effort registry hydration
-            logger.debug("Falha ao importar %s para custom_objects: %s", module_name, exc)
+            logger.debug(
+                "Falha ao importar %s para custom_objects: %s", module_name, exc
+            )
 
 
 @dataclass
 class ModelInfo:
     """Informações sobre um modelo carregado."""
+
     name: str
     architecture: str
     model: Any
@@ -145,13 +148,11 @@ class TorchSSLOriginalModel:
         # Janela definida pelo contrato de embedding do checkpoint
         # (2026-07-15); artefatos legados caem em 16000 (1 s).
         target_len = int(
-            (getattr(self, "embedding_config", None) or {}).get(
-                "target_samples", 16000
-            )
+            (getattr(self, "embedding_config", None) or {}).get("target_samples", 16000)
         )
         if flat.shape[1] > target_len:
             start = max(0, (flat.shape[1] - target_len) // 2)
-            flat = flat[:, start:start + target_len]
+            flat = flat[:, start : start + target_len]
         elif flat.shape[1] < target_len:
             repeats = int(np.ceil(target_len / max(1, flat.shape[1])))
             flat = np.tile(flat, (1, repeats))[:, :target_len]
@@ -212,9 +213,9 @@ class TorchSSLOriginalModel:
         )
 
         self.embedding_config = resolve_embedding_config(checkpoint, hidden_size)
-        self.classifier = build_ssl_classifier(
-            self.embedding_config, dropout
-        ).to(self.device)
+        self.classifier = build_ssl_classifier(self.embedding_config, dropout).to(
+            self.device
+        )
         self.classifier.load_state_dict(checkpoint["classifier_state_dict"])
         self.classifier.eval()
         self.torch = torch
@@ -234,7 +235,7 @@ class TorchSSLOriginalModel:
         outputs = []
         with self.torch.no_grad():
             for start in range(0, len(x), max(1, int(batch_size))):
-                xb = self.torch.from_numpy(x[start:start + batch_size]).to(
+                xb = self.torch.from_numpy(x[start : start + batch_size]).to(
                     self.device
                 )
                 backbone_out = self.backbone(
@@ -255,10 +256,10 @@ class ModelLoader:
     def __init__(
         self,
         models_dir: Union[str, Path],
-        create_default_models: bool = True,
+        create_default_models: bool = False,
     ):
         self.models_dir = Path(models_dir)
-        self.models_dir.mkdir(exist_ok=True)
+        self.models_dir.mkdir(exist_ok=True, parents=True)
         self.loaded_models: Dict[str, ModelInfo] = {}
         self.available_model_names: List[str] = []
         self.default_model = None
@@ -273,7 +274,7 @@ class ModelLoader:
         encontrava os modelos treinados e o servico caia nos modelos de
         demonstracao (`_create_default_models`). Restringe ao prefixo ``bench_``
         sob ``benchmark_final/<arch>/`` para nao capturar checkpoints
-        intermediarios (ex.: ``results/.../models/best_checkpoint.keras``).
+        intermediarios (ex.: ``data/results/.../models/best_checkpoint.keras``).
         """
         exts = ("*.keras", "*.h5", "*.pkl", "*.pt")
         files: List[Path] = []
@@ -284,12 +285,10 @@ class ModelLoader:
             for ext in ("bench_*.keras", "bench_*.h5", "bench_*.pkl", "bench_*.pt"):
                 files.extend(bench_final.glob(f"*/{ext}"))
             # SSL originais (WavLM/HuBERT reais em PyTorch): o runner dedicado
-            # grava `bench_<arch>_original.pt` em results/models/. Sem este
+            # grava `bench_<arch>_original.pt` em data/results/models/. Sem este
             # glob, o Gradio só enxergava o FALLBACK CNN-1D Keras homônimo
             # (bench_wavlm.keras) — rotulado como SSL sem sê-lo.
-            files.extend(
-                bench_final.glob("*/results/models/bench_*_original.pt")
-            )
+            files.extend(bench_final.glob("*/results/models/bench_*_original.pt"))
         seen: set = set()
         unique: List[Path] = []
         for fp in files:
@@ -311,8 +310,7 @@ class ModelLoader:
 
         # Se não há artefatos, criar modelos padrão leves para demonstração.
         if not self.available_model_names and self.create_default_models:
-            logger.info(
-                "Nenhum modelo salvo encontrado. Criando modelos padrão...")
+            logger.info("Nenhum modelo salvo encontrado. Criando modelos padrão...")
             self._create_default_models()
             self.available_model_names = sorted(self.loaded_models.keys())
         elif not self.available_model_names:
@@ -343,37 +341,38 @@ class ModelLoader:
         if config_path.exists():
             try:
                 import json
-                with open(config_path, 'r') as f:
+
+                with open(config_path, "r") as f:
                     metadata = json.load(f)
             except Exception as e:
                 logger.warning(f"Erro ao carregar config para {model_name}: {e}")
 
         try:
-            if model_path.suffix in ('.h5', '.keras'):
+            if model_path.suffix in (".h5", ".keras"):
                 # Modelo TensorFlow/Keras — suporta ambos os formatos
                 _load_custom_architecture_modules()
                 custom_objects = {
-                    'AudioResamplingLayer': AudioResamplingLayer,
-                    'AudioNormalizationLayer': AudioNormalizationLayer,
-                    'MultiScaleConv1DBlock': MultiScaleConv1DBlock,
-                    'AudioFeatureNormalization': AudioFeatureNormalization,
-                    'AttentionLayer': AttentionLayer,
-                    'GraphAttentionLayer': GraphAttentionLayer,
-                    'SliceLayer': SliceLayer,
-                    'SafeInstanceNormalization': SafeInstanceNormalization,
+                    "AudioResamplingLayer": AudioResamplingLayer,
+                    "AudioNormalizationLayer": AudioNormalizationLayer,
+                    "MultiScaleConv1DBlock": MultiScaleConv1DBlock,
+                    "AudioFeatureNormalization": AudioFeatureNormalization,
+                    "AttentionLayer": AttentionLayer,
+                    "GraphAttentionLayer": GraphAttentionLayer,
+                    "SliceLayer": SliceLayer,
+                    "SafeInstanceNormalization": SafeInstanceNormalization,
                     # Compat: artefatos salvos antes da migração para
                     # AxisMaxAbsLayer/MagnitudeLayer (Lambda(tf.abs, ...) cru,
                     # não localizável pelo registry do Keras 3 mesmo com
                     # safe_mode=False). Ex.: bench_aasist/bench_rawgat_st
                     # promovidos em 2026-07-15, antes do fix de serialização.
-                    'abs': tf.abs,
+                    "abs": tf.abs,
                 }
                 try:
                     from app.domain.models.architectures.wavlm import (
                         WavLMFeatureExtractor,
                     )
 
-                    custom_objects['WavLMFeatureExtractor'] = WavLMFeatureExtractor
+                    custom_objects["WavLMFeatureExtractor"] = WavLMFeatureExtractor
                 except Exception as exc:  # noqa: BLE001 - optional SSL loader
                     logger.debug(
                         "WavLMFeatureExtractor indisponível para load: %s", exc
@@ -383,7 +382,7 @@ class ModelLoader:
                         HuBERTFeatureExtractor,
                     )
 
-                    custom_objects['HuBERTFeatureExtractor'] = HuBERTFeatureExtractor
+                    custom_objects["HuBERTFeatureExtractor"] = HuBERTFeatureExtractor
                 except Exception as exc:  # noqa: BLE001 - optional SSL loader
                     logger.debug(
                         "HuBERTFeatureExtractor indisponível para load: %s", exc
@@ -405,7 +404,7 @@ class ModelLoader:
                         compile=False,
                     )
 
-                model_type = 'tensorflow'
+                model_type = "tensorflow"
 
                 # Tentar carregar scaler correspondente
                 scaler_path = model_path.parent / f"{model_name}_scaler.pkl"
@@ -416,13 +415,13 @@ class ModelLoader:
                 # Inferir input_shape do modelo
                 input_shape = model.input_shape[1:]  # Remove batch dimension
 
-            elif model_path.suffix == '.pkl':
+            elif model_path.suffix == ".pkl":
                 # Modelo sklearn
-                if '_scaler' in model_name:
+                if "_scaler" in model_name:
                     return  # Skip scaler files
 
                 model = joblib.load(model_path)
-                model_type = 'sklearn'
+                model_type = "sklearn"
 
                 # Carregar scaler correspondente
                 scaler_path = model_path.parent / f"{model_name}_scaler.pkl"
@@ -434,30 +433,29 @@ class ModelLoader:
                 # predição
                 input_shape = None
 
-            elif model_path.suffix == '.pt':
+            elif model_path.suffix == ".pt":
                 model = TorchSSLOriginalModel(model_path, metadata)
-                model_type = 'pytorch_transformers'
+                model_type = "pytorch_transformers"
                 scaler = None
-                raw_shape = metadata.get('input_shape', [16000, 1])
+                raw_shape = metadata.get("input_shape", [16000, 1])
                 input_shape = tuple(raw_shape)
 
             else:
-                logger.warning(
-                    f"Formato de arquivo não suportado: {model_path}")
+                logger.warning(f"Formato de arquivo não suportado: {model_path}")
                 return
 
             # Determinar arquitetura: via metadados ou inferência
-            if 'architecture' in metadata:
-                architecture = metadata['architecture']
+            if "architecture" in metadata:
+                architecture = metadata["architecture"]
             else:
                 architecture = self._infer_architecture_from_name(model_name)
 
             # Sobrescrever input_shape se definido nos metadados
-            if 'input_shape' in metadata:
-                input_shape = tuple(metadata['input_shape'])
+            if "input_shape" in metadata:
+                input_shape = tuple(metadata["input_shape"])
 
             # Extrair input_contract dos metadados (salvo pelo trainer)
-            input_contract = metadata.get('input_contract', None)
+            input_contract = metadata.get("input_contract", None)
 
             # Sprint 1.4: extrair temperatura calibrada do input_contract.
             # Default 1.0 (sem calibração) se o modelo é legado ou não foi calibrado.
@@ -467,17 +465,17 @@ class ModelLoader:
             eer_value: Optional[float] = None
             if input_contract and isinstance(input_contract, dict):
                 try:
-                    temperature = float(input_contract.get('temperature', 1.0))
+                    temperature = float(input_contract.get("temperature", 1.0))
                 except (TypeError, ValueError):
                     temperature = 1.0
                 # EER fields (Sprint 4.5)
-                eer_t_raw = input_contract.get('eer_threshold')
+                eer_t_raw = input_contract.get("eer_threshold")
                 if eer_t_raw is not None:
                     try:
                         eer_threshold = float(eer_t_raw)
                     except (TypeError, ValueError):
                         pass
-                eer_v_raw = input_contract.get('eer_value')
+                eer_v_raw = input_contract.get("eer_value")
                 if eer_v_raw is not None:
                     try:
                         eer_value = float(eer_v_raw)
@@ -501,21 +499,23 @@ class ModelLoader:
             # instalado, prepara uma sessão ONNX Runtime para inferência (FP32,
             # mesmos pesos → mesma saída, porém mais rápida em CPU). Degrada
             # graciosamente: sem .onnx ou sem onnxruntime → segue com Keras/TF.
-            if model_type == 'tensorflow':
+            if model_type == "tensorflow":
                 onnx_path = model_path.parent / f"{model_name}.onnx"
                 if onnx_path.exists():
                     try:
                         from app.domain.models.inference.onnx_export import (
                             OnnxInferenceSession,
                         )
+
                         model_info.onnx_session = OnnxInferenceSession(str(onnx_path))
                         logger.info(
                             f"ONNX session ativa para {model_name} "
-                            f"(inferência acelerada, fallback TF disponível)")
+                            f"(inferência acelerada, fallback TF disponível)"
+                        )
                     except Exception as e:
                         logger.debug(
-                            f"ONNX indisponível para {model_name} "
-                            f"(usando TF): {e}")
+                            f"ONNX indisponível para {model_name} " f"(usando TF): {e}"
+                        )
                         model_info.onnx_session = None
 
             # Sprint 3.3: warm-up do modelo (1 forward pass com zeros) para
@@ -523,7 +523,7 @@ class ModelLoader:
             # Primeira inferência fica ~10× mais rápida.
             # Tier-1 perf: condicional — no startup (load_available_models)
             # aquecemos só o modelo default; os demais aquecem no 1º uso.
-            if warmup and model_type == 'tensorflow':
+            if warmup and model_type == "tensorflow":
                 self._warmup_model(model_info)
 
             self.loaded_models[model_name] = model_info
@@ -533,13 +533,14 @@ class ModelLoader:
             warmup_str = " | warmed-up" if model_info.warmed_up else ""
             logger.info(
                 f"Modelo {model_name} carregado com sucesso "
-                f"({model_type}){calib_str}{warmup_str}")
+                f"({model_type}){calib_str}{warmup_str}"
+            )
 
         except Exception as e:
             logger.error(f"Erro ao carregar modelo {model_path}: {e}")
             raise
 
-    def _warmup_model(self, model_info: 'ModelInfo') -> None:
+    def _warmup_model(self, model_info: "ModelInfo") -> None:
         """Sprint 3.3: warm-up com 1 forward pass de zeros.
 
         Força:
@@ -555,6 +556,7 @@ class ModelLoader:
             return
         try:
             import numpy as np
+
             # Cria tensor de zeros no shape esperado pelo modelo
             shape = (1,) + tuple(
                 int(d) if d is not None else 1 for d in model_info.input_shape
@@ -573,38 +575,42 @@ class ModelLoader:
         """Infere a arquitetura baseada no nome do modelo."""
         name_lower = model_name.lower()
 
-        if 'aasist' in name_lower:
-            return 'AASIST'
-        elif 'rawgat' in name_lower:
-            return 'RawGAT-ST'
-        elif 'efficientnet' in name_lower:
-            return 'EfficientNet-LSTM'
-        elif 'multiscale' in name_lower:
-            return 'MultiscaleCNN'
-        elif 'conformer' in name_lower:
-            return 'Conformer'
-        elif 'hybrid' in name_lower:
-            return 'Hybrid CNN-Transformer'
-        elif 'spectrogram' in name_lower or 'transformer' in name_lower:
-            return 'SpectrogramTransformer'
-        elif 'ensemble' in name_lower:
-            return 'Ensemble'
-        elif 'rawnet2' in name_lower:
-            return 'RawNet2'
-        elif 'wavlm' in name_lower:
-            return 'WavLM'
-        elif 'hubert' in name_lower:
-            return 'HuBERT'
-        elif 'sonic' in name_lower or 'sleuth' in name_lower:
-            return 'Sonic Sleuth'
-        elif 'svm' in name_lower:
-            return 'SVM'
-        elif 'random_forest' in name_lower or 'randomforest' in name_lower or 'rf' in name_lower:
-            return 'RandomForest'
-        elif 'neural_network' in name_lower:
-            return 'SimpleNN'
+        if "aasist" in name_lower:
+            return "AASIST"
+        elif "rawgat" in name_lower:
+            return "RawGAT-ST"
+        elif "efficientnet" in name_lower:
+            return "EfficientNet-LSTM"
+        elif "multiscale" in name_lower:
+            return "MultiscaleCNN"
+        elif "conformer" in name_lower:
+            return "Conformer"
+        elif "hybrid" in name_lower:
+            return "Hybrid CNN-Transformer"
+        elif "spectrogram" in name_lower or "transformer" in name_lower:
+            return "SpectrogramTransformer"
+        elif "ensemble" in name_lower:
+            return "Ensemble"
+        elif "rawnet2" in name_lower:
+            return "RawNet2"
+        elif "wavlm" in name_lower:
+            return "WavLM"
+        elif "hubert" in name_lower:
+            return "HuBERT"
+        elif "sonic" in name_lower or "sleuth" in name_lower:
+            return "Sonic Sleuth"
+        elif "svm" in name_lower:
+            return "SVM"
+        elif (
+            "random_forest" in name_lower
+            or "randomforest" in name_lower
+            or "rf" in name_lower
+        ):
+            return "RandomForest"
+        elif "neural_network" in name_lower:
+            return "SimpleNN"
         else:
-            return 'Unknown'
+            return "Unknown"
 
     def _create_default_models(self):
         """Cria modelos padrão para demonstração."""
@@ -613,7 +619,7 @@ class ModelLoader:
         input_shape = (100, 80)  # Formato padrão
 
         # Criar alguns modelos leves para demonstração
-        lightweight_architectures = ['MultiscaleCNN', 'EfficientNet-LSTM']
+        lightweight_architectures = ["MultiscaleCNN", "EfficientNet-LSTM"]
 
         for arch_name in lightweight_architectures:
             try:
@@ -622,18 +628,13 @@ class ModelLoader:
                 # Criar modelo usando variant lite se disponível
                 arch_info = get_architecture_info(arch_name)
                 variant = None
-                if 'lite' in [
-                        v for v in arch_info.supported_variants if 'lite' in v
-                ]:
-                    variant = [
-                        v for v in arch_info.supported_variants if 'lite' in v
-                    ][0]
+                if "lite" in [v for v in arch_info.supported_variants if "lite" in v]:
+                    variant = [v for v in arch_info.supported_variants if "lite" in v][
+                        0
+                    ]
 
                 model = create_model_by_name(
-                    arch_name,
-                    input_shape,
-                    num_classes=2,
-                    variant=variant
+                    arch_name, input_shape, num_classes=2, variant=variant
                 )
 
                 model_info = ModelInfo(
@@ -642,7 +643,7 @@ class ModelLoader:
                     model=model,
                     scaler=StandardScaler(),
                     input_shape=input_shape,
-                    model_type='tensorflow'
+                    model_type="tensorflow",
                 )
 
                 self.loaded_models[model_info.name] = model_info
@@ -651,7 +652,7 @@ class ModelLoader:
             except Exception as e:
                 logger.warning(f"Erro ao criar modelo {arch_name}: {e}")
 
-    def get_model(self, model_name: str) -> Optional['ModelInfo']:
+    def get_model(self, model_name: str) -> Optional["ModelInfo"]:
         """Retorna ModelInfo por nome com carregamento lazy.
 
         Primeiro verifica o cache de modelos carregados. Se não encontrado,
@@ -685,9 +686,7 @@ class ModelLoader:
         if bench_final.is_dir():
             promoted_candidates = []
             for suffix in ("keras", "h5", "pkl", "pt"):
-                promoted_candidates.extend(
-                    bench_final.glob(f"*/{model_name}.{suffix}")
-                )
+                promoted_candidates.extend(bench_final.glob(f"*/{model_name}.{suffix}"))
             promoted_candidates.extend(
                 bench_final.glob(f"*/results/models/{model_name}.pt")
             )
@@ -697,9 +696,10 @@ class ModelLoader:
                     return self.loaded_models.get(model_name)
                 except Exception as e:
                     logger.warning(
-                        f"Falha ao carregar modelo '{model_name}' de {model_file}: {e}")
+                        f"Falha ao carregar modelo '{model_name}' de {model_file}: {e}"
+                    )
 
-        for suffix in ('.keras', '.h5', '.pkl', '.pt'):
+        for suffix in (".keras", ".h5", ".pkl", ".pt"):
             model_file = self.models_dir / f"{model_name}{suffix}"
             if model_file.exists():
                 try:
@@ -707,7 +707,8 @@ class ModelLoader:
                     return self.loaded_models.get(model_name)
                 except Exception as e:
                     logger.warning(
-                        f"Falha ao carregar modelo '{model_name}' de {model_file}: {e}")
+                        f"Falha ao carregar modelo '{model_name}' de {model_file}: {e}"
+                    )
 
         logger.warning(f"Modelo '{model_name}' não encontrado em {self.models_dir}")
         return None
@@ -723,8 +724,7 @@ class ModelLoader:
         """Retorna lista de arquiteturas disponíveis."""
         return get_available_architectures()
 
-    def find_model(self, architecture: str,
-                   variant: str = None) -> Optional[str]:
+    def find_model(self, architecture: str, variant: str = None) -> Optional[str]:
         """Encontra um modelo disponível que corresponda à arquitetura."""
         arch_lower = architecture.lower()
         variant_lower = variant.lower() if variant else None

@@ -395,7 +395,7 @@ class SecureTrainingPipeline:
 
             # 5. Salvar scaler se habilitado (no-op se não-tabular)
             if self.config.save_scaler and self.scaler.scaler is not None:
-                models_dir = Path(os.getenv("DEEPFAKE_MODELS_DIR", "app/models"))
+                models_dir = Path(os.getenv("DEEPFAKE_MODELS_DIR", "data/models"))
                 scaler_path = models_dir / "scalers" / "secure_scaler.pkl"
                 self.scaler.save_scaler(scaler_path)
 

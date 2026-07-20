@@ -19,15 +19,17 @@ ensure_hf_folder_shim()
 # Adicionar diretório raiz ao PYTHONPATH
 sys.path.insert(0, str(Path(__file__).parent))
 
-from app.interfaces.cli.context import AppContext  # noqa: E402
-from app.interfaces.cli.menus.main_menu import MainMenu  # noqa: E402
-
 
 def setup_logging():
     """Configura o sistema de logging."""
+    from app.core.bootstrap import OperationalPaths, ensure_operational_directories
     from app.core.feedback import configure_logging
 
-    configure_logging(level=logging.INFO, log_file="system.log", force=True)
+    paths = OperationalPaths.resolve()
+    ensure_operational_directories(paths)
+    configure_logging(
+        level=logging.INFO, log_file=str(paths.logs / "system.log"), force=True
+    )
 
 
 def main():
@@ -93,17 +95,15 @@ def main():
     if args.bootstrap_dirs:
         logger.info("Criando estrutura de diretórios...")
         try:
-            app_dir = Path(__file__).parent / "app"
-            dirs = [
-                Path(__file__).parent / "data" / "datasets",
-                app_dir / "models",
-                Path(__file__).parent / "results",
-                Path(__file__).parent / "data" / "datasets" / "samples",
-                Path(__file__).parent / "data" / "datasets" / "features",
-            ]
-            for d in dirs:
-                d.mkdir(parents=True, exist_ok=True)
-                logger.info(f"Diretório verificado/criado: {d}")
+            from app.core.bootstrap import bootstrap_application
+
+            report = bootstrap_application()
+            logger.info(
+                "Bootstrap concluído: banco=%s, datasets=%s, modelos=%s",
+                report.database_after.value,
+                report.resources.datasets.value,
+                report.resources.models.value,
+            )
             print("Estrutura de diretórios criada com sucesso.")
             sys.exit(0)
         except Exception as e:
@@ -139,6 +139,11 @@ def main():
     else:
         logger.info("Iniciando interface CLI...")
         try:
+            from app.core.bootstrap import bootstrap_application
+            from app.interfaces.cli.context import AppContext
+            from app.interfaces.cli.menus.main_menu import MainMenu
+
+            bootstrap_application()
             # Inicializar contexto e menu principal
             context = AppContext()
             menu = MainMenu(context)

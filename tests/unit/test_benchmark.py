@@ -557,14 +557,14 @@ def test_benchmark_relative_paths_are_anchored_to_project_root(monkeypatch, tmp_
 
     monkeypatch.chdir(tmp_path)
     cfg = BenchmarkConfig.quick(
-        output_dir="results/path_anchor_probe",
-        models_dir="app/models/path_anchor_probe",
+        output_dir="data/results/path_anchor_probe",
+        models_dir="data/models/path_anchor_probe",
     )
 
     plan_benchmark(cfg, write=False)
 
-    assert Path(cfg.output_dir) == PROJECT_ROOT / "results" / "path_anchor_probe"
-    assert Path(cfg.models_dir) == PROJECT_ROOT / "app" / "models" / "path_anchor_probe"
+    assert Path(cfg.output_dir) == PROJECT_ROOT / "data" / "results" / "path_anchor_probe"
+    assert Path(cfg.models_dir) == PROJECT_ROOT / "data" / "models" / "path_anchor_probe"
 
 
 def test_full_tcc_preset_includes_all_architectures():

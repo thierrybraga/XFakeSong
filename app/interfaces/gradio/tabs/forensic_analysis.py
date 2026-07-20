@@ -34,7 +34,7 @@ def _get_detection_service():
     with _service_lock:
         if _detection_service is None:
             try:
-                # Mesmo singleton (app/models) da API/Detectar/wizard — ver detection.py.
+                # Mesmo singleton (data/models) da API/Detectar/wizard — ver detection.py.
                 from app.dependencies import get_detection_service as _shared
                 _detection_service = _shared()
             except Exception as e:

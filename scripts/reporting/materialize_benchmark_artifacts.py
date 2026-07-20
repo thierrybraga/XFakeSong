@@ -2,7 +2,7 @@
 """Materializa e valida artefatos treinados do benchmark na raiz do projeto.
 
 O benchmark roda em Docker/WSL com bind mount do projeto em /app. Este script
-gera manifestos locais a partir de app/models e results/<execucao>, deixando
+gera manifestos locais a partir de data/models e data/results/<execucao>, deixando
 claro quais modelos pre-treinados estao prontos para novas builds/inferencia.
 """
 
@@ -16,7 +16,7 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_RESULTS = ROOT / "results" / "clean_benchmark_full_20260626"
+DEFAULT_RESULTS = ROOT / "data" / "results" / "clean_benchmark_full_20260626"
 DEFAULT_MODELS = ROOT / "app" / "models"
 
 

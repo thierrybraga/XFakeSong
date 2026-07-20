@@ -1,6 +1,8 @@
 # Visão geral da documentação
 
-Esta pasta reúne a documentação técnica e operacional do XFakeSong.
+Esta pasta reúne a documentação técnica e operacional do XFakeSong e é a
+**única fonte editorial** do website. O diretório `site/` é gerado por MkDocs,
+não deve ser editado nem versionado e pode ser removido a qualquer momento.
 
 ## Como navegar
 
@@ -11,9 +13,19 @@ Esta pasta reúne a documentação técnica e operacional do XFakeSong.
 ## Estrutura principal
 
 - [index.md](index.md): ponto de entrada da documentação.
-- [00_CONCEITOS.md](00_CONCEITOS.md) a [30_AUDITORIA_PIPELINE.md](30_AUDITORIA_PIPELINE.md): guias técnicos e operacionais.
+- [getting-started/concepts.md](getting-started/concepts.md) a [evaluation/pipeline-audit.md](evaluation/pipeline-audit.md): guias técnicos e operacionais.
 - [notebooks/](notebooks/): notebooks organizados por estudo, pipeline e modelos.
-- [RETREINO_AJUSTES.md](RETREINO_AJUSTES.md): registro de ajustes aplicados após diagnóstico.
+- [evaluation/retraining-adjustments.md](evaluation/retraining-adjustments.md): registro de ajustes aplicados após diagnóstico.
+
+## Publicação do website
+
+- Desenvolvimento local: `mkdocs serve`.
+- Validação equivalente ao CI: `mkdocs build --strict`.
+- Publicação: o workflow `.github/workflows/static.yml` gera `site/` a partir
+  de `docs/` e publica o artefato no GitHub Pages.
+
+Alterações devem ser feitas somente em `docs/`, `mkdocs.yml`, estilos ou scripts
+da documentação. Nunca edite HTML diretamente em `site/`.
 
 ## Recomendação de leitura
 

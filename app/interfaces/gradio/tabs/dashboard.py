@@ -97,7 +97,9 @@ def _datasets_size_gb() -> float:
 def _refresh_datasets_size_gb() -> None:
     """Calcula o tamanho real dos datasets (chamado em thread separada)."""
     total = 0
-    for d in [Path("data/datasets"), Path("data"), Path("datasets")]:
+    from app.core.bootstrap import OperationalPaths
+
+    for d in [OperationalPaths.resolve().datasets]:
         if not d.exists():
             continue
         try:

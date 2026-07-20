@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # particular "multiscale" (Res2Net) e "spectrogram" (AST) estavam sub-
 # ponderados (0.82/0.50) apesar de serem o 3º e o 2º modelos mais robustos
 # do conjunto. Atualizados = acurácia @10dB / 100 da tabela "Robustez a
-# ruído AWGN" em tcc_overleaf/tabelas_benchmark.tex (fonte:
+# ruído AWGN" em data/results/paper/tabelas_benchmark.tex (fonte:
 # scripts/reporting/consolidate_results.py); regenerar junto do TCC a cada
 # retreino. Sonic Sleuth/EfficientNet-LSTM/Ensemble ficam fora da tabela
 # oficial de 11 modelos (retreino pendente / suspeita de vazamento não
@@ -83,19 +83,24 @@ class DetectionService(IDetectionService):
 
     def __init__(
         self,
-        models_dir: Union[str, Path] = "app/models",
-        create_default_models: bool = True,
+        models_dir: Union[str, Path, None] = None,
+        create_default_models: bool = False,
     ):
-        # Default = "app/models": é onde o TrainingService (default), o wizard do
+        # Default = "data/models": é onde o TrainingService (default), o wizard do
         # Gradio, a injeção de dependência da API e o CLI gravam/leem os modelos.
         # Antes o default era "models" (raiz), que ficava VAZIO → a aba Detectar do
         # Gradio (que instanciava com o default) não achava modelo nenhum.
-        self.models_dir = Path(models_dir)
+        self.models_dir = (
+            Path(models_dir)
+            if models_dir is not None
+            else Path(__file__).resolve().parents[3] / "data" / "models"
+        )
         self.feature_service = AudioFeatureExtractionService()
 
         # GPU.11: Dispositivo padrão = GPU se TF detectou GPU física, senão CPU.
         # Override via env DEEPFAKE_DEVICE ("CPU" | "GPU:0" | "/GPU:1" etc).
         import os
+
         env_dev = os.environ.get("DEEPFAKE_DEVICE", "").strip()
         if env_dev:
             self.device = env_dev
@@ -103,11 +108,13 @@ class DetectionService(IDetectionService):
             try:
                 # Usa app.core.gpu (já configurado em main.py / gradio_app.py)
                 from app.core.gpu import is_gpu_available
+
                 self.device = "GPU:0" if is_gpu_available() else "CPU"
             except Exception:
                 # Fallback: detecção direta sem efeitos colaterais
                 try:
                     import tensorflow as tf
+
                     self.device = (
                         "GPU:0" if tf.config.list_physical_devices("GPU") else "CPU"
                     )
@@ -151,14 +158,12 @@ class DetectionService(IDetectionService):
         self.device = device
         logger.info(f"Dispositivo de inferência definido para: {device}")
 
-    def find_model(self, architecture: str,
-                   variant: str = None) -> Optional[str]:
+    def find_model(self, architecture: str, variant: str = None) -> Optional[str]:
         """Encontra modelo treinado por arquitetura e variante."""
         return self.model_loader.find_model(architecture, variant)
 
     def detect_single(
-        self, audio_data: AudioData, model_name: str = None,
-        use_tta: bool = False
+        self, audio_data: AudioData, model_name: str = None, use_tta: bool = False
     ) -> ProcessingResult[DeepfakeDetectionResult]:
         """Detecta deepfake em um único áudio."""
         try:
@@ -173,7 +178,7 @@ class DetectionService(IDetectionService):
                     errors=[
                         f"Modelo '{model_name}' não encontrado. "
                         f"Disponíveis: {self.model_loader.get_available_models()}"
-                    ]
+                    ],
                 )
 
             try:
@@ -182,16 +187,20 @@ class DetectionService(IDetectionService):
                 arch_info = None
 
             prepared = self.feature_preparer.prepare_input(
-                audio_data, model_info, arch_info)
-            if prepared['status'] != 'ok':
-                return ProcessingResult(status=ProcessingStatus.ERROR, errors=[
-                                        prepared.get('error', 'Falha ao preparar entrada')])
+                audio_data, model_info, arch_info
+            )
+            if prepared["status"] != "ok":
+                return ProcessingResult(
+                    status=ProcessingStatus.ERROR,
+                    errors=[prepared.get("error", "Falha ao preparar entrada")],
+                )
 
-            features = prepared['features']
-            extraction_info = prepared['metadata']
+            features = prepared["features"]
+            extraction_info = prepared["metadata"]
 
             prediction_result = self.predictor.predict(
-                model_info, features, device=self.device, use_tta=use_tta)
+                model_info, features, device=self.device, use_tta=use_tta
+            )
             if prediction_result.status != ProcessingStatus.SUCCESS:
                 return prediction_result
             prediction = prediction_result.data
@@ -199,45 +208,52 @@ class DetectionService(IDetectionService):
             # Sempre reporta p_fake/p_real (chaves novas) ou deriva de
             # confidence (caminho legado). Garante consistência mesmo se o
             # predictor for substituído por outro.
-            p_fake = prediction.get('p_fake')
-            p_real = prediction.get('p_real')
+            p_fake = prediction.get("p_fake")
+            p_real = prediction.get("p_real")
             if p_fake is None or p_real is None:
-                conf = float(prediction.get('confidence', 0.5))
-                if prediction.get('is_deepfake', False):
+                conf = float(prediction.get("confidence", 0.5))
+                if prediction.get("is_deepfake", False):
                     p_fake, p_real = conf, 1.0 - conf
                 else:
                     p_real, p_fake = conf, 1.0 - conf
 
             # Propaga metadados de calibração/OOD/threshold quando presentes
             extra_meta = {
-                k: v for k, v in prediction.items()
-                if k in ('temperature_applied', 'ood_score', 'is_ood',
-                         'ood_threshold', 'classification_threshold',
-                         'epistemic_uncertainty', 'predictive_entropy',
-                         'is_uncertain', 'n_mc_samples')
+                k: v
+                for k, v in prediction.items()
+                if k
+                in (
+                    "temperature_applied",
+                    "ood_score",
+                    "is_ood",
+                    "ood_threshold",
+                    "classification_threshold",
+                    "epistemic_uncertainty",
+                    "predictive_entropy",
+                    "is_uncertain",
+                    "n_mc_samples",
+                )
             }
             metadata_combined = dict(extraction_info)
             metadata_combined.update(extra_meta)
 
             result = DeepfakeDetectionResult(
-                is_fake=prediction['is_deepfake'],
-                confidence=float(prediction['confidence']),
+                is_fake=prediction["is_deepfake"],
+                confidence=float(prediction["confidence"]),
                 probabilities={
-                    'fake': float(p_fake),
-                    'real': float(p_real),
+                    "fake": float(p_fake),
+                    "real": float(p_real),
                 },
                 model_name=model_name,
-                features_used=extraction_info.get('config_feature_types', []),
+                features_used=extraction_info.get("config_feature_types", []),
                 metadata=metadata_combined,
             )
-            return ProcessingResult(
-                status=ProcessingStatus.SUCCESS, data=result)
+            return ProcessingResult(status=ProcessingStatus.SUCCESS, data=result)
 
         except Exception as e:
             logger.error(f"Erro na detecção: {e}")
             return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=[f"Erro na detecção: {str(e)}"]
+                status=ProcessingStatus.ERROR, errors=[f"Erro na detecção: {str(e)}"]
             )
 
     def detect_batch(
@@ -246,8 +262,7 @@ class DetectionService(IDetectionService):
         """Detecta deepfake em lote de forma otimizada."""
         try:
             if not audio_list:
-                return ProcessingResult(
-                    status=ProcessingStatus.SUCCESS, data=[])
+                return ProcessingResult(status=ProcessingStatus.SUCCESS, data=[])
 
             if model_name is None:
                 model_name = self.default_model
@@ -259,9 +274,8 @@ class DetectionService(IDetectionService):
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
                     errors=[
-                        f"Modelo '{model_name}' não encontrado ou "
-                        "falha ao carregar."
-                    ]
+                        f"Modelo '{model_name}' não encontrado ou " "falha ao carregar."
+                    ],
                 )
 
             try:
@@ -277,13 +291,15 @@ class DetectionService(IDetectionService):
 
             for idx, audio_data in enumerate(audio_list):
                 try:
-                    prepared = self.feature_preparer.prepare_input(audio_data, model_info, arch_info)
-                    if prepared['status'] == 'ok':
-                        prepared_features.append(prepared['features'])
-                        metadatas.append(prepared['metadata'])
+                    prepared = self.feature_preparer.prepare_input(
+                        audio_data, model_info, arch_info
+                    )
+                    if prepared["status"] == "ok":
+                        prepared_features.append(prepared["features"])
+                        metadatas.append(prepared["metadata"])
                     else:
                         indices_with_error.append(idx)
-                        errors_map[idx] = prepared.get('error', 'Falha na preparação')
+                        errors_map[idx] = prepared.get("error", "Falha na preparação")
                 except Exception as e:
                     indices_with_error.append(idx)
                     errors_map[idx] = str(e)
@@ -292,7 +308,9 @@ class DetectionService(IDetectionService):
                 # Se todos falharam
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
-                    errors=[f"Falha ao preparar features para todos os {len(audio_list)} áudios"]
+                    errors=[
+                        f"Falha ao preparar features para todos os {len(audio_list)} áudios"
+                    ],
                 )
 
             # 2. Executar predição em lote
@@ -301,7 +319,9 @@ class DetectionService(IDetectionService):
             )
 
             if batch_result.status != ProcessingStatus.SUCCESS:
-                return ProcessingResult(status=ProcessingStatus.ERROR, errors=batch_result.errors)
+                return ProcessingResult(
+                    status=ProcessingStatus.ERROR, errors=batch_result.errors
+                )
 
             predictions = batch_result.data
 
@@ -312,79 +332,94 @@ class DetectionService(IDetectionService):
             for original_idx in range(len(audio_list)):
                 if original_idx in indices_with_error:
                     # Adicionar resultado de erro
-                    final_results.append(DeepfakeDetectionResult(
-                        is_fake=False, confidence=0.0,
-                        probabilities={'fake': 0.0, 'real': 1.0},
-                        model_name=model_name,
-                        features_used=[],
-                        metadata={'error': errors_map[original_idx]}
-                    ))
+                    final_results.append(
+                        DeepfakeDetectionResult(
+                            is_fake=False,
+                            confidence=0.0,
+                            probabilities={"fake": 0.0, "real": 1.0},
+                            model_name=model_name,
+                            features_used=[],
+                            metadata={"error": errors_map[original_idx]},
+                        )
+                    )
                 else:
                     # Adicionar resultado de sucesso
                     pred = predictions[pred_idx]
                     meta = metadatas[pred_idx]
-                    final_results.append(DeepfakeDetectionResult(
-                        is_fake=pred['is_deepfake'],
-                        confidence=pred['confidence'],
-                        probabilities={'fake': pred['confidence'], 'real': 1.0 - pred['confidence']},
-                        model_name=model_name,
-                        features_used=meta.get('config_feature_types', []),
-                        metadata=meta
-                    ))
+                    final_results.append(
+                        DeepfakeDetectionResult(
+                            is_fake=pred["is_deepfake"],
+                            confidence=pred["confidence"],
+                            probabilities={
+                                "fake": pred["confidence"],
+                                "real": 1.0 - pred["confidence"],
+                            },
+                            model_name=model_name,
+                            features_used=meta.get("config_feature_types", []),
+                            metadata=meta,
+                        )
+                    )
                     pred_idx += 1
 
-            return ProcessingResult(
-                status=ProcessingStatus.SUCCESS,
-                data=final_results
-            )
+            return ProcessingResult(status=ProcessingStatus.SUCCESS, data=final_results)
 
         except Exception as e:
             logger.error(f"Erro na detecção em lote: {e}")
             return ProcessingResult(
                 status=ProcessingStatus.ERROR,
-                errors=[f"Erro geral na detecção em lote: {str(e)}"]
+                errors=[f"Erro geral na detecção em lote: {str(e)}"],
             )
 
-    def detect_from_file(self, file_path: Union[str, Path], model_name: str = None,
-                         feature_types: Optional[List[Union[str,
-                                                            'FeatureType']]] = None,
-                         normalize: bool = True,
-                         segmented: bool = False) -> ProcessingResult[DeepfakeDetectionResult]:
+    def detect_from_file(
+        self,
+        file_path: Union[str, Path],
+        model_name: str = None,
+        feature_types: Optional[List[Union[str, "FeatureType"]]] = None,
+        normalize: bool = True,
+        segmented: bool = False,
+    ) -> ProcessingResult[DeepfakeDetectionResult]:
         """Detecta deepfake de arquivo."""
         try:
             from ...utils.helpers import validate_audio_file
+
             fp = Path(file_path)
             if not validate_audio_file(fp):
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
-                    errors=[f"Arquivo inválido ou formato não suportado: {fp}"]
+                    errors=[f"Arquivo inválido ou formato não suportado: {fp}"],
                 )
 
             audio_data = AudioData.from_file(fp)
             if audio_data.duration <= 0 or audio_data.sample_rate <= 0:
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
-                    errors=["Duração/taxa de amostragem inválida"]
+                    errors=["Duração/taxa de amostragem inválida"],
                 )
             # Validação de duração mínima (ex.: 0.3s)
             if audio_data.duration < 0.3:
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
-                    errors=[f"Áudio muito curto: {audio_data.duration:.3f}s"]
+                    errors=[f"Áudio muito curto: {audio_data.duration:.3f}s"],
                 )
             return self._detect_with_config(
-                audio_data, model_name, feature_types or [], normalize, segmented)
+                audio_data, model_name, feature_types or [], normalize, segmented
+            )
 
         except Exception as e:
             logger.error(f"Erro ao carregar arquivo {file_path}: {e}")
             return ProcessingResult(
                 status=ProcessingStatus.ERROR,
-                errors=[f"Erro ao carregar arquivo: {str(e)}"]
+                errors=[f"Erro ao carregar arquivo: {str(e)}"],
             )
 
-    def _detect_with_config(self, audio_data: AudioData, model_name: Optional[str],
-                            feature_types: List[Union[str, 'FeatureType']], normalize: bool = True,
-                            segmented: bool = False) -> ProcessingResult[DeepfakeDetectionResult]:
+    def _detect_with_config(
+        self,
+        audio_data: AudioData,
+        model_name: Optional[str],
+        feature_types: List[Union[str, "FeatureType"]],
+        normalize: bool = True,
+        segmented: bool = False,
+    ) -> ProcessingResult[DeepfakeDetectionResult]:
         try:
             if model_name is None:
                 model_name = self.default_model
@@ -396,7 +431,8 @@ class DetectionService(IDetectionService):
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
                     errors=[
-                        f"Modelo '{model_name}' não encontrado ou falha ao carregar. Disponíveis: {self.model_loader.get_available_models()}"]
+                        f"Modelo '{model_name}' não encontrado ou falha ao carregar. Disponíveis: {self.model_loader.get_available_models()}"
+                    ],
                 )
 
             try:
@@ -407,44 +443,53 @@ class DetectionService(IDetectionService):
             # Se for segmentado, usamos o método dedicado
             if segmented:
                 return self._predict_segmented(
-                    audio_data, model_info, model_name, feature_types, normalize)
+                    audio_data, model_info, model_name, feature_types, normalize
+                )
 
             # Fallback para não segmentado ou raw normal
             prepared = self.feature_preparer.prepare_input(
-                audio_data, model_info, arch_info)
-            if prepared['status'] != 'ok':
-                return ProcessingResult(status=ProcessingStatus.ERROR, errors=[
-                                        prepared.get('error')])
+                audio_data, model_info, arch_info
+            )
+            if prepared["status"] != "ok":
+                return ProcessingResult(
+                    status=ProcessingStatus.ERROR, errors=[prepared.get("error")]
+                )
 
-            features = prepared['features']
+            features = prepared["features"]
 
             # Usar predict single para compatibilidade simples aqui
             prediction_result = self.predictor.predict(
-                model_info, features, device=self.device)
+                model_info, features, device=self.device
+            )
 
             if prediction_result.status != ProcessingStatus.SUCCESS:
                 return prediction_result
 
             result = DeepfakeDetectionResult(
-                is_fake=prediction_result.data['is_deepfake'],
-                confidence=prediction_result.data['confidence'],
+                is_fake=prediction_result.data["is_deepfake"],
+                confidence=prediction_result.data["confidence"],
                 probabilities={
-                    'fake': prediction_result.data['confidence'],
-                    'real': 1.0 - prediction_result.data['confidence']},
+                    "fake": prediction_result.data["confidence"],
+                    "real": 1.0 - prediction_result.data["confidence"],
+                },
                 model_name=model_name,
-                features_used=['raw'],
-                metadata=prepared['metadata']
+                features_used=["raw"],
+                metadata=prepared["metadata"],
             )
-            return ProcessingResult(
-                status=ProcessingStatus.SUCCESS, data=result)
+            return ProcessingResult(status=ProcessingStatus.SUCCESS, data=result)
 
         except Exception as e:
             logger.error(f"Erro na detecção com config: {e}")
-            return ProcessingResult(
-                status=ProcessingStatus.ERROR, errors=[str(e)])
+            return ProcessingResult(status=ProcessingStatus.ERROR, errors=[str(e)])
 
-    def _predict_segmented(self, audio_data: AudioData, model_info: ModelInfo,
-                           model_name: str, feature_types: List, normalize: bool) -> ProcessingResult[DeepfakeDetectionResult]:
+    def _predict_segmented(
+        self,
+        audio_data: AudioData,
+        model_info: ModelInfo,
+        model_name: str,
+        feature_types: List,
+        normalize: bool,
+    ) -> ProcessingResult[DeepfakeDetectionResult]:
         """Realiza predição segmentada (janelamento) para áudios longos.
 
         BUG FIX: a versão anterior sempre fatiava o áudio bruto em janelas
@@ -462,7 +507,8 @@ class DetectionService(IDetectionService):
         try:
             contract = (
                 model_info.input_contract
-                if isinstance(model_info.input_contract, dict) else {}
+                if isinstance(model_info.input_contract, dict)
+                else {}
             )
             # Janela nativa do benchmark (5 s @16 kHz; benchmark_frontend
             # recorta/ajusta internamente para o que cada modelo precisa —
@@ -472,8 +518,7 @@ class DetectionService(IDetectionService):
             if not window_samples:
                 target_shape = model_info.input_shape or ()
                 window_samples = (
-                    int(target_shape[0])
-                    if target_shape and target_shape[0] else 80000
+                    int(target_shape[0]) if target_shape and target_shape[0] else 80000
                 )
             window_samples = max(window_samples, 16000)
 
@@ -482,7 +527,8 @@ class DetectionService(IDetectionService):
             if samples.ndim > 1:
                 samples = (
                     samples.mean(axis=-1)
-                    if samples.shape[-1] > 1 else samples.reshape(-1)
+                    if samples.shape[-1] > 1
+                    else samples.reshape(-1)
                 )
 
             try:
@@ -501,10 +547,11 @@ class DetectionService(IDetectionService):
             windows_total = 0
             start = 0
             while start < max(total, 1):
-                chunk = samples[start:start + window_samples]
+                chunk = samples[start : start + window_samples]
                 if chunk.shape[0] < window_samples:
                     chunk = np.pad(
-                        chunk, (0, window_samples - chunk.shape[0]),
+                        chunk,
+                        (0, window_samples - chunk.shape[0]),
                         mode="constant",
                     )
                 windows_total += 1
@@ -516,17 +563,19 @@ class DetectionService(IDetectionService):
                     duration=float(window_samples / sr) if sr else 0.0,
                 )
                 prepared = self.feature_preparer.prepare_input(
-                    window_audio, model_info, arch_info)
-                if prepared['status'] == 'ok':
+                    window_audio, model_info, arch_info
+                )
+                if prepared["status"] == "ok":
                     pred_result = self.predictor.predict(
-                        model_info, prepared['features'], device=self.device)
+                        model_info, prepared["features"], device=self.device
+                    )
                     if pred_result.status == ProcessingStatus.SUCCESS:
                         pred = pred_result.data
                         window_p_fake.append(
-                            float(pred.get('p_fake', pred.get('confidence', 0.5)))
+                            float(pred.get("p_fake", pred.get("confidence", 0.5)))
                         )
                         window_threshold = float(
-                            pred.get('classification_threshold', window_threshold)
+                            pred.get("classification_threshold", window_threshold)
                         )
                     else:
                         errors += 1
@@ -552,41 +601,37 @@ class DetectionService(IDetectionService):
             confidence = avg_p_fake if is_fake else avg_p_real
 
             extraction_info = {
-                'feature_type': 'segmented_windowed',
-                'feature_frontend': contract.get('feature_frontend'),
-                'windows_used': len(window_p_fake),
-                'windows_total': windows_total,
-                'window_errors': errors,
-                'window_seconds': round(window_samples / sr, 2) if sr else None,
-                'duration_s': audio_data.duration,
-                'classification_threshold': window_threshold,
+                "feature_type": "segmented_windowed",
+                "feature_frontend": contract.get("feature_frontend"),
+                "windows_used": len(window_p_fake),
+                "windows_total": windows_total,
+                "window_errors": errors,
+                "window_seconds": round(window_samples / sr, 2) if sr else None,
+                "duration_s": audio_data.duration,
+                "classification_threshold": window_threshold,
             }
 
             result = DeepfakeDetectionResult(
                 is_fake=is_fake,
                 confidence=confidence,
-                probabilities={
-                    'fake': avg_p_fake,
-                    'real': avg_p_real},
+                probabilities={"fake": avg_p_fake, "real": avg_p_real},
                 model_name=model_name,
-                features_used=[contract.get('feature_frontend') or 'raw'],
-                metadata=extraction_info
+                features_used=[contract.get("feature_frontend") or "raw"],
+                metadata=extraction_info,
             )
-            return ProcessingResult(
-                status=ProcessingStatus.SUCCESS, data=result)
+            return ProcessingResult(status=ProcessingStatus.SUCCESS, data=result)
 
         except Exception as e:
             logger.exception("Erro na predição segmentada")
             return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=[f"Erro na segmentação: {str(e)}"]
+                status=ProcessingStatus.ERROR, errors=[f"Erro na segmentação: {str(e)}"]
             )
 
     def detect_multi_model(
         self,
         audio_data: AudioData,
         model_names: List[str],
-        fusion: str = 'weighted_avg',
+        fusion: str = "weighted_avg",
         weights: Optional[Union[List[float], str]] = None,
         use_tta: bool = False,
     ) -> ProcessingResult[DeepfakeDetectionResult]:
@@ -620,7 +665,7 @@ class DetectionService(IDetectionService):
                     errors=["Lista de modelos vazia"],
                 )
 
-            valid_fusions = {'weighted_avg', 'majority_vote', 'max_conf', 'soft_voting'}
+            valid_fusions = {"weighted_avg", "majority_vote", "max_conf", "soft_voting"}
             if fusion not in valid_fusions:
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
@@ -639,8 +684,10 @@ class DetectionService(IDetectionService):
                 else:
                     return ProcessingResult(
                         status=ProcessingStatus.ERROR,
-                        errors=[f"weights '{weights}' inválido. "
-                                "Use lista, 'robustness' ou 'uniform'."],
+                        errors=[
+                            f"weights '{weights}' inválido. "
+                            "Use lista, 'robustness' ou 'uniform'."
+                        ],
                     )
             if weights is None:
                 weights = [1.0 / len(model_names)] * len(model_names)
@@ -655,8 +702,11 @@ class DetectionService(IDetectionService):
                     )
                 # Normaliza pesos
                 w_sum = sum(weights)
-                weights = [w / w_sum for w in weights] if w_sum > 0 else \
-                          [1.0 / len(weights)] * len(weights)
+                weights = (
+                    [w / w_sum for w in weights]
+                    if w_sum > 0
+                    else [1.0 / len(weights)] * len(weights)
+                )
 
             # Executa cada modelo
             per_model_results: List[Dict] = []
@@ -666,17 +716,19 @@ class DetectionService(IDetectionService):
                 )
                 if single_result.status == ProcessingStatus.SUCCESS:
                     r = single_result.data
-                    per_model_results.append({
-                        'model': name,
-                        'is_fake': bool(r.is_fake),
-                        'confidence': float(r.confidence),
-                        'fake_prob': float(r.probabilities.get('fake', r.confidence)),
-                        'metadata': r.metadata,
-                    })
-                else:
-                    logger.warning(
-                        f"Modelo '{name}' falhou: {single_result.errors}"
+                    per_model_results.append(
+                        {
+                            "model": name,
+                            "is_fake": bool(r.is_fake),
+                            "confidence": float(r.confidence),
+                            "fake_prob": float(
+                                r.probabilities.get("fake", r.confidence)
+                            ),
+                            "metadata": r.metadata,
+                        }
                     )
+                else:
+                    logger.warning(f"Modelo '{name}' falhou: {single_result.errors}")
 
             if not per_model_results:
                 return ProcessingResult(
@@ -685,23 +737,23 @@ class DetectionService(IDetectionService):
                 )
 
             # Aplica estratégia de fusão
-            fake_probs = np.array([r['fake_prob'] for r in per_model_results])
-            valid_weights = np.array(weights[:len(per_model_results)])
+            fake_probs = np.array([r["fake_prob"] for r in per_model_results])
+            valid_weights = np.array(weights[: len(per_model_results)])
             valid_weights = valid_weights / valid_weights.sum()  # re-normaliza
 
-            if fusion == 'weighted_avg':
+            if fusion == "weighted_avg":
                 fused_prob = float(np.sum(fake_probs * valid_weights))
-            elif fusion == 'soft_voting':
+            elif fusion == "soft_voting":
                 fused_prob = float(np.mean(fake_probs))
-            elif fusion == 'majority_vote':
-                votes_fake = sum(1 for r in per_model_results if r['is_fake'])
+            elif fusion == "majority_vote":
+                votes_fake = sum(1 for r in per_model_results if r["is_fake"])
                 fused_prob = votes_fake / len(per_model_results)
                 # Confidence = max distância de 0.5
                 fused_prob = 1.0 if votes_fake > len(per_model_results) / 2 else 0.0
                 # Use mean fake_prob como confidence interno
                 if 0.4 < np.mean(fake_probs) < 0.6:
                     fused_prob = float(np.mean(fake_probs))
-            elif fusion == 'max_conf':
+            elif fusion == "max_conf":
                 # Pega resultado do modelo mais "confiante" (distância de 0.5)
                 distances = np.abs(fake_probs - 0.5)
                 max_idx = int(np.argmax(distances))
@@ -710,30 +762,30 @@ class DetectionService(IDetectionService):
             fused_is_fake = fused_prob >= 0.5
 
             # Métricas auxiliares
-            fake_votes = sum(1 for r in per_model_results if r['is_fake'])
-            agreement = max(fake_votes, len(per_model_results) - fake_votes) / len(per_model_results)
+            fake_votes = sum(1 for r in per_model_results if r["is_fake"])
+            agreement = max(fake_votes, len(per_model_results) - fake_votes) / len(
+                per_model_results
+            )
 
             fused_result = DeepfakeDetectionResult(
                 is_fake=fused_is_fake,
                 confidence=float(fused_prob),
                 probabilities={
-                    'fake': float(fused_prob),
-                    'real': float(1.0 - fused_prob),
+                    "fake": float(fused_prob),
+                    "real": float(1.0 - fused_prob),
                 },
                 model_name=f"multi[{','.join(model_names)}]",
-                features_used=['multi_model'],
+                features_used=["multi_model"],
                 metadata={
-                    'fusion': fusion,
-                    'weights': list(map(float, valid_weights.tolist())),
-                    'per_model': per_model_results,
-                    'model_agreement': float(agreement),
-                    'n_models': len(per_model_results),
-                    'fake_votes': int(fake_votes),
+                    "fusion": fusion,
+                    "weights": list(map(float, valid_weights.tolist())),
+                    "per_model": per_model_results,
+                    "model_agreement": float(agreement),
+                    "n_models": len(per_model_results),
+                    "fake_votes": int(fake_votes),
                 },
             )
-            return ProcessingResult(
-                status=ProcessingStatus.SUCCESS, data=fused_result
-            )
+            return ProcessingResult(status=ProcessingStatus.SUCCESS, data=fused_result)
 
         except Exception as e:
             logger.error(f"Erro em detect_multi_model: {e}")
@@ -742,7 +794,9 @@ class DetectionService(IDetectionService):
                 errors=[f"Erro em fusão multi-modelo: {str(e)}"],
             )
 
-    def save_analysis_result(self, result: DeepfakeDetectionResult, filename: str) -> bool:
+    def save_analysis_result(
+        self, result: DeepfakeDetectionResult, filename: str
+    ) -> bool:
         """Persiste o resultado da análise no banco de dados."""
         try:
             from app.core.db.session import SessionLocal
@@ -754,13 +808,13 @@ class DetectionService(IDetectionService):
                 is_fake=result.is_fake,
                 confidence=result.confidence,
                 model_name=result.model_name,
-                duration_seconds=metadata.get('duration_s', 0.0),
-                sample_rate=16000, # Padronizado
+                duration_seconds=metadata.get("duration_s", 0.0),
+                sample_rate=16000,  # Padronizado
                 details={
                     "probabilities": result.probabilities,
                     "metadata": metadata,
-                    "features_used": result.features_used
-                }
+                    "features_used": result.features_used,
+                },
             )
             with SessionLocal() as db:
                 analysis.save(db)

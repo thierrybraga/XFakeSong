@@ -1,0 +1,14 @@
+family: retune-extended
+scope: extended
+models:
+  - Ensemble
+  - EfficientNet-LSTM
+dataset: data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz
+output_dir: data/results/retune_extended
+epochs: 100
+batch_size: 16
+device_profile: gpu
+latency_runs: 30
+snr: [30, 20, 10]
+optimize_hyperparameters: false
+academic_protocol: false

@@ -15,7 +15,7 @@ Uso:
   python scripts/benchmark/benchmark_latency.py --model Conformer   # apenas uma
   python scripts/benchmark/benchmark_latency.py --duration 10       # duração do áudio (s)
   python scripts/benchmark/benchmark_latency.py --n-runs 50         # repetições
-  python scripts/benchmark/benchmark_latency.py --output results/latency.json
+  python scripts/benchmark/benchmark_latency.py --output data/results/latency.json
 """
 
 import argparse
@@ -122,7 +122,7 @@ def main() -> None:
     parser.add_argument("--n-runs", type=int, default=30,
                         help="Número de medições por modelo (default: 30)")
     parser.add_argument("--output", type=str, default=None,
-                        help="Salvar resultados em JSON (ex: results/latency.json)")
+                        help="Salvar resultados em JSON (ex: data/results/latency.json)")
     args = parser.parse_args()
 
     from app.domain.models.architectures.factory import (

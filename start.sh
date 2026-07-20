@@ -791,7 +791,7 @@ run_docker() {
             warn "    sudo apt-get install -y nvidia-container-toolkit"
             warn "    sudo nvidia-ctk runtime configure --runtime=docker"
             warn "    sudo systemctl restart docker   # (no WSL2: reinicie o Docker Desktop)"
-            warn "  Detalhes: docs/02_INSTALACAO_CONFIGURACAO.md (Container Toolkit)"
+            warn "  Detalhes: docs/getting-started/installation.md (Container Toolkit)"
             confirm "Continuar mesmo assim (provável fallback para CPU)?" || \
                 fatal "Abortado. Instale o NVIDIA Container Toolkit e rode novamente."
         else

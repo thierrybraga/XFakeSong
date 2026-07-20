@@ -1,8 +1,8 @@
 param(
     [int]$Epochs = 100,
     [int]$TimeoutMin = 240,
-    [string]$Dataset = "data/datasets/benchmark_audio_raw_balanced_15k.npz",
-    [string]$Out = "results/large_benchmark_full"
+    [string]$Dataset = "data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz",
+    [string]$Out = "data/results/large_benchmark_full"
 )
 
 $ErrorActionPreference = "Stop"

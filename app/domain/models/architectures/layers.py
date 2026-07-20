@@ -653,13 +653,23 @@ class SincNetLayer(layers.Layer):
     Implementation of the Sinc-convolution from Ravanelli & Bengio (2018).
     """
 
-    def __init__(self, filters, kernel_size, sample_rate=16000, min_low_hz=30, min_band_hz=50, **kwargs):
+    def __init__(
+        self,
+        filters,
+        kernel_size,
+        sample_rate=16000,
+        min_low_hz=30,
+        min_band_hz=50,
+        memory_efficient_gpu=True,
+        **kwargs,
+    ):
         super(SincNetLayer, self).__init__(**kwargs)
         self.filters = filters
         self.kernel_size = kernel_size
         self.sample_rate = sample_rate
         self.min_low_hz = min_low_hz
         self.min_band_hz = min_band_hz
+        self.memory_efficient_gpu = memory_efficient_gpu
 
         # Kernel size must be odd
         if kernel_size % 2 == 0:
@@ -769,8 +779,15 @@ class SincNetLayer(layers.Layer):
         filters = tf.transpose(filters)
         filters = tf.expand_dims(filters, 1)
 
-        # Apply convolution
-        output = tf.nn.conv1d(inputs, filters, stride=1, padding='SAME')
+        # cuDNN may select a >35 GiB backward workspace for RawNet2's
+        # 1025-sample Sinc kernel. Run only this one-input-channel front-end on
+        # CPU, where TensorFlow uses bounded memory; tensors and gradients move
+        # automatically, while all residual blocks and the GRU remain on GPU.
+        if self.memory_efficient_gpu:
+            with tf.device("/CPU:0"):
+                output = tf.nn.conv1d(inputs, filters, stride=1, padding='SAME')
+        else:
+            output = tf.nn.conv1d(inputs, filters, stride=1, padding='SAME')
         return tf.cast(output, target_dtype)
 
     def get_config(self):
@@ -778,7 +795,10 @@ class SincNetLayer(layers.Layer):
         config.update({
             'filters': self.filters,
             'kernel_size': self.kernel_size,
-            'sample_rate': self.sample_rate
+            'sample_rate': self.sample_rate,
+            'min_low_hz': self.min_low_hz,
+            'min_band_hz': self.min_band_hz,
+            'memory_efficient_gpu': self.memory_efficient_gpu,
         })
         return config
 

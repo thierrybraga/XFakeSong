@@ -17,6 +17,8 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "variant": "sklearn_random_forest_gridsearch",
         "runner": "benchmarks.runner:classical",
         "input_type": "tabular_features",
+        "family": "classical-tabular",
+        "scope": "official",
     },
     {
         "benchmark_name": "SVM",
@@ -25,6 +27,8 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "variant": "sklearn_svc_rbf_gridsearch",
         "runner": "benchmarks.runner:classical",
         "input_type": "tabular_features",
+        "family": "classical-tabular",
+        "scope": "official",
     },
     {
         "benchmark_name": "Hybrid CNN-Transformer",
@@ -33,6 +37,8 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "variant": "cct",
         "runner": "benchmarks.runner:keras",
         "input_type": "spectrogram",
+        "family": "spectral-attention",
+        "scope": "official",
     },
     {
         "benchmark_name": "SpectrogramTransformer",
@@ -41,6 +47,8 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "variant": "ast_vit_base_scratch",
         "runner": "benchmarks.runner:keras",
         "input_type": "spectrogram",
+        "family": "spectral-attention",
+        "scope": "official",
     },
     {
         "benchmark_name": "MultiscaleCNN",
@@ -49,6 +57,8 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "variant": "res2net50_scale4_no_se",
         "runner": "benchmarks.runner:keras",
         "input_type": "spectrogram",
+        "family": "spectral-convolutional",
+        "scope": "official",
     },
     {
         "benchmark_name": "Conformer",
@@ -57,6 +67,8 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "variant": "conformer",
         "runner": "benchmarks.runner:keras",
         "input_type": "spectrogram",
+        "family": "spectral-attention",
+        "scope": "official",
     },
     {
         "benchmark_name": "RawNet2",
@@ -65,6 +77,8 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "variant": "rawnet2_paper_like_gru1024_dense1024",
         "runner": "benchmarks.runner:keras",
         "input_type": "raw_audio",
+        "family": "waveform-end-to-end",
+        "scope": "official",
     },
     {
         "benchmark_name": "AASIST",
@@ -73,6 +87,8 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "variant": "aasist",
         "runner": "benchmarks.runner:keras",
         "input_type": "raw_audio",
+        "family": "waveform-end-to-end",
+        "scope": "official",
     },
     {
         "benchmark_name": "RawGAT-ST",
@@ -81,6 +97,8 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "variant": "rawgat_st_multiply_stride4",
         "runner": "benchmarks.runner:keras",
         "input_type": "raw_audio",
+        "family": "waveform-end-to-end",
+        "scope": "official",
     },
     {
         "benchmark_name": "WavLM Original",
@@ -89,6 +107,8 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "variant": "microsoft/wavlm-base:frozen_backbone",
         "runner": "scripts.benchmark.run_wavlm_original_benchmark:ssl_original",
         "input_type": "raw_audio_16khz_16000",
+        "family": "ssl-pretrained",
+        "scope": "official",
     },
     {
         "benchmark_name": "HuBERT Original",
@@ -97,7 +117,54 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "variant": "facebook/hubert-base-ls960:frozen_backbone",
         "runner": "scripts.benchmark.run_wavlm_original_benchmark:ssl_original",
         "input_type": "raw_audio_16khz_16000",
+        "family": "ssl-pretrained",
+        "scope": "official",
     },
+]
+
+EXTENDED_MODEL_MANIFEST: List[Dict[str, Any]] = [
+    {
+        "benchmark_name": "Sonic Sleuth",
+        "display_name": "Sonic Sleuth",
+        "runner": "benchmarks.runner:keras",
+        "input_type": "spectrogram",
+        "family": "extended",
+        "scope": "extended",
+    },
+    {
+        "benchmark_name": "EfficientNet-LSTM",
+        "display_name": "EfficientNet-LSTM",
+        "runner": "benchmarks.runner:keras",
+        "input_type": "spectrogram",
+        "family": "extended",
+        "scope": "extended",
+    },
+    {
+        "benchmark_name": "Ensemble",
+        "display_name": "Ensemble",
+        "runner": "benchmarks.runner:keras",
+        "input_type": "multi_representation",
+        "family": "extended",
+        "scope": "extended",
+    },
+]
+
+MODEL_FAMILIES: Dict[str, List[str]] = {
+    family: [
+        item["benchmark_name"]
+        for item in OFFICIAL_TCC_MODEL_MANIFEST
+        if item["family"] == family
+    ]
+    for family in (
+        "classical-tabular",
+        "spectral-convolutional",
+        "spectral-attention",
+        "waveform-end-to-end",
+        "ssl-pretrained",
+    )
+}
+MODEL_FAMILIES["extended"] = [
+    item["benchmark_name"] for item in EXTENDED_MODEL_MANIFEST
 ]
 
 OFFICIAL_TCC_RESULT_ORDER = [
@@ -172,8 +239,8 @@ class BenchmarkConfig:
     seed: int = 42
     snr_levels_db: List[int] = field(default_factory=lambda: [30, 20, 10])
     latency_runs: int = 30
-    output_dir: str = "results/benchmark"
-    models_dir: str = "app/models"
+    output_dir: str = "data/results/benchmark"
+    models_dir: str = "data/models"
     run_api_probe: bool = False
     synthetic_n: int = 360
     synthetic_shape: tuple = (32, 16)
@@ -230,6 +297,8 @@ class BenchmarkConfig:
     fixed_epoch_budget: bool = True
     select_best_checkpoint: bool = True
     decision_threshold: float = 0.5
+    metric_threshold_policy: str = "fixed_0.5_comparison"
+    experiment_scope: str = "official"
     # Rigor acadêmico (2026-07-14): IC 95% de bootstrap (EER/AUC/accuracy)
     # nas métricas limpas e de robustez. 1000 reamostragens ≈ segundos por
     # condição; 0 desliga (testes/smokes).

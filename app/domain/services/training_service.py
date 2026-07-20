@@ -39,31 +39,32 @@ class TrainingService(ITrainingService):
     # esses ao create_model quebra builders cujo inner não aceita **kwargs
     # (ex.: _create_res2net_model → "unexpected keyword argument 'patience'").
     # Derivado dinamicamente do dataclass para não desatualizar.
-    _NON_MODEL_PARAM_KEYS = (
-        {f.name for f in dataclasses.fields(TrainingConfig)}
-        | {
-            "patience",
-            "lr_patience",
-            "gradient_clip",
-            "augmentation_strength",
-            "model_name",
-            "num_classes",
-            "parameters",
-            "architecture",
-            "dataset_path",
-            "use_mfcc_branch",
-            "use_cross_attention",
-            "use_gated_fusion",
-            "use_se_blocks",
-            "aux_loss_weight",
-            "use_mixed_precision",
-        }
-    )
+    _NON_MODEL_PARAM_KEYS = {f.name for f in dataclasses.fields(TrainingConfig)} | {
+        "patience",
+        "lr_patience",
+        "gradient_clip",
+        "augmentation_strength",
+        "model_name",
+        "num_classes",
+        "parameters",
+        "architecture",
+        "dataset_path",
+        "use_mfcc_branch",
+        "use_cross_attention",
+        "use_gated_fusion",
+        "use_se_blocks",
+        "aux_loss_weight",
+        "use_mixed_precision",
+    }
 
-    def __init__(self, models_dir: str = "app/models"):
-        self.models_dir = Path(models_dir)
+    def __init__(self, models_dir: str | Path | None = None):
+        self.models_dir = (
+            Path(models_dir)
+            if models_dir is not None
+            else Path(__file__).resolve().parents[3] / "data" / "models"
+        )
         self.models_dir.mkdir(parents=True, exist_ok=True)
-        self._label_classes: list = []   # mapping de classes detectadas
+        self._label_classes: list = []  # mapping de classes detectadas
 
     @staticmethod
     def _normalize_labels(y_raw: np.ndarray) -> tuple:
@@ -134,8 +135,7 @@ class TrainingService(ITrainingService):
 
         # Aplica mapping
         y_norm = np.array(
-            [value_to_idx[v.item() if hasattr(v, "item") else v]
-             for v in y_flat],
+            [value_to_idx[v.item() if hasattr(v, "item") else v] for v in y_flat],
             dtype=np.int32,
         )
         logger.info(
@@ -163,8 +163,7 @@ class TrainingService(ITrainingService):
 
         try:
             return np.array(
-                [value_to_idx[v.item() if hasattr(v, "item") else v]
-                 for v in y_flat],
+                [value_to_idx[v.item() if hasattr(v, "item") else v] for v in y_flat],
                 dtype=np.int32,
             )
         except KeyError as e:
@@ -191,6 +190,7 @@ class TrainingService(ITrainingService):
         val_loss; se ela ficar não-finita ou pior que a dos pesos em memória,
         reverte o snapshot. Retorna True se o checkpoint foi mantido.
         """
+
         def _val_loss() -> float:
             if validation_data is None:
                 return float("nan")
@@ -210,7 +210,8 @@ class TrainingService(ITrainingService):
             model.set_weights(baseline_weights)
             logger.warning(
                 "Falha ao carregar checkpoint %s; pesos em memória mantidos: %s",
-                checkpoint_file, e,
+                checkpoint_file,
+                e,
             )
             return False
 
@@ -225,32 +226,35 @@ class TrainingService(ITrainingService):
             logger.warning(
                 "Checkpoint %s descartado: val_loss=%s pior/não-finita vs "
                 "pesos em memória (val_loss=%s). Pesos finais mantidos.",
-                checkpoint_file, ckpt_loss, baseline_loss,
+                checkpoint_file,
+                ckpt_loss,
+                baseline_loss,
             )
             return False
 
         logger.info(
             "Checkpoint validado no val set: val_loss=%.6g "
             "(pesos finais em memória: %.6g)",
-            ckpt_loss, baseline_loss,
+            ckpt_loss,
+            baseline_loss,
         )
         return True
 
-    def train_model(self, architecture: str, dataset_path: str,
-                    config: Dict[str, Any]) -> ProcessingResult[ModelMetadata]:
+    def train_model(
+        self, architecture: str, dataset_path: str, config: Dict[str, Any]
+    ) -> ProcessingResult[ModelMetadata]:
         """
         Inicia o treinamento de um modelo.
         """
         try:
-            logger.info(
-                f"Iniciando serviço de treinamento para {architecture}")
+            logger.info(f"Iniciando serviço de treinamento para {architecture}")
 
             # 1. Validar Arquitetura
             arch_info = get_architecture_info(architecture)
             if not arch_info:
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
-                    errors=[f"Arquitetura '{architecture}' não encontrada."]
+                    errors=[f"Arquitetura '{architecture}' não encontrada."],
                 )
             architecture = arch_info.name
 
@@ -260,27 +264,27 @@ class TrainingService(ITrainingService):
             if not data_path.exists():
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
-                    errors=[f"Dataset não encontrado: {dataset_path}"]
+                    errors=[f"Dataset não encontrado: {dataset_path}"],
                 )
 
             try:
-                if data_path.suffix == '.npz':
+                if data_path.suffix == ".npz":
                     data = np.load(data_path)
-                    if 'X_train' not in data or 'y_train' not in data:
+                    if "X_train" not in data or "y_train" not in data:
                         return ProcessingResult(
                             status=ProcessingStatus.ERROR,
                             errors=[
                                 "Arquivo .npz deve conter chaves "
                                 "'X_train' e 'y_train'"
-                            ]
+                            ],
                         )
 
-                    X_train = data['X_train']
-                    y_train = data['y_train']
+                    X_train = data["X_train"]
+                    y_train = data["y_train"]
 
                     validation_data = None
-                    if 'X_val' in data and 'y_val' in data:
-                        validation_data = (data['X_val'], data['y_val'])
+                    if "X_val" in data and "y_val" in data:
+                        validation_data = (data["X_val"], data["y_val"])
 
                     # BUG.Training.1/2/3: normaliza labels para [0, K-1).
                     # Datasets como BRSpeech-DF/ASVspoof podem trazer labels
@@ -292,9 +296,7 @@ class TrainingService(ITrainingService):
                     if validation_data is not None:
                         # Aplica MESMO mapping ao val set para consistência
                         X_val, y_val_raw = validation_data
-                        y_val = self._apply_label_mapping(
-                            y_val_raw, label_classes
-                        )
+                        y_val = self._apply_label_mapping(y_val_raw, label_classes)
                         validation_data = (X_val, y_val)
 
                 else:
@@ -307,12 +309,12 @@ class TrainingService(ITrainingService):
                             "Formato não suportado: "
                             f"{data_path.suffix or '(sem extensão)'}. "
                             "Forneça um .npz com X_train/y_train."
-                        ]
+                        ],
                     )
             except Exception as e:
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
-                    errors=[f"Erro ao carregar dataset: {str(e)}"]
+                    errors=[f"Erro ao carregar dataset: {str(e)}"],
                 )
 
             # 3. Instanciar Modelo
@@ -350,17 +352,17 @@ class TrainingService(ITrainingService):
                 # Mesclar parâmetros padrão com os fornecidos
                 merged_params = arch_info.default_params.copy()
                 explicit_model_params = {}
-                if 'parameters' in config:
-                    explicit_model_params = dict(config['parameters'] or {})
+                if "parameters" in config:
+                    explicit_model_params = dict(config["parameters"] or {})
                     merged_params.update(explicit_model_params)
 
                 # Separa params do MODELO dos hints de treino/pipeline. Só os
                 # primeiros vão ao create_model (senão builders sem **kwargs
                 # quebram, ex.: Res2Net com 'patience').
                 model_params = {
-                    k: v for k, v in merged_params.items()
-                    if k not in self._NON_MODEL_PARAM_KEYS
-                    or k in explicit_model_params
+                    k: v
+                    for k, v in merged_params.items()
+                    if k not in self._NON_MODEL_PARAM_KEYS or k in explicit_model_params
                 }
                 sig = inspect.signature(create_model_fn)
                 has_var_keyword = any(
@@ -370,20 +372,19 @@ class TrainingService(ITrainingService):
                 if not has_var_keyword:
                     accepted = set(sig.parameters.keys())
                     model_params = {
-                        k: v for k, v in model_params.items()
-                        if k in accepted
+                        k: v for k, v in model_params.items() if k in accepted
                     }
                 # Aproveita os hints de patience recomendados pelo registry como
                 # DEFAULT do TrainingConfig (se o usuário não os definiu no config).
                 self._recommended_training = {}
-                if 'patience' in merged_params:
-                    self._recommended_training['early_stopping_patience'] = (
-                        merged_params['patience']
+                if "patience" in merged_params:
+                    self._recommended_training["early_stopping_patience"] = (
+                        merged_params["patience"]
                     )
-                if 'lr_patience' in merged_params:
-                    self._recommended_training['reduce_lr_patience'] = (
-                        merged_params['lr_patience']
-                    )
+                if "lr_patience" in merged_params:
+                    self._recommended_training["reduce_lr_patience"] = merged_params[
+                        "lr_patience"
+                    ]
 
                 # Determinar input shape
                 # Assumindo (batch, time, feats) ou (batch, feats)
@@ -391,21 +392,19 @@ class TrainingService(ITrainingService):
 
                 # num_classes: usa valor do config OU usa label_classes
                 # detectado por _normalize_labels (mais confiável que unique).
-                detected_classes = (
-                    len(getattr(self, '_label_classes', []) or [])
-                    or int(np.unique(y_train).size)
-                )
-                num_classes = config.get('num_classes', detected_classes)
+                detected_classes = len(
+                    getattr(self, "_label_classes", []) or []
+                ) or int(np.unique(y_train).size)
+                num_classes = config.get("num_classes", detected_classes)
                 num_classes = max(num_classes, 2)  # mínimo 2 classes
 
                 model = create_model_fn(
-                    input_shape=input_shape,
-                    num_classes=num_classes,
-                    **model_params)
+                    input_shape=input_shape, num_classes=num_classes, **model_params
+                )
             except Exception as e:
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
-                    errors=[f"Erro ao instanciar modelo: {str(e)}"]
+                    errors=[f"Erro ao instanciar modelo: {str(e)}"],
                 )
 
             # 4. Configurar e Executar Treinamento
@@ -413,16 +412,14 @@ class TrainingService(ITrainingService):
             # caller pode trazer 'parameters', 'model_name', 'num_classes',
             # 'architecture' etc., que quebrariam TrainingConfig(**dict).
             valid_fields = {f.name for f in dataclasses.fields(TrainingConfig)}
-            train_conf_dict = {
-                k: v for k, v in config.items() if k in valid_fields
-            }
+            train_conf_dict = {k: v for k, v in config.items() if k in valid_fields}
             # Marca LR como explícito SÓ quando o chamador o passou — permite
             # ao ModelTrainer (compile-respect) sobrescrever o LR da
             # arquitetura apenas nesse caso.
             train_conf_dict["lr_is_explicit"] = "learning_rate" in config
             # Aplica os defaults recomendados pelo registry (patience etc.) sem
             # sobrescrever o que o usuário definiu explicitamente.
-            for k, v in getattr(self, '_recommended_training', {}).items():
+            for k, v in getattr(self, "_recommended_training", {}).items():
                 train_conf_dict.setdefault(k, v)
 
             training_config = TrainingConfig(**train_conf_dict)
@@ -451,8 +448,7 @@ class TrainingService(ITrainingService):
 
             if train_result.status != ProcessingStatus.SUCCESS:
                 return ProcessingResult(
-                    status=ProcessingStatus.ERROR,
-                    errors=train_result.errors
+                    status=ProcessingStatus.ERROR, errors=train_result.errors
                 )
 
             checkpoint_path = config.get("checkpoint_path")
@@ -496,9 +492,7 @@ class TrainingService(ITrainingService):
                                 )
                             )
                             train_result.data["final_metrics"] = (
-                                trainer._calculate_final_metrics(
-                                    model, validation_data
-                                )
+                                trainer._calculate_final_metrics(model, validation_data)
                             )
                         if restored:
                             logger.info(
@@ -512,22 +506,21 @@ class TrainingService(ITrainingService):
 
             # 5. Salvar Modelo e Metadados
             model_name = config.get(
-                'model_name',
-                f"{architecture}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                "model_name",
+                f"{architecture}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
             )
             save_path = self.models_dir / f"{model_name}.keras"
 
             save_result = trainer.save_model(model, save_path)
             if save_result.status != ProcessingStatus.SUCCESS:
                 return ProcessingResult(
-                    status=ProcessingStatus.ERROR,
-                    errors=save_result.errors
+                    status=ProcessingStatus.ERROR, errors=save_result.errors
                 )
 
             # Salvar config do modelo para carregamento futuro.
             # BUG.Training.3: salva label_classes para inverter mapping na inferência.
             config_path = self.models_dir / f"{model_name}_config.json"
-            label_classes = getattr(self, '_label_classes', []) or []
+            label_classes = getattr(self, "_label_classes", []) or []
             # Garante JSON-serializable (numpy types não são por default)
             label_classes_json = [
                 v.item() if hasattr(v, "item") else v for v in label_classes
@@ -561,9 +554,34 @@ class TrainingService(ITrainingService):
                 "metrics": train_result.data,
                 "input_contract": input_contract,
             }
-            with open(config_path, 'w') as f:
+            with open(config_path, "w") as f:
                 json.dump(model_metadata, f, indent=4, default=str)
 
+            try:
+                from app.core.db.experiment_store import experiment_store
+
+                experiment_store.ensure_schema()
+                experiment_store.set_configuration(
+                    "models",
+                    model_name,
+                    model_metadata,
+                    category="model_configuration",
+                    scope=architecture,
+                    source=str(config_path),
+                )
+                experiment_store.set_configuration(
+                    "training_hyperparameters",
+                    model_name,
+                    config,
+                    category="training_hyperparameters",
+                    scope=architecture,
+                    source="TrainingService.train_model",
+                )
+            except Exception as db_error:
+                logger.warning(
+                    "Falha ao registrar configuração do modelo no SQLite: %s",
+                    db_error,
+                )
             # Extract metrics
             metrics = train_result.data or {}
 
@@ -581,19 +599,15 @@ class TrainingService(ITrainingService):
                     recall=metrics.get("recall", 0.0),
                     f1_score=metrics.get("f1", 0.0),
                     training_dataset=str(dataset_path),
-                    file_size=(
-                        save_path.stat().st_size if save_path.exists() else 0
-                    )
+                    file_size=(save_path.stat().st_size if save_path.exists() else 0),
                 ),
                 metadata={"model": model},
             )
 
         except Exception as e:
-            logger.error(
-                f"Erro não tratado no TrainingService: {e}", exc_info=True)
+            logger.error(f"Erro não tratado no TrainingService: {e}", exc_info=True)
             return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=[f"Erro interno: {str(e)}"]
+                status=ProcessingStatus.ERROR, errors=[f"Erro interno: {str(e)}"]
             )
 
     def cross_validate_model(
@@ -629,9 +643,7 @@ class TrainingService(ITrainingService):
         try:
             from sklearn.model_selection import StratifiedKFold
 
-            logger.info(
-                f"Iniciando K-fold CV ({n_folds} folds) para {architecture}"
-            )
+            logger.info(f"Iniciando K-fold CV ({n_folds} folds) para {architecture}")
 
             # 1. Valida arquitetura
             arch_info = get_architecture_info(architecture)
@@ -643,30 +655,31 @@ class TrainingService(ITrainingService):
 
             # 2. Carrega dados
             data_path = Path(dataset_path)
-            if not data_path.exists() or data_path.suffix != '.npz':
+            if not data_path.exists() or data_path.suffix != ".npz":
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
                     errors=[f"Dataset inválido: {dataset_path} (precisa ser .npz)"],
                 )
 
             data = np.load(data_path)
-            if 'X_train' not in data or 'y_train' not in data:
+            if "X_train" not in data or "y_train" not in data:
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
                     errors=["NPZ precisa ter 'X_train' e 'y_train'"],
                 )
-            X = data['X_train']
-            y = data['y_train']
+            X = data["X_train"]
+            y = data["y_train"]
 
             # Para StratifiedKFold precisa de labels 1D
-            y_for_split = y if y.ndim == 1 else np.argmax(y, axis=-1) \
-                          if y.shape[-1] > 1 else y.ravel()
+            y_for_split = (
+                y
+                if y.ndim == 1
+                else np.argmax(y, axis=-1) if y.shape[-1] > 1 else y.ravel()
+            )
             y_for_split = y_for_split.astype(int)
 
             # 3. K-fold splits estratificados
-            skf = StratifiedKFold(
-                n_splits=n_folds, shuffle=True, random_state=42
-            )
+            skf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=42)
 
             per_fold_results: list = []
             for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X, y_for_split)):
@@ -680,13 +693,15 @@ class TrainingService(ITrainingService):
                 try:
                     np.savez(
                         fold_npz,
-                        X_train=X[train_idx], y_train=y[train_idx],
-                        X_val=X[val_idx], y_val=y[val_idx],
+                        X_train=X[train_idx],
+                        y_train=y[train_idx],
+                        X_val=X[val_idx],
+                        y_val=y[val_idx],
                     )
 
                     # Config específica do fold (nome único)
                     fold_config = dict(config)
-                    fold_config['model_name'] = (
+                    fold_config["model_name"] = (
                         f"{architecture}_fold{fold_idx}_"
                         f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
                     )
@@ -698,35 +713,41 @@ class TrainingService(ITrainingService):
                     )
 
                     if fold_result.status != ProcessingStatus.SUCCESS:
-                        logger.warning(
-                            f"Fold {fold_idx} falhou: {fold_result.errors}"
+                        logger.warning(f"Fold {fold_idx} falhou: {fold_result.errors}")
+                        per_fold_results.append(
+                            {
+                                "fold": fold_idx,
+                                "status": "error",
+                                "errors": fold_result.errors,
+                            }
                         )
-                        per_fold_results.append({
-                            'fold': fold_idx,
-                            'status': 'error',
-                            'errors': fold_result.errors,
-                        })
                         continue
 
                     md = fold_result.data
-                    per_fold_results.append({
-                        'fold': fold_idx,
-                        'status': 'success',
-                        'accuracy': md.accuracy,
-                        'precision': md.precision,
-                        'recall': md.recall,
-                        'f1_score': md.f1_score,
-                        'model_path': str(md.file_path) if save_fold_models else None,
-                        'metrics': dict(md.metrics) if md.metrics else {},
-                    })
+                    per_fold_results.append(
+                        {
+                            "fold": fold_idx,
+                            "status": "success",
+                            "accuracy": md.accuracy,
+                            "precision": md.precision,
+                            "recall": md.recall,
+                            "f1_score": md.f1_score,
+                            "model_path": (
+                                str(md.file_path) if save_fold_models else None
+                            ),
+                            "metrics": dict(md.metrics) if md.metrics else {},
+                        }
+                    )
 
                     # Remove modelo do fold se save_fold_models=False
                     if not save_fold_models:
                         try:
                             Path(md.file_path).unlink(missing_ok=True)
-                            cfg_p = Path(str(md.file_path).replace(
-                                '.keras', '_config.json').replace(
-                                '.h5', '_config.json'))
+                            cfg_p = Path(
+                                str(md.file_path)
+                                .replace(".keras", "_config.json")
+                                .replace(".h5", "_config.json")
+                            )
                             cfg_p.unlink(missing_ok=True)
                         except Exception:
                             pass
@@ -738,7 +759,7 @@ class TrainingService(ITrainingService):
                         pass
 
             # 4. Agrega métricas
-            successful_folds = [r for r in per_fold_results if r['status'] == 'success']
+            successful_folds = [r for r in per_fold_results if r["status"] == "success"]
             if not successful_folds:
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
@@ -746,22 +767,25 @@ class TrainingService(ITrainingService):
                 )
 
             aggregated: Dict[str, Dict[str, float]] = {}
-            for metric_key in ('accuracy', 'precision', 'recall', 'f1_score'):
-                values = [r.get(metric_key, 0.0) for r in successful_folds
-                          if r.get(metric_key) is not None]
+            for metric_key in ("accuracy", "precision", "recall", "f1_score"):
+                values = [
+                    r.get(metric_key, 0.0)
+                    for r in successful_folds
+                    if r.get(metric_key) is not None
+                ]
                 if values:
                     aggregated[metric_key] = {
-                        'mean': float(np.mean(values)),
-                        'std': float(np.std(values)),
-                        'min': float(np.min(values)),
-                        'max': float(np.max(values)),
+                        "mean": float(np.mean(values)),
+                        "std": float(np.std(values)),
+                        "min": float(np.min(values)),
+                        "max": float(np.max(values)),
                     }
 
             # Melhor fold por accuracy
             best_fold = max(
                 successful_folds,
-                key=lambda r: r.get('accuracy', 0.0),
-            )['fold']
+                key=lambda r: r.get("accuracy", 0.0),
+            )["fold"]
 
             logger.info(
                 f"K-fold CV concluído: "
@@ -773,12 +797,12 @@ class TrainingService(ITrainingService):
             return ProcessingResult(
                 status=ProcessingStatus.SUCCESS,
                 data={
-                    'per_fold': per_fold_results,
-                    'aggregated': aggregated,
-                    'best_fold': best_fold,
-                    'n_folds': n_folds,
-                    'n_successful': len(successful_folds),
-                    'architecture': architecture,
+                    "per_fold": per_fold_results,
+                    "aggregated": aggregated,
+                    "best_fold": best_fold,
+                    "n_folds": n_folds,
+                    "n_successful": len(successful_folds),
+                    "architecture": architecture,
                 },
             )
 
@@ -799,17 +823,21 @@ class TrainingService(ITrainingService):
     ) -> ProcessingResult[Dict[str, float]]:
         # Implementação futura
         return ProcessingResult(
-            status=ProcessingStatus.ERROR, errors=["Not implemented"])
+            status=ProcessingStatus.ERROR, errors=["Not implemented"]
+        )
 
     def fine_tune_model(
         self, base_model: str, dataset_name: str, config: Dict[str, Any]
     ) -> ProcessingResult[ModelMetadata]:
         # Implementação futura
         return ProcessingResult(
-            status=ProcessingStatus.ERROR, errors=["Not implemented"])
+            status=ProcessingStatus.ERROR, errors=["Not implemented"]
+        )
 
     def get_training_progress(
-            self, training_id: str) -> ProcessingResult[Dict[str, Any]]:
+        self, training_id: str
+    ) -> ProcessingResult[Dict[str, Any]]:
         # Implementação futura
         return ProcessingResult(
-            status=ProcessingStatus.ERROR, errors=["Not implemented"])
+            status=ProcessingStatus.ERROR, errors=["Not implemented"]
+        )

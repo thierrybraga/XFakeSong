@@ -21,7 +21,7 @@ protocol:
 
 dataset:
   canonical_tier: medium
-  canonical_npz: data/datasets/benchmark_audio_raw_balanced_15k.npz
+  canonical_npz: data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz
   sample_rate: 16000
   duration_sec: 5.0
   split:

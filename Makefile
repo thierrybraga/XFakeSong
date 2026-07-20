@@ -167,7 +167,7 @@ format:  ## Formata com black + isort
 	.venv/bin/black app/ tests/
 	.venv/bin/isort app/ tests/
 
-# Runner padronizado (escolhe o python do venv). Veja docs/06_QUALIDADE_TESTES.md.
+# Runner padronizado. Veja docs/development/quality-and-testing.md.
 RUN_TESTS := ./scripts/ops/run_tests.sh
 
 .PHONY: test

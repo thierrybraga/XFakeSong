@@ -46,8 +46,10 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 # ───────────────────────────── helpers ─────────────────────────────
 
+
 class Color:
     """Códigos ANSI básicos. No Windows com Terminal moderno funcionam."""
+
     OK = "\033[92m"
     WARN = "\033[93m"
     ERR = "\033[91m"
@@ -74,6 +76,7 @@ def section(title: str) -> None:
 
 
 # ───────────────────────────── checks ─────────────────────────────
+
 
 def check_python_version() -> Tuple[bool, List[str]]:
     """Python 3.11+ requerido. 3.13 OK desde TF 2.20."""
@@ -107,8 +110,10 @@ def check_virtualenv() -> Tuple[bool, List[str]]:
     if in_venv:
         ok(f"Rodando em virtualenv ({sys.prefix})")
     elif venv_dir.exists():
-        warn(f".venv existe mas não está ativado. "
-             f"Ative com: .venv\\Scripts\\activate (Win) ou source .venv/bin/activate")
+        warn(
+            f".venv existe mas não está ativado. "
+            f"Ative com: .venv\\Scripts\\activate (Win) ou source .venv/bin/activate"
+        )
     else:
         warn("Nenhum venv detectado. Recomendado: python -m venv .venv")
     return True, []  # não-crítico
@@ -163,31 +168,41 @@ def check_critical_deps() -> Tuple[bool, List[str]]:
                 missing_critical.append(pip_name)
             else:
                 # Pacote presente, mas uma sub-dependência dele falta
-                err(f"{pip_name:<22} {'IMPORT QUEBRADO':<14} {Color.DIM}(falta '{top}'){Color.END}")
+                err(
+                    f"{pip_name:<22} {'IMPORT QUEBRADO':<14} {Color.DIM}(falta '{top}'){Color.END}"
+                )
                 errors.append(f"broken_import:{pip_name}")
                 broken.append((pip_name, f"dependência ausente: {top}"))
         except ImportError as e:
             # Presente, mas import falha (ex.: API removida numa sub-dependência —
             # típico de gradio×huggingface_hub incompatíveis: 'cannot import HfFolder')
-            err(f"{pip_name:<22} {'IMPORT QUEBRADO':<14} {Color.DIM}({desc}){Color.END}")
+            err(
+                f"{pip_name:<22} {'IMPORT QUEBRADO':<14} {Color.DIM}({desc}){Color.END}"
+            )
             errors.append(f"broken_import:{pip_name}")
             broken.append((pip_name, str(e).splitlines()[0][:80]))
 
     if missing_critical:
         print()
-        err(f"FALTAM {len(missing_critical)} deps críticas: {', '.join(missing_critical)}")
+        err(
+            f"FALTAM {len(missing_critical)} deps críticas: {', '.join(missing_critical)}"
+        )
         print(f"  {Color.BOLD}Fix:{Color.END}  pip install -r requirements.txt")
 
     if broken:
         print()
-        err(f"{len(broken)} dep(s) com IMPORT QUEBRADO (instalada, mas falha ao importar):")
+        err(
+            f"{len(broken)} dep(s) com IMPORT QUEBRADO (instalada, mas falha ao importar):"
+        )
         for name, detail in broken:
             print(f"    • {name}: {detail}")
         print(
             f"  {Color.BOLD}Causa comum:{Color.END} versão de uma sub-dependência "
             f"incompatível (ex.: huggingface_hub 1.x quebra gradio 4.x)."
         )
-        print(f"  {Color.BOLD}Fix:{Color.END}  pip install -r requirements.txt --upgrade")
+        print(
+            f"  {Color.BOLD}Fix:{Color.END}  pip install -r requirements.txt --upgrade"
+        )
 
     print()
     print(f"  {Color.DIM}Opcionais (não bloqueiam startup):{Color.END}")
@@ -347,7 +362,7 @@ def check_port(port: int = 7860) -> Tuple[bool, List[str]]:
 def check_writable_dirs() -> Tuple[bool, List[str]]:
     """Diretórios críticos writable?"""
     section("Diretórios writable")
-    dirs = ["logs", "app/models", "results", "data"]
+    dirs = ["data/logs", "data/models", "results", "data"]
     errors = []
     for d in dirs:
         p = Path(d)
@@ -367,6 +382,7 @@ def check_db_init() -> Tuple[bool, List[str]]:
     section("Banco de dados")
     try:
         from app.core.db.session import check_database_health
+
         if check_database_health():
             ok("DB acessível")
         else:
@@ -402,10 +418,12 @@ def try_fix_install() -> bool:
 
 # ───────────────────────────── main ─────────────────────────────
 
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fix", action="store_true",
-                        help="Tenta corrigir problemas automaticamente")
+    parser.add_argument(
+        "--fix", action="store_true", help="Tenta corrigir problemas automaticamente"
+    )
     parser.add_argument("--port", type=int, default=7860)
     args = parser.parse_args()
 
@@ -444,7 +462,9 @@ def main() -> int:
         print(f"\n  Iniciar com:  python main.py --gradio --gradio-port {args.port}")
         return 0
     elif has_critical:
-        print(f"{Color.ERR}{Color.BOLD}  STATUS: ERRO CRÍTICO — corrigir antes de iniciar{Color.END}")
+        print(
+            f"{Color.ERR}{Color.BOLD}  STATUS: ERRO CRÍTICO — corrigir antes de iniciar{Color.END}"
+        )
         print(f"  Problemas: {', '.join(all_errors)}")
 
         if args.fix and "missing_dep" in str(all_errors):
@@ -453,7 +473,9 @@ def main() -> int:
             print(f"\n  Tentar fix automático: python scripts/ops/doctor.py --fix")
         return 2
     else:
-        print(f"{Color.WARN}{Color.BOLD}  STATUS: WARNINGS — app pode iniciar mas tem ressalvas{Color.END}")
+        print(
+            f"{Color.WARN}{Color.BOLD}  STATUS: WARNINGS — app pode iniciar mas tem ressalvas{Color.END}"
+        )
         print(f"  Avisos: {', '.join(all_errors)}")
         return 1
 

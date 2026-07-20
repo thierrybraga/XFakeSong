@@ -34,7 +34,7 @@ def strict_ssl_guard(model_name: str) -> None:
     silenciosamente o backbone CNN-1D treinado do zero — protege a integridade do
     benchmark, que NÃO deve comparar números do fallback com os SSL reais da
     literatura. Sem a flag, apenas registra um aviso explícito (comportamento
-    padrão preservado). Ver docs/08_ARQUITETURAS.md (caveat SSL).
+    padrão preservado). Ver docs/models/architectures.md (caveat SSL).
     """
     msg = (
         f"[SSL] {model_name}: backbone real indisponível no caminho TensorFlow — "

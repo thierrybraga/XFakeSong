@@ -20,8 +20,8 @@ PyTorch e transformers SSL.
 ## Volumes compartilhados
 
 - [data/datasets](../data/datasets): datasets canônicos de benchmark.
-- [app/models](../app/models): artefatos treinados consumidos por Gradio/API.
-- [results](../results): métricas, figuras e relatórios.
+- [data/models](../data/models): artefatos treinados consumidos por Gradio/API.
+- [data/results](../../data/results): métricas, figuras e relatórios.
 - [cache](../cache): caches externos de Hugging Face, Torch e TensorFlow.
 
 Todo build (dev, treino, benchmark, CI) usa os perfis em [docker/compose](../docker/compose).

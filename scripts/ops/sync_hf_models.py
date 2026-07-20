@@ -4,7 +4,7 @@
 The script is intentionally conservative for Spaces:
 - no-op when MODEL_REPO_ID/XFAKE_MODEL_REPO_ID is not configured;
 - skips download when the expected benchmark artifacts already exist;
-- copies only model/runtime artifacts into app/models by default.
+- copies only model/runtime artifacts into data/models by default.
 """
 
 from __future__ import annotations
@@ -37,13 +37,13 @@ EXPECTED_ARTIFACTS = (
 ALLOW_PATTERNS = (
     "bench_*",
     "pretrained_manifest.json",
-    "benchmark_final_manifest.json",
+    "registry.json",
     "wavlm_backbone/*",
     "hubert_backbone/*",
     "benchmark_final/**",
     "models/bench_*",
     "models/pretrained_manifest.json",
-    "models/benchmark_final_manifest.json",
+    "models/registry.json",
     "models/wavlm_backbone/*",
     "models/hubert_backbone/*",
     "models/benchmark_final/**",
@@ -153,7 +153,7 @@ def main() -> None:
         "--models-dir",
         default=os.getenv("DEEPFAKE_MODELS_DIR")
         or os.getenv("MODELS_DIR")
-        or "app/models",
+        or "data/models",
     )
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()

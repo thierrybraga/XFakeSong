@@ -3,15 +3,29 @@
 from .analysis import AnalysisResult
 from .architecture_config import ArchitectureConfig
 from .base_model import BaseModel
+from .experiment import (
+    ArtifactRecord,
+    ConfigurationEntry,
+    ExperimentRun,
+    MetricRecord,
+    ModelRun,
+    SystemSnapshot,
+)
 from .training_job import TrainingJob
 from .user import User
 from .voice_profile import VoiceProfile
 
 __all__ = [
-    'BaseModel',
-    'AnalysisResult',
-    'ArchitectureConfig',
-    'User',
-    'TrainingJob',
-    'VoiceProfile',
+    "BaseModel",
+    "AnalysisResult",
+    "ArchitectureConfig",
+    "User",
+    "TrainingJob",
+    "VoiceProfile",
+    "ExperimentRun",
+    "ModelRun",
+    "MetricRecord",
+    "ConfigurationEntry",
+    "SystemSnapshot",
+    "ArtifactRecord",
 ]

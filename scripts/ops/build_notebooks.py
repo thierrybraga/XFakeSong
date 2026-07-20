@@ -132,7 +132,7 @@ if RUN_EVAL:
         architectures=[ARCHITECTURE],
         synthetic_n=160,
         snr_levels_db=[20],
-        output_dir=str(ROOT / "results" / "notebook_eval" / ARCHITECTURE.lower()),
+        output_dir=str(ROOT / "data" / "results" / "notebook_eval" / ARCHITECTURE.lower()),
     )
     r = run_benchmark(cfg)["architectures"][ARCHITECTURE]
     if r.get("status") == "ok":
@@ -447,8 +447,8 @@ def build_features():
         md("""
         ## Leituras
 
-        - `docs/04_FEATURES.md` — features e extratores.
-        - `docs/09_INFERENCIA.md` — como o `input_contract` garante paridade
+        - `docs/architecture/audio-features.md` — features e extratores.
+        - `docs/models/inference.md` — como o `input_contract` garante paridade
           treino↔inferência (o mesmo front-end usado aqui é reproduzido na
           detecção).
         """),
@@ -555,9 +555,9 @@ def build_models():
             md("""
             ## Como ler este notebook
 
-            - `docs/08_ARQUITETURAS.md` — descrição de todas as arquiteturas.
-            - `docs/10_TREINAMENTO.md` — hiperparâmetros e estratégia de treino.
-            - `docs/15_BENCHMARK.md` — execução completa, métricas e gráficos.
+            - `docs/models/architectures.md` — descrição de todas as arquiteturas.
+            - `docs/models/training.md` — hiperparâmetros e estratégia de treino.
+            - `docs/evaluation/benchmark.md` — execução completa, métricas e gráficos.
 
             No relatório, compare sempre: acurácia, EER, AUC-ROC, min-tDCF,
             latência, tamanho do modelo, matriz de confusão e distribuição de scores.
@@ -577,7 +577,7 @@ def build_models():
             code(f"""
             import json
 
-            metrics_path = ROOT / "results" / {TCC_RESULTS!r} / "architectures" / {slug!r} / "metrics.json"
+            metrics_path = ROOT / "data" / "results" / {TCC_RESULTS!r} / "architectures" / {slug!r} / "metrics.json"
             if metrics_path.exists():
                 metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
                 print(json.dumps(metrics.get("clean", metrics), indent=2, ensure_ascii=False)[:2000])
@@ -605,7 +605,7 @@ def build_pipeline():
         ## Tiers de dataset
 
         O dataset é montado por **tier** (`scripts/dataset/build_dataset.py --tier ...`),
-        a fonte única de tamanho/finalidade (ver `docs/12_DATASETS.md`):
+        a fonte única de tamanho/finalidade (ver `docs/data/public-datasets.md`):
 
         | Tier | Por classe | Finalidade | Split |
         |------|-----------:|------------|-------|
@@ -642,7 +642,7 @@ def build_pipeline():
         except Exception:
             pass
 
-        OUT = ROOT / "results" / "notebook_benchmark"
+        OUT = ROOT / "data" / "results" / "notebook_benchmark"
         cfg = BenchmarkConfig.quick(
             architectures=["MultiscaleCNN", "SVM", "RandomForest"],
             synthetic_n=160,
@@ -680,7 +680,7 @@ def build_pipeline():
         > **desligado por padrão** (`RUN_FULL_PIPELINE = False`). O
         > `--tcc-full-dataset` já ativa download + benchmark completo + probe da API.
 
-        A execução completa grava o relatório em `results/tcc_full_20k/`:
+        A execução completa grava o relatório em `data/results/tcc_full_20k/`:
         `dataset.md`, `dataset_manifest.json`, `results.json`/`results.csv`,
         `tcc_report.md` e as figuras `figures/roc.png`,
         `figures/confusion_matrices.png` e `figures/score_distributions.png`
@@ -691,7 +691,7 @@ def build_pipeline():
         import subprocess
 
         RUN_FULL_PIPELINE = False
-        OUTPUT_DIR = ROOT / "results" / "tcc_full_20k"
+        OUTPUT_DIR = ROOT / "data" / "results" / "tcc_full_20k"
         DATASET_NPZ = ROOT / "data" / "datasets" / "benchmark_audio_raw_20k.npz"
 
         cmd = [
@@ -713,18 +713,18 @@ def build_pipeline():
 
         ```bash
         python scripts/benchmark/run_tcc_pipeline.py --tcc-full-dataset \\
-            --out results/tcc_full_20k \\
+            --out data/results/tcc_full_20k \\
             --npz data/datasets/benchmark_audio_raw_20k.npz
         ```
 
         Ou o benchmark direto sobre um `.npz` já exportado (veja como gerar o
-        dataset em `docs/12_DATASETS.md`):
+        dataset em `docs/data/public-datasets.md`):
 
         ```bash
         python scripts/benchmark/run_benchmark.py --full --dataset data/datasets/SEU_DATASET.npz
         ```
 
-        Veja `docs/15_BENCHMARK.md` para o mapeamento saída → tabela/figura do TCC.
+        Veja `docs/evaluation/benchmark.md` para o mapeamento saída → tabela/figura do TCC.
         """),
         md("## 3. Validar e ler artefatos do relatório"),
         code("""
@@ -737,8 +737,8 @@ def build_pipeline():
 
         # Lê o relatório que existir: o completo (Seção 2) OU o rápido (Seção 1) —
         # assim a tabela aparece mesmo sem rodar o pipeline de horas.
-        candidates = [ROOT / "results" / "tcc_full_20k",
-                      ROOT / "results" / "notebook_benchmark"]
+        candidates = [ROOT / "data" / "results" / "tcc_full_20k",
+                      ROOT / "data" / "results" / "notebook_benchmark"]
         report_dir = next((d for d in candidates if (d / "results.csv").exists()),
                           candidates[0])
         print("Lendo relatório de:", report_dir)
@@ -818,7 +818,7 @@ def build_pipeline():
         > ⚠️ **Requer `datasets<4.0`** — a 4.x exige `torchcodec` e quebra o
         > download de áudio (a célula instala a versão certa). Algumas fontes
         > pedem um **token do HuggingFace** (erro 401) — exporte `HF_TOKEN` antes
-        > ou veja `docs/12_DATASETS.md`. **FLEURS** (real, PT-BR) é público e leve;
+        > ou veja `docs/data/public-datasets.md`. **FLEURS** (real, PT-BR) é público e leve;
         > fontes *fake* como WaveFake são grandes (dezenas de GB).
         """),
         code("""
@@ -839,7 +839,7 @@ def build_pipeline():
                 "--archs", "SVM",
                 "--epochs", "5",
                 "--npz", str(REAL_NPZ),
-                "--out", str(ROOT / "results" / "nb_real"),
+                "--out", str(ROOT / "data" / "results" / "nb_real"),
             ]
             print(" ".join(cmd))
             subprocess.run(cmd, cwd=ROOT, check=True)
@@ -869,12 +869,12 @@ def build_pipeline():
         ponta a ponta a partir de áudio bruto.
 
         O app principal — tanto o Gradio (`python main.py --gradio`) quanto a API —
-        lê **`app/models/`**, que é também o **default** do `TrainingService`. Logo,
+        lê **`data/models/`**, que é também o **default** do `TrainingService`. Logo,
         treine sem passar `models_dir` e o modelo já cai no lugar certo (ou copie o
-        par para `app/models/`).
+        par para `data/models/`).
 
         ```python
-        # default models_dir = app/models (lido pelo Gradio E pela API):
+        # default models_dir = data/models (lido pelo Gradio E pela API):
         TrainingService().train_model(...)
         ```
         """),
@@ -954,7 +954,7 @@ def build_pipeline():
         from app.domain.services.detection_service import DetectionService
 
         # Mesma instância que o app cria — só muda o models_dir (aponta p/ o do
-        # notebook). No app, o default já é "app/models" (Gradio E API).
+        # notebook). No app, o default já é "data/models" (Gradio E API).
         ds = DetectionService(models_dir=str(models_dir), create_default_models=False)
 
         # Entrada REAL do pipeline: áudio bruto de 1 s (16 kHz).
@@ -979,10 +979,10 @@ def build_pipeline():
 
         | Interface | Diretório lido | Como subir o modelo |
         | --- | --- | --- |
-        | **Gradio** (`python main.py --gradio`) | `app/models/` | copie `<nome>.keras` + `<nome>_config.json` para `app/models/` |
-        | **API FastAPI** | `app/models/` | idem — mesmo diretório |
+        | **Gradio** (`python main.py --gradio`) | `data/models/` | copie `<nome>.keras` + `<nome>_config.json` para `data/models/` |
+        | **API FastAPI** | `data/models/` | idem — mesmo diretório |
 
-        > Dica: `app/models/` é o **default** do `TrainingService` e do
+        > Dica: `data/models/` é o **default** do `TrainingService` e do
         > `DetectionService`, então treinar sem passar `models_dir` já põe o modelo
         > no lugar certo para as duas interfaces. Sem o `_config.json` ao lado, o
         > serviço cai no contrato do registry (ainda funciona, mas sem a
@@ -1101,7 +1101,7 @@ def build_pipeline():
         ]
 
         # Tier do dataset (test/small/medium/large) — define tamanho, fontes e
-        # protocolo de split. Ver docs/12_DATASETS.md. O `medium` (7.5k/classe)
+        # protocolo de split. Ver docs/data/public-datasets.md. O `medium` (7.5k/classe)
         # é o benchmark canônico 15k.
         TIER = "medium"
         # protocolo de usuários não vistos — requer manifesto de falante

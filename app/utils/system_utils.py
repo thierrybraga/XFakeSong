@@ -5,24 +5,28 @@ from pathlib import Path
 from typing import List
 
 
-def bootstrap_dirs(app_base: Path) -> None:
+def bootstrap_dirs(project_root: Path) -> None:
     """Garante que os diretórios necessários existem."""
-    models = app_base / "models"
-    results = app_base / "results"
+    models = project_root / "data" / "models"
+    results = project_root / "data" / "results"
     models.mkdir(parents=True, exist_ok=True)
     results.mkdir(parents=True, exist_ok=True)
     print(f"✅ Diretórios garantidos: {models} e {results}")
 
 
-def cleanup_workspace(project_root: Path, days: int = 30,
-                      dry_run: bool = False, delete_datasets: bool = False) -> None:
+def cleanup_workspace(
+    project_root: Path,
+    days: int = 30,
+    dry_run: bool = False,
+    delete_datasets: bool = False,
+) -> None:
     """Limpa arquivos antigos e temporários do workspace."""
     app_base = project_root / "app"
     cutoff = datetime.now() - timedelta(days=days)
 
     targets: List[Path] = []
 
-    for log_file in project_root.glob("*.log"):
+    for log_file in (project_root / "data" / "logs").glob("*.log"):
         targets.append(log_file)
 
     patterns = [
@@ -33,7 +37,7 @@ def cleanup_workspace(project_root: Path, days: int = 30,
         for p in project_root.glob(pattern):
             targets.append(p)
 
-    for p in (app_base / "results").glob("*.json"):
+    for p in (project_root / "data" / "results").glob("*.json"):
         targets.append(p)
 
     image_patterns = [
@@ -52,12 +56,9 @@ def cleanup_workspace(project_root: Path, days: int = 30,
     pycache_dirs = list(app_base.rglob("__pycache__"))
 
     if delete_datasets:
-        ds_root = project_root / "datasets"
-        ds_app = app_base / "datasets"
+        ds_root = project_root / "data" / "datasets"
         if ds_root.exists():
             targets.append(ds_root)
-        if ds_app.exists():
-            targets.append(ds_app)
 
     removed = 0
     for path in targets:

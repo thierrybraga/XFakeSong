@@ -12,7 +12,7 @@ Recommended command:
 python scripts/training/train_by_family.py --family classical-ml \
   --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
   --epochs 100 \
-  --out results/classical_benchmark
+  --out data/results/classical_benchmark
 ```
 
 Docker:

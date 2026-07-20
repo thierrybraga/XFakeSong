@@ -3,9 +3,9 @@
 Obrigado por contribuir com o XfakeSong. Este arquivo mantem apenas o fluxo de
 contribuicao; as regras tecnicas detalhadas ficam nos documentos canonicos:
 
-- [Guia do Desenvolvedor](docs/05_GUIA_DEV.md)
-- [Qualidade e Testes](docs/06_QUALIDADE_TESTES.md)
-- [Arquitetura](docs/03_ARQUITETURA.md)
+- [Guia do Desenvolvedor](docs/development/developer-guide.md)
+- [Qualidade e Testes](docs/development/quality-and-testing.md)
+- [Arquitetura](docs/architecture/overview.md)
 - [Codigo de Conduta](CODE_OF_CONDUCT.md)
 
 ## Fluxo de Contribuicao

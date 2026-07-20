@@ -31,8 +31,8 @@ sys.path.insert(0, str(BASE_DIR))
 SAMPLE_RATE = 16_000
 MAX_AUDIO_SAMPLES = 16_000
 SPLITS_DIR = BASE_DIR / "data" / "datasets" / "splits"
-MODELS_DIR = BASE_DIR / "results" / "models"
-OUTPUT_PATH = BASE_DIR / "results" / "robustness_results.json"
+MODELS_DIR = BASE_DIR / "data" / "results" / "models"
+OUTPUT_PATH = BASE_DIR / "data" / "results" / "robustness_results.json"
 
 SNR_LEVELS = [10, 20, 30]  # dB
 

@@ -1,7 +1,7 @@
 # inference-api
 
 Lightweight runtime for Gradio and FastAPI inference. It consumes trained models
-from `app/models` and should not run benchmark or full training jobs.
+from `data/models` and should not run benchmark or full training jobs.
 
 Recommended command:
 

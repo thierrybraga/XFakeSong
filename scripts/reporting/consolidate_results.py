@@ -7,7 +7,7 @@ Preenche o passo que faltava entre o benchmark e o TCC: lê um ou mais
 `main.tex` referencia — sobrescrevendo as antigas. Tudo é derivado dos
 resultados do treinamento; nada é hardcoded.
 
-Saídas (em --out, default results/02_outputs/tcc_consolidated):
+Saídas (em --out, default data/results/paper/consolidated):
     benchmark_summary.json
     figures/benchmark_accuracy_auc.png
     figures/benchmark_eer.png
@@ -20,15 +20,15 @@ Saídas (em --out, default results/02_outputs/tcc_consolidated):
 
 Exemplos:
     # A partir dos runs por arquitetura já existentes:
-    python scripts/reporting/consolidate_results.py results/benchmark_*_gpu_100e \
-        results/benchmark_svm_100e results/tcc_pipeline_svm_rf_balanced_15k
+    python scripts/reporting/consolidate_results.py data/results/benchmark_*_gpu_100e \
+        data/results/benchmark_svm_100e data/results/tcc_pipeline_svm_rf_balanced_15k
 
     # A partir de um run completo (11 modelos do artigo num só results.json):
-    python scripts/reporting/consolidate_results.py results/retrain_wsl2_indist
+    python scripts/reporting/consolidate_results.py data/results/retrain_wsl2_indist
 
-    # Copiar as figuras para o Overleaf após consolidar:
-    python scripts/reporting/consolidate_results.py results/retrain_wsl2_indist \
-        --copy-to results/01_paper/figures
+    # Copiar as figuras para o artigo após consolidar:
+    python scripts/reporting/consolidate_results.py data/results/retrain_wsl2_indist \
+        --copy-to data/results/paper/figures
 """
 
 from __future__ import annotations
@@ -659,10 +659,10 @@ def main() -> int:
     p = argparse.ArgumentParser(description="Consolida resultados → resumo + figuras do TCC")
     p.add_argument("inputs", nargs="+",
                    help="diretórios de run ou results.json (aceita globs)")
-    p.add_argument("--out", default="results/02_outputs/tcc_consolidated",
-                   help="pasta de saída (default: results/02_outputs/tcc_consolidated)")
-    p.add_argument("--copy-to", default="results/01_paper/figures",
-                   help="copia as figuras para o artigo (default: results/01_paper/figures)")
+    p.add_argument("--out", default="data/results/paper/consolidated",
+                   help="pasta de saída (default: data/results/paper/consolidated)")
+    p.add_argument("--copy-to", default="data/results/paper/figures",
+                   help="copia as figuras para o artigo (default: data/results/paper/figures)")
     p.add_argument("--no-figures", action="store_true",
                    help="gera só o benchmark_summary.json")
     p.add_argument(

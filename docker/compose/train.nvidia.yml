@@ -20,7 +20,7 @@ x-train-common: &train-common
     NVIDIA_DRIVER_CAPABILITIES: compute,utility
     DATABASE_URL: sqlite:////app/data/app.db
     DEEPFAKE_UPLOADS_DIR: /app/data/uploads
-    DEEPFAKE_MODELS_DIR: /app/app/models
+    DEEPFAKE_MODELS_DIR: /app/data/models
     HF_HOME: /app/cache/huggingface
     TORCH_HOME: /app/cache/torch
     XFAKE_SYNC_MODELS_ON_BOOT: "false"
@@ -54,7 +54,7 @@ services:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
     image: xfakesong/classical-ml:cpu
     container_name: xfakesong_classical_ml_cpu
-    command: ["python", "scripts/training/train_by_family.py", "--family", "classical-ml", "--device-profile", "cpu"]
+    command: ["python", "scripts/training/train_by_family.py", "--family", "classical-tabular", "--device-profile", "cpu"]
 
   tensorflow-keras:
     <<: *train-common
@@ -65,7 +65,7 @@ services:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
     image: xfakesong/tensorflow-keras:nvidia
     container_name: xfakesong_tensorflow_keras_nvidia
-    command: ["python", "scripts/training/train_by_family.py", "--family", "tensorflow-keras", "--device-profile", "gpu"]
+    command: ["python", "scripts/training/train_by_family.py", "--family", "spectral-attention", "--device-profile", "gpu"]
 
   pytorch-audio:
     <<: *train-common
@@ -76,8 +76,29 @@ services:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
     image: xfakesong/pytorch-audio:nvidia
     container_name: xfakesong_pytorch_audio_nvidia
-    command: ["python", "scripts/training/train_by_family.py", "--family", "pytorch-audio", "--device-profile", "gpu"]
+    command: ["python", "scripts/training/train_by_family.py", "--family", "waveform-end-to-end", "--device-profile", "gpu"]
 
+  spectral-convolutional:
+    <<: *train-common
+    build:
+      context: ../..
+      dockerfile: docker/environments/tensorflow-keras/Dockerfile.nvidia
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
+    image: xfakesong/tensorflow-keras:nvidia
+    container_name: xfakesong_spectral_convolutional_nvidia
+    command: ["python", "scripts/training/train_by_family.py", "--family", "spectral-convolutional", "--device-profile", "gpu"]
+
+  extended:
+    <<: *train-common
+    build:
+      context: ../..
+      dockerfile: docker/environments/tensorflow-keras/Dockerfile.nvidia
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
+    image: xfakesong/tensorflow-keras:nvidia
+    container_name: xfakesong_extended_nvidia
+    command: ["python", "scripts/training/train_by_family.py", "--family", "extended", "--device-profile", "gpu"]
   ssl-transformers:
     <<: *train-common
     build:
@@ -87,4 +108,4 @@ services:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
     image: xfakesong/ssl-transformers:nvidia
     container_name: xfakesong_ssl_transformers_nvidia
-    command: ["python", "scripts/training/train_by_family.py", "--family", "ssl-transformers", "--device-profile", "gpu"]
+    command: ["python", "scripts/training/train_by_family.py", "--family", "ssl-pretrained", "--device-profile", "gpu"]

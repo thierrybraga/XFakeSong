@@ -608,7 +608,7 @@ def main():
     parser.add_argument(
         "--tier", choices=tier_choices(), default=None,
         help="Tier de dataset (test/small/medium/large) — define tamanho, fontes, "
-             "split e protocolo de falante. Veja docs/12_DATASETS.md.",
+             "split e protocolo de falante. Veja docs/data/public-datasets.md.",
     )
     parser.add_argument(
         "--target", type=int, default=None,

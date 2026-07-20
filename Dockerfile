@@ -6,7 +6,7 @@
 # arquivo chamado literalmente `Dockerfile` na raiz do repo — não é o
 # Dockerfile usado por dev/treino/benchmark local, que vivem em
 # docker/environments/*/Dockerfile.{cpu,nvidia} + docker/compose/*.yml
-# (ver docs/02_INSTALACAO_CONFIGURACAO.md). Também validado no CI
+# (ver docs/getting-started/installation.md). Também validado no CI
 # (.github/workflows/ci.yml, job "docker") por PR.
 #
 # Stage 1 (builder): instala dependências de compilação e gera wheels
@@ -153,11 +153,10 @@ WORKDIR /app
 # PROD.4: /tmp/gradio também aqui (Gradio cria sob demanda mas pode falhar
 # em ambientes com /tmp restritivo).
 RUN mkdir -p \
-        /app/logs \
-        /app/app/models \
-        /app/app/results \
-        /app/data/fake \
-        /app/data/real \
+        /app/data/logs \
+        /app/data/models \
+        /app/data/datasets/fake \
+        /app/data/datasets/real \
         /tmp/numba_cache \
         /tmp/matplotlib \
         /tmp/huggingface \

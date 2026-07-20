@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-train_advanced.py — Pipeline de Treinamento para TCC UFSJ 2026.
+train_advanced.py — Pipeline LEGADO de debug (não acadêmico).
 
 Treina cada arquitetura nas splits do dataset PT-BR e registra metricas
 reais para substituir os valores inventados do TCC (Tabela 3).
@@ -42,7 +42,7 @@ SAMPLE_RATE = 16_000
 MAX_AUDIO_SAMPLES_CPU = 16_000   # 1s @ 16kHz — CPU training
 MAX_AUDIO_SAMPLES_GPU = 80_000   # 5s @ 16kHz — GPU training (raw-audio models)
 MAX_AUDIO_SAMPLES     = MAX_AUDIO_SAMPLES_CPU   # updated in main() after GPU setup
-RESULTS_DIR = BASE_DIR / "results"
+RESULTS_DIR = BASE_DIR / "data" / "results"
 
 # Arquiteturas que exigem GPU para convergir (raw-audio / heavy backbones)
 RAW_AUDIO_ARCHS = {"efficientnet_lstm", "aasist", "rawnet2"}
@@ -451,7 +451,7 @@ def print_table3(results: dict):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Pipeline de treinamento para TCC UFSJ 2026"
+        description="Pipeline legado de debug; não usar em benchmark acadêmico"
     )
     parser.add_argument(
         "--model", type=str, default=None,
@@ -483,7 +483,15 @@ def main():
         default=str(RESULTS_DIR / "training_metrics.json"),
         help="Arquivo de saida JSON com metricas",
     )
+    parser.add_argument(
+        "--allow-legacy", action="store_true",
+        help="Confirma uso somente para debug; resultados não são publicáveis.",
+    )
     args = parser.parse_args()
+    if not args.allow_legacy:
+        parser.error(
+            "pipeline legado bloqueado; use train_by_family.py ou confirme --allow-legacy"
+        )
 
     # ── GPU setup (must happen before any TF op) ──────────────────────────
     from app.core.gpu import setup_gpu, is_gpu_available

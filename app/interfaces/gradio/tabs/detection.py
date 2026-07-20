@@ -69,7 +69,7 @@ def get_detection_service():
         # o check e o acquire do lock.
         if _detection_service_instance is None:
             try:
-                # Reusa o MESMO singleton (app/models) da API e do reload do wizard
+                # Reusa o MESMO singleton (data/models) da API e do reload do wizard
                 # de treino — assim um modelo recém-treinado aparece aqui sem
                 # reiniciar. Antes criava um DetectionService() próprio lendo o dir
                 # default "models" (raiz, vazio).

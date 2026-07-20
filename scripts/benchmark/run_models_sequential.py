@@ -5,7 +5,7 @@ Este orquestrador chama `scripts/benchmark/run_benchmark.py --model <nome>` para
 arquitetura. Cada modelo recebe uma pasta própria, log próprio e status próprio.
 
 Exemplos:
-  python scripts/benchmark/run_models_sequential.py --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz
+  python scripts/benchmark/run_models_sequential.py --dataset data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz
   python scripts/benchmark/run_models_sequential.py --models SVM RandomForest --timeout-min 20
   python scripts/benchmark/run_models_sequential.py --neural-only --resume --device-profile gpu
   python scripts/benchmark/run_models_sequential.py --neural-only --plan-only
@@ -34,10 +34,12 @@ SCRIPTS = ROOT / "scripts"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from app.core.config.paths import resolve_results_output  # noqa: E402
 from benchmarks.config import (  # noqa: E402
     CLASSICAL_TCC_ARCHITECTURES,
     DOCKER_TRAINING_ARCHITECTURES,
     NEURAL_DOCKER_ARCHITECTURES,
+    MODEL_FAMILIES,
 )
 
 SSL_ORIGINAL_MODELS = {
@@ -83,13 +85,16 @@ def _inspect_npz(path: Path) -> dict[str, Any]:
     with zipfile.ZipFile(path) as archive:
         names = set(archive.namelist())
         required = {
-            "X_train.npy", "y_train.npy", "X_val.npy",
-            "y_val.npy", "X_test.npy", "y_test.npy",
+            "X_train.npy",
+            "y_train.npy",
+            "X_val.npy",
+            "y_val.npy",
+            "X_test.npy",
+            "y_test.npy",
         }
         predefined = required.issubset(names)
         y_members = (
-            ["y_train.npy", "y_val.npy", "y_test.npy"]
-            if predefined else ["y.npy"]
+            ["y_train.npy", "y_val.npy", "y_test.npy"] if predefined else ["y.npy"]
         )
         if not all(name in names for name in y_members):
             raise ValueError("NPZ sem rótulos completos X/y ou train/val/test")
@@ -103,9 +108,9 @@ def _inspect_npz(path: Path) -> dict[str, Any]:
             parts = []
             identity_members = ["X_test.npy", "y_test.npy"]
             identity_members.extend(
-                name for name in (
-                    "cluster_ids.npy", "source_ids.npy", "sample_paths.npy"
-                ) if name in names
+                name
+                for name in ("cluster_ids.npy", "source_ids.npy", "sample_paths.npy")
+                if name in names
             )
             for name in identity_members:
                 info = archive.getinfo(name)
@@ -124,6 +129,7 @@ def _inspect_npz(path: Path) -> dict[str, Any]:
         "has_source_ids": has_source_ids,
         "has_sample_paths": has_sample_paths,
     }
+
 
 def _sha256_file(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
     digest = hashlib.sha256()
@@ -164,6 +170,7 @@ def _validate_test_lock(
         "validated": True,
     }
 
+
 def _slug(name: str) -> str:
     return "".join(ch if ch.isalnum() else "_" for ch in name.lower()).strip("_")
 
@@ -191,6 +198,59 @@ def _write_json(path: Path, payload: Any) -> None:
         json.dumps(payload, indent=2, ensure_ascii=False, default=str),
         encoding="utf-8",
     )
+
+
+def _git_revision() -> dict[str, Any]:
+    """Captura a revisão e o estado dirty sem alterar o repositório."""
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        dirty = (
+            subprocess.run(["git", "diff", "--quiet"], cwd=ROOT, check=False).returncode
+            != 0
+        )
+        return {"commit": commit, "dirty": dirty}
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"commit": None, "dirty": None, "error": str(exc)}
+
+
+def _code_identity() -> dict[str, str]:
+    files = (
+        ROOT / "benchmarks" / "config.py",
+        ROOT / "benchmarks" / "planning.py",
+        ROOT / "benchmarks" / "runner.py",
+        Path(__file__).resolve(),
+    )
+    return {str(path.relative_to(ROOT)): _sha256_file(path) for path in files}
+
+
+def _run_fingerprint(args: argparse.Namespace, model: str) -> dict[str, Any]:
+    payload = {
+        "schema": "xfakesong-run-fingerprint-v1",
+        "model": model,
+        "scope": getattr(args, "scope", "official"),
+        "dataset": str(Path(args.dataset).resolve()),
+        "dataset_size": Path(args.dataset).stat().st_size,
+        "test_lock_dataset_sha256": (
+            (getattr(args, "validated_test_lock", None) or {}).get("dataset_sha256")
+        ),
+        "command": _build_command(args, model, Path("<MODEL_OUTPUT>")),
+        "python": sys.version,
+        "git": _git_revision(),
+        "code_sha256": _code_identity(),
+    }
+    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=True, default=str)
+    return {**payload, "sha256": hashlib.sha256(encoded.encode("utf-8")).hexdigest()}
+
+
+def _resume_matches(model_dir: Path, expected: dict[str, Any]) -> bool:
+    existing = _load_json(model_dir / "run_fingerprint.json", {})
+    return bool(existing and existing.get("sha256") == expected.get("sha256"))
 
 
 def _model_done(model_dir: Path) -> bool:
@@ -287,6 +347,7 @@ def _build_command(args: argparse.Namespace, model: str, model_dir: Path) -> lis
         "--waveform-noise-batch-size",
         str(args.waveform_noise_batch_size),
     ]
+    cmd.extend(["--experiment-scope", args.scope])
     cmd.append(
         "--waveform-train-augmentation"
         if args.waveform_train_augmentation
@@ -343,7 +404,7 @@ def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, 
             "feature_batch_size": args.ssl_feature_batch_size,
             "latency_runs": args.latency_runs,
             "seed": args.seed,
-        "snr": args.snr,
+            "snr": args.snr,
             "freeze_backbone": True,
             "fit_strategy": "frozen_backbone_embedding_then_classifier_fit",
             "command": cmd,
@@ -472,6 +533,21 @@ def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, 
                 "validated_before_training": True,
             }
             _write_json(results_path, data)
+        if not (data.get("persistence") or {}).get("run_uid"):
+            try:
+                from app.core.db.experiment_store import experiment_store
+
+                experiment_store.ensure_schema()
+                run_uid = experiment_store.persist_benchmark_results(
+                    data, output_dir=model_dir, source=str(results_path)
+                )
+                data["persistence"] = {
+                    "backend": "sqlite",
+                    "run_uid": run_uid,
+                }
+                _write_json(results_path, data)
+            except Exception as exc:
+                _emit(f"[WARN] Falha ao consolidar {model} no SQLite: {exc}")
         metrics = (data.get("architectures") or {}).get(model, {})
         if not metrics:
             metrics = next(iter((data.get("architectures") or {}).values()), {})
@@ -514,6 +590,41 @@ def _write_summary(root_out: Path, summary: dict[str, Any]) -> None:
     root_out.joinpath("run_summary.md").write_text("\n".join(lines), encoding="utf-8")
 
 
+def _aggregate_multiseed(base_out: Path, seeds: list[int]) -> dict[str, Any]:
+    """Agrega métricas por modelo mantendo o teste congelado entre seeds."""
+    by_model: dict[str, dict[str, list[float]]] = {}
+    for seed in seeds:
+        summary = _load_json(base_out / f"seed_{seed}" / "run_summary.json", {})
+        for item in summary.get("models", []):
+            if item.get("status") != "ok":
+                continue
+            target = by_model.setdefault(str(item.get("model")), {})
+            for metric, value in (item.get("clean") or {}).items():
+                supported = {"accuracy", "eer", "auc_roc", "f1", "ece"}
+                if metric in supported and isinstance(value, (int, float)):
+                    target.setdefault(metric, []).append(float(value))
+    models: dict[str, Any] = {}
+    for model, metrics in by_model.items():
+        models[model] = {}
+        for metric, values in metrics.items():
+            arr = np.asarray(values, dtype="float64")
+            models[model][metric] = {
+                "n_seeds": int(len(arr)),
+                "mean": float(np.mean(arr)),
+                "std": float(np.std(arr, ddof=1)) if len(arr) > 1 else 0.0,
+                "min": float(np.min(arr)),
+                "max": float(np.max(arr)),
+            }
+    payload = {
+        "schema": "xfakesong-multiseed-summary-v1",
+        "seeds": seeds,
+        "test_policy": "predefined_frozen_npz",
+        "models": models,
+    }
+    _write_json(base_out / "multiseed_summary.json", payload)
+    return payload
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Roda benchmark de modelos um por vez com timeout e resume.",
@@ -521,7 +632,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--dataset",
-        default="data/datasets/benchmark_audio_raw_balanced_15k.npz",
+        default="data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz",
         help="Dataset .npz usado por todos os modelos.",
     )
     parser.add_argument(
@@ -533,12 +644,17 @@ def main() -> int:
             "artigo + WavLM/HuBERT Original no runner SSL Docker."
         ),
     )
-    parser.add_argument("--neural-only", action="store_true",
-                        help="roda arquiteturas neurais do artigo + WavLM/HuBERT SSL Docker")
-    parser.add_argument("--classical-only", action="store_true",
-                        help="roda somente SVM e RandomForest")
-    parser.add_argument("--out", default="results/sequential_benchmark")
+    parser.add_argument(
+        "--neural-only",
+        action="store_true",
+        help="roda arquiteturas neurais do artigo + WavLM/HuBERT SSL Docker",
+    )
+    parser.add_argument(
+        "--classical-only", action="store_true", help="roda somente SVM e RandomForest"
+    )
+    parser.add_argument("--out", default=None)
     parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--scope", choices=["official", "extended"], default="official")
     parser.add_argument(
         "--test-lock",
         default=None,
@@ -550,10 +666,16 @@ def main() -> int:
         default=True,
         help="exige teste predefinido/congelado e controles acadêmicos padronizados",
     )
-    parser.add_argument("--min-samples", type=int, default=15000,
-                        help="cardinalidade mínima do benchmark acadêmico")
+    parser.add_argument(
+        "--min-samples",
+        type=int,
+        default=15000,
+        help="cardinalidade mínima do benchmark acadêmico",
+    )
     parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--device-profile", choices=["auto", "cpu", "gpu"], default="auto")
+    parser.add_argument(
+        "--device-profile", choices=["auto", "cpu", "gpu"], default="auto"
+    )
     parser.add_argument("--latency-runs", type=int, default=30)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
@@ -591,7 +713,9 @@ def main() -> int:
         ),
     )
     parser.add_argument(
-        "--ssl-train-batch-size", type=int, default=128,
+        "--ssl-train-batch-size",
+        type=int,
+        default=128,
         help="batch customizado das cabeças SSL",
     )
     parser.add_argument(
@@ -602,7 +726,10 @@ def main() -> int:
     )
     parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10])
     parser.add_argument(
-        "--train-aug-snr", nargs="+", type=int, default=[30, 20, 10],
+        "--train-aug-snr",
+        nargs="+",
+        type=int,
+        default=[30, 20, 10],
         help="SNRs balanceados na cópia ruidosa de treino",
     )
     parser.add_argument("--train-noise-copies", type=int, default=1)
@@ -613,15 +740,26 @@ def main() -> int:
         default=True,
     )
     parser.add_argument("--timeout-min", type=float, default=60.0)
-    parser.add_argument("--resume", action="store_true", help="pula modelos já concluídos")
-    parser.add_argument("--plan-only", action="store_true",
-                        help="gera benchmark_plan.* por modelo e não inicia treino")
+    parser.add_argument(
+        "--resume", action="store_true", help="pula modelos já concluídos"
+    )
+    parser.add_argument(
+        "--plan-only",
+        action="store_true",
+        help="gera benchmark_plan.* por modelo e não inicia treino",
+    )
     parser.add_argument("--api", action="store_true")
     parser.add_argument("--no-optimize-hparams", action="store_true")
-    parser.add_argument("--speaker-split", action="store_true",
-                        help="split disjunto por falante (tier large; requer speaker_ids no .npz)")
-    parser.add_argument("--group-split", action="store_true",
-                        help="split por fonte/gerador (cross-generator)")
+    parser.add_argument(
+        "--speaker-split",
+        action="store_true",
+        help="split disjunto por falante (tier large; requer speaker_ids no .npz)",
+    )
+    parser.add_argument(
+        "--group-split",
+        action="store_true",
+        help="split por fonte/gerador (cross-generator)",
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
     if args.neural_only and args.classical_only:
@@ -635,6 +773,19 @@ def main() -> int:
     else:
         selected_models = list(DOCKER_TRAINING_ARCHITECTURES)
 
+    allowed_models = (
+        set(MODEL_FAMILIES["extended"])
+        if args.scope == "extended"
+        else set(DOCKER_TRAINING_ARCHITECTURES)
+    )
+    invalid_models = [model for model in selected_models if model not in allowed_models]
+    if invalid_models:
+        parser.error(
+            f"modelos fora do escopo {args.scope}: {invalid_models}. "
+            "Execute official e extended em suítes separadas."
+        )
+    if args.scope == "extended" and args.academic_protocol:
+        parser.error("o escopo extended exige --no-academic-protocol")
     dataset_path = Path(args.dataset)
     if not dataset_path.is_absolute():
         dataset_path = ROOT / dataset_path
@@ -664,9 +815,11 @@ def main() -> int:
             f"mínimo acadêmico={args.min_samples}. Use o NPZ em data/datasets."
         )
 
-    root_out = Path(args.out)
-    if not root_out.is_absolute():
-        root_out = ROOT / root_out
+    root_out = resolve_results_output(
+        args.out,
+        default_subdir="sequential_benchmark",
+        base_dir=ROOT,
+    )
     root_out.mkdir(parents=True, exist_ok=True)
 
     if args.epochs <= 0:
@@ -684,15 +837,15 @@ def main() -> int:
         if args.snr != [30, 20, 10] or args.train_aug_snr != [30, 20, 10]:
             parser.error("protocolo acadêmico exige SNRs 30, 20 e 10 dB nessa ordem")
         if not npz_inspection["has_cluster_ids"]:
-            parser.error(
-                "protocolo acadêmico exige cluster_ids para IC por cluster"
-            )
+            parser.error("protocolo acadêmico exige cluster_ids para IC por cluster")
         if not npz_inspection["has_source_ids"]:
             parser.error(
                 "protocolo acadêmico exige source_ids/groups para auditoria de domínio"
             )
         if not args.waveform_train_augmentation or args.train_noise_copies != 1:
-            parser.error("protocolo acadêmico exige uma cópia AWGN de treino por amostra")
+            parser.error(
+                "protocolo acadêmico exige uma cópia AWGN de treino por amostra"
+            )
         if args.group_split or args.speaker_split:
             parser.error(
                 "split por grupo/falante deve ser executado como experimento separado; "
@@ -739,6 +892,7 @@ def main() -> int:
                 ),
             },
         )
+        _aggregate_multiseed(base_out, seeds)
     return max(exit_codes) if exit_codes else 2
 
 
@@ -762,7 +916,8 @@ def _run_suite(
             "decision_threshold": 0.5,
             "seed": int(args.seed),
             "split_policy": (
-                "predefined_frozen_npz" if args.academic_protocol
+                "predefined_frozen_npz"
+                if args.academic_protocol
                 else "preserve_predefined_else_stratified_70_15_15"
             ),
             "fail_on_exact_split_overlap": True,
@@ -776,9 +931,16 @@ def _run_suite(
         "dataset_preflight": npz_inspection,
         "test_lock": test_lock,
         "academic_protocol": bool(args.academic_protocol),
+        "experiment_scope": args.scope,
         "model_specific_hyperparameters_preserved": [
-            "learning_rate", "batch_size", "optimizer", "scheduler", "dropout",
-            "weight_decay", "l2", "architecture_parameters",
+            "learning_rate",
+            "batch_size",
+            "optimizer",
+            "scheduler",
+            "dropout",
+            "weight_decay",
+            "l2",
+            "architecture_parameters",
         ],
     }
     root_out.joinpath("benchmark_protocol.json").write_text(
@@ -800,6 +962,7 @@ def _run_suite(
         "dataset_preflight": npz_inspection,
         "test_lock": test_lock,
         "academic_protocol": bool(args.academic_protocol),
+        "experiment_scope": args.scope,
         "device_profile": args.device_profile,
         "timeout_min": args.timeout_min,
         "epochs": args.epochs,
@@ -819,9 +982,27 @@ def _run_suite(
     for model in selected_models:
         model_dir = root_out / _slug(model)
         done = _plan_done(model_dir) if args.plan_only else _model_done(model_dir)
+        fingerprint = _run_fingerprint(args, model)
         if args.resume and model in completed and done:
-            _emit(f"[SKIP] {model} ja concluido")
-            continue
+            if _resume_matches(model_dir, fingerprint):
+                _emit(f"[SKIP] {model} ja concluido; fingerprint confere")
+                continue
+            _emit(
+                f"[RERUN] {model}: artefato antigo não corresponde ao protocolo atual"
+            )
+        _write_json(model_dir / "run_fingerprint.json", fingerprint)
+        _write_json(
+            model_dir / "effective_training_config.json",
+            {
+                "schema": "xfakesong-effective-training-config-v1",
+                "sha256": fingerprint["sha256"],
+                "model": model,
+                "scope": args.scope,
+                "command": fingerprint["command"],
+                "dataset": fingerprint["dataset"],
+                "test_lock_dataset_sha256": fingerprint["test_lock_dataset_sha256"],
+            },
+        )
 
         _emit(f"[RUN] {model} -> {model_dir}")
         result = _run_one(args, model, root_out)
@@ -835,7 +1016,9 @@ def _run_suite(
             _emit(result["log_tail"])
 
     statuses = [item.get("status") for item in summary["models"]]
-    summary["status"] = "ok" if statuses and all(s == "ok" for s in statuses) else "partial"
+    summary["status"] = (
+        "ok" if statuses and all(s == "ok" for s in statuses) else "partial"
+    )
     _write_json(summary_path, summary)
     _write_summary(root_out, summary)
     _emit(f"Resumo: {summary_path}")

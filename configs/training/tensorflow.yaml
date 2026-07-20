@@ -1,20 +1,16 @@
-# TensorFlow/Keras benchmark preset.
-
-family: tensorflow-keras
-# ordem por custo crescente (ver benchmarks/config.py::ALL_TCC_ARCHITECTURES)
+family: spectral-attention
+scope: official
 models:
-  - MultiscaleCNN
-  - Sonic Sleuth
-  - EfficientNet-LSTM
+  - Conformer
+  - Hybrid CNN-Transformer
   - SpectrogramTransformer
-# Dataset canonico: data/datasets/ (raiz consolidada em 2026-07-14; app/datasets foi descontinuado).
-dataset: data/datasets/benchmark_audio_raw_balanced_15k.npz
-output_dir: results/tensorflow_benchmark
-models_dir: app/models
-epochs: 100
-batch_size: 32
+output_dir: data/results/families/spectral_attention
+batch_size: 16
 device_profile: gpu
+dataset: data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz
+models_dir: data/models
+epochs: 100
 latency_runs: 30
 snr: [30, 20, 10]
 optimize_hyperparameters: true
-
+academic_protocol: true

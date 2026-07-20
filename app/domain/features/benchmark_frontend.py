@@ -2,7 +2,7 @@
 
 Este módulo contém, verbatim, as transformações de entrada usadas pelo
 benchmark (``benchmarks/data.py``) para treinar os modelos promovidos em
-``app/models/benchmark_final``:
+``data/models/benchmark_final``:
 
 - **raw**: janela center-crop (ou repetição p/ clipes curtos) + z-score por
   amostra + canal — AASIST/RawGAT-ST usam 64.600 amostras e multicrop;

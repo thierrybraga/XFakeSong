@@ -20,7 +20,7 @@ python scripts/training/train_by_family.py --family pytorch-audio \
   --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
   --epochs 100 \
   --device-profile gpu \
-  --out results/pytorch_benchmark
+  --out data/results/pytorch_benchmark
 ```
 
 GPU Docker:

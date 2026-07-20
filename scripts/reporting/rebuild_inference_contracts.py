@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regenera os sidecars ``bench_<modelo>_config.json`` dos modelos promovidos.
 
-Problema que corrige: os sidecars em ``app/models/benchmark_final/<arch>/``
+Problema que corrige: os sidecars em ``data/models/benchmark_final/<arch>/``
 continham contratos de runs de FUMAÇA (ex.: Conformer com 1 época e 4
 amostras de validação — ``eer_threshold=0,209``), e é DELES que o
 ``model_loader``/``Predictor`` extraem o limiar de decisão, a temperatura e o
@@ -10,8 +10,8 @@ amostras de validação — ``eer_threshold=0,209``), e é DELES que o
 Este script reconstrói cada sidecar a partir do run REAL do benchmark:
 
 - ``eer_threshold``/``eer_value`` recalculados de
-  ``results/predictions_clean.csv`` (ponto em que FPR = FNR);
-- ``input_shape`` do ``results/metrics.json``;
+  ``data/results/predictions_clean.csv`` (ponto em que FPR = FNR);
+- ``input_shape`` do ``data/results/metrics.json``;
 - ``input_contract`` completo, incluindo o ``feature_frontend`` do benchmark
   (``benchmark_raw_v1``/``benchmark_logmel_v1``/``benchmark_tabular_v1``) que
   o ``FeaturePreparer`` usa para reproduzir EXATAMENTE o front-end do treino

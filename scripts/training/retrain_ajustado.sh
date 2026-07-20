@@ -30,26 +30,27 @@
 #
 # Pré-requisitos: dataset em app/datasets/ (ver DATASET abaixo; aceita
 # override via env), ambiente com TensorFlow/PyTorch + GPU
-# (ver docs/10_TREINAMENTO.md).
+# (ver docs/models/training.md).
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
-DATASET="${DATASET:-data/datasets/benchmark_audio_raw_balanced_15k.npz}"
+DATASET="${DATASET:-data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz}"
 STAMP="$(date +%Y%m%d)"
-OUT="results/retune_ajustado_${STAMP}"
-EPOCHS=120
+OUT="data/results/retune_ajustado_${STAMP}"
+EPOCHS=100
 SNR="30 20 10"
-# 480min: AASIST/RawGAT-ST levam ~1.3min/epoca * 120 epocas = ~160min so de
+# 480min: AASIST/RawGAT-ST levam ~1.3min/epoca * 100 epocas; reserve margem de execução so de
 # treino; sem este valor explicito, run_models_sequential.py usa o default
 # de 60min e o modelo estoura o timeout antes de terminar (visto em 2026-07-01
-# com AASIST: timeout aos 43 epocas/120, sem artefato salvo).
+# com AASIST: timeout aos 43 epocas, sem artefato salvo).
 TIMEOUT_MIN=480
 SPEAKER_SPLIT_FLAG=()
+SCOPE_FLAGS=()
 
 if [[ ! -f "${DATASET}" ]]; then
   echo "ERRO: dataset não encontrado: ${DATASET}" >&2
-  echo "Defina DATASET=<caminho do .npz> ou gere o dataset (docs/12_DATASETS.md)." >&2
+  echo "Defina DATASET=<caminho do .npz> ou gere o dataset (docs/data/public-datasets.md)." >&2
   exit 1
 fi
 
@@ -57,9 +58,7 @@ fi
 MODELS=(
   "RawGAT-ST"
   "AASIST"
-  "Ensemble"
   "Hybrid CNN-Transformer"
-  "EfficientNet-LSTM"
   "MultiscaleCNN"
   "RandomForest"
   "SVM"
@@ -68,13 +67,17 @@ MODELS=(
 for arg in "$@"; do
   case "$arg" in
     --neural-only)
-      MODELS=("RawGAT-ST" "AASIST" "Ensemble" "Hybrid CNN-Transformer" "EfficientNet-LSTM" "MultiscaleCNN")
+      MODELS=("RawGAT-ST" "AASIST" "Hybrid CNN-Transformer" "MultiscaleCNN")
       ;;
     --tcc-pending)
       MODELS=("RawGAT-ST" "AASIST" "WavLM Original" "HuBERT Original")
       ;;
+    --extended)
+      MODELS=("Ensemble" "EfficientNet-LSTM")
+      SCOPE_FLAGS=("--scope" "extended" "--no-academic-protocol" "--no-optimize-hparams")
+      ;;
     --with-speaker-split)
-      SPEAKER_SPLIT_FLAG=("--speaker-split")
+      SPEAKER_SPLIT_FLAG=("--speaker-split" "--no-academic-protocol")
       ;;
   esac
 done
@@ -93,6 +96,7 @@ python scripts/benchmark/run_models_sequential.py \
   --snr ${SNR} \
   --device-profile gpu \
   --timeout-min "${TIMEOUT_MIN}" \
+  "${SCOPE_FLAGS[@]}" \
   "${SPEAKER_SPLIT_FLAG[@]}" \
   --resume
 

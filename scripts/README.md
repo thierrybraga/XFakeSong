@@ -64,12 +64,12 @@ python scripts/<categoria>/<nome>.py [opções]
 | --- | --- |
 | `build_paper_from_benchmark.py` | **Entrypoint canônico do artigo**: encadeia consolidate → validate → tabelas → `pdflatex` num comando só (orquestrador fino; não reimplementa lógica). |
 | `consolidate_results.py` | Lê `results.json` de um ou mais runs, monta `benchmark_summary.json` e (re)gera todas as figuras nomeadas do TCC. |
-| `update_tcc_latex.py` | Gera o fragmento `results/paper/tabelas_benchmark.tex` a partir do sumário consolidado (fonte única das tabelas do TCC). |
+| `update_tcc_latex.py` | Gera o fragmento `data/results/paper/tabelas_benchmark.tex` a partir do sumário consolidado (fonte única das tabelas do TCC). |
 | `validate_artifacts.py` | Valida artefatos de modelos/resultados (presença, esquema, coerência) sem carregar pesos. |
-| `sync_completed_benchmark_artifacts.py` | Promove modelos concluídos para `app/models/benchmark_final/<arch>/`. |
-| `generate_completed_benchmark_artifacts.py` | Regera relatórios/figuras apenas-avaliação a partir de modelos já treinados (`app/models/bench_*`). |
+| `sync_completed_benchmark_artifacts.py` | Promove modelos concluídos para `data/models/benchmark_final/<arch>/`. |
+| `generate_completed_benchmark_artifacts.py` | Regera relatórios/figuras apenas-avaliação a partir de modelos já treinados (`data/models/bench_*`). |
 | `materialize_benchmark_artifacts.py` | Materializa manifestos locais de artefatos treinados (fluxo Docker/WSL com bind mount). |
-| `export_model_card.py` | Exporta o model card Markdown consolidado dos artefatos treinados (`app/models/MODEL_CARD.md`). |
+| `export_model_card.py` | Exporta o model card Markdown consolidado dos artefatos treinados (`data/models/MODEL_CARD.md`). |
 | `export_rf_feature_importance.py` | Extrai `feature_importances_` do Random Forest promovido e gera figura+tabela LaTeX (63 descritores). |
 | `export_tcc_extra_figures.py` | Gera curvas DET e distribuições de score (AASIST×RawGAT-ST) a partir de `predictions_clean.csv`. |
 | `rebuild_inference_contracts.py` | Regenera os sidecars `bench_*_config.json` dos modelos promovidos a partir do run real (`metrics.json` + `predictions_clean.csv`): `eer_threshold` verdadeiro e `input_contract` completo com `feature_frontend` do benchmark. |
@@ -84,7 +84,7 @@ python scripts/<categoria>/<nome>.py [opções]
 | `verify_environments.py` | Sobe containers efêmeros por família e verifica importações/versões das bibliotecas-chave (e GPU nos perfis NVIDIA). |
 | `run_tests.sh` | Entrypoint de testes usado pela CI (`fast`, `cov`, suites por marcador). |
 | `build_smoke_test.sh` | Smoke test do build Docker completo. |
-| `sync_hf_models.py` | Baixa modelos treinados do HF Hub para `app/models` (no-op sem `MODEL_REPO_ID`; usado no boot de Spaces). |
+| `sync_hf_models.py` | Baixa modelos treinados do HF Hub para `data/models` (no-op sem `MODEL_REPO_ID`; usado no boot de Spaces). |
 | `upload_models_to_hf.py` | Publica artefatos consolidados no HF Hub (dry-run sem credenciais; nunca imprime token). |
 | `build_notebooks.py` | Regenera os notebooks de estudo/reprodução em `docs/notebooks/` com API real do projeto. |
 | `setup_gpu_windows.bat` | Configuração de GPU/CUDA em Windows nativo. |

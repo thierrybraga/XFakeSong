@@ -16,15 +16,17 @@ def _make_old(path: Path) -> None:
 
 def test_bootstrap_dirs_creates_and_is_idempotent(tmp_path):
     bootstrap_dirs(tmp_path)
-    assert (tmp_path / "models").is_dir()
-    assert (tmp_path / "results").is_dir()
+    assert (tmp_path / "data" / "models").is_dir()
+    assert (tmp_path / "data" / "results").is_dir()
     # segunda chamada não levanta
     bootstrap_dirs(tmp_path)
 
 
 def test_cleanup_dry_run_keeps_everything(tmp_path):
     (tmp_path / "app").mkdir()
-    old = tmp_path / "old.log"
+    log_dir = tmp_path / "data" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    old = log_dir / "old.log"
     old.write_text("x")
     _make_old(old)
 
@@ -35,9 +37,9 @@ def test_cleanup_dry_run_keeps_everything(tmp_path):
 def test_cleanup_removes_old_log_and_pycache_keeps_recent(tmp_path):
     appd = tmp_path / "app"
     appd.mkdir()
-    (appd / "results").mkdir()
-
-    old = tmp_path / "old.log"
+    log_dir = tmp_path / "data" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    old = log_dir / "old.log"
     old.write_text("x")
     _make_old(old)
 
@@ -45,7 +47,7 @@ def test_cleanup_removes_old_log_and_pycache_keeps_recent(tmp_path):
     pyc.mkdir(parents=True)
     (pyc / "x.pyc").write_text("y")
 
-    recent = tmp_path / "recent.log"
+    recent = tmp_path / "data" / "logs" / "recent.log"
     recent.write_text("z")  # mtime atual → preservado
 
     cleanup_workspace(tmp_path, days=30, dry_run=False)
@@ -57,8 +59,8 @@ def test_cleanup_removes_old_log_and_pycache_keeps_recent(tmp_path):
 
 def test_cleanup_delete_datasets_flag(tmp_path):
     (tmp_path / "app").mkdir()
-    ds = tmp_path / "datasets"
-    ds.mkdir()
+    ds = tmp_path / "data" / "datasets"
+    ds.mkdir(parents=True)
     (ds / "a.wav").write_text("x")
 
     cleanup_workspace(tmp_path, days=30, dry_run=False, delete_datasets=True)

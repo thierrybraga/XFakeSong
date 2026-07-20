@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Consolida modelos/resultados concluídos do benchmark em app/models.
+"""Promove modelos concluídos do benchmark para data/models.
 
 O benchmark grava os artefatos principais em:
-- app/models/bench_<modelo>.*      (usado pela inferência/Gradio)
-- results/<execucao>/<modelo>/...  (métricas, figuras e relatórios)
+- data/models/bench_<modelo>.*      (usado pela inferência/Gradio)
+- data/results/<execucao>/<modelo>/...  (métricas, figuras e relatórios)
 
 Este script copia os modelos já concluídos para:
-- app/models/benchmark_final/<modelo>/
+- data/models/benchmark_final/<modelo>/
 
 Essa pasta é explicitamente incluída no Docker build pela regra de
 `.dockerignore`, permitindo empacotar modelos pré-treinados sem novo treino.
@@ -52,15 +52,6 @@ def _copy_file(src: Path, dst: Path) -> bool:
     return True
 
 
-def _copy_tree(src: Path, dst: Path) -> bool:
-    if not src.exists():
-        return False
-    if dst.exists():
-        shutil.rmtree(dst)
-    shutil.copytree(src, dst)
-    return True
-
-
 def sync_completed(
     summary_path: Path,
     final_dir: Path,
@@ -87,9 +78,9 @@ def sync_completed(
             config_copied = _copy_file(config, target / config.name)
 
         output_dir = _project_path(item.get("output_dir"))
-        results_copied = False
-        if output_dir is not None:
-            results_copied = _copy_tree(output_dir, target / "results")
+        legacy_results = target / "results"
+        if legacy_results.exists():
+            shutil.rmtree(legacy_results)
 
         manifest = {
             "model": model,
@@ -99,7 +90,7 @@ def sync_completed(
             "source_output_dir": str(output_dir) if output_dir else None,
             "model_copied": model_copied,
             "config_copied": config_copied,
-            "results_copied": results_copied,
+            "results_copied": False,
             "metrics": item.get("clean"),
             "efficiency": item.get("efficiency"),
         }
@@ -115,12 +106,8 @@ def sync_completed(
         "synced_count": len(synced),
         "models": synced,
     }
-    (final_dir / "index.json").write_text(
-        json.dumps(index, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    root_manifest = final_dir.parent / "benchmark_final_manifest.json"
-    root_manifest.write_text(
+    registry = final_dir.parent / "registry.json"
+    registry.write_text(
         json.dumps(index, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
@@ -152,11 +139,11 @@ def main() -> int:
         required=True,
         help=(
             "Caminho para o run_summary.json do benchmark a promover "
-            "(ex.: results/<run>/run_summary.json). Sem default: adivinhar "
-            "um 'run atual' é frágil — ver docs/05_GUIA_DEV.md."
+            "(ex.: data/results/<run>/run_summary.json). Sem default: adivinhar "
+            "um 'run atual' é frágil — ver docs/development/developer-guide.md."
         ),
     )
-    parser.add_argument("--final-dir", default="app/models/benchmark_final")
+    parser.add_argument("--final-dir", default="data/models/benchmark_final")
     args = parser.parse_args()
 
     summary = _project_path(args.summary)
@@ -167,7 +154,7 @@ def main() -> int:
     index = sync_completed(summary, final_dir)
     print(f"Sincronizados: {index['synced_count']}")
     print(f"Destino: {final_dir}")
-    print(f"Manifesto: {final_dir.parent / 'benchmark_final_manifest.json'}")
+    print(f"Manifesto: {final_dir.parent / 'registry.json'}")
     return 0
 
 

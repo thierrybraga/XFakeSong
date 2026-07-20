@@ -466,6 +466,7 @@ def create_splits(
     test_ratio=0.15,
     speaker_disjoint=False,
     expected_per_class: int | None = None,
+    source_quotas: dict[str, dict[str, int]] | None = None,
 ):
     """Cria splits train/val/test.
 
@@ -492,6 +493,40 @@ def create_splits(
 
     files = np.array(files)
     labels = np.array(labels)
+
+    # Balance only after quality checks. The former flow reduced raw inputs to
+    # exactly N first, so silence/duplicate rejection left no replacements.
+    if source_quotas:
+        selected: list[int] = []
+        label_values = {"real": 0, "fake": 1}
+        rng = np.random.default_rng(42)
+        for class_name, quotas in source_quotas.items():
+            label = label_values[class_name]
+            for prefix, quota in quotas.items():
+                candidates = np.array(
+                    [
+                        idx
+                        for idx, path in enumerate(files)
+                        if labels[idx] == label
+                        and path.name.lower().startswith(f"{prefix.lower()}_")
+                    ],
+                    dtype=int,
+                )
+                if len(candidates) < quota:
+                    raise RuntimeError(
+                        "Reserva valida insuficiente apos qualidade/dedup: "
+                        f"{class_name}:{prefix}={len(candidates)}, quota={quota}"
+                    )
+                selected.extend(
+                    rng.choice(candidates, size=quota, replace=False).tolist()
+                )
+        selected_idx = np.asarray(selected, dtype=int)
+        files = files[selected_idx]
+        labels = labels[selected_idx]
+        logger.info(
+            "Selecao pos-validacao por quotas: %s",
+            json.dumps(source_quotas, sort_keys=True),
+        )
 
     logger.info(f"Total: {len(files)} ({sum(labels == 0)} real + {sum(labels == 1)} fake)")
 
@@ -747,6 +782,13 @@ def main():
         type=int,
         help="Falha se a camada processada nao tiver exatamente este total por classe",
     )
+    parser.add_argument(
+        "--source-quota",
+        action="append",
+        default=[],
+        metavar="CLASSE:PREFIXO=TOTAL",
+        help="Quota aplicada apos validacao/dedup; ex.: real:brspeech=3750",
+    )
 
     args = parser.parse_args()
 
@@ -773,6 +815,28 @@ def main():
     if args.full or args.audit_near_duplicates:
         audit_near_duplicates()
 
+    source_quotas: dict[str, dict[str, int]] = {}
+    for spec in args.source_quota:
+        try:
+            class_prefix, raw_total = spec.split("=", 1)
+            class_name, prefix = class_prefix.split(":", 1)
+            class_name = class_name.strip().lower()
+            prefix = prefix.strip().lower()
+            total = int(raw_total)
+        except (TypeError, ValueError):
+            parser.error(f"quota invalida: {spec!r}")
+        if class_name not in {"real", "fake"} or not prefix or total <= 0:
+            parser.error(f"quota invalida: {spec!r}")
+        source_quotas.setdefault(class_name, {})[prefix] = total
+
+    if source_quotas and args.expected_per_class:
+        for class_name in ("real", "fake"):
+            if sum(source_quotas.get(class_name, {}).values()) != args.expected_per_class:
+                parser.error(
+                    f"quotas de {class_name} devem somar "
+                    f"--expected-per-class={args.expected_per_class}"
+                )
+
     if args.full or args.create_splits:
         create_splits(
             train_ratio=args.train_ratio,
@@ -780,6 +844,7 @@ def main():
             test_ratio=args.test_ratio,
             speaker_disjoint=args.speaker_disjoint,
             expected_per_class=args.expected_per_class,
+            source_quotas=source_quotas or None,
         )
 
     if args.create_zip:

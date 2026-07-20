@@ -12,7 +12,7 @@ modelo usados pela inferencia.
 
 Use esta arvore para evoluir regras de negocio, pipelines de inferencia,
 treinamento, extracao de features, UI Gradio, API FastAPI e CLI. Resultados de
-benchmark e datasets grandes devem permanecer em `results/` e `data/` sempre
+benchmark e datasets grandes devem permanecer em `data/results/` e `data/` sempre
 que nao forem artefatos de inferencia carregados pela aplicacao.
 
 ## Dependencias internas

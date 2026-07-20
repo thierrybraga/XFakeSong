@@ -19,11 +19,17 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from app.core.config.paths import resolve_results_output
 DEFAULT_CONFIGS = {
-    "classical-ml": ROOT / "configs" / "training" / "classical.yaml",
-    "tensorflow-keras": ROOT / "configs" / "training" / "tensorflow.yaml",
-    "pytorch-audio": ROOT / "configs" / "training" / "pytorch.yaml",
-    "ssl-transformers": ROOT / "configs" / "training" / "ssl.yaml",
+    "classical-tabular": ROOT / "configs" / "training" / "classical.yaml",
+    "spectral-convolutional": (
+        ROOT / "configs" / "training" / "spectral_convolutional.yaml"
+    ),
+    "spectral-attention": ROOT / "configs" / "training" / "tensorflow.yaml",
+    "waveform-end-to-end": ROOT / "configs" / "training" / "pytorch.yaml",
+    "ssl-pretrained": ROOT / "configs" / "training" / "ssl.yaml",
+    "extended": ROOT / "configs" / "training" / "extended.yaml",
 }
 
 
@@ -57,10 +63,16 @@ def build_command(args: argparse.Namespace) -> list[str]:
     if not dataset:
         raise ValueError("Dataset path is required")
 
-    output_dir = args.out or cfg.get("output_dir") or f"results/{args.family}_benchmark"
+    output_dir = args.out or resolve_results_output(
+        cfg.get("output_dir"),
+        default_subdir=f"{args.family}_benchmark",
+        base_dir=ROOT,
+    )
     epochs = args.epochs if args.epochs is not None else int(cfg.get("epochs", 100))
     batch_size = (
-        args.batch_size if args.batch_size is not None else int(cfg.get("batch_size", 32))
+        args.batch_size
+        if args.batch_size is not None
+        else int(cfg.get("batch_size", 32))
     )
     device_profile = args.device_profile or str(cfg.get("device_profile", "auto"))
     latency_runs = (
@@ -99,6 +111,14 @@ def build_command(args: argparse.Namespace) -> list[str]:
     ]
     if args.resume:
         cmd.append("--resume")
+    if args.seeds:
+        cmd.extend(["--seeds", *[str(seed) for seed in args.seeds]])
+    if args.test_lock:
+        cmd.extend(["--test-lock", args.test_lock])
+    scope = str(cfg.get("scope", "official"))
+    cmd.extend(["--scope", scope])
+    academic = bool(cfg.get("academic_protocol", True))
+    cmd.append("--academic-protocol" if academic else "--no-academic-protocol")
     if args.plan_only:
         cmd.append("--plan-only")
     if args.api:
@@ -133,6 +153,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout-min", type=float)
     parser.add_argument("--snr", nargs="+")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--seeds", nargs="+", type=int)
+    parser.add_argument("--test-lock")
     parser.add_argument("--plan-only", action="store_true")
     parser.add_argument("--api", action="store_true")
     parser.add_argument("--no-optimize-hparams", action="store_true")

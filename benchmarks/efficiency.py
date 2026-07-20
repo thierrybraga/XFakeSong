@@ -32,6 +32,39 @@ def file_size_mb(path) -> Optional[float]:
     return None
 
 
+def measure_latency_profile(
+    predict_fn: Callable[[np.ndarray], object],
+    x_sample: np.ndarray,
+    runs: int = 30,
+    warmup: int = 2,
+) -> dict[str, object]:
+    """Perfil de forward com protocolo explícito e estatísticas robustas."""
+    x = np.asarray(x_sample, dtype="float32")[np.newaxis, ...]
+    try:
+        for _ in range(max(0, warmup)):
+            predict_fn(x)
+        times = []
+        for _ in range(max(1, runs)):
+            t0 = time.perf_counter()
+            predict_fn(x)
+            times.append((time.perf_counter() - t0) * 1000.0)
+        values = np.asarray(times, dtype="float64")
+        return {
+            "status": "ok",
+            "component": "model_forward_only",
+            "batch_size": 1,
+            "warmup_runs": int(max(0, warmup)),
+            "measured_runs": int(max(1, runs)),
+            "median_ms": round(float(np.median(values)), 2),
+            "p95_ms": round(float(np.percentile(values, 95)), 2),
+            "mean_ms": round(float(np.mean(values)), 2),
+            "std_ms": round(float(np.std(values)), 2),
+            "includes_frontend": False,
+            "includes_postprocessing": False,
+        }
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
+
 def measure_latency_ms(
     predict_fn: Callable[[np.ndarray], object],
     x_sample: np.ndarray,

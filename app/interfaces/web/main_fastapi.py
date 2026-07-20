@@ -27,7 +27,13 @@ from app.core.version_check import check_versions  # noqa: E402
 # API.3: importa ALL_ROUTERS (inclui voice_profiles que faltava antes!).
 from app.interfaces.web.routers import ALL_ROUTERS  # noqa: E402
 
-configure_logging(level=_l.INFO, log_file="system.log", force=False)
+from app.core.bootstrap import OperationalPaths  # noqa: E402
+
+configure_logging(
+    level=_l.INFO,
+    log_file=str(OperationalPaths.resolve().logs / "system.log"),
+    force=False,
+)
 configure_runtime_environment()
 
 
@@ -64,7 +70,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 # API.8: lifespan moderno substitui on_event("startup") deprecado
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
+    from app.core.bootstrap import bootstrap_application
+    from app.core.db.experiment_store import experiment_store
+
+    bootstrap_application()
+    experiment_store.record_system_snapshot("api_startup")
     yield
 
 

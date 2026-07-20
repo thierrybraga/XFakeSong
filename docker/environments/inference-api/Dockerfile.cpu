@@ -48,7 +48,7 @@ COPY docker/environments/inference-api/docker-entrypoint.sh /usr/local/bin/docke
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 COPY . .
-RUN mkdir -p /app/logs /app/app/models /app/app/results /app/data/fake /app/data/real \
+RUN mkdir -p /app/data/logs /app/data/models /app/data/datasets/fake /app/data/datasets/real \
         /tmp/numba_cache /tmp/matplotlib /tmp/huggingface /tmp/gradio \
     && chown -R appuser:appuser /app /tmp/numba_cache /tmp/matplotlib /tmp/huggingface /tmp/gradio
 

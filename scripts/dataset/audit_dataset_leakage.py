@@ -25,7 +25,7 @@ Exemplo:
     python scripts/dataset/audit_dataset_leakage.py \
         --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
         --source brspeech --max-per-class 1500 \
-        --out results/audit_dataset_leakage
+        --out data/results/audit_dataset_leakage
 """
 
 from __future__ import annotations
@@ -173,7 +173,7 @@ def main() -> int:
                     help="subamostra por classe (memória/velocidade). 0 = tudo")
     ap.add_argument("--chunk", type=int, default=256)
     ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--out", default="results/audit_dataset_leakage",
+    ap.add_argument("--out", default="data/results/audit_dataset_leakage",
                     help="pasta de saída do relatório (json + md)")
     args = ap.parse_args()
 

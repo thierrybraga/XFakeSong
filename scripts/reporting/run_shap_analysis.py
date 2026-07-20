@@ -2,7 +2,7 @@
 """Análise XAI do benchmark: SHAP (clássicos) + Grad-CAM (redes espectrais).
 
 Materializa a etapa de explicabilidade prevista no projeto usando os
-artefatos já treinados (``app/models/bench_*``), sem retreinar nada:
+artefatos já treinados (``data/models/bench_*``), sem retreinar nada:
 
 1. **SHAP** — Random Forest via ``TreeExplainer`` (exato) e SVM via
    ``KernelExplainer`` (agnóstico, custo controlado por k-means no
@@ -27,7 +27,7 @@ Uso:
     # somente Grad-CAM de um subconjunto de arquiteturas:
     python scripts/reporting/run_shap_analysis.py --skip-shap --archs res2net conformer
 
-Saídas (em --out, padrão results/xai/):
+Saídas (em --out, padrão data/results/xai/):
     shap_summary_random_forest.png, shap_bar_random_forest.png,
     shap_summary_svm.png, shap_bar_svm.png, shap_mean_abs.csv,
     gradcam_<arch>.png, xai_report.md
@@ -53,37 +53,37 @@ from scripts._bootstrap import setup_logging  # noqa: E402
 logger = logging.getLogger("xai")
 
 # Artefato Keras e nome de contrato de entrada por arquitetura espectral.
-# Artefatos: preferimos os PROMOVIDOS em app/models/benchmark_final/<arch>/
-# (fonte das metricas do TCC); app/models/bench_* fica como fallback.
+# Artefatos: preferimos os PROMOVIDOS em data/models/benchmark_final/<arch>/
+# (fonte das metricas do TCC); data/models/bench_* fica como fallback.
 SPECTRAL_ARCHS: dict[str, dict[str, object]] = {
     "res2net": {
         "artifacts": [
-            "app/models/benchmark_final/res2net/bench_multiscalecnn.keras",
-            "app/models/bench_multiscalecnn.keras",
+            "data/models/benchmark_final/res2net/bench_multiscalecnn.keras",
+            "data/models/bench_multiscalecnn.keras",
         ],
         "contract": "multiscalecnn",
         "label": "Res2Net",
     },
     "conformer": {
         "artifacts": [
-            "app/models/benchmark_final/conformer/bench_conformer.keras",
-            "app/models/bench_conformer.keras",
+            "data/models/benchmark_final/conformer/bench_conformer.keras",
+            "data/models/bench_conformer.keras",
         ],
         "contract": "conformer",
         "label": "Conformer",
     },
     "cct": {
         "artifacts": [
-            "app/models/benchmark_final/cct/bench_hybrid_cnn_transformer.keras",
-            "app/models/bench_hybrid_cnn_transformer.keras",
+            "data/models/benchmark_final/cct/bench_hybrid_cnn_transformer.keras",
+            "data/models/bench_hybrid_cnn_transformer.keras",
         ],
         "contract": "hybridcnntransformer",
         "label": "CCT",
     },
     "ast": {
         "artifacts": [
-            "app/models/benchmark_final/ast/bench_spectrogramtransformer.keras",
-            "app/models/bench_spectrogramtransformer.keras",
+            "data/models/benchmark_final/ast/bench_spectrogramtransformer.keras",
+            "data/models/bench_spectrogramtransformer.keras",
         ],
         "contract": "spectrogramtransformer",
         "label": "AST",
@@ -92,12 +92,11 @@ SPECTRAL_ARCHS: dict[str, dict[str, object]] = {
 
 CLASSICAL_ARTIFACTS = {
     "random_forest": [
-        "app/models/benchmark_final/random_forest/bench_randomforest.pkl",
-        "app/models/bench_randomforest.pkl",
+        "data/models/benchmark_final/random_forest/bench_randomforest.pkl",
+        "data/models/bench_randomforest.pkl",
     ],
     "svm": [
-        "app/models/benchmark_final/svm/bench_svm.pkl",
-        "app/models/bench_svm.pkl",
+        "data/models/benchmark_final/svm/bench_svm.pkl",
     ],
 }
 
@@ -118,7 +117,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Usa dados sintéticos (smoke) em vez do NPZ; requer modelos "
         "compatíveis ou --skip-gradcam.",
     )
-    parser.add_argument("--out", default="results/xai", help="Diretório de saída.")
+    parser.add_argument("--out", default="data/results/xai", help="Diretório de saída.")
     parser.add_argument("--seed", type=int, default=42, help="Semente do split.")
     parser.add_argument(
         "--archs",
@@ -147,7 +146,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--copy-to-tcc", action="store_true",
-        help="Copia as figuras geradas para tcc_overleaf/figures/.",
+        help="Copia as figuras geradas para data/results/paper/figures/.",
     )
     parser.add_argument(
         "--max-samples", type=int, default=2000,
@@ -496,7 +495,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.copy_to_tcc:
         import shutil
 
-        figures_dir = ROOT / "tcc_overleaf" / "figures"
+        figures_dir = ROOT / "data/results/paper" / "figures"
         figures_dir.mkdir(parents=True, exist_ok=True)
         for name in (*shap_files, *gradcam_files):
             if name.endswith(".png"):

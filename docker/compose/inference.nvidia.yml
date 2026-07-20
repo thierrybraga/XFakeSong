@@ -16,9 +16,9 @@ services:
     ports:
       - "${GRADIO_PORT:-7860}:7860"
     volumes:
-      - ../../app/models:/app/app/models
+      - ../../data/models:/app/data/models
       - ../../data/datasets:/app/data/datasets
-      - ../../results:/app/results
+      - ../../data/results:/app/data/results
       - ../../data:/app/data
       - ../../cache/huggingface:/app/cache/huggingface
       - ../../cache/torch:/app/cache/torch
@@ -34,10 +34,10 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
       DATABASE_URL: sqlite:////app/data/app.db
       DEEPFAKE_UPLOADS_DIR: /app/data/uploads
-      DEEPFAKE_MODELS_DIR: /app/app/models
+      DEEPFAKE_MODELS_DIR: /app/data/models
       # Producao serve APENAS os 11 modelos promovidos em benchmark_final/;
       # sem isso o boot fabrica um SVM default destreinado na raiz de
-      # app/models (visto em 2026-07-19), que pode sombrear o SVM promovido.
+      # data/models (visto em 2026-07-19), que pode sombrear o SVM promovido.
       XFAKE_CREATE_DEFAULT_MODELS: "false"
       HF_HOME: /app/cache/huggingface
       TORCH_HOME: /app/cache/torch

@@ -27,7 +27,7 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
       DATABASE_URL: sqlite:////app/data/app.db
       DEEPFAKE_UPLOADS_DIR: /app/data/uploads
-      DEEPFAKE_MODELS_DIR: /app/app/models
+      DEEPFAKE_MODELS_DIR: /app/data/models
       HF_HOME: /app/cache/huggingface
       TORCH_HOME: /app/cache/torch
       XFAKE_SYNC_MODELS_ON_BOOT: "false"
@@ -55,9 +55,9 @@ services:
       - scripts/benchmark/run_models_sequential.py
       # Dataset canônico: data/datasets/ (raiz consolidada em 2026-07-14).
       - --dataset
-      - data/datasets/benchmark_audio_raw_balanced_15k.npz
+      - data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz
       - --out
-      - results/clean_benchmark_latest
+      - data/results/clean_benchmark_latest
       - --epochs
       - "100"
       - --device-profile

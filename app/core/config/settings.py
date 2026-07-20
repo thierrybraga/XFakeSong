@@ -11,6 +11,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+from .paths import resolve_results_dir
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
 
 class Environment(Enum):
     """Ambientes de execução."""
@@ -34,11 +38,12 @@ class LogLevel(Enum):
 class PathConfig:
     """Configurações de caminhos."""
 
-    base_dir: Path = field(default_factory=lambda: Path("."))
+    base_dir: Path = field(default_factory=lambda: PROJECT_ROOT)
     data_dir: Path = field(default_factory=lambda: Path("./data/datasets"))
-    logs_dir: Path = field(default_factory=lambda: Path("./logs"))
+    logs_dir: Path = field(default_factory=lambda: Path("./data/logs"))
     temp_dir: Path = field(default_factory=lambda: Path("./data/temp"))
-    models_dir: Path = field(default_factory=lambda: Path("./app/models"))
+    models_dir: Path = field(default_factory=lambda: Path("./data/models"))
+    results_dir: Path = field(default_factory=resolve_results_dir)
 
     # Subdiretórios de dados
     datasets_dir: Path = field(default_factory=lambda: Path("./data/datasets"))
@@ -68,6 +73,8 @@ class PathConfig:
             self.temp_dir = self.base_dir / self.temp_dir
         if not self.models_dir.is_absolute():
             self.models_dir = self.base_dir / self.models_dir
+        if not self.results_dir.is_absolute():
+            self.results_dir = self.base_dir / self.results_dir
         if not self.datasets_dir.is_absolute():
             self.datasets_dir = self.base_dir / self.datasets_dir
         if not self.features_dir.is_absolute():
@@ -93,6 +100,7 @@ class PathConfig:
             self.logs_dir,
             self.temp_dir,
             self.models_dir,
+            self.results_dir,
             self.datasets_dir,
             self.features_dir,
             self.samples_dir,
@@ -473,7 +481,9 @@ class SystemConfig:
         if os.getenv("DEEPFAKE_API_PORT"):
             config.api.port = int(os.getenv("DEEPFAKE_API_PORT"))
 
-        storage_dir = os.getenv("XFAKE_STORAGE_DIR") or os.getenv("DEEPFAKE_STORAGE_DIR")
+        storage_dir = os.getenv("XFAKE_STORAGE_DIR") or os.getenv(
+            "DEEPFAKE_STORAGE_DIR"
+        )
         if storage_dir:
             storage = Path(storage_dir)
             config.paths.data_dir = storage / "datasets"
@@ -491,8 +501,7 @@ class SystemConfig:
 
         if os.getenv("DEEPFAKE_DATASETS_DIR") or os.getenv("XFAKE_DATASETS_DIR"):
             datasets_dir = Path(
-                os.getenv("DEEPFAKE_DATASETS_DIR")
-                or os.getenv("XFAKE_DATASETS_DIR")
+                os.getenv("DEEPFAKE_DATASETS_DIR") or os.getenv("XFAKE_DATASETS_DIR")
             )
             config.paths.data_dir = datasets_dir
             config.paths.datasets_dir = datasets_dir
@@ -516,7 +525,9 @@ class SystemConfig:
             )
 
         if os.getenv("UPLOAD_DIR") or os.getenv("DEEPFAKE_UPLOADS_DIR"):
-            upload_dir = Path(os.getenv("UPLOAD_DIR") or os.getenv("DEEPFAKE_UPLOADS_DIR"))
+            upload_dir = Path(
+                os.getenv("UPLOAD_DIR") or os.getenv("DEEPFAKE_UPLOADS_DIR")
+            )
             config.paths.uploads_dir = upload_dir
             config.paths.upload_training_dir = upload_dir / "training"
             config.paths.upload_validation_dir = upload_dir / "validation"

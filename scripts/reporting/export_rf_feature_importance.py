@@ -66,17 +66,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--artifact",
-        default="app/models/benchmark_final/random_forest/bench_randomforest.pkl",
+        default="data/models/benchmark_final/random_forest/bench_randomforest.pkl",
     )
     parser.add_argument(
         "--dataset", default="data/datasets/benchmark_audio_raw_balanced_15k.npz"
     )
     parser.add_argument(
-        "--out-figure", default="results/01_paper/figures/rf_feature_importance.png"
+        "--out-figure", default="data/results/paper/figures/rf_feature_importance.png"
     )
     parser.add_argument(
         "--out-csv",
-        default="results/02_outputs/tcc_consolidated/rf_permutation_importance.csv",
+        default="data/results/paper/consolidated/rf_permutation_importance.csv",
     )
     parser.add_argument("--top-k", type=int, default=15)
     parser.add_argument("--n-repeats", type=int, default=30)

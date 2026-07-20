@@ -223,7 +223,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--dataset",
-        default="data/datasets/benchmark_audio_raw_balanced_15k.npz",
+        default="data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz",
         help="Dataset .npz balanceado com audio bruto.",
     )
     parser.add_argument(
@@ -324,7 +324,7 @@ def main() -> int:
             # arquitetura, pré-treinado em 94k h (vs 960 h) — ganho documentado
             # em robustez/anti-spoofing sem custo de inferência.
             "default_model": "microsoft/wavlm-base-plus",
-            "default_out": "results/benchmark_wavlm_original_gpu_100e",
+            "default_out": "data/results/benchmark_wavlm_original_gpu_100e",
             "artifact": "bench_wavlm_original.pt",
         },
         "hubert": {
@@ -332,7 +332,7 @@ def main() -> int:
             "compact": "hubert_original",
             "model_class": "HubertModel",
             "default_model": "facebook/hubert-base-ls960",
-            "default_out": "results/benchmark_hubert_original_gpu_100e",
+            "default_out": "data/results/benchmark_hubert_original_gpu_100e",
             "artifact": "bench_hubert_original.pt",
         },
     }[args.architecture]

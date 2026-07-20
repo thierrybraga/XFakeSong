@@ -10,7 +10,7 @@ geracao de relatorios para o recorte experimental do TCC.
 ## Quando usar
 
 Use quando precisar executar ou planejar benchmarks por arquitetura, gerar
-artefatos em `results/`, validar robustez com AWGN ou produzir tabelas/figuras
+artefatos em `data/results/`, validar robustez com AWGN ou produzir tabelas/figuras
 para documentacao cientifica.
 
 ## Dependencias
@@ -55,4 +55,4 @@ experimentos ou migra para um modulo dedicado de avaliacao.
 O benchmark comparável aplica AWGN na forma de onda, depois do split e antes do
 frontend de cada arquitetura. O modo estrito rejeita datasets reais que
 contenham somente features. O comando canônico e a lista de verificações estão
-em docs/RETREINO_AJUSTES.md.
+em docs/evaluation/retraining-adjustments.md.

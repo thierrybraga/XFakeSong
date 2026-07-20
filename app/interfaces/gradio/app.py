@@ -13,7 +13,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 # === Patch para compatibilidade Pydantic v2 + Gradio v4 ===
 # Deve ser ANTES de qualquer import de gradio ou pydantic
-from app.interfaces.gradio.schema_patch import patch_gradio_schema_validator  # noqa: E402
+from app.interfaces.gradio.schema_patch import (
+    patch_gradio_schema_validator,
+)  # noqa: E402
 
 patch_gradio_schema_validator()
 
@@ -45,7 +47,13 @@ import gradio as gr  # noqa: E402
 # Configurar logging
 from app.core.feedback import configure_logging  # noqa: E402
 
-configure_logging(level=logging.INFO, log_file="system.log", force=False)
+from app.core.bootstrap import OperationalPaths  # noqa: E402
+
+configure_logging(
+    level=logging.INFO,
+    log_file=str(OperationalPaths.resolve().logs / "system.log"),
+    force=False,
+)
 logger = logging.getLogger("gradio_app")
 
 # Imports de Autenticação e DB
@@ -86,13 +94,20 @@ _HEAD_HTML = """
 """
 # noqa: E501
 
+
 # CSS Personalizado carregado de arquivo estático.
 def _load_custom_css() -> str:
     """Carrega o tema Gradio local e registra diagnostico de referencia."""
     # app/interfaces/gradio/app.py -> gradio -> interfaces -> app -> raiz
     _repo_root = Path(__file__).resolve().parents[3]
     css_path = (
-        _repo_root / "app" / "interfaces" / "web" / "static" / "css" / "gradio_theme.css"
+        _repo_root
+        / "app"
+        / "interfaces"
+        / "web"
+        / "static"
+        / "css"
+        / "gradio_theme.css"
     )
     try:
         css = css_path.read_text(encoding="utf-8")
@@ -346,10 +361,9 @@ with gr.Blocks(
 
             # 🎓 Treinar — assistente linear + otimização
             with gr.Tab("🎓 Treinar", id="tab_train"):
-                training_enabled = (
-                    os.getenv("ENABLE_TRAINING", "true").strip().lower()
-                    not in {"0", "false", "no", "off"}
-                )
+                training_enabled = os.getenv(
+                    "ENABLE_TRAINING", "true"
+                ).strip().lower() not in {"0", "false", "no", "off"}
                 if training_enabled:
                     with gr.Tabs():
                         create_training_wizard_tab()

@@ -1,17 +1,39 @@
-# db
+# Persistência consolidada em SQLite
 
-Infraestrutura de banco de dados.
+O arquivo canônico é `data/app.db`, configurável por `DATABASE_URL`. JSON, CSV,
+figuras e sidecars de modelos permanecem como exportações e artefatos portáveis;
+não são a única fonte de verdade para cálculos ou resultados.
 
-## Responsabilidade
+## Modelo de dados
 
-Configura engine, sessoes e bootstrap do banco usado pela API, UI e servicos.
+- `experiment_runs`: configuração, dataset, ambiente e payload completo da execução.
+- `model_runs`: família, parâmetros, hiperparâmetros e contrato de entrada por modelo.
+- `metric_records`: métricas normalizadas por condição (`clean`, ruído, codec e eficiência).
+- `configuration_entries`: constantes, variáveis de sistema permitidas, manifests e arquivos de configuração, com escopo e hash.
+- `system_snapshots`: ambiente reprodutível, hardware e versões; segredos são redigidos.
+- `artifact_records`: ligação entre execuções e arquivos gerados.
 
-## Quando usar
+As tabelas operacionais anteriores (`training_jobs`, `analysis_results`, usuários,
+perfis de voz e configurações de arquitetura) continuam no mesmo banco para
+compatibilidade. Novos consumidores devem usar `ExperimentStore` para resultados
+e configuração científica.
 
-Use para criar sessoes SQLAlchemy, verificar saude do banco e inicializar tabelas.
+## Migração e manutenção
 
-## Arquivos
+```bash
+python scripts/ops/consolidate_sqlite.py
+```
 
-- `session.py`: engine, `SessionLocal`, `Base`, helpers de sessao e healthcheck.
-- `setup.py`: criacao de tabelas e seed inicial. Carrega os modelos de dominio
-  de forma tardia durante `init_db()` para evitar acoplamento em import-time.
+O comando cria um backup antes da primeira consolidação, aplica o schema, importa
+configurações e resultados legados encontrados e registra um snapshot do sistema.
+Use `--no-backup` apenas em reexecuções automatizadas. A migração é idempotente.
+
+Verificação rápida:
+
+```bash
+python -m pytest tests/unit/test_experiment_store.py
+```
+
+Nunca persista todo o ambiente indiscriminadamente. Apenas prefixos permitidos
+são coletados, e chaves com nomes de senha, token, segredo ou credencial recebem
+`<redacted>` antes da gravação.

@@ -37,9 +37,10 @@ from benchmarks.config import (  # noqa: E402
     OFFICIAL_TCC_MODEL_MANIFEST,
 )
 
-DEFAULT_DATASET = ROOT / "data" / "datasets" / "benchmark_audio_raw_balanced_15k.npz"
+from app.core.config.paths import resolve_results_dir, resolve_results_output  # noqa: E402
+DEFAULT_DATASET = ROOT / "data" / "datasets" / "benchmark_audio_raw_balanced_15k_confirmatory_v2.npz"
 DEFAULT_MODELS_DIR = ROOT / "app" / "models"
-DEFAULT_RESULTS_DIR = ROOT / "results"
+DEFAULT_RESULTS_DIR = resolve_results_dir(ROOT)
 DEFAULT_IMAGE = "xfakesong:benchmark-gpu"
 
 ALL_MODELS = list(DOCKER_TRAINING_ARCHITECTURES)
@@ -314,14 +315,21 @@ def main() -> int:
     phase, models = _select_models(args)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     if args.out is None:
-        args.out = f"results/clean_benchmark_{phase}_{stamp}"
+        args.out = str(
+            resolve_results_output(
+                None,
+                default_subdir=f"clean_benchmark_{phase}_{stamp}",
+                base_dir=ROOT,
+            )
+        )
     out_dir = _resolve_project_path(args.out)
+    args.out = str(out_dir.relative_to(ROOT))
 
     if not (ROOT / args.dataset).exists():
         raise SystemExit(f"Dataset not found: {ROOT / args.dataset}")
 
     if args.clean:
-        print("[clean] Limpando app/models e results...")
+        print("[clean] Limpando data/models e results...")
         _clean_directory(ROOT / args.models_dir)
         _clean_directory(DEFAULT_RESULTS_DIR)
         out_dir.mkdir(parents=True, exist_ok=True)

@@ -854,7 +854,7 @@ def create_dataset_management_tab():
                         "> Os tiers são a fonte única de verdade do tamanho/finalidade "
                         "do dataset (`app/domain/dataset_metadata/dataset_catalog.py`), compartilhada com "
                         "`scripts/dataset/build_dataset.py --tier ...`, o benchmark e a "
-                        "documentação. Detalhes em `docs/12_DATASETS.md`."
+                        "documentação. Detalhes em `docs/data/public-datasets.md`."
                     )
 
                 with gr.Accordion("Referência de Datasets", open=False):

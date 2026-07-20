@@ -14,7 +14,7 @@ python scripts/training/train_by_family.py --family ssl-transformers \
   --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
   --epochs 100 \
   --device-profile gpu \
-  --out results/ssl_benchmark
+  --out data/results/ssl_benchmark
 ```
 
 Set `HF_HOME` and `TORCH_HOME` to persistent volumes to avoid downloading

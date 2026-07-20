@@ -12,47 +12,47 @@ fontes canônicas de cada assunto.
 
 | Se você quer… | Leia |
 | --- | --- |
-| Entender a área (anti-spoofing, ameaças, métricas) | [Conceitos e Fundamentos](00_CONCEITOS.md) |
-| Entender o escopo do projeto | [Introdução](01_INTRODUCAO.md) |
-| Instalar e executar a aplicação | [Instalação e Configuração](02_INSTALACAO_CONFIGURACAO.md) |
-| Navegar pela Clean Architecture | [Arquitetura](03_ARQUITETURA.md) |
-| Trabalhar com extração de features | [Features de Áudio](04_FEATURES.md) |
-| Contribuir com código | [Guia do Desenvolvedor](05_GUIA_DEV.md) |
-| Planejar a separação de ambientes de treino | [Plano de Ambientes de Treinamento](26_PLANO_AMBIENTES_TREINAMENTO.md) |
-| Validar qualidade e testes | [Qualidade e Testes](06_QUALIDADE_TESTES.md) |
-| Integrar via HTTP e entender comunicação interna | [API REST e Comunicação](07_API_COMUNICACAO.md) |
-| Comparar as arquiteturas neurais | [Arquiteturas Neurais](08_ARQUITETURAS.md) |
-| Rodar predição com modelos treinados | [Inferência](09_INFERENCIA.md) |
-| Treinar modelos | [Treinamento](10_TREINAMENTO.md) |
-| Usar a interface Gradio, suas abas e o serving de inferência | [Frontend Gradio](23_FRONTEND_GRADIO.md) |
-| Publicar no Hugging Face Spaces | [Deploy Hugging Face](11_DEPLOY_HUGGINGFACE.md) |
-| Publicar documentação e demo | [GitHub Pages e Hugging Face](24_PUBLICACAO_GITHUB_HF.md) |
-| Preparar datasets | [Datasets Públicos](12_DATASETS.md) |
-| Aplicar o protocolo acadêmico de dataset | [Protocolo de Dataset v2](DATASET_PROTOCOL_V2.md) |
-| Executar no Google Colab | [Guia Google Colab](13_COLAB_GUIDE.md) |
-| Auditar a aderência das arquiteturas | [Revisão das Arquiteturas](14_REVISAO_ARQUITETURAS.md) |
-| Consultar a metodologia canônica da versão final | [Protocolo Final de ML](28_PROTOCOLO_FINAL.md) |
-| Rodar o benchmark consolidado | [Benchmark e Resultados](15_BENCHMARK.md) |
-| Consolidar ordem de execução e configs do pipeline de benchmark | [Auditoria do Pipeline de Benchmark](30_AUDITORIA_PIPELINE.md) |
-| Rastrear ajustes de hiperparâmetros pós-diagnóstico e retreinos aplicados | [Retreino com Ajustes](RETREINO_AJUSTES.md) |
-| Acompanhar correções metodológicas do benchmark | [Plano de Correções do Benchmark](25_PLANO_CORRECOES.md) |
-| Retreinar com GPU via WSL2/Docker Desktop | [Retreino em WSL2](22_RETREINO_WSL2.md) |
-| Ler a fundamentação e análise experimental no GitHub Pages | [Estudo Experimental](20_ESTUDO_EXPERIMENTAL.md) |
-| Estudar com os notebooks | [Guia de Notebooks](16_NOTEBOOKS.md) |
-| Entender CI/CD e segurança | [CI/CD e Segurança](17_CICD_SEGURANCA.md) |
-| Consultar termos técnicos | [Glossário](18_GLOSSARIO.md) |
-| Tirar dúvidas rápidas | [Perguntas Frequentes (FAQ)](19_FAQ.md) |
+| Entender a área (anti-spoofing, ameaças, métricas) | [Conceitos e Fundamentos](getting-started/concepts.md) |
+| Entender o escopo do projeto | [Introdução](getting-started/introduction.md) |
+| Instalar e executar a aplicação | [Instalação e Configuração](getting-started/installation.md) |
+| Navegar pela Clean Architecture | [Arquitetura](architecture/overview.md) |
+| Trabalhar com extração de features | [Features de Áudio](architecture/audio-features.md) |
+| Contribuir com código | [Guia do Desenvolvedor](development/developer-guide.md) |
+| Planejar a separação de ambientes de treino | [Plano de Ambientes de Treinamento](archive/training-environments-plan.md) |
+| Validar qualidade e testes | [Qualidade e Testes](development/quality-and-testing.md) |
+| Integrar via HTTP e entender comunicação interna | [API REST e Comunicação](interfaces/rest-api.md) |
+| Comparar as arquiteturas neurais | [Arquiteturas Neurais](models/architectures.md) |
+| Rodar predição com modelos treinados | [Inferência](models/inference.md) |
+| Treinar modelos | [Treinamento](models/training.md) |
+| Usar a interface Gradio, suas abas e o serving de inferência | [Frontend Gradio](interfaces/gradio.md) |
+| Publicar no Hugging Face Spaces | [Deploy Hugging Face](deployment/hugging-face-spaces.md) |
+| Publicar documentação e demo | [GitHub Pages e Hugging Face](deployment/github-pages-and-hugging-face.md) |
+| Preparar datasets | [Datasets Públicos](data/public-datasets.md) |
+| Aplicar o protocolo acadêmico de dataset | [Protocolo de Dataset v2](data/academic-dataset-protocol-v2.md) |
+| Executar no Google Colab | [Guia Google Colab](getting-started/google-colab.md) |
+| Auditar a aderência das arquiteturas | [Revisão das Arquiteturas](models/literature-review.md) |
+| Consultar a metodologia canônica da versão final | [Protocolo Final de ML](evaluation/final-ml-protocol.md) |
+| Rodar o benchmark consolidado | [Benchmark e Resultados](evaluation/benchmark.md) |
+| Consolidar ordem de execução e configs do pipeline de benchmark | [Auditoria do Pipeline de Benchmark](evaluation/pipeline-audit.md) |
+| Rastrear ajustes de hiperparâmetros pós-diagnóstico e retreinos aplicados | [Retreino com Ajustes](evaluation/retraining-adjustments.md) |
+| Acompanhar correções metodológicas do benchmark | [Plano de Correções do Benchmark](archive/benchmark-corrections-plan.md) |
+| Retreinar com GPU via WSL2/Docker Desktop | [Retreino em WSL2](evaluation/retraining-wsl2.md) |
+| Ler a fundamentação e análise experimental no GitHub Pages | [Estudo Experimental](evaluation/experimental-study.md) |
+| Estudar com os notebooks | [Guia de Notebooks](evaluation/notebooks.md) |
+| Entender CI/CD e segurança | [CI/CD e Segurança](development/ci-cd-and-security.md) |
+| Consultar termos técnicos | [Glossário](reference/glossary.md) |
+| Tirar dúvidas rápidas | [Perguntas Frequentes (FAQ)](reference/faq.md) |
 
 ## Artefatos consolidados
 
 | Item | Local |
 | --- | --- |
-| Artigo para Overleaf | `results/01_paper/main.tex` |
-| Pacote Overleaf | `results/01_paper/tcc_overleaf_final.zip` |
-| Dataset do benchmark atual | `data/datasets/benchmark_audio_raw_balanced_15k.npz` — 15.000 amostras, 2.769,01 MiB |
-| Modelos default da aplicação | [app/models](../app/models) |
-| Modelos completos por arquitetura | [app/models/benchmark_final](../app/models/benchmark_final) |
-| Métricas, gráficos e relatórios | [results](../results) |
+| Artigo (fonte LaTeX) | `data/results/paper/main.tex` |
+| Tabelas geradas do benchmark | `data/results/paper/tabelas_benchmark.tex` |
+| Dataset do benchmark atual | `data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz` — 15.000 amostras, 2.769,01 MiB |
+| Modelos default da aplicação | [`data/models`](https://github.com/thierrybraga/XFakeSong/tree/main/data/models) |
+| Modelos completos por arquitetura | [`data/models/benchmark_final`](https://github.com/thierrybraga/XFakeSong/tree/main/data/models/benchmark_final) |
+| Métricas, gráficos e relatórios | [`results`](https://github.com/thierrybraga/XFakeSong/tree/main/results) |
 
 ## Estudo experimental no GitHub Pages
 
@@ -60,20 +60,20 @@ A documentação agora incorpora a fundamentação técnica e a análise experim
 consolidadas a partir do trabalho:
 
 - equações de síntese, pré-processamento, VAD e extração de características em
-  [Features de Áudio](04_FEATURES.md) e [Estudo Experimental](20_ESTUDO_EXPERIMENTAL.md);
-- fluxograma de predição e treinamento em [Arquitetura](03_ARQUITETURA.md);
+  [Features de Áudio](architecture/audio-features.md) e [Estudo Experimental](evaluation/experimental-study.md);
+- fluxograma de predição e treinamento em [Arquitetura](architecture/overview.md);
 - descrição das 14 arquiteturas e decisão operacional em
-  [Arquiteturas Neurais](08_ARQUITETURAS.md);
+  [Arquiteturas Neurais](models/architectures.md);
 - resultados, artefatos, modelos treinados e rastreabilidade em
-  [Benchmark e Resultados](15_BENCHMARK.md);
+  [Benchmark e Resultados](evaluation/benchmark.md);
 - uso da interface, abas, notificações e fluxos de análise em
-  [Frontend Gradio](23_FRONTEND_GRADIO.md);
+  [Frontend Gradio](interfaces/gradio.md);
 - publicação coordenada de documentação e demonstração em
-  [GitHub Pages e Hugging Face](24_PUBLICACAO_GITHUB_HF.md);
+  [GitHub Pages e Hugging Face](deployment/github-pages-and-hugging-face.md);
 - plano de separação de ambientes Docker e dependências por família em
-  [Plano de Ambientes de Treinamento](26_PLANO_AMBIENTES_TREINAMENTO.md);
+  [Plano de Ambientes de Treinamento](archive/training-environments-plan.md);
 - versão navegável do estudo em
-  [Estudo Experimental](20_ESTUDO_EXPERIMENTAL.md).
+  [Estudo Experimental](evaluation/experimental-study.md).
 
 ## Visão de uma página
 
@@ -115,7 +115,7 @@ flowchart LR
     A --> C["tcc_report.md"]
     A --> D["figures/*.png"]
     A --> E["architectures/&lt;modelo&gt;/"]
-    E --> F["app/models/benchmark_final"]
+    E --> F["data/models/benchmark_final"]
 ```
 
 ## Comandos rápidos
@@ -129,4 +129,4 @@ python scripts/benchmark/run_tcc_pipeline.py --smoke --epochs 1 --batch-size 4
 ```
 
 Para detalhes de ambiente, dependências e variáveis `.env`, veja
-[Instalação e Configuração](02_INSTALACAO_CONFIGURACAO.md).
+[Instalação e Configuração](getting-started/installation.md).

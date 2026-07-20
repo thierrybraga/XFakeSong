@@ -107,17 +107,21 @@ def get_recommended_hyperparameters(model_name: str) -> Dict[str, Any]:
         },
     }
 
-    return recommendations.get(model_name, {
-        "batch_size": 32,
-        "learning_rate": 0.001,
-        "epochs": 100,
-        "dropout_rate": 0.3,
-        "l2_reg_strength": 0.0001,
-    })
+    return recommendations.get(
+        model_name,
+        {
+            "batch_size": 32,
+            "learning_rate": 0.001,
+            "epochs": 100,
+            "dropout_rate": 0.3,
+            "l2_reg_strength": 0.0001,
+        },
+    )
 
 
 def save_default_hyperparameters_json(
-        model_name: str, output_dir: str, custom_params: Optional[Dict[str, Any]] = None) -> str:
+    model_name: str, output_dir: str, custom_params: Optional[Dict[str, Any]] = None
+) -> str:
     """Salva hiperparâmetros (recomendados ou customizados) no Banco de Dados.
 
     Mantém a assinatura para compatibilidade, mas `output_dir` é ignorado.
@@ -159,9 +163,17 @@ def save_default_hyperparameters_json(
                 flag_modified(arch_config, "parameters")
 
             db.commit()
-            logger.info(
-                f"Hiperparâmetros para {model_name} salvos no banco de dados."
+            from app.core.db.experiment_store import experiment_store
+
+            experiment_store.set_configuration(
+                "training_hyperparameters",
+                model_name,
+                params,
+                category="hyperparameters",
+                scope="default",
+                source=source,
             )
+            logger.info(f"Hiperparâmetros para {model_name} salvos no banco de dados.")
             return "database"
         finally:
             db.close()
@@ -171,8 +183,7 @@ def save_default_hyperparameters_json(
         return "error_db"
 
 
-def load_hyperparameters_json(
-        model_name: str, search_dir: str) -> Dict[str, Any]:
+def load_hyperparameters_json(model_name: str, search_dir: str) -> Dict[str, Any]:
     """Carrega hiperparâmetros do Banco de Dados.
 
     Mantém assinatura para compatibilidade, mas `search_dir` é ignorado.
@@ -183,6 +194,17 @@ def load_hyperparameters_json(
     default = get_recommended_hyperparameters(model_name)
 
     try:
+        from app.core.db.experiment_store import experiment_store
+
+        consolidated = experiment_store.get_configuration(
+            "training_hyperparameters", model_name, scope="default"
+        )
+        if isinstance(consolidated, dict):
+            return consolidated
+    except Exception as e:
+        logger.warning(f"Configuração consolidada indisponível: {e}")
+
+    try:
         db = SessionLocal()
         try:
             arch_config = (
@@ -191,9 +213,7 @@ def load_hyperparameters_json(
                 .first()
             )
             if arch_config and arch_config.parameters:
-                logger.info(
-                    f"Hiperparâmetros carregados do banco para {model_name}"
-                )
+                logger.info(f"Hiperparâmetros carregados do banco para {model_name}")
                 return arch_config.parameters
         finally:
             db.close()

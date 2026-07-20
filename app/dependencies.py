@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 from functools import lru_cache
 
 from app.domain.services.detection_service import DetectionService
@@ -8,6 +9,7 @@ from app.domain.services.training_service import TrainingService
 from app.domain.services.upload_service import AudioUploadService
 
 logger = logging.getLogger(__name__)
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _env_path(*names: str, default: str, storage_subdir: str | None = None) -> str:
@@ -32,12 +34,14 @@ def _env_flag(name: str, default: bool = False) -> bool:
 @lru_cache()
 def get_detection_service() -> DetectionService:
     logger.info("Inicializando DetectionService singleton...")
-    create_defaults = _env_flag("XFAKE_CREATE_DEFAULT_MODELS", True)
+    # Arquitetura inicializada não equivale a modelo treinado. Modelos de
+    # demonstração são opt-in para não produzir inferência fictícia.
+    create_defaults = _env_flag("XFAKE_CREATE_DEFAULT_MODELS", False)
     models_dir = _env_path(
         "MODELS_DIR",
         "DEEPFAKE_MODELS_DIR",
         "XFAKE_MODELS_DIR",
-        default="app/models",
+        default=str(PROJECT_ROOT / "data" / "models"),
         storage_subdir="models",
     )
     return DetectionService(
@@ -66,7 +70,7 @@ def get_training_service() -> TrainingService:
         "MODELS_DIR",
         "DEEPFAKE_MODELS_DIR",
         "XFAKE_MODELS_DIR",
-        default="app/models",
+        default=str(PROJECT_ROOT / "data" / "models"),
         storage_subdir="models",
     )
     return TrainingService(models_dir=models_dir)

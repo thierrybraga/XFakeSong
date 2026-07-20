@@ -111,7 +111,7 @@ async def health_check(request: Request):
     # Verificar storage
     from pathlib import Path
 
-    storage_ok = Path("app/models").exists() or Path("models").exists()
+    storage_ok = Path("data/models").exists() or Path("models").exists()
 
     uptime = time.monotonic() - _start_time
     overall = "healthy" if db_ok else "degraded"
@@ -224,6 +224,34 @@ async def get_info(request: Request):
     except Exception as e:
         logger.debug(f"Não foi possível obter info de detecção: {e}")
 
+    persistence = {"schema_version": None, "counts": {}}
+    if db_ok:
+        try:
+            from sqlalchemy import text
+
+            from app.core.db.session import SessionLocal
+            from app.domain.models.experiment import (
+                ConfigurationEntry,
+                ExperimentRun,
+                MetricRecord,
+                ModelRun,
+                SystemSnapshot,
+            )
+
+            with SessionLocal() as db:
+                persistence["schema_version"] = db.execute(
+                    text("PRAGMA user_version")
+                ).scalar()
+                persistence["counts"] = {
+                    "experiments": db.query(ExperimentRun).count(),
+                    "model_runs": db.query(ModelRun).count(),
+                    "metrics": db.query(MetricRecord).count(),
+                    "configurations": db.query(ConfigurationEntry).count(),
+                    "system_snapshots": db.query(SystemSnapshot).count(),
+                }
+        except Exception as e:
+            logger.debug(f"Não foi possível obter estatísticas persistidas: {e}")
+
     uptime = time.monotonic() - _start_time
 
     return {
@@ -233,7 +261,7 @@ async def get_info(request: Request):
         "git_sha": _get_git_sha(),
         "python": sys.version.split()[0],
         "platform": platform.system(),
-        "database": {"available": db_ok},
+        "database": {"available": db_ok, **persistence},
         "models": {
             "count": models_count,
             "default": default_model,

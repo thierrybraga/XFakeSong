@@ -2,12 +2,13 @@
 node_modules/
 
 # Trained model weights (too large for git)
-results/models/
+data/results/models/
 *.h5
 
 # Saídas geradas (benchmark, pipeline TCC, notebooks, smoke): JSON/CSV, .tex,
-# .png, modelos. Tudo em results/ é artefato regenerável — não versionar.
-/results/
+# .png, modelos. Tudo em data/results/ é artefato regenerável — não versionar.
+!/data/results/paper/
+!/data/results/paper/**
 
 # Cache/artefatos auxiliares de modelos fora do app.
 /models/
@@ -152,15 +153,15 @@ venv.bak/
 /site
 
 # LaTeX/Overleaf build artifacts. Keep .tex, tables and figures versioned;
-# regenerate PDF/auxiliary files from tcc_overleaf/tcc.tex when needed.
-tcc_overleaf/*.aux
-tcc_overleaf/*.lof
-tcc_overleaf/*.lot
-tcc_overleaf/*.out
-tcc_overleaf/*.toc
-tcc_overleaf/*.log
-tcc_overleaf/*.synctex.gz
-tcc_overleaf/*.pdf
+# regenerate PDF/auxiliary files from data/data/results/paper/main.tex when needed.
+/data/results/paper/*.aux
+/data/results/paper/*.lof
+/data/results/paper/*.lot
+/data/results/paper/*.out
+/data/results/paper/*.toc
+/data/results/paper/*.log
+/data/results/paper/*.synctex.gz
+/data/results/paper/*.pdf
 
 # mypy
 .mypy_cache/
@@ -182,38 +183,38 @@ cython_debug/
 
 # Project specific
 data/
+!data/
+data/*
+!data/results/
+data!data/results/paper/
+!data/results/paper/**
 # Diretório runtime padrão do TrainingService/DetectionService/benchmark.
-app/models/*.h5
-app/models/*.pkl
-app/models/*.keras
-app/models/*.onnx
-app/models/*.json
+data/models/*.h5
+data/models/*.pkl
+data/models/*.keras
+data/models/*.onnx
+data/models/*.json
+!data/models/registry.json
 # Scalers regenerados a cada treino (nao sao "modelo final" promovido, ao contrario de benchmark_final/)
-app/models/scalers/*.pkl
-app/results/
+data/models/scalers/*.pkl
 datasets/
-logs/
 temp/
 # Artefatos de dataset na raiz (para builds; regeneraveis, nao versionados)
 /dataset_pt_deepfake*.zip
 /*.npz
 !data/.gitkeep
-!app/models/.gitkeep
-!app/results/.gitkeep
+!data/models/.gitkeep
 !logs/.gitkeep
 
 # Cache de bind-mount do Docker (huggingface/torch/tensorflow) — regeneravel.
 /cache/
 
-# Checkpoints brutos de treino dentro de benchmark_final/*/results/ (GBs:
-# best_checkpoint.keras, backbones .bin/.pt). O artefato "final" promovido
-# fica em benchmark_final/<arch>/bench_*.{keras,pkl} + results/*.{json,csv,png,pdf,md}.
-app/models/benchmark_final/*/results/models/
-
 # Backups de reparo pontual de artefatos (nao versionar).
 *.stale-*.bak
 
 # Runtime artifacts
+# Saída gerada por `mkdocs build`; a fonte canônica permanece em docs/.
+site/
 app.db
 app.db-shm
 app.db-wal
@@ -228,8 +229,8 @@ instance/
 .logs/
 
 # Pacote Overleaf regeneravel (copia de main.tex + figuras para upload)
-tcc_overleaf/final/
-tcc_overleaf/*.zip
+/data/results/paper/final/
+/data/results/paper/*.zip
 
 # Backups locais de sidecars regenerados (rebuild_inference_contracts.py)
 *.stale.bak

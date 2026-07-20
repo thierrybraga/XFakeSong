@@ -237,7 +237,7 @@ def _default_train_fn(
     from app.core.contracts.base import ProcessingStatus
     from app.domain.services.training_service import TrainingService
 
-    service = TrainingService(models_dir="app/models/optuna_trials")
+    service = TrainingService(models_dir="data/models/optuna_trials")
     result = service.train_model(
         architecture=architecture,
         dataset_path=dataset_path,

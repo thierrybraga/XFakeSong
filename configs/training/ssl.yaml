@@ -1,17 +1,15 @@
-# SSL/Transformers benchmark preset.
-
-family: ssl-transformers
+family: ssl-pretrained
+scope: official
 models:
-  - WavLM
-  - HuBERT
-# Dataset canonico: data/datasets/ (raiz consolidada em 2026-07-14; app/datasets foi descontinuado).
-dataset: data/datasets/benchmark_audio_raw_balanced_15k.npz
-output_dir: results/ssl_benchmark
-models_dir: app/models
-epochs: 100
+  - WavLM Original
+  - HuBERT Original
+output_dir: data/results/families/ssl_pretrained
 batch_size: 8
 device_profile: gpu
+dataset: data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz
+models_dir: data/models
+epochs: 100
 latency_runs: 30
 snr: [30, 20, 10]
 optimize_hyperparameters: true
-
+academic_protocol: true

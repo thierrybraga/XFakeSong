@@ -21,22 +21,22 @@
 #   bash scripts/training/retrain_wsl2.sh --indist --xgen fkvoice  # ambos, em sequência
 #   bash scripts/training/retrain_wsl2.sh --model SpectrogramTransformer  # uma arquitetura
 # Opções:
-#   --dataset PATH   (default: data/datasets/benchmark_audio_raw_balanced_15k.npz)
+#   --dataset PATH   (default: data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz)
 #   --epochs N       (default: 100)
-#   --out-prefix DIR (default: results/retrain_wsl2)
+#   --out-prefix DIR (default: data/results/retrain_wsl2)
 #   --consolidate-from xgen|group|indist  (default: honesto-primeiro: xgen→group→indist)
 #
 # CONSOLIDAÇÃO: a fonte canônica das figuras/tabelas do TCC é, por padrão, a
 # corrida HONESTA (cross-generator > group-split > in-distribution). O run
 # in-distribution (estratificado) vaza fonte/gerador e serve só como TETO
 # otimista — não deve sobrescrever as figuras do TCC quando há uma corrida
-# honesta disponível. Veja docs/25_PLANO_CORRECOES.md (P0).
+# honesta disponível. Veja docs/archive/benchmark-corrections-plan.md (P0).
 # =====================================================================
 set -euo pipefail
 
-DATASET="data/datasets/benchmark_audio_raw_balanced_15k.npz"
+DATASET="data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz"
 EPOCHS=100
-OUT_PREFIX="results/retrain_wsl2"
+OUT_PREFIX="data/results/retrain_wsl2"
 DO_INDIST=0
 DO_XGEN=""
 DO_GROUP=0
@@ -81,7 +81,7 @@ print("TF", tf.__version__, "| GPUs:", gpus)
 if not gpus:
     raise SystemExit(
         "ERRO: TF não vê GPU. Instale: pip install 'tensorflow[and-cuda]' "
-        "(ou use o container GPU). Veja docs/22_RETREINO_WSL2.md."
+        "(ou use o container GPU). Veja docs/evaluation/retraining-wsl2.md."
     )
 PYEOF
 
@@ -142,18 +142,18 @@ fi
 [[ -n "$CONSOL_SRC" ]] && echo ">>> Fonte de consolidação do TCC: $CONSOL_SRC"
 
 if [[ -n "$CONSOL_SRC" && -f "$CONSOL_SRC/results.json" ]]; then
-  echo ">>> Consolidando $CONSOL_SRC → results/tcc_consolidated + tcc_overleaf/figures"
+  echo ">>> Consolidando $CONSOL_SRC → data/results/tcc_consolidated + data/results/paper/figures"
   $PY scripts/reporting/consolidate_results.py "$CONSOL_SRC" \
-      --out results/tcc_consolidated --copy-to tcc_overleaf/figures
+      --out data/results/tcc_consolidated --copy-to data/results/paper/figures
   $PY scripts/reporting/update_tcc_latex.py \
-      --summary results/tcc_consolidated/benchmark_summary.json \
-      --output tcc_overleaf/tabelas_benchmark.tex \
+      --summary data/results/tcc_consolidated/benchmark_summary.json \
+      --output data/results/paper/tabelas_benchmark.tex \
       --figures-dir figures
-  echo "<<< TCC atualizado: figuras substituídas + tcc_overleaf/tabelas_benchmark.tex"
+  echo "<<< TCC atualizado: figuras substituídas + data/results/paper/tabelas_benchmark.tex"
   echo "    No main.tex, garanta:  \\input{tabelas_benchmark.tex}"
 fi
 
 echo "==================================================================="
 echo " Concluído. Figuras e tabelas do TCC regeneradas a partir do treino."
-echo " Recompile tcc_overleaf/main.tex (as figuras foram substituídas in-place)."
+echo " Recompile data/results/paper/main.tex (as figuras foram substituídas in-place)."
 echo "==================================================================="

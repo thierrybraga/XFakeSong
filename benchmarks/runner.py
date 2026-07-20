@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 import numpy as np
+from app.core.config.paths import resolve_results_output
 
 from benchmarks.config import BenchmarkConfig
 from benchmarks.data import (
@@ -23,7 +24,11 @@ from benchmarks.data import (
     looks_like_raw_audio,
     prepare_input_for_architecture,
 )
-from benchmarks.efficiency import count_params, file_size_mb, measure_latency_ms
+from benchmarks.efficiency import (
+    count_params,
+    file_size_mb,
+    measure_latency_profile,
+)
 from benchmarks.evaluate import evaluate_grouped_scores, evaluate_scores
 from benchmarks.planning import (
     apply_plan_to_config,
@@ -86,7 +91,13 @@ def _project_path(path: str | Path | None) -> Path | None:
 
 def _normalize_project_paths(cfg: BenchmarkConfig) -> None:
     """Ancora caminhos relativos na raiz do projeto, não no cwd do processo."""
-    cfg.output_dir = str(_project_path(cfg.output_dir))
+    cfg.output_dir = str(
+        resolve_results_output(
+            cfg.output_dir,
+            default_subdir="benchmark",
+            base_dir=PROJECT_ROOT,
+        )
+    )
     cfg.models_dir = str(_project_path(cfg.models_dir))
     if cfg.dataset_path:
         cfg.dataset_path = str(_project_path(cfg.dataset_path))
@@ -201,7 +212,9 @@ def _run_classical_tuning(
                 "rank": int(results["rank_test_score"][idx]),
                 "mean_test_score": float(results["mean_test_score"][idx]),
                 "std_test_score": float(results["std_test_score"][idx]),
-                "mean_train_score": float(results.get("mean_train_score", [np.nan])[idx]),
+                "mean_train_score": float(
+                    results.get("mean_train_score", [np.nan])[idx]
+                ),
                 "params_json": json.dumps(_json_safe(params), ensure_ascii=False),
             }
         )
@@ -307,7 +320,6 @@ def _stratified_test_labels(
     return y[test_idx]
 
 
-
 def _audit_split_overlap(raw_splits, fail_on_overlap: bool = True) -> Dict[str, Any]:
     """Detecta amostras binariamente idênticas entre treino, validação e teste."""
 
@@ -357,7 +369,6 @@ def _audit_split_overlap(raw_splits, fail_on_overlap: bool = True) -> Dict[str, 
     return audit
 
 
-
 def _split_fingerprint(raw_splits) -> Dict[str, Any]:
     """SHA-256 determinístico da identidade e ordem de cada partição."""
 
@@ -402,9 +413,7 @@ def _audit_split_provenance(data: BenchmarkData) -> Dict[str, Any]:
         result[field] = {
             "available": True,
             "unique_counts": {key: len(value) for key, value in sets.items()},
-            "overlap_counts": {
-                key: len(value) for key, value in intersections.items()
-            },
+            "overlap_counts": {key: len(value) for key, value in intersections.items()},
             "train_test_examples": intersections["train_test"][:10],
             "disjoint": all(not value for value in intersections.values()),
         }
@@ -580,6 +589,7 @@ def _prepare_protocol_splits(
         protocol,
     )
 
+
 def _run_neural(
     arch: str,
     cfg: BenchmarkConfig,
@@ -688,9 +698,7 @@ def _run_neural(
             # GUARDADA — validada no val antes de aceitar), atacando o colapso
             # val→teste por sobreajuste. Hiperparâmetros vêm do plano/defaults
             # (2026-07-14: pre-LN, lr de pico 1e-5, weight_decay 1e-5).
-            train_config.update(
-                {"use_augmentation": True, "checkpoint_best": True}
-            )
+            train_config.update({"use_augmentation": True, "checkpoint_best": True})
 
     # Controles experimentais comuns; não alteram LR, dropout, regularização,
     # otimizador, scheduler ou batch customizados por arquitetura.
@@ -752,9 +760,7 @@ def _run_neural(
         import tensorflow as _tf
 
         _last_act = getattr(model.layers[-1], "activation", None)
-        _from_logits = (
-            _last_act is None or _last_act is _tf.keras.activations.linear
-        )
+        _from_logits = _last_act is None or _last_act is _tf.keras.activations.linear
     except Exception:
         _from_logits = False
 
@@ -777,6 +783,15 @@ def _run_neural(
     def predict_fn(xb):  # latência: forward puro do modelo
         return model.predict(np.asarray(xb, dtype="float32"), verbose=0)
 
+    config_path = models_dir / f"{name}_config.json"
+    input_contract: dict[str, Any] = {}
+    if config_path.exists():
+        try:
+            input_contract = json.loads(config_path.read_text(encoding="utf-8")).get(
+                "input_contract", {}
+            )
+        except (OSError, json.JSONDecodeError):
+            input_contract = {}
     model_path = models_dir / f"{name}.keras"
     reported_training_config = dict(train_data.get("training_config") or train_config)
     model_parameters = dict(train_config.get("parameters") or {})
@@ -795,7 +810,9 @@ def _run_neural(
         reported_training_config["best_checkpoint_path"] = str(checkpoint_path)
     if model_parameters:
         if "learning_rate" in model_parameters:
-            reported_training_config["learning_rate"] = model_parameters["learning_rate"]
+            reported_training_config["learning_rate"] = model_parameters[
+                "learning_rate"
+            ]
         reported_training_config["model_parameters"] = model_parameters
 
     return {
@@ -807,6 +824,7 @@ def _run_neural(
         "training_config": reported_training_config,
         "model_parameters": model_parameters,
         "final_metrics": train_data.get("final_metrics") or {},
+        "input_contract": input_contract,
         "model_artifact": str(model_path),
     }
 
@@ -864,13 +882,18 @@ def _run_classical(
     ):
         aug_snrs = list(cfg.snr_levels_db)
     if aug_snrs:
-        extra_X = [BenchmarkData.add_awgn(X_fit_2d, snr, seed=cfg.seed + i)
-                   for i, snr in enumerate(aug_snrs)]
+        extra_X = [
+            BenchmarkData.add_awgn(X_fit_2d, snr, seed=cfg.seed + i)
+            for i, snr in enumerate(aug_snrs)
+        ]
         X_fit_2d = np.concatenate([X_fit_2d, *extra_X], axis=0)
         y_fit = np.concatenate([y_fit] * (1 + len(aug_snrs)), axis=0)
         logging.getLogger("benchmark").info(
             "[%s] augmentation clássico: +%d cópias ruidosas (SNRs=%s) → %d amostras",
-            arch, len(aug_snrs), aug_snrs, len(y_fit),
+            arch,
+            len(aug_snrs),
+            aug_snrs,
+            len(y_fit),
         )
 
     tuning = {"enabled": False, "status": "disabled"}
@@ -985,10 +1008,9 @@ def _benchmark_one(
                 r = _run_neural(arch, cfg, splits, tmp, models_dir)
             predict_p_fake: Callable = r["predict_p_fake"]
 
-            use_multicrop = (
-                protocol.get("input_type") == "raw_audio"
-                and _compact_slug(arch) in {"aasist", "rawgatst"}
-            )
+            use_multicrop = protocol.get("input_type") == "raw_audio" and _compact_slug(
+                arch
+            ) in {"aasist", "rawgatst"}
 
             def predict_eval(
                 prepared: np.ndarray,
@@ -1006,20 +1028,20 @@ def _benchmark_one(
                     num_crops=3,
                 )
                 n_samples, n_crops = crops.shape[:2]
-                flat_crops = crops.reshape(
-                    n_samples * n_crops, *crops.shape[2:]
-                )
+                flat_crops = crops.reshape(n_samples * n_crops, *crops.shape[2:])
                 crop_scores = _finite_scores(predict_p_fake(flat_crops))
                 return crop_scores.reshape(n_samples, n_crops).mean(axis=1)
 
             n_boot = int(getattr(cfg, "bootstrap_ci_samples", 0) or 0)
             pf_clean = predict_eval(Xte, raw_Xte)
+            calibrated_threshold = (r.get("input_contract") or {}).get("eer_threshold")
             clean = evaluate_scores(
                 yte,
                 pf_clean,
                 threshold=cfg.decision_threshold,
                 n_bootstrap=n_boot,
                 cluster_ids=cluster_ids,
+                calibrated_threshold=calibrated_threshold,
             )
             grouped_clean: Dict[str, Any] = {}
             if source_ids is not None:
@@ -1064,6 +1086,7 @@ def _benchmark_one(
                     threshold=cfg.decision_threshold,
                     n_bootstrap=n_boot,
                     cluster_ids=cluster_ids,
+                    calibrated_threshold=calibrated_threshold,
                 )
 
             # Robustez a CODEC (opt-in): round-trip com perdas na FORMA DE
@@ -1085,24 +1108,27 @@ def _benchmark_one(
                             threshold=cfg.decision_threshold,
                             n_bootstrap=n_boot,
                             cluster_ids=cluster_ids,
+                            calibrated_threshold=calibrated_threshold,
                         )
                     except Exception as exc:  # noqa: BLE001 — opt-in, não derruba o run
                         logger.warning(
                             "[%s] avaliação de codec '%s' falhou: %s",
-                            arch, codec, exc,
+                            arch,
+                            codec,
+                            exc,
                         )
-                        codec_robustness[codec] = {
-                            "status": "error", "error": str(exc)
-                        }
+                        codec_robustness[codec] = {"status": "error", "error": str(exc)}
             elif codecs:
                 logger.warning(
                     "[%s] codec_eval ignorado: avaliação não está no domínio "
-                    "da forma de onda.", arch,
+                    "da forma de onda.",
+                    arch,
                 )
 
-            latency = measure_latency_ms(
+            latency_profile = measure_latency_profile(
                 r["predict_fn"], Xte[0], runs=cfg.latency_runs
             )
+            latency = latency_profile.get("median_ms")
             training_config = dict(r.get("training_config") or {})
             training_config.setdefault("waveform_noise_protocol", protocol)
             history = r.get("history")
@@ -1141,6 +1167,7 @@ def _benchmark_one(
                     "params": r["params"],
                     "size_mb": r["size_mb"],
                     "latency_ms": latency,
+                    "latency_profile": latency_profile,
                 },
                 "history": history,
                 "training_config": training_config,
@@ -1149,7 +1176,9 @@ def _benchmark_one(
                 "fit_strategy": r.get("fit_strategy"),
                 "model_artifact": r.get("model_artifact"),
                 "training_artifacts_dir": str(_architecture_dir(cfg, arch)),
-                "epochs": int(effective_epochs) if effective_epochs is not None else None,
+                "epochs": (
+                    int(effective_epochs) if effective_epochs is not None else None
+                ),
                 "wall_time_s": round(time.time() - t0, 1),
             }
     except Exception as e:  # noqa: BLE001 — isola falha por arquitetura
@@ -1178,9 +1207,7 @@ def _load_and_validate_data(cfg: BenchmarkConfig) -> BenchmarkData:
                 len(data.y),
             )
     else:
-        data = BenchmarkData.synthetic(
-            cfg.synthetic_n, cfg.synthetic_shape, cfg.seed
-        )
+        data = BenchmarkData.synthetic(cfg.synthetic_n, cfg.synthetic_shape, cfg.seed)
     data.validate()
     return data
 
@@ -1260,8 +1287,10 @@ def run_benchmark(cfg: BenchmarkConfig) -> Dict[str, Any]:
     y_test_base = np.asarray(raw_splits[5])
     n_test = len(y_test_base)
     logger.info(
-        "Dataset '%s': %d amostras | teste held-out: %d", data.name,
-        len(data.y), n_test,
+        "Dataset '%s': %d amostras | teste held-out: %d",
+        data.name,
+        len(data.y),
+        n_test,
     )
 
     per_arch: Dict[str, Any] = {}
@@ -1281,9 +1310,16 @@ def run_benchmark(cfg: BenchmarkConfig) -> Dict[str, Any]:
             "metadata": data.metadata or {},
             "split_source": (
                 "predefined_npz"
-                if data.predefined_split_indices and cfg.preserve_predefined_splits
-                and not any((cfg.group_split, cfg.holdout_generator,
-                             cfg.speaker_split, cfg.holdout_speaker))
+                if data.predefined_split_indices
+                and cfg.preserve_predefined_splits
+                and not any(
+                    (
+                        cfg.group_split,
+                        cfg.holdout_generator,
+                        cfg.speaker_split,
+                        cfg.holdout_speaker,
+                    )
+                )
                 else "generated_by_protocol"
             ),
             "split_overlap_audit": split_overlap_audit,
@@ -1309,6 +1345,32 @@ def run_benchmark(cfg: BenchmarkConfig) -> Dict[str, Any]:
         except Exception as e:  # noqa: BLE001
             results["api"] = {"status": "error", "error": str(e)}
 
+    # SQLite é a fonte canônica estruturada; JSON/CSV/figuras abaixo são
+    # projeções compatíveis para análise, publicação e intercâmbio.
+    try:
+        from app.core.db.experiment_store import experiment_store
+
+        experiment_store.ensure_schema()
+        snapshot_uid = experiment_store.record_system_snapshot(purpose="benchmark")
+        run_uid = experiment_store.persist_benchmark_results(
+            results,
+            output_dir=cfg.output_dir,
+            source="benchmarks.runner",
+        )
+        results["persistence"] = {
+            "backend": "sqlite",
+            "database": "data/app.db",
+            "run_uid": run_uid,
+            "system_snapshot_uid": snapshot_uid,
+            "json_csv_role": "export_projection",
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Falha ao persistir benchmark no SQLite: %s", exc)
+        results["persistence"] = {
+            "backend": "sqlite",
+            "status": "error",
+            "error": str(exc),
+        }
     from benchmarks.report import write_all
 
     write_all(results, cfg.output_dir)

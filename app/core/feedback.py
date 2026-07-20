@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 import threading
 import time
 import uuid
@@ -267,7 +268,9 @@ def configure_logging(
 
     handlers: list[logging.Handler] = [logging.StreamHandler()]
     if log_file:
-        handlers.insert(0, logging.FileHandler(log_file, encoding="utf-8"))
+        log_path = Path(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        handlers.insert(0, logging.FileHandler(log_path, encoding="utf-8"))
     logging.basicConfig(
         level=level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",

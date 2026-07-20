@@ -15,7 +15,7 @@ x-train-common: &train-common
     GRADIO_ANALYTICS_ENABLED: "False"
     DATABASE_URL: sqlite:////app/data/app.db
     DEEPFAKE_UPLOADS_DIR: /app/data/uploads
-    DEEPFAKE_MODELS_DIR: /app/app/models
+    DEEPFAKE_MODELS_DIR: /app/data/models
     HF_HOME: /app/cache/huggingface
     TORCH_HOME: /app/cache/torch
     XFAKE_SYNC_MODELS_ON_BOOT: "false"
@@ -44,7 +44,7 @@ services:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
     image: xfakesong/classical-ml:cpu
     container_name: xfakesong_classical_ml_cpu
-    command: ["python", "scripts/training/train_by_family.py", "--family", "classical-ml"]
+    command: ["python", "scripts/training/train_by_family.py", "--family", "classical-tabular"]
 
   tensorflow-keras:
     <<: *train-common
@@ -55,7 +55,7 @@ services:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
     image: xfakesong/tensorflow-keras:cpu
     container_name: xfakesong_tensorflow_keras_cpu
-    command: ["python", "scripts/training/train_by_family.py", "--family", "tensorflow-keras", "--device-profile", "cpu"]
+    command: ["python", "scripts/training/train_by_family.py", "--family", "spectral-attention", "--device-profile", "cpu"]
 
   pytorch-audio:
     <<: *train-common
@@ -66,8 +66,29 @@ services:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
     image: xfakesong/pytorch-audio:cpu
     container_name: xfakesong_pytorch_audio_cpu
-    command: ["python", "scripts/training/train_by_family.py", "--family", "pytorch-audio", "--device-profile", "cpu"]
+    command: ["python", "scripts/training/train_by_family.py", "--family", "waveform-end-to-end", "--device-profile", "cpu"]
 
+  spectral-convolutional:
+    <<: *train-common
+    build:
+      context: ../..
+      dockerfile: docker/environments/tensorflow-keras/Dockerfile.cpu
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
+    image: xfakesong/tensorflow-keras:cpu
+    container_name: xfakesong_spectral_convolutional_cpu
+    command: ["python", "scripts/training/train_by_family.py", "--family", "spectral-convolutional", "--device-profile", "cpu"]
+
+  extended:
+    <<: *train-common
+    build:
+      context: ../..
+      dockerfile: docker/environments/tensorflow-keras/Dockerfile.cpu
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
+    image: xfakesong/tensorflow-keras:cpu
+    container_name: xfakesong_extended_cpu
+    command: ["python", "scripts/training/train_by_family.py", "--family", "extended", "--device-profile", "cpu"]
   ssl-transformers:
     <<: *train-common
     build:
@@ -77,4 +98,4 @@ services:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
     image: xfakesong/ssl-transformers:cpu
     container_name: xfakesong_ssl_transformers_cpu
-    command: ["python", "scripts/training/train_by_family.py", "--family", "ssl-transformers", "--device-profile", "cpu"]
+    command: ["python", "scripts/training/train_by_family.py", "--family", "ssl-pretrained", "--device-profile", "cpu"]

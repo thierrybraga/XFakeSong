@@ -1,0 +1,444 @@
+# Extração de Features de Áudio
+
+O coração do XFakeSong é seu pipeline de extração de características. O sistema transforma sinais de áudio brutos em representações matemáticas que alimentam os modelos de detecção de deepfake.
+
+## Registry de Extratores
+
+O sistema usa o padrão **Registry** (`FeatureExtractorRegistry`) para gerenciar extratores dinamicamente. Novos extratores podem ser adicionados sem modificar o orquestrador.
+
+### Tipos de Features (`FeatureType`)
+
+Definido canonicamente em `app/core/contracts/audio.py`:
+
+| Valor | Descrição |
+|-------|-----------|
+| `SPECTRAL` | Distribuição de energia no domínio da frequência |
+| `MEL_SPECTROGRAM` | Espectrograma em escala Mel |
+| `TEMPORAL` | Dinâmica de energia e estrutura no domínio do tempo |
+| `PROSODIC` | Entonação, ritmo, pitch, jitter, shimmer |
+| `PERCEPTUAL` | Características psicoacústicas (Bark, ERB, loudness) |
+| `ADVANCED` | Features preditivas (LPC, coeficientes de reflexão) |
+| `CEPSTRAL` | Envelope espectral de curto prazo (trato vocal) |
+| `FORMANT` | Ressonâncias do trato vocal (F1–F4) |
+| `VOICE_QUALITY` | Estabilidade e textura da fonação |
+| `COMPLEXITY` | Métricas de complexidade e caos (ApEn, SampEn, Hurst) |
+| `CUSTOM` | Extratores customizados registrados pelo usuário |
+
+!!! note
+    `app/domain/features/types.py` e `app/domain/features/interfaces.py` são
+    re-exports que apontam para a fonte canônica em
+    `app/core/contracts/audio.py`.
+
+---
+
+## O que é usado em produção vs. experimental
+
+Nem todo `FeatureType` participa do **caminho de detecção**. O front-end real é
+ditado pelo `input_contract` gravado no treino (ver
+[09_INFERENCIA](../models/inference.md)):
+
+| Classe de modelo | Front-end em produção | Observação |
+| --- | --- | --- |
+| Neurais **raw-audio** (AASIST, RawGAT-ST, RawNet2, WavLM, HuBERT, Ensemble) | forma de onda bruta (front-end aprendido ou in-model: SincNet / SSL / STFT compartilhado) | sem features tabulares |
+| Neurais **spectrogram** (MultiscaleCNN, EfficientNet-LSTM, SpectrogramTransformer, Conformer, Hybrid, Sonic Sleuth quando treinado como spec) | **log-mel** ou **LFCC** (campo `feature_frontend` do contrato) | calculado on-the-fly via `tf.signal` |
+| **Clássicos** (SVM, RandomForest) | features tabulares **segmentadas e agregadas**: `SPECTRAL`, `CEPSTRAL`, `TEMPORAL`, `PROSODIC` | vetor 1-D por amostra |
+
+As demais famílias — `PERCEPTUAL`, `FORMANT`, `VOICE_QUALITY`, `COMPLEXITY`,
+`ADVANCED` (preditivas) — são usadas para **análise forense/exploratória** (aba
+*Investigar* e notebooks de estudo), **não** no caminho de detecção neural.
+Mantê-las catalogadas no registry é intencional: permite experimentação sem
+alterar o pipeline de inferência.
+
+---
+
+## Arquitetura de Extração
+
+O pipeline de extração usa três camadas:
+
+```
+ExtractorLoader  →  _extractors: Dict[FeatureType, IFeatureExtractor]
+FeatureExtractorCore  →  itera apenas os tipos solicitados em ExtractionConfig
+Adapters  →  envolvem extratores do domínio e expõem extract(AudioData) → ProcessingResult
+```
+
+Todos os extratores são registrados com **chaves `FeatureType` enum** — sem strings legadas.
+
+---
+
+## Processo de Extração na Inferência
+
+O caminho de inferência não extrai "todas as features" para todos os modelos.
+Ele prepara somente o tensor que o artefato treinado espera:
+
+1. `ModelLoader` lê o `_config.json` lateral ao artefato e monta `ModelInfo`.
+2. `FeaturePreparer` resolve `input_contract` > registry > inferência por shape.
+3. O áudio é reamostrado para o `sample_rate` do contrato, normalmente `16 kHz`.
+4. O despacho segue `input_type`:
+   - `raw_audio`: amplitude preservada + center-crop/tile (sem zero-pad) + waveform `(T,)` ou `(T, 1)`;
+   - `spectrogram`: `prepare_audio_for_model` calcula log-mel ou LFCC via `tf.signal`;
+   - `tabular`: `extract_segmented_features` gera vetor agregado para SVM/RF.
+
+### Front-end espectral unificado
+
+`app/domain/services/detection/audio_preprocessing.py` centraliza o front-end
+usado por treino e inferência:
+
+| Parâmetro | Padrão | Uso |
+|---|---:|---|
+| `DEFAULT_SAMPLE_RATE` | 16000 | taxa-alvo antes do front-end |
+| `DEFAULT_N_FFT` | 512 | janela STFT |
+| `DEFAULT_HOP` | 128 | passo STFT no caminho unificado |
+| `DEFAULT_N_MELS` | 80 | log-mel legado |
+| `DEFAULT_FRONTEND` | `lfcc` | padrão para treinos novos |
+| `DEFAULT_N_LFCC` | 80 | preserva shape `(T, 80, 1)` |
+
+Modelos novos devem gravar `feature_frontend="lfcc"` ou `"logmel"` no
+`input_contract`. Modelos antigos sem esse campo usam `logmel` por fallback para
+manter paridade com o treino já realizado.
+
+### Extração segmentada para SVM/RF
+
+Os modelos clássicos recebem vetor tabular. Na inferência, se o artefato não
+declara `feature_types`, o fallback é `spectral`, `cepstral`, `temporal` e
+`prosodic`. O core segmenta o áudio em janelas de 1 s, sem overlap, normaliza os
+segmentos e agrega por `mean` por padrão. Métodos aceitos:
+
+| `aggregate_method` | Saída |
+|---|---|
+| `mean` | média por coluna de feature |
+| `median` | mediana por coluna |
+| `std` | desvio padrão por coluna |
+| `all` | concatena média, desvio, mínimo e máximo |
+
+Desde a correção do core, `extract_segmented_features` respeita
+`config.feature_types`; só extrai todas as famílias quando a lista vem vazia.
+
+---
+
+## Extratores Disponíveis
+
+Registrados automaticamente pelo `ExtractorLoader` a partir dos adaptadores em
+`app/domain/features/adapters/`:
+
+| FeatureType | Adaptador | Extrator Interno |
+|-------------|-----------|------------------|
+| `SPECTRAL` | `SpectralFeatureExtractor` (direto) | — |
+| `MEL_SPECTROGRAM` | `MelSpectrogramExtractor` (direto) | — |
+| `TEMPORAL` | `TemporalExtractorWrapper` | `TemporalFeatureExtractor` |
+| `PROSODIC` | `ProsodicExtractorWrapper` | `ProsodicFeatureExtractor` |
+| `CEPSTRAL` | `CepstralExtractorWrapper` | `CepstralFeatureExtractor` |
+| `FORMANT` | `FormantExtractorWrapper` | `FormantFeatureExtractor` |
+| `VOICE_QUALITY` | `VoiceQualityExtractorWrapper` | `VoiceQualityFeatureExtractor` |
+| `PERCEPTUAL` | `PerceptualExtractorWrapper` | `PerceptualFeatureExtractor` |
+| `COMPLEXITY` | `ComplexityExtractorWrapper` | complexity extractor |
+| `ADVANCED` | `PredictiveExtractorWrapper` | `PredictiveFeatureExtractor` |
+
+Extratores ausentes (ImportError) são ignorados silenciosamente — o pipeline funciona com os tipos disponíveis.
+
+---
+
+## Features por Categoria
+
+### `SPECTRAL` — `SpectralFeatureExtractor`
+**Taxa de amostragem padrão**: 22.050 Hz
+
+Detecta anomalias na reconstrução de frequências — artefatos comuns em vocoders neurais.
+
+| Feature | Descrição |
+|---------|-----------|
+| Spectral Centroid | "Centro de massa" do espectro |
+| Spectral Rolloff | Frequência abaixo da qual se concentra 85%/95% da energia |
+| Spectral Bandwidth | Largura de banda espectral |
+| Spectral Flatness | Proximidade do sinal com ruído branco |
+| Spectral Contrast | Diferença dB entre picos e vales no espectro |
+| Spectral Flux | Taxa de mudança do espectro entre frames consecutivos |
+| Spectral Decrease | Tendência de decaimento espectral |
+| Crest Factor | Relação pico-RMS (detecta transientes) |
+| Irregularity | Variação de amplitude entre parciais adjacentes |
+| Roughness | Rugosidade causada por modulações rápidas |
+| Inharmonicity | Desvio dos parciais em relação à série harmônica |
+
+---
+
+### `CEPSTRAL` — `CepstralExtractorWrapper`
+**Taxa de amostragem padrão**: 22.050 Hz
+
+Modela o trato vocal humano — altamente sensível a manipulações de identidade.
+
+| Feature | Descrição |
+|---------|-----------|
+| MFCC (13 coefs.) | Mel-Frequency Cepstral Coefficients |
+| Delta-MFCC | Primeira derivada temporal dos MFCCs |
+| Delta-Delta-MFCC | Segunda derivada temporal dos MFCCs |
+| Log Mel Spectrogram | Espectrograma em escala Mel com amplitude logarítmica |
+| PLP | Perceptual Linear Prediction |
+| LPCC | Linear Prediction Cepstral Coefficients |
+
+---
+
+### `PROSODIC` — `ProsodicExtractorWrapper`
+**Taxa de amostragem padrão**: 22.050 Hz | **Algoritmo F0**: YIN
+
+Deepfakes frequentemente falham em reproduzir a micro-prosódia natural da fala.
+
+| Feature | Descrição |
+|---------|-----------|
+| F0 (contorno) | Pitch — frequência fundamental |
+| F0 Statistics | Média, desvio padrão, range, slope, mediana, quartis |
+| Voicing Probability | Probabilidade de frame voiced vs. silêncio |
+| Jitter | Perturbação ciclo-a-ciclo na frequência fundamental |
+| Shimmer | Perturbação ciclo-a-ciclo na amplitude |
+| HNR | Harmonics-to-Noise Ratio |
+
+---
+
+### `FORMANT` — `FormantExtractorWrapper`
+**Algoritmo**: LPC + Levinson-Durbin
+
+Modela as ressonâncias do trato vocal. Deepfakes podem gerar formantes com larguras de banda
+ou relações de frequência não naturais.
+
+| Feature | Descrição |
+|---------|-----------|
+| F1–F4 | Frequências centrais dos 4 primeiros formantes |
+| Bandwidths | Largura de banda de cada formante |
+| Vowel Space Area | Área do polígono F1×F2 (indica articulação) |
+| Formant Dispersion | Distância média entre formantes consecutivos |
+
+---
+
+### `VOICE_QUALITY` — `VoiceQualityExtractorWrapper`
+
+Métricas de estabilidade e textura da fonação.
+
+| Feature | Descrição |
+|---------|-----------|
+| NHR | Noise-to-Harmonics Ratio |
+| VTI | Voice Turbulence Index |
+| SPI | Soft Phonation Index |
+| DFA | Detrended Fluctuation Analysis |
+
+---
+
+### Outras Categorias
+
+| FeatureType | Módulo | Features Representativas |
+|-------------|--------|--------------------------|
+| `TEMPORAL` | `extractors/temporal/` | Energy RMS, ZCR, Teager Energy, ADSR |
+| `PERCEPTUAL` | `extractors/perceptual/` | Loudness (Zwicker), Sharpness, Fluctuation Strength |
+| `COMPLEXITY` | `extractors/complexity/` | ApEn, SampEn, Higuchi Fractal Dim., Hurst Exponent |
+| `ADVANCED` | `extractors/predictive/` | LPC stability, reflection coefficients |
+| `MEL_SPECTROGRAM` | `extractors/mel/` | Log Mel Spectrogram (variantes) |
+
+---
+
+## Adicionando um Novo Extrator
+
+```python
+from app.core.contracts.audio import AudioData, AudioFeatures, FeatureType, IFeatureExtractor
+from app.core.contracts.base import ProcessingResult, ProcessingStatus
+from app.domain.features.extractor_registry import (
+    extractor_registry, ExtractorSpec, ExtractorComplexity
+)
+
+
+class MeuExtrator(IFeatureExtractor):
+    def extract(self, audio_data: AudioData) -> ProcessingResult:
+        # lógica de extração
+        features = {"minha_feature": np.array([1.0, 2.0])}
+        return ProcessingResult(
+            status=ProcessingStatus.SUCCESS,
+            data=AudioFeatures(
+                features=features,
+                feature_type=FeatureType.CUSTOM,
+                extraction_params=self.get_extraction_params(),
+            )
+        )
+
+    def extract_features(self, audio_data: AudioData) -> ProcessingResult:
+        return self.extract(audio_data)
+
+    def get_feature_type(self) -> FeatureType:
+        return FeatureType.CUSTOM
+
+    def get_feature_names(self):
+        return ["minha_feature"]
+
+    def get_extraction_params(self):
+        return {"param1": "valor"}
+
+
+# Registrar no sistema
+extractor_registry.register(ExtractorSpec(
+    name="meu_extrator",
+    feature_type=FeatureType.CUSTOM,
+    complexity=ExtractorComplexity.MEDIUM,
+    description="Descrição breve do extrator",
+    extractor_class=MeuExtrator,
+    default_params={"param1": "valor"},
+    input_requirements={"sample_rate": 22050},
+))
+```
+
+---
+
+## Configuração
+
+| Variável de Ambiente | Descrição | Padrão |
+|---------------------|-----------|--------|
+| `DEEPFAKE_PARALLEL_EXTRACTION` | Extração paralela de múltiplos arquivos | `false` |
+
+Features são normalizadas automaticamente no pipeline para estabilidade numérica no treinamento.
+
+---
+
+## Equações Consolidadas do Estudo Experimental
+
+Esta seção replica as equações usadas no artigo consolidado em
+`data/results/paper/main.tex`. Elas documentam a base matemática dos extratores e
+facilitam auditoria entre implementação, notebooks e relatório do benchmark.
+
+### Pré-processamento
+
+**Normalização AGC**:
+
+$$
+x_{norm}[n] = x[n] \cdot 10^{\frac{L_{target} - L_{measured}}{20}}
+$$
+
+**Energia por quadro para VAD**:
+
+$$
+E_m = \sum_{n=mH}^{mH+N-1} x^2[n] w[n-mH]
+$$
+
+**Decisão de voz**:
+
+$$
+V_m =
+\begin{cases}
+1, & 10\log_{10}(E_m) > \theta_{VAD}\\
+0, & \text{caso contrário}
+\end{cases}
+$$
+
+### Características espectrais
+
+**Centroide espectral**:
+
+$$
+C_t = \frac{\sum_{k=0}^{K-1} f_k |X_t[k]|}{\sum_{k=0}^{K-1} |X_t[k]|}
+$$
+
+**Largura de banda espectral**:
+
+$$
+B_t = \left(
+\frac{\sum_k (f_k - C_t)^2 |X_t[k]|}{\sum_k |X_t[k]|}
+\right)^{1/2}
+$$
+
+**Roll-off espectral**:
+
+$$
+\sum_{k=0}^{k_r} |X_t[k]| = \alpha \sum_{k=0}^{K-1} |X_t[k]|
+$$
+
+**Zero Crossing Rate**:
+
+$$
+ZCR_t = \frac{1}{2N}\sum_{n=1}^{N-1}
+\left|\operatorname{sgn}(x_t[n]) - \operatorname{sgn}(x_t[n-1])\right|
+$$
+
+**Flatness espectral**:
+
+$$
+SF_t =
+\frac{\left(\prod_{k=0}^{K-1}|X_t[k]|\right)^{1/K}}
+{\frac{1}{K}\sum_{k=0}^{K-1}|X_t[k]|}
+$$
+
+**Contraste espectral**:
+
+$$
+SC_b = 10\log_{10}\left(\frac{\mu_{peaks,b}}{\mu_{valleys,b}}\right)
+$$
+
+### Cepstrais e mel
+
+**MFCC**:
+
+$$
+c_n = \sum_{m=0}^{M-1} \log(S_m)
+\cos\left[\frac{\pi n}{M}\left(m+\frac{1}{2}\right)\right]
+$$
+
+**Espectrograma mel**:
+
+$$
+M[m,t] = \sum_{k=0}^{K-1} |X_t[k]|^2 H_m[k]
+$$
+
+### Prosódicas
+
+**Frequência fundamental média**:
+
+$$
+F0_{mean} = \frac{1}{T}\sum_{t=1}^{T} F0_t
+$$
+
+**Jitter**:
+
+$$
+Jitter = \frac{1}{N-1}\sum_{i=1}^{N-1}
+\frac{|T_i - T_{i+1}|}{\bar{T}}
+$$
+
+**Shimmer**:
+
+$$
+Shimmer = \frac{1}{N-1}\sum_{i=1}^{N-1}
+\frac{|A_i - A_{i+1}|}{\bar{A}}
+$$
+
+### CQT, deltas e normalização
+
+**Constant-Q Transform**:
+
+$$
+Q = \frac{f_k}{\Delta f_k}
+$$
+
+**Delta e delta-delta**:
+
+$$
+d_t =
+\frac{\sum_{n=1}^{N} n(c_{t+n} - c_{t-n})}
+{2\sum_{n=1}^{N} n^2}
+$$
+
+**Min-Max Scaling**:
+
+$$
+X_{norm} = \frac{X - X_{min}}{X_{max} - X_{min}}
+$$
+
+**Z-score**:
+
+$$
+X_{norm} = \frac{X - \mu}{\sigma}
+$$
+
+## Ranking de Características do Artigo
+
+| Grupo | Dimensão | Custo | Uso no sistema |
+|---|---:|---|---|
+| LFCC/CQCC | 20-84 | Médio | Front-end forte para spoofing e Sonic Sleuth |
+| Mel espectrograma | 80-128 | Médio | Conformer, Hybrid, EfficientNet-LSTM, MultiscaleCNN |
+| CQT | 84 | Alto | Complementar no Ensemble e Sonic Sleuth |
+| MFCC | 13-40 | Baixo | Baseline e fusão multi-feature |
+| Prosódicas | 6 | Médio | Complementares, fracas isoladamente |
+
+Para a leitura completa da fundamentação e análise experimental, veja
+[Estudo Experimental](../evaluation/experimental-study.md).

@@ -13,11 +13,11 @@ Exemplos:
 
     # Sob medida:
     python scripts/benchmark/run_benchmark.py --archs RawNet2 AASIST SVM RandomForest \
-        --dataset data.npz --epochs 20 --snr 30 20 10 --api --out results/bench
+        --dataset data.npz --epochs 20 --snr 30 20 10 --api --out data/results/bench
 
     # Modelo individual:
     python scripts/benchmark/run_benchmark.py --model AASIST \
-        --dataset data.npz --epochs 20 --out results/bench_aasist
+        --dataset data.npz --epochs 20 --out data/results/bench_aasist
 """
 
 from __future__ import annotations
@@ -96,7 +96,7 @@ def main() -> int:
     p.add_argument(
         "--models-dir",
         metavar="DIR",
-        help="pasta onde salvar modelos treinados (default: app/models)",
+        help="pasta onde salvar modelos treinados (default: data/models)",
     )
     p.add_argument("--api", action="store_true",
                    help="também roda o teste de sistema da API (TestClient)")
@@ -114,6 +114,11 @@ def main() -> int:
     p.add_argument("--converge-accuracy", type=float,
                    help="acurácia mínima no threshold 0.5 para convergência")
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument(
+        "--experiment-scope",
+        choices=["official", "extended"],
+        default="official",
+    )
     p.add_argument("--device-profile", choices=["auto", "cpu", "gpu"],
                    default=None,
                    help="perfil usado para cap de batch e mixed precision")
@@ -146,7 +151,13 @@ def main() -> int:
                         "(default: 1000; 0 desliga)")
     args = p.parse_args()
 
-    from benchmarks import BenchmarkConfig, plan_benchmark, run_benchmark
+    from benchmarks import (
+        ALL_TCC_ARCHITECTURES,
+        EXTENDED_MODEL_MANIFEST,
+        BenchmarkConfig,
+        plan_benchmark,
+        run_benchmark,
+    )
 
     selected_preset = args.preset
     if args.full:
@@ -223,6 +234,7 @@ def main() -> int:
     if args.converge_accuracy is not None:
         cfg.converge_accuracy_threshold = args.converge_accuracy
     cfg.seed = args.seed
+    cfg.experiment_scope = args.experiment_scope
     if args.group_split:
         cfg.group_split = True
     if args.cross_generator:
@@ -242,6 +254,16 @@ def main() -> int:
             p.error("--bootstrap-ci deve ser >= 0")
         cfg.bootstrap_ci_samples = args.bootstrap_ci
     if args.no_optimize_hparams:
+        cfg.optimize_hyperparameters = False
+    official = set(ALL_TCC_ARCHITECTURES)
+    extended = {item["benchmark_name"] for item in EXTENDED_MODEL_MANIFEST}
+    allowed = extended if cfg.experiment_scope == "extended" else official
+    invalid = [arch for arch in cfg.architectures if arch not in allowed]
+    if invalid:
+        p.error(
+            f"arquiteturas fora do escopo {cfg.experiment_scope}: {invalid}"
+        )
+    if cfg.experiment_scope == "extended":
         cfg.optimize_hyperparameters = False
     if args.no_early_stopping:
         for arch in cfg.architectures:

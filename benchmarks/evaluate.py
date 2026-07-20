@@ -96,7 +96,8 @@ def _bootstrap_cis(
 def evaluate_scores(y_true: np.ndarray, p_fake: np.ndarray,
                     threshold: float = 0.5,
                     n_bootstrap: int = 0,
-                    cluster_ids: np.ndarray | None = None) -> Dict[str, Any]:
+                    cluster_ids: np.ndarray | None = None,
+                    calibrated_threshold: float | None = None) -> Dict[str, Any]:
     """Métricas de detecção a partir de y_true ∈ {0,1} e p_fake ∈ [0,1].
 
     Reaproveita o MetricsCalculator do pipeline para EER e min-tDCF (mesma
@@ -139,6 +140,9 @@ def evaluate_scores(y_true: np.ndarray, p_fake: np.ndarray,
     n_neg = int((y_true == 0).sum())
     out: Dict[str, float] = {
         "accuracy": float(accuracy_score(y_true, y_pred)),
+        "accuracy_at_fixed_threshold": float(accuracy_score(y_true, y_pred)),
+        "decision_threshold": float(threshold),
+        "metric_threshold_policy": "fixed_comparison",
         "precision": float(precision_score(y_true, y_pred, zero_division=0)),
         "recall": float(recall_score(y_true, y_pred, zero_division=0)),
         "f1": float(f1_score(y_true, y_pred, zero_division=0)),
@@ -164,15 +168,15 @@ def evaluate_scores(y_true: np.ndarray, p_fake: np.ndarray,
             # Acurácia no limiar ótimo (ponto de EER) — teto de separabilidade,
             # independente da calibração do limiar fixo 0.5.
             if np.isfinite(eer_thr):
-                out["accuracy_at_eer"] = float(
+                out["accuracy_at_eer_oracle"] = float(
                     accuracy_score(y_true, (p_fake >= eer_thr).astype(int))
                 )
             else:
-                out["accuracy_at_eer"] = float("nan")
+                out["accuracy_at_eer_oracle"] = float("nan")
         except Exception:
             out["eer"] = float("nan")
             out["eer_threshold"] = float("nan")
-            out["accuracy_at_eer"] = float("nan")
+            out["accuracy_at_eer_oracle"] = float("nan")
         try:
             tdcf, _ = mc.calculate_min_tdcf(y_true, p_fake)
             out["min_tdcf"] = float(tdcf)
@@ -182,9 +186,17 @@ def evaluate_scores(y_true: np.ndarray, p_fake: np.ndarray,
         out["auc_roc"] = float("nan")
         out["eer"] = float("nan")
         out["eer_threshold"] = float("nan")
-        out["accuracy_at_eer"] = float("nan")
+        out["accuracy_at_eer_oracle"] = float("nan")
         out["min_tdcf"] = float("nan")
 
+    # Compatibilidade: este limiar é derivado do próprio conjunto avaliado e,
+    # portanto, é um teto/oráculo, não o threshold operacional de validação.
+    out["accuracy_at_eer"] = out.get("accuracy_at_eer_oracle", float("nan"))
+    if calibrated_threshold is not None and np.isfinite(calibrated_threshold):
+        out["calibrated_threshold"] = float(calibrated_threshold)
+        out["accuracy_at_calibrated_threshold"] = float(
+            accuracy_score(y_true, (p_fake >= calibrated_threshold).astype(int))
+        )
     if n_bootstrap and n_pos > 0 and n_neg > 0:
         out.update(
             _bootstrap_cis(

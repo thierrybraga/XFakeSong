@@ -5,23 +5,22 @@
 # HuBERT, SpectrogramTransformer, WavLM, RawNet2, Sonic Sleuth) foram mantidos
 # e NÃO precisam de retreino.
 #
-# Mapa diagnóstico -> ajuste em docs/RETREINO_AJUSTES.md
+# Mapa diagnóstico -> ajuste em docs/evaluation/retraining-adjustments.md
 
-family: retune-ajustado
+family: retune-official
+scope: official
 models:
   - RawGAT-ST              # overfitting/divergência: LR 1e-4->5e-5, clip 1.0->0.7, dropout/L2/aug+
   - AASIST                 # subajuste: LR 1e-4->3e-4, weight_decay 0.01->1e-3, L2-, aug+
-  - Ensemble               # colapso de robustez: augmentation_strength 0.30->0.45
   - Hybrid CNN-Transformer # robustez moderada: dropout/stochastic-depth/aug+
-  - EfficientNet-LSTM      # acc limpa baixa: dropout 0.3->0.25, paciência+
   - MultiscaleCNN          # NaN inicial: clipnorm=1.0 no Adam
   - RandomForest           # overfit (train=1.0): grid regularizado
   - SVM                    # robustez: retreino com features aumentadas por ruído
 # Dataset canonico: data/datasets/ (raiz consolidada em 2026-07-14; app/datasets foi descontinuado).
-dataset: data/datasets/benchmark_audio_raw_balanced_15k.npz
-output_dir: results/retune_ajustado
-models_dir: app/models
-epochs: 120
+dataset: data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz
+output_dir: data/results/retune_ajustado
+models_dir: data/models
+epochs: 100
 batch_size: 32
 device_profile: gpu
 latency_runs: 30

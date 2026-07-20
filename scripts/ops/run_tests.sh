@@ -2,7 +2,7 @@
 # ==============================================================================
 # Runner padronizado da suíte de testes do XFakeSong.
 # Categorias espelham as subpastas de tests/ (marcadas automaticamente pelo
-# conftest). Veja docs/06_QUALIDADE_TESTES.md (caderno de testes).
+# conftest). Veja docs/development/quality-and-testing.md (caderno de testes).
 #
 # Uso: ./scripts/ops/run_tests.sh [categoria] [args extras do pytest...]
 #   fast | default   suíte rápida (tudo EXCETO smoke) — o run padrão da CI

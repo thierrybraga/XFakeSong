@@ -119,7 +119,7 @@ Use `from app.domain.models.architectures.factory import create_model` para inst
 ```env
 DEEPFAKE_ENV=development           # development | production
 GRADIO_SERVER_PORT=7860
-DEEPFAKE_MODELS_DIR=./app/models
+DEEPFAKE_MODELS_DIR=./data/models
 DEEPFAKE_LOG_LEVEL=INFO            # DEBUG | INFO | WARNING | ERROR
 DEEPFAKE_PARALLEL_EXTRACTION=false
 ```
@@ -149,7 +149,7 @@ data/datasets/
 └── fake/    # Áudios sintéticos/deepfake
 ```
 
-Para datasets públicos (ASVspoof, WaveFake, In-the-Wild, etc.), consulte [`docs/12_DATASETS.md`](docs/12_DATASETS.md).
+Para datasets públicos (ASVspoof, WaveFake, In-the-Wild, etc.), consulte [`docs/data/public-datasets.md`](docs/data/public-datasets.md).
 
 ---
 
@@ -157,7 +157,7 @@ Para datasets públicos (ASVspoof, WaveFake, In-the-Wild, etc.), consulte [`docs
 
 Toda a documentação técnica está em `docs/`, gerada via MkDocs Material
 (`mkdocs.yml`). [`docs/index.md`](docs/index.md) é o índice canônico e
-completo (30 documentos) — consulte-o em vez de duplicar a lista aqui. Os
+completo — consulte-o em vez de duplicar a lista aqui. Os
 mais usados no dia a dia de desenvolvimento:
 
 | Arquivo | Conteúdo |
