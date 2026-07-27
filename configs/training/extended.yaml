@@ -7,7 +7,7 @@ models:
 output_dir: data/results/families/extended
 batch_size: 16
 device_profile: gpu
-dataset: data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz
+dataset: data/datasets/benchmark_dataset.npz
 models_dir: data/models
 epochs: 100
 latency_runs: 30

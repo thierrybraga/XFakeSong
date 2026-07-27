@@ -140,7 +140,12 @@ def main() -> int:
                         "como teste (protocolo de usuário não visto)")
     p.add_argument(
         "--fail-on-source-shortcut", action="store_true",
-        help="recusa dataset em que a fonte prediz o rotulo acima de 55%",
+        help="recusa dataset em que a fonte prediz o rotulo acima de 55%%",
+    )
+    p.add_argument(
+        "--source-shortcut-limit", type=float, default=None,
+        help="sobrepoe o limite do oraculo fonte-rotulo (default: 0.55; "
+             "use para datasets com confundimento fonte-classe documentado)",
     )
     p.add_argument("--codec-eval", nargs="+", default=None,
                    metavar="CODEC", choices=["mp3", "opus"],
@@ -149,6 +154,11 @@ def main() -> int:
     p.add_argument("--bootstrap-ci", type=int, default=None,
                    help="nº de reamostragens do IC 95%% de bootstrap "
                         "(default: 1000; 0 desliga)")
+    p.add_argument("--n-seeds", type=int, default=None,
+                   help="repetições por arquitetura com sementes de TREINO "
+                        "distintas; métricas viram média ± desvio (default: 1). "
+                        "O split e o ruído de avaliação NÃO mudam. Custo: "
+                        "multiplica o tempo de treino por N")
     args = p.parse_args()
 
     from benchmarks import (
@@ -247,12 +257,18 @@ def main() -> int:
         cfg.device_profile = args.device_profile
     if args.fail_on_source_shortcut:
         cfg.fail_on_source_shortcut = True
+    if args.source_shortcut_limit is not None:
+        cfg.source_oracle_threshold = args.source_shortcut_limit
     if args.codec_eval:
         cfg.codec_eval = list(args.codec_eval)
     if args.bootstrap_ci is not None:
         if args.bootstrap_ci < 0:
             p.error("--bootstrap-ci deve ser >= 0")
         cfg.bootstrap_ci_samples = args.bootstrap_ci
+    if args.n_seeds is not None:
+        if args.n_seeds < 1:
+            p.error("--n-seeds deve ser >= 1")
+        cfg.n_seeds = args.n_seeds
     if args.no_optimize_hparams:
         cfg.optimize_hyperparameters = False
     official = set(ALL_TCC_ARCHITECTURES)

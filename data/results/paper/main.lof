@@ -1,0 +1,13 @@
+\babel@toc {brazilian}{}\relax 
+\contentsline {figure}{\numberline {1}{\ignorespaces Diagrama do \textit {pipeline} proposto. O modelo treinado (\subref {fig:pipeline_train}) é implantado (\textit {deploy}) na fase de inferência (\subref {fig:pipeline_pred}). A pontuação $p_{\mathrm {fake}}$ é a probabilidade predita de a amostra ser sintética: valores acima do limiar de decisão $\theta $ resultam em SINTÉTICO. O limiar é $0{,}5$ por padrão; para WavLM Original e HuBERT Original, é calibrado em validação com ruído ($\theta \approx 0{,}48$; Seção~\ref {sec:metricas}).}}{25}{figure.caption.3}%
+\contentsline {figure}{\numberline {2}{\ignorespaces Acurácia e AUC-ROC no conjunto de teste limpo.}}{41}{figure.caption.13}%
+\contentsline {figure}{\numberline {3}{\ignorespaces Robustez a AWGN na forma de onda (acurácia vs.\ SNR).}}{42}{figure.caption.14}%
+\contentsline {figure}{\numberline {4}{\ignorespaces Taxa de Erro Igual (EER) por arquitetura.}}{43}{figure.caption.15}%
+\contentsline {figure}{\numberline {5}{\ignorespaces $t$-DCF$^\ast $ por arquitetura.}}{44}{figure.caption.16}%
+\contentsline {figure}{\numberline {6}{\ignorespaces Latência e tamanho dos modelos.}}{54}{figure.caption.17}%
+\contentsline {figure}{\numberline {7}{\ignorespaces Trade-off entre acurácia, latência e tamanho dos artefatos.}}{55}{figure.caption.18}%
+\contentsline {figure}{\numberline {8}{\ignorespaces Resumo descritivo das curvas de validação em execução única; a diferença pico--final não demonstra, isoladamente, estabilidade de otimização. Modelos clássicos não possuem trajetória por época.}}{55}{figure.caption.19}%
+\contentsline {figure}{\numberline {9}{\ignorespaces Matrizes de confusão dos onze modelos avaliados no artigo.}}{56}{figure.caption.20}%
+\contentsline {figure}{\numberline {10}{\ignorespaces Importância de Gini das \num {15} características mais relevantes do \textit {Random Forest}, coloridas por família (temporal, MFCC, RASTA-PLP). Agregadas, as famílias respondem por \num {14,9}\%, \num {49,9}\% e \num {35,2}\% da importância total, respectivamente.}}{56}{figure.caption.21}%
+\contentsline {figure}{\numberline {11}{\ignorespaces Distribuições da pontuação por classe para AASIST e RawGAT-ST}}{57}{figure.caption.22}%
+\contentsline {figure}{\numberline {12}{\ignorespaces Curvas DET dos onze modelos no conjunto de teste limpo}}{57}{figure.caption.23}%

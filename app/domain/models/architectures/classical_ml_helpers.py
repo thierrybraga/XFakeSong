@@ -162,7 +162,6 @@ class BaseClassicalModel(ABC):
         pipeline = joblib.load(filepath)
 
         # Extract parameters from the pipeline's final step
-        final_step_name = pipeline.steps[-1][0]
         final_estimator = pipeline.steps[-1][1]
         params = final_estimator.get_params()
 

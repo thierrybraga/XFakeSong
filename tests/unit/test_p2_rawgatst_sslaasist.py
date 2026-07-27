@@ -13,7 +13,7 @@ def test_rawgatst_is_raw_audio_in_registry():
 
     info = reg.get_architecture("RawGAT-ST")
     assert info.input_requirements.get("input_type") == "raw_audio"
-    assert info.input_requirements["target_sequence_length"] == 64600
+    assert info.input_requirements["target_sequence_length"] == 48000
     assert info.input_requirements["crop_strategy"] == "train_random_eval_multicrop"
     assert "rawgat_st_legacy" in info.supported_variants
 
@@ -52,7 +52,7 @@ def test_aasist_paper_topology_and_contract():
     from app.domain.models.architectures.registry import architecture_registry as reg
 
     info = reg.get_architecture("AASIST")
-    assert info.input_requirements["target_sequence_length"] == 64600
+    assert info.input_requirements["target_sequence_length"] == 48000
     assert info.input_requirements["crop_strategy"] == "train_random_eval_multicrop"
     assert "aasist_legacy" in info.supported_variants
 

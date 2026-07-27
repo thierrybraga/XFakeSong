@@ -34,6 +34,64 @@ def _intbr(x) -> str:
     return f"{int(x):,}".replace(",", ".")
 
 
+def _pct_with_uncertainty(block: Dict[str, Any], metric: str, d: int = 2) -> str:
+    """Métrica em % acompanhada da INCERTEZA — ponto isolado não é publicável.
+
+    Precedência:
+      1. ``± desvio`` entre sementes de treino, quando há repetições. É a
+         incerteza que importa para comparar arquiteturas: mede a variabilidade
+         do procedimento de treino, não a do conjunto de teste.
+      2. ``[lo; hi]`` do IC 95% de bootstrap, quando há execução única. Mede a
+         variabilidade de amostragem do teste.
+      3. o ponto sozinho, se nenhuma das duas existir.
+
+    Até 2026-07-27 os ICs eram calculados (1000 reamostragens por condição) e
+    descartados na hora de gerar as tabelas — o artigo publicava pontos secos.
+    """
+    if block is None:
+        return "---"
+    value = block.get(metric)
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "---"
+
+    base = f"{value * 100:.{d}f}".replace(".", ",")
+    std = block.get(f"{metric}_seed_std")
+    if std is not None and np.isfinite(std):
+        return (
+            f"{base}\\,$\\pm$\\,{f'{std * 100:.{d}f}'.replace('.', ',')}" + r"\%"
+        )
+
+    lo = block.get(f"{metric}_ci95_low")
+    hi = block.get(f"{metric}_ci95_high")
+    if lo is not None and hi is not None and np.isfinite(lo) and np.isfinite(hi):
+        lo_s = f"{lo * 100:.{d}f}".replace(".", ",")
+        hi_s = f"{hi * 100:.{d}f}".replace(".", ",")
+        return f"{base}\\%~[{lo_s};\\,{hi_s}]"
+    return base + r"\%"
+
+
+def _uncertainty_note(results) -> str:
+    """Frase de rodapé declarando QUAL incerteza está nas tabelas."""
+    n_seeds = 0
+    for _name, r in results.get("architectures", {}).items():
+        if r.get("status") == "ok":
+            n_seeds = max(n_seeds, int(r.get("n_seeds") or 1))
+    if n_seeds > 1:
+        return (
+            f"Valores: média $\\pm$ desvio-padrão amostral sobre {n_seeds} "
+            "execuções com sementes de treino distintas (split e ruído de "
+            "avaliação fixos)."
+        )
+    boot = int((results.get("config") or {}).get("bootstrap_ci_samples") or 0)
+    if boot:
+        return (
+            f"Valores: estimativa pontual e IC 95\\% percentil de bootstrap "
+            f"({boot} reamostragens) sobre o conjunto de teste. Execução única "
+            "por arquitetura: a variabilidade de treino não está representada."
+        )
+    return "Execução única por arquitetura, sem estimativa de incerteza."
+
+
 def _conv(flag) -> str:
     return (r"\textcolor{successgreen}{Sim}" if flag
             else r"\textcolor{dangerred}{Não}")
@@ -76,7 +134,8 @@ def _table_resultados(results) -> str:
             continue
         c, e = r["clean"], r["efficiency"]
         rows.append(
-            f"{name} & {_pct(c.get('accuracy'))} & {_pct(c.get('eer'))} & "
+            f"{name} & {_pct_with_uncertainty(c, 'accuracy')} & "
+            f"{_pct_with_uncertainty(c, 'eer')} & "
             f"{_num(c.get('auc_roc'))} & {_num(c.get('min_tdcf'),4)} & "
             f"{_num(e.get('latency_ms'),1)} & {_train_budget_label(r)} & "
             f"{_conv(r.get('converged'))} \\\\"
@@ -85,7 +144,8 @@ def _table_resultados(results) -> str:
     return (
         "\\begin{table}[H]\n\\centering\n"
         "\\caption{Desempenho das arquiteturas (conjunto de teste, "
-        f"{results['dataset']['n_test']} amostras). Gerado pelo benchmark.}}\n"
+        f"{results['dataset']['n_test']} amostras). {_uncertainty_note(results)} "
+        "Gerado pelo benchmark.}\n"
         "\\label{tab:bench_resultados}\n\\small\\singlespacing\n"
         "\\begin{tabular}{lccccccc}\n\\toprule\n"
         "\\textbf{Arquitetura} & \\textbf{Acur.} & \\textbf{EER} & "
@@ -127,10 +187,16 @@ def _table_robustez(results) -> str:
     sub = "& Acur. & EER " * (len(snrs) + 1)
     rows = []
     for name, r in conv:
-        cells = [_pct(r["clean"].get("accuracy")), _pct(r["clean"].get("eer"))]
+        cells = [
+            _pct_with_uncertainty(r["clean"], "accuracy"),
+            _pct_with_uncertainty(r["clean"], "eer"),
+        ]
         for s in snrs:
             rob = r["robustness"].get(str(s), {})
-            cells += [_pct(rob.get("accuracy")), _pct(rob.get("eer"))]
+            cells += [
+                _pct_with_uncertainty(rob, "accuracy"),
+                _pct_with_uncertainty(rob, "eer"),
+            ]
         rows.append(f"{name} & " + " & ".join(cells) + " \\\\")
     cols = "l" + "cc" * (len(snrs) + 1)
     n_cols = 1 + 2 * (len(snrs) + 1)
@@ -140,7 +206,10 @@ def _table_robustez(results) -> str:
     return (
         "\\begin{table}[H]\n\\centering\n"
         "\\caption{Robustez sob ruído AWGN (acurácia e EER por SNR). "
-        "AWGN aplicado à forma de onda antes do frontend de cada modelo.}\n"
+        "AWGN aplicado à forma de onda antes do frontend de cada modelo. "
+        "Os SNRs de avaliação coincidem com os do augmentation de treino: a "
+        "tabela mede robustez em CONDIÇÃO CASADA, não generalização a ruído "
+        f"não visto. {_uncertainty_note(results)}}}\n"
         "\\label{tab:bench_robustez}\n\\small\\singlespacing\n"
         f"\\begin{{tabular}}{{{cols}}}\n\\toprule\n"
         f"\\multirow{{2}}{{*}}{{\\textbf{{Arquitetura}}}} & "
@@ -912,6 +981,30 @@ def _write_arch_predictions_csv(name: str, r: Dict[str, Any], y_true, path: Path
             w.writerow([idx, int(yt), round(float(score), 6), int(yp), bool(int(yt) == int(yp))])
 
 
+def _write_arch_predictions_noisy_csv(name: str, r: Dict[str, Any], y_true, path: Path) -> None:
+    """Predições por amostra sob AWGN, uma linha por (snr, amostra) — mesmo
+    sample_index de predictions_clean.csv, para permitir cruzamento com
+    metadados de proveniência (falante/fonte) por condição de ruído."""
+    y = np.asarray(y_true, dtype=int)
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["snr_db", "sample_index", "y_true", "p_fake", "y_pred", "correct"])
+        for snr, raw_scores in (r.get("scores_robustness") or {}).items():
+            scores = np.asarray(raw_scores, dtype=float)
+            if y.size == 0 or len(scores) != len(y) or not np.isfinite(scores).all():
+                continue
+            pred = (scores >= 0.5).astype(int)
+            for idx, (yt, score, yp) in enumerate(zip(y, scores, pred)):
+                w.writerow([
+                    snr,
+                    idx,
+                    int(yt),
+                    round(float(score), 6),
+                    int(yp),
+                    bool(int(yt) == int(yp)),
+                ])
+
+
 def _write_arch_robustness_csv(r: Dict[str, Any], path: Path) -> None:
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
@@ -961,7 +1054,8 @@ def _write_arch_summary(name: str, r: Dict[str, Any], path: Path) -> None:
         f"- Shape preparado: {(r.get('input_preparation') or {}).get('prepared_shape')}",
         "",
         "Arquivos nesta pasta: `metrics.json`, `predictions_clean.csv`, "
-        "`robustness.csv`, `hyperparameter_tuning.*` quando aplicável, "
+        "`predictions_robustness.csv`, `robustness.csv`, "
+        "`hyperparameter_tuning.*` quando aplicável, "
         "`models/*` e figuras individuais.",
     ]
     path.write_text("\n".join(lines), encoding="utf-8")
@@ -988,6 +1082,9 @@ def _write_per_architecture(results: Dict[str, Any], out: Path) -> None:
         if r.get("status") != "ok":
             continue
         _write_arch_predictions_csv(name, r, y, arch_out / "predictions_clean.csv")
+        _write_arch_predictions_noisy_csv(
+            name, r, y, arch_out / "predictions_robustness.csv"
+        )
         _write_arch_robustness_csv(r, arch_out / "robustness.csv")
         scores = r.get("scores_clean") or []
         _fig_single_confusion(name, y, scores, arch_out)
@@ -1145,6 +1242,7 @@ def _write_tcc_report(results: Dict[str, Any], path: Path) -> None:
                 "",
                 f"- Métricas completas: `architectures/{slug}/metrics.json`",
                 f"- Predições limpas: `architectures/{slug}/predictions_clean.csv`",
+                f"- Predições sob ruído: `architectures/{slug}/predictions_robustness.csv`",
                 f"- Robustez: `architectures/{slug}/robustness.csv`",
                 *(
                     [

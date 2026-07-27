@@ -5,7 +5,7 @@ benchmark (``benchmarks/data.py``) para treinar os modelos promovidos em
 ``data/models/benchmark_final``:
 
 - **raw**: janela center-crop (ou repetição p/ clipes curtos) + z-score por
-  amostra + canal — AASIST/RawGAT-ST usam 64.600 amostras e multicrop;
+  amostra + canal — AASIST/RawGAT-ST usam a janela canonica e multicrop;
 - **log-mel**: librosa ``melspectrogram`` (n_fft=512, hop dinâmico p/ fixar
   ``time_steps`` quadros), ``power_to_db(ref=max)`` POR AMOSTRA e z-score por
   amostra — mapa ``(time_steps, feature_dim)`` = (100, 80) — consumida por
@@ -38,12 +38,22 @@ FRONTEND_LOGMEL = "benchmark_logmel_v1"
 FRONTEND_TABULAR = "benchmark_tabular_v1"
 BENCHMARK_FRONTENDS = (FRONTEND_RAW, FRONTEND_LOGMEL, FRONTEND_TABULAR)
 
-#: Janela-fonte canônica do benchmark: 5 s @ 16 kHz.
-DEFAULT_SOURCE_SAMPLES = 80000
+#: Janela-fonte canônica do benchmark: 3 s @ 16 kHz.
+#:
+#: É exatamente a janela do dataset (docs/data/dataset-protocol.md). O casamento
+#: importa: `fit_length_tile` REPETE o clipe para alcançar a janela pedida, então
+#: uma janela-fonte maior que a do dataset faz todo lote passar por repetição —
+#: o oposto do que o protocolo garante ao descartar os pares curtos. Com 80.000
+#: (a antiga janela de 5 s), cada amostra de 3 s era repetida 1,67× antes do
+#: log-Mel e do vetor tabular.
+DEFAULT_SOURCE_SAMPLES = 48000
 DEFAULT_SAMPLE_RATE = 16000
 DEFAULT_FEATURE_DIM = 80
 DEFAULT_TIME_STEPS = 100
-DEFAULT_RAW_TARGET = 64600  # protocolo AASIST/RawGAT-ST: ~4.04 s @ 16 kHz
+#: Alvo do front-end raw, igual à janela-fonte para que o recorte central do
+#: dataset chegue intacto ao modelo. O valor anterior (64.600, a convenção de
+#: ~4,04 s do RawNet2/AASIST) obrigava a repetir 1,35× cada amostra de 3 s.
+DEFAULT_RAW_TARGET = 48000
 
 N_TABULAR_FEATURES = 63
 
@@ -144,12 +154,8 @@ def raw_audio_multicrop_batch(
             crops = np.repeat(crop[np.newaxis, :], num_crops, axis=0)
         else:
             maximum = len(row) - target_len
-            starts = np.rint(
-                np.linspace(0, maximum, num=num_crops)
-            ).astype(int)
-            crops = np.stack(
-                [row[start : start + target_len] for start in starts]
-            )
+            starts = np.rint(np.linspace(0, maximum, num=num_crops)).astype(int)
+            crops = np.stack([row[start : start + target_len] for start in starts])
         batches.append(normalize_per_sample(crops))
     return np.asarray(batches, dtype="float32")[..., np.newaxis]
 
@@ -173,6 +179,7 @@ def log_mel_batch(
     sample_rate: int = DEFAULT_SAMPLE_RATE,
     feature_dim: int = DEFAULT_FEATURE_DIM,
     time_steps: int = DEFAULT_TIME_STEPS,
+    n_fft: int = 512,
 ) -> np.ndarray:
     """Log-mel do benchmark: ``(N, T)`` raw → ``(N, time_steps, feature_dim)``.
 
@@ -186,6 +193,10 @@ def log_mel_batch(
     sample_rate = int(sample_rate or DEFAULT_SAMPLE_RATE)
     feature_dim = int(feature_dim or DEFAULT_FEATURE_DIM)
     time_steps = int(time_steps or DEFAULT_TIME_STEPS)
+    # `n_fft` é parametrizável porque a janela de análise faz parte do
+    # contrato de cada arquitetura: o AST especifica 25 ms (400 amostras a
+    # 16 kHz), enquanto o default do projeto é 512 (32 ms).
+    n_fft = int(n_fft or 512)
     hop_length = max(64, int(np.ceil(flat.shape[1] / max(time_steps, 1))))
 
     specs = []
@@ -193,7 +204,7 @@ def log_mel_batch(
         mel = librosa.feature.melspectrogram(
             y=y.astype("float32"),
             sr=sample_rate,
-            n_fft=512,
+            n_fft=n_fft,
             hop_length=hop_length,
             n_mels=feature_dim,
             power=2.0,
@@ -214,7 +225,7 @@ def log_mel_single(
     """Versão single-sample de :func:`log_mel_batch` → ``(time_steps, F)``.
 
     Primeiro ajusta o clipe à janela-fonte do benchmark (``source_samples``,
-    5 s por padrão) para que o hop dinâmico seja o MESMO do treino.
+    3 s por padrão) para que o hop dinâmico seja o MESMO do treino.
     """
     flat = fit_length_tile(
         np.asarray(y, dtype="float32")[np.newaxis, :], int(source_samples)
@@ -237,8 +248,11 @@ def _rasta_plp_stats(flat: np.ndarray, n_plp: int = 13) -> np.ndarray:
     for y in flat:
         try:
             feats = extract_rasta_plp_features(
-                y.astype("float32"), sr=16000, frame_length=512,
-                hop_length=256, n_plp=n_plp,
+                y.astype("float32"),
+                sr=16000,
+                frame_length=512,
+                hop_length=256,
+                n_plp=n_plp,
             )
             rp = np.asarray(feats.get("rasta_plp"))
             if rp.ndim != 2 or rp.shape[0] != n_plp:
@@ -263,7 +277,7 @@ def tabular_features_batch(X: np.ndarray) -> np.ndarray:
         flat.mean(axis=1),
         flat.std(axis=1),
         np.mean(np.abs(flat), axis=1),
-        np.sqrt(np.mean(flat ** 2, axis=1)),
+        np.sqrt(np.mean(flat**2, axis=1)),
         flat.min(axis=1),
         flat.max(axis=1),
         np.percentile(flat, 25, axis=1),
@@ -278,9 +292,7 @@ def tabular_features_batch(X: np.ndarray) -> np.ndarray:
         mfcc_stats = []
         for y in flat:
             mfcc = librosa.feature.mfcc(y=y, sr=16000, n_mfcc=13)
-            mfcc_stats.append(
-                np.concatenate([mfcc.mean(axis=1), mfcc.std(axis=1)])
-            )
+            mfcc_stats.append(np.concatenate([mfcc.mean(axis=1), mfcc.std(axis=1)]))
         feats.append(np.asarray(mfcc_stats, dtype="float32").T)
     except Exception:  # noqa: BLE001 - librosa opcional (idem benchmark)
         pass
@@ -294,7 +306,7 @@ def tabular_features_single(
 ) -> np.ndarray:
     """Versão single-sample de :func:`tabular_features_batch` → ``(63,)``.
 
-    Ajusta o clipe à janela-fonte de 5 s antes da extração (as estatísticas
+    Ajusta o clipe à janela-fonte de 3 s antes da extração (as estatísticas
     do treino foram computadas sobre essa janela).
     """
     flat = fit_length_tile(

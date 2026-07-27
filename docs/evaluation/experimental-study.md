@@ -306,7 +306,19 @@ $$
 
 ## Dataset consolidado
 
-O benchmark utiliza `data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz`.
+> ⚠️ **A tabela abaixo descreve o artefato anterior, apagado
+> do disco.** Ela é preservada porque os resultados desta página foram obtidos
+> sobre ele. O dataset canônico atual é `data/datasets/benchmark_dataset.npz`
+> — 40.980 amostras (20.490 + 20.490), CETUC pareado com clones XTTS-v2,
+> disjunção dupla locutor × frase, janela de 3 s. Ver
+> [Protocolo de Dataset](../data/dataset-protocol.md) e
+> [Dataset do Benchmark](../data/benchmark-dataset.md).
+>
+> O artefato anterior tinha atalho de fonte de 87,6% e disjunção de falante vácua em 76% das
+> amostras: os números desta página medem desempenho *in-domain com atalho
+> disponível* e **requerem retreino**.
+
+Artefato usado no estudo (`benchmark_audio_raw_balanced_15k_confirmatory_v2.npz`):
 
 | Atributo | Valor |
 |---|---:|
@@ -511,7 +523,8 @@ arquivos de entrada.
 |---|---|---|
 | Fonte do artigo | `data/results/paper/main.tex` | Fonte LaTeX única do artigo |
 | Figuras finais | `data/results/paper/figures/*.png` | Gráficos usados no artigo |
-| Dataset consolidado | `data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz` | Entrada única do benchmark |
+| Dataset deste estudo | `benchmark_audio_raw_balanced_15k_confirmatory_v2.npz` | Artefato v2, **retirado e apagado** |
+| Dataset canônico atual | `data/datasets/benchmark_dataset.npz` | Entrada do benchmark a partir de 26/07/2026 |
 | Modelos padrão | `data/models/bench_*` | Inferência na Gradio/API |
 | Modelos completos | `data/models/benchmark_final/<modelo>/` | Artefatos finais por arquitetura |
 | Métricas | `data/results/<run>/architectures/<modelo>/metrics.json` | Auditoria por modelo |
@@ -524,14 +537,16 @@ python main.py --bootstrap-dirs
 python main.py --gradio
 ```
 
+Reprodução deste estudo (fluxo legado, artefato anterior — já não existe em disco):
+
 ```bash
-python scripts/benchmark/run_tcc_pipeline.py \
-  --download \
-  --target-per-class 7500 \
-  --full-benchmark \
-  --epochs 100 \
-  --device-profile gpu \
-  --npz data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz
+python scripts/benchmark/run_tcc_pipeline.py --download --target-per-class 7500 --full-benchmark --epochs 100 --device-profile gpu --npz data/datasets/legacy_confirmatory_15k.npz
+```
+
+Execução sobre o dataset canônico atual:
+
+```bash
+python scripts/benchmark/run_models_sequential.py --dataset data/datasets/benchmark_dataset.npz --test-lock data/datasets/benchmark_dataset.npz.test-lock.json --epochs 100 --snr 30 20 10 --device-profile gpu --out data/results/<run> --resume
 ```
 
 ```bash

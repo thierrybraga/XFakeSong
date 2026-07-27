@@ -28,7 +28,7 @@
 # nao comparavel). Use --with-speaker-split para o protocolo exploratorio
 # disjunto por locutor (fora da tabela oficial do TCC).
 #
-# Pré-requisitos: dataset em app/datasets/ (ver DATASET abaixo; aceita
+# Pré-requisitos: dataset em data/datasets/ (ver DATASET abaixo; aceita
 # override via env), ambiente com TensorFlow/PyTorch + GPU
 # (ver docs/models/training.md).
 set -euo pipefail

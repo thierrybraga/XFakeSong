@@ -126,7 +126,7 @@ def test_prepare_for_architecture_adapts_input_contracts():
     spec = d.prepare_for_architecture("MultiscaleCNN")
     svm = d.prepare_for_architecture("SVM")
 
-    assert raw.X.shape == (20, 16000, 1)
+    assert raw.X.shape == (20, 48000, 1)
     assert spec.X.shape == (20, 100, 80)
     assert svm.X.shape == d.X.shape
     assert raw.metadata["input_type"] == "raw_audio"
@@ -158,8 +158,8 @@ def test_prepare_raw_audio_center_crops_long_clips_for_rawnet2():
     )
     raw = d.prepare_for_architecture("RawNet2")
 
-    assert raw.X.shape == (8, 16000, 1)
-    assert raw.metadata["prepared_shape"] == [16000, 1]
+    assert raw.X.shape == (8, 48000, 1)
+    assert raw.metadata["prepared_shape"] == [48000, 1]
 
 
 def test_prepare_raw_audio_center_crops_long_clips_for_aasist():
@@ -176,9 +176,9 @@ def test_prepare_raw_audio_center_crops_long_clips_for_aasist():
     )
     raw = d.prepare_for_architecture("AASIST")
 
-    assert raw.X.shape == (8, 64600, 1)
+    assert raw.X.shape == (8, 48000, 1)
     assert raw.metadata["input_type"] == "raw_audio"
-    assert raw.metadata["prepared_shape"] == [64600, 1]
+    assert raw.metadata["prepared_shape"] == [48000, 1]
 
 
 def test_prepare_raw_audio_center_crops_long_clips_for_ensemble():
@@ -191,9 +191,9 @@ def test_prepare_raw_audio_center_crops_long_clips_for_ensemble():
     )
     raw = d.prepare_for_architecture("Ensemble")
 
-    assert raw.X.shape == (8, 16000, 1)
+    assert raw.X.shape == (8, 48000, 1)
     assert raw.metadata["input_type"] == "raw_audio"
-    assert raw.metadata["prepared_shape"] == [16000, 1]
+    assert raw.metadata["prepared_shape"] == [48000, 1]
 
 
 def test_prepare_raw_audio_center_crops_long_clips_for_wavlm():
@@ -206,9 +206,9 @@ def test_prepare_raw_audio_center_crops_long_clips_for_wavlm():
     )
     raw = d.prepare_for_architecture("WavLM")
 
-    assert raw.X.shape == (8, 16000, 1)
+    assert raw.X.shape == (8, 48000, 1)
     assert raw.metadata["input_type"] == "raw_audio"
-    assert raw.metadata["prepared_shape"] == [16000, 1]
+    assert raw.metadata["prepared_shape"] == [48000, 1]
 
 
 def test_prepare_raw_audio_for_classical_uses_compact_features():
@@ -714,7 +714,7 @@ def test_all_architectures_benchmark_smoke_contract(monkeypatch):
     import benchmarks.runner as runner
     from benchmarks import BenchmarkConfig, run_benchmark
 
-    def fake_run_neural(_arch, _cfg, splits, _tmp, _models_dir):
+    def fake_run_neural(_arch, _cfg, splits, _tmp, _models_dir, **_kwargs):
         # Protocolo 2026-07-12: _prepare_protocol_splits retorna 8 itens
         # (6 arrays + clean_train_count + protocol) — mesmo fatiamento do
         # runner real (_run_neural usa splits[:6]).
@@ -732,8 +732,9 @@ def test_all_architectures_benchmark_smoke_contract(monkeypatch):
             "model_artifact": str(_models_dir / f"bench_{_arch}.keras"),
         }
 
-    def fake_run_classical(arch, cfg, splits, tmp, models_dir):
-        return fake_run_neural(arch, cfg, splits, tmp, models_dir)
+    def fake_run_classical(arch, cfg, splits, tmp, models_dir, **kwargs):
+        # **kwargs acompanha `training_seed` (repetições com sementes distintas)
+        return fake_run_neural(arch, cfg, splits, tmp, models_dir, **kwargs)
 
     monkeypatch.setattr(runner, "_run_neural", fake_run_neural)
     monkeypatch.setattr(runner, "_run_classical", fake_run_classical)

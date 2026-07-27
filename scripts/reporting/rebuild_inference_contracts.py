@@ -123,7 +123,7 @@ def build_contract(arch_key: str, spec: dict, metrics: dict,
         "input_shape": input_shape,
         "sample_rate": 16000,
         "feature_frontend": frontend,
-        "source_samples": 80000,  # janela canônica de 5 s do benchmark
+        "source_samples": 48000,  # janela canônica de 3 s do benchmark
         "normalization": "per_sample_zscore",
         "label_classes": [0, 1],
         "temperature": 1.0,

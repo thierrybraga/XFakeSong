@@ -51,7 +51,7 @@ mesmo `.npz`:
   estratificada e reprodutível (semente fixa, `val=0.15`/`test=0.15`) — o teste é
   idêntico para todos os modelos, independente do split original do `.npz`.
 - Todos os presets `configs/training/*.yaml` apontam para
-  `data/datasets/benchmark_audio_raw_balanced_15k.npz` (nome canônico).
+  `data/datasets/benchmark_dataset.npz` (nome canônico).
 
 **Atualizar o dataset = regerar esse `.npz`** (não versionado) a partir dos
 splits, e todos os modelos passam a usá-lo automaticamente:
@@ -59,12 +59,15 @@ splits, e todos os modelos passam a usá-lo automaticamente:
 ```bash
 python scripts/dataset/build_dataset.py --skip-download --target <N>   # dedup→balance→splits
 python scripts/dataset/export_npz_from_splits.py \
-    --out data/datasets/benchmark_audio_raw_balanced_15k.npz --sample-rate 16000 --duration-sec 5.0
+    --out data/datasets/legacy_dataset.npz --sample-rate 16000 --duration-sec 5.0
 ```
 
-> **Decisão consolidada: 15k total (7.500 real / 7.500 fake)**, nome canônico
-> `benchmark_audio_raw_balanced_15k.npz`. Composição por fonte registrada em
-> [29](../data/benchmark-dataset.md).
+> ⚠️ **Este fluxo e este snapshot são anteriores ao dataset canônico.** O
+> artefato atual é `data/datasets/benchmark_dataset.npz` — 40.980 amostras
+> (20.490 + 20.490), CETUC pareado com clones XTTS-v2, janela de 3 s —
+> construído pelo pipeline do
+> [Protocolo de Dataset](../data/dataset-protocol.md), não por
+> `build_dataset.py`. Ver [Dataset do Benchmark](../data/benchmark-dataset.md).
 
 Snapshot local do canônico reconstruído em 28/06/2026:
 

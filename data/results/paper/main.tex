@@ -2509,7 +2509,7 @@ PyTorch & 2.5.1 (CUDA 12.4) \\
 Execução & Docker (WSL2/Linux), imagem \texttt{xfakesong/benchmark:nvidia} \\
 GPU & NVIDIA GeForce RTX 3060 (CC 8.6, precisão mista FP16) \\
 Semente aleatória & 42 (particionamento, inicialização e AWGN) \\
-Dataset & \path{app/datasets/benchmark_audio_raw_balanced_15k.npz} \\
+Dataset & \path{data/datasets/benchmark_audio_raw_balanced_15k.npz} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -2611,38 +2611,38 @@ Os comandos a seguir sintetizam o fluxo operacional usado para repetir o
 
     \item \textbf{Preservar o dataset original consolidado:}
     \begin{quote}\footnotesize\ttfamily
-    dir app\textbackslash datasets\textbackslash benchmark\_audio\_raw\_balanced\_15k.npz
+    dir data\textbackslash datasets\textbackslash benchmark\_audio\_raw\_balanced\_15k.npz
     \end{quote}
 
     \item \textbf{Executar o \textit{pipeline} completo do TCC com o NPZ original:}
     \begin{quote}\footnotesize\ttfamily
     python scripts/benchmark/run\_tcc\_pipeline.py\\
     --full-benchmark --epochs 100 --device-profile gpu\\
-    --npz app/datasets/benchmark\_audio\_raw\_balanced\_15k.npz
+    --npz data/datasets/benchmark\_audio\_raw\_balanced\_15k.npz
     \end{quote}
 
     \item \textbf{Executar benchmark completo com o NPZ consolidado:}
     \begin{quote}\footnotesize\ttfamily
     python scripts/benchmark/run\_benchmark.py --full --epochs 100\\
     --device-profile gpu\\
-    --dataset app/datasets/benchmark\_audio\_raw\_balanced\_15k.npz
+    --dataset data/datasets/benchmark\_audio\_raw\_balanced\_15k.npz
     \end{quote}
     \textit{WavLM Original e HuBERT Original usam um \textit{runner}
     PyTorch/\texttt{transformers} dedicado, com \textit{backbone} SSL real:}
     \begin{quote}\footnotesize\ttfamily
     python scripts/benchmark/run\_wavlm\_original\_benchmark.py\\
     --architecture wavlm\\
-    --dataset app/datasets/benchmark\_audio\_raw\_balanced\_15k.npz\\
+    --dataset data/datasets/benchmark\_audio\_raw\_balanced\_15k.npz\\
     python scripts/benchmark/run\_wavlm\_original\_benchmark.py\\
     --architecture hubert\\
-    --dataset app/datasets/benchmark\_audio\_raw\_balanced\_15k.npz
+    --dataset data/datasets/benchmark\_audio\_raw\_balanced\_15k.npz
     \end{quote}
 
     \item \textbf{Executar benchmark de um modelo individual:}
     \begin{quote}\footnotesize\ttfamily
     python scripts/benchmark/run\_benchmark.py --model Conformer --epochs 100\\
     --device-profile gpu\\
-    --dataset app/datasets/benchmark\_audio\_raw\_balanced\_15k.npz
+    --dataset data/datasets/benchmark\_audio\_raw\_balanced\_15k.npz
     \end{quote}
 
     \item \textbf{Executar testes automatizados:}

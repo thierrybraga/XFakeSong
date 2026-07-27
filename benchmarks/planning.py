@@ -79,8 +79,8 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "use_mixed_precision": True,
         "recommended_epochs": 100,
         "notes": (
-            "Sinc 2D + GAT S/T + master/HS-GAL/MGO; janela 64.600, crop "
-            "aleatório no treino e multicrop na avaliação."
+            "Sinc 2D + GAT S/T + master/HS-GAL/MGO; janela canônica 48.000 "
+            "(3 s @ 16 kHz), crop aleatório no treino e multicrop na avaliação."
         ),
     },
     "rawgatst": {
@@ -109,7 +109,8 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "recommended_epochs": 100,
         "notes": (
             "Dois encoders 2D + GAT S/T + produto + terceiro GAT; janela "
-            "64.600, crop aleatório no treino e multicrop na avaliação."
+            "canônica 48.000 (3 s @ 16 kHz), crop aleatório no treino e "
+            "multicrop na avaliação."
         ),
     },
     "conformer": {
@@ -118,19 +119,34 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "batch_size": 32,
         "learning_rate": 1e-4,
         "epochs": 100,
-        "dropout_rate": 0.3,
+        # AJUSTE 2026-07-27 (consolidação do Conformer): dropout_rate 0.3->0.1.
+        # O valor 0.3 nunca chegou ao encoder — a variante sobrescrevia o
+        # dropout por módulo (ff=0.2/attn=0.1/conv=0.1) e o ConvSubsampling
+        # tinha 0.1 hardcoded, de modo que 0.3 só afetava a cabeça de
+        # classificação. Agora `dropout_rate` vale para o encoder inteiro,
+        # então usamos o P_drop=0.1 do paper (Gulati et al.) — mantém o
+        # comportamento efetivo anterior e passa a ser um knob real.
+        "dropout_rate": 0.1,
         "l2_reg_strength": 1e-4,
         "weight_decay": 1e-4,
         "warmup_steps": 1500,
         "clipnorm": 1.0,
         "label_smoothing": 0.05,
-        "attention_heads": 8,
-        "hidden_units": 256,
+        # (attention_heads/hidden_units REMOVIDOS: o runner só promove
+        # lr/weight_decay/warmup/decay/alpha/dropout/clipnorm/label_smoothing
+        # para `parameters`, então essas duas chaves NUNCA chegavam ao
+        # construtor — o modelo sempre rodou com num_heads=4/d_model=256 do
+        # Conformer-M. Eram config morto, como as já removidas do AASIST.)
         "optimizer": "AdamW",
         "scheduler": "WarmupCosineDecay",
         "reduce_lr_on_plateau": False,
         "recommended_epochs": 100,
-        "notes": "Compile-respect: LR/weight_decay/clipnorm são passados ao construtor do Conformer.",
+        "notes": (
+            "Conformer-M do paper (16 blocos, d_model=256, 4 cabeças, "
+            "d_ff=1024, kernel 31, P_drop=0.1) — configuração ÚNICA desde "
+            "2026-07-27. Compile-respect: LR/weight_decay/clipnorm/dropout são "
+            "passados ao construtor."
+        ),
     },
     "hybridcnntransformer": {
         "model_family": "neural",
@@ -186,6 +202,15 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "decay_steps": 262500,
         "alpha": 1e-6,
         "clipnorm": 1.0,
+        # AJUSTE 2026-07-27: pesos AudioSet ligados. O AST do artigo PARTE de
+        # inicialização pré-treinada (ImageNet→AudioSet); treinar 85M params do
+        # zero sobre este dataset é o regime que degradava até chute aleatório
+        # (EER ~51%). A transferência lê o checkpoint PyTorch e escreve nas
+        # camadas Keras (app/domain/models/architectures/ast_pretrained.py) —
+        # validada contra o PyTorch bloco a bloco (max|dif| ~1e-5).
+        # Exige rede na 1ª execução (~350 MB, cacheado depois) e FALHA ALTO se
+        # indisponível — nunca degrada em silêncio para treino do zero.
+        "pretrained": True,
         "optimizer": "AdamW",
         "scheduler": "WarmupCosineDecay",
         "use_augmentation": False,
@@ -194,7 +219,7 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "checkpoint_best": True,
         "reduce_lr_on_plateau": False,
         "recommended_epochs": 100,
-        "notes": "AST pre-LN (paper) com cabeça linear sobre o CLS; LR de pico 1e-5 e weight_decay 1e-5 (2026-07-14), warmup 3000, clipnorm=1.0 e checkpoint obrigatório com restauração guardada (validada no val).",
+        "notes": "AST pre-LN (paper) com cabeça linear sobre o CLS, entrada 300x128 (128 mel, hop 10 ms, janela 25 ms) e pesos AudioSet transferidos do checkpoint PyTorch; LR de pico 1e-5 e weight_decay 1e-5, warmup 3000, clipnorm=1.0 e checkpoint obrigatório com restauração guardada (validada no val).",
     },
     "multiscalecnn": {
         "model_family": "neural",
@@ -242,22 +267,33 @@ def _base_recommended_hparams(arch: str) -> Dict[str, Any]:
 
     if compact not in NEURAL_BENCHMARK_HPARAMS:
         raise ValueError(
-            f"Arquitetura fora do recorte do artigo: {arch}. "
-            "Use apenas RawNet2, AASIST, RawGAT-ST, Conformer, CCT/Hybrid "
-            "CNN-Transformer, AST/SpectrogramTransformer, Res2Net/MultiscaleCNN, "
-            "SVM ou RandomForest."
+            f"Arquitetura sem hiperparâmetros de plano: {arch}. "
+            "O escopo OFICIAL cobre RawNet2, AASIST, RawGAT-ST, Conformer, "
+            "CCT/Hybrid CNN-Transformer, AST/SpectrogramTransformer, "
+            "Res2Net/MultiscaleCNN, SVM e RandomForest (WavLM/HuBERT Original "
+            "rodam pelo runner PyTorch dedicado). Sonic Sleuth, "
+            "EfficientNet-LSTM e Ensemble pertencem ao escopo ESTENDIDO: use "
+            "`--experiment-scope extended` (que já desliga "
+            "optimize_hyperparameters) ou `--no-optimize-hparams`."
         )
 
     params = dict(NEURAL_BENCHMARK_HPARAMS[compact])
     return params
 
 
-def _fit_to_device(params: Dict[str, Any], arch: str, device: Dict[str, Any]) -> Dict[str, Any]:
+def _fit_to_device(
+    params: Dict[str, Any], arch: str, device: Dict[str, Any]
+) -> Dict[str, Any]:
     tuned = dict(params)
     compact = _canonical_arch_key(arch)
     if compact in CLASSICAL_ARCHES:
         return tuned
 
+    # Os caps abaixo foram calibrados com a janela antiga de 64.600 amostras
+    # (~4,04 s). A janela canonica passou a 48.000 (3 s), 26% menor, entao eles
+    # seguem SEGUROS — uma entrada menor so consome menos memoria. Conservadores
+    # de proposito: subi-los e otimizacao, e otimizacao sem medir na GPU alvo
+    # troca tempo de execucao por risco de OOM no meio de um run de horas.
     batch = int(tuned.get("batch_size", 32))
     if device.get("resolved_profile") == "cpu":
         if compact in {"rawnet2", "aasist", "rawgatst"}:
@@ -364,7 +400,9 @@ def _merge_effective_hparams(
     return params
 
 
-def build_benchmark_plan(cfg: BenchmarkConfig, data: Any | None = None) -> Dict[str, Any]:
+def build_benchmark_plan(
+    cfg: BenchmarkConfig, data: Any | None = None
+) -> Dict[str, Any]:
     """Cria o plano de execução antes do treino."""
     device = _device_snapshot(cfg.device_profile)
     dataset = {}

@@ -1,0 +1,3426 @@
+[
+  {
+    "model": "Random Forest",
+    "key": "RandomForest",
+    "path": "C:\\Users\\thier\\AppData\\Local\\Temp\\claude\\F--XFakeSong\\124e1227-ab99-425b-8a6c-e0d1a881ff22\\scratchpad\\audit\\runs\\randomforest",
+    "accuracy": 0.9782222222222222,
+    "auc": 0.9989096296296297,
+    "eer": 0.020888888888888908,
+    "min_tdcf": 0.04092087100739847,
+    "f1": 0.9782512205947625,
+    "latency": 36.53,
+    "size": 46.45,
+    "params": null,
+    "robustness": {
+      "30": {
+        "accuracy": 0.9568888888888889,
+        "precision": 0.9664246823956443,
+        "recall": 0.9466666666666667,
+        "f1": 0.9564436461607544,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.11821333333333334,
+        "auc_roc": 0.9938141234567901,
+        "eer": 0.0422222222222222,
+        "eer_threshold": 0.48,
+        "accuracy_at_eer": 0.9577777777777777,
+        "min_tdcf": 0.11167024958090258,
+        "eer_ci95_low": 0.033816332384692165,
+        "eer_ci95_high": 0.05066985361588398,
+        "auc_roc_ci95_low": 0.9920215204641224,
+        "auc_roc_ci95_high": 0.9955349732417581,
+        "accuracy_ci95_low": 0.9484444444444444,
+        "accuracy_ci95_high": 0.9648888888888889,
+        "bootstrap_samples": 1000
+      },
+      "20": {
+        "accuracy": 0.9422222222222222,
+        "precision": 0.9576816927322908,
+        "recall": 0.9253333333333333,
+        "f1": 0.9412296564195298,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.12150888888888889,
+        "auc_roc": 0.9894305185185186,
+        "eer": 0.05688888888888891,
+        "eer_threshold": 0.46,
+        "accuracy_at_eer": 0.9431111111111111,
+        "min_tdcf": 0.14928039553856814,
+        "eer_ci95_low": 0.04800003290135343,
+        "eer_ci95_high": 0.06712626951466193,
+        "auc_roc_ci95_low": 0.9864754886297944,
+        "auc_roc_ci95_high": 0.9920105721882265,
+        "accuracy_ci95_low": 0.932,
+        "accuracy_ci95_high": 0.952,
+        "bootstrap_samples": 1000
+      },
+      "10": {
+        "accuracy": 0.9235555555555556,
+        "precision": 0.9235555555555556,
+        "recall": 0.9235555555555556,
+        "f1": 0.9235555555555556,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.13309333333333334,
+        "auc_roc": 0.9819946666666666,
+        "eer": 0.07644444444444443,
+        "eer_threshold": 0.5,
+        "accuracy_at_eer": 0.9235555555555556,
+        "min_tdcf": 0.1852031968528577,
+        "eer_ci95_low": 0.06487726623305455,
+        "eer_ci95_high": 0.0875573630143037,
+        "auc_roc_ci95_low": 0.9778238893194878,
+        "auc_roc_ci95_high": 0.9857370397123453,
+        "accuracy_ci95_low": 0.9124444444444444,
+        "accuracy_ci95_high": 0.9346666666666666,
+        "bootstrap_samples": 1000
+      }
+    },
+    "best_epoch": null,
+    "best_val": null,
+    "final_val": null,
+    "epochs": null,
+    "epochs_budget": null,
+    "training_config": {
+      "model_family": "classical",
+      "batch_size": null,
+      "epochs": null,
+      "fit_strategy": {
+        "kind": "grid_search_cv_then_refit",
+        "estimator": "sklearn",
+        "fit_samples": 23250,
+        "n_features": 63,
+        "cv": 3,
+        "n_candidates": 24,
+        "n_fits": 72,
+        "final_refit": true,
+        "scoring": "roc_auc",
+        "total_fit_calls_estimate": 73
+      },
+      "fit_samples": 23250,
+      "n_features": 63,
+      "hyperparameter_tuning": {
+        "enabled": true,
+        "method": "GridSearchCV",
+        "scoring": "roc_auc",
+        "cv": 3,
+        "param_grid": {
+          "rf__n_estimators": [
+            100,
+            200
+          ],
+          "rf__max_depth": [
+            null,
+            10,
+            20
+          ],
+          "rf__min_samples_leaf": [
+            1,
+            2
+          ],
+          "rf__max_features": [
+            "sqrt",
+            "log2"
+          ]
+        },
+        "n_candidates": 24,
+        "status": "ok",
+        "elapsed_s": 31.774,
+        "best_score": 0.9984177959183674,
+        "best_params": {
+          "rf__max_depth": null,
+          "rf__max_features": "log2",
+          "rf__min_samples_leaf": 1,
+          "rf__n_estimators": 200
+        },
+        "best_model_params": {
+          "max_depth": null,
+          "max_features": "log2",
+          "min_samples_leaf": 1,
+          "n_estimators": 200
+        },
+        "top_candidates": [
+          {
+            "rank": 1,
+            "mean_test_score": 0.9984177959183674,
+            "std_test_score": 0.00047060755554005873,
+            "mean_train_score": 1.0,
+            "params_json": "{\"rf__max_depth\": null, \"rf__max_features\": \"log2\", \"rf__min_samples_leaf\": 1, \"rf__n_estimators\": 200}"
+          },
+          {
+            "rank": 2,
+            "mean_test_score": 0.9983816598639456,
+            "std_test_score": 0.0004954133441887426,
+            "mean_train_score": 1.0,
+            "params_json": "{\"rf__max_depth\": 20, \"rf__max_features\": \"log2\", \"rf__min_samples_leaf\": 1, \"rf__n_estimators\": 200}"
+          },
+          {
+            "rank": 3,
+            "mean_test_score": 0.9983224489795918,
+            "std_test_score": 0.000456424683686642,
+            "mean_train_score": 1.0,
+            "params_json": "{\"rf__max_depth\": null, \"rf__max_features\": \"log2\", \"rf__min_samples_leaf\": 2, \"rf__n_estimators\": 200}"
+          },
+          {
+            "rank": 4,
+            "mean_test_score": 0.998314612244898,
+            "std_test_score": 0.00043696374437361343,
+            "mean_train_score": 1.0,
+            "params_json": "{\"rf__max_depth\": 20, \"rf__max_features\": \"log2\", \"rf__min_samples_leaf\": 2, \"rf__n_estimators\": 200}"
+          },
+          {
+            "rank": 5,
+            "mean_test_score": 0.9980992108843537,
+            "std_test_score": 0.0005016678990327586,
+            "mean_train_score": 1.0,
+            "params_json": "{\"rf__max_depth\": null, \"rf__max_features\": \"log2\", \"rf__min_samples_leaf\": 1, \"rf__n_estimators\": 100}"
+          }
+        ]
+      },
+      "best_hyperparameters": {
+        "max_depth": null,
+        "max_features": "log2",
+        "min_samples_leaf": 1,
+        "n_estimators": 200
+      },
+      "waveform_noise_protocol": {
+        "evaluation_domain": "waveform",
+        "frontend_after_noise": true,
+        "training_augmentation_domain": "waveform",
+        "train_aug_snr_db": [
+          30,
+          20,
+          10
+        ],
+        "train_noise_copies": 1,
+        "waveform_noise_batch_size": 64,
+        "assigned_snr_counts": {
+          "10": 3500,
+          "20": 3500,
+          "30": 3500
+        },
+        "clean_train_samples": 10500,
+        "fit_train_samples": 21000,
+        "input_type": "tabular_audio_features",
+        "original_shape": [
+          80000,
+          1
+        ],
+        "prepared_shape": [
+          63
+        ]
+      }
+    },
+    "noise_protocol": {
+      "evaluation_domain": "waveform",
+      "frontend_after_noise": true,
+      "training_augmentation_domain": "waveform",
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "train_noise_copies": 1,
+      "waveform_noise_batch_size": 64,
+      "assigned_snr_counts": {
+        "10": 3500,
+        "20": 3500,
+        "30": 3500
+      },
+      "clean_train_samples": 10500,
+      "fit_train_samples": 21000,
+      "input_type": "tabular_audio_features",
+      "original_shape": [
+        80000,
+        1
+      ],
+      "prepared_shape": [
+        63
+      ]
+    },
+    "input_preparation": {
+      "evaluation_domain": "waveform",
+      "frontend_after_noise": true,
+      "training_augmentation_domain": "waveform",
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "train_noise_copies": 1,
+      "waveform_noise_batch_size": 64,
+      "assigned_snr_counts": {
+        "10": 3500,
+        "20": 3500,
+        "30": 3500
+      },
+      "clean_train_samples": 10500,
+      "fit_train_samples": 21000,
+      "input_type": "tabular_audio_features",
+      "original_shape": [
+        80000,
+        1
+      ],
+      "prepared_shape": [
+        63
+      ]
+    },
+    "decision_threshold": 0.5,
+    "seed": 42,
+    "dataset": {
+      "name": "benchmark_audio_raw_balanced_15k_confirmatory_v2",
+      "source": "F:\\XFakeSong\\data\\datasets\\benchmark_audio_raw_balanced_15k.npz",
+      "n_total": 15000,
+      "n_test": 2250,
+      "split_source": "predefined_npz",
+      "split_overlap_audit": {
+        "method": "blake2b-128_exact_array_bytes",
+        "pairwise_overlap_counts": {
+          "train_val": 0,
+          "train_test": 0,
+          "val_test": 0
+        },
+        "split_fingerprints": {
+          "method": "sha256_ordered_blake2b_sample_hashes_and_labels",
+          "train": {
+            "n": 10500,
+            "sha256": "2320a8328668dd444280c4a0c62be1b75b3ca3e9774496a1baf7c76d70506a4a"
+          },
+          "val": {
+            "n": 2250,
+            "sha256": "b518ee3c02b401a8ed52dcd75998b247a02e3e532ccfe4f2c9cf8bf3b67633d5"
+          },
+          "test": {
+            "n": 2250,
+            "sha256": "a814b71a53a3be399a5c254cb5eb1eb08b9cf8d67617e28c2183e814f616a486"
+          }
+        },
+        "passed": true
+      },
+      "provenance_overlap_audit": {
+        "available": true,
+        "groups": {
+          "available": true,
+          "unique_counts": {
+            "train": 4,
+            "val": 4,
+            "test": 4
+          },
+          "overlap_counts": {
+            "train_val": 4,
+            "train_test": 4,
+            "val_test": 4
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice",
+            "mlspt",
+            "ttsport"
+          ],
+          "disjoint": false
+        },
+        "speakers": {
+          "available": true,
+          "unique_counts": {
+            "train": 73,
+            "val": 73,
+            "test": 73
+          },
+          "overlap_counts": {
+            "train_val": 73,
+            "train_test": 73,
+            "val_test": 73
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice:AdrianaMalta_F049_Fake",
+            "fkvoice:Aislam_M001_Fake",
+            "fkvoice:Alcione_F018_Fake",
+            "fkvoice:Alessandra_F045_Fake",
+            "fkvoice:Alexandra_F010_Fake",
+            "fkvoice:AnaVarela_F042_Fake",
+            "fkvoice:Andrea_F003_Fake",
+            "fkvoice:AndreiaSoares_F032_Fake",
+            "fkvoice:AnnaPerez_F046_Fake"
+          ],
+          "disjoint": false
+        }
+      }
+    }
+  },
+  {
+    "model": "SVM",
+    "key": "SVM",
+    "path": "C:\\Users\\thier\\AppData\\Local\\Temp\\claude\\F--XFakeSong\\124e1227-ab99-425b-8a6c-e0d1a881ff22\\scratchpad\\audit\\runs\\svm",
+    "accuracy": 0.9924444444444445,
+    "auc": 0.9998032592592593,
+    "eer": 0.005777777777777792,
+    "min_tdcf": 0.017564929390464695,
+    "f1": 0.9924410849266341,
+    "latency": 0.28,
+    "size": 2.01,
+    "params": null,
+    "robustness": {
+      "30": {
+        "accuracy": 0.9795555555555555,
+        "precision": 0.9795555555555555,
+        "recall": 0.9795555555555555,
+        "f1": 0.9795555555555555,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.00958243447571987,
+        "auc_roc": 0.9985121975308642,
+        "eer": 0.020444444444444466,
+        "eer_threshold": 0.5,
+        "accuracy_at_eer": 0.9795555555555555,
+        "min_tdcf": 0.04334270716824248,
+        "eer_ci95_low": 0.014637775199484056,
+        "eer_ci95_high": 0.02711048043831125,
+        "auc_roc_ci95_low": 0.9976533285618544,
+        "auc_roc_ci95_high": 0.9991451068016254,
+        "accuracy_ci95_low": 0.9733333333333334,
+        "accuracy_ci95_high": 0.9849,
+        "bootstrap_samples": 1000
+      },
+      "20": {
+        "accuracy": 0.9604444444444444,
+        "precision": 0.9575971731448764,
+        "recall": 0.9635555555555556,
+        "f1": 0.9605671245015507,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.008799097064309447,
+        "auc_roc": 0.9946595555555555,
+        "eer": 0.0391111111111111,
+        "eer_threshold": 0.5338915293886745,
+        "accuracy_at_eer": 0.9608888888888889,
+        "min_tdcf": 0.10688502827510674,
+        "eer_ci95_low": 0.030677440018632443,
+        "eer_ci95_high": 0.048443454584509854,
+        "auc_roc_ci95_low": 0.9927684719356099,
+        "auc_roc_ci95_high": 0.9962913334394714,
+        "accuracy_ci95_low": 0.952,
+        "accuracy_ci95_high": 0.9684444444444444,
+        "bootstrap_samples": 1000
+      },
+      "10": {
+        "accuracy": 0.9377777777777778,
+        "precision": 0.9308836395450568,
+        "recall": 0.9457777777777778,
+        "f1": 0.9382716049382716,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.020576843466911566,
+        "auc_roc": 0.9843926913580247,
+        "eer": 0.05955555555555554,
+        "eer_threshold": 0.5806821861402242,
+        "accuracy_at_eer": 0.9404444444444444,
+        "min_tdcf": 0.16421064038087577,
+        "eer_ci95_low": 0.05065179547288601,
+        "eer_ci95_high": 0.07111137379276694,
+        "auc_roc_ci95_low": 0.9802108329853036,
+        "auc_roc_ci95_high": 0.9883239698844903,
+        "accuracy_ci95_low": 0.928,
+        "accuracy_ci95_high": 0.948,
+        "bootstrap_samples": 1000
+      }
+    },
+    "best_epoch": null,
+    "best_val": null,
+    "final_val": null,
+    "epochs": null,
+    "epochs_budget": null,
+    "training_config": {
+      "model_family": "classical",
+      "batch_size": null,
+      "epochs": null,
+      "fit_strategy": {
+        "kind": "grid_search_cv_then_refit",
+        "estimator": "sklearn",
+        "fit_samples": 23250,
+        "n_features": 63,
+        "cv": 3,
+        "n_candidates": 12,
+        "n_fits": 36,
+        "final_refit": true,
+        "scoring": "roc_auc",
+        "total_fit_calls_estimate": 37
+      },
+      "fit_samples": 23250,
+      "n_features": 63,
+      "hyperparameter_tuning": {
+        "enabled": true,
+        "method": "GridSearchCV",
+        "scoring": "roc_auc",
+        "cv": 3,
+        "param_grid": {
+          "svm__kernel": [
+            "linear",
+            "rbf"
+          ],
+          "svm__C": [
+            0.1,
+            1.0,
+            10.0
+          ],
+          "svm__gamma": [
+            "scale",
+            "auto"
+          ]
+        },
+        "n_candidates": 12,
+        "status": "ok",
+        "elapsed_s": 33.807,
+        "best_score": 0.9995018231292517,
+        "best_params": {
+          "svm__C": 1.0,
+          "svm__gamma": "scale",
+          "svm__kernel": "rbf"
+        },
+        "best_model_params": {
+          "C": 1.0,
+          "gamma": "scale",
+          "kernel": "rbf"
+        },
+        "top_candidates": [
+          {
+            "rank": 1,
+            "mean_test_score": 0.9995018231292517,
+            "std_test_score": 0.0001701942649849327,
+            "mean_train_score": 0.9999197551020408,
+            "params_json": "{\"svm__C\": 1.0, \"svm__gamma\": \"scale\", \"svm__kernel\": \"rbf\"}"
+          },
+          {
+            "rank": 2,
+            "mean_test_score": 0.9995017142857142,
+            "std_test_score": 0.0001703040017312565,
+            "mean_train_score": 0.9999197006802721,
+            "params_json": "{\"svm__C\": 1.0, \"svm__gamma\": \"auto\", \"svm__kernel\": \"rbf\"}"
+          },
+          {
+            "rank": 3,
+            "mean_test_score": 0.9994571972789116,
+            "std_test_score": 0.00021681605332878628,
+            "mean_train_score": 0.9999997278911564,
+            "params_json": "{\"svm__C\": 10.0, \"svm__gamma\": \"scale\", \"svm__kernel\": \"rbf\"}"
+          },
+          {
+            "rank": 3,
+            "mean_test_score": 0.9994571972789116,
+            "std_test_score": 0.00021681605332878628,
+            "mean_train_score": 0.9999997278911564,
+            "params_json": "{\"svm__C\": 10.0, \"svm__gamma\": \"auto\", \"svm__kernel\": \"rbf\"}"
+          },
+          {
+            "rank": 5,
+            "mean_test_score": 0.9980403809523809,
+            "std_test_score": 0.00023391162467018882,
+            "mean_train_score": 0.998642013605442,
+            "params_json": "{\"svm__C\": 0.1, \"svm__gamma\": \"scale\", \"svm__kernel\": \"rbf\"}"
+          }
+        ]
+      },
+      "best_hyperparameters": {
+        "C": 1.0,
+        "gamma": "scale",
+        "kernel": "rbf"
+      },
+      "waveform_noise_protocol": {
+        "evaluation_domain": "waveform",
+        "frontend_after_noise": true,
+        "training_augmentation_domain": "waveform",
+        "train_aug_snr_db": [
+          30,
+          20,
+          10
+        ],
+        "train_noise_copies": 1,
+        "waveform_noise_batch_size": 64,
+        "assigned_snr_counts": {
+          "10": 3500,
+          "20": 3500,
+          "30": 3500
+        },
+        "clean_train_samples": 10500,
+        "fit_train_samples": 21000,
+        "input_type": "tabular_audio_features",
+        "original_shape": [
+          80000,
+          1
+        ],
+        "prepared_shape": [
+          63
+        ]
+      }
+    },
+    "noise_protocol": {
+      "evaluation_domain": "waveform",
+      "frontend_after_noise": true,
+      "training_augmentation_domain": "waveform",
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "train_noise_copies": 1,
+      "waveform_noise_batch_size": 64,
+      "assigned_snr_counts": {
+        "10": 3500,
+        "20": 3500,
+        "30": 3500
+      },
+      "clean_train_samples": 10500,
+      "fit_train_samples": 21000,
+      "input_type": "tabular_audio_features",
+      "original_shape": [
+        80000,
+        1
+      ],
+      "prepared_shape": [
+        63
+      ]
+    },
+    "input_preparation": {
+      "evaluation_domain": "waveform",
+      "frontend_after_noise": true,
+      "training_augmentation_domain": "waveform",
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "train_noise_copies": 1,
+      "waveform_noise_batch_size": 64,
+      "assigned_snr_counts": {
+        "10": 3500,
+        "20": 3500,
+        "30": 3500
+      },
+      "clean_train_samples": 10500,
+      "fit_train_samples": 21000,
+      "input_type": "tabular_audio_features",
+      "original_shape": [
+        80000,
+        1
+      ],
+      "prepared_shape": [
+        63
+      ]
+    },
+    "decision_threshold": 0.5,
+    "seed": 42,
+    "dataset": {
+      "name": "benchmark_audio_raw_balanced_15k_confirmatory_v2",
+      "source": "F:\\XFakeSong\\data\\datasets\\benchmark_audio_raw_balanced_15k.npz",
+      "n_total": 15000,
+      "n_test": 2250,
+      "split_source": "predefined_npz",
+      "split_overlap_audit": {
+        "method": "blake2b-128_exact_array_bytes",
+        "pairwise_overlap_counts": {
+          "train_val": 0,
+          "train_test": 0,
+          "val_test": 0
+        },
+        "split_fingerprints": {
+          "method": "sha256_ordered_blake2b_sample_hashes_and_labels",
+          "train": {
+            "n": 10500,
+            "sha256": "2320a8328668dd444280c4a0c62be1b75b3ca3e9774496a1baf7c76d70506a4a"
+          },
+          "val": {
+            "n": 2250,
+            "sha256": "b518ee3c02b401a8ed52dcd75998b247a02e3e532ccfe4f2c9cf8bf3b67633d5"
+          },
+          "test": {
+            "n": 2250,
+            "sha256": "a814b71a53a3be399a5c254cb5eb1eb08b9cf8d67617e28c2183e814f616a486"
+          }
+        },
+        "passed": true
+      },
+      "provenance_overlap_audit": {
+        "available": true,
+        "groups": {
+          "available": true,
+          "unique_counts": {
+            "train": 4,
+            "val": 4,
+            "test": 4
+          },
+          "overlap_counts": {
+            "train_val": 4,
+            "train_test": 4,
+            "val_test": 4
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice",
+            "mlspt",
+            "ttsport"
+          ],
+          "disjoint": false
+        },
+        "speakers": {
+          "available": true,
+          "unique_counts": {
+            "train": 73,
+            "val": 73,
+            "test": 73
+          },
+          "overlap_counts": {
+            "train_val": 73,
+            "train_test": 73,
+            "val_test": 73
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice:AdrianaMalta_F049_Fake",
+            "fkvoice:Aislam_M001_Fake",
+            "fkvoice:Alcione_F018_Fake",
+            "fkvoice:Alessandra_F045_Fake",
+            "fkvoice:Alexandra_F010_Fake",
+            "fkvoice:AnaVarela_F042_Fake",
+            "fkvoice:Andrea_F003_Fake",
+            "fkvoice:AndreiaSoares_F032_Fake",
+            "fkvoice:AnnaPerez_F046_Fake"
+          ],
+          "disjoint": false
+        }
+      }
+    }
+  },
+  {
+    "model": "CCT",
+    "key": "CCT",
+    "path": "C:\\Users\\thier\\AppData\\Local\\Temp\\claude\\F--XFakeSong\\124e1227-ab99-425b-8a6c-e0d1a881ff22\\scratchpad\\audit\\runs\\hybrid_cnn_transformer",
+    "accuracy": 0.992,
+    "auc": 0.9992892839506172,
+    "eer": 0.00711111111111109,
+    "min_tdcf": 0.019587537674065136,
+    "f1": 0.9919786096256684,
+    "latency": 41.61,
+    "size": 7.15,
+    "params": 1822479,
+    "robustness": {
+      "30": {
+        "accuracy": 0.9884444444444445,
+        "precision": 0.9919427036705462,
+        "recall": 0.9848888888888889,
+        "f1": 0.9884032114183765,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.011800720770178862,
+        "auc_roc": 0.9990589629629629,
+        "eer": 0.014222222222222206,
+        "eer_threshold": 0.14816276729106903,
+        "accuracy_at_eer": 0.9857777777777778,
+        "min_tdcf": 0.029242900198931582,
+        "eer_ci95_low": 0.00843948927094718,
+        "eer_ci95_high": 0.017771444525551443,
+        "auc_roc_ci95_low": 0.9980988236383805,
+        "auc_roc_ci95_high": 0.999642616407168,
+        "accuracy_ci95_low": 0.9835555555555555,
+        "accuracy_ci95_high": 0.9928888888888889,
+        "bootstrap_samples": 1000
+      },
+      "20": {
+        "accuracy": 0.9795555555555555,
+        "precision": 0.9744942832014072,
+        "recall": 0.9848888888888889,
+        "f1": 0.9796640141467727,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.019224106814753013,
+        "auc_roc": 0.997724049382716,
+        "eer": 0.01955555555555555,
+        "eer_threshold": 0.971836507320404,
+        "accuracy_at_eer": 0.9804444444444445,
+        "min_tdcf": 0.05036338514495183,
+        "eer_ci95_low": 0.013334182243404246,
+        "eer_ci95_high": 0.025334386930511366,
+        "auc_roc_ci95_low": 0.9965887664338944,
+        "auc_roc_ci95_high": 0.9987048877979987,
+        "accuracy_ci95_low": 0.9728888888888889,
+        "accuracy_ci95_high": 0.9848888888888889,
+        "bootstrap_samples": 1000
+      },
+      "10": {
+        "accuracy": 0.9497777777777778,
+        "precision": 0.9354561101549054,
+        "recall": 0.9662222222222222,
+        "f1": 0.9505902929602099,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.04614057615075346,
+        "auc_roc": 0.9914141234567901,
+        "eer": 0.05066666666666665,
+        "eer_threshold": 0.9653633832931519,
+        "accuracy_at_eer": 0.9493333333333334,
+        "min_tdcf": 0.12579652544759606,
+        "eer_ci95_low": 0.040441019402418246,
+        "eer_ci95_high": 0.05911518447929169,
+        "auc_roc_ci95_low": 0.9887325469157521,
+        "auc_roc_ci95_high": 0.9937652209291694,
+        "accuracy_ci95_low": 0.9404444444444444,
+        "accuracy_ci95_high": 0.9586777777777777,
+        "bootstrap_samples": 1000
+      }
+    },
+    "best_epoch": 57,
+    "best_val": 0.9964444637298584,
+    "final_val": 0.995555579662323,
+    "epochs": 100,
+    "epochs_budget": 100,
+    "training_config": {
+      "batch_size": 32,
+      "epochs": 100,
+      "learning_rate": 0.0003,
+      "lr_is_explicit": false,
+      "verbose": 0,
+      "progress_log_interval": 1,
+      "progress_label": "Hybrid CNN-Transformer",
+      "validation_split": 0.2,
+      "test_split": 0.1,
+      "early_stopping": false,
+      "early_stopping_patience": 18,
+      "reduce_lr_on_plateau": false,
+      "reduce_lr_patience": 8,
+      "available_architectures": [
+        "aasist",
+        "conformer",
+        "efficientnet_lstm",
+        "ensemble",
+        "multiscale_cnn",
+        "rawgat_st",
+        "spectrogram_transformer"
+      ],
+      "optimizer": "AdamW",
+      "loss_function": "binary_crossentropy",
+      "metrics": [
+        "accuracy",
+        "precision",
+        "recall",
+        "f1"
+      ],
+      "use_augmentation": false,
+      "augmentation_config": {
+        "noise_factor": 0.1,
+        "snr_range_db": [
+          5.0,
+          40.0
+        ],
+        "time_stretch_factor": 0.1,
+        "pitch_shift_steps": 2
+      },
+      "use_class_weighting": true,
+      "auto_calibrate_temperature": true,
+      "calibration_min_samples": 50,
+      "calibrate_under_noise": false,
+      "calibration_snr_db": [
+        20,
+        10
+      ],
+      "use_swa": false,
+      "swa_start_epoch": -1,
+      "swa_freq": 1,
+      "use_mixup": false,
+      "mixup_alpha": 0.2,
+      "compute_ood_threshold": true,
+      "ood_quantile": 0.95,
+      "export_onnx": false,
+      "export_onnx_int8": false,
+      "use_mixed_precision": true,
+      "checkpoint_path": "/app/results/retrain_full_20260714/hybrid_cnn_transformer/architectures/hybrid_cnn_transformer/models/best_checkpoint.weights.h5",
+      "checkpoint_best": true,
+      "best_checkpoint_path": "/app/results/retrain_full_20260714/hybrid_cnn_transformer/architectures/hybrid_cnn_transformer/models/best_checkpoint.weights.h5",
+      "model_parameters": {
+        "learning_rate": 0.0003,
+        "weight_decay": 0.0001,
+        "warmup_steps": 1500,
+        "decay_steps": 65700,
+        "alpha": 1e-07,
+        "dropout_rate": 0.2,
+        "clipnorm": 1.0
+      },
+      "waveform_noise_protocol": {
+        "evaluation_domain": "waveform",
+        "frontend_after_noise": true,
+        "training_augmentation_domain": "waveform",
+        "train_aug_snr_db": [
+          30,
+          20,
+          10
+        ],
+        "train_noise_copies": 1,
+        "waveform_noise_batch_size": 64,
+        "assigned_snr_counts": {
+          "10": 3500,
+          "20": 3500,
+          "30": 3500
+        },
+        "clean_train_samples": 10500,
+        "fit_train_samples": 21000,
+        "input_type": "spectrogram",
+        "original_shape": [
+          80000,
+          1
+        ],
+        "prepared_shape": [
+          100,
+          80
+        ]
+      },
+      "epochs_budget": 100,
+      "epochs_executed": 100
+    },
+    "noise_protocol": {
+      "evaluation_domain": "waveform",
+      "frontend_after_noise": true,
+      "training_augmentation_domain": "waveform",
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "train_noise_copies": 1,
+      "waveform_noise_batch_size": 64,
+      "assigned_snr_counts": {
+        "10": 3500,
+        "20": 3500,
+        "30": 3500
+      },
+      "clean_train_samples": 10500,
+      "fit_train_samples": 21000,
+      "input_type": "spectrogram",
+      "original_shape": [
+        80000,
+        1
+      ],
+      "prepared_shape": [
+        100,
+        80
+      ]
+    },
+    "input_preparation": {
+      "evaluation_domain": "waveform",
+      "frontend_after_noise": true,
+      "training_augmentation_domain": "waveform",
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "train_noise_copies": 1,
+      "waveform_noise_batch_size": 64,
+      "assigned_snr_counts": {
+        "10": 3500,
+        "20": 3500,
+        "30": 3500
+      },
+      "clean_train_samples": 10500,
+      "fit_train_samples": 21000,
+      "input_type": "spectrogram",
+      "original_shape": [
+        80000,
+        1
+      ],
+      "prepared_shape": [
+        100,
+        80
+      ]
+    },
+    "decision_threshold": 0.5,
+    "seed": 42,
+    "dataset": {
+      "name": "benchmark_audio_raw_balanced_15k_confirmatory_v2",
+      "source": "F:\\XFakeSong\\data\\datasets\\benchmark_audio_raw_balanced_15k.npz",
+      "n_total": 15000,
+      "n_test": 2250,
+      "split_source": "predefined_npz",
+      "split_overlap_audit": {
+        "method": "blake2b-128_exact_array_bytes",
+        "pairwise_overlap_counts": {
+          "train_val": 0,
+          "train_test": 0,
+          "val_test": 0
+        },
+        "split_fingerprints": {
+          "method": "sha256_ordered_blake2b_sample_hashes_and_labels",
+          "train": {
+            "n": 10500,
+            "sha256": "2320a8328668dd444280c4a0c62be1b75b3ca3e9774496a1baf7c76d70506a4a"
+          },
+          "val": {
+            "n": 2250,
+            "sha256": "b518ee3c02b401a8ed52dcd75998b247a02e3e532ccfe4f2c9cf8bf3b67633d5"
+          },
+          "test": {
+            "n": 2250,
+            "sha256": "a814b71a53a3be399a5c254cb5eb1eb08b9cf8d67617e28c2183e814f616a486"
+          }
+        },
+        "passed": true
+      },
+      "provenance_overlap_audit": {
+        "available": true,
+        "groups": {
+          "available": true,
+          "unique_counts": {
+            "train": 4,
+            "val": 4,
+            "test": 4
+          },
+          "overlap_counts": {
+            "train_val": 4,
+            "train_test": 4,
+            "val_test": 4
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice",
+            "mlspt",
+            "ttsport"
+          ],
+          "disjoint": false
+        },
+        "speakers": {
+          "available": true,
+          "unique_counts": {
+            "train": 73,
+            "val": 73,
+            "test": 73
+          },
+          "overlap_counts": {
+            "train_val": 73,
+            "train_test": 73,
+            "val_test": 73
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice:AdrianaMalta_F049_Fake",
+            "fkvoice:Aislam_M001_Fake",
+            "fkvoice:Alcione_F018_Fake",
+            "fkvoice:Alessandra_F045_Fake",
+            "fkvoice:Alexandra_F010_Fake",
+            "fkvoice:AnaVarela_F042_Fake",
+            "fkvoice:Andrea_F003_Fake",
+            "fkvoice:AndreiaSoares_F032_Fake",
+            "fkvoice:AnnaPerez_F046_Fake"
+          ],
+          "disjoint": false
+        }
+      }
+    }
+  },
+  {
+    "model": "AST",
+    "key": "AST",
+    "path": "C:\\Users\\thier\\AppData\\Local\\Temp\\claude\\F--XFakeSong\\124e1227-ab99-425b-8a6c-e0d1a881ff22\\scratchpad\\audit\\runs\\spectrogramtransformer",
+    "accuracy": 0.9902222222222222,
+    "auc": 0.997739061728395,
+    "eer": 0.009777777777777776,
+    "min_tdcf": 0.026453818279353582,
+    "f1": 0.9902309058614565,
+    "latency": 51.79,
+    "size": 325.89,
+    "params": 85304834,
+    "robustness": {
+      "30": {
+        "accuracy": 0.9777777777777777,
+        "precision": 0.9669852302345786,
+        "recall": 0.9893333333333333,
+        "f1": 0.9780316344463972,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.022219455927443846,
+        "auc_roc": 0.9952553086419753,
+        "eer": 0.01955555555555555,
+        "eer_threshold": 0.9999889135360718,
+        "accuracy_at_eer": 0.9804444444444445,
+        "min_tdcf": 0.04794154898410783,
+        "eer_ci95_low": 0.014222321111263859,
+        "eer_ci95_high": 0.02577072872070695,
+        "auc_roc_ci95_low": 0.992319868180937,
+        "auc_roc_ci95_high": 0.9976372395012408,
+        "accuracy_ci95_low": 0.9711111111111111,
+        "accuracy_ci95_high": 0.9835555555555555,
+        "bootstrap_samples": 1000
+      },
+      "20": {
+        "accuracy": 0.9644444444444444,
+        "precision": 0.957931638913234,
+        "recall": 0.9715555555555555,
+        "f1": 0.9646954986760812,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.03545552499347155,
+        "auc_roc": 0.991872,
+        "eer": 0.03555555555555556,
+        "eer_threshold": 0.9998027086257935,
+        "accuracy_at_eer": 0.9644444444444444,
+        "min_tdcf": 0.09870416200630323,
+        "eer_ci95_low": 0.02844282707765489,
+        "eer_ci95_high": 0.043552573354468486,
+        "auc_roc_ci95_low": 0.9887016262085574,
+        "auc_roc_ci95_high": 0.9947428191943205,
+        "accuracy_ci95_low": 0.9568888888888889,
+        "accuracy_ci95_high": 0.9711111111111111,
+        "bootstrap_samples": 1000
+      },
+      "10": {
+        "accuracy": 0.9324444444444444,
+        "precision": 0.9293909973521624,
+        "recall": 0.936,
+        "f1": 0.9326837909654562,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.06752412081449334,
+        "auc_roc": 0.9818263703703703,
+        "eer": 0.06533333333333335,
+        "eer_threshold": 0.9976925253868103,
+        "accuracy_at_eer": 0.9346666666666666,
+        "min_tdcf": 0.1670901554348555,
+        "eer_ci95_low": 0.05466751555156244,
+        "eer_ci95_high": 0.07644630941537171,
+        "auc_roc_ci95_low": 0.9765877687970774,
+        "auc_roc_ci95_high": 0.9863696093932358,
+        "accuracy_ci95_low": 0.9222111111111112,
+        "accuracy_ci95_high": 0.9422222222222222,
+        "bootstrap_samples": 1000
+      }
+    },
+    "best_epoch": 53,
+    "best_val": 0.9902222156524658,
+    "final_val": 0.9893333315849304,
+    "epochs": 100,
+    "epochs_budget": 100,
+    "training_config": {
+      "batch_size": 8,
+      "epochs": 100,
+      "learning_rate": 1e-05,
+      "lr_is_explicit": false,
+      "verbose": 0,
+      "progress_log_interval": 1,
+      "progress_label": "SpectrogramTransformer",
+      "validation_split": 0.2,
+      "test_split": 0.1,
+      "early_stopping": false,
+      "early_stopping_patience": 20,
+      "reduce_lr_on_plateau": false,
+      "reduce_lr_patience": 12,
+      "available_architectures": [
+        "aasist",
+        "conformer",
+        "efficientnet_lstm",
+        "ensemble",
+        "multiscale_cnn",
+        "rawgat_st",
+        "spectrogram_transformer"
+      ],
+      "optimizer": "AdamW",
+      "loss_function": "binary_crossentropy",
+      "metrics": [
+        "accuracy",
+        "precision",
+        "recall",
+        "f1"
+      ],
+      "use_augmentation": false,
+      "augmentation_config": {
+        "noise_factor": 0.1,
+        "snr_range_db": [
+          5.0,
+          40.0
+        ],
+        "time_stretch_factor": 0.1,
+        "pitch_shift_steps": 2
+      },
+      "use_class_weighting": true,
+      "auto_calibrate_temperature": true,
+      "calibration_min_samples": 50,
+      "calibrate_under_noise": false,
+      "calibration_snr_db": [
+        20,
+        10
+      ],
+      "use_swa": false,
+      "swa_start_epoch": -1,
+      "swa_freq": 1,
+      "use_mixup": false,
+      "mixup_alpha": 0.2,
+      "compute_ood_threshold": true,
+      "ood_quantile": 0.95,
+      "export_onnx": false,
+      "export_onnx_int8": false,
+      "use_mixed_precision": true,
+      "checkpoint_path": "/app/results/retrain_full_20260714/spectrogramtransformer/architectures/spectrogramtransformer/models/best_checkpoint.weights.h5",
+      "checkpoint_best": true,
+      "best_checkpoint_path": "/app/results/retrain_full_20260714/spectrogramtransformer/architectures/spectrogramtransformer/models/best_checkpoint.weights.h5",
+      "model_parameters": {
+        "learning_rate": 1e-05,
+        "weight_decay": 1e-05,
+        "warmup_steps": 3000,
+        "decay_steps": 262500,
+        "alpha": 1e-06,
+        "dropout_rate": 0.25
+      },
+      "waveform_noise_protocol": {
+        "evaluation_domain": "waveform",
+        "frontend_after_noise": true,
+        "training_augmentation_domain": "waveform",
+        "train_aug_snr_db": [
+          30,
+          20,
+          10
+        ],
+        "train_noise_copies": 1,
+        "waveform_noise_batch_size": 64,
+        "assigned_snr_counts": {
+          "10": 3500,
+          "20": 3500,
+          "30": 3500
+        },
+        "clean_train_samples": 10500,
+        "fit_train_samples": 21000,
+        "input_type": "spectrogram",
+        "original_shape": [
+          80000,
+          1
+        ],
+        "prepared_shape": [
+          100,
+          80
+        ]
+      },
+      "epochs_budget": 100,
+      "epochs_executed": 100
+    },
+    "noise_protocol": {
+      "evaluation_domain": "waveform",
+      "frontend_after_noise": true,
+      "training_augmentation_domain": "waveform",
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "train_noise_copies": 1,
+      "waveform_noise_batch_size": 64,
+      "assigned_snr_counts": {
+        "10": 3500,
+        "20": 3500,
+        "30": 3500
+      },
+      "clean_train_samples": 10500,
+      "fit_train_samples": 21000,
+      "input_type": "spectrogram",
+      "original_shape": [
+        80000,
+        1
+      ],
+      "prepared_shape": [
+        100,
+        80
+      ]
+    },
+    "input_preparation": {
+      "evaluation_domain": "waveform",
+      "frontend_after_noise": true,
+      "training_augmentation_domain": "waveform",
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "train_noise_copies": 1,
+      "waveform_noise_batch_size": 64,
+      "assigned_snr_counts": {
+        "10": 3500,
+        "20": 3500,
+        "30": 3500
+      },
+      "clean_train_samples": 10500,
+      "fit_train_samples": 21000,
+      "input_type": "spectrogram",
+      "original_shape": [
+        80000,
+        1
+      ],
+      "prepared_shape": [
+        100,
+        80
+      ]
+    },
+    "decision_threshold": 0.5,
+    "seed": 42,
+    "dataset": {
+      "name": "benchmark_audio_raw_balanced_15k_confirmatory_v2",
+      "source": "F:\\XFakeSong\\data\\datasets\\benchmark_audio_raw_balanced_15k.npz",
+      "n_total": 15000,
+      "n_test": 2250,
+      "split_source": "predefined_npz",
+      "split_overlap_audit": {
+        "method": "blake2b-128_exact_array_bytes",
+        "pairwise_overlap_counts": {
+          "train_val": 0,
+          "train_test": 0,
+          "val_test": 0
+        },
+        "split_fingerprints": {
+          "method": "sha256_ordered_blake2b_sample_hashes_and_labels",
+          "train": {
+            "n": 10500,
+            "sha256": "2320a8328668dd444280c4a0c62be1b75b3ca3e9774496a1baf7c76d70506a4a"
+          },
+          "val": {
+            "n": 2250,
+            "sha256": "b518ee3c02b401a8ed52dcd75998b247a02e3e532ccfe4f2c9cf8bf3b67633d5"
+          },
+          "test": {
+            "n": 2250,
+            "sha256": "a814b71a53a3be399a5c254cb5eb1eb08b9cf8d67617e28c2183e814f616a486"
+          }
+        },
+        "passed": true
+      },
+      "provenance_overlap_audit": {
+        "available": true,
+        "groups": {
+          "available": true,
+          "unique_counts": {
+            "train": 4,
+            "val": 4,
+            "test": 4
+          },
+          "overlap_counts": {
+            "train_val": 4,
+            "train_test": 4,
+            "val_test": 4
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice",
+            "mlspt",
+            "ttsport"
+          ],
+          "disjoint": false
+        },
+        "speakers": {
+          "available": true,
+          "unique_counts": {
+            "train": 73,
+            "val": 73,
+            "test": 73
+          },
+          "overlap_counts": {
+            "train_val": 73,
+            "train_test": 73,
+            "val_test": 73
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice:AdrianaMalta_F049_Fake",
+            "fkvoice:Aislam_M001_Fake",
+            "fkvoice:Alcione_F018_Fake",
+            "fkvoice:Alessandra_F045_Fake",
+            "fkvoice:Alexandra_F010_Fake",
+            "fkvoice:AnaVarela_F042_Fake",
+            "fkvoice:Andrea_F003_Fake",
+            "fkvoice:AndreiaSoares_F032_Fake",
+            "fkvoice:AnnaPerez_F046_Fake"
+          ],
+          "disjoint": false
+        }
+      }
+    }
+  },
+  {
+    "model": "Res2Net",
+    "key": "Res2Net",
+    "path": "C:\\Users\\thier\\AppData\\Local\\Temp\\claude\\F--XFakeSong\\124e1227-ab99-425b-8a6c-e0d1a881ff22\\scratchpad\\audit\\runs\\multiscalecnn",
+    "accuracy": 0.9968888888888889,
+    "auc": 0.9999486419753086,
+    "eer": 0.003555555555555545,
+    "min_tdcf": 0.006866280605288452,
+    "f1": 0.9968930315135375,
+    "latency": 44.58,
+    "size": 91.01,
+    "params": 23707438,
+    "robustness": {
+      "30": {
+        "accuracy": 0.9924444444444445,
+        "precision": 0.9920071047957372,
+        "recall": 0.9928888888888889,
+        "f1": 0.9924478009773434,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.006489959095291443,
+        "auc_roc": 0.9993999012345679,
+        "eer": 0.008000000000000004,
+        "eer_threshold": 0.5240642428398132,
+        "accuracy_at_eer": 0.992,
+        "min_tdcf": 0.017165701513221127,
+        "eer_ci95_low": 0.003995072810667753,
+        "eer_ci95_high": 0.011996350912938684,
+        "auc_roc_ci95_low": 0.9983981241174473,
+        "auc_roc_ci95_high": 0.9999439189758239,
+        "accuracy_ci95_low": 0.9884444444444445,
+        "accuracy_ci95_high": 0.996,
+        "bootstrap_samples": 1000
+      },
+      "20": {
+        "accuracy": 0.9902222222222222,
+        "precision": 0.9884853852967228,
+        "recall": 0.992,
+        "f1": 0.9902395740905058,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.008004022790448503,
+        "auc_roc": 0.9995132839506172,
+        "eer": 0.008888888888888892,
+        "eer_threshold": 0.6379973888397217,
+        "accuracy_at_eer": 0.9911111111111112,
+        "min_tdcf": 0.025687344643376027,
+        "eer_ci95_low": 0.005334141385687852,
+        "eer_ci95_high": 0.014225018454644951,
+        "auc_roc_ci95_low": 0.9991631225628003,
+        "auc_roc_ci95_high": 0.9997944241939488,
+        "accuracy_ci95_low": 0.9857777777777778,
+        "accuracy_ci95_high": 0.9942222222222222,
+        "bootstrap_samples": 1000
+      },
+      "10": {
+        "accuracy": 0.9751111111111112,
+        "precision": 0.9759572573463936,
+        "recall": 0.9742222222222222,
+        "f1": 0.9750889679715302,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.020257833518702865,
+        "auc_roc": 0.9973989135802469,
+        "eer": 0.02400000000000001,
+        "eer_threshold": 0.4504983127117157,
+        "accuracy_at_eer": 0.976,
+        "min_tdcf": 0.06854039079997316,
+        "eer_ci95_low": 0.018667384600498698,
+        "eer_ci95_high": 0.032443493741042675,
+        "auc_roc_ci95_low": 0.996164748895613,
+        "auc_roc_ci95_high": 0.9983502216179944,
+        "accuracy_ci95_low": 0.9684444444444444,
+        "accuracy_ci95_high": 0.9813333333333333,
+        "bootstrap_samples": 1000
+      }
+    },
+    "best_epoch": 47,
+    "best_val": 0.9982222318649292,
+    "final_val": 0.9977777600288391,
+    "epochs": 100,
+    "epochs_budget": 100,
+    "training_config": {
+      "batch_size": 32,
+      "epochs": 100,
+      "learning_rate": 0.001,
+      "lr_is_explicit": true,
+      "verbose": 0,
+      "progress_log_interval": 1,
+      "progress_label": "MultiscaleCNN",
+      "validation_split": 0.2,
+      "test_split": 0.1,
+      "early_stopping": false,
+      "early_stopping_patience": 15,
+      "reduce_lr_on_plateau": true,
+      "reduce_lr_patience": 8,
+      "available_architectures": [
+        "aasist",
+        "conformer",
+        "efficientnet_lstm",
+        "ensemble",
+        "multiscale_cnn",
+        "rawgat_st",
+        "spectrogram_transformer"
+      ],
+      "optimizer": "AdamW",
+      "loss_function": "binary_crossentropy",
+      "metrics": [
+        "accuracy",
+        "precision",
+        "recall",
+        "f1"
+      ],
+      "use_augmentation": false,
+      "augmentation_config": {
+        "noise_factor": 0.1,
+        "snr_range_db": [
+          5.0,
+          40.0
+        ],
+        "time_stretch_factor": 0.1,
+        "pitch_shift_steps": 2
+      },
+      "use_class_weighting": true,
+      "auto_calibrate_temperature": true,
+      "calibration_min_samples": 50,
+      "calibrate_under_noise": false,
+      "calibration_snr_db": [
+        20,
+        10
+      ],
+      "use_swa": false,
+      "swa_start_epoch": -1,
+      "swa_freq": 1,
+      "use_mixup": false,
+      "mixup_alpha": 0.2,
+      "compute_ood_threshold": true,
+      "ood_quantile": 0.95,
+      "export_onnx": false,
+      "export_onnx_int8": false,
+      "use_mixed_precision": true,
+      "checkpoint_path": "/app/results/retrain_full_20260714/multiscalecnn/architectures/multiscalecnn/models/best_checkpoint.weights.h5",
+      "checkpoint_best": true,
+      "best_checkpoint_path": "/app/results/retrain_full_20260714/multiscalecnn/architectures/multiscalecnn/models/best_checkpoint.weights.h5",
+      "waveform_noise_protocol": {
+        "evaluation_domain": "waveform",
+        "frontend_after_noise": true,
+        "training_augmentation_domain": "waveform",
+        "train_aug_snr_db": [
+          30,
+          20,
+          10
+        ],
+        "train_noise_copies": 1,
+        "waveform_noise_batch_size": 64,
+        "assigned_snr_counts": {
+          "10": 3500,
+          "20": 3500,
+          "30": 3500
+        },
+        "clean_train_samples": 10500,
+        "fit_train_samples": 21000,
+        "input_type": "spectrogram",
+        "original_shape": [
+          80000,
+          1
+        ],
+        "prepared_shape": [
+          100,
+          80
+        ]
+      },
+      "epochs_budget": 100,
+      "epochs_executed": 100
+    },
+    "noise_protocol": {
+      "evaluation_domain": "waveform",
+      "frontend_after_noise": true,
+      "training_augmentation_domain": "waveform",
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "train_noise_copies": 1,
+      "waveform_noise_batch_size": 64,
+      "assigned_snr_counts": {
+        "10": 3500,
+        "20": 3500,
+        "30": 3500
+      },
+      "clean_train_samples": 10500,
+      "fit_train_samples": 21000,
+      "input_type": "spectrogram",
+      "original_shape": [
+        80000,
+        1
+      ],
+      "prepared_shape": [
+        100,
+        80
+      ]
+    },
+    "input_preparation": {
+      "evaluation_domain": "waveform",
+      "frontend_after_noise": true,
+      "training_augmentation_domain": "waveform",
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "train_noise_copies": 1,
+      "waveform_noise_batch_size": 64,
+      "assigned_snr_counts": {
+        "10": 3500,
+        "20": 3500,
+        "30": 3500
+      },
+      "clean_train_samples": 10500,
+      "fit_train_samples": 21000,
+      "input_type": "spectrogram",
+      "original_shape": [
+        80000,
+        1
+      ],
+      "prepared_shape": [
+        100,
+        80
+      ]
+    },
+    "decision_threshold": 0.5,
+    "seed": 42,
+    "dataset": {
+      "name": "benchmark_audio_raw_balanced_15k_confirmatory_v2",
+      "source": "F:\\XFakeSong\\data\\datasets\\benchmark_audio_raw_balanced_15k.npz",
+      "n_total": 15000,
+      "n_test": 2250,
+      "split_source": "predefined_npz",
+      "split_overlap_audit": {
+        "method": "blake2b-128_exact_array_bytes",
+        "pairwise_overlap_counts": {
+          "train_val": 0,
+          "train_test": 0,
+          "val_test": 0
+        },
+        "split_fingerprints": {
+          "method": "sha256_ordered_blake2b_sample_hashes_and_labels",
+          "train": {
+            "n": 10500,
+            "sha256": "2320a8328668dd444280c4a0c62be1b75b3ca3e9774496a1baf7c76d70506a4a"
+          },
+          "val": {
+            "n": 2250,
+            "sha256": "b518ee3c02b401a8ed52dcd75998b247a02e3e532ccfe4f2c9cf8bf3b67633d5"
+          },
+          "test": {
+            "n": 2250,
+            "sha256": "a814b71a53a3be399a5c254cb5eb1eb08b9cf8d67617e28c2183e814f616a486"
+          }
+        },
+        "passed": true
+      },
+      "provenance_overlap_audit": {
+        "available": true,
+        "groups": {
+          "available": true,
+          "unique_counts": {
+            "train": 4,
+            "val": 4,
+            "test": 4
+          },
+          "overlap_counts": {
+            "train_val": 4,
+            "train_test": 4,
+            "val_test": 4
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice",
+            "mlspt",
+            "ttsport"
+          ],
+          "disjoint": false
+        },
+        "speakers": {
+          "available": true,
+          "unique_counts": {
+            "train": 73,
+            "val": 73,
+            "test": 73
+          },
+          "overlap_counts": {
+            "train_val": 73,
+            "train_test": 73,
+            "val_test": 73
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice:AdrianaMalta_F049_Fake",
+            "fkvoice:Aislam_M001_Fake",
+            "fkvoice:Alcione_F018_Fake",
+            "fkvoice:Alessandra_F045_Fake",
+            "fkvoice:Alexandra_F010_Fake",
+            "fkvoice:AnaVarela_F042_Fake",
+            "fkvoice:Andrea_F003_Fake",
+            "fkvoice:AndreiaSoares_F032_Fake",
+            "fkvoice:AnnaPerez_F046_Fake"
+          ],
+          "disjoint": false
+        }
+      }
+    }
+  },
+  {
+    "model": "Conformer",
+    "key": "Conformer",
+    "path": "C:\\Users\\thier\\AppData\\Local\\Temp\\claude\\F--XFakeSong\\124e1227-ab99-425b-8a6c-e0d1a881ff22\\scratchpad\\audit\\runs\\conformer",
+    "accuracy": 0.9982222222222222,
+    "auc": 0.9999755061728395,
+    "eer": 0.0017777777777777724,
+    "min_tdcf": 0.003433140302644226,
+    "f1": 0.9982222222222222,
+    "latency": 45.34,
+    "size": 61.27,
+    "params": 15925122,
+    "robustness": {
+      "30": {
+        "accuracy": 0.9964444444444445,
+        "precision": 0.9929390997352162,
+        "recall": 1.0,
+        "f1": 0.9964570416297609,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.017454110706018097,
+        "auc_roc": 0.9990431604938271,
+        "eer": 0.0013333333333333584,
+        "eer_threshold": 0.9828989505767822,
+        "accuracy_at_eer": 0.9986666666666667,
+        "min_tdcf": 0.004199613938621785,
+        "eer_ci95_low": 0.0,
+        "eer_ci95_high": 0.004447020951541275,
+        "auc_roc_ci95_low": 0.9972025587571189,
+        "auc_roc_ci95_high": 1.0,
+        "accuracy_ci95_low": 0.9942222222222222,
+        "accuracy_ci95_high": 0.9986666666666667,
+        "bootstrap_samples": 1000
+      },
+      "20": {
+        "accuracy": 0.9946666666666667,
+        "precision": 0.9903083700440528,
+        "recall": 0.9991111111111111,
+        "f1": 0.9946902654867257,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.01857004848453732,
+        "auc_roc": 0.9999280987654321,
+        "eer": 0.005333333333333317,
+        "eer_threshold": 0.9287691712379456,
+        "accuracy_at_eer": 0.9946666666666667,
+        "min_tdcf": 0.011709952926976464,
+        "eer_ci95_low": 0.0017729538402616607,
+        "eer_ci95_high": 0.008004610655737706,
+        "auc_roc_ci95_low": 0.9998475010728256,
+        "auc_roc_ci95_high": 0.9999818465273589,
+        "accuracy_ci95_low": 0.9915555555555555,
+        "accuracy_ci95_high": 0.9973333333333333,
+        "bootstrap_samples": 1000
+      },
+      "10": {
+        "accuracy": 0.9795555555555555,
+        "precision": 0.9720034995625547,
+        "recall": 0.9875555555555555,
+        "f1": 0.9797178130511464,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.01596042865680328,
+        "auc_roc": 0.9968367407407408,
+        "eer": 0.020444444444444466,
+        "eer_threshold": 0.8649870753288269,
+        "accuracy_at_eer": 0.9795555555555555,
+        "min_tdcf": 0.05851778251637275,
+        "eer_ci95_low": 0.015113417309683087,
+        "eer_ci95_high": 0.028030914843030944,
+        "auc_roc_ci95_low": 0.9945492678498044,
+        "auc_roc_ci95_high": 0.9986459848974435,
+        "accuracy_ci95_low": 0.9733333333333334,
+        "accuracy_ci95_high": 0.9853333333333333,
+        "bootstrap_samples": 1000
+      }
+    },
+    "best_epoch": 41,
+    "best_val": 0.9986666440963745,
+    "final_val": 0.9973333477973938,
+    "epochs": 100,
+    "epochs_budget": 100,
+    "training_config": {
+      "batch_size": 32,
+      "epochs": 100,
+      "learning_rate": 0.0001,
+      "lr_is_explicit": false,
+      "verbose": 0,
+      "progress_log_interval": 1,
+      "progress_label": "Conformer",
+      "validation_split": 0.2,
+      "test_split": 0.1,
+      "early_stopping": false,
+      "early_stopping_patience": 22,
+      "reduce_lr_on_plateau": false,
+      "reduce_lr_patience": 11,
+      "available_architectures": [
+        "aasist",
+        "conformer",
+        "efficientnet_lstm",
+        "ensemble",
+        "multiscale_cnn",
+        "rawgat_st",
+        "spectrogram_transformer"
+      ],
+      "optimizer": "AdamW",
+      "loss_function": "binary_crossentropy",
+      "metrics": [
+        "accuracy",
+        "precision",
+        "recall",
+        "f1"
+      ],
+      "use_augmentation": false,
+      "augmentation_config": {
+        "noise_factor": 0.1,
+        "snr_range_db": [
+          5.0,
+          40.0
+        ],
+        "time_stretch_factor": 0.1,
+        "pitch_shift_steps": 2
+      },
+      "use_class_weighting": true,
+      "auto_calibrate_temperature": true,
+      "calibration_min_samples": 50,
+      "calibrate_under_noise": false,
+      "calibration_snr_db": [
+        20,
+        10
+      ],
+      "use_swa": false,
+      "swa_start_epoch": -1,
+      "swa_freq": 1,
+      "use_mixup": false,
+      "mixup_alpha": 0.2,
+      "compute_ood_threshold": true,
+      "ood_quantile": 0.95,
+      "export_onnx": false,
+      "export_onnx_int8": false,
+      "use_mixed_precision": true,
+      "checkpoint_path": "/app/results/retrain_full_20260714/conformer/architectures/conformer/models/best_checkpoint.weights.h5",
+      "checkpoint_best": true,
+      "best_checkpoint_path": "/app/results/retrain_full_20260714/conformer/architectures/conformer/models/best_checkpoint.weights.h5",
+      "model_parameters": {
+        "learning_rate": 0.0001,
+        "weight_decay": 0.0001,
+        "warmup_steps": 1500,
+        "dropout_rate": 0.3,
+        "clipnorm": 1.0,
+        "label_smoothing": 0.05
+      },
+      "waveform_noise_protocol": {
+        "evaluation_domain": "waveform",
+        "frontend_after_noise": true,
+        "training_augmentation_domain": "waveform",
+        "train_aug_snr_db": [
+          30,
+          20,
+          10
+        ],
+        "train_noise_copies": 1,
+        "waveform_noise_batch_size": 64,
+        "assigned_snr_counts": {
+          "10": 3500,
+          "20": 3500,
+          "30": 3500
+        },
+        "clean_train_samples": 10500,
+        "fit_train_samples": 21000,
+        "input_type": "spectrogram",
+        "original_shape": [
+          80000,
+          1
+        ],
+        "prepared_shape": [
+          100,
+          80
+        ]
+      },
+      "epochs_budget": 100,
+      "epochs_executed": 100
+    },
+    "noise_protocol": {
+      "evaluation_domain": "waveform",
+      "frontend_after_noise": true,
+      "training_augmentation_domain": "waveform",
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "train_noise_copies": 1,
+      "waveform_noise_batch_size": 64,
+      "assigned_snr_counts": {
+        "10": 3500,
+        "20": 3500,
+        "30": 3500
+      },
+      "clean_train_samples": 10500,
+      "fit_train_samples": 21000,
+      "input_type": "spectrogram",
+      "original_shape": [
+        80000,
+        1
+      ],
+      "prepared_shape": [
+        100,
+        80
+      ]
+    },
+    "input_preparation": {
+      "evaluation_domain": "waveform",
+      "frontend_after_noise": true,
+      "training_augmentation_domain": "waveform",
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "train_noise_copies": 1,
+      "waveform_noise_batch_size": 64,
+      "assigned_snr_counts": {
+        "10": 3500,
+        "20": 3500,
+        "30": 3500
+      },
+      "clean_train_samples": 10500,
+      "fit_train_samples": 21000,
+      "input_type": "spectrogram",
+      "original_shape": [
+        80000,
+        1
+      ],
+      "prepared_shape": [
+        100,
+        80
+      ]
+    },
+    "decision_threshold": 0.5,
+    "seed": 42,
+    "dataset": {
+      "name": "benchmark_audio_raw_balanced_15k_confirmatory_v2",
+      "source": "F:\\XFakeSong\\data\\datasets\\benchmark_audio_raw_balanced_15k.npz",
+      "n_total": 15000,
+      "n_test": 2250,
+      "split_source": "predefined_npz",
+      "split_overlap_audit": {
+        "method": "blake2b-128_exact_array_bytes",
+        "pairwise_overlap_counts": {
+          "train_val": 0,
+          "train_test": 0,
+          "val_test": 0
+        },
+        "split_fingerprints": {
+          "method": "sha256_ordered_blake2b_sample_hashes_and_labels",
+          "train": {
+            "n": 10500,
+            "sha256": "2320a8328668dd444280c4a0c62be1b75b3ca3e9774496a1baf7c76d70506a4a"
+          },
+          "val": {
+            "n": 2250,
+            "sha256": "b518ee3c02b401a8ed52dcd75998b247a02e3e532ccfe4f2c9cf8bf3b67633d5"
+          },
+          "test": {
+            "n": 2250,
+            "sha256": "a814b71a53a3be399a5c254cb5eb1eb08b9cf8d67617e28c2183e814f616a486"
+          }
+        },
+        "passed": true
+      },
+      "provenance_overlap_audit": {
+        "available": true,
+        "groups": {
+          "available": true,
+          "unique_counts": {
+            "train": 4,
+            "val": 4,
+            "test": 4
+          },
+          "overlap_counts": {
+            "train_val": 4,
+            "train_test": 4,
+            "val_test": 4
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice",
+            "mlspt",
+            "ttsport"
+          ],
+          "disjoint": false
+        },
+        "speakers": {
+          "available": true,
+          "unique_counts": {
+            "train": 73,
+            "val": 73,
+            "test": 73
+          },
+          "overlap_counts": {
+            "train_val": 73,
+            "train_test": 73,
+            "val_test": 73
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice:AdrianaMalta_F049_Fake",
+            "fkvoice:Aislam_M001_Fake",
+            "fkvoice:Alcione_F018_Fake",
+            "fkvoice:Alessandra_F045_Fake",
+            "fkvoice:Alexandra_F010_Fake",
+            "fkvoice:AnaVarela_F042_Fake",
+            "fkvoice:Andrea_F003_Fake",
+            "fkvoice:AndreiaSoares_F032_Fake",
+            "fkvoice:AnnaPerez_F046_Fake"
+          ],
+          "disjoint": false
+        }
+      }
+    }
+  },
+  {
+    "model": "RawNet2",
+    "key": "RawNet2",
+    "path": "C:\\Users\\thier\\AppData\\Local\\Temp\\claude\\F--XFakeSong\\124e1227-ab99-425b-8a6c-e0d1a881ff22\\scratchpad\\audit\\runs\\rawnet2",
+    "accuracy": 0.9715555555555555,
+    "auc": 0.997692049382716,
+    "eer": 0.027111111111111093,
+    "min_tdcf": 0.06240860171215271,
+    "f1": 0.9710669077757685,
+    "latency": 42.33,
+    "size": 26.9,
+    "params": 7004418,
+    "robustness": {
+      "30": {
+        "accuracy": 0.9546666666666667,
+        "precision": 0.9679780420860018,
+        "recall": 0.9404444444444444,
+        "f1": 0.9540126239855726,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.01233476493530488,
+        "auc_roc": 0.9954631111111112,
+        "eer": 0.04399999999999998,
+        "eer_threshold": 0.4876106083393097,
+        "accuracy_at_eer": 0.956,
+        "min_tdcf": 0.09453101696506405,
+        "eer_ci95_low": 0.03599861511784204,
+        "eer_ci95_high": 0.053760437727925624,
+        "auc_roc_ci95_low": 0.99387525206536,
+        "auc_roc_ci95_high": 0.9967802414683121,
+        "accuracy_ci95_low": 0.9453333333333334,
+        "accuracy_ci95_high": 0.9626777777777777,
+        "bootstrap_samples": 1000
+      },
+      "20": {
+        "accuracy": 0.9533333333333334,
+        "precision": 0.9678899082568807,
+        "recall": 0.9377777777777778,
+        "f1": 0.9525959367945824,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.011066318017157914,
+        "auc_roc": 0.994416987654321,
+        "eer": 0.044888888888888895,
+        "eer_threshold": 0.4916246235370636,
+        "accuracy_at_eer": 0.9551111111111111,
+        "min_tdcf": 0.10510725049732894,
+        "eer_ci95_low": 0.03733687342298182,
+        "eer_ci95_high": 0.05510965361794772,
+        "auc_roc_ci95_low": 0.9924598176233783,
+        "auc_roc_ci95_high": 0.9960897150412873,
+        "accuracy_ci95_low": 0.9444444444444444,
+        "accuracy_ci95_high": 0.9617777777777777,
+        "bootstrap_samples": 1000
+      },
+      "10": {
+        "accuracy": 0.9297777777777778,
+        "precision": 0.9367660343270099,
+        "recall": 0.9217777777777778,
+        "f1": 0.9292114695340502,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.019261423688820282,
+        "auc_roc": 0.9847822222222222,
+        "eer": 0.06800000000000002,
+        "eer_threshold": 0.4954501688480377,
+        "accuracy_at_eer": 0.932,
+        "min_tdcf": 0.18020512715974876,
+        "eer_ci95_low": 0.05820686903752553,
+        "eer_ci95_high": 0.07953187377617084,
+        "auc_roc_ci95_low": 0.9809401592163823,
+        "auc_roc_ci95_high": 0.9881947951095985,
+        "accuracy_ci95_low": 0.9182222222222223,
+        "accuracy_ci95_high": 0.94,
+        "bootstrap_samples": 1000
+      }
+    },
+    "best_epoch": 16,
+    "best_val": 0.9751111268997192,
+    "final_val": 0.9715555310249329,
+    "epochs": 100,
+    "epochs_budget": 100,
+    "training_config": {
+      "batch_size": 16,
+      "epochs": 100,
+      "learning_rate": 0.0001,
+      "lr_is_explicit": true,
+      "verbose": 0,
+      "progress_log_interval": 1,
+      "progress_label": "RawNet2",
+      "validation_split": 0.2,
+      "test_split": 0.1,
+      "early_stopping": false,
+      "early_stopping_patience": 15,
+      "reduce_lr_on_plateau": false,
+      "reduce_lr_patience": 8,
+      "available_architectures": [
+        "aasist",
+        "conformer",
+        "efficientnet_lstm",
+        "ensemble",
+        "multiscale_cnn",
+        "rawgat_st",
+        "spectrogram_transformer"
+      ],
+      "optimizer": "Adam",
+      "loss_function": "binary_crossentropy",
+      "metrics": [
+        "accuracy",
+        "precision",
+        "recall",
+        "f1"
+      ],
+      "use_augmentation": false,
+      "augmentation_config": {
+        "noise_factor": 0.1,
+        "snr_range_db": [
+          5.0,
+          40.0
+        ],
+        "time_stretch_factor": 0.1,
+        "pitch_shift_steps": 2
+      },
+      "use_class_weighting": true,
+      "auto_calibrate_temperature": true,
+      "calibration_min_samples": 50,
+      "calibrate_under_noise": false,
+      "calibration_snr_db": [
+        20,
+        10
+      ],
+      "use_swa": false,
+      "swa_start_epoch": -1,
+      "swa_freq": 1,
+      "use_mixup": false,
+      "mixup_alpha": 0.2,
+      "compute_ood_threshold": true,
+      "ood_quantile": 0.95,
+      "export_onnx": false,
+      "export_onnx_int8": false,
+      "use_mixed_precision": false,
+      "checkpoint_path": "/app/results/retrain_full_20260714/rawnet2/architectures/rawnet2/models/best_checkpoint.weights.h5",
+      "checkpoint_best": true,
+      "best_checkpoint_path": "/app/results/retrain_full_20260714/rawnet2/architectures/rawnet2/models/best_checkpoint.weights.h5",
+      "waveform_noise_protocol": {
+        "evaluation_domain": "waveform",
+        "frontend_after_noise": true,
+        "training_augmentation_domain": "waveform",
+        "train_aug_snr_db": [
+          30,
+          20,
+          10
+        ],
+        "train_noise_copies": 1,
+        "waveform_noise_batch_size": 64,
+        "assigned_snr_counts": {
+          "10": 3500,
+          "20": 3500,
+          "30": 3500
+        },
+        "clean_train_samples": 10500,
+        "fit_train_samples": 21000,
+        "input_type": "raw_audio",
+        "original_shape": [
+          80000,
+          1
+        ],
+        "prepared_shape": [
+          16000,
+          1
+        ]
+      },
+      "epochs_budget": 100,
+      "epochs_executed": 100
+    },
+    "noise_protocol": {
+      "evaluation_domain": "waveform",
+      "frontend_after_noise": true,
+      "training_augmentation_domain": "waveform",
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "train_noise_copies": 1,
+      "waveform_noise_batch_size": 64,
+      "assigned_snr_counts": {
+        "10": 3500,
+        "20": 3500,
+        "30": 3500
+      },
+      "clean_train_samples": 10500,
+      "fit_train_samples": 21000,
+      "input_type": "raw_audio",
+      "original_shape": [
+        80000,
+        1
+      ],
+      "prepared_shape": [
+        16000,
+        1
+      ]
+    },
+    "input_preparation": {
+      "evaluation_domain": "waveform",
+      "frontend_after_noise": true,
+      "training_augmentation_domain": "waveform",
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "train_noise_copies": 1,
+      "waveform_noise_batch_size": 64,
+      "assigned_snr_counts": {
+        "10": 3500,
+        "20": 3500,
+        "30": 3500
+      },
+      "clean_train_samples": 10500,
+      "fit_train_samples": 21000,
+      "input_type": "raw_audio",
+      "original_shape": [
+        80000,
+        1
+      ],
+      "prepared_shape": [
+        16000,
+        1
+      ]
+    },
+    "decision_threshold": 0.5,
+    "seed": 42,
+    "dataset": {
+      "name": "benchmark_audio_raw_balanced_15k_confirmatory_v2",
+      "source": "F:\\XFakeSong\\data\\datasets\\benchmark_audio_raw_balanced_15k.npz",
+      "n_total": 15000,
+      "n_test": 2250,
+      "split_source": "predefined_npz",
+      "split_overlap_audit": {
+        "method": "blake2b-128_exact_array_bytes",
+        "pairwise_overlap_counts": {
+          "train_val": 0,
+          "train_test": 0,
+          "val_test": 0
+        },
+        "split_fingerprints": {
+          "method": "sha256_ordered_blake2b_sample_hashes_and_labels",
+          "train": {
+            "n": 10500,
+            "sha256": "2320a8328668dd444280c4a0c62be1b75b3ca3e9774496a1baf7c76d70506a4a"
+          },
+          "val": {
+            "n": 2250,
+            "sha256": "b518ee3c02b401a8ed52dcd75998b247a02e3e532ccfe4f2c9cf8bf3b67633d5"
+          },
+          "test": {
+            "n": 2250,
+            "sha256": "a814b71a53a3be399a5c254cb5eb1eb08b9cf8d67617e28c2183e814f616a486"
+          }
+        },
+        "passed": true
+      },
+      "provenance_overlap_audit": {
+        "available": true,
+        "groups": {
+          "available": true,
+          "unique_counts": {
+            "train": 4,
+            "val": 4,
+            "test": 4
+          },
+          "overlap_counts": {
+            "train_val": 4,
+            "train_test": 4,
+            "val_test": 4
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice",
+            "mlspt",
+            "ttsport"
+          ],
+          "disjoint": false
+        },
+        "speakers": {
+          "available": true,
+          "unique_counts": {
+            "train": 73,
+            "val": 73,
+            "test": 73
+          },
+          "overlap_counts": {
+            "train_val": 73,
+            "train_test": 73,
+            "val_test": 73
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice:AdrianaMalta_F049_Fake",
+            "fkvoice:Aislam_M001_Fake",
+            "fkvoice:Alcione_F018_Fake",
+            "fkvoice:Alessandra_F045_Fake",
+            "fkvoice:Alexandra_F010_Fake",
+            "fkvoice:AnaVarela_F042_Fake",
+            "fkvoice:Andrea_F003_Fake",
+            "fkvoice:AndreiaSoares_F032_Fake",
+            "fkvoice:AnnaPerez_F046_Fake"
+          ],
+          "disjoint": false
+        }
+      }
+    }
+  },
+  {
+    "model": "AASIST",
+    "key": "AASIST",
+    "path": "C:\\Users\\thier\\AppData\\Local\\Temp\\claude\\F--XFakeSong\\124e1227-ab99-425b-8a6c-e0d1a881ff22\\scratchpad\\audit\\runs\\aasist",
+    "accuracy": 0.9502222222222222,
+    "auc": 0.9899812345679012,
+    "eer": 0.048888888888888885,
+    "min_tdcf": 0.12665894543910236,
+    "f1": 0.951048951048951,
+    "latency": 53.86,
+    "size": 7.27,
+    "params": 1859842,
+    "robustness": {
+      "30": {
+        "accuracy": 0.9297777777777778,
+        "precision": 0.9481000926784059,
+        "recall": 0.9093333333333333,
+        "f1": 0.9283121597096189,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.06996005229687051,
+        "auc_roc": 0.9812543209876544,
+        "eer": 0.06844444444444443,
+        "eer_threshold": 0.0022251769223958825,
+        "accuracy_at_eer": 0.9315555555555556,
+        "min_tdcf": 0.1831221375533651,
+        "eer_ci95_low": 0.057777484149073514,
+        "eer_ci95_high": 0.07866694690796919,
+        "auc_roc_ci95_low": 0.9765466995475774,
+        "auc_roc_ci95_high": 0.9857683173715596,
+        "accuracy_ci95_low": 0.9195555555555556,
+        "accuracy_ci95_high": 0.94,
+        "bootstrap_samples": 1000
+      },
+      "20": {
+        "accuracy": 0.9151111111111111,
+        "precision": 0.9018932874354562,
+        "recall": 0.9315555555555556,
+        "f1": 0.9164844774814167,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.08314573999608996,
+        "auc_roc": 0.974083160493827,
+        "eer": 0.07955555555555557,
+        "eer_threshold": 0.9962256068818274,
+        "accuracy_at_eer": 0.9204444444444444,
+        "min_tdcf": 0.1986004944232102,
+        "eer_ci95_low": 0.06801011694965528,
+        "eer_ci95_high": 0.09065510807104557,
+        "auc_roc_ci95_low": 0.9683466408922305,
+        "auc_roc_ci95_high": 0.9794994037879294,
+        "accuracy_ci95_low": 0.903988888888889,
+        "accuracy_ci95_high": 0.9262222222222222,
+        "bootstrap_samples": 1000
+      },
+      "10": {
+        "accuracy": 0.8871111111111111,
+        "precision": 0.902867715078631,
+        "recall": 0.8675555555555555,
+        "f1": 0.8848594741613781,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.10960351782296719,
+        "auc_roc": 0.9554567901234567,
+        "eer": 0.11377777777777777,
+        "eer_threshold": 0.005577508743725001,
+        "accuracy_at_eer": 0.8862222222222222,
+        "min_tdcf": 0.295276534924786,
+        "eer_ci95_low": 0.10088917947159098,
+        "eer_ci95_high": 0.1279965990165759,
+        "auc_roc_ci95_low": 0.9475805837225868,
+        "auc_roc_ci95_high": 0.9623922965928845,
+        "accuracy_ci95_low": 0.8742111111111112,
+        "accuracy_ci95_high": 0.9000111111111111,
+        "bootstrap_samples": 1000
+      }
+    },
+    "best_epoch": 34,
+    "best_val": 0.9551110863685608,
+    "final_val": 0.9342222213745117,
+    "epochs": 100,
+    "epochs_budget": 100,
+    "training_config": {
+      "batch_size": 16,
+      "epochs": 100,
+      "learning_rate": 0.0003,
+      "lr_is_explicit": true,
+      "verbose": 0,
+      "progress_log_interval": 1,
+      "progress_label": "AASIST",
+      "validation_split": 0.2,
+      "test_split": 0.1,
+      "early_stopping": false,
+      "early_stopping_patience": 25,
+      "reduce_lr_on_plateau": true,
+      "reduce_lr_patience": 8,
+      "available_architectures": [
+        "aasist",
+        "conformer",
+        "efficientnet_lstm",
+        "ensemble",
+        "multiscale_cnn",
+        "rawgat_st",
+        "spectrogram_transformer"
+      ],
+      "optimizer": "AdamW",
+      "loss_function": "binary_crossentropy",
+      "metrics": [
+        "accuracy",
+        "precision",
+        "recall",
+        "f1"
+      ],
+      "use_augmentation": true,
+      "augmentation_config": {
+        "noise_factor": 0.1,
+        "snr_range_db": [
+          5.0,
+          40.0
+        ],
+        "time_stretch_factor": 0.1,
+        "pitch_shift_steps": 2
+      },
+      "use_class_weighting": true,
+      "auto_calibrate_temperature": true,
+      "calibration_min_samples": 50,
+      "calibrate_under_noise": false,
+      "calibration_snr_db": [
+        20,
+        10
+      ],
+      "use_swa": false,
+      "swa_start_epoch": -1,
+      "swa_freq": 1,
+      "use_mixup": false,
+      "mixup_alpha": 0.2,
+      "compute_ood_threshold": true,
+      "ood_quantile": 0.95,
+      "export_onnx": false,
+      "export_onnx_int8": false,
+      "use_mixed_precision": false,
+      "checkpoint_path": "/app/results/retrain_weak4_20260715/aasist/architectures/aasist/models/best_checkpoint.weights.h5",
+      "checkpoint_best": true,
+      "best_checkpoint_path": "/app/results/retrain_weak4_20260715/aasist/architectures/aasist/models/best_checkpoint.weights.h5",
+      "waveform_noise_protocol": {
+        "evaluation_domain": "waveform",
+        "frontend_after_noise": true,
+        "training_augmentation_domain": "waveform_dynamic_augmenter",
+        "train_aug_snr_db": [
+          30,
+          20,
+          10
+        ],
+        "train_noise_copies": 0,
+        "waveform_noise_batch_size": 64,
+        "assigned_snr_counts": {},
+        "clean_train_samples": 10500,
+        "fit_train_samples": 10500,
+        "input_type": "raw_audio",
+        "original_shape": [
+          80000,
+          1
+        ],
+        "prepared_shape": [
+          16000,
+          1
+        ]
+      },
+      "epochs_budget": 100,
+      "epochs_executed": 100
+    },
+    "noise_protocol": {
+      "evaluation_domain": "waveform",
+      "frontend_after_noise": true,
+      "training_augmentation_domain": "waveform_dynamic_augmenter",
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "train_noise_copies": 0,
+      "waveform_noise_batch_size": 64,
+      "assigned_snr_counts": {},
+      "clean_train_samples": 10500,
+      "fit_train_samples": 10500,
+      "input_type": "raw_audio",
+      "original_shape": [
+        80000,
+        1
+      ],
+      "prepared_shape": [
+        16000,
+        1
+      ]
+    },
+    "input_preparation": {
+      "evaluation_domain": "waveform",
+      "frontend_after_noise": true,
+      "training_augmentation_domain": "waveform_dynamic_augmenter",
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "train_noise_copies": 0,
+      "waveform_noise_batch_size": 64,
+      "assigned_snr_counts": {},
+      "clean_train_samples": 10500,
+      "fit_train_samples": 10500,
+      "input_type": "raw_audio",
+      "original_shape": [
+        80000,
+        1
+      ],
+      "prepared_shape": [
+        16000,
+        1
+      ]
+    },
+    "decision_threshold": 0.5,
+    "seed": 42,
+    "dataset": {
+      "name": "benchmark_audio_raw_balanced_15k_confirmatory_v2",
+      "source": "F:\\XFakeSong\\data\\datasets\\benchmark_audio_raw_balanced_15k.npz",
+      "n_total": 15000,
+      "n_test": 2250,
+      "split_source": "predefined_npz",
+      "split_overlap_audit": {
+        "method": "blake2b-128_exact_array_bytes",
+        "pairwise_overlap_counts": {
+          "train_val": 0,
+          "train_test": 0,
+          "val_test": 0
+        },
+        "split_fingerprints": {
+          "method": "sha256_ordered_blake2b_sample_hashes_and_labels",
+          "train": {
+            "n": 10500,
+            "sha256": "2320a8328668dd444280c4a0c62be1b75b3ca3e9774496a1baf7c76d70506a4a"
+          },
+          "val": {
+            "n": 2250,
+            "sha256": "b518ee3c02b401a8ed52dcd75998b247a02e3e532ccfe4f2c9cf8bf3b67633d5"
+          },
+          "test": {
+            "n": 2250,
+            "sha256": "a814b71a53a3be399a5c254cb5eb1eb08b9cf8d67617e28c2183e814f616a486"
+          }
+        },
+        "passed": true
+      },
+      "provenance_overlap_audit": {
+        "available": true,
+        "groups": {
+          "available": true,
+          "unique_counts": {
+            "train": 4,
+            "val": 4,
+            "test": 4
+          },
+          "overlap_counts": {
+            "train_val": 4,
+            "train_test": 4,
+            "val_test": 4
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice",
+            "mlspt",
+            "ttsport"
+          ],
+          "disjoint": false
+        },
+        "speakers": {
+          "available": true,
+          "unique_counts": {
+            "train": 73,
+            "val": 73,
+            "test": 73
+          },
+          "overlap_counts": {
+            "train_val": 73,
+            "train_test": 73,
+            "val_test": 73
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice:AdrianaMalta_F049_Fake",
+            "fkvoice:Aislam_M001_Fake",
+            "fkvoice:Alcione_F018_Fake",
+            "fkvoice:Alessandra_F045_Fake",
+            "fkvoice:Alexandra_F010_Fake",
+            "fkvoice:AnaVarela_F042_Fake",
+            "fkvoice:Andrea_F003_Fake",
+            "fkvoice:AndreiaSoares_F032_Fake",
+            "fkvoice:AnnaPerez_F046_Fake"
+          ],
+          "disjoint": false
+        }
+      }
+    }
+  },
+  {
+    "model": "RawGAT-ST",
+    "key": "RawGAT-ST",
+    "path": "C:\\Users\\thier\\AppData\\Local\\Temp\\claude\\F--XFakeSong\\124e1227-ab99-425b-8a6c-e0d1a881ff22\\scratchpad\\audit\\runs\\rawgat_st",
+    "accuracy": 0.936,
+    "auc": 0.9864967901234568,
+    "eer": 0.0622222222222222,
+    "min_tdcf": 0.17445161027291625,
+    "f1": 0.9387234042553192,
+    "latency": 33.37,
+    "size": 1.02,
+    "params": 241024,
+    "robustness": {
+      "30": {
+        "accuracy": 0.9328888888888889,
+        "precision": 0.9220103986135182,
+        "recall": 0.9457777777777778,
+        "f1": 0.9337428696796841,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.025590404051787856,
+        "auc_roc": 0.9842710123456789,
+        "eer": 0.06933333333333334,
+        "eer_threshold": 0.6335930824279785,
+        "accuracy_at_eer": 0.9306666666666666,
+        "min_tdcf": 0.18548000947718993,
+        "eer_ci95_low": 0.05910444374763294,
+        "eer_ci95_high": 0.08000026074162099,
+        "auc_roc_ci95_low": 0.98044408701806,
+        "auc_roc_ci95_high": 0.9873354693359809,
+        "accuracy_ci95_low": 0.9231111111111111,
+        "accuracy_ci95_high": 0.9426666666666667,
+        "bootstrap_samples": 1000
+      },
+      "20": {
+        "accuracy": 0.9106666666666666,
+        "precision": 0.9103019538188277,
+        "recall": 0.9111111111111111,
+        "f1": 0.9107063527321191,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.025855346500455626,
+        "auc_roc": 0.9719245432098766,
+        "eer": 0.08933333333333335,
+        "eer_threshold": 0.5001332759857178,
+        "accuracy_at_eer": 0.9106666666666666,
+        "min_tdcf": 0.2324422364380071,
+        "eer_ci95_low": 0.0773369568392636,
+        "eer_ci95_high": 0.10132597490917251,
+        "auc_roc_ci95_low": 0.9661037358365712,
+        "auc_roc_ci95_high": 0.9770668174266866,
+        "accuracy_ci95_low": 0.8995555555555556,
+        "accuracy_ci95_high": 0.9217888888888889,
+        "bootstrap_samples": 1000
+      },
+      "10": {
+        "accuracy": 0.8395555555555556,
+        "precision": 0.810064935064935,
+        "recall": 0.8871111111111111,
+        "f1": 0.8468392023759016,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.02647962765427264,
+        "auc_roc": 0.932408888888889,
+        "eer": 0.1537777777777778,
+        "eer_threshold": 0.6105902194976807,
+        "accuracy_at_eer": 0.8462222222222222,
+        "min_tdcf": 0.4012406921924943,
+        "eer_ci95_low": 0.13953798574224816,
+        "eer_ci95_high": 0.169789146219209,
+        "auc_roc_ci95_low": 0.9225094002666235,
+        "auc_roc_ci95_high": 0.9418921113448321,
+        "accuracy_ci95_low": 0.8235555555555556,
+        "accuracy_ci95_high": 0.8546777777777778,
+        "bootstrap_samples": 1000
+      }
+    },
+    "best_epoch": 23,
+    "best_val": 0.9408888816833496,
+    "final_val": 0.9368888735771179,
+    "epochs": 100,
+    "epochs_budget": 100,
+    "training_config": {
+      "batch_size": 16,
+      "epochs": 100,
+      "learning_rate": 5e-05,
+      "lr_is_explicit": true,
+      "verbose": 0,
+      "progress_log_interval": 1,
+      "progress_label": "RawGAT-ST",
+      "validation_split": 0.2,
+      "test_split": 0.1,
+      "early_stopping": false,
+      "early_stopping_patience": 25,
+      "reduce_lr_on_plateau": true,
+      "reduce_lr_patience": 8,
+      "available_architectures": [
+        "aasist",
+        "conformer",
+        "efficientnet_lstm",
+        "ensemble",
+        "multiscale_cnn",
+        "rawgat_st",
+        "spectrogram_transformer"
+      ],
+      "optimizer": "AdamW",
+      "loss_function": "binary_crossentropy",
+      "metrics": [
+        "accuracy",
+        "precision",
+        "recall",
+        "f1"
+      ],
+      "use_augmentation": true,
+      "augmentation_config": {
+        "noise_factor": 0.1,
+        "snr_range_db": [
+          5.0,
+          40.0
+        ],
+        "time_stretch_factor": 0.1,
+        "pitch_shift_steps": 2
+      },
+      "use_class_weighting": true,
+      "auto_calibrate_temperature": true,
+      "calibration_min_samples": 50,
+      "calibrate_under_noise": false,
+      "calibration_snr_db": [
+        20,
+        10
+      ],
+      "use_swa": false,
+      "swa_start_epoch": -1,
+      "swa_freq": 1,
+      "use_mixup": false,
+      "mixup_alpha": 0.2,
+      "compute_ood_threshold": true,
+      "ood_quantile": 0.95,
+      "export_onnx": false,
+      "export_onnx_int8": false,
+      "use_mixed_precision": false,
+      "checkpoint_path": "/app/results/retrain_weak4_20260715/rawgat_st/architectures/rawgat_st/models/best_checkpoint.weights.h5",
+      "checkpoint_best": true,
+      "best_checkpoint_path": "/app/results/retrain_weak4_20260715/rawgat_st/architectures/rawgat_st/models/best_checkpoint.weights.h5",
+      "waveform_noise_protocol": {
+        "evaluation_domain": "waveform",
+        "frontend_after_noise": true,
+        "training_augmentation_domain": "waveform_dynamic_augmenter",
+        "train_aug_snr_db": [
+          30,
+          20,
+          10
+        ],
+        "train_noise_copies": 0,
+        "waveform_noise_batch_size": 64,
+        "assigned_snr_counts": {},
+        "clean_train_samples": 10500,
+        "fit_train_samples": 10500,
+        "input_type": "raw_audio",
+        "original_shape": [
+          80000,
+          1
+        ],
+        "prepared_shape": [
+          16000,
+          1
+        ]
+      },
+      "epochs_budget": 100,
+      "epochs_executed": 100
+    },
+    "noise_protocol": {
+      "evaluation_domain": "waveform",
+      "frontend_after_noise": true,
+      "training_augmentation_domain": "waveform_dynamic_augmenter",
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "train_noise_copies": 0,
+      "waveform_noise_batch_size": 64,
+      "assigned_snr_counts": {},
+      "clean_train_samples": 10500,
+      "fit_train_samples": 10500,
+      "input_type": "raw_audio",
+      "original_shape": [
+        80000,
+        1
+      ],
+      "prepared_shape": [
+        16000,
+        1
+      ]
+    },
+    "input_preparation": {
+      "evaluation_domain": "waveform",
+      "frontend_after_noise": true,
+      "training_augmentation_domain": "waveform_dynamic_augmenter",
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "train_noise_copies": 0,
+      "waveform_noise_batch_size": 64,
+      "assigned_snr_counts": {},
+      "clean_train_samples": 10500,
+      "fit_train_samples": 10500,
+      "input_type": "raw_audio",
+      "original_shape": [
+        80000,
+        1
+      ],
+      "prepared_shape": [
+        16000,
+        1
+      ]
+    },
+    "decision_threshold": 0.5,
+    "seed": 42,
+    "dataset": {
+      "name": "benchmark_audio_raw_balanced_15k_confirmatory_v2",
+      "source": "F:\\XFakeSong\\data\\datasets\\benchmark_audio_raw_balanced_15k.npz",
+      "n_total": 15000,
+      "n_test": 2250,
+      "split_source": "predefined_npz",
+      "split_overlap_audit": {
+        "method": "blake2b-128_exact_array_bytes",
+        "pairwise_overlap_counts": {
+          "train_val": 0,
+          "train_test": 0,
+          "val_test": 0
+        },
+        "split_fingerprints": {
+          "method": "sha256_ordered_blake2b_sample_hashes_and_labels",
+          "train": {
+            "n": 10500,
+            "sha256": "2320a8328668dd444280c4a0c62be1b75b3ca3e9774496a1baf7c76d70506a4a"
+          },
+          "val": {
+            "n": 2250,
+            "sha256": "b518ee3c02b401a8ed52dcd75998b247a02e3e532ccfe4f2c9cf8bf3b67633d5"
+          },
+          "test": {
+            "n": 2250,
+            "sha256": "a814b71a53a3be399a5c254cb5eb1eb08b9cf8d67617e28c2183e814f616a486"
+          }
+        },
+        "passed": true
+      },
+      "provenance_overlap_audit": {
+        "available": true,
+        "groups": {
+          "available": true,
+          "unique_counts": {
+            "train": 4,
+            "val": 4,
+            "test": 4
+          },
+          "overlap_counts": {
+            "train_val": 4,
+            "train_test": 4,
+            "val_test": 4
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice",
+            "mlspt",
+            "ttsport"
+          ],
+          "disjoint": false
+        },
+        "speakers": {
+          "available": true,
+          "unique_counts": {
+            "train": 73,
+            "val": 73,
+            "test": 73
+          },
+          "overlap_counts": {
+            "train_val": 73,
+            "train_test": 73,
+            "val_test": 73
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice:AdrianaMalta_F049_Fake",
+            "fkvoice:Aislam_M001_Fake",
+            "fkvoice:Alcione_F018_Fake",
+            "fkvoice:Alessandra_F045_Fake",
+            "fkvoice:Alexandra_F010_Fake",
+            "fkvoice:AnaVarela_F042_Fake",
+            "fkvoice:Andrea_F003_Fake",
+            "fkvoice:AndreiaSoares_F032_Fake",
+            "fkvoice:AnnaPerez_F046_Fake"
+          ],
+          "disjoint": false
+        }
+      }
+    }
+  },
+  {
+    "model": "WavLM Original",
+    "key": "WavLM Original",
+    "path": "C:\\Users\\thier\\AppData\\Local\\Temp\\claude\\F--XFakeSong\\124e1227-ab99-425b-8a6c-e0d1a881ff22\\scratchpad\\audit\\runs\\wavlm_original",
+    "accuracy": 0.9968888888888889,
+    "auc": 0.9999755061728395,
+    "eer": 0.003555555555555545,
+    "min_tdcf": 0.006222222222222222,
+    "f1": 0.9968875055580257,
+    "latency": 18.73,
+    "size": 361.63,
+    "params": 94775935,
+    "robustness": {
+      "30": {
+        "accuracy": 0.9951111111111111,
+        "precision": 0.9946714031971581,
+        "recall": 0.9955555555555555,
+        "f1": 0.9951132829853399,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.004456546016048518,
+        "auc_roc": 0.9999375802469136,
+        "eer": 0.004888888888888903,
+        "eer_threshold": 0.5244166254997253,
+        "accuracy_at_eer": 0.9951111111111111,
+        "min_tdcf": 0.006988695858199781,
+        "eer_ci95_low": 0.0013291147242521823,
+        "eer_ci95_high": 0.007531000901559281,
+        "auc_roc_ci95_low": 0.9998616870574052,
+        "auc_roc_ci95_high": 0.9999889567154105,
+        "accuracy_ci95_low": 0.992,
+        "accuracy_ci95_high": 0.9977777777777778,
+        "bootstrap_samples": 1000
+      },
+      "20": {
+        "accuracy": 0.9955555555555555,
+        "precision": 0.9964381121994658,
+        "recall": 0.9946666666666667,
+        "f1": 0.9955516014234875,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.004907836009884443,
+        "auc_roc": 0.9998838518518518,
+        "eer": 0.004444444444444459,
+        "eer_threshold": 0.43348053097724915,
+        "accuracy_at_eer": 0.9955555555555555,
+        "min_tdcf": 0.009532947271955118,
+        "eer_ci95_low": 0.0017778666974726293,
+        "eer_ci95_high": 0.007562301074416032,
+        "auc_roc_ci95_low": 0.9997553761488817,
+        "auc_roc_ci95_high": 0.999973866621928,
+        "accuracy_ci95_low": 0.9924444444444445,
+        "accuracy_ci95_high": 0.9977888888888888,
+        "bootstrap_samples": 1000
+      },
+      "10": {
+        "accuracy": 0.9875555555555555,
+        "precision": 0.9945897204688909,
+        "recall": 0.9804444444444445,
+        "f1": 0.9874664279319606,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.011715380622474297,
+        "auc_roc": 0.9992272592592593,
+        "eer": 0.01066666666666666,
+        "eer_threshold": 0.30264580249786377,
+        "accuracy_at_eer": 0.9893333333333333,
+        "min_tdcf": 0.026821064038087573,
+        "eer_ci95_low": 0.007118371221658559,
+        "eer_ci95_high": 0.016000814500790744,
+        "auc_roc_ci95_low": 0.9986506497311421,
+        "auc_roc_ci95_high": 0.9996847400686985,
+        "accuracy_ci95_low": 0.9826666666666667,
+        "accuracy_ci95_high": 0.9915555555555555,
+        "bootstrap_samples": 1000
+      }
+    },
+    "best_epoch": 97,
+    "best_val": 0.9973333477973938,
+    "final_val": 0.9946666955947876,
+    "epochs": 100,
+    "epochs_budget": 100,
+    "training_config": {
+      "model_family": "pytorch_transformers",
+      "model_name": "microsoft/wavlm-base-plus",
+      "architecture": "WavLM Original",
+      "model_class": "WavLMModel",
+      "freeze_backbone": true,
+      "epochs": 100,
+      "feature_batch_size": 16,
+      "train_batch_size": 128,
+      "learning_rate": 0.001,
+      "weight_decay": 0.0001,
+      "dropout": 0.2,
+      "train_augmentation": true,
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "noise_protocol": {
+        "evaluation_domain": "waveform",
+        "frontend_after_noise": true,
+        "training_augmentation_domain": "waveform",
+        "train_noise_copies": 1,
+        "waveform_noise_batch_size": 64,
+        "assigned_snr_counts": {
+          "10": 3500,
+          "20": 3500,
+          "30": 3500
+        }
+      },
+      "early_stopping": false,
+      "early_stopping_patience": 15,
+      "calibrate_under_noise": false,
+      "calibration_snr_db": [
+        20,
+        10
+      ],
+      "fallback_used": false
+    },
+    "noise_protocol": {
+      "evaluation_domain": "waveform",
+      "frontend_after_noise": true,
+      "training_augmentation_domain": "waveform",
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "train_noise_copies": 1,
+      "waveform_noise_batch_size": 64,
+      "assigned_snr_counts": {
+        "10": 3500,
+        "20": 3500,
+        "30": 3500
+      }
+    },
+    "input_preparation": {
+      "input_type": "raw_audio",
+      "original_shape": [
+        80000,
+        1
+      ],
+      "prepared_shape": [
+        16000,
+        1
+      ],
+      "sample_rate": 16000,
+      "crop_strategy": "center"
+    },
+    "decision_threshold": 0.5,
+    "seed": 42,
+    "dataset": {
+      "name": "benchmark_audio_raw_balanced_15k_confirmatory_v2",
+      "source": "/app/data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz",
+      "n_total": 15000,
+      "n_test": 2250,
+      "split_source": "predefined_npz",
+      "split_overlap_audit": {
+        "method": "blake2b-128_exact_array_bytes",
+        "pairwise_overlap_counts": {
+          "train_val": 0,
+          "train_test": 0,
+          "val_test": 0
+        },
+        "split_fingerprints": {
+          "method": "sha256_ordered_blake2b_sample_hashes_and_labels",
+          "train": {
+            "n": 10500,
+            "sha256": "2320a8328668dd444280c4a0c62be1b75b3ca3e9774496a1baf7c76d70506a4a"
+          },
+          "val": {
+            "n": 2250,
+            "sha256": "b518ee3c02b401a8ed52dcd75998b247a02e3e532ccfe4f2c9cf8bf3b67633d5"
+          },
+          "test": {
+            "n": 2250,
+            "sha256": "a814b71a53a3be399a5c254cb5eb1eb08b9cf8d67617e28c2183e814f616a486"
+          }
+        },
+        "passed": true
+      },
+      "provenance_overlap_audit": {
+        "available": true,
+        "groups": {
+          "available": true,
+          "unique_counts": {
+            "train": 4,
+            "val": 4,
+            "test": 4
+          },
+          "overlap_counts": {
+            "train_val": 4,
+            "train_test": 4,
+            "val_test": 4
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice",
+            "mlspt",
+            "ttsport"
+          ],
+          "disjoint": false
+        },
+        "speakers": {
+          "available": true,
+          "unique_counts": {
+            "train": 73,
+            "val": 73,
+            "test": 73
+          },
+          "overlap_counts": {
+            "train_val": 73,
+            "train_test": 73,
+            "val_test": 73
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice:AdrianaMalta_F049_Fake",
+            "fkvoice:Aislam_M001_Fake",
+            "fkvoice:Alcione_F018_Fake",
+            "fkvoice:Alessandra_F045_Fake",
+            "fkvoice:Alexandra_F010_Fake",
+            "fkvoice:AnaVarela_F042_Fake",
+            "fkvoice:Andrea_F003_Fake",
+            "fkvoice:AndreiaSoares_F032_Fake",
+            "fkvoice:AnnaPerez_F046_Fake"
+          ],
+          "disjoint": false
+        }
+      }
+    }
+  },
+  {
+    "model": "HuBERT Original",
+    "key": "HuBERT Original",
+    "path": "C:\\Users\\thier\\AppData\\Local\\Temp\\claude\\F--XFakeSong\\124e1227-ab99-425b-8a6c-e0d1a881ff22\\scratchpad\\audit\\runs\\hubert_original",
+    "accuracy": 0.9986666666666667,
+    "auc": 0.9999905185185185,
+    "eer": 0.0017777777777777724,
+    "min_tdcf": 0.0026666666666666666,
+    "f1": 0.9986648865153538,
+    "latency": 17.0,
+    "size": 361.58,
+    "params": 94765711,
+    "robustness": {
+      "30": {
+        "accuracy": 0.9937777777777778,
+        "precision": 0.9894273127753304,
+        "recall": 0.9982222222222222,
+        "f1": 0.9938053097345133,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.006356682816194918,
+        "auc_roc": 0.9999494320987654,
+        "eer": 0.003111111111111131,
+        "eer_threshold": 0.7026717662811279,
+        "accuracy_at_eer": 0.9968888888888889,
+        "min_tdcf": 0.009288116766132457,
+        "eer_ci95_low": 0.0013244460270199656,
+        "eer_ci95_high": 0.006663843149401702,
+        "auc_roc_ci95_low": 0.9998901556267428,
+        "auc_roc_ci95_high": 0.9999889572160571,
+        "accuracy_ci95_low": 0.9906666666666667,
+        "accuracy_ci95_high": 0.9968888888888889,
+        "bootstrap_samples": 1000
+      },
+      "20": {
+        "accuracy": 0.9888888888888889,
+        "precision": 0.9799301919720768,
+        "recall": 0.9982222222222222,
+        "f1": 0.9889916336415676,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.0045775291686934215,
+        "auc_roc": 0.9992636049382716,
+        "eer": 0.00711111111111109,
+        "eer_threshold": 0.859947144985199,
+        "accuracy_at_eer": 0.9928888888888889,
+        "min_tdcf": 0.018576233532264914,
+        "eer_ci95_low": 0.0035557808779824534,
+        "eer_ci95_high": 0.01066751395708142,
+        "auc_roc_ci95_low": 0.9982410656194414,
+        "auc_roc_ci95_high": 0.9999012234854108,
+        "accuracy_ci95_low": 0.9844444444444445,
+        "accuracy_ci95_high": 0.9928888888888889,
+        "bootstrap_samples": 1000
+      },
+      "10": {
+        "accuracy": 0.968,
+        "precision": 0.945054945054945,
+        "recall": 0.9937777777777778,
+        "f1": 0.9688041594454073,
+        "n": 2250,
+        "n_pos": 1125,
+        "n_neg": 1125,
+        "nonfinite_scores": 0,
+        "ece": 0.01518541927411144,
+        "auc_roc": 0.9977039012345679,
+        "eer": 0.016888888888888863,
+        "eer_threshold": 0.76998370885849,
+        "accuracy_at_eer": 0.9831111111111112,
+        "min_tdcf": 0.0445084086814636,
+        "eer_ci95_low": 0.01199667774718017,
+        "eer_ci95_high": 0.023102788311143953,
+        "auc_roc_ci95_low": 0.996178892056265,
+        "auc_roc_ci95_high": 0.9988882612390151,
+        "accuracy_ci95_low": 0.9604333333333334,
+        "accuracy_ci95_high": 0.9751111111111112,
+        "bootstrap_samples": 1000
+      }
+    },
+    "best_epoch": 82,
+    "best_val": 0.9977777600288391,
+    "final_val": 0.9946666955947876,
+    "epochs": 100,
+    "epochs_budget": 100,
+    "training_config": {
+      "model_family": "pytorch_transformers",
+      "model_name": "facebook/hubert-base-ls960",
+      "architecture": "HuBERT Original",
+      "model_class": "HubertModel",
+      "freeze_backbone": true,
+      "epochs": 100,
+      "feature_batch_size": 16,
+      "train_batch_size": 128,
+      "learning_rate": 0.001,
+      "weight_decay": 0.0001,
+      "dropout": 0.2,
+      "train_augmentation": true,
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "noise_protocol": {
+        "evaluation_domain": "waveform",
+        "frontend_after_noise": true,
+        "training_augmentation_domain": "waveform",
+        "train_noise_copies": 1,
+        "waveform_noise_batch_size": 64,
+        "assigned_snr_counts": {
+          "10": 3500,
+          "20": 3500,
+          "30": 3500
+        }
+      },
+      "early_stopping": false,
+      "early_stopping_patience": 15,
+      "calibrate_under_noise": false,
+      "calibration_snr_db": [
+        20,
+        10
+      ],
+      "fallback_used": false
+    },
+    "noise_protocol": {
+      "evaluation_domain": "waveform",
+      "frontend_after_noise": true,
+      "training_augmentation_domain": "waveform",
+      "train_aug_snr_db": [
+        30,
+        20,
+        10
+      ],
+      "train_noise_copies": 1,
+      "waveform_noise_batch_size": 64,
+      "assigned_snr_counts": {
+        "10": 3500,
+        "20": 3500,
+        "30": 3500
+      }
+    },
+    "input_preparation": {
+      "input_type": "raw_audio",
+      "original_shape": [
+        80000,
+        1
+      ],
+      "prepared_shape": [
+        16000,
+        1
+      ],
+      "sample_rate": 16000,
+      "crop_strategy": "center"
+    },
+    "decision_threshold": 0.5,
+    "seed": 42,
+    "dataset": {
+      "name": "benchmark_audio_raw_balanced_15k_confirmatory_v2",
+      "source": "/app/data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz",
+      "n_total": 15000,
+      "n_test": 2250,
+      "split_source": "predefined_npz",
+      "split_overlap_audit": {
+        "method": "blake2b-128_exact_array_bytes",
+        "pairwise_overlap_counts": {
+          "train_val": 0,
+          "train_test": 0,
+          "val_test": 0
+        },
+        "split_fingerprints": {
+          "method": "sha256_ordered_blake2b_sample_hashes_and_labels",
+          "train": {
+            "n": 10500,
+            "sha256": "2320a8328668dd444280c4a0c62be1b75b3ca3e9774496a1baf7c76d70506a4a"
+          },
+          "val": {
+            "n": 2250,
+            "sha256": "b518ee3c02b401a8ed52dcd75998b247a02e3e532ccfe4f2c9cf8bf3b67633d5"
+          },
+          "test": {
+            "n": 2250,
+            "sha256": "a814b71a53a3be399a5c254cb5eb1eb08b9cf8d67617e28c2183e814f616a486"
+          }
+        },
+        "passed": true
+      },
+      "provenance_overlap_audit": {
+        "available": true,
+        "groups": {
+          "available": true,
+          "unique_counts": {
+            "train": 4,
+            "val": 4,
+            "test": 4
+          },
+          "overlap_counts": {
+            "train_val": 4,
+            "train_test": 4,
+            "val_test": 4
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice",
+            "mlspt",
+            "ttsport"
+          ],
+          "disjoint": false
+        },
+        "speakers": {
+          "available": true,
+          "unique_counts": {
+            "train": 73,
+            "val": 73,
+            "test": 73
+          },
+          "overlap_counts": {
+            "train_val": 73,
+            "train_test": 73,
+            "val_test": 73
+          },
+          "train_test_examples": [
+            "brspeech",
+            "fkvoice:AdrianaMalta_F049_Fake",
+            "fkvoice:Aislam_M001_Fake",
+            "fkvoice:Alcione_F018_Fake",
+            "fkvoice:Alessandra_F045_Fake",
+            "fkvoice:Alexandra_F010_Fake",
+            "fkvoice:AnaVarela_F042_Fake",
+            "fkvoice:Andrea_F003_Fake",
+            "fkvoice:AndreiaSoares_F032_Fake",
+            "fkvoice:AnnaPerez_F046_Fake"
+          ],
+          "disjoint": false
+        }
+      }
+    }
+  }
+]

@@ -44,7 +44,7 @@ import tensorflow as tf
 from tensorflow.keras import layers, models
 
 from app.domain.models.architectures.layers import (
-    SqueezeExcitationBlock2D,
+    ExpandDimsLayer,
     ensure_flat_input,
     is_raw_audio,
 )
@@ -71,6 +71,13 @@ class MelSpectrogramLayer(layers.Layer):
         self.n_mels = n_mels
 
     def call(self, inputs):
+        # CORREÇÃO: com entrada (batch, T, 1) — o contrato de áudio bruto do
+        # projeto — o STFT era calculado sobre o EIXO DE CANAL (tamanho 1),
+        # produzindo 0 quadros e quebrando o modelo logo adiante
+        # ("total size of the tensor must be unchanged"). Removemos o eixo de
+        # canal antes da transformada.
+        if inputs.shape.rank == 3 and inputs.shape[-1] == 1:
+            inputs = tf.squeeze(inputs, axis=-1)
         stft = tf.signal.stft(
             inputs,
             frame_length=self.n_fft,
@@ -122,6 +129,11 @@ class CCTTokenizer(layers.Layer):
         self.pooling_kernel_size = pooling_kernel_size
         self.pooling_stride = pooling_stride
 
+        # Tokenizer FIEL ao CCT: [Conv2D(k=3, s=1, ReLU) + MaxPool(3, s=2)] × 2.
+        # CORREÇÃO: havia um SqueezeExcitationBlock2D entre a conv e o pooling
+        # — Squeeze-and-Excitation NÃO faz parte do CCT (Hassani et al., 2021).
+        # Era um desvio silencioso: o modelo era rotulado "CCT" nas tabelas mas
+        # tinha um mecanismo de atenção de canal a mais.
         self.conv_layers = []
         for i, out_ch in enumerate(num_output_channels):
             self.conv_layers.append(
@@ -131,12 +143,6 @@ class CCTTokenizer(layers.Layer):
                     activation='relu',
                     kernel_initializer='he_normal',
                     name=f'conv_{i}'
-                )
-            )
-            self.conv_layers.append(
-                SqueezeExcitationBlock2D(
-                    reduction=16,
-                    name=f'se_block_{i}'
                 )
             )
             self.conv_layers.append(
@@ -152,9 +158,10 @@ class CCTTokenizer(layers.Layer):
         x = inputs
         for layer in self.conv_layers:
             x = layer(x)
-        # Flatten spatial dims -> (batch, seq_len, channels)
+        # Flatten spatial dims -> (batch, seq_len, channels).
+        # (O `seq_len` calculado aqui era descartado: o reshape usa -1. O
+        # comprimento estático da sequência sai de compute_output_shape.)
         batch_size = tf.shape(x)[0]
-        seq_len = x.shape[1] * x.shape[2] if x.shape[1] is not None and x.shape[2] is not None else tf.shape(x)[1] * tf.shape(x)[2]
         channels = x.shape[-1]
         x = tf.reshape(x, [batch_size, -1, channels])
         return x
@@ -413,20 +420,21 @@ def _create_cct_model(
 
     # ---------- Front-end: audio -> spectrogram ----------
     if is_raw_audio(input_shape):
-        audio = ensure_flat_input(inputs, input_shape)
+        audio = ensure_flat_input(inputs)
         # Mel spectrogram (128 bins per Kadam et al.)
         x = MelSpectrogramLayer(
             sample_rate=16000, n_fft=1024, hop_length=160, n_mels=128,
             name='mel_spectrogram'
         )(audio)
         # Add channel dim: (batch, time, 128) -> (batch, time, 128, 1)
-        x = layers.Reshape(
-            target_shape=(x.shape[1], 128, 1) if x.shape[1] is not None
-            else (-1, 128, 1),
-            name='add_channel'
-        )(x) if x.shape[1] is not None else layers.Lambda(
-            lambda t: tf.expand_dims(t, axis=-1), name='add_channel'
-        )(x)
+        # ExpandDimsLayer (camada registrada) no lugar do `layers.Lambda`:
+        # Lambda com lambda Python não é recarregável em safe_mode (Keras 3).
+        if x.shape[1] is not None:
+            x = layers.Reshape(
+                target_shape=(x.shape[1], 128, 1), name='add_channel'
+            )(x)
+        else:
+            x = ExpandDimsLayer(axis=-1, name='add_channel')(x)
     else:
         x = inputs
         if len(input_shape) == 2:

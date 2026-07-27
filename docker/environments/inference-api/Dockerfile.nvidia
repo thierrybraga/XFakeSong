@@ -58,7 +58,8 @@ RUN pip install --upgrade pip setuptools wheel \
     && pip install 'tensorflow[and-cuda]>=2.16,<2.22' \
     && pip install --upgrade --no-deps 'nvidia-cudnn-cu12>=9.3.0.75,<10' \
     && pip install --no-deps 'nvidia-cuda-nvcc-cu12' \
-    && pip install -r docker/environments/inference-api/requirements-torch.txt
+    && pip install -r docker/environments/inference-api/requirements-torch.txt \
+    && pip install --upgrade --no-deps 'nvidia-cudnn-cu12>=9.3.0.75,<10'
 
 COPY docker/environments/inference-api/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh

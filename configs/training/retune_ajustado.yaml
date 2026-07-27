@@ -17,7 +17,7 @@ models:
   - RandomForest           # overfit (train=1.0): grid regularizado
   - SVM                    # robustez: retreino com features aumentadas por ruído
 # Dataset canonico: data/datasets/ (raiz consolidada em 2026-07-14; app/datasets foi descontinuado).
-dataset: data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz
+dataset: data/datasets/benchmark_dataset.npz
 output_dir: data/results/retune_ajustado
 models_dir: data/models
 epochs: 100

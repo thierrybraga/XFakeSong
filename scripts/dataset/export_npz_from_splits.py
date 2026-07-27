@@ -10,12 +10,14 @@ Uso típico depois de `scripts/dataset/build_dataset.py --tier medium`:
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
-from scripts.benchmark.run_tcc_pipeline import export_npz_from_splits
-
-
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.benchmark.run_tcc_pipeline import export_npz_from_splits
 
 
 def main() -> int:

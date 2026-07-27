@@ -309,7 +309,7 @@ O protocolo corrigido foi implementado com as seguintes garantias:
 O retreino integral é necessário, pois a correção altera tanto os dados de
 ajuste quanto a avaliação sob ruído. Execute na raiz do repositório:
 
-    python scripts/benchmark/run_models_sequential.py --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz --test-lock data/datasets/benchmark_audio_raw_balanced_15k.npz.test-lock.json --epochs 100 --device-profile gpu --seed 42 --snr 30 20 10 --train-aug-snr 30 20 10 --train-noise-copies 1 --waveform-noise-batch-size 64 --waveform-train-augmentation --timeout-min 120 --out data/results/retrain_waveform_awgn
+    python scripts/benchmark/run_models_sequential.py --dataset data/datasets/benchmark_dataset.npz --test-lock data/datasets/benchmark_dataset.npz.test-lock.json --epochs 100 --device-profile gpu --seed 42 --snr 30 20 10 --train-aug-snr 30 20 10 --train-noise-copies 1 --waveform-noise-batch-size 64 --waveform-train-augmentation --timeout-min 120 --out data/results/retrain_waveform_awgn
 
 Para retomada após interrupção, repita o comando com a opção --resume. Antes
 de substituir tabelas e pesos promovidos, confirme em cada
@@ -788,7 +788,7 @@ Consequentemente, as métricas promovidas continuam sendo as do conjunto
 4,89% de EER**, e RawGAT-ST com **93,60% de acurácia e 6,22% de EER**. Esses
 números não são resultados do confirmatório interrompido.
 
-## 2026-07-19 — ressalva metodologica do protocolo de dataset v2
+## 2026-07-19 — ressalva metodologica do o dataset anterior
 
 As metricas promovidas acima foram medidas no artefato historico de 15 mil
 amostras. A auditoria posterior demonstrou que esse conjunto e balanceado por
@@ -800,7 +800,7 @@ os protocolos de disjuncao hoje exigidos.
 Por isso, os valores de AASIST (95,02% de acuracia; 4,89% de EER) e RawGAT-ST
 (93,60%; 6,22%) permanecem validos somente como resultados **in-domain do
 protocolo legado**. Eles nao devem ser reinterpretados como metricas do
-dataset v2 nem como evidencia cross-domain. Nenhuma metrica v2 foi inferida ou
+aquele dataset nem como evidencia cross-domain. Nenhuma metrica daquele dataset foi inferida ou
 fabricada nesta correcao: um novo numero so pode ser publicado depois de
-reconstruir e selar o NPZ v2, satisfazer o oraculo de fonte e executar o
+reconstruir e selar o NPZ, satisfazer o oraculo de fonte e executar o
 benchmark completo com bootstrap por cluster.

@@ -163,6 +163,20 @@ def _write_predictions(path: Path, y_true: np.ndarray, scores: np.ndarray) -> No
             )
 
 
+def _write_predictions_noisy(
+    path: Path, y_true: np.ndarray, scores_by_snr: dict[str, list[float]]
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["snr_db", "idx", "y_true", "p_fake"])
+        writer.writeheader()
+        for snr, scores in scores_by_snr.items():
+            for idx, (yt, pf) in enumerate(zip(y_true, scores)):
+                writer.writerow(
+                    {"snr_db": snr, "idx": idx, "y_true": int(yt), "p_fake": float(pf)}
+                )
+
+
 def _write_robustness(path: Path, robustness: dict[str, dict[str, float]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fields = ["snr_db", "accuracy", "precision", "recall", "f1", "auc_roc", "eer"]
@@ -631,12 +645,15 @@ def main() -> int:
     clean = _evaluate_scores(y_test, scores_clean, threshold=decision_threshold)
 
     robustness: dict[str, dict[str, float]] = {}
+    scores_robustness: dict[str, list[float]] = {}
     for snr in args.snr:
         noisy = _add_awgn_raw(X_test, snr, seed=args.seed + 20000 + int(snr))
         Z_noisy = embed(noisy, f"snr_{snr}")
+        scores_noisy = predict_scores_from_embeddings(Z_noisy)
+        scores_robustness[str(snr)] = scores_noisy.tolist()
         robustness[str(snr)] = _evaluate_scores(
             y_test,
-            predict_scores_from_embeddings(Z_noisy),
+            scores_noisy,
             threshold=decision_threshold,
         )
 
@@ -916,6 +933,9 @@ def main() -> int:
     }
 
     _write_predictions(arch_out / "predictions_clean.csv", y_test, scores_clean)
+    _write_predictions_noisy(
+        arch_out / "predictions_robustness.csv", y_test, scores_robustness
+    )
     _write_robustness(arch_out / "robustness.csv", robustness)
     arch_result = results["architectures"][arch_meta["display"]]
     (arch_out / "metrics.json").write_text(

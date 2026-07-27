@@ -328,6 +328,32 @@ def prepare_audio_for_model(
             len(input_shape) == 3 and input_shape[-1] == 1
         )
 
+        # O `input_shape` do MODELO é a fonte de verdade para a dimensão de
+        # features: `n_mels`/`n_lfcc` chegam aqui do `input_contract` gravado
+        # no treino e, se ele estiver ausente (modelo legado) ou defasado, o
+        # default (80) produz um tensor incompatível e a predição estoura em
+        # runtime ("expected shape=(None, 300, 128, 1), found (1, 300, 80)").
+        # Arquiteturas com contrato próprio — o AST usa 128 bandas — dependem
+        # disto. Divergência é corrigida e registrada.
+        expected_feature_dim = (
+            int(input_shape[1]) if len(input_shape) >= 2 and input_shape[1] else None
+        )
+        if expected_feature_dim:
+            if feature_frontend == "lfcc" and int(n_lfcc) != expected_feature_dim:
+                logger.warning(
+                    "prepare_audio_for_model: n_lfcc=%s difere do input_shape do "
+                    "modelo (%s); usando %s.", n_lfcc, expected_feature_dim,
+                    expected_feature_dim,
+                )
+                n_lfcc = expected_feature_dim
+            elif feature_frontend != "lfcc" and int(n_mels) != expected_feature_dim:
+                logger.warning(
+                    "prepare_audio_for_model: n_mels=%s difere do input_shape do "
+                    "modelo (%s); usando %s.", n_mels, expected_feature_dim,
+                    expected_feature_dim,
+                )
+                n_mels = expected_feature_dim
+
         # Despacha entre LFCC (default p/ novos treinos) e log-mel (legado).
         # O `feature_frontend` vem do input_contract gravado no treino, então
         # a inferência usa SEMPRE o mesmo front-end com que o modelo foi treinado.

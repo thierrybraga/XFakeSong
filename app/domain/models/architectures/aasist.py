@@ -11,33 +11,49 @@ from typing import Tuple
 # Third-party imports
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras import layers, models, regularizers
+from tensorflow.keras import layers, models
 
 from app.domain.models.architectures.layers import (
+    AASISTGraphAttentionLayer,
+    AASISTHtrgGraphAttentionLayer,
+    AMSoftmaxCrossEntropy,
     AMSoftmaxLayer,
-    AttentionLayer,
     AudioFeatureNormalization,
     AxisMaxAbsLayer,
     GATConvLayer,
     GraphPoolLayer,
     GraphReadoutLayer,
-    HeterogeneousStackGraphAttentionLayer,
     HSGALLayer,
     MagnitudeLayer,
+    MasterNodeSeed,
     ResidualBlock1D,
     ResidualBlock2D,
     SincConvLayer,
     SpectralPositionEmbedding,
-    apply_gru_block,
-    apply_reshape_for_cnn,
-    flatten_features_for_gru,
-    residual_block,
+)
+from app.domain.models.architectures.legacy_variants import (
+    LEGACY_VARIANTS,
+    build_legacy_model,
 )
 
 # Convenção do projeto: logger de módulo sem handlers manuais (a configuração
 # de handlers/formatters é responsabilidade da aplicação; handlers locais
 # duplicavam linhas de log).
 logger = logging.getLogger(__name__)
+
+# Escala/margem do AM-Softmax (CosFace). Ficam AQUI, num único lugar, porque
+# precisam casar entre a camada (`AMSoftmaxLayer`, que emite s·cos θ) e a loss
+# (`AMSoftmaxCrossEntropy`, que aplica a margem). scale=15 em vez dos 30-64 do
+# paper original mantém os logits numericamente seguros em float16.
+AM_SOFTMAX_SCALE = 15.0
+AM_SOFTMAX_MARGIN = 0.35
+
+# Temperaturas da atenção de grafo (Jung et al., ICASSP 2022 — config oficial
+# `temperatures: [2.0, 2.0, 100.0, 100.0]`): 2.0 nos GATs espectral/temporal e
+# 100.0 nas HS-GAL. Temperatura alta ≈ atenção quase uniforme, que é o regime
+# em que os autores estabilizam a camada heterogênea.
+GAT_TEMPERATURE = 2.0
+HSGAL_TEMPERATURE = 100.0
 
 # ============================ CAMADAS CUSTOMIZADAS ======================
 # Estas camadas devem ser importadas em predictor.py também.
@@ -103,36 +119,48 @@ def _build_paper_aasist(
         axis=1, name="aasist_temporal_nodes",
     )(encoded)
     spectral = SpectralPositionEmbedding(name="aasist_spectral_position")(spectral)
-    spectral = GATConvLayer(
-        out_features=64, num_heads=1, dropout_rate=dropout_rate,
-        name="aasist_gat_spectral",
+    # Atenção de grafo DO PAPER (produto par-a-par + tanh + temperatura),
+    # não o GAT aditivo de Velickovic. Temperaturas do artigo: 2.0 nos GATs
+    # espectral/temporal e 100.0 nas HS-GAL.
+    spectral = AASISTGraphAttentionLayer(
+        out_features=64, temperature=GAT_TEMPERATURE,
+        dropout_rate=dropout_rate, name="aasist_gat_spectral",
     )(spectral)
-    temporal = GATConvLayer(
-        out_features=64, num_heads=1, dropout_rate=dropout_rate,
-        name="aasist_gat_temporal",
+    temporal = AASISTGraphAttentionLayer(
+        out_features=64, temperature=GAT_TEMPERATURE,
+        dropout_rate=dropout_rate, name="aasist_gat_temporal",
     )(temporal)
     spectral = GraphPoolLayer(0.5, name="aasist_pool_spectral")(spectral)
     temporal = GraphPoolLayer(0.7, name="aasist_pool_temporal")(temporal)
 
-    s1, t1, m1 = HeterogeneousStackGraphAttentionLayer(
-        32, dropout_rate, name="aasist_hsgal_11"
-    )([spectral, temporal])
+    # Master node treinável por ramo (o AASIST injeta `master1`/`master2` como
+    # nn.Parameter; a média dos nós é o fallback da própria HS-GAL).
+    master1 = MasterNodeSeed(64, name="aasist_master1")(spectral)
+    master2 = MasterNodeSeed(64, name="aasist_master2")(spectral)
+
+    s1, t1, m1 = AASISTHtrgGraphAttentionLayer(
+        out_features=32, temperature=HSGAL_TEMPERATURE,
+        dropout_rate=dropout_rate, name="aasist_hsgal_11",
+    )([spectral, temporal, master1])
     s1 = GraphPoolLayer(0.5, name="aasist_hpool_s1")(s1)
     t1 = GraphPoolLayer(0.5, name="aasist_hpool_t1")(t1)
-    s1_aug, t1_aug, m1_aug = HeterogeneousStackGraphAttentionLayer(
-        32, dropout_rate, name="aasist_hsgal_12"
+    s1_aug, t1_aug, m1_aug = AASISTHtrgGraphAttentionLayer(
+        out_features=32, temperature=HSGAL_TEMPERATURE,
+        dropout_rate=dropout_rate, name="aasist_hsgal_12",
     )([s1, t1, m1])
     s1 = layers.Add(name="aasist_residual_s1")([s1, s1_aug])
     t1 = layers.Add(name="aasist_residual_t1")([t1, t1_aug])
     m1 = layers.Add(name="aasist_residual_m1")([m1, m1_aug])
 
-    s2, t2, m2 = HeterogeneousStackGraphAttentionLayer(
-        32, dropout_rate, name="aasist_hsgal_21"
-    )([spectral, temporal])
+    s2, t2, m2 = AASISTHtrgGraphAttentionLayer(
+        out_features=32, temperature=HSGAL_TEMPERATURE,
+        dropout_rate=dropout_rate, name="aasist_hsgal_21",
+    )([spectral, temporal, master2])
     s2 = GraphPoolLayer(0.5, name="aasist_hpool_s2")(s2)
     t2 = GraphPoolLayer(0.5, name="aasist_hpool_t2")(t2)
-    s2_aug, t2_aug, m2_aug = HeterogeneousStackGraphAttentionLayer(
-        32, dropout_rate, name="aasist_hsgal_22"
+    s2_aug, t2_aug, m2_aug = AASISTHtrgGraphAttentionLayer(
+        out_features=32, temperature=HSGAL_TEMPERATURE,
+        dropout_rate=dropout_rate, name="aasist_hsgal_22",
     )([s2, t2, m2])
     s2 = layers.Add(name="aasist_residual_s2")([s2, s2_aug])
     t2 = layers.Add(name="aasist_residual_t2")([t2, t2_aug])
@@ -157,12 +185,23 @@ def _build_paper_aasist(
     head = str(classifier_head).lower()
     if head in {"am_softmax", "amsoftmax", "cosface"}:
         output = AMSoftmaxLayer(
-            num_classes, scale=15.0, margin=0.35, name="output_layer"
+            num_classes, scale=AM_SOFTMAX_SCALE, margin=AM_SOFTMAX_MARGIN,
+            name="output_layer",
         )(readout)
+        # CORREÇÃO: a margem do AM-Softmax vive na LOSS, não na camada. No
+        # grafo funcional os rótulos nunca chegam ao `call` da AMSoftmaxLayer,
+        # então o `margin=0.35` dela é inerte e esta cabeça era "AM-Softmax"
+        # só no nome — treinava com CE sobre s·cos(θ), sem margem alguma
+        # (o caminho legado abaixo já fazia o CosFace na loss).
+        loss = AMSoftmaxCrossEntropy(
+            scale=AM_SOFTMAX_SCALE, margin=AM_SOFTMAX_MARGIN,
+            label_smoothing=0.1,
+        )
     elif head in {"cross_entropy", "ce", "dense"}:
         output = layers.Dense(
             num_classes, activation=None, dtype="float32", name="output_layer"
         )(readout)
+        loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
     else:
         raise ValueError("classifier_head deve ser 'cross_entropy' ou 'am_softmax'")
 
@@ -181,8 +220,12 @@ def _build_paper_aasist(
             weight_decay=l2_reg_strength,
             global_clipnorm=1.0,
         ),
-        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+        loss=loss,
         metrics=["accuracy"],
+    )
+    logger.info(
+        "AASIST criado (encoder 2D + GAT S/T + master node + MGO; head=%s, "
+        "lr=%s, weight_decay=%s)", head, learning_rate, l2_reg_strength,
     )
     return model
 
@@ -195,16 +238,28 @@ def create_model(
     num_classes: int = 2,
     architecture: str = "aasist",
     dropout_rate: float = 0.2,
-    l2_reg_strength: float = 0.0005,
+    # Defaults ALINHADOS com registry.py::default_params e
+    # benchmarks/planning.py (retune: l2 2e-4, LR 3e-4). Antes divergiam
+    # (5e-4/1e-4), então quem construísse o modelo sem passar os parâmetros
+    # — o caminho do app/Gradio — treinava com uma receita diferente da
+    # documentada.
+    l2_reg_strength: float = 0.0002,
     hidden_dim: int = 512,
-    num_layers: int = 8,
+    # (num_layers REMOVIDO: era declarado e nunca lido — nem pela variante do
+    # paper, que tem profundidade fixa pelo artigo, nem pelas legadas, cuja
+    # profundidade é fixa no builder. Aceitá-lo dava a impressão falsa de um
+    # knob de profundidade.)
     classifier_head: str = "cross_entropy",
-    learning_rate: float = 1e-4,
+    learning_rate: float = 3e-4,
     min_learning_rate: float = 5e-6,
     decay_steps: int = 100_000,
 ) -> models.Model:
     """
     Cria e compila um modelo Keras baseado na arquitetura especificada.
+
+    NOTA: ``hidden_dim`` vale SOMENTE para as variantes legadas
+    (cnn_gru_simple/cnn_baseline/resnet_gru/transformer). A variante
+    paper-faithful ``aasist`` tem topologia fixa pelo artigo e o ignora.
 
     Variantes suportadas:
         - "aasist" (DEFAULT): encoder 2D + GAT S/T + master node + MGO
@@ -226,122 +281,23 @@ def create_model(
     if architecture == "default":
         architecture = "aasist"
 
-    if architecture in ("cnn_gru_simple",):
-        x = apply_reshape_for_cnn(x, input_shape)
-        x = layers.Conv2D(32, (3, 3), activation='relu',
-                          padding='same', name="conv1")(x)
-        x = layers.BatchNormalization(name="bn1")(x)
-        x = layers.MaxPooling2D((2, 2), name="pool1")(x)
-        x = layers.Dropout(dropout_rate, name="classifier_dropout1")(x)
-        x = layers.Conv2D(64, (3, 3), activation='relu',
-                          padding='same', name="conv2")(x)
-        x = layers.BatchNormalization(name="bn2")(x)
-        x = layers.MaxPooling2D((2, 2), name="pool2")(x)
-        x = layers.Dropout(dropout_rate, name="classifier_dropout2")(x)
-        x = flatten_features_for_gru(x, name="reshape_for_gru")
-
-        # Apply GRU blocks (Standardized for CPU/GPU)
-        x = apply_gru_block(
-            x, 128, return_sequences=True, dropout_rate=dropout_rate, name="gru1"
+    if architecture in LEGACY_VARIANTS:
+        # Variantes LEGADAS (CNN+Bi-GRU, baseline, Bi-GRU, ResNet+GRU,
+        # transformer simples) — implementação compartilhada em
+        # legacy_variants.py. O mesmo código existia duplicado byte a byte
+        # aqui e em rawgat_st.py; os nomes de camada são preservados para que
+        # checkpoints antigos continuem carregando.
+        return build_legacy_model(
+            input_tensor=input_tensor,
+            x=x,
+            input_shape=input_shape,
+            architecture=architecture,
+            num_classes=num_classes,
+            hidden_dim=hidden_dim,
+            dropout_rate=dropout_rate,
+            l2_reg_strength=l2_reg_strength,
+            model_name="AASIST_legacy_variant",
         )
-        x = apply_gru_block(
-            x, 64, return_sequences=True, dropout_rate=dropout_rate, name="gru2"
-        )
-
-        x = AttentionLayer(name="attention_layer")(x)
-
-    elif architecture == "cnn_baseline":
-        x = apply_reshape_for_cnn(x, input_shape)
-        x = layers.Conv2D(32, (5, 5), activation='relu',
-                          padding='same', name="conv_b1")(x)
-        x = layers.BatchNormalization(name="bn_b1")(x)
-        x = layers.MaxPooling2D((2, 2), name="pool_b1")(x)
-        x = layers.Dropout(dropout_rate, name="dropout_b1")(x)
-        x = layers.Conv2D(64, (5, 5), activation='relu',
-                          padding='same', name="conv_b2")(x)
-        x = layers.BatchNormalization(name="bn_b2")(x)
-        x = layers.MaxPooling2D((2, 2), name="pool_b2")(x)
-        x = layers.Dropout(dropout_rate, name="dropout_b2")(x)
-        x = layers.Flatten(name="flatten")(x)
-
-    elif architecture == "bidirectional_gru":
-        if len(input_shape) == 4 and input_shape[-1] == 1:
-            x = layers.Reshape(
-                (input_shape[0],
-                 input_shape[1]),
-                name="flatten_channel_for_gru")(x)
-        elif len(input_shape) == 2:
-            pass
-        elif len(input_shape) == 3 and input_shape[-1] != 1:
-            logger.warning(f"Input shape {input_shape} for Bidirectional GRU expects 3D or 4D with last dim 1. "
-                           f"Using as is, assuming last dim is feature.")
-            pass
-        else:
-            raise ValueError(
-                f"Input shape {input_shape} not suitable for 'bidirectional_gru' architecture.")
-        x = layers.Bidirectional(
-            layers.GRU(128, return_sequences=True, dropout=dropout_rate),
-            name="bi_gru1")(x)
-        x = layers.Bidirectional(
-            layers.GRU(64, return_sequences=True, dropout=dropout_rate),
-            name="bi_gru2")(x)
-        x = AttentionLayer(name="attention_layer")(x)
-
-    elif architecture == "resnet_gru":
-        x = apply_reshape_for_cnn(x, input_shape)
-        x = layers.Conv2D(32, (3, 3), activation='relu',
-                          padding='same', name="resnet_conv_init")(x)
-        x = layers.BatchNormalization(name="resnet_bn_init")(x)
-        x = layers.MaxPooling2D((2, 2), name="resnet_pool_init")(x)
-        x = residual_block(x, 64, (3, 3), stage='a')
-        x = layers.MaxPooling2D((2, 2), name="resnet_pool_a")(x)
-        x = layers.Dropout(dropout_rate, name="resnet_dropout_a")(x)
-        x = residual_block(x, 128, (3, 3), stage='b')
-        x = layers.MaxPooling2D((2, 2), name="resnet_pool_b")(x)
-        x = layers.Dropout(dropout_rate, name="resnet_dropout_b")(x)
-        x = flatten_features_for_gru(x, name="resnet_reshape_for_gru")
-        x = layers.GRU(128, return_sequences=True, dropout=dropout_rate, name="resnet_gru1")(x)
-        x = AttentionLayer(name="attention_layer_resnet")(x)
-
-    elif architecture == "transformer":
-        if len(input_shape) == 4 and input_shape[-1] == 1:
-            x = layers.Reshape(
-                (input_shape[0],
-                 input_shape[1]),
-                name="flatten_channel_for_transformer")(x)
-        elif len(input_shape) == 2:
-            pass
-        elif len(input_shape) == 3 and input_shape[-1] != 1:
-            logger.warning(f"Input shape {input_shape} for Transformer expects 3D or 4D with last dim 1. "
-                           f"Using as is, assuming last dim is feature.")
-            pass
-        else:
-            raise ValueError(
-                f"Input shape {input_shape} not suitable for 'transformer' architecture.")
-        seq_len = input_shape[0] if len(input_shape) >= 2 else input_shape[0]
-        feature_dim = input_shape[1] if len(
-            input_shape) == 2 else input_shape[1] * input_shape[2] if len(input_shape) == 3 else input_shape[1]
-        if len(x.shape) == 2:
-            x = tf.expand_dims(x, axis=1)
-            seq_len = 1
-        pos_encoding = layers.Embedding(
-            seq_len, feature_dim)(
-            tf.range(seq_len))
-        x = x + pos_encoding
-        num_heads = 4
-        ff_dim = 64
-        attn_output = layers.MultiHeadAttention(
-            num_heads=num_heads,
-            key_dim=feature_dim)(
-            x,
-            x)
-        attn_output = layers.Dropout(dropout_rate)(attn_output)
-        x = layers.LayerNormalization(epsilon=1e-6)(x + attn_output)
-        ff_output = layers.Dense(ff_dim, activation="relu")(x)
-        ff_output = layers.Dense(feature_dim)(ff_output)
-        ff_output = layers.Dropout(dropout_rate)(ff_output)
-        x = layers.LayerNormalization(epsilon=1e-6)(x + ff_output)
-        x = layers.GlobalAveragePooling1D(name="transformer_avg_pool")(x)
 
     elif architecture == "aasist":
         return _build_paper_aasist(
@@ -458,118 +414,61 @@ def create_model(
         # AMSoftmaxLayer output: scaled cosine logits (range ≈ [-15, 15]).
         # scale=15 (reduced from 30) keeps logit magnitudes within a numerically
         # safe range for float16/float32 while still providing discriminative margins.
-        output_tensor = AMSoftmaxLayer(num_classes, scale=15.0, margin=0.35, name="output_layer")(x)
+        output_tensor = AMSoftmaxLayer(
+            num_classes, scale=AM_SOFTMAX_SCALE, margin=AM_SOFTMAX_MARGIN,
+            name="output_layer",
+        )(x)
         # Explicit float32 cast so mixed_float16 policy doesn't produce float16 logits
         output_tensor = layers.Activation('linear', dtype='float32', name='output_cast')(output_tensor)
 
         # Build complete model with paper-faithful architecture
-        _gpu = bool(tf.config.list_physical_devices("GPU"))
-        if _gpu:
-            logger.info("GPU detectada: AASIST será treinado com aceleração GPU (mixed precision).")
         model = models.Model(inputs=input_tensor, outputs=output_tensor)
 
         # BUG FIX: AMSoftmaxLayer emite logits brutos — NÃO probabilidades.
         # categorical_crossentropy(from_logits=False) faz log(y_pred) e
         # y_pred ∈ [-15, 15] → log(valor_negativo) = NaN → loss NaN na época 1.
-        # Solução: from_logits=True aplica softmax interno via log-sum-exp numericamente
-        # estável ANTES de calcular o log, evitando log de valores negativos.
-        # Margem aditiva (CosFace) aplicada NA LOSS: a AMSoftmaxLayer emite
-        # s·cos(θ) sem margem (no grafo funcional os labels nunca chegam ao
-        # call da camada, então a margem lá era código morto). Aqui, com
-        # y_true disponível, subtraímos s·m do logit da classe-alvo —
-        # exatamente o AM-Softmax do paper — e mantemos o label smoothing.
-        _am_scale, _am_margin = 15.0, 0.35  # manter em sincronia com a camada
-
-        def label_smoothing_loss(y_true, y_pred):
-            num_classes_f = tf.cast(tf.shape(y_pred)[-1], tf.float32)
-            y_true_int = tf.cast(y_true, tf.int32)
-            if len(y_true_int.shape) > 1:
-                y_true_int = tf.squeeze(y_true_int, axis=-1)
-            one_hot = tf.one_hot(y_true_int, tf.cast(num_classes_f, tf.int32))
-            # CosFace: logit_alvo ← s·(cos(θ) − m) = s·cos(θ) − s·m
-            y_pred = y_pred - one_hot * (_am_scale * _am_margin)
-            smoothed = one_hot * 0.9 + 0.1 / num_classes_f
-            # from_logits=True: y_pred are raw logits, softmax applied internally
-            return tf.reduce_mean(
-                tf.keras.losses.categorical_crossentropy(smoothed, y_pred, from_logits=True)
-            )
+        # `AMSoftmaxCrossEntropy` usa from_logits=True (log-sum-exp estável) e
+        # aplica a margem CosFace no logit da classe-alvo — a margem da CAMADA
+        # é inerte no grafo funcional (os rótulos não chegam ao call dela).
+        # Antes isto era uma closure local, que impedia
+        # `load_model(..., compile=True)`; agora é uma Loss registrada.
+        loss = AMSoftmaxCrossEntropy(
+            scale=AM_SOFTMAX_SCALE, margin=AM_SOFTMAX_MARGIN,
+            label_smoothing=0.1,
+        )
 
         # AJUSTE (retune): subajuste (val_acc travada ~0.92). LR 1e-4->3e-4
         # (regularizacao estava forte demais p/ o LR baixo).
         #
-        # CORREÇÃO (fiação de hiperparâmetros): o weight_decay era um valor
-        # FIXO (1e-3) e o `l2_reg_strength` recebido do registry/planning
-        # (retune: 2e-4) era silenciosamente ignorado nesta variante — o
-        # ajuste documentado nunca chegava ao otimizador. Agora o parâmetro
-        # é consumido de fato (mesmo padrão do RawGAT-ST). O artefato AASIST
-        # promovido no benchmark atual foi treinado com o valor fixo antigo.
+        # CORREÇÃO (fiação de hiperparâmetros): weight_decay e learning_rate
+        # eram valores FIXOS aqui e os parâmetros recebidos do registry/planning
+        # eram silenciosamente ignorados — o retune documentado não chegava ao
+        # otimizador. Ambos agora são consumidos de fato (mesmo padrão da
+        # variante paper-faithful e do RawGAT-ST).
         optimizer = tf.keras.optimizers.AdamW(
-            learning_rate=0.0003,
+            learning_rate=float(learning_rate),
             weight_decay=l2_reg_strength,
             global_clipnorm=1.0,  # previne gradientes explosivos
         )
 
         model.compile(
             optimizer=optimizer,
-            loss=label_smoothing_loss,
+            loss=loss,
             metrics=['accuracy']
         )
 
-        logger.info("AASIST model created (paper-faithful: SincConv + GAT + HS-GAL)")
+        logger.info(
+            "AASIST legacy criado (SincConv 1D + GAT + HS-GAL; lr=%s, "
+            "weight_decay=%s)", learning_rate, l2_reg_strength,
+        )
         return model
 
-    else:
-        raise ValueError(
-            f"Arquitetura '{architecture}' não reconhecida. Escolha 'default', "
-            "'cnn_baseline', 'bidirectional_gru', 'resnet_gru', 'transformer', "
-            "'aasist' ou 'aasist_legacy'."
-        )
-
-    # Camadas densas com regularização aprimorada
-    x = layers.Dense(hidden_dim, activation='relu',
-                     kernel_regularizer=regularizers.l2(l2_reg_strength),
-                     bias_regularizer=regularizers.l2(l2_reg_strength / 2), name="dense1")(x)
-    x = layers.BatchNormalization(name="bn_dense1")(x)
-    x = layers.Dropout(dropout_rate, name="final_dropout1")(x)
-
-    # Camada intermediária adicional para melhor capacidade de aprendizado
-    x = layers.Dense(hidden_dim // 2, activation='relu',
-                     kernel_regularizer=regularizers.l2(l2_reg_strength),
-                     bias_regularizer=regularizers.l2(l2_reg_strength / 2), name="dense2")(x)
-    x = layers.BatchNormalization(name="bn_dense2")(x)
-    x = layers.Dropout(min(dropout_rate * 1.5, 0.9), name="final_dropout2")(x)
-
-    # Camada final antes da saída
-    x = layers.Dense(128, activation='relu',
-                     kernel_regularizer=regularizers.l2(l2_reg_strength),
-                     bias_regularizer=regularizers.l2(l2_reg_strength / 2), name="dense3")(x)
-    x = layers.BatchNormalization(name="bn_dense3")(x)
-    x = layers.Dropout(min(dropout_rate * 2, 0.9), name="dropout_final")(x)
-
-    # Camada de saída com regularização
-    output_tensor = layers.Dense(num_classes, activation='softmax',
-                                 kernel_regularizer=regularizers.l2(
-                                     l2_reg_strength / 2),
-                                 name="output_layer")(x)
-
-    model = models.Model(inputs=input_tensor, outputs=output_tensor)
-
-    # Otimizador com weight decay para reduzir overfitting
-    optimizer = tf.keras.optimizers.AdamW(
-        learning_rate=0.001,
-        weight_decay=l2_reg_strength,
-        beta_1=0.9,
-        beta_2=0.999,
-        epsilon=1e-7
+    raise ValueError(
+        f"Arquitetura '{architecture}' não reconhecida. Escolha 'aasist' "
+        f"(paper), 'aasist_legacy' ou uma das variantes legadas "
+        f"{list(LEGACY_VARIANTS)}."
     )
 
-    model.compile(optimizer=optimizer,
-                  loss='sparse_categorical_crossentropy',
-                  # Remover precision/recall que podem causar problemas de
-                  # dimensão
-                  metrics=['accuracy'])
-
-    return model
 
 # NOTA: A classe ModelTrainer foi removida deste arquivo para evitar duplicação.
 # Use a implementação principal em src.core.trainer para funcionalidades

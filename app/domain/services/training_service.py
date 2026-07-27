@@ -49,12 +49,37 @@ class TrainingService(ITrainingService):
         "parameters",
         "architecture",
         "dataset_path",
+        # Chaves de specs antigas do Ensemble: nenhum builder as aceita e o
+        # repasse cego quebrava a criação com TypeError. Já foram removidas do
+        # registry; a guarda fica como rede de segurança.
+        # ('use_se_blocks' SAIU desta lista: virou um parâmetro REAL do Sonic
+        # Sleuth — ver sonic_sleuth.py.)
         "use_mfcc_branch",
         "use_cross_attention",
         "use_gated_fusion",
-        "use_se_blocks",
         "aux_loss_weight",
         "use_mixed_precision",
+    }
+
+    # Chaves que COLIDEM com campos de TrainingConfig mas pertencem ao
+    # CONSTRUTOR do modelo (política "compile-respect": a arquitetura compila o
+    # próprio otimizador/schedule e o pipeline não os sobrescreve).
+    #
+    # CORREÇÃO: como `_NON_MODEL_PARAM_KEYS` é derivado dos campos do
+    # TrainingConfig — e `learning_rate` é um deles — o `learning_rate` do
+    # `registry.default_params` era DESCARTADO em silêncio. Treinar o AASIST
+    # pelo app/Gradio usava o default da assinatura (1e-4) em vez do LR
+    # retunado (3e-4); só o benchmark escapava, porque o runner promove essas
+    # chaves para `config["parameters"]` manualmente.
+    _COMPILE_PARAM_KEYS = {
+        "learning_rate",
+        "min_learning_rate",
+        "decay_steps",
+        "warmup_steps",
+        "weight_decay",
+        "alpha",
+        "clipnorm",
+        "label_smoothing",
     }
 
     def __init__(self, models_dir: str | Path | None = None):
@@ -362,7 +387,9 @@ class TrainingService(ITrainingService):
                 model_params = {
                     k: v
                     for k, v in merged_params.items()
-                    if k not in self._NON_MODEL_PARAM_KEYS or k in explicit_model_params
+                    if k not in self._NON_MODEL_PARAM_KEYS
+                    or k in explicit_model_params
+                    or k in self._COMPILE_PARAM_KEYS
                 }
                 sig = inspect.signature(create_model_fn)
                 has_var_keyword = any(

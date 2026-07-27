@@ -220,22 +220,18 @@ class FeaturePreparer:
                         or (shape[1] if len(shape) >= 2 else 80)
                     ),
                     time_steps=int(
-                        _contract_bm.get("time_steps")
-                        or (shape[0] if shape else 100)
+                        _contract_bm.get("time_steps") or (shape[0] if shape else 100)
                     ),
                     target_sequence_length=int(
                         _contract_bm.get("target_sequence_length")
                         or (shape[0] if shape else 16000)
                     ),
-                    source_samples=int(
-                        _contract_bm.get("source_samples") or 80000
-                    ),
+                    source_samples=int(_contract_bm.get("source_samples") or 48000),
                     add_channel_dim=bool(len(shape) == 3 and shape[-1] == 1),
                     raw_num_crops=(
                         3
-                        if "multicrop" in str(
-                            _contract_bm.get("crop_strategy", "")
-                        ).lower()
+                        if "multicrop"
+                        in str(_contract_bm.get("crop_strategy", "")).lower()
                         else 1
                     ),
                 )
@@ -321,9 +317,9 @@ class FeaturePreparer:
                     n_lfcc=n_lfcc,
                 )
                 metadata = {
-                    "feature_type": "raw"
-                    if input_type == "raw_audio"
-                    else "log_mel_spectrogram",
+                    "feature_type": (
+                        "raw" if input_type == "raw_audio" else "log_mel_spectrogram"
+                    ),
                     "feature_names": (
                         ["waveform"]
                         if input_type == "raw_audio"
@@ -347,13 +343,15 @@ class FeaturePreparer:
                         else ["log_mel_spectrogram"]
                     ),
                     "input_type": input_type,
-                    "stft_params": {
-                        "n_fft": n_fft,
-                        "hop_length": hop,
-                        "n_mels": n_mels,
-                    }
-                    if input_type == "spectrogram"
-                    else None,
+                    "stft_params": (
+                        {
+                            "n_fft": n_fft,
+                            "hop_length": hop,
+                            "n_mels": n_mels,
+                        }
+                        if input_type == "spectrogram"
+                        else None
+                    ),
                 }
                 try:
                     from pathlib import Path
@@ -591,14 +589,10 @@ class FeaturePreparer:
                             import os
 
                             expected_dim = int(expected_dim)
-                            if os.environ.get(
-                                "XFAKESONG_ALLOW_FEATURE_ADJUST"
-                            ) == "1":
+                            if os.environ.get("XFAKESONG_ALLOW_FEATURE_ADJUST") == "1":
                                 if features.size > expected_dim:
                                     features = features[:expected_dim]
-                                    feature_names = list(feature_names)[
-                                        :expected_dim
-                                    ]
+                                    feature_names = list(feature_names)[:expected_dim]
                                     feature_adjustment = "truncated"
                                 else:
                                     features = np.pad(
@@ -701,9 +695,11 @@ class FeaturePreparer:
             if features_result.status != ProcessingStatus.SUCCESS:
                 return {
                     "status": "error",
-                    "error": features_result.errors[0]
-                    if features_result.errors
-                    else "Erro desconhecido",  # noqa: E501
+                    "error": (
+                        features_result.errors[0]
+                        if features_result.errors
+                        else "Erro desconhecido"
+                    ),  # noqa: E501
                 }
 
             extraction_result = features_result.data
@@ -740,21 +736,27 @@ class FeaturePreparer:
                 )
 
             metadata = {
-                "feature_type": audio_features.feature_type.value
-                if hasattr(audio_features, "feature_type")
-                else None,
+                "feature_type": (
+                    audio_features.feature_type.value
+                    if hasattr(audio_features, "feature_type")
+                    else None
+                ),
                 "feature_names": feature_names_list,
                 "feature_shapes": feature_shapes_map,
-                "feature_count_total": int(features.size)
-                if isinstance(features, np.ndarray) and features.ndim == 1
-                else (
-                    features.shape[0] * features.shape[1]
-                    if isinstance(features, np.ndarray) and features.ndim >= 2
-                    else 0
+                "feature_count_total": (
+                    int(features.size)
+                    if isinstance(features, np.ndarray) and features.ndim == 1
+                    else (
+                        features.shape[0] * features.shape[1]
+                        if isinstance(features, np.ndarray) and features.ndim >= 2
+                        else 0
+                    )
                 ),
-                "features_shape": extraction_result.feature_shape
-                if hasattr(extraction_result, "feature_shape")
-                else (features.shape if hasattr(features, "shape") else None),
+                "features_shape": (
+                    extraction_result.feature_shape
+                    if hasattr(extraction_result, "feature_shape")
+                    else (features.shape if hasattr(features, "shape") else None)
+                ),
                 "sample_rate": audio_data.sample_rate,
                 "duration_s": audio_data.duration,
                 "channels": audio_data.channels,

@@ -18,26 +18,19 @@ from app.domain.models.architectures.layers import (
     create_classification_head,
 )
 
-# Configurar logging
-logging.basicConfig(level=logging.INFO)
+# Convenção do projeto: logger de módulo, SEM logging.basicConfig — configurar
+# o root logger no import contamina qualquer processo que importe este módulo
+# (inclusive CLIs e o servidor da API).
 logger = logging.getLogger(__name__)
 
-# ATENÇÃO: o `transformers` NÃO fornece WavLM em TensorFlow (`TFWavLMModel`
-# não existe — WavLM é PyTorch-only). Portanto a arquitetura Keras WavLM usa
-# sempre o backbone simplificado. Mantemos isso explícito e sem importar
-# `transformers` no boot, porque o import inicializa torch/triton e pode
-# derrubar containers GPU antes da interface carregar.
+# O `transformers` não fornece WavLM em TensorFlow (`TFWavLMModel` não existe;
+# e seus modelos TF nem importam com Keras 3). A solução adotada NÃO é o
+# fallback: `ssl_backbone.PretrainedSSLBackbone` lê o checkpoint **PyTorch** e
+# reimplementa o forward em Keras, com os pesos congelados — incluindo o viés
+# posicional relativo com gating, que é a contribuição do artigo. O extrator
+# CNN-1D abaixo permanece só para quando o checkpoint não está acessível.
 HF_AVAILABLE = False
 TFWavLMModel = None
-
-
-def _load_tf_wavlm() -> bool:
-    logger.warning(
-        "Backbone WavLM real indisponível em TensorFlow "
-        "(WavLM é PyTorch-only). Usando implementação simplificada; "
-        "para SSL real em TF use HuBERT."
-    )
-    return False
 
 
 @tf.keras.utils.register_keras_serializable(package="XFakeSong")
@@ -53,52 +46,27 @@ class WavLMFeatureExtractor(layers.Layer):
         # Fine-tuning parcial: nº de camadas do encoder a descongelar (do topo).
         # >0 ativa o fine-tune recomendado (Tak et al. 2022); 0 = congelado.
         self.n_trainable_layers = int(n_trainable_layers)
+        # `model_name` NÃO carrega pesos aqui (não existe WavLM em TF): ele só
+        # dimensiona o extrator de fallback. Explicitado no log para não passar
+        # a impressão de que um checkpoint do HuggingFace foi baixado.
         self.feature_dim = (
             int(feature_dim) if feature_dim is not None
             else 768 if "base" in model_name else 1024
         )
+        logger.info(
+            "WavLMFeatureExtractor: '%s' NÃO é carregado (WavLM não existe em "
+            "TensorFlow); a string só define a largura do fallback CNN-1D "
+            "(feature_dim=%d).", model_name, self.feature_dim,
+        )
 
-        if _load_tf_wavlm():
-            try:
-                # Carregar modelo WavLM pré-treinado (checkpoint do hub é
-                # PyTorch → from_pt=True converte automaticamente).
-                self.wavlm_model = TFWavLMModel.from_pretrained(
-                    model_name,
-                    from_pt=True
-                )
-
-                # Configurar para retornar todos os hidden states para weighted sum
-                self.num_layers = self.wavlm_model.config.num_hidden_layers + 1 # +1 para embedding inicial
-                from app.domain.models.architectures.layers import WeightedSumLayer
-                self.weighted_sum = WeightedSumLayer(num_layers=self.num_layers)
-
-                # Trainability do backbone (congelado | fine-tune parcial | total)
-                from app.domain.models.architectures.ssl_utils import (
-                    set_ssl_backbone_trainability,
-                )
-                _mode = set_ssl_backbone_trainability(
-                    self.wavlm_model, freeze_weights, self.n_trainable_layers
-                )
-
-                logger.info(
-                    f"WavLM model {model_name} carregado ({self.num_layers} "
-                    f"camadas) — backbone: {_mode}"
-                )
-
-            except Exception as e:
-                logger.warning(
-                    f"Failed to load WavLM model: {e}. Using simplified implementation.")
-                self._use_simplified = True
-        else:
-            self._use_simplified = True
-
-        if hasattr(self, '_use_simplified'):
-            # Fallback explícito: aborta em modo estrito (XFAKE_STRICT_SSL) para
-            # não comprometer o benchmark com um backbone que não é o WavLM real.
-            from app.domain.models.architectures.ssl_utils import strict_ssl_guard
-            strict_ssl_guard("WavLM")
-            # Implementação simplificada usando CNN 1D
-            self._build_simplified_extractor()
+        # Não existe TFWavLMModel: o caminho é SEMPRE o extrator simplificado.
+        self._use_simplified = True
+        # Fallback explícito: aborta em modo estrito (XFAKE_STRICT_SSL) para
+        # não comprometer o benchmark com um backbone que não é o WavLM real.
+        from app.domain.models.architectures.ssl_utils import strict_ssl_guard
+        strict_ssl_guard("WavLM")
+        # Implementação simplificada usando CNN 1D
+        self._build_simplified_extractor()
 
     def _build_simplified_extractor(self):
         """Constrói um extrator simplificado usando CNN 1D."""
@@ -122,53 +90,36 @@ class WavLMFeatureExtractor(layers.Layer):
 
     def build(self, input_shape):
         """Inicializa subcamadas para serialização/reload estáveis."""
-        if hasattr(self, '_use_simplified'):
-            x_shape = tf.TensorShape(input_shape)
-            if x_shape.rank == 3:
-                current_shape = x_shape
-            elif x_shape.rank == 2:
-                current_shape = x_shape.concatenate([1])
-            else:
-                current_shape = tf.TensorShape([None, None, 1])
+        x_shape = tf.TensorShape(input_shape)
+        if x_shape.rank == 3:
+            current_shape = x_shape
+        elif x_shape.rank == 2:
+            current_shape = x_shape.concatenate([1])
+        else:
+            current_shape = tf.TensorShape([None, None, 1])
 
-            for layer in self.conv_layers:
-                layer.build(current_shape)
-                current_shape = layer.compute_output_shape(current_shape)
+        for layer in self.conv_layers:
+            layer.build(current_shape)
+            current_shape = layer.compute_output_shape(current_shape)
         super().build(input_shape)
 
     def call(self, inputs, training=None):
-        """Forward pass do extrator de características."""
-        if hasattr(self, '_use_simplified'):
-            # Usar implementação simplificada
-            x = inputs
+        """Forward pass do extrator de características (CNN-1D simplificada)."""
+        x = inputs
 
-            # Processar entrada baseado na dimensionalidade
-            if len(x.shape) == 3:  # (batch, time, freq)
-                batch_size = tf.shape(x)[0]
-                x = tf.reshape(x, [batch_size, -1])
-                x = tf.expand_dims(x, axis=-1)
-            elif len(x.shape) == 2:  # (batch, features)
-                x = tf.expand_dims(x, axis=-1)
+        # Processar entrada baseado na dimensionalidade
+        if len(x.shape) == 3:  # (batch, time, freq)
+            batch_size = tf.shape(x)[0]
+            x = tf.reshape(x, [batch_size, -1])
+            x = tf.expand_dims(x, axis=-1)
+        elif len(x.shape) == 2:  # (batch, features)
+            x = tf.expand_dims(x, axis=-1)
 
-            # Aplicar camadas convolucionais
-            for layer in self.conv_layers:
-                x = layer(x, training=training)
+        # Aplicar camadas convolucionais
+        for layer in self.conv_layers:
+            x = layer(x, training=training)
 
-            return x
-        else:
-            # WavLM espera (batch, sequence_length)
-            # Garantir formato correto
-            if len(inputs.shape) == 3:
-                inputs = tf.squeeze(inputs, axis=-1)
-
-            # Extrair características usando WavLM com output_hidden_states=True
-            outputs = self.wavlm_model(inputs, output_hidden_states=True, training=False)
-
-            # Weighted sum de todos os hidden states (Fidelidade ao paper para downstream tasks)
-            hidden_states = outputs.hidden_states
-            x = self.weighted_sum(list(hidden_states))
-
-            return x
+        return x
 
     def get_config(self):
         config = super().get_config()
@@ -193,7 +144,18 @@ def preprocess(audio_data: np.ndarray, target_sr: int = 16000) -> np.ndarray:
 
     Returns:
         Áudio pré-processado
+
+    Nota: esta função NÃO reamostra — o WavLM exige 16 kHz e o áudio deve
+    chegar já reamostrado pelo pipeline de features. ``target_sr`` diferente de
+    16000 é sinalizado em vez de ser ignorado em silêncio, como acontecia antes.
     """
+    if int(target_sr) != 16000:
+        logger.warning(
+            "WavLM.preprocess: target_sr=%s ignorado — o backbone exige 16 kHz "
+            "e esta função não reamostra. Reamostre no pipeline de features "
+            "(app/domain/features/).", target_sr,
+        )
+
     # Normalização usando utilitário
     audio_data = normalize_audio(audio_data)
 
@@ -235,15 +197,46 @@ def _create_wavlm_model(input_shape: Tuple[int, ...],
     # 1. Entrada (Raw Audio)
     inputs = layers.Input(shape=input_shape, name='audio_input')
 
-    # 2. Extrator de características WavLM (Self-Supervised)
-    feature_extractor = WavLMFeatureExtractor(
-        model_name=wavlm_model,
-        freeze_weights=freeze_wavlm,
-        n_trainable_layers=n_trainable_layers,
-        name='wavlm_feature_extractor'
-    )
-    # x shape: (batch, sequence_length, feature_dim)
-    x = feature_extractor(inputs)
+    # 2. Extrator de características WavLM (Self-Supervised).
+    # BACKBONE PRÉ-TREINADO REAL (Chen et al., 2022), congelado: os pesos são
+    # lidos do checkpoint PyTorch e portados para Keras — inclusive o viés
+    # posicional relativo COM GATING, que é a contribuição do artigo. Só a soma
+    # ponderada das camadas e a cabeça treinam. O extrator CNN-1D do zero
+    # permanece apenas como fallback quando o checkpoint não está acessível.
+    using_pretrained = False
+    backbone_info = None
+    try:
+        from app.domain.models.architectures.ssl_utils import (
+            build_pretrained_ssl_features,
+        )
+
+        x, backbone_info = build_pretrained_ssl_features(
+            inputs, family="wavlm", checkpoint=wavlm_model, name="wavlm"
+        )
+        using_pretrained = True
+    except Exception as exc:  # noqa: BLE001
+        from app.domain.models.architectures.ssl_utils import strict_ssl_guard
+
+        logger.warning(
+            "WavLM: backbone pré-treinado indisponível (%s). Caindo no "
+            "extrator simplificado.", exc,
+        )
+        strict_ssl_guard("WavLM")
+        feature_extractor = WavLMFeatureExtractor(
+            model_name=wavlm_model,
+            freeze_weights=freeze_wavlm,
+            n_trainable_layers=n_trainable_layers,
+            name='wavlm_feature_extractor'
+        )
+        x = feature_extractor(inputs)
+
+    if using_pretrained and n_trainable_layers:
+        logger.warning(
+            "WavLM: n_trainable_layers=%s ignorado — este port mantém o "
+            "backbone INTEIRAMENTE congelado (só cabeça + pesos de camada "
+            "treinam), que é a receita pedida para uso downstream.",
+            n_trainable_layers,
+        )
 
     if backend == "aasist":
         # Back-end de grafo AASIST (receita SOTA: WavLM → grafo espectro-temporal)
@@ -279,15 +272,10 @@ def _create_wavlm_model(input_shape: Tuple[int, ...],
         outputs=outputs,
         name=f'wavlm_{architecture}')
 
-    # Compilar modelo. Fine-tuning parcial do backbone SSL REAL → LR baixo
-    # (1e-5) p/ evitar esquecimento catastrófico; backbone congelado OU
-    # fallback simplificado (CNN do zero, nada a preservar) → 1e-4.
-    using_simplified = hasattr(feature_extractor, '_use_simplified')
-    lr = (
-        1e-5
-        if (n_trainable_layers and n_trainable_layers > 0 and not using_simplified)
-        else 1e-4
-    )
+    # Backbone CONGELADO (pré-treinado ou fallback do zero) → só a cabeça
+    # treina, então 1e-4 é o LR adequado. Não há ramo de fine-tuning parcial:
+    # este port mantém o backbone inteiramente congelado por construção.
+    lr = 1e-4
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
     model.compile(
         optimizer=optimizer,
@@ -295,9 +283,13 @@ def _create_wavlm_model(input_shape: Tuple[int, ...],
         metrics=['accuracy']
     )
 
+    trainable = int(sum(np.prod(w.shape) for w in model.trainable_weights))
+    frozen = int(sum(np.prod(w.shape) for w in model.non_trainable_weights))
     logger.info(
-        f"WavLM model {architecture} criado (lr={lr}, "
-        f"n_trainable_layers={n_trainable_layers})"
+        "WavLM model %s criado (lr=%s, backbone=%s, params treináveis=%d, "
+        "congelados=%d)", architecture, lr,
+        backbone_info["checkpoint"] if using_pretrained else "fallback CNN-1D",
+        trainable, frozen,
     )
     return model
 
@@ -337,9 +329,11 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
         )
 
 
-# Registrar objetos personalizados no Keras
+# Registrar objetos personalizados no Keras.
+# `preprocess` com chave QUALIFICADA — ver nota em rawnet2.py sobre a colisão
+# da chave global 'preprocess' entre arquiteturas.
 tf.keras.utils.get_custom_objects().update({
     'WavLMFeatureExtractor': WavLMFeatureExtractor,
     'XFakeSong>WavLMFeatureExtractor': WavLMFeatureExtractor,
-    'preprocess': preprocess
+    'XFakeSong>wavlm_preprocess': preprocess,
 })

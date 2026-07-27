@@ -13,6 +13,26 @@ from typing import Any, Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
+#: Chaves de ``default_params`` que pertencem ao PIPELINE DE TREINO, não ao
+#: construtor do modelo. Fonte única compartilhada por ``registry.create_model``
+#: e por ``factory.ArchitectureFactoryRegistry`` (que antes mantinha sua própria
+#: cópia da lista).
+_TRAINING_ONLY_PARAM_KEYS = frozenset({
+    "patience",
+    "lr_patience",
+    "gradient_clip",
+    "augmentation_strength",
+})
+
+# NOTA sobre ``crop_strategy`` (contrato de entrada de áudio bruto):
+# AASIST e RawGAT-ST usam "train_random_eval_multicrop" (crop aleatório no
+# treino, multicrop na avaliação — a receita dos respectivos papers, que reduz
+# variância na métrica); RawNet2, WavLM, HuBERT e Ensemble usam "center".
+# A divergência é DELIBERADA e não uma inconsistência: mudar o crop de uma
+# arquitetura já treinada invalidaria a comparação com o run publicado. Ao
+# incluir uma arquitetura nova no benchmark, escolha explicitamente e registre
+# a escolha em docs/evaluation/benchmark.md.
+
 
 @dataclass
 class ArchitectureInfo:
@@ -93,8 +113,10 @@ class ArchitectureRegistry:
                     "learning_rate": 0.0003,
                     "min_learning_rate": 0.000005,
                     "decay_steps": 100000,
-                    "hidden_dim": 512,
-                    "num_layers": 8,
+                    # (hidden_dim/num_layers REMOVIDOS: a variante
+                    # paper-faithful "aasist" tem topologia fixa pelo artigo e
+                    # os ignora — só as variantes legadas CNN/GRU os usam.
+                    # Eram config morto, mesma classe já limpa no Ensemble.)
                     # Training params (used by pipeline, not by create_model)
                     "patience": 25,
                     "lr_patience": 8,
@@ -107,11 +129,11 @@ class ArchitectureRegistry:
                     "format": "raw",
                     "sample_rate": 16000,
                     "min_sequence_length": 16000,
-                    "target_sequence_length": 64600,
+                    "target_sequence_length": 48000,
                     "crop_strategy": "train_random_eval_multicrop",
                     "feature_frontend": "benchmark_raw_v1",
-                    "source_samples": 80000,
-                    "max_duration": 4.0,
+                    "source_samples": 48000,
+                    "max_duration": 3.0,
                     "preprocessing": "normalize",
                 },
             )
@@ -149,11 +171,12 @@ class ArchitectureRegistry:
                     "learning_rate": 0.00005,
                     "min_learning_rate": 0.000005,
                     "decay_steps": 100000,
-                    "attention_heads": 8,
-                    "hidden_dim": 512,
-                    "num_layers": 6,
-                    "temporal_pool_stride": 4,
-                    "fusion_mode": "multiply",
+                    # (attention_heads/hidden_dim/num_layers/
+                    # temporal_pool_stride/fusion_mode REMOVIDOS: a variante
+                    # paper-faithful "rawgat_st" segue a topologia do artigo
+                    # — dois encoders 2D, GAT S/T, fusão element-wise e um
+                    # terceiro GAT — e IGNORA todos eles. Eram config morto;
+                    # continuam válidos apenas para as variantes legadas.)
                     # Training params (used by pipeline, not by create_model)
                     "patience": 25,
                     "lr_patience": 8,
@@ -168,11 +191,11 @@ class ArchitectureRegistry:
                     "format": "raw",
                     "sample_rate": 16000,
                     "min_sequence_length": 16000,
-                    "target_sequence_length": 64600,
+                    "target_sequence_length": 48000,
                     "crop_strategy": "train_random_eval_multicrop",
                     "feature_frontend": "benchmark_raw_v1",
-                    "source_samples": 80000,
-                    "max_duration": 4.0,
+                    "source_samples": 48000,
+                    "max_duration": 3.0,
                     "preprocessing": "normalize",
                 },
             )
@@ -209,7 +232,9 @@ class ArchitectureRegistry:
                     "min_sequence_length": 100,
                     "feature_dim": 80,
                     "sample_rate": 16000,
-                    "max_duration": 5.0,
+                    # 3 s: mesma janela canônica do protocolo (48.000 amostras
+                    # a 16 kHz) usada pelas demais arquiteturas.
+                    "max_duration": 3.0,
                 },
             )
         )
@@ -262,7 +287,8 @@ class ArchitectureRegistry:
                 function_name="create_model",
                 description="Audio Spectrogram Transformer (AST) - ViT-Base with overlapping patches for audio deepfake detection",
                 supported_variants=[
-                    "spectrogram_transformer",
+                    "spectrogram_transformer",        # ViT-Base do paper AST
+                    "spectrogram_transformer_small",  # ViT-Small p/ treino do zero
                     "spectrogram_transformer_lite",
                 ],
                 default_params={
@@ -286,6 +312,11 @@ class ArchitectureRegistry:
                     "weight_decay": 1e-5,
                     "alpha": 1e-7,
                     "clipnorm": 1.0,
+                    # Default FALSE de propósito: `pretrained=True` baixa o
+                    # checkpoint AudioSet (~350 MB) e exige rede, o que
+                    # quebraria testes/CI offline. O BENCHMARK liga a flag via
+                    # benchmarks/planning.py — é lá que a decisão científica
+                    # (partir de pesos pré-treinados, como o artigo) é tomada.
                     "pretrained": False,
                     # Training params (used by pipeline, not by create_model)
                     "patience": 25,
@@ -294,11 +325,22 @@ class ArchitectureRegistry:
                     "augmentation_strength": 0.2,
                 },
                 input_requirements={
+                    # CORREÇÃO 2026-07-27 (conformidade com Gong et al., 2021):
+                    # o contrato anterior (100×80) produzia apenas 63 tokens
+                    # com patch 16×16/stride 10 — contra os 1212 do artigo —
+                    # alimentando um ViT-Base de 85M parâmetros. Era o regime
+                    # que degradava o treino até chute aleatório (EER ~51%).
+                    # 300 quadros × 128 mel = o front-end do paper (hop de
+                    # 10 ms, 128 bandas) aplicado à janela canônica de 3 s,
+                    # e resulta em 29×12 = 348 tokens.
                     "input_type": "spectrogram",
                     "type": "features",
                     "format": "spectrogram",
-                    "min_sequence_length": 100,
-                    "feature_dim": 80,
+                    "min_sequence_length": 300,
+                    "feature_dim": 128,
+                    # Janela de 25 ms (400 amostras a 16 kHz), como no artigo.
+                    # O default do projeto é 512 (32 ms).
+                    "n_fft": 400,
                 },
             )
         )
@@ -310,7 +352,11 @@ class ArchitectureRegistry:
                 module_path="app.domain.models.architectures.conformer",
                 function_name="create_model",
                 description="Conformer: Convolution-augmented Transformer - configuração padrão para máxima acurácia",
-                supported_variants=["conformer", "conformer_lite"],
+                # CONSOLIDAÇÃO 2026-07-27: configuração ÚNICA (Conformer-M do
+                # paper: 16 blocos). 'conformer_lite' permanece apenas como
+                # ALIAS legado e resolve para a mesma topologia — antes as duas
+                # variantes tinham os nomes invertidos (a "lite" era 2× maior).
+                supported_variants=["conformer", "conformer_m", "conformer_lite"],
                 default_params={
                     # create_model params: dropout_rate, learning_rate, weight_decay,
                     # warmup_steps, decay_steps, alpha, clipnorm, label_smoothing
@@ -376,7 +422,7 @@ class ArchitectureRegistry:
                     "format": "raw",
                     "sample_rate": 16000,
                     "min_sequence_length": 16000,
-                    "target_sequence_length": 16000,
+                    "target_sequence_length": 48000,
                     "crop_strategy": "center",
                 },
             )
@@ -391,11 +437,18 @@ class ArchitectureRegistry:
                 description="Sonic Sleuth (Alshehri et al., 2024): LFCC/MFCC/CQT feature extraction + 3×Conv2D(32→64→128) + Dense(256→128) + Dropout(0.1). Best: LFCC 98.27% accuracy.",
                 supported_variants=[
                     "sonic_sleuth",
+                    "sonic_sleuth_paper",
                     "sonic_sleuth_mfcc",
                     "sonic_sleuth_cqt",
                     "sonic_sleuth_lfcc_cqt",
                 ],
                 default_params={
+                    # Estes parâmetros eram CONFIG MORTO: o builder só lia
+                    # `sample_rate` e a topologia/dropout eram fixos no código.
+                    # Agora todos têm efeito real (ver sonic_sleuth.py); os
+                    # valores abaixo reproduzem o modelo já treinado. A
+                    # configuração LITERAL da Figura 3 do artigo está na
+                    # variante "sonic_sleuth_paper".
                     "sample_rate": 16000,
                     "use_batch_norm": True,
                     "num_conv_blocks": 5,
@@ -432,14 +485,27 @@ class ArchitectureRegistry:
                 name="RawNet2",
                 module_path="app.domain.models.architectures.rawnet2",
                 function_name="create_model",
-                description="Arquitetura de rede neural que opera diretamente no áudio bruto para detecção de deepfake - configuração padrão para máxima acurácia",
-                supported_variants=["rawnet2", "rawnet2_lite"],
+                description=(
+                    "RawNet2 sobre áudio bruto (SincNet + blocos residuais com "
+                    "FMS + GRU). ATENÇÃO à variante: o default segue o "
+                    "'Improved RawNet' de VERIFICAÇÃO DE LOCUTOR (Jung et al., "
+                    "2020 — Sinc 128, canais 128/256, 1×GRU); o baseline de "
+                    "ANTI-SPOOFING do ASVspoof 2021 (Sinc 20, canais 20/128, "
+                    "3×GRU), que é o comparado na literatura da tarefa, está em "
+                    "'rawnet2_antispoofing'."
+                ),
+                supported_variants=[
+                    "rawnet2",                # Improved RawNet (Jung 2020, SV)
+                    "rawnet2_antispoofing",   # baseline ASVspoof 2021
+                    "rawnet2_lite",
+                ],
                 default_params={
-                    # create_model params: sinc_filters, sinc_kernel_size, res_filters, gru_units, dense_units, dropout_rate
+                    # create_model params: sinc_filters, sinc_kernel_size, res_filters, gru_units, gru_layers, dense_units, dropout_rate
                     "sinc_filters": 128,
                     "sinc_kernel_size": 1024,
                     "res_filters": [128, 128, 256, 256, 256, 256],
                     "gru_units": 1024,
+                    "gru_layers": 1,
                     "dense_units": 1024,
                     "dropout_rate": 0.3,
                     # Training params (used by pipeline, not by create_model)
@@ -454,9 +520,14 @@ class ArchitectureRegistry:
                     "format": "raw",
                     "sample_rate": 16000,
                     "min_sequence_length": 16000,
-                    "target_sequence_length": 16000,
+                    "target_sequence_length": 48000,
                     "crop_strategy": "center",
-                    "max_duration": 5.0,
+                    # max_duration COERENTE com target_sequence_length (48.000
+                    # amostras a 16 kHz = 3 s). Estava em 5.0 e o fallback do
+                    # FeaturePreparer (usado quando o modelo salvo não traz
+                    # input_shape) montava 80.000 amostras — uma janela que o
+                    # modelo nunca viu no treino.
+                    "max_duration": 3.0,
                     "preprocessing": "normalize",
                 },
             )
@@ -472,7 +543,12 @@ class ArchitectureRegistry:
                 supported_variants=["wavlm", "wavlm_lite", "wavlm_aasist"],
                 default_params={
                     # create_model params: wavlm_model, freeze_wavlm, classifier_units, dropout_rate
-                    "wavlm_model": "microsoft/wavlm-large",
+                    # Checkpoint REAL: desde 2026-07-27 os pesos são lidos do
+                    # checkpoint PyTorch e portados para Keras (o caminho TF do
+                    # `transformers` não funciona com Keras 3). O backbone fica
+                    # CONGELADO e só a cabeça treina — receita padrão de
+                    # downstream com SSL. Ver ssl_backbone.py.
+                    "wavlm_model": "microsoft/wavlm-base",
                     "freeze_wavlm": True,
                     "classifier_units": [1024, 512, 256],
                     "dropout_rate": 0.2,
@@ -488,9 +564,11 @@ class ArchitectureRegistry:
                     "format": "raw",
                     "sample_rate": 16000,
                     "min_sequence_length": 16000,
-                    "target_sequence_length": 16000,
+                    "target_sequence_length": 48000,
                     "crop_strategy": "center",
-                    "max_duration": 10.0,
+                    # Coerente com target_sequence_length (3 s @ 16 kHz);
+                    # estava 10.0 e contradizia a própria janela declarada.
+                    "max_duration": 3.0,
                     "preprocessing": "normalize",
                 },
             )
@@ -517,11 +595,19 @@ class ArchitectureRegistry:
                     "augmentation_strength": 0.3,
                 },
                 input_requirements={
+                    # CONTRATO COMPLETADO: faltavam min_sequence_length,
+                    # target_sequence_length e crop_strategy — o HuBERT era a
+                    # única arquitetura de áudio bruto sem contrato temporal, e
+                    # o fallback do FeaturePreparer derivava 10 s (160.000
+                    # amostras) de max_duration, contra os 48.000 do protocolo.
                     "input_type": "raw_audio",
                     "type": "audio",
                     "format": "raw",
                     "sample_rate": 16000,
-                    "max_duration": 10.0,
+                    "min_sequence_length": 16000,
+                    "target_sequence_length": 48000,
+                    "crop_strategy": "center",
+                    "max_duration": 3.0,
                     "preprocessing": "normalize",
                 },
             )
@@ -563,7 +649,7 @@ class ArchitectureRegistry:
                     "min_sequence_length": 100,
                     "feature_dim": 80,
                     "sample_rate": 16000,
-                    "max_duration": 4.0,
+                    "max_duration": 3.0,
                     "preprocessing": "spectrogram_or_raw",
                     "supports_1d_input": True,
                     "supports_2d_input": True,
@@ -732,8 +818,18 @@ class ArchitectureRegistry:
         module = __import__(arch_info.module_path, fromlist=[arch_info.function_name])
         create_model_func = getattr(module, arch_info.function_name)
 
-        # Preparar parâmetros básicos
-        params = {}
+        # CORREÇÃO: este caminho IGNORAVA o próprio `default_params` do
+        # registry — construía o modelo apenas com os defaults da assinatura de
+        # cada `create_model`. Resultado: `registry.create_model(...)` e
+        # `factory.create_model_by_name(...)` produziam modelos com
+        # hiperparâmetros diferentes. Agora ambos partem do mesmo default,
+        # excluindo as chaves que pertencem ao pipeline de treino (a factory
+        # aplica exatamente a mesma exclusão).
+        params = {
+            key: value
+            for key, value in arch_info.default_params.items()
+            if key not in _TRAINING_ONLY_PARAM_KEYS
+        }
 
         # Adicionar variant se especificado
         if variant:
@@ -784,22 +880,59 @@ class ArchitectureRegistry:
     def validate_input_shape(
         self, architecture_name: str, input_shape: Tuple[int, ...]
     ) -> bool:
-        """Valida se o input_shape é compatível com a arquitetura."""
+        """Valida se o input_shape é compatível com a arquitetura.
+
+        CORREÇÃO: esta função rejeitava áudio bruto 1-D — ``(48000,)`` caía no
+        ``len(input_shape) < 2`` e voltava False, enquanto a factory
+        (``BaseArchitectureFactory.validate_input_shape``) aceitava a mesma
+        forma. Duas respostas opostas para o mesmo contrato. Agora ambas seguem
+        a semântica de ``input_type``:
+
+        - ``raw_audio``   → ``(T,)`` ou ``(T, 1)``
+        - ``spectrogram`` → ``(T, F)`` ou ``(T, F, 1)``
+        - ausente/legado  → validação frouxa por ``min_sequence_length``/
+          ``feature_dim`` (compat com SVM/RF e contratos antigos).
+        """
         arch_info = self.get_architecture(architecture_name)
         requirements = arch_info.input_requirements
+        input_type = requirements.get("input_type", "any")
 
-        # Validações básicas
+        if not input_shape:
+            return False
+
+        min_len = requirements.get("min_sequence_length")
+
+        if input_type == "raw_audio":
+            if min_len and input_shape[0] < min_len:
+                return False
+            # (T,) e (T, 1) são válidos; (T, K>1) não é áudio bruto.
+            if len(input_shape) == 2 and input_shape[-1] != 1:
+                return False
+            return True
+
+        if input_type == "spectrogram":
+            if len(input_shape) < 2:
+                return False
+            if min_len and input_shape[0] < min_len:
+                return False
+            expected_feature_dim = requirements.get("feature_dim")
+            if expected_feature_dim and int(input_shape[1]) != int(expected_feature_dim):
+                return False
+            if len(input_shape) == 3 and input_shape[2] != 1:
+                return False
+            return True
+
+        # Caminho legado (contratos sem input_type).
         if len(input_shape) < 2:
             return False
 
         sequence_length, feature_dim = input_shape[0], input_shape[1]
-
-        if sequence_length < requirements.get("min_sequence_length", 0):
+        if min_len and sequence_length < min_len:
             return False
 
-        # CORREÇÃO: a chave era "min_feature_dim", que nenhuma arquitetura
-        # define (a validação sempre passava). O contrato real usa
-        # "feature_dim" com igualdade exata (mesma regra da factory).
+        # A chave era "min_feature_dim", que nenhuma arquitetura define (a
+        # validação sempre passava). O contrato real usa "feature_dim" com
+        # igualdade exata (mesma regra da factory).
         expected_feature_dim = requirements.get("feature_dim")
         if (
             expected_feature_dim

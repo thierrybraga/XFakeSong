@@ -1,211 +1,129 @@
-# Dataset utilizado no treino e benchmark
+# Dataset do benchmark
 
-> **Nota de reprodutibilidade:** as contagens abaixo documentam o recorte 15k
-> legado. Elas não provam independência por conteúdo, falante ou domínio. Para
-> novos resultados acadêmicos, regenere o NPZ segundo o
-> [Protocolo acadêmico de dataset v2](academic-dataset-protocol-v2.md), verifique o
-> oráculo de fonte, os vetores hierárquicos e crie um novo selo de teste v2
-> antes de qualquer treinamento.
+Descrição operacional do artefato que alimenta treino e benchmark. A metodologia
+completa — por que cada decisão foi tomada e o que foi medido — está no
+[Protocolo de Dataset](dataset-protocol.md).
 
+## Resumo executivo
 
-Data da revisão local: **28/06/2026**.
+`data/datasets/benchmark_dataset.npz` — **CETUC pareado com clones XTTS-v2**.
+Cada amostra falsa é o clone sintético do **mesmo locutor lendo a mesma frase**
+que a amostra real correspondente.
 
-O benchmark canônico do XFakeSong usa o tier **`medium`**. O alvo consolidado é
-**15.000 amostras** balanceadas: 7.500 reais e 7.500 falsas. Em 27/06/2026,
-Common Voice/FLEURS no Hugging Face ficaram indisponíveis para completar os
-reais PT-BR estritos; portanto, a consolidação final usa MLS Portuguese e
-TTS-Portuguese Corpus como reforço real fora do HF.
+- 40.980 amostras: 20.490 reais e 20.490 falsas;
+- áudio bruto mono, 16 kHz, janela de 3 s — entrada `(48000, 1)`;
+- treino, validação e teste **não compartilham locutor nem frase**;
+- classes balanceadas por construção, não por cota;
+- toda amostra é recorte central puro — nenhuma é repetida (`tile`);
+- escopo científico **in-domain**: um único gerador (XTTS-v2).
 
-Histórico da decisão:
+## Partições
 
-- **PT-BR estrito validado:** 9.008 amostras, 4.504 reais + 4.504 falsas.
-- **15k viável:** completa reais com MLS Portuguese/TTS-Portuguese, registrando
-  explicitamente que MLS é português amplo/LibriVox, não PT-BR estrito.
+| Split | Real | Fake | Total | Locutores | Frases | Horas |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| treino | 16.613 | 16.613 | 33.226 | 34 (23F/11M) | 602 | 45,47 |
+| validação | 1.988 | 1.988 | 3.976 | 11 (7F/4M) | 201 | 5,49 |
+| teste | 1.889 | 1.889 | 3.778 | 11 (7F/4M) | 197 | 5,17 |
 
-O arquivo canônico gerado por esse tier é:
+Os locutores são repartidos 60/20/20 entre os 56 pareados, **estratificados por
+sexo**; as frases, 600/200/resto entre os 997 grupos de conteúdo. Uma amostra só
+entra numa partição quando o **locutor e a frase** pertencem àquela partição — o
+bloco diagonal do grid. As combinações fora da diagonal são descartadas, e é
+isso que faz o aproveitamento ser de 41,6% do corpus.
 
-`data/datasets/benchmark_audio_raw_balanced_15k.npz`
-
-Os WAVs ativos consolidados ficam em `data/datasets/real/` e
-`data/datasets/fake/`. O `.npz` é derivado dos splits em
-`data/datasets/splits/` e padroniza cada amostra em janela de 5,0 s.
-
-O tier `small` fica reservado para execução rápida de 10k, e o tier `large`
-fica reservado para execução estendida de 20k com protocolo de falantes não
-vistos.
-
-## Tiers Consolidados
-
-| Tier | Real | Fake | Total | Fontes | Split | Uso |
-| --- | ---: | ---: | ---: | --- | --- | --- |
-| `test` | 100 | 100 | 200 | BRSpeech-DF + Fake Voices | 70/15/15 estratificado | smoke |
-| `small` | 5.000 | 5.000 | 10.000 | BRSpeech-DF + Fake Voices | 70/15/15 estratificado | iteração robusta |
-| `medium` | 7.500 | 7.500 | 15.000 | BRSpeech-DF + MLS Portuguese + TTS-Portuguese + Fake Voices | 70/15/15 estratificado | **benchmark canônico 15k viável** |
-| `large` | 10.000 | 10.000 | 20.000 | BRSpeech-DF + MLS Portuguese + TTS-Portuguese + Fake Voices | disjunto por falante quando possível | auditoria estendida |
-
-## Contrato do NPZ Canônico
+## Contrato técnico do NPZ
 
 | Item | Valor |
 | --- | --- |
-| Tier | `medium` |
-| Arquivo | `data/datasets/benchmark_audio_raw_balanced_15k.npz` |
-| Amostras alvo | 15.000 |
-| Classes | 7.500 real + 7.500 fake |
-| Split alvo | 10.500 treino + 2.250 validação + 2.250 teste |
-| Taxa de amostragem | 16 kHz |
-| Janela exportada | 5,0 s |
-| Entrada raw-audio | `(80000, 1)` por amostra |
-| Tamanho do `.npz` | 2.769,01 MiB (`2.903.517.797` bytes) |
-| Duração efetiva no `.npz` | 1.250,00 min / 20,83 h |
-| WAVs ativos | 15.000 arquivos; 3.746,26 MiB; 2.045,61 min / 34,09 h |
-| Formato dos WAVs ativos | WAV PCM linear, 16 bits, mono, 16 kHz, sem compressão |
-| Modulação/codificação | PCM (`Pulse-Code Modulation`) linear em arquivo RIFF/WAV |
-| Arrays | `X_train`, `y_train`, `X_val`, `y_val`, `X_test`, `y_test`, `groups`, `speaker_ids`, `metadata_json` |
-| Diretório de splits | `data/datasets/splits/` |
-| Tabela de falantes | `data/datasets/speaker_table.csv` |
-| Manifesto de falantes | `data/datasets/speaker_manifest.json` |
+| Arquivo | `benchmark_dataset.npz` |
+| Tamanho | 7,99 GB (sem compressão) |
+| SHA-256 | `ae3662c9e2cc904c9c2f06bc541f27fe944baea4a527591cdb127a1d00f62ad7` |
+| Sample rate | 16.000 Hz |
+| Janela | 48.000 amostras / 3 s, recorte central |
+| Formato | `raw_audio`, `(N, 48000, 1)`, `float32` |
+| Rótulos | `0=real`, `1=fake` |
+| Amplitude | RMS normalizado a −26 dBFS **na janela**, teto de pico −1 dBFS |
+| Semente | 42 |
+| Estratégia | `speaker_x_sentence_double_disjoint_block_diagonal` |
 
-### Variante confirmatória (usada no run final)
+Arrays:
 
-`data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz` — mesmo
-corpus e contrato acima, com **rotação confirmatória dos splits**
-(`split_strategy: confirmatory_rotation_from_legacy_train`, seed 20260712) e
-selo de teste próprio (`xfakesong-test-lock`). Foi o artefato usado no run
-final consolidado (`data/results/final_consolidated_20260715/`, promovido em
-`data/models/benchmark_final/`). Limitação registrada no próprio metadata: o
-novo teste deriva do mesmo corpus consolidado (teste confirmatório interno,
-não avaliação externa).
+- áudio e rótulos: `X_train/y_train`, `X_val/y_val`, `X_test/y_test`;
+- procedência: `sample_paths`, `source_ids`, `groups`, `content_sha256`;
+- identidade: `speaker_ids`, `speaker_known`, `utterance_ids`, `text_ids`,
+  `sentence_indices`, `cetuc_official_split`;
+- síntese: `generator_ids`, `generator_known`;
+- agrupamento: `cluster_ids` (= `text_id`, 997 clusters) para bootstrap;
+- janela: `original_num_samples_*`, `window_start_*`;
+- contrato completo e auditorias embutidas: `metadata_json`.
 
-Com janela padronizada de 5 s, o tier medium representa aproximadamente
-**1.250 min** ou **20,83 h** de áudio exportado no `.npz`.
+**Toda a procedência está preenchida**:
+`speaker_known` e `generator_known` são `True` em 100% das amostras, porque as
+duas fontes publicam locutor e texto.
 
-Os WAVs ativos preservam a duração validada após VAD, normalização e descarte de
-arquivos inválidos; por isso a duração bruta ativa (**2.045,61 min**) é maior
-que a duração efetiva do `.npz`, que usa exatamente 5 s por amostra.
+## Evidências de integridade
 
-## Composição Consolidada do Dataset Ativo
+Auditoria de 26/07/2026 (`data/datasets/splits/audit_report.json`),
+reproduzível com `python scripts/dataset/audit_paired_corpus.py`:
 
-| Classe | Fonte | Arquivos | MiB | Minutos | Horas | Duração média | Falantes/chaves | Status de ID |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| real | BRSpeech-DF bonafide | 3.750 | 847,84 | 462,95 | 7,72 | 7,41 s | 1 fallback | fallback por fonte |
-| real | MLS Portuguese | 1.875 | 894,37 | 488,40 | 8,14 | 15,63 s | 21 | ID real derivado do leitor/caminho |
-| real | TTS-Portuguese Corpus | 1.875 | 645,12 | 352,28 | 5,87 | 11,27 s | 1 | `ttsport_single_speaker` |
-| fake | BRSpeech-DF spoof | 3.750 | 836,65 | 456,84 | 7,61 | 7,31 s | 1 fallback | fallback por fonte |
-| fake | Fake Voices XTTS | 3.750 | 522,27 | 285,15 | 4,75 | 4,56 s | 50 | ID real do falante/ZIP |
-| **total** | **ativo** | **15.000** | **3.746,26** | **2.045,61** | **34,09** | — | **73 chaves** | 7.500 IDs reais + 7.500 fallback |
+| Verificação | Resultado |
+| --- | ---: |
+| Locutor compartilhado entre partições | 0 |
+| Frase compartilhada entre partições | 0 |
+| Texto compartilhado entre partições | 0 |
+| Enunciado compartilhado entre partições | 0 |
+| SHA-256 de áudio compartilhado entre partições | 0 |
+| Quase-duplicatas entre partições (cosseno ≥ 0,99) | 0 em 272,7 milhões de comparações |
+| Redundância interna (gêmeas quase idênticas) | 8 pares em 40.980 (0,04%) |
+| Enunciados sem par | 0 |
+| Locutores desbalanceados | 0 |
 
-Resumo por classe:
+Oráculos de maioria (acaso = 50%): `source` 50,00% · `speaker_id` 50,00% ·
+`sentence_index` 50,00% · `text_id` 50,00%.
 
-| Classe | Arquivos | MiB | Minutos | Horas |
-| --- | ---: | ---: | ---: | ---: |
-| real | 7.500 | 2.387,33 | 1.303,63 | 21,73 |
-| fake | 7.500 | 1.358,92 | 741,98 | 12,37 |
+## Garantias e não garantias
 
-Resumo dos splits materializados:
+Garantido e verificado no artefato:
 
-| Split | Real | Fake | Total |
-| --- | ---: | ---: | ---: |
-| treino | 5.250 | 5.250 | 10.500 |
-| validação | 1.125 | 1.125 | 2.250 |
-| teste | 1.125 | 1.125 | 2.250 |
+- balanceamento 1:1 global, por partição **e por locutor**;
+- zero repetição de amostra, conteúdo, locutor, frase e texto entre partições;
+- nenhuma variável de procedência prediz a classe acima do acaso;
+- nível de áudio neutralizado (`rms_db` AUC 0,574) e repetição de janela zerada.
 
-## Fontes e Metadados
+**Não** garantido:
 
-| Fonte | Classe no benchmark | Papel | ID de falante |
-| --- | --- | --- | --- |
-| BRSpeech-DF | real + fake | fonte principal PT-BR com bonafide/spoof | Parquets locais não expõem coluna explícita de falante; usa fallback por fonte |
-| MLS Portuguese | real | reforço real fora do HF para fechar 15k | leitor LibriVox derivado do caminho local quando disponível |
-| TTS-Portuguese Corpus | real | reforço real PT-BR, limitado por 1 falante | `ttsport_single_speaker` |
-| Common Voice PT | real legado | indisponível/vazio no HF; usar somente se já existir localmente | `client_id` quando preservado pelo downloader |
-| FLEURS PT-BR | real legado | trava no streaming HF local; usar somente se já existir localmente | campo de falante quando existir no registro da fonte |
-| Fake Voices XTTS | fake | gerador sintético independente | nome do ZIP/falante em `unfake/fake_voices` |
+- **generalização cross-generator.** Toda a classe falsa é XTTS-v2. Esta é a
+  limitação dominante e deve acompanhar qualquer métrica publicada;
+- generalização cross-corpus ou para outros canais de gravação — o CETUC é
+  gravação de estúdio, em condições controladas.
 
-O downloader registra IDs reais em `speaker_manifest.json` sempre que a fonte
-expõe esse identificador. Quando uma fonte não expõe falante por arquivo, o
-pipeline não inventa IDs: `speaker_ids` usa fallback por fonte (`brspeech`,
-`cvpt`, `fleurs`, etc.) e a tabela marca `id_status=fallback_source`.
+Um detector trivial de descritor único chega a **AUC 0,67** neste corpus (fator
+de crista, artefato genuíno de vocoder). Esse é o piso de leitura: um modelo
+próximo disso não aprendeu mais do que uma estatística escalar.
 
-## Tabela Consolidada de Falantes
+## Uso
 
-A tabela deve ser gerada após o download/splits:
-
-```powershell
-python scripts/dataset/rebuild_speaker_manifest.py --dataset-dir data/datasets
-python scripts/dataset/export_speaker_table.py --dataset-dir data/datasets --scope all
+```bash
+python scripts/benchmark/run_models_sequential.py --dataset data/datasets/benchmark_dataset.npz --models AASIST Ensemble --epochs 100 --snr 30 20 10 --device-profile gpu --out data/results/<run> --resume
 ```
 
-Campos principais em `data/datasets/speaker_table.csv`:
+O corpus completo (49.264 pares, 98.528 amostras, 133,1 h) fica em
+`data/datasets/corpus/` e a partição em `data/datasets/splits/`. O `.npz`
+acima já contém a partição inteira; para reduzi-lo ao que couber na memória de
+treino use `--max-pairs-train` no exportador, que corta **pares** e preserva o
+balanceamento (ver [Protocolo de Dataset, §9.1](dataset-protocol.md)).
 
-| Campo | Descrição |
-| --- | --- |
-| `file` | nome do WAV |
-| `relative_path` | caminho no projeto |
-| `split` | `train`, `val`, `test`, `active` ou `overflow` |
-| `class` | `real` ou `fake` |
-| `source` | prefixo/fonte (`brspeech`, `mlspt`, `ttsport`, `fkvoice`) |
-| `speaker_id` | ID real quando disponível |
-| `speaker_key` | `fonte:speaker_id` ou fallback `fonte` |
-| `id_status` | `real_id` ou `fallback_source` |
-| `duration_sec` | duração do WAV |
-| `sample_rate` | taxa de amostragem detectada |
-| `channels` | canais detectados |
-| `size_bytes` | tamanho do arquivo |
+> **Atenção ao retreinar:** a janela caiu de 5 s para 3 s. O contrato de
+> inferência (`source_samples = 80000`) precisa passar a 48.000 **junto** com o
+> retreino — ver [Protocolo de Dataset, §9.2](dataset-protocol.md).
 
-## Comandos Recomendados
+## Resultados anteriores a este dataset
 
-Reconstrução canônica do dataset medium 15k:
+Os artefatos `.npz` que existiam antes deste protocolo foram **apagados**. Os
+resultados em `data/results/` foram obtidos sobre um deles, cuja composição
+permitia acertar 87,6% dos rótulos apenas identificando o corpus de origem — sem
+detectar síntese alguma.
 
-```powershell
-$env:DOCKER_TRAIN_CPU_LIMIT='8'
-docker compose -f docker\compose\benchmark.nvidia.yml --env-file .env run --rm benchmark `
-  python scripts/benchmark/run_tcc_pipeline.py `
-    --download `
-    --tier medium `
-    --full-benchmark `
-    --epochs 100 `
-    --batch-size 32 `
-    --device-profile gpu `
-    --npz data/datasets/benchmark_audio_raw_balanced_15k.npz `
-    --out data/results/benchmark_15k_medium
-```
-
-Auditoria de falantes:
-
-```powershell
-docker compose -f docker\compose\benchmark.nvidia.yml --env-file .env run --rm benchmark `
-  python scripts/dataset/audit_speaker_manifest.py --dataset-dir data/datasets --scope splits `
-    --json-out data/datasets/speaker_audit.json
-```
-
-Benchmark sequencial sobre o NPZ canônico:
-
-```powershell
-docker compose -f docker\compose\benchmark.nvidia.yml --env-file .env run --rm benchmark `
-  python scripts/benchmark/run_models_sequential.py `
-    --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz `
-    --test-lock data/datasets/benchmark_audio_raw_balanced_15k.npz.test-lock.json `
-    --out data/results/benchmark_15k_medium `
-    --epochs 100 `
-    --batch-size 32 `
-    --device-profile gpu `
-    --timeout-min 240 `
-    --latency-runs 30 `
-    --snr 30 20 10 `
-    --resume
-```
-
-## Limitações e Regras de Interpretação
-
-- **Confundimento fonte-classe**: MLS Portuguese e TTS-Portuguese só aparecem
-  como reais e Fake Voices só como fake; apenas BRSpeech-DF tem as duas
-  classes. Todos os resultados são portanto **in-domain** — ver a ressalva de
-  validade no [Protocolo Final de ML](../evaluation/final-ml-protocol.md) e as garantias
-  exigidas pelo [Protocolo de Dataset v2](academic-dataset-protocol-v2.md).
-- `medium` é o benchmark canônico de 15k, mas não promete split disjunto por
-  falante; ele é estratificado.
-- `large` é o tier correto quando a pergunta experimental exige usuários não
-  vistos ou auditoria mais forte de vazamento.
-- IDs de falante são usados somente quando vêm da fonte ou de metadado local
-  rastreável.
-- Amostras sem ID real continuam válidas no benchmark, mas devem ser reportadas
-  como fallback por fonte na tabela de falantes.
+Esses números medem desempenho *in-domain com atalho disponível*: não devem ser
+comparados com a literatura nem com execuções sobre o dataset atual, e
+**requerem retreino**.

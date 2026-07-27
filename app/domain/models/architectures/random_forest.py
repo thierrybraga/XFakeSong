@@ -23,15 +23,10 @@ from app.domain.models.architectures.classical_ml_helpers import (
     wrap_calibration,
 )
 
-# Configure logger for Random Forest
+# Convenção do projeto: logger de módulo SEM handlers/level próprios — a
+# configuração de handlers, formatters e nível é responsabilidade da aplicação.
+# Handlers locais duplicavam linhas de log quando o root já estava configurado.
 logger = logging.getLogger(__name__)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter(
-        "%(asctime)s %(levelname)s [RandomForest] %(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-logger.setLevel(logging.INFO)
 
 
 class RandomForestModel(BaseClassicalModel):
@@ -147,6 +142,11 @@ def create_random_forest_model(
 ) -> RandomForestModel:
     """
     Cria um modelo Random Forest para detecção de deepfakes.
+
+    ``architecture`` é um SINK INTENCIONAL, não um parâmetro morto: a interface
+    comum das arquiteturas passa o nome da variante, e sem absorvê-lo aqui a
+    chave vazaria por ``**kwargs`` até o ``RandomForestClassifier`` do
+    scikit-learn (TypeError). O RF não tem variantes topológicas.
     """
     logger.info(f"Creating Random Forest model with {n_estimators} estimators")
     logger.info(f"Input shape: {input_shape}, num_classes: {num_classes}")

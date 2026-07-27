@@ -72,7 +72,7 @@ python scripts/benchmark/run_tcc_pipeline.py \
   --epochs 100 \
   --device-profile gpu \
   --out data/results/tcc_medium_15k \
-  --npz data/datasets/benchmark_audio_raw_balanced_15k.npz
+  --npz data/datasets/benchmark_dataset.npz
 ```
 
 Esse roteiro reproduz o benchmark consolidado do TCC: o tier `medium` monta

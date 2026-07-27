@@ -69,7 +69,7 @@ def test_model_notebooks_have_resolved_input_contracts():
 def test_pipeline_notebook_documents_guarded_full_run_and_artifacts():
     text = _notebook_text(_NB / "pipeline" / "01_benchmark_tcc_full_pipeline.ipynb")
     assert "RUN_FULL_PIPELINE = False" in text
-    assert "scripts\" / \"run_tcc_pipeline.py" in text
+    assert "scripts\" / \"benchmark\" / \"run_tcc_pipeline.py" in text
     for artifact in (
         "dataset.md",
         "dataset_manifest.json",

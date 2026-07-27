@@ -181,16 +181,27 @@ class TrainingConfig:
     reduce_lr_on_plateau: bool = True
     reduce_lr_patience: int = 5
 
-    # Arquiteturas disponíveis
+    # Arquiteturas disponíveis.
+    # FONTE DE VERDADE: app/domain/models/architectures/registry.py
+    # (`architecture_registry.list_architectures_snake()`). Esta lista é um
+    # espelho ESTÁTICO — `app/core/` não pode importar `app/domain/` (regra de
+    # camadas do projeto). Estava desatualizada, com 7 das 12 arquiteturas
+    # neurais registradas; ao adicionar uma arquitetura, atualize os dois
+    # lugares (o teste tests/unit/test_architectures.py cobre a divergência).
     available_architectures: List[str] = field(
         default_factory=lambda: [
             "aasist",
-            "conformer",
-            "efficientnet_lstm",
-            "ensemble",
-            "multiscale_cnn",
             "rawgat_st",
+            "efficientnet_lstm",
+            "multiscale_cnn",
             "spectrogram_transformer",
+            "conformer",
+            "ensemble",
+            "sonic_sleuth",
+            "rawnet2",
+            "wavlm",
+            "hubert",
+            "hybrid_cnn_transformer",
         ]
     )
 

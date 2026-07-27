@@ -24,15 +24,10 @@ from app.domain.models.architectures.classical_ml_helpers import (
     wrap_calibration,
 )
 
-# Configure logger for SVM
+# Convenção do projeto: logger de módulo SEM handlers/level próprios — a
+# configuração de handlers, formatters e nível é responsabilidade da aplicação.
+# Handlers locais duplicavam linhas de log quando o root já estava configurado.
 logger = logging.getLogger(__name__)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter(
-        "%(asctime)s %(levelname)s [SVM] %(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-logger.setLevel(logging.INFO)
 
 
 class SVMModel(BaseClassicalModel):
@@ -118,6 +113,12 @@ def create_svm_model(
 ) -> SVMModel:
     """
     Cria um modelo SVM para detecção de deepfakes.
+
+    ``architecture`` é um SINK INTENCIONAL, não um parâmetro morto: a interface
+    comum das arquiteturas passa o nome da variante, e sem absorvê-lo aqui a
+    chave vazaria por ``**kwargs`` até o construtor do ``SVC`` do scikit-learn
+    (TypeError). O SVM não tem variantes topológicas — o valor é ignorado de
+    propósito.
     """
     logger.info(f"Creating SVM model with kernel={kernel}, C={C}")
     logger.info(f"Input shape: {input_shape}, num_classes: {num_classes}")

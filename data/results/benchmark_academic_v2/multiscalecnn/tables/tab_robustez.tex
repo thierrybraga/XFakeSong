@@ -1,0 +1,15 @@
+\begin{table}[H]
+\centering
+\caption{Robustez sob ruído AWGN (acurácia e EER por SNR). AWGN aplicado à forma de onda antes do frontend de cada modelo.}
+\label{tab:bench_robustez}
+\small\singlespacing
+\begin{tabular}{lcccccccc}
+\toprule
+\multirow{2}{*}{\textbf{Arquitetura}} & \multicolumn{2}{c}{\textbf{Limpo}} & \multicolumn{2}{c}{\textbf{SNR 30\,dB}} & \multicolumn{2}{c}{\textbf{SNR 20\,dB}} & \multicolumn{2}{c}{\textbf{SNR 10\,dB}} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+ & Acur. & EER & Acur. & EER & Acur. & EER & Acur. & EER \\
+\midrule
+MultiscaleCNN & 99,02\% & 1,07\% & 98,03\% & 1,93\% & 97,39\% & 2,91\% & 95,12\% & 5,14\% \\
+\bottomrule
+\end{tabular}
+\end{table}

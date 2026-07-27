@@ -111,8 +111,13 @@ def _run_arch_integrated(arch: str) -> dict:
     if input_type == "raw_audio":
         input_shape = (SAMPLE_RATE * DURATION, 1)
     else:
-        t_frames = int(np.ceil((SAMPLE_RATE * DURATION) / audio_pre_mod.DEFAULT_HOP))
-        input_shape = (t_frames, audio_pre_mod.DEFAULT_N_MELS, 1)
+        # Contrato DECLARADO pela arquitetura tem prioridade: o AST exige
+        # 300x128 (hop de 10 ms, 128 bandas mel), diferente do default global.
+        req = spec.input_requirements
+        t_frames = int(req.get("min_sequence_length")
+                       or np.ceil((SAMPLE_RATE * DURATION) / audio_pre_mod.DEFAULT_HOP))
+        n_mels = int(req.get("feature_dim") or audio_pre_mod.DEFAULT_N_MELS)
+        input_shape = (t_frames, n_mels, 1)
 
     model = factory_mod.create_model_by_name(arch, input_shape=input_shape, num_classes=2)
 

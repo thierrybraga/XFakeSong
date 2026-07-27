@@ -35,6 +35,35 @@ class DatasetInfo:
 
 
 DATASET_CATALOG: Dict[str, DatasetInfo] = {
+    "CETUC-XTTS Pareado": DatasetInfo(
+        name="CETUC-XTTS Pareado",
+        source_type="both",
+        cli_flag="(scripts/dataset/build_paired_pt_corpus.py)",
+        prefixes=("ptpair",),
+        description=(
+            "Corpus pareado do protocolo: bonafide do CETUC e o clone XTTS-v2 "
+            "do MESMO locutor lendo a MESMA frase. Locutor e texto sao publicados "
+            "pelas fontes, entao a disjuncao dupla do split e verificavel."
+        ),
+        repository="falabrasil/cetuc + unfake/fake_voices",
+        url="https://huggingface.co/datasets/falabrasil/cetuc",
+        license="MIT (ambas as fontes)",
+        language="pt-BR",
+        classes="real + fake",
+        audio_count="49.264 pares = 98.528 amostras (grid completo)",
+        duration="133,1 h",
+        speakers="56 locutores pareados (dos 101 do CETUC)",
+        access="Hugging Face publico, revisoes fixadas",
+        benchmark_use=(
+            "Fonte canonica do benchmark. As duas classes compartilham locutor e "
+            "frase, logo nenhum dos dois prediz o rotulo."
+        ),
+        recommended_for_full_benchmark=True,
+        notes=(
+            "Prefixo unico nas duas classes de proposito: um prefixo por classe "
+            "daria oraculo de fonte de 100%. Ver docs/data/dataset-protocol.md."
+        ),
+    ),
     "BRSpeech-DF": DatasetInfo(
         name="BRSpeech-DF",
         source_type="both",
@@ -65,13 +94,18 @@ DATASET_CATALOG: Dict[str, DatasetInfo] = {
         license="MIT",
         language="pt-BR",
         classes="fake",
-        audio_count="ZIPs por falante; ~30.5 GB",
-        duration="~140 h",
-        speakers="101 falantes",
+        audio_count="56 ZIPs (um por falante); 19,7 GB; ate 1000 clones por falante",
+        duration="~57 h",
+        speakers="56 falantes clonados",
         access="Hugging Face publico",
         benchmark_use="Fake PT-BR independente para teste cross-generator.",
         recommended_for_full_benchmark=True,
-        notes="O downloader usa max_speakers e estima cerca de 80 amostras uteis por falante.",
+        notes=(
+            "Verificado na revisao 541bf396: 56 ZIPs, nao 101 -- os 101 sao os "
+            "falantes do CETUC, corpus que condicionou o XTTS. A cobertura varia "
+            "entre 685 e 1000 clones por falante. Use pareado com o CETUC "
+            "(ver 'CETUC-XTTS Pareado'); isolado, e fonte pura de classe."
+        ),
     ),
     "FLEURS": DatasetInfo(
         name="FLEURS",
@@ -468,7 +502,9 @@ def tier_reference_markdown() -> str:
         "|---|---:|---:|---|---|---|:---:|",
     ]
     for tier in DATASET_TIERS.values():
-        split = "disjunto por falante" if tier.speaker_aware else "70/15/15 estratificado"
+        split = (
+            "disjunto por falante" if tier.speaker_aware else "70/15/15 estratificado"
+        )
         spk = "sim" if tier.speaker_aware else "—"
         lines.append(
             f"| **{tier.name}** | {tier.per_class:,} | {tier.total:,} | "
@@ -498,7 +534,9 @@ MODEL_READINESS_TIERS: tuple[ModelReadinessTier, ...] = (
     ModelReadinessTier("Clássico", "SVM, Random Forest", 300),
     ModelReadinessTier("CNN Leve", "RawNet2, Sonic Sleuth, MultiscaleCNN", 1_000),
     ModelReadinessTier("CNN/RNN", "WavLM, HuBERT, EfficientNet-LSTM, RawGAT-ST", 2_000),
-    ModelReadinessTier("Transformer", "Conformer, AASIST, SpectrogramTransformer", 4_000),
+    ModelReadinessTier(
+        "Transformer", "Conformer, AASIST, SpectrogramTransformer", 4_000
+    ),
     ModelReadinessTier("Ensemble", "Ensemble, Hybrid CNN-Transformer", 6_000),
 )
 
@@ -531,7 +569,9 @@ def infer_prefix_from_path(path: str | Path) -> str:
     return stem.split("_", 1)[0] if stem else "unknown"
 
 
-def summarize_dataset_paths(paths: Iterable[str | Path], duration_sec: float | None = None) -> dict:
+def summarize_dataset_paths(
+    paths: Iterable[str | Path], duration_sec: float | None = None
+) -> dict:
     counts: Dict[str, int] = {}
     for path in paths:
         name = infer_dataset_from_path(path)
@@ -548,24 +588,29 @@ def summarize_dataset_paths(paths: Iterable[str | Path], duration_sec: float | N
         "sources": {
             name: {
                 "samples": count,
-                "type": DATASET_CATALOG.get(name, DatasetInfo(
-                    name=name,
-                    source_type="unknown",
-                    cli_flag="",
-                    prefixes=(),
-                    description="Fonte nao catalogada",
-                    repository="",
-                    url="",
-                    license="",
-                    language="",
-                    classes="",
-                    audio_count="",
-                    duration="",
-                    speakers="",
-                    access="",
-                    benchmark_use="",
-                )).source_type,
-                "license": DATASET_CATALOG[name].license if name in DATASET_CATALOG else "",
+                "type": DATASET_CATALOG.get(
+                    name,
+                    DatasetInfo(
+                        name=name,
+                        source_type="unknown",
+                        cli_flag="",
+                        prefixes=(),
+                        description="Fonte nao catalogada",
+                        repository="",
+                        url="",
+                        license="",
+                        language="",
+                        classes="",
+                        audio_count="",
+                        duration="",
+                        speakers="",
+                        access="",
+                        benchmark_use="",
+                    ),
+                ).source_type,
+                "license": (
+                    DATASET_CATALOG[name].license if name in DATASET_CATALOG else ""
+                ),
             }
             for name, count in sorted(counts.items())
         },

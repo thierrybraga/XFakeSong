@@ -5,7 +5,7 @@ Este orquestrador chama `scripts/benchmark/run_benchmark.py --model <nome>` para
 arquitetura. Cada modelo recebe uma pasta própria, log próprio e status próprio.
 
 Exemplos:
-  python scripts/benchmark/run_models_sequential.py --dataset data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz
+  python scripts/benchmark/run_models_sequential.py --dataset data/datasets/benchmark_dataset.npz
   python scripts/benchmark/run_models_sequential.py --models SVM RandomForest --timeout-min 20
   python scripts/benchmark/run_models_sequential.py --neural-only --resume --device-profile gpu
   python scripts/benchmark/run_models_sequential.py --neural-only --plan-only
@@ -24,6 +24,8 @@ import subprocess
 import sys
 import threading
 import time
+
+import numpy as np
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -373,6 +375,8 @@ def _build_command(args: argparse.Namespace, model: str, model_dir: Path) -> lis
         cmd.extend(["--codec-eval", *[str(c) for c in args.codec_eval]])
     if getattr(args, "academic_protocol", False):
         cmd.append("--fail-on-source-shortcut")
+        if getattr(args, "source_shortcut_limit", None) is not None:
+            cmd.extend(["--source-shortcut-limit", str(args.source_shortcut_limit)])
     return cmd
 
 
@@ -632,7 +636,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--dataset",
-        default="data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz",
+        default="data/datasets/benchmark_dataset.npz",
         help="Dataset .npz usado por todos os modelos.",
     )
     parser.add_argument(
@@ -665,6 +669,14 @@ def main() -> int:
         action=argparse.BooleanOptionalAction,
         default=True,
         help="exige teste predefinido/congelado e controles acadêmicos padronizados",
+    )
+    parser.add_argument(
+        "--source-shortcut-limit",
+        type=float,
+        default=None,
+        help="sobrepoe o limite do oraculo fonte-rotulo (default: 0.55; "
+             "use para datasets com confundimento fonte-classe documentado, "
+             "ex.: 0.80 para um acervo cujo oraculo de fonte e 75%%)",
     )
     parser.add_argument(
         "--min-samples",

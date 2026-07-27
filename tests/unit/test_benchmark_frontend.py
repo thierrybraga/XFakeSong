@@ -16,8 +16,22 @@ from app.domain.features import benchmark_frontend as bf
 
 @pytest.fixture(scope="module")
 def raw_batch() -> np.ndarray:
+    """Clipe MAIS LONGO que a janela canônica — exercita as políticas de corte."""
     rng = np.random.default_rng(42)
     return (rng.normal(size=(3, 80000)) * 0.25).astype("float32")
+
+
+@pytest.fixture(scope="module")
+def canonical_batch() -> np.ndarray:
+    """Clipe exatamente na janela-fonte canônica.
+
+    As versões single-sample de log-mel e tabular ajustam o clipe a
+    `DEFAULT_SOURCE_SAMPLES` antes de extrair, para que o hop dinâmico e as
+    estatísticas sejam os mesmos do treino. A paridade com `benchmarks/data.py`
+    — que recebe o lote já na janela — só é comparável nessa mesma duração.
+    """
+    rng = np.random.default_rng(42)
+    return (rng.normal(size=(3, bf.DEFAULT_SOURCE_SAMPLES)) * 0.25).astype("float32")
 
 
 class TestParityWithBenchmarkData:
@@ -30,32 +44,30 @@ class TestParityWithBenchmarkData:
         new = bf.raw_audio_batch(raw_batch, target_len=16000)
         np.testing.assert_array_equal(ref, new)
         # single == batch[i]
-        np.testing.assert_array_equal(
-            bf.raw_audio_single(raw_batch[0], 16000), ref[0]
-        )
+        np.testing.assert_array_equal(bf.raw_audio_single(raw_batch[0], 16000), ref[0])
 
-    def test_logmel_parity(self, raw_batch):
+    def test_logmel_parity(self, canonical_batch):
         pytest.importorskip("librosa")
         from benchmarks import data as bd
 
         req = {"sample_rate": 16000, "feature_dim": 80, "min_sequence_length": 100}
-        ref = bd._raw_audio_to_logmel(raw_batch, req)
-        new = bf.log_mel_batch(raw_batch, 16000, 80, 100)
+        ref = bd._raw_audio_to_logmel(canonical_batch, req)
+        new = bf.log_mel_batch(canonical_batch, 16000, 80, 100)
         np.testing.assert_array_equal(ref, new)
         assert ref.shape == (3, 100, 80)
-        np.testing.assert_array_equal(bf.log_mel_single(raw_batch[0]), ref[0])
+        np.testing.assert_array_equal(bf.log_mel_single(canonical_batch[0]), ref[0])
 
-    def test_tabular_parity_and_contract(self, raw_batch):
+    def test_tabular_parity_and_contract(self, canonical_batch):
         pytest.importorskip("librosa")
         from app.domain.xai.tabular import N_FEATURES
         from benchmarks import data as bd
 
-        ref = bd._to_tabular_features(raw_batch)
-        new = bf.tabular_features_batch(raw_batch)
+        ref = bd._to_tabular_features(canonical_batch)
+        new = bf.tabular_features_batch(canonical_batch)
         np.testing.assert_array_equal(ref, new)
         assert ref.shape == (3, N_FEATURES)
         np.testing.assert_array_equal(
-            bf.tabular_features_single(raw_batch[0]), ref[0]
+            bf.tabular_features_single(canonical_batch[0]), ref[0]
         )
 
     def test_short_clip_is_tiled_not_padded(self):
@@ -68,24 +80,22 @@ class TestParityWithBenchmarkData:
 
 class TestRawCropPolicy:
     def test_default_window_matches_paper_protocol(self):
-        assert bf.DEFAULT_RAW_TARGET == 64600
+        assert bf.DEFAULT_RAW_TARGET == 48000
 
     def test_random_crop_is_seeded_per_sample(self, raw_batch):
         first = bf.raw_audio_batch(
-            raw_batch, target_len=64600, crop_strategy="random", seed=7
+            raw_batch, target_len=48000, crop_strategy="random", seed=7
         )
         second = bf.raw_audio_batch(
-            raw_batch, target_len=64600, crop_strategy="random", seed=7
+            raw_batch, target_len=48000, crop_strategy="random", seed=7
         )
-        center = bf.raw_audio_batch(raw_batch, target_len=64600)
+        center = bf.raw_audio_batch(raw_batch, target_len=48000)
         np.testing.assert_array_equal(first, second)
         assert not np.array_equal(first, center)
 
     def test_multicrop_start_center_end(self, raw_batch):
-        crops = bf.raw_audio_multicrop_batch(
-            raw_batch, target_len=64600, num_crops=3
-        )
-        assert crops.shape == (3, 3, 64600, 1)
+        crops = bf.raw_audio_multicrop_batch(raw_batch, target_len=48000, num_crops=3)
+        assert crops.shape == (3, 3, 48000, 1)
         assert np.all(np.isfinite(crops))
         assert np.allclose(crops.mean(axis=(2, 3)), 0.0, atol=1e-4)
         assert np.allclose(crops.std(axis=(2, 3)), 1.0, atol=1e-3)
@@ -103,17 +113,21 @@ class TestPrepareSingleDispatch:
     def test_raw_frontend_multicrop(self):
         y = np.random.default_rng(3).normal(size=80000).astype("float32")
         out = bf.prepare_single(
-            y, bf.FRONTEND_RAW,
-            target_sequence_length=64600,
+            y,
+            bf.FRONTEND_RAW,
+            target_sequence_length=48000,
             raw_num_crops=3,
         )
-        assert out.shape == (3, 64600, 1)
+        assert out.shape == (3, 48000, 1)
 
     def test_logmel_frontend_with_channel(self):
         pytest.importorskip("librosa")
         y = np.random.default_rng(1).normal(size=80000).astype("float32")
         out = bf.prepare_single(
-            y, bf.FRONTEND_LOGMEL, feature_dim=80, time_steps=100,
+            y,
+            bf.FRONTEND_LOGMEL,
+            feature_dim=80,
+            time_steps=100,
             add_channel_dim=True,
         )
         assert out.shape == (100, 80, 1)
@@ -132,10 +146,15 @@ class TestFeaturePreparerBenchmarkPath:
 
         rng = np.random.default_rng(7)
         samples = (rng.normal(size=n) * 0.2).astype("float32")
-        return AudioData(
-            samples=samples, sample_rate=16000,
-            duration=n / 16000.0, channels=1,
-        ), samples
+        return (
+            AudioData(
+                samples=samples,
+                sample_rate=16000,
+                duration=n / 16000.0,
+                channels=1,
+            ),
+            samples,
+        )
 
     @staticmethod
     def _make_preparer():
@@ -162,7 +181,7 @@ class TestFeaturePreparerBenchmarkPath:
             "sample_rate": 16000,
             "feature_dim": 80,
             "time_steps": 100,
-            "source_samples": 80000,
+            "source_samples": 48000,
         }
         result = preparer.prepare_input(audio, model_info, arch_info=None)
         assert result["status"] == "ok"

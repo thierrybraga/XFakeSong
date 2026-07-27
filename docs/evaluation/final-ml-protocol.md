@@ -29,24 +29,31 @@ paridade por construção.
 
 ## 2. Dataset e splits
 
-Dataset operacional: `data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz`
-— 15.000 amostras (7.500 reais / 7.500 falsas), 4 fontes PT-BR
-(BRSpeech-DF, Fake Voices, MLS Portuguese, TTS-Portuguese), splits
-congelados 10.500/2.250/2.250 com **test-lock** (o teste nunca participa de
+Dataset canônico: `data/datasets/benchmark_dataset.npz` — 40.980 amostras
+(20.490 reais / 20.490 falsas), CETUC pareado com clones XTTS-v2, splits
+congelados 33.226/3.976/3.778 com **test-lock** (o teste nunca participa de
 treino, validação, calibração ou HPO). Detalhes e auditoria:
-[29_DATASET_BENCHMARK_UTILIZADO](../data/benchmark-dataset.md) e
-[27_DATASET_PIPELINE](../data/pipeline-and-audit.md).
+[Protocolo de Dataset](../data/dataset-protocol.md),
+[Dataset do Benchmark](../data/benchmark-dataset.md) e
+[Pipeline e Auditoria](../data/pipeline-and-audit.md).
+
+> Os resultados desta página foram obtidos sobre o **dataset anterior** — 15.000
+> amostras de quatro fontes PT-BR, splits 10.500/2.250/2.250 —, já apagado do
+> disco. A ressalva abaixo se refere a ele.
 
 **Ressalva de validade (obrigatória ao citar resultados):** o conjunto é
 balanceado por classe mas **confundido por fonte** (MLS/TTS-Portuguese só
 contêm reais; Fake Voices só falsas; apenas BRSpeech tem as duas classes do
 mesmo locutor). Todos os resultados são portanto **in-domain**. A validação
 anti-atalho (teste isolado em BRSpeech, única fonte sem atalho possível:
-EER dos SSL permanece < 0,5%) mitiga, mas não elimina, essa limitação. O
-[Protocolo Acadêmico de Dataset v2](../data/academic-dataset-protocol-v2.md) define as
-garantias (proveniência hierárquica, oráculo de atalho por fonte, bootstrap
-por cluster) exigidas para reivindicar generalização — nenhuma métrica v2
-foi publicada ainda.
+EER dos SSL permanece < 0,5%) mitiga, mas não elimina, essa limitação.
+
+O dataset canônico atual elimina esse confundimento por construção — as duas
+classes compartilham locutor e frase, e o oráculo de fonte fica em 50%. As
+garantias exigidas para reivindicar generalização (proveniência hierárquica,
+oráculo de atalho, bootstrap por cluster, disjunção dupla) estão no
+[Protocolo de Dataset](../data/dataset-protocol.md). **Os resultados desta
+página precedem esse dataset e requerem retreino.**
 
 ## 3. Treinamento
 
@@ -84,7 +91,7 @@ Protocolo AWGN **no domínio da forma de onda, antes de qualquer frontend**
   completo LnL+ISD+SSI, simulação de codec, RIR sintética, shift temporal e
   compressão dinâmica — a cópia estática causava overfit à realização fixa
   de ruído; composição segue o RawBoost, Tak et al., ICASSP 2022).
-  **Nota v2**: por uniformidade comparativa, esse regime por-arquitetura é
+  **Nota**: por uniformidade comparativa, esse regime por-arquitetura é
   hoje *opt-in* e deve ser reportado como ablação — os números promovidos de
   AASIST/RawGAT-ST são declarados com esse regime explicitado.
 - **Codec**: round-trip MP3 64k / Opus 24k via ffmpeg
@@ -127,7 +134,7 @@ cenário tandem), ECE, curvas ROC e **DET** (escala probit), matriz de
 confusão, eficiência (parâmetros, MB, latência). **IC 95% por bootstrap**
 (1.000 reamostragens, percentil) em EER/AUC/accuracy — com n=2.250 o IC do
 EER é ±0,5–1 pp, sem o qual o ranking fino não é interpretável. O protocolo
-v2 exige adicionalmente bootstrap por `cluster_ids` e métricas por
+O protocolo exige adicionalmente bootstrap por `cluster_ids` e métricas por
 fonte/gerador (macro e worst-group).
 
 ## 8. Resultados finais consolidados
@@ -178,7 +185,7 @@ dataset/test-lock, comando, código e revisão atuais. O plano também grava
 ## 9. Limitações declaradas
 
 1. Resultados **in-domain** (confundimento fonte-classe, §2) — não
-   sustentam generalização cross-domain/cross-gerador sem o protocolo v2.
+   sustentam generalização cross-domain/cross-gerador sem o protocolo atual.
 2. Semente única (42); multi-sementes suportado
    (`run_models_sequential --seeds`) mas não executado no run final.
 3. WavLM/HuBERT no caminho TF do benchmark usam fallback CNN-1D — os

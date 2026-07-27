@@ -1,0 +1,78 @@
+{
+  "enabled": true,
+  "method": "GridSearchCV",
+  "scoring": "roc_auc",
+  "cv": 3,
+  "param_grid": {
+    "rf__n_estimators": [
+      100,
+      200
+    ],
+    "rf__max_depth": [
+      null,
+      10,
+      20
+    ],
+    "rf__min_samples_leaf": [
+      1,
+      2
+    ],
+    "rf__max_features": [
+      "sqrt",
+      "log2"
+    ]
+  },
+  "n_candidates": 24,
+  "status": "ok",
+  "elapsed_s": 30.566,
+  "best_score": 0.9938776253711495,
+  "best_params": {
+    "rf__max_depth": 10,
+    "rf__max_features": "log2",
+    "rf__min_samples_leaf": 2,
+    "rf__n_estimators": 100
+  },
+  "best_model_params": {
+    "max_depth": 10,
+    "max_features": "log2",
+    "min_samples_leaf": 2,
+    "n_estimators": 100
+  },
+  "top_candidates": [
+    {
+      "rank": 1,
+      "mean_test_score": 0.9938776253711495,
+      "std_test_score": 0.007630895305871316,
+      "mean_train_score": 0.9999897788383497,
+      "params_json": "{\"rf__max_depth\": 10, \"rf__max_features\": \"log2\", \"rf__min_samples_leaf\": 2, \"rf__n_estimators\": 100}"
+    },
+    {
+      "rank": 2,
+      "mean_test_score": 0.9938476702835412,
+      "std_test_score": 0.007865712380302554,
+      "mean_train_score": 0.9999935738241111,
+      "params_json": "{\"rf__max_depth\": 10, \"rf__max_features\": \"log2\", \"rf__min_samples_leaf\": 2, \"rf__n_estimators\": 200}"
+    },
+    {
+      "rank": 3,
+      "mean_test_score": 0.9932505419239667,
+      "std_test_score": 0.00878843707294927,
+      "mean_train_score": 1.0,
+      "params_json": "{\"rf__max_depth\": 20, \"rf__max_features\": \"log2\", \"rf__min_samples_leaf\": 2, \"rf__n_estimators\": 200}"
+    },
+    {
+      "rank": 4,
+      "mean_test_score": 0.9932502383251057,
+      "std_test_score": 0.008788437072949322,
+      "mean_train_score": 1.0,
+      "params_json": "{\"rf__max_depth\": null, \"rf__max_features\": \"log2\", \"rf__min_samples_leaf\": 2, \"rf__n_estimators\": 200}"
+    },
+    {
+      "rank": 5,
+      "mean_test_score": 0.9931981711204619,
+      "std_test_score": 0.008620358024462905,
+      "mean_train_score": 0.9999967110123403,
+      "params_json": "{\"rf__max_depth\": 10, \"rf__max_features\": \"log2\", \"rf__min_samples_leaf\": 1, \"rf__n_estimators\": 100}"
+    }
+  ]
+}

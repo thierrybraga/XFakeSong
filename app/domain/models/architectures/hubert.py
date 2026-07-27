@@ -21,8 +21,8 @@ from app.domain.models.architectures.layers import (
     create_classification_head,
 )
 
-# Configurar logging
-logging.basicConfig(level=logging.INFO)
+# Convenção do projeto: logger de módulo, SEM logging.basicConfig — configurar
+# o root logger no import contamina qualquer processo que importe este módulo.
 logger = logging.getLogger(__name__)
 
 # O import de `transformers` é mantido lazy para evitar inicializar torch/triton
@@ -232,7 +232,18 @@ def preprocess_audio(audio_data: np.ndarray,
 
     Returns:
         Áudio pré-processado
+
+    Nota: esta função NÃO reamostra — o HuBERT exige 16 kHz e o áudio deve
+    chegar já reamostrado pelo pipeline de features. ``target_sr`` diferente de
+    16000 é sinalizado em vez de ser ignorado em silêncio, como acontecia antes.
     """
+    if int(target_sr) != 16000:
+        logger.warning(
+            "HuBERT.preprocess_audio: target_sr=%s ignorado — o backbone exige "
+            "16 kHz e esta função não reamostra. Reamostre no pipeline de "
+            "features (app/domain/features/).", target_sr,
+        )
+
     # Normalização
     audio_data = normalize_audio(audio_data)
 
@@ -274,18 +285,48 @@ def _create_hubert_model(input_shape: Tuple[int, ...],
     # 1. Entrada (Raw Audio)
     inputs = layers.Input(shape=input_shape, name='audio_input')
 
-    # 2. Extrator de características HuBERT (Self-Supervised)
-    feature_extractor = HuBERTFeatureExtractor(
-        model_name=model_name,
-        freeze_weights=freeze_hubert,
-        n_trainable_layers=n_trainable_layers,
-        hidden_size=kwargs.get('hidden_size', 768),
-        num_attention_heads=kwargs.get('num_attention_heads', 12),
-        num_hidden_layers=kwargs.get('num_hidden_layers', 12),
-        name='hubert_feature_extractor'
-    )
-    # x shape: (batch, sequence_length, hidden_size)
-    x = feature_extractor(inputs)
+    # 2. Extrator de características HuBERT (Self-Supervised).
+    # BACKBONE PRÉ-TREINADO REAL (Hsu et al., 2021), congelado: os pesos vêm do
+    # checkpoint PyTorch, portados para Keras (o caminho TF do `transformers`
+    # não funciona com Keras 3). Só a soma ponderada das camadas e a cabeça
+    # treinam. O extrator CNN-1D do zero fica apenas como fallback.
+    using_pretrained = False
+    backbone_info = None
+    try:
+        from app.domain.models.architectures.ssl_utils import (
+            build_pretrained_ssl_features,
+        )
+
+        x, backbone_info = build_pretrained_ssl_features(
+            inputs, family="hubert", checkpoint=model_name, name="hubert"
+        )
+        using_pretrained = True
+    except Exception as exc:  # noqa: BLE001
+        from app.domain.models.architectures.ssl_utils import strict_ssl_guard
+
+        logger.warning(
+            "HuBERT: backbone pré-treinado indisponível (%s). Caindo no "
+            "extrator simplificado.", exc,
+        )
+        strict_ssl_guard("HuBERT")
+        feature_extractor = HuBERTFeatureExtractor(
+            model_name=model_name,
+            freeze_weights=freeze_hubert,
+            n_trainable_layers=n_trainable_layers,
+            hidden_size=kwargs.get('hidden_size', 768),
+            num_attention_heads=kwargs.get('num_attention_heads', 12),
+            num_hidden_layers=kwargs.get('num_hidden_layers', 12),
+            name='hubert_feature_extractor'
+        )
+        x = feature_extractor(inputs)
+
+    if using_pretrained and n_trainable_layers:
+        logger.warning(
+            "HuBERT: n_trainable_layers=%s ignorado — este port mantém o "
+            "backbone INTEIRAMENTE congelado (só cabeça + pesos de camada "
+            "treinam), que é a receita pedida para uso downstream.",
+            n_trainable_layers,
+        )
 
     if backend == "aasist":
         # Back-end de grafo AASIST (receita SOTA: HuBERT → grafo espectro-temporal)
@@ -307,12 +348,19 @@ def _create_hubert_model(input_shape: Tuple[int, ...],
         )
         pooled = AttentionPoolingLayer(name='attention_pool')(projected)
 
-    # Classification Head
+    # Classification Head.
+    # CORREÇÃO: `classifier_hidden_dim` era CONFIG MORTO — o registry passava
+    # 256 e a variante lite passava 128, mas a cabeça era fixa em
+    # [512, 256, 128]. Agora o parâmetro dimensiona a pirâmide de fato; com o
+    # default 256 o resultado é [512, 256, 128], idêntico ao comportamento
+    # anterior (o artefato treinado continua reproduzível).
+    hidden_dim = max(8, int(classifier_hidden_dim))
+    classifier_dims = [hidden_dim * 2, hidden_dim, max(1, hidden_dim // 2)]
     outputs, loss = create_classification_head(
         pooled,
         num_classes,
         dropout_rate=dropout_rate,
-        hidden_dims=[512, 256, 128]
+        hidden_dims=classifier_dims,
     )
 
     # Criar modelo
@@ -321,15 +369,10 @@ def _create_hubert_model(input_shape: Tuple[int, ...],
         outputs=outputs,
         name=f"hubert_{architecture}")
 
-    # Compilar modelo. Fine-tuning parcial do backbone SSL REAL → LR baixo
-    # (1e-5) p/ não esquecer os pesos pré-treinados; backbone congelado OU
-    # fallback simplificado (CNN do zero, sem pesos a preservar) → 1e-4.
-    using_simplified = hasattr(feature_extractor, '_use_simplified')
-    lr = (
-        1e-5
-        if (n_trainable_layers and n_trainable_layers > 0 and not using_simplified)
-        else 1e-4
-    )
+    # Backbone CONGELADO (pré-treinado ou fallback) → só a cabeça treina, então
+    # 1e-4 é o LR adequado. Não há fine-tuning parcial: o port mantém o
+    # backbone inteiramente congelado por construção.
+    lr = 1e-4
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
     model.compile(
         optimizer=optimizer,
@@ -337,9 +380,13 @@ def _create_hubert_model(input_shape: Tuple[int, ...],
         metrics=['accuracy']
     )
 
+    trainable = int(sum(np.prod(w.shape) for w in model.trainable_weights))
+    frozen = int(sum(np.prod(w.shape) for w in model.non_trainable_weights))
     logger.info(
-        f"HuBERT model {architecture} criado (lr={lr}, "
-        f"n_trainable_layers={n_trainable_layers})"
+        "HuBERT model %s criado (lr=%s, backbone=%s, classifier_dims=%s, "
+        "params treináveis=%d, congelados=%d)", architecture, lr,
+        backbone_info["checkpoint"] if using_pretrained else "fallback CNN-1D",
+        classifier_dims, trainable, frozen,
     )
     return model
 
@@ -400,34 +447,6 @@ keras.utils.get_custom_objects().update({
     'HuBERTFeatureExtractor': HuBERTFeatureExtractor
 })
 
-
-if __name__ == "__main__":
-    # Teste básico
-    print("Testando criação do modelo HuBERT...")
-
-    # Testar com diferentes tamanhos de entrada
-    test_shapes = [
-        (48000,),   # 3 segundos a 16kHz
-        (80000,),   # 5 segundos a 16kHz
-        (160000,),  # 10 segundos a 16kHz
-    ]
-
-    for shape in test_shapes:
-        print(f"\nTestando com input_shape: {shape}")
-
-        # Criar modelo
-        model = create_model(input_shape=shape, num_classes=1)
-
-        # Testar inferência
-        dummy_input = np.random.randn(1, *shape).astype(np.float32)
-        output = model.predict(dummy_input, verbose=0)
-
-        print("✓ Modelo criado com sucesso")
-        print(f"✓ Output shape: {output.shape}")
-        print(f"✓ Output range: [{output.min():.4f}, {output.max():.4f}]")
-
-        # Limpar memória
-        del model
-        tf.keras.backend.clear_session()
-
-    print("\n✅ Todos os testes passaram!")
+# NOTA: o bloco `if __name__ == "__main__"` com prints de teste foi removido —
+# testes vivem em tests/ (ver tests/integration/test_architectures_build.py) e
+# o projeto proíbe `print()` em app/.

@@ -25,10 +25,24 @@ python scripts/<categoria>/<nome>.py [opções]
 
 ## dataset/ — aquisição, construção e auditoria de dados
 
+**Fluxo canônico (Protocolo de Dataset)** — os quatro scripts abaixo, nesta ordem,
+produzem o dataset do benchmark. Ver
+[`docs/data/dataset-protocol.md`](../docs/data/dataset-protocol.md).
+
+| Script | Função |
+| --- | --- |
+| `build_paired_pt_corpus.py` | **(1)** Baixa e canonicaliza o corpus pareado CETUC × clones XTTS-v2: 56 locutores nas duas classes, mesmas frases, revisões fixadas. O par só entra quando as duas amostras passam na validação, o que dá balanceamento exato sem cotas. Resumível por locutor, poda o cache do Hub. |
+| `build_paired_splits.py` | **(2)** Particiona com disjunção **dupla** (locutor × frase) pelo bloco diagonal: partição oficial de locutores do CETUC × partição de frases determinística. Materializa `splits/` por hardlink e sincroniza o `speaker_manifest.json`. |
+| `audit_paired_corpus.py` | **(3)** Audita o artefato em 6 blocos (pareamento, disjunção, balanceamento, atalhos de metadado, confundidores de sinal por AUC, quase-duplicatas espectrais) e falha com código ≠ 0 se uma garantia for violada. |
+| `export_paired_npz.py` | **(4)** Exporta o `.npz` (`benchmark_dataset.npz`) a partir do manifesto, não dos diretórios; pré-aloca as partições (sem dobrar o pico de memória) e corta por PARES quando há limite de tamanho. |
+
+**Fora do fluxo canônico** (mantidos para aquisição de outras fontes e
+rastreabilidade):
+
 | Script | Função |
 | --- | --- |
 | `download_datasets.py` | Baixa os datasets PT-BR (BRSpeech-DF, MLS Portuguese, TTS-Portuguese, Fake Voices/XTTS, CommonVoice, FLEURS) com cache local e verificação. |
-| `build_dataset.py` | Orquestra a Fase 1: composição balanceada real/fake por fonte (tiers `small/medium/large`) e splits estratificados em `app/datasets/splits`. |
+| `build_dataset.py` | Orquestra a Fase 1: composição balanceada real/fake por fonte (tiers `small/medium/large`); delega o split para `preprocess_dataset.py`, que grava em `data/datasets/splits`. |
 | `preprocess_dataset.py` | Valida e normaliza WAVs (16 kHz mono, amplitude, duração 1–30 s, remoção de corrompidos/duplicatas) com relatório detalhado. |
 | `export_npz_from_splits.py` | Exporta os splits para um `.npz` canônico de áudio bruto (`benchmark_audio_raw_balanced_15k.npz`). |
 | `rebuild_speaker_manifest.py` | Reconstrói `speaker_manifest.json` a partir de metadados locais rastreáveis (sem inventar falantes). |

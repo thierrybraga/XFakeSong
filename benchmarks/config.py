@@ -9,6 +9,14 @@ from typing import Any, Dict, List, Optional
 # Manifesto oficial do recorte experimental. Ele fixa nomes, variantes e
 # runners usados no TCC; listas derivadas abaixo devem ser consumidas pelos
 # scripts para evitar divergência entre treino, consolidação e LaTeX.
+# Os rótulos `variant` são a PROVENIÊNCIA que vai para os resultados (o runner
+# os copia para `architectures[<nome>].provenance`). Precisam descrever a
+# configuração REALMENTE treinada — em 2026-07-27 vários estavam defasados após
+# mudanças de arquitetura: "ast_vit_base_scratch" quando o AST passara a partir
+# de pesos AudioSet, "rawgat_st_multiply_stride4" com um stride que só vale nas
+# variantes legadas, e um "rawnet2_paper_like" que não dizia QUAL RawNet2
+# (verificação de locutor vs. baseline anti-spoofing — arquiteturas diferentes
+# com o mesmo nome). Ao alterar uma arquitetura, atualize o rótulo junto.
 OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
     {
         "benchmark_name": "RandomForest",
@@ -24,7 +32,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "benchmark_name": "SVM",
         "result_key": "SVM",
         "display_name": "SVM",
-        "variant": "sklearn_svc_rbf_gridsearch",
+        "variant": "sklearn_svc_gridsearch_linear_rbf",
         "runner": "benchmarks.runner:classical",
         "input_type": "tabular_features",
         "family": "classical-tabular",
@@ -34,7 +42,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "benchmark_name": "Hybrid CNN-Transformer",
         "result_key": "CCT",
         "display_name": "CCT",
-        "variant": "cct",
+        "variant": "cct_hassani2021_conv64_128_4layers_4heads_256d_no_se",
         "runner": "benchmarks.runner:keras",
         "input_type": "spectrogram",
         "family": "spectral-attention",
@@ -44,7 +52,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "benchmark_name": "SpectrogramTransformer",
         "result_key": "AST",
         "display_name": "AST",
-        "variant": "ast_vit_base_scratch",
+        "variant": "ast_gong2021_vit_base_audioset_pretrained_in300x128",
         "runner": "benchmarks.runner:keras",
         "input_type": "spectrogram",
         "family": "spectral-attention",
@@ -54,7 +62,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "benchmark_name": "MultiscaleCNN",
         "result_key": "Res2Net",
         "display_name": "Res2Net",
-        "variant": "res2net50_scale4_no_se",
+        "variant": "res2net50_gao2021_scale4_basewidth26_no_se",
         "runner": "benchmarks.runner:keras",
         "input_type": "spectrogram",
         "family": "spectral-convolutional",
@@ -64,7 +72,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "benchmark_name": "Conformer",
         "result_key": "Conformer",
         "display_name": "Conformer",
-        "variant": "conformer",
+        "variant": "conformer_m_gulati2020_16blocks_256d_4heads_kernel31",
         "runner": "benchmarks.runner:keras",
         "input_type": "spectrogram",
         "family": "spectral-attention",
@@ -74,7 +82,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "benchmark_name": "RawNet2",
         "result_key": "RawNet2",
         "display_name": "RawNet2",
-        "variant": "rawnet2_paper_like_gru1024_dense1024",
+        "variant": "rawnet2_speakerverification_jung2020_sinc128_1xgru1024",
         "runner": "benchmarks.runner:keras",
         "input_type": "raw_audio",
         "family": "waveform-end-to-end",
@@ -84,7 +92,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "benchmark_name": "AASIST",
         "result_key": "AASIST",
         "display_name": "AASIST",
-        "variant": "aasist",
+        "variant": "aasist_jung2022_paper_attention_gat_temp2_hsgal_temp100",
         "runner": "benchmarks.runner:keras",
         "input_type": "raw_audio",
         "family": "waveform-end-to-end",
@@ -94,7 +102,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "benchmark_name": "RawGAT-ST",
         "result_key": "RawGAT-ST",
         "display_name": "RawGAT-ST",
-        "variant": "rawgat_st_multiply_stride4",
+        "variant": "rawgat_st_tak2021_paper_attention_multiply_topk12",
         "runner": "benchmarks.runner:keras",
         "input_type": "raw_audio",
         "family": "waveform-end-to-end",
@@ -104,7 +112,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "benchmark_name": "WavLM Original",
         "result_key": "WavLM Original",
         "display_name": "WavLM Original",
-        "variant": "microsoft/wavlm-base:frozen_backbone",
+        "variant": "microsoft/wavlm-base:pytorch_runner_frozen_backbone",
         "runner": "scripts.benchmark.run_wavlm_original_benchmark:ssl_original",
         "input_type": "raw_audio_16khz_16000",
         "family": "ssl-pretrained",
@@ -114,7 +122,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "benchmark_name": "HuBERT Original",
         "result_key": "HuBERT Original",
         "display_name": "HuBERT Original",
-        "variant": "facebook/hubert-base-ls960:frozen_backbone",
+        "variant": "facebook/hubert-base-ls960:pytorch_runner_frozen_backbone",
         "runner": "scripts.benchmark.run_wavlm_original_benchmark:ssl_original",
         "input_type": "raw_audio_16khz_16000",
         "family": "ssl-pretrained",
@@ -303,6 +311,26 @@ class BenchmarkConfig:
     # nas métricas limpas e de robustez. 1000 reamostragens ≈ segundos por
     # condição; 0 desliga (testes/smokes).
     bootstrap_ci_samples: int = 1000
+
+    # Rigor acadêmico (2026-07-27): REPETIÇÕES com sementes de treino distintas.
+    #
+    # O bootstrap acima mede a variância de AMOSTRAGEM DO TESTE; ele não diz
+    # nada sobre a variância de TREINO (inicialização, dropout, ordem de batch,
+    # realização do ruído de augmentation). Com uma execução por modelo, uma
+    # diferença de 1–2 pp de EER entre duas arquiteturas pode ser apenas ruído
+    # de execução — e o artigo não teria como distinguir.
+    #
+    # `n_seeds > 1` roda cada arquitetura N vezes e reporta média ± desvio.
+    # IMPORTANTE: apenas a semente de TREINO varia. O split (teste selado) e a
+    # realização do ruído de AVALIAÇÃO permanecem presos a `seed`, para que
+    # todas as repetições sejam medidas exatamente no mesmo conjunto e nas
+    # mesmas condições de ruído.
+    n_seeds: int = 1
+
+    @property
+    def training_seeds(self) -> List[int]:
+        """Sementes de TREINO das repetições (a de dados continua sendo `seed`)."""
+        return [int(self.seed) + i for i in range(max(1, int(self.n_seeds)))]
     # Robustez a CODEC com perdas (round-trip via ffmpeg, na forma de onda,
     # antes dos frontends — mesmo ponto do AWGN). Ex.: ["mp3", "opus"].
     # Desligado por padrão (custo: ~2 chamadas ffmpeg por amostra de teste).

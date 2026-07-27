@@ -16,7 +16,6 @@ Uso via pytest:
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import os
 import shutil
 import sys
@@ -94,18 +93,34 @@ def _train_one_epoch(arch: str, dataset_path: str) -> tuple[bool, str]:
         binary_map = {i: 0 if "real" in n.lower() else 1 for i, n in enumerate(class_names)}
         _table = tf.constant([binary_map[i] for i in range(len(class_names))], dtype=tf.int32)
 
+        # O CONTRATO da arquitetura manda nas bandas mel e no nº de quadros:
+        # o AST exige 128 bandas e 300 quadros (hop de 10 ms), enquanto as
+        # constantes globais deste smoke são 80 bandas / hop 128. Derivar do
+        # contrato evita quebrar a cada mudança de contrato.
+        n_mels = int(spec.input_requirements.get("feature_dim") or N_MELS)
+        target_frames = int(spec.input_requirements.get("min_sequence_length") or 0)
+        hop = (
+            max(1, int(np.ceil((SAMPLE_RATE * DURATION) / target_frames)))
+            if target_frames else HOP
+        )
+
         n_freq = N_FFT // 2 + 1
         mel_w = tf.signal.linear_to_mel_weight_matrix(
-            num_mel_bins=N_MELS, num_spectrogram_bins=n_freq,
+            num_mel_bins=n_mels, num_spectrogram_bins=n_freq,
             sample_rate=SAMPLE_RATE, lower_edge_hertz=0.0, upper_edge_hertz=SAMPLE_RATE / 2,
         )
 
         def _to_log_mel(audio):
             if audio.shape.rank == 3:
                 audio = tf.squeeze(audio, axis=-1)
-            stft = tf.signal.stft(audio, frame_length=N_FFT, frame_step=HOP, fft_length=N_FFT,
+            stft = tf.signal.stft(audio, frame_length=N_FFT, frame_step=hop, fft_length=N_FFT,
                                   window_fn=tf.signal.hann_window, pad_end=True)
-            return tf.expand_dims(tf.math.log(tf.abs(tf.tensordot(tf.abs(stft), mel_w, axes=1)) + 1e-6), axis=-1)
+            mel = tf.math.log(
+                tf.abs(tf.tensordot(tf.abs(stft), mel_w, axes=1)) + 1e-6
+            )
+            if target_frames:
+                mel = mel[:, :target_frames, :]
+            return tf.expand_dims(mel, axis=-1)
 
         def _prep_raw(x, y):
             return (tf.expand_dims(x, -1) if x.shape.rank == 2 else x), tf.gather(_table, y)

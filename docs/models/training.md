@@ -77,10 +77,12 @@ estratégia de split. Detalhes de fontes/licenças em
 | `medium` | 7.500 | 15.000 | 70/15/15 estratificado | **todas as 14 arquiteturas** | **benchmark canônico do TCC** |
 | `large` | 10.000 | 20.000 | **disjunto por falante** + cross-generator | todas as 14 + auditoria de falantes | execução estendida |
 
-> O `.npz` canônico do benchmark
-> (`data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz`, ~15k) corresponde ao tier
-> **`medium`** (7.500/classe). Use `large` quando o objetivo for uma auditoria
-> estendida de 20k com protocolo de falantes não vistos.
+> ⚠️ **Os tiers pertencem ao fluxo legado (anterior a este protocolo).** O `.npz`
+> canônico atual é `data/datasets/benchmark_dataset.npz`, produzido pelo
+> pipeline pareado do [Protocolo de Dataset](../data/dataset-protocol.md) — 40.980
+> amostras, janela de 3 s, sem cotas por tier: o tamanho é o que as duas fontes
+> têm em comum. A tabela acima e os comandos `build_dataset.py --tier` continuam
+> válidos apenas para reconstruir os artefatos antigos.
 
 **Montar um tier** (download + balanceamento + splits + `dataset_config.json`):
 
@@ -102,15 +104,21 @@ python scripts/dataset/build_dataset.py --tier medium --target 7500
 - **Split.** `test/small/medium` usam 70/15/15 estratificado; `large` usa split
   **disjunto por falante** (`speaker_manifest.json`), medindo generalização a
   usuários não vistos e evitando vazamento de falante entre treino e teste.
-- **Pipeline de ponta a ponta** (download → benchmark) por tier:
+- **Pipeline de ponta a ponta** (download → benchmark) por tier, no fluxo legado:
 
 ```bash
-python scripts/benchmark/run_tcc_pipeline.py --download --tier medium --full-benchmark \
-  --npz data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz
+python scripts/benchmark/run_tcc_pipeline.py --download --tier medium --full-benchmark --npz data/datasets/legacy_medium_15k.npz
 ```
 
-Recomendação prática: prototipe hiperparâmetros em `small`, produza os números
-finais no `medium` canônico e use `large` para auditoria adicional de falantes.
+Recomendação prática no fluxo legado: prototipe hiperparâmetros em `small`,
+produza os números finais no `medium` e use `large` para auditoria de falantes.
+
+**No fluxo atual** não há tier a escolher — o pipeline é fixo e o único
+controle de tamanho é o corte por pares na exportação:
+
+```bash
+python scripts/dataset/export_paired_npz.py --out data/datasets/benchmark_dataset.npz --max-pairs-train 7500
+```
 
 ### 1.3 ModelTrainer
 
@@ -454,6 +462,6 @@ As famílias canônicas são: `classical-tabular`, `spectral-convolutional`,
 `spectral-attention`, `waveform-end-to-end`, `ssl-pretrained` e `extended`.
 O último escopo é exploratório e exige `--no-academic-protocol`.
 
-Os presets usam o dataset confirmatório v2, teste selado e 100 épocas. Para
+Os presets usam o dataset anterior, teste selado e 100 épocas. Para
 resultados finais, execute múltiplas sementes com teste congelado e reporte
 média, desvio e comparações pareadas, além dos ICs bootstrap por cluster.

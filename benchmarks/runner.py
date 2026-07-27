@@ -264,11 +264,93 @@ def _finite_scores(scores: np.ndarray) -> np.ndarray:
     return np.clip(scores, 0.0, 1.0)
 
 
+def _git_provenance() -> Dict[str, Any]:
+    """Commit que gerou os resultados — sem isto o run não é rastreável.
+
+    Um artigo cujos números não apontam para uma revisão exata do código não é
+    reproduzível: a mesma arquitetura pode ter mudado entre execuções (foi o
+    caso em 2026-07-27, quando sete arquiteturas mudaram no mesmo dia).
+    `dirty=True` sinaliza que havia alterações não commitadas — o run continua,
+    mas o registro deixa a ressalva explícita.
+    """
+    import subprocess
+
+    def _run(args: list[str]) -> str | None:
+        try:
+            out = subprocess.run(
+                args, cwd=str(PROJECT_ROOT), capture_output=True,
+                text=True, timeout=10, check=False,
+            )
+            return out.stdout.strip() if out.returncode == 0 else None
+        except Exception:  # noqa: BLE001
+            return None
+
+    commit = _run(["git", "rev-parse", "HEAD"])
+    if commit is None:
+        return {"available": False}
+    status = _run(["git", "status", "--porcelain"])
+    return {
+        "available": True,
+        "commit": commit,
+        "commit_short": commit[:12],
+        "branch": _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]),
+        "dirty": bool(status),
+        "dirty_files": len(status.splitlines()) if status else 0,
+    }
+
+
+def _library_versions() -> Dict[str, Any]:
+    """Versões das bibliotecas que influenciam o resultado numérico."""
+    versions: Dict[str, Any] = {}
+    for module_name, attr in (
+        ("tensorflow", "__version__"), ("keras", "__version__"),
+        ("numpy", "__version__"), ("scipy", "__version__"),
+        ("sklearn", "__version__"), ("librosa", "__version__"),
+        ("torch", "__version__"), ("transformers", "__version__"),
+    ):
+        try:
+            module = __import__(module_name)
+            versions[module_name] = getattr(module, attr, None)
+        except Exception:  # noqa: BLE001
+            versions[module_name] = None
+    return versions
+
+
+def _pretrained_checkpoints() -> Dict[str, Any]:
+    """Checkpoints pré-treinados que entram no grafo dos modelos.
+
+    AST, WavLM e HuBERT partem de pesos externos: o identificador do checkpoint
+    é parte da definição do experimento e precisa constar no artefato.
+    """
+    checkpoints: Dict[str, Any] = {}
+    try:
+        from app.domain.models.architectures.ast_pretrained import (
+            DEFAULT_AST_CHECKPOINT,
+        )
+
+        checkpoints["SpectrogramTransformer"] = DEFAULT_AST_CHECKPOINT
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from app.domain.models.architectures.registry import architecture_registry
+
+        wavlm = architecture_registry.get_architecture("WavLM").default_params
+        hubert = architecture_registry.get_architecture("HuBERT").default_params
+        checkpoints["WavLM"] = wavlm.get("wavlm_model")
+        checkpoints["HuBERT"] = hubert.get("model_name")
+    except Exception:  # noqa: BLE001
+        pass
+    return checkpoints
+
+
 def _env_snapshot() -> Dict[str, Any]:
     snap = {
         "python": sys.version.split()[0],
         "platform": f"{platform.system()} {platform.release()}",
         "machine": platform.machine(),
+        "git": _git_provenance(),
+        "libraries": _library_versions(),
+        "pretrained_checkpoints": _pretrained_checkpoints(),
     }
     try:
         import tensorflow as tf
@@ -285,6 +367,30 @@ def _env_snapshot() -> Dict[str, Any]:
     except Exception:
         snap["device"] = "?"
     return snap
+
+
+def _architecture_provenance(arch: str) -> Dict[str, Any]:
+    """Entrada do manifesto oficial correspondente à arquitetura.
+
+    Os rótulos `variant`/`family`/`runner` existiam em `benchmarks/config.py`
+    mas NUNCA chegavam a nenhum artefato — proveniência que ninguém lia. Agora
+    acompanham cada resultado.
+    """
+    try:
+        from benchmarks.config import (
+            EXTENDED_MODEL_MANIFEST,
+            OFFICIAL_TCC_MODEL_MANIFEST,
+        )
+    except Exception:  # noqa: BLE001
+        return {}
+    for item in list(OFFICIAL_TCC_MODEL_MANIFEST) + list(EXTENDED_MODEL_MANIFEST):
+        if item.get("benchmark_name") == arch:
+            return {
+                key: item.get(key)
+                for key in ("variant", "family", "runner", "scope", "result_key")
+                if item.get(key) is not None
+            }
+    return {}
 
 
 def _stratified_test_labels(
@@ -473,6 +579,7 @@ def _prepare_protocol_splits(
     arch: str,
     cfg: BenchmarkConfig,
     raw_splits,
+    training_seed: int | None = None,
 ):
     """Prepara treino/val/teste preservando AWGN no domínio da forma de onda."""
     Xtr_raw, ytr, Xv_raw, yv, Xte_raw, yte = raw_splits
@@ -493,11 +600,15 @@ def _prepare_protocol_splits(
             "strict_waveform_awgn explicitamente para testes legados."
         )
 
+    # Semente da REPETIÇÃO: crop aleatório e ruído de treino fazem parte da
+    # aleatoriedade de TREINO e variam entre seeds. O split (teste selado) e o
+    # ruído de AVALIAÇÃO continuam presos a `cfg.seed`.
+    train_seed = int(cfg.seed if training_seed is None else training_seed)
     Xtr_clean, input_type = prepare_input_for_architecture(
         Xtr_raw,
         arch,
         crop_strategy="random",
-        seed=cfg.seed,
+        seed=train_seed,
     )
     Xv, _ = prepare_input_for_architecture(Xv_raw, arch)
     Xte, _ = prepare_input_for_architecture(Xte_raw, arch)
@@ -530,7 +641,7 @@ def _prepare_protocol_splits(
         noise_batch = max(1, int(cfg.waveform_noise_batch_size))
         for copy_index in range(int(cfg.train_noise_copies)):
             prepared_chunks = []
-            base_seed = cfg.seed + 10000 + copy_index
+            base_seed = train_seed + 10000 + copy_index
             assigned = BenchmarkData.balanced_snr_assignments(
                 len(Xtr_raw), cfg.train_aug_snr_db, seed=base_seed
             )
@@ -693,6 +804,13 @@ def _run_neural(
                 if key in train_config:
                     model_params.setdefault(key, train_config[key])
         elif compact == "spectrogramtransformer":
+            # `pretrained` é parâmetro do CONSTRUTOR do AST (transferência dos
+            # pesos AudioSet) — sem promovê-lo para `parameters` a flag do
+            # plano não chegaria ao modelo.
+            if "pretrained" in train_config:
+                model_params.setdefault(
+                    "pretrained", bool(train_config["pretrained"])
+                )
             # P1 — retreino obrigatório. Liga augmentation (ruído SNR + SpecAug)
             # e força a restauração do MELHOR checkpoint (val_loss, agora
             # GUARDADA — validada no val antes de aceitar), atacando o colapso
@@ -835,8 +953,10 @@ def _run_classical(
     splits,
     tmp: Path,
     models_dir: Path,
+    training_seed: int | None = None,
 ):
     """Treina um modelo clássico (SVM/RF) diretamente (sklearn)."""
+    train_seed = int(cfg.seed if training_seed is None else training_seed)
     Xtr, ytr, Xv, yv, _Xte, _yte = splits[:6]
     clean_train_count = int(splits[6]) if len(splits) > 6 else len(ytr)
     protocol = splits[7] if len(splits) > 7 else {}
@@ -883,7 +1003,7 @@ def _run_classical(
         aug_snrs = list(cfg.snr_levels_db)
     if aug_snrs:
         extra_X = [
-            BenchmarkData.add_awgn(X_fit_2d, snr, seed=cfg.seed + i)
+            BenchmarkData.add_awgn(X_fit_2d, snr, seed=train_seed + i)
             for i, snr in enumerate(aug_snrs)
         ]
         X_fit_2d = np.concatenate([X_fit_2d, *extra_X], axis=0)
@@ -904,11 +1024,15 @@ def _run_classical(
             X=X_train_2d[:clean_train_count],
             y=y_train[:clean_train_count],
             output_dir=arch_dir,
-            seed=cfg.seed,
+            seed=train_seed,
         )
         if tuning.get("status") == "ok":
             model_kwargs.update(tuning.get("best_model_params") or {})
 
+    # A semente da REPETIÇÃO precisa alcançar o estimador: sem isto o
+    # `random_state` fica preso ao default (42) e as N execuções de SVM/RF
+    # produzem resultados IDÊNTICOS — desvio zero, repetição sem informação.
+    model_kwargs.setdefault("random_state", train_seed)
     model = factory(input_shape=(n_features,), num_classes=2, **model_kwargs)
     model.fit(X_fit_2d, y_fit)
 
@@ -981,13 +1105,116 @@ def _run_classical(
     }
 
 
+#: Métricas cujo agregado entre repetições é reportado como média ± desvio.
+_SEED_AGGREGATED_METRICS = (
+    "accuracy", "precision", "recall", "f1", "auc_roc", "eer", "min_tdcf",
+    "ece", "accuracy_at_eer", "accuracy_at_calibrated_threshold",
+)
+
+
+def _aggregate_metric_block(blocks: list[Dict[str, Any]]) -> Dict[str, Any]:
+    """Média entre repetições + desvio-padrão amostral por métrica."""
+    base = dict(blocks[0])
+    if len(blocks) == 1:
+        return base
+    for metric in _SEED_AGGREGATED_METRICS:
+        values = [
+            float(b[metric]) for b in blocks
+            if isinstance(b.get(metric), (int, float)) and np.isfinite(b[metric])
+        ]
+        if not values:
+            continue
+        base[metric] = float(np.mean(values))
+        # ddof=1: desvio AMOSTRAL — estamos estimando a variabilidade do
+        # procedimento de treino a partir de N execuções, não descrevendo uma
+        # população completa.
+        base[f"{metric}_seed_std"] = (
+            float(np.std(values, ddof=1)) if len(values) > 1 else 0.0
+        )
+        base[f"{metric}_seed_values"] = values
+    base["n_seeds"] = len(blocks)
+    return base
+
+
+def _aggregate_seed_runs(runs: list[Dict[str, Any]]) -> Dict[str, Any]:
+    """Consolida N repetições da MESMA arquitetura em um resultado único.
+
+    Rigor acadêmico: com uma execução por modelo, o benchmark não distingue
+    "arquitetura A é melhor que B" de "esta execução de A foi melhor". As
+    métricas viram média ± desvio entre sementes de treino, e cada execução
+    fica preservada em `seed_runs` para auditoria.
+
+    O artefato PROMOVIDO é o da PRIMEIRA semente — nunca o da melhor. Escolher
+    a melhor execução pelo teste seria seleção no conjunto de teste.
+    """
+    if len(runs) == 1:
+        return runs[0]
+
+    ok_runs = [r for r in runs if r.get("status") == "ok"]
+    if not ok_runs:
+        base = dict(runs[0])
+        base["seed_runs"] = runs
+        base["n_seeds"] = len(runs)
+        return base
+
+    # A primeira execução BEM-SUCEDIDA é a representativa (artefato promovido).
+    base = dict(ok_runs[0])
+    base["clean"] = _aggregate_metric_block([r["clean"] for r in ok_runs])
+
+    robustness_keys = sorted(
+        {k for r in ok_runs for k in (r.get("robustness") or {})}
+    )
+    if robustness_keys:
+        aggregated_rob: Dict[str, Any] = {}
+        for key in robustness_keys:
+            blocks = [
+                r["robustness"][key] for r in ok_runs
+                if isinstance((r.get("robustness") or {}).get(key), dict)
+            ]
+            if blocks:
+                aggregated_rob[key] = _aggregate_metric_block(blocks)
+        base["robustness"] = aggregated_rob
+
+    base["n_seeds"] = len(ok_runs)
+    base["training_seeds"] = [r.get("training_seed") for r in ok_runs]
+    base["promoted_artifact_seed"] = ok_runs[0].get("training_seed")
+    base["seed_runs"] = [
+        {
+            "training_seed": r.get("training_seed"),
+            "status": r.get("status"),
+            "clean": r.get("clean"),
+            "robustness": r.get("robustness"),
+            "duration_sec": r.get("duration_sec"),
+        }
+        for r in runs
+    ]
+    return base
+
+
 def _benchmark_one(
     arch: str,
     cfg: BenchmarkConfig,
     raw_splits,
     eval_context: Dict[str, np.ndarray] | None = None,
+    training_seed: int | None = None,
 ) -> Dict[str, Any]:
-    """Treina e avalia uma arquitetura com perturbações no áudio canônico."""
+    """Treina e avalia uma arquitetura com perturbações no áudio canônico.
+
+    `training_seed` controla a aleatoriedade de TREINO (inicialização, dropout,
+    ordem de batch, crop e ruído de augmentation). O split e o ruído de
+    AVALIAÇÃO permanecem presos a `cfg.seed`, para que todas as repetições
+    sejam medidas no mesmo teste e nas mesmas condições.
+    """
+    train_seed = int(cfg.seed if training_seed is None else training_seed)
+    try:
+        import tensorflow as tf
+
+        tf.keras.utils.set_random_seed(train_seed)
+    except Exception:  # noqa: BLE001 — ambiente clássico sem TF
+        import random
+
+        random.seed(train_seed)
+        np.random.seed(train_seed)
     raw_Xte, raw_yte = raw_splits[4], raw_splits[5]
     t0 = time.time()
     eval_context = eval_context or {}
@@ -996,14 +1223,19 @@ def _benchmark_one(
     generator_ids = eval_context.get("generator_ids")
     models_dir = _models_dir(cfg, arch)
     try:
-        splits = _prepare_protocol_splits(arch, cfg, raw_splits)
+        splits = _prepare_protocol_splits(
+            arch, cfg, raw_splits, training_seed=train_seed
+        )
         _Xtr, _ytr, _Xv, _yv, Xte, yte = splits[:6]
         protocol = dict(splits[7])
         with tempfile.TemporaryDirectory(prefix="bench_") as td:
             tmp = Path(td)
             is_classical = _is_classical_arch(arch)
             if is_classical:
-                r = _run_classical(arch, cfg, splits, tmp, models_dir)
+                r = _run_classical(
+                    arch, cfg, splits, tmp, models_dir,
+                    training_seed=train_seed,
+                )
             else:
                 r = _run_neural(arch, cfg, splits, tmp, models_dir)
             predict_p_fake: Callable = r["predict_p_fake"]
@@ -1062,6 +1294,7 @@ def _benchmark_one(
             )
 
             robustness: Dict[str, Any] = {}
+            scores_robustness: Dict[str, Any] = {}
             for snr in cfg.snr_levels_db:
                 if protocol["evaluation_domain"] == "waveform":
                     # Semente da AVALIAÇÃO: seed+20000+snr — mesma realização
@@ -1080,9 +1313,11 @@ def _benchmark_one(
                         Xte, snr, seed=cfg.seed + 20000 + int(snr)
                     )
                     noisy_raw = None
+                pf_noisy = predict_eval(Xn, noisy_raw)
+                scores_robustness[str(snr)] = [round(float(v), 6) for v in pf_noisy]
                 robustness[str(snr)] = evaluate_scores(
                     raw_yte,
-                    predict_eval(Xn, noisy_raw),
+                    pf_noisy,
                     threshold=cfg.decision_threshold,
                     n_bootstrap=n_boot,
                     cluster_ids=cluster_ids,
@@ -1162,6 +1397,7 @@ def _benchmark_one(
                 "grouped_clean": grouped_clean,
                 "scores_clean": [round(float(v), 6) for v in pf_clean],
                 "robustness": robustness,
+                "scores_robustness": scores_robustness,
                 "codec_robustness": codec_robustness,
                 "efficiency": {
                     "params": r["params"],
@@ -1294,9 +1530,27 @@ def run_benchmark(cfg: BenchmarkConfig) -> Dict[str, Any]:
     )
 
     per_arch: Dict[str, Any] = {}
+    training_seeds = cfg.training_seeds
     for arch in cfg.architectures:
-        logger.info("=== Benchmark: %s ===", arch)
-        per_arch[arch] = _benchmark_one(arch, cfg, raw_splits, eval_context)
+        runs = []
+        for repetition, train_seed in enumerate(training_seeds, start=1):
+            if len(training_seeds) > 1:
+                logger.info(
+                    "=== Benchmark: %s (repetição %d/%d, seed de treino %d) ===",
+                    arch, repetition, len(training_seeds), train_seed,
+                )
+            else:
+                logger.info("=== Benchmark: %s ===", arch)
+            run = _benchmark_one(
+                arch, cfg, raw_splits, eval_context, training_seed=train_seed
+            )
+            run["training_seed"] = int(train_seed)
+            runs.append(run)
+        aggregated = _aggregate_seed_runs(runs)
+        provenance = _architecture_provenance(arch)
+        if provenance:
+            aggregated["provenance"] = provenance
+        per_arch[arch] = aggregated
 
     results: Dict[str, Any] = {
         "config": cfg.to_dict(),

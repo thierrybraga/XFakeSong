@@ -7,7 +7,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 TESTS = ROOT / "tests"
-DOC = ROOT / "docs" / "06_QUALIDADE_TESTES.md"
+# O documento foi movido em b18a32f (reestruturação de docs/); o caminho antigo
+# (docs/06_QUALIDADE_TESTES.md) deixava este teste falhando com FileNotFoundError.
+DOC = ROOT / "docs" / "development" / "quality-and-testing.md"
 CATEGORIES = ("unit", "api", "functional", "integration", "smoke")
 
 

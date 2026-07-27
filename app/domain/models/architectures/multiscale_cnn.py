@@ -303,7 +303,7 @@ def _create_res2net_model(input_shape, num_classes=1, base_width=26, scale=4,
 
     # ---- Front-end: handle raw audio ----
     if is_raw_audio(input_shape):
-        audio = ensure_flat_input(inputs, input_shape)
+        audio = ensure_flat_input(inputs)
         # STFT -> magnitude spectrogram (batch, time, freq, 1)
         x = STFTLayer(name='stft_layer', add_channel_dim=False)(audio)
         # Log-mel: mel filterbank + log scaling. LogMelFromMagnitudeLayer
@@ -451,11 +451,13 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
         )
 
 
-# Register custom layers for model save/load compatibility
+# Register custom layers for model save/load compatibility.
+# `preprocess` (= audio_utils.preprocess_legacy) com chave QUALIFICADA — ver
+# nota em rawnet2.py sobre a colisão da chave global 'preprocess'.
 tf.keras.utils.get_custom_objects().update({
     'Bottle2neck': Bottle2neck,
     'SafeInputReshapeLayer': SafeInputReshapeLayer,
     'SqueezeExciteBlock': SqueezeExciteBlock,
     'SqueezeExcitationBlock2D': SqueezeExcitationBlock2D,
-    'preprocess': preprocess,
+    'XFakeSong>preprocess_legacy': preprocess,
 })

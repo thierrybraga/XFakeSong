@@ -160,9 +160,10 @@ make train-nvidia     # perfil TensorFlow/Keras em GPU (Docker)
 make train-cpu        # perfil classical/CPU (Docker)
 
 # Sequencial, um modelo por vez (timeout, --resume, log por modelo):
-# Dataset canônico: data/datasets/ (raiz consolidada em 2026-07-14).
+# Dataset canônico: benchmark_dataset.npz (Protocolo de Dataset — CETUC pareado com
+# clones XTTS-v2; ver docs/data/dataset-protocol.md).
 python scripts/benchmark/run_models_sequential.py \
-  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset data/datasets/benchmark_dataset.npz \
   --models AASIST Ensemble --epochs 100 --snr 30 20 10 \
   --device-profile gpu --out data/results/<run> --resume
 
@@ -185,8 +186,23 @@ diagnostico->ajuste e checklist de verificacao em
 
 ## Benchmark
 
-Motor em `benchmarks/`; orquestracao em `scripts/`. Avalia as 14 arquiteturas
-em condicoes limpas e sob ruido (SNR 30/20/10 dB), gerando metricas (accuracy,
+Motor em `benchmarks/`; orquestracao em `scripts/`. As 14 arquiteturas sao
+cobertas em DOIS escopos (`benchmarks/config.py`):
+
+- **oficial** (`--experiment-scope official`, default): 2 classicas (SVM,
+  RandomForest) + 7 neurais Keras (RawNet2, AASIST, RawGAT-ST, Conformer,
+  Hybrid CNN-Transformer, SpectrogramTransformer, MultiscaleCNN) com
+  hiperparametros de `planning.py::NEURAL_BENCHMARK_HPARAMS`, mais
+  **WavLM Original** e **HuBERT Original**, que rodam por um runner PyTorch
+  separado (`scripts/benchmark/run_wavlm_original_benchmark.py`) — sao os SSL
+  REAIS, nao o fallback TF;
+- **estendido** (`--experiment-scope extended`): Sonic Sleuth,
+  EfficientNet-LSTM e Ensemble. Esse escopo forca `optimize_hyperparameters=
+  False`, entao nao passa por `NEURAL_BENCHMARK_HPARAMS` (pedir essas tres no
+  escopo oficial e erro de configuracao, nao limitacao).
+
+Avalia em condicoes limpas e sob ruido
+(SNR 30/20/10 dB), gerando metricas (accuracy,
 precision, recall, f1, AUC-ROC, EER, min t-DCF), eficiencia (params, MB,
 latencia) e artefatos (figuras, tabelas LaTeX, summary.md, tcc_report.md).
 

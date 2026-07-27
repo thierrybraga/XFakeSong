@@ -149,10 +149,10 @@ nav:
     - API REST e Comunicação: interfaces/rest-api.md
     - CI/CD e Segurança: development/ci-cd-and-security.md
   - Dados:
-    - Datasets Públicos: data/public-datasets.md
-    - Protocolo Acadêmico de Dataset v2: data/academic-dataset-protocol-v2.md
-    - Pipeline e Auditoria do Dataset: data/pipeline-and-audit.md
+    - Protocolo de Dataset: data/dataset-protocol.md
     - Dataset do Benchmark Utilizado: data/benchmark-dataset.md
+    - Pipeline e Auditoria do Dataset: data/pipeline-and-audit.md
+    - Datasets Públicos: data/public-datasets.md
   - Deploy:
     - Hugging Face Spaces: deployment/hugging-face-spaces.md
     - GitHub Pages e Hugging Face: deployment/github-pages-and-hugging-face.md

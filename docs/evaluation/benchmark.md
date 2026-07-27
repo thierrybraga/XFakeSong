@@ -1,12 +1,21 @@
 # 15 — Sistema de Benchmark, Modelos Treinados e Resultados
 
-> **Validade do artefato:** o NPZ 15k histórico é um artefato legado e
-> in-domain. As garantias de conteúdo/falante disjunto, bootstrap por cluster,
-> janela sem zero-padding e selo v2 só se aplicam a um NPZ regenerado após as
-> correções de julho de 2026. Consulte o
-> [Protocolo acadêmico de dataset v2](../data/academic-dataset-protocol-v2.md). O modo
-> `--academic-protocol` recusa artefatos sem `cluster_ids`/`source_ids` ou com
-> atalho fonte-rótulo acima do limite.
+> ## ⚠️ O dataset canônico mudou em 26/07/2026
+>
+> O artefato vigente é **`data/datasets/benchmark_dataset.npz`** — CETUC
+> pareado com clones XTTS-v2, disjunção dupla locutor × frase, janela de 3 s.
+> Ver [Protocolo de Dataset](../data/dataset-protocol.md) e
+> [Dataset do Benchmark](../data/benchmark-dataset.md).
+>
+> Todos os NPZ `benchmark_audio_raw_balanced_15k*` foram **apagados do disco**.
+> Os resultados consolidados reportados nesta página foram obtidos sobre o
+> artefato anterior, que tinha atalho de fonte de 87,6% e disjunção de falante vácua:
+> eles medem desempenho *in-domain com atalho disponível* e **não** devem ser
+> comparados com a literatura nem com execuções sobre o dataset atual. **Requerem
+> retreino.** Os comandos abaixo já apontam para o dataset atual.
+>
+> O modo `--academic-protocol` recusa artefatos sem `cluster_ids`/`source_ids` ou
+> com atalho fonte-rótulo acima do limite.
 
 
 O pacote `benchmarks/` gera, de forma **reprodutível** e usando
@@ -31,7 +40,7 @@ O material acadêmico foi consolidado em uma única fonte LaTeX em
 | Manifesto de geração e hashes | `data/results/paper/paper_build_manifest.json` |
 | Figuras usadas no artigo | `data/results/paper/figures/*.png` |
 | Matrizes de confusão por arquitetura | `data/results/paper/figures/confusion_matrices/*.png` |
-| Dataset do benchmark atual | `data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz` |
+| Dataset do benchmark atual | `data/datasets/benchmark_dataset.npz` (o artigo consolidado ainda reflete o artefato anterior, apagado) |
 | Modelos default da Gradio/API | `data/models/bench_*` |
 | Modelos completos por arquitetura | `data/models/benchmark_final/<arquitetura>/` |
 | Manifesto dos modelos consolidados | `data/models/registry.json` |
@@ -50,9 +59,78 @@ Os diretórios finais em `data/models/benchmark_final/` preservam o artefato
 completo de cada modelo promovido, incluindo backbones SSL quando aplicável.
 No checkout atual, o manifesto `data/models/registry.json` e o
 índice `data/models/registry.json` registram **11** modelos
-sincronizados para o recorte oficial do artigo (2026-07-02). O registry e o
-harness continuam suportando 14 arquiteturas, mas apenas modelos que completam
-um run entram no diretório final via
+sincronizados para o recorte oficial do artigo (2026-07-02).
+
+### Incerteza e repetições (protocolo desde 2026-07-27)
+
+Duas lacunas metodológicas foram fechadas:
+
+- **A incerteza vai para as tabelas.** Os IC 95% de bootstrap (1000
+  reamostragens, por *cluster* quando há IDs de proveniência) eram calculados e
+  descartados na geração do LaTeX — o artigo publicava pontos secos. As tabelas
+  de desempenho e de robustez agora trazem a incerteza, e a legenda declara
+  **qual**: `±` desvio entre sementes quando há repetições, `[lo; hi]` do
+  bootstrap quando a execução é única.
+- **`n_seeds` repete o treino.** O bootstrap mede a variância de amostragem do
+  **teste**; ele não diz nada sobre a variância de **treino** (inicialização,
+  dropout, ordem de batch, realização do ruído). Com `n_seeds=N`, cada
+  arquitetura é treinada N vezes e as métricas viram média ± desvio amostral.
+
+Regras do protocolo de repetição:
+
+| Item | Comportamento |
+|---|---|
+| Semente que varia | apenas a de **treino** (`seed`, `seed+1`, …) |
+| Split | preso a `seed` — o teste selado é o mesmo em todas as repetições |
+| Ruído de avaliação | preso a `seed` — mesmas realizações de AWGN |
+| Artefato promovido | o da **primeira** semente, nunca o da melhor (escolher a melhor pelo teste seria seleção no conjunto de teste) |
+| Auditoria | cada execução fica em `seed_runs` no JSON de resultados |
+
+```bash
+python scripts/benchmark/run_benchmark.py --full --dataset <npz>   # n_seeds=1
+# 3 repetições (3x o tempo de GPU):
+python -c "from benchmarks.config import BenchmarkConfig; ..."     # n_seeds=3
+```
+
+Com `n_seeds=1` o comportamento e o schema de saída são idênticos aos
+anteriores — a agregação só entra quando há mais de uma execução.
+
+### Rastreabilidade do run (desde 2026-07-27)
+
+Cada `results.json` passa a carregar o que é necessário para reconstruir o
+experimento:
+
+| Bloco | Conteúdo |
+|---|---|
+| `environment.git` | `commit`, `branch` e **`dirty`** — se havia alterações não commitadas. Um run com árvore suja não é reproduzível só pelo commit, e o artefato precisa dizer isso |
+| `environment.libraries` | TensorFlow, Keras, NumPy, SciPy, scikit-learn, librosa, torch, transformers |
+| `environment.pretrained_checkpoints` | ids dos pesos externos que entram no grafo: AST (`MIT/ast-finetuned-audioset-…`), WavLM, HuBERT |
+| `architectures.<nome>.provenance` | `variant`, `family`, `runner`, `scope` e `result_key` do manifesto |
+
+Os rótulos `variant` descrevem a configuração **realmente treinada** e vivem em
+`benchmarks/config.py`. Eles existiam antes, mas nunca chegavam a artefato
+nenhum — e vários estavam defasados após mudanças de arquitetura
+(`ast_vit_base_scratch` quando o AST já partia de pesos AudioSet;
+`rawgat_st_multiply_stride4` com um stride que só vale nas variantes legadas;
+um `rawnet2_paper_like` que não dizia **qual** RawNet2, sendo que verificação
+de locutor e baseline anti-spoofing são arquiteturas diferentes de mesmo nome).
+
+**Ao alterar uma arquitetura, atualize o rótulo junto** — o teste
+`tests/unit/test_benchmark_provenance.py` falha se um rótulo voltar a
+contradizer a implementação.
+
+As 14 arquiteturas são cobertas em **dois escopos** (`benchmarks/config.py`):
+
+| Escopo | Modelos | Como roda |
+|---|---|---|
+| `official` (default) | SVM, RandomForest, RawNet2, AASIST, RawGAT-ST, Conformer, Hybrid CNN-Transformer, SpectrogramTransformer, MultiscaleCNN | hiperparâmetros de `planning.py::NEURAL_BENCHMARK_HPARAMS` |
+| `official` (SSL real) | WavLM Original, HuBERT Original | runner PyTorch separado (`scripts/benchmark/run_wavlm_original_benchmark.py`) — backbones SSL reais, não o fallback TF |
+| `extended` | Sonic Sleuth, EfficientNet-LSTM, Ensemble | `--experiment-scope extended`, que força `optimize_hyperparameters=False` |
+
+Pedir um modelo do escopo estendido dentro do escopo oficial é erro de
+configuração (o preflight recusa antes de treinar), não uma limitação do
+harness. Dentre os modelos executados, apenas os que completam um run entram no
+diretório final via
 `scripts/reporting/sync_completed_benchmark_artifacts.py`.
 
 No topo de `data/models/`, ficam os arquivos carregáveis diretamente pela
@@ -110,11 +188,14 @@ do artigo e relatórios consolidados junto ao repositório de modelos.
 
 ### Resultados numéricos usados no artigo
 
-O benchmark atual usa o dataset nominal de 15k
-`data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz`, gerado pelo tier
-`medium`, com 15.000 amostras alvo, split estratificado 70/15/15 e 2.250
-amostras de teste. O arquivo `.npz` consolidado tem 2.769,01 MiB e foi
-exportado a partir de 15.000 WAVs ativos em PCM linear, 16 bits, mono e
+> Os números desta seção vêm do **artefato anterior, já apagado do disco**
+> (`benchmark_audio_raw_balanced_15k_confirmatory_v2.npz`): 15.000 amostras do
+> tier `medium`, split estratificado 70/15/15, 2.250 de teste, 2.769,01 MiB. Eles
+> são preservados como registro do run consolidado de 2026-07-15 e **serão
+> substituídos** quando o retreino sobre o `benchmark_dataset.npz` for
+> executado.
+
+O run consolidado usou 15.000 amostras em PCM linear, 16 bits, mono e
 16 kHz. Os resultados consolidados anteriores usaram orçamentos e parada
 antecipada heterogêneos; o protocolo corrigido executa 100 épocas completas
 para todas as redes e restaura o melhor checkpoint em validação limpa; SVM e RandomForest usam GridSearchCV + ajuste
@@ -169,19 +250,19 @@ python scripts/benchmark/run_tcc_pipeline.py \
     --epochs 100 \
     --device-profile gpu \
     --out data/results/tcc_full_15k \
-    --npz data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz
+    --npz data/datasets/benchmark_dataset.npz
 
 # 3) Execução do TCC direto no benchmark, usando dataset real .npz já exportado:
 python scripts/benchmark/run_benchmark.py \
     --full \
-    --dataset data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz \
+    --dataset data/datasets/benchmark_dataset.npz \
     --epochs 100 \
     --device-profile gpu
 
 # 4) Benchmark neural completo, sem SVM/RF:
 python scripts/benchmark/run_benchmark.py \
     --neural \
-    --dataset data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz \
+    --dataset data/datasets/benchmark_dataset.npz \
     --epochs 100 \
     --device-profile gpu \
     --out data/results/bench_neural_tcc
@@ -191,13 +272,13 @@ python scripts/benchmark/run_benchmark.py \
     --archs WavLM HuBERT RawNet2 "Sonic Sleuth" AASIST RawGAT-ST Conformer \
     "Hybrid CNN-Transformer" SpectrogramTransformer EfficientNet-LSTM \
     MultiscaleCNN Ensemble SVM RandomForest \
-    --dataset data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz \
+    --dataset data/datasets/benchmark_dataset.npz \
     --epochs 100 --snr 30 20 10 --api --out data/results/bench_tcc
 
 # 6) Modelo individual:
 python scripts/benchmark/run_benchmark.py \
     --model AASIST \
-    --dataset data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz \
+    --dataset data/datasets/benchmark_dataset.npz \
     --epochs 100 \
     --out data/results/bench_aasist
 ```
@@ -291,10 +372,11 @@ Revisão local: **28/06/2026**.
 5. normalizar tudo para WAV mono 16 kHz, remover arquivos inválidos,
    silenciosos, fora de duração e duplicados;
 6. criar split estratificado 70/15/15;
-7. exportar `data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz`;
+7. exportar `data/datasets/benchmark_dataset.npz`;
 8. executar o preflight (`benchmark_plan.json`/`.md`) com preset, ambiente,
    dataset e hiperparâmetros efetivos;
-9. treinar, inferir e gerar relatórios/gráficos para as 14 arquiteturas.
+9. treinar, inferir e gerar relatórios/gráficos para as arquiteturas do escopo
+   selecionado (ver a tabela de escopos em "Modelos treinados consolidados").
 
 ### Catálogo de fontes usado no benchmark
 
@@ -351,7 +433,7 @@ Protocolos anti-vazamento disponíveis no `run_benchmark.py` / `run_tcc_pipeline
 python scripts/benchmark/run_tcc_pipeline.py --download --tier medium \
     --full-benchmark --epochs 100 --device-profile gpu \
     --out data/results/tcc_medium_15k \
-    --npz data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz
+    --npz data/datasets/benchmark_dataset.npz
 ```
 
 O script `scripts/dataset/build_dataset.py` arquiva excedentes em
@@ -368,7 +450,7 @@ python scripts/benchmark/run_tcc_pipeline.py \
     --epochs 100 \
     --device-profile gpu \
     --out data/results/tcc_full_15k \
-    --npz data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz
+    --npz data/datasets/benchmark_dataset.npz
 ```
 
 Para um ensaio rápido do roteiro sem downloads:
@@ -387,7 +469,7 @@ Para revisar tudo antes de iniciar o treinamento longo:
 ```bash
 python scripts/benchmark/run_benchmark.py \
     --full \
-    --dataset data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz \
+    --dataset data/datasets/benchmark_dataset.npz \
     --epochs 100 \
     --out data/results/tcc_full_15k \
     --plan-only
@@ -398,7 +480,7 @@ Para revisar um modelo individual:
 ```bash
 python scripts/benchmark/run_benchmark.py \
     --model RawNet2 \
-    --dataset data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz \
+    --dataset data/datasets/benchmark_dataset.npz \
     --out data/results/bench_rawnet2 \
     --plan-only
 ```
@@ -413,7 +495,7 @@ Esse comando valida o `.npz` e grava:
 O alvo final usado no artigo é `7.500` amostras reais + `7.500` amostras fake.
 O roteiro aceita alvos maiores para novas rodadas, mas os resultados,
 intervalos de confiança e gráficos do TCC foram consolidados sobre
-`benchmark_audio_raw_balanced_15k_confirmatory_v2.npz`. Use `--skip-download` quando os WAVs e
+`benchmark_dataset.npz`. Use `--skip-download` quando os WAVs e
 splits já estiverem prontos localmente.
 
 ## Preset e hiperparâmetros pré-treino
@@ -488,7 +570,7 @@ python scripts/benchmark/run_tcc_pipeline.py \
     --skip-download \
     --skip-preprocess \
     --model SpectrogramTransformer \
-    --npz data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz \
+    --npz data/datasets/benchmark_dataset.npz \
     --out data/results/bench_spectrogram_transformer
 ```
 
@@ -507,13 +589,13 @@ selado: regenere um novo NPZ intocado e então execute:
 
 ```bash
 python scripts/dataset/freeze_benchmark_test.py \
-    --dataset data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz \
+    --dataset data/datasets/benchmark_dataset.npz \
     --declare-untouched
 ```
 ```bash
 python scripts/benchmark/run_models_sequential.py \
-    --dataset data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz \
-    --test-lock data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz.test-lock.json \
+    --dataset data/datasets/benchmark_dataset.npz \
+    --test-lock data/datasets/benchmark_dataset.npz.test-lock.json \
     --out data/results/sequential_15k \
     --device-profile gpu \
     --timeout-min 90
@@ -524,8 +606,8 @@ Rodar somente os modelos neurais:
 ```bash
 python scripts/benchmark/run_models_sequential.py \
     --neural-only \
-    --dataset data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz \
-    --test-lock data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz.test-lock.json \
+    --dataset data/datasets/benchmark_dataset.npz \
+    --test-lock data/datasets/benchmark_dataset.npz.test-lock.json \
     --out data/results/sequential_neural_15k \
     --device-profile gpu \
     --timeout-min 90
@@ -537,8 +619,8 @@ Revisar planos neurais antes do treino:
 python scripts/benchmark/run_models_sequential.py \
     --neural-only \
     --plan-only \
-    --dataset data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz \
-    --test-lock data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz.test-lock.json \
+    --dataset data/datasets/benchmark_dataset.npz \
+    --test-lock data/datasets/benchmark_dataset.npz.test-lock.json \
     --out data/results/sequential_neural_plan \
     --device-profile cpu
 ```
@@ -551,8 +633,8 @@ Retomar somente modelos pendentes:
 
 ```bash
 python scripts/benchmark/run_models_sequential.py \
-    --dataset data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz \
-    --test-lock data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz.test-lock.json \
+    --dataset data/datasets/benchmark_dataset.npz \
+    --test-lock data/datasets/benchmark_dataset.npz.test-lock.json \
     --out data/results/sequential_15k \
     --device-profile gpu \
     --timeout-min 90 \
@@ -564,8 +646,8 @@ Executar um subconjunto:
 ```bash
 python scripts/benchmark/run_models_sequential.py \
     --models AASIST RawNet2 Conformer \
-    --dataset data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz \
-    --test-lock data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz.test-lock.json \
+    --dataset data/datasets/benchmark_dataset.npz \
+    --test-lock data/datasets/benchmark_dataset.npz.test-lock.json \
     --out data/results/sequential_neural_subset
 ```
 

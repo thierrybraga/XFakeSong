@@ -1,5 +1,4 @@
 from argparse import Namespace
-from pathlib import Path
 
 import numpy as np
 
@@ -34,10 +33,13 @@ def test_official_and_extended_scopes_are_disjoint_and_complete():
     }
 
 
-def test_family_wrapper_uses_confirmatory_dataset_and_protocol_controls():
+def test_family_wrapper_uses_canonical_dataset_and_protocol_controls():
+    # O dataset canonico passou a ser o do Protocolo de Dataset (CETUC pareado com clones
+    # XTTS-v2, disjuncao dupla locutor x frase) em 26/07/2026; os NPZ v2 foram
+    # apagados. Ver docs/data/dataset-protocol.md.
     cmd = build_command(_family_args("ssl-pretrained"))
     joined = " ".join(str(value) for value in cmd)
-    assert "benchmark_audio_raw_balanced_15k_confirmatory_v2.npz" in joined
+    assert "benchmark_dataset.npz" in joined
     assert "WavLM Original" in joined and "HuBERT Original" in joined
     assert "--academic-protocol" in cmd
     assert cmd[cmd.index("--scope") + 1] == "official"

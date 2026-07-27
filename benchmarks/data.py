@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -51,8 +54,9 @@ class BenchmarkData:
     )
 
     @classmethod
-    def synthetic(cls, n: int = 360, shape: Tuple[int, int] = (32, 16),
-                  seed: int = 42) -> "BenchmarkData":
+    def synthetic(
+        cls, n: int = 360, shape: Tuple[int, int] = (32, 16), seed: int = 42
+    ) -> "BenchmarkData":
         """Dataset sintético separável (verificação do harness, sem áudio).
 
         A classe fake recebe um deslocamento de média → linearmente separável
@@ -150,7 +154,10 @@ class BenchmarkData:
         generator_known = cls._extract_aligned(data, "generator_known", len(y), bool)
         sample_paths = cls._extract_aligned(data, "sample_paths", len(y), str)
         loaded = cls(
-            X=X, y=y, name=p.stem, metadata=metadata,
+            X=X,
+            y=y,
+            name=p.stem,
+            metadata=metadata,
             groups=groups,
             speakers=speakers,
             utterances=utterances,
@@ -258,7 +265,9 @@ class BenchmarkData:
         X = np.asarray(self.X)
         y = np.asarray(self.y)
         if X.ndim < 2:
-            raise ValueError(f"{self.name}: X deve ter batch + features, shape={X.shape}")
+            raise ValueError(
+                f"{self.name}: X deve ter batch + features, shape={X.shape}"
+            )
         if len(X) != len(y):
             raise ValueError(f"{self.name}: len(X)={len(X)} difere de len(y)={len(y)}")
         if not np.isfinite(X).all():
@@ -276,13 +285,19 @@ class BenchmarkData:
         }
         for key, values in aligned.items():
             if values is not None and len(values) != len(y):
-                raise ValueError(f"{self.name}: {key} desalinhado ({len(values)} != {len(y)})")
+                raise ValueError(
+                    f"{self.name}: {key} desalinhado ({len(values)} != {len(y)})"
+                )
         if not np.isfinite(y).all():
             raise ValueError(f"{self.name}: y contém NaN ou Inf")
         labels, counts = np.unique(y.ravel().astype("int64"), return_counts=True)
         if set(labels.tolist()) != {0, 1}:
-            raise ValueError(f"{self.name}: labels esperados {{0,1}}, encontrados {labels.tolist()}")
-        too_small = {int(k): int(v) for k, v in zip(labels, counts) if v < min_per_class}
+            raise ValueError(
+                f"{self.name}: labels esperados {{0,1}}, encontrados {labels.tolist()}"
+            )
+        too_small = {
+            int(k): int(v) for k, v in zip(labels, counts) if v < min_per_class
+        }
         if too_small:
             raise ValueError(
                 f"{self.name}: classes com amostras insuficientes para split: {too_small}"
@@ -348,22 +363,55 @@ class BenchmarkData:
             raise ValueError(
                 "Protocolo por falante recusado: cobertura speaker_known incompleta"
             )
-        if holdout_generator is not None and self.groups is None:
-            raise ValueError("holdout_generator exige grupos de proveniencia")
+        if holdout_generator is not None:
+            self._require_generator_holdout(holdout_generator)
         if group_split and self.groups is None:
             raise ValueError("group_split exige grupos de proveniencia")
+
+        reparticiona = (
+            holdout_speaker is not None
+            or holdout_generator is not None
+            or speaker_split
+            or group_split
+        )
+        # Um dataset com particao predefinida traz um teste SELADO e ja disjunto.
+        # Reparticionar por cima dele descarta esse selo e, no caso do
+        # `speaker_split`, mantem o locutor disjunto mas devolve o texto para as
+        # tres particoes — vazamento de conteudo travestido de protocolo. Exigir
+        # `preserve_predefined=False` torna a escolha explicita de quem chama.
+        if reparticiona and preserve_predefined and self.predefined_split_indices:
+            raise ValueError(
+                "Protocolo alternativo recusado: o dataset traz particao "
+                "predefinida (teste selado, disjunto por locutor e texto). "
+                "Reparticionar descartaria essa garantia. Passe "
+                "preserve_predefined=False para assumir a troca de forma "
+                "explicita, ciente de que o resultado deixa de ser comparavel "
+                "com o teste selado."
+            )
+
         if holdout_speaker is not None and self.speakers is not None:
             return self._cross_generator_split(
                 holdout_speaker, seed, val_frac, groups=self.speakers
             )
-        if holdout_generator is not None and self.groups is not None:
+        if holdout_generator is not None:
             return self._cross_generator_split(
-                holdout_generator, seed, val_frac
+                holdout_generator, seed, val_frac, groups=self.generators
             )
         if speaker_split and self.speakers is not None:
-            return self._grouped_split(seed, val_frac, test_frac, groups=self.speakers)
+            return self._grouped_split(
+                seed,
+                val_frac,
+                test_frac,
+                groups=self.speakers,
+                relaxed={"texts": ()},
+            )
         if group_split and self.groups is not None:
-            return self._grouped_split(seed, val_frac, test_frac)
+            return self._grouped_split(
+                seed,
+                val_frac,
+                test_frac,
+                relaxed={"speakers": (), "texts": ()},
+            )
         if preserve_predefined and self.predefined_split_indices:
             required = {"train", "val", "test"}
             if required.issubset(self.predefined_split_indices):
@@ -377,21 +425,29 @@ class BenchmarkData:
                     "test": np.asarray(te, dtype="int64"),
                 }
                 return (
-                    self.X[tr], self.y[tr], self.X[va], self.y[va],
-                    self.X[te], self.y[te],
+                    self.X[tr],
+                    self.y[tr],
+                    self.X[va],
+                    self.y[va],
+                    self.X[te],
+                    self.y[te],
                 )
         try:
             from sklearn.model_selection import train_test_split
 
             idx = np.arange(len(self.y))
             train_idx, temp_idx = train_test_split(
-                idx, test_size=val_frac + test_frac,
-                stratify=self.y, random_state=seed,
+                idx,
+                test_size=val_frac + test_frac,
+                stratify=self.y,
+                random_state=seed,
             )
             rel_test = test_frac / (val_frac + test_frac)
             val_idx, test_idx = train_test_split(
-                temp_idx, test_size=rel_test,
-                stratify=self.y[temp_idx], random_state=seed,
+                temp_idx,
+                test_size=rel_test,
+                stratify=self.y[temp_idx],
+                random_state=seed,
             )
         except Exception as exc:
             raise RuntimeError(
@@ -404,22 +460,52 @@ class BenchmarkData:
             "test": np.asarray(test_idx, dtype="int64"),
         }
         return (
-            self.X[train_idx], self.y[train_idx],
-            self.X[val_idx], self.y[val_idx],
-            self.X[test_idx], self.y[test_idx],
+            self.X[train_idx],
+            self.y[train_idx],
+            self.X[val_idx],
+            self.y[val_idx],
+            self.X[test_idx],
+            self.y[test_idx],
         )
 
     def _select(self, idx: np.ndarray):
         idx = np.asarray(idx, dtype=int)
         return self.X[idx], self.y[idx]
 
+    #: Dimensoes cuja repeticao entre particoes e vazamento. Cada uma so e
+    #: verificada quando o dataset carrega o vetor correspondente.
+    DISJOINT_DIMENSIONS = (
+        ("sample_paths", "amostra"),
+        ("utterances", "enunciado"),
+        ("speakers", "locutor"),
+        ("texts", "texto"),
+    )
+
     def _validate_partition_indices(
         self,
         train_idx: np.ndarray,
         val_idx: np.ndarray,
         test_idx: np.ndarray,
+        *,
+        relaxed: Dict[str, Tuple[str, ...]] | None = None,
     ) -> None:
-        """Recusa partições vazias, sobrepostas ou sem as duas classes."""
+        """Recusa partições vazias, sobrepostas ou sem as duas classes.
+
+        Verifica também que nenhuma **amostra, enunciado, locutor ou texto** se
+        repete entre treino, validação e teste — a especificação do dataset
+        (docs/data/dataset-protocol.md). Sem isto, um protocolo que reparticiona
+        pode desfazer em silêncio a disjunção dupla que o artefato garante: a
+        checagem de índices sozinha só prova que as partições não compartilham
+        LINHAS, não que não compartilham conteúdo.
+
+        `relaxed` mapeia dimensão -> pares de partição em que o protocolo em curso
+        não pode garantir disjunção por construção. Tupla vazia relaxa todos os
+        pares; `("trainxval",)` relaxa só aquele. Um holdout de falante, por
+        exemplo, garante locutor inédito **no teste**, mas treino e validação
+        compartilham locutores de propósito — são o conjunto "visto". Toda
+        relaxação é registrada, nunca silenciosa.
+        """
+        relaxed = relaxed or {}
         partitions = {
             "train": np.asarray(train_idx, dtype="int64"),
             "val": np.asarray(val_idx, dtype="int64"),
@@ -436,13 +522,80 @@ class BenchmarkData:
                 )
         names = tuple(partitions)
         for pos, left in enumerate(names):
-            for right in names[pos + 1:]:
+            for right in names[pos + 1 :]:
                 overlap = np.intersect1d(partitions[left], partitions[right])
                 if len(overlap):
                     raise ValueError(f"Particoes {left}/{right} sobrepostas")
 
-    def _grouped_split(self, seed: int, val_frac: float, test_frac: float,
-                       groups: np.ndarray | None = None):
+        for attribute, rotulo in self.DISJOINT_DIMENSIONS:
+            values = getattr(self, attribute, None)
+            if values is None or len(values) != len(self.y):
+                continue
+            liberados = relaxed.get(attribute)
+            values = np.asarray(values)
+            by_split = {
+                name: set(values[idx].tolist()) for name, idx in partitions.items()
+            }
+            for pos, left in enumerate(names):
+                for right in names[pos + 1 :]:
+                    par = f"{left}x{right}"
+                    if liberados is not None and (not liberados or par in liberados):
+                        logger.warning(
+                            "Protocolo nao garante disjuncao de %s entre %s; "
+                            "metricas nao medem generalizacao nessa dimensao.",
+                            rotulo,
+                            par,
+                        )
+                        continue
+                    shared = by_split[left] & by_split[right]
+                    if shared:
+                        exemplo = sorted(str(v) for v in shared)[:3]
+                        raise ValueError(
+                            f"Vazamento de {rotulo}: {len(shared)} valor(es) "
+                            f"compartilhado(s) entre {left} e {right}; "
+                            f"exemplos={exemplo}. O dataset exige treino, "
+                            f"validacao e teste sem repeticao (ver "
+                            f"docs/data/dataset-protocol.md)."
+                        )
+
+    def _require_generator_holdout(self, holdout_generator: str) -> None:
+        """Recusa o protocolo cross-generator quando ele nao e aplicavel.
+
+        O holdout era resolvido contra `groups` (a FONTE), nao contra
+        `generators`. Isso funcionava por coincidencia em acervos onde a fonte e
+        o gerador eram a mesma coisa; num corpus pareado, em que as duas classes
+        compartilham a fonte de proposito, o protocolo silenciosamente nao
+        encontrava o gerador.
+        """
+        if self.generators is None:
+            raise ValueError(
+                "holdout_generator exige `generator_ids` por amostra no .npz"
+            )
+        disponiveis = sorted(set(np.asarray(self.generators).astype(str).tolist()))
+        alvo = holdout_generator.lower()
+        if not any(g.lower() == alvo for g in disponiveis):
+            raise ValueError(
+                f"Gerador holdout inexistente: {holdout_generator}; "
+                f"disponiveis={disponiveis}"
+            )
+        sinteticos = [g for g in disponiveis if g.lower() not in {"bonafide", "real"}]
+        if len(sinteticos) < 2:
+            raise ValueError(
+                "Protocolo cross-generator inaplicavel: o corpus tem um unico "
+                f"gerador sintetico ({sinteticos}). Segura-lo esvazia a classe "
+                "falsa. Generalizacao para geradores nao vistos exige um "
+                "conjunto externo com outro gerador (ver "
+                "docs/data/dataset-protocol.md, secao 8)."
+            )
+
+    def _grouped_split(
+        self,
+        seed: int,
+        val_frac: float,
+        test_frac: float,
+        groups: np.ndarray | None = None,
+        relaxed: Dict[str, Tuple[str, ...]] | None = None,
+    ):
         """Split disjunto por grupo via StratifiedGroupKFold (anti-vazamento).
 
         Mantém cada grupo (fonte/gerador, ou falante quando `groups=self.speakers`)
@@ -462,16 +615,15 @@ class BenchmarkData:
             )
         # nº de folds limitado pelo nº de grupos; teste = 1 fold.
         n_splits = max(2, min(round(1.0 / max(test_frac, 1e-6)), n_groups))
-        sgkf = StratifiedGroupKFold(
-            n_splits=n_splits, shuffle=True, random_state=seed
-        )
+        sgkf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=seed)
         trainval_idx, test_idx = next(sgkf.split(idx, self.y, groups))
         # Val a partir do trainval, ainda disjunto por grupo quando possível.
         g_tv = groups[trainval_idx]
         if len(np.unique(g_tv)) >= 2:
             rel_val = val_frac / (1.0 - test_frac)
-            inner_splits = max(2, min(round(1.0 / max(rel_val, 1e-6)),
-                                      len(np.unique(g_tv))))
+            inner_splits = max(
+                2, min(round(1.0 / max(rel_val, 1e-6)), len(np.unique(g_tv)))
+            )
             sgkf2 = StratifiedGroupKFold(
                 n_splits=inner_splits, shuffle=True, random_state=seed
             )
@@ -481,7 +633,7 @@ class BenchmarkData:
             train_idx, val_idx = trainval_idx[tr_rel], trainval_idx[val_rel]
         else:
             raise ValueError("Split por grupo nao consegue criar validacao disjunta")
-        self._validate_partition_indices(train_idx, val_idx, test_idx)
+        self._validate_partition_indices(train_idx, val_idx, test_idx, relaxed=relaxed)
         self.last_split_indices = {
             "train": np.asarray(train_idx, dtype="int64"),
             "val": np.asarray(val_idx, dtype="int64"),
@@ -493,7 +645,10 @@ class BenchmarkData:
         return Xtr, ytr, Xv, yv, Xte, yte
 
     def _cross_generator_split(
-        self, holdout_generator: str, seed: int, val_frac: float,
+        self,
+        holdout_generator: str,
+        seed: int,
+        val_frac: float,
         groups: np.ndarray | None = None,
     ):
         """Protocolo cross-generator / holdout-speaker: treina SEM o item segurado,
@@ -506,12 +661,15 @@ class BenchmarkData:
         """
         from sklearn.model_selection import train_test_split
 
+        eh_falante = groups is self.speakers
         groups = np.asarray(self.groups if groups is None else groups)
         held = np.char.lower(groups.astype(str)) == holdout_generator.lower()
         if not held.any():
             available = sorted(set(groups.astype(str).tolist()))
+            rotulo = "Falante" if eh_falante else "Gerador"
             raise ValueError(
-                f"Grupo holdout inexistente: {holdout_generator}; disponiveis={available}"
+                f"{rotulo} holdout inexistente: {holdout_generator}; "
+                f"disponiveis={available}"
             )
 
         idx = np.arange(len(self.y))
@@ -519,20 +677,31 @@ class BenchmarkData:
         rest_idx = idx[~held]
         y_rest = self.y[rest_idx]
 
-        # Reais ficam disponíveis no restante; reservamos uma fração de reais
-        # para compor o teste cross-generator (classe 0 inédita no treino).
-        real_rest = rest_idx[y_rest == 0]
-        rng = np.random.default_rng(seed)
-        real_rest = rng.permutation(real_rest)
-        n_real_test = min(len(real_rest), max(1, len(held_idx)))
-        real_test_idx = real_rest[:n_real_test]
-        test_idx = np.concatenate([held_idx, real_test_idx])
+        # Quando o item segurado ja traz as DUAS classes — o caso do corpus
+        # pareado, em que o mesmo locutor aparece como bonafide e como clone —
+        # completar com reais do restante so desbalancearia o teste (medido:
+        # 30 reais para 10 falsas). Nesse caso o holdout basta por si.
+        held_labels = set(np.asarray(self.y)[held_idx].astype(int).tolist())
+        if held_labels == {0, 1}:
+            real_test_idx = np.asarray([], dtype=held_idx.dtype)
+            test_idx = held_idx
+        else:
+            # Item de classe unica (ex.: um gerador sintetico): reservamos reais
+            # ineditos no treino para o teste ter as duas classes.
+            real_rest = rest_idx[y_rest == 0]
+            rng = np.random.default_rng(seed)
+            real_rest = rng.permutation(real_rest)
+            n_real_test = min(len(real_rest), max(1, len(held_idx)))
+            real_test_idx = real_rest[:n_real_test]
+            test_idx = np.concatenate([held_idx, real_test_idx])
 
         trainval_idx = np.setdiff1d(rest_idx, real_test_idx, assume_unique=False)
         y_tv = self.y[trainval_idx]
         try:
             tr_idx, val_idx = train_test_split(
-                trainval_idx, test_size=val_frac, stratify=y_tv,
+                trainval_idx,
+                test_size=val_frac,
+                stratify=y_tv,
                 random_state=seed,
             )
         except Exception as exc:
@@ -540,7 +709,16 @@ class BenchmarkData:
                 "Holdout nao permite train/val estratificados com ambas as classes"
             ) from exc
 
-        self._validate_partition_indices(tr_idx, val_idx, test_idx)
+        # Um holdout segura UMA dimensao e deixa as outras cruzarem de proposito:
+        # segurando o locutor, o texto reaparece nas tres particoes; segurando o
+        # gerador, locutor e texto reaparecem. Declarar isso mantem a checagem
+        # honesta em vez de desliga-la por inteiro.
+        relaxed = (
+            {"texts": (), "speakers": ("trainxval",)}
+            if eh_falante
+            else {"speakers": (), "texts": ()}
+        )
+        self._validate_partition_indices(tr_idx, val_idx, test_idx, relaxed=relaxed)
         self.last_split_indices = {
             "train": np.asarray(tr_idx, dtype="int64"),
             "val": np.asarray(val_idx, dtype="int64"),
@@ -562,11 +740,11 @@ class BenchmarkData:
         rng = np.random.default_rng(seed)
         X = np.asarray(X, dtype="float32")
         flat = X.reshape(len(X), -1)
-        sig_power = np.mean(flat ** 2, axis=1, keepdims=True)
+        sig_power = np.mean(flat**2, axis=1, keepdims=True)
         snr_lin = 10.0 ** (float(snr_db) / 10.0)
 
         unit_noise = rng.standard_normal(flat.shape).astype("float32")
-        unit_power = np.mean(unit_noise ** 2, axis=1, keepdims=True)
+        unit_power = np.mean(unit_noise**2, axis=1, keepdims=True)
         target_power = sig_power / max(snr_lin, 1e-12)
         scale = np.sqrt(target_power / np.maximum(unit_power, 1e-12))
         noise = unit_noise * scale
@@ -667,7 +845,8 @@ def prepare_input_for_architecture(
     if _is_classical_arch(architecture):
         prepared = _to_tabular_features(X)
         actual_type = (
-            "tabular_audio_features" if _looks_like_raw_audio(X)
+            "tabular_audio_features"
+            if _looks_like_raw_audio(X)
             else "tabular_flattened"
         )
     elif input_type == "raw_audio":
@@ -690,6 +869,7 @@ def prepare_input_for_architecture(
 def looks_like_raw_audio(X: np.ndarray) -> bool:
     """API pública para validar se um lote contém formas de onda."""
     return _looks_like_raw_audio(X)
+
 
 def _fit_length(flat: np.ndarray, target_len: int) -> np.ndarray:
     # Fonte única treino<->inferência: app/domain/features/benchmark_frontend.
@@ -791,6 +971,8 @@ def _raw_audio_to_logmel(X: np.ndarray, requirements: Dict[str, Any]) -> np.ndar
         sample_rate=int(requirements.get("sample_rate") or 16000),
         feature_dim=int(requirements.get("feature_dim") or 80),
         time_steps=int(requirements.get("min_sequence_length") or 100),
+        # Janela de análise do contrato (o AST pede 25 ms = 400 amostras).
+        n_fft=int(requirements.get("n_fft") or 512),
     )
 
 
@@ -810,7 +992,9 @@ def _to_spectrogram(X: np.ndarray, requirements: Dict[str, Any]) -> np.ndarray:
         # Piso defensivo: se o spec não declara o alvo, garante uma grade grande
         # o bastante para sobreviver às camadas de pooling (evita "Negative
         # dimension" em arquiteturas profundas com entradas sintéticas pequenas).
-        time_steps = int(requirements.get("min_sequence_length") or max(arr.shape[1], 64))
+        time_steps = int(
+            requirements.get("min_sequence_length") or max(arr.shape[1], 64)
+        )
         feature_dim = int(requirements.get("feature_dim") or max(arr.shape[2], 64))
         arr = _resize_axis(arr, max(1, time_steps), axis=1)
         arr = _resize_axis(arr, max(1, feature_dim), axis=2)
