@@ -26,7 +26,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+COPY constraints.txt ./
 COPY docker/environments/classical-ml/requirements.txt /tmp/requirements.txt
+# Versoes travadas: valem para todo pip install desta imagem.
+ENV PIP_CONSTRAINT=/app/constraints.txt
 RUN pip install --upgrade pip setuptools wheel \
     && pip install -r /tmp/requirements.txt
 

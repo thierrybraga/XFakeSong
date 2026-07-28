@@ -30,9 +30,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY docker/environments/ssl-transformers/requirements.txt /tmp/requirements.txt
+# requirements-base.txt precisa estar em /app para o `-r ../../requirements-base
+# .txt` do arquivo do ambiente resolver; por isso o COPY preserva a estrutura.
+COPY requirements-base.txt constraints.txt ./
+COPY docker/environments/ssl-transformers/requirements.txt docker/environments/ssl-transformers/
+ENV PIP_CONSTRAINT=/app/constraints.txt
 RUN pip install --upgrade pip setuptools wheel \
-    && pip install -r /tmp/requirements.txt \
+    && pip install -r docker/environments/ssl-transformers/requirements.txt \
     && pip install 'tensorflow[and-cuda]>=2.16,<2.22' \
     && pip install --upgrade --no-deps 'nvidia-cudnn-cu12>=9.3.0.75,<10' \
     && pip install --no-deps 'nvidia-cuda-nvcc-cu12'

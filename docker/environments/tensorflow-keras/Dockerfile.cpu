@@ -27,9 +27,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY requirements-base.txt requirements-cpu.txt ./
+COPY requirements-base.txt requirements-cpu.txt constraints.txt ./
+COPY docker/environments/tensorflow-keras/requirements.txt docker/environments/tensorflow-keras/
+ENV PIP_CONSTRAINT=/app/constraints.txt
 RUN pip install --upgrade pip setuptools wheel \
-    && pip install -r requirements-cpu.txt
+    && pip install -r requirements-cpu.txt \
+    && pip install -r docker/environments/tensorflow-keras/requirements.txt \
+    && pip install --index-url https://download.pytorch.org/whl/cpu 'torch==2.5.1'
+# torch do indice CPU: aqui ele so LE o state_dict dos checkpoints pre-treinados
+# (AST/AudioSet, WavLM, HuBERT) — nunca treina.
 
 COPY . .
 

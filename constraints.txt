@@ -1,0 +1,79 @@
+# =====================================================================
+# XFakeSong — versões travadas das bibliotecas compartilhadas
+# =====================================================================
+# Por que este arquivo existe (2026-07-28): todos os requirements do projeto
+# declaram FAIXAS (`>=2.16,<2.22`, `>=0.10`, ...). Duas builds em datas
+# diferentes produziam ambientes diferentes — inaceitável para um experimento
+# que vai a artigo. O `results.json` já grava as versões efetivas de cada run,
+# mas isso documenta o passado; isto aqui reproduz o ambiente.
+#
+# Uso: os Dockerfiles definem `PIP_CONSTRAINT=/app/constraints.txt`, então todo
+# `pip install` da imagem respeita estes pinos sem precisar de `-c` explícito.
+# Localmente:  pip install -r requirements.txt -c constraints.txt
+#
+# ORIGEM: ambiente de referência validado em 2026-07-28 (Windows, Python
+# 3.11.9) no qual o benchmark completo rodou nas 14 arquiteturas, o AST
+# carregou os pesos AudioSet e os backbones WavLM/HuBERT foram portados do
+# PyTorch com max|dif| ~1e-05 contra a referência.
+#
+# O QUE NÃO ESTÁ AQUI, DE PROPÓSITO:
+#   - `tensorflow`  : difere por imagem (tensorflow-cpu x tensorflow[and-cuda]);
+#   - `torch`       : difere por imagem (wheel CPU nas imagens Keras, que só
+#                     LEEM state_dict, x wheel CUDA onde ele de fato treina);
+#   - `nvidia-*`    : resolvidos pelos extras do TF/torch e ajustados nos
+#                     Dockerfiles (ver o override de nvidia-cudnn-cu12).
+# Fixar esses três aqui quebraria as imagens que precisam da outra variante.
+#
+# Ao atualizar: rode a suíte + um benchmark de fumaça nas 14 arquiteturas
+# ANTES de mexer, e registre o motivo no commit.
+
+# ── Núcleo numérico ───────────────────────────────────────────────────
+# numpy<2.3 é o teto que o TF 2.21 tolera. numba precisa acompanhar: 0.60
+# exige numpy<2.1 e quebraria com este numpy — 0.66 é a combinação validada.
+numpy==2.2.6
+numba==0.66.0
+llvmlite==0.48.0
+scipy==1.17.1
+pandas==2.3.3
+
+# ── Keras: o TF 2.16+ traz Keras 3, e o projeto depende disso ─────────
+# (safe_mode, register_keras_serializable, build() explícito das subcamadas)
+keras==3.15.0
+ml-dtypes==0.5.4
+h5py==3.14.0
+
+# ── Serialização: fontes clássicas de quebra entre TF e torch ─────────
+protobuf==7.35.1
+flatbuffers==25.12.19
+grpcio==1.82.1
+
+# ── Hugging Face: leitura dos checkpoints pré-treinados ───────────────
+# transformers 4.45.2 é a versão com que o port do AST e dos backbones SSL
+# foi validado. Note que o caminho TF do transformers NÃO é usado (ele exige
+# tf-keras sob Keras 3); lemos o state_dict PyTorch direto.
+transformers==4.45.2
+tokenizers==0.20.3
+safetensors==0.8.0
+huggingface-hub==0.36.2
+datasets==3.6.0
+
+# ── Áudio e ML clássico ──────────────────────────────────────────────
+librosa==0.11.0
+soundfile==0.14.0
+soxr==1.1.0
+PyWavelets==1.9.0
+scikit-learn==1.8.0
+joblib==1.5.3
+
+# ── Relatórios ───────────────────────────────────────────────────────
+matplotlib==3.11.1
+seaborn==0.13.2
+
+# ── Web/config (só entram nas imagens que servem a API) ──────────────
+gradio==4.44.1
+fastapi==0.115.14
+starlette==0.41.3
+pydantic==2.13.4
+sqlalchemy==2.0.51
+pyyaml==6.0.3
+jsonschema==4.26.0
