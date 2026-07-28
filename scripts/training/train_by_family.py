@@ -80,10 +80,14 @@ def build_command(args: argparse.Namespace) -> list[str]:
         if args.latency_runs is not None
         else int(cfg.get("latency_runs", 30))
     )
+    # Sem default de 240 min: esse valor cabia num run de fumaca, mas mata
+    # qualquer treino do orcamento de 100 epocas (RawGAT-ST leva ~54 h de GPU).
+    # Omitido, o run_models_sequential deriva o limite por arquitetura a partir
+    # do custo estimado (benchmarks.planning.EXPECTED_TRAINING_HOURS).
     timeout_min = (
         args.timeout_min
         if args.timeout_min is not None
-        else float(cfg.get("timeout_min", 240))
+        else cfg.get("timeout_min")
     )
     snr = args.snr or [str(item) for item in _as_list(cfg.get("snr") or [30, 20, 10])]
 
@@ -104,11 +108,11 @@ def build_command(args: argparse.Namespace) -> list[str]:
         device_profile,
         "--latency-runs",
         str(latency_runs),
-        "--timeout-min",
-        str(timeout_min),
         "--snr",
         *[str(item) for item in snr],
     ]
+    if timeout_min is not None:
+        cmd.extend(["--timeout-min", str(float(timeout_min))])
     if args.resume:
         cmd.append("--resume")
     if args.seeds:

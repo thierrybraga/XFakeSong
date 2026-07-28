@@ -34,6 +34,84 @@ ARCH_ALIASES = {
 #   - o create_model(...) de cada architectures/<nome>.py (LR/optimizer/loss).
 # Chaves sobrepostas (dropout_rate, l2_reg_strength) podem divergir — revise as 3
 # fontes ao ajustar um modelo.
+#: Custo de treino por arquitetura — a base dos timeouts por modelo.
+#:
+#: MEDIDO em 2026-07-28 num Ryzen 5 7600X (12 threads), com o LOTE e a PRECISÃO
+#: que o plano efetivamente aplica (ver `_fit_to_device`), sobre a janela real
+#: de 48.000 amostras. Valores em horas para o orçamento canônico: 100 épocas
+#: sobre `_REFERENCE_FIT_SAMPLES` amostras.
+#:
+#: A coluna GPU é ESTIMADA por roofline (RTX 3060: ~12,7 TFLOPS FP32 e 360 GB/s
+#: contra ~1,0–1,3 TFLOPS e ~83 GB/s do CPU), com multiplicador por família:
+#: operação densa chega perto de 20–30×, atenção em grafo — que materializa
+#: tensores pareados nó×nó e fica limitada por banda — fica em 12–25×. Os
+#: valores de GPU são o CENÁRIO PROVÁVEL; o conservador é ~2× maior, e é por
+#: isso que o fator de segurança do timeout não é pequeno.
+#:
+#: Ao mudar lote, precisão, janela ou arquitetura, remeça: um timeout derivado
+#: de número velho mata um treino bom.
+_REFERENCE_FIT_SAMPLES = 66452  # 33.226 de treino + 1 cópia AWGN
+_REFERENCE_EPOCHS = 100
+
+EXPECTED_TRAINING_HOURS: Dict[str, Dict[str, float]] = {
+    # arquitetura (chave compacta): {"cpu": medido, "gpu": estimado}
+    "sonicsleuth": {"cpu": 7.2, "gpu": 0.4},
+    "multiscalecnn": {"cpu": 40.4, "gpu": 1.6},
+    "conformer": {"cpu": 41.0, "gpu": 1.4},
+    "efficientnetlstm": {"cpu": 59.3, "gpu": 3.0},
+    "hybridcnntransformer": {"cpu": 83.0, "gpu": 2.8},
+    "ensemble": {"cpu": 89.2, "gpu": 3.6},
+    "hubert": {"cpu": 201.4, "gpu": 5.8},
+    "wavlm": {"cpu": 205.9, "gpu": 5.9},
+    "rawnet2": {"cpu": 364.0, "gpu": 18.0},
+    "aasist": {"cpu": 842.4, "gpu": 28.0},
+    "spectrogramtransformer": {"cpu": 996.0, "gpu": 28.0},
+    "rawgatst": {"cpu": 1359.4, "gpu": 54.0},
+    # SSL originais (runner PyTorch): backbone congelado, só a cabeça treina —
+    # custo da mesma ordem do port Keras. Não medidos aqui.
+    "wavlmoriginal": {"cpu": 205.9, "gpu": 6.0},
+    "hubertoriginal": {"cpu": 201.4, "gpu": 6.0},
+    # Clássicos: fit único do sklearn, sem épocas. O SVC com RBF em 33 mil
+    # amostras escala ~O(n²) e o grid search multiplica isso.
+    "svm": {"cpu": 8.0, "gpu": 8.0},
+    "randomforest": {"cpu": 1.0, "gpu": 1.0},
+}
+
+#: Margem sobre a estimativa. 3× cobre o cenário conservador (~2×) e ainda
+#: sobra folga: o timeout existe para matar um treino TRAVADO, não um lento.
+DEFAULT_TIMEOUT_SAFETY_FACTOR = 3.0
+
+
+def expected_training_timeout_min(
+    arch: str,
+    device_profile: str = "gpu",
+    epochs: int = _REFERENCE_EPOCHS,
+    fit_samples: int = _REFERENCE_FIT_SAMPLES,
+    safety_factor: float = DEFAULT_TIMEOUT_SAFETY_FACTOR,
+    minimum_min: float = 30.0,
+) -> float:
+    """Timeout em minutos para UMA arquitetura, derivado do custo estimado.
+
+    Escala linearmente com épocas e com o tamanho do conjunto de treino, então
+    um run reduzido (`--epochs 20`) não herda o timeout do run completo.
+
+    Arquiteturas desconhecidas caem no maior valor da tabela: é preferível
+    esperar demais a matar um treino de dias por causa de um nome novo.
+    """
+    key = _compact(arch)
+    profile = "cpu" if str(device_profile).lower() == "cpu" else "gpu"
+    entry = EXPECTED_TRAINING_HOURS.get(key)
+    if entry is None:
+        base_hours = max(v[profile] for v in EXPECTED_TRAINING_HOURS.values())
+    else:
+        base_hours = entry[profile]
+
+    if key not in CLASSICAL_ARCHES:
+        base_hours *= max(1, int(epochs)) / _REFERENCE_EPOCHS
+    base_hours *= max(1, int(fit_samples)) / _REFERENCE_FIT_SAMPLES
+    return max(float(minimum_min), base_hours * 60.0 * float(safety_factor))
+
+
 NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
     "rawnet2": {
         "model_family": "neural",

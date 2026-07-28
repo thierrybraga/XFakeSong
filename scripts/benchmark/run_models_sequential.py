@@ -285,13 +285,36 @@ def _build_command(args: argparse.Namespace, model: str, model_dir: Path) -> lis
     return cmd
 
 
+def _timeout_for(args: argparse.Namespace, model: str) -> float:
+    """Timeout deste modelo: o do usuario, ou o derivado da estimativa.
+
+    Um valor unico para todas as arquiteturas nao existe: no orcamento de 100
+    epocas o Sonic Sleuth leva ~0,4 h de GPU e o RawGAT-ST ~54 h. Um timeout
+    generoso para o primeiro mata o segundo; um generoso para o segundo deixa
+    de proteger contra travamento no primeiro.
+    """
+    if getattr(args, "timeout_min", None):
+        return float(args.timeout_min)
+    try:
+        from benchmarks.planning import expected_training_timeout_min
+
+        return expected_training_timeout_min(
+            model,
+            device_profile=getattr(args, "device_profile", "gpu") or "gpu",
+            epochs=int(getattr(args, "epochs", 100) or 100),
+        )
+    except Exception:  # noqa: BLE001 — sem estimativa, nao estrangule o run
+        return 24 * 60.0
+
+
 def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, Any]:
     slug = _slug(model)
     model_dir = root_out / slug
     model_dir.mkdir(parents=True, exist_ok=True)
     log_path = model_dir / "run.log"
     cmd = _build_command(args, model, model_dir)
-    timeout_s = int(args.timeout_min * 60)
+    timeout_min = _timeout_for(args, model)
+    timeout_s = int(timeout_min * 60)
     started = time.time()
     ssl_meta = _ssl_meta(model)
 
@@ -423,13 +446,14 @@ def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, 
         except subprocess.TimeoutExpired:
             returncode = None
             status = "timeout"
-            error = f"timeout_min={args.timeout_min}"
+            error = f"timeout_min={timeout_min:.0f}"
             log.write(f"\n[TIMEOUT] {model}: {error}\n")
             log.flush()
             _emit(f"[TIMEOUT] {model}: {error}")
 
     elapsed = round(time.time() - started, 1)
     metrics = {}
+
     results_path = model_dir / "results.json"
     if results_path.exists():
         data = _load_json(results_path, {})
@@ -466,6 +490,9 @@ def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, 
         "status": status,
         "error": error,
         "elapsed_s": elapsed,
+        # timeout que valeu para ESTE modelo: sem ele, um status "timeout" no
+        # resumo nao diz se o limite era generoso ou apertado demais.
+        "timeout_min": round(timeout_min, 1),
         "output_dir": str(model_dir),
         "log": str(log_path),
         "returncode": returncode,
@@ -482,7 +509,7 @@ def _write_summary(root_out: Path, summary: dict[str, Any]) -> None:
         "",
         f"- Dataset: `{summary.get('dataset')}`",
         f"- Device profile: `{summary.get('device_profile')}`",
-        f"- Timeout por modelo: `{summary.get('timeout_min')}` min",
+        f"- Timeout por modelo: `{summary.get('timeout_min')}`",
         "",
         "| Modelo | Status | Accuracy | AUC | EER | Latência ms | Tempo s |",
         "|---|---|---:|---:|---:|---:|---:|",
@@ -656,7 +683,19 @@ def main() -> int:
         action=argparse.BooleanOptionalAction,
         default=True,
     )
-    parser.add_argument("--timeout-min", type=float, default=60.0)
+    parser.add_argument(
+        "--timeout-min",
+        type=float,
+        default=None,
+        help=(
+            "timeout POR MODELO em minutos. Omitido (recomendado), e derivado "
+            "do custo estimado de cada arquitetura "
+            "(benchmarks.planning.EXPECTED_TRAINING_HOURS x fator de seguranca "
+            "3x), escalado por epocas e tamanho do treino. O default anterior "
+            "era 60 min FIXO — menor que o treino de QUALQUER modelo neural no "
+            "orcamento de 100 epocas, e portanto matava o run"
+        ),
+    )
     parser.add_argument(
         "--resume", action="store_true", help="pula modelos já concluídos"
     )
@@ -881,7 +920,7 @@ def _run_suite(
         "academic_protocol": bool(args.academic_protocol),
         "experiment_scope": args.scope,
         "device_profile": args.device_profile,
-        "timeout_min": args.timeout_min,
+        "timeout_min": args.timeout_min or "derivado por arquitetura",
         "epochs": args.epochs,
         "batch_size": args.batch_size,
         "ssl_train_batch_size": args.ssl_train_batch_size,

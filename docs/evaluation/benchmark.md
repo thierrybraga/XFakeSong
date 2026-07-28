@@ -142,6 +142,23 @@ As 14 arquiteturas são cobertas em **dois escopos** (`benchmarks/config.py`):
     `ssl_backbone.pretrained = false` com o motivo — nenhum artefato alega SSL
     real onde não houve. `XFAKE_STRICT_SSL=1` aborta em vez de degradar.
 
+!!! danger "Timeout por modelo (2026-07-28)"
+    `run_models_sequential.py --timeout-min` tinha default de **60 minutos** e
+    `train_by_family.py`, de **240**. Ambos são menores que o treino de
+    *qualquer* modelo neural no orçamento de 100 épocas — o run seria morto
+    modelo a modelo, com status `timeout`.
+
+    Omitido, o limite agora é **derivado por arquitetura** do custo medido em
+    `benchmarks.planning.EXPECTED_TRAINING_HOURS`, com fator de segurança 3× e
+    escala linear em épocas e tamanho do treino. Em GPU vai de ~1,2 h (Sonic
+    Sleuth) a ~162 h (RawGAT-ST); em CPU, de ~22 h a ~4.078 h. Arquitetura
+    desconhecida recebe o maior valor da tabela — errar para o lado de esperar
+    demais, nunca de matar um treino de dias.
+
+    Passar `--timeout-min` explicitamente continua vencendo. **Ao mudar lote,
+    precisão, janela ou arquitetura, remeça os custos**: um timeout derivado de
+    número velho mata um treino bom.
+
 !!! success "Paridade treino↔produção (2026-07-28)"
     Os modelos do benchmark são os promovidos para produção, então o
     `input_contract` de cada artefato é gravado **no próprio treino**, com o

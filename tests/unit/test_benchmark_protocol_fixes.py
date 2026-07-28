@@ -490,3 +490,72 @@ def test_contract_rebuilder_preserves_calibrated_temperature():
     # e a janela de fallback precisa ser a canonica
     c2 = build_contract("aasist", spec, {}, None, None)
     assert c2["input_shape"] == [48000, 1]
+
+
+# ──────── timeout por modelo: o default fixo matava todo treino ────────
+
+def test_timeout_covers_the_estimated_cost_of_every_architecture():
+    """O default anterior era 60 min FIXO — menor que QUALQUER neural.
+
+    Com 100 epocas o Sonic Sleuth leva ~0,4 h de GPU e o RawGAT-ST ~54 h. Um
+    numero unico ou mata o segundo ou deixa de proteger o primeiro.
+    """
+    from benchmarks.planning import (
+        EXPECTED_TRAINING_HOURS,
+        expected_training_timeout_min,
+    )
+
+    for arch, custo in EXPECTED_TRAINING_HOURS.items():
+        for profile in ("cpu", "gpu"):
+            limite = expected_training_timeout_min(arch, device_profile=profile)
+            estimado_min = custo[profile] * 60
+            assert limite >= estimado_min * 2, (
+                f"{arch}/{profile}: timeout {limite:.0f} min nao cobre nem o "
+                f"dobro do custo estimado ({estimado_min:.0f} min)"
+            )
+
+
+def test_timeout_scales_with_the_training_budget():
+    """Um run reduzido nao pode herdar o timeout do run completo."""
+    from benchmarks.planning import expected_training_timeout_min as timeout
+
+    cheio = timeout("AASIST", "gpu", epochs=100)
+    reduzido = timeout("AASIST", "gpu", epochs=20)
+    assert reduzido == pytest.approx(cheio / 5, rel=0.01)
+
+    # metade das amostras, metade do tempo
+    metade = timeout("AASIST", "gpu", epochs=100, fit_samples=33226)
+    assert metade == pytest.approx(cheio / 2, rel=0.01)
+
+    # clássicos nao tem epocas: o fit do sklearn nao escala com elas
+    assert timeout("SVM", "cpu", epochs=20) == timeout("SVM", "cpu", epochs=100)
+
+
+def test_unknown_architecture_gets_the_most_generous_timeout():
+    """Errar para o lado de esperar demais, nunca de matar um treino de dias."""
+    from benchmarks.planning import (
+        EXPECTED_TRAINING_HOURS,
+        expected_training_timeout_min,
+    )
+
+    desconhecida = expected_training_timeout_min("Arquitetura Que Nao Existe", "gpu")
+    maior = max(v["gpu"] for v in EXPECTED_TRAINING_HOURS.values()) * 60 * 3.0
+    assert desconhecida == pytest.approx(maior, rel=0.01)
+
+
+def test_sequential_runner_derives_the_timeout_when_not_given():
+    import argparse
+
+    from scripts.benchmark.run_models_sequential import _timeout_for
+
+    auto = argparse.Namespace(timeout_min=None, device_profile="gpu", epochs=100)
+    assert _timeout_for(auto, "RawGAT-ST") > _timeout_for(auto, "Sonic Sleuth"), (
+        "o timeout precisa variar por arquitetura"
+    )
+    assert _timeout_for(auto, "RawGAT-ST") > 24 * 60, (
+        "RawGAT-ST leva ~54 h de GPU: um limite de 24 h o mataria"
+    )
+
+    # o valor explicito do usuario continua vencendo
+    manual = argparse.Namespace(timeout_min=15.0, device_profile="gpu", epochs=100)
+    assert _timeout_for(manual, "RawGAT-ST") == 15.0
