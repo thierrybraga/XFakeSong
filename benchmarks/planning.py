@@ -483,6 +483,53 @@ def _merge_effective_hparams(
     return params
 
 
+def effective_hyperparameters(arch: str) -> Dict[str, Any]:
+    """Hiperparâmetros do PIPELINE para uma arquitetura, sem levantar erro.
+
+    Existe para que consumidores fora do benchmark — a interface Gradio, em
+    primeiro lugar — mostrem a MESMA configuração que o benchmark treina, em
+    vez de literais próprios.
+
+    O CLAUDE.md já documenta que os hiperparâmetros vivem em três lugares
+    (`registry.default_params`, o `create_model` de cada arquitetura e este
+    módulo) e alerta para o drift. A interface era um QUARTO: `load_defaults`
+    caía em `batch_size=32, epochs=10, learning_rate=0.001` para toda
+    arquitetura — AASIST, Conformer e Sonic Sleuth apareciam idênticas, e
+    nenhuma batia com o que o benchmark usa (AASIST: lote 24, LR 3e-4).
+
+    Precedência:
+      1. `NEURAL_BENCHMARK_HPARAMS` — a configuração que o benchmark treina;
+      2. `registry.default_params` — para as arquiteturas do escopo estendido
+         (Sonic Sleuth, EfficientNet-LSTM, Ensemble, WavLM, HuBERT), que não
+         têm entrada de plano, e para as chaves que o plano não carrega.
+
+    Devolve `{}` para arquiteturas desconhecidas — o chamador decide o
+    fallback. Nunca levanta: uma interface não pode quebrar porque alguém
+    selecionou um modelo fora do recorte oficial.
+    """
+    compact = _canonical_arch_key(arch)
+    resolved: Dict[str, Any] = {}
+
+    try:
+        from app.domain.models.architectures.registry import architecture_registry
+
+        base = (
+            architecture_registry.get_architecture_by_any_name(arch).default_params
+            or {}
+        )
+        resolved.update({k: v for k, v in base.items() if v is not None})
+    except Exception:  # noqa: BLE001 — registry ausente não impede o plano
+        pass
+
+    if compact in NEURAL_BENCHMARK_HPARAMS:
+        plano = NEURAL_BENCHMARK_HPARAMS[compact]
+        resolved.update({k: v for k, v in plano.items() if v is not None})
+    elif compact in CLASSICAL_ARCHES:
+        resolved.update({"model_family": "classical", "epochs": None})
+
+    return resolved
+
+
 def build_benchmark_plan(
     cfg: BenchmarkConfig, data: Any | None = None
 ) -> Dict[str, Any]:

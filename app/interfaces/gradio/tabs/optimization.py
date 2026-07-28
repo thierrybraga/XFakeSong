@@ -1,7 +1,11 @@
 import gradio as gr
 from app.domain.models.architectures.registry import architecture_registry
 from app.domain.services.detection.utils import get_available_devices
-from app.interfaces.gradio.utils.hyperparameters import load_defaults, optimize_default
+from app.interfaces.gradio.utils.hyperparameters import (
+    get_interface_hyperparameters,
+    load_defaults,
+    optimize_default,
+)
 
 
 def update_device_settings(device_name):
@@ -130,22 +134,40 @@ def create_optimization_tab():
         with gr.Row(elem_classes="responsive-grid"):
             with gr.Column(scale=1):
                 arch_choices = architecture_registry.list_architectures()
+                default_arch = arch_choices[0] if arch_choices else "MultiscaleCNN"
+                initial_hp = get_interface_hyperparameters(default_arch)
                 opt_arch = gr.Dropdown(
                     choices=arch_choices,
                     label="Arquitetura",
-                    value=arch_choices[0] if arch_choices else "MultiscaleCNN"
+                    value=default_arch,
                 )
 
                 with gr.Group():
                     gr.Markdown("#### Parâmetros Gerais")
-                    opt_batch = gr.Number(label="Batch Size", value=32)
-                    opt_epochs = gr.Number(label="Epochs", value=10)
+                    opt_batch = gr.Number(
+                        label="Batch Size", value=int(initial_hp["batch_size"])
+                    )
+                    opt_epochs = gr.Number(
+                        label="Epochs", value=int(initial_hp["epochs"])
+                    )
                     opt_lr = gr.Number(
-                        label="Learning Rate", value=0.001, precision=5)
-                    opt_dropout = gr.Number(label="Dropout Rate", value=0.3)
+                        label="Learning Rate",
+                        value=float(initial_hp["learning_rate"]),
+                        precision=7,
+                    )
+                    opt_dropout = gr.Number(
+                        label="Dropout Rate",
+                        value=float(initial_hp["dropout_rate"]),
+                    )
                     opt_l2 = gr.Number(
-                        label="L2 Regularization", value=0.0001, precision=5)
-                    opt_val = gr.Number(label="Validation Split", value=0.2)
+                        label="L2 Regularization",
+                        value=float(initial_hp["l2_reg_strength"]),
+                        precision=7,
+                    )
+                    opt_val = gr.Number(
+                        label="Validation Split",
+                        value=float(initial_hp["validation_split"]),
+                    )
 
                 # Specific params
                 with gr.Group():
