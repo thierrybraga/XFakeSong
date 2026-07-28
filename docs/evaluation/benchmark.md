@@ -31,6 +31,18 @@ e teste de sistema da API.
 
 ## Estado consolidado atual
 
+!!! danger "Artefatos apagados em 2026-07-28 — esta seção é histórica"
+    `data/models/` e `data/results/benchmark_academic_v2/` foram **removidos do
+    disco e do índice do git** antes da nova bateria. Os números, caminhos e
+    contagens desta seção e da de [Resultados numéricos](#resultados-numericos-usados-no-artigo)
+    descrevem execuções sobre `benchmark_audio_raw_balanced_15k_academic_v2` —
+    o dataset anterior, que tinha atalho de fonte de 87,6% e disjunção de
+    falante vácua, e que também já não existe.
+
+    Ficam como registro do que foi feito, **não** como estado atual nem como
+    referência comparável. O material do artigo em `data/results/paper/`
+    continua versionado e será regenerado pela nova bateria.
+
 O material acadêmico foi consolidado em uma única fonte LaTeX em
 `data/results/paper/`:
 
@@ -57,9 +69,10 @@ fluxograma, modelos, resultados, discussão, limitações e comandos de reprodu�
 
 Os diretórios finais em `data/models/benchmark_final/` preservam o artefato
 completo de cada modelo promovido, incluindo backbones SSL quando aplicável.
-No checkout atual, o manifesto `data/models/registry.json` e o
-índice `data/models/registry.json` registram **11** modelos
-sincronizados para o recorte oficial do artigo (2026-07-02).
+No checkout atual `data/models/` está **vazio**: os artefatos anteriores foram
+removidos em 2026-07-28. O `registry.json` e os diretórios por arquitetura são
+recriados pela promoção, ao fim da nova bateria
+(`scripts/reporting/sync_completed_benchmark_artifacts.py`).
 
 ### Incerteza e repetições (protocolo desde 2026-07-27)
 

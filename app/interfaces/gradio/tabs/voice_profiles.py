@@ -608,7 +608,7 @@ def create_voice_profiles_tab():
                         cm_fig.patch.set_facecolor(PLOT_BG)
                         ax3.set_facecolor(PLOT_FACE)
                         cm_arr = np.array(cm)
-                        im = ax3.imshow(cm_arr, cmap='magma', interpolation='nearest')
+                        ax3.imshow(cm_arr, cmap='magma', interpolation='nearest')
                         ax3.set_title("Confusion Matrix", color=PLOT_TEXT,
                                       fontweight="600", fontsize=12, pad=10)
                         labels = ["Real", "Fake"]

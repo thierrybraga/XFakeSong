@@ -18,7 +18,7 @@ import re
 import sys
 import time
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
@@ -152,27 +152,32 @@ def _evaluate_loaded_model(
         or {}
     )
 
+    # O modelo entra nas funcoes como ARGUMENTO PADRAO, e nao como variavel
+    # livre de closure. Com closure, o `del model` do fim da funcao — que
+    # existe para liberar memoria antes da proxima arquitetura — nao liberava
+    # nada: as duas funcoes seguravam o objeto. Com o AST (85M parametros,
+    # ~340 MB) num laco por arquitetura, a diferenca importa.
     if artifact.suffix == ".pkl":
         model = joblib.load(artifact)
 
-        def predict_p_fake(X: np.ndarray) -> np.ndarray:
+        def predict_p_fake(X: np.ndarray, _modelo=model) -> np.ndarray:
             X2 = np.asarray(X).reshape(len(X), -1)
-            proba = model.predict_proba(X2)
+            proba = _modelo.predict_proba(X2)
             return proba[:, 1] if proba.ndim > 1 and proba.shape[1] > 1 else proba.ravel()
 
-        def predict_fn(xb: np.ndarray):
-            return model.predict_proba(np.asarray(xb).reshape(len(xb), -1))
+        def predict_fn(xb: np.ndarray, _modelo=model):
+            return _modelo.predict_proba(np.asarray(xb).reshape(len(xb), -1))
 
         model_type = "classical"
         params = None
     else:
         model = _load_keras_model(artifact)
 
-        def predict_p_fake(X: np.ndarray) -> np.ndarray:
-            return _predict_keras(model, X, cfg.batch_size)
+        def predict_p_fake(X: np.ndarray, _modelo=model) -> np.ndarray:
+            return _predict_keras(_modelo, X, cfg.batch_size)
 
-        def predict_fn(xb: np.ndarray):
-            return model.predict(np.asarray(xb, dtype="float32"), verbose=0)
+        def predict_fn(xb: np.ndarray, _modelo=model):
+            return _modelo.predict(np.asarray(xb, dtype="float32"), verbose=0)
 
         model_type = "neural"
         params = count_params(model)
@@ -234,7 +239,9 @@ def _evaluate_loaded_model(
         "epochs": epochs,
         "wall_time_s": round(time.time() - started, 1),
     }
-    del model
+    # As tres referencias saem juntas: o argumento padrao das funcoes tambem
+    # segura o modelo, entao soltar so `model` nao bastaria.
+    del model, predict_p_fake, predict_fn
     try:
         import tensorflow as tf
 

@@ -186,7 +186,6 @@ def get_callbacks(model_path: Path, patience: int = 10, lr_patience: int = 5):
 
 def compute_metrics(model, X_test: np.ndarray, y_test: np.ndarray) -> dict:
     """Calcula accuracy, EER, AUC-ROC conforme TCC Secao 6.2."""
-    import tensorflow as tf
     from sklearn.metrics import roc_auc_score, roc_curve
 
     preds_raw = model.predict(X_test, verbose=0)

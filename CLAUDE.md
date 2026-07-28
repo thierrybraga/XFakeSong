@@ -77,8 +77,9 @@ XFakeSong/
 │                           #   + colab.py (helper isolado so para execucao via Google Colab)
 ├── data/datasets/          # RAIZ CANONICA dos dados (real/, fake/, raw/, .npz) — nao versionado.
 │                           #   (app/datasets/ foi descontinuado em 2026-07-14 — causava fragmentacao)
-├── docs/                   # documentacao MkDocs (00_..30_, RETREINO_AJUSTES.md) — indice completo em docs/index.md
-├── notebooks/, data/results/paper/   # material academico (TCC)
+├── docs/                   # documentacao MkDocs por tema (architecture/, models/,
+│                           #   evaluation/, data/, interfaces/, development/) — indice em docs/index.md
+├── data/results/paper/     # material academico (TCC): main.tex, figuras
 └── tests/                  # unit/, integration/, api/, functional/ espelhando app/
 ```
 
@@ -141,6 +142,11 @@ como `dropout_rate`/`l2_reg_strength` se sobrepoem):
    scheduler, warmup, label_smoothing) — usado **pelo benchmark** quando
    `optimize_hyperparameters=True` (default). Ao ajustar um modelo, revise as 3
    fontes para nao divergir.
+
+A **interface Gradio nao e uma quarta fonte**: desde 2026-07-28 ela resolve os
+defaults por `planning.effective_hyperparameters()`, que aplica o plano do
+benchmark sobre o `registry.default_params`. Antes, `load_defaults` caia em
+literais proprios (batch 32, 10 epocas, lr 1e-3) iguais para toda arquitetura.
 
 A config global (augmentation com `snr_range_db`, class weighting, calibracao de
 temperatura, SWA, mixup) esta em `app/core/config/settings.py`.
@@ -226,6 +232,11 @@ python scripts/reporting/consolidate_results.py --results data/results/<run>
 python scripts/reporting/validate_artifacts.py  --results data/results/<run>
 python scripts/reporting/sync_completed_benchmark_artifacts.py --results data/results/<run>
 ```
+
+O timeout por modelo e **derivado do custo estimado** de cada arquitetura
+(`planning.EXPECTED_TRAINING_HOURS`, fator 3x, escalado por epocas e tamanho do
+treino): omitir `--timeout-min` e o recomendado. O default fixo anterior (60 min)
+era menor que o treino de qualquer modelo neural em 100 epocas.
 
 Os artefatos promovidos ficam em `data/models/benchmark_final/<arch>/` com
 `data/results/` (metrics.json, results.csv/json, predictions_clean.csv,
