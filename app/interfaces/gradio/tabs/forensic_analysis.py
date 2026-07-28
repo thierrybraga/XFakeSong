@@ -84,10 +84,8 @@ def run_forensic_analysis(audio_path):
                 segment_times = []
                 segment_confidences = []
 
-                audio_data_full = AudioData(
-                    samples=y, sample_rate=sr,
-                    duration=float(len(y) / sr)
-                )
+                # (o AudioData completo era montado aqui e nunca usado — a
+                # analise por segmento constroi o seu proprio abaixo)
 
                 # Deteccao por segmento
                 for start in range(0, len(y) - segment_samples, hop_samples):

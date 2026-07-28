@@ -319,8 +319,8 @@ def create_interface() -> "gr.Blocks":
         css=_CUSTOM_CSS,
         head=_HEAD_HTML,
     ) as demo:
-        # Estado de Login (Fixo como True para bypass)
-        is_logged_in = gr.State(True)
+        # Login desativado (modo aberto): o `gr.State(True)` que existia aqui
+        # nao era lido por nada desde a desativacao da autenticacao.
 
         # --- Container da Aplicação ---
         with gr.Column(visible=True):
@@ -390,17 +390,30 @@ def create_interface() -> "gr.Blocks":
                         create_features_tab()
                         create_history_tab()
 
-            # Auto-refresh do status bar a cada 15s
+            # Auto-refresh da barra de status.
+            #
+            # O intervalo era 15 s FIXO, e o `tick` dispara para CADA cliente
+            # conectado: com o servidor ocioso e um cliente aberto, sao 240
+            # execucoes por hora de uma funcao que consulta GPU, contagem de
+            # modelos e perfis. O default subiu para 60 s — o botao de
+            # atualizar ao lado cobre quem precisa do estado imediato — e
+            # XFAKE_STATUS_REFRESH_S permite ajustar sem editar codigo.
+            # 0 (ou negativo) desliga o timer e deixa so o botao.
             try:
-                _sb_timer = gr.Timer(15.0)
-                _sb_timer.tick(
-                    fn=_refresh_global_feedback,
-                    inputs=[],
-                    outputs=[status_bar_html, feedback_html],
-                )
-            except Exception:
-                # gr.Timer não disponível em versões antigas — degradação graciosa
-                pass
+                _sb_interval = float(os.getenv("XFAKE_STATUS_REFRESH_S", "60"))
+            except (TypeError, ValueError):
+                _sb_interval = 60.0
+            if _sb_interval > 0:
+                try:
+                    _sb_timer = gr.Timer(_sb_interval)
+                    _sb_timer.tick(
+                        fn=_refresh_global_feedback,
+                        inputs=[],
+                        outputs=[status_bar_html, feedback_html],
+                    )
+                except Exception:
+                    # gr.Timer ausente em versões antigas — degradação graciosa
+                    pass
 
             feedback_refresh_btn.click(
                 fn=_refresh_global_feedback,

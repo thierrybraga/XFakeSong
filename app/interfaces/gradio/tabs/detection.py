@@ -42,6 +42,7 @@ from matplotlib.figure import Figure  # noqa: E402
 import gradio as gr  # noqa: E402
 from app.core.contracts.audio import AudioData  # noqa: E402
 from app.interfaces.gradio.utils.plotting import new_figure
+from app.interfaces.gradio.utils.components import ui_safe
 
 # Configurar logging
 logger = logging.getLogger("gradio_detection_tab")
@@ -738,6 +739,7 @@ def create_detection_tab():
                 hyperparams_json])
 
         # Limpar estado ao limpar áudio
+        @ui_safe("Falha ao limpar o estado")
         def clear_state():
             return None
 

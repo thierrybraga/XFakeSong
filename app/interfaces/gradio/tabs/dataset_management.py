@@ -19,6 +19,7 @@ import numpy as np
 import gradio as gr
 
 from app.interfaces.gradio.utils.plotting import new_figure
+from app.interfaces.gradio.utils.components import ui_safe
 from app.domain.dataset_metadata.dataset_catalog import (
     MODEL_READINESS_TIERS,
     PRESET_SELECTIONS,
@@ -692,6 +693,7 @@ def create_dataset_management_tab():
                     with gr.Column(scale=1):
                         refresh_btn = gr.Button("Atualizar Dashboard", variant="primary", size="lg")
 
+                @ui_safe("Falha ao atualizar a lista")
                 def handle_refresh():
                     data = _scan_dataset()
 
@@ -869,6 +871,7 @@ def create_dataset_management_tab():
 
                 # ── Handlers ───────────────────────────────────────────
 
+                @ui_safe("Falha ao calcular o balanceamento")
                 def _dl_refresh_balance():
                     data = _scan_dataset()
                     return (
@@ -876,11 +879,13 @@ def create_dataset_management_tab():
                         _assess_training_readiness(data["real_count"], data["fake_count"]),
                     )
 
+                @ui_safe("Falha ao aplicar o preset")
                 def _dl_apply_preset(preset_name: str):
                     if preset_name in _PRESET_SELECTIONS:
                         return gr.update(value=_PRESET_SELECTIONS[preset_name])
                     return gr.update()
 
+                @ui_safe("Falha ao aplicar o tier")
                 def _dl_apply_tier(tier_name: str):
                     """Aplica um tier: alvo por classe + fontes + descrição.
 
@@ -917,6 +922,7 @@ def create_dataset_management_tab():
                         gr.update(value=desc),
                     )
 
+                @ui_safe("Falha ao atualizar as fontes")
                 def _dl_on_sources_change(selected_sources, target):
                     """Handler único disparado quando as fontes mudam (manual OU via preset).
 
@@ -958,6 +964,7 @@ def create_dataset_management_tab():
                     )
                     return show_speakers, bar, plan_text, readiness
 
+                @ui_safe("Falha ao montar o plano de download")
                 def _dl_compute_plan(selected_sources, target):
                     data = _scan_dataset()
                     readiness = _assess_training_readiness(
@@ -1439,6 +1446,7 @@ def create_dataset_management_tab():
                 # Resumo geral
                 compat_summary = gr.Markdown("")
 
+                @ui_safe("Falha na checagem de compatibilidade")
                 def handle_compatibility():
                     data = _scan_dataset()
                     rows, details = _analyze_compatibility(data)

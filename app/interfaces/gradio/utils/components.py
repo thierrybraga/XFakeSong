@@ -15,9 +15,13 @@ Uso típico no topo de cada `create_*_tab()`:
 
 from __future__ import annotations
 
+import functools
 import html
+import logging
 
 import gradio as gr
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["page_header", "section_divider", "info_callout"]
 
@@ -82,3 +86,39 @@ def info_callout(text: str, variant: str = "info") -> gr.HTML:
     return gr.HTML(
         f'<div class="xf-callout xf-callout-{variant}">{text}</div>'
     )
+
+
+def ui_safe(mensagem: str = "Falha ao processar a solicitação"):
+    """Converte exceção não tratada de um handler em `gr.Error` legível.
+
+    Uma auditoria por AST em 2026-07-28 encontrou 23 handlers ligados a
+    `.click`/`.change` sem `try/except`. O Gradio não derruba o servidor nesse
+    caso — ele mostra um erro genérico —, mas o usuário recebe rastro de pilha
+    em vez de mensagem, e o log não registra contexto.
+
+    Este decorador existe porque a alternativa óbvia não funciona: um `except`
+    que devolve um valor de fallback precisaria conhecer a ARIDADE de saída de
+    cada handler, que varia de 1 a 26. `gr.Error` curto-circuita o retorno, o
+    Gradio o renderiza como aviso limpo, e a aridade deixa de importar — foi
+    justamente uma divergência de aridade que originou o bug FE.1.
+
+    Uso::
+
+        @ui_safe("Não foi possível atualizar o painel")
+        def refresh_dashboard():
+            ...
+    """
+    def decorador(funcao):
+        @functools.wraps(funcao)
+        def envolvida(*args, **kwargs):
+            try:
+                return funcao(*args, **kwargs)
+            except gr.Error:
+                raise  # já é uma mensagem destinada ao usuário
+            except Exception as exc:  # noqa: BLE001 — superfície de UI
+                logger.exception("%s: %s", funcao.__qualname__, exc)
+                raise gr.Error(f"{mensagem}: {exc}") from exc
+
+        return envolvida
+
+    return decorador

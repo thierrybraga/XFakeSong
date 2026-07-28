@@ -26,6 +26,7 @@ import numpy as np  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
 
 import gradio as gr  # noqa: E402
+from app.interfaces.gradio.utils.components import ui_safe
 
 logger = logging.getLogger("gradio_voice_profiles_tab")
 
@@ -367,6 +368,7 @@ def create_voice_profiles_tab():
                      train_profile_dd, verify_profile_dd],
         )
 
+        @ui_safe("Falha ao atualizar a lista")
         def handle_refresh():
             svc = _get_service()
             profiles = svc.list_profiles()
@@ -385,6 +387,7 @@ def create_voice_profiles_tab():
                      train_profile_dd, verify_profile_dd],
         )
 
+        @ui_safe("Falha ao remover")
         def handle_delete(pid):
             if not pid:
                 return "❌ Informe o ID do perfil.", gr.update(), gr.update(), gr.update(), gr.update()
@@ -412,6 +415,7 @@ def create_voice_profiles_tab():
 
         # ── Dataset handlers ──
 
+        @ui_safe("Falha ao carregar o dataset")
         def handle_load_dataset(profile_id):
             if not profile_id:
                 return "Selecione um perfil.", "", []
@@ -449,6 +453,7 @@ def create_voice_profiles_tab():
             outputs=[dataset_info, dataset_validation, samples_table],
         )
 
+        @ui_safe("Falha ao enviar as amostras")
         def handle_upload_samples(profile_id, files):
             if not profile_id:
                 return "❌ Selecione um perfil primeiro.", gr.update(), gr.update(), gr.update()
@@ -481,6 +486,7 @@ def create_voice_profiles_tab():
             outputs=[upload_status, dataset_info, dataset_validation, samples_table],
         )
 
+        @ui_safe("Falha ao remover a amostra")
         def handle_remove_sample(profile_id, filename):
             if not profile_id or not filename:
                 return "❌ Selecione perfil e informe o nome do arquivo."
@@ -498,6 +504,7 @@ def create_voice_profiles_tab():
 
         # ── Training: validate on profile select ──
 
+        @ui_safe("Falha ao selecionar o perfil")
         def handle_train_profile_select(profile_id):
             """Valida dataset ao selecionar perfil para treino."""
             if not profile_id:
@@ -656,6 +663,7 @@ def create_voice_profiles_tab():
 
         # ── Verify handlers ──
 
+        @ui_safe("Falha na verificacao")
         def handle_verify(profile_id, audio_path):
             if not profile_id:
                 return "❌ Selecione um perfil.", None, None

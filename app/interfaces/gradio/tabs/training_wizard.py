@@ -25,6 +25,7 @@ from typing import List
 
 import gradio as gr
 from app.core.performance import optimize_tf_dataset
+from app.interfaces.gradio.utils.components import ui_safe
 from app.interfaces.gradio.utils.notifications import (
     CommonErrors,
     notify_from_actionable,
@@ -2533,6 +2534,7 @@ def create_training_wizard_tab():
 
         # ────────────────────────── Event handlers ──────────────────────────
 
+        @ui_safe("Falha ao varrer o dataset")
         def on_scan(path):
             # Feedback imediato: escanear pode varrer milhares de arquivos.
             # 1º yield mostra estado "validando" + desabilita o avançar;
@@ -2585,6 +2587,7 @@ def create_training_wizard_tab():
         )
 
         # Salvar modelo treinado (Step 4)
+        @ui_safe("Falha ao salvar o modelo")
         def on_save_model(name):
             # Feedback imediato + desabilita o botão durante a escrita
             yield "⏳ Salvando modelo…", gr.update(interactive=False)
@@ -2608,6 +2611,7 @@ def create_training_wizard_tab():
         )
 
         # Step 3 → Step 4 + dispara treinamento
+        @ui_safe("Falha ao iniciar o treino")
         def start_training(
             scan_state,
             arch,
@@ -2640,6 +2644,7 @@ def create_training_wizard_tab():
                 yield (*updates_step, status, logs, plot, *eval_plots[:7])
 
         # Captura o path do dataset junto com o resultado do scan
+        @ui_safe("Falha ao anexar o caminho")
         def attach_path_to_scan(scan_state, path):
             if isinstance(scan_state, dict) and scan_state.get("ok"):
                 scan_state = {**scan_state, "path": path}
