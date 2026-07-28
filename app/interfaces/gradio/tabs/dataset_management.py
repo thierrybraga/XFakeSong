@@ -1267,6 +1267,17 @@ def create_dataset_management_tab():
                         gr.Markdown("---")
                         pp_train_ratio = gr.Slider(0.6, 0.9, value=0.8, step=0.05, label="Train ratio")
                         pp_val_ratio = gr.Slider(0.05, 0.2, value=0.1, step=0.05, label="Val ratio")
+                        pp_speaker_disjoint = gr.Checkbox(
+                            value=True,
+                            label="Disjunção por falante",
+                            info=(
+                                "Cada locutor fica INTEIRAMENTE em um só split. "
+                                "Sem isso, a mesma voz aparece em treino e teste, "
+                                "e a métrica passa a medir memorização de timbre "
+                                "em vez de detecção de síntese — é o protocolo "
+                                "que o benchmark usa."
+                            ),
+                        )
                         pp_splits_btn = gr.Button("Criar Splits", variant="primary")
                         gr.Markdown("---")
                         pp_full_btn = gr.Button("Pipeline Completo", variant="primary")
@@ -1284,6 +1295,53 @@ def create_dataset_management_tab():
                 def _get_pp_module():
                     import scripts.dataset.preprocess_dataset as pp
                     return pp
+
+                def _render_auditoria(relatorio: dict) -> str:
+                    """Auditoria de disjunção, em markdown, para a UI.
+
+                    Um split só vale se treino, validação e teste NÃO
+                    compartilharem conteúdo nem falante. É a mesma verificação
+                    que o benchmark faz antes de treinar — aqui ela acontece no
+                    momento da criação, quando ainda dá para refazer.
+                    """
+                    if not relatorio.get("available"):
+                        motivo = relatorio.get("reason", "?")
+                        return f"\n\n> Auditoria indisponível: {motivo}"
+
+                    linhas = ["", "", "#### Auditoria de disjunção", ""]
+                    linhas.append(
+                        "✅ **Sem sobreposição** entre treino, validação e teste."
+                        if relatorio.get("passed")
+                        else "❌ **SOBREPOSIÇÃO DETECTADA** — o split não é válido."
+                    )
+                    linhas.append("")
+                    linhas.append("| Dimensão | treino∩val | treino∩teste | val∩teste |")
+                    linhas.append("|---|---:|---:|---:|")
+                    for rotulo, chave in (
+                        ("Conteúdo (PCM)", "content_sha256"),
+                        ("Falante", "speakers"),
+                        ("Texto/enunciado", "content_ids"),
+                    ):
+                        sobre = (relatorio.get(chave) or {}).get("overlap")
+                        if sobre is None:
+                            linhas.append(f"| {rotulo} | — | — | — |")
+                            continue
+                        linhas.append(
+                            f"| {rotulo} | {sobre.get('train_val', 0)} "
+                            f"| {sobre.get('train_test', 0)} "
+                            f"| {sobre.get('val_test', 0)} |"
+                        )
+                    sem_falante = (relatorio.get("speakers") or {}).get(
+                        "unidentified_samples"
+                    )
+                    if sem_falante:
+                        linhas.append("")
+                        linhas.append(
+                            f"> {sem_falante} amostras sem falante no manifesto: "
+                            "para essas, a disjunção de falante não pôde ser "
+                            "verificada."
+                        )
+                    return "\n".join(linhas)
 
                 def handle_validate():
                     pp = _get_pp_module()
@@ -1351,7 +1409,7 @@ def create_dataset_management_tab():
                     finally:
                         pp.logger.removeHandler(capture)
 
-                def handle_splits(train_r, val_r):
+                def handle_splits(train_r, val_r, speaker_disjoint):
                     pp = _get_pp_module()
                     capture = _LogCapture()
                     pp.logger.addHandler(capture)
@@ -1359,14 +1417,25 @@ def create_dataset_management_tab():
                         test_r = round(1.0 - train_r - val_r, 2)
                         if test_r <= 0:
                             return capture.text(), "❌ Ratios invalidos (train + val >= 1.0)", []
-                        pp.create_splits(train_r, val_r, test_r)
-                        return capture.text(), f"✅ Splits criados ({train_r}/{val_r}/{test_r})", []
+                        pp.create_splits(
+                            train_r, val_r, test_r,
+                            speaker_disjoint=bool(speaker_disjoint),
+                        )
+                        modo = (
+                            "disjunto por falante" if speaker_disjoint
+                            else "estratificado por classe"
+                        )
+                        resumo = (
+                            f"✅ Splits criados ({train_r}/{val_r}/{test_r}, {modo})"
+                        )
+                        resumo += _render_auditoria(pp.audit_splits())
+                        return capture.text(), resumo, []
                     except Exception as e:
                         return capture.text(), f"❌ Erro: {e}", []
                     finally:
                         pp.logger.removeHandler(capture)
 
-                def handle_full_pipeline(train_r, val_r):
+                def handle_full_pipeline(train_r, val_r, speaker_disjoint):
                     pp = _get_pp_module()
                     capture = _LogCapture()
                     pp.logger.addHandler(capture)
@@ -1382,14 +1451,22 @@ def create_dataset_management_tab():
                         yield capture.text(), "⏳ Criando splits...", []
 
                         test_r = round(1.0 - train_r - val_r, 2)
-                        pp.create_splits(train_r, val_r, test_r)
+                        pp.create_splits(
+                            train_r, val_r, test_r,
+                            speaker_disjoint=bool(speaker_disjoint),
+                        )
 
                         total_issues = sum(len(v) for v in issues.values())
+                        modo = (
+                            "disjunto por falante" if speaker_disjoint
+                            else "estratificado por classe"
+                        )
                         summary = (
                             f"✅ **Pipeline completo!**\n\n"
                             f"- Validacao: {total_issues} problemas\n"
-                            f"- Splits: {train_r}/{val_r}/{test_r}"
+                            f"- Splits: {train_r}/{val_r}/{test_r} ({modo})"
                         )
+                        summary += _render_auditoria(pp.audit_splits())
                         issue_rows = []
                         for it, items in issues.items():
                             if items:
@@ -1417,8 +1494,8 @@ def create_dataset_management_tab():
                 pp_validate_btn.click(fn=handle_validate, outputs=[pp_log, pp_summary, pp_issues_df])
                 pp_normalize_btn.click(fn=handle_normalize, outputs=[pp_log, pp_summary, pp_issues_df])
                 pp_dedup_btn.click(fn=handle_dedup, outputs=[pp_log, pp_summary, pp_issues_df])
-                pp_splits_btn.click(fn=handle_splits, inputs=[pp_train_ratio, pp_val_ratio], outputs=[pp_log, pp_summary, pp_issues_df])
-                pp_full_btn.click(fn=handle_full_pipeline, inputs=[pp_train_ratio, pp_val_ratio], outputs=[pp_log, pp_summary, pp_issues_df])
+                pp_splits_btn.click(fn=handle_splits, inputs=[pp_train_ratio, pp_val_ratio, pp_speaker_disjoint], outputs=[pp_log, pp_summary, pp_issues_df])
+                pp_full_btn.click(fn=handle_full_pipeline, inputs=[pp_train_ratio, pp_val_ratio, pp_speaker_disjoint], outputs=[pp_log, pp_summary, pp_issues_df])
                 pp_zip_btn.click(fn=handle_zip, outputs=[pp_log, pp_summary, pp_issues_df])
 
             # ===========================================================

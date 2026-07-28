@@ -1109,3 +1109,107 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def audit_splits(splits_dir: Path | None = None) -> dict:
+    """Verifica se treino, validacao e teste sao disjuntos de verdade.
+
+    Espelha as auditorias que o benchmark roda antes de treinar
+    (`benchmarks/runner._audit_split_overlap` e `_audit_split_provenance`), mas
+    opera sobre o diretorio de splits em WAV, que e o que a interface produz.
+
+    Tres dimensoes, da mais forte para a mais fraca:
+
+    - **conteudo (PCM)**: o mesmo audio, byte a byte apos normalizacao
+      canonica, aparecendo em dois splits. E a repeticao literal de amostra;
+    - **falante**: o mesmo locutor em treino e teste faz o modelo ser avaliado
+      em voz que ja ouviu — a metrica mede memorizacao de timbre, nao deteccao
+      de sintese;
+    - **texto/enunciado**: a mesma frase nos dois lados permite decorar
+      conteudo linguistico.
+
+    Retorna um relatorio com `passed` global e o detalhamento por par de
+    splits. Nao levanta: a interface precisa mostrar o problema, nao morrer.
+    """
+    splits_dir = Path(splits_dir) if splits_dir else SPLITS_DIR
+    nomes = ("train", "val", "test")
+    pares = (("train", "val"), ("train", "test"), ("val", "test"))
+
+    arquivos: dict[str, list[Path]] = {}
+    for nome in nomes:
+        encontrados: list[Path] = []
+        for classe in ("real", "fake"):
+            pasta = splits_dir / nome / classe
+            if pasta.is_dir():
+                encontrados.extend(sorted(pasta.glob("*.wav")))
+        arquivos[nome] = encontrados
+
+    relatorio: dict = {
+        "splits_dir": str(splits_dir),
+        "counts": {nome: len(arquivos[nome]) for nome in nomes},
+        "available": any(arquivos.values()),
+    }
+    if not relatorio["available"]:
+        relatorio["passed"] = False
+        relatorio["reason"] = "nenhum split encontrado"
+        return relatorio
+
+    # --- conteudo: hash do PCM canonico (mesma funcao do dedup) ---
+    hashes = {
+        nome: {_canonical_pcm_sha256(caminho) for caminho in lista}
+        for nome, lista in arquivos.items()
+    }
+    relatorio["content_sha256"] = {
+        "unique_per_split": {n: len(h) for n, h in hashes.items()},
+        "overlap": {f"{a}_{b}": len(hashes[a] & hashes[b]) for a, b in pares},
+    }
+
+    # --- falante e conteudo linguistico, quando ha manifesto ---
+    try:
+        from app.domain.dataset_metadata.speaker_manifest import (
+            sample_metadata_for_path,
+            speaker_for_path,
+        )
+
+        falantes: dict[str, set] = {}
+        textos: dict[str, set] = {}
+        desconhecidos = 0
+        for nome, lista in arquivos.items():
+            f_set, t_set = set(), set()
+            for caminho in lista:
+                identificador = speaker_for_path(caminho, strict=False)
+                # Sem ":" o manifesto nao conhece o falante — cai para a fonte,
+                # e agrupar por fonte diria "disjunto" sem que seja.
+                if ":" in str(identificador):
+                    f_set.add(identificador)
+                else:
+                    desconhecidos += 1
+                item = sample_metadata_for_path(caminho) or {}
+                chave = item.get("text_id") or item.get("utterance_id")
+                if chave:
+                    t_set.add(f"{item.get('source', '?')}:{chave}")
+            falantes[nome], textos[nome] = f_set, t_set
+
+        relatorio["speakers"] = {
+            "per_split": {n: len(s) for n, s in falantes.items()},
+            "overlap": {f"{a}_{b}": len(falantes[a] & falantes[b]) for a, b in pares},
+            "unidentified_samples": desconhecidos,
+        }
+        relatorio["content_ids"] = {
+            "per_split": {n: len(s) for n, s in textos.items()},
+            "overlap": {f"{a}_{b}": len(textos[a] & textos[b]) for a, b in pares},
+        }
+    except Exception as exc:  # noqa: BLE001 — auditoria parcial ainda informa
+        relatorio["speakers"] = {"available": False, "reason": str(exc)}
+        relatorio["content_ids"] = {"available": False}
+
+    def _sem_sobreposicao(bloco) -> bool:
+        return isinstance(bloco, dict) and not any(
+            (bloco.get("overlap") or {}).values()
+        )
+
+    relatorio["passed"] = bool(
+        _sem_sobreposicao(relatorio["content_sha256"])
+        and _sem_sobreposicao(relatorio.get("speakers", {}))
+    )
+    return relatorio

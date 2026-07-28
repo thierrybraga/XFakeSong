@@ -194,6 +194,23 @@ Objetivo: análise forense e explicabilidade além da classificação binária.
 Use esta aba para explicar por que uma amostra foi classificada como suspeita e
 para gerar material visual de apoio à apresentação.
 
+!!! danger "Disjunção por falante nos splits (2026-07-28)"
+    A aba chamava `create_splits(train, val, test)` **sem** `speaker_disjoint`,
+    e o default do script é `False` — split estratificado apenas por classe. O
+    mesmo locutor caía em treino, validação e teste, e a métrica passava a
+    medir memorização de timbre em vez de detecção de síntese. É o mesmo
+    vazamento que levou ao descarte do dataset anterior.
+
+    O controle **Disjunção por falante** agora existe e vem **marcado**: cada
+    locutor fica inteiramente em um só split, via `StratifiedGroupKFold` sobre
+    o manifesto de falantes — o mesmo protocolo do benchmark.
+
+    Depois de criar, a aba roda `preprocess_dataset.audit_splits()` e mostra a
+    tabela de sobreposição em três dimensões: **conteúdo (SHA-256 do PCM
+    canônico)**, **falante** e **texto/enunciado**. Amostras sem falante no
+    manifesto são contadas à parte — para elas a disjunção não pode ser
+    afirmada, e o relatório diz isso em vez de silenciar.
+
 ## Aba Treinar
 
 Objetivo: criar ou atualizar modelos a partir de datasets organizados.
