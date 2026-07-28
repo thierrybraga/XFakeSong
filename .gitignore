@@ -186,7 +186,12 @@ data/
 !data/
 data/*
 !data/results/
-data!data/results/paper/
+# Artefatos de benchmark sao regeneraveis e NAO sao versionados; a excecao e o
+# material do artigo. A linha abaixo estava corrompida ("data!data/results/
+# paper/", concatenacao de duas regras), o que anulava o ignore e deixava toda
+# a arvore data/results/ rastreavel — contrariando o CLAUDE.md.
+data/results/*
+!data/results/paper/
 !data/results/paper/**
 # Diretório runtime padrão do TrainingService/DetectionService/benchmark.
 data/models/*.h5
