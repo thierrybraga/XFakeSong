@@ -34,18 +34,18 @@ tests/
 ├── unit/                # 54 arquivos
 ├── api/                 # 5 arquivos
 ├── functional/          # 2 arquivos
-├── integration/         # 6 arquivos
+├── integration/         # 7 arquivos
 └── smoke/               # 5 arquivos, opt-in
 ```
 
-Total atual: **72 arquivos de teste**.
+Total atual: **73 arquivos de teste**.
 
 | Categoria | Marcador | Arquivos | Objetivo | Run padrão |
 |---|---:|---:|---|---|
 | Unit | `unit` | 54 | Componentes isolados, utilitários, treinamento, benchmark, notebooks, segurança local | Sim |
 | API | `api` | 5 | Contratos FastAPI com `TestClient` e serviços mockados | Sim |
 | Functional | `functional` | 2 | Fluxos de usuário e rotas/frontend | Sim |
-| Integration | `integration` | 6 | Cooperação real entre serviços, podendo treinar modelos pequenos | Sim |
+| Integration | `integration` | 7 | Cooperação real entre serviços, podendo treinar modelos pequenos | Sim |
 | Smoke | `smoke` | 5 | Sanidade ponta a ponta com TensorFlow real, modelos e app | Não |
 
 `pyproject.toml` define `addopts = "-ra -q --ignore=data --ignore=logs -m 'not smoke'"`.

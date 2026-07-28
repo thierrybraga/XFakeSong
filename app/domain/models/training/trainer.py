@@ -1378,6 +1378,20 @@ class ModelTrainer(IModelTrainer):
         if ood_t is not None:
             contract["ood_threshold"] = float(ood_t)
 
+        # A inferencia precisa saber se a ULTIMA camada emite logits crus
+        # (AASIST/AM-Softmax) ou ja probabilidades. Sem este campo, o Predictor
+        # adivinhava pela faixa de valores enquanto o benchmark decidia pela
+        # ativacao da camada — criterios diferentes, que divergem quando logits
+        # caem por acaso em [0, 1] e somam ~1.
+        try:
+            from app.domain.services.detection.predictor import model_emits_logits
+
+            is_logits = model_emits_logits(model)
+            if is_logits is not None:
+                contract["output_is_logits"] = bool(is_logits)
+        except Exception as exc:  # noqa: BLE001 — contrato sem o campo ainda serve
+            self.logger.debug("output_is_logits indisponivel: %s", exc)
+
         # Sprint 4.5: EER threshold (Equal Error Rate) — alternativa adaptativa
         # ao threshold 0.5 fixo. Predictor pode usar via flag use_eer_threshold.
         eer_t = getattr(self, "_eer_threshold", None)

@@ -1004,13 +1004,11 @@ def _run_neural(
     # invalidando EER/ROC/min-tDCF, que exigem scores contínuos. Além do clip,
     # o ranking de p_fake é monotônico em (z1 − z0), não em z1 isolado.
     # Normaliza (softmax/sigmoid) ANTES de extrair p_fake.
-    try:
-        import tensorflow as _tf
+    # Mesma funcao que alimenta `output_is_logits` no contrato e que a producao
+    # consulta — um criterio so, para os dois caminhos nao divergirem.
+    from app.domain.services.detection.predictor import model_emits_logits
 
-        _last_act = getattr(model.layers[-1], "activation", None)
-        _from_logits = _last_act is None or _last_act is _tf.keras.activations.linear
-    except Exception:
-        _from_logits = False
+    _from_logits = bool(model_emits_logits(model))
 
     def _normalize_probs(pred: np.ndarray) -> np.ndarray:
         if not _from_logits:

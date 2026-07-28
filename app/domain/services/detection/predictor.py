@@ -365,15 +365,57 @@ def compute_energy_score(
     return score.astype(np.float32)
 
 
-def normalize_logits_to_probs(predictions: np.ndarray) -> np.ndarray:
+def _contract_is_logits(model_info: Any) -> Optional[bool]:
+    """Le `output_is_logits` do input_contract; None quando ausente."""
+    contract = getattr(model_info, "input_contract", None)
+    if isinstance(contract, dict) and "output_is_logits" in contract:
+        value = contract.get("output_is_logits")
+        if isinstance(value, bool):
+            return value
+    return None
+
+
+def model_emits_logits(model: Any) -> Optional[bool]:
+    """Diz se a ÚLTIMA camada do modelo emite logits crus.
+
+    Critério estrutural: ativação `None` ou `linear` significa logits (ex.:
+    AASIST com AM-Softmax). Este é o mesmo teste que o benchmark usa em
+    `benchmarks/runner._run_neural` para decidir se aplica softmax/sigmoid
+    antes de extrair `p_fake` — e é a FONTE do campo `output_is_logits`
+    gravado no `input_contract`.
+
+    Existe para que treino e inferência não decidam por critérios diferentes:
+    o benchmark olhava a arquitetura, a produção adivinhava pela faixa de
+    valores (ver `normalize_logits_to_probs`). Os dois concordam na prática,
+    mas um modelo de saída linear cujos logits caiam por acaso em [0, 1] e
+    somem ~1 faria a heurística NÃO normalizar onde o benchmark normaliza.
+
+    Devolve ``None`` quando o modelo não permite a inspeção (ex.: estimador
+    sklearn), caso em que o chamador deve manter a heurística.
+    """
+    try:
+        import tensorflow as tf
+
+        activation = getattr(model.layers[-1], "activation", None)
+        return activation is None or activation is tf.keras.activations.linear
+    except Exception:  # noqa: BLE001 — sklearn/torch ou modelo sem `layers`
+        return None
+
+
+def normalize_logits_to_probs(
+    predictions: np.ndarray, is_logits: Optional[bool] = None
+) -> np.ndarray:
     """Garante que `predictions` esteja em forma de probabilidades.
 
     Alguns modelos (ex: AASIST com AMSoftmax + activation='linear') retornam
     **logits brutos** em vez de probabilidades. Outros (RawNet2, WavLM,
-    HuBERT, Conformer, etc.) já retornam softmax/sigmoid. Esta função
-    detecta o caso e aplica softmax/sigmoid conforme necessário.
+    HuBERT, Conformer, etc.) já retornam softmax/sigmoid.
 
-    Heurística de detecção (por linha):
+    `is_logits` vem do `input_contract` (`output_is_logits`), gravado no
+    treino a partir da arquitetura — é a resposta EXATA e deve ser preferida.
+    Quando é ``None`` (modelos antigos, sem o campo no contrato), cai na
+    heurística por faixa de valores:
+
     - Se K>1 e (qualquer valor < 0 OR qualquer valor > 1 OR soma ∉ [0.9, 1.1])
       → aplica softmax
     - Se K=1 e (valor < 0 OR valor > 1)
@@ -382,6 +424,7 @@ def normalize_logits_to_probs(predictions: np.ndarray) -> np.ndarray:
 
     Args:
         predictions: shape (N, K) ou (N, 1) ou (N,)
+        is_logits: resposta autoritativa do contrato; ``None`` usa a heurística.
 
     Returns:
         Array de mesma shape com valores em [0, 1] e somando 1 (no caso K>1).
@@ -394,19 +437,27 @@ def normalize_logits_to_probs(predictions: np.ndarray) -> np.ndarray:
 
     K = p.shape[-1]
 
+    if is_logits is False:
+        return p.astype(np.float32)
+
     if K > 1:
-        # Detecta se é logits: qualquer valor fora [0, 1] ou soma != 1 em qualquer linha
-        out_of_range = (p < -1e-3).any() or (p > 1.0 + 1e-3).any()
-        sums = p.sum(axis=-1)
-        not_normalized = ((sums < 0.9) | (sums > 1.1)).any()
-        if out_of_range or not_normalized:
+        if is_logits is True:
+            precisa_normalizar = True
+        else:
+            # Heurística: qualquer valor fora [0, 1] ou soma != 1 em qualquer linha
+            out_of_range = (p < -1e-3).any() or (p > 1.0 + 1e-3).any()
+            sums = p.sum(axis=-1)
+            precisa_normalizar = out_of_range or (
+                (sums < 0.9) | (sums > 1.1)
+            ).any()
+        if precisa_normalizar:
             # Aplica softmax linha-a-linha
             max_z = np.max(p, axis=-1, keepdims=True)
             exp_z = np.exp(p - max_z)
             p = exp_z / (np.sum(exp_z, axis=-1, keepdims=True) + 1e-12)
     else:
-        # K=1: se fora de [0, 1], aplica sigmoid
-        if (p < -1e-3).any() or (p > 1.0 + 1e-3).any():
+        # K=1: sigmoid quando o contrato declara logits ou quando sai de [0, 1]
+        if is_logits is True or (p < -1e-3).any() or (p > 1.0 + 1e-3).any():
             p = 1.0 / (1.0 + np.exp(-p))
 
     return p.astype(np.float32)
@@ -766,8 +817,13 @@ class Predictor:
 
             # Garante que predictions estejam em forma de probabilidades
             # (alguns modelos como AASIST com AMSoftmax + activation='linear'
-            # retornam logits brutos). Aplica softmax/sigmoid se necessário.
-            predictions = normalize_logits_to_probs(predictions)
+            # retornam logits brutos). `output_is_logits` vem do contrato
+            # gravado no treino: e a resposta exata, e substitui a heuristica
+            # por faixa de valores — que podia divergir do criterio do
+            # benchmark num caso de fronteira (logits que caem em [0,1]).
+            predictions = normalize_logits_to_probs(
+                predictions, _contract_is_logits(model_info)
+            )
 
             # Sprint 1.4: Aplica temperatura calibrada per-model (post-hoc).
             # Não altera a classe predita, mas re-calibra a confiança para
@@ -858,7 +914,9 @@ class Predictor:
                 features_list, model_info.input_shape
             )
             predictions = model_info.model.predict(batch_features)
-            predictions = normalize_logits_to_probs(predictions)
+            predictions = normalize_logits_to_probs(
+                predictions, _contract_is_logits(model_info)
+            )
 
             model_temp = float(getattr(model_info, 'temperature', 1.0))
             predictions = apply_temperature_scaling(predictions, model_temp)
