@@ -14,10 +14,14 @@ def compute_lyapunov_exponent(y: np.ndarray) -> float:
     embedding_dim = 3
     delay = 1
 
-    # Embedding
-    embedded = np.zeros((N - embedding_dim + 1, embedding_dim))
-    for i in range(N - embedding_dim + 1):
-        embedded[i] = y[i:i + embedding_dim]
+    # Embedding de Takens com atraso `delay`. Antes o atraso era declarado e
+    # ignorado — o fatiamento usava amostras consecutivas, ou seja, delay=1
+    # implicito. Com delay=1 o resultado e identico; a diferenca e que agora o
+    # parametro significa o que diz.
+    span = (embedding_dim - 1) * delay + 1
+    embedded = np.zeros((N - span + 1, embedding_dim))
+    for i in range(N - span + 1):
+        embedded[i] = y[i:i + span:delay]
 
     # Calcular expoente
     lyap_sum = 0
@@ -72,10 +76,14 @@ def compute_lyapunov_exponent_optimized(
     embedding_dim = 2  # Reduzido de 3
     delay = 1
 
-    # Embedding
-    embedded = np.zeros((N - embedding_dim + 1, embedding_dim))
-    for i in range(N - embedding_dim + 1):
-        embedded[i] = y[i:i + embedding_dim]
+    # Embedding de Takens com atraso `delay`. Antes o atraso era declarado e
+    # ignorado — o fatiamento usava amostras consecutivas, ou seja, delay=1
+    # implicito. Com delay=1 o resultado e identico; a diferenca e que agora o
+    # parametro significa o que diz.
+    span = (embedding_dim - 1) * delay + 1
+    embedded = np.zeros((N - span + 1, embedding_dim))
+    for i in range(N - span + 1):
+        embedded[i] = y[i:i + span:delay]
 
     # Amostragem de pontos
     max_points = 200

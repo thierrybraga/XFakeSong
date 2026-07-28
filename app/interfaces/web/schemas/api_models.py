@@ -6,7 +6,7 @@ Todas as validações de bounds, formatos e constraints ficam aqui.
 import re
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ── System ─────────────────────────────────────────────────────────────
 

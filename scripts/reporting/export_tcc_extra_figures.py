@@ -18,7 +18,7 @@ import csv
 import logging
 from pathlib import Path
 from statistics import NormalDist
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 import matplotlib
 

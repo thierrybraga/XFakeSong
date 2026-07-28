@@ -41,7 +41,8 @@ def compute_vti(y: np.ndarray, f0: np.ndarray) -> float:
         # VTI geralmente foca em ruído acima de certas frequências
         # Implementação simplificada: razão de energia em segmentos não
         # vozeados vs total
-        voiced_mask = f0 > 0
+        # (a mascara de vozeamento por f0 era calculada aqui e descartada: a
+        # implementacao abaixo mudou para separacao harmonico/percussivo)
         total_energy = np.sum(y ** 2)
 
         if total_energy == 0:

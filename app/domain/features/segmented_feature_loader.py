@@ -389,8 +389,9 @@ class SegmentedFeatureLoader:
                             logger.info(
                                 f"Reference feature length set to: {reference_length}")
 
-                            # Gerar nomes das features
-                            feature_idx = 0
+                            # Gerar nomes das features (o contador
+                            # `feature_idx` daqui nunca era incrementado nem
+                            # lido — os nomes saem de `feature_type` e `j`)
                             for i, feature_type in enumerate(
                                     self.feature_types):
                                 if i < len(sample_features_by_type):

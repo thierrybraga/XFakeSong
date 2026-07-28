@@ -15,7 +15,6 @@ from fastapi.templating import Jinja2Templates  # noqa: E402
 from slowapi import _rate_limit_exceeded_handler  # noqa: E402
 from slowapi.errors import RateLimitExceeded  # noqa: E402
 
-from app.core.db.setup import init_db  # noqa: E402
 from app.core.exceptions import setup_exception_handlers  # noqa: E402
 from app.core.feedback import configure_logging  # noqa: E402
 from app.core.gpu import describe_gpu_setup, setup_gpu  # noqa: E402

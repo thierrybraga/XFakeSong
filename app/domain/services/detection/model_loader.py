@@ -166,7 +166,6 @@ class TorchSSLOriginalModel:
             return
         try:
             import torch
-            import torch.nn as nn
             from transformers import HubertModel, WavLMModel
         except Exception as exc:  # noqa: BLE001 - dependency surfaced to UI
             raise RuntimeError(
