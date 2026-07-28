@@ -6,17 +6,16 @@ from app.interfaces.gradio.utils.plotting import (
     PLOT_FACE,
     PLOT_GRID,
     PLOT_TEXT,
-    safe_tight_layout,
     style_ax,
 )
 
 import librosa  # noqa: E402
 import librosa.display  # noqa: E402
-import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
 import gradio as gr  # noqa: E402
 from app.core.contracts.audio import AudioData, FeatureType  # noqa: E402
+from app.interfaces.gradio.utils.plotting import new_figure
 from app.domain.services.feature_extraction_service import (  # noqa: E402
     AudioFeatureExtractionService,
     ExtractionConfig,
@@ -125,7 +124,7 @@ def create_features_tab():
                 # --- Geração dos Gráficos (Dark Theme) ---
 
                 # 1. Plot Waveform
-                fig_wave, ax_wave = plt.subplots(figsize=(10, 3))
+                fig_wave, ax_wave = new_figure(figsize=(10, 3))
                 _style_feat_ax(ax_wave, fig_wave, "Waveform (Time Domain)")
                 librosa.display.waveshow(
                     audio_data.samples, sr=audio_data.sample_rate,
@@ -133,7 +132,7 @@ def create_features_tab():
                 fig_wave.tight_layout()
 
                 # 2. Plot Feature Heatmap
-                fig_feat, ax_feat = plt.subplots(figsize=(10, 6))
+                fig_feat, ax_feat = new_figure(figsize=(10, 6))
                 _style_feat_ax(ax_feat, fig_feat, "Feature Heatmap")
                 plotted = False
                 first_key = list(feature_data.keys())[
@@ -195,7 +194,7 @@ def create_features_tab():
                 fig_feat.tight_layout()
 
                 # 3. Plot Histogram
-                fig_hist, ax_hist = plt.subplots(figsize=(6, 4))
+                fig_hist, ax_hist = new_figure(figsize=(6, 4))
                 _style_feat_ax(ax_hist, fig_hist, "Distribuição de Valores")
                 if main_feature_array is not None and isinstance(
                         main_feature_array, np.ndarray):

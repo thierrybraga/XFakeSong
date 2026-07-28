@@ -35,6 +35,7 @@ from app.interfaces.gradio.utils.plotting import (
     PLOT_DANGER,
     close_fig,
     safe_tight_layout,
+    new_figure,
     style_ax,
 )
 from app.interfaces.gradio.utils.training_wizard_presenter import (
@@ -204,7 +205,6 @@ def _history_figure(train_loss, val_loss, train_acc, val_acc):
 
     Retorna a `Figure` (o chamador fecha com close_fig para evitar leak).
     """
-    import matplotlib.pyplot as plt
 
     def _clean(seq):
         return [v for v in (seq or []) if v is not None]
@@ -212,7 +212,7 @@ def _history_figure(train_loss, val_loss, train_acc, val_acc):
     tl, vl = _clean(train_loss), _clean(val_loss)
     ta, va = _clean(train_acc), _clean(val_acc)
 
-    fig, ax = plt.subplots(1, 2, figsize=(12, 4))
+    fig, ax = new_figure(1, 2, figsize=(12, 4))
 
     # ── Loss ──
     style_ax(ax[0], fig, "Loss")
@@ -404,9 +404,8 @@ def _plot_confusion_matrix_on_axis(ax, fig, y_true, y_pred, title="Matriz de Con
 
 def _message_figure(title: str, message: str):
     """Figura fallback para avaliação indisponível sem quebrar a UI."""
-    import matplotlib.pyplot as plt
 
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = new_figure(figsize=(8, 5))
     style_ax(ax, fig, title)
     ax.text(
         0.5,
@@ -426,7 +425,6 @@ def _message_figure(title: str, message: str):
 
 def _roc_figure(y_true, y_scores):
     import numpy as np
-    import matplotlib.pyplot as plt
     from sklearn.metrics import auc, roc_curve
 
     y_true = _normalize_true_labels(y_true)
@@ -437,7 +435,7 @@ def _roc_figure(y_true, y_scores):
         )
     fpr, tpr, _ = roc_curve(y_true, y_scores)
     roc_auc = auc(fpr, tpr)
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = new_figure(figsize=(8, 5))
     style_ax(ax, fig, "Curva ROC")
     ax.plot(fpr, tpr, color=PLOT_ACCENT, lw=2, label=f"AUC = {roc_auc:.3f}")
     ax.plot([0, 1], [0, 1], color="#334155", lw=1.5, linestyle="--")
@@ -452,7 +450,6 @@ def _roc_figure(y_true, y_scores):
 
 def _precision_recall_figure(y_true, y_scores):
     import numpy as np
-    import matplotlib.pyplot as plt
     from sklearn.metrics import auc, precision_recall_curve
 
     y_true = _normalize_true_labels(y_true)
@@ -464,7 +461,7 @@ def _precision_recall_figure(y_true, y_scores):
         )
     precision, recall, _ = precision_recall_curve(y_true, y_scores)
     pr_auc = auc(recall, precision)
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = new_figure(figsize=(8, 5))
     style_ax(ax, fig, "Curva Precisão-Recall")
     ax.plot(recall, precision, color=PLOT_ACCENT, lw=2, label=f"AUC = {pr_auc:.3f}")
     ax.set_xlim(0, 1)
@@ -522,7 +519,6 @@ def _threshold_figure(y_true, y_scores):
 
 def _class_accuracy_figure(y_true, y_pred):
     import numpy as np
-    import matplotlib.pyplot as plt
 
     y_true = _normalize_true_labels(y_true)
     y_pred = _normalize_true_labels(y_pred)
@@ -530,7 +526,7 @@ def _class_accuracy_figure(y_true, y_pred):
     for cls in (0, 1):
         mask = y_true == cls
         scores.append(float(np.mean(y_pred[mask] == cls)) if np.any(mask) else 0.0)
-    fig, ax = plt.subplots(figsize=(7, 5))
+    fig, ax = new_figure(figsize=(7, 5))
     style_ax(ax, fig, "Acurácia por Classe")
     ax.bar(["real", "fake"], scores, color=[PLOT_ACCENT, PLOT_DANGER])
     ax.set_ylim(0, 1.05)
@@ -542,9 +538,8 @@ def _class_accuracy_figure(y_true, y_pred):
 
 
 def _standalone_confusion_figure(y_true, y_pred):
-    import matplotlib.pyplot as plt
 
-    fig, ax = plt.subplots(figsize=(7, 5))
+    fig, ax = new_figure(figsize=(7, 5))
     _plot_confusion_matrix_on_axis(ax, fig, y_true, y_pred, "Matriz de Confusão")
     safe_tight_layout(fig)
     return fig
@@ -588,7 +583,6 @@ def _history_confusion_figure_from_history(
     preferred_train_acc_key: str = None,
 ):
     """Figura final canônica: Loss, Accuracy e Matriz de Confusão."""
-    import matplotlib.pyplot as plt
 
     train_acc_key, val_acc_key = _resolve_accuracy_history_keys(
         history, preferred_train_acc_key
@@ -606,7 +600,7 @@ def _history_confusion_figure_from_history(
         if v is not None
     ]
 
-    fig, ax = plt.subplots(1, 3, figsize=(16, 4))
+    fig, ax = new_figure(1, 3, figsize=(16, 4))
 
     style_ax(ax[0], fig, "Loss")
     ax[0].plot(
@@ -887,7 +881,6 @@ def _run_training(
 
     Reusa a mesma lógica de binarização do training.py (BUG.Training.4 fix).
     """
-    import matplotlib.pyplot as plt
     import numpy as np
     import tensorflow as tf
 
@@ -1986,7 +1979,6 @@ def _run_classical_training(arch: str, dataset_path: str, progress):
     """
     import time as _time
 
-    import matplotlib.pyplot as plt
     import numpy as np
 
     global _LAST_TRAINED
@@ -2211,7 +2203,7 @@ def _run_classical_training(arch: str, dataset_path: str, progress):
         eval_figs = _training_eval_figures(y_va, y_pred, y_score, [])
 
         # ── Plot: matriz de confusão + (RF) importância das features ──
-        fig, ax = plt.subplots(1, 2, figsize=(12, 4))
+        fig, ax = new_figure(1, 2, figsize=(12, 4))
         style_ax(ax[0], fig, "Matriz de Confusão (val)")
         ax[0].imshow(cm, cmap="Blues")
         ax[0].set_xticks([0, 1])

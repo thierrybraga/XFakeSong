@@ -1,6 +1,5 @@
 import json
 import logging
-import threading
 from pathlib import Path
 
 # FE.2 + FE.8: importa helpers compartilhados ANTES de matplotlib.pyplot.
@@ -12,10 +11,8 @@ from app.interfaces.gradio.utils.plotting import (
     PLOT_FACE,
     PLOT_GRID,
     PLOT_TEXT,
-    close_fig,
     get_service_lock,
     notify_error,
-    notify_info,
     safe_tight_layout,
     style_ax,
 )
@@ -39,12 +36,12 @@ _style_ax = style_ax
 
 import librosa  # noqa: E402
 import librosa.display  # noqa: E402
-import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
 
 import gradio as gr  # noqa: E402
 from app.core.contracts.audio import AudioData  # noqa: E402
+from app.interfaces.gradio.utils.plotting import new_figure
 
 # Configurar logging
 logger = logging.getLogger("gradio_detection_tab")
@@ -102,7 +99,7 @@ def get_waveform_plot(y, sr):
 
     Para áudios longos (>60s), faz downsample para evitar render lento.
     """
-    fig, ax = plt.subplots(figsize=(10, 3))
+    fig, ax = new_figure(figsize=(10, 3))
     _style_ax(ax, fig, "Forma de Onda")
 
     # FE.5: downsample defensivo para áudios longos (>1 min)
@@ -127,7 +124,7 @@ def get_prosody_plot(y, sr):
     FE.5: librosa.pyin é MUITO lento (segundos por minuto de áudio). Pulamos
     para áudios > _PROSODY_PYIN_MAX_DURATION_S e usamos apenas RMS energy.
     """
-    fig, ax = plt.subplots(figsize=(10, 4))
+    fig, ax = new_figure(figsize=(10, 4))
     _style_ax(ax, fig, "Análise Prosódica: Energia e Pitch")
 
     duration_s = len(y) / sr if sr > 0 else 0.0
@@ -174,7 +171,7 @@ def get_prosody_plot(y, sr):
 
 def get_spectrogram_plot(y, sr):
     """Gera espectrograma Mel em estilo dark."""
-    fig, ax = plt.subplots(figsize=(10, 4))
+    fig, ax = new_figure(figsize=(10, 4))
     _style_ax(ax, fig, "Espectrograma Mel")
     S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128)
     S_dB = librosa.power_to_db(S, ref=np.max)
@@ -306,7 +303,25 @@ def analyze_audio(audio_path, architecture, variant,
                     data = result_proc.data
                     result_label = "DEEPFAKE" if data.is_fake else "REAL"
                     confidence = float(data.confidence)
+                    # PONTO DE OPERACAO no topo dos detalhes, nao enterrado em
+                    # `metadata`. O limiar NAO e 0,5: desde a calibracao por
+                    # validacao ele varia por modelo (medidos 0,79 no AASIST e
+                    # 0,49 no Conformer). Sem isso, "DEEPFAKE, confianca 0,72"
+                    # nao diz onde foi o corte — informacao que uma ferramenta
+                    # forense precisa expor.
+                    _meta = data.metadata or {}
+                    _limiar = _meta.get("classification_threshold")
                     details = {
+                        "veredito": result_label,
+                        "ponto_de_operacao": {
+                            "limiar_de_decisao": _limiar,
+                            "origem": (
+                                "EER calibrado na validacao"
+                                if _limiar is not None and abs(_limiar - 0.5) > 1e-9
+                                else "limiar fixo 0,5"
+                            ),
+                            "temperatura_aplicada": _meta.get("temperature_applied"),
+                        },
                         "model": data.model_name,
                         "probabilities": data.probabilities,
                         "metadata": data.metadata,
@@ -651,8 +666,11 @@ def create_detection_tab():
                             value=0.0,
                             scale=1,
                             info=(
-                                "Probabilidade da classe predita. Já calibrada "
-                                "via temperature scaling (Sprint 1.4)."
+                                "Probabilidade da classe predita, já calibrada "
+                                "por temperature scaling. O limiar de decisão "
+                                "NÃO é 0,5 fixo: varia por modelo (calibrado no "
+                                "conjunto de validação). Veja "
+                                "`ponto_de_operacao` nos detalhes."
                             ),
                             elem_classes="detect-confidence-output",
                         )

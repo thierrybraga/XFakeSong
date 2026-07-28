@@ -18,6 +18,7 @@ import numpy as np
 
 import gradio as gr
 
+from app.interfaces.gradio.utils.plotting import new_figure
 from app.domain.dataset_metadata.dataset_catalog import (
     MODEL_READINESS_TIERS,
     PRESET_SELECTIONS,
@@ -421,7 +422,7 @@ def _scan_dataset(light: bool = False) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 def _build_class_distribution(data: Dict) -> plt.Figure:
     """Bar chart: real vs fake."""
-    fig, ax = plt.subplots(figsize=(5, 3.5))
+    fig, ax = new_figure(figsize=(5, 3.5))
     _style_ax(ax)
 
     real_c = data["real_count"]
@@ -453,7 +454,7 @@ def _build_class_distribution(data: Dict) -> plt.Figure:
 
 def _build_source_pie(data: Dict) -> plt.Figure:
     """Pie chart: fontes de dados."""
-    fig, ax = plt.subplots(figsize=(5, 3.5))
+    fig, ax = new_figure(figsize=(5, 3.5))
     ax.set_facecolor(_BG)
     fig.set_facecolor(_BG)
 
@@ -491,7 +492,7 @@ def _build_source_pie(data: Dict) -> plt.Figure:
 
 def _build_duration_histogram(data: Dict) -> plt.Figure:
     """Histograma de durações sobrepostas."""
-    fig, ax = plt.subplots(figsize=(6, 3.5))
+    fig, ax = new_figure(figsize=(6, 3.5))
     _style_ax(ax)
 
     dr = data["durations_real"]

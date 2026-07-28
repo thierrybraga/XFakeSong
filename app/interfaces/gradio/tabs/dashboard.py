@@ -13,7 +13,6 @@ import sys
 import threading
 import time
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import gradio as gr
 
