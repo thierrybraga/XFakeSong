@@ -387,12 +387,17 @@ def _merge_effective_hparams(
         params.setdefault("lr_scheduler", "architecture_default")
         params["epochs_source"] = "benchmark_cli"
 
-    params.update(cfg.training_overrides.get(arch, {}))
+    overrides = cfg.training_overrides.get(arch, {})
+    params.update(overrides)
     if compact not in CLASSICAL_ARCHES:
         # Controles do protocolo sobrescrevem apenas aspectos de comparabilidade.
         params["epochs"] = int(cfg.epochs)
         params["epochs_source"] = "standardized_benchmark_budget"
-        params["early_stopping"] = not bool(cfg.fixed_epoch_budget)
+        # `early_stopping` derivado do orçamento fixo, MAS um override explícito
+        # do chamador vence: a linha incondicional anterior descartava em
+        # silêncio o `--no-early-stopping` sempre que fixed_epoch_budget=False.
+        if "early_stopping" not in overrides:
+            params["early_stopping"] = not bool(cfg.fixed_epoch_budget)
         params["select_best_checkpoint"] = bool(cfg.select_best_checkpoint)
         params["validation_condition"] = "clean"
         params["calibrate_under_noise"] = False

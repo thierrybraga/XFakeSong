@@ -126,6 +126,37 @@ As 14 arquiteturas são cobertas em **dois escopos** (`benchmarks/config.py`):
 | `official` (default) | SVM, RandomForest, RawNet2, AASIST, RawGAT-ST, Conformer, Hybrid CNN-Transformer, SpectrogramTransformer, MultiscaleCNN | hiperparâmetros de `planning.py::NEURAL_BENCHMARK_HPARAMS` |
 | `official` (SSL real) | WavLM Original, HuBERT Original | runner PyTorch separado (`scripts/benchmark/run_wavlm_original_benchmark.py`) — backbones SSL reais, não o fallback TF |
 | `extended` | Sonic Sleuth, EfficientNet-LSTM, Ensemble | `--experiment-scope extended`, que força `optimize_hyperparameters=False` |
+| `extended` (SSL Keras) | WavLM, HuBERT | mesmos checkpoints dos "Original", mas com o backbone **portado para Keras** (`ssl_backbone.py`) e congelado; treinam só a soma ponderada de camadas e a cabeça |
+
+!!! warning "Proveniência dos SSL no caminho Keras"
+    "WavLM"/"HuBERT" (escopo `extended`) e "WavLM Original"/"HuBERT Original"
+    (escopo `official`) **não são o mesmo experimento**: mesmo checkpoint,
+    runners diferentes. Até 2026-07-27 os dois primeiros não constavam de
+    manifesto algum e o benchmark gravava `provenance: null` justamente nos
+    modelos em que a proveniência é a definição do experimento.
+
+    O caminho Keras **degrada** para uma CNN-1D treinada do zero se o checkpoint
+    não estiver acessível. Quando isso acontece, o runner publica
+    `provenance.variant = "*_fallback_cnn1d_scratch_nao_e_o_ssl_real"`,
+    preserva o rótulo pretendido em `declared_variant` e registra
+    `ssl_backbone.pretrained = false` com o motivo — nenhum artefato alega SSL
+    real onde não houve. `XFAKE_STRICT_SSL=1` aborta em vez de degradar.
+
+!!! success "Paridade treino↔produção (2026-07-28)"
+    Os modelos do benchmark são os promovidos para produção, então o
+    `input_contract` de cada artefato é gravado **no próprio treino**, com o
+    `feature_frontend` derivado do `input_type` efetivamente usado
+    (`benchmark_frontend.frontend_for_input_type`, fonte única). É esse campo
+    que faz o `FeaturePreparer` reproduzir o front-end do benchmark na
+    inferência; sem ele o app cai no front-end próprio (log-magnitude-mel,
+    hop 128, sem z-score) e as métricas do artigo não se transferem.
+
+    Antes, só AASIST e RawGAT-ST declaravam o campo e as outras dez dependiam
+    do passo pós-hoc `rebuild_inference_contracts.py` — que cobria nove
+    arquiteturas. SVM/RandomForest não tinham sidecar algum: iam para produção
+    sem front-end e sem limiar, decidindo sempre em 0,5. Agora recebem contrato
+    com o vetor tabular de 63 descritores e limiar de EER derivado da
+    **validação**.
 
 Pedir um modelo do escopo estendido dentro do escopo oficial é erro de
 configuração (o preflight recusa antes de treinar), não uma limitação do
@@ -273,7 +304,7 @@ python scripts/benchmark/run_benchmark.py \
     "Hybrid CNN-Transformer" SpectrogramTransformer EfficientNet-LSTM \
     MultiscaleCNN Ensemble SVM RandomForest \
     --dataset data/datasets/benchmark_dataset.npz \
-    --epochs 100 --snr 30 20 10 --api --out data/results/bench_tcc
+    --epochs 100 --snr 30 20 10 5 --api --out data/results/bench_tcc
 
 # 6) Modelo individual:
 python scripts/benchmark/run_benchmark.py \
@@ -547,7 +578,11 @@ Hiperparâmetros neurais efetivos do recorte principal:
 Esses valores permanecem específicos por modelo. Os controles comuns são:
 100 épocas completas, early stopping desativado, restauração do checkpoint de
 menor val_loss limpa, limiar 0,5, semente 42, uma cópia AWGN de treino processada em lotes de 64 formas de onda e
-balanceada em 30/20/10 dB e AWGN de teste nos mesmos níveis antes do frontend.
+balanceada em 30/20/10 dB e AWGN de teste nesses mesmos níveis **mais 5 dB**
+antes do frontend. Os três primeiros medem robustez em condição CASADA; 5 dB
+fica deliberadamente fora do augmentation e é o único nível que mede
+generalização a ruído — a tabela marca essa coluna com asterisco e o
+`results.json` grava `noise_condition: matched|unseen` por nível.
 SVM e Random Forest mantêm suas grades próprias de validação cruzada e não usam
 o conceito de época.
 O campo epochs do plano é um controle global e sobrescreve somente o orçamento

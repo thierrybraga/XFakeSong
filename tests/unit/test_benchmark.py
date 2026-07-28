@@ -341,8 +341,12 @@ def test_report_write_all_creates_artifacts():
         resultados = (out / "tables" / "tab_resultados.tex").read_text(
             encoding="utf-8"
         )
-        assert "\\begin{tabular}{lccccccc}" in resultados
-        assert "\\multicolumn{7}{c}" in resultados
+        # 9 colunas desde 2026-07-27: Acur.@EER (oráculo) entrou ao lado da
+        # acurácia no limiar fixo, para separar calibração de separabilidade.
+        assert "\\begin{tabular}{lcccccccc}" in resultados
+        assert "\\multicolumn{8}{c}" in resultados
+        assert "Acur.@EER" in resultados
+        assert "limiar fixo de decisão 0,5" in resultados
         # figuras desenhadas a partir de scores/história
         assert (out / "figures" / "roc.png").exists()
         assert (out / "figures" / "convergencia.png").exists()
@@ -365,7 +369,7 @@ def test_report_write_all_creates_artifacts():
         assert "(architectures/multiscalecnn/confusion_matrix.png)" in report
 
 
-def test_robustez_table_uses_dynamic_colspan_without_converged_models():
+def test_robustez_table_marks_non_converged_instead_of_dropping():
     from benchmarks.report import write_all
 
     fake = {
@@ -396,7 +400,18 @@ def test_robustez_table_uses_dynamic_colspan_without_converged_models():
     with tempfile.TemporaryDirectory() as td:
         write_all(fake, td)
         tex = (Path(td) / "tables" / "tab_robustez.tex").read_text("utf-8")
-        assert "\\multicolumn{5}{c}{(nenhum modelo convergente)}" in tex
+        # `converged` é medido no PRÓPRIO teste: filtrar a tabela por ele era
+        # seleção pelo conjunto de teste, e a arquitetura sumia sem nota
+        # nenhuma. Agora a linha permanece, marcada e explicada na legenda.
+        assert "SVM$^{\\dagger}$" in tex
+        assert "\\dagger$ não atingiu o critério de convergência" in tex
+
+    # o colspan dinâmico continua valendo quando NENHUMA arquitetura conclui
+    empty = {**fake, "architectures": {"SVM": {"status": "error", "error": "x"}}}
+    with tempfile.TemporaryDirectory() as td:
+        write_all(empty, td)
+        tex = (Path(td) / "tables" / "tab_robustez.tex").read_text("utf-8")
+        assert "\\multicolumn{5}{c}{(nenhuma arquitetura concluiu)}" in tex
 
 
 def test_report_creates_convergence_placeholder_for_classical_models():

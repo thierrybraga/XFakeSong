@@ -32,7 +32,7 @@ def _run(seed: int, eer: float, acc: float) -> dict:
         "clean": {"eer": eer, "accuracy": acc, "auc_roc": 0.9, "n": 100},
         "robustness": {"20": {"eer": eer + 0.01, "accuracy": acc - 0.01}},
         "efficiency": {"latency_ms": 1.0},
-        "duration_sec": 1.0,
+        "wall_time_s": 1.0,
     }
 
 
@@ -48,8 +48,10 @@ def test_aggregation_reports_mean_and_sample_std():
     assert agg["clean"]["eer_seed_values"] == [0.10, 0.20, 0.30]
     # a robustez por SNR também agrega
     assert agg["robustness"]["20"]["eer"] == pytest.approx(0.21)
-    # cada execução fica preservada para auditoria
+    # cada execução fica preservada para auditoria, COM o tempo de parede
+    # (a chave é `wall_time_s`; usar `duration_sec` deixava tudo nulo)
     assert len(agg["seed_runs"]) == 3
+    assert all(run["wall_time_s"] == 1.0 for run in agg["seed_runs"])
 
 
 def test_promoted_artifact_is_first_seed_not_best():

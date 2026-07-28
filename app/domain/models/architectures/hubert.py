@@ -290,6 +290,13 @@ def _create_hubert_model(input_shape: Tuple[int, ...],
     # checkpoint PyTorch, portados para Keras (o caminho TF do `transformers`
     # não funciona com Keras 3). Só a soma ponderada das camadas e a cabeça
     # treinam. O extrator CNN-1D do zero fica apenas como fallback.
+    # Importado fora do try: o registro de proveniência precisa acontecer
+    # também quando o import do backbone falha (é justamente o caso do
+    # fallback).
+    from app.domain.models.architectures.ssl_utils import (
+        record_ssl_backbone_status,
+    )
+
     using_pretrained = False
     backbone_info = None
     try:
@@ -301,12 +308,22 @@ def _create_hubert_model(input_shape: Tuple[int, ...],
             inputs, family="hubert", checkpoint=model_name, name="hubert"
         )
         using_pretrained = True
+        # Proveniência: o benchmark grava qual backbone REALMENTE entrou no
+        # grafo, e não o rótulo declarado no manifesto (ver ssl_utils).
+        record_ssl_backbone_status(
+            "HuBERT", pretrained=True, checkpoint=backbone_info["checkpoint"],
+            detail=backbone_info,
+        )
     except Exception as exc:  # noqa: BLE001
         from app.domain.models.architectures.ssl_utils import strict_ssl_guard
 
         logger.warning(
             "HuBERT: backbone pré-treinado indisponível (%s). Caindo no "
             "extrator simplificado.", exc,
+        )
+        record_ssl_backbone_status(
+            "HuBERT", pretrained=False, checkpoint=model_name,
+            detail={"fallback": "cnn1d_scratch", "reason": str(exc)},
         )
         strict_ssl_guard("HuBERT")
         feature_extractor = HuBERTFeatureExtractor(

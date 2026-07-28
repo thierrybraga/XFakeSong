@@ -25,7 +25,43 @@ __all__ = [
     "build_pretrained_ssl_features",
     "build_ssl_aasist_backend",
     "strict_ssl_guard",
+    "record_ssl_backbone_status",
+    "get_ssl_backbone_status",
+    "reset_ssl_backbone_status",
 ]
+
+# Backbone EFETIVAMENTE montado por modelo SSL, preenchido em tempo de
+# construção. Existe porque o caminho TensorFlow degrada para um CNN-1D do zero
+# quando o checkpoint não está acessível: sem este registro, o benchmark
+# publicaria o rótulo de proveniência declarado no manifesto ("backbone
+# pré-treinado congelado") mesmo numa execução em que nenhum peso pré-treinado
+# foi carregado — a pior classe de erro num artefato acadêmico, porque é
+# indetectável a posteriori. O runner consulta este estado ao gravar
+# `architectures[<nome>].provenance`.
+_SSL_BACKBONE_STATUS: dict = {}
+
+
+def record_ssl_backbone_status(model_name: str, *, pretrained: bool,
+                               checkpoint: Optional[str] = None,
+                               detail: Optional[dict] = None) -> None:
+    """Registra qual backbone o modelo `model_name` acabou de montar."""
+    status = {"pretrained": bool(pretrained), "checkpoint": checkpoint}
+    if detail:
+        status.update(
+            {k: v for k, v in detail.items() if k not in ("checkpoint",)}
+        )
+    _SSL_BACKBONE_STATUS[str(model_name)] = status
+
+
+def get_ssl_backbone_status(model_name: str) -> Optional[dict]:
+    """Estado do último backbone montado para `model_name` (None se nenhum)."""
+    status = _SSL_BACKBONE_STATUS.get(str(model_name))
+    return dict(status) if status is not None else None
+
+
+def reset_ssl_backbone_status() -> None:
+    """Limpa o registro (usado por testes e entre execuções independentes)."""
+    _SSL_BACKBONE_STATUS.clear()
 
 
 def build_pretrained_ssl_features(inputs, family: str, checkpoint: str = None,

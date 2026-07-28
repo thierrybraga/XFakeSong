@@ -57,6 +57,40 @@ DEFAULT_RAW_TARGET = 48000
 
 N_TABULAR_FEATURES = 63
 
+#: Mapa `input_type` do benchmark → identificador de front-end.
+#:
+#: FONTE ÚNICA (2026-07-28). Antes, quem precisava dessa correspondência a
+#: reimplementava: o `registry` declarava `feature_frontend` em apenas 2 das 12
+#: arquiteturas, e `scripts/reporting/rebuild_inference_contracts.py` mantinha um
+#: mapa manual por nome de modelo que cobria 9 e esquecia Sonic Sleuth,
+#: EfficientNet-LSTM, Ensemble, WavLM e HuBERT.
+#:
+#: Sem `feature_frontend` no contrato, o `FeaturePreparer` NÃO roteia para este
+#: módulo e a inferência cai no front-end próprio do app (log-magnitude-mel,
+#: hop 128, sem z-score), que não reproduz o do treino — as métricas do artigo
+#: deixam de valer para o modelo em produção.
+#:
+#: A correspondência é mecânica porque `benchmarks/data.py::
+#: prepare_input_for_architecture` decide o preparo pelo mesmo `input_type`.
+_FRONTEND_BY_INPUT_TYPE = {
+    "raw_audio": FRONTEND_RAW,
+    "spectrogram": FRONTEND_LOGMEL,
+    "tabular": FRONTEND_TABULAR,
+    "tabular_audio_features": FRONTEND_TABULAR,
+    "tabular_flattened": FRONTEND_TABULAR,
+}
+
+
+def frontend_for_input_type(input_type: Optional[str]) -> Optional[str]:
+    """Front-end do benchmark correspondente a um ``input_type``.
+
+    Devolve ``None`` para tipos que o benchmark não prepara (nesse caso o
+    contrato NÃO deve alegar paridade com o front-end do benchmark).
+    """
+    if not input_type:
+        return None
+    return _FRONTEND_BY_INPUT_TYPE.get(str(input_type).strip().lower())
+
 
 def fit_length_tile(
     flat: np.ndarray,

@@ -16,8 +16,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 import numpy as np
-from app.core.config.paths import resolve_results_output
 
+from app.core.config.paths import resolve_results_output
 from benchmarks.config import BenchmarkConfig
 from benchmarks.data import (
     BenchmarkData,
@@ -385,12 +385,41 @@ def _architecture_provenance(arch: str) -> Dict[str, Any]:
         return {}
     for item in list(OFFICIAL_TCC_MODEL_MANIFEST) + list(EXTENDED_MODEL_MANIFEST):
         if item.get("benchmark_name") == arch:
-            return {
+            prov = {
                 key: item.get(key)
                 for key in ("variant", "family", "runner", "scope", "result_key")
                 if item.get(key) is not None
             }
+            _apply_ssl_backbone_status(arch, item, prov)
+            return prov
     return {}
+
+
+def _apply_ssl_backbone_status(
+    arch: str, item: Dict[str, Any], prov: Dict[str, Any]
+) -> None:
+    """Substitui o rótulo declarado pelo backbone SSL REALMENTE construído.
+
+    WavLM/HuBERT no caminho Keras degradam para um CNN-1D do zero quando o
+    checkpoint não está acessível. Publicar o `variant` do manifesto nesse caso
+    faria o artefato alegar backbone pré-treinado onde não houve — erro
+    indetectável depois do run. `ssl_utils` registra o que foi montado; aqui
+    isso vira proveniência.
+    """
+    try:
+        from app.domain.models.architectures.ssl_utils import (
+            get_ssl_backbone_status,
+        )
+
+        status = get_ssl_backbone_status(arch)
+    except Exception:  # noqa: BLE001
+        status = None
+    if not status:
+        return
+    prov["ssl_backbone"] = status
+    if not status.get("pretrained") and item.get("fallback_variant"):
+        prov["declared_variant"] = prov.get("variant")
+        prov["variant"] = item["fallback_variant"]
 
 
 def _stratified_test_labels(
@@ -637,6 +666,7 @@ def _prepare_protocol_splits(
         and cfg.train_noise_copies > 0
         and bool(cfg.train_aug_snr_db)
     )
+    train_noise_seeds: set[int] = set()
     if use_train_noise:
         noise_batch = max(1, int(cfg.waveform_noise_batch_size))
         for copy_index in range(int(cfg.train_noise_copies)):
@@ -658,6 +688,7 @@ def _prepare_protocol_splits(
                     seed=base_seed + start,
                 )
                 prepared_chunks.append(prepared_chunk)
+                train_noise_seeds.add(int(base_seed + start))
             noisy_prepared = np.concatenate(prepared_chunks, axis=0)
             Xtr_parts.append(noisy_prepared)
             ytr_parts.append(np.asarray(ytr))
@@ -665,6 +696,25 @@ def _prepare_protocol_splits(
             for value, count in zip(values, counts):
                 key = str(int(value))
                 assigned_counts[key] = assigned_counts.get(key, 0) + int(count)
+
+    # Disjunção treino↔avaliação das sementes de ruído, VERIFICADA.
+    #
+    # O comentário anterior justificava a ausência de colisão com um termo
+    # `1009*(nível+1)` que não existe mais no código — a garantia valia por
+    # coincidência aritmética com `waveform_noise_batch_size=64` e quebraria em
+    # silêncio se alguém mudasse o tamanho do lote. Uma colisão faria o modelo
+    # treinar exatamente sobre a realização de ruído usada no teste.
+    eval_noise_seeds = {
+        int(cfg.seed) + 20000 + int(snr) for snr in (cfg.snr_levels_db or [])
+    }
+    seed_collisions = sorted(train_noise_seeds & eval_noise_seeds)
+    if seed_collisions:
+        raise ValueError(
+            "colisão de sementes de ruído treino↔avaliação: "
+            f"{seed_collisions}. O modelo treinaria sobre a mesma realização de "
+            "AWGN usada no teste. Ajuste waveform_noise_batch_size ou os "
+            "offsets 10000/20000 em _prepare_protocol_splits/_benchmark_one."
+        )
 
     Xtr = np.concatenate(Xtr_parts, axis=0)
     ytr_fit = np.concatenate(ytr_parts, axis=0)
@@ -680,14 +730,19 @@ def _prepare_protocol_splits(
         "train_noise_copies": int(cfg.train_noise_copies if use_train_noise else 0),
         "waveform_noise_batch_size": int(cfg.waveform_noise_batch_size),
         "assigned_snr_counts": assigned_counts,
+        "train_noise_seed_count": len(train_noise_seeds),
+        "train_eval_noise_seeds_disjoint": True,
         "clean_train_samples": int(len(ytr)),
         "fit_train_samples": int(len(ytr_fit)),
         "input_type": input_type,
         "original_shape": list(np.asarray(Xtr_raw).shape[1:]),
         "prepared_shape": list(np.asarray(Xtr_clean).shape[1:]),
         "train_crop_strategy": "random" if input_type == "raw_audio" else None,
-        "eval_crop_strategy": "multicrop" if input_type == "raw_audio" else None,
-        "eval_num_crops": 3 if input_type == "raw_audio" else 1,
+        # Resolvidos em `_benchmark_one`, quando se sabe se as formas de onda
+        # cruas estão disponíveis para o multicrop. Declarar aqui produzia um
+        # protocolo que contradizia a avaliação realmente executada.
+        "eval_crop_strategy": "resolved_at_eval",
+        "eval_num_crops": None,
     }
     return (
         Xtr,
@@ -699,6 +754,81 @@ def _prepare_protocol_splits(
         int(len(ytr)),
         protocol,
     )
+
+
+def _stamp_benchmark_frontend(
+    config_path: Path,
+    input_contract: Dict[str, Any],
+    protocol: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Grava no sidecar o front-end com que o modelo foi REALMENTE treinado.
+
+    Os modelos do benchmark são os promovidos para produção, e a inferência só
+    reproduz o preparo do treino quando o `input_contract` declara um
+    `feature_frontend` conhecido — é o que faz o `FeaturePreparer` rotear para
+    `app/domain/features/benchmark_frontend.py`. Sem isso, o app cai no
+    front-end próprio (log-magnitude-mel, hop 128, sem z-score), que NÃO
+    reproduz o do benchmark: as métricas do artigo deixam de valer para a
+    predição em produção.
+
+    Até 2026-07-28 apenas AASIST e RawGAT-ST declaravam o campo (via
+    `registry.input_requirements`), e as outras dez dependiam de um passo
+    pós-hoc (`scripts/reporting/rebuild_inference_contracts.py`) que, além de
+    manual, cobria só nove arquiteturas.
+
+    O carimbo é feito AQUI, e não no `TrainingService`, de propósito: só o
+    benchmark sabe que preparou os dados com este front-end. Modelos treinados
+    pelo assistente do Gradio usam outro preparo e não devem alegar paridade.
+    """
+    from app.domain.features.benchmark_frontend import (
+        DEFAULT_SAMPLE_RATE,
+        DEFAULT_SOURCE_SAMPLES,
+        frontend_for_input_type,
+    )
+
+    frontend = frontend_for_input_type(protocol.get("input_type"))
+    if not frontend:
+        return input_contract
+
+    contract = dict(input_contract or {})
+    contract["feature_frontend"] = frontend
+    contract.setdefault("input_type", protocol.get("input_type"))
+    contract.setdefault("sample_rate", DEFAULT_SAMPLE_RATE)
+    contract["source_samples"] = int(
+        protocol.get("original_shape", [DEFAULT_SOURCE_SAMPLES])[0]
+        if protocol.get("original_shape")
+        else DEFAULT_SOURCE_SAMPLES
+    )
+    prepared = protocol.get("prepared_shape") or []
+    if frontend == "benchmark_raw_v1" and prepared:
+        contract["target_sequence_length"] = int(prepared[0])
+    elif frontend == "benchmark_logmel_v1" and len(prepared) >= 2:
+        contract["time_steps"] = int(prepared[0])
+        contract["feature_dim"] = int(prepared[1])
+    elif frontend == "benchmark_tabular_v1" and prepared:
+        contract["feature_dim"] = int(prepared[0])
+    if protocol.get("eval_crop_strategy"):
+        contract["crop_strategy"] = (
+            f"train_{protocol.get('train_crop_strategy') or 'center'}"
+            f"_eval_{protocol['eval_crop_strategy']}"
+        )
+    contract["normalization"] = "per_sample_zscore"
+
+    # Reescreve o sidecar para que o artefato promovido já nasça com o contrato
+    # correto, sem depender de um passo de correção posterior.
+    try:
+        if config_path.exists():
+            payload = json.loads(config_path.read_text(encoding="utf-8"))
+            payload["input_contract"] = contract
+            config_path.write_text(
+                json.dumps(payload, indent=2, ensure_ascii=False, default=str),
+                encoding="utf-8",
+            )
+    except (OSError, json.JSONDecodeError) as exc:  # noqa: BLE001
+        logger.warning(
+            "Não foi possível gravar feature_frontend em %s: %s", config_path, exc
+        )
+    return contract
 
 
 def _run_neural(
@@ -891,16 +1021,6 @@ def _run_neural(
             return e / e.sum(axis=-1, keepdims=True)
         return 1.0 / (1.0 + np.exp(-pred))
 
-    def predict_p_fake(X: np.ndarray) -> np.ndarray:
-        pred = model.predict(np.asarray(X, dtype="float32"), verbose=0)
-        pred = _normalize_probs(np.asarray(pred, dtype="float64"))
-        if pred.ndim > 1 and pred.shape[-1] > 1:
-            return pred[:, 1]
-        return pred.reshape(-1)
-
-    def predict_fn(xb):  # latência: forward puro do modelo
-        return model.predict(np.asarray(xb, dtype="float32"), verbose=0)
-
     config_path = models_dir / f"{name}_config.json"
     input_contract: dict[str, Any] = {}
     if config_path.exists():
@@ -910,6 +1030,50 @@ def _run_neural(
             )
         except (OSError, json.JSONDecodeError):
             input_contract = {}
+
+    # CORREÇÃO 2026-07-27 — escala de score coerente com o limiar calibrado.
+    #
+    # O `eer_threshold` do contrato é derivado no conjunto de VALIDAÇÃO sobre
+    # probabilidades COM temperature scaling (trainer._compute_eer_threshold), e
+    # `auto_calibrate_temperature` é True por padrão. O benchmark aplicava esse
+    # limiar a scores SEM temperatura: como o scaling é monótono, o EER não muda,
+    # mas o PONTO DE OPERAÇÃO se desloca — `accuracy_at_calibrated_threshold`,
+    # justamente a métrica não-oráculo, ficava medida no limiar errado.
+    #
+    # Aplicar T aqui também alinha o benchmark ao detector implantado (o
+    # Predictor aplica a mesma T) e faz o ECE medir a calibração do sistema
+    # entregue, não a da saída crua. EER/AUC/min-tDCF não mudam (transformação
+    # monótona); `accuracy` no limiar fixo 0,5 pode mudar, e deve — é a decisão
+    # que o sistema realmente toma.
+    _temperature = input_contract.get("temperature")
+    try:
+        _temperature = float(_temperature) if _temperature is not None else 1.0
+    except (TypeError, ValueError):
+        _temperature = 1.0
+    if not np.isfinite(_temperature) or _temperature <= 0:
+        _temperature = 1.0
+
+    def _apply_temperature(probs: np.ndarray) -> np.ndarray:
+        if _temperature == 1.0:
+            return probs
+        from app.domain.services.detection.predictor import (
+            apply_temperature_scaling,
+        )
+
+        return np.asarray(
+            apply_temperature_scaling(probs, _temperature), dtype="float64"
+        )
+
+    def predict_p_fake(X: np.ndarray) -> np.ndarray:
+        pred = model.predict(np.asarray(X, dtype="float32"), verbose=0)
+        pred = _normalize_probs(np.asarray(pred, dtype="float64"))
+        pred = _apply_temperature(pred)
+        if pred.ndim > 1 and pred.shape[-1] > 1:
+            return pred[:, 1]
+        return pred.reshape(-1)
+
+    def predict_fn(xb):  # latência: forward puro do modelo
+        return model.predict(np.asarray(xb, dtype="float32"), verbose=0)
     model_path = models_dir / f"{name}.keras"
     reported_training_config = dict(train_data.get("training_config") or train_config)
     model_parameters = dict(train_config.get("parameters") or {})
@@ -932,6 +1096,12 @@ def _run_neural(
                 "learning_rate"
             ]
         reported_training_config["model_parameters"] = model_parameters
+    # A temperatura faz parte da definição do score avaliado — sem registrá-la,
+    # os números não são reproduzíveis a partir do modelo salvo.
+    reported_training_config["calibrated_temperature"] = float(_temperature)
+    reported_training_config["scores_temperature_scaled"] = bool(_temperature != 1.0)
+
+    input_contract = _stamp_benchmark_frontend(config_path, input_contract, protocol)
 
     return {
         "predict_p_fake": predict_p_fake,
@@ -945,6 +1115,87 @@ def _run_neural(
         "input_contract": input_contract,
         "model_artifact": str(model_path),
     }
+
+
+def _classical_input_contract(
+    arch: str,
+    models_dir: Path,
+    name: str,
+    n_features: int,
+    protocol: Dict[str, Any],
+    predict_p_fake: Callable,
+    Xv: np.ndarray,
+    yv: np.ndarray,
+) -> Dict[str, Any]:
+    """Monta e grava o sidecar de inferência de um modelo clássico.
+
+    Espelha o que o `TrainingService` já fazia pelos neurais: front-end do
+    benchmark, forma da entrada e limiar de EER derivado da VALIDAÇÃO. Sem
+    isso, SVM/RandomForest chegavam à produção sem contrato algum — a
+    inferência não reproduzia o vetor tabular de 63 descritores e decidia
+    sempre em 0,5.
+    """
+    from app.domain.features.benchmark_frontend import (
+        DEFAULT_SAMPLE_RATE,
+        DEFAULT_SOURCE_SAMPLES,
+        frontend_for_input_type,
+    )
+
+    contract: Dict[str, Any] = {
+        "architecture": arch,
+        "type": "features",
+        "format": "tabular",
+        "input_type": "tabular",
+        "feature_frontend": frontend_for_input_type("tabular"),
+        "input_shape": [int(n_features)],
+        "feature_dim": int(n_features),
+        "sample_rate": DEFAULT_SAMPLE_RATE,
+        "source_samples": int(
+            (protocol.get("original_shape") or [DEFAULT_SOURCE_SAMPLES])[0]
+        ),
+        # O artefato é um Pipeline sklearn com o scaler DENTRO; a inferência não
+        # deve aplicar normalização externa nenhuma.
+        "normalization": "pipeline_interno",
+        "scaler_applied": False,
+        # `predict_proba` já devolve probabilidade: não há logit para escalar.
+        "temperature": 1.0,
+        "label_classes": [0, 1],
+    }
+    try:
+        from app.domain.models.training.metrics import MetricsCalculator
+
+        scores = _finite_scores(predict_p_fake(Xv))
+        y_val = np.asarray(yv).ravel().astype(int)
+        if len(np.unique(y_val)) > 1:
+            eer, thr = MetricsCalculator().calculate_eer(y_val, scores)
+            if np.isfinite(thr):
+                contract["eer_threshold"] = float(thr)
+                contract["eer_value"] = float(eer)
+                contract["threshold_source"] = "validation_eer"
+    except Exception as exc:  # noqa: BLE001 — contrato sem limiar ainda serve
+        logger.warning("[%s] limiar de validação indisponível: %s", arch, exc)
+
+    config_path = models_dir / f"{name}_config.json"
+    try:
+        config_path.write_text(
+            json.dumps(
+                {
+                    "architecture": arch,
+                    "model_type": "classical",
+                    "input_shape": [int(n_features)],
+                    "num_classes": 2,
+                    "label_classes": [0, 1],
+                    "input_contract": contract,
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            ),
+            encoding="utf-8",
+        )
+    except OSError as exc:  # noqa: BLE001
+        logger.warning("Não foi possível gravar %s: %s", config_path, exc)
+    return contract
 
 
 def _run_classical(
@@ -1050,6 +1301,17 @@ def _run_classical(
     def predict_fn(xb):
         return model.predict_proba(np.asarray(xb).reshape(len(xb), -1))
 
+    # Contrato de inferência dos clássicos.
+    #
+    # Até 2026-07-28 o caminho clássico salvava só o `.pkl`: nenhum sidecar,
+    # portanto NENHUM `input_contract` — sem `feature_frontend` (a inferência
+    # não roteava para o front-end tabular do benchmark) e sem limiar
+    # calibrado (o app decidia sempre em 0,5). Os neurais já saíam com os dois.
+    # O limiar sai do conjunto de VALIDAÇÃO, nunca do teste.
+    classical_contract = _classical_input_contract(
+        arch, models_dir, name, n_features, protocol, predict_p_fake, Xv, yv
+    )
+
     fit_strategy = {
         "kind": "single_fit",
         "estimator": "sklearn",
@@ -1101,6 +1363,7 @@ def _run_classical(
             "hyperparameter_tuning_best_params": tuning.get("best_model_params"),
         },
         "model_artifact": str(path) if path else None,
+        "input_contract": classical_contract,
         "hyperparameter_tuning": tuning,
     }
 
@@ -1108,7 +1371,10 @@ def _run_classical(
 #: Métricas cujo agregado entre repetições é reportado como média ± desvio.
 _SEED_AGGREGATED_METRICS = (
     "accuracy", "precision", "recall", "f1", "auc_roc", "eer", "min_tdcf",
-    "ece", "accuracy_at_eer", "accuracy_at_calibrated_threshold",
+    # `accuracy_at_eer_oracle` é a coluna Acur.@EER das tabelas; sem estar aqui,
+    # ela seria a da primeira semente enquanto as vizinhas mostram a média.
+    "ece", "accuracy_at_eer", "accuracy_at_eer_oracle",
+    "accuracy_at_calibrated_threshold",
 )
 
 
@@ -1178,13 +1444,21 @@ def _aggregate_seed_runs(runs: list[Dict[str, Any]]) -> Dict[str, Any]:
     base["n_seeds"] = len(ok_runs)
     base["training_seeds"] = [r.get("training_seed") for r in ok_runs]
     base["promoted_artifact_seed"] = ok_runs[0].get("training_seed")
+    # `clean`/`robustness` são a MÉDIA entre repetições, mas `scores_clean`,
+    # `scores_robustness`, `history` e `efficiency` vêm de `ok_runs[0]`. Ou
+    # seja: as tabelas mostram a média e as figuras (ROC, DET, matriz de
+    # confusão) e os CSVs de predição mostram UMA execução. Sem este campo,
+    # nada no artefato dizia qual — e as legendas não podiam declarar.
+    base["scores_seed"] = ok_runs[0].get("training_seed")
     base["seed_runs"] = [
         {
             "training_seed": r.get("training_seed"),
             "status": r.get("status"),
             "clean": r.get("clean"),
             "robustness": r.get("robustness"),
-            "duration_sec": r.get("duration_sec"),
+            # O runner grava `wall_time_s` (não `duration_sec`): a chave errada
+            # deixava o tempo de cada repetição sempre nulo em `seed_runs`.
+            "wall_time_s": r.get("wall_time_s"),
         }
         for r in runs
     ]
@@ -1227,7 +1501,11 @@ def _benchmark_one(
             arch, cfg, raw_splits, training_seed=train_seed
         )
         _Xtr, _ytr, _Xv, _yv, Xte, yte = splits[:6]
-        protocol = dict(splits[7])
+        # Mesma instância (não cópia): `_run_neural` guarda este dict em
+        # `training_config.waveform_noise_protocol`, e os campos de avaliação só
+        # são resolvidos mais abaixo — com uma cópia, aquela via ficaria com os
+        # valores provisórios.
+        protocol = splits[7]
         with tempfile.TemporaryDirectory(prefix="bench_") as td:
             tmp = Path(td)
             is_classical = _is_classical_arch(arch)
@@ -1240,9 +1518,22 @@ def _benchmark_one(
                 r = _run_neural(arch, cfg, splits, tmp, models_dir)
             predict_p_fake: Callable = r["predict_p_fake"]
 
-            use_multicrop = protocol.get("input_type") == "raw_audio" and _compact_slug(
-                arch
-            ) in {"aasist", "rawgatst"}
+            # Multicrop de avaliação para TODAS as arquiteturas de áudio bruto.
+            #
+            # Até 2026-07-27 valia só para AASIST/RawGAT-ST: média de 3 crops
+            # nesses dois, crop central único em RawNet2/WavLM/HuBERT. Média
+            # sobre crops reduz a variância do score e melhora EER/AUC — ou
+            # seja, duas arquiteturas competiam na tabela principal com
+            # test-time augmentation e as demais sem. Diferente do augmentation
+            # dinâmico de treino, que ao menos está atrás de
+            # `architecture_specific_augmentation` e é declarado como ablação,
+            # essa assimetria não tinha flag nem registro.
+            #
+            # Quando a janela canônica cobre o sinal inteiro, os 3 crops
+            # coincidem e a média devolve exatamente o score do crop único
+            # (`raw_audio_multicrop_batch` repete o crop) — nenhuma arquitetura
+            # é penalizada pela uniformização.
+            use_multicrop = protocol.get("input_type") == "raw_audio"
 
             def predict_eval(
                 prepared: np.ndarray,
@@ -1263,6 +1554,18 @@ def _benchmark_one(
                 flat_crops = crops.reshape(n_samples * n_crops, *crops.shape[2:])
                 crop_scores = _finite_scores(predict_p_fake(flat_crops))
                 return crop_scores.reshape(n_samples, n_crops).mean(axis=1)
+
+            # O bloco de protocolo publicado precisa refletir a avaliação que
+            # de fato ocorreu. Antes ele declarava `multicrop`/3 crops para toda
+            # arquitetura raw-audio, inclusive as que rodavam com crop central.
+            multicrop_effective = bool(use_multicrop and raw_Xte is not None)
+            protocol["eval_crop_strategy"] = (
+                "multicrop" if multicrop_effective else "center"
+            )
+            protocol["eval_num_crops"] = 3 if multicrop_effective else 1
+            protocol["eval_score_aggregation"] = (
+                "mean_over_crops" if multicrop_effective else "single_crop"
+            )
 
             n_boot = int(getattr(cfg, "bootstrap_ci_samples", 0) or 0)
             pf_clean = predict_eval(Xte, raw_Xte)
@@ -1295,15 +1598,26 @@ def _benchmark_one(
 
             robustness: Dict[str, Any] = {}
             scores_robustness: Dict[str, Any] = {}
+            # Níveis efetivamente usados no augmentation de treino DESTA
+            # arquitetura: com augmentation desligado, nenhuma condição é
+            # casada e todas as colunas medem generalização.
+            train_snr_levels = (
+                {int(v) for v in cfg.train_aug_snr_db}
+                if protocol.get("training_augmentation_domain") != "disabled"
+                else set()
+            )
+            protocol["matched_snr_levels_db"] = sorted(train_snr_levels)
+            protocol["unseen_snr_levels_db"] = sorted(
+                int(s) for s in cfg.snr_levels_db if int(s) not in train_snr_levels
+            )
             for snr in cfg.snr_levels_db:
                 if protocol["evaluation_domain"] == "waveform":
                     # Semente da AVALIAÇÃO: seed+20000+snr — mesma realização
-                    # de ruído para todas as arquiteturas (comparabilidade) e
-                    # espaço disjunto do ruído de TREINO (seed+10000+start
-                    # +1009*(nível+1) em _prepare_protocol_splits): com os
-                    # defaults (batch 64, 3 SNRs) nenhuma colisão de semente
-                    # treino↔teste é possível. Manter os offsets 10000/20000
-                    # ao mexer em qualquer um dos dois lados.
+                    # de ruído para todas as arquiteturas (comparabilidade). A
+                    # disjunção em relação às sementes de TREINO
+                    # (train_seed+10000+copy+start) não é presumida: é
+                    # verificada em _prepare_protocol_splits, que aborta se
+                    # houver interseção.
                     noisy_raw = BenchmarkData.add_awgn(
                         raw_Xte, snr, seed=cfg.seed + 20000 + int(snr)
                     )
@@ -1315,7 +1629,7 @@ def _benchmark_one(
                     noisy_raw = None
                 pf_noisy = predict_eval(Xn, noisy_raw)
                 scores_robustness[str(snr)] = [round(float(v), 6) for v in pf_noisy]
-                robustness[str(snr)] = evaluate_scores(
+                block = evaluate_scores(
                     raw_yte,
                     pf_noisy,
                     threshold=cfg.decision_threshold,
@@ -1323,6 +1637,14 @@ def _benchmark_one(
                     cluster_ids=cluster_ids,
                     calibrated_threshold=calibrated_threshold,
                 )
+                # Condição CASADA (o nível esteve no augmentation de treino) ou
+                # NÃO VISTA. Sem esta marca, a tabela de robustez não distingue
+                # "aprendeu a lidar com ruído" de "decorou os níveis do treino"
+                # — e o leitor não tem como saber qual coluna é qual.
+                block["noise_condition"] = (
+                    "matched" if int(snr) in train_snr_levels else "unseen"
+                )
+                robustness[str(snr)] = block
 
             # Robustez a CODEC (opt-in): round-trip com perdas na FORMA DE
             # ONDA, antes dos frontends — mesmo ponto do protocolo do AWGN.
@@ -1579,6 +1901,7 @@ def run_benchmark(cfg: BenchmarkConfig) -> Dict[str, Any]:
             "split_overlap_audit": split_overlap_audit,
             "split_fingerprints": split_fingerprints,
             "test_split_sha256": split_fingerprints["test"]["sha256"],
+            "test_lock": getattr(cfg, "test_lock", None),
             "provenance_overlap_audit": provenance_overlap_audit,
             "source_shortcut_audit": source_shortcut_audit,
             "source": (data.metadata or {}).get("source"),

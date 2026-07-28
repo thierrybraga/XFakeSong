@@ -155,6 +155,49 @@ EXTENDED_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "family": "extended",
         "scope": "extended",
     },
+    # WavLM/HuBERT no caminho **Keras** — distintos dos "* Original" do escopo
+    # oficial, que rodam pelo runner PyTorch. Aqui o state_dict do checkpoint
+    # HuggingFace é portado para Keras (`architectures/ssl_backbone.py`), o
+    # backbone fica INTEIRAMENTE congelado e treinam apenas a soma ponderada de
+    # hidden-states (receita SUPERB) e a cabeça.
+    #
+    # Até 2026-07-27 eles não constavam de manifesto algum e o benchmark gravava
+    # `provenance: null` justamente nos dois modelos em que a proveniência (qual
+    # checkpoint) É a definição do experimento.
+    #
+    # `fallback_variant` existe porque este caminho DEGRADA para um CNN-1D
+    # treinado do zero quando o checkpoint não está acessível. O runner publica
+    # esse rótulo quando a degradação ocorre, para que nenhum artefato alegue
+    # backbone pré-treinado onde não houve (ver `runner._architecture_provenance`
+    # e `ssl_utils.record_ssl_backbone_status`).
+    {
+        "benchmark_name": "WavLM",
+        "display_name": "WavLM (port Keras)",
+        "variant": (
+            "microsoft/wavlm-base:keras_port_frozen_backbone_superb_weighted_sum"
+        ),
+        "fallback_variant": "wavlm_fallback_cnn1d_scratch_nao_e_o_ssl_real",
+        "runner": "benchmarks.runner:keras",
+        "input_type": "raw_audio_16khz_16000",
+        # `family` acompanha a derivação de MODEL_FAMILIES (que só monta as cinco
+        # famílias a partir do manifesto OFICIAL): estes pertencem à lista
+        # "extended". A natureza SSL está declarada no `variant`.
+        "family": "extended",
+        "scope": "extended",
+    },
+    {
+        "benchmark_name": "HuBERT",
+        "display_name": "HuBERT (port Keras)",
+        "variant": (
+            "facebook/hubert-base-ls960:"
+            "keras_port_frozen_backbone_superb_weighted_sum"
+        ),
+        "fallback_variant": "hubert_fallback_cnn1d_scratch_nao_e_o_ssl_real",
+        "runner": "benchmarks.runner:keras",
+        "input_type": "raw_audio_16khz_16000",
+        "family": "extended",
+        "scope": "extended",
+    },
 ]
 
 MODEL_FAMILIES: Dict[str, List[str]] = {
@@ -245,7 +288,12 @@ class BenchmarkConfig:
     epochs: int = 100
     batch_size: int = 32
     seed: int = 42
-    snr_levels_db: List[int] = field(default_factory=lambda: [30, 20, 10])
+    # 30/20/10 dB coincidem com `train_aug_snr_db` e medem robustez em CONDIÇÃO
+    # CASADA. 5 dB é deliberadamente NÃO VISTO no augmentation: sem ao menos um
+    # nível fora do treino, a tabela de robustez não distingue "aprendeu a lidar
+    # com ruído" de "decorou os níveis que viu". Custa só avaliação — nenhum
+    # treino extra. Mantenha 5 dB FORA de `train_aug_snr_db` ao ajustar.
+    snr_levels_db: List[int] = field(default_factory=lambda: [30, 20, 10, 5])
     latency_runs: int = 30
     output_dir: str = "data/results/benchmark"
     models_dir: str = "data/models"
@@ -339,6 +387,10 @@ class BenchmarkConfig:
     source_oracle_threshold: float = 0.55
     fail_on_source_shortcut: bool = False
     codec_eval: List[str] = field(default_factory=list)
+    # Selo do teste validado (benchmarks/test_lock.py). Preenchido pelo CLI
+    # quando `--test-lock` é passado; vai para os resultados como prova de que o
+    # teste conferido era o mesmo congelado antes do treino.
+    test_lock: Optional[Dict[str, Any]] = None
     preserve_predefined_splits: bool = True
     fail_on_split_overlap: bool = True
 
@@ -365,7 +417,7 @@ class BenchmarkConfig:
         base = dict(
             architectures=list(ALL_TCC_ARCHITECTURES),
             epochs=100,
-            snr_levels_db=[30, 20, 10],
+            snr_levels_db=[30, 20, 10, 5],
             run_api_probe=True,
             preset_name="full_tcc",
             optimize_hyperparameters=True,
@@ -390,7 +442,7 @@ class BenchmarkConfig:
         base = dict(
             architectures=list(ALL_TCC_ARCHITECTURES),
             epochs=100,
-            snr_levels_db=[30, 20, 10],
+            snr_levels_db=[30, 20, 10, 5],
             run_api_probe=False,
             preset_name=f"cross_generator:{holdout_generator}",
             optimize_hyperparameters=True,
@@ -412,7 +464,7 @@ class BenchmarkConfig:
         base = dict(
             architectures=list(ALL_TCC_ARCHITECTURES),
             epochs=100,
-            snr_levels_db=[30, 20, 10],
+            snr_levels_db=[30, 20, 10, 5],
             run_api_probe=False,
             preset_name=(
                 f"unseen_speaker:{holdout_speaker}" if holdout_speaker
@@ -437,7 +489,7 @@ class BenchmarkConfig:
         base = dict(
             architectures=list(ALL_TCC_ARCHITECTURES),
             epochs=100,
-            snr_levels_db=[30, 20, 10],
+            snr_levels_db=[30, 20, 10, 5],
             run_api_probe=False,
             preset_name="group_tcc",
             optimize_hyperparameters=True,
@@ -452,7 +504,7 @@ class BenchmarkConfig:
         base = dict(
             architectures=list(NEURAL_TCC_ARCHITECTURES),
             epochs=100,
-            snr_levels_db=[30, 20, 10],
+            snr_levels_db=[30, 20, 10, 5],
             run_api_probe=False,
             preset_name="neural_tcc",
             optimize_hyperparameters=True,
@@ -467,7 +519,7 @@ class BenchmarkConfig:
             architectures=["RawNet2"],
             epochs=100,
             batch_size=16,
-            snr_levels_db=[30, 20, 10],
+            snr_levels_db=[30, 20, 10, 5],
             run_api_probe=False,
             preset_name="single:RawNet2",
             device_profile="gpu",

@@ -145,13 +145,21 @@ como `dropout_rate`/`l2_reg_strength` se sobrepoem):
 A config global (augmentation com `snr_range_db`, class weighting, calibracao de
 temperatura, SWA, mixup) esta em `app/core/config/settings.py`.
 
-> **Caveat WavLM/HuBERT (importante para o TCC):** o caminho TF do benchmark usa
-> **fallback CNN-1D treinado do zero**, nao os backbones SSL reais. WavLM e
-> *sempre* fallback (PyTorch-only, sem conversao TF). HuBERT tenta o backbone
-> real (`from_pt=True`) e cai no simplificado se indisponivel. Logo, resultados
-> rotulados "WavLM/HuBERT" no benchmark TF nao refletem os modelos SSL originais
-> — reporte isso ao comparar com a literatura. Os artefatos `*_original.pt`
-> (PyTorch) sao os reais, usados so na inferencia/demonstracao do Gradio.
+> **WavLM/HuBERT no caminho Keras (importante para o TCC):** desde 2026-07-27 o
+> caminho TF usa os **backbones SSL reais**. O `transformers` nao entrega WavLM
+> em TF (e seus modelos TF nem importam com Keras 3), entao
+> `architectures/ssl_backbone.py` le o **state_dict PyTorch** do checkpoint e
+> reimplementa o forward em Keras — inclusive o vies posicional relativo com
+> gating do WavLM. O backbone fica inteiramente congelado; treinam so a soma
+> ponderada dos hidden-states (receita SUPERB) e a cabeca.
+>
+> O fallback CNN-1D do zero **ainda existe** para quando o checkpoint nao esta
+> acessivel. Nesse caso o benchmark grava `provenance.variant =
+> "*_fallback_cnn1d_scratch_nao_e_o_ssl_real"` e `ssl_backbone.pretrained =
+> false` — nenhum artefato alega SSL real onde nao houve. `XFAKE_STRICT_SSL=1`
+> aborta em vez de degradar. As entradas de manifesto sao "WavLM"/"HuBERT"
+> (escopo **extended**); "WavLM Original"/"HuBERT Original" sao as do escopo
+> oficial, treinadas pelo runner PyTorch dedicado.
 
 Execucao:
 
@@ -164,7 +172,7 @@ make train-cpu        # perfil classical/CPU (Docker)
 # clones XTTS-v2; ver docs/data/dataset-protocol.md).
 python scripts/benchmark/run_models_sequential.py \
   --dataset data/datasets/benchmark_dataset.npz \
-  --models AASIST Ensemble --epochs 100 --snr 30 20 10 \
+  --models AASIST Ensemble --epochs 100 --snr 30 20 10 5 \
   --device-profile gpu --out data/results/<run> --resume
 
 # Um modelo isolado:
@@ -202,7 +210,8 @@ cobertas em DOIS escopos (`benchmarks/config.py`):
   escopo oficial e erro de configuracao, nao limitacao).
 
 Avalia em condicoes limpas e sob ruido
-(SNR 30/20/10 dB), gerando metricas (accuracy,
+(SNR 30/20/10 dB casados com o augmentation de treino, mais 5 dB
+NAO VISTO — a coluna que mede generalizacao a ruido), gerando metricas (accuracy,
 precision, recall, f1, AUC-ROC, EER, min t-DCF), eficiencia (params, MB,
 latencia) e artefatos (figuras, tabelas LaTeX, summary.md, tcc_report.md).
 

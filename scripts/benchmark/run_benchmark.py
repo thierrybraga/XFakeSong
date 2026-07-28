@@ -159,6 +159,11 @@ def main() -> int:
                         "distintas; métricas viram média ± desvio (default: 1). "
                         "O split e o ruído de avaliação NÃO mudam. Custo: "
                         "multiplica o tempo de treino por N")
+    p.add_argument("--test-lock", metavar="JSON", default=None,
+                   help="selo do teste (scripts/dataset/freeze_benchmark_test.py). "
+                        "Confere SHA-256 do dataset e identidade da partição de "
+                        "teste ANTES de treinar; aborta se divergir. Exigido em "
+                        "execuções acadêmicas")
     args = p.parse_args()
 
     from benchmarks import (
@@ -271,6 +276,25 @@ def main() -> int:
         cfg.n_seeds = args.n_seeds
     if args.no_optimize_hparams:
         cfg.optimize_hyperparameters = False
+    # Selo do teste. Verificado AQUI e não só no orquestrador sequencial: este é
+    # o entrypoint documentado para `--full` e para modelo isolado, e até
+    # 2026-07-27 ele gravava o SHA da partição nos resultados sem nunca conferir.
+    validated_test_lock = None
+    if args.test_lock:
+        from benchmarks.test_lock import (
+            TestLockError,
+            validate_dataset_against_lock,
+        )
+
+        if not cfg.dataset_path:
+            p.error("--test-lock exige --dataset (não há NPZ para selar)")
+        try:
+            validated_test_lock = validate_dataset_against_lock(
+                cfg.dataset_path, args.test_lock
+            )
+        except TestLockError as exc:
+            p.error(f"selo do teste inválido: {exc}")
+        cfg.test_lock = validated_test_lock
     official = set(ALL_TCC_ARCHITECTURES)
     extended = {item["benchmark_name"] for item in EXTENDED_MODEL_MANIFEST}
     allowed = extended if cfg.experiment_scope == "extended" else official

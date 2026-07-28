@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from benchmarks.config import OFFICIAL_TCC_MODEL_MANIFEST
+from benchmarks.config import EXTENDED_MODEL_MANIFEST, OFFICIAL_TCC_MODEL_MANIFEST
 from benchmarks.runner import (
     _architecture_provenance,
     _env_snapshot,
@@ -46,6 +46,71 @@ def test_variant_labels_are_not_stale():
         token in variants["RawNet2"].lower()
         for token in ("speakerverification", "antispoofing")
     ), variants["RawNet2"]
+
+
+def test_keras_ssl_models_are_in_a_manifest():
+    """WavLM/HuBERT do caminho Keras não constavam de manifesto algum.
+
+    Resultado: `provenance: null` justamente nos dois modelos cuja proveniência
+    (qual checkpoint pré-treinado) É a definição do experimento.
+    """
+    extended = {i["benchmark_name"]: i for i in EXTENDED_MODEL_MANIFEST}
+    official = {i["benchmark_name"] for i in OFFICIAL_TCC_MODEL_MANIFEST}
+
+    for name, checkpoint in (
+        ("WavLM", "microsoft/wavlm-base"),
+        ("HuBERT", "facebook/hubert-base-ls960"),
+    ):
+        assert name in extended, f"{name} (caminho Keras) fora do manifesto"
+        item = extended[name]
+        # O checkpoint precisa estar NO rótulo: é o que distingue o experimento.
+        assert checkpoint in item["variant"]
+        assert "frozen_backbone" in item["variant"]
+        # E um rótulo alternativo para quando o backbone real não carrega.
+        assert item["fallback_variant"]
+        # Não se confundem com os "* Original" (runner PyTorch) do escopo oficial.
+        assert name not in official
+        assert f"{name} Original" in official
+
+    prov = _architecture_provenance("WavLM")
+    assert prov["scope"] == "extended"
+    assert prov["variant"].startswith("microsoft/wavlm-base")
+
+
+def test_fallback_backbone_is_not_published_as_pretrained():
+    """O caminho Keras degrada para CNN-1D do zero se o checkpoint faltar.
+
+    Publicar o rótulo do manifesto nesse caso alegaria backbone pré-treinado
+    onde não houve — erro indetectável depois da execução.
+    """
+    from app.domain.models.architectures.ssl_utils import (
+        record_ssl_backbone_status,
+        reset_ssl_backbone_status,
+    )
+
+    reset_ssl_backbone_status()
+    try:
+        record_ssl_backbone_status(
+            "WavLM", pretrained=False, checkpoint="microsoft/wavlm-base",
+            detail={"fallback": "cnn1d_scratch"},
+        )
+        prov = _architecture_provenance("WavLM")
+        assert prov["ssl_backbone"]["pretrained"] is False
+        assert "fallback" in prov["variant"]
+        # o rótulo pretendido continua registrado, para auditoria
+        assert prov["declared_variant"].startswith("microsoft/wavlm-base")
+
+        reset_ssl_backbone_status()
+        record_ssl_backbone_status(
+            "WavLM", pretrained=True, checkpoint="microsoft/wavlm-base",
+            detail={"hidden_size": 768, "num_layers": 12},
+        )
+        prov = _architecture_provenance("WavLM")
+        assert prov["ssl_backbone"]["pretrained"] is True
+        assert "fallback" not in prov["variant"]
+        assert "declared_variant" not in prov
+    finally:
+        reset_ssl_backbone_status()
 
 
 def test_provenance_reaches_results_for_official_and_extended():

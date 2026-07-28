@@ -166,7 +166,7 @@ def main():
             mod = importlib.import_module(mod_path)
             model = mod.create_model(input_shape=(MAX_AUDIO_SAMPLES,), num_classes=1, architecture=variant)
             model.load_weights(str(model_path))
-            logger.info(f"  Pesos carregados com sucesso.")
+            logger.info("  Pesos carregados com sucesso.")
         except Exception as e:
             logger.error(f"Falha ao carregar {arch_name}: {e}")
             continue
