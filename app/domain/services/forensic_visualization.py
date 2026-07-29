@@ -663,10 +663,19 @@ class AudioForensicVisualizer:
                     ha='center', va='center', color=ForensicTheme.TEXT_COLOR)
             return fig
 
-        # Normalize
-        importances = np.array(importances)
-        if np.max(importances) > 0:
-            importances = importances / np.max(importances)
+        # Normaliza SOMENTE se o chamador ainda nao o fez.
+        #
+        # Dividir pelo maximo global mistura grandezas de unidades diferentes:
+        # um eixo em unidades cepstrais (dezenas) achata para perto de zero
+        # todos os que vivem em [0, 1]. Quando os valores ja chegam dentro de
+        # [0, 1] — normalizados por eixo contra a faixa plausivel de cada
+        # grandeza —, reescalar de novo pelo maximo distorceria a leitura,
+        # empurrando o maior eixo para 1,0 mesmo quando ele esta longe do
+        # extremo da sua propria escala.
+        importances = np.asarray(importances, dtype=float)
+        maximo = float(np.max(importances)) if importances.size else 0.0
+        if maximo > 1.0:
+            importances = importances / maximo
 
         angles = np.linspace(0, 2 * np.pi, N, endpoint=False).tolist()
         importances_plot = importances.tolist()
