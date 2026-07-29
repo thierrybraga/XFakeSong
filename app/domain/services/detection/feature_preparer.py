@@ -227,6 +227,11 @@ class FeaturePreparer:
                         or (shape[0] if shape else 16000)
                     ),
                     source_samples=int(_contract_bm.get("source_samples") or 48000),
+                    # PARIDADE: a janela de análise do TREINO. Sem repassar,
+                    # o AST — treinado com os 25 ms que o artigo especifica
+                    # (400 amostras) — inferia com a janela derivada, e o
+                    # espectrograma de produção não era o do benchmark.
+                    n_fft=_contract_bm.get("n_fft"),
                     add_channel_dim=bool(len(shape) == 3 and shape[-1] == 1),
                     raw_num_crops=(
                         3

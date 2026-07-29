@@ -172,6 +172,33 @@ As 14 arquiteturas são cobertas em **dois escopos** (`benchmarks/config.py`):
     precisão, janela ou arquitetura, remeça os custos**: um timeout derivado de
     número velho mata um treino bom.
 
+!!! danger "Janela de análise do log-mel (2026-07-28)"
+    O salto entre quadros é imposto pelo contrato (`ceil(T / time_steps)`), mas
+    a janela era a constante **512** — e as duas eram independentes no código.
+    Com 100 quadros em 3 s o salto fica em 480: janelas consecutivas se
+    sobrepunham em 32 amostras, e o taper de Hann é ~0 nas duas pontas.
+
+    Medido: o envelope de soma-e-sobreposição ia de 1,0 a **exatamente 0** —
+    **27% do sinal** caía em regiões de peso desprezível, invisíveis à análise.
+    E um clique de 1 ms era **9× mais ou menos visível** conforme a posição em
+    que caísse (razão mín/máx 0,11), sendo transiente justamente a pista de
+    síntese que a tarefa procura.
+
+    `benchmark_frontend.resolve_n_fft()` passa a **derivar a janela do salto**,
+    garantindo 50% de sobreposição (1024 para o grupo de 100 quadros). A razão
+    mín/máx sobe para 0,90 **sem perda de detecção média** — a 6% de
+    sobreposição o fator dominante não era resolução temporal, era o ponto
+    cego. Um `n_fft` declarado pela arquitetura continua vencendo: o AST
+    especifica 25 ms (400 amostras) por definição do artigo.
+
+    Afetava Conformer, CCT, MultiscaleCNN, Sonic Sleuth e EfficientNet-LSTM —
+    cinco das doze arquiteturas. O AST não era afetado, o que lhe daria
+    vantagem estrutural na comparação espectral.
+
+    O contrato passa a gravar `n_fft` e `hop_length`, e a inferência os
+    respeita: verificado `max|dif| = 0` entre o espectrograma de treino e o de
+    produção nas duas configurações.
+
 !!! success "Paridade treino↔produção (2026-07-28)"
     Os modelos do benchmark são os promovidos para produção, então o
     `input_contract` de cada artefato é gravado **no próprio treino**, com o

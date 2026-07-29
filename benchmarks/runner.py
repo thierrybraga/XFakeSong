@@ -756,10 +756,23 @@ def _prepare_protocol_splits(
     )
 
 
+def _declared_n_fft(arch: str) -> int | None:
+    """`n_fft` que a arquitetura declara no registry, se declarar."""
+    try:
+        from app.domain.models.architectures.registry import architecture_registry
+
+        req = architecture_registry.get_architecture(arch).input_requirements or {}
+        valor = req.get("n_fft")
+        return int(valor) if valor else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _stamp_benchmark_frontend(
     config_path: Path,
     input_contract: Dict[str, Any],
     protocol: Dict[str, Any],
+    arch: str = "",
 ) -> Dict[str, Any]:
     """Grava no sidecar o front-end com que o modelo foi REALMENTE treinado.
 
@@ -805,6 +818,14 @@ def _stamp_benchmark_frontend(
     elif frontend == "benchmark_logmel_v1" and len(prepared) >= 2:
         contract["time_steps"] = int(prepared[0])
         contract["feature_dim"] = int(prepared[1])
+        # A janela de análise faz parte da definição da feature: sem gravá-la,
+        # a inferência não tem como reproduzir o espectrograma do treino.
+        from app.domain.features.benchmark_frontend import resolve_n_fft
+
+        origem = protocol.get("original_shape") or [48000]
+        salto = max(64, int(-(-int(origem[0]) // max(int(prepared[0]), 1))))
+        contract["n_fft"] = resolve_n_fft(salto, _declared_n_fft(arch))
+        contract["hop_length"] = salto
     elif frontend == "benchmark_tabular_v1" and prepared:
         contract["feature_dim"] = int(prepared[0])
     if protocol.get("eval_crop_strategy"):
@@ -1099,7 +1120,9 @@ def _run_neural(
     reported_training_config["calibrated_temperature"] = float(_temperature)
     reported_training_config["scores_temperature_scaled"] = bool(_temperature != 1.0)
 
-    input_contract = _stamp_benchmark_frontend(config_path, input_contract, protocol)
+    input_contract = _stamp_benchmark_frontend(
+        config_path, input_contract, protocol, arch
+    )
 
     return {
         "predict_p_fake": predict_p_fake,

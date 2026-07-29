@@ -971,8 +971,11 @@ def _raw_audio_to_logmel(X: np.ndarray, requirements: Dict[str, Any]) -> np.ndar
         sample_rate=int(requirements.get("sample_rate") or 16000),
         feature_dim=int(requirements.get("feature_dim") or 80),
         time_steps=int(requirements.get("min_sequence_length") or 100),
-        # Janela de análise do contrato (o AST pede 25 ms = 400 amostras).
-        n_fft=int(requirements.get("n_fft") or 512),
+        # Janela de análise: o contrato vence quando declara (o AST pede
+        # 25 ms = 400 amostras); sem declaração, `resolve_n_fft` a deriva do
+        # salto para garantir sobreposição mínima. O `or 512` que existia aqui
+        # fixava 32 ms para todo mundo — com salto de 480, sobreposição de 6%.
+        n_fft=requirements.get("n_fft"),
     )
 
 

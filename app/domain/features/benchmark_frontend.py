@@ -57,6 +57,46 @@ DEFAULT_RAW_TARGET = 48000
 
 N_TABULAR_FEATURES = 63
 
+#: Sobreposição mínima entre janelas consecutivas do log-mel.
+#:
+#: O salto é imposto pelo contrato da arquitetura (`ceil(T / time_steps)`), mas
+#: a janela era a constante 512 — e as duas eram INDEPENDENTES no código. Com
+#: 100 quadros em 3 s o salto fica em 480 amostras: janelas consecutivas se
+#: sobrepunham em 32 amostras, e o taper de Hann é ~0 nas duas pontas.
+#:
+#: Medido: o envelope de soma-e-sobreposição ia de 1,0 a EXATAMENTE 0 — **27%
+#: do sinal caía em regiões de peso desprezível**, invisíveis à análise. Pior
+#: para esta tarefa: um clique de 1 ms era 9× mais visível ou menos conforme a
+#: posição em que caísse (razão mín/máx de 0,11), e artefato de síntese é
+#: justamente transiente — descontinuidade de fase, ponto de emenda.
+#:
+#: Com 50% de sobreposição a razão sobe para 0,90 e o ponto cego desaparece,
+#: SEM perda de detecção média (a janela maior mede 0,041–0,043 contra o melhor
+#: caso 0,043 da janela curta). A 6% de sobreposição o fator dominante não era
+#: resolução temporal, era o ponto cego.
+MIN_STFT_OVERLAP = 0.5
+
+
+def resolve_n_fft(hop_length: int, declared: Optional[int] = None) -> int:
+    """Janela de análise compatível com o salto, ou a declarada pelo contrato.
+
+    Um `n_fft` explícito da arquitetura sempre vence: o AST especifica 25 ms
+    (400 amostras a 16 kHz) por definição do artigo, e com salto de 160 já
+    obtém 60% de sobreposição.
+
+    Sem declaração, a janela é derivada do salto para garantir
+    `MIN_STFT_OVERLAP`, arredondando para a próxima potência de 2 (FFT mais
+    rápida). Assim, mexer em `time_steps` no futuro não reintroduz o ponto
+    cego: a relação passa a ser mantida pelo código, não pela memória de quem
+    edita.
+    """
+    if declared:
+        return int(declared)
+    hop_length = max(1, int(hop_length))
+    minimo = hop_length / max(1e-6, 1.0 - MIN_STFT_OVERLAP)
+    n_fft = 1 << max(9, int(np.ceil(np.log2(minimo))))  # piso de 512
+    return int(n_fft)
+
 #: Mapa `input_type` do benchmark → identificador de front-end.
 #:
 #: FONTE ÚNICA (2026-07-28). Antes, quem precisava dessa correspondência a
@@ -213,13 +253,14 @@ def log_mel_batch(
     sample_rate: int = DEFAULT_SAMPLE_RATE,
     feature_dim: int = DEFAULT_FEATURE_DIM,
     time_steps: int = DEFAULT_TIME_STEPS,
-    n_fft: int = 512,
+    n_fft: Optional[int] = None,
 ) -> np.ndarray:
     """Log-mel do benchmark: ``(N, T)`` raw → ``(N, time_steps, feature_dim)``.
 
-    Reprodução exata de ``benchmarks/data.py::_raw_audio_to_logmel``:
-    n_fft=512, hop dinâmico ``ceil(T/time_steps)`` (≥64), potência, dB com
-    ``ref=max`` POR AMOSTRA, ajuste do eixo temporal e z-score por amostra.
+    hop dinâmico ``ceil(T/time_steps)`` (≥64), potência, dB com ``ref=max`` POR
+    AMOSTRA, ajuste do eixo temporal e z-score por amostra. A janela de análise
+    (``n_fft``) é derivada do salto quando a arquitetura não a declara — ver
+    `resolve_n_fft`.
     """
     import librosa
 
@@ -227,11 +268,8 @@ def log_mel_batch(
     sample_rate = int(sample_rate or DEFAULT_SAMPLE_RATE)
     feature_dim = int(feature_dim or DEFAULT_FEATURE_DIM)
     time_steps = int(time_steps or DEFAULT_TIME_STEPS)
-    # `n_fft` é parametrizável porque a janela de análise faz parte do
-    # contrato de cada arquitetura: o AST especifica 25 ms (400 amostras a
-    # 16 kHz), enquanto o default do projeto é 512 (32 ms).
-    n_fft = int(n_fft or 512)
     hop_length = max(64, int(np.ceil(flat.shape[1] / max(time_steps, 1))))
+    n_fft = resolve_n_fft(hop_length, n_fft)
 
     specs = []
     for y in flat:
@@ -255,6 +293,7 @@ def log_mel_single(
     feature_dim: int = DEFAULT_FEATURE_DIM,
     time_steps: int = DEFAULT_TIME_STEPS,
     source_samples: int = DEFAULT_SOURCE_SAMPLES,
+    n_fft: Optional[int] = None,
 ) -> np.ndarray:
     """Versão single-sample de :func:`log_mel_batch` → ``(time_steps, F)``.
 
@@ -265,7 +304,11 @@ def log_mel_single(
         np.asarray(y, dtype="float32")[np.newaxis, :], int(source_samples)
     )
     return log_mel_batch(
-        flat, sample_rate=sample_rate, feature_dim=feature_dim, time_steps=time_steps
+        flat,
+        sample_rate=sample_rate,
+        feature_dim=feature_dim,
+        time_steps=time_steps,
+        n_fft=n_fft,
     )[0]
 
 
@@ -360,6 +403,7 @@ def prepare_single(
     source_samples: int = DEFAULT_SOURCE_SAMPLES,
     add_channel_dim: Optional[bool] = None,
     raw_num_crops: int = 1,
+    n_fft: Optional[int] = None,
 ) -> np.ndarray:
     """Roteia uma amostra pelo front-end do benchmark declarado no contrato.
 
@@ -384,6 +428,9 @@ def prepare_single(
             feature_dim=feature_dim,
             time_steps=time_steps,
             source_samples=source_samples,
+            # PARIDADE: sem repassar, o AST — treinado com a janela de 25 ms
+            # que o artigo especifica (400 amostras) — inferia com outra.
+            n_fft=n_fft,
         )
         if add_channel_dim:
             spec = spec[..., np.newaxis]
