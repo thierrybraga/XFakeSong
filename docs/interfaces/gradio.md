@@ -222,6 +222,23 @@ Objetivo: criar ou atualizar modelos a partir de datasets organizados.
 | Validação | split, balanceamento e checagens de compatibilidade |
 | Execução | treino, progresso, métricas e salvamento |
 
+!!! tip "Feedback do treino (2026-07-29)"
+    O painel ao vivo já trazia fase, época, ETA e cartões de métrica — o
+    `model.fit` roda numa thread com fila de épocas e heartbeat de 1 s, então a
+    interface não congela nem durante a primeira época. Três lacunas foram
+    fechadas:
+
+    - **Custo antes de começar.** Ao escolher arquitetura e épocas, o passo 3
+      mostra a estimativa reaproveitando as horas medidas em
+      `benchmarks.planning.EXPECTED_TRAINING_HOURS` — as mesmas que derivam o
+      timeout do benchmark. Acima de 6 h o aviso sugere reduzir as épocas.
+    - **Interromper.** O Keras não permite abortar no meio de uma época; o
+      botão sinaliza e um callback marca `stop_training` no próximo limite de
+      época, deixando o modelo em estado consistente.
+    - **Sobreajuste ao vivo.** Quando a `val_loss` fica 5+ épocas sem melhorar,
+      o painel avisa e lembra que o melhor checkpoint já está salvo — sem isso,
+      interromper parece perder o trabalho.
+
 !!! success "Os defaults são os do pipeline (2026-07-28)"
     Ao selecionar uma arquitetura, a interface propõe a **mesma configuração que
     o benchmark treina** — lote, taxa de aprendizado, dropout, otimizador,

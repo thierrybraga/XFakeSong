@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading as _threading
 import re
 import time
 from pathlib import Path
@@ -645,6 +646,58 @@ def _history_confusion_figure_from_history(
     return fig
 
 
+#: Pedido de interrupção do treino em andamento.
+#:
+#: Um treino do assistente pode levar horas — o RawGAT-ST chega a ~54 h de GPU
+#: no orçamento de 100 épocas. Sem isto, quem clicasse "Treinar" por engano
+#: ficava sem saída pela interface: a thread do `fit` é daemon e só morre com o
+#: processo. O Keras não expõe cancelamento; o caminho suportado é um callback
+#: marcar `model.stop_training` ao fim de uma época.
+_PEDIDO_DE_PARADA = _threading.Event()
+
+
+def _estimativa_de_treino(arch: str, epochs: int, n_amostras: int) -> str:
+    """Custo esperado ANTES de começar, na linguagem do usuário.
+
+    Reaproveita as horas medidas em `benchmarks.planning`, as mesmas que
+    derivam o timeout por modelo do benchmark. Saber de antemão que uma
+    configuração leva dias é o que evita descobrir isso na terceira hora.
+    """
+    try:
+        from benchmarks.planning import (
+            EXPECTED_TRAINING_HOURS,
+            _REFERENCE_EPOCHS,
+            _REFERENCE_FIT_SAMPLES,
+            _compact,
+        )
+
+        custo = EXPECTED_TRAINING_HOURS.get(_compact(arch))
+        if not custo:
+            return ""
+        try:
+            import tensorflow as tf
+
+            perfil = "gpu" if tf.config.list_physical_devices("GPU") else "cpu"
+        except Exception:  # noqa: BLE001
+            perfil = "cpu"
+
+        horas = custo[perfil]
+        horas *= max(1, int(epochs)) / _REFERENCE_EPOCHS
+        horas *= max(1, int(n_amostras)) / _REFERENCE_FIT_SAMPLES
+        if horas < 1 / 60:
+            return ""
+        texto = _fmt_secs(horas * 3600)
+        aviso = " — considere reduzir as épocas" if horas > 6 else ""
+        # separador de milhar em pt-BR, sem tocar na vírgula da frase
+        amostras = f"{n_amostras:,}".replace(",", ".")
+        return (
+            f"Estimativa: <b>{texto}</b> em {perfil.upper()} "
+            f"({epochs} épocas, {amostras} amostras){aviso}."
+        )
+    except Exception:  # noqa: BLE001 — estimativa e opcional
+        return ""
+
+
 def _train_status_html(
     arch: str,
     device: str,
@@ -717,7 +770,34 @@ def _train_status_html(
         else "accent"
     )
 
+    # SINAL DE SOBREAJUSTE, ao vivo.
+    #
+    # O painel mostrava loss/acc de treino e validação lado a lado, mas cabia
+    # ao usuário perceber a divergência olhando quatro números por época. É a
+    # informação mais acionável durante um treino longo: quando a val_loss para
+    # de melhorar e a de treino continua caindo, o resto das épocas só piora o
+    # modelo — e, com orçamento fixo de época, isso pode custar horas.
+    #
+    # Critério: épocas decorridas desde o melhor val_loss. Só a partir de 5
+    # épocas, para não alarmar com a oscilação normal do início.
+    vloss_hist = [
+        v for v in (hist.get("val_loss") or [])
+        if isinstance(v, (int, float)) and not math.isnan(v)
+    ]
+    aviso_overfit = ""
+    if phase == "running" and len(vloss_hist) >= 5:
+        melhor = min(vloss_hist)
+        desde_o_melhor = len(vloss_hist) - 1 - vloss_hist.index(melhor)
+        if desde_o_melhor >= 5:
+            aviso_overfit = (
+                f'<div class="tl-note" style="color:#f59e0b">'
+                f"⚠ val_loss sem melhorar há {desde_o_melhor} épocas "
+                f"(melhor: {melhor:.4f}). O melhor checkpoint já está salvo; "
+                f"interromper agora não perde o melhor modelo.</div>"
+            )
+
     note_html = f'<div class="tl-note">{note}</div>' if note else ""
+    note_html += aviso_overfit
 
     return f"""
     <div class="train-live train-live-{phase}">
@@ -890,6 +970,8 @@ def _run_training(
     logger.info(
         "[treino v3: float32+clipvalue] iniciando _run_training (anti-NaN robusto)"
     )
+    # Um pedido de parada pendente de um treino anterior nao pode matar este.
+    _PEDIDO_DE_PARADA.clear()
     progress(0.05, desc="Carregando dataset...")
     yield (
         "Carregando dataset...",
@@ -1468,6 +1550,16 @@ def _run_training(
 
         class _ProgressCb(tf.keras.callbacks.Callback):
             def on_epoch_end(self, epoch, logs=None):
+                # Cancelamento: o Keras nao expoe interrupcao, mas respeita
+                # `stop_training` ao fim da epoca. O treino para no proximo
+                # limite de epoca, com o modelo em estado consistente — nao
+                # no meio de um passo de gradiente.
+                if _PEDIDO_DE_PARADA.is_set():
+                    self.model.stop_training = True
+                    log_lines.append(
+                        f"[INTERROMPIDO] parada solicitada na epoca {epoch + 1}"
+                    )
+                    return
                 logs = logs or {}
                 pct = 0.2 + 0.75 * (epoch + 1) / epochs
                 line = (
@@ -2466,6 +2558,10 @@ def create_training_wizard_tab():
                     info="Calibra threshold de classificação no val set.",
                 )
 
+            estimativa_html = gr.HTML(
+                "", elem_classes="wizard-estimate"
+            )
+
             with gr.Row(elem_classes="action-row"):
                 back_s3_btn = gr.Button("← Voltar", scale=1)
                 next_s3_btn = gr.Button(
@@ -2476,7 +2572,14 @@ def create_training_wizard_tab():
 
         # ───────────── Step 4: Treinar ─────────────
         with gr.Group(visible=False) as group_s4:
-            gr.Markdown("## Step 4 — Treinamento")
+            with gr.Row():
+                gr.Markdown("## Step 4 — Treinamento")
+                parar_btn = gr.Button(
+                    "⏹ Interromper",
+                    variant="stop",
+                    scale=0,
+                    min_width=140,
+                )
 
             # Painel de métricas ao vivo (progresso, loss/acc, ETA) — ocupa
             # toda a largura para máxima visibilidade durante o treino.
@@ -2610,6 +2713,40 @@ def create_training_wizard_tab():
             outputs=[cards_html],
         )
 
+
+        @ui_safe("Falha ao interromper")
+        def pedir_parada():
+            """Sinaliza a interrupcao; o treino para no fim da epoca atual."""
+            _PEDIDO_DE_PARADA.set()
+            return gr.update(
+                value="⏹ Interrompendo…", interactive=False
+            )
+
+        parar_btn.click(fn=pedir_parada, outputs=[parar_btn])
+
+        # Estimativa de custo: atualiza quando muda a arquitetura ou as epocas.
+        # Ligada DEPOIS da definicao do handler — `fn=` e avaliado na ligacao.
+
+        @ui_safe("Falha ao estimar o custo")
+        def atualizar_estimativa(scan_state, arch, epochs):
+            """Custo esperado ANTES de comecar."""
+            n = int((scan_state or {}).get("total_samples") or 0)
+            if not (arch and n):
+                return gr.update(value="")
+            texto = _estimativa_de_treino(arch, int(epochs or 0), n)
+            if not texto:
+                return gr.update(value="")
+            return gr.update(
+                value=f'<div class="xf-callout xf-callout-info">{texto}</div>'
+            )
+
+        for _controle in (arch_select, epochs_s3):
+            _controle.change(
+                fn=atualizar_estimativa,
+                inputs=[scan_result, arch_select, epochs_s3],
+                outputs=[estimativa_html],
+            )
+
         # Step 3 → Step 4 + dispara treinamento
         @ui_safe("Falha ao iniciar o treino")
         def start_training(
@@ -2642,6 +2779,8 @@ def create_training_wizard_tab():
                 while len(eval_plots) < 7:
                     eval_plots.append(gr.update())
                 yield (*updates_step, status, logs, plot, *eval_plots[:7])
+            # o treino terminou (concluido ou interrompido): libera o botao
+            _PEDIDO_DE_PARADA.clear()
 
         # Captura o path do dataset junto com o resultado do scan
         @ui_safe("Falha ao anexar o caminho")

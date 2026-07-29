@@ -31,18 +31,18 @@ make test-cov
 ```text
 tests/
 ├── conftest.py          # fixtures globais + marcação automática por pasta
-├── unit/                # 59 arquivos
+├── unit/                # 60 arquivos
 ├── api/                 # 5 arquivos
 ├── functional/          # 2 arquivos
 ├── integration/         # 7 arquivos
 └── smoke/               # 5 arquivos, opt-in
 ```
 
-Total atual: **78 arquivos de teste**.
+Total atual: **79 arquivos de teste**.
 
 | Categoria | Marcador | Arquivos | Objetivo | Run padrão |
 |---|---:|---:|---|---|
-| Unit | `unit` | 59 | Componentes isolados, utilitários, treinamento, benchmark, notebooks, segurança local | Sim |
+| Unit | `unit` | 60 | Componentes isolados, utilitários, treinamento, benchmark, notebooks, segurança local | Sim |
 | API | `api` | 5 | Contratos FastAPI com `TestClient` e serviços mockados | Sim |
 | Functional | `functional` | 2 | Fluxos de usuário e rotas/frontend | Sim |
 | Integration | `integration` | 7 | Cooperação real entre serviços, podendo treinar modelos pequenos | Sim |
