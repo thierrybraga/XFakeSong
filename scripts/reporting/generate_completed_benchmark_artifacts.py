@@ -347,7 +347,9 @@ def main() -> int:
     )
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--latency-runs", type=int, default=10)
-    parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10])
+    # Inclui o 5 dB NAO VISTO: sem ele a tabela de robustez regenerada perde a
+    # coluna de generalizacao a ruido que o benchmark produziu.
+    parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10, 5])
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument(
         "--allow-legacy-unsafe-evaluation",

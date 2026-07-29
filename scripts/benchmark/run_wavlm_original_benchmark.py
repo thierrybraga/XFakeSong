@@ -258,7 +258,8 @@ def main() -> int:
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--dropout", type=float, default=0.2)
-    parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10])
+    # Avaliacao inclui o 5 dB NAO VISTO, em paridade com o caminho Keras.
+    parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10, 5])
     parser.add_argument(
         "--train-augmentation",
         action=argparse.BooleanOptionalAction,

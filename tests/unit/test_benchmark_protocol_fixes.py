@@ -326,7 +326,7 @@ def test_shared_test_lock_rejects_a_mutated_dataset(tmp_path):
 # ──────────── 8. disjunção de sementes verificada ────────────
 
 def test_train_and_eval_noise_seeds_cannot_collide_silently():
-    """A garantia era um comentário com uma fórmula que não existia mais."""
+    """A colisão precisa ser medida nas sementes que o RNG REALMENTE recebe."""
     from benchmarks.runner import _prepare_protocol_splits
 
     rng = np.random.default_rng(0)
@@ -343,12 +343,60 @@ def test_train_and_eval_noise_seeds_cannot_collide_silently():
         waveform_noise_batch_size=4,
         seed=42,
     )
-    # colisão forçada: com 8 amostras e batch 4 o ruído de treino usa
-    # 42+10000+start para start em {0, 4}. Um nível de avaliação que caia
-    # nesse mesmo espaço (42+20000-10000 == 42+10000+0) precisa ABORTAR.
-    cfg.snr_levels_db = [-10000]
+    # Colisão forçada contra a semente REAL. Com 8 amostras e batch 4 o ruído
+    # de treino entra em `add_awgn_assigned` com 42+10000+start (start em
+    # {0, 4}), e ela deriva +1009*(offset+1) — com um único nível, offset=0,
+    # então o RNG recebe 11051 e 11055. A avaliação usa 42+20000+snr, logo
+    # snr=-8991 cai exatamente em 11051 e precisa ABORTAR.
+    cfg.snr_levels_db = [-8991]
     with pytest.raises(ValueError, match="colisão de sementes"):
         _prepare_protocol_splits("SVM", cfg, raw_splits, training_seed=42)
+
+
+def test_declared_seed_alone_no_longer_counts_as_collision():
+    """Regressão: o guard media o `seed` de ENTRADA e dava falso negativo.
+
+    -10000 colide com o valor PASSADO a `add_awgn_assigned` (42+10000+0), mas
+    não com o que o gerador recebe (42+10000+0+1009). Não é colisão real.
+    """
+    from benchmarks.runner import _prepare_protocol_splits
+
+    rng = np.random.default_rng(0)
+    waveform = rng.normal(0, 0.05, (8, 16000)).astype("float32")
+    y = np.array([0, 1] * 4)
+    cfg = BenchmarkConfig(
+        architectures=["SVM"],
+        dataset_path=None,
+        snr_levels_db=[-10000],
+        train_aug_snr_db=[20],
+        waveform_noise_batch_size=4,
+        seed=42,
+    )
+    splits = _prepare_protocol_splits(
+        "SVM", cfg, (waveform, y, waveform, y, waveform, y), training_seed=42
+    )
+    assert splits[7]["train_eval_noise_seeds_disjoint"] is True
+
+
+def test_assigned_awgn_seeds_matches_what_the_generator_uses():
+    """A fonte única precisa reproduzir o ruído de `add_awgn_assigned`."""
+    from benchmarks.data import BenchmarkData
+
+    rng = np.random.default_rng(0)
+    X = rng.normal(0, 0.05, (12, 4000)).astype("float32")
+    assigned = BenchmarkData.balanced_snr_assignments(12, [30, 20, 10], seed=1)
+
+    seeds = BenchmarkData.assigned_awgn_seeds(assigned, seed=777)
+    esperado = BenchmarkData.add_awgn_assigned(X, assigned, seed=777)
+
+    # reconstrói nível a nível usando o mapa publicado
+    obtido = np.empty_like(esperado)
+    for snr, level_seed in seeds.items():
+        mask = assigned == snr
+        obtido[mask] = BenchmarkData.add_awgn(X[mask], float(snr), seed=level_seed)
+
+    assert np.array_equal(obtido, esperado)
+    assert set(seeds.values()) == {777 + 1009 * k for k in (1, 2, 3)}
 
 
 def test_protocol_records_the_disjointness_check():

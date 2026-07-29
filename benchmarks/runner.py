@@ -641,8 +641,8 @@ def _prepare_protocol_splits(
     )
     Xv, _ = prepare_input_for_architecture(Xv_raw, arch)
     Xte, _ = prepare_input_for_architecture(Xte_raw, arch)
-    Xtr_parts = [Xtr_clean]
-    ytr_parts = [np.asarray(ytr)]
+    ytr_clean = np.asarray(ytr)
+    prepared_shape = list(Xtr_clean.shape[1:])
     assigned_counts: dict[str, int] = {}
 
     # AJUSTE 2026-07-15 (diagnóstico do retreino 20260714): AASIST/RawGAT-ST
@@ -667,10 +667,32 @@ def _prepare_protocol_splits(
         and bool(cfg.train_aug_snr_db)
     )
     train_noise_seeds: set[int] = set()
+
+    # Aloca o tensor de treino UMA vez e escreve cada bloco no lugar.
+    #
+    # O caminho anterior (listas + `np.concatenate`) mantinha vivos ao mesmo
+    # tempo o bloco limpo, o bloco ruidoso e o resultado concatenado — pico de
+    # ~4x o tamanho de um bloco. Em raw-audio um bloco é
+    # 33.226 x 48.000 x 4 B = 6,4 GB, ou seja ~25 GB de pico, acima do limite
+    # de memória do container de treino (DOCKER_TRAIN_MEMORY_LIMIT) e da VM do
+    # WSL2 numa estação com RTX 3060. Escrevendo em fatias o pico cai para o
+    # tamanho do tensor final (~12,8 GB) mais o bloco corrente.
+    #
+    # Os valores e a ORDEM são idênticos aos do concatenate: bloco limpo em
+    # [0, n), cópia k em [n*(k+1), n*(k+2)).
+    n_clean = len(ytr_clean)
+    n_copies = int(cfg.train_noise_copies) if use_train_noise else 0
+    Xtr = np.empty(
+        (n_clean * (1 + n_copies), *Xtr_clean.shape[1:]), dtype=Xtr_clean.dtype
+    )
+    Xtr[:n_clean] = Xtr_clean
+    del Xtr_clean
+    ytr_fit = np.concatenate([ytr_clean] * (1 + n_copies), axis=0)
+
     if use_train_noise:
         noise_batch = max(1, int(cfg.waveform_noise_batch_size))
-        for copy_index in range(int(cfg.train_noise_copies)):
-            prepared_chunks = []
+        for copy_index in range(n_copies):
+            offset = n_clean * (1 + copy_index)
             base_seed = train_seed + 10000 + copy_index
             assigned = BenchmarkData.balanced_snr_assignments(
                 len(Xtr_raw), cfg.train_aug_snr_db, seed=base_seed
@@ -687,11 +709,14 @@ def _prepare_protocol_splits(
                     crop_strategy="random",
                     seed=base_seed + start,
                 )
-                prepared_chunks.append(prepared_chunk)
-                train_noise_seeds.add(int(base_seed + start))
-            noisy_prepared = np.concatenate(prepared_chunks, axis=0)
-            Xtr_parts.append(noisy_prepared)
-            ytr_parts.append(np.asarray(ytr))
+                Xtr[offset + start : offset + stop] = prepared_chunk
+                # As sementes REAIS do RNG, não o `seed` de entrada:
+                # `add_awgn_assigned` deriva uma por nível presente na chunk.
+                train_noise_seeds.update(
+                    BenchmarkData.assigned_awgn_seeds(
+                        assigned_chunk, base_seed + start
+                    ).values()
+                )
             values, counts = np.unique(assigned, return_counts=True)
             for value, count in zip(values, counts):
                 key = str(int(value))
@@ -699,11 +724,16 @@ def _prepare_protocol_splits(
 
     # Disjunção treino↔avaliação das sementes de ruído, VERIFICADA.
     #
-    # O comentário anterior justificava a ausência de colisão com um termo
-    # `1009*(nível+1)` que não existe mais no código — a garantia valia por
-    # coincidência aritmética com `waveform_noise_batch_size=64` e quebraria em
-    # silêncio se alguém mudasse o tamanho do lote. Uma colisão faria o modelo
-    # treinar exatamente sobre a realização de ruído usada no teste.
+    # Uma colisão faria o modelo treinar sobre a mesma realização de AWGN usada
+    # no teste, então a checagem precisa comparar as sementes que o gerador
+    # REALMENTE recebe. Até 2026-07-29 ela comparava o `seed` de ENTRADA de
+    # `add_awgn_assigned` e ignorava o termo `1009 * (offset + 1)` que aquela
+    # função deriva por nível (benchmarks/data.py). Nos parâmetros canônicos
+    # (lote 64) não havia colisão, mas o guard dava FALSO NEGATIVO: com
+    # `waveform_noise_batch_size=8` e duas cópias de treino, as sementes reais
+    # 20010 e 20020 colidem com a avaliação em 10 e 20 dB e o run era aprovado.
+    # Agora as sementes vêm de `BenchmarkData.assigned_awgn_seeds`, a mesma
+    # fonte que `add_awgn_assigned` consome.
     eval_noise_seeds = {
         int(cfg.seed) + 20000 + int(snr) for snr in (cfg.snr_levels_db or [])
     }
@@ -716,8 +746,6 @@ def _prepare_protocol_splits(
             "offsets 10000/20000 em _prepare_protocol_splits/_benchmark_one."
         )
 
-    Xtr = np.concatenate(Xtr_parts, axis=0)
-    ytr_fit = np.concatenate(ytr_parts, axis=0)
     protocol = {
         "evaluation_domain": "waveform" if waveform_domain else "input_space_fallback",
         "frontend_after_noise": bool(waveform_domain),
@@ -736,7 +764,7 @@ def _prepare_protocol_splits(
         "fit_train_samples": int(len(ytr_fit)),
         "input_type": input_type,
         "original_shape": list(np.asarray(Xtr_raw).shape[1:]),
-        "prepared_shape": list(np.asarray(Xtr_clean).shape[1:]),
+        "prepared_shape": prepared_shape,
         "train_crop_strategy": "random" if input_type == "raw_audio" else None,
         # Resolvidos em `_benchmark_one`, quando se sabe se as formas de onda
         # cruas estão disponíveis para o multicrop. Declarar aqui produzia um
@@ -1634,11 +1662,13 @@ def _benchmark_one(
             for snr in cfg.snr_levels_db:
                 if protocol["evaluation_domain"] == "waveform":
                     # Semente da AVALIAÇÃO: seed+20000+snr — mesma realização
-                    # de ruído para todas as arquiteturas (comparabilidade). A
-                    # disjunção em relação às sementes de TREINO
-                    # (train_seed+10000+copy+start) não é presumida: é
-                    # verificada em _prepare_protocol_splits, que aborta se
-                    # houver interseção.
+                    # de ruído para todas as arquiteturas (comparabilidade).
+                    # Aqui `add_awgn` é chamada direto, então esta É a semente
+                    # do RNG. No treino ela passa por `add_awgn_assigned`, que
+                    # deriva uma por nível; a disjunção entre os dois conjuntos
+                    # não é presumida — `_prepare_protocol_splits` compara as
+                    # sementes REAIS dos dois lados e aborta se houver
+                    # interseção.
                     noisy_raw = BenchmarkData.add_awgn(
                         raw_Xte, snr, seed=cfg.seed + 20000 + int(snr)
                     )

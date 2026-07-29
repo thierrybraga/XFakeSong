@@ -30,7 +30,13 @@ x-train-common: &train-common
     resources:
       limits:
         cpus: "${DOCKER_TRAIN_CPU_LIMIT:-8.0}"
-        memory: ${DOCKER_TRAIN_MEMORY_LIMIT:-16G}
+        # 24G, nao 16G: em raw-audio o tensor de treino do benchmark e
+        # 33.226 x 48.000 x 4 B x 2 (limpo + copia AWGN) = ~12,8 GB, e o bloco
+        # cru de origem soma outros 6,4 GB antes de ser liberado. Com 16G o
+        # container era morto por OOM justamente nos modelos mais caros
+        # (RawNet2). Cabe numa VM WSL2 de 31 GB; ajuste por .env se a sua for
+        # menor.
+        memory: ${DOCKER_TRAIN_MEMORY_LIMIT:-24G}
       reservations:
         devices:
           - driver: nvidia

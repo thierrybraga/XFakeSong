@@ -33,33 +33,31 @@ fluxo local, auditável e repetível:
 5. gerar métricas, matrizes de confusão, curvas ROC, robustez, latência e
    relatórios Markdown com imagens PNG.
 
-O benchmark consolidado do TCC usa o tier `medium`, exportado como
-`data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz`, com alvo de `7.500`
-amostras reais + `7.500` amostras fake. A revisão local de 28/06/2026 usa
-BRSpeech-DF, Fake Voices, MLS Portuguese e TTS-Portuguese Corpus:
+O benchmark consolidado do TCC usa o dataset canônico
+`data/datasets/benchmark_dataset.npz` — CETUC pareado com clones XTTS-v2, com
+disjunção dupla de locutor e frase entre treino, validação e teste: `40.980`
+amostras (`20.490` reais + `20.490` falsas), áudio bruto `(48000, 1)` mono a
+16 kHz (3 s). O protocolo completo está em
+[docs/data/dataset-protocol.md](docs/data/dataset-protocol.md).
 
 | Métrica | Valor |
 | --- | ---: |
-| WAVs ativos | 15.000 |
-| Duração dos WAVs ativos | 2.045,61 min / 34,09 h |
-| Tamanho dos WAVs ativos | 3.746,26 MiB |
-| Tamanho do NPZ canônico | 2.769,01 MiB |
+| Amostras no NPZ | 40.980 (20.490 reais + 20.490 falsas) |
+| Entrada | áudio bruto `(48000, 1)` — 3 s, mono, 16 kHz |
+| Tamanho do NPZ canônico | 7,99 GB |
 | Formato dos WAVs | PCM linear, 16 bits, mono, 16 kHz |
-| Splits | 10.500 treino / 2.250 validação / 2.250 teste |
+| Locutores | 56, todos nas duas classes |
+| Splits | 33.226 treino / 3.976 validação / 3.778 teste |
 
-Os tiers de dataset são:
+A partição é disjunta por locutor **e** por frase (semente 42), e o conjunto de
+teste é selado antes de qualquer treino por
+`benchmark_dataset.npz.test-lock.json`:
 
-| Tier | Total | Uso |
-| --- | ---: | --- |
-| `small` | 10.000 | iteração rápida robusta |
-| `medium` | 15.000 | benchmark canônico do TCC |
-| `large` | 20.000 | auditoria estendida e protocolo de falantes não vistos |
-
-Excedentes baixados durante a curadoria são arquivados em
-`data/datasets/overflow/`, preservando os WAVs brutos para novas rotas.
-IDs reais de falantes são registrados em `data/datasets/speaker_manifest.json`
-quando a fonte expõe esse metadado; a tabela consolidada por arquivo fica em
-`data/datasets/speaker_table.csv`.
+| Split | Amostras | Locutores | Frases | Horas |
+| --- | ---: | ---: | ---: | ---: |
+| treino | 33.226 | 34 (23F/11M) | 602 | 45,47 |
+| validação | 3.976 | 11 (7F/4M) | 201 | 5,49 |
+| teste | 3.778 | 11 (7F/4M) | 197 | 5,17 |
 
 ## Início Rápido
 
@@ -184,7 +182,7 @@ python scripts/benchmark/run_tcc_pipeline.py ^
   --epochs 100 ^
   --device-profile gpu ^
   --out data/results/benchmark_15k_medium ^
-  --npz data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz
+  --npz data/datasets/benchmark_dataset.npz
 ```
 
 No Windows com GPU, use o perfil Docker/WSL2:
@@ -199,7 +197,7 @@ docker compose -f docker\compose\benchmark.nvidia.yml --env-file .env run --rm b
     --epochs 100 `
     --batch-size 32 `
     --device-profile gpu `
-    --npz data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz `
+    --npz data/datasets/benchmark_dataset.npz `
     --out data/results/benchmark_15k_medium
 ```
 
@@ -229,7 +227,7 @@ Para revisar o plano sem iniciar treinamento:
 
 ```bash
 python scripts/benchmark/run_benchmark.py --full ^
-  --dataset data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz ^
+  --dataset data/datasets/benchmark_dataset.npz ^
   --epochs 100 ^
   --out data/results/benchmark_15k_medium ^
   --plan-only
@@ -239,7 +237,7 @@ Benchmark de um modelo individual:
 
 ```bash
 python scripts/benchmark/run_benchmark.py --model AASIST ^
-  --dataset data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz ^
+  --dataset data/datasets/benchmark_dataset.npz ^
   --epochs 100 ^
   --out data/results/bench_aasist
 ```

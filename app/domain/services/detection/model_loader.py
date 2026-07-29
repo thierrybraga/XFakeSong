@@ -176,7 +176,7 @@ class TorchSSLOriginalModel:
         checkpoint = torch.load(
             self.artifact_path,
             map_location="cpu",
-            weights_only=False,
+            weights_only=True,
         )
         model_class = checkpoint.get(
             "model_class",
@@ -392,14 +392,14 @@ class ModelLoader:
                     model = tf.keras.models.load_model(
                         str(model_path),
                         custom_objects=custom_objects,
-                        safe_mode=False,
+                        safe_mode=True,
                         compile=False,
                     )
                 except TypeError:
                     # Fallback sem custom objects se não forem necessários
                     model = tf.keras.models.load_model(
                         str(model_path),
-                        safe_mode=False,
+                        safe_mode=True,
                         compile=False,
                     )
 

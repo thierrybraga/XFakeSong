@@ -38,11 +38,11 @@ tests/
 └── smoke/               # 5 arquivos, opt-in
 ```
 
-Total atual: **79 arquivos de teste**.
+Total atual: **80 arquivos de teste**.
 
 | Categoria | Marcador | Arquivos | Objetivo | Run padrão |
 |---|---:|---:|---|---|
-| Unit | `unit` | 60 | Componentes isolados, utilitários, treinamento, benchmark, notebooks, segurança local | Sim |
+| Unit | `unit` | 61 | Componentes isolados, utilitários, treinamento, benchmark, notebooks, segurança local | Sim |
 | API | `api` | 5 | Contratos FastAPI com `TestClient` e serviços mockados | Sim |
 | Functional | `functional` | 2 | Fluxos de usuário e rotas/frontend | Sim |
 | Integration | `integration` | 7 | Cooperação real entre serviços, podendo treinar modelos pequenos | Sim |

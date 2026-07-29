@@ -38,7 +38,10 @@ from benchmarks.config import (  # noqa: E402
 )
 
 from app.core.config.paths import resolve_results_dir, resolve_results_output  # noqa: E402
-DEFAULT_DATASET = ROOT / "data" / "datasets" / "benchmark_audio_raw_balanced_15k_confirmatory_v2.npz"
+# Dataset canônico (configs/dataset.yaml::canonical_npz). O default anterior era
+# o benchmark_audio_raw_balanced_15k_confirmatory_v2.npz, artefato do protocolo
+# anterior já retirado do disco.
+DEFAULT_DATASET = ROOT / "data" / "datasets" / "benchmark_dataset.npz"
 DEFAULT_MODELS_DIR = ROOT / "app" / "models"
 DEFAULT_RESULTS_DIR = resolve_results_dir(ROOT)
 DEFAULT_IMAGE = "xfakesong:benchmark-gpu"
@@ -290,7 +293,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout-min", type=float, default=240.0)
     parser.add_argument("--latency-runs", type=int, default=30)
     parser.add_argument("--ssl-feature-batch-size", type=int, default=16)
-    parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10])
+    # Avaliacao inclui o 5 dB NAO VISTO (o augmentation de treino segue em
+    # 30/20/10, definido pelo run_models_sequential).
+    parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10, 5])
     parser.add_argument("--image", default=DEFAULT_IMAGE)
     parser.add_argument("--container-name", default="xfakesong_benchmark_run")
     parser.add_argument("--clean", action="store_true")

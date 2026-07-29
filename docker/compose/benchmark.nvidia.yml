@@ -37,7 +37,9 @@ services:
       resources:
         limits:
           cpus: "${DOCKER_TRAIN_CPU_LIMIT:-8.0}"
-          memory: ${DOCKER_TRAIN_MEMORY_LIMIT:-16G}
+          # 24G, nao 16G — ver a justificativa em train.nvidia.yml: o tensor de
+          # treino raw-audio (limpo + copia AWGN) sozinho passa de 12,8 GB.
+          memory: ${DOCKER_TRAIN_MEMORY_LIMIT:-24G}
         reservations:
           devices:
             - driver: nvidia
@@ -53,20 +55,34 @@ services:
     command:
       - python
       - scripts/benchmark/run_models_sequential.py
-      # Dataset canônico: data/datasets/ (raiz consolidada em 2026-07-14).
+      # Dataset canônico, o mesmo declarado em configs/dataset.yaml e nos seis
+      # configs/training/*.yaml. Apontava para
+      # benchmark_audio_raw_balanced_15k_confirmatory_v2.npz, artefato do
+      # protocolo anterior já retirado do disco — o run morria na primeira linha.
       - --dataset
-      - data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz
+      - data/datasets/benchmark_dataset.npz
       - --out
       - data/results/clean_benchmark_latest
       - --epochs
       - "100"
       - --device-profile
       - gpu
-      - --timeout-min
-      - "240"
+      # SEM --timeout-min: o default deriva o limite do custo estimado de cada
+      # arquitetura (planning.EXPECTED_TRAINING_HOURS x 3, escalado por épocas e
+      # tamanho do treino). Com o valor fixo de 240 min que estava aqui, 10 das
+      # 11 arquiteturas do escopo oficial tinham timeout derivado ACIMA de 4 h
+      # (só o RandomForest, com 180 min, cabia) e sete delas já passavam de 4 h
+      # só no tempo de treino esperado — RawGAT-ST 54 h, AASIST 28 h,
+      # SpectrogramTransformer 28 h, RawNet2 18 h, SVM 8 h, WavLM e HuBERT 6 h.
+      # O limite fixo matava justamente os modelos que o benchmark existe para
+      # medir.
       - --latency-runs
       - "30"
+      # 30/20/10 casam com o augmentation de treino; 5 dB é a condição NÃO VISTA
+      # que mede generalização a ruído. Este compose era o único ponto do
+      # projeto que omitia o 5.
       - --snr
       - "30"
       - "20"
       - "10"
+      - "5"

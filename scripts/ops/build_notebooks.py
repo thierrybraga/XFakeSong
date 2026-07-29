@@ -1110,7 +1110,9 @@ def build_pipeline():
         EPOCHS = 100   # canônico do benchmark (recommended_epochs=100); 20 só p/ teste rápido
         BATCH_SIZE = 32
         DURATION_SEC = 5.0
-        SNR_LEVELS_DB = [30, 20, 10]
+        # 30/20/10 casam com o augmentation de treino; 5 dB fica FORA dele e e
+        # o unico nivel que mede generalizacao a ruido.
+        SNR_LEVELS_DB = [30, 20, 10, 5]
         LATENCY_RUNS = 30
         WORKERS = max((os.cpu_count() or 2) - 1, 1)
 

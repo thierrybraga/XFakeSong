@@ -73,9 +73,11 @@ FINGERPRINT_CACHE = DATASETS_DIR / "metadata" / "brspeech_fingerprints.npz"
 CLASS_PURE_SOURCES = ("mlspt", "ttsport", "fkvoice")
 
 SAMPLE_RATE = 16000
-# Janela exportada para o NPZ (5 s @ 16 kHz). A deduplicacao precisa comparar
-# exatamente esta janela, nao o arquivo inteiro.
-WINDOW_SAMPLES = 80_000
+# Janela exportada para o NPZ (3 s @ 16 kHz). A deduplicacao precisa comparar
+# exatamente esta janela, nao o arquivo inteiro — com 80.000 (a janela de 5 s
+# do protocolo antigo) a comparacao caia fora da janela realmente exportada e
+# duplicatas passavam despercebidas.
+WINDOW_SAMPLES = 48_000
 N_FFT = 512
 HOP = 256
 N_BANDS = 32

@@ -52,12 +52,12 @@ VALIDATION_CACHE = DATASETS_DIR / "metadata" / "speaker_val_embeddings.npz"
 BRSPEECH_CACHE = DATASETS_DIR / "metadata" / "speaker_brspeech_embeddings.npz"
 
 MODEL_NAME = "microsoft/wavlm-base-plus"
-TARGET_SAMPLES = 80_000  # 5 s @ 16 kHz, a mesma janela do NPZ
+TARGET_SAMPLES = 48_000  # 3 s @ 16 kHz, a mesma janela do NPZ
 BATCH = 8
 
 
 def _load_window(path: Path) -> np.ndarray | None:
-    """Le o audio na MESMA janela de 5 s centrais usada no NPZ."""
+    """Le o audio na MESMA janela de 3 s centrais usada no NPZ."""
     try:
         import soundfile as sf
 

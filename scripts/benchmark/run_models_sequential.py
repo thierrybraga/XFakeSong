@@ -668,13 +668,26 @@ def main() -> int:
         default=16,
         help="batch para extracao de embeddings HuBERT/WavLM no runner SSL",
     )
-    parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10])
+    parser.add_argument(
+        "--snr",
+        nargs="+",
+        type=int,
+        default=[30, 20, 10, 5],
+        help=(
+            "SNRs (dB) do teste de robustez. 30/20/10 casam com o augmentation "
+            "de treino e medem condicao CASADA; 5 dB fica FORA do treino e e o "
+            "unico nivel que mede generalizacao a ruido"
+        ),
+    )
     parser.add_argument(
         "--train-aug-snr",
         nargs="+",
         type=int,
         default=[30, 20, 10],
-        help="SNRs balanceados na cópia ruidosa de treino",
+        help=(
+            "SNRs balanceados na copia ruidosa de treino. NAO inclua 5 dB: e o "
+            "nivel reservado para medir generalizacao na avaliacao"
+        ),
     )
     parser.add_argument("--train-noise-copies", type=int, default=1)
     parser.add_argument("--waveform-noise-batch-size", type=int, default=64)
@@ -790,8 +803,25 @@ def main() -> int:
                 "protocolo acadêmico exige X_train/y_train/X_val/y_val/X_test/y_test "
                 "predefinidos; um split gerado por semente alteraria o teste"
             )
-        if args.snr != [30, 20, 10] or args.train_aug_snr != [30, 20, 10]:
-            parser.error("protocolo acadêmico exige SNRs 30, 20 e 10 dB nessa ordem")
+        # Avaliação em 30/20/10 (condição CASADA com o augmentation) MAIS 5 dB,
+        # que fica deliberadamente fora do treino e é o único nível que mede
+        # generalização a ruído — ver docs/evaluation/benchmark.md e o invariante
+        # em tests/unit/test_benchmark_protocol_fixes.py::
+        # test_default_protocol_includes_an_unseen_snr_level.
+        # Até aqui o guard exigia `snr == [30, 20, 10]`, contradizendo o default
+        # de BenchmarkConfig.snr_levels_db e a própria doc: quem passasse o 5 dB
+        # documentado tomava parser.error, e quem não passasse rodava um
+        # benchmark sem a coluna de generalização.
+        if args.snr != [30, 20, 10, 5]:
+            parser.error(
+                "protocolo acadêmico exige SNRs de avaliação 30, 20, 10 e 5 dB "
+                "nessa ordem"
+            )
+        if args.train_aug_snr != [30, 20, 10]:
+            parser.error(
+                "protocolo acadêmico exige augmentation de treino em 30, 20 e "
+                "10 dB nessa ordem; 5 dB precisa continuar NÃO VISTO no treino"
+            )
         if not npz_inspection["has_cluster_ids"]:
             parser.error("protocolo acadêmico exige cluster_ids para IC por cluster")
         if not npz_inspection["has_source_ids"]:

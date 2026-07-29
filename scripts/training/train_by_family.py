@@ -89,7 +89,12 @@ def build_command(args: argparse.Namespace) -> list[str]:
         if args.timeout_min is not None
         else cfg.get("timeout_min")
     )
-    snr = args.snr or [str(item) for item in _as_list(cfg.get("snr") or [30, 20, 10])]
+    # Fallback com o 5 dB NAO VISTO, igual ao default de
+    # run_models_sequential.py::--snr e ao BenchmarkConfig.snr_levels_db. Sem
+    # ele, um preset sem `snr:` rodava sem a coluna de generalizacao a ruido.
+    snr = args.snr or [
+        str(item) for item in _as_list(cfg.get("snr") or [30, 20, 10, 5])
+    ]
 
     cmd = [
         sys.executable,

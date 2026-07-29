@@ -36,12 +36,17 @@ from app.interfaces.web.schemas.api_models import (
     ProfileUpdate,
 )
 
-router = APIRouter(prefix="/api/v1/profiles", tags=["Voice Profiles"])
+router = APIRouter(
+    prefix="/api/v1/profiles",
+    tags=["Voice Profiles"],
+    dependencies=[Depends(get_api_key)],
+)
 
 
 # ── Singleton (API.2) ───────────────────────────────────────────────────
 # Antes: get_voice_profile_service() criava nova instância A CADA request,
 # abrindo nova sessão DB. @lru_cache garante singleton thread-safe.
+
 
 @lru_cache()
 def get_voice_profile_service() -> VoiceProfileService:
@@ -67,6 +72,7 @@ def _profile_to_response(p) -> ProfileResponse:
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────
+
 
 @router.get(
     "/",

@@ -24,5 +24,8 @@ epochs: 100
 batch_size: 32
 device_profile: gpu
 latency_runs: 30
-snr: [30, 20, 10]
+# Avaliacao: 30/20/10 casam com o augmentation de treino (condicao
+# CASADA) e 5 dB fica FORA do treino — o unico nivel que mede
+# generalizacao a ruido. Ver docs/evaluation/benchmark.md.
+snr: [30, 20, 10, 5]
 optimize_hyperparameters: true
