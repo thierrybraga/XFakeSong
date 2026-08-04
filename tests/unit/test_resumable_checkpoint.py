@@ -124,6 +124,47 @@ def test_estado_ilegivel_nao_derruba_o_treino(tmp_path):
     assert callback.best is None
 
 
+def test_baseline_nan_e_ignorado(tmp_path):
+    """NaN como baseline travaria o checkpoint para sempre.
+
+    `_is_improvement` compara com `ops.less(x, nan)`, que é False para
+    qualquer x — um treino que divergiu envenenaria todos os seguintes.
+    """
+    ckpt = tmp_path / "best.weights.h5"
+    (tmp_path / "best.weights.h5.best.json").write_text(
+        json.dumps({"monitor": "val_loss", "best": float("nan")})
+    )
+
+    callback = _checkpoint(ckpt)
+    callback.on_train_begin()
+
+    assert callback.best is None
+
+
+def test_epoca_divergida_nao_vira_o_melhor_checkpoint(tmp_path):
+    ckpt = tmp_path / "best.weights.h5"
+    callback = _checkpoint(ckpt)
+    callback.set_model(_tiny_model())
+    callback.on_train_begin()
+
+    callback.on_epoch_end(0, {"val_loss": float("nan")})
+
+    assert not ckpt.exists(), "pesos não-finitos não podem virar artefato"
+    assert callback.best is None
+
+
+def test_nan_nunca_e_persistido(tmp_path):
+    ckpt = tmp_path / "best.weights.h5"
+    callback = _checkpoint(ckpt)
+    callback.set_model(_tiny_model())
+    callback.on_train_begin()
+    callback.best = float("nan")
+
+    callback._persist_best()
+
+    assert not (tmp_path / "best.weights.h5.best.json").exists()
+
+
 def test_estado_de_outra_metrica_e_ignorado(tmp_path):
     ckpt = tmp_path / "best.weights.h5"
     (tmp_path / "best.weights.h5.best.json").write_text(

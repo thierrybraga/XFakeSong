@@ -94,6 +94,18 @@ class ResumableModelCheckpoint(ModelCheckpoint):
             return
         if monitor != self.monitor:
             return
+        # NaN como baseline TRAVA o checkpoint para sempre: `_is_improvement`
+        # compara com `ops.less(x, nan)`, que é False para qualquer x, então
+        # nenhuma época voltaria a gravar. Um treino que divergiu não deve
+        # ditar o baseline do treino seguinte.
+        if not np.isfinite(best):
+            _save_logger.warning(
+                "[CKPT] melhor %s persistido é %s (treino anterior divergiu) — "
+                "ignorado; a seleção recomeça do zero",
+                self.monitor,
+                best,
+            )
+            return
         self.best = best
         _save_logger.warning(
             "[CKPT] melhor %s restaurado como %.6f — checkpoint só será "
@@ -103,6 +115,17 @@ class ResumableModelCheckpoint(ModelCheckpoint):
         )
 
     def _save_model(self, epoch, batch, logs):
+        # Uma época que divergiu não é "o melhor checkpoint": sem esta guarda,
+        # `_is_improvement(nan, None)` retorna True na primeira época e o
+        # artefato promovido nasce com pesos não-finitos.
+        current = (logs or {}).get(self.monitor)
+        if current is not None and not np.isfinite(current):
+            _save_logger.warning(
+                "[CKPT] época com %s=%s descartada para seleção de checkpoint",
+                self.monitor,
+                current,
+            )
+            return
         previous = self.best
         super()._save_model(epoch=epoch, batch=batch, logs=logs)
         if self.best is None or self.best == previous:
@@ -110,6 +133,8 @@ class ResumableModelCheckpoint(ModelCheckpoint):
         self._persist_best()
 
     def _persist_best(self) -> None:
+        if not np.isfinite(self.best):
+            return
         payload = json.dumps({"monitor": self.monitor, "best": float(self.best)})
         tmp_path = self._best_state_path.with_suffix(".json.tmp")
         try:
