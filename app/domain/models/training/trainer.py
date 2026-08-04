@@ -3,6 +3,7 @@
 Este módulo implementa o treinador principal para modelos de detecção de deepfake.
 """
 
+import json
 import logging
 import os
 import time
@@ -35,6 +36,92 @@ _save_logger = logging.getLogger(__name__)
 _progress_logger = logging.getLogger("training.progress")
 
 
+def _process_rss_mb() -> Optional[float]:
+    """RSS atual do processo em MB, via ``/proc/self/status`` (Linux/container).
+
+    Diagnostico leve para o crescimento de RAM observado durante o treino em
+    si (nao so no preparo dos dados, ja corrigido em `log_mel_batch` e
+    `_prepare_protocol_splits`) — ver investigacao do SpectrogramTransformer
+    2026-07-31. `None` fora de Linux (Windows/mac dev local): sem custo, so
+    nao loga a linha.
+    """
+    try:
+        with open("/proc/self/status", encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1]) / 1024.0
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
+
+
+class ResumableModelCheckpoint(ModelCheckpoint):
+    """``ModelCheckpoint`` cujo melhor valor sobrevive a reinícios do treino.
+
+    AJUSTE 2026-08-04 (queda de energia): o ``BackupAndRestore`` restaura
+    pesos, otimizador e contador de épocas, mas NÃO o estado dos demais
+    callbacks. Ao retomar, ``self.best`` volta a ``None`` e
+    ``MonitorCallback._is_improvement(x, None)`` retorna ``True``
+    incondicionalmente — a primeira época pós-retomada grava por cima do
+    melhor checkpoint mesmo sendo pior. Com reinícios recorrentes isso
+    degrada em silêncio o artefato que o protocolo declara como
+    ``checkpoint_selection: minimum_clean_validation_loss``.
+
+    Persiste o melhor valor num arquivo ao lado do checkpoint (escrita
+    atômica, para que uma queda no meio da gravação não corrompa o estado) e
+    o devolve em ``on_train_begin``.
+    """
+
+    def __init__(self, filepath, **kwargs):
+        super().__init__(filepath, **kwargs)
+        self._best_state_path = Path(f"{filepath}.best.json")
+
+    def on_train_begin(self, logs=None):
+        super().on_train_begin(logs)
+        # `best` já definido (ex.: initial_value_threshold explícito) manda.
+        if self.best is not None or not self._best_state_path.exists():
+            return
+        try:
+            state = json.loads(self._best_state_path.read_text(encoding="utf-8"))
+            monitor = state["monitor"]
+            best = float(state["best"])
+        except (OSError, ValueError, KeyError, TypeError):
+            _save_logger.warning(
+                "[CKPT] estado de melhor valor ilegível em %s — retomando sem "
+                "ele (a próxima época pode sobrescrever o melhor checkpoint)",
+                self._best_state_path,
+            )
+            return
+        if monitor != self.monitor:
+            return
+        self.best = best
+        _save_logger.warning(
+            "[CKPT] melhor %s restaurado como %.6f — checkpoint só será "
+            "substituído por um resultado efetivamente melhor",
+            self.monitor,
+            best,
+        )
+
+    def _save_model(self, epoch, batch, logs):
+        previous = self.best
+        super()._save_model(epoch=epoch, batch=batch, logs=logs)
+        if self.best is None or self.best == previous:
+            return
+        self._persist_best()
+
+    def _persist_best(self) -> None:
+        payload = json.dumps({"monitor": self.monitor, "best": float(self.best)})
+        tmp_path = self._best_state_path.with_suffix(".json.tmp")
+        try:
+            tmp_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path.write_text(payload, encoding="utf-8")
+            tmp_path.replace(self._best_state_path)
+        except OSError as exc:
+            _save_logger.warning(
+                "[CKPT] falha ao persistir melhor %s: %s", self.monitor, exc
+            )
+
+
 class EpochProgressLogger(tf.keras.callbacks.Callback):
     """Loga progresso de treino em linha única por época ou intervalo."""
 
@@ -46,6 +133,12 @@ class EpochProgressLogger(tf.keras.callbacks.Callback):
         self._epoch_started_at = 0.0
         self._epoch_index = 0
         self._last_batch_log_at = 0.0
+        # Épocas concluídas NESTE processo. Após uma retomada via
+        # `BackupAndRestore`, `epoch` volta com o índice absoluto (ex.: 84)
+        # enquanto `_started_at` marca o restart — dividir o tempo decorrido
+        # pelo índice absoluto subestimava o custo por época na mesma
+        # proporção (84×), e o ETA saía perto de zero.
+        self._epochs_this_run = 0
         self.batch_log_interval_s = max(
             0,
             int(os.getenv("XFAKE_TRAIN_BATCH_LOG_INTERVAL_S", "60") or "0"),
@@ -55,11 +148,13 @@ class EpochProgressLogger(tf.keras.callbacks.Callback):
         self._started_at = time.time()
         total = self.params.get("epochs", "?")
         steps = self.params.get("steps", "?")
+        rss = _process_rss_mb()
         _progress_logger.warning(
-            "[TRAIN] %s iniciado: epochs=%s steps_per_epoch=%s",
+            "[TRAIN] %s iniciado: epochs=%s steps_per_epoch=%s%s",
             self.label,
             total,
             steps,
+            f" rss_mb={rss:.0f}" if rss is not None else "",
         )
 
     def on_epoch_begin(self, epoch, logs=None):
@@ -81,8 +176,9 @@ class EpochProgressLogger(tf.keras.callbacks.Callback):
         elapsed = now - self._started_at
         epoch_elapsed = now - self._epoch_started_at
         pct = min(100.0, 100.0 * current_batch / max(1, steps))
+        rss = _process_rss_mb()
         _progress_logger.warning(
-            "[TRAIN] %s epoch=%s batch=%d/%d %.1f%% epoch_elapsed_min=%.1f elapsed_min=%.1f",
+            "[TRAIN] %s epoch=%s batch=%d/%d %.1f%% epoch_elapsed_min=%.1f elapsed_min=%.1f%s",
             self.label,
             self._epoch_index or "?",
             current_batch,
@@ -90,12 +186,14 @@ class EpochProgressLogger(tf.keras.callbacks.Callback):
             pct,
             epoch_elapsed / 60.0,
             elapsed / 60.0,
+            f" rss_mb={rss:.0f}" if rss is not None else "",
         )
 
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
         total = int(self.params.get("epochs") or 0)
         current = int(epoch) + 1
+        self._epochs_this_run += 1
         should_log = (
             current == 1
             or (total and current == total)
@@ -107,8 +205,9 @@ class EpochProgressLogger(tf.keras.callbacks.Callback):
         elapsed = time.time() - self._started_at
         epoch_s = time.time() - self._epoch_started_at
         eta_min = None
-        if total and current < total:
-            eta_min = (elapsed / current) * (total - current) / 60.0
+        if total and current < total and self._epochs_this_run > 0:
+            seconds_per_epoch = elapsed / self._epochs_this_run
+            eta_min = seconds_per_epoch * (total - current) / 60.0
         metric_bits = []
         for key in ("loss", "accuracy", "val_loss", "val_accuracy", "learning_rate"):
             if key in logs:
@@ -243,7 +342,11 @@ class ModelTrainer(IModelTrainer):
                 dataset = dataset.shuffle(
                     buffer_size=len(y), seed=42, reshuffle_each_iteration=True
                 )
-            return dataset.batch(batch_size), False
+            # prefetch(AUTOTUNE): sem isso, a GPU fica ociosa esperando o
+            # próximo lote em vez de sobrepor preparo de dado (CPU) com
+            # computo (GPU) — o padrão clássico de baixa utilização de GPU
+            # (~30% observado no Conformer) mesmo com o modelo saudável.
+            return dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE), False
 
         self.logger.info(
             "Dataset %s grande (%.1f MB) — usando generator em batches para "
@@ -276,6 +379,14 @@ class ModelTrainer(IModelTrainer):
             ),
         )
         dataset = dataset.apply(tf.data.experimental.assert_cardinality(n_batches))
+        # Idem ao caminho from_tensor_slices: sem prefetch, o generator
+        # Python (single-threaded, GIL) monta cada lote de forma síncrona e
+        # bloqueia a GPU entre lotes. Com AUTOTUNE, o próximo lote é montado
+        # numa thread em segundo plano enquanto a GPU processa o atual —
+        # este é justamente o caminho usado pelos datasets grandes
+        # (>256 MB: RawNet2/AASIST/RawGAT-ST/Conformer/etc. com a cópia
+        # AWGN), onde o ganho de sobreposição CPU/GPU é maior.
+        dataset = dataset.prefetch(tf.data.AUTOTUNE)
         return dataset, True
 
     def train(
@@ -756,7 +867,7 @@ class ModelTrainer(IModelTrainer):
             # A restauração já usa load_weights, que aceita ambos os formatos.
             ckpt_path = str(kwargs["checkpoint_path"])
             callbacks.append(
-                ModelCheckpoint(
+                ResumableModelCheckpoint(
                     filepath=ckpt_path,
                     monitor="val_loss",
                     save_best_only=True,
@@ -769,11 +880,19 @@ class ModelTrainer(IModelTrainer):
         # Diferentemente do melhor checkpoint, o backup preserva tambem o
         # estado do otimizador e a epoca concluida, permitindo que fit()
         # retome sem transformar a continuacao em um novo experimento.
+        #
+        # AJUSTE 2026-08-04 (queda de energia): double_checkpoint=True. O
+        # save escreve os pesos POR CIMA do backup unico; uma queda no meio
+        # dessa gravacao deixa um HDF5 truncado e sem fallback — perdendo o
+        # treino inteiro, nao so a epoca corrente. Com a opcao ligada o Keras
+        # mantem o estado anterior em `.bkp` e cai nele quando o atual falha
+        # ao carregar. Custa o dobro de disco no diretorio de backup.
         if "backup_dir" in kwargs:
             callbacks.append(
                 BackupAndRestore(
                     backup_dir=str(kwargs["backup_dir"]),
                     save_freq="epoch",
+                    double_checkpoint=True,
                     delete_checkpoint=True,
                 )
             )
