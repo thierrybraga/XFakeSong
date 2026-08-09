@@ -71,13 +71,27 @@ def mcnemar_test(
     pred_b: Sequence[int],
     *,
     cluster_ids: Optional[Sequence[Any]] = None,
+    n_bootstrap: int = 2000,
+    seed: int = 12345,
 ) -> Dict[str, Any]:
-    """McNemar exato sobre acertos/erros de dois modelos nas mesmas amostras.
+    """McNemar sobre acertos/erros de dois modelos nas mesmas amostras.
 
-    ``b`` = amostras que A acerta e B erra; ``c`` = o inverso. Com clusters, o
-    teste roda sobre a MAIORIA por cluster: usar as amostras cruas quando elas
-    vêm em blocos correlacionados (várias amostras da mesma frase) infla o n
-    discordante e produz p-valor otimista.
+    ``only_a_correct`` = amostras que A acerta e B erra; ``only_b_correct`` = o
+    inverso. Concordâncias não entram — é o ponto do teste.
+
+    Sem ``cluster_ids``: binomial exata sobre as discordâncias.
+
+    Com ``cluster_ids``: as contagens continuam por AMOSTRA (é o que a
+    estatística de McNemar mede), mas o p-valor vem de um **bootstrap de
+    clusters** da diferença ``only_a - only_b``. Amostras da mesma frase não
+    são independentes, e a binomial exata sobre elas dá p otimista.
+
+    CORREÇÃO 2026-08-09: a primeira versão agregava por MAIORIA dentro do
+    cluster antes de contar. Com ~7,5 amostras por frase e acurácia alta, a
+    maioria quase nunca vira — comparando HuBERT sob duas janelas, cuja EER
+    difere em 3,9 pp, a agregação zerava as 183 discordâncias e devolvia
+    ``p = 1``, enquanto o bootstrap pareado nos scores acusava p < 0,001. Um
+    teste que não distingue "sem diferença" de "sem poder" é pior que nenhum.
     """
     y_true = np.asarray(y_true).ravel().astype(int)
     a = (np.asarray(pred_a).ravel().astype(int) == y_true).astype(int)
@@ -85,28 +99,54 @@ def mcnemar_test(
     if len(a) != len(y_true) or len(b) != len(y_true):
         raise ValueError("predições desalinhadas com y_true")
 
-    unit = "sample"
-    if cluster_ids is not None:
-        clusters = np.asarray(cluster_ids).astype(str).ravel()
-        if len(clusters) != len(y_true):
-            raise ValueError("cluster_ids desalinhado com y_true")
-        groups = np.unique(clusters)
-        a = np.asarray([a[clusters == g].mean() >= 0.5 for g in groups], dtype=int)
-        b = np.asarray([b[clusters == g].mean() >= 0.5 for g in groups], dtype=int)
-        unit = "cluster"
-
-    only_a = int(np.sum((a == 1) & (b == 0)))
-    only_b = int(np.sum((a == 0) & (b == 1)))
+    a_only = (a == 1) & (b == 0)
+    b_only = (a == 0) & (b == 1)
+    only_a = int(np.sum(a_only))
+    only_b = int(np.sum(b_only))
     discordant = only_a + only_b
-    return {
+
+    out: Dict[str, Any] = {
         "test": "mcnemar_exact",
-        "unit": unit,
+        "unit": "sample",
         "n_units": int(len(a)),
         "only_a_correct": only_a,
         "only_b_correct": only_b,
         "discordant": discordant,
         "p_value": _round_p(_binom_two_sided_p(only_a, discordant)),
     }
+    if cluster_ids is None:
+        return out
+
+    clusters = np.asarray(cluster_ids).astype(str).ravel()
+    if len(clusters) != len(y_true):
+        raise ValueError("cluster_ids desalinhado com y_true")
+    groups = np.unique(clusters)
+    if len(groups) < 2:
+        out["cluster_warning"] = "menos de 2 clusters: p-valor segue por amostra"
+        return out
+
+    index_by_group = [np.flatnonzero(clusters == g) for g in groups]
+    rng = np.random.default_rng(seed)
+    diffs = np.empty(int(n_bootstrap), dtype="float64")
+    for i in range(int(n_bootstrap)):
+        chosen = rng.integers(0, len(groups), len(groups))
+        idx = np.concatenate([index_by_group[j] for j in chosen])
+        diffs[i] = float(np.sum(a_only[idx]) - np.sum(b_only[idx]))
+
+    tail = min(
+        (np.sum(diffs <= 0) + 1) / (len(diffs) + 1),
+        (np.sum(diffs >= 0) + 1) / (len(diffs) + 1),
+    )
+    out.update(
+        test="mcnemar_cluster_bootstrap",
+        unit="cluster",
+        n_units=int(len(groups)),
+        n_samples=int(len(a)),
+        p_value=_round_p(min(1.0, 2.0 * tail)),
+        p_value_sample_exact=_round_p(_binom_two_sided_p(only_a, discordant)),
+        bootstrap_samples=int(len(diffs)),
+    )
+    return out
 
 
 def _eer(y_true: np.ndarray, scores: np.ndarray) -> float:

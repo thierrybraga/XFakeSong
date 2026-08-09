@@ -53,19 +53,27 @@ diretorios como input.
 > ficou abaixo dos baselines classicos em min t-DCF). Consolidar antes disso
 > gera tabelas e figuras que serao descartadas.
 
-> **Pendencia adicional (2026-08-09):** WavLM/HuBERT Original precisam de
-> **reavaliacao**, nao de retreino. Os numeros publicados vieram de uma janela
-> de 64.000 amostras (4 s) sobre clipes de 3 s — 25% de cada entrada era
-> repeticao do proprio sinal, e os artefatos declaravam 1 s por causa de
-> literais fixos. O default de `--target-samples` passou a ser 48.000 (o clipe
-> inteiro), entao os dois modelos precisam ter os embeddings recomputados para
-> que o run inteiro fique internamente consistente. Sao ~5 min de GPU cada
-> (backbone congelado; so a cabeca retreina). Detalhes em
+> **CONCLUIDO em 2026-08-09 — reavaliacao dos SSL.** WavLM/HuBERT Original
+> foram reavaliados com a janela corrigida (`--target-samples 48000`, o clipe
+> de 3 s inteiro). Nao foi retreino: o backbone e congelado, entao so os
+> embeddings e a cabeca foram refeitos (~5 min de GPU cada). Os artefatos
+> antigos, da janela de 64.000, estao integralmente preservados em
+> `data/results/archive/ssl_janela64000_2026-08-09/`, com o comando que os
+> reproduz.
+>
+> **Os numeros mudaram, e no caso do HuBERT mudaram muito:**
+>
+> | Modelo | EER 64.000 | EER 48.000 | Veredito pareado |
+> | --- | ---: | ---: | --- |
+> | WavLM Original | 3,47% | 3,62% | empate (p = 0,27) |
+> | HuBERT Original | 2,17% | **5,93%** | 64.000 melhor (p < 0,001) |
+>
+> A janela de 4 s ajudava o HuBERT de verdade — mas dava aos dois SSL 33% mais
+> quadros que as outras nove arquiteturas recebem, alem de inserir uma emenda
+> artificial no sinal. O default ficou em 48.000 por comparabilidade. Ver a
+> discussao completa em
 > [docs/evaluation/retraining-adjustments.md](../../../docs/evaluation/retraining-adjustments.md),
 > secao 2026-08-09.
->
-> Para REPRODUZIR os numeros atuais em vez de refaze-los, passe
-> `--target-samples 64000` explicitamente — o default nao os reproduz mais.
 
 ## Regenerar
 
@@ -76,14 +84,8 @@ python scripts/benchmark/run_models_sequential.py \
   --models Conformer RawGAT-ST \
   --out data/results/clean_benchmark_15k --device-profile gpu --resume
 
-# 1b. reavaliar os SSL com a janela corrigida (48.000 = o clipe de 3 s inteiro)
-for arch in wavlm hubert; do
-  python scripts/benchmark/run_wavlm_original_benchmark.py --architecture $arch \
-    --dataset data/datasets/benchmark_dataset_15k.npz \
-    --out data/results/clean_benchmark_15k/${arch}_original \
-    --epochs 100 --seed 42 --snr 30 20 10 5 --train-aug-snr 30 20 10 \
-    --freeze-backbone --no-early-stopping --train-augmentation
-done
+# 1b. (JA FEITO em 2026-08-09) reavaliacao dos SSL com a janela de 48.000.
+#     So refaca se mudar dataset ou janela.
 
 # 2. consolidar (o run entra como argumento POSICIONAL, nao como flag)
 #    Gera tambem benchmark_significance.json (McNemar exato + bootstrap

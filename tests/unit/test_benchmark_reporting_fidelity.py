@@ -264,7 +264,7 @@ def test_mcnemar_detecta_dominancia_sistematica():
 
 
 def test_mcnemar_por_cluster_reduz_o_n_efetivo():
-    """8 amostras da mesma frase são 1 unidade, não 8 evidências."""
+    """8 discordâncias concentradas numa frase não são 8 evidências."""
     y = np.zeros(24, dtype=int)
     a = np.zeros(24, dtype=int)
     b = np.zeros(24, dtype=int)
@@ -276,9 +276,50 @@ def test_mcnemar_por_cluster_reduz_o_n_efetivo():
 
     assert por_amostra["n_units"] == 24
     assert por_cluster["n_units"] == 3
-    # Menos unidades independentes ⇒ p-valor maior. É exatamente o otimismo que
-    # o bootstrap por amostra introduzia nos IC de WavLM/HuBERT.
+    assert por_cluster["n_samples"] == 24
+    # As contagens de discordância continuam por amostra nos dois — o que muda
+    # é a unidade de reamostragem do p-valor.
+    assert por_cluster["only_a_correct"] == por_amostra["only_a_correct"] == 8
+    # Menos unidades independentes ⇒ p-valor maior. É o otimismo que a binomial
+    # exata sobre amostras correlacionadas introduzia.
     assert por_cluster["p_value"] > por_amostra["p_value"]
+
+
+def test_mcnemar_por_cluster_nao_perde_discordancia_difusa():
+    """Regressão: a agregação por MAIORIA zerava discordância espalhada.
+
+    Cenário real: HuBERT sob duas janelas difere 3,9 pp de EER, mas os erros se
+    espalham (2 de 8 amostras por frase). Votando maioria, nenhum cluster vira,
+    o teste reportava `discordant=0, p=1` — indistinguível de "sem diferença" —
+    enquanto o bootstrap pareado nos scores dava p < 0,001.
+    """
+    n_clusters, por_cluster_n = 40, 8
+    y = np.zeros(n_clusters * por_cluster_n, dtype=int)
+    a = np.zeros_like(y)
+    b = np.zeros_like(y)
+    clusters = np.repeat([f"frase-{i}" for i in range(n_clusters)], por_cluster_n)
+    # 2 de cada 8 — minoria dentro de todo cluster, mas 25% do conjunto.
+    for i in range(n_clusters):
+        b[i * por_cluster_n : i * por_cluster_n + 2] = 1
+
+    result = mcnemar_test(y, a, b, cluster_ids=clusters)
+
+    assert result["discordant"] == 2 * n_clusters
+    assert result["only_a_correct"] == 2 * n_clusters
+    assert result["p_value"] < 0.01
+    assert result["test"] == "mcnemar_cluster_bootstrap"
+
+
+def test_mcnemar_com_um_unico_cluster_declara_a_limitacao():
+    y = np.zeros(10, dtype=int)
+    a = np.zeros(10, dtype=int)
+    b = np.zeros(10, dtype=int)
+    b[:4] = 1
+
+    result = mcnemar_test(y, a, b, cluster_ids=np.repeat(["unica"], 10))
+
+    assert result["unit"] == "sample"
+    assert "cluster_warning" in result
 
 
 def test_bootstrap_pareado_nao_ve_diferenca_entre_modelos_iguais():

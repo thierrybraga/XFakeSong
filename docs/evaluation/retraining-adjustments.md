@@ -1137,6 +1137,38 @@ nem recorte, nem repetição, e é o que os espectrais também veem.
 > (o backbone congelado vê uma entrada diferente). Não é retreino de backbone,
 > mas também não é só regravar JSON.
 
+#### Reavaliação executada em 2026-08-09 — e o que ela mostrou
+
+Os dois modelos foram reavaliados com `--target-samples 48000` (~5 min de GPU
+cada, backbone congelado). Cópia integral dos artefatos antigos preservada em
+`data/results/archive/ssl_janela64000_2026-08-09/`, com o comando que os
+reproduz. Conjunto de teste idêntico nos dois lados
+(`test_split_sha256 = ab4c3a9f…`), então a comparação é **pareada**:
+
+| Modelo | EER 64.000 | EER 48.000 | ΔEER (IC 95%) | McNemar | Veredito |
+| --- | ---: | ---: | :--- | ---: | --- |
+| WavLM Original | 3,47% | 3,62% | −0,15 pp [−0,93; +0,44] | p = 0,27 | **empate** |
+| HuBERT Original | 2,17% | 5,93% | −3,91 pp [−5,16; −2,69] | p < 0,001 | **64.000 melhor** |
+
+A janela maior **ajuda de verdade** o HuBERT — não é ruído, os IC não se
+tocam. WavLM é indiferente. A leitura honesta: parte da vantagem do HuBERT nos
+números publicados vinha de 33% mais quadros no transformer, não do backbone.
+
+Isso separa duas coisas que a correção original tratava como uma só:
+
+1. **Metadata mentirosa** — literais fixos e `crop_strategy: "center"` sob
+   tiling. Defeito puro, corrigido, sem discussão.
+2. **Comprimento da janela** — decisão de projeto legítima, e a evidência
+   contraria a suposição de que 48.000 seria "o valor natural".
+
+O default fica em **48.000** por comparabilidade: as outras nove arquiteturas
+veem exatamente 3 s, e com 64.000 os dois SSL recebem mais evidência por clipe
+que todo o resto — o contraste passa a medir tamanho de janela junto com
+arquitetura. Some-se que o tiling insere uma emenda artificial na amostra
+48.000, que não existe em áudio real. Quem preferir o número maior tem os dois
+caminhos documentados; o que não se pode é publicar 64.000 sem declarar que os
+SSL viram uma janela diferente da dos demais.
+
 ### P1 — `converged` não enxerga colapso
 
 `converged` deriva só da AUC/acurácia do **checkpoint selecionado**, então
@@ -1198,6 +1230,18 @@ Novo `benchmarks/significance.py`:
   testes; sem correção, ~3 saem "significativos" a 5% só por acaso.
 - **`compare_models`** — matriz de todos os pares, com p bruto e ajustado.
 
+> **Correção do McNemar por cluster (mesmo dia).** A primeira versão agregava
+> por MAIORIA dentro do cluster antes de contar discordâncias. Com ~7,5
+> amostras por frase e acurácia alta, a maioria quase nunca vira: na comparação
+> HuBERT 64.000 × 48.000 — 3,9 pp de diferença de EER — a agregação zerava as
+> 57 discordâncias e devolvia `p = 1`, enquanto o bootstrap pareado dava
+> p < 0,001. Um teste que não distingue "sem diferença" de "sem poder" é pior
+> que nenhum. Agora as contagens ficam por amostra (é o que a estatística de
+> McNemar mede) e o p-valor sai de um **bootstrap de clusters** da diferença
+> `only_a − only_b`; a binomial exata por amostra continua no artefato como
+> `p_value_sample_exact`, para comparação. Com a correção, o mesmo par dá
+> 54 × 3 discordâncias e p < 0,001, concordando com o bootstrap.
+
 Ambos os testes agrupam/reamostram por **cluster** quando os IDs estão
 disponíveis. Para isso, `dataset.test_cluster_ids` passou a ser persistido no
 `results.json` dos dois runners — os IDs já eram usados nos IC por modelo, mas
@@ -1238,7 +1282,7 @@ no orçamento de GPU do run. Fica declarado como limitação, não como resolvid
 
 ### Cobertura de testes
 
-`tests/unit/test_benchmark_reporting_fidelity.py` — 32 testes:
+`tests/unit/test_benchmark_reporting_fidelity.py` — 34 testes:
 
 - **Janela SSL** (6): as três estratégias de `_input_preparation_block`;
   `_fit_length` de fato repete o começo do clipe quando a janela é maior (a
@@ -1251,14 +1295,17 @@ no orçamento de GPU do run. Fica declarado como limitação, não como resolvid
   clássico sem histórico devolvendo `unknown` em vez de fingir veredito; e a
   igualdade dos defaults com o `CollapseAbort`.
 - **Latência** (2): o perfil declara runtime e `cross_runtime_comparable`.
-- **Significância** (10): McNemar ignora acertos em comum, detecta dominância
-  sistemática e produz p MAIOR por cluster que por amostra (o otimismo que o
-  bootstrap por amostra introduzia); bootstrap pareado não vê diferença entre
-  um modelo e ele mesmo, separa bom de ruim, e nunca devolve p=0; Holm é
-  monótono, limitado a 1 e preserva a ordem de entrada; a matriz cobre C(n,2)
-  pares. Inclui a regressão do arredondamento — `round(2.2e-11, 6)` = 0.0
-  fazia o p ajustado sair MENOR que o bruto, e por isso p-valores passaram a
-  ser arredondados por algarismos significativos.
+- **Significância** (12): McNemar ignora acertos em comum, detecta dominância
+  sistemática e produz p MAIOR por cluster que por amostra (o otimismo que a
+  binomial sobre amostras correlacionadas introduzia); **não perde
+  discordância difusa** — 2 de 8 amostras erradas em todos os 40 clusters, que
+  a agregação por maioria zerava, saem com p < 0,01; um único cluster declara
+  a limitação em vez de fingir um p por cluster; bootstrap pareado não vê
+  diferença entre um modelo e ele mesmo, separa bom de ruim, e nunca devolve
+  p=0; Holm é monótono, limitado a 1 e preserva a ordem de entrada; a matriz
+  cobre C(n,2) pares. Inclui a regressão do arredondamento —
+  `round(2.2e-11, 6)` = 0.0 fazia o p ajustado sair MENOR que o bruto, e por
+  isso p-valores passaram a ser arredondados por algarismos significativos.
 - **Declarações** (6): `fit_splits` nos dois caminhos, `codec_eval_status`,
   `test_cluster_ids` persistido nos dois runners, a sanidade numérica do
   binomial exato contra valores calculados à mão, e a guarda de
