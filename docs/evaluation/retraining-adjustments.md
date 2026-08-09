@@ -90,14 +90,38 @@ retreinados.
 
 ## Verificação (antes de promover)
 
-1. `python scripts/reporting/consolidate_results.py --results data/results/retune_ajustado_<data>`
-2. `python scripts/reporting/validate_artifacts.py --results data/results/retune_ajustado_<data>`
+As **três invocações são diferentes** — não existe um `--results` comum. Até
+2026-08-09 este checklist trazia `--results` nos três, e os três falhavam:
+`consolidate_results.py` recebe o run como argumento **posicional**,
+`validate_artifacts.py` usa `--results-dir` e
+`sync_completed_benchmark_artifacts.py` aponta para o `run_summary.json`.
+
+```bash
+RUN=data/results/retune_ajustado_<data>
+
+# 1. consolida (posicional) — gera benchmark_summary.json, figuras e
+#    benchmark_significance.json (McNemar + bootstrap pareado + Holm)
+python scripts/reporting/consolidate_results.py "$RUN" --prefer-last
+
+# 2. valida os artefatos do run
+python scripts/reporting/validate_artifacts.py --results-dir "$RUN"
+
+# 4. só então promove (aponta para o run_summary.json, não para a pasta)
+python scripts/reporting/sync_completed_benchmark_artifacts.py \
+  --summary "$RUN/run_summary.json"
+```
+
 3. Comparar `accuracy`/`f1`/`eer` e a curva de robustez (10 dB) com o baseline.
-4. Só então sincronizar para `data/models/benchmark_final`:
-   `python scripts/reporting/sync_completed_benchmark_artifacts.py --results data/results/retune_ajustado_<data>`
+   Checar também `training_stability.status` (precisa ser `stable`) e, no
+   `benchmark_significance.json`, se a melhora sobre o baseline sobrevive ao
+   ajuste de Holm — diferença dentro do IC da diferença não é melhora.
 
 > Importante: promova um modelo só se ele melhorar (ou empatar) o baseline,
 > especialmente a robustez a 10 dB. Caso contrário, mantenha o artefato anterior.
+>
+> E **não misture runs de datasets diferentes** na mesma consolidação: as
+> variantes de 15k e 40k têm `test_split_sha256` distintos. A comparação
+> pareada recusa; as tabelas de média, não.
 
 ## Diagnóstico do retreino de 2026-06-30 (`official_retrain_selected_20260630`)
 
