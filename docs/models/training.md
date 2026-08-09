@@ -229,8 +229,26 @@ Definidos em `_prepare_callbacks()`:
 | `EarlyStopping` | `val_loss`, patience=`early_stopping_patience`, restaura melhores pesos |
 | `ReduceLROnPlateau` | Fator 0.5, min_lr=1e-7 quando val_loss estagna |
 | `ModelCheckpoint` | Salva melhor modelo por val_loss (se `checkpoint_path` passado) |
+| `BackupAndRestore` | Preserva pesos/otimizador/época em `backup_dir` (se passado) — permite retomar o `fit()` de onde parou após reinício do host/Docker; `benchmarks/runner.py` sempre passa `backup_dir`, então todo treino do benchmark tem esse resume automático |
 | `TensorBoard` | Histogramas + gráfico (se `tensorboard_dir` passado) |
 | `CSVLogger` | Histórico em CSV (se `csv_log_path` passado) |
+| `EpochProgressLogger` | Log `[TRAIN]` de progresso por época/batch (intervalo via `XFAKE_TRAIN_BATCH_LOG_INTERVAL_S`, default 60s); desde 2026-07-31 também loga `rss_mb` (RSS do processo, `/proc/self/status`) — diagnóstico de memória por batch |
+
+`.batch(batch_size)` encadeia `.prefetch(tf.data.AUTOTUNE)` (tanto no caminho
+`from_tensor_slices` quanto no gerador para datasets grandes, `trainer.py`) —
+sem isso a GPU ficava ociosa esperando o próximo lote (~30% de utilização
+observada no Conformer) em vez de sobrepor preparo de dado (CPU) com cômputo
+(GPU).
+
+Para RawNet2/AASIST/RawGAT-ST/MultiscaleCNN, o **treino do benchmark**
+(não o `ModelTrainer` isoladamente) desliga o auto-JIT do XLA no subprocesso
+(`XFAKE_ENABLE_XLA=0`, `_XLA_UNFRIENDLY_TRAINING_ARCHITECTURES` em
+`scripts/benchmark/run_models_sequential.py`) — o auto-JIT desses grafos
+(SincConv, GAT dinâmico, GRU) estourava RAM do host ou VRAM da GPU já no 1º
+batch. É a contraparte, do lado do treino, da lista
+`Predictor._XLA_UNFRIENDLY_ARCHITECTURES` já usada na inferência (ver
+`docs/models/inference.md`) — os dois conjuntos de arquiteturas não são
+idênticos porque a causa raiz (compile-time vs. runtime) é diferente.
 
 ### 1.5 Data Augmentation
 
@@ -260,24 +278,40 @@ Definidos em `_prepare_callbacks()`:
 
 ## 2. Hiperparâmetros por Arquitetura
 
-Baseados no TCC (Seção 6.1, Tabela 10) e em `get_recommended_hyperparameters()`
-(`app/domain/models/training/hyperparameter_defaults.py`):
+`get_recommended_hyperparameters()` (`app/domain/models/training/hyperparameter_defaults.py`)
+é **código morto** — o próprio docstring do módulo o marca como extraído de
+um módulo depreciado sem chamador real. As 9 arquiteturas do escopo oficial
+usam `benchmarks/planning.py::NEURAL_BENCHMARK_HPARAMS` (efetivas sob
+`optimize_hyperparameters=True`, o default); as do escopo estendido (Sonic
+Sleuth, EfficientNet-LSTM, Ensemble, WavLM/HuBERT porte Keras) e classificam
+Batch/LR não capturados por `planning.py` usam
+`architectures/registry.py::default_params` + o `create_model(...)` de cada
+arquitetura.
 
-| Arquitetura | Batch | LR | Épocas | Dropout | L2 | Observação |
+| Arquitetura | Batch (GPU) | LR | Épocas | Dropout | Regularização | Observação |
 |-------------|-------|----|--------|---------|-----|------------|
-| **AASIST** | 16 | 8e-4 | 100 | 0.2 | 1e-4 | raw audio + SincConv + grafos; encoder residual |
-| **RawGAT-ST** | 24 | 8e-4 | 100 | 0.2 | 1e-4 | raw audio + grafo espectral/temporal |
-| **MultiscaleCNN** | 64 | 2e-3 | 100 | 0.5 | 5e-4 | hidden 128/256 |
-| **SpectrogramTransformer** | 16 | 1e-4 | 100 | 0.1 | 1e-5 | WarmupCosineDecay (warmup=1000) — Sprint 2.2 |
-| **Conformer** | 32 | 1e-3 | 100 | 0.3 | 1e-4 | attention_heads=8, WarmupCosineDecay (warmup=1000) |
-| **EfficientNet-LSTM** | 32 | 5e-4 | 100 | 0.4 | 2e-4 | tenta ImageNet; fine-tune bloco final quando disponível |
-| **Hybrid CNN-T** | 32 | 1e-3 | 100 | 0.2 | 1e-4 | CCT + WarmupCosineDecay (warmup=1500) — Sprint 2.2 |
-| **RawNet2** | 24 | 8e-4 | 100 | 0.3 | 1e-4 | SincNet/FMS; GRU 1024 no preset atual |
-| **WavLM / HuBERT** | 8–16 | 1e-4 | 20–50 | 0.1 | 1e-4 | backbone congelado ou fine-tune parcial; fallback reportado |
-| **Sonic Sleuth** | 32 | 1e-3 | 100 | 0.1 | 1e-4 | — |
-| **Ensemble (adaptive)** | 32 | 1e-3 | 50 | 0.3 | 1e-4 | parte de modelos pré-treinados |
+| **AASIST** | 24 | 3e-4 | 100 | 0.2 | L2 2e-4 | raw audio + SincConv + GAT S/T; janela 48.000 (3 s) |
+| **RawGAT-ST** | 16 | 5e-5 | 100 | 0.35 | L2 1e-3 | raw audio + GAT espectral/temporal; janela 48.000 (3 s) |
+| **MultiscaleCNN** | 32 (base 64, cap de VRAM) | 1e-3 | 100 | 0.5 | wd 1e-2 (AdamW) | Res2Net-50; `l2_reg_strength` do plano é config morto |
+| **SpectrogramTransformer** | 8 | 1e-5 | 100 | 0.25 | wd 1e-5 | AST pré-LN, pesos AudioSet transferidos; warmup=3000 |
+| **Conformer** | 32 | 1e-4 | 100 | 0.1 | wd 1e-4 | Conformer-M (16 blocos, 4 cabeças fixas — `attention_heads` do plano é config morto); warmup=1500 |
+| **EfficientNet-LSTM** | 16 (extended.yaml) | ver `create_model` | 100 | 0.25 | — | tenta ImageNet; fine-tune bloco final quando disponível |
+| **Hybrid CNN-T** | 32 | 3e-4 | 100 | 0.2 | L2 1e-4 | CCT + WarmupCosineDecay (warmup=1500) |
+| **RawNet2** | 16 | 1e-4 | 100 | 0.3 | L2 1e-4 (dead) / wd 1e-4 | SincNet/FMS; GRU(1024) 1 camada; mixed precision desligado |
+| **WavLM Original / HuBERT Original** | 128 (cabeça) | 1e-3 | 100 | — | wd 1e-4 | backbone PyTorch congelado; runner SSL dedicado |
+| **WavLM / HuBERT** (porte Keras) | 16 (extended.yaml) | ver `create_model` | 100 | 0.2 / 0.3 | — | backbone congelado, soma ponderada estilo SUPERB |
+| **Sonic Sleuth** | 16 (extended.yaml) | ver `create_model` | 100 | 0.3 | — | variante `sonic_sleuth_paper` usa dropout 0.1, não é o default |
+| **Ensemble (adaptive)** | 16 (extended.yaml) | ver `create_model` | 100 | — | — | parte de modelos pré-treinados |
 | **SVM** | Full | N/A | N/A | — | — | StandardScaler obrigatório |
 | **Random Forest** | Full | N/A | N/A | — | — | n_jobs=-1 |
+
+Batch "GPU" já reflete o cap de VRAM de `planning.py::_fit_to_device`
+(RawNet2/RawGAT-ST/AST capados em 16, AASIST em 24, demais em 32) — não o
+`batch_size` bruto do plano. Linhas marcadas "ver `create_model`"/"config
+morto" não têm um valor único confiável para citar aqui: ou o parâmetro
+nunca chega ao construtor (não é lido por `create_model`), ou o LR é o
+default hardcoded na assinatura da função — confira o arquivo da arquitetura
+em `app/domain/models/architectures/<nome>.py` antes de citar um número.
 
 ---
 
@@ -285,14 +319,29 @@ Baseados no TCC (Seção 6.1, Tabela 10) e em `get_recommended_hyperparameters()
 
 ### 3.1 AASIST
 
-- Entrada: espectrograma → reshape interno para `(batch, time, freq, 1)` via `AudioFeatureNormalization`
-- Dropout progressivo nas densas finais: `min(dropout * 1.5, 0.9)` e `min(dropout * 2, 0.9)` (evita Dropout > 1.0)
-- `bidirectional_gru` usa `layers.GRU` com `dropout=dropout_rate` — cuDNN selecionado automaticamente
+Descreve a variante **default** (paper-faithful — ver
+[§ "Sobre as variantes 'default'"](#sobre-as-variantes-default-do-aasist-e-rawgat-st)
+abaixo). As peculiaridades abaixo NÃO se aplicam a `variant="cnn_gru_simple"`
+(legado, espectrograma + CNN 2D + Bi-GRU), que só existe para recarregar
+checkpoints antigos.
+
+- Entrada: **áudio bruto**, janela canônica 48.000 amostras (3 s @ 16 kHz);
+  `AudioFeatureNormalization` normaliza a forma de onda antes do front-end
+  `SincConvLayer` (`aasist.py`) — não há reshape para espectrograma.
+- Encoder: Sinc 2D + GAT espacial/temporal + master/HS-GAL/MGO (grafo
+  heterogêneo, temperatura 100 nos ramos HS-GAL); cabeça `AM-Softmax`.
+- Crop aleatório no treino, multicrop (3 recortes, média dos scores) na
+  avaliação para arquiteturas raw-audio.
 
 ### 3.2 RawGAT-ST
 
-- Mesmas peculiaridades do AASIST (usa `GraphAttentionLayer` + `AttentionLayer`)
-- Mesmos fixes de dropout e GRU
+Mesma ressalva: descreve a variante default (paper-faithful).
+
+- Entrada: **áudio bruto**, janela canônica 48.000 amostras (3 s @ 16 kHz).
+- Dois encoders 2D + GAT espacial/temporal + fusão por produto + terceiro GAT
+  (`GraphPoolLayer` top-k, `AASISTGraphAttentionLayer`).
+- Mesmo protocolo de crop aleatório (treino) / multicrop (avaliação) do
+  AASIST.
 
 ### 3.3 EfficientNet-LSTM
 
@@ -396,7 +445,15 @@ O `input_contract` salvo no JSON garante consistência entre treino e inferênci
 - **Básicas**: accuracy, precision, recall, F1 (weighted + macro)
 - **Probabilísticas**: ROC-AUC, PR-AUC (binário); ROC-AUC OvR/OvO (multiclasse)
 - **Confusão**: TP, TN, FP, FN, specificity, sensitivity, FPR, FNR, PPV, NPV
-- **EER (Equal Error Rate)**: ponto onde FPR = FNR (métrica padrão ASVspoof)
+- **EER (Equal Error Rate)**: ponto onde FPR = FNR (métrica padrão ASVspoof),
+  por interpolação (`scipy.interpolate.interp1d` + `brentq`) sobre os
+  thresholds finitos de `roc_curve`, com fallback ao ponto de menor
+  `|FPR-FNR|` se a interpolação falhar. **Correção 2026-07-31**: sklearn
+  ≥1.3 passou a devolver `thresholds[0] = inf` em `roc_curve`, o que
+  entrava no eixo x do `interp1d` e produzia `NaN` — o `brentq` abortava e
+  **todo** cálculo de EER do projeto caía silenciosamente no fallback (menos
+  preciso) sem que a interpolação nunca de fato executasse. Os thresholds
+  não-finitos agora são descartados antes da interpolação.
 - **Curva DET**: dados FPR/FNR para plotagem
 
 `calculate_threshold_metrics()` avalia métricas para thresholds 0.3 a 0.7 — útil para encontrar o ponto de operação ideal por dataset.

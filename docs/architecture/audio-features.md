@@ -286,7 +286,7 @@ extractor_registry.register(ExtractorSpec(
 
 | Variável de Ambiente | Descrição | Padrão |
 |---------------------|-----------|--------|
-| `DEEPFAKE_PARALLEL_EXTRACTION` | Extração paralela de múltiplos arquivos | `false` |
+| `DEEPFAKE_PARALLEL_EXTRACTION` | Declarada em `.env.example`, mas **não lida por nenhum código** em `app/`, `benchmarks/` ou `scripts/` — extração paralela de arquivos não está implementada. Não confiar num "padrão" aqui até a variável ganhar um leitor real. | — (não implementado) |
 
 Features são normalizadas automaticamente no pipeline para estabilidade numérica no treinamento.
 

@@ -31,18 +31,18 @@ make test-cov
 ```text
 tests/
 ├── conftest.py          # fixtures globais + marcação automática por pasta
-├── unit/                # 60 arquivos
+├── unit/                # 64 arquivos
 ├── api/                 # 5 arquivos
 ├── functional/          # 2 arquivos
 ├── integration/         # 7 arquivos
 └── smoke/               # 5 arquivos, opt-in
 ```
 
-Total atual: **79 arquivos de teste**.
+Total atual: **83 arquivos de teste**.
 
 | Categoria | Marcador | Arquivos | Objetivo | Run padrão |
 |---|---:|---:|---|---|
-| Unit | `unit` | 60 | Componentes isolados, utilitários, treinamento, benchmark, notebooks, segurança local | Sim |
+| Unit | `unit` | 64 | Componentes isolados, utilitários, treinamento, benchmark, notebooks, segurança local | Sim |
 | API | `api` | 5 | Contratos FastAPI com `TestClient` e serviços mockados | Sim |
 | Functional | `functional` | 2 | Fluxos de usuário e rotas/frontend | Sim |
 | Integration | `integration` | 7 | Cooperação real entre serviços, podendo treinar modelos pequenos | Sim |
@@ -101,46 +101,70 @@ Cobertura principal:
 - segurança local: headers, file utils e validações auxiliares;
 - melhorias P1/P2/P3: SpecAugment/SSL, RawGAT-ST/AASIST, min-tDCF/OC-Softmax.
 
-Arquivos unitários atuais:
+Arquivos unitários atuais (`ls tests/unit/*.py`, 61 arquivos):
 
 ```text
+test_academic_rigor_metrics.py
 test_architectures.py
 test_audio_resample_safety.py
 test_audio_utils.py
 test_benchmark.py
+test_benchmark_families.py
+test_benchmark_frontend.py
+test_benchmark_partition_integrity.py
+test_benchmark_protocol_fixes.py
+test_benchmark_protocol_guards.py
+test_benchmark_provenance.py
+test_benchmark_seed_repetitions.py
 test_build_dataset.py
 test_classical_fit.py
+test_clean_bootstrap.py
 test_colab_utils.py
 test_core_utils.py
 test_dataset_catalog.py
-test_detection_utils.py
+test_dataset_pipeline_regressions.py
+test_dataset_protocol.py
 test_detection_model_loader_predictor.py
+test_detection_utils.py
 test_device_support.py
 test_exceptions.py
+test_experiment_store.py
 test_file_utils.py
+test_forensic_math.py
 test_frontend_rawboost.py
 test_gpu_diagnosis.py
+test_gradio_tabs.py
+test_guarded_checkpoint_restore.py
 test_helpers.py
 test_i18n.py
+test_interface_uses_pipeline_hparams.py
 test_middleware.py
 test_notebooks_compile.py
 test_p1_specaug_ssl.py
 test_p2_rawgatst_sslaasist.py
 test_p3_metrics_ocsoftmax.py
+test_results_paths.py
 test_retraining_adjustments.py
 test_schemas.py
+test_security_boundaries.py
 test_security_headers.py
 test_sinc_layers_mixed_precision.py
+test_split_speaker_disjoint.py
+test_ssl_backbone.py
+test_ssl_head_contract.py
+test_stft_coverage.py
 test_system_utils.py
-test_tier1_perf.py
 test_test_documentation.py
+test_tier1_perf.py
 test_train_save_load_roundtrip.py
 test_trainer.py
 test_trainer_compile_respect.py
 test_training_charts.py
+test_training_wizard_feedback.py
 test_tuning_charts.py
 test_upload_service.py
 test_version_check.py
+test_xai.py
 ```
 
 ### `tests/api/`
@@ -169,6 +193,7 @@ test_frontend_routes.py
 
 ```text
 test_architectures_build.py
+test_calibration_matches_saved_weights.py
 test_detection_integration.py
 test_domain_imports_without_web_layer.py
 test_models_dir_unification.py
@@ -255,9 +280,13 @@ Workflows ativos:
 
 | Workflow | Quando roda | Papel |
 |---|---|---|
-| `.github/workflows/ci.yml` | push, PR, manual | ruff advisório, testes+cobertura, segurança, docs, drift de notebooks, Docker CPU em PR |
+| `.github/workflows/ci.yml` | push, PR, manual | ruff advisório, testes+cobertura, segurança, docs, Docker CPU em PR — **não** roda notebooks |
 | `.github/workflows/static.yml` | push na `main`, manual | build e deploy da documentação no GitHub Pages |
-| `.github/workflows/notebooks-execute.yml` | manual | execução best-effort de notebooks self-contained |
+| `.github/workflows/notebooks-execute.yml` | manual (`workflow_dispatch`) | execução best-effort de notebooks self-contained |
+
+O drift de notebooks (`build_notebooks.py` + `git diff --exit-code`, abaixo)
+é um gate **local**, não roda em nenhum workflow do GitHub Actions — rode
+manualmente antes de abrir PR se tocou em notebooks.
 
 Gates locais equivalentes:
 

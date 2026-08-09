@@ -113,17 +113,22 @@ acima já contém a partição inteira; para reduzi-lo ao que couber na memória
 treino use `--max-pairs-train` no exportador, que corta **pares** e preserva o
 balanceamento (ver [Protocolo de Dataset, §9.1](dataset-protocol.md)).
 
-> **Atenção ao retreinar:** a janela caiu de 5 s para 3 s. O contrato de
-> inferência (`source_samples = 80000`) precisa passar a 48.000 **junto** com o
-> retreino — ver [Protocolo de Dataset, §9.2](dataset-protocol.md).
+A janela caiu de 5 s para 3 s e o contrato de inferência (`source_samples`) já
+está em 48.000 em todo o código — ver [Protocolo de Dataset, §9.2](dataset-protocol.md#92-janela-fonte-migração-concluída).
 
-## Resultados anteriores a este dataset
+## Estado atual: nenhum modelo treinado sob este protocolo
 
-Os artefatos `.npz` que existiam antes deste protocolo foram **apagados**. Os
-resultados em `data/results/` foram obtidos sobre um deles, cuja composição
-permitia acertar 87,6% dos rótulos apenas identificando o corpus de origem — sem
-detectar síntese alguma.
+`data/models/` está **vazio**. Os artefatos `.npz` de protocolos anteriores
+foram apagados — um deles tinha composição que permitia acertar 87,6% dos
+rótulos apenas identificando o corpus de origem, sem detectar síntese alguma —
+e o último resíduo de modelo (`bench_svm.pkl`, incompatível com o front-end
+tabular atual) foi removido de `data/models/`. `data/results/benchmark/` e
+`data/results/reporting/` também estão vazios.
 
-Esses números medem desempenho *in-domain com atalho disponível*: não devem ser
-comparados com a literatura nem com execuções sobre o dataset atual, e
-**requerem retreino**.
+Isso significa que **nenhuma das 14 arquiteturas foi treinada ou avaliada sob
+o protocolo `speaker_x_sentence_double_disjoint_block_diagonal` atual**. As
+métricas em `data/results/paper/tabelas_benchmark.tex` (acurácia, EER, params,
+etc.) são de uma rodada anterior ao protocolo vigente e **não devem ser
+citadas como resultado deste dataset** — precisam ser regeneradas por um novo
+run do benchmark (`scripts/benchmark/run_benchmark.py` /
+`run_models_sequential.py`).

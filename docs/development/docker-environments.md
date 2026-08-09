@@ -13,7 +13,7 @@ Este guia consolida a visão operacional do projeto para Docker, ambientes de tr
 
 - [`docker/compose`](https://github.com/thierrybraga/XFakeSong/tree/main/docker/compose): perfis de execução.
 - [`docker/environments`](https://github.com/thierrybraga/XFakeSong/tree/main/docker/environments): Dockerfiles por família de ambiente.
-- [`results`](https://github.com/thierrybraga/XFakeSong/tree/main/results): artefatos regeneráveis do benchmark.
+- [`data/results`](https://github.com/thierrybraga/XFakeSong/tree/main/data/results): artefatos regeneráveis do benchmark (não há `results/` na raiz).
 - [`data/models`](https://github.com/thierrybraga/XFakeSong/tree/main/data/models): modelos inferidos e exportados.
 
 ## Fluxos principais

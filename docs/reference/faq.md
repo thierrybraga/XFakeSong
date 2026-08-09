@@ -46,7 +46,7 @@ Para o passo a passo completo de instalação e os erros detalhados, veja
 
 ??? question "Como rodo os notebooks no Google Colab?"
     Eles são auto-suficientes: abra por
-    `colab.research.google.com/github/thierrybraga/XFakeSong/blob/main/notebooks/<caminho>`,
+    `colab.research.google.com/github/thierrybraga/XFakeSong/blob/main/docs/notebooks/<caminho>`,
     selecione **GPU** (Ambiente de execução → Alterar o tipo de hardware) e rode
     a **primeira célula** — ela clona o repo e instala as dependências. Os
     notebooks de modelo treinam por padrão. Guia completo:
@@ -86,7 +86,10 @@ Para o passo a passo completo de instalação e os erros detalhados, veja
 ## Deploy
 
 ??? question "Como publicar no Hugging Face Spaces?"
-    O `app.py` é o *entry point* do Space. Siga o
+    O fluxo recomendado é o **Docker Space**: `Dockerfile` (raiz) →
+    `docker-entrypoint.sh` → `python main.py --gradio`. `app.py` existe (entry
+    point do SDK Gradio simples), mas todos os guias de deploy o desaconselham
+    para este projeto — use o Docker Space. Siga o
     [Deploy Hugging Face](../deployment/hugging-face-spaces.md) — inclui as variáveis de
     ambiente e os cuidados de boot em ambiente sem internet de saída.
 

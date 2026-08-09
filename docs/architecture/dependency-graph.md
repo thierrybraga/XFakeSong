@@ -9,7 +9,7 @@ flowchart TB
     Domain --> Contracts["app.core.contracts"]
     Domain --> Utils["app.utils"]
     Core --> Utils
-    ModelsArtifacts["app.models"] -. carregado por .-> Domain
+    ModelsArtifacts["data/models"] -. carregado por .-> Domain
 ```
 
 ## Achados da auditoria

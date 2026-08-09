@@ -95,20 +95,26 @@ HTTP/Gradio → interfaces/web/routers/ ou interfaces/gradio/ → domain/service
 
 | Modelo | Entrada | Particularidade |
 |--------|---------|-----------------|
-| WavLM | Áudio bruto | SSL — `microsoft/wavlm-base` ou CNN 1D fallback |
-| HuBERT | Áudio bruto | 7 blocos Conv1D simulando feature encoder |
+| WavLM | Áudio bruto | SSL real — backbone `microsoft/wavlm-base` (state_dict PyTorch portado p/ Keras, congelado); CNN-1D do zero só como fallback quando o checkpoint não está acessível |
+| HuBERT | Áudio bruto | SSL real — backbone `facebook/hubert-base-ls960`, mesmo esquema de fallback do WavLM |
 | RawNet2 | Áudio bruto | Filtros SincNet + FMS + GRU |
-| Sonic Sleuth | Espectrograma | LFCC/MFCC/CQT — 98,27% accuracy |
-| AASIST | Espectrograma | Graph Attention Networks spectro-temporais |
-| RawGAT-ST | Espectrograma | GAT + GRU |
+| Sonic Sleuth | Espectrograma | LFCC/MFCC/CQT — 98,27% accuracy reportado no paper original (Alshehri et al., 2024) |
+| AASIST | Áudio bruto | Graph Attention Networks spectro-temporais |
+| RawGAT-ST | Áudio bruto | GAT + GRU |
 | Conformer | Espectrograma | Conv local + Self-Attention global |
 | Hybrid CNN-Transformer | Espectrograma | CCT — Conv tokenizer + Transformer |
-| Spectrogram Transformer | Espectrograma | ViT adaptado com ConvStem |
+| Spectrogram Transformer | Espectrograma | ViT adaptado com ConvStem, pré-treinado AudioSet |
 | EfficientNet-LSTM | Espectrograma | Transfer learning + Bi-LSTM |
 | MultiscaleCNN (Res2Net) | Espectrograma | Multi-escala hierárquica dentro do bloco |
-| Ensemble | Espectrograma | 4 branches (Mel+LFCC+CQT+MFCC) + fusão |
-| SVM | Features tabulares | StandardScaler + SVC(rbf) |
-| Random Forest | Features tabulares | n_jobs=-1, paralelismo CPU |
+| Ensemble | Multi-representação | 4 branches (Mel+LFCC+CQT+MFCC) + fusão MLP |
+| SVM | Features tabulares (63) | StandardScaler + SVC(rbf) |
+| Random Forest | Features tabulares (63) | n_jobs=-1, paralelismo CPU |
+
+Cobertas em dois escopos de benchmark (`benchmarks/config.py`) — oficial (11: os 9
+acima exceto Sonic Sleuth/EfficientNet-LSTM/Ensemble, mais WavLM Original e
+HuBERT Original via runner PyTorch dedicado) e estendido (5: Sonic Sleuth,
+EfficientNet-LSTM, Ensemble, WavLM e HuBERT em porte Keras). Detalhes em
+[`docs/models/architectures.md`](docs/models/architectures.md).
 
 Use `from app.domain.models.architectures.factory import create_model` para instanciar por nome.
 
@@ -158,15 +164,18 @@ Para datasets públicos (ASVspoof, WaveFake, In-the-Wild, etc.), consulte [`docs
 Toda a documentação técnica está em `docs/`, gerada via MkDocs Material
 (`mkdocs.yml`). [`docs/index.md`](docs/index.md) é o índice canônico e
 completo — consulte-o em vez de duplicar a lista aqui. Os
-mais usados no dia a dia de desenvolvimento:
+mais usados no dia a dia de desenvolvimento (reestruturados em 2026-07-19 de
+arquivos numerados na raiz de `docs/` para pastas por tema — os nomes antigos
+como `03_ARQUITETURA.md` não existem mais):
 
 | Arquivo | Conteúdo |
 |---------|----------|
-| `03_ARQUITETURA.md` | Clean Architecture e estrutura de pastas |
-| `04_FEATURES.md` | Todos os tipos de features e como adicionar novos |
-| `05_GUIA_DEV.md` | Padrões de código, logging, convenções |
-| `06_QUALIDADE_TESTES.md` | Estratégia de testes e CI/CD |
-| `08_ARQUITETURAS.md` | Arquiteturas neurais detalhadas |
-| `10_TREINAMENTO.md` | Configuração de treinamento e hiperparâmetros |
-| `15_BENCHMARK.md` | Benchmark, métricas e geração de resultados para TCC |
-| `RETREINO_AJUSTES.md` | Ajustes de hiperparâmetros pós-diagnóstico e retreinos aplicados |
+| [`docs/architecture/overview.md`](docs/architecture/overview.md) | Clean Architecture e estrutura de pastas |
+| [`docs/architecture/audio-features.md`](docs/architecture/audio-features.md) | Todos os tipos de features e como adicionar novos |
+| [`docs/development/developer-guide.md`](docs/development/developer-guide.md) | Padrões de código, logging, convenções |
+| [`docs/development/quality-and-testing.md`](docs/development/quality-and-testing.md) | Estratégia de testes e CI/CD |
+| [`docs/models/architectures.md`](docs/models/architectures.md) | Arquiteturas neurais detalhadas |
+| [`docs/models/training.md`](docs/models/training.md) | Configuração de treinamento e hiperparâmetros |
+| [`docs/evaluation/benchmark.md`](docs/evaluation/benchmark.md) | Benchmark, métricas e geração de resultados para TCC |
+| [`docs/evaluation/retraining-adjustments.md`](docs/evaluation/retraining-adjustments.md) | Ajustes de hiperparâmetros pós-diagnóstico e retreinos aplicados |
+| [`docs/data/dataset-protocol.md`](docs/data/dataset-protocol.md) | Protocolo de dataset (split sem vazamento, locutor×sentença) |

@@ -15,7 +15,7 @@ Gradio, pelo benchmark e pela documentacao.
 
 ## 1. Ciclo de vida canonico (Protocolo de Dataset)
 
-Quatro scripts, nesta ordem. Cada um produz um artefato auditavel e resumivel.
+Cinco scripts, nesta ordem. Cada um produz um artefato auditavel e resumivel.
 
 ```
 build_paired_pt_corpus.py --build
@@ -39,7 +39,17 @@ export_paired_npz.py
    │   le assignment.jsonl (nao os diretorios), recorta a janela, nivela,
    │   e barra a exportacao se qualquer garantia for violada
    └─> data/datasets/benchmark_dataset.npz
+
+freeze_benchmark_test.py --declare-untouched
+   │   sela a particao de teste (tamanho, SHA-256, identidade dos membros do
+   │   arquivo) ANTES do treino comecar; benchmarks/test_lock.py valida esse
+   │   lacre em toda execucao com --academic-protocol (default True)
+   └─> data/datasets/benchmark_dataset.npz.test-lock.json
 ```
+
+`run_models_sequential.py` recusa treinar (`parser.error`) se o test-lock nao
+bater com o `.npz` atual — troca de dataset sem regravar o lacre e um erro de
+configuracao, nao um aviso.
 
 Comandos:
 
@@ -164,10 +174,15 @@ Protocolos por grupo/falante/holdout sao fail-closed: metadado ausente, grupo
 inexistente ou impossibilidade de manter as classes interrompem a execucao em vez
 de cair para um split aleatorio.
 
-**Custo de memoria:** `from_npz` materializa tudo em `float32` e ainda concatena.
-As 40.980 amostras de 3 s dao ~16 GB de pico so para abrir o arquivo. Para
-hardware menor, exporte com `--max-pairs-train`, que corta **pares** (nunca
-amostras isoladas) em rodizio entre locutores, preservando o balanceamento.
+**Custo de memoria:** `from_npz` usa `mmap_mode="r"` (`benchmarks/data.py`) —
+o arquivo nao e materializado inteiro so para ser aberto; paginas mapeadas
+nao contam como RAM anonima e podem ser descartadas sob pressao em vez de
+matar o processo. O pico real acontece depois, na montagem do tensor de
+treino (limpo + copia AWGN) — ainda soma varios GB para as 40.980 amostras de
+3s (ver o historico de ajuste do limite de memoria dos containers em
+`docker/compose/{benchmark,train}.nvidia.yml`). Para hardware menor, exporte
+com `--max-pairs-train`, que corta **pares** (nunca amostras isoladas) em
+rodizio entre locutores, preservando o balanceamento.
 
 ---
 

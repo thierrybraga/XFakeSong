@@ -191,6 +191,9 @@ Mesma família do AASIST (que deriva deste trabalho): SincConv compartilhado →
 **dois encoders 2D independentes** → GAT espectral (Gs) e temporal (Gt) →
 **fusão element-wise** → terceiro GAT espectro-temporal → readout.
 
+- **Entrada default**: `raw_audio`, janela canônica 48.000 amostras (3 s @
+  16 kHz); variantes legadas em espectrograma continuam disponíveis só para
+  desserialização de checkpoints antigos.
 - Usa a **mesma atenção de grafo do paper** (`AASISTGraphAttentionLayer`,
   temperatura 2,0).
 - O alinhamento de Gs e Gt antes do produto element-wise usa **top-k pooling**
@@ -199,18 +202,8 @@ Mesma família do AASIST (que deriva deste trabalho): SincConv compartilhado →
   sobre o eixo de nós: não existe no artigo e, por combinar nós linearmente,
   não é sequer uma operação de grafo. A camada antiga virou LEGADO (só
   desserialização).
-
-### 5. RawGAT-ST
-
-Variante reescrita para seguir o RawGAT-ST: SincNet sobre áudio bruto, grafo
-espectral, grafo temporal e fusão element-wise dos readouts.
-
-- **Entrada default**: `raw_audio`; variantes legadas em espectrograma continuam
-  disponíveis para compatibilidade.
-- **Grafo**: readouts espectral e temporal independentes, combinados por produto
-  ou modo configurado.
-- **Treino**: recebe as mesmas augmentations de domínio raw-audio que AASIST e
-  RawNet2.
+- **Treino**: recebe as mesmas augmentations de domínio raw-audio que AASIST
+  e RawNet2 (crop aleatório no treino, multicrop na avaliação).
 
 ---
 

@@ -418,6 +418,44 @@ acaso.
 - **Uma única língua e um único canal.** Todo o CETUC foi gravado em condições
   controladas de estúdio.
 
+### 8.1 Ética e consentimento — lacuna declarada, não resolvida
+
+A classe *spoof* é clone de voz por XTTS-v2 sobre locutores **identificáveis**
+do CETUC: `build_paired_pt_corpus.py` grava `speaker_name` (nome do locutor,
+ex. `Patricia_F001`) em `manifest.jsonl`, extraído diretamente do caminho do
+corpus de origem — não é um código anônimo, é o identificador do doador de
+voz. Nenhum documento deste projeto (incluindo este) até agora estabelecia
+qual é a base de consentimento para clonar a voz desses locutores, nem se
+propagar o nome real no manifesto é apropriado.
+
+Isto **não está resolvido** — está declarado aqui para que quem avalie ou
+retome este trabalho saiba que precisa checar:
+
+1. Os termos de uso publicados do CETUC (ex. licença OpenSLR) e do corpus de
+   clones (Fake Voices/XTTS) quanto a uso para síntese de voz e pesquisa
+   antispoofing — não confirmados neste levantamento.
+2. Se o nome real deve permanecer no manifesto interno (`manifest.jsonl`,
+   `speaker_manifest.json`) ou se deveria ser substituído por um código
+   anônimo antes de qualquer distribuição do dataset além do uso interno de
+   pesquisa. Trocar exigiria reexportar os artefatos que dependem do
+   manifesto (splits, npz).
+
+Trabalhos de referência em antispoofing (ASVspoof, citado na
+[§10](#10-referências)) costumam trazer uma declaração explícita de base
+ética/consentimento — este projeto ainda não tem uma, e isso deveria ser
+resolvido antes de qualquer publicação ou distribuição externa do corpus.
+
+### 8.2 Licença do corpus composto — não confirmada
+
+[`docs/data/public-datasets.md`](public-datasets.md) rotula a licença do
+corpus "CETUC-XTTS Pareado" como `MIT` (a licença do Fake Voices), mas lista
+a licença do próprio CETUC separadamente como "livre/variável". Como o
+corpus pareado deriva diretamente do áudio do CETUC, a licença efetiva do
+composto é, na melhor hipótese, a interseção das duas — e "MIT" sozinho
+supersimplifica isso. Os termos exatos do CETUC (ex. página OpenSLR 132)
+não foram verificados neste levantamento; confirme antes de citar "MIT"
+como a licença do corpus composto em qualquer publicação.
+
 ## 9. Reprodução
 
 ```bash
@@ -450,6 +488,48 @@ Para usar a partição de locutores publicada pelo CETUC em vez da estratificada
 python scripts/dataset/build_paired_splits.py --build --speaker-strategy official
 ```
 
+### 9.0 Variantes de tamanho
+
+Os passos 1 a 4 produzem a partição; o tamanho do `.npz` é escolhido no passo de
+exportação. `--target-samples` rateia o total entre treino, validação e teste na
+**proporção natural do bloco diagonal**, derivada do `assignment.jsonl` a cada
+execução — não de uma constante em código, que ficaria errada se o corpus
+mudasse. O rateio usa maior resto (quota de Hare), então a soma bate exatamente
+com o alvo e nenhuma partição sofre viés sistemático de arredondamento.
+
+| Variante | Amostras | treino / val / teste | SHA-256 | Comando |
+| --- | ---: | --- | --- | --- |
+| completa | 40.980 | 33.226 / 3.976 / 3.778 | `ae3662c9…` | sem `--target-samples` |
+| reduzida | 15.000 | 12.162 / 1.456 / 1.382 | `3775b35f…` | `--target-samples 15000` |
+
+```bash
+python scripts/dataset/export_paired_npz.py \
+    --out data/datasets/benchmark_dataset_15k.npz \
+    --target-samples 15000 --no-compress
+```
+
+`--target-samples 40980` reproduz a partição inteira, o que serve de teste de
+consistência do rateio. O alvo precisa ser par (cada par de enunciado gera duas
+amostras) e não pode exceder os 20.490 pares disponíveis.
+
+As duas variantes saem da **mesma** partição locutor × frase: muda a densidade
+de enunciados por célula, nunca quem está em qual partição. As garantias de
+disjunção são portanto idênticas, e cada `.npz` carrega em
+`metadata_json.size_policy` os pares usados por partição — reproduzir não depende
+de saber o número de fora.
+
+Duas consequências que valem registrar. Resultados obtidos em variantes
+diferentes **não são comparáveis**: o conjunto de teste muda. E o teste menor
+custa precisão — o intervalo de confiança de 95% da acurácia passa de ≈ ±0,7 pp
+com 3.778 amostras para ≈ ±1,2 pp com 1.382, o que não separa modelos
+distantes por décimos de ponto.
+
+Cada variante precisa do seu próprio selo:
+
+```bash
+python scripts/dataset/freeze_benchmark_test.py --dataset data/datasets/benchmark_dataset_15k.npz --declare-untouched
+```
+
 O construtor é resumível por locutor (`corpus/state.json`) e poda o cache do Hub
 a cada locutor — sem a poda, os 56 pacotes somariam ~40 GB de cache inútil,
 porque o Windows não suporta os symlinks do cache do Hub e guarda duas cópias de
@@ -461,36 +541,41 @@ O **corpus** não tem limite: 49.264 pares, tudo o que as duas fontes oferecem e
 comum. A **partição** também não: os 40.980 que sobrevivem às duas disjunções
 estão todos em `splits/`.
 
-O **`.npz`** é outra coisa — é a entrada do treino, e `BenchmarkData.from_npz`
-carrega tudo em `float32` na memória e ainda concatena as três partições. A
-33.226 amostras de 3 s isso dá ~16 GB de pico só para abrir o arquivo, antes de
-qualquer modelo. Por isso o exportador aceita `--max-pairs-train`, que corta
-**pares** (nunca amostras isoladas, para o balanceamento sobreviver) em rodízio
-entre os locutores.
+O **`.npz`** é outra coisa — é a entrada do treino. `BenchmarkData.from_npz`
+usa `mmap_mode="r"` (`benchmarks/data.py`) para não materializar o arquivo
+inteiro só para abri-lo — páginas mapeadas não contam como RAM anônima e o
+kernel pode descartá-las sob pressão em vez de matar o processo. O pico real
+de RAM acontece **depois**, quando o treino monta o tensor de treino (limpo +
+cópia AWGN): para as 33.226 amostras de treino a 3 s, isso ainda soma vários
+GB (ver `docker/compose/{benchmark,train}.nvidia.yml` para os números atuais
+e o histórico de ajuste do limite de memória do container). Por isso o
+exportador aceita `--max-pairs-train`, que corta **pares** (nunca amostras
+isoladas, para o balanceamento sobreviver) em rodízio entre os locutores.
 
 O limite é do hardware de treino, não do dataset: quem tiver memória exporta sem
 `--max-pairs-*` e usa a partição inteira.
 
-### 9.2 Pendência no retreino: a janela-fonte
+### 9.2 Janela-fonte: migração concluída
 
-A janela é de 3 s (48.000 amostras), mas o contrato de inferência ainda declara
-80.000:
+A janela de 3 s (48.000 amostras) é hoje o valor único e consistente em todo o
+código — a pendência descrita anteriormente nesta seção foi resolvida:
 
-| Local | Valor atual | Valor após o retreino |
-| --- | ---: | ---: |
-| `app/domain/features/benchmark_frontend.py` → `DEFAULT_SOURCE_SAMPLES` | 80.000 | 48.000 |
-| `registry.py`, `input_requirements["source_samples"]` (RawNet2, RawGAT-ST) | 80.000 | 48.000 |
-| `scripts/reporting/rebuild_inference_contracts.py` | 80.000 | 48.000 |
+| Local | Valor atual |
+| --- | ---: |
+| `app/domain/features/benchmark_frontend.py` → `DEFAULT_SOURCE_SAMPLES` | 48.000 |
+| `registry.py`, `input_requirements["source_samples"]`/`target_sequence_length` (todos os modelos de áudio bruto) | 48.000 |
+| `scripts/reporting/rebuild_inference_contracts.py` | 48.000 |
 
-**Não alterar antes do retreino.** Os modelos hoje em `data/models/` foram
-treinados com janela de 5 s e o contrato os descreve corretamente; mudá-lo antes
-quebraria a inferência deles. A troca tem de acontecer **junto** com o retreino,
-senão o modelo passa a receber na inferência uma janela diferente da que viu no
-treino.
+As referências a 80.000 (janela antiga de 5 s) e 64.600 (convenção antiga do
+RawNet2/AASIST) que ainda aparecem no código são comentários históricos
+explicando a mudança, não defaults ativos.
 
-`target_sequence_length` (64.600, a convenção do RawNet2/AASIST) **não** muda: o
-frontend ajusta a janela de 48.000 para 64.600 de forma idêntica em todas as
-amostras, sem assimetria entre classes.
+**Estado atual de `data/models/`: vazio.** Não há mais modelos treinados com a
+janela antiga (nem com nenhuma outra) no diretório de produção — foram
+removidos por estarem desalinhados com o protocolo vigente. Qualquer novo
+treino (via `run_models_sequential.py`/`run_benchmark.py`) já usa a janela de
+48.000 de ponta a ponta (treino → `benchmark_final/` → inferência do Gradio),
+sem risco de skew treino/inferência por esse motivo.
 
 ## 10. Referências
 

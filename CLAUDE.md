@@ -125,10 +125,12 @@ instala `requirements.txt` + `requirements-dev.txt`), depois `make dev`.
 ## Treinamento
 
 Presets por familia em `configs/training/`:
-`tensorflow.yaml` (Sonic Sleuth, EfficientNet-LSTM, MultiscaleCNN,
-SpectrogramTransformer), `pytorch.yaml` (RawNet2, AASIST, RawGAT-ST, Conformer,
-Hybrid CNN-Transformer), `ssl.yaml` (WavLM, HuBERT) e `classical.yaml`
-(SVM, RandomForest). Campos: `dataset`, `epochs`, `batch_size`, `device_profile`,
+`tensorflow.yaml` (Conformer, Hybrid CNN-Transformer, SpectrogramTransformer —
+family `spectral-attention`), `pytorch.yaml` (RawNet2, AASIST, RawGAT-ST —
+family `waveform-end-to-end`), `spectral_convolutional.yaml` (MultiscaleCNN),
+`ssl.yaml` (WavLM Original, HuBERT Original), `classical.yaml` (SVM,
+RandomForest) e `extended.yaml` (Sonic Sleuth, EfficientNet-LSTM, Ensemble —
+escopo estendido). Campos: `dataset`, `epochs`, `batch_size`, `device_profile`,
 `snr`, `optimize_hyperparameters`.
 
 Hiperparametros por modelo vivem em **tres lugares** (cuidado com drift; chaves
@@ -181,6 +183,13 @@ python scripts/benchmark/run_models_sequential.py \
   --models AASIST Ensemble --epochs 100 --snr 30 20 10 5 \
   --device-profile gpu --out data/results/<run> --resume
 
+# Duas variantes de tamanho, MESMA partição locutor x frase
+# (configs/dataset.yaml::dataset_variants). Gerar a reduzida:
+python scripts/dataset/export_paired_npz.py \
+  --out data/datasets/benchmark_dataset_15k.npz --target-samples 15000 --no-compress
+python scripts/dataset/freeze_benchmark_test.py \
+  --dataset data/datasets/benchmark_dataset_15k.npz --declare-untouched
+
 # Um modelo isolado:
 python scripts/benchmark/run_benchmark.py --model AASIST --dataset <npz> --out data/results/bench_aasist
 ```
@@ -211,9 +220,13 @@ cobertas em DOIS escopos (`benchmarks/config.py`):
   separado (`scripts/benchmark/run_wavlm_original_benchmark.py`) — sao os SSL
   REAIS, nao o fallback TF;
 - **estendido** (`--experiment-scope extended`): Sonic Sleuth,
-  EfficientNet-LSTM e Ensemble. Esse escopo forca `optimize_hyperparameters=
-  False`, entao nao passa por `NEURAL_BENCHMARK_HPARAMS` (pedir essas tres no
-  escopo oficial e erro de configuracao, nao limitacao).
+  EfficientNet-LSTM, Ensemble, e desde 2026-07-28 tambem **WavLM** e **HuBERT**
+  em porte Keras (mesmo checkpoint HuggingFace, backbone congelado, soma
+  ponderada estilo SUPERB — distintos de WavLM/HuBERT Original do escopo
+  oficial, que rodam pelo runner PyTorch dedicado). Esse escopo forca
+  `optimize_hyperparameters=False`, entao nao passa por
+  `NEURAL_BENCHMARK_HPARAMS` (pedir esses cinco no escopo oficial e erro de
+  configuracao, nao limitacao).
 
 Avalia em condicoes limpas e sob ruido
 (SNR 30/20/10 dB casados com o augmentation de treino, mais 5 dB
@@ -227,10 +240,20 @@ python scripts/benchmark/run_benchmark.py --full --dataset <npz>
 python scripts/benchmark/run_clean_benchmark_pipeline.py   # run limpo, sem misturar artefatos
 python scripts/benchmark/run_benchmark.py --plan-only      # valida e grava benchmark_plan.* sem treinar
 
-# Pos-processamento:
-python scripts/reporting/consolidate_results.py --results data/results/<run>
-python scripts/reporting/validate_artifacts.py  --results data/results/<run>
-python scripts/reporting/sync_completed_benchmark_artifacts.py --results data/results/<run>
+# O compose de benchmark escolhe a variante por env (default: dataset completo).
+# As DUAS variaveis andam juntas: variantes tem conjuntos de teste diferentes,
+# entao seus resultados nao sao comparaveis e nao podem cair na mesma pasta.
+XFAKE_BENCHMARK_DATASET=data/datasets/benchmark_dataset_15k.npz \
+XFAKE_BENCHMARK_OUT=data/results/clean_benchmark_15k \
+  docker compose -f docker/compose/benchmark.nvidia.yml --env-file .env up -d benchmark
+
+# Pos-processamento (as tres flags SAO DIFERENTES — nao existe um `--results`
+# comum; consolidate recebe o run como argumento posicional):
+python scripts/reporting/consolidate_results.py data/results/<run> \
+  --prefer-last --copy-to data/results/paper/figures
+python scripts/reporting/validate_artifacts.py --results-dir data/results/<run>
+python scripts/reporting/sync_completed_benchmark_artifacts.py \
+  --summary data/results/<run>/run_summary.json
 ```
 
 O timeout por modelo e **derivado do custo estimado** de cada arquitetura
@@ -247,6 +270,26 @@ especial a robustez a 10 dB.
 Scripts uteis: `build_dataset.py`, `preprocess_dataset.py`,
 `audit_dataset_leakage.py`, `robustness_test.py`, `benchmark_latency.py`,
 `export_model_card.py`, `update_tcc_latex.py`.
+
+**RAM do container de treino/benchmark**: `DOCKER_TRAIN_MEMORY_LIMIT` subiu
+16G -> 24G -> **36G** (`docker/compose/{benchmark,train}.nvidia.yml`) — o
+SpectrogramTransformer usa a maior grade espectral do escopo oficial e batia
+no teto mesmo apos o preparo de dados ser corrigido (pre-alocacao em vez de
+lista + concatenate/asarray no final, em `benchmarks/runner.py` e
+`app/domain/features/benchmark_frontend.py::log_mel_batch`). Por isso
+`_XLA_UNFRIENDLY_TRAINING_ARCHITECTURES`
+(`scripts/benchmark/run_models_sequential.py`) desliga o auto-JIT do XLA para
+`multiscalecnn`, `aasist`, `rawgatst` e `rawnet2` — o auto-JIT desses grafos
+(SincConv, GAT dinamico, GRU) estourava RAM do host ou VRAM da GPU. Detalhes
+completos em [docs/evaluation/pipeline-audit.md](docs/evaluation/pipeline-audit.md)
+(seção "RAM do container de treino/benchmark").
+
+O compose de benchmark ja passa `--resume` e `restart: on-failure:3`: sem
+isso, um restart do container (crash, reinicio do host/Docker Desktop)
+refazia as 11 arquiteturas do zero mesmo as ja concluidas. O
+`BackupAndRestore` do Keras (sempre ligado via `backup_dir` em
+`benchmarks/runner.py::_run_neural`) ja preservava o progresso NO MEIO do
+treino de uma arquitetura.
 
 ---
 

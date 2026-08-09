@@ -24,7 +24,8 @@ adaptadores; o domínio permanece testável sem elas.
 Configurado em `app/core/feedback.py::configure_logging` (chamado no startup de
 `app/interfaces/web/main_fastapi.py`). O arquivo padrão é **`system.log`** na raiz; os
 diretórios e nível vêm de `app/core/config/settings.py` (`LoggingConfig`,
-`logs_dir = ./app/data/logs`).
+`logs_dir = ./data/logs`, resolvido contra a raiz do repositório — **não**
+`app/data/logs`).
 
 ```python
 import logging
