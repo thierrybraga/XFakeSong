@@ -76,7 +76,18 @@ class BenchmarkData:
         p = Path(path)
         if not p.exists():
             raise FileNotFoundError(f"Dataset não encontrado: {path}")
-        data = np.load(p, allow_pickle=False)
+        # mmap_mode="r": o .npz canônico é exportado sem compressão
+        # (export_paired_npz.py --no-compress, ZIP_STORED), então cada array
+        # pode ser mapeado em memória em vez de materializado inteiro como
+        # heap anônimo. Os OOM-kills observados (dmesg) medem especificamente
+        # `anon-rss` — páginas mapeadas de arquivo não entram nessa conta da
+        # mesma forma e o kernel pode descartá-las sob pressão em vez de
+        # matar o processo. Seguro aqui: nenhum código deste módulo escreve
+        # de volta nos arrays crus do NPZ (todo dado derivado vai para um
+        # array novo). Se o arquivo algum dia for salvo com compressão,
+        # `np.load` ignora `mmap_mode` automaticamente para esse array
+        # (não há erro, só perde o benefício).
+        data = np.load(p, allow_pickle=False, mmap_mode="r")
         xs, ys = [], []
         used_keys: list[tuple[str, str]] = []
         split_indices: Dict[str, np.ndarray] | None = None
@@ -766,6 +777,29 @@ class BenchmarkData:
         return assigned
 
     @staticmethod
+    def assigned_awgn_seeds(
+        assigned_snr_db: np.ndarray,
+        seed: int = 0,
+    ) -> dict[float, int]:
+        """Sementes que ``add_awgn_assigned`` entrega DE FATO ao RNG, por nível.
+
+        Fonte única: `add_awgn_assigned` consome este mapa, e quem precisa
+        auditar a disjunção treino↔avaliação chama esta função em vez de
+        replicar a aritmética. Antes, o runner registrava apenas o `seed` de
+        ENTRADA e nunca o termo ``1009 * (offset + 1)`` derivado aqui, de modo
+        que a verificação de colisão comparava um conjunto que não era o que
+        alimentava o gerador — e aprovava runs com colisão real.
+
+        O `offset` é o índice do nível na ordem crescente dos níveis PRESENTES
+        em ``assigned_snr_db``, então o mapa depende do lote, não só do valor.
+        """
+        assigned = np.asarray(assigned_snr_db, dtype="float32").ravel()
+        return {
+            float(snr): int(seed + 1009 * (offset + 1))
+            for offset, snr in enumerate(np.unique(assigned).tolist())
+        }
+
+    @staticmethod
     def add_awgn_assigned(
         X: np.ndarray,
         assigned_snr_db: np.ndarray,
@@ -778,11 +812,11 @@ class BenchmarkData:
         if len(X) != len(assigned):
             raise ValueError("assigned_snr_db deve ter uma entrada por amostra")
         noisy = np.empty_like(X, dtype="float32")
-        for offset, snr in enumerate(np.unique(assigned).tolist()):
+        for snr, level_seed in BenchmarkData.assigned_awgn_seeds(
+            assigned, seed
+        ).items():
             mask = assigned == snr
-            noisy[mask] = BenchmarkData.add_awgn(
-                X[mask], float(snr), seed=seed + 1009 * (offset + 1)
-            )
+            noisy[mask] = BenchmarkData.add_awgn(X[mask], float(snr), seed=level_seed)
         return noisy
 
     @staticmethod

@@ -46,17 +46,32 @@ e teste de sistema da API.
 O material acadêmico foi consolidado em uma única fonte LaTeX em
 `data/results/paper/`:
 
-| Artefato | Caminho |
-|---|---|
-| Fonte principal do artigo | `data/results/paper/main.tex` |
-| Manifesto de geração e hashes | `data/results/paper/paper_build_manifest.json` |
-| Figuras usadas no artigo | `data/results/paper/figures/*.png` |
-| Matrizes de confusão por arquitetura | `data/results/paper/figures/confusion_matrices/*.png` |
-| Dataset do benchmark atual | `data/datasets/benchmark_dataset.npz` (o artigo consolidado ainda reflete o artefato anterior, apagado) |
-| Modelos default da Gradio/API | `data/models/bench_*` |
-| Modelos completos por arquitetura | `data/models/benchmark_final/<arquitetura>/` |
-| Manifesto dos modelos consolidados | `data/models/registry.json` |
-| Resultados e relatórios de benchmark | `data/results/<run>/` |
+| Artefato | Caminho | Estado |
+|---|---|---|
+| Fonte principal do artigo | `data/results/paper/main.tex` | versionado |
+| Instruções de regeneração | `data/results/paper/README.md` | versionado |
+| Tabelas de benchmark | `data/results/paper/tabelas_benchmark.tex` | **placeholder** — apagado em 2026-07-31 |
+| Figuras usadas no artigo | `data/results/paper/figures/*.png` | **apagado em 2026-07-31** |
+| Matrizes de confusão por arquitetura | `data/results/paper/figures/confusion_matrices/*.png` | **apagado em 2026-07-31** |
+| Consolidação (`benchmark_summary.json`) | `data/results/paper/consolidated/` | **apagado em 2026-07-31** |
+| Manifesto de geração e hashes | `data/results/paper/paper_build_manifest.json` | gerado por `build_paper_from_benchmark.py` |
+| Dataset do benchmark atual | `data/datasets/benchmark_dataset.npz` | canônico |
+| Modelos default da Gradio/API | `data/models/bench_*` | recriado pela promoção |
+| Modelos completos por arquitetura | `data/models/benchmark_final/<arquitetura>/` | recriado pela promoção |
+| Manifesto dos modelos consolidados | `data/models/registry.json` | recriado pela promoção |
+| Resultados e relatórios de benchmark | `data/results/<run>/` | recriado pela nova bateria |
+
+!!! warning "Artefatos gerados do artigo removidos em 2026-07-31"
+    Tabelas, figuras, `consolidated/` e `main.pdf` vinham de execuções sobre
+    `benchmark_audio_raw_balanced_15k*` — atalho de fonte de 87,6% e disjunção
+    de falante vácua, dataset já apagado. Versionados, um `pdflatex main.tex`
+    os reintroduziria no artigo em silêncio. **`main.tex` não compila até a
+    nova bateria rodar** — as figuras referenciadas não existem mais, e isso é
+    deliberado. Passo a passo em `data/results/paper/README.md`.
+
+    O histórico persistido em `data/app.db` (483 execuções, 61.857 métricas)
+    é a última cópia sobrevivente desses números; limpe com
+    `python scripts/ops/purge_previous_runs.py --all`.
 
 Não há PDFs versionados como fonte de verdade. O PDF deve ser gerado a partir de
 `data/results/paper/main.tex` com `pdflatex` (qualquer instalação TeX Live completa).
@@ -108,6 +123,68 @@ python -c "from benchmarks.config import BenchmarkConfig; ..."     # n_seeds=3
 Com `n_seeds=1` o comportamento e o schema de saída são idênticos aos
 anteriores — a agregação só entra quando há mais de uma execução.
 
+### Comparação entre modelos (desde 2026-08-09)
+
+**IC 95% individuais não decidem diferença.** Dois modelos avaliados no mesmo
+conjunto de teste veem exatamente as mesmas amostras, então o que importa é a
+distribuição da **diferença** — que é bem mais estreita que a distância entre
+os dois intervalos. No `clean_benchmark_15k`, Conformer (EER 0,43%
+[0,14; 1,00]) e Hybrid CNN-Transformer (0,43% [0,00; 0,74]) têm ICs quase
+coincidentes, e ler isso como "empate" é um erro de método.
+
+`benchmarks/significance.py` fecha a lacuna com dois testes pareados:
+
+| Teste | O que responde | Unidade |
+|---|---|---|
+| `mcnemar_test` | os dois modelos erram nas mesmas amostras? (decisões duras no limiar do protocolo) | cluster, ou amostra sem IDs |
+| `paired_bootstrap_test` | IC 95% e p da diferença de EER/AUC | cluster, ou amostra sem IDs |
+
+Os p-valores saem brutos e ajustados por **Holm-Bonferroni**: 11 modelos par a
+par são 55 testes, e sem correção ~3 saem "significativos" a 5% por acaso.
+
+A reamostragem é por **cluster** (frase/locutor) sempre que
+`dataset.test_cluster_ids` estiver no `results.json` — persistido desde
+2026-08-09. Amostras da mesma frase não são independentes; tratá-las como se
+fossem produz p otimista, e o relatório declara isso quando cai para amostra.
+
+```bash
+# gerado por padrão junto da consolidação
+python scripts/reporting/consolidate_results.py data/results/<run> \
+  --prefer-last --copy-to data/results/paper/figures
+# -> <out>/benchmark_significance.json
+```
+
+### Estabilidade de treino (desde 2026-08-09)
+
+`converged` responde "o checkpoint promovido é utilizável?" — e só isso. Ele
+não vê o treino que levou até lá: o Conformer colapsou da época ~17 à 100 e
+saiu `converged: True`, porque o checkpoint da época 10 estava ótimo.
+
+`training_stability` (de `benchmarks/stability.py`) passou a acompanhar cada
+arquitetura no `metrics.json`, com o mesmo critério do `CollapseAbort` que roda
+durante o treino:
+
+| `status` | Significado |
+|---|---|
+| `stable` | nada anômalo |
+| `collapsed` | caiu ao nível do acaso **depois** de ter aprendido, e ficou até o fim |
+| `recovered_collapse` | mesmo padrão, com recuperação antes do fim |
+| `diverged_nonfinite` | `val_loss` não-finito nas últimas épocas |
+| `unknown` | sem histórico (modelos clássicos) |
+
+O bloco também traz `best_epoch`, `epochs_after_best` e avisos quando o
+histórico é mais curto que o orçamento — o sintoma de retomada que truncou
+RawNet2 (17/100) e RawGAT-ST (91/100).
+
+### Latência: três runtimes, uma figura
+
+O escopo oficial mede latência em **Keras/TF**, **PyTorch** (WavLM/HuBERT
+Original) e **scikit-learn** (SVM/RandomForest). A diferença entre pilhas é da
+mesma ordem da diferença entre arquiteturas, então `latency_profile` declara
+`runtime`, `runtime_version`, `device` e `cross_runtime_comparable: false`, e a
+figura de tradeoff separa os runtimes por marcador. **Números de runtimes
+diferentes não são comparáveis entre si** — só dentro de cada marcador.
+
 ### Rastreabilidade do run (desde 2026-07-27)
 
 Cada `results.json` passa a carregar o que é necessário para reconstruir o
@@ -132,7 +209,10 @@ de locutor e baseline anti-spoofing são arquiteturas diferentes de mesmo nome).
 `tests/unit/test_benchmark_provenance.py` falha se um rótulo voltar a
 contradizer a implementação.
 
-As 14 arquiteturas são cobertas em **dois escopos** (`benchmarks/config.py`):
+As 14 arquiteturas (16 linhas na tabela abaixo — WavLM e HuBERT contam duas
+vezes cada, uma por proveniência: runner PyTorch "Original" no escopo
+`official` e port Keras no escopo `extended`) são cobertas em **dois
+escopos** (`benchmarks/config.py`):
 
 | Escopo | Modelos | Como roda |
 |---|---|---|
@@ -161,16 +241,44 @@ As 14 arquiteturas são cobertas em **dois escopos** (`benchmarks/config.py`):
     *qualquer* modelo neural no orçamento de 100 épocas — o run seria morto
     modelo a modelo, com status `timeout`.
 
-    Omitido, o limite agora é **derivado por arquitetura** do custo medido em
+    Omitido, o limite agora é **derivado por arquitetura** do custo em
     `benchmarks.planning.EXPECTED_TRAINING_HOURS`, com fator de segurança 3× e
-    escala linear em épocas e tamanho do treino. Em GPU vai de ~1,2 h (Sonic
-    Sleuth) a ~162 h (RawGAT-ST); em CPU, de ~22 h a ~4.078 h. Arquitetura
-    desconhecida recebe o maior valor da tabela — errar para o lado de esperar
-    demais, nunca de matar um treino de dias.
+    escala linear em épocas e tamanho do treino. Arquitetura desconhecida recebe
+    o maior valor da tabela — errar para o lado de esperar demais, nunca de
+    matar um treino de dias.
 
     Passar `--timeout-min` explicitamente continua vencendo. **Ao mudar lote,
     precisão, janela ou arquitetura, remeça os custos**: um timeout derivado de
     número velho mata um treino bom.
+
+!!! danger "Recalibração dos custos e do escalonamento (2026-08-02)"
+    Dois defeitos acoplados, corrigidos juntos porque corrigir um só quebra o
+    run.
+
+    **A escala por tamanho do treino nunca foi ligada.**
+    `expected_training_timeout_min` aceita `fit_samples` e escala por ele, mas
+    nenhum chamador de produção passava o argumento — o default descreve o
+    dataset de 40.980, então qualquer outro tamanho herdava o timeout do
+    completo. Medido com `--plan-only` sobre o dataset de 15.000 (2,7× menor):
+    os limites saíam idênticos aos do dataset cheio. Agora
+    `run_models_sequential` deriva `fit_samples` do preflight do `.npz` mais as
+    cópias de ruído.
+
+    **As estimativas erravam para os dois lados.** A campanha de 2026-08-01/02
+    (RTX 3060, 40.980 amostras, 100 épocas) mediu: RawNet2 **65,1 h** contra
+    18 h declaradas — 3,6×, acima do próprio fator de segurança, o que mataria
+    o treino por volta da época 83; Conformer 2,88 h contra 1,4 h; e, na
+    direção oposta, WavLM 0,24 h contra 6 h, porque a estimativa assumia o
+    backbone rodando a cada época quando o runner extrai embeddings uma vez.
+
+    A tabela agora traz **medida** para 8 das 11 arquiteturas do escopo oficial.
+    As três que nunca concluíram (AASIST, RawGAT-ST, SpectrogramTransformer)
+    ficam marcadas como **extrapoladas**: o valor antigo corrigido pelo erro de
+    calibração observado na arquitetura medida da mesma família. Substituir por
+    medida assim que rodarem até o fim.
+
+    Efeito colateral útil: a ordem de execução (`[ORDER:cost]`) passou a
+    refletir o custo real, então os modelos baratos entregam resultado primeiro.
 
 !!! danger "Janela de análise do log-mel (2026-07-28)"
     O salto entre quadros é imposto pelo contrato (`ceil(T / time_steps)`), mas
@@ -590,9 +698,14 @@ splits já estiverem prontos localmente.
 
 O preset oficial é `full_tcc`:
 
-- arquiteturas: WavLM, HuBERT, RawNet2, Sonic Sleuth, AASIST, RawGAT-ST,
-  Conformer, Hybrid CNN-Transformer, SpectrogramTransformer,
-  EfficientNet-LSTM, MultiscaleCNN, Ensemble, SVM e RandomForest;
+- arquiteturas: os nove modelos não-SSL de `ALL_TCC_ARCHITECTURES`
+  (`benchmarks/config.py`) — RandomForest, SVM, Hybrid CNN-Transformer,
+  SpectrogramTransformer, MultiscaleCNN, Conformer, RawNet2, AASIST e
+  RawGAT-ST. WavLM/HuBERT Original rodam separadamente pelo runner SSL
+  dedicado (não fazem parte do `full_tcc` do `run_benchmark.py`). Sonic
+  Sleuth, EfficientNet-LSTM e Ensemble são escopo **estendido**, não
+  `full_tcc` — pedi-los com `optimize_hyperparameters=True` é erro de
+  configuração (`ValueError` em `planning.py::_base_recommended_hparams`);
 - dataset: `.npz` balanceado exportado do split 70/15/15;
 - orçamento comum: 100 épocas completas para todas as redes e cabeças SSL;
 - seleção uniforme: melhor checkpoint pela menor val_loss limpa;
@@ -623,14 +736,22 @@ Hiperparâmetros neurais efetivos do recorte principal:
 | Arquitetura | Entrada | Batch | LR | Dropout | Regularização | Otimizador |
 |---|---|---:|---:|---:|---:|---|
 | RawNet2 | raw audio | 16 | 1e-4 | 0.30 | L2 1e-4 | Adam |
-| AASIST | raw audio | 16 | 3e-4 | 0.20 | L2 2e-4 | AdamW |
+| AASIST | raw audio | 24 | 3e-4 | 0.20 | L2 2e-4 | AdamW |
 | RawGAT-ST | raw audio | 16 | 5e-5 | 0.35 | L2 1e-3 | AdamW |
-| Conformer | log-Mel | 32 | 1e-4 | 0.30 | wd 1e-4 | AdamW |
-| CCT | log-Mel | 32 | 1e-3 | 0.20 | L2 1e-4 | AdamW |
-| AST | log-Mel | 8 | 2e-5 | 0.25 | wd 5e-5 | AdamW |
-| Res2Net | log-Mel | 32 (cap GPU) | 2e-3 | 0.50 | L2 5e-4 | AdamW |
+| Conformer | log-Mel | 32 | 1e-4 | 0.10 | wd 1e-4 | AdamW |
+| CCT | log-Mel | 32 | 3e-4 | 0.20 | L2 1e-4 | AdamW |
+| AST | log-Mel | 8 | 1e-5 | 0.25 | wd 1e-5 | AdamW |
+| Res2Net | log-Mel | 32 (cap GPU) | 1e-3 | 0.50 | wd 1e-2 | AdamW |
 | WavLM Original | raw audio/SSL | 128 | 1e-3 | 0.20 | wd 1e-4 | AdamW |
 | HuBERT Original | raw audio/SSL | 128 | 1e-3 | 0.20 | wd 1e-4 | AdamW |
+
+Fonte: `benchmarks/planning.py::NEURAL_BENCHMARK_HPARAMS`, com o batch
+efetivamente aplicado sob `--device-profile gpu` já passado pelo cap de VRAM
+de `_fit_to_device` (RawNet2/RawGAT-ST/AST capados em 16, AASIST em 24,
+demais em 32). `l2_reg_strength`/"L2" na tabela é o valor declarado no plano;
+para as arquiteturas cujo builder não aceita esse parâmetro (config morto,
+ex.: Res2Net) a regularização real é o `weight_decay` do AdamW ("wd"), não o
+L2 — não confundir os dois quando comparar com o paper de origem.
 
 Esses valores permanecem específicos por modelo. Os controles comuns são:
 100 épocas completas, early stopping desativado, restauração do checkpoint de

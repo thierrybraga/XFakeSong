@@ -54,6 +54,31 @@ from benchmarks.test_lock import (  # noqa: E402
     validate_test_lock as _validate_test_lock,
 )
 
+#: Arquiteturas cujo grafo de treino (STFT/filterbank in-graph + laços de
+#: sub-blocos, ex.: `Bottle2neck` do Res2Net) faz o auto-JIT do XLA
+#: (`TF_XLA_FLAGS=--tf_xla_auto_jit=1`, ligado por padrão em
+#: `app/core/performance.py`) compilar clusters caros o bastante para estourar
+#: a RAM do HOST (não da GPU) já no 1º batch — confirmado via OOM-killer do
+#: kernel para MultiscaleCNN (mata em ~33-39GB dependendo do teto do
+#: container, sempre no mesmo ponto do treino, não crescendo com mais tempo
+#: como um pico de dado real cresceria). Mesma classe de sintoma do
+#: `Predictor._XLA_UNFRIENDLY_ARCHITECTURES` (inferência) — aqui é o
+#: equivalente para o treino, aplicado via env var no subprocesso porque cada
+#: modelo já roda isolado (`run_benchmark.py --model <nome>`).
+#:
+#: AJUSTE 2026-07-31: `aasist` e `rawgatst` (graph attention dinâmico, mesmo
+#: motivo pelo qual já constam em `Predictor._XLA_UNFRIENDLY_ARCHITECTURES`
+#: linha 522) morriam no run oficial exatamente com a mesma assinatura do
+#: MultiscaleCNN pré-fix: processo encerrado logo após a config de GPU, sem
+#: nenhuma linha de treino no log — nunca tinham sido adicionados aqui.
+#: `rawnet2` morria por um caminho distinto (CUDA_ERROR_OUT_OF_MEMORY
+#: explícito tentando alocar ~36 GB numa GPU de 12 GB, mesmo já no cap de
+#: batch=16/float32 de `planning._fit_to_device`) — GRU(1024) sob auto-JIT
+#: também é conhecido por gerar kernels fundidos com scratch buffer
+#: desproporcional; mesma mitigação disponível, root cause de VRAM em vez de
+#: RAM do host.
+_XLA_UNFRIENDLY_TRAINING_ARCHITECTURES = {"multiscalecnn", "aasist", "rawgatst", "rawnet2"}
+
 SSL_ORIGINAL_MODELS = {
     "wavlm": {
         "display": "WavLM Original",
@@ -285,6 +310,71 @@ def _build_command(args: argparse.Namespace, model: str, model_dir: Path) -> lis
     return cmd
 
 
+def _fit_samples(args: argparse.Namespace) -> int:
+    """Amostras que o `fit` realmente ve, incluindo as copias de ruido.
+
+    `expected_training_timeout_min` escala por isto, mas ninguem passava o
+    valor: o default do parametro descreve o dataset de 40.980, entao QUALQUER
+    outro tamanho herdava o timeout do completo. Num dataset 2,7x menor o limite
+    ficava 2,7x mais generoso que o pretendido — falha segura, mas o timeout
+    deixava de cumprir a funcao de matar um treino travado.
+
+    Devolve 0 quando o tamanho e desconhecido; a funcao de planejamento cai no
+    default nesse caso, que e o comportamento antigo.
+    """
+    contagens = getattr(args, "npz_split_counts", None) or {}
+    treino = int(contagens.get("y_train") or 0)
+    if treino <= 0:
+        return 0
+    copias = int(getattr(args, "train_noise_copies", 0) or 0)
+    if not getattr(args, "waveform_train_augmentation", False):
+        copias = 0
+    return treino * (1 + copias)
+
+
+def _expected_cost_min(args: argparse.Namespace, model: str) -> float:
+    """Custo estimado deste modelo, em minutos (base da ordem de execucao)."""
+    try:
+        from benchmarks.planning import (
+            _REFERENCE_FIT_SAMPLES,
+            expected_training_timeout_min,
+        )
+
+        # safety_factor=1 e minimum_min=0: aqui interessa a ESTIMATIVA de custo,
+        # nao o timeout (que aplica margem e piso e achataria os mais baratos).
+        return expected_training_timeout_min(
+            model,
+            device_profile=getattr(args, "device_profile", "gpu") or "gpu",
+            epochs=int(getattr(args, "epochs", 100) or 100),
+            fit_samples=_fit_samples(args) or _REFERENCE_FIT_SAMPLES,
+            safety_factor=1.0,
+            minimum_min=0.0,
+        )
+    except Exception:  # noqa: BLE001 — sem estimativa, nao reordene
+        return float("inf")
+
+
+def _order_models(args: argparse.Namespace, models: list[str]) -> list[str]:
+    """Ordena a suite do mais barato para o mais caro (default `cost`).
+
+    A ordem do manifesto e de RELATORIO, nao de execucao: nela o
+    SpectrogramTransformer (~28 h de GPU) roda em 4o, antes do Conformer
+    (~1,4 h) e do Res2Net (~1,6 h). Uma falha de ambiente que atinja todos os
+    modelos (OOM do container, checkpoint SSL ausente, dataset invalido) so
+    apareceria depois de dias de GPU. Executando do mais barato para o mais
+    caro, a mesma falha aparece na primeira hora e o run inteiro pode ser
+    corrigido antes de queimar as arquiteturas longas.
+
+    A ordem dos RESULTADOS nao depende disto: `consolidate_results.py` reordena
+    por `OFFICIAL_TCC_RESULT_ORDER`.
+    """
+    if getattr(args, "order", "cost") != "cost":
+        return list(models)
+    indexed = list(enumerate(models))
+    indexed.sort(key=lambda pair: (_expected_cost_min(args, pair[1]), pair[0]))
+    return [model for _, model in indexed]
+
+
 def _timeout_for(args: argparse.Namespace, model: str) -> float:
     """Timeout deste modelo: o do usuario, ou o derivado da estimativa.
 
@@ -296,12 +386,16 @@ def _timeout_for(args: argparse.Namespace, model: str) -> float:
     if getattr(args, "timeout_min", None):
         return float(args.timeout_min)
     try:
-        from benchmarks.planning import expected_training_timeout_min
+        from benchmarks.planning import (
+            _REFERENCE_FIT_SAMPLES,
+            expected_training_timeout_min,
+        )
 
         return expected_training_timeout_min(
             model,
             device_profile=getattr(args, "device_profile", "gpu") or "gpu",
             epochs=int(getattr(args, "epochs", 100) or 100),
+            fit_samples=_fit_samples(args) or _REFERENCE_FIT_SAMPLES,
         )
     except Exception:  # noqa: BLE001 — sem estimativa, nao estrangule o run
         return 24 * 60.0
@@ -319,10 +413,14 @@ def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, 
     ssl_meta = _ssl_meta(model)
 
     if args.plan_only and ssl_meta is not None:
+        # Mesmos checkpoints que `run_wavlm_original_benchmark.py::arch_meta`
+        # aplica de fato. Estava "microsoft/wavlm-base" enquanto o runner usa
+        # base-PLUS desde 2026-07-15: o benchmark_plan.json anunciava um
+        # backbone e o treino carregava outro.
         model_name = (
             "facebook/hubert-base-ls960"
             if ssl_meta["architecture"] == "hubert"
-            else "microsoft/wavlm-base"
+            else "microsoft/wavlm-base-plus"
         )
         plan = {
             "model": ssl_meta["display"],
@@ -390,6 +488,30 @@ def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, 
         log.write(" ".join(cmd) + "\n\n")
         log.flush()
         try:
+            subprocess_env = {
+                **os.environ,
+                "PYTHONIOENCODING": "utf-8",
+                # TF_USE_LEGACY_KERAS=0: transformers.modeling_tf_utils seta
+                # =1 no processo que o importa; se o pai estiver poluído, o
+                # filho carregaria tensorflow.keras como Keras 2 (tf_keras) e
+                # o código Keras 3 do projeto quebraria. O runner SSL
+                # (PyTorch) não usa tf.keras — pinar 0 é seguro p/ ambos.
+                "TF_USE_LEGACY_KERAS": "0",
+            }
+            if slug in _XLA_UNFRIENDLY_TRAINING_ARCHITECTURES:
+                # Ver _XLA_UNFRIENDLY_TRAINING_ARCHITECTURES: sem isso o
+                # auto-JIT do XLA compila um cluster caro o bastante pra
+                # estourar memoria (RAM do host para multiscalecnn/aasist/
+                # rawgatst, confirmado via OOM-killer do kernel; VRAM da GPU
+                # para rawnet2, confirmado via CUDA_ERROR_OUT_OF_MEMORY
+                # tentando alocar dezenas de GB numa GPU de 12 GB) ja no 1o
+                # batch, independente do teto de memoria do container.
+                subprocess_env["XFAKE_ENABLE_XLA"] = "0"
+                log.write(
+                    f"[XLA] auto-JIT desligado para {model} "
+                    "(arquitetura conhecida por estourar memoria na compilacao)\n"
+                )
+                log.flush()
             proc = subprocess.Popen(
                 cmd,
                 cwd=str(ROOT),
@@ -397,16 +519,7 @@ def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, 
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
-                # TF_USE_LEGACY_KERAS=0: transformers.modeling_tf_utils seta
-                # =1 no processo que o importa; se o pai estiver poluído, o
-                # filho carregaria tensorflow.keras como Keras 2 (tf_keras) e
-                # o código Keras 3 do projeto quebraria. O runner SSL
-                # (PyTorch) não usa tf.keras — pinar 0 é seguro p/ ambos.
-                env={
-                    **os.environ,
-                    "PYTHONIOENCODING": "utf-8",
-                    "TF_USE_LEGACY_KERAS": "0",
-                },
+                env=subprocess_env,
             )
             output_queue: queue.Queue[str | None] = queue.Queue()
 
@@ -668,13 +781,26 @@ def main() -> int:
         default=16,
         help="batch para extracao de embeddings HuBERT/WavLM no runner SSL",
     )
-    parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10])
+    parser.add_argument(
+        "--snr",
+        nargs="+",
+        type=int,
+        default=[30, 20, 10, 5],
+        help=(
+            "SNRs (dB) do teste de robustez. 30/20/10 casam com o augmentation "
+            "de treino e medem condicao CASADA; 5 dB fica FORA do treino e e o "
+            "unico nivel que mede generalizacao a ruido"
+        ),
+    )
     parser.add_argument(
         "--train-aug-snr",
         nargs="+",
         type=int,
         default=[30, 20, 10],
-        help="SNRs balanceados na cópia ruidosa de treino",
+        help=(
+            "SNRs balanceados na copia ruidosa de treino. NAO inclua 5 dB: e o "
+            "nivel reservado para medir generalizacao na avaliacao"
+        ),
     )
     parser.add_argument("--train-noise-copies", type=int, default=1)
     parser.add_argument("--waveform-noise-batch-size", type=int, default=64)
@@ -694,6 +820,18 @@ def main() -> int:
             "3x), escalado por epocas e tamanho do treino. O default anterior "
             "era 60 min FIXO — menor que o treino de QUALQUER modelo neural no "
             "orcamento de 100 epocas, e portanto matava o run"
+        ),
+    )
+    parser.add_argument(
+        "--order",
+        choices=["cost", "manifest"],
+        default="cost",
+        help=(
+            "ordem de EXECUÇÃO: `cost` roda do mais barato para o mais caro "
+            "(estimativa de benchmarks.planning.EXPECTED_TRAINING_HOURS), para "
+            "que uma falha comum a todos apareça em minutos e não depois de "
+            "dias de GPU; `manifest` preserva a ordem do manifesto oficial. A "
+            "ordem das TABELAS não muda (consolidate_results reordena)"
         ),
     )
     parser.add_argument(
@@ -753,6 +891,9 @@ def main() -> int:
     except (OSError, ValueError, zipfile.BadZipFile) as exc:
         parser.error(f"NPZ inválido: {exc}")
     sample_count = int(npz_inspection["sample_count"])
+    # Consumido por `_fit_samples`, que alimenta o escalonamento do timeout pelo
+    # tamanho real do treino em vez do default de 40.980 amostras.
+    args.npz_split_counts = npz_inspection.get("split_counts") or {}
     test_lock = None
     lock_path = (
         Path(args.test_lock).resolve()
@@ -782,16 +923,42 @@ def main() -> int:
         parser.error("--epochs deve ser positivo")
     if args.train_noise_copies < 0:
         parser.error("--train-noise-copies deve ser >= 0")
+    # O orçamento de épocas é independente da integridade dos dados: exigir
+    # exatamente 100 no mesmo `if` que valida test-lock/source-shortcut/split
+    # predefinido amarrava as duas coisas ao mesmo interruptor, forçando
+    # `--no-academic-protocol` (que troca split_policy para
+    # preserve_predefined_else_stratified_70_15_15 — arrisca re-split
+    # diferente da partição locked) só para reduzir épocas. O que importa
+    # para comparação justa entre arquiteturas é o MESMO orçamento para
+    # todas (fixed_epoch_budget, já garantido em benchmark_plan), não que
+    # esse orçamento seja especificamente 100. As demais garantias
+    # (fail-on-source-shortcut, test-lock, predefined_frozen_npz)
+    # permanecem obrigatórias sob academic_protocol, sem exceção.
     if args.academic_protocol:
-        if args.epochs != 100:
-            parser.error("protocolo acadêmico exige exatamente 100 épocas")
         if not npz_inspection["predefined_splits"]:
             parser.error(
                 "protocolo acadêmico exige X_train/y_train/X_val/y_val/X_test/y_test "
                 "predefinidos; um split gerado por semente alteraria o teste"
             )
-        if args.snr != [30, 20, 10] or args.train_aug_snr != [30, 20, 10]:
-            parser.error("protocolo acadêmico exige SNRs 30, 20 e 10 dB nessa ordem")
+        # Avaliação em 30/20/10 (condição CASADA com o augmentation) MAIS 5 dB,
+        # que fica deliberadamente fora do treino e é o único nível que mede
+        # generalização a ruído — ver docs/evaluation/benchmark.md e o invariante
+        # em tests/unit/test_benchmark_protocol_fixes.py::
+        # test_default_protocol_includes_an_unseen_snr_level.
+        # Até aqui o guard exigia `snr == [30, 20, 10]`, contradizendo o default
+        # de BenchmarkConfig.snr_levels_db e a própria doc: quem passasse o 5 dB
+        # documentado tomava parser.error, e quem não passasse rodava um
+        # benchmark sem a coluna de generalização.
+        if args.snr != [30, 20, 10, 5]:
+            parser.error(
+                "protocolo acadêmico exige SNRs de avaliação 30, 20, 10 e 5 dB "
+                "nessa ordem"
+            )
+        if args.train_aug_snr != [30, 20, 10]:
+            parser.error(
+                "protocolo acadêmico exige augmentation de treino em 30, 20 e "
+                "10 dB nessa ordem; 5 dB precisa continuar NÃO VISTO no treino"
+            )
         if not npz_inspection["has_cluster_ids"]:
             parser.error("protocolo acadêmico exige cluster_ids para IC por cluster")
         if not npz_inspection["has_source_ids"]:
@@ -812,6 +979,9 @@ def main() -> int:
                 "cross-generator altera o teste; execute como experimento "
                 "separado, sem --academic-protocol"
             )
+
+    selected_models = _order_models(args, selected_models)
+    _emit(f"[ORDER:{args.order}] {' -> '.join(selected_models)}")
 
     seeds = list(args.seeds) if args.seeds else [int(args.seed)]
     if len(seeds) != len(set(seeds)):

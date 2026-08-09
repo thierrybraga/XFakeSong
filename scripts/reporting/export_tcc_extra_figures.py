@@ -30,7 +30,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
-RESULTS_ROOT = ROOT / "app" / "models" / "benchmark_final"
+RESULTS_ROOT = ROOT / "data" / "models" / "benchmark_final"
 FIGURES_DIR = ROOT / "data/results/paper" / "figures"
 
 MODELS: List[Tuple[str, str]] = [

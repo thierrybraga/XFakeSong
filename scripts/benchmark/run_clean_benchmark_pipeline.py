@@ -38,8 +38,11 @@ from benchmarks.config import (  # noqa: E402
 )
 
 from app.core.config.paths import resolve_results_dir, resolve_results_output  # noqa: E402
-DEFAULT_DATASET = ROOT / "data" / "datasets" / "benchmark_audio_raw_balanced_15k_confirmatory_v2.npz"
-DEFAULT_MODELS_DIR = ROOT / "app" / "models"
+# Dataset canônico (configs/dataset.yaml::canonical_npz). O default anterior era
+# o benchmark_audio_raw_balanced_15k_confirmatory_v2.npz, artefato do protocolo
+# anterior já retirado do disco.
+DEFAULT_DATASET = ROOT / "data" / "datasets" / "benchmark_dataset.npz"
+DEFAULT_MODELS_DIR = ROOT / "data" / "models"
 DEFAULT_RESULTS_DIR = resolve_results_dir(ROOT)
 DEFAULT_IMAGE = "xfakesong:benchmark-gpu"
 
@@ -48,6 +51,16 @@ CLASSICAL_MODELS = list(CLASSICAL_TCC_ARCHITECTURES)
 NEURAL_MODELS = list(NEURAL_DOCKER_ARCHITECTURES)
 
 SMOKE_MODELS = ["SVM", "MultiscaleCNN"]
+#: Orçamento do smoke. Ele valida o encanamento (dataset, Docker, GPU, escrita
+#: de artefatos), não o desempenho — rodá-lo com as 100 épocas do run oficial
+#: custaria horas de GPU e não acharia nada que 2 épocas não achem.
+SMOKE_EPOCHS = 2
+DEFAULT_EPOCHS = 100
+
+#: Preservados por `--clean`: `data/results/paper` é fonte VERSIONADA do artigo
+#: (main.tex), não artefato regenerável de execução. Antes da correção, o
+#: `--clean` apagava a raiz inteira de resultados e levava o LaTeX junto.
+CLEAN_PRESERVE = {"paper"}
 
 
 def _resolve_project_path(value: str | Path) -> Path:
@@ -88,10 +101,14 @@ def _run(cmd: list[str], *, cwd: Path = ROOT) -> None:
         raise SystemExit(proc.returncode)
 
 
-def _clean_directory(path: Path) -> None:
+def _clean_directory(path: Path, *, preserve: set[str] | None = None) -> None:
     resolved = _resolve_project_path(path)
     resolved.mkdir(parents=True, exist_ok=True)
+    keep = preserve or set()
     for item in resolved.iterdir():
+        if item.name in keep:
+            print(f"[clean] preservado: {item}")
+            continue
         if item.is_dir():
             shutil.rmtree(item)
         else:
@@ -249,8 +266,6 @@ def _docker_run_command(args: argparse.Namespace, models: Iterable[str]) -> list
         str(args.batch_size),
         "--device-profile",
         args.device_profile,
-        "--timeout-min",
-        str(args.timeout_min),
         "--latency-runs",
         str(args.latency_runs),
         "--ssl-feature-batch-size",
@@ -258,6 +273,8 @@ def _docker_run_command(args: argparse.Namespace, models: Iterable[str]) -> list
         "--snr",
         *[str(v) for v in args.snr],
     ]
+    if args.timeout_min is not None:
+        cmd.extend(["--timeout-min", str(args.timeout_min)])
     if args.detach:
         cmd.insert(3, "-d")
     if args.resume:
@@ -284,13 +301,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset", default=str(DEFAULT_DATASET.relative_to(ROOT)))
     parser.add_argument("--out", default=None)
     parser.add_argument("--models-dir", default=str(DEFAULT_MODELS_DIR.relative_to(ROOT)))
-    parser.add_argument("--epochs", type=int, default=100)
+    # Sem default fixo: `--phase smoke` existe para validar o encanamento antes
+    # de um run longo, e herdando 100 épocas ele deixava de ser smoke (SVM
+    # ~8 h + MultiscaleCNN ~1,6 h de GPU). Ver SMOKE_EPOCHS.
+    parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--device-profile", choices=["auto", "cpu", "gpu"], default="gpu")
-    parser.add_argument("--timeout-min", type=float, default=240.0)
+    # Omitido (default), o timeout é DERIVADO por arquitetura em
+    # run_models_sequential (planning.EXPECTED_TRAINING_HOURS x 3). O valor fixo
+    # anterior de 240 min matava 7 das 11 arquiteturas oficiais só no tempo de
+    # treino esperado (RawGAT-ST 54 h, AASIST e AST 28 h, RawNet2 18 h, SVM 8 h,
+    # WavLM/HuBERT 6 h) — a mesma armadilha já removida do compose de benchmark.
+    parser.add_argument("--timeout-min", type=float, default=None)
     parser.add_argument("--latency-runs", type=int, default=30)
     parser.add_argument("--ssl-feature-batch-size", type=int, default=16)
-    parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10])
+    # Avaliacao inclui o 5 dB NAO VISTO (o augmentation de treino segue em
+    # 30/20/10, definido pelo run_models_sequential).
+    parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10, 5])
     parser.add_argument("--image", default=DEFAULT_IMAGE)
     parser.add_argument("--container-name", default="xfakesong_benchmark_run")
     parser.add_argument("--clean", action="store_true")
@@ -313,6 +340,9 @@ def main() -> int:
     args.models_dir = str(_resolve_project_path(args.models_dir).relative_to(ROOT))
 
     phase, models = _select_models(args)
+    if args.epochs is None:
+        args.epochs = SMOKE_EPOCHS if phase == "smoke" else DEFAULT_EPOCHS
+        print(f"[epochs] fase {phase}: {args.epochs} épocas")
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     if args.out is None:
         args.out = str(
@@ -331,7 +361,7 @@ def main() -> int:
     if args.clean:
         print("[clean] Limpando data/models e results...")
         _clean_directory(ROOT / args.models_dir)
-        _clean_directory(DEFAULT_RESULTS_DIR)
+        _clean_directory(DEFAULT_RESULTS_DIR, preserve=CLEAN_PRESERVE)
         out_dir.mkdir(parents=True, exist_ok=True)
 
     _write_manifest(out_dir, args=args, models=models, phase=phase)

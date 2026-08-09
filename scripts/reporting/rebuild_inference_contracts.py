@@ -47,7 +47,7 @@ from scripts._bootstrap import setup_logging  # noqa: E402
 
 logger = logging.getLogger("contracts")
 
-BENCH_FINAL = ROOT / "app" / "models" / "benchmark_final"
+BENCH_FINAL = ROOT / "data" / "models" / "benchmark_final"
 
 # arch dir -> (feature_frontend, display architecture, model_type)
 ARCH_SPECS: dict[str, dict[str, str]] = {

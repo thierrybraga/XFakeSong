@@ -112,7 +112,12 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "benchmark_name": "WavLM Original",
         "result_key": "WavLM Original",
         "display_name": "WavLM Original",
-        "variant": "microsoft/wavlm-base:pytorch_runner_frozen_backbone",
+        # base-PLUS, nao base: o runner passou a `microsoft/wavlm-base-plus` em
+        # 2026-07-15 (mesma arquitetura, pre-treino de 94k h em vez de 960 h) e
+        # este rotulo ficou para tras, declarando nos resultados um checkpoint
+        # diferente do que foi realmente treinado — exatamente o que o
+        # comentario no topo deste arquivo proibe.
+        "variant": "microsoft/wavlm-base-plus:pytorch_runner_frozen_backbone",
         "runner": "scripts.benchmark.run_wavlm_original_benchmark:ssl_original",
         "input_type": "raw_audio_16khz_16000",
         "family": "ssl-pretrained",

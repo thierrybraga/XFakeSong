@@ -20,7 +20,7 @@ treino↔inferência) e `benchmarks/data.py::prepare_input_for_architecture`.
 | AGC | RMS/LUFS (`app/utils/silero_vad.apply_agc`), idêntica no corpus e na inferência |
 | Normalização | z-score por amostra (frontend raw); dB-ref-max (log-Mel) |
 | Janela curta | repetição (`tile`), sem zero-padding |
-| Janela por família | raw 1 s (AASIST/RawGAT-ST legadas) ou 4,04 s (64.600, convenção do baseline ASVspoof 2021); log-Mel 128 bandas; vetor tabular de 63 descritores (SVM/RF) |
+| Janela por família | raw 48.000 amostras (3 s @ 16 kHz) para RawNet2/AASIST/RawGAT-ST — janela canônica atual, 26% menor que os 64.600 (4,04 s, convenção do baseline ASVspoof 2021) usados antes da migração; log-Mel 128 bandas; vetor tabular de 63 descritores (SVM/RF) |
 
 O contrato de entrada de cada modelo (`input_contract` no
 `bench_*_config.json`) grava janela, frontend, estratégia de crop e

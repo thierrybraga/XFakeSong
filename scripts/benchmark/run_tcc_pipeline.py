@@ -637,7 +637,8 @@ def main() -> int:
     parser.add_argument("--skip-benchmark-preflight", action="store_true")
     parser.add_argument("--latency-runs", type=int, default=30)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10])
+    # Avaliacao inclui o 5 dB NAO VISTO; o augmentation de treino nao.
+    parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10, 5])
     parser.add_argument("--train-aug-snr", nargs="+", type=int, default=[30, 20, 10])
     parser.add_argument("--train-noise-copies", type=int, default=1)
     parser.add_argument("--waveform-noise-batch-size", type=int, default=64)

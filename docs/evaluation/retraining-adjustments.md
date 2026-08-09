@@ -322,6 +322,49 @@ os hiperparâmetros específicos de cada arquitetura no benchmark_plan.json.
 
 ---
 
+## 2026-08-02 — SIGSEGV do MultiscaleCNN sob mixed precision
+
+No benchmark de 2026-08-01 o MultiscaleCNN morreu com `returncode = -11`
+(SIGSEGV) aos 336 s, no primeiro batch da época 1, sem deixar artefato. Não era
+OOM — o OOM-killer envia SIGKILL (-9) — e o auto-JIT do XLA já estava desligado
+para esta arquitetura.
+
+**Isolamento** (repro mínimo: log-mel 100×80, batch 32, RTX 3060):
+
+| Condição | Resultado |
+| --- | --- |
+| `mixed_float16`, treino | **SIGSEGV** após completar o batch 0 |
+| `float32`, treino | 5 batches limpos |
+| `mixed_float16`, só forward | 6 passos limpos |
+| `mixed_float16` + `TF_CUDNN_USE_AUTOTUNE=0` | **SIGSEGV** igual |
+
+Conclusão: o crash é no **backward** em fp16, não no forward nem na escolha de
+kernel do autotune. A suspeita é o gradiente do split/concat hierárquico de
+canais do bloco `Bottle2neck` do Res2Net, o único padrão que esta arquitetura
+tem e as outras não; o build de 2026-08-01 subiu `nvidia-cudnn-cu12` de
+9.1.0.70 para 9.24.0.43.
+
+**Ajuste**: `planning.py` ganhou `_MIXED_PRECISION_UNSAFE_ARCHITECTURES`
+(`rawnet2`, `multiscalecnn`), substituindo o `elif compact != "rawnet2"` que
+tratava o caso do RawNet2 de forma implícita. O mecanismo já existia e é o
+mesmo do RawNet2 — a chave `use_mixed_precision` chega ao `ModelTrainer`, que
+devolve a política global a float32. Custo: velocidade, não resultado.
+
+**Verificação**: `run_benchmark.py --model MultiscaleCNN --epochs 2` sobre o
+dataset de 15.000 completou as duas épocas e a avaliação, com exit 0 —
+92,69% de acurácia, EER 5,50%, AUC 0,989.
+
+Dois bugs latentes do caminho **raw-audio** apareceram na instrumentação e
+foram corrigidos em `layers.py`: `STFTLayer` passava float16 para
+`tf.signal.stft` (RFFT aceita só float32/64) e `LogMelFromMagnitudeLayer`
+multiplicava magnitude float16 pela matriz mel float32. Nenhum dos dois afetava
+o benchmark, que alimenta log-mel pronto (`input_domain: spectrogram`), mas
+qualquer consumidor do caminho raw sob precisão mista quebrava na CONSTRUÇÃO do
+modelo. O log-mel roda em float32 de propósito: com mel em fp16 o épsilon de
+1e-6 sumiria e bins nulos virariam `-inf`.
+
+---
+
 ## 2026-07-14 — revisão pós-retreino AWGN: AST, CCT, RawNet2, Res2Net e checkpoint guardado
 
 Diagnóstico do retreino sob o protocolo canônico de AWGN (2026-07-12) apontou
@@ -613,12 +656,23 @@ Correções derivadas da análise metodológica para o artigo:
    ffmpeg na forma de onda, mesmo ponto do protocolo do AWGN;
    `benchmarks/perturbations.py`; resultado em `codec_robustness` no
    results.json). MP3 64k e Opus 24k ≈ mensageria/VoIP.
-8. **Auditoria de shortcut de fonte**:
-   `scripts/dataset/audit_source_shortcut.py` mede se um RandomForest
-   prevê a FONTE (brspeech/fkvoice/mlspt/ttsport) a partir dos mesmos 63
-   descritores — quantifica o confounder fonte↔classe (mlspt/ttsport só
+8. **Auditoria de shortcut de fonte** *(histórico — não se aplica mais)*:
+   `scripts/dataset/audit_source_shortcut.py` media se um RandomForest
+   previa a FONTE (brspeech/fkvoice/mlspt/ttsport) a partir dos mesmos 63
+   descritores — quantificava o confounder fonte↔classe (mlspt/ttsport só
    real; fkvoice só fake) e o teto de acurácia real/fake atingível sem
-   detectar síntese. Reportar como ameaça à validade.
+   detectar síntese.
+
+   O script foi **removido em 2026-08-02**: o Protocolo de Dataset
+   (CETUC × XTTS-v2 pareado) tem fonte única e pareamento enunciado a
+   enunciado, então o confounder que ele media não existe por construção —
+   toda frase e todo locutor aparecem nas duas classes. A garantia
+   equivalente hoje é estrutural, verificada pelos oráculos de maioria
+   (`source`/`speaker_id`/`text_id` = 0,5) em
+   [`docs/data/dataset-protocol.md`](../data/dataset-protocol.md), e a
+   checagem em tempo de execução vive na flag `--fail-on-source-shortcut`
+   do `run_benchmark.py`, implementada em `benchmarks/runner.py` (nunca
+   dependeu deste script).
 
 Pendências NÃO-código do artigo (operacionais): tabela principal
 speaker-disjoint (rodar com `--speaker-split`), avaliação cross-dataset
@@ -804,3 +858,403 @@ aquele dataset nem como evidencia cross-domain. Nenhuma metrica daquele dataset 
 fabricada nesta correcao: um novo numero so pode ser publicado depois de
 reconstruir e selar o NPZ, satisfazer o oraculo de fonte e executar o
 benchmark completo com bootstrap por cluster.
+
+## 2026-08-06 — diagnóstico do `clean_benchmark_15k` (Conformer e RawGAT-ST)
+
+Run analisado: `data/results/clean_benchmark_15k` sobre
+`benchmark_dataset_15k.npz` (11/11 arquiteturas do escopo oficial, todas
+`status: ok`). As métricas dos 11 foram **recalculadas a partir dos
+`predictions_clean.csv`** e batem com os `metrics.json` até a 4ª casa; a
+partição de teste é a mesma nos 11 (`test_split_sha256 = ab4c3a9f…`), com
+test-lock v2 validado. O que segue são os dois únicos modelos com defeito de
+treino — os outros nove não precisam de retreino.
+
+### Diagnóstico
+
+| Modelo | Sintoma | Evidência |
+| --- | --- | --- |
+| Conformer | **Colapso irreversível** | Divergiu na época ~14; `loss = ln 2 = 0.693` e `val_accuracy = 0.500` da época 22 à 100. Duas sessões independentes colapsaram igual. O número publicado (99,49%) vem do checkpoint da **época 10** — 10 das 100 épocas do orçamento declarado |
+| RawGAT-ST | **Sobreajuste** (retune de 2026-07-02 não resolveu) | Treino 0,998 vs val 0,85 no melhor checkpoint (época 17); `val_loss` mínimo 0,511 subindo a 1,18. Acurácia 87,55%, EER 11,87%, min t-DCF 0,3149 — **abaixo de SVM e RandomForest no t-DCF**. Robustez não monotônica (77,21% a 10 dB contra 77,64% a 5 dB) |
+
+### Ajustes aplicados
+
+| Modelo | Parâmetro | Antes | Depois | Motivo |
+| --- | --- | ---: | ---: | --- |
+| Conformer | `learning_rate` | 1e-4 | **5e-5** | Pico sustentado até estourar; a topologia é pre-LN Macaron, estável por construção — o que restava era o passo |
+| Conformer | `warmup_steps` | 1500 | **3000** | 1500 passos = ~2 épocas com batch 32; dobra para ~4 |
+| Conformer | `decay_steps` | (omitido → 50000) | **76100** | ceil(24.324/32) = 761 passos/época × 100. Em 50.000 o cosseno zerava na época ~66 e as últimas 34 rodavam a 1e-7 |
+| Conformer | `alpha` | (implícito) | **1e-7** | Explicitado junto com `decay_steps` |
+| RawGAT-ST | `dropout_rate` | 0.35 | **0.5** | Sobreajuste, não subajuste |
+| RawGAT-ST | `l2_reg_strength` | 1e-3 | **3e-3** | Idem (entra como `weight_decay` do AdamW) |
+| RawGAT-ST | `decay_steps` | 100000 | **152100** | ceil(24.324/16) = 1.521 passos/época × 100. Mesmo desalinhamento do Conformer |
+
+`learning_rate` do RawGAT-ST fica em 5e-5: o problema não é passo grande, é
+capacidade sem freio.
+
+Fontes editadas — as **três**, conforme a regra de sincronia do `CLAUDE.md`:
+`benchmarks/planning.py::NEURAL_BENCHMARK_HPARAMS`,
+`app/domain/models/architectures/rawgat_st.py::create_model` e
+`app/domain/models/architectures/registry.py::default_params`. O Conformer não
+carrega hiperparâmetros de otimização no `registry` (só `patience`,
+`lr_patience`, `gradient_clip`, `augmentation_strength`), então o `planning.py`
+cobre também o caminho da interface via `effective_hyperparameters()`.
+
+### Estado de treino em quarentena
+
+`data/results/_invalidado_conformer_colapso/` recebeu o `training_backup/`
+(`{"epoch": 28}` — um `--resume` retomaria da sessão morta) e o
+`models/` do Conformer, cujo `best.json` guardava `val_loss = 0.14744` da
+sessão abortada em vez do `0.13258` que gerou as métricas publicadas. Sem
+isso, o retreino não começaria limpo. Ver o README de lá.
+
+### Não confundir com defeito de treino
+
+- **SVM a 5 dB colapsa para exatamente 50,00%** (prediz "real" para as 1.382
+  amostras). É reprodutível — o run arquivado de 40k dá 50,03%. Limitação
+  estrutural do vetor tabular sob ruído fora da distribuição de treino, a
+  reportar como achado, não a corrigir.
+- **AASIST** tem EER 2,60% (5º melhor) mas acurácia 94,72% (8º): os scores
+  saturam em 0,0099/0,9901 e o limiar de EER vai a 0,924. Com limiar ótimo
+  faria 97,32%. Sob o protocolo de limiar fixo 0,5 o número está correto —
+  é ressalva de texto, não retreino.
+
+### Pendências de artefato (não exigem retreino)
+
+- `predictions_robustness.csv` de **HuBERT/WavLM Original contém só o
+  cabeçalho**; os agregados por SNR existem, mas não são reverificáveis.
+- Os mesmos dois usam `bootstrap_unit = "sample"` enquanto os outros nove usam
+  `"cluster"` (183 clusters) — **os ICs não são comparáveis entre si**.
+- `history` truncado no `metrics.json` de **RawNet2 (17/100)** e **RawGAT-ST
+  (91/100)**: só o trecho pós-retomada é persistido, então as figuras de
+  convergência desses dois mostram um fragmento. A série completa está no
+  `run.log`.
+
+Os três são do runner/serialização, não do treino: bastam corrigir e
+reexecutar a avaliação sobre os `.pt`/`.keras` já salvos.
+
+### Complementos aplicados em 2026-08-06 (segunda rodada)
+
+**1. `global_clipnorm` do RawGAT-ST deixou de ser config morto.**
+`_build_paper_rawgat` compilava com o literal `global_clipnorm=0.7` enquanto o
+`registry.py::default_params` declarava `gradient_clip: 0.5` — o valor do
+registry nunca chegava ao otimizador. Agora é parâmetro real de
+`create_model`, com **0.5** nas três fontes, e foi adicionado ao whitelist de
+promoção do runner (`benchmarks/runner.py`, ramo `aasist`/`rawgatst`) — sem
+isso ele renasceria morto. O AASIST divide esse ramo mas não expõe o
+parâmetro; como a promoção é condicionada a `if key in train_config` e só o
+plano do RawGAT-ST declara a chave, o AASIST não é afetado.
+
+Nota de histórico: havia registro contraditório sobre esse clip — o
+`retrain_ajustado.sh` dizia "clip 1.0->0.7" e o registry, "clip 0.8->0.5".
+Ficou 0.5, o valor que o registry declara.
+
+**2. Guarda de colapso (`CollapseAbort`).**
+Nova em `app/domain/models/training/trainer.py`, ligada por padrão via
+`TrainingConfig.abort_on_collapse`. Aborta o treino quando o modelo **já
+esteve bom** (`val_accuracy >= 0.6`, o gatilho de armação) e depois caiu para
+o nível do acaso (`<= 0.51`) por `collapse_patience = 15` épocas seguidas, ou
+quando `val_loss` fica não-finito por `collapse_nan_patience = 3` épocas.
+
+Não é early stopping e não conflita com `fixed_epoch_budget`: o early stopping
+interrompe um modelo que ainda melhora devagar; esta guarda só dispara depois
+que o modelo virou palpite constante e não voltou. O melhor checkpoint é
+preservado (quem restaura continua sendo o `ResumableModelCheckpoint`), e o
+aborto entra no resultado do treino como `collapsed` / `collapse_reason` —
+sem isso um treino abortado passaria por treino curto qualquer no artefato.
+
+Validação contra as séries reais de `val_accuracy` dos 11 modelos do
+`clean_benchmark_15k` (simulação da lógica sobre os `history` gravados):
+
+| Modelo | Pior época | Maior sequência <= 0.51 | Resultado |
+| --- | ---: | ---: | --- |
+| Conformer | 0,5000 | **84** | dispara na época 31 — pouparia 69 épocas |
+| AASIST | 0,5316 | 0 | não dispara |
+| RawGAT-ST | 0,6168 | 0 | não dispara |
+| Hybrid CNN-Transformer | 0,6154 | 0 | não dispara |
+| MultiscaleCNN | 0,7438 | 0 | não dispara |
+| SpectrogramTransformer | 0,7926 | 0 | não dispara |
+| HuBERT Original | 0,8407 | 0 | não dispara |
+| WavLM Original | 0,9121 | 0 | não dispara |
+| RawNet2 | 0,9306 | 0 | não dispara |
+
+A separação é binária: os oito modelos saudáveis têm **zero** épocas no nível
+do acaso depois de armar, contra 84 consecutivas do Conformer. `patience = 15`
+é conservador de propósito — mesmo uma oscilação isolada não arma nada.
+
+### Correções das pendências de artefato (2026-08-06)
+
+Nenhuma exige retreino: os modelos `.pt`/`.keras` já treinados continuam
+válidos. O que estava errado era a gravação.
+
+**1. `predictions_robustness.csv` vazio em WavLM/HuBERT Original — causa raiz
+encontrada.** Não era o runner SSL gravando errado: ele gravava o arquivo
+correto e, três linhas depois, `benchmarks.report.write_all` — o writer
+CANÔNICO dos 11 modelos — regravava por cima. O writer lê
+`scores_robustness` do dicionário de resultados, e o runner SSL não colocava
+essa chave lá; resultado, um CSV só com cabeçalho. A prova está no schema do
+artefato final: `snr_db,sample_index,y_true,p_fake,y_pred,correct` é o do
+`report.py`, não o do runner (`snr_db,idx,y_true,p_fake`).
+
+Correções: (a) `scores_robustness` passou a entrar no dicionário de
+resultados — o que também alinha o `metrics.json` com os 9 modelos Keras, que
+já carregavam a chave; (b) `_write_predictions`, `_write_predictions_noisy` e
+`_write_robustness` foram REMOVIDAS do runner SSL. Escreviam um schema
+paralelo, eram sempre sobrescritas e criavam a ilusão de que o runner
+controlava esses arquivos — foi essa duplicação que escondeu o bug.
+
+**2. Bootstrap por amostra em vez de por cluster.** `evaluate_scores` já
+aceitava `cluster_ids`; o runner SSL nunca passava. Agora os `cluster_ids` do
+split de teste são extraídos em `_load_dataset` (antes de `data` ser solto
+para liberar RAM) e chegam às avaliações limpa e sob ruído. Com isso os IC
+95% de WavLM/HuBERT passam a ser por cluster, como nos outros nove — o
+bootstrap por amostra subestima a largura porque trata amostras do mesmo
+locutor/frase como independentes. Se os `cluster_ids` faltarem, o runner
+agora emite WARNING em vez de degradar em silêncio.
+
+**3. `provenance` ausente.** Era a única chave de proveniência faltando
+(`input_preparation` e `noise_protocol` já vinham — a leitura anterior de que
+faltavam os três estava errada, os campos apenas têm nomes diferentes dos do
+runner Keras). Passou a reaproveitar `benchmarks.runner::_architecture_provenance`,
+o mesmo builder do runner Keras, em vez de repetir literais — a duplicação já
+tinha deixado o rótulo do WavLM defasado uma vez (declarava `base` quando o
+runner treinava `base-plus`).
+
+**4. `history` truncado em retomadas.** `model.fit()` devolve apenas as épocas
+da execução corrente, então uma retomada via `BackupAndRestore` produz um
+histórico parcial: RawNet2 saiu com 17 de 100 épocas e RawGAT-ST com 91 —
+ambos treinaram as 100 (está nos `run.log`), mas as figuras de convergência
+mostram um fragmento e a "melhor época" lida do artefato sai errada.
+
+Novo callback `PersistentEpochHistory` (`trainer.py`): grava uma linha JSON
+por época indexada pela época ABSOLUTA e reconstrói a série inteira ao fim.
+O arquivo fica em `<arch>/models/epoch_history.jsonl`, **fora** do
+`backup_dir` — aquele diretório é apagado ao concluir o treino
+(`delete_checkpoint=True`) e levaria o histórico junto. A substituição só
+ocorre se a série reconstruída for pelo menos tão longa quanto a da execução
+corrente, então nunca encurta o histórico.
+
+Validado por simulação do cenário real do RawNet2 (83 épocas → queda →
+retomada na 84 → 100): 100/100 épocas, ordem absoluta preservada, valores da
+sessão 1 intactos, e métrica ausente numa época vira `NaN` sem deslocar as
+demais séries.
+
+> **Estes quatro conserta a GRAVAÇÃO, não os números.** As métricas de
+> WavLM/HuBERT no `clean_benchmark_15k` continuam válidas; o que faltava era
+> poder reverificá-las e comparar os ICs. Para materializar os artefatos
+> corrigidos basta reexecutar a avaliação sobre os `.pt` já salvos — não é
+> preciso retreinar.
+
+### Cobertura de testes das correções
+
+`tests/unit/test_resume_guards_and_artifacts.py` — 13 testes travando os
+quatro defeitos acima:
+
+- **`CollapseAbort`** (5): dispara no padrão exato do Conformer; NÃO dispara
+  num início lento (nunca armado — é a diferença para early stopping, e o que
+  protege o warmup de 3.000 passos); NÃO dispara numa queda isolada que se
+  recupera; pega `val_loss` não-finito; respeita `abort_on_collapse=False`.
+- **`PersistentEpochHistory`** (4): reconstrói 100/100 épocas no cenário real
+  do RawNet2 (83 → queda → retomada na 84); métrica ausente numa época vira
+  `NaN` sem deslocar as demais séries; regravar a mesma época é idempotente;
+  e o arquivo **não** cai dentro do `backup_dir` (que é apagado ao concluir).
+- **Artefatos** (2): `_write_arch_predictions_noisy_csv` escreve as linhas com
+  `scores_robustness` no dicionário e só o cabeçalho sem ela — o teste
+  reproduz o artefato defeituoso; e uma guarda por AST impede que os writers
+  paralelos do runner SSL sejam reintroduzidos.
+- **Sincronia** (2): valores iguais nas três fontes para RawGAT-ST e AASIST
+  (a guarda existente, `test_default_params_are_accepted_by_builder`, checa se
+  a CHAVE é aceita; esta checa se o VALOR bate), e `global_clipnorm` presente
+  tanto no `create_model` quanto no whitelist de promoção do runner.
+
+---
+
+## 2026-08-09 — fidelidade do artefato (auditoria do `clean_benchmark_15k`)
+
+Seis defeitos encontrados relendo o run já concluído. **Nenhum altera métrica
+publicada**; todos alteram o que se pode AFIRMAR a partir dela. São de gravação
+e de análise, não de treino — as duas pendências de retreino (Conformer e
+RawGAT-ST) continuam sendo as da seção de 2026-08-06.
+
+### P0 — a janela do SSL declarada não era a usada
+
+`scripts/benchmark/run_wavlm_original_benchmark.py` gravava o literal
+`[16000, 1]` em **quatro** pontos (sidecar `_config.json`,
+`dataset.prepared_shape`, `architectures[].input_shape` e
+`input_preparation.prepared_shape`) enquanto o run usava `--target-samples`,
+cujo default era 64.000. O `run.log` do `clean_benchmark_15k` registra
+`target_samples: 64000`: os artefatos declaram 1 s para modelos treinados com
+4 s.
+
+A inferência **nunca** foi afetada — `TorchSSLOriginalModel` resolve a janela
+pelo `embedding_config` gravado dentro do `.pt`
+(`app/domain/models/inference/ssl_head.py`), e lá o valor sempre foi o real. O
+que estava errado era a metadata de que sai a seção de métodos. (O model card
+em Markdown não imprimia a janela de forma alguma — passou a imprimir, junto
+com a estratégia de recorte.)
+
+`crop_strategy` também mentia: dizia `"center"` de forma fixa, mas
+`_fit_length` só recorta quando o clipe é MAIOR que a janela. Com clipe de
+48.000 e janela de 64.000 ele **repete** o sinal (tiling).
+
+| Item | Antes | Depois |
+| --- | --- | --- |
+| Literais `[16000, 1]` | 4 ocorrências fixas | `[int(args.target_samples), 1]` |
+| `--target-samples` (default) | 64000 | **48000** |
+| `crop_strategy` | sempre `"center"` | `identity` / `center_crop` / `tile_repeat` |
+| Tiling | silencioso | `tiled_padding_samples` + `tiled_padding_ratio` + WARNING |
+
+**Por que 48.000.** O comentário que justificava 64.000 falava em "1 s central
+dos 5 s" — escrito quando os clipes tinham 5 s. O dataset canônico atual tem
+**3 s** (48.000 @16 kHz), então 64.000 fazia 25% de cada entrada ser repetição
+do próprio primeiro segundo, em treino e em teste. 48.000 é o clipe inteiro:
+nem recorte, nem repetição, e é o que os espectrais também veem.
+
+> Reavaliar WavLM/HuBERT com a janela nova **exige recomputar os embeddings**
+> (o backbone congelado vê uma entrada diferente). Não é retreino de backbone,
+> mas também não é só regravar JSON.
+
+### P1 — `converged` não enxerga colapso
+
+`converged` deriva só da AUC/acurácia do **checkpoint selecionado**, então
+descreve o artefato promovido, não o treino. O Conformer colapsou da época ~17
+à 100 e saiu `converged: True`.
+
+Novo `benchmarks/stability.py::analyze_training_stability`: aplica à série
+completa o MESMO critério do `CollapseAbort` que já roda durante o treino (um
+teste trava a igualdade dos defaults, para que o veredito pós-hoc não possa
+divergir da guarda). Grava `training_stability` no `metrics.json` dos dois
+runners, com `status` em `stable` / `collapsed` / `recovered_collapse` /
+`diverged_nonfinite` / `unknown`. `convergence_criteria` ganhou
+`scope: "checkpoint_selecionado"` para não sugerir mais do que mede.
+
+Aplicado ao run existente, separa exatamente o caso conhecido:
+
+| Modelo | `converged` | `training_stability.status` |
+| --- | --- | --- |
+| Conformer | `True` | **`collapsed`** (época 17→100, 84 épocas no acaso) |
+| RawNet2 | `True` | `stable` + aviso "17 épocas contra orçamento de 100" |
+| RawGAT-ST | `True` | `stable` + aviso "91 épocas contra orçamento de 100" |
+| Os outros 6 neurais | `True` | `stable` |
+| SVM / RandomForest | `True` | `unknown` (sem histórico — honesto) |
+
+Os avisos de RawNet2/RawGAT-ST são o histórico truncado por retomada já
+descrito em 2026-08-06; o `PersistentEpochHistory` impede o caso novo, e este
+aviso é a rede de segurança para quando ele ainda assim aparecer.
+
+### P1 — a latência mistura três runtimes
+
+O escopo oficial mede latência em **Keras/TF** (7 neurais), **PyTorch**
+(WavLM/HuBERT Original) e **scikit-learn** (SVM/RandomForest). A diferença
+entre pilhas é da mesma ordem da diferença entre arquiteturas — WavLM, com
+94,8 M de parâmetros, mede 17,4 ms contra 52,9 ms do Conformer, de 28,6 M —, e
+a figura de tradeoff apresentava as três na mesma escala sem ressalva.
+
+`measure_latency_profile` passou a receber `runtime=` e gravar
+`runtime`/`runtime_version`/`device`/`cross_runtime_comparable: false`. O
+runner SSL passou a emitir o `latency_profile` completo (antes só o escalar).
+Em `consolidate_results.py`, a figura de tradeoff usa **marcador por runtime**
+(círculo/quadrado/triângulo) além da cor por família, com legenda própria e a
+ressalva no rodapé.
+
+### P1 — sem teste pareado, ICs sobrepostos eram lidos como empate
+
+Conformer (EER 0,43% [0,14; 1,00]) e Hybrid CNN-Transformer (0,43%
+[0,00; 0,74]) têm ICs quase coincidentes. Concluir "sem diferença" daí é
+inválido: os dois veem as MESMAS 1.382 amostras, e o que decide é a
+distribuição da **diferença**, não a de cada um.
+
+Novo `benchmarks/significance.py`:
+
+- **`mcnemar_test`** — exato (binomial), sobre as decisões duras no limiar fixo
+  do protocolo. A forma qui-quadrado é ruim justamente quando o total
+  discordante é pequeno, que é o caso entre os modelos do topo.
+- **`paired_bootstrap_test`** — IC 95% e p-valor da diferença de EER/AUC,
+  reamostrando os mesmos índices para os dois modelos.
+- **`holm_adjust`** — Holm-Bonferroni. Comparar 11 modelos par a par são 55
+  testes; sem correção, ~3 saem "significativos" a 5% só por acaso.
+- **`compare_models`** — matriz de todos os pares, com p bruto e ajustado.
+
+Ambos os testes agrupam/reamostram por **cluster** quando os IDs estão
+disponíveis. Para isso, `dataset.test_cluster_ids` passou a ser persistido no
+`results.json` dos dois runners — os IDs já eram usados nos IC por modelo, mas
+não eram gravados. Runs anteriores caem para amostra e o relatório declara o
+otimismo resultante em `protocol.warning`.
+
+`consolidate_results.py` gera `benchmark_significance.json` por padrão
+(`--no-significance` desliga, `--significance-bootstrap N` ajusta as
+reamostragens) e imprime aviso quando algum modelo tem
+`training_stability.stable == false`.
+
+### P2 — declarações de protocolo que faltavam
+
+**Assimetria de ajuste.** Os clássicos ajustam em **treino+validação** (25.780
+amostras) porque não têm checkpoint a selecionar — a busca de hiperparâmetros
+sai de CV interna sobre o treino limpo. Os neurais ajustam só no treino
+(24.324, já com a cópia ruidosa) e reservam a validação para escolher a época.
+Não favorece nenhum lado (os clássicos veem MAIS dados), mas o `fit_samples`
+de 25.780 contra 24.324 parecia divergência de dados. Ambos os caminhos agora
+declaram `fit_splits`, `validation_role` e `val_samples` no `fit_strategy`.
+
+**`codec_robustness`.** É opt-in via `--codec-eval` e está implementado
+(`benchmarks/perturbations.py`, round-trip MP3/Opus com ffmpeg), mas um `{}`
+vazio não distinguia "não pedido" de "pedido e nada encontrado" de "ignorado
+por domínio incompatível" — no `clean_benchmark_15k` a primeira leitura era a
+verdadeira. Novo campo irmão `codec_eval_status` com `requested` e `status`
+(`not_requested` / `ok` / `partial` / `skipped` / `not_supported`). O runner
+SSL, que não implementa a flag, declara `not_supported` em vez de omitir a
+chave.
+
+### O que isto NÃO resolve
+
+A **repetição de sementes** continua em `n_seeds: 1` (`benchmarks/config.py`).
+O IC 95% e o teste pareado medem variância de AMOSTRAGEM DO TESTE; nenhum dos
+dois mede variância de TREINO. Para isso é preciso rodar cada arquitetura N
+vezes — o suporte existe (`BenchmarkConfig.n_seeds`), o custo é que não cabia
+no orçamento de GPU do run. Fica declarado como limitação, não como resolvido.
+
+### Cobertura de testes
+
+`tests/unit/test_benchmark_reporting_fidelity.py` — 32 testes:
+
+- **Janela SSL** (6): as três estratégias de `_input_preparation_block`;
+  `_fit_length` de fato repete o começo do clipe quando a janela é maior (a
+  cauda é comparada ao início, elemento a elemento); o default de
+  `--target-samples` lido por AST; e uma guarda que falha se qualquer
+  `[16000, 1]` voltar ao payload.
+- **Estabilidade** (8): o padrão exato do Conformer; treino saudável; início
+  lento que nunca arma a guarda; colapso com recuperação distinguido do
+  irreversível; `val_loss` não-finito; histórico truncado virando aviso;
+  clássico sem histórico devolvendo `unknown` em vez de fingir veredito; e a
+  igualdade dos defaults com o `CollapseAbort`.
+- **Latência** (2): o perfil declara runtime e `cross_runtime_comparable`.
+- **Significância** (10): McNemar ignora acertos em comum, detecta dominância
+  sistemática e produz p MAIOR por cluster que por amostra (o otimismo que o
+  bootstrap por amostra introduzia); bootstrap pareado não vê diferença entre
+  um modelo e ele mesmo, separa bom de ruim, e nunca devolve p=0; Holm é
+  monótono, limitado a 1 e preserva a ordem de entrada; a matriz cobre C(n,2)
+  pares. Inclui a regressão do arredondamento — `round(2.2e-11, 6)` = 0.0
+  fazia o p ajustado sair MENOR que o bruto, e por isso p-valores passaram a
+  ser arredondados por algarismos significativos.
+- **Declarações** (6): `fit_splits` nos dois caminhos, `codec_eval_status`,
+  `test_cluster_ids` persistido nos dois runners, a sanidade numérica do
+  binomial exato contra valores calculados à mão, e a guarda de
+  **fingerprint**: a comparação pareada recusa modelos vindos de conjuntos de
+  teste diferentes (`test_split_sha256` divergente) em vez de produzir uma
+  saída com cara de válida — é o erro que misturar os runs de 15k e 40k
+  cometeria.
+
+### Dois testes desatualizados, corrigidos de passagem
+
+Ambos já falhavam na branch **antes** destas correções, por trabalho anterior
+que mexeu no código sem atualizar a guarda:
+
+- `tests/unit/test_benchmark.py::test_neural_benchmark_plan_uses_curated_hyperparameters`
+  ainda exigia `learning_rate == 1e-4` para o Conformer, valor que o retune de
+  2026-08-06 substituiu por 5e-5. Atualizado para 5e-5 e ampliado com
+  `warmup_steps == 3000` e `decay_steps == 76100`, que a mesma decisão fixou e
+  ninguém checava.
+- `tests/unit/test_test_documentation.py::test_test_documentation_counts_match_tree`
+  compara a contagem de arquivos de teste com
+  `docs/development/quality-and-testing.md`. A branch tinha adicionado dois
+  arquivos de unit sem atualizar o doc (61 → 63); com este, 64. Doc corrigido
+  para 64 unit / **83** no total.

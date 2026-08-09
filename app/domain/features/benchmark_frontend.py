@@ -271,8 +271,17 @@ def log_mel_batch(
     hop_length = max(64, int(np.ceil(flat.shape[1] / max(time_steps, 1))))
     n_fft = resolve_n_fft(hop_length, n_fft)
 
-    specs = []
-    for y in flat:
+    # AJUSTE 2026-07-31: era `specs = []` + `specs.append(...)` por amostra e
+    # `np.asarray(specs, ...)` no final — para lotes grandes (o treino do
+    # benchmark converte o split inteiro de uma vez, nao em chunks) a lista de
+    # arrays soltos e a copia final materializada ficam vivas ao mesmo tempo,
+    # dobrando o pico bem no fim da funcao. Confirmado no SpectrogramTransformer
+    # (grade 300x128 = 38.400 floats/amostra, a maior entre as arquiteturas
+    # spectrogram): o pico cruzava os 24 GB do container exatamente nesse
+    # `np.asarray` final e o processo era morto pelo OOM-killer sem traceback
+    # nenhum. Escrever direto num array pre-alocado elimina essa duplicacao.
+    out = np.empty((len(flat), time_steps, feature_dim), dtype="float32")
+    for i, y in enumerate(flat):
         mel = librosa.feature.melspectrogram(
             y=y.astype("float32"),
             sr=sample_rate,
@@ -283,8 +292,8 @@ def log_mel_batch(
         )
         mel_db = librosa.power_to_db(mel + 1e-10, ref=np.max).T
         mel_db = _resize_time_axis(mel_db[np.newaxis, ...], max(1, time_steps))[0]
-        specs.append(mel_db[:, :feature_dim])
-    return normalize_per_sample(np.asarray(specs, dtype="float32"))
+        out[i] = mel_db[:, :feature_dim]
+    return normalize_per_sample(out)
 
 
 def log_mel_single(

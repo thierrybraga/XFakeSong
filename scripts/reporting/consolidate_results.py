@@ -165,8 +165,16 @@ def collect_rows(paths: List[str], prefer_last: bool = False):
                 "min_tdcf": clean.get("min_tdcf"),
                 "f1": clean.get("f1"),
                 "latency": eff.get("latency_ms"),
+                # A latência de runtimes diferentes não é comparável entre si
+                # (Keras/TF x PyTorch x sklearn). Propagado para que a figura de
+                # tradeoff marque a diferença em vez de sugerir uma escala só.
+                "latency_runtime": (
+                    (eff.get("latency_profile") or {}).get("runtime") or "unknown"
+                ),
+                "latency_profile": eff.get("latency_profile") or {},
                 "size": eff.get("size_mb"),
                 "params": eff.get("params"),
+                "training_stability": a.get("training_stability") or {},
                 "robustness": a.get("robustness", {}) or {},
                 "best_epoch": _best_epoch(a.get("history")),
                 "best_val": _best_val(a.get("history")),
@@ -190,6 +198,11 @@ def collect_rows(paths: List[str], prefer_last: bool = False):
                     "split_source": dataset_info.get("split_source"),
                     "split_overlap_audit": dataset_info.get("split_overlap_audit"),
                     "provenance_overlap_audit": dataset_info.get("provenance_overlap_audit"),
+                    # Identidade do conjunto de teste. A comparação pareada só
+                    # é válida se for a MESMA em todos os modelos — as variantes
+                    # de 15k e 40k têm fingerprints distintos e não podem cair
+                    # na mesma consolidação.
+                    "test_split_sha256": dataset_info.get("test_split_sha256"),
                 },
             }
             # Se o mesmo modelo aparecer em vários runs, o padrão mantém o de
@@ -205,6 +218,10 @@ def collect_rows(paths: List[str], prefer_last: bool = False):
                 extras[slug] = {
                     "scores_clean": a.get("scores_clean"),
                     "y_test": y_test,
+                    # Unidade de reamostragem do teste, para o teste PAREADO
+                    # entre modelos. Runs anteriores a 2026-08-09 não gravam a
+                    # chave; nesse caso a comparação cai para amostra e declara.
+                    "test_cluster_ids": dataset_info.get("test_cluster_ids"),
                     "history": a.get("history"),
                     "display": display,
                 }
@@ -381,29 +398,66 @@ def fig_tdcf(rows, out: Path):
     plt.close(fig)
 
 
+#: Marcador por runtime da medição de latência. O eixo x mistura pilhas de
+#: execução diferentes — Keras/TF, PyTorch e scikit-learn —, e a diferença entre
+#: elas é da mesma ordem da diferença entre arquiteturas. Colorir por família e
+#: marcar por runtime deixa o confundidor visível em vez de implícito.
+_RUNTIME_MARKERS = {
+    "keras": ("o", "Keras/TF"),
+    "pytorch": ("s", "PyTorch"),
+    "sklearn": ("^", "scikit-learn"),
+    "unknown": ("X", "não declarado"),
+}
+
+
 def fig_accuracy_latency_tradeoff(rows, out: Path):
     plt = _setup_mpl()
 
     fig, ax = plt.subplots(figsize=(10.5, 6.5))
+    seen_runtimes: list[str] = []
     for family, color in _FAMILY_COLORS.items():
         subset = [r for r in rows if _row_family(r) == family]
         if not subset:
             continue
-        lat = [_metric(r, "latency") for r in subset]
-        acc = [_metric(r, "accuracy", 100.0) for r in subset]
-        sizes = [max(50, min(450, (_metric(r, "size") or 1) * 1.2)) for r in subset]
-        ax.scatter(lat, acc, s=sizes, color=color, alpha=0.75,
-                   edgecolor="white", linewidth=0.8, label=family)
-        for r, x, y in zip(subset, lat, acc):
-            ax.annotate(r["model"], (x, y), xytext=(4, 4),
-                        textcoords="offset points", fontsize=8)
+        labelled = False
+        for runtime, (marker, _) in _RUNTIME_MARKERS.items():
+            group = [
+                r
+                for r in subset
+                if (r.get("latency_runtime") or "unknown") == runtime
+            ]
+            if not group:
+                continue
+            if runtime not in seen_runtimes:
+                seen_runtimes.append(runtime)
+            lat = [_metric(r, "latency") for r in group]
+            acc = [_metric(r, "accuracy", 100.0) for r in group]
+            sizes = [
+                max(50, min(450, (_metric(r, "size") or 1) * 1.2)) for r in group
+            ]
+            ax.scatter(
+                lat, acc, s=sizes, color=color, alpha=0.75, marker=marker,
+                edgecolor="white", linewidth=0.8,
+                label=family if not labelled else None,
+            )
+            labelled = True
+            for r, x, y in zip(group, lat, acc):
+                ax.annotate(r["model"], (x, y), xytext=(4, 4),
+                            textcoords="offset points", fontsize=8)
     ax.set_xlabel("Latência de inferência (ms)")
     ax.set_ylabel("Acurácia no conjunto limpo (%)")
     ax.set_title("Trade-off entre acurácia, latência e tamanho do artefato")
+    caveat = "Tamanho da bolha proporcional ao artefato persistido (MB)"
+    if len(seen_runtimes) > 1:
+        nomes = ", ".join(_RUNTIME_MARKERS[rt][1] for rt in seen_runtimes)
+        caveat += (
+            f"\nLatências medidas em runtimes distintos ({nomes}) — "
+            "comparáveis DENTRO de cada marcador, não entre eles"
+        )
     ax.text(
         0.99,
         0.02,
-        "Tamanho da bolha proporcional ao artefato persistido (MB)",
+        caveat,
         transform=ax.transAxes,
         ha="right",
         va="bottom",
@@ -411,7 +465,29 @@ def fig_accuracy_latency_tradeoff(rows, out: Path):
         color="#444444",
     )
     ax.grid(alpha=0.25)
-    ax.legend(title="Família", fontsize=8, title_fontsize=9)
+    handles, labels = ax.get_legend_handles_labels()
+    family_legend = ax.legend(
+        handles, labels, title="Família", fontsize=8, title_fontsize=9,
+        loc="lower left",
+    )
+    if len(seen_runtimes) > 1:
+        ax.add_artist(family_legend)
+        from matplotlib.lines import Line2D
+
+        ax.legend(
+            handles=[
+                Line2D(
+                    [], [], color="#666666", linestyle="none",
+                    marker=_RUNTIME_MARKERS[rt][0], markersize=7,
+                    label=_RUNTIME_MARKERS[rt][1],
+                )
+                for rt in seen_runtimes
+            ],
+            title="Runtime da medição",
+            fontsize=8,
+            title_fontsize=9,
+            loc="upper left",
+        )
     fig.tight_layout()
     fig.savefig(out / "benchmark_accuracy_latency_tradeoff.png", dpi=180)
     plt.close(fig)
@@ -655,6 +731,73 @@ def generate_figures(rows, extras, fig_dir: Path):
     fig_confusion_matrices(rows, extras, fig_dir)
 
 
+def build_significance_report(rows, extras, n_bootstrap: int = 1000):
+    """Comparações pareadas entre todos os modelos com scores disponíveis.
+
+    IC 95% individuais que se sobrepõem NÃO decidem diferença quando os modelos
+    são avaliados nas mesmas amostras — é o caso de Conformer x Hybrid
+    CNN-Transformer no `clean_benchmark_15k`. Ver benchmarks/significance.py.
+    """
+    from benchmarks.significance import compare_models
+
+    # Comparar modelos avaliados em conjuntos de teste DIFERENTES é o erro que
+    # este relatório mais convida — as variantes de 15k e 40k do dataset têm
+    # fingerprints distintos e os números não são misturáveis. Sem esta guarda,
+    # a saída pareceria válida.
+    fingerprints = {
+        (r.get("dataset") or {}).get("test_split_sha256")
+        for r in rows
+        if (r.get("dataset") or {}).get("test_split_sha256")
+    }
+    if len(fingerprints) > 1:
+        return {
+            "status": "skipped",
+            "reason": (
+                "os modelos vêm de conjuntos de teste diferentes "
+                f"({len(fingerprints)} fingerprints distintos) — a comparação "
+                "pareada exige as MESMAS amostras nos dois lados"
+            ),
+            "test_split_sha256": sorted(fingerprints),
+        }
+
+    y_test = None
+    cluster_ids = None
+    models = {}
+    for row in rows:
+        extra = extras.get(row["slug"]) or {}
+        scores = extra.get("scores_clean")
+        if not scores:
+            continue
+        if y_test is None:
+            y_test = extra.get("y_test")
+            cluster_ids = extra.get("test_cluster_ids")
+        if y_test is None or len(scores) != len(y_test):
+            continue
+        models[row["model"]] = {"scores": scores}
+
+    if len(models) < 2 or y_test is None:
+        return {
+            "status": "skipped",
+            "reason": "menos de dois modelos com scores alinhados ao y_test",
+        }
+    if cluster_ids is not None and len(cluster_ids) != len(y_test):
+        cluster_ids = None
+    report = compare_models(
+        y_test,
+        models,
+        threshold=rows[0].get("decision_threshold", 0.5),
+        cluster_ids=cluster_ids,
+        n_bootstrap=n_bootstrap,
+    )
+    if cluster_ids is None:
+        report["protocol"]["warning"] = (
+            "sem test_cluster_ids no results.json: reamostragem por AMOSTRA. "
+            "Amostras da mesma frase não são independentes, então o p-valor é "
+            "otimista. Runs a partir de 2026-08-09 gravam a chave."
+        )
+    return report
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Consolida resultados → resumo + figuras do TCC")
     p.add_argument("inputs", nargs="+",
@@ -665,6 +808,21 @@ def main() -> int:
                    help="copia as figuras para o artigo (default: data/results/paper/figures)")
     p.add_argument("--no-figures", action="store_true",
                    help="gera só o benchmark_summary.json")
+    p.add_argument(
+        "--no-significance",
+        action="store_true",
+        help=(
+            "pula as comparações pareadas entre modelos (McNemar exato + "
+            "bootstrap pareado). O default é gerá-las: IC individuais "
+            "sobrepostos não decidem diferença em avaliação pareada"
+        ),
+    )
+    p.add_argument(
+        "--significance-bootstrap",
+        type=int,
+        default=1000,
+        help="reamostragens do bootstrap pareado (default: 1000)",
+    )
     p.add_argument(
         "--prefer-last",
         action="store_true",
@@ -692,6 +850,29 @@ def main() -> int:
     missing = [k for k in MODEL_ORDER if k not in {r['key'] for r in rows}]
     if missing:
         print(f"   AVISO: faltando {missing} (o TCC espera 11 modelos).")
+
+    unstable = [
+        (r["model"], (r.get("training_stability") or {}).get("status"))
+        for r in rows
+        if (r.get("training_stability") or {}).get("stable") is False
+    ]
+    if unstable:
+        print("   AVISO: treino instável em " + ", ".join(
+            f"{m} ({s})" for m, s in unstable
+        ) + " — ver training_stability no metrics.json.")
+
+    if not args.no_significance:
+        significance = build_significance_report(
+            rows, extras, n_bootstrap=args.significance_bootstrap
+        )
+        sig_path = out / "benchmark_significance.json"
+        sig_path.write_text(
+            json.dumps(significance, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        n_pairs = len(significance.get("pairs", []))
+        print(f"-> {sig_path} ({n_pairs} comparações pareadas)")
+        if significance.get("protocol", {}).get("warning"):
+            print(f"   AVISO: {significance['protocol']['warning']}")
 
     if not args.no_figures:
         fig_dir = out / "figures"
