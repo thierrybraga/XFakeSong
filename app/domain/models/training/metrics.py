@@ -286,25 +286,47 @@ class MetricsCalculator:
             fpr, tpr, thresholds = roc_curve(y_true, y_scores)
             fnr = 1 - tpr
 
+            # sklearn >= 1.3 devolve `thresholds[0] = inf` (antes era
+            # max(score)+1). Esse infinito entrava no eixo x do interp1d e
+            # produzia NaN, o brentq abortava e TODO EER do projeto caía no
+            # fallback — o caminho de interpolação nunca executava. Descartar os
+            # thresholds não finitos restaura a interpolação; o ponto removido é
+            # o extremo "nada classificado como positivo", que não carrega
+            # informação sobre o cruzamento FPR=FNR.
+            finite = np.isfinite(thresholds)
+            fpr_f, fnr_f, thr_f = fpr[finite], fnr[finite], thresholds[finite]
+
             # Interpolação para encontrar interseção FPR = FNR
             try:
+                if thr_f.size < 2:
+                    raise ValueError("thresholds finitos insuficientes")
+
                 from scipy.interpolate import interp1d
                 from scipy.optimize import brentq
 
-                fpr_interp = interp1d(thresholds[::-1], fpr[::-1],
+                # roc_curve devolve thresholds DECRESCENTES; interp1d exige x
+                # crescente, daí o [::-1].
+                fpr_interp = interp1d(thr_f[::-1], fpr_f[::-1],
                                       bounds_error=False, fill_value=(1, 0))
-                fnr_interp = interp1d(thresholds[::-1], fnr[::-1],
+                fnr_interp = interp1d(thr_f[::-1], fnr_f[::-1],
                                       bounds_error=False, fill_value=(0, 1))
 
-                # Encontrar threshold onde FPR(t) == FNR(t)
-                t_min, t_max = thresholds.min(), thresholds.max()
+                # Encontrar threshold onde FPR(t) == FNR(t). No menor threshold
+                # FPR=1 e FNR=0 (diferença > 0); no maior, o oposto — então há
+                # troca de sinal e o brentq tem raiz garantida no intervalo.
                 eer_threshold = brentq(
                     lambda t: float(fpr_interp(t)) - float(fnr_interp(t)),
-                    t_min, t_max
+                    float(thr_f.min()), float(thr_f.max())
                 )
                 eer = float(fpr_interp(eer_threshold))
-            except Exception:
-                # Fallback: ponto mais próximo onde |FPR - FNR| é mínimo
+            except Exception as exc:
+                # Fallback: ponto mais próximo onde |FPR - FNR| é mínimo.
+                # Registrado em debug para que uma nova quebra da interpolação
+                # (como a do `inf` acima) não volte a passar despercebida.
+                self.logger.debug(
+                    "EER por interpolação falhou (%s); usando o ponto de "
+                    "|FPR-FNR| mínimo", exc
+                )
                 diff = np.abs(fpr - fnr)
                 eer_idx = np.argmin(diff)
                 eer = float((fpr[eer_idx] + fnr[eer_idx]) / 2)

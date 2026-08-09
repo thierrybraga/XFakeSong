@@ -1,28 +1,36 @@
 # Preset de RETREINO dos modelos ajustados (retune).
 #
 # Contém apenas os modelos que receberam ajuste de hiperparâmetros após o
-# diagnóstico do run clean_benchmark_full_20260626. Os demais (Conformer,
-# HuBERT, SpectrogramTransformer, WavLM, RawNet2, Sonic Sleuth) foram mantidos
-# e NÃO precisam de retreino.
+# diagnóstico do run `clean_benchmark_15k` (2026-08-06). Os outros nove do
+# escopo oficial foram auditados e NÃO precisam de retreino — as métricas
+# deles foram recalculadas a partir dos `predictions_clean.csv` e conferem.
 #
-# Mapa diagnóstico -> ajuste em docs/evaluation/retraining-adjustments.md
+# Mapa diagnóstico -> ajuste em docs/evaluation/retraining-adjustments.md,
+# seção "2026-08-06".
 
 family: retune-official
 scope: official
 models:
-  - RawGAT-ST              # overfitting/divergência: LR 1e-4->5e-5, clip 1.0->0.7, dropout/L2/aug+
-  - AASIST                 # subajuste: LR 1e-4->3e-4, weight_decay 0.01->1e-3, L2-, aug+
-  - Hybrid CNN-Transformer # robustez moderada: dropout/stochastic-depth/aug+
-  - MultiscaleCNN          # NaN inicial: clipnorm=1.0 no Adam
-  - RandomForest           # overfit (train=1.0): grid regularizado
-  - SVM                    # robustez: retreino com features aumentadas por ruído
-# Dataset canonico: data/datasets/ (raiz consolidada em 2026-07-14; app/datasets foi descontinuado).
-dataset: data/datasets/benchmark_dataset.npz
-output_dir: data/results/retune_ajustado
+  # colapso irreversível: divergiu na época ~14 para loss=ln 2 / acc=0.500 e
+  # ficou morto até a 100; o número publicado vem do checkpoint da época 10.
+  # Ajuste: LR 1e-4->5e-5, warmup 1500->3000, decay_steps 50k->76.100.
+  - Conformer
+  # sobreajuste (o retune de 2026-07-02 não resolveu): treino 0,998 vs val
+  # 0,85; min t-DCF 0,3149, abaixo de SVM/RandomForest.
+  # Ajuste: dropout 0.35->0.5, l2 1e-3->3e-3, decay_steps 100k->152.100.
+  - RawGAT-ST
+# Dataset: a MESMA variante do run diagnosticado. As duas variantes têm
+# conjuntos de teste diferentes — retreinar sobre o 40k produziria números
+# que não podem entrar na mesma consolidação. Ver data/results/paper/README.md.
+dataset: data/datasets/benchmark_dataset_15k.npz
+output_dir: data/results/retune_ajustado_20260806
 models_dir: data/models
 epochs: 100
 batch_size: 32
 device_profile: gpu
 latency_runs: 30
-snr: [30, 20, 10]
+# Avaliacao: 30/20/10 casam com o augmentation de treino (condicao
+# CASADA) e 5 dB fica FORA do treino — o unico nivel que mede
+# generalizacao a ruido. Ver docs/evaluation/benchmark.md.
+snr: [30, 20, 10, 5]
 optimize_hyperparameters: true

@@ -35,16 +35,25 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
-DATASET="${DATASET:-data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz}"
+# ATUALIZADO 2026-08-06: o default apontava para
+# `benchmark_audio_raw_balanced_15k_confirmatory_v2.npz`, dataset ja APAGADO
+# (atalho de fonte de 87,6%). O retreino tem de rodar sobre a MESMA variante do
+# run diagnosticado, senao o conjunto de teste muda e o resultado nao entra na
+# mesma consolidacao.
+DATASET="${DATASET:-data/datasets/benchmark_dataset_15k.npz}"
 STAMP="$(date +%Y%m%d)"
 OUT="data/results/retune_ajustado_${STAMP}"
 EPOCHS=100
-SNR="30 20 10"
-# 480min: AASIST/RawGAT-ST levam ~1.3min/epoca * 100 epocas; reserve margem de execução so de
-# treino; sem este valor explicito, run_models_sequential.py usa o default
-# de 60min e o modelo estoura o timeout antes de terminar (visto em 2026-07-01
-# com AASIST: timeout aos 43 epocas, sem artefato salvo).
-TIMEOUT_MIN=480
+# 5 dB e o nivel NAO VISTO no treino — a coluna que mede generalizacao a
+# ruido. Estava faltando aqui enquanto o protocolo do benchmark ja o exigia.
+SNR="30 20 10 5"
+# TIMEOUT_MIN vazio = derivado por arquitetura a partir do custo estimado
+# (planning.EXPECTED_TRAINING_HOURS, fator 3x). O valor fixo anterior (480min)
+# MATARIA o RawGAT-ST: no clean_benchmark_15k ele levou 26,9 h (1.613 min).
+# Defina TIMEOUT_MIN=<minutos> no ambiente para forcar um teto.
+TIMEOUT_MIN="${TIMEOUT_MIN:-}"
+TIMEOUT_FLAG=()
+[[ -n "${TIMEOUT_MIN}" ]] && TIMEOUT_FLAG=("--timeout-min" "${TIMEOUT_MIN}")
 SPEAKER_SPLIT_FLAG=()
 SCOPE_FLAGS=()
 
@@ -54,23 +63,23 @@ if [[ ! -f "${DATASET}" ]]; then
   exit 1
 fi
 
-# Modelos ajustados (ver configs/training/retune_ajustado.yaml)
+# Modelos ajustados (ver configs/training/retune_ajustado.yaml).
+# ATUALIZADO 2026-08-06 para o diagnostico do run `clean_benchmark_15k`: os
+# outros nove do escopo oficial foram auditados e NAO precisam de retreino.
 MODELS=(
+  "Conformer"
   "RawGAT-ST"
-  "AASIST"
-  "Hybrid CNN-Transformer"
-  "MultiscaleCNN"
-  "RandomForest"
-  "SVM"
 )
 
 for arg in "$@"; do
   case "$arg" in
     --neural-only)
-      MODELS=("RawGAT-ST" "AASIST" "Hybrid CNN-Transformer" "MultiscaleCNN")
+      MODELS=("Conformer" "RawGAT-ST")
       ;;
-    --tcc-pending)
-      MODELS=("RawGAT-ST" "AASIST" "WavLM Original" "HuBERT Original")
+    --legacy-20260626)
+      # Recorte do diagnostico ANTERIOR (clean_benchmark_full_20260626),
+      # mantido so para reproduzir aquele retreino.
+      MODELS=("RawGAT-ST" "AASIST" "Hybrid CNN-Transformer" "MultiscaleCNN" "RandomForest" "SVM")
       ;;
     --extended)
       MODELS=("Ensemble" "EfficientNet-LSTM")
@@ -95,7 +104,7 @@ python scripts/benchmark/run_models_sequential.py \
   --epochs "${EPOCHS}" \
   --snr ${SNR} \
   --device-profile gpu \
-  --timeout-min "${TIMEOUT_MIN}" \
+  "${TIMEOUT_FLAG[@]}" \
   "${SCOPE_FLAGS[@]}" \
   "${SPEAKER_SPLIT_FLAG[@]}" \
   --resume
@@ -103,8 +112,8 @@ python scripts/benchmark/run_models_sequential.py \
 echo
 echo ">> Retreino concluído. Resultados em ${OUT}"
 echo ">> Próximos passos:"
-echo "   1) Comparar métricas:  python scripts/reporting/consolidate_results.py --results ${OUT}"
-echo "   2) Validar artefatos:  python scripts/reporting/validate_artifacts.py --results ${OUT}"
-echo "   3) Sincronizar p/ app: python scripts/reporting/sync_completed_benchmark_artifacts.py --results ${OUT}"
+echo "   1) Comparar métricas:  python scripts/reporting/consolidate_results.py ${OUT}"
+echo "   2) Validar artefatos:  python scripts/reporting/validate_artifacts.py --results-dir ${OUT}"
+echo "   3) Sincronizar p/ app: python scripts/reporting/sync_completed_benchmark_artifacts.py --summary ${OUT}/run_summary.json"
 echo "   (sincronize apenas se as métricas melhorarem em relação ao baseline,"
 echo "    com atenção especial à robustez a 10 dB)"

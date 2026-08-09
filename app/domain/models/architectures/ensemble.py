@@ -768,7 +768,13 @@ def _create_ensemble_adaptive(
       - embedding (256-dim) para calculo dos pesos adaptativos
       - score parcial (probabilidade) para fusao ponderada
 
-    Esta e a arquitetura que alcancou EER=3,6% e acuracia=96,4% no TCC.
+    NAO HA RESULTADO VALIDO PARA ESTA VARIANTE. O numero que existia aqui
+    (EER=3,6% / acuracia=96,4%, commit 3130666, 2026-04-12) foi medido sobre o
+    dataset anterior ao protocolo atual (speaker_x_sentence_double_disjoint_
+    block_diagonal) -- o mesmo dataset com atalho de fonte de 87,6% ja
+    invalidado e apagado do disco (ver docs/data/benchmark-dataset.md). Nao
+    cite esse numero; regenere-o rodando o benchmark sob o dataset vigente
+    (data/datasets/benchmark_dataset.npz).
     """
     inputs = layers.Input(shape=input_shape, name='audio_input')
 

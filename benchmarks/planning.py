@@ -53,33 +53,70 @@ ARCH_ALIASES = {
 _REFERENCE_FIT_SAMPLES = 66452  # 33.226 de treino + 1 cópia AWGN
 _REFERENCE_EPOCHS = 100
 
+#: Coluna ``gpu`` RECALIBRADA em 2026-08-02 com a campanha de 2026-08-01/02
+#: (RTX 3060 12 GB, dataset de 40.980, 100 épocas). Os valores anteriores eram
+#: estimativas e erravam para os dois lados — o RawNet2 em 3,6× para MENOS
+#: (18 h declaradas contra 65,1 h reais), acima do fator de segurança de 3×, o
+#: que faria o timeout matar o treino por volta da época 83; WavLM e HuBERT em
+#: 25× para MAIS, porque a estimativa assumia o backbone rodando a cada época
+#: quando o runner extrai embeddings uma vez e treina só a cabeça.
+#:
+#: ``medido`` = tempo real do run. ``extrapolado`` = não concluiu nenhuma vez
+#: neste protocolo; o valor antigo foi corrigido pelo erro de calibração
+#: observado na arquitetura MEDIDA da mesma família, que é a melhor informação
+#: disponível — melhor que manter um número que já se provou errado por
+#: construção. Substituir por medida assim que rodarem até o fim.
+#:
+#: A coluna ``cpu`` vem de uma campanha anterior e NÃO foi remedida: o
+#: benchmark roda em GPU. Os valores seguem só como ordem de grandeza.
 EXPECTED_TRAINING_HOURS: Dict[str, Dict[str, float]] = {
-    # arquitetura (chave compacta): {"cpu": medido, "gpu": estimado}
-    "sonicsleuth": {"cpu": 7.2, "gpu": 0.4},
-    "multiscalecnn": {"cpu": 40.4, "gpu": 1.6},
-    "conformer": {"cpu": 41.0, "gpu": 1.4},
-    "efficientnetlstm": {"cpu": 59.3, "gpu": 3.0},
-    "hybridcnntransformer": {"cpu": 83.0, "gpu": 2.8},
-    "ensemble": {"cpu": 89.2, "gpu": 3.6},
-    "hubert": {"cpu": 201.4, "gpu": 5.8},
-    "wavlm": {"cpu": 205.9, "gpu": 5.9},
-    "rawnet2": {"cpu": 364.0, "gpu": 18.0},
-    "aasist": {"cpu": 842.4, "gpu": 28.0},
-    "spectrogramtransformer": {"cpu": 996.0, "gpu": 28.0},
-    "rawgatst": {"cpu": 1359.4, "gpu": 54.0},
-    # SSL originais (runner PyTorch): backbone congelado, só a cabeça treina —
-    # custo da mesma ordem do port Keras. Não medidos aqui.
-    "wavlmoriginal": {"cpu": 205.9, "gpu": 6.0},
-    "hubertoriginal": {"cpu": 201.4, "gpu": 6.0},
-    # Clássicos: fit único do sklearn, sem épocas. O SVC com RBF em 33 mil
-    # amostras escala ~O(n²) e o grid search multiplica isso.
-    "svm": {"cpu": 8.0, "gpu": 8.0},
-    "randomforest": {"cpu": 1.0, "gpu": 1.0},
+    # arquitetura (chave compacta): {"cpu": campanha antiga, "gpu": ver acima}
+    "hubertoriginal": {"cpu": 201.4, "gpu": 0.21},  # medido
+    "wavlmoriginal": {"cpu": 205.9, "gpu": 0.24},  # medido
+    "sonicsleuth": {"cpu": 7.2, "gpu": 0.4},  # escopo estendido, não medido
+    "randomforest": {"cpu": 1.0, "gpu": 0.42},  # medido
+    "svm": {"cpu": 8.0, "gpu": 0.93},  # medido
+    "hybridcnntransformer": {"cpu": 83.0, "gpu": 2.45},  # medido
+    "conformer": {"cpu": 41.0, "gpu": 2.88},  # medido
+    "efficientnetlstm": {"cpu": 59.3, "gpu": 3.0},  # escopo estendido
+    "ensemble": {"cpu": 89.2, "gpu": 3.6},  # escopo estendido
+    "multiscalecnn": {"cpu": 40.4, "gpu": 3.67},  # medido (2 épocas no 15k)
+    "hubert": {"cpu": 201.4, "gpu": 5.8},  # escopo estendido
+    "wavlm": {"cpu": 205.9, "gpu": 5.9},  # escopo estendido
+    # extrapolado: 28,0 × 2,05, o erro do Conformer (mesma família espectral)
+    "spectrogramtransformer": {"cpu": 996.0, "gpu": 57.0},
+    "rawnet2": {"cpu": 364.0, "gpu": 65.1},  # medido (52 épocas, 39,1 min/ép)
+    # extrapolado: 28,0 × 3,62, o erro do RawNet2 (mesma família raw-audio)
+    "aasist": {"cpu": 842.4, "gpu": 101.0},
+    # extrapolado: 54,0 × 3,62, idem
+    "rawgatst": {"cpu": 1359.4, "gpu": 196.0},
 }
 
 #: Margem sobre a estimativa. 3× cobre o cenário conservador (~2×) e ainda
 #: sobra folga: o timeout existe para matar um treino TRAVADO, não um lento.
 DEFAULT_TIMEOUT_SAFETY_FACTOR = 3.0
+
+#: Arquiteturas que treinam em float32 puro na GPU. Não é preferência de
+#: precisão: com `mixed_float16` o processo morre de SIGSEGV no backward.
+#:
+#: - ``rawnet2``: SincConv + GRU.
+#: - ``multiscalecnn``: reproduzido em 2026-08-02 num repro mínimo (entrada
+#:   log-mel 100x80, batch 32, RTX 3060, XLA já desligado). O primeiro passo
+#:   de treino COMPLETA e o processo morre no segundo, sempre — foi o
+#:   `returncode=-11` aos 336 s no benchmark de 2026-08-01. Isolado assim:
+#:   float32 roda cinco passos limpos; forward puro em float16 roda seis
+#:   passos limpos; `TF_CUDNN_USE_AUTOTUNE=0` não muda nada. Ou seja, o crash
+#:   está no backward em fp16, não na escolha de kernel do autotune nem no
+#:   forward. A suspeita é o gradiente do split/concat hierárquico de canais
+#:   do bloco Bottle2neck do Res2Net, o único padrão que esta arquitetura tem
+#:   e as outras não; o build de 2026-08-01 subiu `nvidia-cudnn-cu12` de
+#:   9.1.0.70 para 9.24.0.43.
+#:
+#: O custo é velocidade, não resultado: nenhuma métrica depende da precisão do
+#: acumulador. Revisar quando o cuDNN/TF do container mudar.
+_MIXED_PRECISION_UNSAFE_ARCHITECTURES = frozenset(
+    {"rawnet2", "multiscalecnn", "aasist"}
+)
 
 
 def expected_training_timeout_min(
@@ -154,7 +191,18 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "optimizer": "AdamW",
         "scheduler": "CosineDecay",
         "use_augmentation": True,
-        "use_mixed_precision": True,
+        # 2026-08-04: era True. O AASIST divergia para NaN de forma
+        # determinística no batch 502 da época 1, três execuções seguidas
+        # (TerminateOnNaN). A justificativa anterior — "Sinc e logits em
+        # float32 nas próprias camadas, o encoder 2D/GAT usa Tensor Cores com
+        # loss scaling automático" — cobre só metade do problema: o loss
+        # scaling protege o BACKWARD (detecta inf/NaN no gradiente e pula o
+        # passo) e não faz nada quando o overflow nasce no FORWARD, que é o
+        # risco do softmax de atenção do GAT em float16. Confirmado por A/B
+        # com mesma LR (3e-4), mesmo lote (24), mesmo seed e mesmos dados:
+        # em float32 a época 1 fecha com loss=0.669 e val_accuracy=0.709.
+        # Sem custo de tempo — a época levou 11,1 min contra ~12 min em fp16.
+        "use_mixed_precision": False,
         "recommended_epochs": 100,
         "notes": (
             "Sinc 2D + GAT S/T + master/HS-GAL/MGO; janela canônica 48.000 "
@@ -170,12 +218,29 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         # registry.py::default_params (ver docs/evaluation/retraining-adjustments.md).
         # Augmentation ligado — pior modelo do recorte, overfit/divergência
         # após a época 4 no diagnóstico original.
+        #
+        # AJUSTE 2026-08-06 (clean_benchmark_15k): o retune anterior não bastou.
+        # Continua o pior do escopo oficial — acurácia 87,55%, EER 11,87% e min
+        # t-DCF 0,3149, ABAIXO de SVM e RandomForest no t-DCF. O padrão é
+        # sobreajuste, não subajuste: treino 0,998 contra val 0,85 no melhor
+        # checkpoint (época 17), `val_loss` mínimo 0,511 (10x o do Hybrid)
+        # subindo a 1,18 no fim. A robustez ainda sai NÃO MONOTÔNICA (77,21%
+        # a 10 dB contra 77,64% a 5 dB), sinal de superfície de decisão
+        # instável. Sobe dropout 0.35->0.5 e weight_decay 1e-3->3e-3; LR fica
+        # em 5e-5 (o problema não é passo grande, é capacidade sem freio).
         "learning_rate": 5e-5,
         "min_learning_rate": 5e-6,
-        "decay_steps": 100000,
+        # 100.000 era menor que o orçamento real: com batch 16 são
+        # ceil(24.324/16) = 1.521 passos/época x 100 = 152.100 passos, então o
+        # cosseno zerava na época ~66 e as últimas 34 rodavam no piso de 5e-6.
+        "decay_steps": 152100,
         "epochs": 100,
-        "dropout_rate": 0.35,
-        "l2_reg_strength": 1e-3,
+        "dropout_rate": 0.5,
+        "l2_reg_strength": 3e-3,
+        # Passou a ser knob de verdade em 2026-08-06 (era o literal 0.7 no
+        # compile de rawgat_st.py, enquanto o registry declarava 0.5 e o valor
+        # nunca chegava ao modelo). 0.5 = o que o registry já dizia.
+        "global_clipnorm": 0.5,
         "optimizer": "AdamW",
         "scheduler": "CosineDecay",
         "use_augmentation": True,
@@ -195,7 +260,24 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "model_family": "neural",
         "input_domain": "spectrogram",
         "batch_size": 32,
-        "learning_rate": 1e-4,
+        # AJUSTE 2026-08-06 (colapso irreversível em clean_benchmark_15k): com
+        # LR de pico 1e-4 e warmup de 1.500 passos (~2 épocas com batch 32), o
+        # treino divergiu na época ~14 e caiu para `loss = ln 2 = 0.693` /
+        # `val_accuracy = 0.500`, ficando morto da época 22 à 100. Duas sessões
+        # independentes colapsaram do mesmo jeito, então não é acaso de seed. O
+        # número publicado (99,49%) vem do checkpoint da época 10 — 10 das 100
+        # épocas do orçamento declarado. LR 1e-4->5e-5 e warmup 1500->3000
+        # (~4 épocas): a topologia é pre-LN Macaron (estável por construção),
+        # o que restava era o pico de LR sustentado.
+        "learning_rate": 5e-5,
+        "warmup_steps": 3000,
+        # `decay_steps` era omitido aqui, então caía no default 50.000 de
+        # `create_conformer_model`. Com batch 32 são ceil(24.324/32) = 761
+        # passos/época x 100 = 76.100 passos REAIS: o cosseno zerava (alpha) na
+        # época ~66 e as últimas 34 rodavam a 1e-7. Mesmo mismatch já
+        # diagnosticado no Hybrid CNN-Transformer e no AST.
+        "decay_steps": 76100,
+        "alpha": 1e-7,
         "epochs": 100,
         # AJUSTE 2026-07-27 (consolidação do Conformer): dropout_rate 0.3->0.1.
         # O valor 0.3 nunca chegou ao encoder — a variante sobrescrevia o
@@ -207,7 +289,6 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "dropout_rate": 0.1,
         "l2_reg_strength": 1e-4,
         "weight_decay": 1e-4,
-        "warmup_steps": 1500,
         "clipnorm": 1.0,
         "label_smoothing": 0.05,
         # (attention_heads/hidden_units REMOVIDOS: o runner só promove
@@ -396,14 +477,10 @@ def _fit_to_device(
             cap = 32
         tuned["batch_size"] = min(batch, cap)
         tuned["device_adjustment"] = "gpu_vram_safe_cap"
-        if compact == "aasist":
-            # Sinc e logits permanecem float32 nas próprias camadas; o encoder
-            # 2D/GAT usa Tensor Cores com loss scaling automático do Keras.
-            tuned["use_mixed_precision"] = True
-        elif compact != "rawnet2":
-            tuned.setdefault("use_mixed_precision", True)
-        else:
+        if compact in _MIXED_PRECISION_UNSAFE_ARCHITECTURES:
             tuned["use_mixed_precision"] = False
+        else:
+            tuned.setdefault("use_mixed_precision", True)
 
     return tuned
 

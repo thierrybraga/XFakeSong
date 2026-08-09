@@ -102,6 +102,7 @@ def _build_paper_rawgat(
     learning_rate: float,
     min_learning_rate: float,
     decay_steps: int,
+    global_clipnorm: float,
 ) -> models.Model:
     """RawGAT-ST: grafos S/T separados, fusão multiplicativa e terceiro GAT."""
     if num_classes < 2:
@@ -194,7 +195,12 @@ def _build_paper_rawgat(
         optimizer=tf.keras.optimizers.AdamW(
             learning_rate=schedule,
             weight_decay=l2_reg_strength,
-            global_clipnorm=0.7,
+            # AJUSTE 2026-08-06: era o literal 0.7, enquanto
+            # registry.py::default_params declarava `gradient_clip: 0.5` — o
+            # valor do registry NUNCA chegava aqui (config morto, o mesmo
+            # padrão já eliminado do AASIST e do Conformer). Agora é
+            # parâmetro de verdade, promovido pelo runner.
+            global_clipnorm=float(global_clipnorm),
         ),
         loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
         metrics=["accuracy"],
@@ -209,8 +215,11 @@ def create_model(
     input_shape: Tuple[int, ...],
     num_classes: int = 2,
     architecture: str = "rawgat_st",
-    dropout_rate: float = 0.35,
-    l2_reg_strength: float = 0.001,
+    # AJUSTE 2026-08-06: dropout 0.35->0.5 e l2 1e-3->3e-3 (sobreajuste em
+    # clean_benchmark_15k — treino 0,998 vs val 0,85). Sincronizado com
+    # registry.py::default_params e planning.py::NEURAL_BENCHMARK_HPARAMS.
+    dropout_rate: float = 0.5,
+    l2_reg_strength: float = 0.003,
     attention_heads: int = 8,
     hidden_dim: int = 512,
     # (num_layers REMOVIDO: declarado e nunca lido — a profundidade é fixa
@@ -219,7 +228,11 @@ def create_model(
     fusion_mode: str = "multiply",
     learning_rate: float = 5e-5,
     min_learning_rate: float = 5e-6,
-    decay_steps: int = 100_000,
+    # 152.100 = ceil(24.324/16) x 100 épocas, o orçamento real do benchmark.
+    decay_steps: int = 152_100,
+    # Antes era o literal 0.7 dentro do compile; 0.5 é o valor que o
+    # registry já declarava em `gradient_clip` e nunca chegava ao modelo.
+    global_clipnorm: float = 0.5,
 ) -> models.Model:
     """
     Cria e compila um modelo Keras baseado na arquitetura especificada.
@@ -288,6 +301,7 @@ def create_model(
             learning_rate=learning_rate,
             min_learning_rate=min_learning_rate,
             decay_steps=decay_steps,
+            global_clipnorm=global_clipnorm,
         )
 
     elif architecture == "rawgat_st_legacy":

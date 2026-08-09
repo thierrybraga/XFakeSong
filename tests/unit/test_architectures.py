@@ -36,22 +36,11 @@ def test_create_factory():
     assert hasattr(factory, "create_model")
 
 
-@pytest.mark.skip(
-    reason=(
-        "Requires TensorFlow and heavy dependencies, "
-        "better for integration tests"
-    )
-)
-def test_create_model_aasist():
-    registry = ArchitectureFactoryRegistry()
-    factory = registry.get_factory("AASIST")
-
-    # AASIST opera sobre ÁUDIO BRUTO (SincConv): a forma precisa respeitar o
-    # input_requirements da arquitetura, não um espectrograma.
-    input_shape = (48000, 1)
-    model = factory.create_model(input_shape=input_shape)
-
-    assert model is not None
+# A construção real do AASIST (SincConv sobre áudio bruto (48000, 1)) é
+# exercida em tests/integration/test_architectures_build.py, que roda com
+# TensorFlow de verdade. Aqui existia um `test_create_model_aasist` marcado
+# com `@pytest.mark.skip` incondicional pelo mesmo motivo — nunca executava e
+# duplicava a cobertura da integração.
 
 
 # ─── Guardas contra "config morto" e listas divergentes ────────────────────
@@ -251,7 +240,8 @@ def test_factory_and_registry_share_num_classes_default():
     """As duas portas de entrada precisam do MESMO default de num_classes."""
     import inspect
 
-    from app.domain.models.architectures import factory, registry as registry_mod
+    from app.domain.models.architectures import factory
+    from app.domain.models.architectures import registry as registry_mod
 
     factory_default = inspect.signature(
         factory.create_model_by_name

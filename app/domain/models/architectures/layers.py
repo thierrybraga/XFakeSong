@@ -183,9 +183,19 @@ class STFTLayer(layers.Layer):
         if len(inputs.shape) == 3:
             inputs = tf.squeeze(inputs, axis=-1)
 
-        # Calculate STFT
+        # `tf.signal.stft` chama RFFT, que aceita SÓ float32/float64. Sob a
+        # política `mixed_float16` a entrada chega em float16 e a construção do
+        # modelo falha com "RFFT requires tf.float32 or tf.float64 inputs"
+        # (2026-08-02: reproduzido ao criar o MultiscaleCNN com entrada de áudio
+        # bruto em GPU). O benchmark não via isso porque alimenta log-mel já
+        # pronto, mas qualquer caminho raw-audio + mixed precision quebrava.
+        # A análise espectral é feita em float32 e o resultado volta ao dtype
+        # da camada, então a política de precisão do resto do grafo é
+        # preservada — só a FFT fica fora dela, que é o exigido.
+        entrada_fp32 = tf.cast(inputs, tf.float32)
+
         stft = tf.signal.stft(
-            inputs,
+            entrada_fp32,
             frame_length=self.frame_length,
             frame_step=self.frame_step,
             fft_length=self.fft_length
@@ -193,6 +203,7 @@ class STFTLayer(layers.Layer):
 
         # Calculate magnitude
         spectrogram = tf.abs(stft)
+        spectrogram = tf.cast(spectrogram, self.compute_dtype)
 
         if self.add_channel_dim:
             spectrogram = tf.expand_dims(spectrogram, axis=-1)
@@ -283,8 +294,17 @@ class LogMelFromMagnitudeLayer(layers.Layer):
             lower_edge_hertz=self.lower_edge_hertz,
             upper_edge_hertz=self.upper_edge_hertz,
         )
+        # `linear_to_mel_weight_matrix` devolve float32 SEMPRE. Sob
+        # `mixed_float16` a magnitude chega em float16 e o matmul falha com
+        # "Input 'y' of 'BatchMatMulV2' Op has type float32 that does not match
+        # type float16" (2026-08-02, mesmo caminho raw-audio que quebrava o
+        # STFTLayer). O log fica em float32 de propósito: `log(mel + 1e-6)` com
+        # mel em float16 satura — 1e-6 é menor que o menor subnormal útil da
+        # meia precisão, então o épsilon somiria e valores nulos virariam -inf.
+        mag = tf.cast(mag, tf.float32)
         mel = tf.matmul(mag, mel_w)
         log_mel = tf.math.log(mel + 1e-6)
+        log_mel = tf.cast(log_mel, self.compute_dtype)
         return tf.expand_dims(log_mel, axis=-1)
 
     def get_config(self):

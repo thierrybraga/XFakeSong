@@ -166,11 +166,24 @@ class ArchitectureRegistry:
                     # val_loss dispara (0.39->1.85) enquanto treino sobe = overfit/
                     # divergencia. Mais dropout + L2, clip mais apertado, mais
                     # augmentation e paciencia maior p/ achar minimo melhor.
-                    "dropout_rate": 0.35,
-                    "l2_reg_strength": 0.001,
+                    # AJUSTE 2026-08-06 (clean_benchmark_15k): o retune acima
+                    # não resolveu — segue o pior do escopo oficial (EER
+                    # 11,87%, min t-DCF 0,3149, abaixo de SVM/RandomForest) e
+                    # o padrão continua sendo sobreajuste (treino 0,998 vs val
+                    # 0,85; val_loss 0,511 -> 1,18). dropout 0.35->0.5,
+                    # l2 1e-3->3e-3 e decay_steps 100k->152.100 (= o número
+                    # REAL de passos: ceil(24.324/16) x 100 épocas; em 100k o
+                    # cosseno zerava na época ~66).
+                    "dropout_rate": 0.5,
+                    "l2_reg_strength": 0.003,
                     "learning_rate": 0.00005,
                     "min_learning_rate": 0.000005,
-                    "decay_steps": 100000,
+                    "decay_steps": 152100,
+                    # `global_clipnorm` (construtor) x `gradient_clip` abaixo
+                    # (pipeline): o compile tinha 0.7 hardcoded e ignorava o
+                    # 0.5 que este registry ja declarava. Agora o construtor
+                    # recebe o valor de verdade — mantidos IGUAIS de proposito.
+                    "global_clipnorm": 0.5,
                     # (attention_heads/hidden_dim/num_layers/
                     # temporal_pool_stride/fusion_mode REMOVIDOS: a variante
                     # paper-faithful "rawgat_st" segue a topologia do artigo

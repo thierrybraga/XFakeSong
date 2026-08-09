@@ -147,6 +147,198 @@ class ResumableModelCheckpoint(ModelCheckpoint):
             )
 
 
+class PersistentEpochHistory(tf.keras.callbacks.Callback):
+    """Preserva o histórico COMPLETO de épocas através de retomadas.
+
+    ``model.fit()`` devolve em ``history.history`` apenas as épocas DESTA
+    execução. Com ``BackupAndRestore``, uma retomada na época 84 produz um
+    histórico de 17 entradas para um treino de 100 — exatamente o que
+    aconteceu no ``clean_benchmark_15k`` com RawNet2 (17/100) e RawGAT-ST
+    (91/100): os dois treinaram as 100 épocas (está nos ``run.log``), mas o
+    ``metrics.json`` só guardou o trecho pós-retomada, então as figuras de
+    convergência mostram um fragmento e qualquer "melhor época" lida do
+    artefato sai errada.
+
+    Grava uma linha JSON por época, indexada pela época ABSOLUTA, e
+    reconstrói a série inteira em :meth:`merged`.
+
+    O arquivo fica FORA do ``backup_dir``: aquele diretório é apagado ao fim
+    do treino (``delete_checkpoint=True``) e levaria o histórico junto.
+    """
+
+    def __init__(self, path, label: str = ""):
+        super().__init__()
+        self.path = Path(path)
+        self.label = label or "training"
+        self._records: dict[int, dict[str, float]] = {}
+
+    def on_train_begin(self, logs=None):
+        if not self.path.exists():
+            return
+        try:
+            for line in self.path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                record = json.loads(line)
+                self._records[int(record["epoch"])] = {
+                    k: float(v) for k, v in record.items() if k != "epoch"
+                }
+        except (OSError, ValueError, KeyError, TypeError):
+            _save_logger.warning(
+                "[HIST] histórico persistido ilegível em %s — a série desta "
+                "execução começa do zero", self.path
+            )
+            self._records = {}
+            return
+        if self._records:
+            _save_logger.warning(
+                "[HIST] %s: %d épocas anteriores recuperadas de %s",
+                self.label, len(self._records), self.path.name,
+            )
+
+    def on_epoch_end(self, epoch, logs=None):
+        values: dict[str, float] = {}
+        for key, value in (logs or {}).items():
+            try:
+                values[key] = float(value)
+            except (TypeError, ValueError):
+                continue
+        # Índice absoluto: numa retomada o Keras devolve a época real (84), e
+        # regravar a mesma chave torna a operação idempotente.
+        self._records[int(epoch)] = values
+        self._flush()
+
+    def _flush(self) -> None:
+        lines = [
+            json.dumps({"epoch": epoch, **values}, ensure_ascii=False)
+            for epoch, values in sorted(self._records.items())
+        ]
+        payload = "\n".join(lines) + "\n"
+        tmp_path = self.path.with_suffix(f"{self.path.suffix}.tmp")
+        try:
+            tmp_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path.write_text(payload, encoding="utf-8")
+            tmp_path.replace(self.path)
+        except OSError as exc:
+            _save_logger.warning("[HIST] falha ao persistir histórico: %s", exc)
+
+    def merged(self) -> dict[str, list[float]]:
+        """Série completa no formato de ``History.history`` (listas por métrica)."""
+        if not self._records:
+            return {}
+        ordered = [self._records[e] for e in sorted(self._records)]
+        metrics: dict[str, list[float]] = {}
+        for record in ordered:
+            for key in record:
+                metrics.setdefault(key, [])
+        for record in ordered:
+            for key, series in metrics.items():
+                # Uma métrica ausente numa época (ex.: val_* numa época sem
+                # validação) não pode deslocar as demais séries.
+                series.append(record.get(key, float("nan")))
+        return metrics
+
+
+class CollapseAbort(tf.keras.callbacks.Callback):
+    """Aborta um treino que degenerou para o palpite constante.
+
+    MOTIVAÇÃO 2026-08-06: no run `clean_benchmark_15k` o Conformer divergiu na
+    época ~14 e ficou em ``loss = ln 2 = 0.693`` / ``val_accuracy = 0.500`` da
+    época 22 à 100 — 85 épocas (~50 min de GPU) produzindo nada, em duas
+    sessões independentes. O melhor checkpoint era da época 10 e nunca mais
+    seria superado.
+
+    NÃO é early stopping, e não conflita com ``fixed_epoch_budget``: o early
+    stopping interrompe um modelo que ainda melhora devagar; esta guarda só
+    dispara quando o modelo JÁ ESTEVE bom (``arm_threshold``) e depois caiu
+    para o nível do acaso e ficou lá por ``patience`` épocas seguidas. O melhor
+    checkpoint é preservado — quem restaura é o ``ResumableModelCheckpoint``.
+
+    O aborto fica registrado em ``self.triggered``/``self.reason`` para que o
+    artefato diga o que aconteceu, em vez de parecer um treino curto qualquer.
+    """
+
+    def __init__(
+        self,
+        patience: int = 15,
+        nan_patience: int = 3,
+        chance_accuracy: float = 0.5,
+        tolerance: float = 0.01,
+        arm_threshold: float = 0.6,
+        monitor: str = "val_accuracy",
+        loss_monitor: str = "val_loss",
+        label: str = "",
+    ):
+        super().__init__()
+        self.patience = max(1, int(patience))
+        self.nan_patience = max(1, int(nan_patience))
+        self.chance_accuracy = float(chance_accuracy)
+        self.tolerance = float(tolerance)
+        self.arm_threshold = float(arm_threshold)
+        self.monitor = monitor
+        self.loss_monitor = loss_monitor
+        self.label = label or "training"
+        self.triggered = False
+        self.reason = ""
+        self._armed = False
+        self._best_acc = float("-inf")
+        self._dead_streak = 0
+        self._nan_streak = 0
+
+    def on_epoch_end(self, epoch, logs=None):
+        logs = logs or {}
+        human_epoch = int(epoch) + 1
+
+        loss = logs.get(self.loss_monitor)
+        if loss is not None and not np.isfinite(loss):
+            self._nan_streak += 1
+            if self._nan_streak >= self.nan_patience:
+                self._abort(
+                    human_epoch,
+                    f"{self.loss_monitor} não-finito por {self._nan_streak} "
+                    "épocas seguidas",
+                )
+                return
+        else:
+            self._nan_streak = 0
+
+        acc = logs.get(self.monitor)
+        if acc is None:
+            return
+        acc = float(acc)
+        self._best_acc = max(self._best_acc, acc)
+        # Só arma depois que o modelo demonstrou aprender de fato — assim um
+        # início lento (ou um warmup longo) nunca é confundido com colapso.
+        if acc >= self.arm_threshold:
+            self._armed = True
+
+        if self._armed and acc <= self.chance_accuracy + self.tolerance:
+            self._dead_streak += 1
+            if self._dead_streak >= self.patience:
+                self._abort(
+                    human_epoch,
+                    f"{self.monitor}={acc:.4f} (nível do acaso) por "
+                    f"{self._dead_streak} épocas seguidas, depois de ter "
+                    f"chegado a {self._best_acc:.4f}",
+                )
+        else:
+            self._dead_streak = 0
+
+    def _abort(self, epoch: int, reason: str) -> None:
+        self.triggered = True
+        self.reason = reason
+        self.model.stop_training = True
+        _progress_logger.warning(
+            "[COLAPSO] %s: treino ABORTADO na época %d — %s. O melhor "
+            "checkpoint anterior ao colapso foi preservado; revise o LR de "
+            "pico/warmup antes de retreinar.",
+            self.label,
+            epoch,
+            reason,
+        )
+
+
 class EpochProgressLogger(tf.keras.callbacks.Callback):
     """Loga progresso de treino em linha única por época ou intervalo."""
 
@@ -622,12 +814,38 @@ class ModelTrainer(IModelTrainer):
             # Calcular métricas finais
             final_metrics = self._calculate_final_metrics(model, validation_data)
 
+            # `history.history` cobre só as épocas DESTA execução; numa
+            # retomada isso truncaria a série (RawNet2 saiu com 17 de 100 no
+            # clean_benchmark_15k). O callback persistente devolve o treino
+            # inteiro. Só substitui se for pelo menos tão completo quanto.
+            full_history = None
+            history_cb = getattr(self, "_history_callback", None)
+            if history_cb is not None:
+                merged = history_cb.merged()
+                longest = max((len(v) for v in merged.values()), default=0)
+                current = max(
+                    (len(v) for v in (history.history or {}).values()), default=0
+                )
+                if longest >= current:
+                    full_history = merged
+
             result = {
-                "history": history.history,
+                "history": full_history or history.history,
                 "final_metrics": final_metrics,
                 "model_summary": self._get_model_summary(model),
                 "training_config": self.config.__dict__,
             }
+
+            # Um treino abortado por colapso NÃO pode passar por treino curto
+            # normal: sem isso o artefato registraria só "menos épocas".
+            collapse_cb = getattr(self, "_collapse_callback", None)
+            if collapse_cb is not None and collapse_cb.triggered:
+                result["collapsed"] = True
+                result["collapse_reason"] = collapse_cb.reason
+                self.logger.warning(
+                    "Treinamento ABORTADO por colapso: %s", collapse_cb.reason
+                )
+                return ProcessingResult(status=ProcessingStatus.SUCCESS, data=result)
 
             self.logger.info("Treinamento concluído com sucesso")
             return ProcessingResult(status=ProcessingStatus.SUCCESS, data=result)
@@ -858,6 +1076,32 @@ class ModelTrainer(IModelTrainer):
                 self.logger.info("SWA habilitado")
             except Exception as e:
                 self.logger.warning(f"Falha ao adicionar SWA callback: {e}")
+
+        # Histórico resistente a retomadas. Ancorado no diretório do
+        # checkpoint, NÃO no `backup_dir` — este último é apagado ao fim do
+        # treino (delete_checkpoint=True) e levaria o histórico junto.
+        history_anchor = kwargs.get("checkpoint_path") or kwargs.get("backup_dir")
+        if history_anchor:
+            anchor = Path(str(history_anchor))
+            history_dir = anchor.parent if anchor.suffix else anchor
+            history_cb = PersistentEpochHistory(
+                history_dir / "epoch_history.jsonl",
+                label=getattr(self.config, "progress_label", "") or "training",
+            )
+            callbacks.append(history_cb)
+            self._history_callback = history_cb
+
+        # Guarda de colapso — independente do early stopping (ver docstring de
+        # CollapseAbort: uma coisa é parar um modelo que ainda melhora, outra é
+        # abortar um que virou palpite constante e não volta).
+        if getattr(self.config, "abort_on_collapse", True):
+            collapse_cb = CollapseAbort(
+                patience=int(getattr(self.config, "collapse_patience", 15)),
+                nan_patience=int(getattr(self.config, "collapse_nan_patience", 3)),
+                label=getattr(self.config, "progress_label", "") or "training",
+            )
+            callbacks.append(collapse_cb)
+            self._collapse_callback = collapse_cb
 
         # Early stopping
         if getattr(self.config, "early_stopping", True):

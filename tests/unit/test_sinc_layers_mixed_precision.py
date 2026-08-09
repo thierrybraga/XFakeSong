@@ -44,3 +44,47 @@ def test_audio_augmenter_handles_raw_audio_with_single_channel_axis():
     assert batch_x.shape == (2, 1600, 1)
     assert batch_y.shape == (2,)
     assert np.isfinite(batch_x.numpy()).all()
+
+
+def test_stft_e_log_mel_aceitam_mixed_precision():
+    """STFT e log-mel precisam sobreviver a `mixed_float16`.
+
+    `tf.signal.stft` chama RFFT, que so aceita float32/float64, e
+    `linear_to_mel_weight_matrix` devolve float32 SEMPRE. Sem os casts, o
+    caminho de audio bruto nem CONSTROI sob precisao mista:
+
+      RFFT requires tf.float32 or tf.float64 inputs, got: ... dtype=float16
+      Input 'y' of 'BatchMatMulV2' Op has type float32 that does not match
+      type float16 of argument 'x'
+
+    Encontrado em 2026-08-02 ao instrumentar o MultiscaleCNN. O benchmark nao
+    via porque alimenta log-mel ja pronto (`input_domain: spectrogram`), mas
+    qualquer consumidor do caminho raw quebrava.
+    """
+    from app.domain.models.architectures.layers import (
+        LogMelFromMagnitudeLayer,
+        STFTLayer,
+    )
+
+    previous_policy = mixed_precision.global_policy()
+    mixed_precision.set_global_policy("mixed_float16")
+    try:
+        inputs = tf.random.normal((2, 16000, 1), dtype=tf.float16)
+
+        mag = STFTLayer(
+            frame_length=512, frame_step=256, fft_length=512, add_channel_dim=False
+        )(inputs)
+        # Volta ao dtype da politica: so a FFT sai da precisao mista.
+        assert mag.dtype == tf.float16
+        assert np.isfinite(tf.cast(mag, tf.float32).numpy()).all()
+
+        log_mel = LogMelFromMagnitudeLayer(
+            num_mel_bins=40, num_spectrogram_bins=int(mag.shape[-1])
+        )(mag)
+        assert log_mel.dtype == tf.float16
+        valores = tf.cast(log_mel, tf.float32).numpy()
+        # O log roda em float32 de proposito: com mel em float16 o epsilon de
+        # 1e-6 sumiria e os bins nulos virariam -inf.
+        assert np.isfinite(valores).all()
+    finally:
+        mixed_precision.set_global_policy(previous_policy)

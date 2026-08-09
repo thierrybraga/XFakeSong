@@ -676,10 +676,17 @@ def test_neural_benchmark_plan_uses_curated_hyperparameters():
         assert ast["early_stopping_patience"] == 20
         assert ast["epochs"] == 7
         assert ast["recommended_epochs"] == 100
-        assert conformer["learning_rate"] == 1e-4
+        # AJUSTE 2026-08-06: o Conformer colapsou para `loss = ln 2` a partir da
+        # época ~14 em duas sessões independentes. LR de pico 1e-4 -> 5e-5,
+        # warmup 1500 -> 3000 passos e `decay_steps` explícito em 76.100 — que é
+        # o número REAL de passos do orçamento (ceil(24.324/32) x 100 épocas).
+        # Com o default de 50.000 o cosseno zerava na época ~66. Ver
+        # docs/evaluation/retraining-adjustments.md, seção 2026-08-06.
+        assert conformer["learning_rate"] == 5e-5
         assert conformer["optimizer"] == "AdamW"
         assert conformer["weight_decay"] == 1e-4
-        assert conformer["warmup_steps"] == 1500
+        assert conformer["warmup_steps"] == 3000
+        assert conformer["decay_steps"] == 76100
         assert conformer["clipnorm"] == 1.0
         assert conformer["batch_size"] <= 16
 
@@ -1025,3 +1032,75 @@ def test_plan_preserves_model_hparams_but_forces_common_training_controls():
     assert effective["decision_threshold"] == 0.5
     assert effective["learning_rate"] == 7e-5
     assert effective["dropout_rate"] == 0.37
+
+
+def test_multiscalecnn_treina_em_float32_na_gpu():
+    """MultiscaleCNN nao pode receber mixed_float16 no perfil GPU.
+
+    Nao e preferencia de precisao: com `mixed_float16` o processo morre de
+    SIGSEGV no BACKWARD do Res2Net. Reproduzido em 2026-08-02 num repro minimo
+    (log-mel 100x80, batch 32, RTX 3060) — o primeiro passo de treino completa
+    e o segundo mata o processo. Foi o `returncode=-11` aos 336 s no benchmark
+    de 2026-08-01, que deixou a arquitetura sem nenhum artefato.
+
+    Isolado: float32 roda limpo, forward puro em fp16 roda limpo,
+    `TF_CUDNN_USE_AUTOTUNE=0` nao muda nada.
+    """
+    # `_fit_to_device` recebe o dispositivo como argumento, entao o caminho de
+    # GPU e testavel numa maquina sem GPU — o que importa aqui e a decisao do
+    # plano, nao o hardware de quem roda a suite.
+    from benchmarks.planning import _base_recommended_hparams, _fit_to_device
+
+    gpu = {"resolved_profile": "gpu"}
+    for arch in ("MultiscaleCNN", "RawNet2"):
+        tuned = _fit_to_device(_base_recommended_hparams(arch), arch, gpu)
+        assert tuned["use_mixed_precision"] is False, (
+            f"{arch} voltou a pedir mixed precision — o treino morre de "
+            f"SIGSEGV no backward"
+        )
+
+
+def test_aasist_treina_em_float32_na_gpu():
+    """AASIST nao pode receber mixed_float16 no perfil GPU.
+
+    Falha diferente da do MultiscaleCNN: nao e SIGSEGV, e divergencia para
+    NaN. Em 2026-08-04 o AASIST morreu no batch 502 da epoca 1, TRES execucoes
+    seguidas com o mesmo seed (`TerminateOnNaN`), e o `ModelCheckpoint` chegou
+    a promover pesos com 384 parametros nao-finitos.
+
+    O carve-out anterior forcava fp16 aqui com a justificativa de que "Sinc e
+    logits permanecem float32 e o encoder 2D/GAT usa loss scaling automatico".
+    Isso cobre so metade: o loss scaling age no BACKWARD (detecta inf/NaN no
+    gradiente e pula o passo) e nao protege contra overflow no FORWARD, que e
+    o risco do softmax de atencao do GAT em float16.
+
+    A/B com mesma LR (3e-4), mesmo lote (24), mesmo seed e mesmos dados: em
+    float32 a epoca 1 fecha com loss=0.669 e val_accuracy=0.709. E sem custo
+    de tempo — 11,1 min contra ~12 min em fp16, entao o argumento de
+    velocidade nao se aplica a esta arquitetura.
+    """
+    from benchmarks.planning import _base_recommended_hparams, _fit_to_device
+
+    gpu = {"resolved_profile": "gpu"}
+    tuned = _fit_to_device(_base_recommended_hparams("AASIST"), "AASIST", gpu)
+    assert tuned["use_mixed_precision"] is False, (
+        "AASIST voltou a pedir mixed precision — o treino diverge para NaN "
+        "no batch 502 da primeira epoca"
+    )
+
+
+def test_arquiteturas_sem_restricao_seguem_com_mixed_precision():
+    """A blocklist e cirurgica: quem nao esta nela continua usando fp16.
+
+    Sem esta guarda, alguem "consertaria" o SIGSEGV desligando mixed precision
+    para todo mundo e o benchmark inteiro ficaria ~2x mais lento sem motivo.
+
+    AASIST saiu desta lista em 2026-08-04 — entrou na blocklist com repro
+    deterministico, ver `test_aasist_treina_em_float32_na_gpu`.
+    """
+    from benchmarks.planning import _base_recommended_hparams, _fit_to_device
+
+    gpu = {"resolved_profile": "gpu"}
+    for arch in ("Conformer", "Hybrid CNN-Transformer"):
+        tuned = _fit_to_device(_base_recommended_hparams(arch), arch, gpu)
+        assert tuned["use_mixed_precision"] is True, arch
