@@ -12,12 +12,69 @@ import os
 import shutil
 import tarfile
 import tempfile
+import urllib.parse
 import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 logger = logging.getLogger(__name__)
+
+
+def validate_path_segment(value: str, *, label: str = "nome") -> str:
+    """Valida um único componente de caminho recebido de fonte externa.
+
+    Considera separadores POSIX e Windows em qualquer sistema operacional.
+    """
+    if not isinstance(value, str):
+        raise ValueError(f"{label} deve ser texto")
+
+    decoded = urllib.parse.unquote(value).strip()
+    if not decoded or decoded in {".", ".."}:
+        raise ValueError(f"{label} inválido")
+    if "\x00" in decoded or "/" in decoded or "\\" in decoded:
+        raise ValueError(f"{label} contém separador de caminho")
+    if ":" in decoded:
+        raise ValueError(f"{label} não pode conter volume ou stream")
+    if decoded.rstrip(" .") != decoded:
+        raise ValueError(f"{label} não pode terminar em ponto ou espaço")
+    reserved = {"CON", "PRN", "AUX", "NUL"}
+    reserved.update(
+        f"{prefix}{number}"
+        for prefix in ("COM", "LPT")
+        for number in range(1, 10)
+    )
+    if decoded.split(".", 1)[0].upper() in reserved:
+        raise ValueError(f"{label} é reservado pelo sistema")
+    return decoded
+
+
+def resolve_within_directory(
+    base: Union[str, Path], *segments: str, must_exist: bool = False
+) -> Path:
+    """Resolve componentes garantindo confinamento estrito dentro da base."""
+    base_path = Path(base).resolve()
+    clean_segments = [validate_path_segment(segment) for segment in segments]
+    candidate = base_path.joinpath(*clean_segments).resolve()
+
+    if candidate != base_path and base_path not in candidate.parents:
+        raise ValueError("Caminho fora do diretório autorizado")
+    if must_exist and not candidate.exists():
+        raise FileNotFoundError(candidate)
+    return candidate
+
+
+def get_gradio_exports_directory() -> Path:
+    """Retorna a única pasta destinada a downloads gerados pela interface."""
+    configured = os.getenv("GRADIO_TEMP_DIR")
+    gradio_temp = (
+        Path(configured).expanduser()
+        if configured
+        else Path(tempfile.gettempdir()) / "xfakesong-gradio"
+    )
+    exports_dir = (gradio_temp / "exports").resolve()
+    exports_dir.mkdir(parents=True, exist_ok=True)
+    return exports_dir
 
 
 def ensure_directory(directory_path: Union[str, Path]) -> Path:

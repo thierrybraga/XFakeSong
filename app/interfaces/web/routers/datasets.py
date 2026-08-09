@@ -4,7 +4,6 @@ Melhorias: sanitização de filenames, rate limiting, validação de tipo,
 não expor paths internos.
 """
 
-import shutil
 from typing import List, Optional
 
 from fastapi import (
@@ -18,14 +17,26 @@ from fastapi import (
 )
 
 from app.core.auth.auth_handler import get_api_key
-from app.core.exceptions import AudioProcessingError, DatasetNotFoundError, ValidationError
 from app.core.contracts.base import DatasetType, ProcessingStatus
+from app.core.exceptions import (
+    AudioProcessingError,
+    ConflictError,
+    DatasetNotFoundError,
+    FileTooLargeError,
+    UnsupportedFormatError,
+    ValidationError,
+)
 from app.core.security import limiter, sanitize_filename
 from app.dependencies import get_upload_service
 from app.domain.services.upload_service import AudioUploadService
 from app.interfaces.web.schemas.api_models import DatasetMetadata
+from app.utils.file_utils import resolve_within_directory, validate_path_segment
 
-router = APIRouter(prefix="/api/v1/datasets", tags=["Datasets"])
+router = APIRouter(
+    prefix="/api/v1/datasets",
+    tags=["Datasets"],
+    dependencies=[Depends(get_api_key)],
+)
 
 VALID_DATASET_TYPES = {t.value for t in DatasetType}
 
@@ -77,21 +88,21 @@ async def list_datasets(
                 if item.is_dir():
                     file_count = sum(1 for f in item.glob("**/*") if f.is_file())
                     total_size = sum(
-                        f.stat().st_size
-                        for f in item.glob("**/*")
-                        if f.is_file()
+                        f.stat().st_size for f in item.glob("**/*") if f.is_file()
                     )
 
-                    datasets.append(DatasetMetadata(
-                        name=item.name,
-                        dataset_type=type_name,
-                        description=f"Dataset em {type_name}",
-                        file_count=file_count,
-                        total_size=total_size,
-                        total_duration=0.0,
-                        created_at=None,
-                        file_paths=[],  # Não expor paths internos
-                    ))
+                    datasets.append(
+                        DatasetMetadata(
+                            name=item.name,
+                            dataset_type=type_name,
+                            description=f"Dataset em {type_name}",
+                            file_count=file_count,
+                            total_size=total_size,
+                            total_duration=0.0,
+                            created_at=None,
+                            file_paths=[],  # Não expor paths internos
+                        )
+                    )
 
     return datasets
 
@@ -133,25 +144,64 @@ async def upload_to_dataset(
     type: str = Form("training"),
     service: AudioUploadService = Depends(get_upload_service),
 ):
-    _validate_dataset_type(type)
-
-    dataset_dir = service.upload_directory / type / name
-    if not dataset_dir.exists():
-        raise DatasetNotFoundError(name)
-
-    safe_name = sanitize_filename(file.filename or "upload.wav") or "upload.wav"
-    dest_path = dataset_dir / safe_name
+    dataset_type = _validate_dataset_type(type)
+    try:
+        dataset_name = validate_path_segment(name, label="nome do dataset")
+    except ValueError as exc:
+        raise ValidationError(str(exc), field="name") from exc
 
     try:
-        with open(dest_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        dataset_dir = resolve_within_directory(
+            service.upload_directory,
+            dataset_type.value,
+            dataset_name,
+            must_exist=True,
+        )
+    except (ValueError, FileNotFoundError):
+        raise DatasetNotFoundError(dataset_name)
+    if not dataset_dir.is_dir():
+        raise DatasetNotFoundError(dataset_name)
+
+    safe_name = sanitize_filename(file.filename or "upload.wav") or "upload.wav"
+    suffix = "." + safe_name.rsplit(".", 1)[-1].lower() if "." in safe_name else ""
+    if suffix not in service.SUPPORTED_FORMATS:
+        raise UnsupportedFormatError(
+            suffix or "(sem extensão)", sorted(service.SUPPORTED_FORMATS)
+        )
+
+    try:
+        dest_path = resolve_within_directory(dataset_dir, safe_name)
+    except ValueError as exc:
+        raise ValidationError(str(exc), field="file") from exc
+    if dest_path.exists():
+        raise ConflictError(f"Arquivo já existe no dataset: {safe_name}")
+
+    total_size = 0
+    try:
+        with open(dest_path, "xb") as buffer:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                total_size += len(chunk)
+                if total_size > service.MAX_FILE_SIZE:
+                    raise FileTooLargeError(service.MAX_FILE_SIZE // 1024 // 1024)
+                buffer.write(chunk)
+    except FileTooLargeError:
+        dest_path.unlink(missing_ok=True)
+        raise
+    except FileExistsError as exc:
+        raise ConflictError(f"Arquivo já existe no dataset: {safe_name}") from exc
     except OSError as exc:
-        raise AudioProcessingError(f"Erro ao salvar arquivo: {exc}")
+        dest_path.unlink(missing_ok=True)
+        raise AudioProcessingError(f"Erro ao salvar arquivo: {exc}") from exc
+    finally:
+        await file.close()
 
     return {
         "status": "success",
         "filename": safe_name,
-        "size_bytes": dest_path.stat().st_size,
+        "size_bytes": total_size,
     }
 
 

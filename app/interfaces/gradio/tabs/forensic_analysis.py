@@ -19,6 +19,7 @@ from app.domain.services.forensic_visualization import (
 )
 from app.interfaces.gradio.utils.components import page_header
 from app.interfaces.gradio.utils.plotting import get_service_lock
+from app.utils.file_utils import get_gradio_exports_directory
 
 logger = logging.getLogger("gradio_forensic_tab")
 
@@ -430,7 +431,8 @@ def export_batch_report(files):
         # Write CSV
         tmp = tempfile.NamedTemporaryFile(
             suffix='.csv', delete=False, mode='w', newline='',
-            encoding='utf-8')
+            encoding='utf-8',
+            dir=get_gradio_exports_directory())
         writer = csv.writer(tmp)
         writer.writerow([
             'Arquivo', 'Resultado', 'Confiança', 'Modelo', 'Duração(s)'

@@ -52,7 +52,7 @@ jobs:
         run: bash scripts/ops/run_tests.sh cov
 
   security:
-    name: Segurança (bandit bloqueia HIGH + pip-audit advisório)
+    name: Segurança (bandit HIGH + pip-audit bloqueiam)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -63,8 +63,7 @@ jobs:
       - run: pip install bandit pip-audit
       - name: Bandit (SAST — falha em severidade HIGH)
         run: bandit -r app benchmarks scripts -lll
-      - name: pip-audit (CVEs em dependências — advisório)
-        continue-on-error: true
+      - name: pip-audit (CVEs em dependências)
         run: pip-audit -r requirements.txt
 
   docs:
@@ -94,6 +93,12 @@ jobs:
       - name: Build da imagem (TF_VARIANT=cpu)
         run: docker build --build-arg TF_VARIANT=cpu -t xfakesong:ci .
       - name: Validar compose segmentado
+        env:
+          XFAKESONG_API_KEY: ci-validation-only
+          XFAKE_GRADIO_USERNAME: ci-operator
+          XFAKE_GRADIO_PASSWORD: ci-validation-only
+          ALLOWED_HOSTS: localhost
+          ALLOWED_ORIGINS: http://localhost:7860
         run: |
           python scripts/ops/docker_build.py inference-cpu config
           python scripts/ops/docker_build.py train-cpu config

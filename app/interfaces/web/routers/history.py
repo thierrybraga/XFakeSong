@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.auth.auth_handler import get_api_key
 from app.core.db.session import get_db
 from app.core.exceptions import NotFoundError
 from app.core.security import limiter
@@ -17,7 +18,11 @@ from app.interfaces.web.schemas.api_models import HistoryItem, HistoryListRespon
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/history", tags=["History"])
+router = APIRouter(
+    prefix="/api/v1/history",
+    tags=["History"],
+    dependencies=[Depends(get_api_key)],
+)
 
 
 @router.get(
@@ -50,9 +55,7 @@ async def list_history(
             is_fake=item.is_fake,
             confidence=item.confidence,
             model_name=item.model_name or "unknown",
-            created_at=(
-                item.created_at.isoformat() if item.created_at else ""
-            ),
+            created_at=(item.created_at.isoformat() if item.created_at else ""),
         )
         for item in results
     ]

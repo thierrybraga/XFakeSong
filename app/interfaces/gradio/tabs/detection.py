@@ -258,10 +258,17 @@ def analyze_audio(audio_path, architecture, variant,
                         architecture, variant=variant
                     )
                     if not model_name:
-                        # Fallback: Tentar qualquer modelo dessa arquitetura
+                        # Fallback: Tentar qualquer modelo dessa arquitetura.
+                        # Normaliza (minúsculas, sem espaço/hífen/underscore)
+                        # antes de comparar — "Hybrid CNN-Transformer" não é
+                        # substring literal de "bench_hybrid_cnn_transformer".
                         models = service.get_available_models()
+                        arch_key = "".join(
+                            ch for ch in architecture.lower() if ch.isalnum()
+                        )
                         for m in models:
-                            if architecture in m:  # Heurística simples
+                            m_key = "".join(ch for ch in m.lower() if ch.isalnum())
+                            if arch_key in m_key:
                                 model_name = m
                                 break
 

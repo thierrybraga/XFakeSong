@@ -34,6 +34,7 @@ import numpy as np
 
 from app.core.db.session import SessionLocal
 from app.domain.models.voice_profile import VoiceProfile
+from app.utils.file_utils import resolve_within_directory, validate_path_segment
 
 logger = logging.getLogger(__name__)
 
@@ -312,10 +313,23 @@ class VoiceProfileService:
                 if not profile:
                     return False
 
-                file_path = self._samples_dir(profile_id) / filename
-                if file_path.exists():
+                try:
+                    clean_name = validate_path_segment(
+                        filename, label="nome da amostra"
+                    )
+                    samples_dir = self._samples_dir(profile_id)
+                    raw_path = samples_dir / clean_name
+                    if raw_path.is_symlink():
+                        return False
+                    file_path = resolve_within_directory(
+                        samples_dir, clean_name, must_exist=True
+                    )
+                except (ValueError, FileNotFoundError):
+                    return False
+
+                if file_path.is_file():
                     # Usar cache de duração se disponível
-                    duration = self._get_cached_duration(profile_id, filename)
+                    duration = self._get_cached_duration(profile_id, clean_name)
                     if duration is None:
                         try:
                             y, sr = librosa.load(
@@ -335,7 +349,7 @@ class VoiceProfileService:
                     db.commit()
 
                     # Atualizar cache
-                    self._remove_from_duration_cache(profile_id, filename)
+                    self._remove_from_duration_cache(profile_id, clean_name)
                     return True
                 return False
             except Exception as e:
