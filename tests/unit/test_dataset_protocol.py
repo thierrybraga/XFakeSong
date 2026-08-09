@@ -33,7 +33,11 @@ from scripts.dataset.build_paired_splits import (
     short_utterances,
     speaker_partition,
 )
-from scripts.dataset.export_paired_npz import _enforce, select_pairs
+from scripts.dataset.export_paired_npz import (
+    _enforce,
+    derive_max_pairs,
+    select_pairs,
+)
 
 SPLIT_NAMES = ("train", "val", "test")
 
@@ -557,3 +561,69 @@ def test_auc_of_identical_distributions_is_chance() -> None:
     assert auc(rng.normal(size=500), rng.normal(size=500)) == pytest.approx(
         0.5, abs=0.06
     )
+
+
+# ---------------------------------------------------------------------------
+# Rateio de tamanho (--target-samples)
+# ---------------------------------------------------------------------------
+# As variantes do dataset (completa e reduzida) saem do MESMO assignment; muda
+# so a densidade de enunciados por celula. O rateio precisa entao ser derivado
+# da particao, somar exato e nunca esvaziar uma particao.
+
+
+def _fake_records(por_split: dict[str, int]) -> list[dict]:
+    """Um registro por amostra, dois por enunciado (bonafide + clone)."""
+    registros = []
+    for split, pares in por_split.items():
+        for i in range(pares):
+            uid = f"{split}_{i:05d}"
+            for gerador in ("bonafide", "xtts_v2"):
+                registros.append(
+                    {
+                        "split": split,
+                        "utterance_id": uid,
+                        "speaker_id": f"S{i % 7:02d}",
+                        "generator": gerador,
+                    }
+                )
+    return registros
+
+
+def test_target_samples_soma_exatamente_o_alvo() -> None:
+    registros = _fake_records({"train": 16613, "val": 1988, "test": 1889})
+    for alvo in (15000, 8000, 30000, 40980, 60):
+        rateio = derive_max_pairs(registros, alvo)
+        assert sum(rateio.values()) * 2 == alvo, alvo
+
+
+def test_target_samples_preserva_a_proporcao_da_particao() -> None:
+    disponivel = {"train": 16613, "val": 1988, "test": 1889}
+    rateio = derive_max_pairs(_fake_records(disponivel), 15000)
+    total = sum(disponivel.values())
+    for split, pares in rateio.items():
+        esperado = 7500 * disponivel[split] / total
+        # Maior resto nunca desvia mais de um par inteiro da cota exata.
+        assert abs(pares - esperado) < 1.0, (split, pares, esperado)
+
+
+def test_target_igual_ao_disponivel_reproduz_a_particao_inteira() -> None:
+    disponivel = {"train": 16613, "val": 1988, "test": 1889}
+    rateio = derive_max_pairs(_fake_records(disponivel), sum(disponivel.values()) * 2)
+    assert rateio == disponivel
+
+
+def test_target_impar_e_recusado() -> None:
+    # Cada par gera DUAS amostras; um alvo impar nao e realizavel.
+    with pytest.raises(SystemExit):
+        derive_max_pairs(_fake_records({"train": 10, "val": 4, "test": 4}), 15)
+
+
+def test_target_acima_do_disponivel_e_recusado() -> None:
+    with pytest.raises(SystemExit):
+        derive_max_pairs(_fake_records({"train": 10, "val": 4, "test": 4}), 100)
+
+
+def test_target_que_esvaziaria_uma_particao_e_recusado() -> None:
+    # 2 amostras = 1 par: iria inteiro para o treino e val/teste ficariam vazios.
+    with pytest.raises(SystemExit):
+        derive_max_pairs(_fake_records({"train": 16613, "val": 1988, "test": 1889}), 2)

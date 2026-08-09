@@ -37,15 +37,14 @@ matplotlib>=3.7
 seaborn>=0.13
 
 # --- Web / API ---
-# BUG.Render.1: pin firme gradio>=4.31 — versões anteriores usam a API antiga
-# `TemplateResponse(context_dict, name)`; starlette>=0.36 (puxado por fastapi)
-# mudou para `(request, name, context)` → `TypeError: unhashable type: 'dict'`
-# na 1ª request a "/". fastapi/starlette pinados para reprodutibilidade.
-gradio>=4.31,<5.0
-fastapi>=0.110,<0.116
-starlette>=0.36,<0.42
+# Baseline compatível e corrigida da linha Gradio 4.x.
+# FastAPI/Starlette incluem correções de streaming multipart; python-multipart
+# fica acima das versões afetadas por falhas conhecidas de parsing.
+gradio>=4.44.1,<5.0
+fastapi>=0.116.1,<0.117
+starlette>=0.47.2,<0.48
 uvicorn[standard]>=0.27
-python-multipart>=0.0.9
+python-multipart>=0.0.20,<0.1
 httpx>=0.27
 jinja2>=3.1.5
 slowapi>=0.1.9

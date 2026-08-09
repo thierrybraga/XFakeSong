@@ -70,9 +70,14 @@ matplotlib==3.11.1
 seaborn==0.13.2
 
 # ── Web/config (só entram nas imagens que servem a API) ──────────────
+# Alinhado às faixas de requirements-base.txt (fastapi>=0.116.1,<0.117 e
+# starlette>=0.47.2,<0.48). Os pinos antigos (0.115.14/0.41.3) ficavam FORA
+# dessas faixas e o `PIP_CONSTRAINT` das imagens quebrava o build inteiro com
+# ResolutionImpossible. gradio 4.44.1 resolve com este par.
 gradio==4.44.1
-fastapi==0.115.14
-starlette==0.41.3
+fastapi==0.116.2
+starlette==0.47.3
+python-multipart==0.0.32
 pydantic==2.13.4
 sqlalchemy==2.0.51
 pyyaml==6.0.3

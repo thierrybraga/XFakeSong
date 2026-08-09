@@ -17,7 +17,7 @@ Recommended command:
 
 ```bash
 python scripts/training/train_by_family.py --family pytorch-audio \
-  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset data/datasets/benchmark_dataset.npz \
   --epochs 100 \
   --device-profile gpu \
   --out data/results/pytorch_benchmark

@@ -82,10 +82,12 @@ def mock_detection_service():
 
 
 @pytest.fixture
-def mock_upload_service():
+def mock_upload_service(tmp_path):
     mock = MagicMock(spec=AudioUploadService)
-    mock.upload_directory = MagicMock()
-    mock.upload_directory.exists.return_value = True
+    mock.upload_directory = tmp_path / "uploads"
+    mock.upload_directory.mkdir()
+    mock.SUPPORTED_FORMATS = AudioUploadService.SUPPORTED_FORMATS
+    mock.MAX_FILE_SIZE = AudioUploadService.MAX_FILE_SIZE
 
     # Mock create_dataset return.
     # O serviço REAL retorna ProcessingResult[DatasetMetadata] (não o

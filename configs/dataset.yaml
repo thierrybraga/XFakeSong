@@ -60,6 +60,46 @@ dataset:
     # só entra quando as duas amostras passam na validação. Não há cota.
     per_class: 20490
     total: 40980
+
+# Variantes de tamanho. TODAS saem da MESMA partição locutor × frase
+# (`splits/assignment.jsonl`): muda a densidade de enunciados por célula, nunca
+# quem está em qual partição. Por isso as garantias de disjunção são idênticas
+# entre variantes — e por isso resultados de variantes diferentes NÃO são
+# comparáveis entre si (o conjunto de teste muda).
+#
+# Cada variante é reproduzível por um comando só; `--target-samples` rateia
+# pela proporção natural (maior resto), sem números calculados à mão.
+dataset_variants:
+  full:
+    npz: data/datasets/benchmark_dataset.npz
+    test_lock: data/datasets/benchmark_dataset.npz.test-lock.json
+    total: 40980
+    split: {train: 33226, val: 3976, test: 3778}
+    pairs: {train: 16613, val: 1988, test: 1889}
+    sha256: ae3662c9e2cc904c9c2f06bc541f27fe944baea4a527591cdb127a1d00f62ad7
+    size_gb: 7.99
+    build: >-
+      python scripts/dataset/export_paired_npz.py
+      --out data/datasets/benchmark_dataset.npz --no-compress
+    use: >-
+      Escopo oficial do TCC. Maior poder estatístico no teste (IC 95% da
+      acurácia ≈ ±0,7 pp em 3.778 amostras).
+  reduced_15k:
+    npz: data/datasets/benchmark_dataset_15k.npz
+    test_lock: data/datasets/benchmark_dataset_15k.npz.test-lock.json
+    total: 15000
+    split: {train: 12162, val: 1456, test: 1382}
+    pairs: {train: 6081, val: 728, test: 691}
+    sha256: 3775b35fb05155011b21a30ff60632aaa7c9f67f031bd6f7874a5f313363400f
+    size_gb: 2.93
+    build: >-
+      python scripts/dataset/export_paired_npz.py
+      --out data/datasets/benchmark_dataset_15k.npz
+      --target-samples 15000 --no-compress
+    use: >-
+      Iterações rápidas e runs com orçamento de GPU limitado. Teste menor
+      (1.382), IC 95% ≈ ±1,2 pp — insuficiente para separar modelos por
+      décimos de ponto.
   artifacts:
     corpus_manifest: data/datasets/corpus/manifest.jsonl
     split_assignment: data/datasets/splits/assignment.jsonl

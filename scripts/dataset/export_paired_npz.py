@@ -93,6 +93,65 @@ def _check_window(window_sec: float) -> None:
         )
 
 
+def available_pairs(records: list[dict]) -> dict[str, int]:
+    """Enunciados disponiveis por particao, antes de qualquer corte."""
+    pools: dict[str, set[str]] = {split: set() for split in SPLITS}
+    for record in records:
+        if record["split"] in pools:
+            pools[record["split"]].add(record["utterance_id"])
+    return {split: len(pool) for split, pool in pools.items()}
+
+
+def derive_max_pairs(records: list[dict], target_samples: int) -> dict[str, int]:
+    """Distribui `target_samples` entre as particoes na proporcao natural.
+
+    A proporcao NAO e uma constante: ela e consequencia do bloco diagonal
+    (locutores x frases de cada particao) e muda se o corpus mudar. Por isso e
+    derivada do proprio `assignment.jsonl` a cada execucao, em vez de ficar
+    fixada em codigo — um corpus novo produz o rateio novo sem editar nada.
+
+    O rateio usa maior resto (quota de Hare), o metodo padrao de apportionment:
+    piso da cota exata para todas, e as vagas restantes vao para as maiores
+    partes fracionarias. Garante que a soma bata exatamente com o alvo, sem o
+    vies sistematico que arredondar cada parte isoladamente introduziria.
+
+    Cada par gera DUAS amostras (bonafide + clone), entao o alvo em amostras
+    precisa ser par.
+    """
+    if target_samples % 2:
+        raise SystemExit(
+            f"--target-samples deve ser par: cada par de enunciado gera duas "
+            f"amostras (bonafide + clone). Recebido: {target_samples}"
+        )
+    target_pairs = target_samples // 2
+    available = available_pairs(records)
+    total_available = sum(available.values())
+    if target_pairs > total_available:
+        raise SystemExit(
+            f"alvo de {target_samples} amostras ({target_pairs} pares) excede o "
+            f"disponivel na particao: {total_available} pares "
+            f"({total_available * 2} amostras). "
+            f"Disponivel por particao: {available}"
+        )
+
+    exact = {s: target_pairs * available[s] / total_available for s in SPLITS}
+    chosen = {s: int(exact[s]) for s in SPLITS}
+    sobra = target_pairs - sum(chosen.values())
+    # Maior resto: as `sobra` particoes com maior parte fracionaria ganham +1.
+    ordem = sorted(SPLITS, key=lambda s: exact[s] - int(exact[s]), reverse=True)
+    for split in ordem[:sobra]:
+        chosen[split] += 1
+
+    vazias = [s for s in SPLITS if chosen[s] < 1]
+    if vazias:
+        raise SystemExit(
+            f"alvo de {target_samples} amostras e pequeno demais: "
+            f"{', '.join(vazias)} ficaria(m) sem nenhum par. "
+            f"Minimo pratico: {int(total_available / min(available.values())) * 2}"
+        )
+    return chosen
+
+
 def select_pairs(records: list[dict], max_pairs: int, seed: int) -> list[dict]:
     """Reduz para `max_pairs` enunciados, uniformemente por locutor e frase.
 
@@ -255,6 +314,17 @@ def export(
         "amplitude_policy": "rms_normalized_-26_dBFS_peak_ceiling_-1_dBFS",
         "selection_seed": seed,
         "strategy": "speaker_x_sentence_double_disjoint_block_diagonal",
+        # Como o tamanho foi decidido. Sem isso, um .npz reduzido nao carrega o
+        # que o distingue do completo, e reproduzi-lo exige saber de fora os
+        # numeros de pares usados.
+        "size_policy": {
+            "max_pairs": dict(max_pairs),
+            "total_samples": sum(max_pairs.values()) * 2 if all(
+                max_pairs.get(s) for s in SPLITS
+            ) else None,
+            "subsampled": bool(any(max_pairs.get(s) for s in SPLITS)),
+            "pair_selection": "uniform_por_locutor_e_frase_rodizio",
+        },
         "splits": {},
     }
 
@@ -426,10 +496,24 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     parser.add_argument(
+        "--target-samples",
+        type=int,
+        default=0,
+        help=(
+            "Tamanho total do dataset em AMOSTRAS (0 = usa a particao inteira). "
+            "Rateia entre treino/val/teste na proporcao natural do bloco "
+            "diagonal, derivada do assignment.jsonl. Precisa ser par. "
+            "Ex.: --target-samples 15000."
+        ),
+    )
+    parser.add_argument(
         "--max-pairs-train",
         type=int,
         default=0,
-        help="Limite de PARES no treino (0 = todos). Cada par gera 2 amostras.",
+        help=(
+            "Limite de PARES no treino (0 = todos). Cada par gera 2 amostras. "
+            "Alternativa manual a --target-samples, para rateio nao proporcional."
+        ),
     )
     parser.add_argument("--max-pairs-val", type=int, default=0)
     parser.add_argument("--max-pairs-test", type=int, default=0)
@@ -452,13 +536,31 @@ def main() -> int:
     out = Path(args.out)
     if not out.is_absolute():
         out = ROOT / out
+
+    explicitos = {
+        "train": args.max_pairs_train,
+        "val": args.max_pairs_val,
+        "test": args.max_pairs_test,
+    }
+    if args.target_samples and any(explicitos.values()):
+        raise SystemExit(
+            "--target-samples e --max-pairs-* sao mutuamente exclusivos: o "
+            "primeiro DERIVA o rateio, o segundo o impoe. Escolha um."
+        )
+    if args.target_samples:
+        max_pairs = derive_max_pairs(load_assignment(), args.target_samples)
+        logger.info(
+            "alvo %d amostras -> pares por particao: %s (total %d amostras)",
+            args.target_samples,
+            max_pairs,
+            sum(max_pairs.values()) * 2,
+        )
+    else:
+        max_pairs = explicitos
+
     export(
         out=out,
-        max_pairs={
-            "train": args.max_pairs_train,
-            "val": args.max_pairs_val,
-            "test": args.max_pairs_test,
-        },
+        max_pairs=max_pairs,
         samples=int(args.sample_rate * args.duration_sec),
         seed=args.seed,
         workers=args.workers,
