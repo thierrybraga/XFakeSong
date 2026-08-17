@@ -193,6 +193,16 @@ data/*
 data/results/*
 !data/results/paper/
 !data/results/paper/**
+# ...mas o material do artigo tambem nao versiona backup manual nem binario
+# regeneravel (2026-08-17). `main.tex.pre-*.bak` e `.antes` duplicam o que o
+# proprio historico ja guarda — duas fontes de verdade para o mesmo texto — e
+# o `main.pdf` (2,2 MB) sai do `.tex`, gerando diff binario a cada
+# recompilacao. Os que existiam estao no commit 0814732 e seguem recuperaveis.
+data/results/paper/**/*.bak
+data/results/paper/**/*.antes
+data/results/paper/*.bak
+data/results/paper/*.antes
+data/results/paper/main.pdf
 # Diretório runtime padrão do TrainingService/DetectionService/benchmark.
 data/models/*.h5
 data/models/*.pkl
