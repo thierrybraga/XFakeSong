@@ -51,6 +51,50 @@ Todos os modelos expõem a interface unificada
     (`scripts/benchmark/run_wavlm_original_benchmark.py`) continuam sendo o
     caminho do escopo oficial para "WavLM Original"/"HuBERT Original".
 
+!!! warning "Retratação: o fine-tuning do front-end SSL saiu do escopo (2026-08-11)"
+
+    Entre 09 e 11/08/2026 o escopo oficial teve duas entradas a mais — `WavLM
+    AASIST` e `HuBERT AASIST` —, com o front-end **ajustado** alimentando o
+    grafo espectro-temporal. A justificativa registrada era que o probing
+    congelado "não responde à pergunta certa" e que destravar o front-end seria
+    "a receita de campeonato". **Essa premissa estava desatualizada.**
+
+    O que a literatura recente mostra:
+
+    - **ASVspoof 5 (2024)**: os baselines oficiais da Track 1 são RawNet2 e
+      AASIST, *sem* front-end SSL; e os sistemas de **topo** usam WavLM,
+      wav2vec 2.0, HuBERT e afins como upstreams **congelados**;
+    - há resultado publicado de front-end congelado superando o treinável com
+      folga na mesma comparação (8,76% contra 21,67% de EER);
+    - a evidência pró-fine-tuning (Wang & Yamagishi, Odyssey 2022) é de 2022, e
+      o campo se moveu na direção oposta.
+
+    Há ainda um descasamento de porte que a comparação escondia: o resultado de
+    referência da receita ajustada (Tak et al., Odyssey 2022 — 0,82% de EER no
+    ASVspoof21 LA) usa **wav2vec 2.0 XLS-R** (~300M, 24 camadas), não
+    WavLM/HuBERT *base* (94,5M, 12 camadas). Combinar esses backbones com o
+    grafo AASIST seria uma **abordagem nova**, não a reprodução de uma
+    configuração documentada.
+
+    As entradas `Original` — backbone congelado, soma ponderada de camadas,
+    pooling média⊕desvio e cabeça MLP treinada — **já são** a configuração
+    documentada, e permanecem como as duas entradas SSL do escopo oficial.
+
+    O código do grafo (`torch_ssl_aasist.py`) e as flags
+    `--backend aasist`/`--no-freeze-backbone` continuam no projeto, testados,
+    como **ablação disponível fora do escopo oficial**.
+
+!!! tip "Onde estaria a lacuna real"
+
+    WavLM (EER 3,62%) e HuBERT (5,93%) ficam na metade de baixo desta tabela,
+    enquanto na literatura o SSL congelado é topo. A explicação provável não é
+    o congelamento — é o **back-end**: aqui a cabeça é um MLP sobre pooling
+    global, e os sistemas de topo usam back-ends mais ricos. Existe literatura
+    dedicada exatamente a esse eixo ("Exploring WavLM Back-ends for Speech
+    Spoofing and Deepfake Detection", ASVspoof 2024). Fechar essa lacuna sem
+    sair do documentado significaria **trocar o back-end mantendo o backbone
+    congelado** — não destravar o backbone.
+
 ## Tabela Resumo
 
 | # | Arquitetura | Entrada | Referência | Arquivo |
@@ -88,25 +132,29 @@ benchmark de 15.000 amostras.
 
 ### Decisão operacional por arquitetura
 
-| Modelo | Decisão no artigo | Observação |
-|---|---|---|
-| Conformer | Demonstração principal | Maior qualidade e robustez sob AWGN no recorte oficial |
-| Sonic Sleuth | Suportado fora do recorte oficial | Artefato carregável existe na raiz `data/models/`, mas não integra os 11 finais do artigo |
-| Hybrid CNN-Transformer | Recorte oficial como CCT | Melhor compromisso neural entre acurácia, tamanho e latência |
-| MultiscaleCNN | Recorte oficial como Res2Net | Alta acurácia, artefato maior |
-| SVM | Baseline rápido | Excelente latência; frágil sob ruído AWGN |
-| Random Forest | Baseline complementar | Bom desempenho, maior custo que SVM |
-| RawNet2 | Estudo raw-audio | Convergente no preset GPU |
-| Ensemble | Suportado pelo registry/harness | Fora do recorte oficial sincronizado atual |
-| RawGAT-ST | Comparação em grafos | Estável e relativamente robusto |
-| AASIST | Comparação em grafos | Receita de treino corrigida e consistente |
-| HuBERT Original | Referência SSL funcional | Backbone original viável, custo elevado |
-| EfficientNet-LSTM | Suportado pela Gradio/API | Fora do recorte oficial sincronizado atual |
-| WavLM Original | Referência SSL experimental | Acurácia inferior a HuBERT no benchmark atual |
-| Spectrogram Transformer | Recorte oficial como AST | Estável após retreino selecionado |
+Estado após o diagnóstico do `clean_benchmark_15k` (2026-08-06/09). "Pendente"
+significa ajuste aplicado no código e retreino ainda não executado.
 
-Os artefatos carregáveis ficam em `data/models/bench_*`; os 11 modelos finais do
-artigo ficam em `data/models/benchmark_final/<slug_do_manifesto>/`. A
+| Modelo | Decisão no artigo | Estado |
+|---|---|---|
+| Spectrogram Transformer | Recorte oficial como AST | ✅ estável; melhor EER do escopo (0,0014) |
+| Hybrid CNN-Transformer | Recorte oficial como CCT | ✅ estável; melhor compromisso acurácia/tamanho/latência |
+| MultiscaleCNN | Recorte oficial como Res2Net | ✅ estável; melhor robustez a 10 dB entre os espectrais |
+| Conformer | Recorte oficial | ⚠️ **retreino pendente** — colapso irreversível da época 17 à 100; o número publicado vem do checkpoint da época 10 |
+| RawGAT-ST | Comparação em grafos | ⚠️ **retreino pendente** — sobreajuste; pior do escopo, min t-DCF abaixo de SVM e RandomForest |
+| AASIST | Comparação em grafos | ✅ estável; scores saturados fazem a acurácia em limiar 0,5 subestimar o EER |
+| RawNet2 | Estudo raw-audio | ✅ estável; histórico do artefato truncado por retomada (as 100 épocas estão no `run.log`) |
+| SVM | Baseline rápido | ✅ retreinado em 2026-08-09 (v2 + grid único + CV agrupada + calibração); latência de 1,04 ms, a menor do escopo; ainda colapsa a 5 dB (recall 0,18) |
+| Random Forest | Baseline complementar | ✅ retreinado em 2026-08-09 (mesmos ajustes); melhor recuperação a 5 dB (recall 0,29 → 0,65) |
+| WavLM Original / HuBERT Original | Referência SSL | ✅ estáveis; backbone congelado + cabeça treinada — a configuração documentada |
+| Sonic Sleuth | Suportado fora do recorte oficial | Artefato carregável em `data/models/`, fora do escopo |
+| EfficientNet-LSTM | Suportado pela Gradio/API | Fora do recorte oficial |
+| Ensemble | Suportado pelo registry/harness | Fora do recorte oficial |
+
+Os artefatos carregáveis ficam em `data/models/bench_*`; os modelos promovidos
+do artigo ficam em `data/models/benchmark_final/<slug_do_manifesto>/`. O escopo
+oficial tem **13 entradas** desde 2026-08-09 (as 11 anteriores mais WavLM AASIST
+e HuBERT AASIST). A
 rastreabilidade completa está em
 [Benchmark e Resultados](../evaluation/benchmark.md) e [Estudo Experimental](../evaluation/experimental-study.md).
 
@@ -349,15 +397,64 @@ Encapsulados para seguir a interface do projeto, úteis como baseline e em cená
 
 ### 13. SVM (Support Vector Machine)
 
-- **Pipeline**: `StandardScaler` + `SVC(kernel='rbf', probability=True)`.
-- **Entrada**: vetor de features tabulares `(batch, n_features)`.
+- **Pipeline**: `StandardScaler` + `SVC(kernel='rbf')` + `CalibratedClassifierCV`
+  isotônico.
+- **Entrada**: vetor tabular `benchmark_tabular_v2` `(batch, 183)`.
 - **Nota**: Requer todo o dataset em memória (sem mini-batch).
 
 ### 14. Random Forest
 
-- **Pipeline**: `StandardScaler` + `RandomForestClassifier(n_jobs=-1)`.
-- **Entrada**: vetor de features tabulares `(batch, n_features)`.
+- **Pipeline**: `StandardScaler` + `RandomForestClassifier(n_jobs=-1)` +
+  `CalibratedClassifierCV` isotônico.
+- **Entrada**: vetor tabular `benchmark_tabular_v2` `(batch, 183)`.
 - **Vantagem**: Robusto a features irrelevantes; paralelismo em CPU multi-core.
+
+#### Protocolo dos clássicos no benchmark (revisado em 2026-08-09)
+
+O que define um clássico não é uma topologia, é o **grid de busca** — e ele tem
+fonte única: `svm.py::SVM_PARAM_GRID` e
+`random_forest.py::RANDOM_FOREST_PARAM_GRID`, de onde
+`benchmarks/runner.py::_classical_search_space` importa. Até 2026-08-09 o runner
+carregava uma cópia própria e divergente (uma 4ª fonte de hiperparâmetros,
+ausente das três que o `CLAUDE.md` documenta), então os grids regularizados das
+arquiteturas não tinham chamador nenhum no projeto e o benchmark treinava com
+`max_depth=None`/`min_samples_leaf=1`.
+
+| Item | Como é |
+| --- | --- |
+| Busca | `GridSearchCV`, `scoring="roc_auc"`, `refit=False` + ajuste final |
+| Validação cruzada | `StratifiedGroupKFold` de **5 dobras** sobre `cluster_ids` (locutor × frase) |
+| Conjunto da CV | o MESMO do ajuste: treino limpo + cópia AWGN, com o grupo repetido por bloco |
+| Ajuste | só o **treino** (`fit_splits: ["train"]`), como as neurais |
+| Validação | held-out: calibração isotônica e limiar de EER do contrato |
+| Calibração | `CalibratedClassifierCV(method="isotonic", ensemble=False)` |
+| Candidatos | RF 108; SVM 15 (12 rbf + 3 linear) |
+
+Duas escolhas de eficiência que **não** mudam o espaço de busca nem o modelo
+selecionado, mas valem quase 10× no SVM:
+
+- o grid do SVM é uma **lista de blocos**, não um produto cartesiano único —
+  `gamma` só cruza com o kernel RBF, porque o linear o ignora. Como dicionário
+  único seriam 24 candidatos, com 9 lineares redundantes, e o linear com C alto
+  é o ajuste mais caro da busca (40,6 s contra 3,2 s do rbf, medido em 16.000
+  amostras);
+- o estimador da busca usa `probability=False`. Com `True`, o libsvm roda uma CV
+  interna de 5 dobras por ajuste para calibrar Platt — 6 ajustes onde a busca
+  pede 1 — sem alterar o `roc_auc`, que é baseado em ordenação e imune a uma
+  transformação monotônica. Quem dá probabilidade ao modelo final é a
+  calibração isotônica.
+
+No Random Forest, o estimador da busca usa `n_jobs=1`: quem paraleliza é o
+`GridSearchCV`, e uma floresta pedindo todos os núcleos dentro de cada worker só
+gera disputa. O ajuste final mantém `n_jobs=-1`.
+
+O agrupamento não é preciosismo: o Protocolo de Dataset é **pareado** — cada
+enunciado aparece como original CETUC e como clone XTTS-v2 do mesmo locutor e da
+mesma frase. Com partição aleatória, o modelo acerta a dobra de validação
+reconhecendo o enunciado que acabou de ver no treino dela, sem detectar síntese
+nenhuma. E o `ensemble=False` da calibração é o que preserva **um** estimador
+ajustado no conjunto inteiro: com o default, `feature_importances_` desaparece e
+o `TreeExplainer` fica sem o que explicar.
 
 ---
 

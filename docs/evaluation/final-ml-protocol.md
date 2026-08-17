@@ -1,12 +1,28 @@
 # 28 — Protocolo Final de ML (versão consolidada)
 
-Este documento é a **referência canônica** da metodologia da versão final do
-XFakeSong: pré-processamento, splits, treinamento, ruído, calibração,
-hiperparâmetros e métricas dos **11 modelos promovidos**. Ele consolida o que
-está implementado no código (caminhos citados em cada seção) e ancora cada
-decisão na literatura da área. Documentos históricos (RETREINO_AJUSTES,
-planos 21/25/26) permanecem como trilha de auditoria — os números válidos são
-somente os da seção [Resultados finais](#8-resultados-finais-consolidados).
+Este documento é a **referência canônica da metodologia**: pré-processamento,
+splits, treinamento, ruído, calibração, hiperparâmetros e métricas. Consolida o
+que está implementado no código (caminhos citados em cada seção) e ancora cada
+decisão na literatura da área.
+
+!!! warning "Os NÚMEROS da §8 foram supersedidos (2026-08)"
+
+    A §8 reporta o run `final_consolidated_20260715`, medido sobre o corpus
+    anterior (janela de 5 s). **Esse diretório não existe mais em
+    `data/results/`** — os números da §8 sobrevivem apenas aqui e em
+    `data/results/paper/`, sem artefato reverificável por trás.
+
+    O run vigente é `data/results/clean_benchmark_15k/` —
+    `benchmark_dataset_15k.npz`, 15.000 amostras, janela de 3 s, protocolo
+    `waveform-awgn-v2`, test-lock v2 validado — e seus resultados estão em
+    [Benchmark e Resultados](benchmark.md#run-vigente--clean_benchmark_15k).
+    **Conjuntos de teste diferentes: as duas tabelas não são comparáveis entre
+    si.**
+
+    A metodologia descrita nas demais seções continua valendo, com três
+    atualizações posteriores marcadas no texto: janela do corpus 5 s → 3 s,
+    e vetor tabular 63 → 183 descritores. O escopo oficial segue com 11
+    entradas.
 
 ## 1. Pré-processamento
 
@@ -16,11 +32,11 @@ treino↔inferência) e `benchmarks/data.py::prepare_input_for_architecture`.
 | Etapa | Política |
 | --- | --- |
 | Decodificação | mono, `float32`, 16 kHz (`soxr_hq`) |
-| Janela do corpus | 5 s (80.000 amostras) por amostra |
+| Janela do corpus | **3 s (48.000 amostras)** por amostra desde o Protocolo de Dataset (era 5 s/80.000 no corpus anterior) |
 | AGC | RMS/LUFS (`app/utils/silero_vad.apply_agc`), idêntica no corpus e na inferência |
 | Normalização | z-score por amostra (frontend raw); dB-ref-max (log-Mel) |
 | Janela curta | repetição (`tile`), sem zero-padding |
-| Janela por família | raw 48.000 amostras (3 s @ 16 kHz) para RawNet2/AASIST/RawGAT-ST — janela canônica atual, 26% menor que os 64.600 (4,04 s, convenção do baseline ASVspoof 2021) usados antes da migração; log-Mel 128 bandas; vetor tabular de 63 descritores (SVM/RF) |
+| Janela por família | raw 48.000 amostras (3 s @ 16 kHz) para RawNet2/AASIST/RawGAT-ST — janela canônica atual, 26% menor que os 64.600 (4,04 s, convenção do baseline ASVspoof 2021) usados antes da migração; log-Mel 128 bandas; vetor tabular `benchmark_tabular_v2` de **183** descritores para SVM/RF (era o `v1` de 63 até 2026-08-09) |
 
 O contrato de entrada de cada modelo (`input_contract` no
 `bench_*_config.json`) grava janela, frontend, estratégia de crop e
@@ -164,7 +180,7 @@ calibração não altera EER.
 ## 8.1 Execução por famílias
 
 O manifesto em `benchmarks/config.py` é a fonte única dos escopos. A suíte
-oficial contém 11 modelos; Sonic Sleuth, EfficientNet-LSTM e Ensemble pertencem
+oficial contém **11 entradas** — as desta tabela; Sonic Sleuth, EfficientNet-LSTM e Ensemble pertencem
 ao escopo `extended` e nunca são consolidados automaticamente com o artigo.
 
 Ordem recomendada: `classical-tabular`, `spectral-convolutional`,

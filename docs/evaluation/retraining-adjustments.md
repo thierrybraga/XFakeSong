@@ -511,7 +511,7 @@ serialização, hiperparâmetro-drift ou testes obsoletos.
 **Retratação importante:** a análise anterior (mesma tarde) apontou o
 multicrop TTA (3 janelas na avaliação) de AASIST/RawGAT-ST como uma possível
 assimetria a corrigir. Investigação mais profunda encontrou testes dedicados
-(`test_p2_rawgatst_sslaasist.py`, `test_detection_model_loader_predictor.py`)
+(`test_rawgat_aasist_ssl_backends.py`, `test_detection_model_loader_predictor.py`)
 provando que é uma funcionalidade **deliberada e já testada** (janela 64.600
 amostras ≈ 4,04s — o mesmo comprimento usado pelos baselines oficiais do
 ASVspoof2021 para RawNet2/AASIST/RawGAT-ST — com average de 3 crops
@@ -1272,6 +1272,74 @@ verdadeira. Novo campo irmão `codec_eval_status` com `requested` e `status`
 SSL, que não implementa a flag, declara `not_supported` em vez de omitir a
 chave.
 
+### Backfill dos 9 modelos não reexecutados (2026-08-09)
+
+Os campos acima nasceram depois do run. Reexecutar as 9 arquiteturas restantes
+só para ganhar metadata custaria ~60 h de GPU — e todos eles são **deriváveis
+do que já está gravado**. Daí
+`scripts/reporting/backfill_artifact_metadata.py`:
+
+| Campo | De onde sai |
+| --- | --- |
+| `training_stability` | do `history` já no `metrics.json` |
+| `codec_eval_status` | `codec_robustness` vazio e sem entradas de erro ⇒ nunca pedido |
+| `latency_profile.runtime*` | tipo da arquitetura + `environment.libraries` **do próprio run** (não da máquina que roda o backfill) |
+| `fit_strategy.fit_splits` | tipo + `dataset.metadata.splits` + `train_noise_copies` |
+| `dataset.test_cluster_ids` | `cluster_ids.npy` do `.npz`, fatia final (X é `concat(train, val, test)`) |
+
+Três propriedades que o script garante, todas com teste:
+
+- **Não fabrica.** WavLM/HuBERT são `type: "neural"` mas rodam em PyTorch;
+  deduzir `estimator` do tipo carimbaria "keras" neles. Quando a arquitetura já
+  declara `fit_strategy`, só as chaves de declaração entram —
+  `kind`/`estimator`/`fit_samples` são de quem executou o ajuste.
+- **Verifica o alinhamento.** Os `cluster_ids` do teste só entram depois de o
+  `y_test` derivado do `.npz` bater, elemento a elemento, com o que o artefato
+  gravou. Divergência aborta.
+- **Carimba proveniência.** Cada bloco tocado ganha `backfill` com data,
+  script, campos e base da derivação. Um artefato completado não pode passar
+  por um artefato produzido por execução que já emitia os campos.
+
+É idempotente (segunda passada não acha nada), roda em modo simulação por
+padrão e guarda `<arquivo>.pre-backfill.bak` uma única vez — nunca sobrescreve
+o original. Aplicado ao `clean_benchmark_15k`, a consolidação passou a usar
+bootstrap por **cluster** nos 11 modelos e a avisar do colapso do Conformer.
+
+**Fora do escopo:** reconstruir histórico truncado por retomada (RawNet2 gravou
+17 de 100 épocas). A série completa está no `run.log`, mas recuperá-la é
+parsing de log, não derivação — o backfill apenas sinaliza a discrepância em
+`training_stability.warnings`.
+
+### Resolução do bootstrap limitava o p ajustado
+
+Descoberto ao rodar a consolidação com os `test_cluster_ids` já preenchidos: o
+IC da diferença entre AST e AASIST era [−3,45; −1,69] pp — exclui zero com
+folga — e mesmo assim o veredito saía "indistinguíveis".
+
+O menor p-valor que `n` reamostragens expressam é `2/(n+1)`, e Holm multiplica
+esse piso pelo número de comparações. Com 1.000 reamostragens e 55 pares, o
+menor p ajustado possível é **0,11**: nenhum par podia passar, quaisquer que
+fossem os dados. Pior, o `n` não estava sendo repassado ao McNemar, que ficava
+no default de 2.000 e travava em 0,055 — logo acima de 0,05 — enquanto o
+bootstrap pareado já resolvia.
+
+Corrigido: `n_bootstrap` chega aos dois testes, o default da consolidação subiu
+para **5.000** (piso 4×10⁻⁴, ajustado 0,022) e o artefato passou a declarar
+`p_value_floor`, `p_value_at_floor` e `protocol.min_resolvable_holm_p`, com
+aviso explícito quando a resolução não dá conta. Quando o p satura, quem decide
+é o IC da diferença, que não tem esse teto.
+
+Com a correção, o topo do escopo oficial fica assim (unidade: cluster; Holm
+sobre 55 pares):
+
+| Grupo | Modelos | Entre si | Contra o grupo seguinte |
+| --- | --- | --- | --- |
+| 1 | SpectrogramTransformer, Conformer, Hybrid CNN-Transformer | indistinguíveis (p = 1) | p = 0,022 |
+| 2 | MultiscaleCNN, AASIST | indistinguíveis (p = 1) | — |
+
+O ranking por EER dentro do grupo 1 **não se sustenta**; a separação entre
+grupos, sim.
+
 ### O que isto NÃO resolve
 
 A **repetição de sementes** continua em `n_seeds: 1` (`benchmarks/config.py`).
@@ -1282,7 +1350,7 @@ no orçamento de GPU do run. Fica declarado como limitação, não como resolvid
 
 ### Cobertura de testes
 
-`tests/unit/test_benchmark_reporting_fidelity.py` — 34 testes:
+`tests/unit/test_benchmark_reporting_fidelity.py` — 45 testes:
 
 - **Janela SSL** (6): as três estratégias de `_input_preparation_block`;
   `_fit_length` de fato repete o começo do clipe quando a janela é maior (a
@@ -1329,3 +1397,755 @@ que mexeu no código sem atualizar a guarda:
   `docs/development/quality-and-testing.md`. A branch tinha adicionado dois
   arquivos de unit sem atualizar o doc (61 → 63); com este, 64. Doc corrigido
   para 64 unit / **83** no total.
+
+---
+
+## 2026-08-09 — WavLM/HuBERT: por que estavam abaixo da literatura
+
+Revisão pedida sobre os dois modelos SSL, que fechavam o run como o **pior**
+(HuBERT, EER 5,93%) e o quinto pior (WavLM, 3,62%) entre os neurais do escopo
+oficial. Isso INVERTE o que a literatura de anti-spoofing mostra, onde
+front-ends SSL são o estado da arte.
+
+### Diagnóstico
+
+A causa não é treino nem dado — é a receita. O runner implementava o protocolo
+de *probing* do SUPERB (Yang et al., Interspeech 2021):
+
+| | Implementado até aqui | Literatura de campeonato |
+| --- | --- | --- |
+| Front-end | congelado | **ajustado** |
+| Agregação temporal | média⊕desvio global sobre ~150 frames | sequência inteira vai ao back-end |
+| Back-end | MLP `1536→256→2` | grafo AASIST / LCNN |
+
+As referências são Tak et al., "Automatic speaker verification spoofing and
+deepfake detection using wav2vec 2.0 and data augmentation" (Odyssey 2022 —
+wav2vec2-XLSR + AASIST, 0,82% EER no ASVspoof21 LA) e Wang & Yamagishi,
+"Investigating self-supervised front ends for speech spoofing countermeasures"
+(Odyssey 2022). Nos dois, **destravar o front-end é o fator isolado mais
+decisivo**, e nenhum dos dois colapsa o tempo antes do back-end: artefato de
+síntese é local, e a média global é invariante à ordem dos frames — devolve o
+mesmo vetor para um enunciado e para o mesmo enunciado embaralhado no tempo.
+
+O probing é uma configuração legítima; ela só não responde à pergunta "quão
+bem este modelo detecta deepfake", e sim "quanta informação sobrevive no
+congelamento".
+
+### Bug: `--no-freeze-backbone` não fazia nada
+
+A flag ligava `requires_grad` e `backbone.train()` (linhas 458–460), mas
+`embed()` forçava `backbone.eval()` sob `torch.no_grad()` e o otimizador
+recebia apenas `classifier.parameters()`. Um run pedido com fine-tuning saía
+integralmente congelado **e com `"backbone_trainable": true` no artefato**.
+
+Corrigido em três frentes: a combinação `--no-freeze-backbone --backend mlp` é
+recusada pelo parser (o caminho de cache não pode propagar gradiente, ponto);
+`configure_finetuning` devolve a contagem real de parâmetros com
+`requires_grad`; e o artefato passa a declarar a partir dessa contagem, não da
+flag.
+
+### O que foi implementado
+
+- **`app/domain/models/architectures/torch_ssl_aasist.py`** — porte PyTorch do
+  grafo espectro-temporal, a partir do `ssl_utils.py::build_ssl_aasist_backend`
+  (Keras) que já existia no escopo estendido. Mesma topologia, temperaturas
+  2,0/100,0, HS-GAL com três conjuntos de parâmetros por tipo de aresta.
+  **Uma divergência deliberada:** o porte Keras descarta o master node
+  (`spectral, temporal, _master = ...`), deixando quatro tensores sem gradiente;
+  aqui ele entra no readout, como no AASIST original.
+- **Soma ponderada de camadas ANTES do pooling** (`WeightedLayerSum`), sobre as
+  sequências: mesma combinação convexa da receita SUPERB, sem descartar o tempo.
+- **Treino fim-a-fim** no runner: sem cache de embeddings, AMP, acumulação de
+  gradiente, LR discriminativo (backbone 1e-5, back-end 1e-3) e extrator
+  convolucional congelado — prática padrão wav2vec2/WavLM/HuBERT, seguida
+  também por Tak et al.
+
+### Escopo: acrescentadas, não substituídas
+
+`WavLM AASIST` e `HuBERT AASIST` entram como entradas próprias no manifesto
+oficial (13 modelos). As congeladas continuam: o contraste congelado × ajustado
+é a evidência central daqueles papers, e o resultado congelado já está validado.
+
+### Exceção de protocolo — NENHUMA
+
+Decisão de 2026-08-09: as duas rodam o mesmo orçamento dos outros 11 — **100
+épocas fixas, sem early stopping**, checkpoint por menor val_loss. Custo medido
+no smoke: ~6 min/época a batch 8 com acumulação 4, ou ~10 h por modelo.
+
+> **Ressalva registrada.** A literatura ajusta o front-end por bem menos
+> épocas, e 100 épocas sobre 12.162 amostras de treino com 90,2 M de parâmetros
+> destravados tende a sobreajustar. O protocolo cobre isso pela seleção por
+> val_loss — o checkpoint promovido provavelmente virá de uma época inicial —, e
+> a instrumentação de `training_stability` (`selection_gap`,
+> `max_epoch_drop`) registra o que acontecer. A alternativa de 20 épocas com
+> early stopping foi oferecida e recusada em favor da paridade estrita.
+
+---
+
+## 2026-08-09 — retreino dos clássicos (SVM e Random Forest)
+
+Revisão pedida sobre os dois modelos tabulares, que fecharam o
+`clean_benchmark_15k` empatados em **0,8531** de acurácia limpa e desabaram no
+SNR não visto.
+
+### O sintoma não é o que parecia
+
+| | Acc limpo | EER | min t-DCF | ECE | Acc@10dB | Acc@5dB | Recall@5dB | AUC@5dB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| SVM | 0,8531 | 0,1259 | 0,3062 | 0,0945 | 0,8292 | **0,5000** | **0,0000** | 0,8494 |
+| RandomForest | 0,8531 | 0,1085 | 0,2927 | 0,1212 | 0,8075 | 0,6274 | 0,2851 | 0,8384 |
+
+A 5 dB o SVM prediz "real" para as 1.382 amostras. A leitura registrada em
+2026-08-06 era "limitação estrutural do vetor tabular". Parte é — mas a **AUC
+sobrevive** (0,849 e 0,838): a ordenação continua lá, o que quebra é o ponto de
+operação sob o limiar fixo de 0,5. Isso é calibração, não discriminação. Os dois
+já perdem 2 a 4 pp para o limiar no áudio LIMPO (`accuracy_at_eer` 0,8741 e
+0,8915 contra 0,8531 em 0,5) e têm os dois piores ECE do escopo oficial — o
+terceiro pior é 0,0416.
+
+### Achado principal: o grid regularizado nunca rodou
+
+`svm.py::optimize_svm_hyperparameters` e
+`random_forest.py::optimize_random_forest_hyperparameters` — os grids
+"aplicados no código" desde 2026-06 — não tinham **nenhum chamador** em `app/`,
+`benchmarks/`, `scripts/` ou `tests/`. O benchmark usava
+`benchmarks/runner.py::_classical_search_space`, uma **quarta fonte de
+hiperparâmetros** ausente das três que o `CLAUDE.md` lista:
+
+| | Grid do runner (o que rodou) | Grid de `random_forest.py` (morto) |
+| --- | --- | --- |
+| `n_estimators` | [100, 200] | [200, 300] |
+| `max_depth` | **[None, 10, 20]** | [10, 15, 20] |
+| `min_samples_split` | **ausente** (default 2) | [5, 10, 20] |
+| `min_samples_leaf` | **[1, 2]** | [2, 4, 8] |
+| candidatos | 24 | 108 |
+
+Vencedor real do run: `max_depth=None`, `min_samples_leaf=2`,
+`mean_train_score = 1.0`. O overfitting que aquele grid existia para corrigir
+seguiu intacto por dois meses porque a correção morava no arquivo errado.
+
+No SVM, com `StandardScaler` antes, `gamma='scale'` ≈ `gamma='auto'` ≈ 1/63: os
+postos 1 e 2 do run diferiram em 2×10⁻⁶. O eixo `gamma` era **duplicata**, então
+os 12 candidatos valiam 6, e nenhum valor explícito foi testado. Vencedor com
+`mean_train_score = 0,99983`.
+
+> **Retratação.** A conclusão de 2026-07-06/07 — "RF e SVM devolveram métricas
+> bit-a-bit idênticas apesar dos grids regularizados, logo o ótimo já caía na
+> faixa restrita e a fragilidade não é overfitting de hiperparâmetro" — **não se
+> sustenta**: comparava o grid do runner com ele mesmo. A hipótese volta a estar
+> aberta e é o que este retreino testa.
+
+### Ajustes aplicados
+
+| # | Ajuste | Onde | Por quê |
+| --- | --- | --- | --- |
+| 1 | Grid vem de `SVM_PARAM_GRID` / `RANDOM_FOREST_PARAM_GRID` | `svm.py`, `random_forest.py`, `runner.py::_classical_search_space` | Elimina a 4ª fonte. RF ganha `min_samples_split` e perde `max_depth=None`/`leaf=1`; SVM perde o `gamma='auto'` duplicado e ganha 0,001/0,01/0,1 |
+| 2 | `StratifiedGroupKFold(5)` sobre `cluster_ids` | `runner.py::_classical_cv_splitter` | O dataset é PAREADO (mesmo locutor e mesma frase nas duas classes): sem agrupar, o clone XTTS-v2 fica no treino da dobra e o original CETUC na validação dela. O modelo acerta reconhecendo o enunciado, não detectando síntese |
+| 3 | CV no MESMO conjunto do ajuste (limpo + cópia AWGN) | `runner.py::_run_classical` | Escolher hiperparâmetro só no limpo e ajustar em limpo+ruidoso decide o modelo num regime em que ele nunca opera |
+| 4 | 3 → 5 dobras | `runner.py::_CLASSICAL_CV_FOLDS` | `std_test_score` era 0,0638 (SVM) contra 0,0025 entre o 1º e o 3º colocado: o grid escolhia a dobra, não o candidato |
+| 5 | Calibração isotônica ligada (`ensemble=False`) | `runner.py`, `classical_ml_helpers.py::wrap_calibration` | Piores ECE do escopo sob limiar fixo. `ensemble=False` mantém UM estimador ajustado no conjunto inteiro — com o default a `feature_importances_` some e o SHAP fica sem o que explicar |
+| 6 | Validação FORA do ajuste | `runner.py::_run_classical` | Era `fit_splits: ["train","val"]`. Além do n efetivo divergir do das neurais, o `eer_threshold` do contrato saía desse mesmo val — limiar **in-sample** |
+| 7 | Front-end tabular **v2** (183) | `benchmark_frontend.py`, `data.py`, `xai/tabular.py`, `feature_preparer.py` | 8 dos 11 descritores temporais do v1 crescem monotonicamente com a potência do ruído; `mín`/`máx` são estatísticas de ordem sobre 48.000 amostras, ou seja medidores de ruído. O bloco novo é **LFCC** (front-end do baseline CM do ASVspoof2019/2021), com Δ e ΔΔ — diferenças entre quadros, invariantes a offset constante |
+| 8 | Guardas do vetor tabular | `benchmark_frontend.py` | O bloco MFCC estava sob `except Exception: pass`: sem librosa o vetor caía de 63 para 37 colunas em silêncio, e `N_TABULAR_FEATURES` nunca era referenciado. RASTA-PLP degradado a zeros agora conta, avisa, e falha se atingir o lote inteiro |
+| 9 | `data/models` isolado nos testes | `tests/conftest.py` | Onze `BenchmarkConfig` da suíte não passam `models_dir`, e o default é o diretório de PRODUÇÃO — foi assim que o `bench_svm.pkl` do run virou um `.pkl` de smoke de 47 KB |
+
+**Retratação sobre CMVN.** A análise que motivou o item 7 também sugeriu CMVN
+antes da agregação. Está errado: o pooling é média⊕desvio POR coeficiente, e
+CMVN zera exatamente essas duas estatísticas (média 0, desvio 1 por construção)
+— 40 colunas virariam constantes. Δ/ΔΔ entrega a invariância pretendida sem esse
+efeito, e foi o que entrou.
+
+O v2 é **superset estrito** do v1, na mesma ordem: qualquer diferença é
+atribuível ao bloco LFCC ou à dimensionalidade, nunca à remoção de um descritor.
+O v1 continua um front-end de primeira classe — quem o resolve é o
+`feature_frontend` gravado no artefato, então modelo antigo segue lendo o vetor
+com que foi treinado.
+
+### Artefatos antigos
+
+Cópia integral em `data/results/archive/classicos_tabular_v1_2026-08-09/`
+(resultados, predições, figuras e os dois `.pkl`), com o README explicando o que
+produziu cada número. O conjunto de teste é o mesmo dos dois lados
+(`test_split_sha256 = ab4c3a9f…`), então a comparação é pareada.
+
+### O timeout derivado matou o primeiro retreino (mesma data)
+
+A primeira execução morreu com `[TIMEOUT] RandomForest em 1800,6s` antes de
+fechar a busca. O timeout é DERIVADO de
+`planning.EXPECTED_TRAINING_HOURS` (× 3, escalado pelo tamanho do treino), e a
+tabela trazia `randomforest: 0,42 h` e `svm: 0,93 h` — valores **medidos com o
+grid antigo**. Os ajustes desta seção mudaram o custo de ordem:
+
+| | Antes | Depois | Fator |
+| --- | ---: | ---: | ---: |
+| Candidatos (RF) | 24 | 108 | 4,5× |
+| Candidatos (SVM) | 12 | 24 | 2× |
+| Dobras | 3 | 5 | 1,67× |
+| Amostras na busca | 12.162 (só limpas) | 24.324 (limpo + AWGN) | 2× |
+| Colunas | 63 | 183 | 2,9× |
+| **Ajustes de floresta** | **72** | **540** | **7,5×** |
+
+Não é regressão do harness: a estimativa descrevia fielmente o que existia
+antes. É o efeito colateral previsível de mudar o protocolo sem revisar a
+tabela de custo — o mesmo padrão do AASIST em 2026-07-02, que estourou o
+default de 60 min.
+
+**Correções.**
+
+1. `EXPECTED_TRAINING_HOURS` para `randomforest` (0,42 → 2,5 h) e `svm`
+   (0,93 → 4,0 h), marcados **provisórios**: o run que os mediria é justamente
+   o que foi interrompido. Trocar por medido quando a bateria concluir. Timeout
+   derivado passa de 30 min para 165 min (RF) e 264 min (SVM).
+2. **Paralelismo aninhado, defeito real introduzido pelo retune.** O
+   `_classical_search_space` devolvia `RandomForestClassifier(n_jobs=-1)` como
+   estimador-base de um `GridSearchCV` que já roda com `n_jobs=-1`: cada um dos
+   ~10 workers da busca abria mais 10 threads para a própria floresta, todos
+   disputando os mesmos núcleos. Passou a `n_jobs=1` dentro da busca — quem
+   paraleliza ali são os 540 ajustes independentes. O ajuste FINAL segue com
+   `n_jobs=-1`, onde não há laço externo.
+
+Relançado com `--timeout-min 480` explícito, como rede de segurança enquanto os
+valores provisórios não viram medidos.
+
+### A fixture de isolamento de `data/models` não isolava nada
+
+A primeira versão de `_isolate_models_dir` (item 9 acima) definia apenas
+`XFAKE_MODELS_DIR`. Não bastava: `_models_dir` consulta as variáveis nesta
+ordem, parando na primeira definida —
+
+```
+MODELS_DIR → DEEPFAKE_MODELS_DIR → XFAKE_MODELS_DIR
+           → XFAKE_STORAGE_DIR/DEEPFAKE_STORAGE_DIR → cfg.models_dir
+```
+
+— e o `.env` do projeto declara `DEEPFAKE_MODELS_DIR=./data/models`, carregado
+pelo `python-dotenv` no import de `app.*` que o próprio `tests/conftest.py` faz
+no topo. A variável do `.env` vencia sempre.
+
+**A verificação que "confirmou" a fixture estava certa no fato e errada na
+conclusão.** O md5 de `data/models/bench_svm.pkl` sobreviveu à suíte porque, na
+época, `test_convergence_requires_accuracy_threshold` ainda FALHAVA na guarda de
+largura do vetor tabular (64 colunas sintéticas) — a arquitetura não concluía e
+nenhum modelo era salvo. Quando a guarda passou a ser condicionada a
+`input_type == "tabular_audio_features"` e o teste voltou a concluir, ele
+gravou de novo em `data/models`: um `bench_svm.pkl` de 41 KB com
+`input_shape: [64]` e `feature_frontend: null`. O mesmo defeito de sempre,
+reintroduzido pela correção que deveria fechá-lo.
+
+A fixture agora escreve nas três variáveis. Verificado com `data/models` vazio:
+`test_benchmark.py` inteiro roda sem criar nada lá.
+
+Lição registrada: **um teste de não-regressão para "X não é tocado" precisa
+provar que o caminho que tocaria X foi EXERCITADO.** Um md5 intacto porque o
+código nem chegou lá não prova isolamento nenhum.
+
+### Resultado do RandomForest
+
+35,3 min (2.117,1 s) — o timeout antigo de 30 min o matava a poucos minutos do
+fim. Artefato preservado dentro do run com sha256 registrado; contrato
+`benchmark_tabular_v2`, 183 dimensões, limiar 0,6474 derivado da validação
+held-out.
+
+| | Antes (v1) | Depois (v2) | Δ |
+| --- | ---: | ---: | ---: |
+| Acurácia limpa | 0,8531 | **0,9153** | +6,22 pp |
+| EER | 0,1085 | **0,0701** | −3,84 pp |
+| min t-DCF | 0,2927 | **0,2003** | −0,0924 |
+| ECE | 0,1212 | **0,0435** | 2,8× melhor |
+| AUC-ROC | 0,9591 | 0,9843 | +0,0252 |
+| Acurácia @30 dB | 0,8213 | 0,8669 | +4,56 pp |
+| Acurácia @20 dB | 0,8285 | 0,8531 | +2,46 pp |
+| Acurácia @10 dB | 0,8075 | 0,8271 | +1,96 pp |
+| **Acurácia @5 dB** | 0,6274 | **0,7496** | +12,22 pp |
+| **Recall @5 dB** | 0,2851 | **0,6512** | +36,61 pp |
+| Latência | 35,53 ms | 57,56 ms | +22,03 ms |
+
+O sintoma que motivou o retune — colapso do ponto de operação no SNR não visto —
+recuou de verdade: o recall a 5 dB mais que dobrou. O custo é latência,
+esperado com 183 colunas e um passo de calibração.
+
+**Contra a hipótese que motivou o item 1.** O vencedor do grid saiu com
+`max_depth=20` e `min_samples_leaf=2`, ou seja **no teto de capacidade que o
+grid permite**, e com `mean_train_score = 1,0` — a regularização não restringiu
+nada. O ganho veio das features e da calibração, não do grid. O que o grid
+mudou de fato foi a **estabilidade da seleção**: `std_test_score` caiu de
+0,0345 (3 dobras sem agrupamento) para 0,0005 (5 dobras agrupadas por cluster),
+de modo que o candidato escolhido deixou de ser função da partição.
+
+Isso não invalida o item 1 — a fonte única continua sendo o conserto certo, e o
+grid anterior de fato nunca rodou —, mas fecha a pergunta que a retratação de
+2026-07-06/07 tinha reaberto: **a fragilidade dos clássicos sob ruído não era
+overfitting de hiperparâmetro.** O grid regularizado, agora que roda de
+verdade, não muda o regime de ajuste. O que muda é a representação.
+
+### O SVM rodou 70 min desperdiçando ~90% do trabalho
+
+A primeira execução do SVM sob o novo protocolo passou de 70 min sem gravar
+nada (o `GridSearchCV` só escreve ao terminar) e foi interrompida. Não estava
+travada — 1.100% de CPU, memória estável —, mas a busca estava fazendo cerca de
+dez vezes mais ajustes do que precisava, por dois defeitos **do grid escrito
+nesta mesma revisão**.
+
+> **Retratação de uma medição.** A primeira tentativa de medir o custo rodou num
+> container com `--cpus 2` enquanto o treino saturava os 11 núcleos: o ajuste
+> levou mais de 600 s e a leitura foi "as cópias ruidosas tornam o SMO
+> impraticável". Errado — com a máquina livre o MESMO ajuste leva 0,2 s. Era
+> inanição de CPU da própria medição. Medir sob contenção mede a contenção.
+
+Custo real, medido em 16.000 amostras do vetor v2 com a máquina livre:
+
+| kernel | C = 0,1 | C = 1 | C = 10 |
+| --- | ---: | ---: | ---: |
+| rbf | 7,0 s | 3,6 s | 3,2 s |
+| linear | 3,3 s | 7,9 s | **40,6 s** |
+
+**1. `gamma` cruzado com o kernel linear, que o ignora.** Como dicionário único,
+o grid gera 3 C × 4 gamma = **12 candidatos lineares para 3 distintos** — e o
+linear com C alto é o ajuste mais caro da tabela. Eram nove ajustes redundantes
+entre os mais lentos. Corrigido com uma LISTA de blocos
+(`SVM_PARAM_GRID`), que cobre exatamente o mesmo espaço: 12 (rbf) + 3 (linear)
+= **15 candidatos**, contra 24.
+
+**2. `probability=True` no estimador da busca.** Herdado do código anterior, mas
+amplificado pelo aumento do grid. O libsvm roda uma validação cruzada interna de
+5 dobras a cada ajuste para calibrar Platt: **6 ajustes de SVC onde a busca pede
+1**. E não compra informação nenhuma — o `scoring` é `roc_auc`, baseado em
+ORDENAÇÃO, e a sigmoide de Platt é monotônica, então a AUC sobre `predict_proba`
+é idêntica à sobre `decision_function`. Corrigido para `probability=False` na
+busca; quem dá probabilidade ao modelo final continua sendo a calibração
+isotônica.
+
+Efeito conjunto: de 24 × 5 × 6 = **720** ajustes de SVC para 15 × 5 = **75**.
+Nem o espaço de busca nem o modelo selecionado mudam.
+
+Dois testes travam os dois defeitos (`tests/unit/test_classical_retune.py`):
+`ParameterGrid` conta 15 candidatos e nenhum bloco linear carrega `gamma`; e o
+estimador devolvido por `_classical_search_space` tem `probability is False`.
+
+### Resultado do SVM
+
+60,2 min (3.614,8 s), dos quais 47,8 min na busca — 15 candidatos × 5 dobras
+sobre **599 clusters** de treino. Artefato de 11,86 MB com sha256 registrado;
+contrato `benchmark_tabular_v2`, 183 dimensões, limiar 0,5024 held-out.
+
+| | Antes (v1) | Depois (v2) | Δ |
+| --- | ---: | ---: | ---: |
+| Acurácia limpa | 0,8531 | **0,9320** | +7,89 pp |
+| EER | 0,1259 | **0,0701** | −5,58 pp |
+| min t-DCF | 0,3062 | **0,1475** | −0,1587 |
+| ECE | 0,0945 | **0,0416** | 2,3× melhor |
+| AUC-ROC | 0,9428 | 0,9656 | +0,0228 |
+| Acurácia @30 dB | 0,8423 | 0,8842 | +4,19 pp |
+| Acurácia @20 dB | 0,8553 | 0,8763 | +2,10 pp |
+| Acurácia @10 dB | 0,8292 | 0,8553 | +2,61 pp |
+| Acurácia @5 dB | 0,5000 | 0,5868 | +8,68 pp |
+| Recall @5 dB | 0,0000 | 0,1838 | +18,38 pp |
+| **AUC @5 dB** | 0,8494 | **0,8499** | **+0,0005** |
+| Latência | 0,42 ms | 1,04 ms | +0,62 ms |
+
+Vencedor da busca: `rbf`, `C=10`, `gamma=0.01` — AUC de CV 0,99766 ± 0,00064.
+O `gamma` explícito ganhou do `scale`, mas por 2×10⁻⁵: empate prático. O
+`mean_train_score` do vencedor é 1,0, como no RandomForest.
+
+**O SVM a 5 dB continua quebrado, e a linha da AUC diz por quê.** A AUC no SNR
+não visto foi de 0,8494 para 0,8499 — **não mudou**. Todo o ganho do vetor v2
+está no limpo e nos SNRs casados (30/20/10 dB); em 5 dB a representação nova não
+acrescentou poder de discriminação nenhum. O recall saiu de 0,0000 para 0,1838,
+o que é a calibração empurrando o ponto de operação de volta para dentro da
+faixa útil, não o modelo enxergando melhor.
+
+Contraste com o RandomForest, cuja AUC a 5 dB subiu de 0,8384 para 0,8516 e o
+recall de 0,2851 para 0,6512: a floresta aproveitou os descritores LFCC sob
+ruído forte, o SVM não. Hipótese plausível (não testada): com kernel RBF e
+`C=10` a fronteira fica muito colada à distribuição de treino, e 5 dB está fora
+dela; a floresta particiona por variável e degrada mais suavemente.
+
+**Conclusão honesta sobre o item 7 (vetor v2).** Ele cumpriu o que se esperava
+em quatro das cinco condições, para os dois modelos. Na quinta — o SNR não visto
+— ajudou o RandomForest e **não ajudou o SVM**. A afirmação de que LFCC+Δ/ΔΔ
+resolve a fragilidade dos clássicos sob ruído fora da distribuição de treino
+**não se sustenta para o SVM**, e o texto do artigo deve dizer isso, não a
+versão otimista.
+
+### Custos medidos (substituem os provisórios)
+
+| Modelo | Medido (24.324 amostras) | Normalizado à referência (66.452) | Timeout derivado |
+| --- | ---: | ---: | ---: |
+| RandomForest | 2.117,1 s (0,588 h) | 1,61 h | 106 min |
+| SVM | 3.614,8 s (1,004 h) | 2,74 h | 181 min |
+
+`EXPECTED_TRAINING_HOURS` atualizado com estes valores, marcados **medido**. Os
+timeouts derivados passam a ter 3,0× e 3,0× de folga sobre o tempo real — a
+margem que o `DEFAULT_TIMEOUT_SAFETY_FACTOR` promete.
+
+### Correção: métricas sem limiar passam a usar o score bruto
+
+A verificação do retreino dos clássicos mediu um efeito colateral da calibração
+isotônica que a tabela não mostrava. A isotônica é uma função ESCADA:
+
+| | Scores distintos (v1, sem calibração) | Scores distintos (v2, isotônica) | Saturados em 0/1 |
+| --- | ---: | ---: | ---: |
+| SVM | 1156 (83,6%) | **52 (3,8%)** | 6,5% → 0,9% |
+| RandomForest | 1328 (96,1%) | **71 (5,1%)** | 0% → **16,2%** |
+
+Os empates dentro de cada degrau custam AUC, porque pares empatados contam meio
+acerto. Medido no SVM: **AUC 0,9731 no score bruto contra 0,9656 no
+calibrado — 0,75 pp perdidos**. No RandomForest o custo é nulo (−2×10⁻⁶): a
+fração de votos já é grosseira o bastante para a isotônica não empatar mais nada.
+
+**Por que era um defeito e não um trade-off.** AUC, EER e min t-DCF medem
+ORDENAÇÃO; acurácia, precisão, recall, F1 e ECE medem DECISÃO e probabilidade.
+A calibração existe para consertar a segunda família e não tem por que degradar
+a primeira. Pior, o efeito não era simétrico entre modelos: os neurais reportam
+softmax sem calibração pós-hoc, então só os clássicos pagavam o pedágio — a
+tabela comparava ordenação com ordenação-truncada. É também o que a literatura
+de anti-spoofing faz: EER e t-DCF sobre o score do contramedida, não sobre uma
+probabilidade calibrada.
+
+**O que mudou.** `evaluate_scores` ganhou `ranking_scores`:
+
+| Família | Score usado |
+| --- | --- |
+| `auc_roc`, `eer`, `min_tdcf`, `accuracy_at_eer_oracle` | score BRUTO do detector |
+| `accuracy`, `precision`, `recall`, `f1`, `ece`, `accuracy_at_calibrated_threshold` | `p_fake` calibrado |
+
+O parâmetro é `None` por padrão, o que reusa `p_fake` para tudo — **no-op exato
+para todo modelo que não calibra**, verificado por teste (incluindo os IC de
+bootstrap, que também passaram a separar os dois vetores). O score bruto NÃO
+passa pelo recorte em [0,1]: um `decision_function` de SVM é centrado em zero e
+negativo para metade das amostras, e recortá-lo destruiria a ordenação.
+
+O artefato declara `ranking_score_source` (`p_fake` ou `raw_detector_score`) e
+`threshold_free_metrics`. Sem isso, dois artefatos com o mesmo `auc_roc`
+poderiam ter medido coisas diferentes sem nada no arquivo dizendo qual.
+
+**Reverificabilidade preservada.** `predictions_clean.csv` ganhou a coluna
+`ranking_score`. Sem ela o EER publicado deixaria de ser recomputável a partir
+do artefato — o `p_fake` calibrado não o reproduz. A coluna fica VAZIA (não
+zero, que seria um score legítimo e enganaria quem recalculasse) para os modelos
+que não calibram.
+
+**Impacto medido sobre os artefatos já salvos:**
+
+| | AUC | EER | min t-DCF |
+| --- | ---: | ---: | ---: |
+| SVM | 0,9656 → **0,9731** (+0,0075) | 0,0701 → 0,0695 | 0,1475 → 0,1457 |
+| RandomForest | 0,9843 → 0,9843 (−2e−6) | 0,0701 → 0,0695 | 0,2003 → 0,1966 |
+
+Acurácia, precisão, recall, F1 e ECE ficam **idênticos** (verificado a 1e-12) —
+a decisão em 0,5 não muda, que é o eixo do protocolo.
+
+> **Pendente:** os `results.json` dos dois clássicos ainda trazem os números
+> antigos. Os modelos não mudam — a correção é de MEDIÇÃO —, mas os artefatos
+> precisam ser regerados para publicar os valores corretos. Reexecução dos dois
+> agendada para depois do Conformer, para não disputar CPU (a lição de medir sob
+> contenção já custou um diagnóstico errado nesta mesma sessão).
+
+---
+
+## 2026-08-11 — RETRATAÇÃO: o fine-tuning do front-end SSL saiu do escopo
+
+A seção de 2026-08-09 ("WavLM/HuBERT: por que estavam abaixo da literatura")
+concluiu que o probing congelado era a causa e que destravar o front-end era "o
+fator isolado mais decisivo". Acrescentou `WavLM AASIST` e `HuBERT AASIST` ao
+manifesto oficial com base nisso. **A premissa estava desatualizada e as duas
+entradas foram removidas.**
+
+### O que a verificação bibliográfica mostrou
+
+| Fonte | O que diz |
+| --- | --- |
+| **ASVspoof 5 (2024)**, baselines oficiais Track 1 | RawNet2 e AASIST, **sem** front-end SSL |
+| **ASVspoof 5**, sistemas de topo | WavLM, wav2vec 2.0, HuBERT, UniSpeech-SAT, Data2vec como upstreams **CONGELADOS** |
+| Comparação publicada | front-end congelado 8,76% de EER contra 21,67% do treinável |
+| Wang & Yamagishi, Odyssey 2022 | fine-tuning ajudava — mas é de 2022, e o campo se moveu |
+
+Some-se o descasamento de porte que a comparação escondia: o resultado de
+referência da receita ajustada (Tak et al., Odyssey 2022 — 0,82% de EER no
+ASVspoof21 LA) usa **wav2vec 2.0 XLS-R** (~300M, 24 camadas), não WavLM/HuBERT
+*base* (94,5M, 12 camadas). Aplicar o grafo AASIST a esses backbones seria uma
+**abordagem nova**, não a reprodução de uma configuração documentada — e o
+objetivo do trabalho é benchmark.
+
+### O que fica
+
+`WavLM Original` e `HuBERT Original` — backbone congelado, soma ponderada de
+camadas, pooling média⊕desvio, cabeça MLP treinada — **já são** a configuração
+documentada. Continuam como as duas entradas SSL do escopo oficial, que volta a
+**11 entradas**.
+
+### O que sai
+
+As entradas do manifesto e a linha correspondente da tabela de custo. **O código
+não sai**: `app/domain/models/architectures/torch_ssl_aasist.py`, as flags
+`--backend aasist`/`--no-freeze-backbone` e as duas guardas de combinação
+permanecem testados, como ablação disponível fora do escopo oficial.
+`SSL_FINETUNED_ARCHITECTURES` fica **vazia por consequência**, não por literal:
+a derivação segue no lugar para que reintroduzir uma entrada `:ssl_finetuned`
+volte a acionar as flags certas sem nenhuma outra edição.
+
+### A lacuna real, que continua aberta
+
+WavLM (3,62%) e HuBERT (5,93%) seguem na metade de baixo da tabela enquanto na
+literatura o SSL congelado é topo. A explicação provável **não é o
+congelamento** — é o back-end: aqui a cabeça é um MLP sobre pooling global, e os
+sistemas de topo usam back-ends mais ricos. Há literatura dedicada a esse eixo
+("Exploring WavLM Back-ends for Speech Spoofing and Deepfake Detection",
+ASVspoof 2024). Fechá-la sem sair do documentado significa **trocar o back-end
+mantendo o backbone congelado**, e é uma decisão de escopo, não um conserto.
+
+### Lição
+
+O diagnóstico de 2026-08-09 citou papers reais e leu neles a conclusão certa
+para 2022. O erro foi tratar "literatura de referência" como atemporal e não
+verificar o estado atual antes de mudar o escopo do trabalho. Custo: duas
+entradas no manifesto por dois dias e ~20 h de GPU que quase foram gastas.
+
+## 2026-08-17 — o fatorial do RawGAT-ST e três encanamentos mortos
+
+Sessão de consolidação: fechou o fatorial que estava em curso, corrigiu uma
+afirmação errada da auditoria anterior e ligou três opções que existiam no
+código sem ter efeito nenhum.
+
+### O ajuste de 2026-08-06 estava errado pela metade
+
+O diagnóstico daquele dia mandou subir dropout 0,35→0,50 **e** L2 1e-3→3e-3 ao
+mesmo tempo, e nunca foi executado. `scripts/benchmark/run_rawgat_retune.py`
+existe para não repetir esse erro: um fator por braço. Os dois braços rodaram
+(≈26 h de GPU somadas), ambos já com `decay_steps` = 152.100:
+
+| célula | dropout | L2 | pico `val_accuracy` | leitura |
+|---|---:|---:|---:|---|
+| publicado | 0,35 | 1e-3 | 0,8997 (ép. 88) | referência |
+| braço (d) | **0,50** | 1e-3 | **0,5000** exato, ép. 1–25 | não generaliza |
+| braço (l) | 0,35 | **3e-3** | 0,8984 (ép. 40) | teto igual, oscila 0,53–0,90 |
+
+O braço (d) não é subajuste: o **treino** chegou a 95,4% com a validação colada
+em 0,5000 — o modelo memorizou o conjunto de ajuste e não transferiu nada.
+Dropout 0,50 é o fator letal. L2 3e-3 isolado custa 0,13 p.p. de teto e piora a
+oscilação.
+
+A célula combinada (0,50 + 3e-3) — que era exatamente o que estava no código —
+é a única não medida, e o fatorial a condena pelo dropout. **Revertida para
+0,35/1e-3 nas três fontes** (`planning.py`, `registry.py`, `rawgat_st.py`).
+Sobreviveu das correções o que tem evidência própria: `decay_steps` cobrindo os
+152.100 passos reais.
+
+### Correção: o braço (l) não rodava com `decay_steps` defasado
+
+O `CONSOLIDACAO_TECNICA_2026-08-16.md` §7 mandou abortar o braço (l) alegando
+que ele rodava com `decay_steps` = 100.000 (66% do treino), e por isso pediu
+re-execução dos dois braços (~54 h). **A alegação não procede**, verificada por
+três vias independentes:
+
+- `rawgat_arm_{d,l}/effective_training_config.json` — ambos gravam 152.100;
+- `planning.py` em HEAD já trazia 152.100 para `rawgatst`;
+- `rawgat_st.py::create_model` tem default `152_100`.
+
+O 100.000 pertence ao **AASIST**, outra entrada do mesmo dicionário. Os dois
+braços são válidos como medida e não precisam ser refeitos — o fatorial acima
+já se apoia neles.
+
+### Três opções que o código oferecia sem ligar em nada
+
+**1. `checkpoint_monitor` não chegava ao treinador.** `run_rawgat_retune.py`
+setava `cfg.checkpoint_monitor = "val_eer"` no `BenchmarkConfig`; o
+`ModelTrainer` lia `self.config.checkpoint_monitor` de um `TrainingConfig`; e
+nada ligava os dois. Pior: o `TrainingService` filtra o dicionário de config
+pelos campos **declarados** do dataclass, então a chave era descartada em
+silêncio — sem erro, sem log. O smoke de 2 épocas pediu `val_eer` e gravou
+`{"monitor": "val_loss"}` no `best.json`, sem nenhum `val_eer` no histórico
+(evidência preservada em `data/results/_smoke_eer/`). Corrigido declarando o
+campo em `TrainingConfig` e `BenchmarkConfig` e propagando no
+`runner.py::_run_neural`. Quatro testes de encanamento — os seis que já
+existiam exercitavam o callback isolado e passavam com a opção inerte.
+
+**2. A guarda "nunca aprendeu" matava também o warmup longo.** O
+`arm_deadline = 15` introduzido em 16/08 olhava só `val_accuracy`, e por essa
+métrica "nunca aprendeu" e "warmup longo" são a MESMA curva. Ele quebrava
+`test_collapse_abort_ignora_inicio_lento`, que guarda o segundo caso desde
+06/08 — um modelo pode ficar no acaso por 30 épocas e depois subir a 0,97. O
+sinal que separa os dois é a **folga treino-validação**: no braço (d) era de 40
+pontos na época 15; num warmup genuíno os dois estão no acaso juntos. A guarda
+passa a exigir `generalization_gap ≥ 0,20` e, sem a métrica de treino nos logs,
+se cala. Quem limita o caso ambíguo é o orçamento fixo de épocas.
+
+**3. Contagem de testes defasada** — `quality-and-testing.md` declarava 86
+arquivos contra 88 na árvore.
+
+### O que precisa de retreino (medido, não inferido)
+
+Recomputei a acurácia dos 11 modelos a partir dos `predictions_clean.csv`
+gravados: **todas reproduzem** o `results.json` dentro de 10⁻⁴.
+
+Custo da seleção por `val_loss`, comparando a época de menor `val_loss` com a de
+maior `val_accuracy` em cada um dos nove neurais:
+
+| custo | modelos |
+|---:|---|
+| 0,00 p.p. | AASIST, Conformer, CCT, RawNet2, AST |
+| 0,27–0,62 p.p. | Res2Net, WavLM Original, HuBERT Original |
+| **5,29 p.p.** | **RawGAT-ST** (época 17 contra 88) |
+
+Só uma arquitetura paga o descompasso. Por isso `checkpoint_monitor` fica com
+`val_loss` como padrão: trocá-lo invalidaria os outros dez sem ganho.
+
+**RawGAT-ST é o único retreino obrigatório** — divergência código↔artefato real
+(`decay_steps` 100k no artefato), instabilidade e os 5,29 p.p. Um run resolve:
+dropout 0,35, L2 1e-3, `decay_steps` 152.100, `--checkpoint-monitor val_eer`.
+
+**CCT e AST não precisam.** As correções de `decay_steps` (65.700→76.100 e
+262.500→304.100) são divergência de reprodutibilidade, não de validade: os
+checkpoints publicados são das épocas 48 e 33, e o piso de LR só entrava na
+época 86,3 — o trecho congelado é inteiramente posterior à época selecionada e
+não tocou o artefato. Retreinar os dois melhores modelos do escopo (99,57% e
+99,71%) custaria ~12 h de GPU para corrigir um defeito que não os afetou. O
+registro da divergência fica aqui.
+
+**Conformer** segue `unstable_oscillation` sem divergência de configuração. Se o
+texto precisar sustentar que a época escolhida não depende do ruído da
+`val_loss`, o que resolve é repetição com múltiplas sementes, não um retreino
+único.
+
+Íntegros e sem pendência: SVM, RandomForest (ambos já em tabular v2/183, com as
+métricas de ordenação sobre o score bruto), AASIST, RawNet2, Res2Net, WavLM
+Original, HuBERT Original.
+
+## 2026-08-17 (2) — consolidação do caderno de testes
+
+A sessão anterior deste mesmo dia descobriu que o `CollapseAbort` tinha DOIS
+arquivos de teste com contratos contraditórios, e que ninguém percebeu porque
+nada no nome dizia que cobriam o mesmo callback. Isso não é acidente de um
+arquivo: a suíte vinha sendo organizada por **episódio de correção** em vez de
+por sujeito. A consolidação abaixo troca o critério.
+
+### O que estava errado
+
+Nomes que descrevem QUANDO o trabalho foi feito, não O QUE está sob contrato:
+`test_p1_specaug_ssl.py`, `test_p2_rawgatst_sslaasist.py`,
+`test_p3_metrics_ocsoftmax.py` (fases de um backlog encerrado),
+`test_tier1_perf.py` (etiqueta de um plano de otimização) e
+`test_resume_guards_and_artifacts.py` (a data 2026-08-06). Esse último era um
+grab-bag de QUATRO sujeitos sem relação entre si, unidos só por terem sido
+corrigidos no mesmo dia.
+
+Vinte e um arquivos não tinham docstring de módulo — inclusive
+`test_architectures.py`, com 23 testes.
+
+### O que mudou
+
+**Consolidado por sujeito.** `test_resume_guards_and_artifacts.py` e
+`test_collapse_never_learns.py` viraram `test_training_guards.py`
+(`CollapseAbort` + `PersistentEpochHistory`, os callbacks que param um treino
+ou preservam o que ele produziu). Os outros dois sujeitos do grab-bag foram
+para seus donos reais: os writers de predição sob ruído entraram em
+`test_benchmark_reporting_fidelity.py`, e a sincronia das três fontes de
+hiperparâmetro em `test_architectures.py`, ao lado da guarda irmã que já
+checava a CHAVE enquanto estas checam o VALOR.
+
+Dentro do arquivo novo, três testes ficaram marcados como a FRONTEIRA entre os
+dois gatilhos — são eles que teriam apontado o conflito de 16/08 no ato.
+
+**Renomeado pelo sujeito**: `test_specaugment_ssl_finetune.py`,
+`test_rawgat_aasist_ssl_backends.py`, `test_metrics_ocsoftmax.py`,
+`test_perf_optimizations.py`, `test_lfcc_frontend_rawboost.py`. As referências
+cruzadas em `docs/` e em `test_benchmark.py` acompanharam.
+
+**Deduplicado.** `test_benchmark.py::test_robustez_table_marks_non_converged_
+instead_of_dropping` afirmava o mesmo que
+`test_benchmark_protocol_fixes.py::test_robustness_table_keeps_non_converged_
+models_marked` (linha do modelo não convergido permanece com `\dagger`). O
+primeiro guardava, sozinho, o colspan da tabela vazia: foi estreitado a esse
+caso e renomeado. Nenhuma asserção se perdeu.
+
+**Desambiguado.** `test_create_dataset` e `test_list_architectures` existiam
+duas vezes cada, em camadas diferentes (rota HTTP x serviço; endpoint de
+detecção x de treino). Não eram redundantes — eram mal nomeados, e o homônimo
+quebra a seleção por `-k`.
+
+**Docstring em 100% dos arquivos**, com o sujeito na primeira linha.
+
+### O que NÃO foi mexido, e por quê
+
+O trio `test_resumable_checkpoint.py` + `test_guarded_checkpoint_restore.py` +
+`test_checkpoint_monitor.py` parece candidato óbvio a fusão — três arquivos
+sobre checkpoint. Não são: cobrem persistência entre retomadas, validação da
+restauração e critério de seleção, cada um com seu `_tiny_model` de topologia
+diferente. Fundi-los produziria um arquivo de 500 linhas com três namespaces
+de helper. Já estão nomeados por sujeito; ficam.
+
+Nenhum teste órfão foi encontrado. Os alvos das buscas estáticas
+(`spec_augment`, `rawboost`, `metrics`, camadas OC-Softmax) existem todos no
+código — inclusive os do escopo retratado em 2026-08-11, que o `CLAUDE.md`
+mantém explicitamente como ablação fora do escopo. As 11 pulagens da suíte são
+guardas de dependência opcional que resolvem no ambiente real, não peso morto.
+
+### A convenção agora é verificada
+
+`test_test_documentation.py` só checava a contagem de arquivos — pegava
+arquivo novo não documentado, e não pegava nada do que de fato corroeu a
+suíte. Passou a cobrir mais três regras: docstring de módulo em todo arquivo
+(via `ast`, para não reprovar o shebang do smoke), proibição de nome por
+episódio (`test_p1_*`, `test_tier*`, `test_fase*`, `wip`, `old`, `new`), e
+unicidade de nome de teste no repositório.
+
+A convenção escrita está em
+[quality-and-testing.md](../development/quality-and-testing.md), seção
+"Convenção de nomes e docstrings", junto com o mapa por sujeito dos 68
+arquivos unitários.
+
+**Saldo**: 88 → 87 arquivos, 760 → 759 testes de cobertura equivalente, mais 3
+regras de convenção executáveis.
+
+### `checkpoint_monitor=val_eer` — três defeitos até funcionar
+
+A opção foi implementada em 2026-08-16 com 6 testes de unidade, todos
+passando. Ela não funcionava. Um smoke de 2 épocas do RawGAT-ST precisou rodar
+CINCO vezes para chegar a um artefato, e cada falha era um defeito distinto:
+
+| # | Defeito | Sintoma | Por que os testes não pegaram |
+|---|---|---|---|
+| 1 | encanamento morto | `best.json` gravava `val_loss` pedindo `val_eer` | os testes exercitavam o callback isolado; ninguém ligava `BenchmarkConfig` → `TrainingConfig` |
+| 2 | ordem dos callbacks | "Can save best model only with val_eer available"; **nenhum** `best.json` | o Keras passa o MESMO `logs` em ordem de lista; anexado ao fim, o publicador rodava depois do leitor |
+| 3 | saída de 2 colunas | `val_eer` ausente, **sem log nenhum** | o duplo de teste emitia 1 coluna — forma que NENHUMA arquitetura do escopo usa |
+
+O terceiro é o mais instrutivo. As arquiteturas emitem softmax sobre
+{bonafide, spoof}; `ravel()` de uma saída (N, 2) dá 2N scores para N rótulos, e
+a checagem de tamanho fazia `return` em SILÊNCIO. O repro que eu havia escrito
+para validar a correção nº 2 usava uma `Dense(1, sigmoid)`: uma coluna, tamanho
+batendo, verde — e validando uma forma que o projeto não produz.
+
+**O padrão comum aos três**: código escrito com teste de unidade e nunca
+exercitado ponta a ponta. Todo caminho de silêncio virou log em WARNING com
+contador (`ValidationEER.falhas`), porque quando o checkpoint monitora essa
+métrica, falhar aqui significa 27 h de treino sem artefato — e era exatamente
+esse cenário que a implementação original dizia estar prevenindo.
+
+**Confirmação** (`data/results/_smoke_eer5/`, 2 épocas):
+`best.json` = `{"monitor": "val_eer", "best": 0.46634615384615385}`, `val_eer`
+presente nas duas épocas do histórico, e o checkpoint mantido na época 1
+(0,4663) contra a época 2 (0,4924) — modo `min` correto.
+
+### Segfault intermitente da suíte
+
+Durante a validação, uma execução em três da suíte completa terminou com
+`Segmentation fault (core dumped)` e **zero testes falhando** — o crash é na
+FINALIZAÇÃO do interpretador, com o traço no thread alimentador das filas do
+`loky` (joblib) sobre módulos do scipy.
+
+SVM e RandomForest declaram `n_jobs=-1`
+(`architectures/{svm,random_forest}.py`), então todo teste que os ajusta sobe
+workers `loky` em todos os cores — num processo que já carregou o TensorFlow.
+Os dois runtimes disputando o `atexit` é combinação conhecida por crashar.
+
+`tests/conftest.py` passa a definir `JOBLIB_MULTIPROCESSING=0`. Não muda nada
+sob contrato: nenhum teste afirma coisa alguma sobre paralelismo, e o
+`n_jobs=-1` do código de produção fica intacto — a variável só vale no processo
+do pytest.
+
+**Nota de método**: o `echo DONE-EXIT=$?` que eu usava para capturar o código
+de saída era interpolado pelo PowerShell ANTES de chegar ao container, e
+gravava `True` em vez do número — ou seja, as primeiras rodadas foram lidas
+apenas pela ausência de linhas `FAILED`, sem confirmação independente. O
+script `run_ci.sh` grava o código num arquivo separado, de dentro do
+container.

@@ -23,6 +23,15 @@ padronizadas em **16 kHz**, mono e **5 s**. A base ativa consolidada contém
 foram treinados em GPU NVIDIA RTX 3060 via WSL2/CUDA; SVM e Random Forest
 foram otimizados por validação cruzada em CPU.
 
+!!! warning "Tabelas supersedidas (2026-08)"
+    As tabelas desta página vêm do run `final_consolidated_20260715`, medido
+    sobre o corpus anterior (5 s por amostra) e **cujo diretório não existe
+    mais em `data/results/`**. O run vigente é
+    `data/results/clean_benchmark_15k/` (3 s, protocolo `waveform-awgn-v2`) —
+    números em
+    [Benchmark e Resultados](benchmark.md#run-vigente--clean_benchmark_15k).
+    Os conjuntos de teste são diferentes, então as duas não são comparáveis.
+
 Principais resultados no conjunto de teste limpo (recorte oficial dos 11
 modelos, run final consolidado de 2026-07-15,
 `data/results/final_consolidated_20260715/`; escopo **in-domain** — ver
@@ -413,9 +422,12 @@ $$
 
 ## Robustez a ruído
 
-O benchmark aplica AWGN no espaço de entrada do modelo, mantendo o mesmo
-protocolo para arquiteturas de áudio bruto, espectrograma e features
-tabulares. Recorte oficial dos 11 modelos, run final consolidado de
+O benchmark aplica AWGN à **forma de onda canônica**, antes de qualquer
+front-end, com a mesma realização ruidosa para todas as famílias — foi essa a
+correção de 2026-07-12, que substituiu o protocolo anterior (ruído no espaço de
+entrada de cada modelo: forma de onda para raw/SSL, log-Mel para as espectrais e
+vetor tabular para SVM/RF, perturbações que não são fisicamente equivalentes).
+Os números abaixo são do recorte oficial dos 11 modelos, run final consolidado de
 2026-07-15 (fonte de verdade: `data/results/paper/tabelas_benchmark.tex`,
 `Tabela~\ref{tab:robustez_awgn}`):
 

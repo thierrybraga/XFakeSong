@@ -223,6 +223,13 @@ Use `--models-dir outro/diretorio` apenas quando quiser isolar os modelos de uma
 execução específica. Caminhos relativos de `--out`, `--models-dir` e `--dataset`
 são ancorados na raiz do projeto.
 
+> `data/models/` é global e chaveado só pela arquitetura: qualquer execução
+> (benchmark, smoke, retreino) grava em `data/models/bench_<arch>.*`. Por isso o
+> runner também guarda uma cópia do artefato **dentro do run**
+> (`architectures/<modelo>/models/`) — sem ela, um smoke posterior deixa as
+> métricas do run sem o modelo que as produziu. O `model_artifact_fingerprint`
+> no `results.json` detecta a troca.
+
 Para revisar o plano sem iniciar treinamento:
 
 ```bash
@@ -313,6 +320,14 @@ O benchmark cobre 14 arquiteturas/baselines:
 | Espectrograma e Transformers | Sonic Sleuth, AASIST, RawGAT-ST, Conformer, Hybrid CNN-Transformer, SpectrogramTransformer |
 | CNN e fusão | EfficientNet-LSTM, MultiscaleCNN, Ensemble |
 | Clássicos | SVM, Random Forest |
+
+Elas rendem **11 entradas** no escopo oficial e 5 no estendido
+(`benchmarks/config.py`): WavLM e HuBERT entram no oficial como `Original` —
+backbone congelado com cabeça treinada, que é a configuração usada pelos
+sistemas de topo do ASVspoof 5 — e no estendido em porte Keras.
+
+Resultados do run vigente (`data/results/clean_benchmark_15k/`) em
+[docs/evaluation/benchmark.md](docs/evaluation/benchmark.md#run-vigente--clean_benchmark_15k).
 
 ## Notebooks
 

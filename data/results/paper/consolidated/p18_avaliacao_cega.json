@@ -1,0 +1,27 @@
+{
+ "protocolo": "particao fresca: fora do 15k, locutor e texto disjuntos do treino; modelos NAO retreinados",
+ "resultados": {
+  "SVM": {
+   "n": 4916,
+   "accuracy": 0.9058177379983726,
+   "recall": 0.8734743694060212,
+   "specificity": 0.9381611065907242,
+   "auc_roc": 0.9561822507466363,
+   "eer": 0.0980471928397071,
+   "worst_speaker_accuracy": 0.5338983050847458,
+   "n_speakers": 22,
+   "n_texts": 397
+  },
+  "Random Forest": {
+   "n": 4916,
+   "accuracy": 0.8803905614320586,
+   "recall": 0.8885272579332791,
+   "specificity": 0.8722538649308381,
+   "auc_roc": 0.9578754648476836,
+   "eer": 0.12388120423108216,
+   "worst_speaker_accuracy": 0.5612244897959183,
+   "n_speakers": 22,
+   "n_texts": 397
+  }
+ }
+}

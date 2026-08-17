@@ -1,0 +1,38 @@
+% ====================================================================
+% PLACEHOLDER -- as tabelas e figuras de benchmark foram REMOVIDAS.
+%
+% Os artefatos anteriores (tabelas, figuras e benchmark_summary.json) vinham
+% de execucoes sobre `benchmark_audio_raw_balanced_15k*`, o dataset com atalho
+% de fonte de 87,6% e disjuncao de falante vacua, ja apagado do disco. Numeros
+% como 99,8% de acuracia media medem desempenho in-domain COM ATALHO, nao
+% deteccao -- nao sao comparaveis com a literatura nem com o protocolo de
+% dataset atual (CETUC pareado com clones XTTS-v2).
+%
+% A bateria nova ja rodou: `data/results/clean_benchmark_15k`, sobre
+% `data/datasets/benchmark_dataset_15k.npz` (11/11 arquiteturas do escopo
+% oficial, concluida em 2026-08-06). O que falta e a CONSOLIDACAO -- ver
+% data/results/paper/README.md, incluindo a pendencia de retreino de
+% Conformer e RawGAT-ST.
+%
+% NAO regenere sobre `data/datasets/benchmark_dataset.npz` (40k): aquela
+% bateria foi interrompida em 6 das 11 arquiteturas e esta arquivada em
+% data/results/archive/benchmark_40k_2026-08-02/. O conjunto de teste e outro,
+% entao os numeros nao sao comparaveis nem misturaveis.
+%
+% Regenerar (o run e argumento POSICIONAL, nao flag):
+%   python scripts/reporting/consolidate_results.py \
+%     data/results/clean_benchmark_15k \
+%     --prefer-last --copy-to data/results/paper/figures
+%   python scripts/reporting/update_tcc_latex.py
+% ====================================================================
+
+\begin{table}[ht]
+\centering
+\caption{Resultados consolidados no conjunto de teste limpo.}
+\label{tab:resultados_consolidados}
+\begin{tabular}{l}
+\hline
+Pendente de consolidacao de \path{data/results/clean_benchmark_15k}. \\
+\hline
+\end{tabular}
+\end{table}

@@ -94,14 +94,20 @@ ou web) nem de frameworks de UI. Bibliotecas externas entram via wrapper em
 | Necessidade | Onde |
 | --- | --- |
 | Instanciar modelo por nome | `app/domain/models/architectures/factory.py` -> `create_model` |
-| Registro/hiperparametros default das 14 arquiteturas | `app/domain/models/architectures/registry.py` (`ArchitectureRegistry`, `default_params`) |
+| Registro/hiperparametros default das 12 arquiteturas Keras | `app/domain/models/architectures/registry.py` (`ArchitectureRegistry`, `default_params`) |
 | Implementacao de cada arquitetura | `architectures/<nome>.py` (`create_model(...)` compila o modelo) |
+| Grafo AASIST em PyTorch (back-end dos SSL ajustados) | `architectures/torch_ssl_aasist.py` |
+| Grid de busca dos classicos (FONTE UNICA) | `architectures/svm.py::SVM_PARAM_GRID`, `random_forest.py::RANDOM_FOREST_PARAM_GRID` |
 | Camadas customizadas (SincConv, GAT, AMSoftmax...) | `architectures/layers.py` |
 | Orquestracao de treino | `app/domain/services/training_service.py`, `app/domain/models/training/secure_training_pipeline.py` |
+| Guardas de retomada e colapso de treino | `app/domain/models/training/trainer.py` (`ResumableModelCheckpoint`, `PersistentEpochHistory`, `CollapseAbort`) |
 | Deteccao/inferencia | `app/domain/services/detection_service.py` |
 | Extracao de features | `app/domain/features/` (implementar `IFeatureExtractor`, registrar no registry) |
+| Front-end do benchmark (paridade treino<->inferencia) | `app/domain/features/benchmark_frontend.py` (raw / log-Mel / tabular v1 e v2) |
 | Config global de treino (LR, early stop, augmentation, calibracao) | `app/core/config/settings.py` (`TrainingConfig`) |
 | Motor de benchmark | `benchmarks/` (`runner.py`, `evaluate.py`, `planning.py`, `report.py`) |
+| Diagnostico de estabilidade de treino (pos-hoc) | `benchmarks/stability.py` (`analyze_training_stability`) |
+| Testes pareados (McNemar, bootstrap, Holm) | `benchmarks/significance.py` |
 
 ---
 
@@ -133,8 +139,8 @@ RandomForest) e `extended.yaml` (Sonic Sleuth, EfficientNet-LSTM, Ensemble —
 escopo estendido). Campos: `dataset`, `epochs`, `batch_size`, `device_profile`,
 `snr`, `optimize_hyperparameters`.
 
-Hiperparametros por modelo vivem em **tres lugares** (cuidado com drift; chaves
-como `dropout_rate`/`l2_reg_strength` se sobrepoem):
+Hiperparametros das arquiteturas NEURAIS vivem em **tres lugares** (cuidado com
+drift; chaves como `dropout_rate`/`l2_reg_strength` se sobrepoem):
 1. `registry.py` (`default_params`: dropout, l2, patience, gradient_clip,
    augmentation_strength) — consumido pelo `training_service` (app/Gradio/
    `train_advanced`);
@@ -144,6 +150,14 @@ como `dropout_rate`/`l2_reg_strength` se sobrepoem):
    scheduler, warmup, label_smoothing) — usado **pelo benchmark** quando
    `optimize_hyperparameters=True` (default). Ao ajustar um modelo, revise as 3
    fontes para nao divergir.
+
+Os CLASSICOS (SVM, RandomForest) nao passam por nenhuma das tres: o que os
+define e o GRID de busca, e ele tem **fonte unica** desde 2026-08-09 —
+`svm.py::SVM_PARAM_GRID` e `random_forest.py::RANDOM_FOREST_PARAM_GRID`, de onde
+`benchmarks/runner.py::_classical_search_space` importa. Ate entao o runner
+carregava uma copia propria, divergente, e era ela que rodava: os grids
+regularizados das arquiteturas nao tinham chamador NENHUM no projeto, e o
+benchmark treinava com `max_depth=None`/`min_samples_leaf=1` (train_score 1.0).
 
 A **interface Gradio nao e uma quarta fonte**: desde 2026-07-28 ela resolve os
 defaults por `planning.effective_hyperparameters()`, que aplica o plano do
@@ -210,15 +224,29 @@ diagnostico->ajuste e checklist de verificacao em
 ## Benchmark
 
 Motor em `benchmarks/`; orquestracao em `scripts/`. As 14 arquiteturas sao
-cobertas em DOIS escopos (`benchmarks/config.py`):
+cobertas em DOIS escopos (`benchmarks/config.py`). Uma arquitetura pode aparecer
+em mais de uma ENTRADA de manifesto: WavLM rende "WavLM Original" (congelado, no
+escopo oficial) e "WavLM" (porte Keras, no estendido) — sao receitas distintas
+do mesmo backbone, nao duplicatas.
 
-- **oficial** (`--experiment-scope official`, default): 2 classicas (SVM,
-  RandomForest) + 7 neurais Keras (RawNet2, AASIST, RawGAT-ST, Conformer,
-  Hybrid CNN-Transformer, SpectrogramTransformer, MultiscaleCNN) com
-  hiperparametros de `planning.py::NEURAL_BENCHMARK_HPARAMS`, mais
-  **WavLM Original** e **HuBERT Original**, que rodam por um runner PyTorch
-  separado (`scripts/benchmark/run_wavlm_original_benchmark.py`) — sao os SSL
-  REAIS, nao o fallback TF;
+- **oficial** (`--experiment-scope official`, default) — **11 entradas**:
+  2 classicas (SVM, RandomForest) + 7 neurais Keras (RawNet2, AASIST,
+  RawGAT-ST, Conformer, Hybrid CNN-Transformer, SpectrogramTransformer,
+  MultiscaleCNN) com hiperparametros de
+  `planning.py::NEURAL_BENCHMARK_HPARAMS`, mais **WavLM Original** e
+  **HuBERT Original**, que rodam por um runner PyTorch separado
+  (`scripts/benchmark/run_wavlm_original_benchmark.py`) — sao os SSL REAIS,
+  nao o fallback TF: backbone CONGELADO, soma ponderada de camadas + pooling
+  media⊕desvio, cabeca MLP treinada.
+  >
+  > Essa e a configuracao que a literatura recente documenta. Os sistemas de
+  > topo do ASVspoof 5 (2024) usam SSL como upstream CONGELADO; os baselines
+  > oficiais da Track 1 sao RawNet2 e AASIST, sem SSL. Entradas com o front-end
+  > AJUSTADO existiram por dois dias e sairam em 2026-08-11 — o resultado de
+  > referencia daquela receita usa wav2vec 2.0 XLS-R (~300M), nao WavLM/HuBERT
+  > base (94,5M), entao combina-los seria abordagem NOVA, nao benchmark. O
+  > codigo (`torch_ssl_aasist.py`, `--backend aasist`) fica como ablacao fora
+  > do escopo;
 - **estendido** (`--experiment-scope extended`): Sonic Sleuth,
   EfficientNet-LSTM, Ensemble, e desde 2026-07-28 tambem **WavLM** e **HuBERT**
   em porte Keras (mesmo checkpoint HuggingFace, backbone congelado, soma
@@ -254,12 +282,31 @@ python scripts/reporting/consolidate_results.py data/results/<run> \
 python scripts/reporting/validate_artifacts.py --results-dir data/results/<run>
 python scripts/reporting/sync_completed_benchmark_artifacts.py \
   --summary data/results/<run>/run_summary.json
+
+# Reparo de artefato (nao retreinam nada; rodam sobre o run ja concluido):
+python scripts/reporting/backfill_artifact_metadata.py --results-dir data/results/<run>
+python scripts/reporting/rebuild_run_summary.py --results-dir data/results/<run>
 ```
+
+`backfill_artifact_metadata.py` completa campos que nasceram depois de um run
+(`training_stability`, `codec_eval_status`, `latency_profile.runtime`,
+`fit_strategy.fit_splits`, `dataset.test_cluster_ids`) DERIVANDO do que ja esta
+gravado — nunca fabricando. Roda em simulacao por padrao, guarda
+`<arquivo>.pre-backfill.bak` e carimba `backfill` em cada bloco tocado, para que
+um artefato completado nao passe por um produzido por execucao.
+`rebuild_run_summary.py` reconstroi o `run_summary.json` a partir dos
+`results.json` quando o resumo do orquestrador ficou defasado.
 
 O timeout por modelo e **derivado do custo estimado** de cada arquitetura
 (`planning.EXPECTED_TRAINING_HOURS`, fator 3x, escalado por epocas e tamanho do
 treino): omitir `--timeout-min` e o recomendado. O default fixo anterior (60 min)
 era menor que o treino de qualquer modelo neural em 100 epocas.
+
+> **A tabela de custo faz parte de qualquer mudanca de protocolo.** Em
+> 2026-08-09 o retune dos classicos levou o RandomForest de 72 para 540 ajustes
+> de floresta sem revisar a linha correspondente, e o timeout derivado (ainda
+> 30 min) matou o treino aos 1800,6 s. Mudou grid, lote, precisao, janela ou
+> front-end? Remeça o custo junto.
 
 Os artefatos promovidos ficam em `data/models/benchmark_final/<arch>/` com
 `data/results/` (metrics.json, results.csv/json, predictions_clean.csv,
@@ -307,9 +354,17 @@ treino de uma arquitetura.
   `input_requirements`.
 - Ajuste de hiperparametros: preferir `registry.default_params` (dropout, l2,
   patience, gradient_clip, augmentation_strength); LR/optimizer/loss no
-  `create_model` da arquitetura; flags globais em `settings.py`.
+  `create_model` da arquitetura; flags globais em `settings.py`. Nos classicos,
+  o que se ajusta e o GRID, e ele vive so em `svm.py`/`random_forest.py`.
+- Mudou o vetor de features de um modelo ja promovido? O `feature_frontend` do
+  contrato precisa de um ID NOVO (foi assim que nasceu o `benchmark_tabular_v2`,
+  de 183 colunas, ao lado do `v1` de 63). Reaproveitar o ID faria a inferencia
+  preparar um vetor que o artefato antigo nao entende.
 - Testes espelham `app/` em `tests/unit|integration|api/`; rode `make test`
-  (a CI usa essa suite rapida) antes de abrir PR.
+  (a CI usa essa suite rapida) antes de abrir PR. Nenhum teste escreve em
+  `data/models`: o `conftest.py` redireciona `XFAKE_MODELS_DIR` para um
+  diretorio temporario da sessao — sem isso um `BenchmarkConfig` sem
+  `models_dir` grava por cima do artefato promovido.
 - `.gitignore` ignora `data/results/`, `data/models/*.keras|*.pkl`,
   `logs/` e caches — artefatos de treino sao regeneraveis, nao versione.
 - Copie `.env.example` para `.env` antes de executar.

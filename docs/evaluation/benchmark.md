@@ -139,19 +139,55 @@ coincidentes, e ler isso como "empate" é um erro de método.
 | `mcnemar_test` | os dois modelos erram nas mesmas amostras? (decisões duras no limiar do protocolo) | cluster, ou amostra sem IDs |
 | `paired_bootstrap_test` | IC 95% e p da diferença de EER/AUC | cluster, ou amostra sem IDs |
 
-Os p-valores saem brutos e ajustados por **Holm-Bonferroni**: 11 modelos par a
-par são 55 testes, e sem correção ~3 saem "significativos" a 5% por acaso.
+Os p-valores saem brutos e ajustados por **Holm-Bonferroni**: os 11 modelos do
+`clean_benchmark_15k` par a par são 55 testes, e sem correção ~3 saem
+"significativos" a 5% por acaso. O número de pares cresce com C(n,2), então
+acrescentar uma entrada ao escopo muda a correção de todas as comparações.
 
-A reamostragem é por **cluster** (frase/locutor) sempre que
-`dataset.test_cluster_ids` estiver no `results.json` — persistido desde
-2026-08-09. Amostras da mesma frase não são independentes; tratá-las como se
-fossem produz p otimista, e o relatório declara isso quando cai para amostra.
+> **Resolução do bootstrap limita o p ajustado.** O menor p-valor que `n`
+> reamostragens conseguem expressar é `2/(n+1)`, e Holm multiplica esse piso
+> pelo número de comparações. Com 1.000 reamostragens e 55 pares, o menor p
+> ajustado possível é **0,11** — nenhum par pode sair significativo, quaisquer
+> que sejam os dados, inclusive os cujo IC da diferença exclui zero com folga.
+> Por isso o default de `--significance-bootstrap` é **5.000** (piso 4×10⁻⁴,
+> ajustado 0,022) e o artefato declara `p_value_floor`, `p_value_at_floor` e
+> `protocol.min_resolvable_holm_p`, com aviso explícito quando a resolução não
+> dá conta. Quando p satura, **quem decide é o IC da diferença**, que não tem
+> esse teto.
+
+A reamostragem é por **cluster** sempre que `dataset.test_cluster_ids` estiver
+no `results.json` — persistido desde 2026-08-09. Amostras da mesma frase não
+são independentes; tratá-las como se fossem produz p otimista, e o relatório
+declara isso quando cai para amostra.
+
+#### Duas unidades: frase e locutor
+
+`cluster_ids` **é** `text_ids` — a unidade é a FRASE (183 no teste do
+`benchmark_dataset_15k`). Mas a alegação do protocolo é sobre **locutores não
+vistos**, e são apenas **11**. Reamostrar frases trata frases do mesmo locutor
+como independentes e estreita o IC: a largura por locutor vai de 1,2× (topo da
+tabela) a 5,5× (SVM) a do IC por frase.
+
+Por isso `benchmark_significance.json` traz as duas matrizes desde 2026-08-09 —
+a de frase na raiz e a de locutor em `by_speaker` (exige
+`dataset.test_speaker_ids`). **A troca de unidade não é cosmética:** no
+`clean_benchmark_15k` ela transforma três separações em empate — Conformer ×
+MultiscaleCNN, MultiscaleCNN × RawNet2 e RawGAT-ST × SVM. O empate do topo
+(SpectrogramTransformer, Conformer, Hybrid CNN-Transformer) sobrevive nas duas.
+
+Para qualquer afirmação sobre generalização a locutores não vistos, vale o
+veredito **por locutor** — o conservador. Na mesma linha, `grouped_clean`
+passou a incluir o agrupamento por locutor, com `worst_group_accuracy`: o
+agregado de 95,88% do RawNet2 esconde 74,2% em M026, e o de 93,92% do HuBERT
+esconde 71,0% em M028. Os agrupamentos `source` e `generator` continuam sendo
+gravados, mas neste dataset são degenerados (1 e 2 grupos — o segundo são as
+próprias classes).
 
 ```bash
 # gerado por padrão junto da consolidação
 python scripts/reporting/consolidate_results.py data/results/<run> \
   --prefer-last --copy-to data/results/paper/figures
-# -> <out>/benchmark_significance.json
+# -> <out>/benchmark_significance.json  (raiz = frase, by_speaker = locutor)
 ```
 
 ### Estabilidade de treino (desde 2026-08-09)
@@ -251,6 +287,15 @@ escopos** (`benchmarks/config.py`):
     precisão, janela ou arquitetura, remeça os custos**: um timeout derivado de
     número velho mata um treino bom.
 
+    Isso não é hipotético — aconteceu em **2026-08-09**. O retune dos clássicos
+    levou o RandomForest de 72 para 540 ajustes de floresta (grid de 24 para 108
+    candidatos, dobras de 3 para 5, busca de 12.162 para 24.324 amostras, vetor
+    de 63 para 183 colunas) sem que a tabela fosse revista: o timeout derivado
+    continuou em 30 min e matou o treino aos 1800,6 s. O protocolo mudou, o
+    custo mudou de ordem, a estimativa não. **Mudou o grid ou o front-end de um
+    clássico? A linha correspondente de `EXPECTED_TRAINING_HOURS` faz parte da
+    mudança.**
+
 !!! danger "Recalibração dos custos e do escalonamento (2026-08-02)"
     Dois defeitos acoplados, corrigidos juntos porque corrigir um só quebra o
     run.
@@ -320,8 +365,9 @@ escopos** (`benchmarks/config.py`):
     do passo pós-hoc `rebuild_inference_contracts.py` — que cobria nove
     arquiteturas. SVM/RandomForest não tinham sidecar algum: iam para produção
     sem front-end e sem limiar, decidindo sempre em 0,5. Agora recebem contrato
-    com o vetor tabular de 63 descritores e limiar de EER derivado da
-    **validação**.
+    com o vetor tabular do benchmark e limiar de EER derivado da
+    **validação** — que desde 2026-08-09 está FORA do ajuste dos clássicos,
+    portanto held-out de verdade.
 
 Pedir um modelo do escopo estendido dentro do escopo oficial é erro de
 configuração (o preflight recusa antes de treinar), não uma limitação do
@@ -394,8 +440,21 @@ do artigo e relatórios consolidados junto ao repositório de modelos.
 O run consolidado usou 15.000 amostras em PCM linear, 16 bits, mono e
 16 kHz. Os resultados consolidados anteriores usaram orçamentos e parada
 antecipada heterogêneos; o protocolo corrigido executa 100 épocas completas
-para todas as redes e restaura o melhor checkpoint em validação limpa; SVM e RandomForest usam GridSearchCV + ajuste
-final.
+para todas as redes e restaura o melhor checkpoint em validação limpa.
+
+**Clássicos (SVM/RandomForest)** — protocolo revisado em 2026-08-09:
+`GridSearchCV` com `StratifiedGroupKFold` de 5 dobras sobre os `cluster_ids`
+(locutor × frase), sobre o MESMO conjunto do ajuste (treino limpo + cópia AWGN,
+com o grupo repetido por bloco), seguido de ajuste final e calibração isotônica
+(`CalibratedClassifierCV`, `ensemble=False`). O ajuste usa **só o treino**, como
+as neurais; a validação fica held-out para a calibração e para o limiar de EER
+do contrato de inferência.
+
+O agrupamento é obrigatório aqui: o Protocolo de Dataset é pareado — cada
+enunciado aparece como original CETUC e como clone XTTS-v2 do mesmo locutor e da
+mesma frase —, então uma dobra aleatória deixa metade do par no treino e a outra
+metade na validação. O grid vive em `svm.py::SVM_PARAM_GRID` e
+`random_forest.py::RANDOM_FOREST_PARAM_GRID`, fonte única desde a mesma data.
 
 > **Fonte única dos números**: a tabela de resultados usada no artigo é
 > gerada automaticamente em `data/results/paper/tabelas_benchmark.tex`
@@ -405,28 +464,59 @@ final.
 > seguido de `python scripts/reporting/update_tcc_latex.py`. Não duplique esses valores
 > aqui à mão — copie o retrato mais recente do artigo quando precisar de
 > referência rápida, mas trate `tabelas_benchmark.tex` como a fonte de
-> verdade. Recorte oficial do artigo (**11 modelos**, run final consolidado
-> de 2026-07-15, `data/results/final_consolidated_20260715/`, teste limpo com
-> test-lock; escopo **in-domain** — ver
-> [Protocolo Final de ML](final-ml-protocol.md)):
+> verdade.
 
-| Modelo | Accuracy | AUC ROC | EER | Acc.\ @10dB |
-|---|---:|---:|---:|---:|
-| Conformer | 99,82% | 1,000 | 0,18% | 98,0% |
-| HuBERT Original | 99,87% | 1,000 | 0,18% | 96,8% |
-| Res2Net | 99,69% | 1,000 | 0,36% | 97,5% |
-| WavLM Original | 99,69% | 1,000 | 0,36% | 98,8% |
-| SVM | 99,24% | 1,000 | 0,58% | 93,8% |
-| CCT | 99,20% | 0,999 | 0,71% | 95,0% |
-| AST | 99,02% | 0,998 | 0,98% | 93,2% |
-| Random Forest | 97,82% | 0,999 | 2,09% | 92,4% |
-| RawNet2 | 97,16% | 0,998 | 2,71% | 93,0% |
-| AASIST | 95,02% | 0,990 | 4,89% | 88,7% |
-| RawGAT-ST | 93,60% | 0,987 | 6,22% | 84,0% |
+### Run vigente — `clean_benchmark_15k`
+
+`data/results/clean_benchmark_15k/`, sobre `benchmark_dataset_15k.npz`
+(15.000 amostras, splits 12.162/1.456/1.382), protocolo `waveform-awgn-v2`,
+test-lock v2 validado, 100 épocas fixas, limiar comum 0,5.
+
+**Substitui `final_consolidated_20260715`**, cujos números foram medidos no
+corpus anterior e não são comparáveis com estes (conjuntos de teste diferentes).
+Aquele diretório não existe mais em `data/results/`; o que resta dele está em
+`data/results/paper/` e nas tabelas históricas de
+[Protocolo Final de ML](final-ml-protocol.md) e
+[Estudo Experimental](experimental-study.md).
+
+| Modelo | Accuracy | AUC ROC | EER | Acc.\ @10dB | Acc.\ @5dB | Estabilidade |
+|---|---:|---:|---:|---:|---:|---|
+| SpectrogramTransformer | 99,71% | 0,999 | 0,14% | 88,21% | 84,88% | estável |
+| Hybrid CNN-Transformer | 99,57% | 1,000 | 0,43% | 90,30% | 81,84% | estável |
+| Conformer | 99,49% | 1,000 | 0,43% | 94,07% | 91,39% | **colapsado** |
+| MultiscaleCNN | 97,76% | 0,998 | 2,17% | 92,40% | 88,13% | estável |
+| WavLM Original | 96,09% | 0,997 | 3,62% | 88,35% | 85,96% | estável |
+| RawNet2 | 95,88% | 0,997 | 3,18% | 90,38% | 84,01% | estável |
+| AASIST | 94,72% | 0,989 | 2,60% | 91,68% | 84,73% | estável |
+| HuBERT Original | 93,92% | 0,987 | 5,93% | 85,75% | 80,17% | estável |
+| SVM | 93,20% | 0,966 | 7,01% | 85,53% | 58,68% | — (clássico) |
+| RandomForest | 91,53% | 0,984 | 7,01% | 82,71% | 74,96% | — (clássico) |
+| RawGAT-ST | 87,55% | 0,947 | 11,87% | 77,21% | 77,64% | **instável (oscilação)** |
+
+A coluna de **5 dB é a condição NÃO VISTA** (o treino é aumentado a 30/20/10) e
+é ela que mede generalização a ruído — não a de 10 dB.
+
+Três ressalvas que o artefato declara e a tabela não mostra:
+
+- **Conformer** saiu com 99,49% a partir do checkpoint da **época 10**; da 17 à
+  100 o treino ficou em `val_accuracy = 0,500`. É retreino pendente, não
+  resultado.
+- **RawGAT-ST** tem robustez não monotônica (77,21% a 10 dB contra 77,64% a
+  5 dB) e min t-DCF 0,3149, abaixo dos dois clássicos. Também é retreino
+  pendente.
+- **AASIST** tem o 5º melhor EER e a 8ª acurácia porque os scores saturam em
+  0,0099/0,9901 e o limiar de EER vai a 0,924; sob limiar ótimo faria 97,32%.
+  É característica do modelo sob limiar fixo, não defeito.
+
+As 11 linhas são o escopo oficial completo. Entradas SSL com o front-end
+ajustado (`WavLM AASIST`/`HuBERT AASIST`) existiram entre 09 e 11/08/2026 e
+foram retiradas: os sistemas de topo do ASVspoof 5 usam SSL congelado, e o
+resultado de referência da receita ajustada usa wav2vec 2.0 XLS-R, não os
+backbones *base* deste projeto.
 
 Sonic Sleuth, Ensemble e EfficientNet-LSTM são suportados pelo harness (14
 arquiteturas ao todo, ver seções abaixo) mas **não** integram o recorte
-oficial dos 11 modelos do artigo — Sonic Sleuth por suspeita de vazamento de
+oficial do artigo — Sonic Sleuth por suspeita de vazamento de
 dados não auditada (`scripts/dataset/audit_dataset_leakage.py`), e Ensemble/
 EfficientNet-LSTM por estarem fora do escopo consolidado
 (`docs/evaluation/retraining-adjustments.md`).
@@ -898,7 +988,7 @@ dataset sintético separável (apenas para validar o harness).
 O protocolo de retreino aplica AWGN exclusivamente à **forma de onda canônica**,
 após a divisão treino/validação/teste e antes de qualquer frontend. A mesma
 realização ruidosa é então convertida para raw-audio, log-Mel ou o vetor tabular
-de 63 descritores. Uma cópia ruidosa por amostra de treino distribui, de forma
+(v2, 183 descritores: os 63 do v1 mais 120 de LFCC com Δ e ΔΔ). Uma cópia ruidosa por amostra de treino distribui, de forma
 balanceada e reprodutível, os SNRs de 30, 20 e 10 dB. O modo estrito rejeita
 NPZs reais que contenham somente features, evitando regressão silenciosa para o
 protocolo legado no espaço de entrada. O loader preserva partições explícitas

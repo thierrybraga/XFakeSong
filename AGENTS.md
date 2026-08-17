@@ -107,13 +107,26 @@ HTTP/Gradio → interfaces/web/routers/ ou interfaces/gradio/ → domain/service
 | EfficientNet-LSTM | Espectrograma | Transfer learning + Bi-LSTM |
 | MultiscaleCNN (Res2Net) | Espectrograma | Multi-escala hierárquica dentro do bloco |
 | Ensemble | Multi-representação | 4 branches (Mel+LFCC+CQT+MFCC) + fusão MLP |
-| SVM | Features tabulares (63) | StandardScaler + SVC(rbf) |
-| Random Forest | Features tabulares (63) | n_jobs=-1, paralelismo CPU |
+| SVM | Features tabulares (183) | StandardScaler + SVC(rbf) + calibração isotônica |
+| Random Forest | Features tabulares (183) | n_jobs=-1, paralelismo CPU + calibração isotônica |
 
-Cobertas em dois escopos de benchmark (`benchmarks/config.py`) — oficial (11: os 9
-acima exceto Sonic Sleuth/EfficientNet-LSTM/Ensemble, mais WavLM Original e
-HuBERT Original via runner PyTorch dedicado) e estendido (5: Sonic Sleuth,
-EfficientNet-LSTM, Ensemble, WavLM e HuBERT em porte Keras). Detalhes em
+O vetor tabular é o `benchmark_tabular_v2`: 11 estatísticas temporais + 26 MFCC
++ 26 RASTA-PLP (os 63 do `v1`, na mesma ordem) + 120 LFCC (20 coeficientes
+estáticos, Δ e ΔΔ, com média e desvio de cada bloco). O `v1` continua resolvível
+para artefatos treinados antes de 2026-08-09 — quem decide é o `feature_frontend`
+gravado no contrato do modelo, não o tipo de entrada.
+
+Cobertas em dois escopos de benchmark (`benchmarks/config.py`) — **oficial** (11
+entradas: as 9 acima exceto Sonic Sleuth/EfficientNet-LSTM/Ensemble, mais
+**WavLM Original** e **HuBERT Original**, via runner PyTorch dedicado, com
+backbone CONGELADO e cabeça treinada) e **estendido** (5: Sonic Sleuth,
+EfficientNet-LSTM, Ensemble, WavLM e HuBERT em porte Keras).
+
+O SSL congelado não é escolha de conveniência: é o que os sistemas de topo do
+ASVspoof 5 (2024) usam, e os baselines oficiais da Track 1 (RawNet2, AASIST)
+sequer têm front-end SSL. Entradas com o front-end ajustado existiram por dois
+dias e saíram em 2026-08-11 — o resultado de referência daquela receita usa
+wav2vec 2.0 XLS-R (~300M), não WavLM/HuBERT base (94,5M). Detalhes em
 [`docs/models/architectures.md`](docs/models/architectures.md).
 
 Use `from app.domain.models.architectures.factory import create_model` para instanciar por nome.
@@ -141,7 +154,12 @@ Copie `.env.example` para `.env` antes de executar.
 - **Logging**: `logging.getLogger(__name__)` — nunca `print()`
 - **Novas regras de negócio**: adicionar em `app/domain/` sem dependência de frameworks
 - **Novas features**: implementar `IFeatureExtractor`, registrar em `FeatureExtractorRegistry`
-- **Testes**: espelham estrutura de `app/` nas pastas `tests/unit/`, `tests/integration/`, `tests/api/`
+- **Mudou o vetor de um modelo promovido**: o `feature_frontend` do contrato
+  precisa de um ID novo (ex.: `benchmark_tabular_v2` ao lado do `v1`) — reusar o
+  ID faz a inferência preparar um vetor que o artefato antigo não entende
+- **Testes**: espelham estrutura de `app/` nas pastas `tests/unit/`, `tests/integration/`, `tests/api/`;
+  nenhum teste escreve em `data/models` (o `tests/conftest.py` redireciona
+  `XFAKE_MODELS_DIR` para um diretório temporário da sessão)
 
 ---
 

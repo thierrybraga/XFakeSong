@@ -80,7 +80,10 @@ consolidadas a partir do trabalho:
 - **14 arquiteturas** de detecção: 12 neurais (AASIST, RawGAT-ST, RawNet2,
   WavLM, HuBERT, Conformer, SpectrogramTransformer, Hybrid CNN-Transformer,
   EfficientNet-LSTM, MultiscaleCNN, Ensemble, Sonic Sleuth) + 2 clássicas
-  (SVM, RandomForest).
+  (SVM, RandomForest). O benchmark as cobre em **11 entradas** no escopo
+  oficial e 5 no estendido — WavLM e HuBERT aparecem como `Original`
+  (backbone congelado, cabeça treinada: a configuração documentada) no oficial
+  e em porte Keras no estendido.
 - **Front-end real** por modelo: forma de onda bruta (raw-audio), log-mel ou
   **LFCC** (espectrograma), via `tf.signal` in-graph — paridade treino↔inferência
   garantida pelo `input_contract`.

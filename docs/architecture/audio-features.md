@@ -96,11 +96,44 @@ Modelos novos devem gravar `feature_frontend="lfcc"` ou `"logmel"` no
 `input_contract`. Modelos antigos sem esse campo usam `logmel` por fallback para
 manter paridade com o treino já realizado.
 
-### Extração segmentada para SVM/RF
+### Vetor tabular do benchmark (SVM/RandomForest)
 
-Os modelos clássicos recebem vetor tabular. Na inferência, se o artefato não
-declara `feature_types`, o fallback é `spectral`, `cepstral`, `temporal` e
-`prosodic`. O core segmenta o áudio em janelas de 1 s, sem overlap, normaliza os
+Os clássicos promovidos pelo benchmark **não** passam pela extração segmentada
+descrita abaixo: eles usam o front-end de
+`app/domain/features/benchmark_frontend.py`, que é a mesma função no treino e na
+inferência (paridade por construção, roteada pelo `feature_frontend` do
+contrato).
+
+| ID | Largura | Composição |
+|---|---:|---|
+| `benchmark_tabular_v1` | 63 | 11 estatísticas temporais + 26 MFCC (média/desvio de 13) + 26 RASTA-PLP (idem) |
+| `benchmark_tabular_v2` | 183 | o v1 inteiro, na mesma ordem, + 120 LFCC: 20 coeficientes estáticos, Δ e ΔΔ, com média e desvio de cada bloco |
+
+O **v2 é o que treina desde 2026-08-09**; o v1 continua resolvível para
+artefatos anteriores. O bloco LFCC existe por um motivo medido: sob AWGN a 5 dB
+os dois clássicos mantinham a AUC (0,849 e 0,838) e perdiam o ponto de operação
+(acurácia 0,5000 e 0,6274), porque 8 dos 11 descritores temporais crescem
+monotonicamente com a potência do ruído — `mín` e `máx` são estatísticas de
+ordem sobre 48.000 amostras, ou seja medidores de ruído. LFCC é o front-end do
+baseline CM do ASVspoof2019/2021 (escala linear não comprime os agudos, onde o
+vocoder deixa artefato) e Δ/ΔΔ são diferenças entre quadros, invariantes a
+offset constante de canal ou nível.
+
+!!! warning "CMVN não serve aqui"
+    A agregação do vetor é média⊕desvio **por coeficiente**, e a CMVN zera
+    exatamente essas duas estatísticas por construção (média 0, desvio 1).
+    Aplicá-la antes do pooling transformaria 40 colunas em constantes. Δ/ΔΔ
+    entrega a mesma invariância a offset sem esse efeito.
+
+Os nomes canônicos das colunas estão em `app/domain/xai/tabular.py`;
+`feature_names_for_width(n)` resolve a versão pela largura do artefato, para que
+a XAI não desalinhe rótulos ao ler um modelo v1.
+
+### Extração segmentada para SVM/RF (caminho do app)
+
+Fora do benchmark, os clássicos recebem vetor tabular pela extração segmentada.
+Na inferência, se o artefato não declara `feature_types`, o fallback é
+`spectral`, `cepstral`, `temporal` e `prosodic`. O core segmenta o áudio em janelas de 1 s, sem overlap, normaliza os
 segmentos e agrega por `mean` por padrão. Métodos aceitos:
 
 | `aggregate_method` | Saída |
