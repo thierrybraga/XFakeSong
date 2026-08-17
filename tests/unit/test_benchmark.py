@@ -166,7 +166,7 @@ def test_prepare_raw_audio_center_crops_long_clips_for_aasist():
     """AASIST usa janela 64.600 (~4,04s, protocolo ASVspoof2021 baseline
     compartilhado com RawGAT-ST) + crop_strategy multicrop na avaliação —
     diferente do RawNet2 (1s, sem TTA). Ver registry.py::input_requirements
-    e tests/unit/test_p2_rawgatst_sslaasist.py."""
+    e tests/unit/test_rawgat_aasist_ssl_backends.py."""
     from benchmarks.data import BenchmarkData
 
     rng = np.random.default_rng(34)
@@ -353,7 +353,12 @@ def test_report_write_all_creates_artifacts():
         assert (out / "figures" / "confusion_matrices.png").exists()
         assert (out / "figures" / "score_distributions.png").exists()
         pred_csv = (out / "predictions_clean.csv").read_text("utf-8")
-        assert "architecture,sample_index,y_true,p_fake,y_pred,correct" in pred_csv
+        # `ranking_score` acompanha o arquivo por arquitetura: nos clássicos é
+        # dele que saem AUC/EER, e o `p_fake` calibrado não os reproduz.
+        assert (
+            "architecture,sample_index,y_true,p_fake,ranking_score,y_pred,correct"
+            in pred_csv
+        )
         arch_dir = out / "architectures" / "multiscalecnn"
         assert (arch_dir / "metrics.json").exists()
         assert (arch_dir / "summary.md").exists()
@@ -369,7 +374,7 @@ def test_report_write_all_creates_artifacts():
         assert "(architectures/multiscalecnn/confusion_matrix.png)" in report
 
 
-def test_robustez_table_marks_non_converged_instead_of_dropping():
+def test_robustez_table_usa_colspan_quando_nenhuma_arquitetura_conclui():
     from benchmarks.report import write_all
 
     fake = {
@@ -397,16 +402,11 @@ def test_robustez_table_marks_non_converged_instead_of_dropping():
             }
         },
     }
-    with tempfile.TemporaryDirectory() as td:
-        write_all(fake, td)
-        tex = (Path(td) / "tables" / "tab_robustez.tex").read_text("utf-8")
-        # `converged` é medido no PRÓPRIO teste: filtrar a tabela por ele era
-        # seleção pelo conjunto de teste, e a arquitetura sumia sem nota
-        # nenhuma. Agora a linha permanece, marcada e explicada na legenda.
-        assert "SVM$^{\\dagger}$" in tex
-        assert "\\dagger$ não atingiu o critério de convergência" in tex
-
-    # o colspan dinâmico continua valendo quando NENHUMA arquitetura conclui
+    # A marcação `\dagger` do modelo não convergido é verificada em
+    # `test_benchmark_protocol_fixes.py::
+    # test_robustness_table_keeps_non_converged_models_marked`, que também
+    # cobre a legenda. Aqui fica só o que é exclusivo deste caso: o colspan
+    # dinâmico quando NENHUMA arquitetura conclui (2026-08-17, deduplicação).
     empty = {**fake, "architectures": {"SVM": {"status": "error", "error": "x"}}}
     with tempfile.TemporaryDirectory() as td:
         write_all(empty, td)
@@ -589,6 +589,7 @@ def test_full_tcc_preset_includes_all_architectures():
         DOCKER_TRAINING_ARCHITECTURES,
         NEURAL_TCC_ARCHITECTURES,
         SSL_DOCKER_ARCHITECTURES,
+        SSL_FINETUNED_ARCHITECTURES,
         BenchmarkConfig,
     )
 
@@ -602,7 +603,19 @@ def test_full_tcc_preset_includes_all_architectures():
     assert "HuBERT Original" not in cfg.architectures
     assert BenchmarkConfig.full_all_architectures().architectures == cfg.architectures
     assert CLASSICAL_TCC_ARCHITECTURES == ["RandomForest", "SVM"]
+    # 2026-08-11: as duas variantes com fine-tuning saíram do escopo oficial.
+    # Os sistemas de topo do ASVspoof 5 usam SSL CONGELADO, e o resultado de
+    # referência da receita ajustada usa wav2vec2 XLS-R, não WavLM/HuBERT base
+    # — combiná-los seria abordagem nova, não benchmark de configuração
+    # documentada. As entradas `Original` já são a documentada.
     assert SSL_DOCKER_ARCHITECTURES == ["WavLM Original", "HuBERT Original"]
+    # Vazia por consequência, não por literal: a derivação segue no lugar para
+    # que reintroduzir uma entrada `:ssl_finetuned` volte a acionar as flags.
+    assert SSL_FINETUNED_ARCHITECTURES == []
+    # Nenhuma variante SSL pode vazar para a lista que `benchmarks.runner`
+    # tenta treinar pelo caminho Keras — era o que `endswith(":ssl_original")`
+    # deixava acontecer com as variantes `:ssl_finetuned`.
+    assert set(ALL_TCC_ARCHITECTURES) & set(SSL_DOCKER_ARCHITECTURES) == set()
     assert DOCKER_TRAINING_ARCHITECTURES == [
         *ALL_TCC_ARCHITECTURES,
         *SSL_DOCKER_ARCHITECTURES,
@@ -844,9 +857,16 @@ def test_conformer_benchmark_smoke_generates_model_results_and_figures(monkeypat
         assert conformer["epochs"] == 1
         assert conformer["model_parameters"]["dropout_rate"] == 0.3
 
+        # AJUSTE 2026-08-09: `model_artifact` aponta para a cópia PRESERVADA no
+        # run. `models_dir` é global e chaveado só pela arquitetura — qualquer
+        # execução posterior sobrescreve o arquivo de lá (foi como o
+        # bench_svm.pkl do clean_benchmark_15k virou um artefato de smoke).
         model_artifact = Path(conformer["model_artifact"])
         assert model_artifact.exists()
-        assert model_artifact.parent == models_dir
+        assert model_artifact.parent == output_dir / "architectures" / "conformer" / "models"
+        shared = Path(conformer["model_artifact_shared_copy"])
+        assert shared.exists() and shared.parent == models_dir
+        assert conformer["model_artifact_fingerprint"]["integrity"] == "recorded_at_run"
         assert (output_dir / "results.json").exists()
 
         saved = json.loads((output_dir / "results.json").read_text("utf-8"))
@@ -909,9 +929,13 @@ def test_run_benchmark_quick_svm_integration(monkeypatch):
         assert "clean" in svm and "auc_roc" in svm["clean"]
         assert "20" in svm["robustness"]
         assert svm["efficiency"]["latency_ms"] is not None
+        # O caminho clássico não deixava NENHUMA cópia no run — o `.pkl` só
+        # existia no `models_dir` global. Agora acompanha os neurais.
         model_artifact = Path(svm["model_artifact"])
         assert model_artifact.exists()
-        assert model_artifact.parent == models_dir
+        assert model_artifact.parent == Path(td) / "architectures" / "svm" / "models"
+        shared = Path(svm["model_artifact_shared_copy"])
+        assert shared.exists() and shared.parent == models_dir
         # artefatos
         saved = json.loads((Path(td) / "results.json").read_text("utf-8"))
         assert saved["dataset"]["n_test"] > 0
@@ -951,15 +975,58 @@ def test_svm_optimized_benchmark_reports_real_fit_strategy(monkeypatch):
         assert svm["type"] == "classical"
         assert svm["epochs"] is None
         assert svm["fit_strategy"]["kind"] == "grid_search_cv_then_refit"
-        assert svm["fit_strategy"]["cv"] == 3
-        assert svm["fit_strategy"]["n_candidates"] == 12
-        assert svm["fit_strategy"]["n_fits"] == 36
+        # 5 dobras (era 3) e 24 candidatos (era 12) desde 2026-08-09: o grid
+        # passou a vir de `svm.py::SVM_PARAM_GRID` — antes o runner usava uma
+        # cópia própria, com o eixo `gamma` duplicado (scale ≈ auto depois do
+        # StandardScaler).
+        assert svm["fit_strategy"]["cv"] == 5
+        # 15 candidatos: 3 C x 4 gamma no RBF + 3 C no linear. Como dicionário
+        # único seriam 24, com 9 lineares redundantes (gamma não afeta linear).
+        assert svm["fit_strategy"]["n_candidates"] == 15
+        assert svm["fit_strategy"]["n_fits"] == 75
         assert svm["fit_strategy"]["final_refit"] is True
-        assert svm["fit_strategy"]["total_fit_calls_estimate"] == 37
+        assert svm["fit_strategy"]["total_fit_calls_estimate"] == 76
 
         report = (Path(td) / "tcc_report.md").read_text("utf-8")
-        assert "Treino executado: `CV 36+fit`" in report
+        assert "Treino executado: `CV 75+fit`" in report
         assert "Épocas executadas: `100`" not in report
+
+
+def test_classical_grid_comes_from_the_architecture_modules():
+    """O grid do runner É o da arquitetura — não uma quarta fonte própria.
+
+    Até 2026-08-09 `_classical_search_space` carregava uma cópia divergente e
+    os grids regularizados de `svm.py`/`random_forest.py` não tinham NENHUM
+    chamador: o benchmark rodava `max_depth=None` e `min_samples_leaf=1` para o
+    RF, exatamente o overfitting que aqueles grids existiam para corrigir.
+    """
+    from app.domain.models.architectures.random_forest import (
+        RANDOM_FOREST_PARAM_GRID,
+    )
+    from app.domain.models.architectures.svm import SVM_PARAM_GRID
+    from benchmarks.runner import _classical_search_space
+
+    svm_grid, _, svm_step = _classical_search_space("SVM", 42)
+    rf_grid, _, rf_step = _classical_search_space("RandomForest", 42)
+    assert (svm_step, rf_step) == ("svm", "rf")
+    assert svm_grid == SVM_PARAM_GRID
+    assert rf_grid == RANDOM_FOREST_PARAM_GRID
+
+    # Regressões concretas que o grid antigo do runner tinha:
+    assert None not in rf_grid["rf__max_depth"], "profundidade ilimitada de volta"
+    assert 1 not in rf_grid["rf__min_samples_leaf"], "folha de 1 amostra de volta"
+    assert "rf__min_samples_split" in rf_grid, "min_samples_split não explorado"
+    # O grid do SVM é uma LISTA de blocos: `gamma` só cruza com o kernel RBF.
+    from sklearn.model_selection import ParameterGrid
+
+    candidatos = list(ParameterGrid(svm_grid))
+    assert len(candidatos) == 15
+    gammas = {c["svm__gamma"] for c in candidatos if "svm__gamma" in c}
+    # 'auto' == 'scale' depois do StandardScaler (ambos ≈1/n_features): manter
+    # os dois desperdiçava metade do eixo.
+    assert "auto" not in gammas
+    assert any(isinstance(g, float) for g in gammas)
+    assert "poly" not in {c["svm__kernel"] for c in candidatos}
 
 
 def test_npz_predefined_splits_are_preserved_without_duplicate_aggregate(tmp_path):

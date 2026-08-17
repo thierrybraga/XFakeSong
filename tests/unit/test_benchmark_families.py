@@ -1,3 +1,10 @@
+"""Escopos do benchmark: oficial x estendido, e o que cada um pode alegar.
+
+SUJEITO: `benchmarks/config.py` — que os dois escopos sejam disjuntos e
+completos, que o estendido se declare NÃO acadêmico, e que a política de limiar
+e o perfil de latência sejam reportados separadamente por escopo.
+"""
+
 from argparse import Namespace
 
 import numpy as np
@@ -28,6 +35,11 @@ def test_official_and_extended_scopes_are_disjoint_and_complete():
     extended = {item["benchmark_name"] for item in EXTENDED_MODEL_MANIFEST}
     assert official == set(DOCKER_TRAINING_ARCHITECTURES)
     assert official.isdisjoint(extended)
+    # As duas ajustadas (front-end destravado + grafo AASIST) SAIRAM do escopo
+    # oficial em 2026-08-11: os sistemas de topo do ASVspoof 5 usam SSL
+    # CONGELADO, e o resultado de referencia daquela receita usa wav2vec2
+    # XLS-R, nao WavLM/HuBERT base. As entradas `Original` ja sao a
+    # configuracao documentada. Ver benchmarks/config.py.
     assert set(MODEL_FAMILIES["ssl-pretrained"]) == {
         "WavLM Original", "HuBERT Original"
     }

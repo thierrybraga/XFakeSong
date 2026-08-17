@@ -1,3 +1,10 @@
+"""Construção do dataset a partir do corpus bruto.
+
+SUJEITO: `scripts/dataset/build_dataset.py` — o caminho que transforma
+arquivos de áudio em `.npz`. O PROTOCOLO de partição (locutor x frase) é
+assunto de `test_dataset_protocol.py`.
+"""
+
 from scripts.dataset import build_dataset
 
 

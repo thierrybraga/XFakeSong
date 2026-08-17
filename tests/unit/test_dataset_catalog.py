@@ -1,3 +1,9 @@
+"""Catálogo do dataset: inventário de locutores, frases e origens.
+
+SUJEITO: `app/domain/dataset_metadata/dataset_catalog.py` — a estrutura que o
+protocolo de partição consulta para garantir disjunção.
+"""
+
 from app.domain.dataset_metadata.dataset_catalog import (
     DATASET_CATALOG,
     PRESET_SELECTIONS,

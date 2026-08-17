@@ -503,10 +503,16 @@ def test_classical_models_get_a_contract_with_validation_threshold(tmp_path):
         # separavel: o limiar de EER tem de existir e ser finito
         return np.where(np.arange(len(X)) % 2 == 1, 0.8, 0.2)
 
+    protocolo = {
+        "original_shape": [48000, 1],
+        "input_type": "tabular_audio_features",
+    }
     contract = _classical_input_contract(
-        "SVM", tmp_path, "bench_svm", 63,
-        {"original_shape": [48000, 1]}, predict, Xv, yv,
+        "SVM", tmp_path, "bench_svm", 63, protocolo, predict, Xv, yv,
     )
+    # O front-end sai da LARGURA, não do input_type: os dois vetores tabulares
+    # compartilham o mesmo input_type, e declarar v2 sobre 63 colunas mandaria
+    # a inferência preparar 183.
     assert contract["feature_frontend"] == "benchmark_tabular_v1"
     assert contract["feature_dim"] == 63
     assert contract["normalization"] == "pipeline_interno"
@@ -517,6 +523,27 @@ def test_classical_models_get_a_contract_with_validation_threshold(tmp_path):
         (tmp_path / "bench_svm_config.json").read_text(encoding="utf-8")
     )
     assert gravado["input_contract"]["feature_frontend"] == "benchmark_tabular_v1"
+
+    v2 = _classical_input_contract(
+        "SVM", tmp_path, "bench_svm", 183, protocolo, predict, Xv, yv,
+    )
+    assert v2["feature_frontend"] == "benchmark_tabular_v2"
+
+    # Largura desconhecida com o front-end declarado: erro AQUI, não em produção.
+    with pytest.raises(RuntimeError, match="vetor tabular com 64 colunas"):
+        _classical_input_contract(
+            "SVM", tmp_path, "bench_svm", 64, protocolo, predict, Xv, yv,
+        )
+
+    # NPZ que já trazia features: o front-end do benchmark não rodou, então o
+    # contrato não pode alegar paridade com ele.
+    sem_frontend = _classical_input_contract(
+        "SVM", tmp_path, "bench_svm", 64,
+        {"original_shape": [64], "input_type": "tabular_flattened"},
+        predict, Xv, yv,
+    )
+    assert sem_frontend["feature_frontend"] is None
+    assert "sem paridade" in sem_frontend["feature_frontend_reason"]
 
 
 def test_contract_rebuilder_covers_every_promoted_architecture():

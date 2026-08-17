@@ -1,5 +1,11 @@
-"""Testes P2: RawGAT-ST fiel ao paper + back-end SSL→AASIST."""
+"""RawGAT-ST e AASIST fiéis ao paper + back-ends SSL das duas topologias.
 
+SUJEITO: o contrato de entrada raw_audio das duas redes de grafo e as
+variantes que plugam um backbone SSL na frente delas.
+
+Renomeado em 2026-08-17 (era `test_p2_rawgatst_sslaasist.py`): "P2" era a fase
+do backlog, não o assunto.
+"""
 from __future__ import annotations
 
 import numpy as np

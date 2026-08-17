@@ -1,3 +1,10 @@
+"""API de datasets: criação, upload e listagem sob `/api/v1/datasets`.
+
+SUJEITO: as rotas HTTP, não o `UploadService` por trás delas — a lógica do
+serviço é coberta em `tests/unit/test_upload_service.py`. Aqui o contrato é o
+código de status, o payload aceito e a forma da resposta.
+"""
+
 def test_list_datasets_empty(client, mock_upload_service, api_key_headers):
 
     response = client.get(
@@ -7,7 +14,7 @@ def test_list_datasets_empty(client, mock_upload_service, api_key_headers):
     assert response.json() == []
 
 
-def test_create_dataset(client, mock_upload_service, api_key_headers):
+def test_create_dataset_via_api(client, mock_upload_service, api_key_headers):
     payload = {
         "name": "new_dataset",
         "type": "training",

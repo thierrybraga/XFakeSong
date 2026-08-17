@@ -1,3 +1,10 @@
+"""Carregamento de modelo e predição no serviço de detecção.
+
+SUJEITO: `app/domain/services/detection/` — resolver o artefato certo a partir
+do contrato de inferência, carregá-lo e produzir uma pontuação. É onde um
+`feature_frontend` incompatível entre artefato e preparo se manifesta.
+"""
+
 import numpy as np
 import json
 

@@ -1,3 +1,11 @@
+"""Contratos básicos do `ModelTrainer`.
+
+SUJEITO: construção e configuração do treinador. Os callbacks que decidem
+parar o treino ou selecionar o checkpoint têm arquivos próprios:
+`test_training_guards.py`, `test_checkpoint_monitor.py`,
+`test_resumable_checkpoint.py` e `test_guarded_checkpoint_restore.py`.
+"""
+
 import pytest
 import numpy as np
 from unittest.mock import MagicMock, patch

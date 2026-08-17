@@ -1,3 +1,10 @@
+"""Fronteiras de confiança: autenticação e autorização da API.
+
+SUJEITO: `app/core/auth` — que rota protegida sem chave recuse, que chave
+inválida recuse, e que a validação aconteça ANTES de qualquer efeito
+colateral. Least privilege verificado no ponto de entrada.
+"""
+
 import asyncio
 
 import pytest

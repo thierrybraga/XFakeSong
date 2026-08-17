@@ -1,3 +1,11 @@
+"""SincConv sob precisão mista.
+
+SUJEITO: a camada `SincConvLayer` (AASIST/RawGAT-ST) quando a policy global do
+Keras é `mixed_float16`. Os filtros passa-banda são calculados a partir de
+frequências aprendidas, e a perda de precisão nesse cálculo degenera o banco —
+por isso as duas arquiteturas treinam em float32 no benchmark.
+"""
+
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import mixed_precision

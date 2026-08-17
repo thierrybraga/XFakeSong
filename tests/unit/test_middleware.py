@@ -1,3 +1,10 @@
+"""Middlewares HTTP da API FastAPI.
+
+SUJEITO: a cadeia de middleware (logging, tratamento de erro, contexto de
+requisição). Os cabeçalhos de segurança têm arquivo próprio
+(`test_security_headers.py`).
+"""
+
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 

@@ -1,3 +1,13 @@
+"""Registry de arquiteturas: contratos de registro, construção e parâmetros.
+
+SUJEITO: `architectures/registry.py` e `factory.py` — que toda arquitetura
+declarada exista, aceite seus `default_params`, e que os três lugares onde um
+hiperparâmetro pode viver (registry, `create_model`, `planning`) não divirjam.
+
+O bloco final (sincronia das três fontes) veio em 2026-08-17 de
+`test_resume_guards_and_artifacts.py`, que agrupava por data de correção.
+"""
+
 import importlib
 import inspect
 
@@ -398,3 +408,69 @@ def test_am_softmax_margin_is_applied_in_the_loss():
         tf.reduce_mean(AMSoftmaxCrossEntropy(scale=15.0, margin=0.0)(y_true, logits))
     )
     assert com_margem > sem_margem
+
+
+# ─── sincronia entre as TRÊS fontes de hiperparâmetro ──────────────────────
+#
+# Movidos em 2026-08-17 de `test_resume_guards_and_artifacts.py`, que agrupava
+# por DATA de correção. O sujeito é o contrato do registry/arquitetura, que é o
+# deste arquivo — e fica ao lado de `test_default_params_are_accepted_by_builder`,
+# a guarda irmã que checa a CHAVE enquanto estas checam o VALOR.
+
+
+@pytest.mark.parametrize(
+    "arch_name,module_name,plan_key",
+    [("RawGAT-ST", "rawgat_st", "rawgatst"), ("AASIST", "aasist", "aasist")],
+)
+def test_hparams_batem_nas_tres_fontes(arch_name, module_name, plan_key):
+    """CLAUDE.md exige registry + create_model + planning em sincronia.
+
+    Um default divergente no `create_model` faz o caminho do app/Gradio treinar
+    com uma receita diferente da que o benchmark documenta.
+    """
+    from benchmarks.planning import NEURAL_BENCHMARK_HPARAMS
+
+    info = ArchitectureRegistry().get_architecture(arch_name)
+    plano = NEURAL_BENCHMARK_HPARAMS[plan_key]
+    modulo = importlib.import_module(info.module_path)
+    assinatura = inspect.signature(getattr(modulo, info.function_name)).parameters
+
+    comparaveis = [k for k in info.default_params if k in plano and k in assinatura]
+    assert comparaveis, f"{arch_name}: nada em comum para comparar"
+
+    for chave in comparaveis:
+        registry_v = info.default_params[chave]
+        plano_v = plano[chave]
+        builder_v = assinatura[chave].default
+        assert registry_v == pytest.approx(plano_v), (
+            f"{arch_name}.{chave}: registry={registry_v} != planning={plano_v}"
+        )
+        assert registry_v == pytest.approx(builder_v), (
+            f"{arch_name}.{chave}: registry={registry_v} != create_model={builder_v}"
+        )
+
+
+def test_global_clipnorm_do_rawgat_chega_ao_construtor():
+    """Era literal 0.7 no compile enquanto o registry declarava 0.5.
+
+    Não basta existir nas três fontes: o runner precisa PROMOVER a chave para
+    `parameters`, senão ela não chega ao `create_model` e volta a ser config
+    morto.
+    """
+    import ast
+    from pathlib import Path
+
+    from app.domain.models.architectures import rawgat_st
+
+    assinatura = inspect.signature(rawgat_st.create_model).parameters
+    assert "global_clipnorm" in assinatura
+
+    runner = Path(__file__).resolve().parents[2] / "benchmarks/runner.py"
+    fonte = runner.read_text(encoding="utf-8")
+    inicio = fonte.find('elif compact in {"aasist", "rawgatst"}')
+    assert inicio > 0, "ramo de promoção do rawgatst não encontrado"
+    assert '"global_clipnorm"' in fonte[inicio : inicio + 1200], (
+        "global_clipnorm não está no whitelist de promoção do runner"
+    )
+    # Ler o AST garante que o arquivo segue parseável.
+    ast.parse(fonte)

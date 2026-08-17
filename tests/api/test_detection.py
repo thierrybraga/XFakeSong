@@ -1,3 +1,10 @@
+"""API de detecção: `/api/v1/detection` (análise e listagem de arquiteturas).
+
+SUJEITO: contrato HTTP da inferência — validação de entrada (422 sem arquivo),
+autenticação e forma da resposta. O pipeline de detecção em si é coberto em
+`tests/integration/test_detection_integration.py`.
+"""
+
 from unittest.mock import MagicMock
 
 from app.core.contracts.base import ProcessingStatus
@@ -11,7 +18,7 @@ def test_list_models(client):
     assert data["default_model"] == "test_model"
 
 
-def test_list_architectures(client):
+def test_list_architectures_no_endpoint_de_deteccao(client):
     response = client.get("/api/v1/detection/architectures")
     assert response.status_code == 200
     data = response.json()

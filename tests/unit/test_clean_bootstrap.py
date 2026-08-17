@@ -24,6 +24,33 @@ from app.domain.services.detection.model_loader import ModelLoader
 ROOT = Path(__file__).resolve().parents[2]
 
 
+@pytest.fixture(autouse=True)
+def _paths_resolvem_a_partir_da_raiz_passada(monkeypatch):
+    """Este módulo testa a RESOLUÇÃO de caminhos — o ambiente não pode interferir.
+
+    `OperationalPaths.resolve(raiz)` consulta `MODELS_DIR`/`DEEPFAKE_MODELS_DIR`/
+    `XFAKE_MODELS_DIR` (e as equivalentes de logs/resultados) antes do default
+    sob a raiz. Duas fontes as definem fora daqui: o `.env` do projeto, carregado
+    no import de `app.*`, e a fixture de sessão `_isolate_models_dir`, que
+    protege `data/models` de escrita acidental. Com qualquer uma ativa, um teste
+    que espera inventário VAZIO sob `tmp_path` enxerga o diretório de outra
+    pessoa — e o resultado passa a depender da ordem de execução da suíte.
+    """
+    for nome in (
+        "MODELS_DIR",
+        "DEEPFAKE_MODELS_DIR",
+        "XFAKE_MODELS_DIR",
+        "RESULTS_DIR",
+        "DEEPFAKE_RESULTS_DIR",
+        "XFAKE_RESULTS_DIR",
+        "DEEPFAKE_LOGS_DIR",
+        "XFAKE_LOGS_DIR",
+        "XFAKE_STORAGE_DIR",
+        "DEEPFAKE_STORAGE_DIR",
+    ):
+        monkeypatch.delenv(nome, raising=False)
+
+
 def test_empty_resource_inventory_is_valid(tmp_path):
     paths = OperationalPaths.resolve(tmp_path)
     ensure_operational_directories(paths)
