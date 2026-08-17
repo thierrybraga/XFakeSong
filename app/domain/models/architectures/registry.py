@@ -174,8 +174,14 @@ class ArchitectureRegistry:
                     # l2 1e-3->3e-3 e decay_steps 100k->152.100 (= o número
                     # REAL de passos: ceil(24.324/16) x 100 épocas; em 100k o
                     # cosseno zerava na época ~66).
-                    "dropout_rate": 0.5,
-                    "l2_reg_strength": 0.003,
+                    # REVERSÃO PARCIAL 2026-08-17: o fatorial (braços (d) e (l)
+                    # de run_rawgat_retune.py) mediu que dropout 0,50 trava a
+                    # validação em 0,5000 exato por 25 épocas com treino a
+                    # 95,4%, e que L2 3e-3 sozinho não move o teto. Volta a
+                    # 0,35/1e-3; sobrevive o decay_steps completo. Justificativa
+                    # medida em benchmarks/planning.py::NEURAL_BENCHMARK_HPARAMS.
+                    "dropout_rate": 0.35,
+                    "l2_reg_strength": 0.001,
                     "learning_rate": 0.00005,
                     "min_learning_rate": 0.000005,
                     "decay_steps": 152100,

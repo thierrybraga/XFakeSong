@@ -183,6 +183,7 @@ class FeaturePreparer:
                 FRONTEND_LOGMEL,
                 FRONTEND_RAW,
                 FRONTEND_TABULAR,
+                FRONTEND_TABULAR_V2,
                 prepare_single,
             )
 
@@ -240,7 +241,7 @@ class FeaturePreparer:
                         else 1
                     ),
                 )
-                if _bm_frontend == FRONTEND_TABULAR:
+                if _bm_frontend in (FRONTEND_TABULAR, FRONTEND_TABULAR_V2):
                     expected = int(shape[0]) if shape else features.size
                     if int(features.size) != expected:
                         return {
@@ -258,6 +259,7 @@ class FeaturePreparer:
                         FRONTEND_RAW: "raw",
                         FRONTEND_LOGMEL: "benchmark_log_mel",
                         FRONTEND_TABULAR: "benchmark_tabular_63",
+                        FRONTEND_TABULAR_V2: "benchmark_tabular_183",
                     }[_bm_frontend],
                     "feature_frontend": _bm_frontend,
                     "features_shape": tuple(np.asarray(features).shape),

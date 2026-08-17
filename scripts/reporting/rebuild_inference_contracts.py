@@ -132,6 +132,9 @@ def build_contract(arch_key: str, spec: dict, metrics: dict,
             "benchmark_raw_v1": [48000, 1],
             "benchmark_logmel_v1": [100, 80],
             "benchmark_tabular_v1": [63],
+            # v2 = os 63 do v1 + 120 descritores LFCC (20 estaticos, delta e
+            # delta-delta, com media e desvio de cada bloco).
+            "benchmark_tabular_v2": [183],
         }[frontend]
     input_shape = [int(v) for v in input_shape]
 

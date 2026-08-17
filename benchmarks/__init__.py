@@ -39,7 +39,32 @@ from benchmarks.config import (
     SSL_DOCKER_ARCHITECTURES,
     BenchmarkConfig,
 )
-from benchmarks.runner import plan_benchmark, run_benchmark
+
+# `plan_benchmark`/`run_benchmark` entram SOB DEMANDA (PEP 562).
+#
+# `benchmarks.runner` importa TensorFlow no topo, e importa-lo aqui fazia
+# QUALQUER acesso ao pacote puxar o stack de treino inteiro — inclusive
+# `from benchmarks.config import ...`, que e so dataclasses. Na pratica isso
+# impedia consolidar resultados, reconstruir resumos e auditar artefatos num
+# checkout sem o ambiente de treino instalado: passos que apenas leem e
+# reescrevem JSON exigiam ~600 MB de dependencia de GPU.
+#
+# O contrato publico nao muda: `from benchmarks import run_benchmark` continua
+# funcionando, so que resolvido na primeira vez que o nome e usado.
+_LAZY = {"plan_benchmark", "run_benchmark"}
+
+
+def __getattr__(name: str):
+    if name in _LAZY:
+        from benchmarks import runner
+
+        return getattr(runner, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__():
+    return sorted(__all__)
+
 
 __all__ = [
     "ALL_TCC_ARCHITECTURES",

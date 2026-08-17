@@ -1,24 +1,47 @@
 # Preset de RETREINO dos modelos ajustados (retune).
 #
 # Contém apenas os modelos que receberam ajuste de hiperparâmetros após o
-# diagnóstico do run `clean_benchmark_15k` (2026-08-06). Os outros nove do
-# escopo oficial foram auditados e NÃO precisam de retreino — as métricas
-# deles foram recalculadas a partir dos `predictions_clean.csv` e conferem.
+# diagnóstico do run `clean_benchmark_15k` (2026-08-06) e cujo artefato
+# publicado ainda NÃO reflete esse ajuste. Os demais do escopo oficial foram
+# auditados e não precisam de retreino — as métricas deles foram recalculadas
+# a partir dos `predictions_clean.csv` e conferem.
 #
 # Mapa diagnóstico -> ajuste em docs/evaluation/retraining-adjustments.md,
 # seção "2026-08-06".
+#
+# CONFORMER SAIU DAQUI (2026-08-13). O retreino foi EXECUTADO em 11/08: o
+# artefato de `clean_benchmark_15k/conformer` já traz LR 5e-5, warmup 3000 e
+# decay_steps 76.100, e o colapso descrito no diagnóstico não se repetiu
+# (melhor época 69 de 100, EER 0,29%). Mantê-lo na lista mandaria refazer
+# 1,7 h de GPU por um ajuste já aplicado.
+#
+# Ressalva que NÃO justifica retreino por si só: o treino ainda marca
+# `unstable_oscillation` (maior queda entre épocas 0,489; desvio 0,096 nas
+# últimas 50, contra critério 0,02) — o pior do escopo nesse quesito. As
+# métricas são sólidas; o que a oscilação enfraquece é a alegação de que a
+# época selecionada não depende do ruído da val_loss. Retreinar só se essa
+# alegação precisar ficar de pé no texto.
 
 family: retune-official
 scope: official
 models:
-  # colapso irreversível: divergiu na época ~14 para loss=ln 2 / acc=0.500 e
-  # ficou morto até a 100; o número publicado vem do checkpoint da época 10.
-  # Ajuste: LR 1e-4->5e-5, warmup 1500->3000, decay_steps 50k->76.100.
-  - Conformer
   # sobreajuste (o retune de 2026-07-02 não resolveu): treino 0,998 vs val
   # 0,85; min t-DCF 0,3149, abaixo de SVM/RandomForest.
-  # Ajuste: dropout 0.35->0.5, l2 1e-3->3e-3, decay_steps 100k->152.100.
+  #
+  # ÚNICO pendente do escopo oficial (auditoria de 2026-08-13): o artefato
+  # publicado foi treinado com decay_steps 100.000 — a divergência
+  # código-vs-artefato do run.
+  #
+  # ATUALIZAÇÃO 2026-08-17: o ajuste original (dropout 0.35->0.5 E l2
+  # 1e-3->3e-3, dois fatores de uma vez) foi REVERTIDO depois de medido pelo
+  # fatorial de `scripts/benchmark/run_rawgat_retune.py`. Dropout 0,50 trava a
+  # validação em 0,5000 exato por 25 épocas com o treino em 95,4%; L2 3e-3 não
+  # move o teto. O que sobra do ajuste é `decay_steps` 100k->152.100 (já em
+  # planning.py) mais a seleção por `val_eer`, que sozinha recupera os 5,29
+  # p.p. perdidos ao escolher a época por val_loss. Tabela em
+  # docs/evaluation/retraining-adjustments.md, seção 2026-08-17.
   - RawGAT-ST
+
 # Dataset: a MESMA variante do run diagnosticado. As duas variantes têm
 # conjuntos de teste diferentes — retreinar sobre o 40k produziria números
 # que não podem entrar na mesma consolidação. Ver data/results/paper/README.md.

@@ -1052,10 +1052,23 @@ def _write_csv(results, path: Path) -> None:
 
 
 def _write_predictions_csv(results, path: Path) -> None:
+    """Predições limpas de TODAS as arquiteturas, uma linha por (modelo, amostra).
+
+    Carrega `ranking_score` pelo mesmo motivo do arquivo por arquitetura: nos
+    clássicos, AUC/EER/min-tDCF vêm da margem BRUTA, e o `p_fake` calibrado não
+    as reproduz (a isotônica colapsa a margem em degraus). Este é o arquivo
+    agregado — o primeiro que alguém abre para reconferir a tabela —, então
+    omitir a coluna aqui fazia a verificação falhar justamente onde ela é mais
+    provável de ser tentada. Vazia para quem não calibra, onde `p_fake` já É o
+    score de ordenação.
+    """
     y = np.asarray(results["dataset"].get("y_test", []), dtype=int)
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["architecture", "sample_index", "y_true", "p_fake", "y_pred", "correct"])
+        w.writerow([
+            "architecture", "sample_index", "y_true", "p_fake",
+            "ranking_score", "y_pred", "correct",
+        ])
         if y.size == 0:
             return
         for name, r in results["architectures"].items():
@@ -1064,6 +1077,10 @@ def _write_predictions_csv(results, path: Path) -> None:
             scores = np.asarray(r["scores_clean"], dtype=float)
             if len(scores) != len(y) or not np.isfinite(scores).all():
                 continue
+            ranking = r.get("ranking_scores_clean")
+            ranking = None if ranking is None else np.asarray(ranking, dtype=float)
+            if ranking is not None and len(ranking) != len(y):
+                ranking = None
             pred = (scores >= 0.5).astype(int)
             for idx, (yt, score, yp) in enumerate(zip(y, scores, pred)):
                 w.writerow([
@@ -1071,22 +1088,44 @@ def _write_predictions_csv(results, path: Path) -> None:
                     idx,
                     int(yt),
                     round(float(score), 6),
+                    "" if ranking is None else round(float(ranking[idx]), 6),
                     int(yp),
                     bool(int(yt) == int(yp)),
                 ])
 
 
 def _write_arch_predictions_csv(name: str, r: Dict[str, Any], y_true, path: Path) -> None:
+    """Predições limpas por amostra.
+
+    A coluna `ranking_score` existe desde 2026-08-09 para os modelos que
+    aplicam calibração pós-hoc: AUC/EER/min t-DCF são medidos sobre o score
+    BRUTO do detector, e sem gravá-lo o artefato deixaria de ser
+    reverificável — o `p_fake` calibrado não reproduz aquelas métricas. Fica
+    vazia (não zero) para quem não calibra, onde `p_fake` já É o score.
+    """
     y = np.asarray(y_true, dtype=int)
     scores = np.asarray(r.get("scores_clean") or [], dtype=float)
+    ranking = r.get("ranking_scores_clean")
+    ranking = None if ranking is None else np.asarray(ranking, dtype=float)
+    if ranking is not None and len(ranking) != len(y):
+        ranking = None
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["sample_index", "y_true", "p_fake", "y_pred", "correct"])
+        w.writerow(
+            ["sample_index", "y_true", "p_fake", "ranking_score", "y_pred", "correct"]
+        )
         if y.size == 0 or len(scores) != len(y) or not np.isfinite(scores).all():
             return
         pred = (scores >= 0.5).astype(int)
         for idx, (yt, score, yp) in enumerate(zip(y, scores, pred)):
-            w.writerow([idx, int(yt), round(float(score), 6), int(yp), bool(int(yt) == int(yp))])
+            w.writerow([
+                idx,
+                int(yt),
+                round(float(score), 6),
+                "" if ranking is None else round(float(ranking[idx]), 6),
+                int(yp),
+                bool(int(yt) == int(yp)),
+            ])
 
 
 def _write_arch_predictions_noisy_csv(name: str, r: Dict[str, Any], y_true, path: Path) -> None:

@@ -250,10 +250,19 @@ class CollapseAbort(tf.keras.callbacks.Callback):
     seria superado.
 
     NÃO é early stopping, e não conflita com ``fixed_epoch_budget``: o early
-    stopping interrompe um modelo que ainda melhora devagar; esta guarda só
-    dispara quando o modelo JÁ ESTEVE bom (``arm_threshold``) e depois caiu
-    para o nível do acaso e ficou lá por ``patience`` épocas seguidas. O melhor
-    checkpoint é preservado — quem restaura é o ``ResumableModelCheckpoint``.
+    stopping interrompe um modelo que ainda melhora devagar. Esta guarda tem
+    dois gatilhos, ambos exigindo evidência positiva de falha:
+
+    1. **colapso** — o modelo JÁ ESTEVE bom (``arm_threshold``), caiu para o
+       nível do acaso e ficou lá por ``patience`` épocas seguidas;
+    2. **nunca generalizou** — passou ``arm_deadline`` sem cruzar
+       ``arm_threshold`` *enquanto o treino abria* ``generalization_gap``
+       de vantagem sobre a validação.
+
+    O que nenhum dos dois faz é matar um modelo que ainda não começou: com
+    treino e validação no acaso juntos, a guarda se cala e o orçamento fixo de
+    épocas é quem limita. O melhor checkpoint é preservado — quem restaura é o
+    ``ResumableModelCheckpoint``.
 
     O aborto fica registrado em ``self.triggered``/``self.reason`` para que o
     artefato diga o que aconteceu, em vez de parecer um treino curto qualquer.
@@ -266,8 +275,40 @@ class CollapseAbort(tf.keras.callbacks.Callback):
         chance_accuracy: float = 0.5,
         tolerance: float = 0.01,
         arm_threshold: float = 0.6,
+        # Prazo para o modelo CRUZAR `arm_threshold` pela primeira vez. Sem
+        # isto o guarda tinha um ponto cego: ele só arma DEPOIS de o modelo
+        # ficar bom, então um treino que nunca aprende não é abortado nunca.
+        #
+        # Observado em 2026-08-16 no retune do RawGAT-ST (dropout 0,35->0,50):
+        # `val_accuracy` ficou em 0,5000 exato da época 1 à 25 enquanto o
+        # treino subia a 95,4% — 7,6 h de GPU sem nenhum aborto, porque o
+        # guarda nunca chegou a armar.
+        #
+        # 15 é conservador por medida: no run `clean_benchmark_15k`, TODAS as
+        # nove arquiteturas neurais cruzaram 0,6 até a época 3 (a mais lenta
+        # foi justamente o RawGAT-ST). O prazo dá 5x essa folga.
+        arm_deadline: int = 15,
+        # Folga mínima treino-validação para o prazo acima poder abortar.
+        #
+        # SEM ESTA CONDIÇÃO O PRAZO É AMBÍGUO (corrigido em 2026-08-17). Olhando
+        # só `val_accuracy`, "nunca aprendeu" e "warmup longo" produzem a MESMA
+        # curva — acaso sustentado — e o prazo sozinho mataria os dois. O
+        # segundo caso é justamente o que a guarda existe para NÃO fazer
+        # (`test_collapse_abort_ignora_inicio_lento`): um modelo que fica no
+        # acaso por 30 épocas e depois sobe a 0,97 é treino legítimo.
+        #
+        # O que separa os dois é o TREINO. No braço (d) do RawGAT-ST ele estava
+        # em 0,9048 na época 15 com a validação em 0,5000 — folga de 40 pontos:
+        # o modelo aprendeu o conjunto de ajuste e não generalizou nada. Num
+        # warmup genuíno treino e validação estão no acaso JUNTOS, e aí a
+        # guarda se cala: quem limita esse caso é o orçamento fixo de épocas.
+        #
+        # 0,20 fica bem acima da folga de qualquer run saudável do escopo
+        # oficial na época 15 e bem abaixo dos 0,40 medidos no braço (d).
+        generalization_gap: float = 0.20,
         monitor: str = "val_accuracy",
         loss_monitor: str = "val_loss",
+        train_monitor: str | None = None,
         label: str = "",
     ):
         super().__init__()
@@ -276,8 +317,16 @@ class CollapseAbort(tf.keras.callbacks.Callback):
         self.chance_accuracy = float(chance_accuracy)
         self.tolerance = float(tolerance)
         self.arm_threshold = float(arm_threshold)
+        self.arm_deadline = max(1, int(arm_deadline))
+        self.generalization_gap = float(generalization_gap)
         self.monitor = monitor
         self.loss_monitor = loss_monitor
+        # Métrica de treino correspondente ao monitor: `val_accuracy` ->
+        # `accuracy`. Derivar em vez de fixar mantém o par coerente se o
+        # chamador monitorar outra métrica.
+        self.train_monitor = train_monitor or (
+            monitor[4:] if monitor.startswith("val_") else monitor
+        )
         self.label = label or "training"
         self.triggered = False
         self.reason = ""
@@ -313,6 +362,29 @@ class CollapseAbort(tf.keras.callbacks.Callback):
         if acc >= self.arm_threshold:
             self._armed = True
 
+        # Nunca aprendeu: passou o prazo sem cruzar `arm_threshold` uma vez E
+        # o treino já disparou na frente. É falha distinta do colapso (que
+        # pressupõe ter estado bom antes) e precisa de aborto próprio — ver a
+        # justificativa e o porquê da folga em __init__.
+        if not self._armed and human_epoch >= self.arm_deadline:
+            train_acc = logs.get(self.train_monitor)
+            # Sem a métrica de treino não dá para distinguir memorização de
+            # warmup longo. Na dúvida a guarda se cala: matar um treino bom
+            # custa mais do que deixar um ruim correr até o fim do orçamento.
+            if train_acc is not None and np.isfinite(train_acc):
+                folga = float(train_acc) - acc
+                if folga >= self.generalization_gap:
+                    self._abort(
+                        human_epoch,
+                        f"{self.monitor} nunca alcançou "
+                        f"{self.arm_threshold:.2f} em {human_epoch} épocas "
+                        f"(melhor: {self._best_acc:.4f}) enquanto "
+                        f"{self.train_monitor} chegou a {float(train_acc):.4f} "
+                        f"— folga de {folga:.4f}: o modelo memoriza o treino e "
+                        "não generaliza",
+                    )
+                    return
+
         if self._armed and acc <= self.chance_accuracy + self.tolerance:
             self._dead_streak += 1
             if self._dead_streak >= self.patience:
@@ -337,6 +409,106 @@ class CollapseAbort(tf.keras.callbacks.Callback):
             epoch,
             reason,
         )
+
+
+class ValidationEER(tf.keras.callbacks.Callback):
+    """Publica ``val_eer`` nos logs de época, para seleção de checkpoint.
+
+    MOTIVO
+    ------
+    A seleção por ``val_loss`` (entropia cruzada) e a avaliação por EER medem
+    coisas diferentes: a entropia é sensível à CALIBRAÇÃO, o EER mede apenas a
+    ORDENAÇÃO das pontuações. Um detector pode piorar a entropia e melhorar o
+    EER simplesmente ficando mais confiante nos acertos e nos erros.
+
+    Esse descompasso não é hipotético neste projeto. No run publicado, o
+    critério de menor ``val_loss`` escolhe para o RawGAT-ST a época 17
+    (val_acc 84,7%) quando o pico foi 90,0% -- 5,3 pontos abaixo. E no retune
+    com L2=3e-3 o mínimo de ``val_loss`` cai na ÉPOCA 1, onde o modelo ainda é
+    desinformativo: perda desinformativa vale ln(2)=0,693, e um modelo que
+    aprende mas erra com confiança nunca bate esse valor.
+
+    O EER é a métrica primária das campanhas ASVspoof, que é o referencial do
+    protocolo deste trabalho -- selecionar por ele alinha o critério de parada
+    ao critério de avaliação.
+    """
+
+    def __init__(self, validation_data, label: str = "", batch_size: int = 32):
+        super().__init__()
+        self.validation_data = validation_data
+        self.label = label or "model"
+        # `predict` de LOTE INTEIRO estoura a VRAM nas arquiteturas de forma de
+        # onda: a validação do benchmark são 1.456 janelas de 48.000 amostras
+        # (266 MB) atravessando o grafo do RawGAT-ST numa RTX 3060 de 12 GB,
+        # com a memória do treino já alocada. O smoke `_smoke_eer3` falhou
+        # assim — e em silêncio, porque a exceção caía no `except` abaixo.
+        self.batch_size = max(1, int(batch_size))
+        self.falhas = 0
+
+    def on_epoch_end(self, epoch, logs=None):
+        if logs is None or self.validation_data is None:
+            return
+        try:
+            x, y = self.validation_data
+            bruto = np.asarray(
+                self.model.predict(x, verbose=0, batch_size=self.batch_size)
+            )
+            y_true = np.asarray(y).ravel()
+            # SAÍDA DE 2 COLUNAS é o caso NORMAL aqui, não a exceção: as
+            # arquiteturas do escopo emitem softmax/logits sobre {bonafide,
+            # spoof}. `ravel()` sozinho produzia 2N valores contra N rótulos,
+            # e o teste de tamanho abaixo devolvia em SILÊNCIO — foi o que
+            # manteve `val_eer` ausente nos smokes 2, 3 e 4 mesmo com a ordem
+            # dos callbacks e o lote já corrigidos. A coluna 1 é a do FAKE, a
+            # mesma convenção de `benchmarks/runner.py` (`pred[:, 1]`).
+            if bruto.ndim == 2 and bruto.shape[1] == 2:
+                scores = bruto[:, 1].ravel()
+            else:
+                scores = bruto.ravel()
+            if scores.size != y_true.size:
+                raise ValueError(
+                    f"predição com {scores.size} scores para {y_true.size} "
+                    f"rótulos (saída bruta {bruto.shape})"
+                )
+            if len(np.unique(y_true)) < 2:
+                # Única classe na validação: o EER não é definível. Não é
+                # defeito, e não impede o treino — mas o checkpoint não terá
+                # o que monitorar, então precisa aparecer.
+                _save_logger.warning(
+                    "[%s] val_eer indefinido: validação tem uma classe só",
+                    self.label,
+                )
+                return
+            from sklearn.metrics import roc_curve
+
+            fpr, tpr, thr = roc_curve(y_true, scores)
+            fnr = 1.0 - tpr
+            finito = np.isfinite(thr)
+            fpr, fnr = fpr[finito], fnr[finito]
+            if fpr.size == 0:
+                return
+            i = int(np.nanargmin(np.abs(fpr - fnr)))
+            logs["val_eer"] = float((fpr[i] + fnr[i]) / 2.0)
+        except Exception as exc:  # noqa: BLE001
+            # NÃO derruba um treino de horas — mas também NÃO cala.
+            #
+            # Este callback é auxiliar só quando o monitor é outro. Quando o
+            # ModelCheckpoint está apontado para `val_eer`, uma falha aqui
+            # significa que NENHUM checkpoint será salvo, e o log em DEBUG
+            # escondia isso: o smoke `_smoke_eer3` treinou até o fim com o
+            # aviso "Can save best model only with val_eer available" e
+            # terminou sem `best.json`. WARNING, com contagem, para que a
+            # próxima vez apareça no log do run.
+            self.falhas += 1
+            _save_logger.warning(
+                "[%s] val_eer NÃO publicado na época %d (%d falha(s) "
+                "seguidas): %s — se o checkpoint monitora val_eer, nenhuma "
+                "época será salva",
+                self.label,
+                int(epoch) + 1,
+                self.falhas,
+                exc,
+            )
 
 
 class EpochProgressLogger(tf.keras.callbacks.Callback):
@@ -700,6 +872,48 @@ class ModelTrainer(IModelTrainer):
 
             # Preparar callbacks
             callbacks = self._prepare_callbacks(**kwargs)
+
+            # `val_eer` só existe nos logs se este callback estiver ativo, e o
+            # ModelCheckpoint pode estar configurado para monitorá-lo
+            # (config.checkpoint_monitor). Registrar apenas quando pedido evita
+            # pagar uma inferência extra por época nos runs que usam val_loss.
+            if str(getattr(self.config, "checkpoint_monitor", "")) == "val_eer":
+                if validation_data is not None:
+                    # INSERE NA FRENTE, não no fim. O Keras percorre os
+                    # callbacks em ORDEM dentro de `on_epoch_end`, passando o
+                    # MESMO dicionário `logs` a todos. Anexado ao fim, o
+                    # ValidationEER publicaria `val_eer` depois de o
+                    # ModelCheckpoint e o PersistentEpochHistory já terem lido
+                    # o dicionário — e ambos veriam a métrica ausente.
+                    #
+                    # Foi o que o smoke `_smoke_eer2` (2026-08-17) mostrou:
+                    # com o encanamento do monitor já corrigido, o Keras
+                    # avisou "Can save best model only with val_eer available"
+                    # nas duas épocas, NENHUM `best.json` foi gravado e o
+                    # histórico saiu sem a coluna. Um retreino de 27 h
+                    # terminaria sem artefato selecionado.
+                    callbacks.insert(
+                        0,
+                        ValidationEER(
+                            validation_data=validation_data,
+                            label=getattr(self.config, "progress_label", "")
+                            or "training",
+                            # Mesmo lote do treino: se cabe treinar com ele,
+                            # cabe inferir com ele.
+                            batch_size=int(
+                                getattr(self.config, "batch_size", 32) or 32
+                            ),
+                        ),
+                    )
+                else:
+                    # Falha ALTO: seguir com o monitor apontando para uma
+                    # métrica que ninguém publica faria o ModelCheckpoint nunca
+                    # salvar — 27 h de treino sem artefato.
+                    raise ValueError(
+                        "checkpoint_monitor='val_eer' exige validation_data "
+                        "para o callback ValidationEER; sem ela nenhum "
+                        "checkpoint seria salvo."
+                    )
 
             # Aplicar data augmentation se habilitado
             if self.config.use_augmentation:
@@ -1135,10 +1349,22 @@ class ModelTrainer(IModelTrainer):
             # época no AST) e dependia da desserialização de camadas custom.
             # A restauração já usa load_weights, que aceita ambos os formatos.
             ckpt_path = str(kwargs["checkpoint_path"])
+            # Monitor CONFIGURÁVEL, com `val_loss` como padrão.
+            #
+            # O padrão preserva a reprodutibilidade dos artefatos publicados,
+            # todos selecionados por menor perda de validação. Mas o critério
+            # tem um descompasso conhecido com a avaliação (ver `ValidationEER`):
+            # seleciona por calibração, avalia por ordenação. Para runs novos
+            # de anti-spoofing, `val_eer` alinha os dois — e exige que o
+            # callback `ValidationEER` esteja ativo para publicar a métrica.
+            monitor = str(getattr(self.config, "checkpoint_monitor", "")
+                          or "val_loss")
+            modo = "min" if monitor in ("val_loss", "val_eer") else "max"
             callbacks.append(
                 ResumableModelCheckpoint(
                     filepath=ckpt_path,
-                    monitor="val_loss",
+                    monitor=monitor,
+                    mode=modo,
                     save_best_only=True,
                     save_weights_only=ckpt_path.endswith(".weights.h5"),
                     verbose=int(getattr(self.config, "verbose", 1)),

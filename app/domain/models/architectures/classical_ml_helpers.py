@@ -33,15 +33,42 @@ def wrap_calibration(classifier, calibrate: bool, cv: int = 3,
     `calibrate=False` (padrão), retorna o classificador inalterado (sem mudança
     de comportamento). Tolerante à versão do sklearn (`estimator=` ≥1.2 vs
     `base_estimator=`).
+
+    ``ensemble=False`` (2026-08-09): com o default ``True`` o resultado é uma
+    MÉDIA de `cv` modelos, cada um ajustado em `1 - 1/cv` dos dados, e nenhum
+    deles é "o modelo" — `feature_importances_` some, o SHAP não tem um
+    estimador para explicar e o artefato promovido deixa de ter uma topologia
+    única. Com ``False`` o calibrador é ajustado sobre predições
+    OUT-OF-FOLD (`cross_val_predict`) e o estimador final é ajustado em TODOS
+    os dados: uma árvore só, calibrada, explicável — e ainda mais barato.
     """
     if not calibrate:
         return classifier
     from sklearn.calibration import CalibratedClassifierCV
 
     try:
-        return CalibratedClassifierCV(estimator=classifier, method=method, cv=cv)
+        return CalibratedClassifierCV(
+            estimator=classifier, method=method, cv=cv, ensemble=False
+        )
     except TypeError:  # sklearn < 1.2
-        return CalibratedClassifierCV(base_estimator=classifier, method=method, cv=cv)
+        return CalibratedClassifierCV(
+            base_estimator=classifier, method=method, cv=cv, ensemble=False
+        )
+
+
+def unwrap_calibrated(estimator):
+    """Devolve o estimador interno de um ``CalibratedClassifierCV``, ou ele mesmo.
+
+    Com ``ensemble=False`` há exatamente um ``calibrated_classifiers_``, cujo
+    ``.estimator`` foi ajustado no conjunto inteiro — é o modelo de verdade.
+    Usado para recuperar ``feature_importances_`` e para o SHAP enxergar a
+    floresta em vez do invólucro de calibração.
+    """
+    calibrated = getattr(estimator, "calibrated_classifiers_", None)
+    if not calibrated:
+        return estimator
+    inner = getattr(calibrated[0], "estimator", None)
+    return inner if inner is not None else estimator
 
 
 class BaseClassicalModel(ABC):
@@ -87,9 +114,16 @@ class BaseClassicalModel(ABC):
         if hasattr(final_estimator, 'classes_'):
             self.classes_ = final_estimator.classes_
 
-        # Extract feature importances if available
-        if hasattr(final_estimator, 'feature_importances_'):
-            self.feature_importances_ = final_estimator.feature_importances_
+        # Extract feature importances if available.
+        #
+        # `unwrap_calibrated`: sob calibração o passo final é um
+        # `CalibratedClassifierCV`, que não expõe `feature_importances_` —
+        # sem isto, ligar a calibração do Random Forest quebraria em silêncio
+        # `get_feature_importance()`, o `export_rf_feature_importance.py` e o
+        # módulo SHAP, que são o material de XAI do trabalho.
+        inner_estimator = unwrap_calibrated(final_estimator)
+        if hasattr(inner_estimator, 'feature_importances_'):
+            self.feature_importances_ = inner_estimator.feature_importances_
 
         train_accuracy = self.pipeline.score(X, y)
         logger.info(f"Training completed. Training accuracy: {train_accuracy:.4f}")

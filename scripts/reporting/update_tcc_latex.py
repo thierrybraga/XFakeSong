@@ -196,6 +196,18 @@ def build_robustness_table(rows: list[dict]) -> str:
                     pct((robustness.get("30") or {}).get("accuracy")),
                     pct((robustness.get("20") or {}).get("accuracy")),
                     pct((robustness.get("10") or {}).get("accuracy")),
+                    # 5 dB é o único SNR NÃO VISTO no augmentation de treino, e
+                    # portanto a única coluna que mede generalização fora da
+                    # distribuição. Ficou de fora até 2026-08-14: o artigo
+                    # chamava esse nível de "resultado mais informativo do
+                    # recorte" e não o tabulava em lugar nenhum.
+                    pct((robustness.get("5") or {}).get("accuracy")),
+                    # Pior locutor no teste LIMPO. O teste é speaker-disjoint
+                    # (11 locutores não vistos), e o agregado esconde dispersão
+                    # grande: RawNet2 tem 95,88% de média e 74,2% no pior
+                    # locutor; SVM tem 85,31% e 53,2%. Sem esta coluna a tabela
+                    # sugere uniformidade que não existe.
+                    pct(row.get("worst_speaker_accuracy")),
                 ]
             )
             + r" \\"
@@ -302,17 +314,21 @@ Modelo & Parâmetros & Tam.\,(MB) & Lat.\,(ms) & Acur. & EER \\
 
 \begin{{table}}[ht]
 \centering
-\caption{{Robustez a ruído AWGN, aplicada à forma de onda antes dos frontends, por modelo consolidado.}}
+\caption{{Robustez a ruído AWGN, aplicada à forma de onda antes dos frontends, por modelo consolidado. Os níveis de 30, 20 e \SI{{10}}{{\decibel}} são \textbf{{casados}} com o \textit{{augmentation}} de treino; \SI{{5}}{{\decibel}} é \textbf{{não visto}}. A última coluna traz a acurácia no PIOR dos 11 locutores do teste (nenhum visto no treino), medida em áudio limpo.}}
 \label{{tab:robustez_awgn}}
 \resizebox{{\textwidth}}{{!}}{{%
-\begin{{tabular}}{{lcccc}}
+\begin{{tabular}}{{lcccccc}}
 \hline
-Modelo & Limpo & 30\,dB & 20\,dB & 10\,dB \\
+Modelo & Limpo & 30\,dB & 20\,dB & 10\,dB & 5\,dB$^\dagger$ & Pior locutor \\
 \hline
 {robustness_table}
 \hline
 \end{{tabular}}
 }}
+
+\noindent\footnotesize{{$^\dagger$ SNR ausente do \textit{{augmentation}} de
+treino: é a única coluna que mede generalização a uma degradação fora da
+distribuição vista.}}\normalsize
 \end{{table}}
 
 \begin{{table}}[ht]
@@ -436,7 +452,10 @@ def main() -> None:
 
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(fragment, encoding="utf-8")
+    # newline="\n": sem isso, no Windows o Python traduz \n para \r\n e o
+    # fragmento inteiro aparece como reescrito no diff a cada regeração,
+    # escondendo a mudança real de números entre duas execuções.
+    output.write_text(fragment, encoding="utf-8", newline="\n")
     print(f"Fragmento escrito: {output.resolve()}")
 
 

@@ -9,9 +9,11 @@ import logging
 import os
 import platform
 import re
+import shutil
 import sys
 import tempfile
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
@@ -117,6 +119,74 @@ def _architecture_dir(cfg: BenchmarkConfig, arch: str) -> Path:
     return _project_path(cfg.output_dir) / "architectures" / _slug(arch)
 
 
+def _file_fingerprint(path: Optional[Path]) -> Optional[Dict[str, Any]]:
+    """Identidade do arquivo em disco: sha256, tamanho e mtime UTC.
+
+    ``efficiency.size_mb`` diz o TAMANHO do artefato, não QUAL artefato — dois
+    arquivos diferentes com o mesmo peso passam por iguais. Sem isto, a
+    promoção não tem como recusar um artefato que foi trocado depois do run.
+    """
+    if path is None:
+        return None
+    p = Path(path)
+    if not p.is_file():
+        return None
+    digest = hashlib.sha256()
+    with p.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    stat = p.stat()
+    return {
+        "sha256": digest.hexdigest(),
+        "size_bytes": int(stat.st_size),
+        "saved_at_utc": (
+            datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(
+                timespec="seconds"
+            )
+        ),
+        # Distingue "hash tirado pelo próprio run" de "hash reconstruído depois"
+        # (ver backfill_artifact_metadata.py, que só consegue verificar por
+        # tamanho declarado e nem sempre consegue nem isso).
+        "integrity": "recorded_at_run",
+    }
+
+
+def _preserve_run_artifact(
+    artifact: Optional[Path], arch_dir: Path
+) -> tuple[Optional[Path], Optional[Dict[str, Any]]]:
+    """Copia o artefato treinado (e o sidecar ``_config.json``) para o run.
+
+    MOTIVAÇÃO 2026-08-09: ``_models_dir`` devolve ``data/models`` — um
+    diretório GLOBAL chaveado só pela arquitetura. Todo run (benchmark, smoke,
+    retreino) grava em ``data/models/bench_<arch>.*``, e nada amarra o arquivo
+    ao run que o produziu. Foi assim que o ``bench_svm.pkl`` do
+    ``clean_benchmark_15k`` (63 features, 3,6 MB) virou um artefato de smoke de
+    47 KB e 8 amostras: as métricas do SVM sobreviveram, o modelo não.
+
+    Os neurais escapavam por acidente — o ``best_checkpoint.weights.h5`` fica no
+    run —, mas pesos sem grafo nem sidecar não são um artefato promovível. O
+    runner SSL já fazia o certo (grava o ``.pt`` dentro do run); aqui os
+    caminhos Keras e clássico passam a fazer o mesmo.
+
+    ``data/models/bench_*`` continua existindo como a cópia CORRENTE que a
+    inferência carrega — pode ser sobrescrita à vontade sem destruir o run.
+    """
+    if artifact is None:
+        return None, None
+    src = Path(artifact)
+    if not src.is_file():
+        return None, None
+    dest_dir = arch_dir / "models"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / src.name
+    if dest.resolve() != src.resolve():
+        shutil.copy2(src, dest)
+        sidecar = src.with_name(f"{src.stem}_config.json")
+        if sidecar.is_file():
+            shutil.copy2(sidecar, dest_dir / sidecar.name)
+    return dest, _file_fingerprint(dest)
+
+
 def _models_dir(cfg: BenchmarkConfig, arch: str) -> Path:
     explicit = (
         os.getenv("MODELS_DIR")
@@ -132,31 +202,115 @@ def _models_dir(cfg: BenchmarkConfig, arch: str) -> Path:
 
 
 def _classical_search_space(arch: str, seed: int) -> tuple[dict[str, list], Any, str]:
+    """Grid, estimador-base e nome do passo do pipeline para SVM/RF.
+
+    O GRID VEM DA ARQUITETURA, não daqui (2026-08-09). Até então esta função
+    carregava uma cópia própria — a 4ª fonte de hiperparâmetros do projeto,
+    ausente das três que o CLAUDE.md lista — e era ela que rodava, deixando os
+    grids regularizados de `svm.py`/`random_forest.py` como código morto sem
+    NENHUM chamador em `app/`, `benchmarks/`, `scripts/` ou `tests/`.
+    """
     compact = _compact_slug(arch)
     if compact == "svm":
         from sklearn.svm import SVC
 
+        from app.domain.models.architectures.svm import SVM_PARAM_GRID
+
         return (
-            {
-                "svm__kernel": ["linear", "rbf"],
-                "svm__C": [0.1, 1.0, 10.0],
-                "svm__gamma": ["scale", "auto"],
-            },
-            SVC(probability=True, random_state=seed),
+            [dict(bloco) for bloco in SVM_PARAM_GRID],
+            # `probability=False` DENTRO da busca (2026-08-09). Com `True`, o
+            # libsvm roda uma validação cruzada interna de 5 dobras a cada
+            # ajuste para calibrar Platt — 6 ajustes de SVC onde a busca pede 1.
+            # E não compra nada: o `scoring` é `roc_auc`, que é baseado em
+            # ORDENAÇÃO, e a sigmoide de Platt é monotônica, então a AUC sobre
+            # `predict_proba` é idêntica à sobre `decision_function`. O modelo
+            # FINAL continua com probabilidade — quem a fornece lá é a
+            # calibração isotônica, não o Platt interno.
+            SVC(probability=False, random_state=seed),
             "svm",
         )
 
     from sklearn.ensemble import RandomForestClassifier
 
+    from app.domain.models.architectures.random_forest import (
+        RANDOM_FOREST_PARAM_GRID,
+    )
+
     return (
-        {
-            "rf__n_estimators": [100, 200],
-            "rf__max_depth": [None, 10, 20],
-            "rf__min_samples_leaf": [1, 2],
-            "rf__max_features": ["sqrt", "log2"],
-        },
-        RandomForestClassifier(random_state=seed, n_jobs=-1),
+        dict(RANDOM_FOREST_PARAM_GRID),
+        # `n_jobs=1` DENTRO da busca (2026-08-09): o `GridSearchCV` já roda com
+        # `n_jobs=-1`, e uma floresta que também pede todos os núcleos cria
+        # sobre-inscrição de threads — os workers disputam os mesmos núcleos e o
+        # grid fica mais lento que em série. Quem paraleliza aqui é a busca, que
+        # tem 540 ajustes independentes para distribuir. O ajuste FINAL continua
+        # com `n_jobs=-1` (vem do `create_random_forest_model`, sem laço externo).
+        RandomForestClassifier(random_state=seed, n_jobs=1),
         "rf",
+    )
+
+
+#: Dobras da validação cruzada dos clássicos.
+#:
+#: Eram 3 (`min(3, min_class_count)`). Com 5 o desvio entre dobras cai e a
+#: escolha do grid deixa de ser decidida por ruído de partição: no
+#: `clean_benchmark_15k` o `std_test_score` do SVM era 0,0638 contra 0,0025 de
+#: distância entre o 1º e o 3º colocado — o grid escolhia a dobra, não o
+#: candidato.
+_CLASSICAL_CV_FOLDS = 5
+
+
+def _classical_cv_splitter(
+    y: np.ndarray,
+    groups: np.ndarray | None,
+    seed: int,
+) -> tuple[Any, int, str, str]:
+    """Splitter da CV dos clássicos: agrupado por cluster quando possível.
+
+    VAZAMENTO CORRIGIDO EM 2026-08-09. A CV era um `StratifiedKFold` simples
+    (o inteiro `cv=3` que o `GridSearchCV` interpreta assim), SEM `groups`. O
+    Protocolo de Dataset é PAREADO — cada enunciado aparece como original CETUC
+    e como clone XTTS-v2 do mesmo locutor e da mesma frase —, então uma
+    partição aleatória põe metade do par no treino da dobra e a outra metade na
+    validação dela. O modelo não precisa detectar síntese para acertar: basta
+    reconhecer o enunciado que acabou de ver. `StratifiedGroupKFold` sobre
+    `cluster_ids` mantém o par inteiro do mesmo lado.
+
+    Sem `cluster_ids` degrada para o comportamento anterior, mas DECLARADO no
+    artefato (`cv_kind`/`cv_grouping`) em vez de silenciosamente.
+    """
+    from sklearn.model_selection import StratifiedGroupKFold, StratifiedKFold
+
+    y_arr = np.asarray(y).ravel()
+    values, counts = np.unique(y_arr, return_counts=True)
+    min_class_count = int(counts.min()) if len(values) >= 2 else 0
+    if min_class_count < 2:
+        return None, min_class_count, "none", "amostras insuficientes por classe"
+
+    if groups is None:
+        folds = min(_CLASSICAL_CV_FOLDS, min_class_count)
+        return (
+            StratifiedKFold(n_splits=folds, shuffle=True, random_state=seed),
+            folds,
+            "StratifiedKFold",
+            "SEM agrupamento: cluster_ids indisponíveis — pares locutor×frase "
+            "podem se dividir entre treino e validação da dobra",
+        )
+
+    groups_arr = np.asarray(groups).ravel()
+    if len(groups_arr) != len(y_arr):
+        raise RuntimeError(
+            f"cluster_ids desalinhados no tuning clássico: {len(groups_arr)} "
+            f"grupos para {len(y_arr)} amostras"
+        )
+    n_groups = int(len(np.unique(groups_arr)))
+    folds = min(_CLASSICAL_CV_FOLDS, min_class_count, n_groups)
+    if folds < 2:
+        return None, folds, "none", "grupos insuficientes para validação cruzada"
+    return (
+        StratifiedGroupKFold(n_splits=folds, shuffle=True, random_state=seed),
+        folds,
+        "StratifiedGroupKFold",
+        f"agrupado por cluster_ids (locutor × frase): {n_groups} grupos",
     )
 
 
@@ -166,23 +320,32 @@ def _run_classical_tuning(
     y: np.ndarray,
     output_dir: Path,
     seed: int,
+    groups: np.ndarray | None = None,
 ) -> dict[str, Any]:
-    """Otimiza SVM/RF e grava o histórico do grid search."""
-    from sklearn.model_selection import GridSearchCV
+    """Otimiza SVM/RF e grava o histórico do grid search.
+
+    ``groups`` são os ``cluster_ids`` (locutor × frase) das linhas de ``X``.
+    Com eles a validação cruzada é AGRUPADA — ver :func:`_classical_cv_splitter`.
+    """
+    from sklearn.model_selection import GridSearchCV, ParameterGrid
     from sklearn.pipeline import Pipeline
     from sklearn.preprocessing import StandardScaler
 
-    values, counts = np.unique(y, return_counts=True)
-    min_class_count = int(counts.min()) if len(values) >= 2 else 0
-    cv = min(3, min_class_count)
     grid, estimator, step_name = _classical_search_space(arch, seed)
+    splitter, cv, cv_kind, cv_note = _classical_cv_splitter(y, groups, seed)
     plan = {
         "enabled": True,
         "method": "GridSearchCV",
         "scoring": "roc_auc",
         "cv": cv,
+        "cv_kind": cv_kind,
+        "cv_grouping": cv_note,
         "param_grid": grid,
-        "n_candidates": int(np.prod([len(v) for v in grid.values()])),
+        # O grid pode ser um dicionário (produto cartesiano único) ou uma LISTA
+        # de dicionários — a forma que o SVM usa para não cruzar `gamma` com o
+        # kernel linear, que o ignora. `ParameterGrid` conta as duas certo; o
+        # `np.prod` sobre `.values()` quebrava na lista.
+        "n_candidates": len(ParameterGrid(grid)),
     }
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -204,14 +367,14 @@ def _run_classical_tuning(
         estimator=pipeline,
         param_grid=grid,
         scoring="roc_auc",
-        cv=cv,
+        cv=splitter,
         n_jobs=-1,
         refit=False,
         return_train_score=True,
         verbose=0,
     )
     started = time.time()
-    search.fit(X, y)
+    search.fit(X, y, groups=groups if cv_kind == "StratifiedGroupKFold" else None)
     elapsed = round(time.time() - started, 3)
 
     rows = []
@@ -288,8 +451,12 @@ def _git_provenance() -> Dict[str, Any]:
     def _run(args: list[str]) -> str | None:
         try:
             out = subprocess.run(
-                args, cwd=str(PROJECT_ROOT), capture_output=True,
-                text=True, timeout=10, check=False,
+                args,
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
             )
             return out.stdout.strip() if out.returncode == 0 else None
         except Exception:  # noqa: BLE001
@@ -313,10 +480,14 @@ def _library_versions() -> Dict[str, Any]:
     """Versões das bibliotecas que influenciam o resultado numérico."""
     versions: Dict[str, Any] = {}
     for module_name, attr in (
-        ("tensorflow", "__version__"), ("keras", "__version__"),
-        ("numpy", "__version__"), ("scipy", "__version__"),
-        ("sklearn", "__version__"), ("librosa", "__version__"),
-        ("torch", "__version__"), ("transformers", "__version__"),
+        ("tensorflow", "__version__"),
+        ("keras", "__version__"),
+        ("numpy", "__version__"),
+        ("scipy", "__version__"),
+        ("sklearn", "__version__"),
+        ("librosa", "__version__"),
+        ("torch", "__version__"),
+        ("transformers", "__version__"),
     ):
         try:
             module = __import__(module_name)
@@ -1001,9 +1172,7 @@ def _run_neural(
             # pesos AudioSet) — sem promovê-lo para `parameters` a flag do
             # plano não chegaria ao modelo.
             if "pretrained" in train_config:
-                model_params.setdefault(
-                    "pretrained", bool(train_config["pretrained"])
-                )
+                model_params.setdefault("pretrained", bool(train_config["pretrained"]))
             # P1 — retreino obrigatório. Liga augmentation (ruído SNR + SpecAug)
             # e força a restauração do MELHOR checkpoint (val_loss, agora
             # GUARDADA — validada no val antes de aceitar), atacando o colapso
@@ -1040,6 +1209,14 @@ def _run_neural(
         # TrainingService (save_inference_keras).
         checkpoint_path = checkpoint_dir / "best_checkpoint.weights.h5"
         train_config["checkpoint_path"] = str(checkpoint_path)
+        # Sem esta linha o `checkpoint_monitor` do BenchmarkConfig não chega ao
+        # ModelTrainer: o TrainingService descarta toda chave que não seja
+        # campo do TrainingConfig, e o trainer lê `self.config.checkpoint_
+        # monitor`. O smoke `_smoke_eer` (2026-08-17) gravou `val_loss` no
+        # best.json pedindo `val_eer` justamente por causa disso.
+        train_config["checkpoint_monitor"] = str(
+            getattr(cfg, "checkpoint_monitor", "") or "val_loss"
+        )
 
     # Backup operacional separado do checkpoint de selecao cientifica.
     # Preserva pesos, otimizador e contador de epocas para retomada apos
@@ -1135,6 +1312,7 @@ def _run_neural(
 
     def predict_fn(xb):  # latência: forward puro do modelo
         return model.predict(np.asarray(xb, dtype="float32"), verbose=0)
+
     model_path = models_dir / f"{name}.keras"
     reported_training_config = dict(train_data.get("training_config") or train_config)
     model_parameters = dict(train_config.get("parameters") or {})
@@ -1166,6 +1344,8 @@ def _run_neural(
         config_path, input_contract, protocol, arch
     )
 
+    run_artifact, artifact_fingerprint = _preserve_run_artifact(model_path, arch_dir)
+
     return {
         "predict_p_fake": predict_p_fake,
         "predict_fn": predict_fn,
@@ -1176,7 +1356,9 @@ def _run_neural(
         "model_parameters": model_parameters,
         "final_metrics": train_data.get("final_metrics") or {},
         "input_contract": input_contract,
-        "model_artifact": str(model_path),
+        "model_artifact": str(run_artifact or model_path),
+        "model_artifact_shared_copy": str(model_path),
+        "model_artifact_fingerprint": artifact_fingerprint,
         # Contraparte do bloco declarado no caminho clássico: o neural ajusta só
         # no treino e reserva a validação para escolher a época. Sem os dois
         # lados declarados, o `fit_samples` de 25.780 dos clássicos contra os
@@ -1207,21 +1389,57 @@ def _classical_input_contract(
     Espelha o que o `TrainingService` já fazia pelos neurais: front-end do
     benchmark, forma da entrada e limiar de EER derivado da VALIDAÇÃO. Sem
     isso, SVM/RandomForest chegavam à produção sem contrato algum — a
-    inferência não reproduzia o vetor tabular de 63 descritores e decidia
-    sempre em 0,5.
+    inferência não reproduzia o vetor tabular e decidia sempre em 0,5.
+
+    Desde 2026-08-09 a validação está FORA do ajuste (ver `_run_classical`),
+    então o limiar aqui é genuinamente held-out; antes vinha de dados que o
+    modelo já tinha visto.
     """
     from app.domain.features.benchmark_frontend import (
         DEFAULT_SAMPLE_RATE,
         DEFAULT_SOURCE_SAMPLES,
+        FRONTEND_TABULAR,
+        N_TABULAR_FEATURES,
+        N_TABULAR_FEATURES_V2,
         frontend_for_input_type,
     )
+
+    # `tabular_audio_features` = o vetor SAIU do front-end do benchmark (a
+    # entrada era forma de onda). Só nesse caso o contrato pode alegar paridade
+    # com o treino — e aí a largura tem de ser uma das duas conhecidas, senão o
+    # erro precisa aparecer aqui e não em produção.
+    #
+    # `tabular_flattened` = o NPZ já continha features prontas e o front-end
+    # não rodou. Declarar `benchmark_tabular_*` nesse caso é falso: a inferência
+    # calcularia 183 descritores para um modelo ajustado noutro espaço. Fica sem
+    # front-end declarado, com o motivo registrado.
+    from_benchmark_frontend = protocol.get("input_type") == "tabular_audio_features"
+    if from_benchmark_frontend and int(n_features) not in (
+        N_TABULAR_FEATURES,
+        N_TABULAR_FEATURES_V2,
+    ):
+        raise RuntimeError(
+            f"[{arch}] vetor tabular com {n_features} colunas — esperado "
+            f"{N_TABULAR_FEATURES} (v1) ou {N_TABULAR_FEATURES_V2} (v2)"
+        )
 
     contract: Dict[str, Any] = {
         "architecture": arch,
         "type": "features",
         "format": "tabular",
         "input_type": "tabular",
-        "feature_frontend": frontend_for_input_type("tabular"),
+        # Derivado da LARGURA, não do `input_type`: os dois front-ends tabulares
+        # compartilham o mesmo `input_type`, e um contrato que declarasse v2
+        # sobre um vetor de 63 colunas mandaria a inferência preparar 183.
+        "feature_frontend": (
+            (
+                frontend_for_input_type("tabular")
+                if int(n_features) == N_TABULAR_FEATURES_V2
+                else FRONTEND_TABULAR  # o v1, para artefatos de 63 colunas
+            )
+            if from_benchmark_frontend
+            else None
+        ),
         "input_shape": [int(n_features)],
         "feature_dim": int(n_features),
         "sample_rate": DEFAULT_SAMPLE_RATE,
@@ -1232,6 +1450,12 @@ def _classical_input_contract(
         # deve aplicar normalização externa nenhuma.
         "normalization": "pipeline_interno",
         "scaler_applied": False,
+        "feature_frontend_reason": (
+            "vetor produzido pelo front-end tabular do benchmark"
+            if from_benchmark_frontend
+            else "NPZ ja continha features; sem paridade com o front-end do "
+            "benchmark, entao nenhum e declarado"
+        ),
         # `predict_proba` já devolve probabilidade: não há logit para escalar.
         "temperature": 1.0,
         "label_classes": [0, 1],
@@ -1280,13 +1504,23 @@ def _run_classical(
     tmp: Path,
     models_dir: Path,
     training_seed: int | None = None,
+    fit_context: Dict[str, np.ndarray] | None = None,
 ):
-    """Treina um modelo clássico (SVM/RF) diretamente (sklearn)."""
+    """Treina um modelo clássico (SVM/RF) diretamente (sklearn).
+
+    ``fit_context`` traz ``train_cluster_ids`` — os grupos locutor × frase das
+    amostras de treino — para que a busca de hiperparâmetros use CV agrupada.
+    """
     train_seed = int(cfg.seed if training_seed is None else training_seed)
+    fit_context = fit_context or {}
     Xtr, ytr, Xv, yv, _Xte, _yte = splits[:6]
     clean_train_count = int(splits[6]) if len(splits) > 6 else len(ytr)
     protocol = splits[7] if len(splits) > 7 else {}
     n_features = int(np.asarray(Xtr).reshape(len(Xtr), -1).shape[1])
+
+    from app.domain.models.architectures.classical_ml_helpers import (
+        unwrap_calibrated,
+    )
 
     if "svm" in arch.lower():
         from app.domain.models.architectures.svm import create_svm_model as factory
@@ -1309,14 +1543,19 @@ def _run_classical(
 
     X_train_2d = np.asarray(Xtr).reshape(len(Xtr), -1)
     y_train = np.asarray(ytr).ravel()
+
+    # ASSIMETRIA REMOVIDA (2026-08-09): a validação SAIU do ajuste.
+    #
+    # Até aqui os clássicos ajustavam em treino+validação — declarado no
+    # artefato, mas com duas consequências. (1) O n efetivo divergia das
+    # neurais, que ajustam só no treino e reservam a validação para escolher a
+    # época. (2) Pior: o `eer_threshold` gravado no contrato de inferência sai
+    # justamente desse val (`_classical_input_contract`), ou seja, era um
+    # limiar IN-SAMPLE — derivado de dados que o modelo já tinha visto. Agora o
+    # ajuste usa só o treino (limpo + cópia AWGN) e a validação fica intacta
+    # para calibrar a saída e fixar o ponto de operação.
     X_fit_2d = X_train_2d
     y_fit = y_train
-    if len(yv):
-        X_fit_2d = np.concatenate(
-            [X_train_2d, np.asarray(Xv).reshape(len(Xv), -1)],
-            axis=0,
-        )
-        y_fit = np.concatenate([y_train, np.asarray(yv).ravel()], axis=0)
 
     # Compatibilidade legada, desativada por padrão. A comparação científica
     # usa exclusivamente a cópia ruidosa produzida na forma de onda em
@@ -1342,15 +1581,42 @@ def _run_classical(
             len(y_fit),
         )
 
+    # Grupos da CV: os cluster_ids do treino, repetidos uma vez por bloco.
+    # `X_fit_2d` é [limpo | cópia AWGN], e a cópia k da amostra i ocupa a
+    # posição n_clean·(k+1)+i — a mesma frase do mesmo locutor. Sem repetir o
+    # grupo junto, o par limpo/ruidoso da MESMA amostra cairia em dobras
+    # diferentes: vazamento ainda mais direto que o do par real/clone.
+    train_clusters = fit_context.get("train_cluster_ids")
+    cv_groups = None
+    if train_clusters is not None and clean_train_count:
+        blocks, rest = divmod(len(y_fit), int(clean_train_count))
+        if rest == 0 and len(train_clusters) == clean_train_count:
+            cv_groups = np.tile(np.asarray(train_clusters).ravel(), blocks)
+        else:
+            logging.getLogger("benchmark").warning(
+                "[%s] cluster_ids do treino não cobrem o conjunto de ajuste "
+                "(%d grupos, %d amostras, %d limpas) — CV cai para não agrupada",
+                arch,
+                len(train_clusters),
+                len(y_fit),
+                clean_train_count,
+            )
+
     tuning = {"enabled": False, "status": "disabled"}
     model_kwargs: dict[str, Any] = {}
     if cfg.optimize_hyperparameters:
+        # REGIME DA CV = REGIME DO AJUSTE (2026-08-09). Antes a busca rodava só
+        # sobre as amostras LIMPAS (`X_train_2d[:clean_train_count]`) e o
+        # modelo final era ajustado sobre limpo+ruidoso: os hiperparâmetros
+        # eram escolhidos num regime em que o modelo nunca opera, justamente o
+        # que o protocolo mede a 10 e 5 dB.
         tuning = _run_classical_tuning(
             arch=arch,
-            X=X_train_2d[:clean_train_count],
-            y=y_train[:clean_train_count],
+            X=X_fit_2d,
+            y=y_fit,
             output_dir=arch_dir,
             seed=train_seed,
+            groups=cv_groups,
         )
         if tuning.get("status") == "ok":
             model_kwargs.update(tuning.get("best_model_params") or {})
@@ -1359,6 +1625,22 @@ def _run_classical(
     # `random_state` fica preso ao default (42) e as N execuções de SVM/RF
     # produzem resultados IDÊNTICOS — desvio zero, repetição sem informação.
     model_kwargs.setdefault("random_state", train_seed)
+
+    # CALIBRAÇÃO LIGADA (2026-08-09). `wrap_calibration` existia desde sempre
+    # com `calibrate=False`, e o benchmark nunca a acionou. Os dois clássicos
+    # fecharam o `clean_benchmark_15k` com os PIORES ECE do escopo oficial
+    # (RandomForest 0,1212; SVM 0,0945 — o terceiro pior é 0,0416), e o
+    # protocolo decide em limiar FIXO de 0,5: probabilidade mal calibrada vira
+    # erro de classificação direto. É o que a 5 dB levava o SVM a recall
+    # 0,0000 com AUC 0,849 — a ordenação sobrevivia, o ponto de operação não.
+    #
+    # Isotônica, e não Platt: as duas famílias têm distorção não monotônica em
+    # forma de S (RF por média de votos de árvore, SVM por Platt interno sobre
+    # margem), que a sigmoide de Platt não corrige. O custo é neutro ou menor —
+    # com `calibrate=True` o `_create_pipeline` do SVM desliga o
+    # `probability=True` do SVC (cujo Platt interno é 5-fold) e a calibração
+    # externa passa a usar `decision_function` com cv=3.
+    model_kwargs.setdefault("calibrate", True)
     model = factory(input_shape=(n_features,), num_classes=2, **model_kwargs)
     model.fit(X_fit_2d, y_fit)
 
@@ -1376,6 +1658,41 @@ def _run_classical(
     def predict_fn(xb):
         return model.predict_proba(np.asarray(xb).reshape(len(xb), -1))
 
+    # Score de ORDENAÇÃO do detector, antes da calibração (2026-08-09).
+    #
+    # A isotônica é uma função escada: no SVM do `clean_benchmark_15k` ela
+    # colapsou 1.382 margens distintas em 52 degraus, e os empates custaram
+    # 0,75 pp de AUC (0,9731 no bruto contra 0,9656 no calibrado). AUC, EER e
+    # min t-DCF medem ORDENAÇÃO — devem ver a margem, não o degrau. A decisão
+    # em 0,5 e o ECE continuam sobre a probabilidade calibrada, que é o que a
+    # calibração existe para consertar.
+    #
+    # Devolve `None` quando não há calibração: aí `p_fake` já É o score do
+    # detector e passar os dois seria declarar uma separação que não existe.
+    def _raw_ranking_score():
+        if not model_kwargs.get("calibrate"):
+            return None
+        pipeline = getattr(model, "pipeline", None)
+        if pipeline is None:
+            return None
+        final = pipeline.steps[-1][1]
+        inner = unwrap_calibrated(final)
+        if inner is final:  # não é CalibratedClassifierCV
+            return None
+
+        def _score(X: np.ndarray) -> np.ndarray:
+            Xt = np.asarray(X).reshape(len(X), -1)
+            for _nome, passo in pipeline.steps[:-1]:
+                Xt = passo.transform(Xt)
+            if hasattr(inner, "decision_function"):
+                return np.asarray(inner.decision_function(Xt)).ravel()
+            proba = inner.predict_proba(Xt)
+            return proba[:, 1] if proba.shape[1] > 1 else proba.ravel()
+
+        return _score
+
+    predict_ranking = _raw_ranking_score()
+
     # Contrato de inferência dos clássicos.
     #
     # Até 2026-07-28 o caminho clássico salvava só o `.pkl`: nenhum sidecar,
@@ -1392,19 +1709,26 @@ def _run_classical(
         "estimator": "sklearn",
         "fit_samples": int(len(y_fit)),
         "n_features": n_features,
-        # ASSIMETRIA DECLARADA (2026-08-09): os clássicos ajustam em
-        # treino+validação porque não têm checkpoint a selecionar — a escolha de
-        # hiperparâmetros sai de CV interna sobre o treino LIMPO. Os neurais
-        # ajustam só no treino e reservam a validação para escolher a época.
-        # Não favorece nenhum lado (os clássicos veem MAIS dados), mas mudava o
-        # n efetivo entre as duas famílias sem nada no artefato dizendo.
-        "fit_splits": ["train", "val"] if len(yv) else ["train"],
+        # ASSIMETRIA REMOVIDA (2026-08-09): era ["train", "val"]. Os clássicos
+        # ajustavam também na validação — n efetivo diferente do das neurais e,
+        # pior, o limiar do contrato saía desse mesmo val, portanto in-sample.
+        # Agora ajustam só no treino (limpo + cópia AWGN), como as neurais, e a
+        # validação fica para calibrar e fixar o ponto de operação.
+        "fit_splits": ["train"],
         "validation_role": (
-            "incorporada ao ajuste (sem seleção de checkpoint); a busca de "
-            "hiperparâmetros usa CV interna sobre o treino limpo"
+            "held-out: calibração isotônica e limiar de EER do contrato "
+            "(sem seleção de checkpoint); a busca de hiperparâmetros usa CV "
+            "agrupada por cluster sobre o MESMO conjunto do ajuste"
             if len(yv)
             else "indisponível"
         ),
+        "probability_calibration": {
+            "applied": bool(model_kwargs.get("calibrate")),
+            "method": "isotonic",
+            "wrapper": "sklearn.calibration.CalibratedClassifierCV",
+            "ensemble": False,
+            "fitted_on": "predições out-of-fold do conjunto de ajuste",
+        },
         "clean_train_samples": int(clean_train_count),
         "val_samples": int(len(yv)),
     }
@@ -1426,8 +1750,11 @@ def _run_classical(
         if fit_strategy.get("n_fits"):
             fit_strategy["total_fit_calls_estimate"] = int(fit_strategy["n_fits"]) + 1
 
+    run_artifact, artifact_fingerprint = _preserve_run_artifact(path, arch_dir)
+
     return {
         "predict_p_fake": predict_p_fake,
+        "predict_ranking": predict_ranking,
         "predict_fn": predict_fn,
         "params": None,
         "size_mb": file_size_mb(path) if path else None,
@@ -1452,7 +1779,9 @@ def _run_classical(
             "hyperparameter_tuning_best_score": tuning.get("best_score"),
             "hyperparameter_tuning_best_params": tuning.get("best_model_params"),
         },
-        "model_artifact": str(path) if path else None,
+        "model_artifact": str(run_artifact or path) if (run_artifact or path) else None,
+        "model_artifact_shared_copy": str(path) if path else None,
+        "model_artifact_fingerprint": artifact_fingerprint,
         "input_contract": classical_contract,
         "hyperparameter_tuning": tuning,
     }
@@ -1460,10 +1789,18 @@ def _run_classical(
 
 #: Métricas cujo agregado entre repetições é reportado como média ± desvio.
 _SEED_AGGREGATED_METRICS = (
-    "accuracy", "precision", "recall", "f1", "auc_roc", "eer", "min_tdcf",
+    "accuracy",
+    "precision",
+    "recall",
+    "f1",
+    "auc_roc",
+    "eer",
+    "min_tdcf",
     # `accuracy_at_eer_oracle` é a coluna Acur.@EER das tabelas; sem estar aqui,
     # ela seria a da primeira semente enquanto as vizinhas mostram a média.
-    "ece", "accuracy_at_eer", "accuracy_at_eer_oracle",
+    "ece",
+    "accuracy_at_eer",
+    "accuracy_at_eer_oracle",
     "accuracy_at_calibrated_threshold",
 )
 
@@ -1475,7 +1812,8 @@ def _aggregate_metric_block(blocks: list[Dict[str, Any]]) -> Dict[str, Any]:
         return base
     for metric in _SEED_AGGREGATED_METRICS:
         values = [
-            float(b[metric]) for b in blocks
+            float(b[metric])
+            for b in blocks
             if isinstance(b.get(metric), (int, float)) and np.isfinite(b[metric])
         ]
         if not values:
@@ -1517,14 +1855,13 @@ def _aggregate_seed_runs(runs: list[Dict[str, Any]]) -> Dict[str, Any]:
     base = dict(ok_runs[0])
     base["clean"] = _aggregate_metric_block([r["clean"] for r in ok_runs])
 
-    robustness_keys = sorted(
-        {k for r in ok_runs for k in (r.get("robustness") or {})}
-    )
+    robustness_keys = sorted({k for r in ok_runs for k in (r.get("robustness") or {})})
     if robustness_keys:
         aggregated_rob: Dict[str, Any] = {}
         for key in robustness_keys:
             blocks = [
-                r["robustness"][key] for r in ok_runs
+                r["robustness"][key]
+                for r in ok_runs
                 if isinstance((r.get("robustness") or {}).get(key), dict)
             ]
             if blocks:
@@ -1561,6 +1898,7 @@ def _benchmark_one(
     raw_splits,
     eval_context: Dict[str, np.ndarray] | None = None,
     training_seed: int | None = None,
+    fit_context: Dict[str, np.ndarray] | None = None,
 ) -> Dict[str, Any]:
     """Treina e avalia uma arquitetura com perturbações no áudio canônico.
 
@@ -1585,6 +1923,7 @@ def _benchmark_one(
     cluster_ids = eval_context.get("cluster_ids")
     source_ids = eval_context.get("source_ids")
     generator_ids = eval_context.get("generator_ids")
+    speaker_ids = eval_context.get("speaker_ids")
     models_dir = _models_dir(cfg, arch)
     try:
         splits = _prepare_protocol_splits(
@@ -1601,8 +1940,13 @@ def _benchmark_one(
             is_classical = _is_classical_arch(arch)
             if is_classical:
                 r = _run_classical(
-                    arch, cfg, splits, tmp, models_dir,
+                    arch,
+                    cfg,
+                    splits,
+                    tmp,
+                    models_dir,
                     training_seed=train_seed,
+                    fit_context=fit_context,
                 )
             else:
                 r = _run_neural(arch, cfg, splits, tmp, models_dir)
@@ -1645,6 +1989,21 @@ def _benchmark_one(
                 crop_scores = _finite_scores(predict_p_fake(flat_crops))
                 return crop_scores.reshape(n_samples, n_crops).mean(axis=1)
 
+            # Score de ORDENAÇÃO, quando o modelo aplica calibração pós-hoc.
+            # Só os clássicos calibram, e eles nunca fazem multicrop (a entrada
+            # é tabular, não forma de onda), então não há caminho de crops aqui.
+            # Sem `_finite_scores`: ele recorta em [0,1], o que destruiria a
+            # ordenação de um `decision_function` centrado em zero.
+            predict_ranking: Optional[Callable] = r.get("predict_ranking")
+
+            def ranking_eval(
+                prepared: np.ndarray,
+                raw_waveforms: Optional[np.ndarray] = None,
+            ) -> Optional[np.ndarray]:
+                if predict_ranking is None:
+                    return None
+                return np.asarray(predict_ranking(prepared), dtype="float64").ravel()
+
             # O bloco de protocolo publicado precisa refletir a avaliação que
             # de fato ocorreu. Antes ele declarava `multicrop`/3 crops para toda
             # arquitetura raw-audio, inclusive as que rodavam com crop central.
@@ -1659,6 +2018,7 @@ def _benchmark_one(
 
             n_boot = int(getattr(cfg, "bootstrap_ci_samples", 0) or 0)
             pf_clean = predict_eval(Xte, raw_Xte)
+            rank_clean = ranking_eval(Xte, raw_Xte)
             calibrated_threshold = (r.get("input_contract") or {}).get("eer_threshold")
             clean = evaluate_scores(
                 yte,
@@ -1667,11 +2027,24 @@ def _benchmark_one(
                 n_bootstrap=n_boot,
                 cluster_ids=cluster_ids,
                 calibrated_threshold=calibrated_threshold,
+                ranking_scores=rank_clean,
             )
             grouped_clean: Dict[str, Any] = {}
             if source_ids is not None:
                 grouped_clean["source"] = evaluate_grouped_scores(
                     yte, pf_clean, source_ids, threshold=cfg.decision_threshold
+                )
+            # ACRÉSCIMO 2026-08-09: o agrupamento por LOCUTOR é o único que
+            # informa neste dataset. `source` colapsa em 1 grupo (fonte única,
+            # `ptpair`) e `generator` em 2, que são as próprias classes
+            # (bonafide/xtts_v2) — nenhum dos dois mede dispersão. O protocolo é
+            # speaker-disjoint (34 treino / 11 val / 11 teste, zero overlap),
+            # então o pior locutor é a leitura honesta da generalização: no
+            # `clean_benchmark_15k` o agregado de 95,88% do RawNet2 esconde
+            # 74,2% em M026, e o de 93,92% do HuBERT esconde 71,0% em M028.
+            if speaker_ids is not None:
+                grouped_clean["speaker"] = evaluate_grouped_scores(
+                    yte, pf_clean, speaker_ids, threshold=cfg.decision_threshold
                 )
             generator_known = eval_context.get("generator_known")
             if generator_ids is not None and (
@@ -1728,6 +2101,7 @@ def _benchmark_one(
                     n_bootstrap=n_boot,
                     cluster_ids=cluster_ids,
                     calibrated_threshold=calibrated_threshold,
+                    ranking_scores=ranking_eval(Xn, noisy_raw),
                 )
                 # Condição CASADA (o nível esteve no augmentation de treino) ou
                 # NÃO VISTA. Sem esta marca, a tabela de robustez não distingue
@@ -1776,6 +2150,7 @@ def _benchmark_one(
                             n_bootstrap=n_boot,
                             cluster_ids=cluster_ids,
                             calibrated_threshold=calibrated_threshold,
+                            ranking_scores=ranking_eval(Xc, degraded),
                         )
                     except Exception as exc:  # noqa: BLE001 — opt-in, não derruba o run
                         logger.warning(
@@ -1853,6 +2228,14 @@ def _benchmark_one(
                 "clean": clean,
                 "grouped_clean": grouped_clean,
                 "scores_clean": [round(float(v), 6) for v in pf_clean],
+                # Score bruto do detector quando há calibração pós-hoc: é
+                # sobre ELE que AUC/EER/min t-DCF são medidos, então sem
+                # gravá-lo o artefato deixa de ser reverificável.
+                "ranking_scores_clean": (
+                    None
+                    if rank_clean is None
+                    else [round(float(v), 6) for v in rank_clean]
+                ),
                 "robustness": robustness,
                 "scores_robustness": scores_robustness,
                 "codec_robustness": codec_robustness,
@@ -1869,6 +2252,11 @@ def _benchmark_one(
                 "final_training_metrics": r.get("final_metrics") or {},
                 "fit_strategy": r.get("fit_strategy"),
                 "model_artifact": r.get("model_artifact"),
+                # A cópia em `data/models/` é compartilhada entre runs e pode
+                # ser sobrescrita; a promoção compara o sha256 contra a cópia
+                # preservada no run antes de publicar qualquer coisa.
+                "model_artifact_shared_copy": r.get("model_artifact_shared_copy"),
+                "model_artifact_fingerprint": r.get("model_artifact_fingerprint"),
                 "training_artifacts_dir": str(_architecture_dir(cfg, arch)),
                 "epochs": (
                     int(effective_epochs) if effective_epochs is not None else None
@@ -1971,6 +2359,11 @@ def run_benchmark(cfg: BenchmarkConfig) -> Dict[str, Any]:
         "source_ids": data.groups,
         "generator_ids": data.generators,
         "generator_known": data.generator_known,
+        # `data.speakers` já era extraído por BenchmarkData (`speaker_ids` do
+        # .npz) mas só alimentava --speaker-split/--holdout-speaker. Aqui ele
+        # passa a alimentar também `grouped_clean["speaker"]` e o IC por
+        # locutor da consolidação.
+        "speaker_ids": data.speakers,
     }
     for name, values in context_vectors.items():
         if values is not None:
@@ -1978,6 +2371,23 @@ def run_benchmark(cfg: BenchmarkConfig) -> Dict[str, Any]:
             if len(aligned) != len(data.y):
                 raise RuntimeError(f"Vetor {name} desalinhado antes da avaliacao")
             eval_context[name] = aligned[test_idx]
+
+    # Contexto do AJUSTE (não da avaliação): os cluster_ids do TREINO, que a
+    # validação cruzada dos clássicos usa para não partir um par locutor×frase
+    # entre a dobra de treino e a de validação. `eval_context` só carrega a
+    # fatia de teste, então não serve para isto.
+    fit_context: Dict[str, np.ndarray] = {}
+    train_idx = data.last_split_indices.get("train")
+    if train_idx is not None and data.cluster_ids is not None:
+        fit_context["train_cluster_ids"] = np.asarray(data.cluster_ids)[
+            np.asarray(train_idx, dtype="int64")
+        ]
+    elif any(_is_classical_arch(a) for a in cfg.architectures):
+        logger.warning(
+            "cluster_ids indisponiveis: a validacao cruzada de SVM/RandomForest "
+            "sera NAO agrupada e o par real/clone da mesma frase pode se dividir "
+            "entre as dobras (registrado em hyperparameter_tuning.cv_grouping)"
+        )
     y_test_base = np.asarray(raw_splits[5])
     n_test = len(y_test_base)
     logger.info(
@@ -1995,12 +2405,20 @@ def run_benchmark(cfg: BenchmarkConfig) -> Dict[str, Any]:
             if len(training_seeds) > 1:
                 logger.info(
                     "=== Benchmark: %s (repetição %d/%d, seed de treino %d) ===",
-                    arch, repetition, len(training_seeds), train_seed,
+                    arch,
+                    repetition,
+                    len(training_seeds),
+                    train_seed,
                 )
             else:
                 logger.info("=== Benchmark: %s ===", arch)
             run = _benchmark_one(
-                arch, cfg, raw_splits, eval_context, training_seed=train_seed
+                arch,
+                cfg,
+                raw_splits,
+                eval_context,
+                training_seed=train_seed,
+                fit_context=fit_context,
             )
             run["training_seed"] = int(train_seed)
             runs.append(run)
@@ -2054,6 +2472,17 @@ def run_benchmark(cfg: BenchmarkConfig) -> Dict[str, Any]:
             "test_cluster_ids": (
                 [str(v) for v in eval_context["cluster_ids"]]
                 if eval_context.get("cluster_ids") is not None
+                else None
+            ),
+            # A unidade acima é a FRASE (`cluster_ids == text_ids`: 183 no
+            # teste). A alegação do protocolo, porém, é sobre LOCUTORES não
+            # vistos, e são 11 — reamostrar frases trata frases do mesmo
+            # locutor como independentes e estreita o IC. Persistir os dois
+            # deixa a consolidação reportar as duas unidades em vez de escolher
+            # por nós.
+            "test_speaker_ids": (
+                [str(v) for v in eval_context["speaker_ids"]]
+                if eval_context.get("speaker_ids") is not None
                 else None
             ),
         },

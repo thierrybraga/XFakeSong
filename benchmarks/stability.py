@@ -29,6 +29,31 @@ DEFAULT_TOLERANCE = 0.01
 DEFAULT_COLLAPSE_PATIENCE = 15
 DEFAULT_NAN_PATIENCE = 3
 
+#: MOTIVAÇÃO 2026-08-09 (auditoria por locutor do `clean_benchmark_15k`): o
+#: critério de colapso acima só enxerga queda AO NÍVEL DO ACASO. O RawGAT-ST
+#: nunca chega lá — ele oscila entre 0,62 e 0,90 da primeira à última época,
+#: com o treino subindo monotonicamente até 0,998 — e saía do artefato como
+#: ``stable``, indistinguível de um Conformer bem-comportado.
+#:
+#: Os limiares vêm das séries REAIS dos 9 modelos com histórico no run (um
+#: teste trava esses valores contra elas), e exigem os DOIS sinais juntos:
+#:
+#:     modelo                  maior queda   dp últimas 50
+#:     RawGAT-ST                    0,2232          0,0274   <- único a disparar
+#:     AASIST                       0,1662          0,0109
+#:     Hybrid CNN-Transformer       0,1360          0,0057
+#:     MultiscaleCNN                0,0646          0,0016
+#:     SpectrogramTransformer       0,0522          0,0032
+#:     RawNet2                      0,0453          0,0155
+#:     HuBERT / WavLM              <=0,0316        <=0,0062
+#:
+#: A conjunção importa: o Conformer colapsado tem queda de 0,2761 mas dp 0,0000
+#: na cauda (fica travado em 0,5), e já é classificado como ``collapsed``. Uma
+#: queda isolada seguida de recuperação também não basta sozinha.
+DEFAULT_MAX_EPOCH_DROP = 0.20
+DEFAULT_MONITOR_STD_TAIL = 0.02
+DEFAULT_TAIL_EPOCHS = 50
+
 
 def _as_floats(values: Optional[Iterable[Any]]) -> List[float]:
     if values is None:
@@ -78,6 +103,42 @@ def _longest_streak(flags: Sequence[bool]) -> int:
     return best
 
 
+def _argmax_finite(values: Sequence[float]) -> Optional[int]:
+    best_i: Optional[int] = None
+    best_v = float("-inf")
+    for i, v in enumerate(values):
+        if math.isfinite(v) and v > best_v:
+            best_v, best_i = v, i
+    return best_i
+
+
+def _max_epoch_drop(values: Sequence[float]) -> Optional[float]:
+    """Maior queda do monitor entre duas épocas CONSECUTIVAS.
+
+    Mede amplitude de oscilação, não tendência: um treino que degrada devagar
+    ao longo de 50 épocas tem quedas pequenas, enquanto um que salta de 0,85
+    para 0,62 numa época só aparece aqui. Pares com valor não-finito são
+    ignorados em vez de virarem ``nan`` e engolir a série inteira.
+    """
+    worst: Optional[float] = None
+    for prev, cur in zip(values, values[1:]):
+        if not (math.isfinite(prev) and math.isfinite(cur)):
+            continue
+        drop = prev - cur
+        if worst is None or drop > worst:
+            worst = drop
+    return worst
+
+
+def _tail_std(values: Sequence[float], tail: int) -> Optional[float]:
+    """Desvio padrão populacional das últimas ``tail`` épocas finitas."""
+    finite = [v for v in values[-tail:] if math.isfinite(v)]
+    if len(finite) < 2:
+        return None
+    mean = sum(finite) / len(finite)
+    return (sum((v - mean) ** 2 for v in finite) / len(finite)) ** 0.5
+
+
 def analyze_training_stability(
     history: Optional[Dict[str, Any]],
     *,
@@ -87,6 +148,9 @@ def analyze_training_stability(
     tolerance: float = DEFAULT_TOLERANCE,
     collapse_patience: int = DEFAULT_COLLAPSE_PATIENCE,
     nan_patience: int = DEFAULT_NAN_PATIENCE,
+    max_epoch_drop: float = DEFAULT_MAX_EPOCH_DROP,
+    monitor_std_tail: float = DEFAULT_MONITOR_STD_TAIL,
+    tail_epochs: int = DEFAULT_TAIL_EPOCHS,
 ) -> Dict[str, Any]:
     """Classifica a série de épocas em estável / colapsada / divergida.
 
@@ -105,12 +169,28 @@ def analyze_training_stability(
         Mesmo padrão, mas o treino voltou antes do fim.
     ``diverged_nonfinite``
         ``val_loss`` não-finito nas últimas ``nan_patience`` épocas.
+    ``unstable_oscillation``
+        O monitor balança sem caracterizar colapso: alguma queda entre épocas
+        consecutivas ``>= max_epoch_drop`` E desvio na cauda
+        ``>= monitor_std_tail``. Foi o caso do RawGAT-ST e do retreino do
+        Conformer. O treino "funciona", só que a época escolhida vira sorteio —
+        daí o ``selection_gap``.
+
+        Pode haver quedas ao nível do acaso CURTAS (abaixo de
+        ``collapse_patience``); elas são registradas em ``chance_level_epochs``
+        / ``longest_chance_run`` e aparecem na ``reason``. A redação anterior
+        afirmava "nunca cai ao acaso", o que era falso para o Conformer
+        retreinado (4 épocas seguidas em 0,5000).
     ``unknown``
         Sem histórico utilizável (modelos clássicos, por exemplo).
 
     ``stable`` (bool) é falso para ``collapsed`` e ``diverged_nonfinite``;
-    ``recovered_collapse`` conta como estável mas fica registrado em
-    ``warnings``.
+    ``recovered_collapse`` e ``unstable_oscillation`` contam como estáveis mas
+    ficam registrados em ``warnings``.
+
+    Independente do status, o resultado traz a comparação entre a época que o
+    protocolo SELECIONA (menor ``val_loss``) e a que MAXIMIZA o monitor, em
+    ``selection_gap``. Não muda a seleção — só deixa de escondê-la.
     """
     history = history or {}
     if not isinstance(history, dict):
@@ -134,6 +214,9 @@ def analyze_training_stability(
             "tolerance": tolerance,
             "collapse_patience": collapse_patience,
             "nan_patience": nan_patience,
+            "max_epoch_drop": max_epoch_drop,
+            "monitor_std_tail": monitor_std_tail,
+            "tail_epochs": tail_epochs,
         },
     }
 
@@ -153,6 +236,8 @@ def analyze_training_stability(
     best_i = _argmin_finite(losses)
     if best_i is not None:
         result["best_epoch"] = best_i + 1
+        # Alias explícito: `best_epoch` sozinho não diz por qual critério.
+        result["best_epoch_by_val_loss"] = best_i + 1
         result["best_val_loss"] = round(losses[best_i], 6)
         result["epochs_after_best"] = epochs - (best_i + 1)
         result["best_epoch_fraction"] = round((best_i + 1) / epochs, 4)
@@ -195,8 +280,41 @@ def analyze_training_stability(
 
     terminal = _terminal_streak(dead)
     longest = _longest_streak(dead)
+
+    # As quedas ao nível do acaso são registradas SEMPRE, mesmo curtas demais
+    # para armar um veredito de colapso (2026-08-11). Sem isto o retreino do
+    # Conformer saía como `unstable_oscillation` com a justificativa "sem cair
+    # ao nível do acaso" — e o histórico dele tem 5 épocas em 0,5000, sendo 4
+    # consecutivas. O veredito estava certo (4 < collapse_patience); a
+    # afirmação que o acompanhava, não. Quem lê o artefato precisa da série,
+    # não só do rótulo.
+    chance_epochs = [i + 1 for i, morto in enumerate(dead) if morto]
+    if chance_epochs:
+        result["chance_level_epochs"] = chance_epochs
+        result["chance_level_epoch_count"] = len(chance_epochs)
+        result["longest_chance_run"] = longest
+
     if math.isfinite(peak):
         result["peak_monitor"] = round(peak, 6)
+
+    # Custo do critério de seleção. O protocolo escolhe por menor `val_loss`;
+    # quando a `val_loss` é ruidosa, essa época pode não ser a que maximiza o
+    # monitor. No RawGAT-ST a diferença é de 5,3 pp (época 8 contra 79).
+    peak_i = _argmax_finite(monitor)
+    if peak_i is not None:
+        result["best_epoch_by_monitor"] = peak_i + 1
+        if best_i is not None and best_i < len(monitor):
+            selected = monitor[best_i]
+            if math.isfinite(selected) and math.isfinite(monitor[peak_i]):
+                result["monitor_at_selected_epoch"] = round(selected, 6)
+                result["selection_gap"] = round(selected - monitor[peak_i], 6)
+
+    drop = _max_epoch_drop(monitor)
+    tail_std = _tail_std(monitor, tail_epochs)
+    if drop is not None:
+        result["max_epoch_drop"] = round(drop, 6)
+    if tail_std is not None:
+        result["monitor_std_tail"] = round(tail_std, 6)
 
     if terminal >= collapse_patience:
         first = epochs - terminal + 1
@@ -221,6 +339,38 @@ def analyze_training_stability(
             ),
         )
         warnings.append("houve colapso temporário durante o treino")
+    elif (
+        drop is not None
+        and tail_std is not None
+        and drop >= max_epoch_drop
+        and tail_std >= monitor_std_tail
+    ):
+        # Exige os dois sinais: a queda sozinha pega um tropeço isolado que se
+        # recupera, e o desvio sozinho pega um treino que ainda está subindo.
+        # A justificativa precisa refletir ESTE histórico. Dizer "sem cair ao
+        # nível do acaso" quando houve quedas curtas é falso — e é justamente o
+        # caso do retreino do Conformer (4 épocas seguidas em 0,5000, abaixo da
+        # paciência de 15 que armaria `recovered_collapse`).
+        if chance_epochs:
+            queda_txt = (
+                f"com {len(chance_epochs)} época(s) no nível do acaso "
+                f"(maior sequência: {longest}, abaixo da paciência de "
+                f"{collapse_patience} que caracterizaria colapso)"
+            )
+        else:
+            queda_txt = "sem cair ao nível do acaso"
+        result.update(
+            status="unstable_oscillation",
+            reason=(
+                f"monitor oscilando: maior queda entre épocas de {drop:.4f} e "
+                f"desvio de {tail_std:.4f} nas últimas "
+                f"{min(tail_epochs, epochs)} épocas, {queda_txt}"
+            ),
+        )
+        warnings.append(
+            "treino instável (oscilação do monitor) — a época selecionada "
+            "depende fortemente do ruído da val_loss"
+        )
 
     result["warnings"] = warnings
     return result

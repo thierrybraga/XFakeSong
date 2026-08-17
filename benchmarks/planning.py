@@ -73,9 +73,33 @@ EXPECTED_TRAINING_HOURS: Dict[str, Dict[str, float]] = {
     # arquitetura (chave compacta): {"cpu": campanha antiga, "gpu": ver acima}
     "hubertoriginal": {"cpu": 201.4, "gpu": 0.21},  # medido
     "wavlmoriginal": {"cpu": 205.9, "gpu": 0.24},  # medido
+    # As variantes com fine-tuning (`hubertaasist`/`wavlmaasist`) saíram do
+    # manifesto oficial em 2026-08-11 — ver a justificativa em
+    # `benchmarks/config.py`. As estimativas ficam aqui porque o caminho de
+    # código continua disponível como ablação: o backbone entra no grafo de
+    # gradiente e roda a cada época, em vez de uma vez só para gerar embeddings
+    # em cache, daí as duas ordens de grandeza contra as congeladas acima.
+    "hubertaasist": {"cpu": 900.0, "gpu": 10.0},
+    "wavlmaasist": {"cpu": 900.0, "gpu": 10.0},
     "sonicsleuth": {"cpu": 7.2, "gpu": 0.4},  # escopo estendido, não medido
-    "randomforest": {"cpu": 1.0, "gpu": 0.42},  # medido
-    "svm": {"cpu": 8.0, "gpu": 0.93},  # medido
+    # AJUSTE 2026-08-09 — o custo dos clássicos MUDOU DE ORDEM com o retune:
+    # o grid saiu de 24 para 108 candidatos (RF) e de 12 para 24 (SVM), as
+    # dobras de 3 para 5, o conjunto da busca de 12.162 amostras limpas para
+    # 24.324 (limpo + cópia AWGN) e o vetor de 63 para 183 colunas. São 540
+    # ajustes de floresta contra 72, e 120 de SVC contra 36 — cada um sobre um
+    # problema 2x maior em amostras e 3x em features.
+    #
+    # Os valores antigos (0,42 h e 0,93 h) derivavam um timeout de 30 min, que
+    # MATOU o RandomForest aos 1800,6 s antes de fechar a busca.
+    #
+    # MEDIDO no retreino de 2026-08-09 sobre 24.324 amostras de ajuste:
+    # RandomForest 2.117,1 s (0,588 h) e SVM 3.614,8 s (1,004 h). Normalizado à
+    # referência de 66.452 (a escala é linear em `fit_samples`): 1,61 h e
+    # 2,74 h. O perfil de CPU segue extrapolado do fator observado na campanha
+    # antiga, já que esta medição foi em máquina com GPU ociosa mas trabalho
+    # 100% em CPU — para SVM/RF os dois perfis são o mesmo trabalho.
+    "randomforest": {"cpu": 1.61, "gpu": 1.61},  # medido (retune 2026-08-09)
+    "svm": {"cpu": 2.74, "gpu": 2.74},  # medido (retune 2026-08-09)
     "hybridcnntransformer": {"cpu": 83.0, "gpu": 2.45},  # medido
     "conformer": {"cpu": 41.0, "gpu": 2.88},  # medido
     "efficientnetlstm": {"cpu": 59.3, "gpu": 3.0},  # escopo estendido
@@ -83,13 +107,25 @@ EXPECTED_TRAINING_HOURS: Dict[str, Dict[str, float]] = {
     "multiscalecnn": {"cpu": 40.4, "gpu": 3.67},  # medido (2 épocas no 15k)
     "hubert": {"cpu": 201.4, "gpu": 5.8},  # escopo estendido
     "wavlm": {"cpu": 205.9, "gpu": 5.9},  # escopo estendido
-    # extrapolado: 28,0 × 2,05, o erro do Conformer (mesma família espectral)
-    "spectrogramtransformer": {"cpu": 996.0, "gpu": 57.0},
-    "rawnet2": {"cpu": 364.0, "gpu": 65.1},  # medido (52 épocas, 39,1 min/ép)
-    # extrapolado: 28,0 × 3,62, o erro do RawNet2 (mesma família raw-audio)
-    "aasist": {"cpu": 842.4, "gpu": 101.0},
-    # extrapolado: 54,0 × 3,62, idem
-    "rawgatst": {"cpu": 1359.4, "gpu": 196.0},
+    # AJUSTE 2026-08-15 — as quatro entradas abaixo eram EXTRAPOLAÇÕES e
+    # superestimavam o custo real em 1,9x a 5,5x. Substituídas pelo MEDIDO no
+    # run `clean_benchmark_15k` (100 épocas, 24.324 amostras de ajuste),
+    # normalizado a `_REFERENCE_FIT_SAMPLES`:
+    #
+    #   arquitetura   real (h)   normalizado   antigo   erro
+    #   AST              11,01          30,1     57,0   1,9x
+    #   RawNet2           4,29          11,7     65,1   5,5x
+    #   AASIST           15,44          42,2    101,0   2,4x
+    #   RawGAT-ST        26,85          73,4    196,0   2,7x
+    #
+    # Superestimar não mata treino (o timeout fica frouxo), mas desinforma o
+    # planejamento de custo — e o `CLAUDE.md` exige que esta tabela acompanhe
+    # qualquer mudança de protocolo. Com o fator de segurança 3x, o timeout
+    # derivado do RawGAT-ST cai de 215 h para ~81 h, ainda 3x o real.
+    "spectrogramtransformer": {"cpu": 996.0, "gpu": 30.1},  # medido
+    "rawnet2": {"cpu": 364.0, "gpu": 11.7},  # medido
+    "aasist": {"cpu": 842.4, "gpu": 42.2},  # medido
+    "rawgatst": {"cpu": 1359.4, "gpu": 73.4},  # medido
 }
 
 #: Margem sobre a estimativa. 3× cobre o cenário conservador (~2×) e ainda
@@ -228,6 +264,27 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         # a 10 dB contra 77,64% a 5 dB), sinal de superfície de decisão
         # instável. Sobe dropout 0.35->0.5 e weight_decay 1e-3->3e-3; LR fica
         # em 5e-5 (o problema não é passo grande, é capacidade sem freio).
+        #
+        # ─── REVERSÃO PARCIAL 2026-08-17, medida ───────────────────────────
+        # O ajuste acima mudou DOIS fatores de uma vez e nunca foi executado.
+        # O fatorial de `scripts/benchmark/run_rawgat_retune.py` rodou os dois
+        # braços isolados, ambos já com `decay_steps` = 152.100:
+        #
+        #   publicado  dropout 0,35 + L2 1e-3 -> pico val_acc 0,8997 (ép. 88)
+        #   braço (d)  dropout 0,50 + L2 1e-3 -> val_acc 0,5000 EXATO, ép. 1-25
+        #   braço (l)  dropout 0,35 + L2 3e-3 -> pico val_acc 0,8984 (ép. 40)
+        #
+        # Dropout 0,50 é o fator LETAL: com ele o treino chegou a 95,4%
+        # enquanto a validação ficou colada no acaso — memoriza e não
+        # generaliza, não é subajuste. L2 3e-3 isolado não move o teto
+        # (-0,13 p.p.) e só agrava a oscilação. A célula combinada (0,50 +
+        # 3e-3) que estava aqui é a única não medida, e o fatorial prevê que
+        # ela falha pelo dropout.
+        #
+        # Volta a 0,35/1e-3 (a célula com o melhor teto medido). O que fica
+        # das correções é o que realmente tem evidência: `decay_steps`
+        # completo e, para runs novos, `checkpoint_monitor=val_eer` — que
+        # sozinho recupera os 5,29 p.p. perdidos na seleção da época.
         "learning_rate": 5e-5,
         "min_learning_rate": 5e-6,
         # 100.000 era menor que o orçamento real: com batch 16 são
@@ -235,8 +292,8 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         # cosseno zerava na época ~66 e as últimas 34 rodavam no piso de 5e-6.
         "decay_steps": 152100,
         "epochs": 100,
-        "dropout_rate": 0.5,
-        "l2_reg_strength": 3e-3,
+        "dropout_rate": 0.35,
+        "l2_reg_strength": 1e-3,
         # Passou a ser knob de verdade em 2026-08-06 (era o literal 0.7 no
         # compile de rawgat_st.py, enquanto o registry declarava 0.5 e o valor
         # nunca chegava ao modelo). 0.5 = o que o registry já dizia.
@@ -324,7 +381,11 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "l2_reg_strength": 1e-4,
         "weight_decay": 1e-4,
         "warmup_steps": 1500,
-        "decay_steps": 65700,
+        # AJUSTE 2026-08-16: era 65700, que supõe 21.024 amostras de ajuste
+        # (65700/100x32). O conjunto real tem 24.324 (12.162 limpas + 1 cópia
+        # AWGN), logo ceil(24324/32)x100 = 76.100. Com 65700 o cosseno atingia
+        # o piso na época ~86 e as 14 últimas rodavam com LR congelado.
+        "decay_steps": 76_100,
         "alpha": 1e-7,
         "clipnorm": 1.0,
         # (base_filters/num_residual_blocks/num_transformer_layers/
@@ -358,7 +419,11 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         # antigo (100000) fazia o LR zerar (alpha=1e-6) por volta da epoca
         # 38 e o treino degradava ate accuracy=chute aleatorio dali ate a
         # epoca 100 (diagnosticado em 2026-07-13).
-        "decay_steps": 262500,
+        # AJUSTE 2026-08-16: era 262500, que supõe 21.000 amostras de ajuste
+        # (262500/100x8) — a mesma premissa defasada do CCT. O real são 24.324,
+        # logo ceil(24324/8)x100 = 304.100. Idem: o cosseno terminava na época
+        # ~86 e o LR ficava no piso até o fim.
+        "decay_steps": 304_100,
         "alpha": 1e-6,
         "clipnorm": 1.0,
         # AJUSTE 2026-07-27: pesos AudioSet ligados. O AST do artigo PARTE de

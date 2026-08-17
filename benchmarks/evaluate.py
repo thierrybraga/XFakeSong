@@ -37,6 +37,7 @@ def _bootstrap_cis(
     n_bootstrap: int,
     seed: int = 12345,
     cluster_ids: np.ndarray | None = None,
+    ranking: np.ndarray | None = None,
 ) -> Dict[str, Any]:
     """IC 95% percentil por bootstrap de clusters ou, sem IDs, amostras.
 
@@ -69,11 +70,15 @@ def _bootstrap_cis(
             )
             idx = np.concatenate([np.flatnonzero(clusters == group) for group in chosen])
         yb, pb = y_true[idx], p_fake[idx]
+        # `rb` é o score de ORDENAÇÃO da reamostra (EER/AUC); `pb` é a
+        # probabilidade calibrada (decisão no limiar). Sem `ranking` os dois
+        # são o mesmo vetor e nada muda.
+        rb = pb if ranking is None else ranking[idx]
         if yb.min() == yb.max():  # reamostra sem ambas as classes: descarta
             continue
         try:
-            eers.append(float(mc.calculate_eer(yb, pb)[0]))
-            aucs.append(float(roc_auc_score(yb, pb)))
+            eers.append(float(mc.calculate_eer(yb, rb)[0]))
+            aucs.append(float(roc_auc_score(yb, rb)))
             accs.append(
                 float(accuracy_score(yb, (pb >= threshold).astype(int)))
             )
@@ -97,8 +102,28 @@ def evaluate_scores(y_true: np.ndarray, p_fake: np.ndarray,
                     threshold: float = 0.5,
                     n_bootstrap: int = 0,
                     cluster_ids: np.ndarray | None = None,
-                    calibrated_threshold: float | None = None) -> Dict[str, Any]:
+                    calibrated_threshold: float | None = None,
+                    ranking_scores: np.ndarray | None = None) -> Dict[str, Any]:
     """Métricas de detecção a partir de y_true ∈ {0,1} e p_fake ∈ [0,1].
+
+    ``ranking_scores`` separa as duas naturezas de métrica quando o modelo
+    aplica uma calibração pós-hoc (2026-08-09):
+
+    - **sem limiar** (AUC-ROC, EER, min t-DCF e o oráculo de acurácia no ponto
+      de EER) medem ORDENAÇÃO e passam a usar o score bruto do detector;
+    - **com limiar** (accuracy/precision/recall/F1) e o **ECE** medem a decisão
+      e a probabilidade, e continuam usando ``p_fake``.
+
+    Por que importa: a calibração isotônica é uma função ESCADA. No SVM do
+    `clean_benchmark_15k` ela colapsou 1.382 margens distintas em 52 degraus, e
+    os empates dentro de cada degrau custaram **0,75 pp de AUC** (0,9731 no
+    score bruto contra 0,9656 no calibrado). Como os modelos neurais reportam
+    softmax sem calibração pós-hoc, só os clássicos pagavam esse pedágio — a
+    tabela comparava ordenação com ordenação-truncada. É também o que a
+    literatura de anti-spoofing faz: EER e t-DCF sobre o score do contramedida.
+
+    ``None`` (default) reusa ``p_fake`` para tudo — o comportamento anterior, e
+    um no-op para todo modelo que não calibra.
 
     Reaproveita o MetricsCalculator do pipeline para EER e min-tDCF (mesma
     metodologia do treino), e sklearn para AUC-ROC. Acurácia/precisão/recall/F1
@@ -136,6 +161,29 @@ def evaluate_scores(y_true: np.ndarray, p_fake: np.ndarray,
     p_fake = np.clip(p_fake, 0.0, 1.0)
     y_pred = (p_fake >= threshold).astype(int)
 
+    # Score de ORDENAÇÃO. Não passa pelo clip em [0,1]: um `decision_function`
+    # de SVM vive em torno de zero e é negativo para metade das amostras —
+    # cortá-lo destruiria exatamente a ordenação que ele existe para preservar.
+    if ranking_scores is None:
+        ranking = p_fake
+        ranking_source = "p_fake"
+    else:
+        ranking = np.asarray(ranking_scores, dtype="float64").ravel()
+        if len(ranking) != len(y_true):
+            raise ValueError(
+                f"ranking_scores desalinhado: {len(ranking)} para "
+                f"{len(y_true)} amostras"
+            )
+        out_nonfinite_ranking = int((~np.isfinite(ranking)).sum())
+        if out_nonfinite_ranking:
+            # Sem a âncora do [0,1] não existe "0.5 neutro": um score não-finito
+            # vai para os EXTREMOS OBSERVADOS, preservando a ordenação do resto.
+            finitos = ranking[np.isfinite(ranking)]
+            piso = float(finitos.min()) if finitos.size else 0.0
+            teto = float(finitos.max()) if finitos.size else 0.0
+            ranking = np.nan_to_num(ranking, nan=piso, posinf=teto, neginf=piso)
+        ranking_source = "raw_detector_score"
+
     n_pos = int((y_true == 1).sum())
     n_neg = int((y_true == 0).sum())
     out: Dict[str, float] = {
@@ -157,19 +205,20 @@ def evaluate_scores(y_true: np.ndarray, p_fake: np.ndarray,
     # Métricas que exigem ambas as classes presentes
     if n_pos > 0 and n_neg > 0:
         try:
-            out["auc_roc"] = float(roc_auc_score(y_true, p_fake))
+            out["auc_roc"] = float(roc_auc_score(y_true, ranking))
         except Exception:
             out["auc_roc"] = float("nan")
         mc = MetricsCalculator()
         try:
-            eer, eer_thr = mc.calculate_eer(y_true, p_fake)
+            eer, eer_thr = mc.calculate_eer(y_true, ranking)
             out["eer"] = float(eer)
             out["eer_threshold"] = float(eer_thr)
             # Acurácia no limiar ótimo (ponto de EER) — teto de separabilidade,
-            # independente da calibração do limiar fixo 0.5.
+            # independente da calibração do limiar fixo 0.5. O limiar veio do
+            # score de ordenação, então é a ELE que precisa ser aplicado.
             if np.isfinite(eer_thr):
                 out["accuracy_at_eer_oracle"] = float(
-                    accuracy_score(y_true, (p_fake >= eer_thr).astype(int))
+                    accuracy_score(y_true, (ranking >= eer_thr).astype(int))
                 )
             else:
                 out["accuracy_at_eer_oracle"] = float("nan")
@@ -178,7 +227,7 @@ def evaluate_scores(y_true: np.ndarray, p_fake: np.ndarray,
             out["eer_threshold"] = float("nan")
             out["accuracy_at_eer_oracle"] = float("nan")
         try:
-            tdcf, _ = mc.calculate_min_tdcf(y_true, p_fake)
+            tdcf, _ = mc.calculate_min_tdcf(y_true, ranking)
             out["min_tdcf"] = float(tdcf)
         except Exception:
             out["min_tdcf"] = float("nan")
@@ -205,8 +254,16 @@ def evaluate_scores(y_true: np.ndarray, p_fake: np.ndarray,
                 threshold,
                 n_bootstrap,
                 cluster_ids=cluster_ids,
+                ranking=None if ranking_scores is None else ranking,
             )
         )
+
+    # DECLARAÇÃO: sem isto, dois artefatos com o mesmo `auc_roc` poderiam ter
+    # medido coisas diferentes e nada no arquivo diria qual.
+    out["ranking_score_source"] = ranking_source
+    out["threshold_free_metrics"] = ["auc_roc", "eer", "min_tdcf"]
+    if ranking_source != "p_fake":
+        out["nonfinite_ranking_scores"] = out_nonfinite_ranking
 
     return out
 

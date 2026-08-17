@@ -83,12 +83,13 @@ rastreabilidade):
 | `consolidate_results.py` | Lê `results.json` de um ou mais runs, monta `benchmark_summary.json` e (re)gera todas as figuras nomeadas do TCC. |
 | `update_tcc_latex.py` | Gera o fragmento `data/results/paper/tabelas_benchmark.tex` a partir do sumário consolidado (fonte única das tabelas do TCC). |
 | `validate_artifacts.py` | Valida artefatos de modelos/resultados (presença, esquema, coerência) sem carregar pesos. |
-| `sync_completed_benchmark_artifacts.py` | Promove modelos concluídos para `data/models/benchmark_final/<arch>/`. |
+| `backfill_artifact_metadata.py` | Preenche, em runs anteriores a 2026-08-09, os campos `training_stability`, `test_cluster_ids`, `test_speaker_ids`, `grouped_clean.speaker`, `model_artifact_fingerprint`, `latency_profile.runtime`, `fit_strategy.fit_splits` e `codec_eval_status`, **derivando tudo do próprio artefato** (mais o `.npz`, para os vetores de proveniência) e carimbando proveniência de backfill. Simulação por padrão; `--write` aplica com backup. Evita ~60 h de GPU só para ganhar metadata. |
+| `rebuild_run_summary.py` | Reconstrói `run_summary.json`/`.md` a partir dos `results.json` do run. Necessário depois de reavaliar um subconjunto de modelos: o resumo é escrito uma vez ao fim da bateria e não acompanha reavaliações parciais. Preserva os campos operacionais (`elapsed_s`, `log`, `returncode`) do resumo anterior. |
+| `sync_completed_benchmark_artifacts.py` | Promove modelos concluídos para `data/models/benchmark_final/<arch>/`. Lê as métricas dos `results.json` (não do resumo) e **recusa** o run inteiro quando algum modelo tem `training_stability.stable=false`, artefato ausente/trocado ou `test_split_sha256` divergente. `--dry-run` roda só as guardas. |
 | `generate_completed_benchmark_artifacts.py` | Regera relatórios/figuras apenas-avaliação a partir de modelos já treinados (`data/models/bench_*`). |
 | `materialize_benchmark_artifacts.py` | Materializa manifestos locais de artefatos treinados (fluxo Docker/WSL com bind mount). |
 | `export_model_card.py` | Exporta o model card Markdown consolidado dos artefatos treinados (`data/models/MODEL_CARD.md`). |
-| `export_rf_feature_importance.py` | Extrai `feature_importances_` do Random Forest promovido e gera figura+tabela LaTeX (63 descritores). |
-| `export_tcc_extra_figures.py` | Gera curvas DET e distribuições de score (AASIST×RawGAT-ST) a partir de `predictions_clean.csv`. |
+| `export_rf_feature_importance.py` | Extrai `feature_importances_` do Random Forest promovido e gera figura+tabela LaTeX (nomes resolvidos pela largura do artefato: 63 no v1, 183 no v2). |
 | `rebuild_inference_contracts.py` | Regenera os sidecars `bench_*_config.json` dos modelos promovidos a partir do run real (`metrics.json` + `predictions_clean.csv`): `eer_threshold` verdadeiro e `input_contract` completo com `feature_frontend` do benchmark. |
 | `run_shap_analysis.py` | **XAI**: análise SHAP dos clássicos (RF/SVM sobre o vetor tabular) e mapas de ativação Grad-CAM das redes espectrais Keras; ver `app/domain/xai/`. |
 

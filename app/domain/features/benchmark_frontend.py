@@ -6,13 +6,16 @@ benchmark (``benchmarks/data.py``) para treinar os modelos promovidos em
 
 - **raw**: janela center-crop (ou repetição p/ clipes curtos) + z-score por
   amostra + canal — AASIST/RawGAT-ST usam a janela canonica e multicrop;
-- **log-mel**: librosa ``melspectrogram`` (n_fft=512, hop dinâmico p/ fixar
-  ``time_steps`` quadros), ``power_to_db(ref=max)`` POR AMOSTRA e z-score por
-  amostra — mapa ``(time_steps, feature_dim)`` = (100, 80) — consumida por
-  Conformer/Res2Net/AST/CCT;
-- **tabular-63**: 11 estatísticas temporais + 26 MFCC + 26 RASTA-PLP —
-  consumida por SVM/Random Forest (nomes canônicos em
-  ``app/domain/xai/tabular.py``).
+- **log-mel**: librosa ``melspectrogram`` (hop dinâmico p/ fixar ``time_steps``
+  quadros; ``n_fft`` DERIVADO do hop por `resolve_n_fft` para garantir
+  ``MIN_STFT_OVERLAP`` — com hop 480 dá 1024, não 512), ``power_to_db(ref=max)``
+  POR AMOSTRA e z-score por amostra — mapa ``(time_steps, feature_dim)``
+  = (100, 80) — consumida por Conformer/Res2Net/CCT. O AST declara o próprio
+  ``n_fft`` (400 = 25 ms) e consome (300, 128);
+- **tabular-63** (v1) e **tabular-183** (v2 = v1 + LFCC com Δ/ΔΔ) —
+  consumidas por SVM/Random Forest (nomes canônicos em
+  ``app/domain/xai/tabular.py``). O v2 é o que treina desde 2026-08-09; o v1
+  continua resolvível para os artefatos anteriores.
 
 Por que aqui: a inferência do app usava um front-end próprio
 (``audio_preprocessing.py``: log-magnitude-mel, hop 128, sem z-score) que NÃO
@@ -36,7 +39,34 @@ logger = logging.getLogger(__name__)
 FRONTEND_RAW = "benchmark_raw_v1"
 FRONTEND_LOGMEL = "benchmark_logmel_v1"
 FRONTEND_TABULAR = "benchmark_tabular_v1"
-BENCHMARK_FRONTENDS = (FRONTEND_RAW, FRONTEND_LOGMEL, FRONTEND_TABULAR)
+#: Vetor tabular de 183 descritores: o v1 inteiro + bloco LFCC com Δ/ΔΔ.
+#:
+#: MOTIVAÇÃO (2026-08-09). A 5 dB — o SNR NÃO VISTO — SVM e Random Forest
+#: mantinham a AUC (0,849 e 0,838) e perdiam o ponto de operação: acurácia
+#: 0,5000 e 0,6274, com recall 0,0000 e 0,2851 sob o limiar fixo de 0,5. A
+#: separação continua lá; o vetor inteiro é que TRANSLADA sob ruído, porque 8
+#: dos 11 descritores temporais do v1 (desvio, média |x|, RMS, mín, máx,
+#: energia da diferença, ZCR e os percentis) crescem monotonicamente com a
+#: potência do ruído. `mín`/`máx` são estatísticas de ORDEM sobre 48.000
+#: amostras: a 5 dB medem o ruído, não a voz.
+#:
+#: O bloco novo é LFCC — o front-end do baseline CM do ASVspoof2019/2021
+#: (Todisco et al.). A escala linear em frequência não comprime os agudos, que
+#: é onde vocoder deixa artefato; a mel comprime. Δ e ΔΔ são diferenças ENTRE
+#: quadros, logo invariantes a qualquer offset constante de canal ou nível.
+#:
+#: RETRATAÇÃO: a análise que motivou este bloco também sugeriu CMVN antes da
+#: agregação. Está errado — o pooling do vetor é média⊕desvio POR
+#: coeficiente, e CMVN zera exatamente essas duas estatísticas (média 0,
+#: desvio 1 por construção). Aplicar CMVN aqui transformaria 40 colunas em
+#: constantes. Δ/ΔΔ entrega a invariância pretendida sem esse efeito.
+FRONTEND_TABULAR_V2 = "benchmark_tabular_v2"
+BENCHMARK_FRONTENDS = (
+    FRONTEND_RAW,
+    FRONTEND_LOGMEL,
+    FRONTEND_TABULAR,
+    FRONTEND_TABULAR_V2,
+)
 
 #: Janela-fonte canônica do benchmark: 3 s @ 16 kHz.
 #:
@@ -56,6 +86,13 @@ DEFAULT_TIME_STEPS = 100
 DEFAULT_RAW_TARGET = 48000
 
 N_TABULAR_FEATURES = 63
+
+#: Coeficientes LFCC por quadro (convenção do baseline CM do ASVspoof2019).
+N_LFCC = 20
+#: 20 estáticos + 20 Δ + 20 ΔΔ, cada bloco com média e desvio sobre os quadros.
+N_LFCC_FEATURES = 6 * N_LFCC
+#: Largura do vetor v2: o v1 inteiro (subconjunto, mesma ordem) + LFCC.
+N_TABULAR_FEATURES_V2 = N_TABULAR_FEATURES + N_LFCC_FEATURES
 
 #: Sobreposição mínima entre janelas consecutivas do log-mel.
 #:
@@ -112,12 +149,17 @@ def resolve_n_fft(hop_length: int, declared: Optional[int] = None) -> int:
 #:
 #: A correspondência é mecânica porque `benchmarks/data.py::
 #: prepare_input_for_architecture` decide o preparo pelo mesmo `input_type`.
+#:
+#: O ``input_type`` tabular resolve para o **v2** desde 2026-08-09: é o que os
+#: clássicos passam a treinar. O v1 continua um front-end de primeira classe —
+#: quem o resolve é o `feature_frontend` gravado no contrato do artefato, não
+#: este mapa, então modelo antigo segue lendo o vetor com que foi treinado.
 _FRONTEND_BY_INPUT_TYPE = {
     "raw_audio": FRONTEND_RAW,
     "spectrogram": FRONTEND_LOGMEL,
-    "tabular": FRONTEND_TABULAR,
-    "tabular_audio_features": FRONTEND_TABULAR,
-    "tabular_flattened": FRONTEND_TABULAR,
+    "tabular": FRONTEND_TABULAR_V2,
+    "tabular_audio_features": FRONTEND_TABULAR_V2,
+    "tabular_flattened": FRONTEND_TABULAR_V2,
 }
 
 
@@ -322,15 +364,20 @@ def log_mel_single(
 
 
 def _rasta_plp_stats(flat: np.ndarray, n_plp: int = 13) -> np.ndarray:
-    """Média/desvio por coeficiente RASTA-PLP — idem benchmark (zeros em falha)."""
-    try:
-        from app.domain.features.extractors.cepstral.components.plp import (
-            extract_rasta_plp_features,
-        )
-    except Exception:  # noqa: BLE001 - extrator opcional
-        return np.zeros((2 * n_plp, len(flat)), dtype="float32")
+    """Média/desvio por coeficiente RASTA-PLP → ``(2·n_plp, N)``.
+
+    Degrada para zeros na amostra que falha, mas NUNCA em silêncio — ver as
+    duas guardas abaixo. O extrator vive no próprio repositório
+    (``app/domain/features/extractors/cepstral/components/plp.py``), então
+    falha de import é ambiente quebrado, não dependência opcional ausente: até
+    2026-08-09 esse caminho devolvia 26 colunas de zeros sem um aviso.
+    """
+    from app.domain.features.extractors.cepstral.components.plp import (
+        extract_rasta_plp_features,
+    )
 
     rows = []
+    degraded = 0
     for y in flat:
         try:
             feats = extract_rasta_plp_features(
@@ -345,7 +392,113 @@ def _rasta_plp_stats(flat: np.ndarray, n_plp: int = 13) -> np.ndarray:
                 raise ValueError("forma RASTA-PLP inesperada")
             rows.append(np.concatenate([rp.mean(axis=1), rp.std(axis=1)]))
         except Exception:  # noqa: BLE001 - degrada p/ zeros por amostra
+            degraded += 1
             rows.append(np.zeros(2 * n_plp, dtype="float32"))
+    # DEGRADAÇÃO SILENCIOSA (corrigido em 2026-08-09): a queda para zeros era
+    # por amostra e não deixava rastro nenhum — 26 dos 63 descritores podiam
+    # ser constantes num lote inteiro sem uma linha de log. Falha total é erro
+    # de ambiente (extrator quebrado), não caso de borda de uma amostra.
+    if degraded == len(flat) and len(flat):
+        raise RuntimeError(
+            "RASTA-PLP falhou em TODAS as %d amostras do lote: 26 dos 63 "
+            "descritores sairiam zerados. Verifique "
+            "app.domain.features.extractors.cepstral." % len(flat)
+        )
+    if degraded:
+        logger.warning(
+            "[tabular] RASTA-PLP degradado a zeros em %d de %d amostras "
+            "(%.2f%%) — 26 descritores constantes nessas linhas",
+            degraded,
+            len(flat),
+            100.0 * degraded / max(1, len(flat)),
+        )
+    arr = np.nan_to_num(
+        np.asarray(rows, dtype="float32"), nan=0.0, posinf=0.0, neginf=0.0
+    )
+    return arr.T
+
+
+def _linear_filterbank(
+    n_filters: int, n_fft: int, sample_rate: int
+) -> np.ndarray:
+    """Banco de filtros triangulares igualmente espaçados em Hz → ``(n_filters, 1+n_fft//2)``.
+
+    O análogo linear de ``librosa.filters.mel``: mesmos triângulos sobrepostos
+    a meia altura, só que os vértices caem numa grade LINEAR de frequência. É
+    o que separa LFCC de MFCC.
+    """
+    n_bins = 1 + n_fft // 2
+    fft_freqs = np.linspace(0.0, sample_rate / 2.0, n_bins, dtype="float64")
+    # n_filters+2 vértices: cada filtro usa (anterior, centro, próximo).
+    edges = np.linspace(0.0, sample_rate / 2.0, n_filters + 2, dtype="float64")
+    fb = np.zeros((n_filters, n_bins), dtype="float64")
+    for i in range(n_filters):
+        left, center, right = edges[i], edges[i + 1], edges[i + 2]
+        rising = (fft_freqs - left) / max(center - left, 1e-12)
+        falling = (right - fft_freqs) / max(right - center, 1e-12)
+        fb[i] = np.maximum(0.0, np.minimum(rising, falling))
+    # Normalização de área (Slaney), idêntica à do banco mel do librosa: sem
+    # ela os filtros largos dominariam só por integrarem mais bins.
+    widths = edges[2 : n_filters + 2] - edges[:n_filters]
+    fb *= (2.0 / np.maximum(widths, 1e-12))[:, np.newaxis]
+    return fb.astype("float32")
+
+
+def _lfcc_stats(
+    flat: np.ndarray,
+    n_lfcc: int = N_LFCC,
+    n_fft: int = 512,
+    hop_length: int = 256,
+    sample_rate: int = DEFAULT_SAMPLE_RATE,
+) -> np.ndarray:
+    """Estatísticas LFCC do vetor v2: ``(N, T)`` → ``(6·n_lfcc, N)``.
+
+    Ordem por amostra: média e desvio dos coeficientes ESTÁTICOS, depois de Δ,
+    depois de ΔΔ. Transposto (features nas linhas) para casar com o empilhamento
+    de :func:`tabular_features_batch`.
+    """
+    import librosa
+    from scipy.fftpack import dct
+
+    fb = _linear_filterbank(n_lfcc, n_fft, sample_rate)
+    rows = []
+    for y in flat:
+        spec = (
+            np.abs(
+                librosa.stft(
+                    y.astype("float32"),
+                    n_fft=n_fft,
+                    hop_length=hop_length,
+                    window="hann",
+                    center=True,
+                )
+            )
+            ** 2
+        )
+        # log da energia por banda; o piso evita -inf em banda muda.
+        log_fb = np.log(fb @ spec + 1e-10)
+        static = dct(log_fb, type=2, axis=0, norm="ortho")[:n_lfcc]
+        # width=9 é o default do librosa e exige ≥9 quadros; com 3 s e hop 256
+        # são 188, mas um clipe curto num consumidor externo cairia aqui.
+        width = min(9, static.shape[1] if static.shape[1] % 2 else static.shape[1] - 1)
+        if width >= 3:
+            delta = librosa.feature.delta(static, width=width, order=1)
+            delta2 = librosa.feature.delta(static, width=width, order=2)
+        else:
+            delta = np.zeros_like(static)
+            delta2 = np.zeros_like(static)
+        rows.append(
+            np.concatenate(
+                [
+                    static.mean(axis=1),
+                    static.std(axis=1),
+                    delta.mean(axis=1),
+                    delta.std(axis=1),
+                    delta2.mean(axis=1),
+                    delta2.std(axis=1),
+                ]
+            )
+        )
     arr = np.nan_to_num(
         np.asarray(rows, dtype="float32"), nan=0.0, posinf=0.0, neginf=0.0
     )
@@ -372,19 +525,48 @@ def tabular_features_batch(X: np.ndarray) -> np.ndarray:
         np.mean(np.diff(flat, axis=1) ** 2, axis=1),
         np.mean(np.signbit(flat[:, 1:]) != np.signbit(flat[:, :-1]), axis=1),
     ]
-    try:
-        import librosa
+    # DEGRADAÇÃO SILENCIOSA (corrigido em 2026-08-09): este bloco ficava sob
+    # `except Exception: pass`. Sem librosa o vetor caía de 63 para 37 colunas
+    # sem um único aviso, e `N_TABULAR_FEATURES` — declarado desde sempre —
+    # não era referenciado em lugar nenhum do projeto. Um modelo treinado
+    # assim declararia 37 no contrato e passaria por válido.
+    import librosa
 
-        mfcc_stats = []
-        for y in flat:
-            mfcc = librosa.feature.mfcc(y=y, sr=16000, n_mfcc=13)
-            mfcc_stats.append(np.concatenate([mfcc.mean(axis=1), mfcc.std(axis=1)]))
-        feats.append(np.asarray(mfcc_stats, dtype="float32").T)
-    except Exception:  # noqa: BLE001 - librosa opcional (idem benchmark)
-        pass
+    mfcc_stats = []
+    for y in flat:
+        mfcc = librosa.feature.mfcc(y=y, sr=16000, n_mfcc=13)
+        mfcc_stats.append(np.concatenate([mfcc.mean(axis=1), mfcc.std(axis=1)]))
+    feats.append(np.asarray(mfcc_stats, dtype="float32").T)
 
     feats.append(_rasta_plp_stats(flat))
-    return np.vstack(feats).T.astype("float32")
+    out = np.vstack(feats).T.astype("float32")
+    if out.shape[1] != N_TABULAR_FEATURES:
+        raise RuntimeError(
+            f"vetor tabular v1 com {out.shape[1]} colunas, esperado "
+            f"{N_TABULAR_FEATURES} — front-end e contrato divergiriam"
+        )
+    return out
+
+
+def tabular_features_v2_batch(X: np.ndarray) -> np.ndarray:
+    """Vetor tabular v2 de 183 descritores: ``(N, ·)`` → ``(N, 183)``.
+
+    Superset estrito do v1, na mesma ordem, seguido do bloco LFCC (20
+    coeficientes estáticos, Δ e ΔΔ, cada um com média e desvio sobre os
+    quadros). Ser superset é deliberado: qualquer diferença de desempenho
+    contra o v1 é atribuível ao bloco novo ou à dimensionalidade, nunca à
+    remoção de um descritor.
+    """
+    flat = np.asarray(X, dtype="float32").reshape(len(X), -1)
+    base = tabular_features_batch(flat)
+    lfcc = _lfcc_stats(flat).T
+    out = np.concatenate([base, lfcc], axis=1).astype("float32")
+    if out.shape[1] != N_TABULAR_FEATURES_V2:
+        raise RuntimeError(
+            f"vetor tabular v2 com {out.shape[1]} colunas, esperado "
+            f"{N_TABULAR_FEATURES_V2} — front-end e contrato divergiriam"
+        )
+    return out
 
 
 def tabular_features_single(
@@ -399,6 +581,16 @@ def tabular_features_single(
         np.asarray(y, dtype="float32")[np.newaxis, :], int(source_samples)
     )
     return tabular_features_batch(flat)[0]
+
+
+def tabular_features_v2_single(
+    y: np.ndarray, source_samples: int = DEFAULT_SOURCE_SAMPLES
+) -> np.ndarray:
+    """Versão single-sample de :func:`tabular_features_v2_batch` → ``(183,)``."""
+    flat = fit_length_tile(
+        np.asarray(y, dtype="float32")[np.newaxis, :], int(source_samples)
+    )
+    return tabular_features_v2_batch(flat)[0]
 
 
 def prepare_single(
@@ -446,6 +638,8 @@ def prepare_single(
         return spec
     if feature_frontend == FRONTEND_TABULAR:
         return tabular_features_single(y, source_samples=source_samples)
+    if feature_frontend == FRONTEND_TABULAR_V2:
+        return tabular_features_v2_single(y, source_samples=source_samples)
     raise ValueError(
         f"feature_frontend desconhecido: {feature_frontend!r} "
         f"(esperado um de {BENCHMARK_FRONTENDS})"

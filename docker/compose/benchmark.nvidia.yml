@@ -140,26 +140,16 @@ services:
       # comentário em `_run_one`), mas isso não adiantava se o orquestrador
       # nem chegava a pular as que já tinham `results.json` com status "ok".
       - --resume
-      # TEMPORÁRIO (2026-08-04) — REMOVER quando os dois concluírem.
+      # O `--models RawGAT-ST AASIST` que restringia o sweep foi REMOVIDO em
+      # 2026-08-15: era declarado TEMPORÁRIO até que os dois concluíssem, e
+      # ambos constam com `status: ok` em
+      # data/results/clean_benchmark_15k/*/results.json. Mantê-lo fazia o
+      # compose rodar apenas 2 das 11 arquiteturas do escopo oficial, em
+      # silêncio — quem subisse o benchmark do zero teria um recorte
+      # incompleto sem nenhum aviso.
       #
-      # Restringe o sweep aos pendentes do escopo oficial. Sem isso o `--resume`
-      # RETREINA os 9 já concluídos: o `run_fingerprint.json` inclui o
-      # `code_sha256` de `benchmarks/planning.py`, e a correção que tirou o
-      # AASIST da precisão mista mudou esse arquivo, então `_resume_matches`
-      # falha para TODOS. Observado às 20:36 UTC, com o Hybrid CNN-Transformer
-      # já reiniciado do zero (interrompido antes de sobrescrever o
-      # `results.json`, que só é escrito no fim).
-      #
-      # Não é retreino legítimo: comparando o `training_config` gravado em cada
-      # `results.json` com o que o código atual produz, os 9 dão IDÊNTICO — a
-      # mudança só afeta o AASIST. Com `--models`, o laço
-      # `for model in selected_models` nem examina os outros, e o resumo os
-      # preserva (`summary = _load_json(summary_path, {})`, e o novo herda
-      # `summary.get("models", [])`).
-      #
-      # RawGAT-ST retoma da época 4 pelo `training_backup/`; AASIST roda do
-      # zero em float32, substituindo a entrada NaN (0,5/0,5/0,5) que ficou
-      # registrada como "ok" no resumo.
-      - --models
-      - RawGAT-ST
-      - AASIST
+      # Se for preciso restringir de novo, prefira passar --models na linha de
+      # comando (`docker compose run --rm benchmark python
+      # scripts/benchmark/run_models_sequential.py ... --models X`) em vez de
+      # fixar no compose, justamente para a restrição não sobreviver ao seu
+      # motivo.

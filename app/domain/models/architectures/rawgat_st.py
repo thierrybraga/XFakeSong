@@ -218,8 +218,13 @@ def create_model(
     # AJUSTE 2026-08-06: dropout 0.35->0.5 e l2 1e-3->3e-3 (sobreajuste em
     # clean_benchmark_15k — treino 0,998 vs val 0,85). Sincronizado com
     # registry.py::default_params e planning.py::NEURAL_BENCHMARK_HPARAMS.
-    dropout_rate: float = 0.5,
-    l2_reg_strength: float = 0.003,
+    #
+    # REVERTIDO EM 2026-08-17 pelo fatorial que o ajuste acima nunca teve:
+    # dropout 0,50 (braço (d)) trava a validação em 0,5000 por 25 épocas com
+    # treino a 95,4%; L2 3e-3 (braço (l)) não move o teto. Volta a 0,35/1e-3
+    # nas TRÊS fontes. Tabela medida em planning.py::NEURAL_BENCHMARK_HPARAMS.
+    dropout_rate: float = 0.35,
+    l2_reg_strength: float = 0.001,
     attention_heads: int = 8,
     hidden_dim: int = 512,
     # (num_layers REMOVIDO: declarado e nunca lido — a profundidade é fixa

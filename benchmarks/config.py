@@ -133,6 +133,36 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "family": "ssl-pretrained",
         "scope": "official",
     },
+    # ── Por que NÃO há entradas com fine-tuning (revisto em 2026-08-11) ────
+    #
+    # Existiram "WavLM AASIST" e "HuBERT AASIST" por dois dias, sob a premissa
+    # de que destravar o front-end era "a receita de campeonato" e que o
+    # probing congelado não respondia à pergunta certa. A premissa estava
+    # DESATUALIZADA:
+    #
+    #   - ASVspoof 5 (2024): os baselines oficiais da Track 1 são RawNet2 e
+    #     AASIST, sem front-end SSL; e os sistemas de TOPO usam WavLM,
+    #     wav2vec 2.0, HuBERT e afins como upstreams CONGELADOS;
+    #   - há resultado publicado de front-end congelado batendo o treinável
+    #     com folga na mesma comparação (8,76% contra 21,67% de EER);
+    #   - a evidência pró-fine-tuning (Wang & Yamagishi, Odyssey 2022) é de
+    #     2022 e o campo se moveu na direção oposta.
+    #
+    # Além disso, o resultado de referência daquela receita (Tak et al.,
+    # Odyssey 2022 — 0,82% de EER no ASVspoof21 LA) usa wav2vec 2.0 XLS-R
+    # (~300M, 24 camadas), não WavLM/HuBERT base (94,5M, 12 camadas). Combinar
+    # esses backbones com o grafo AASIST seria uma abordagem NOVA, não a
+    # reprodução de uma configuração documentada — e o objetivo aqui é
+    # benchmark.
+    #
+    # As entradas `Original` acima JÁ SÃO a configuração documentada: backbone
+    # congelado, soma ponderada de camadas, pooling e cabeça treinada.
+    #
+    # O código do grafo (`app/domain/models/architectures/torch_ssl_aasist.py`)
+    # e as flags `--backend aasist`/`--no-freeze-backbone` do runner SSL
+    # permanecem no projeto, testados, como ABLAÇÃO disponível fora do escopo
+    # oficial. Se algum dia o eixo a explorar for o back-end sobre o backbone
+    # congelado — que é o que a literatura recente estuda —, a peça está lá.
 ]
 
 EXTENDED_MODEL_MANIFEST: List[Dict[str, Any]] = [
@@ -223,28 +253,52 @@ MODEL_FAMILIES["extended"] = [
     item["benchmark_name"] for item in EXTENDED_MODEL_MANIFEST
 ]
 
-OFFICIAL_TCC_RESULT_ORDER = [
-    item["result_key"] for item in OFFICIAL_TCC_MODEL_MANIFEST
-]
+OFFICIAL_TCC_RESULT_ORDER = [item["result_key"] for item in OFFICIAL_TCC_MODEL_MANIFEST]
 
 OFFICIAL_TCC_DISPLAY_NAMES = {
     item["result_key"]: item["display_name"] for item in OFFICIAL_TCC_MODEL_MANIFEST
 }
 
+#: Prefixo do runner SSL dedicado. A checagem é pelo MÓDULO, não pelo sufixo:
+#: com `endswith(":ssl_original")` as variantes `:ssl_finetuned` caíam em
+#: `ALL_TCC_ARCHITECTURES` — a lista dos modelos que `benchmarks.runner` sabe
+#: treinar — e o orquestrador tentaria rodá-las pelo caminho Keras.
+_SSL_RUNNER_MODULE = "scripts.benchmark.run_wavlm_original_benchmark"
+
+
+def _is_ssl_runner(item: Dict[str, Any]) -> bool:
+    return str(item.get("runner", "")).startswith(_SSL_RUNNER_MODULE)
+
+
 # Modelos suportados diretamente por benchmarks.runner/run_benchmark.py.
 ALL_TCC_ARCHITECTURES = [
     item["benchmark_name"]
     for item in OFFICIAL_TCC_MODEL_MANIFEST
-    if not str(item["runner"]).endswith(":ssl_original")
+    if not _is_ssl_runner(item)
 ]
 
 # WavLM/HuBERT reais são treinados no mesmo fluxo WSL/Docker, mas por um runner
-# SSL PyTorch/Hugging Face dedicado. O runner baixa o checkpoint base, congela o
-# backbone e treina somente a cabeça classificadora.
+# SSL PyTorch/Hugging Face dedicado. Duas receitas convivem ali: `ssl_original`
+# congela o backbone e treina só a cabeça sobre embeddings em cache;
+# `ssl_finetuned` destrava o backbone e liga a sequência a um grafo AASIST.
 SSL_DOCKER_ARCHITECTURES = [
     item["benchmark_name"]
     for item in OFFICIAL_TCC_MODEL_MANIFEST
-    if str(item["runner"]).endswith(":ssl_original")
+    if _is_ssl_runner(item)
+]
+
+#: Só as variantes com fine-tuning — usadas pelo orquestrador para escolher as
+#: flags (`--backend aasist --no-freeze-backbone`) e o timeout, muito maior.
+#:
+#: **VAZIA desde 2026-08-11**, e de propósito: o escopo oficial só tem SSL
+#: congelado (ver a justificativa no fim de `OFFICIAL_TCC_MODEL_MANIFEST`). A
+#: derivação continua aqui, e não como lista literal, para que reintroduzir uma
+#: entrada com `runner: ...:ssl_finetuned` volte a acionar as flags certas sem
+#: nenhuma outra edição.
+SSL_FINETUNED_ARCHITECTURES = [
+    item["benchmark_name"]
+    for item in OFFICIAL_TCC_MODEL_MANIFEST
+    if str(item.get("runner", "")).endswith(":ssl_finetuned")
 ]
 
 DOCKER_TRAINING_ARCHITECTURES = [
@@ -286,9 +340,7 @@ class BenchmarkConfig:
         converge_accuracy_threshold: acurácia mínima no threshold de decisão.
     """
 
-    architectures: List[str] = field(
-        default_factory=lambda: ["MultiscaleCNN", "SVM"]
-    )
+    architectures: List[str] = field(default_factory=lambda: ["MultiscaleCNN", "SVM"])
     dataset_path: Optional[str] = None
     epochs: int = 100
     batch_size: int = 32
@@ -357,6 +409,16 @@ class BenchmarkConfig:
     # regra de seleção: 100 épocas completas e melhor checkpoint em val limpa.
     fixed_epoch_budget: bool = True
     select_best_checkpoint: bool = True
+    #: Métrica de seleção do checkpoint: ``val_loss`` (padrão, o que produziu os
+    #: artefatos publicados) ou ``val_eer``.
+    #:
+    #: Custo medido da escolha no run `clean_benchmark_15k`, comparando a época
+    #: de menor `val_loss` com a de maior `val_accuracy`: 0,00 p.p. em cinco das
+    #: nove neurais, ≤0,62 p.p. em três, e **5,29 p.p. no RawGAT-ST** (época 17
+    #: contra 88). É por isso que o campo existe e o padrão não muda: só uma
+    #: arquitetura paga o descompasso, e trocar o padrão invalidaria as outras
+    #: dez sem ganho.
+    checkpoint_monitor: str = "val_loss"
     decision_threshold: float = 0.5
     metric_threshold_policy: str = "fixed_0.5_comparison"
     experiment_scope: str = "official"
@@ -384,6 +446,7 @@ class BenchmarkConfig:
     def training_seeds(self) -> List[int]:
         """Sementes de TREINO das repetições (a de dados continua sendo `seed`)."""
         return [int(self.seed) + i for i in range(max(1, int(self.n_seeds)))]
+
     # Robustez a CODEC com perdas (round-trip via ffmpeg, na forma de onda,
     # antes dos frontends — mesmo ponto do AWGN). Ex.: ["mp3", "opus"].
     # Desligado por padrão (custo: ~2 chamadas ffmpeg por amostra de teste).
@@ -436,8 +499,9 @@ class BenchmarkConfig:
         return cls.full_tcc(**overrides)
 
     @classmethod
-    def cross_generator_tcc(cls, holdout_generator: str = "fkvoice",
-                            **overrides) -> "BenchmarkConfig":
+    def cross_generator_tcc(
+        cls, holdout_generator: str = "fkvoice", **overrides
+    ) -> "BenchmarkConfig":
         """Preset P0.4 — reteste cross-generator (anti-vazamento de fonte).
 
         Treina SEM o gerador `holdout_generator` (default XTTS=fkvoice) e o usa
@@ -457,8 +521,9 @@ class BenchmarkConfig:
         return cls(**base)
 
     @classmethod
-    def unseen_speaker_tcc(cls, holdout_speaker: Optional[str] = None,
-                           **overrides) -> "BenchmarkConfig":
+    def unseen_speaker_tcc(
+        cls, holdout_speaker: Optional[str] = None, **overrides
+    ) -> "BenchmarkConfig":
         """Preset tier `large` — protocolo de USUÁRIO NÃO VISTO (unseen speaker).
 
         Com `holdout_speaker`, segura um falante fora do treino e testa nele
@@ -472,7 +537,8 @@ class BenchmarkConfig:
             snr_levels_db=[30, 20, 10, 5],
             run_api_probe=False,
             preset_name=(
-                f"unseen_speaker:{holdout_speaker}" if holdout_speaker
+                f"unseen_speaker:{holdout_speaker}"
+                if holdout_speaker
                 else "unseen_speaker"
             ),
             optimize_hyperparameters=True,

@@ -110,23 +110,42 @@ def _final_val(history: Optional[Dict[str, list]]) -> Optional[float]:
     return float(va[-1]) if va else None
 
 
+def _results_files(p: Path) -> List[Path]:
+    """Localiza os `results.json` de um caminho de entrada.
+
+    Um run de `run_models_sequential.py` grava UM subdiretório por modelo
+    (`<run>/<slug>/results.json`) e nenhum `results.json` na raiz. Até
+    2026-08-09 esta função só olhava a raiz, então o comando documentado no
+    `data/results/paper/README.md` e no checklist de promoção —
+    `consolidate_results.py data/results/clean_benchmark_15k` — saía com
+    "nenhuma arquitetura 'ok' encontrada" e exigia um glob que a documentação
+    não menciona.
+    """
+    if p.suffix == ".json":
+        return [p] if p.exists() else []
+    direct = p / "results.json"
+    if direct.exists():
+        return [direct]
+    return sorted(p.glob("*/results.json"))
+
+
 def _iter_results(paths: List[str]):
     """Para cada caminho (arquivo results.json ou diretório), entrega o dict."""
     for raw in paths:
         for expanded in sorted(glob.glob(raw)) or [raw]:
-            p = Path(expanded)
-            jf = p if p.suffix == ".json" else p / "results.json"
-            if not jf.exists():
-                print(f"  (pulado, sem results.json) {p}", file=sys.stderr)
+            found = _results_files(Path(expanded))
+            if not found:
+                print(f"  (pulado, sem results.json) {expanded}", file=sys.stderr)
                 continue
-            try:
-                data = json.loads(jf.read_text(encoding="utf-8"))
-                if not isinstance(data.get("architectures"), dict):
-                    print(f"  (pulado, sem architectures) {jf}", file=sys.stderr)
-                    continue
-                yield jf, data
-            except Exception as e:
-                print(f"  (erro lendo {jf}: {e})", file=sys.stderr)
+            for jf in found:
+                try:
+                    data = json.loads(jf.read_text(encoding="utf-8"))
+                    if not isinstance(data.get("architectures"), dict):
+                        print(f"  (pulado, sem architectures) {jf}", file=sys.stderr)
+                        continue
+                    yield jf, data
+                except Exception as e:
+                    print(f"  (erro lendo {jf}: {e})", file=sys.stderr)
 
 
 def collect_rows(paths: List[str], prefer_last: bool = False):
@@ -176,6 +195,19 @@ def collect_rows(paths: List[str], prefer_last: bool = False):
                 "params": eff.get("params"),
                 "training_stability": a.get("training_stability") or {},
                 "robustness": a.get("robustness", {}) or {},
+                # Pior locutor do teste. O protocolo é speaker-disjoint (11
+                # locutores no teste, nenhum visto no treino), então esta é a
+                # leitura de generalização — o agregado esconde, por exemplo,
+                # os 74,2% do RawNet2 em M026 dentro de 95,88% médios.
+                "grouped_clean": a.get("grouped_clean") or {},
+                "worst_speaker_accuracy": (
+                    ((a.get("grouped_clean") or {}).get("speaker") or {})
+                    .get("worst_group_accuracy")
+                ),
+                "n_speakers": (
+                    ((a.get("grouped_clean") or {}).get("speaker") or {})
+                    .get("n_groups")
+                ),
                 "best_epoch": _best_epoch(a.get("history")),
                 "best_val": _best_val(a.get("history")),
                 "final_val": _final_val(a.get("history")),
@@ -222,6 +254,11 @@ def collect_rows(paths: List[str], prefer_last: bool = False):
                     # entre modelos. Runs anteriores a 2026-08-09 não gravam a
                     # chave; nesse caso a comparação cai para amostra e declara.
                     "test_cluster_ids": dataset_info.get("test_cluster_ids"),
+                    # Segunda unidade de reamostragem. A frase (183 clusters) é
+                    # mais fina que o LOCUTOR (11), e é o locutor que casa com a
+                    # alegação speaker-disjoint — reamostrar frases trata frases
+                    # do mesmo locutor como independentes.
+                    "test_speaker_ids": dataset_info.get("test_speaker_ids"),
                     "history": a.get("history"),
                     "display": display,
                 }
@@ -762,6 +799,7 @@ def build_significance_report(rows, extras, n_bootstrap: int = 1000):
 
     y_test = None
     cluster_ids = None
+    speaker_ids = None
     models = {}
     for row in rows:
         extra = extras.get(row["slug"]) or {}
@@ -771,6 +809,7 @@ def build_significance_report(rows, extras, n_bootstrap: int = 1000):
         if y_test is None:
             y_test = extra.get("y_test")
             cluster_ids = extra.get("test_cluster_ids")
+            speaker_ids = extra.get("test_speaker_ids")
         if y_test is None or len(scores) != len(y_test):
             continue
         models[row["model"]] = {"scores": scores}
@@ -782,18 +821,58 @@ def build_significance_report(rows, extras, n_bootstrap: int = 1000):
         }
     if cluster_ids is not None and len(cluster_ids) != len(y_test):
         cluster_ids = None
-    report = compare_models(
-        y_test,
-        models,
-        threshold=rows[0].get("decision_threshold", 0.5),
-        cluster_ids=cluster_ids,
-        n_bootstrap=n_bootstrap,
+    if speaker_ids is not None and len(speaker_ids) != len(y_test):
+        speaker_ids = None
+
+    threshold = rows[0].get("decision_threshold", 0.5)
+
+    def _compare(ids):
+        return compare_models(
+            y_test,
+            models,
+            threshold=threshold,
+            cluster_ids=ids,
+            n_bootstrap=n_bootstrap,
+        )
+
+    # A unidade principal segue sendo a FRASE, por continuidade com o que já
+    # estava publicado. A de LOCUTOR entra ao lado porque é ela que casa com a
+    # alegação do protocolo: o teste é speaker-disjoint, e reamostrar frases
+    # trata frases do mesmo locutor como independentes — o IC sai estreito
+    # demais. No `clean_benchmark_15k` a troca de unidade transforma três
+    # separações em empate (Conformer x MultiscaleCNN, MultiscaleCNN x RawNet2
+    # e RawGAT-ST x SVM), então a diferença NÃO é cosmética.
+    report = _compare(cluster_ids)
+    report["protocol"]["unit_detail"] = (
+        "cluster = frase (text_id)" if cluster_ids is not None else "amostra"
     )
     if cluster_ids is None:
         report["protocol"]["warning"] = (
             "sem test_cluster_ids no results.json: reamostragem por AMOSTRA. "
             "Amostras da mesma frase não são independentes, então o p-valor é "
             "otimista. Runs a partir de 2026-08-09 gravam a chave."
+        )
+
+    if speaker_ids is not None:
+        by_speaker = _compare(speaker_ids)
+        by_speaker["protocol"]["unit_detail"] = "cluster = locutor (speaker_id)"
+        report["by_speaker"] = by_speaker
+        report["protocol"]["speaker_unit_available"] = True
+        report["protocol"]["n_speakers"] = len(set(map(str, speaker_ids)))
+        report["protocol"]["note_speaker_unit"] = (
+            "`by_speaker` reamostra LOCUTORES, a unidade que corresponde à "
+            "alegação de generalização do protocolo speaker-disjoint. São menos "
+            "unidades que frases, então os IC são mais largos — e é o veredito "
+            "conservador que deve valer para qualquer afirmação sobre locutores "
+            "não vistos."
+        )
+    else:
+        report["protocol"]["speaker_unit_available"] = False
+        report["protocol"]["note_speaker_unit"] = (
+            "sem test_speaker_ids no results.json: só a unidade de frase está "
+            "disponível. Runs a partir de 2026-08-09 gravam a chave; para runs "
+            "anteriores, scripts/reporting/backfill_artifact_metadata.py a deriva "
+            "do .npz."
         )
     return report
 
@@ -820,8 +899,13 @@ def main() -> int:
     p.add_argument(
         "--significance-bootstrap",
         type=int,
-        default=1000,
-        help="reamostragens do bootstrap pareado (default: 1000)",
+        default=5000,
+        help=(
+            "reamostragens do bootstrap pareado (default: 5000). O menor "
+            "p-valor expressável é 2/(n+1), e Holm multiplica esse piso pelo "
+            "número de comparações: com 11 modelos são 55 pares, e 1.000 "
+            "reamostragens travariam todo p ajustado em 0,11"
+        ),
     )
     p.add_argument(
         "--prefer-last",
@@ -851,15 +935,40 @@ def main() -> int:
     if missing:
         print(f"   AVISO: faltando {missing} (o TCC espera 11 modelos).")
 
+    # `stable is False` cobre colapso e divergência. `unstable_oscillation`
+    # mantém `stable: True` de propósito (o artefato serve), mas precisa
+    # aparecer: é o padrão do RawGAT-ST, cuja época selecionada depende do ruído
+    # da val_loss — e o `selection_gap` diz quanto isso custou.
     unstable = [
         (r["model"], (r.get("training_stability") or {}).get("status"))
         for r in rows
         if (r.get("training_stability") or {}).get("stable") is False
+        or (r.get("training_stability") or {}).get("status") == "unstable_oscillation"
     ]
     if unstable:
         print("   AVISO: treino instável em " + ", ".join(
             f"{m} ({s})" for m, s in unstable
         ) + " — ver training_stability no metrics.json.")
+
+    costly = [
+        (r["model"], (r.get("training_stability") or {}).get("selection_gap"))
+        for r in rows
+        if isinstance(
+            (r.get("training_stability") or {}).get("selection_gap"), (int, float)
+        )
+        and (r.get("training_stability") or {})["selection_gap"] <= -0.01
+    ]
+    if costly:
+        print("   AVISO: o checkpoint de menor val_loss não é o de melhor "
+              "monitor em " + ", ".join(f"{m} ({g:+.4f})" for m, g in costly) +
+              " — seleção mantida por protocolo, ver selection_gap.")
+
+    no_speaker = [
+        r["model"] for r in rows if not (r.get("grouped_clean") or {}).get("speaker")
+    ]
+    if no_speaker:
+        print("   AVISO: sem grouped_clean por locutor em " +
+              ", ".join(no_speaker) + " — a coluna de pior locutor fica vazia.")
 
     if not args.no_significance:
         significance = build_significance_report(
@@ -869,10 +978,29 @@ def main() -> int:
         sig_path.write_text(
             json.dumps(significance, indent=2, ensure_ascii=False), encoding="utf-8"
         )
-        n_pairs = len(significance.get("pairs", []))
+        pairs = significance.get("pairs", []) or []
+        n_pairs = len(pairs)
         print(f"-> {sig_path} ({n_pairs} comparações pareadas)")
         if significance.get("protocol", {}).get("warning"):
             print(f"   AVISO: {significance['protocol']['warning']}")
+
+        # Pares que falharam contam como "comparações" na linha acima, então a
+        # contagem sozinha não distingue um arquivo completo de um degradado.
+        # Foi assim que uma rodada sem scikit-learn instalado gravou os 55 pares
+        # apenas com McNemar, cada um carregando `status: error`, enquanto o
+        # console anunciava "55 comparações pareadas" — e o arquivo seguiu para
+        # as tabelas do artigo sem que nada denunciasse a falta do bootstrap.
+        falhos = [p for p in pairs if p.get("status") == "error"]
+        if falhos:
+            motivos = sorted({str(p.get("error") or "?") for p in falhos})
+            print(
+                f"   ATENÇÃO: {len(falhos)}/{n_pairs} comparações FALHARAM e "
+                f"ficaram sem bootstrap pareado — {'; '.join(motivos[:3])}"
+            )
+            print(
+                "   O arquivo está INCOMPLETO: corrija a causa e reconsolide "
+                "antes de usá-lo no artigo."
+            )
 
     if not args.no_figures:
         fig_dir = out / "figures"

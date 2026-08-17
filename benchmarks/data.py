@@ -951,12 +951,16 @@ def _to_tabular_features(X: np.ndarray) -> np.ndarray:
     if not _looks_like_raw_audio(arr):
         return arr
 
-    # Fonte única do vetor de 63 descritores (11 temporais + 26 MFCC +
-    # 26 RASTA-PLP): app/domain/features/benchmark_frontend — a MESMA função
-    # usada pela inferência do app (paridade por construção).
-    from app.domain.features.benchmark_frontend import tabular_features_batch
+    # Fonte única do vetor tabular: app/domain/features/benchmark_frontend — a
+    # MESMA função usada pela inferência do app (paridade por construção).
+    #
+    # v2 (183 = os 63 do v1 + 120 LFCC com Δ/ΔΔ) desde 2026-08-09: sob AWGN a
+    # 5 dB os descritores de amplitude do v1 transladam em bloco e o ponto de
+    # operação em 0,5 colapsa (SVM: recall 0,0000 com AUC 0,849). Δ e ΔΔ são
+    # diferenças entre quadros, invariantes a offset constante.
+    from app.domain.features.benchmark_frontend import tabular_features_v2_batch
 
-    return tabular_features_batch(arr)
+    return tabular_features_v2_batch(arr)
 
 
 def _rasta_plp_stats(flat: np.ndarray, n_plp: int = 13) -> np.ndarray:

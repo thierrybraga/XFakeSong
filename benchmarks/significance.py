@@ -39,6 +39,19 @@ from typing import Any, Dict, List, Optional, Sequence
 import numpy as np
 
 
+def _p_floor(n_bootstrap: int) -> float:
+    """Menor p-valor que ``n_bootstrap`` reamostragens conseguem expressar.
+
+    O p bilateral é ``2 * (k + 1) / (n + 1)``; com ``k = 0`` o mínimo é
+    ``2 / (n + 1)``. Reportar esse piso importa porque ele se propaga: com 55
+    comparações e 1.000 reamostragens, Holm multiplica 0,002 por 55 e nenhum
+    par consegue ficar abaixo de 0,05 — nem os cujo IC da diferença exclui zero
+    com folga. Sem o piso declarado, "não significativo" se confunde com
+    "resolução insuficiente".
+    """
+    return 2.0 / (int(n_bootstrap) + 1)
+
+
 def _round_p(value: float) -> float:
     """Arredonda p-valor por ALGARISMOS significativos, não casas decimais.
 
@@ -137,14 +150,18 @@ def mcnemar_test(
         (np.sum(diffs <= 0) + 1) / (len(diffs) + 1),
         (np.sum(diffs >= 0) + 1) / (len(diffs) + 1),
     )
+    p_value = min(1.0, 2.0 * tail)
+    floor = _p_floor(len(diffs))
     out.update(
         test="mcnemar_cluster_bootstrap",
         unit="cluster",
         n_units=int(len(groups)),
         n_samples=int(len(a)),
-        p_value=_round_p(min(1.0, 2.0 * tail)),
+        p_value=_round_p(p_value),
         p_value_sample_exact=_round_p(_binom_two_sided_p(only_a, discordant)),
         bootstrap_samples=int(len(diffs)),
+        p_value_floor=_round_p(floor),
+        p_value_at_floor=bool(p_value <= floor + 1e-12),
     )
     return out
 
@@ -239,10 +256,16 @@ def paired_bootstrap_test(
         (np.sum(values <= 0) + 1) / (n_b + 1),
         (np.sum(values >= 0) + 1) / (n_b + 1),
     )
+    p_value = min(1.0, 2.0 * tail)
+    floor = _p_floor(n_b)
     out.update(
         difference_ci95_low=round(float(lo), 6),
         difference_ci95_high=round(float(hi), 6),
-        p_value=_round_p(min(1.0, 2.0 * tail)),
+        p_value=_round_p(p_value),
+        p_value_floor=_round_p(floor),
+        p_value_at_floor=bool(p_value <= floor + 1e-12),
+        # O IC da diferença NÃO tem o piso do p-valor: ele continua informativo
+        # quando o p satura. Se os dois discordarem, é a resolução que faltou.
         significant_at_95=bool(lo > 0 or hi < 0),
     )
     return out
@@ -276,7 +299,7 @@ def compare_models(
     *,
     threshold: float = 0.5,
     cluster_ids: Optional[Sequence[Any]] = None,
-    n_bootstrap: int = 1000,
+    n_bootstrap: int = 5000,
     metric: str = "eer",
     seed: int = 12345,
 ) -> Dict[str, Any]:
@@ -300,6 +323,14 @@ def compare_models(
                     (sa >= threshold).astype(int),
                     (sb >= threshold).astype(int),
                     cluster_ids=cluster_ids,
+                    # O MESMO n do bootstrap pareado: sem repassar, o McNemar
+                    # ficava no default (2.000) e seu piso 2/2001 x 55 = 0,055
+                    # travava todo p ajustado logo acima de 0,05, enquanto o
+                    # bootstrap pareado já resolvia. Os dois testes precisam ter
+                    # a mesma resolução para que discordância entre eles
+                    # signifique algo sobre os dados.
+                    n_bootstrap=n_bootstrap,
+                    seed=seed,
                 )
                 entry["paired_bootstrap"] = paired_bootstrap_test(
                     y,
@@ -324,16 +355,34 @@ def compare_models(
         for (pair, _), adj in zip(indexed, holm_adjust([v for _, v in indexed])):
             pair[key]["p_value_holm"] = _round_p(adj)
 
+    protocol: Dict[str, Any] = {
+        "decision_threshold": threshold,
+        "metric": metric,
+        "n_bootstrap": int(n_bootstrap),
+        "seed": int(seed),
+        "unit": "cluster" if cluster_ids is not None else "sample",
+        "multiplicity_correction": "holm",
+        "n_comparisons": len(pairs),
+    }
+    # Holm multiplica o p pelo número de comparações, então o piso do bootstrap
+    # também é multiplicado. Se o produto passar de 0,05, NENHUM par consegue
+    # ficar significativo — nem os que o IC da diferença separa com folga — e
+    # "indistinguíveis" viraria uma conclusão da resolução, não dos dados.
+    floor = _p_floor(int(n_bootstrap))
+    piso_holm = floor * max(1, len(pairs))
+    protocol["p_value_floor"] = _round_p(floor)
+    protocol["min_resolvable_holm_p"] = _round_p(piso_holm)
+    if piso_holm >= 0.05 and pairs:
+        needed = int(math.ceil(2.0 * len(pairs) / 0.01)) + 1
+        protocol["warning"] = (
+            f"resolução insuficiente: com {int(n_bootstrap)} reamostragens e "
+            f"{len(pairs)} comparações, o menor p ajustado por Holm é "
+            f"{piso_holm:.3g} — acima de 0,05. Nenhum par pode sair "
+            f"significativo por p, INDEPENDENTE dos dados; use o IC da "
+            f"diferença ou repita com n_bootstrap >= {needed}."
+        )
     return {
-        "protocol": {
-            "decision_threshold": threshold,
-            "metric": metric,
-            "n_bootstrap": int(n_bootstrap),
-            "seed": int(seed),
-            "unit": "cluster" if cluster_ids is not None else "sample",
-            "multiplicity_correction": "holm",
-            "n_comparisons": len(pairs),
-        },
+        "protocol": protocol,
         "models": names,
         "pairs": pairs,
     }

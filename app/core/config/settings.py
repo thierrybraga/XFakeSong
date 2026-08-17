@@ -190,6 +190,24 @@ class TrainingConfig:
     collapse_patience: int = 15
     collapse_nan_patience: int = 3
 
+    # Métrica que o ModelCheckpoint usa para escolher a época publicada.
+    #
+    # `val_loss` é o padrão e preserva a reprodutibilidade dos 11 artefatos de
+    # `clean_benchmark_15k`, todos selecionados por ele. `val_eer` alinha a
+    # seleção à métrica primária de anti-spoofing e exige o callback
+    # `ValidationEER` (o ModelTrainer o registra sozinho, e falha alto se não
+    # houver validation_data).
+    #
+    # PRECISA SER UM CAMPO DECLARADO, não um atributo solto: o TrainingService
+    # filtra o dicionário de config pelos campos deste dataclass
+    # (`valid_fields`), então qualquer chave não declarada é DESCARTADA em
+    # silêncio. Foi o que aconteceu entre 2026-08-16 e 2026-08-17 — o
+    # `run_rawgat_retune.py` setava `cfg.checkpoint_monitor = "val_eer"`, o
+    # trainer lia `self.config.checkpoint_monitor`, e nada no meio ligava os
+    # dois: o smoke de 2 épocas gravou `{"monitor": "val_loss"}` no
+    # `best.json` e nenhum `val_eer` no histórico.
+    checkpoint_monitor: str = "val_loss"
+
     # Arquiteturas disponíveis.
     # FONTE DE VERDADE: app/domain/models/architectures/registry.py
     # (`architecture_registry.list_architectures_snake()`). Esta lista é um
