@@ -19,7 +19,7 @@ Todos os modelos expõem a interface unificada
     Não é falha de download nem de checkpoint.
 
     **Solução**: o checkpoint **PyTorch** é legível sem tocar em TensorFlow.
-    [`ssl_backbone.py`](../../app/domain/models/architectures/ssl_backbone.py)
+    `app/domain/models/architectures/ssl_backbone.py`
     lê o `state_dict` e reimplementa o forward do backbone com operações TF,
     carregando os pesos como variáveis **não-treináveis**:
 
@@ -336,7 +336,7 @@ espectrograma (16×16, stride 10), como no AST (Gong et al., 2021).
   parâmetros do zero é a origem documentada do colapso para chute aleatório
   (EER ~51%). O `transformers` não publica AST em TensorFlow (e seus modelos TF
   nem importam com Keras 3), mas o checkpoint **PyTorch** é legível sem tocar em
-  TF: [`ast_pretrained.py`](../../app/domain/models/architectures/ast_pretrained.py)
+  TF: `app/domain/models/architectures/ast_pretrained.py`
   lê o `state_dict` de `MIT/ast-finetuned-audioset-10-10-0.4593` e escreve nas
   camadas Keras.
     - O embedding posicional é **reamostrado** da grade do checkpoint (12×101)

@@ -121,7 +121,15 @@ def text_id_for(text: str) -> str:
     continuar correto mesmo se algum locutor divergir da frase canonica daquele
     indice — a divergencia recebe outro grupo em vez de contaminar o split.
     """
-    digest = hashlib.sha1(normalize_text(text).encode("utf-8")).hexdigest()
+    # `usedforsecurity=False`: este digest é um IDENTIFICADOR de conteúdo, não
+    # uma credencial nem prova de integridade — agrupa as gravações da MESMA
+    # frase para que o split não parta um grupo ao meio. Não há adversário a
+    # resistir: um SHA-1 forjado só produziria um agrupamento errado no nosso
+    # próprio corpus. Sem a flag, o bandit marca B324 (CWE-327) com severidade
+    # HIGH e bloqueia a CI, que trata HIGH como falha.
+    digest = hashlib.sha1(
+        normalize_text(text).encode("utf-8"), usedforsecurity=False
+    ).hexdigest()
     return f"t{digest[:12]}"
 
 
