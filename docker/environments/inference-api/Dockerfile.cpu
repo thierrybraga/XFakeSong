@@ -39,7 +39,8 @@ RUN groupadd --system --gid ${APP_GID} appuser && \
     useradd --system --uid ${APP_UID} --gid appuser --shell /bin/bash --create-home appuser
 
 WORKDIR /app
-COPY requirements-base.txt ./
+COPY requirements-base.txt constraints.txt ./
+ENV PIP_CONSTRAINT=/app/constraints.txt
 COPY docker/environments/inference-api/requirements.txt docker/environments/inference-api/requirements-torch.txt docker/environments/inference-api/
 RUN pip install --upgrade pip setuptools wheel \
     && pip install -r requirements-base.txt -r docker/environments/inference-api/requirements.txt

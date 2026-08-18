@@ -30,7 +30,6 @@ from app.interfaces.web.schemas.api_models import (
     MultiModelDetectionRequest,
     MultiModelPredictionResult,
     PredictionResult,
-    UncertaintyRequest,
     UncertaintyResult,
 )
 

@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-import traceback
 
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 
@@ -29,7 +28,6 @@ sys.path.insert(0, PROJECT_ROOT)
 # Carrega o módulo factory diretamente, evitando que app/domain/__init__
 # dispare a cadeia de imports que requer sqlalchemy etc.
 # Truque: criar packages "falsos" em sys.modules antes do import.
-import importlib.util  # noqa: E402
 import types  # noqa: E402
 
 for _fake_pkg in [
@@ -46,6 +44,33 @@ RAW_AUDIO_LEN = SAMPLE_RATE * DURATION_SEC  # 48000
 
 SPEC_FRAMES = 128
 SPEC_MELS = 80
+
+
+def _contract_shapes(arch: str) -> list[tuple]:
+    """Formas DECLARADAS pela arquitetura no registry, em ordem de preferência.
+
+    A lista estática abaixo envelhece sempre que um contrato muda — o Ensemble
+    passou a ser ``raw_audio`` e continuou listado só com espectrogramas
+    (falhava sempre), e o AST passou a exigir 300×128 (128 bandas mel, hop de
+    10 ms — o regime do artigo) enquanto as constantes globais são 128×80.
+    Ler o contrato faz este smoke acompanhar as mudanças automaticamente.
+    """
+    try:
+        from app.domain.models.architectures.registry import architecture_registry
+
+        req = architecture_registry.get_architecture(arch).input_requirements
+    except Exception:
+        return []
+
+    if req.get("input_type") == "raw_audio":
+        samples = int(req.get("target_sequence_length") or RAW_AUDIO_LEN)
+        return [(samples, 1), (samples,)]
+    if req.get("input_type") == "spectrogram":
+        t = int(req.get("min_sequence_length") or SPEC_FRAMES)
+        f = int(req.get("feature_dim") or SPEC_MELS)
+        return [(t, f, 1), (t, f)]
+    return []
+
 
 CANDIDATE_INPUTS: dict[str, list[tuple]] = {
     "AASIST":                  [(RAW_AUDIO_LEN, 1), (RAW_AUDIO_LEN,)],
@@ -85,7 +110,10 @@ def _check_architecture(arch: str) -> dict:
     Helper (NÃO é um teste pytest — prefixo ``_`` evita coleta; o teste real é
     ``test_smoke_all_architectures`` abaixo).
     """
-    inputs = CANDIDATE_INPUTS.get(arch, [(RAW_AUDIO_LEN, 1)])
+    fallback = list(CANDIDATE_INPUTS.get(arch, [(RAW_AUDIO_LEN, 1)]))
+    # As formas do CONTRATO têm prioridade sobre a lista estática.
+    contract = _contract_shapes(arch)
+    inputs = contract + [s for s in fallback if s not in contract]
     attempts = []
     success = None
 

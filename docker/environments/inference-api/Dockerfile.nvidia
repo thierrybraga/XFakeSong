@@ -51,14 +51,18 @@ RUN groupadd --system --gid ${APP_GID} appuser && \
     useradd --system --uid ${APP_UID} --gid appuser --shell /bin/bash --create-home appuser
 
 WORKDIR /app
-COPY requirements-base.txt ./
+COPY requirements-base.txt constraints.txt ./
+# Versoes travadas: valem para todo pip install desta imagem (inclusive a que
+# constroi o benchmark, via docker/compose/benchmark.nvidia.yml).
+ENV PIP_CONSTRAINT=/app/constraints.txt
 COPY docker/environments/inference-api/requirements-torch.txt docker/environments/inference-api/
 RUN pip install --upgrade pip setuptools wheel \
     && pip install -r requirements-base.txt \
     && pip install 'tensorflow[and-cuda]>=2.16,<2.22' \
     && pip install --upgrade --no-deps 'nvidia-cudnn-cu12>=9.3.0.75,<10' \
     && pip install --no-deps 'nvidia-cuda-nvcc-cu12' \
-    && pip install -r docker/environments/inference-api/requirements-torch.txt
+    && pip install -r docker/environments/inference-api/requirements-torch.txt \
+    && pip install --upgrade --no-deps 'nvidia-cudnn-cu12>=9.3.0.75,<10'
 
 COPY docker/environments/inference-api/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh

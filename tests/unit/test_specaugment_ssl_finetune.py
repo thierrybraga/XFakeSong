@@ -1,8 +1,14 @@
-"""Testes P1: SpecAugment + fine-tuning parcial dos SSL (WavLM/HuBERT)."""
+"""SpecAugment e descongelamento parcial dos backbones SSL (WavLM/HuBERT).
 
+SUJEITO: `training/spec_augment.py` e os parâmetros de fine-tuning das
+arquiteturas SSL no caminho Keras.
+
+Renomeado em 2026-08-17 (era `test_p1_specaug_ssl.py`): "P1" nomeava a FASE de
+um backlog de melhorias, não o que o arquivo cobre. Quem procura o teste do
+SpecAugment não adivinha "P1".
+"""
 from __future__ import annotations
 
-import numpy as np
 import pytest
 
 

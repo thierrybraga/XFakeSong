@@ -22,9 +22,94 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "find_encoder_layers",
     "set_ssl_backbone_trainability",
+    "build_pretrained_ssl_features",
     "build_ssl_aasist_backend",
     "strict_ssl_guard",
+    "record_ssl_backbone_status",
+    "get_ssl_backbone_status",
+    "reset_ssl_backbone_status",
 ]
+
+# Backbone EFETIVAMENTE montado por modelo SSL, preenchido em tempo de
+# construção. Existe porque o caminho TensorFlow degrada para um CNN-1D do zero
+# quando o checkpoint não está acessível: sem este registro, o benchmark
+# publicaria o rótulo de proveniência declarado no manifesto ("backbone
+# pré-treinado congelado") mesmo numa execução em que nenhum peso pré-treinado
+# foi carregado — a pior classe de erro num artefato acadêmico, porque é
+# indetectável a posteriori. O runner consulta este estado ao gravar
+# `architectures[<nome>].provenance`.
+_SSL_BACKBONE_STATUS: dict = {}
+
+
+def record_ssl_backbone_status(model_name: str, *, pretrained: bool,
+                               checkpoint: Optional[str] = None,
+                               detail: Optional[dict] = None) -> None:
+    """Registra qual backbone o modelo `model_name` acabou de montar."""
+    status = {"pretrained": bool(pretrained), "checkpoint": checkpoint}
+    if detail:
+        status.update(
+            {k: v for k, v in detail.items() if k not in ("checkpoint",)}
+        )
+    _SSL_BACKBONE_STATUS[str(model_name)] = status
+
+
+def get_ssl_backbone_status(model_name: str) -> Optional[dict]:
+    """Estado do último backbone montado para `model_name` (None se nenhum)."""
+    status = _SSL_BACKBONE_STATUS.get(str(model_name))
+    return dict(status) if status is not None else None
+
+
+def reset_ssl_backbone_status() -> None:
+    """Limpa o registro (usado por testes e entre execuções independentes)."""
+    _SSL_BACKBONE_STATUS.clear()
+
+
+def build_pretrained_ssl_features(inputs, family: str, checkpoint: str = None,
+                                  name: str = "ssl"):
+    """Backbone SSL pré-treinado e CONGELADO → sequência de características.
+
+    Aplica a receita padrão de downstream com SSL (SUPERB): backbone congelado
+    + **soma ponderada aprendível** dos hidden states de todas as camadas.
+    Só essa soma e a cabeça a jusante são treináveis.
+
+    Args:
+        inputs: tensor de áudio bruto ``(B, T)`` ou ``(B, T, 1)`` a 16 kHz.
+        family: ``"hubert"`` ou ``"wavlm"``.
+        checkpoint: id do checkpoint HuggingFace (default por família).
+        name: prefixo dos nomes das camadas.
+
+    Returns:
+        ``(features, info)`` — tensor ``(B, T', H)`` e metadados do backbone.
+
+    Raises:
+        SSLBackboneUnavailable: se o checkpoint não puder ser obtido. O caller
+        decide entre abortar (modo estrito) e cair no extrator simplificado.
+    """
+    from app.domain.models.architectures.ssl_backbone import (
+        DEFAULT_CHECKPOINTS,
+        HiddenStateWeightedSum,
+        PretrainedSSLBackbone,
+    )
+
+    checkpoint = checkpoint or DEFAULT_CHECKPOINTS[family.lower()]
+    backbone = PretrainedSSLBackbone(
+        family=family, checkpoint=checkpoint, output_hidden_states=True,
+        name=f"{name}_backbone",
+    )
+    hidden = backbone(inputs)
+    features = HiddenStateWeightedSum(name=f"{name}_layer_weights")(hidden)
+    info = {
+        "checkpoint": checkpoint,
+        "hidden_size": backbone.hidden_size,
+        "num_layers": backbone.num_layers,
+        "frozen": True,
+    }
+    logger.info(
+        "SSL %s: backbone pré-treinado CONGELADO carregado de '%s' "
+        "(%d camadas, hidden=%d) + soma ponderada aprendível.",
+        family, checkpoint, backbone.num_layers, backbone.hidden_size,
+    )
+    return features, info
 
 
 def strict_ssl_guard(model_name: str) -> None:
@@ -66,14 +151,14 @@ def build_ssl_aasist_backend(x, dropout_rate: float = 0.3, proj_dim: int = 128,
     Returns:
         Vetor (B, 4*32) pronto para `create_classification_head`.
     """
-    import tensorflow as tf
     from tensorflow.keras import layers
 
     from app.domain.models.architectures.layers import (
-        GATConvLayer,
+        AASISTGraphAttentionLayer,
+        AASISTHtrgGraphAttentionLayer,
         GraphPoolLayer,
         GraphReadoutLayer,
-        HSGALLayer,
+        TimeResizeLayer,
     )
 
     # Comprimento temporal FIXO. Necessário porque o ramo espectral usa o tempo
@@ -86,30 +171,30 @@ def build_ssl_aasist_backend(x, dropout_rate: float = 0.3, proj_dim: int = 128,
     h = layers.Conv1D(proj_dim, 1, name=f"{name}_proj")(x)
     h = layers.LayerNormalization(name=f"{name}_proj_ln")(h)
 
-    def _resize_time(z):
-        z4 = tf.expand_dims(z, axis=1)          # (B, 1, T, C)
-        z4 = tf.image.resize(z4, [1, t_fixed])  # (B, 1, T_FIXED, C)
-        return tf.squeeze(z4, axis=1)           # (B, T_FIXED, C)
-
-    h = layers.Lambda(
-        _resize_time, output_shape=(t_fixed, proj_dim),
-        name=f"{name}_time_resize",
-    )(h)
+    # TimeResizeLayer (camada registrada) no lugar do `layers.Lambda`: uma
+    # Lambda com função Python local não é recarregável pelo desserializador
+    # do Keras 3 em safe_mode (o modelo treinava e salvava, mas não voltava).
+    h = TimeResizeLayer(t_fixed, name=f"{name}_time_resize")(h)
 
     # Dois grafos: espectral (canais como nós) e temporal (tempo como nós)
     spectral = layers.Permute((2, 1), name=f"{name}_spec_transpose")(h)
     temporal = h
 
-    spectral = GATConvLayer(
-        out_features=32, num_heads=4, dropout_rate=dropout_rate,
-        concat_heads=True, name=f"{name}_gat_spec")(spectral)
-    temporal = GATConvLayer(
-        out_features=32, num_heads=4, dropout_rate=dropout_rate,
-        concat_heads=True, name=f"{name}_gat_temp")(temporal)
+    # Atenção de grafo e HS-GAL FIÉIS ao AASIST (produto par-a-par + tanh +
+    # temperatura; três conjuntos de parâmetros por tipo de aresta). Antes este
+    # back-end usava o GAT aditivo de Velickovic e uma HS-GAL homogênea — ou
+    # seja, "estilo AASIST" só no nome, o mesmo desvio já corrigido em
+    # aasist.py/rawgat_st.py.
+    spectral = AASISTGraphAttentionLayer(
+        out_features=32, temperature=2.0, dropout_rate=dropout_rate,
+        name=f"{name}_gat_spec")(spectral)
+    temporal = AASISTGraphAttentionLayer(
+        out_features=32, temperature=2.0, dropout_rate=dropout_rate,
+        name=f"{name}_gat_temp")(temporal)
 
     # HS-GAL: atenção heterogênea cruzada (contribuição do AASIST)
-    spectral, temporal = HSGALLayer(
-        out_features=32, num_heads=2, dropout_rate=dropout_rate,
+    spectral, temporal, _master = AASISTHtrgGraphAttentionLayer(
+        out_features=32, temperature=100.0, dropout_rate=dropout_rate,
         name=f"{name}_hsgal")([spectral, temporal])
 
     spectral = GraphPoolLayer(ratio=0.5, name=f"{name}_pool_spec")(spectral)

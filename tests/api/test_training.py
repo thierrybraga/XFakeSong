@@ -1,4 +1,11 @@
-def test_list_architectures(client):
+"""API de treino: `/api/v1/training` (início de treino, status, arquiteturas).
+
+SUJEITO: contrato HTTP. `/training/architectures` e
+`/detection/architectures` são rotas DISTINTAS que devolvem a mesma lista —
+por isso os dois testes existem e por isso os nomes precisam dizer qual é qual.
+"""
+
+def test_list_architectures_no_endpoint_de_treino(client):
     response = client.get("/api/v1/training/architectures")
     assert response.status_code == 200
     data = response.json()

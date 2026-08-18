@@ -1,68 +1,108 @@
 # XFakeSong benchmark dataset defaults.
+#
+# Fonte canônica da metodologia: docs/data/dataset-protocol.md
+# O dataset é construído pelos quatro scripts de scripts/dataset/
+# (build_paired_pt_corpus → build_paired_splits → audit_paired_corpus →
+# export_paired_npz). Os valores abaixo DESCREVEM esse artefato; não o geram.
 
 protocol:
-  version: xfakesong-dataset-v2
+  version: xfakesong-dataset
   claim_scope: in_domain
   raw_audio_immutable: true
   require_exact_class_target: true
   require_explicit_speaker_ids_for_speaker_split: true
   require_explicit_holdout_group: true
   source_oracle_warning_threshold: 0.55
+  # Disjunção dupla: nenhuma amostra, enunciado, locutor ou frase se repete
+  # entre treino, validação e teste. Verificado por audit_paired_corpus.py e
+  # imposto em tempo de execução por BenchmarkData._validate_partition_indices.
+  disjoint_dimensions:
+    - sample
+    - utterance
+    - speaker
+    - text
   preprocessing:
     sample_rate: 16000
     mono: true
     resampler: soxr_hq
     vad: disabled
-    amplitude: preserve_with_anticlip_attenuation_only
+    # RMS normalizado nas duas classes. A política anterior (preservar loudness)
+    # deixava o nível separar as classes com AUC 0,99 — o gerador normalizava o
+    # próprio nível e a gravação não.
+    amplitude: rms_normalized_-26_dBFS_peak_ceiling_-1_dBFS
     duration_filter_sec: [1.0, 30.0]
-    short_window: tile
+    # O par é descartado quando algum lado não alcança a janela, então nenhuma
+    # amostra precisa ser repetida (`tile`): toda amostra é recorte central puro.
+    short_window: pair_dropped_below_window
     long_window: center_crop
     exact_duplicate_hash: sha256_decoded_mono_pcm16
 
 dataset:
-  canonical_tier: medium
-  canonical_npz: data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz
+  canonical_npz: data/datasets/benchmark_dataset.npz
+  test_lock: data/datasets/benchmark_dataset.npz.test-lock.json
+  corpus_dir: data/datasets/corpus
+  splits_dir: data/datasets/splits
   sample_rate: 16000
-  duration_sec: 5.0
+  duration_sec: 3.0
+  window_samples: 48000
+  # Bloco diagonal locutor × frase. As proporções são consequência da partição,
+  # não um alvo: 81,1% / 9,7% / 9,2% das 40.980 amostras.
+  split_strategy: speaker_x_sentence_double_disjoint_block_diagonal
   split:
-    train: 0.7
-    val: 0.15
-    test: 0.15
+    train: 33226
+    val: 3976
+    test: 3778
   balance:
     classes:
       - real
       - fake
-    target_per_class: 7500
-    target_total: 15000
-  tiers:
-    test:
-      target_per_class: 100
-      target_total: 200
-      split_strategy: stratified
-    small:
-      target_per_class: 5000
-      target_total: 10000
-      split_strategy: stratified
-    medium:
-      target_per_class: 7500
-      target_total: 15000
-      split_strategy: stratified
-      canonical_benchmark: true
-      source_quotas:
-        real:
-          brspeech: 3750
-          mlspt: 1875
-          ttsport: 1875
-        fake:
-          brspeech: 3750
-          fkvoice: 3750
-    large:
-      target_per_class: 10000
-      target_total: 20000
-      split_strategy: speaker_disjoint
+    # Balanceamento por construção: o par (bonafide + clone do mesmo enunciado)
+    # só entra quando as duas amostras passam na validação. Não há cota.
+    per_class: 20490
+    total: 40980
+
+# Variantes de tamanho. TODAS saem da MESMA partição locutor × frase
+# (`splits/assignment.jsonl`): muda a densidade de enunciados por célula, nunca
+# quem está em qual partição. Por isso as garantias de disjunção são idênticas
+# entre variantes — e por isso resultados de variantes diferentes NÃO são
+# comparáveis entre si (o conjunto de teste muda).
+#
+# Cada variante é reproduzível por um comando só; `--target-samples` rateia
+# pela proporção natural (maior resto), sem números calculados à mão.
+dataset_variants:
+  full:
+    npz: data/datasets/benchmark_dataset.npz
+    test_lock: data/datasets/benchmark_dataset.npz.test-lock.json
+    total: 40980
+    split: {train: 33226, val: 3976, test: 3778}
+    pairs: {train: 16613, val: 1988, test: 1889}
+    sha256: ae3662c9e2cc904c9c2f06bc541f27fe944baea4a527591cdb127a1d00f62ad7
+    size_gb: 7.99
+    build: >-
+      python scripts/dataset/export_paired_npz.py
+      --out data/datasets/benchmark_dataset.npz --no-compress
+    use: >-
+      Escopo oficial do TCC. Maior poder estatístico no teste (IC 95% da
+      acurácia ≈ ±0,7 pp em 3.778 amostras).
+  reduced_15k:
+    npz: data/datasets/benchmark_dataset_15k.npz
+    test_lock: data/datasets/benchmark_dataset_15k.npz.test-lock.json
+    total: 15000
+    split: {train: 12162, val: 1456, test: 1382}
+    pairs: {train: 6081, val: 728, test: 691}
+    sha256: 3775b35fb05155011b21a30ff60632aaa7c9f67f031bd6f7874a5f313363400f
+    size_gb: 2.93
+    build: >-
+      python scripts/dataset/export_paired_npz.py
+      --out data/datasets/benchmark_dataset_15k.npz
+      --target-samples 15000 --no-compress
+    use: >-
+      Iterações rápidas e runs com orçamento de GPU limitado. Teste menor
+      (1.382), IC 95% ≈ ±1,2 pp — insuficiente para separar modelos por
+      décimos de ponto.
   artifacts:
-    raw_real_dir: data/datasets/real
-    raw_fake_dir: data/datasets/fake
-    processed_dir: data/datasets/processed
-    manifests_dir: data/datasets
-    splits_dir: data/datasets/splits
+    corpus_manifest: data/datasets/corpus/manifest.jsonl
+    split_assignment: data/datasets/splits/assignment.jsonl
+    split_manifest: data/datasets/splits/split_manifest.json
+    audit_report: data/datasets/splits/audit_report.json
+    speaker_manifest: data/datasets/metadata/speaker_manifest.json

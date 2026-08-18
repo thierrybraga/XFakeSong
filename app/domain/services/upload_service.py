@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Union
 from ...core.contracts.audio import AudioFormat
 from ...core.contracts.base import ProcessingResult, ProcessingStatus
 from ...core.contracts.services import DatasetMetadata, DatasetType, IUploadService
+from ...utils.file_utils import resolve_within_directory, validate_path_segment
 from ...utils.helpers import ensure_directory, get_file_hash, safe_filename
 
 
@@ -130,14 +131,17 @@ class AudioUploadService(IUploadService):
     ) -> ProcessingResult[DatasetMetadata]:
         """Criar novo dataset"""
         try:
-            dataset_dir = (
-                self.upload_directory / dataset_type.value /
-                sanitize_filename(name)
+            validated_name = validate_path_segment(name, label="nome do dataset")
+            clean_name = sanitize_filename(validated_name)
+            dataset_dir = resolve_within_directory(
+                self.upload_directory, dataset_type.value, clean_name
             )
+            if dataset_dir.exists():
+                raise ValueError(f"Dataset já existe: {clean_name}")
             ensure_directory_exists(str(dataset_dir))
 
             metadata = DatasetMetadata(
-                name=name,
+                name=clean_name,
                 # Pass enum directly if model supports it, or .value
                 dataset_type=dataset_type,
                 description=description or f"Dataset {name}",
@@ -163,11 +167,12 @@ class AudioUploadService(IUploadService):
                        dataset_type: DatasetType) -> ProcessingResult:
         """Excluir dataset existente"""
         try:
-            dataset_dir = (
-                self.upload_directory / dataset_type.value /
-                sanitize_filename(name)
+            validated_name = validate_path_segment(name, label="nome do dataset")
+            clean_name = sanitize_filename(validated_name)
+            dataset_dir = resolve_within_directory(
+                self.upload_directory, dataset_type.value, clean_name
             )
-            if not dataset_dir.exists():
+            if not dataset_dir.is_dir():
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
                     errors=[f"Dataset não encontrado: {name}"]

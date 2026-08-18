@@ -1,7 +1,24 @@
-# XFakeSong - TensorFlow/Keras training environment
-# Python 3.11 recommended.
-
--r ../../requirements-base.txt
-
-tensorflow>=2.16,<2.22
-
+# =====================================================================
+# Ambiente de treino tensorflow-keras — EXTRAS
+# =====================================================================
+# Este arquivo lista apenas o que vai ALÉM do que o Dockerfile já instala
+# (`requirements-base.txt` no .nvidia, `requirements-cpu.txt` no .cpu) e além
+# do próprio TensorFlow, que entra por fora porque difere entre as variantes:
+# `tensorflow-cpu` no .cpu e `tensorflow[and-cuda]` no .nvidia.
+#
+# CORREÇÃO 2026-07-28: até esta data o arquivo declarava `-r requirements-base`
+# + `tensorflow`, mas NENHUM dos dois Dockerfiles o usava — era código morto.
+# Pior: faltava `transformers`, e esta imagem atende a família
+# `spectral-attention`, que inclui o SpectrogramTransformer (AST).
+#
+# O AST parte dos pesos AudioSet e o port Keras de WavLM/HuBERT lê o
+# `state_dict` do checkpoint, ambos via
+# `ASTModel/WavLMModel.from_pretrained(...).state_dict()`. Sem `transformers` a
+# imagem levantava `ASTPretrainedUnavailable` no AST (quebrando
+# `make train-nvidia`) e degradava WavLM/HuBERT para o CNN-1D do zero.
+#
+# O `torch` NÃO está aqui: o Dockerfile o instala do índice CPU. Nesta imagem
+# ele apenas LÊ pesos e nunca treina, então o wheel CPU basta — e evita que os
+# wheels nvidia do torch cu124 (que fixa nvidia-cudnn-cu12==9.1.0.70) briguem
+# com os que o TensorFlow exige (9.3+).
+transformers==4.45.2

@@ -34,6 +34,101 @@ def _intbr(x) -> str:
     return f"{int(x):,}".replace(",", ".")
 
 
+def _pct_with_uncertainty(block: Dict[str, Any], metric: str, d: int = 2) -> str:
+    """Métrica em % acompanhada da INCERTEZA — ponto isolado não é publicável.
+
+    Precedência:
+      1. ``± desvio`` entre sementes de treino, quando há repetições. É a
+         incerteza que importa para comparar arquiteturas: mede a variabilidade
+         do procedimento de treino, não a do conjunto de teste.
+      2. ``[lo; hi]`` do IC 95% de bootstrap, quando há execução única. Mede a
+         variabilidade de amostragem do teste.
+      3. o ponto sozinho, se nenhuma das duas existir.
+
+    Até 2026-07-27 os ICs eram calculados (1000 reamostragens por condição) e
+    descartados na hora de gerar as tabelas — o artigo publicava pontos secos.
+    """
+    if block is None:
+        return "---"
+    value = block.get(metric)
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "---"
+
+    base = f"{value * 100:.{d}f}".replace(".", ",")
+    std = block.get(f"{metric}_seed_std")
+    if std is not None and np.isfinite(std):
+        return (
+            f"{base}\\,$\\pm$\\,{f'{std * 100:.{d}f}'.replace('.', ',')}" + r"\%"
+        )
+
+    lo = block.get(f"{metric}_ci95_low")
+    hi = block.get(f"{metric}_ci95_high")
+    if lo is not None and hi is not None and np.isfinite(lo) and np.isfinite(hi):
+        lo_s = f"{lo * 100:.{d}f}".replace(".", ",")
+        hi_s = f"{hi * 100:.{d}f}".replace(".", ",")
+        return f"{base}\\%~[{lo_s};\\,{hi_s}]"
+    return base + r"\%"
+
+
+def _bootstrap_unit(results) -> str | None:
+    """Unidade de reamostragem do bootstrap: cluster (falante) ou amostra.
+
+    Precisa ir para a legenda: um IC calculado por AMOSTRA sobre um teste com
+    falantes repetidos subestima a largura do intervalo, e "IC 95\\% bootstrap"
+    sozinho não permite ao leitor distinguir os dois casos.
+    """
+    units = {
+        (r.get("clean") or {}).get("bootstrap_unit")
+        for r in results.get("architectures", {}).values()
+        if r.get("status") == "ok"
+    }
+    units.discard(None)
+    if len(units) == 1:
+        return units.pop()
+    return None
+
+
+def _uncertainty_note(results) -> str:
+    """Frase de rodapé declarando QUAL incerteza está nas tabelas."""
+    n_seeds = 0
+    for _name, r in results.get("architectures", {}).items():
+        if r.get("status") == "ok":
+            n_seeds = max(n_seeds, int(r.get("n_seeds") or 1))
+    if n_seeds > 1:
+        return (
+            f"Valores: média $\\pm$ desvio-padrão amostral sobre {n_seeds} "
+            "execuções com sementes de treino distintas (split e ruído de "
+            "avaliação fixos). Figuras e CSVs de predição correspondem a UMA "
+            "execução (a primeira semente), não à média."
+        )
+    boot = int((results.get("config") or {}).get("bootstrap_ci_samples") or 0)
+    if boot:
+        unit = _bootstrap_unit(results)
+        unit_txt = {
+            "cluster": " reamostrando CLUSTERS (falantes), não amostras isoladas",
+            "sample": (
+                " reamostrando AMOSTRAS: se houver falantes repetidos no teste, "
+                "o IC é otimista"
+            ),
+        }.get(unit or "", "")
+        return (
+            f"Valores: estimativa pontual e IC 95\\% percentil de bootstrap "
+            f"({boot} reamostragens{unit_txt}) sobre o conjunto de teste. "
+            "Execução única por arquitetura: a variabilidade de treino não está "
+            "representada."
+        )
+    return "Execução única por arquitetura, sem estimativa de incerteza."
+
+
+_THRESHOLD_NOTE = (
+    "Acurácia medida no limiar fixo de decisão 0,5 (política comum a todas as "
+    "arquiteturas). Acur.@EER usa o limiar do ponto de EER derivado do PRÓPRIO "
+    "teste: é um ORÁCULO, teto de separabilidade, não desempenho operável. A "
+    "distância entre as duas colunas mede o quanto de erro é apenas calibração "
+    "de limiar."
+)
+
+
 def _conv(flag) -> str:
     return (r"\textcolor{successgreen}{Sim}" if flag
             else r"\textcolor{dangerred}{Não}")
@@ -71,12 +166,14 @@ def _table_resultados(results) -> str:
     rows = []
     for name, r in results["architectures"].items():
         if r.get("status") != "ok":
-            rows.append(f"{name} & \\multicolumn{{7}}{{c}}{{"
+            rows.append(f"{name} & \\multicolumn{{8}}{{c}}{{"
                         f"\\textit{{falhou: {r.get('error','?')[:40]}}}}} \\\\")
             continue
         c, e = r["clean"], r["efficiency"]
         rows.append(
-            f"{name} & {_pct(c.get('accuracy'))} & {_pct(c.get('eer'))} & "
+            f"{name} & {_pct_with_uncertainty(c, 'accuracy')} & "
+            f"{_pct_with_uncertainty(c, 'accuracy_at_eer_oracle')} & "
+            f"{_pct_with_uncertainty(c, 'eer')} & "
             f"{_num(c.get('auc_roc'))} & {_num(c.get('min_tdcf'),4)} & "
             f"{_num(e.get('latency_ms'),1)} & {_train_budget_label(r)} & "
             f"{_conv(r.get('converged'))} \\\\"
@@ -85,10 +182,12 @@ def _table_resultados(results) -> str:
     return (
         "\\begin{table}[H]\n\\centering\n"
         "\\caption{Desempenho das arquiteturas (conjunto de teste, "
-        f"{results['dataset']['n_test']} amostras). Gerado pelo benchmark.}}\n"
+        f"{results['dataset']['n_test']} amostras). {_THRESHOLD_NOTE} "
+        f"{_uncertainty_note(results)} Gerado pelo benchmark.}}\n"
         "\\label{tab:bench_resultados}\n\\small\\singlespacing\n"
-        "\\begin{tabular}{lccccccc}\n\\toprule\n"
-        "\\textbf{Arquitetura} & \\textbf{Acur.} & \\textbf{EER} & "
+        "\\begin{tabular}{lcccccccc}\n\\toprule\n"
+        "\\textbf{Arquitetura} & \\textbf{Acur.} & \\textbf{Acur.@EER} & "
+        "\\textbf{EER} & "
         "\\textbf{AUC-ROC} & \\textbf{min-tDCF} & \\textbf{Lat.\\,(ms)} & "
         "\\textbf{Treino} & \\textbf{Conv.?} \\\\\n\\midrule\n"
         f"{body}\n\\bottomrule\n\\end{{tabular}}\n\\end{{table}}\n"
@@ -115,11 +214,54 @@ def _table_eficiencia(results) -> str:
     )
 
 
+def _unseen_snr_levels(results) -> set:
+    """Níveis de SNR avaliados que NÃO estiveram no augmentation de treino.
+
+    Preferimos a marca `noise_condition` que o runner grava por nível (ela sabe
+    se o augmentation estava sequer ligado para aquela arquitetura); a
+    comparação com `train_aug_snr_db` é o fallback para resultados antigos.
+    """
+    unseen: set = set()
+    seen_marker = False
+    for r in results.get("architectures", {}).values():
+        for level, block in (r.get("robustness") or {}).items():
+            condition = (block or {}).get("noise_condition")
+            if condition is None:
+                continue
+            seen_marker = True
+            if condition == "unseen":
+                unseen.add(int(level))
+    if seen_marker:
+        return unseen
+    cfg = results.get("config") or {}
+    trained = {int(v) for v in (cfg.get("train_aug_snr_db") or [])}
+    if not trained:
+        return set()
+    return {
+        int(s) for s in (cfg.get("snr_levels_db") or []) if int(s) not in trained
+    }
+
+
 def _table_robustez(results) -> str:
     snrs = results["config"]["snr_levels_db"]
-    conv = [(n, r) for n, r in _ok_items(results) if r.get("converged")]
+    # TODAS as arquiteturas que completaram o run entram na tabela.
+    #
+    # Até 2026-07-27 a tabela filtrava por `converged`, um critério calculado no
+    # CONJUNTO DE TESTE (AUC e acurácia@0,5 acima de limiares) — seleção pelo
+    # teste, e ainda sensível ao limiar: um modelo perfeitamente separável mas
+    # descalibrado (EER 0%, acurácia 50%) sumia da tabela sem nota alguma,
+    # enquanto na tabela de resultados as falhas ao menos aparecem como
+    # "falhou". Agora os não convergentes são MARCADOS, não removidos.
+    conv = list(_ok_items(results))
+    non_converged = [n for n, r in conv if not r.get("converged")]
+    # Níveis NÃO VISTOS no augmentation de treino recebem asterisco: são os
+    # únicos que medem generalização a ruído, e não condição casada.
+    unseen = _unseen_snr_levels(results)
     head_snr = "".join(
-        f"\\multicolumn{{2}}{{c}}{{\\textbf{{SNR {s}\\,dB}}}} & " for s in snrs
+        "\\multicolumn{{2}}{{c}}{{\\textbf{{SNR {snr}\\,dB{mark}}}}} & ".format(
+            snr=s, mark="$^{*}$" if int(s) in unseen else ""
+        )
+        for s in snrs
     ).rstrip("& ")
     cmid = "\\cmidrule(lr){2-3}" + "".join(
         f"\\cmidrule(lr){{{4 + 2 * i}-{5 + 2 * i}}}" for i in range(len(snrs))
@@ -127,20 +269,55 @@ def _table_robustez(results) -> str:
     sub = "& Acur. & EER " * (len(snrs) + 1)
     rows = []
     for name, r in conv:
-        cells = [_pct(r["clean"].get("accuracy")), _pct(r["clean"].get("eer"))]
+        cells = [
+            _pct_with_uncertainty(r["clean"], "accuracy"),
+            _pct_with_uncertainty(r["clean"], "eer"),
+        ]
         for s in snrs:
             rob = r["robustness"].get(str(s), {})
-            cells += [_pct(rob.get("accuracy")), _pct(rob.get("eer"))]
-        rows.append(f"{name} & " + " & ".join(cells) + " \\\\")
+            cells += [
+                _pct_with_uncertainty(rob, "accuracy"),
+                _pct_with_uncertainty(rob, "eer"),
+            ]
+        marker = "" if r.get("converged") else "$^{\\dagger}$"
+        rows.append(f"{name}{marker} & " + " & ".join(cells) + " \\\\")
     cols = "l" + "cc" * (len(snrs) + 1)
     n_cols = 1 + 2 * (len(snrs) + 1)
     body = "\n".join(rows) or (
-        f"\\multicolumn{{{n_cols}}}{{c}}{{(nenhum modelo convergente)}}\\\\"
+        f"\\multicolumn{{{n_cols}}}{{c}}{{(nenhuma arquitetura concluiu)}}\\\\"
     )
+    cfg_block = results.get("config") or {}
+    dagger_note = (
+        (
+            " $\\dagger$ não atingiu o critério de convergência (AUC $\\geq$ "
+            f"{cfg_block.get('converge_auc_threshold')} e acurácia@0,5 $\\geq$ "
+            f"{cfg_block.get('converge_accuracy_threshold')}); as linhas são "
+            "mantidas para não ocultar resultados por um critério medido no "
+            "próprio conjunto de teste."
+        )
+        if non_converged
+        else ""
+    )
+    if unseen:
+        marcados = ", ".join(f"{s}\\,dB" for s in sorted(unseen, reverse=True))
+        condition_note = (
+            " Níveis sem asterisco coincidem com os do augmentation de treino "
+            "(CONDIÇÃO CASADA). $^{*}$ "
+            f"{marcados}: nível NÃO VISTO no treino — é a coluna que mede "
+            "generalização a ruído, e não memorização dos níveis vistos."
+        )
+    else:
+        condition_note = (
+            " Todos os SNRs de avaliação coincidem com os do augmentation de "
+            "treino: a tabela mede robustez em CONDIÇÃO CASADA, não "
+            "generalização a ruído não visto."
+        )
     return (
         "\\begin{table}[H]\n\\centering\n"
-        "\\caption{Robustez sob ruído AWGN (acurácia e EER por SNR). "
-        "AWGN aplicado à forma de onda antes do frontend de cada modelo.}\n"
+        "\\caption{Robustez sob ruído AWGN (acurácia no limiar fixo 0,5 e EER "
+        "por SNR). "
+        "AWGN aplicado à forma de onda antes do frontend de cada modelo."
+        f"{condition_note}{dagger_note} {_uncertainty_note(results)}}}\n"
         "\\label{tab:bench_robustez}\n\\small\\singlespacing\n"
         f"\\begin{{tabular}}{{{cols}}}\n\\toprule\n"
         f"\\multirow{{2}}{{*}}{{\\textbf{{Arquitetura}}}} & "
@@ -875,10 +1052,23 @@ def _write_csv(results, path: Path) -> None:
 
 
 def _write_predictions_csv(results, path: Path) -> None:
+    """Predições limpas de TODAS as arquiteturas, uma linha por (modelo, amostra).
+
+    Carrega `ranking_score` pelo mesmo motivo do arquivo por arquitetura: nos
+    clássicos, AUC/EER/min-tDCF vêm da margem BRUTA, e o `p_fake` calibrado não
+    as reproduz (a isotônica colapsa a margem em degraus). Este é o arquivo
+    agregado — o primeiro que alguém abre para reconferir a tabela —, então
+    omitir a coluna aqui fazia a verificação falhar justamente onde ela é mais
+    provável de ser tentada. Vazia para quem não calibra, onde `p_fake` já É o
+    score de ordenação.
+    """
     y = np.asarray(results["dataset"].get("y_test", []), dtype=int)
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["architecture", "sample_index", "y_true", "p_fake", "y_pred", "correct"])
+        w.writerow([
+            "architecture", "sample_index", "y_true", "p_fake",
+            "ranking_score", "y_pred", "correct",
+        ])
         if y.size == 0:
             return
         for name, r in results["architectures"].items():
@@ -887,6 +1077,10 @@ def _write_predictions_csv(results, path: Path) -> None:
             scores = np.asarray(r["scores_clean"], dtype=float)
             if len(scores) != len(y) or not np.isfinite(scores).all():
                 continue
+            ranking = r.get("ranking_scores_clean")
+            ranking = None if ranking is None else np.asarray(ranking, dtype=float)
+            if ranking is not None and len(ranking) != len(y):
+                ranking = None
             pred = (scores >= 0.5).astype(int)
             for idx, (yt, score, yp) in enumerate(zip(y, scores, pred)):
                 w.writerow([
@@ -894,22 +1088,68 @@ def _write_predictions_csv(results, path: Path) -> None:
                     idx,
                     int(yt),
                     round(float(score), 6),
+                    "" if ranking is None else round(float(ranking[idx]), 6),
                     int(yp),
                     bool(int(yt) == int(yp)),
                 ])
 
 
 def _write_arch_predictions_csv(name: str, r: Dict[str, Any], y_true, path: Path) -> None:
+    """Predições limpas por amostra.
+
+    A coluna `ranking_score` existe desde 2026-08-09 para os modelos que
+    aplicam calibração pós-hoc: AUC/EER/min t-DCF são medidos sobre o score
+    BRUTO do detector, e sem gravá-lo o artefato deixaria de ser
+    reverificável — o `p_fake` calibrado não reproduz aquelas métricas. Fica
+    vazia (não zero) para quem não calibra, onde `p_fake` já É o score.
+    """
     y = np.asarray(y_true, dtype=int)
     scores = np.asarray(r.get("scores_clean") or [], dtype=float)
+    ranking = r.get("ranking_scores_clean")
+    ranking = None if ranking is None else np.asarray(ranking, dtype=float)
+    if ranking is not None and len(ranking) != len(y):
+        ranking = None
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["sample_index", "y_true", "p_fake", "y_pred", "correct"])
+        w.writerow(
+            ["sample_index", "y_true", "p_fake", "ranking_score", "y_pred", "correct"]
+        )
         if y.size == 0 or len(scores) != len(y) or not np.isfinite(scores).all():
             return
         pred = (scores >= 0.5).astype(int)
         for idx, (yt, score, yp) in enumerate(zip(y, scores, pred)):
-            w.writerow([idx, int(yt), round(float(score), 6), int(yp), bool(int(yt) == int(yp))])
+            w.writerow([
+                idx,
+                int(yt),
+                round(float(score), 6),
+                "" if ranking is None else round(float(ranking[idx]), 6),
+                int(yp),
+                bool(int(yt) == int(yp)),
+            ])
+
+
+def _write_arch_predictions_noisy_csv(name: str, r: Dict[str, Any], y_true, path: Path) -> None:
+    """Predições por amostra sob AWGN, uma linha por (snr, amostra) — mesmo
+    sample_index de predictions_clean.csv, para permitir cruzamento com
+    metadados de proveniência (falante/fonte) por condição de ruído."""
+    y = np.asarray(y_true, dtype=int)
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["snr_db", "sample_index", "y_true", "p_fake", "y_pred", "correct"])
+        for snr, raw_scores in (r.get("scores_robustness") or {}).items():
+            scores = np.asarray(raw_scores, dtype=float)
+            if y.size == 0 or len(scores) != len(y) or not np.isfinite(scores).all():
+                continue
+            pred = (scores >= 0.5).astype(int)
+            for idx, (yt, score, yp) in enumerate(zip(y, scores, pred)):
+                w.writerow([
+                    snr,
+                    idx,
+                    int(yt),
+                    round(float(score), 6),
+                    int(yp),
+                    bool(int(yt) == int(yp)),
+                ])
 
 
 def _write_arch_robustness_csv(r: Dict[str, Any], path: Path) -> None:
@@ -961,7 +1201,8 @@ def _write_arch_summary(name: str, r: Dict[str, Any], path: Path) -> None:
         f"- Shape preparado: {(r.get('input_preparation') or {}).get('prepared_shape')}",
         "",
         "Arquivos nesta pasta: `metrics.json`, `predictions_clean.csv`, "
-        "`robustness.csv`, `hyperparameter_tuning.*` quando aplicável, "
+        "`predictions_robustness.csv`, `robustness.csv`, "
+        "`hyperparameter_tuning.*` quando aplicável, "
         "`models/*` e figuras individuais.",
     ]
     path.write_text("\n".join(lines), encoding="utf-8")
@@ -988,6 +1229,9 @@ def _write_per_architecture(results: Dict[str, Any], out: Path) -> None:
         if r.get("status") != "ok":
             continue
         _write_arch_predictions_csv(name, r, y, arch_out / "predictions_clean.csv")
+        _write_arch_predictions_noisy_csv(
+            name, r, y, arch_out / "predictions_robustness.csv"
+        )
         _write_arch_robustness_csv(r, arch_out / "robustness.csv")
         scores = r.get("scores_clean") or []
         _fig_single_confusion(name, y, scores, arch_out)
@@ -1033,6 +1277,70 @@ def _write_summary(results, path: Path) -> None:
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def _provenance_lines(env: Dict[str, Any]) -> List[str]:
+    """Commit, bibliotecas e checkpoints no relatório legível.
+
+    Esses blocos já iam para `results.json` desde 2026-07-27, mas o artefato que
+    acompanha o TCC — o único que alguém realmente lê — parava em
+    plataforma/Python/TF. Sem o commit, os números não são rastreáveis até a
+    revisão de código que os produziu; sem os checkpoints, AST/WavLM/HuBERT não
+    são reproduzíveis.
+    """
+    lines: List[str] = []
+    git = env.get("git") or {}
+    if git.get("available"):
+        dirty = " (árvore SUJA: há alterações não commitadas)" if git.get("dirty") else ""
+        lines.append(f"- Commit: `{git.get('commit_short')}`{dirty}")
+        if git.get("branch"):
+            lines.append(f"- Branch: `{git.get('branch')}`")
+    else:
+        lines.append("- Commit: `indisponível` (execução fora de repositório git)")
+    checkpoints = env.get("pretrained_checkpoints") or {}
+    for model, checkpoint in sorted(checkpoints.items()):
+        lines.append(f"- Checkpoint pré-treinado ({model}): `{checkpoint}`")
+    libraries = env.get("libraries") or {}
+    if libraries:
+        rendered = ", ".join(
+            f"{name} {version}" for name, version in sorted(libraries.items())
+        )
+        lines.append(f"- Bibliotecas: `{rendered}`")
+    return lines
+
+
+def _test_lock_lines(ds: Dict[str, Any]) -> List[str]:
+    """Selo do teste: prova de que a partição não foi tocada no treino."""
+    lock = ds.get("test_lock") or {}
+    if not lock:
+        return [
+            "- Selo do teste: `não verificado` (execute com `--test-lock` para "
+            "conferir SHA-256 do dataset e identidade da partição)"
+        ]
+    return [
+        f"- Selo do teste: `validado` (`{lock.get('lock_path')}`)",
+        f"- SHA-256 do dataset selado: `{lock.get('dataset_sha256')}`",
+        f"- Identidade da partição selada: `{lock.get('test_archive_identity_sha256')}`",
+    ]
+
+
+def _split_audit_lines(ds: Dict[str, Any]) -> List[str]:
+    """Auditorias de sobreposição e de atalho fonte→rótulo."""
+    lines: List[str] = []
+    overlap = ds.get("split_overlap_audit") or {}
+    if overlap:
+        status = "sem sobreposição" if overlap.get("passed") else "SOBREPOSIÇÃO DETECTADA"
+        lines.append(f"- Auditoria treino/val/teste: `{status}`")
+    shortcut = ds.get("source_shortcut_audit") or {}
+    if shortcut.get("available"):
+        verdict = "dentro do limite" if shortcut.get("passed") else "ACIMA DO LIMITE"
+        lines.append(
+            f"- Atalho fonte→rótulo (oráculo de maioria): "
+            f"`{shortcut.get('accuracy'):.4f}` vs limite "
+            f"`{shortcut.get('threshold')}` — {verdict}"
+        )
+    lines.append(f"- Origem do split: `{ds.get('split_source')}`")
+    return lines
+
+
 def _write_tcc_report(results: Dict[str, Any], path: Path) -> None:
     """Relatório Markdown completo para anexar ao TCC.
 
@@ -1054,14 +1362,18 @@ def _write_tcc_report(results: Dict[str, Any], path: Path) -> None:
         f"- Shape de entrada bruto: `{ds.get('input_shape')}`",
         f"- Balanceamento no teste: `{ds.get('balance_test')}`",
         f"- Caminho de origem: `{ds.get('source') or ds.get('metadata', {}).get('source', '')}`",
+        f"- SHA-256 da partição de teste: `{ds.get('test_split_sha256')}`",
+        *_test_lock_lines(ds),
+        *_split_audit_lines(ds),
         "",
-        "## 2. Ambiente de Execução",
+        "## 2. Ambiente e Proveniência",
         "",
         f"- Plataforma: `{env.get('platform')}`",
         f"- Python: `{env.get('python')}`",
         f"- TensorFlow: `{env.get('tensorflow')}`",
         f"- GPU ativa: `{env.get('gpu')}`",
         f"- Dispositivo: `{env.get('device')}`",
+        *_provenance_lines(env),
         "",
         "## 3. Configuração Global do Benchmark",
         "",
@@ -1072,29 +1384,59 @@ def _write_tcc_report(results: Dict[str, Any], path: Path) -> None:
         f"- Testes de robustez SNR: `{snrs}`",
         f"- Medições de latência por arquitetura: `{cfg.get('latency_runs')}`",
         f"- API probe: `{cfg.get('run_api_probe')}`",
+        f"- Repetições por arquitetura (sementes de treino): `{cfg.get('n_seeds', 1)}`",
+        f"- Reamostragens de bootstrap: `{cfg.get('bootstrap_ci_samples')}`"
+        + (
+            f" (unidade: `{_bootstrap_unit(results)}`)"
+            if _bootstrap_unit(results)
+            else ""
+        ),
+        f"- Limiar de decisão: `{cfg.get('decision_threshold')}` "
+        f"(política: `{cfg.get('metric_threshold_policy')}`)",
+        f"- Orçamento fixo de épocas: `{cfg.get('fixed_epoch_budget')}` | "
+        f"melhor checkpoint em val limpa: `{cfg.get('select_best_checkpoint')}`",
         "",
         "## 4. Resultados Numéricos",
         "",
-        "| Arquitetura | Status | Acurácia | AUC-ROC | EER | min-tDCF | Latência ms | Params |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|",
+        "Acurácia no limiar fixo 0,5. `Acur.@EER` usa o limiar do ponto de EER "
+        "derivado do próprio teste — é um **oráculo** (teto de separabilidade), "
+        "não desempenho operável; a diferença entre as duas colunas é erro de "
+        "calibração de limiar, não de separabilidade.",
+        "",
+        "| Arquitetura | Status | Acurácia | Acur.@EER | AUC-ROC | EER | min-tDCF | Latência ms | Params |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for name, r in results.get("architectures", {}).items():
         if r.get("status") != "ok":
             lines.append(
-                f"| {name} | erro |  |  |  |  |  |  |"
+                f"| {name} | erro |  |  |  |  |  |  |  |"
             )
             continue
         clean = r.get("clean") or {}
         eff = r.get("efficiency") or {}
         lines.append(
             f"| {name} | ok | {_num(clean.get('accuracy'), 4)} | "
+            f"{_num(clean.get('accuracy_at_eer_oracle'), 4)} | "
             f"{_num(clean.get('auc_roc'), 4)} | {_num(clean.get('eer'), 4)} | "
             f"{_num(clean.get('min_tdcf'), 4)} | "
             f"{_num(eff.get('latency_ms'), 2)} | {eff.get('params')} |"
         )
 
+    seed_note = ""
+    max_seeds = max(
+        [int(r.get("n_seeds") or 1) for r in results.get("architectures", {}).values()]
+        or [1]
+    )
+    if max_seeds > 1:
+        seed_note = (
+            "\n> As métricas acima são a **média** entre repetições. As figuras e "
+            "os CSVs de predição abaixo vêm de **uma** execução (a primeira "
+            "semente, registrada em `scores_seed`), não da média.\n"
+        )
+
     lines += [
         "",
+        seed_note,
         "## 5. Gráficos Agregados",
         "",
         "![Curvas ROC](figures/roc.png)",
@@ -1145,6 +1487,7 @@ def _write_tcc_report(results: Dict[str, Any], path: Path) -> None:
                 "",
                 f"- Métricas completas: `architectures/{slug}/metrics.json`",
                 f"- Predições limpas: `architectures/{slug}/predictions_clean.csv`",
+                f"- Predições sob ruído: `architectures/{slug}/predictions_robustness.csv`",
                 f"- Robustez: `architectures/{slug}/robustness.csv`",
                 *(
                     [

@@ -22,9 +22,12 @@ Estrutura reorganizada para estudo e reprodução dos experimentos do TCC.
 6. `pipeline/04_all_architectures_full_benchmark.ipynb`
 7. `models/<modelo>.ipynb`
 
-O experimento oficial do TCC usa `scripts/benchmark/run_tcc_pipeline.py --download
---target-per-class 7500 --full-benchmark`, com alvo de 7.500 amostras reais +
-7.500 amostras fake (`data/datasets/benchmark_audio_raw_balanced_15k.npz`).
+O dataset canônico é `data/datasets/benchmark_dataset.npz`
+([Protocolo de Dataset](../data/dataset-protocol.md)): 20.490 amostras reais + 20.490
+falsas, CETUC pareado com clones XTTS-v2, construído por
+`scripts/dataset/build_paired_pt_corpus.py` e os três scripts seguintes. O
+roteiro legado (`run_tcc_pipeline.py --download --target-per-class 7500
+--full-benchmark`, 7.500 por classe) permanece nos cadernos como registro.
 Para treinar e auditar todas as arquiteturas em um único caderno, use
 `pipeline/04_all_architectures_full_benchmark.ipynb`. A documentação de
 referência para o fluxo completo está em [docs/evaluation/benchmark.md](../evaluation/benchmark.md).

@@ -31,21 +31,21 @@ make test-cov
 ```text
 tests/
 ├── conftest.py          # fixtures globais + marcação automática por pasta
-├── unit/                # 44 arquivos
+├── unit/                # 68 arquivos
 ├── api/                 # 5 arquivos
 ├── functional/          # 2 arquivos
-├── integration/         # 6 arquivos
+├── integration/         # 7 arquivos
 └── smoke/               # 5 arquivos, opt-in
 ```
 
-Total atual: **62 arquivos de teste**.
+Total atual: **87 arquivos de teste**.
 
 | Categoria | Marcador | Arquivos | Objetivo | Run padrão |
 |---|---:|---:|---|---|
-| Unit | `unit` | 44 | Componentes isolados, utilitários, treinamento, benchmark, notebooks, segurança local | Sim |
+| Unit | `unit` | 68 | Componentes isolados, utilitários, treinamento, benchmark, notebooks, segurança local | Sim |
 | API | `api` | 5 | Contratos FastAPI com `TestClient` e serviços mockados | Sim |
 | Functional | `functional` | 2 | Fluxos de usuário e rotas/frontend | Sim |
-| Integration | `integration` | 6 | Cooperação real entre serviços, podendo treinar modelos pequenos | Sim |
+| Integration | `integration` | 7 | Cooperação real entre serviços, podendo treinar modelos pequenos | Sim |
 | Smoke | `smoke` | 5 | Sanidade ponta a ponta com TensorFlow real, modelos e app | Não |
 
 `pyproject.toml` define `addopts = "-ra -q --ignore=data --ignore=logs -m 'not smoke'"`.
@@ -87,61 +87,147 @@ uma nova categoria, atualize em conjunto:
 
 ### `tests/unit/`
 
-Cobertura principal:
+68 arquivos, organizados por **sujeito**. A lista abaixo é o mapa: cada linha
+diz qual módulo está sob contrato, não em que semana o teste foi escrito.
 
-- utilitários core, arquivos, áudio, resample, schemas, exceções e middleware;
-- modelos e treino: architectures, trainer, save/load, classical fit,
-  RawBoost, mixed precision, device/GPU support;
-- benchmark: dados, métricas, relatórios, API probe, gráficos e artefatos TCC;
-- paridade treino<->inferencia do front-end do benchmark
-  (`tests/unit/test_benchmark_frontend.py`);
-- XAI: contrato tabular (63 descritores), Grad-CAM (2D/1D, busca
-  automática de camada) e wrappers SHAP (`tests/unit/test_xai.py`);
-- notebooks: estrutura, contratos de entrada, geração e compilação;
-- segurança local: headers, file utils e validações auxiliares;
-- melhorias P1/P2/P3: SpecAugment/SSL, RawGAT-ST/AASIST, min-tDCF/OC-Softmax.
+**Arquiteturas e camadas**
 
-Arquivos unitários atuais:
+| Arquivo | Sujeito |
+|---|---|
+| `test_architectures.py` | registry, factory, e a sincronia das TRÊS fontes de hiperparâmetro |
+| `test_rawgat_aasist_ssl_backends.py` | RawGAT-ST/AASIST fiéis ao paper + back-ends SSL |
+| `test_sinc_layers_mixed_precision.py` | `SincConvLayer` sob `mixed_float16` |
+| `test_ssl_backbone.py` | backbone SSL portado do PyTorch para Keras |
+| `test_ssl_head_contract.py` | contrato de embedding SSL + augmentation dinâmico |
+| `test_torch_ssl_aasist.py` | back-end AASIST em PyTorch (ablação fora do escopo) |
+| `test_metrics_ocsoftmax.py` | min t-DCF, OC-Softmax e calibração |
 
-```text
-test_architectures.py
-test_audio_resample_safety.py
-test_audio_utils.py
-test_benchmark.py
-test_build_dataset.py
-test_classical_fit.py
-test_colab_utils.py
-test_core_utils.py
-test_dataset_catalog.py
-test_detection_utils.py
-test_detection_model_loader_predictor.py
-test_device_support.py
-test_exceptions.py
-test_file_utils.py
-test_frontend_rawboost.py
-test_gpu_diagnosis.py
-test_helpers.py
-test_i18n.py
-test_middleware.py
-test_notebooks_compile.py
-test_p1_specaug_ssl.py
-test_p2_rawgatst_sslaasist.py
-test_p3_metrics_ocsoftmax.py
-test_retraining_adjustments.py
-test_schemas.py
-test_security_headers.py
-test_sinc_layers_mixed_precision.py
-test_system_utils.py
-test_tier1_perf.py
-test_test_documentation.py
-test_train_save_load_roundtrip.py
-test_trainer.py
-test_trainer_compile_respect.py
-test_training_charts.py
-test_tuning_charts.py
-test_upload_service.py
-test_version_check.py
-```
+**Treino**
+
+| Arquivo | Sujeito |
+|---|---|
+| `test_trainer.py` | contratos básicos do `ModelTrainer` |
+| `test_trainer_compile_respect.py` | compile-respect, `from_logits`, augmentation |
+| `test_training_guards.py` | `CollapseAbort` e `PersistentEpochHistory` |
+| `test_checkpoint_monitor.py` | `checkpoint_monitor`, `ValidationEER` e o encanamento |
+| `test_resumable_checkpoint.py` | melhor valor sobrevive a retomadas |
+| `test_guarded_checkpoint_restore.py` | restauração validada contra os pesos em memória |
+| `test_train_save_load_roundtrip.py` | treino → salvar → carregar → prever |
+| `test_classical_fit.py` | SVM/RF construídos pela factory treinam de fato |
+| `test_specaugment_ssl_finetune.py` | SpecAugment e descongelamento parcial dos SSL |
+| `test_retraining_adjustments.py` | split por fonte + ruído SNR do retreino |
+| `test_perf_optimizations.py` | otimizações neutras em acurácia |
+
+**Benchmark**
+
+| Arquivo | Sujeito |
+|---|---|
+| `test_benchmark.py` | split, AWGN, métricas, relatório + smoke SVM ponta a ponta |
+| `test_benchmark_families.py` | escopos oficial x estendido |
+| `test_benchmark_frontend.py` | paridade treino↔inferência (raw / log-Mel / tabular v1 e v2) |
+| `test_benchmark_partition_integrity.py` | disjunção locutor x frase; cross-generator |
+| `test_benchmark_protocol_fixes.py` | contratos de protocolo e relatório (multicrop, limiar, timeout) |
+| `test_benchmark_protocol_guards.py` | test-lock, preflight do NPZ, congelamento do teste |
+| `test_benchmark_provenance.py` | variante, git, versões e checkpoints declarados |
+| `test_benchmark_reporting_fidelity.py` | o que o JSON declara bate com o que o run fez |
+| `test_benchmark_seed_repetitions.py` | repetições por semente e publicação da incerteza |
+| `test_classical_retune.py` | grid de fonte única, CV agrupada, calibração isotônica |
+| `test_academic_rigor_metrics.py` | IC bootstrap, ECE e sanitização de scores |
+| `test_run_summary_rebuild.py` | regeneração do `run_summary` a partir dos `results.json` |
+| `test_stft_coverage.py` | nenhuma amostra invisível ao log-mel |
+| `test_lfcc_frontend_rawboost.py` | front-end LFCC e augmentation RawBoost |
+
+**Dataset**
+
+| Arquivo | Sujeito |
+|---|---|
+| `test_dataset_protocol.py` | Protocolo de Dataset (CETUC pareado com clones XTTS-v2) |
+| `test_dataset_catalog.py` | catálogo de locutores, frases e origens |
+| `test_dataset_pipeline_regressions.py` | balanceamento, janela e proveniência |
+| `test_build_dataset.py` | corpus bruto → `.npz` |
+| `test_split_speaker_disjoint.py` | o split da interface não repete amostra nem falante |
+
+**Inferência e serviços**
+
+| Arquivo | Sujeito |
+|---|---|
+| `test_detection_model_loader_predictor.py` | resolver artefato, carregar e pontuar |
+| `test_detection_utils.py` | utilitários do serviço de detecção |
+| `test_audio_resample_safety.py` | rede de segurança de reamostragem |
+| `test_device_support.py` | seleção de dispositivo CPU/GPU |
+| `test_gpu_diagnosis.py` | matriz de diagnóstico + probe read-only |
+| `test_upload_service.py` | criação de dataset e recepção de arquivos |
+| `test_experiment_store.py` | persistência científica consolidada |
+| `test_results_paths.py` | raiz canônica de resultados |
+| `test_clean_bootstrap.py` | primeira execução sem artefatos, idempotente |
+
+**Interfaces**
+
+| Arquivo | Sujeito |
+|---|---|
+| `test_gradio_tabs.py` | cada aba constrói e degrada sem derrubar o resto |
+| `test_training_wizard_feedback.py` | custo à frente, parada e sobreajuste no assistente |
+| `test_training_charts.py` | figura de curvas de treino |
+| `test_tuning_charts.py` | gráficos de busca de hiperparâmetros |
+| `test_interface_uses_pipeline_hparams.py` | a interface propõe o que o benchmark treina |
+| `test_forensic_math.py` | correção das medidas da análise forense |
+| `test_i18n.py` | i18n da UI |
+| `test_schemas.py` | schemas Pydantic da API |
+| `test_middleware.py` | cadeia de middleware HTTP |
+
+**XAI**
+
+| Arquivo | Sujeito |
+|---|---|
+| `test_xai.py` | Grad-CAM, SHAP e contrato tabular (63 no v1, 183 no v2) |
+
+**Infraestrutura e segurança**
+
+| Arquivo | Sujeito |
+|---|---|
+| `test_security_boundaries.py` | autenticação/autorização no ponto de entrada |
+| `test_security_headers.py` | headers de segurança em todas as respostas |
+| `test_exceptions.py` | hierarquia de exceções |
+| `test_file_utils.py`, `test_audio_utils.py`, `test_system_utils.py`, `test_helpers.py`, `test_core_utils.py` | utilitários |
+| `test_version_check.py` | guard de compatibilidade no startup |
+| `test_colab_utils.py` | helper isolado do Google Colab |
+| `test_notebooks_compile.py` | notebooks ativos seguem compilando |
+| `test_test_documentation.py` | esta página não desatualiza (ver convenção abaixo) |
+
+## Convenção de nomes e docstrings
+
+Adotada em 2026-08-17 e verificada por
+`tests/unit/test_test_documentation.py`.
+
+**1. O nome do arquivo é o SUJEITO, nunca o episódio.** Um teste vive muito
+mais tempo do que a correção que o motivou. Nomes como `test_p1_*`,
+`test_tier1_*` ou "as correções de tal data" envelhecem em semanas e, pior,
+escondem que dois arquivos cobrem a mesma coisa.
+
+O caso concreto que fixou a regra: `CollapseAbort` era coberto por
+`test_resume_guards_and_artifacts.py` (agrupado pela data 2026-08-06) e por
+`test_collapse_never_learns.py`. Como nada no nome dizia que eram o mesmo
+sujeito, um prazo novo acrescentado ao callback passou a contradizer uma
+regressão do outro arquivo — e só a suíte inteira revelou o conflito. Hoje é
+um arquivo só, `test_training_guards.py`.
+
+**2. Todo arquivo abre com docstring de módulo** que diz o sujeito na primeira
+linha e, no corpo, o que está sob contrato. Quando o teste nasceu de um
+incidente, o incidente entra como MOTIVAÇÃO no corpo — não no nome.
+
+**3. Nome de teste único no repositório.** `pytest` aceita homônimos em
+arquivos diferentes, mas isso quebra a seleção por `-k` e esconde duplicação
+real. Quando dois arquivos testam a mesma rota em camadas diferentes, o nome
+diz qual é qual (`test_create_dataset_via_api` x `test_create_dataset_no_servico`).
+
+**4. Um sujeito, um arquivo.** Se um arquivo precisa de seções separadas por
+assunto, provavelmente são dois arquivos. A exceção é o par
+publicador/consumidor que só faz sentido junto — como o `ValidationEER` e o
+monitor de checkpoint, que compartilham o mesmo defeito de ordem.
+
+**5. `pytest.importorskip` no módulo, não no helper.** Se o módulo sob teste
+importa TensorFlow no topo, a dependência é do arquivo inteiro: repetir a
+guarda em cada função mascara isso e deixa a coleção quebrar.
 
 ### `tests/api/`
 
@@ -169,6 +255,7 @@ test_frontend_routes.py
 
 ```text
 test_architectures_build.py
+test_calibration_matches_saved_weights.py
 test_detection_integration.py
 test_domain_imports_without_web_layer.py
 test_models_dir_unification.py
@@ -201,11 +288,21 @@ inferência.
 | `mock_upload_service` | upload/dataset mockado com `ProcessingResult` realista |
 | `mock_training_service` | treino mockado para rotas API |
 | `api_key_headers` | header `X-API-Key` válido para endpoints protegidos |
+| `_isolate_models_dir` | **autouse, escopo de sessão**: aponta `XFAKE_MODELS_DIR` para um diretório temporário |
+
+`_isolate_models_dir` não é conveniência, é proteção. `benchmarks/runner.py::
+_models_dir` cai em `cfg.models_dir`, cujo default é `data/models` — o
+diretório de PRODUÇÃO —, e onze `BenchmarkConfig` da suíte não passam
+`models_dir`. Foi assim que o `bench_svm.pkl` do `clean_benchmark_15k` (63
+features, 3,6 MB) virou um artefato de smoke de 47 KB: as métricas do run
+sobreviveram, o modelo não. Como `_models_dir` consulta as variáveis de
+ambiente ANTES de `cfg`, apontar uma delas cobre todos os caminhos de uma vez.
 
 Convenções:
 
 - use `tmp_path`/`tmp_path_factory` para arquivos temporários;
-- não grave em `data/models/`, `data/results/` ou datasets reais;
+- não grave em `data/models/`, `data/results/` ou datasets reais — a fixture
+  acima cobre o caso do `models_dir`, mas um caminho escrito à mão escapa dela;
 - mocke rede, pesos grandes e downloads;
 - force `MPLBACKEND=Agg` para testes com gráficos;
 - helpers que não são testes devem começar com `_`.
@@ -255,9 +352,13 @@ Workflows ativos:
 
 | Workflow | Quando roda | Papel |
 |---|---|---|
-| `.github/workflows/ci.yml` | push, PR, manual | ruff advisório, testes+cobertura, segurança, docs, drift de notebooks, Docker CPU em PR |
+| `.github/workflows/ci.yml` | push, PR, manual | ruff advisório, testes+cobertura, segurança, docs, Docker CPU em PR — **não** roda notebooks |
 | `.github/workflows/static.yml` | push na `main`, manual | build e deploy da documentação no GitHub Pages |
-| `.github/workflows/notebooks-execute.yml` | manual | execução best-effort de notebooks self-contained |
+| `.github/workflows/notebooks-execute.yml` | manual (`workflow_dispatch`) | execução best-effort de notebooks self-contained |
+
+O drift de notebooks (`build_notebooks.py` + `git diff --exit-code`, abaixo)
+é um gate **local**, não roda em nenhum workflow do GitHub Actions — rode
+manualmente antes de abrir PR se tocou em notebooks.
 
 Gates locais equivalentes:
 

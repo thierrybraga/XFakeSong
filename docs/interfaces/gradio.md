@@ -78,8 +78,16 @@ O arquivo `app/interfaces/gradio/app.py` organiza a experiência em cinco seçõ
 | Gerenciar | `tabs/dataset_management.py`, `tabs/features.py`, `tabs/history.py` | datasets, features e histórico |
 
 A barra superior mostra estado online, GPU, número de modelos, perfis,
-notificações e toggles de tema/idioma. O painel de notificações consome o mesmo
+notificações e o alternador de tema. O painel de notificações consome o mesmo
 buffer de feedback disponível em `/api/v1/system/feedback`.
+
+!!! note "Idioma"
+    O alternador PT/EN foi **removido em 2026-07-28**: ele chamava
+    `i18n.set_language()` mas nenhuma aba consumia `i18n.t()`, então a interface
+    seguia inteiramente em português. O módulo `utils/i18n.py` permanece, com o
+    dicionário de traduções. Ao reintroduzir, o idioma precisa viver em
+    `gr.State` (por sessão) — a variável de módulo `_current_lang` é global do
+    processo, e o Gradio serve várias sessões no mesmo processo.
 
 ## Aba Painel
 
@@ -197,6 +205,43 @@ Objetivo: criar ou atualizar modelos a partir de datasets organizados.
 | Validação | split, balanceamento e checagens de compatibilidade |
 | Execução | treino, progresso, métricas e salvamento |
 
+!!! tip "Feedback do treino (2026-07-29)"
+    O painel ao vivo já trazia fase, época, ETA e cartões de métrica — o
+    `model.fit` roda numa thread com fila de épocas e heartbeat de 1 s, então a
+    interface não congela nem durante a primeira época. Três lacunas foram
+    fechadas:
+
+    - **Custo antes de começar.** Ao escolher arquitetura e épocas, o passo 3
+      mostra a estimativa reaproveitando as horas medidas em
+      `benchmarks.planning.EXPECTED_TRAINING_HOURS` — as mesmas que derivam o
+      timeout do benchmark. Acima de 6 h o aviso sugere reduzir as épocas.
+    - **Interromper.** O Keras não permite abortar no meio de uma época; o
+      botão sinaliza e um callback marca `stop_training` no próximo limite de
+      época, deixando o modelo em estado consistente.
+    - **Sobreajuste ao vivo.** Quando a `val_loss` fica 5+ épocas sem melhorar,
+      o painel avisa e lembra que o melhor checkpoint já está salvo — sem isso,
+      interromper parece perder o trabalho.
+
+!!! success "Os defaults são os do pipeline (2026-07-28)"
+    Ao selecionar uma arquitetura, a interface propõe a **mesma configuração que
+    o benchmark treina** — lote, taxa de aprendizado, dropout, otimizador,
+    scheduler, augmentation, precisão mista e `pretrained`. Antes, `load_defaults`
+    caía em literais próprios (`batch_size=32, epochs=10, learning_rate=0.001`)
+    para toda arquitetura: AASIST, Conformer e Sonic Sleuth apareciam idênticas
+    e nenhuma batia com o pipeline.
+
+    A resolução é `benchmarks.planning.effective_hyperparameters()`, com
+    precedência: piso operacional → linha `default` de `architecture_configs`
+    (que traz a ESTRUTURA — `patch_size`, `embed_dim`, `num_blocks`…) → **plano
+    do benchmark, que vence**. Essas linhas do banco são semeadas pela
+    aplicação, não escritas pelo usuário, e já divergiam: a do
+    SpectrogramTransformer trazia `pretrained=False`, fazendo a interface propor
+    treinar do zero um modelo que o pipeline treina a partir dos pesos AudioSet.
+
+    As cinco arquiteturas do escopo estendido (Sonic Sleuth, EfficientNet-LSTM,
+    Ensemble, WavLM, HuBERT) não têm entrada de plano e seguem pelo
+    `registry.default_params`.
+
 Saídas esperadas:
 
 - modelo salvo em `data/models/bench_<modelo>.*` ou na estrutura consolidada;
@@ -225,15 +270,37 @@ Para o benchmark oficial, a preparação robusta do dataset deve ser feita via
 scripts. A aba Gerenciar serve para verificar se dados e modelos estão visíveis
 para a aplicação.
 
+!!! danger "Disjunção por falante nos splits (2026-07-28)"
+    `tabs/dataset_management.py` chamava `create_splits(train, val, test)`
+    **sem** `speaker_disjoint`, e o default do script é `False` — split
+    estratificado apenas por classe. O mesmo locutor caía em treino,
+    validação e teste, e a métrica passava a medir memorização de timbre em
+    vez de detecção de síntese. É o mesmo vazamento que levou ao descarte do
+    dataset anterior.
+
+    O controle **Disjunção por falante** (`pp_speaker_disjoint`) agora existe
+    e vem **marcado**: cada locutor fica inteiramente em um só split, via
+    `StratifiedGroupKFold` sobre o manifesto de falantes — o mesmo protocolo
+    do benchmark.
+
+    Depois de criar, a aba roda `preprocess_dataset.audit_splits()` e mostra a
+    tabela de sobreposição em três dimensões: **conteúdo (SHA-256 do PCM
+    canônico)**, **falante** e **texto/enunciado**. Amostras sem falante no
+    manifesto são contadas à parte — para elas a disjunção não pode ser
+    afirmada, e o relatório diz isso em vez de silenciar.
+
+    Nota: o script `scripts/dataset/preprocess_dataset.py` (uso via CLI,
+    fora desta aba) mantém `--speaker-disjoint` desligado por padrão — só o
+    checkbox da UI foi alterado.
+
 ## Relação com Benchmark e Notebooks
 
-| Objetivo | Interface | Notebook/script equivalente |
+| Objetivo | Interface | Script equivalente |
 |---|---|---|
-| Testar um áudio | Detectar | `notebooks/pipeline/03_inference.ipynb` |
-| Estudar features | Investigar | `notebooks/features/01_feature_extraction_study.ipynb` |
-| Treinar um modelo | Treinar | `notebooks/pipeline/02_training_model.ipynb` |
-| Rodar benchmark completo | Não recomendado pela UI | `scripts/benchmark/run_tcc_pipeline.py` |
-| Auditar todos os modelos | Painel/Gerenciar | `notebooks/pipeline/04_all_architectures_full_benchmark.ipynb` |
+| Testar um áudio | Detectar | `scripts/benchmark/robustness_test.py` |
+| Treinar um modelo | Treinar | `scripts/training/train_by_family.py` |
+| Rodar benchmark completo | Não recomendado pela UI | `scripts/benchmark/run_models_sequential.py` |
+| Auditar todos os modelos | Painel/Gerenciar | `scripts/reporting/validate_artifacts.py` |
 | Gerar resultados do TCC | Scripts | [Benchmark e Resultados](../evaluation/benchmark.md) |
 
 ## Checklist de Validação da UI

@@ -9,8 +9,12 @@ Key components from the paper:
 - Relative Positional Encoding (sinusoidal, used in attention)
 - Conformer Block: FF(0.5) → MHSA(relative) → Conv → FF(0.5) → LayerNorm
 - ConvModule order: LN → PW → GLU → DW → BN → Swish → PW → Dropout
+
+Configuração ÚNICA (Conformer-M da Tabela 1 do paper): d_model=256,
+16 blocos, 4 cabeças, d_ff=1024, kernel depthwise 31, P_drop=0.1.
 """
 
+import logging
 import math
 from typing import Tuple
 
@@ -18,7 +22,13 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers
 
-from app.domain.models.architectures.layers import create_classification_head
+from app.domain.models.architectures.layers import (
+    LogMelSpectrogramLayer,
+    SparseLabelSmoothingCrossEntropy,
+    create_classification_head,
+)
+
+logger = logging.getLogger(__name__)
 
 
 @tf.keras.utils.register_keras_serializable(package="XFakeSong")
@@ -73,12 +83,19 @@ class RelativePositionalEncoding(layers.Layer):
             inputs: (batch, seq_len, d_model)
 
         Returns:
-            pos_enc: (1, seq_len, d_model) - positional encoding
+            pos_enc: (1, seq_len, d_model) — posições em ordem DECRESCENTE
+            (distância relativa seq_len-1 → 0).
         """
-        # Keras 3 prefere keras.ops.shape para evitar "tf.shape on KerasTensor"
         seq_len = tf.shape(inputs)[1]
-        # Return encodings reversed (from seq_len-1 to 0) for relative attention
-        return tf.cast(self.pe[:, :seq_len, :], inputs.dtype)
+        # CORREÇÃO: a docstring sempre afirmou "reversed (from seq_len-1 to 0)",
+        # mas o código devolvia `pe[:, :seq_len, :]` em ordem CRESCENTE. Na
+        # atenção relativa do Transformer-XL (Dai et al., 2019), adotada pelo
+        # Conformer (§2.2), R é indexado por DISTÂNCIA relativa e a sequência
+        # posicional é construída de forma decrescente; combinada com o
+        # `_relative_shift`, a ordem crescente mapeava o viés posicional para
+        # distâncias erradas — o termo conteúdo↔posição, que é justamente o
+        # diferencial do Conformer, ficava desalinhado.
+        return tf.cast(self.pe[:, :seq_len, :][:, ::-1, :], inputs.dtype)
 
     def get_config(self):
         config = super(RelativePositionalEncoding, self).get_config()
@@ -259,9 +276,13 @@ class ConvSubsampling(layers.Layer):
     Reference: Gulati et al., Section 2.1
     """
 
-    def __init__(self, d_model, **kwargs):
+    def __init__(self, d_model, dropout_rate=0.1, **kwargs):
         super(ConvSubsampling, self).__init__(**kwargs)
         self.d_model = d_model
+        # Antes o dropout do subsampling era fixo em 0.1 e ignorava o
+        # `dropout_rate` do modelo — o P_drop do paper (Gulati et al., §2.1)
+        # vale para o encoder inteiro, subsampling incluído.
+        self.dropout_rate = dropout_rate
 
     def build(self, input_shape):
         import math
@@ -275,7 +296,7 @@ class ConvSubsampling(layers.Layer):
 
         # Linear projection to d_model after flattening freq * channels
         self.linear = layers.Dense(self.d_model, name=self.name + "_linear")
-        self.dropout = layers.Dropout(0.1)
+        self.dropout = layers.Dropout(self.dropout_rate)
 
         # Pre-build Dense with static shape so Keras can trace output dimensions
         freq_dim = input_shape[-1] if len(input_shape) >= 3 else None
@@ -329,7 +350,10 @@ class ConvSubsampling(layers.Layer):
 
     def get_config(self):
         config = super(ConvSubsampling, self).get_config()
-        config.update({'d_model': self.d_model})
+        config.update({
+            'd_model': self.d_model,
+            'dropout_rate': self.dropout_rate,
+        })
         return config
 
 
@@ -600,7 +624,9 @@ class ConformerEncoder(layers.Layer):
 
     def build(self, input_shape):
         # Convolutional subsampling (4x reduction)
-        self.conv_subsample = ConvSubsampling(self.d_model, name="conv_subsample")
+        self.conv_subsample = ConvSubsampling(
+            self.d_model, dropout_rate=self.dropout_rate, name="conv_subsample"
+        )
 
         # Relative positional encoding
         self.pos_encoding = RelativePositionalEncoding(
@@ -679,53 +705,53 @@ def create_conformer_model(input_shape, num_classes=2, d_model=256, d_ff=1024,
 
     Args:
         input_shape: Shape of input features (time_steps, freq_bins)
-        num_classes: Number of output classes
+        num_classes: Number of output classes (mínimo 2 — ver nota abaixo)
         d_model: Model dimension
         d_ff: Feed-forward inner dimension (paper: 4 × d_model)
         num_heads: Number of attention heads
         num_blocks: Number of Conformer blocks
         conv_kernel_size: Depthwise convolution kernel size
-        dropout_rate: Base dropout rate
-        ff_dropout_rate: Dropout rate for FeedForwardModule (defaults to dropout_rate)
-        attn_dropout_rate: Dropout rate for attention (defaults to dropout_rate)
-        conv_dropout_rate: Dropout rate for ConvModule (defaults to dropout_rate)
+        dropout_rate: Base dropout rate (P_drop do paper — vale para
+            subsampling, FFN, atenção e módulo convolucional)
+        ff_dropout_rate: Override do dropout do FeedForwardModule (default: dropout_rate)
+        attn_dropout_rate: Override do dropout da atenção (default: dropout_rate)
+        conv_dropout_rate: Override do dropout do ConvModule (default: dropout_rate)
 
     Returns:
         Compiled Keras model
     """
+    # A loss usada aqui é entropia cruzada categórica com label smoothing sobre
+    # a saída softmax. Com num_classes=1 a cabeça vira sigmoid de 1 unidade, o
+    # Keras renormaliza y_pred para 1.0 e a loss fica IDENTICAMENTE ZERO (o
+    # modelo não aprende). Promovemos para 2 classes (real/fake), como AASIST e
+    # RawGAT-ST já faziam — a factory ainda usa num_classes=1 como default.
+    if num_classes < 2:
+        logger.info(
+            "Conformer: num_classes=%s promovido para 2 (a CE categórica com "
+            "1 classe degeneraria a loss para 0).", num_classes
+        )
+        num_classes = 2
+
     inputs = layers.Input(shape=input_shape)
 
     # Handle different input shapes
     if len(input_shape) == 1 or (len(input_shape) == 2 and input_shape[-1] == 1):
         # Raw audio input: convert to log-mel spectrogram
-        # STFT params: 25ms window, 10ms hop → ~500 frames for 5s audio
+        # STFT params: 32ms janela / 8ms hop a 16 kHz, 80 mel bins.
         if len(input_shape) == 2:
             raw = layers.Reshape((input_shape[0],))(inputs)
         else:
             raw = inputs
 
-        # Lambda layer: raw audio → log-mel spectrogram (batch, time, n_mels)
-        def compute_log_mel(audio):
-            import tensorflow as tf
-            # STFT
-            stft = tf.signal.stft(audio, frame_length=512, frame_step=128,
-                                  fft_length=512, pad_end=True)
-            magnitude = tf.abs(stft)  # (batch, time_frames, freq_bins)
-            # Mel filterbank: 512//2+1=257 freq bins → 80 mel bins
-            n_fft_bins = 257
-            n_mel = 80
-            sample_rate = 16000.0
-            low_hz = 0.0
-            high_hz = sample_rate / 2.0
-            linear_to_mel = tf.signal.linear_to_mel_weight_matrix(
-                n_mel, n_fft_bins, sample_rate, low_hz, high_hz)
-            mel = tf.tensordot(magnitude, linear_to_mel, 1)
-            mel.set_shape(magnitude.shape[:-1].concatenate(tf.TensorShape([n_mel])))
-            log_mel = tf.math.log(mel + 1e-6)
-            return log_mel
-
-        x = layers.Lambda(compute_log_mel, name="log_mel_spectrogram")(raw)
-        # x shape: (batch, ~625, 80)
+        # LogMelSpectrogramLayer (camada registrada) no lugar do
+        # `layers.Lambda(compute_log_mel)`: uma Lambda com função Python local
+        # não é reconstruível pelo carregador safe_mode do Keras 3 — o modelo
+        # treinava e salvava, mas falhava no load. Mesmos parâmetros de STFT.
+        x = LogMelSpectrogramLayer(
+            sample_rate=16000, n_fft=512, hop_length=128, n_mels=80,
+            pad_end=True, name="log_mel_spectrogram",
+        )(raw)
+        # x shape: (batch, ~T/128, 80)
 
     elif len(input_shape) == 3 and input_shape[-1] == 1:
         # Input is (time, freq, 1) - reshape to (time, freq)
@@ -760,14 +786,12 @@ def create_conformer_model(input_shape, num_classes=2, d_model=256, d_ff=1024,
 
     model = tf.keras.Model(inputs=inputs, outputs=outputs, name='conformer')
 
-    # Label smoothing cross-entropy loss
-    def label_smoothing_loss(y_true, y_pred, smoothing=label_smoothing):
-        num_classes = tf.cast(tf.shape(y_pred)[-1], tf.float32)
-        # reshape em vez de squeeze: squeeze total colapsaria batch=1 a escalar
-        y_true_int = tf.cast(tf.reshape(y_true, [-1]), tf.int32)
-        one_hot = tf.one_hot(y_true_int, tf.cast(num_classes, tf.int32))
-        smoothed = one_hot * (1.0 - smoothing) + smoothing / num_classes
-        return tf.reduce_mean(tf.keras.losses.categorical_crossentropy(smoothed, y_pred))
+    # Label smoothing cross-entropy. Classe registrada (não uma closure local):
+    # uma função definida dentro do builder não é resolvível por
+    # `load_model(..., compile=True)`.
+    loss = SparseLabelSmoothingCrossEntropy(
+        label_smoothing=label_smoothing, from_logits=False
+    )
 
     # Warmup + cosine decay learning rate schedule with AdamW optimizer
     from app.domain.models.training.optimization import WarmupCosineDecaySchedule
@@ -786,7 +810,13 @@ def create_conformer_model(input_shape, num_classes=2, d_model=256, d_ff=1024,
         **optimizer_kwargs,
     )
 
-    model.compile(optimizer=optimizer, loss=label_smoothing_loss, metrics=['accuracy'])
+    model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
+    logger.info(
+        "Conformer-M criado: blocks=%d, d_model=%d, d_ff=%d, heads=%d, "
+        "kernel=%d, P_drop=%.3f, params=%d",
+        num_blocks, d_model, d_ff, num_heads, conv_kernel_size, dropout_rate,
+        model.count_params(),
+    )
     return model
 
 
@@ -811,18 +841,42 @@ def _merge_variant_params(defaults, overrides):
     return params, overrides
 
 
+# Configuração ÚNICA do Conformer — Conformer-M (Medium) de Gulati et al.,
+# Interspeech 2020, Tabela 1: d_model=256, 16 blocos, 4 cabeças, d_ff=1024
+# (= 4 × d_model), kernel depthwise 31 e P_drop=0.1 uniforme.
+#
+# CONSOLIDAÇÃO 2026-07-27: existiam duas variantes cujos nomes estavam
+# INVERTIDOS — 'conformer' (dita "Large") tinha 8 blocos e 'conformer_lite'
+# (dita "Medium") tinha 16, ou seja, a "lite" era ~2× maior. Além disso a
+# variante de 8 blocos sobrescrevia o dropout por módulo (ff=0.2/attn=0.1/
+# conv=0.1), o que anulava o `dropout_rate` do plano de benchmark em todo o
+# encoder. Agora há UMA configuração, fiel ao paper, e `dropout_rate` vale
+# para o encoder inteiro. 'conformer_lite' continua sendo aceito como ALIAS
+# (compatibilidade de checkpoints/config) e resolve para a mesma topologia.
+_CONFORMER_M_PARAMS = {
+    "d_model": 256,
+    "d_ff": 1024,          # 4 × d_model (paper)
+    "num_heads": 4,        # paper Conformer-M
+    "num_blocks": 16,      # paper Conformer-M
+    "conv_kernel_size": 31,  # paper §2.3
+    "dropout_rate": 0.1,   # P_drop do paper (uniforme no encoder)
+}
+
+_CONFORMER_ALIASES = {"default", "conformer", "conformer_lite", "conformer_m"}
+
+
 def create_model(input_shape: Tuple[int, ...], num_classes: int,
                  architecture: str = 'conformer', **kwargs) -> tf.keras.Model:
-    """Factory function to create Conformer models.
+    """Factory function to create the Conformer model.
 
-    Variants follow the paper's model configurations:
-    - conformer (Large): d_model=256, d_ff=1024, heads=4, blocks=8, differentiated dropout
-    - conformer_lite (Medium): d_model=256, d_ff=1024, heads=4, blocks=16
+    Configuração única (Conformer-M, Gulati et al., Interspeech 2020):
+    d_model=256, d_ff=1024, heads=4, blocks=16, kernel 31, P_drop=0.1.
 
     Args:
         input_shape: Shape of input features
         num_classes: Number of output classes
-        architecture: 'conformer' or 'conformer_lite'
+        architecture: 'conformer' (aliases aceitos: 'default', 'conformer_m',
+            'conformer_lite' — este último mantido só por compatibilidade)
 
     Returns:
         Compiled Keras model
@@ -833,53 +887,25 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int,
         parameters.update(kwargs)
         kwargs = parameters
 
-    # Alias "default" → variante paper-faithful (consistente com AASIST/RawGAT-ST)
-    if architecture == 'default':
-        architecture = 'conformer'
-
-    if architecture == 'conformer':
-        # Conformer optimized for anti-spoofing. Variant defaults are merged
-        # before the call so benchmark overrides do not duplicate keyword args.
-        params, kwargs = _merge_variant_params(
-            {
-                "d_model": 256,
-                "d_ff": 1024,        # 4 × d_model
-                "num_heads": 4,
-                "num_blocks": 8,
-                "dropout_rate": 0.1,
-                "ff_dropout_rate": 0.2,
-                "attn_dropout_rate": 0.1,
-                "conv_dropout_rate": 0.1,
-            },
-            kwargs,
-        )
-        return create_conformer_model(
-            input_shape=input_shape,
-            num_classes=num_classes,
-            **params,
-            **kwargs,
-        )
-    elif architecture == 'conformer_lite':
-        # Conformer-M (Medium) from the paper
-        params, kwargs = _merge_variant_params(
-            {
-                "d_model": 256,
-                "d_ff": 1024,       # 4 × d_model (paper)
-                "num_heads": 4,     # paper Conformer-M
-                "num_blocks": 16,   # paper Conformer-M
-                "dropout_rate": 0.1,
-            },
-            kwargs,
-        )
-        return create_conformer_model(
-            input_shape=input_shape,
-            num_classes=num_classes,
-            **params,
-            **kwargs,
-        )
-    else:
+    if architecture not in _CONFORMER_ALIASES:
         raise ValueError(
-            f"Unsupported architecture: {architecture}. Use 'conformer' or 'conformer_lite'")
+            f"Unsupported architecture: {architecture}. "
+            f"Use uma destas: {sorted(_CONFORMER_ALIASES)} "
+            "(todas resolvem para a mesma configuração Conformer-M)."
+        )
+    if architecture == 'conformer_lite':
+        logger.warning(
+            "Conformer: 'conformer_lite' é apenas um ALIAS legado — a "
+            "configuração é única (Conformer-M, 16 blocos). Use 'conformer'."
+        )
+
+    params, kwargs = _merge_variant_params(dict(_CONFORMER_M_PARAMS), kwargs)
+    return create_conformer_model(
+        input_shape=input_shape,
+        num_classes=num_classes,
+        **params,
+        **kwargs,
+    )
 
 
 # Register custom layers for model loading

@@ -30,7 +30,24 @@ x-train-common: &train-common
     resources:
       limits:
         cpus: "${DOCKER_TRAIN_CPU_LIMIT:-8.0}"
-        memory: ${DOCKER_TRAIN_MEMORY_LIMIT:-16G}
+        # 36G, nao 24G: em raw-audio o tensor de treino do benchmark e
+        # 33.226 x 48.000 x 4 B x 2 (limpo + copia AWGN) = ~12,8 GB, e o bloco
+        # cru de origem soma outros 6,4 GB antes de ser liberado. Com 16G o
+        # container era morto por OOM justamente nos modelos mais caros
+        # (RawNet2) — daí o primeiro ajuste para 24G.
+        #
+        # AJUSTE 2026-07-31: 24G ainda não bastava para o SpectrogramTransformer,
+        # cuja grade espectral (300 quadros x 128 mel = 38.400 floats/amostra) é
+        # a maior do escopo oficial — ~4,8x a do MultiscaleCNN. Mesmo com
+        # `log_mel_batch` corrigido (pré-alocação em vez de lista + concatenação
+        # final), o processo ainda era morto pelo OOM-killer a ~98,6% dos 24G
+        # bem no início do treino real. Com 32G o treino chegou a rodar
+        # (vários batches estáveis confirmados), mas com só ~200 MB de folga —
+        # risco real de OOM num run de horas por qualquer pico transitório
+        # (validação de fim de época, checkpoint, fragmentação acumulada). 36G
+        # dá ~4 GB de folga sobre o mesmo pico observado. Cabe numa VM WSL2 de
+        # 43 GB; ajuste por .env se a sua for menor.
+        memory: ${DOCKER_TRAIN_MEMORY_LIMIT:-36G}
       reservations:
         devices:
           - driver: nvidia

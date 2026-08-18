@@ -1,5 +1,11 @@
-"""Testes P2: RawGAT-ST fiel ao paper + back-end SSL→AASIST."""
+"""RawGAT-ST e AASIST fiéis ao paper + back-ends SSL das duas topologias.
 
+SUJEITO: o contrato de entrada raw_audio das duas redes de grafo e as
+variantes que plugam um backbone SSL na frente delas.
+
+Renomeado em 2026-08-17 (era `test_p2_rawgatst_sslaasist.py`): "P2" era a fase
+do backlog, não o assunto.
+"""
 from __future__ import annotations
 
 import numpy as np
@@ -13,7 +19,7 @@ def test_rawgatst_is_raw_audio_in_registry():
 
     info = reg.get_architecture("RawGAT-ST")
     assert info.input_requirements.get("input_type") == "raw_audio"
-    assert info.input_requirements["target_sequence_length"] == 64600
+    assert info.input_requirements["target_sequence_length"] == 48000
     assert info.input_requirements["crop_strategy"] == "train_random_eval_multicrop"
     assert "rawgat_st_legacy" in info.supported_variants
 
@@ -52,7 +58,7 @@ def test_aasist_paper_topology_and_contract():
     from app.domain.models.architectures.registry import architecture_registry as reg
 
     info = reg.get_architecture("AASIST")
-    assert info.input_requirements["target_sequence_length"] == 64600
+    assert info.input_requirements["target_sequence_length"] == 48000
     assert info.input_requirements["crop_strategy"] == "train_random_eval_multicrop"
     assert "aasist_legacy" in info.supported_variants
 

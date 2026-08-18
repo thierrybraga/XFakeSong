@@ -1,3 +1,11 @@
+"""UploadService: criação de dataset e recepção de arquivos.
+
+SUJEITO: a lógica do serviço (diretórios criados, metadados, status), não a
+rota HTTP — esta é coberta em `tests/api/test_datasets.py`. Os dois arquivos
+tinham um `test_create_dataset` cada; os nomes foram desambiguados em
+2026-08-17.
+"""
+
 import pytest
 from pathlib import Path
 from app.domain.services.upload_service import AudioUploadService
@@ -50,7 +58,7 @@ def test_upload_success(upload_service, sample_audio_file):
     assert DatasetType.TRAINING.value in result.data.file_path
 
 
-def test_create_dataset(upload_service):
+def test_create_dataset_no_servico(upload_service):
     result = upload_service.create_dataset("my_dataset", DatasetType.TRAINING)
 
     assert result.status == ProcessingStatus.SUCCESS

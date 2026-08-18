@@ -110,23 +110,42 @@ def _final_val(history: Optional[Dict[str, list]]) -> Optional[float]:
     return float(va[-1]) if va else None
 
 
+def _results_files(p: Path) -> List[Path]:
+    """Localiza os `results.json` de um caminho de entrada.
+
+    Um run de `run_models_sequential.py` grava UM subdiretório por modelo
+    (`<run>/<slug>/results.json`) e nenhum `results.json` na raiz. Até
+    2026-08-09 esta função só olhava a raiz, então o comando documentado no
+    `data/results/paper/README.md` e no checklist de promoção —
+    `consolidate_results.py data/results/clean_benchmark_15k` — saía com
+    "nenhuma arquitetura 'ok' encontrada" e exigia um glob que a documentação
+    não menciona.
+    """
+    if p.suffix == ".json":
+        return [p] if p.exists() else []
+    direct = p / "results.json"
+    if direct.exists():
+        return [direct]
+    return sorted(p.glob("*/results.json"))
+
+
 def _iter_results(paths: List[str]):
     """Para cada caminho (arquivo results.json ou diretório), entrega o dict."""
     for raw in paths:
         for expanded in sorted(glob.glob(raw)) or [raw]:
-            p = Path(expanded)
-            jf = p if p.suffix == ".json" else p / "results.json"
-            if not jf.exists():
-                print(f"  (pulado, sem results.json) {p}", file=sys.stderr)
+            found = _results_files(Path(expanded))
+            if not found:
+                print(f"  (pulado, sem results.json) {expanded}", file=sys.stderr)
                 continue
-            try:
-                data = json.loads(jf.read_text(encoding="utf-8"))
-                if not isinstance(data.get("architectures"), dict):
-                    print(f"  (pulado, sem architectures) {jf}", file=sys.stderr)
-                    continue
-                yield jf, data
-            except Exception as e:
-                print(f"  (erro lendo {jf}: {e})", file=sys.stderr)
+            for jf in found:
+                try:
+                    data = json.loads(jf.read_text(encoding="utf-8"))
+                    if not isinstance(data.get("architectures"), dict):
+                        print(f"  (pulado, sem architectures) {jf}", file=sys.stderr)
+                        continue
+                    yield jf, data
+                except Exception as e:
+                    print(f"  (erro lendo {jf}: {e})", file=sys.stderr)
 
 
 def collect_rows(paths: List[str], prefer_last: bool = False):
@@ -165,9 +184,30 @@ def collect_rows(paths: List[str], prefer_last: bool = False):
                 "min_tdcf": clean.get("min_tdcf"),
                 "f1": clean.get("f1"),
                 "latency": eff.get("latency_ms"),
+                # A latência de runtimes diferentes não é comparável entre si
+                # (Keras/TF x PyTorch x sklearn). Propagado para que a figura de
+                # tradeoff marque a diferença em vez de sugerir uma escala só.
+                "latency_runtime": (
+                    (eff.get("latency_profile") or {}).get("runtime") or "unknown"
+                ),
+                "latency_profile": eff.get("latency_profile") or {},
                 "size": eff.get("size_mb"),
                 "params": eff.get("params"),
+                "training_stability": a.get("training_stability") or {},
                 "robustness": a.get("robustness", {}) or {},
+                # Pior locutor do teste. O protocolo é speaker-disjoint (11
+                # locutores no teste, nenhum visto no treino), então esta é a
+                # leitura de generalização — o agregado esconde, por exemplo,
+                # os 74,2% do RawNet2 em M026 dentro de 95,88% médios.
+                "grouped_clean": a.get("grouped_clean") or {},
+                "worst_speaker_accuracy": (
+                    ((a.get("grouped_clean") or {}).get("speaker") or {})
+                    .get("worst_group_accuracy")
+                ),
+                "n_speakers": (
+                    ((a.get("grouped_clean") or {}).get("speaker") or {})
+                    .get("n_groups")
+                ),
                 "best_epoch": _best_epoch(a.get("history")),
                 "best_val": _best_val(a.get("history")),
                 "final_val": _final_val(a.get("history")),
@@ -190,6 +230,11 @@ def collect_rows(paths: List[str], prefer_last: bool = False):
                     "split_source": dataset_info.get("split_source"),
                     "split_overlap_audit": dataset_info.get("split_overlap_audit"),
                     "provenance_overlap_audit": dataset_info.get("provenance_overlap_audit"),
+                    # Identidade do conjunto de teste. A comparação pareada só
+                    # é válida se for a MESMA em todos os modelos — as variantes
+                    # de 15k e 40k têm fingerprints distintos e não podem cair
+                    # na mesma consolidação.
+                    "test_split_sha256": dataset_info.get("test_split_sha256"),
                 },
             }
             # Se o mesmo modelo aparecer em vários runs, o padrão mantém o de
@@ -205,6 +250,15 @@ def collect_rows(paths: List[str], prefer_last: bool = False):
                 extras[slug] = {
                     "scores_clean": a.get("scores_clean"),
                     "y_test": y_test,
+                    # Unidade de reamostragem do teste, para o teste PAREADO
+                    # entre modelos. Runs anteriores a 2026-08-09 não gravam a
+                    # chave; nesse caso a comparação cai para amostra e declara.
+                    "test_cluster_ids": dataset_info.get("test_cluster_ids"),
+                    # Segunda unidade de reamostragem. A frase (183 clusters) é
+                    # mais fina que o LOCUTOR (11), e é o locutor que casa com a
+                    # alegação speaker-disjoint — reamostrar frases trata frases
+                    # do mesmo locutor como independentes.
+                    "test_speaker_ids": dataset_info.get("test_speaker_ids"),
                     "history": a.get("history"),
                     "display": display,
                 }
@@ -381,29 +435,66 @@ def fig_tdcf(rows, out: Path):
     plt.close(fig)
 
 
+#: Marcador por runtime da medição de latência. O eixo x mistura pilhas de
+#: execução diferentes — Keras/TF, PyTorch e scikit-learn —, e a diferença entre
+#: elas é da mesma ordem da diferença entre arquiteturas. Colorir por família e
+#: marcar por runtime deixa o confundidor visível em vez de implícito.
+_RUNTIME_MARKERS = {
+    "keras": ("o", "Keras/TF"),
+    "pytorch": ("s", "PyTorch"),
+    "sklearn": ("^", "scikit-learn"),
+    "unknown": ("X", "não declarado"),
+}
+
+
 def fig_accuracy_latency_tradeoff(rows, out: Path):
     plt = _setup_mpl()
 
     fig, ax = plt.subplots(figsize=(10.5, 6.5))
+    seen_runtimes: list[str] = []
     for family, color in _FAMILY_COLORS.items():
         subset = [r for r in rows if _row_family(r) == family]
         if not subset:
             continue
-        lat = [_metric(r, "latency") for r in subset]
-        acc = [_metric(r, "accuracy", 100.0) for r in subset]
-        sizes = [max(50, min(450, (_metric(r, "size") or 1) * 1.2)) for r in subset]
-        ax.scatter(lat, acc, s=sizes, color=color, alpha=0.75,
-                   edgecolor="white", linewidth=0.8, label=family)
-        for r, x, y in zip(subset, lat, acc):
-            ax.annotate(r["model"], (x, y), xytext=(4, 4),
-                        textcoords="offset points", fontsize=8)
+        labelled = False
+        for runtime, (marker, _) in _RUNTIME_MARKERS.items():
+            group = [
+                r
+                for r in subset
+                if (r.get("latency_runtime") or "unknown") == runtime
+            ]
+            if not group:
+                continue
+            if runtime not in seen_runtimes:
+                seen_runtimes.append(runtime)
+            lat = [_metric(r, "latency") for r in group]
+            acc = [_metric(r, "accuracy", 100.0) for r in group]
+            sizes = [
+                max(50, min(450, (_metric(r, "size") or 1) * 1.2)) for r in group
+            ]
+            ax.scatter(
+                lat, acc, s=sizes, color=color, alpha=0.75, marker=marker,
+                edgecolor="white", linewidth=0.8,
+                label=family if not labelled else None,
+            )
+            labelled = True
+            for r, x, y in zip(group, lat, acc):
+                ax.annotate(r["model"], (x, y), xytext=(4, 4),
+                            textcoords="offset points", fontsize=8)
     ax.set_xlabel("Latência de inferência (ms)")
     ax.set_ylabel("Acurácia no conjunto limpo (%)")
     ax.set_title("Trade-off entre acurácia, latência e tamanho do artefato")
+    caveat = "Tamanho da bolha proporcional ao artefato persistido (MB)"
+    if len(seen_runtimes) > 1:
+        nomes = ", ".join(_RUNTIME_MARKERS[rt][1] for rt in seen_runtimes)
+        caveat += (
+            f"\nLatências medidas em runtimes distintos ({nomes}) — "
+            "comparáveis DENTRO de cada marcador, não entre eles"
+        )
     ax.text(
         0.99,
         0.02,
-        "Tamanho da bolha proporcional ao artefato persistido (MB)",
+        caveat,
         transform=ax.transAxes,
         ha="right",
         va="bottom",
@@ -411,7 +502,29 @@ def fig_accuracy_latency_tradeoff(rows, out: Path):
         color="#444444",
     )
     ax.grid(alpha=0.25)
-    ax.legend(title="Família", fontsize=8, title_fontsize=9)
+    handles, labels = ax.get_legend_handles_labels()
+    family_legend = ax.legend(
+        handles, labels, title="Família", fontsize=8, title_fontsize=9,
+        loc="lower left",
+    )
+    if len(seen_runtimes) > 1:
+        ax.add_artist(family_legend)
+        from matplotlib.lines import Line2D
+
+        ax.legend(
+            handles=[
+                Line2D(
+                    [], [], color="#666666", linestyle="none",
+                    marker=_RUNTIME_MARKERS[rt][0], markersize=7,
+                    label=_RUNTIME_MARKERS[rt][1],
+                )
+                for rt in seen_runtimes
+            ],
+            title="Runtime da medição",
+            fontsize=8,
+            title_fontsize=9,
+            loc="upper left",
+        )
     fig.tight_layout()
     fig.savefig(out / "benchmark_accuracy_latency_tradeoff.png", dpi=180)
     plt.close(fig)
@@ -655,6 +768,115 @@ def generate_figures(rows, extras, fig_dir: Path):
     fig_confusion_matrices(rows, extras, fig_dir)
 
 
+def build_significance_report(rows, extras, n_bootstrap: int = 1000):
+    """Comparações pareadas entre todos os modelos com scores disponíveis.
+
+    IC 95% individuais que se sobrepõem NÃO decidem diferença quando os modelos
+    são avaliados nas mesmas amostras — é o caso de Conformer x Hybrid
+    CNN-Transformer no `clean_benchmark_15k`. Ver benchmarks/significance.py.
+    """
+    from benchmarks.significance import compare_models
+
+    # Comparar modelos avaliados em conjuntos de teste DIFERENTES é o erro que
+    # este relatório mais convida — as variantes de 15k e 40k do dataset têm
+    # fingerprints distintos e os números não são misturáveis. Sem esta guarda,
+    # a saída pareceria válida.
+    fingerprints = {
+        (r.get("dataset") or {}).get("test_split_sha256")
+        for r in rows
+        if (r.get("dataset") or {}).get("test_split_sha256")
+    }
+    if len(fingerprints) > 1:
+        return {
+            "status": "skipped",
+            "reason": (
+                "os modelos vêm de conjuntos de teste diferentes "
+                f"({len(fingerprints)} fingerprints distintos) — a comparação "
+                "pareada exige as MESMAS amostras nos dois lados"
+            ),
+            "test_split_sha256": sorted(fingerprints),
+        }
+
+    y_test = None
+    cluster_ids = None
+    speaker_ids = None
+    models = {}
+    for row in rows:
+        extra = extras.get(row["slug"]) or {}
+        scores = extra.get("scores_clean")
+        if not scores:
+            continue
+        if y_test is None:
+            y_test = extra.get("y_test")
+            cluster_ids = extra.get("test_cluster_ids")
+            speaker_ids = extra.get("test_speaker_ids")
+        if y_test is None or len(scores) != len(y_test):
+            continue
+        models[row["model"]] = {"scores": scores}
+
+    if len(models) < 2 or y_test is None:
+        return {
+            "status": "skipped",
+            "reason": "menos de dois modelos com scores alinhados ao y_test",
+        }
+    if cluster_ids is not None and len(cluster_ids) != len(y_test):
+        cluster_ids = None
+    if speaker_ids is not None and len(speaker_ids) != len(y_test):
+        speaker_ids = None
+
+    threshold = rows[0].get("decision_threshold", 0.5)
+
+    def _compare(ids):
+        return compare_models(
+            y_test,
+            models,
+            threshold=threshold,
+            cluster_ids=ids,
+            n_bootstrap=n_bootstrap,
+        )
+
+    # A unidade principal segue sendo a FRASE, por continuidade com o que já
+    # estava publicado. A de LOCUTOR entra ao lado porque é ela que casa com a
+    # alegação do protocolo: o teste é speaker-disjoint, e reamostrar frases
+    # trata frases do mesmo locutor como independentes — o IC sai estreito
+    # demais. No `clean_benchmark_15k` a troca de unidade transforma três
+    # separações em empate (Conformer x MultiscaleCNN, MultiscaleCNN x RawNet2
+    # e RawGAT-ST x SVM), então a diferença NÃO é cosmética.
+    report = _compare(cluster_ids)
+    report["protocol"]["unit_detail"] = (
+        "cluster = frase (text_id)" if cluster_ids is not None else "amostra"
+    )
+    if cluster_ids is None:
+        report["protocol"]["warning"] = (
+            "sem test_cluster_ids no results.json: reamostragem por AMOSTRA. "
+            "Amostras da mesma frase não são independentes, então o p-valor é "
+            "otimista. Runs a partir de 2026-08-09 gravam a chave."
+        )
+
+    if speaker_ids is not None:
+        by_speaker = _compare(speaker_ids)
+        by_speaker["protocol"]["unit_detail"] = "cluster = locutor (speaker_id)"
+        report["by_speaker"] = by_speaker
+        report["protocol"]["speaker_unit_available"] = True
+        report["protocol"]["n_speakers"] = len(set(map(str, speaker_ids)))
+        report["protocol"]["note_speaker_unit"] = (
+            "`by_speaker` reamostra LOCUTORES, a unidade que corresponde à "
+            "alegação de generalização do protocolo speaker-disjoint. São menos "
+            "unidades que frases, então os IC são mais largos — e é o veredito "
+            "conservador que deve valer para qualquer afirmação sobre locutores "
+            "não vistos."
+        )
+    else:
+        report["protocol"]["speaker_unit_available"] = False
+        report["protocol"]["note_speaker_unit"] = (
+            "sem test_speaker_ids no results.json: só a unidade de frase está "
+            "disponível. Runs a partir de 2026-08-09 gravam a chave; para runs "
+            "anteriores, scripts/reporting/backfill_artifact_metadata.py a deriva "
+            "do .npz."
+        )
+    return report
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Consolida resultados → resumo + figuras do TCC")
     p.add_argument("inputs", nargs="+",
@@ -665,6 +887,26 @@ def main() -> int:
                    help="copia as figuras para o artigo (default: data/results/paper/figures)")
     p.add_argument("--no-figures", action="store_true",
                    help="gera só o benchmark_summary.json")
+    p.add_argument(
+        "--no-significance",
+        action="store_true",
+        help=(
+            "pula as comparações pareadas entre modelos (McNemar exato + "
+            "bootstrap pareado). O default é gerá-las: IC individuais "
+            "sobrepostos não decidem diferença em avaliação pareada"
+        ),
+    )
+    p.add_argument(
+        "--significance-bootstrap",
+        type=int,
+        default=5000,
+        help=(
+            "reamostragens do bootstrap pareado (default: 5000). O menor "
+            "p-valor expressável é 2/(n+1), e Holm multiplica esse piso pelo "
+            "número de comparações: com 11 modelos são 55 pares, e 1.000 "
+            "reamostragens travariam todo p ajustado em 0,11"
+        ),
+    )
     p.add_argument(
         "--prefer-last",
         action="store_true",
@@ -692,6 +934,73 @@ def main() -> int:
     missing = [k for k in MODEL_ORDER if k not in {r['key'] for r in rows}]
     if missing:
         print(f"   AVISO: faltando {missing} (o TCC espera 11 modelos).")
+
+    # `stable is False` cobre colapso e divergência. `unstable_oscillation`
+    # mantém `stable: True` de propósito (o artefato serve), mas precisa
+    # aparecer: é o padrão do RawGAT-ST, cuja época selecionada depende do ruído
+    # da val_loss — e o `selection_gap` diz quanto isso custou.
+    unstable = [
+        (r["model"], (r.get("training_stability") or {}).get("status"))
+        for r in rows
+        if (r.get("training_stability") or {}).get("stable") is False
+        or (r.get("training_stability") or {}).get("status") == "unstable_oscillation"
+    ]
+    if unstable:
+        print("   AVISO: treino instável em " + ", ".join(
+            f"{m} ({s})" for m, s in unstable
+        ) + " — ver training_stability no metrics.json.")
+
+    costly = [
+        (r["model"], (r.get("training_stability") or {}).get("selection_gap"))
+        for r in rows
+        if isinstance(
+            (r.get("training_stability") or {}).get("selection_gap"), (int, float)
+        )
+        and (r.get("training_stability") or {})["selection_gap"] <= -0.01
+    ]
+    if costly:
+        print("   AVISO: o checkpoint de menor val_loss não é o de melhor "
+              "monitor em " + ", ".join(f"{m} ({g:+.4f})" for m, g in costly) +
+              " — seleção mantida por protocolo, ver selection_gap.")
+
+    no_speaker = [
+        r["model"] for r in rows if not (r.get("grouped_clean") or {}).get("speaker")
+    ]
+    if no_speaker:
+        print("   AVISO: sem grouped_clean por locutor em " +
+              ", ".join(no_speaker) + " — a coluna de pior locutor fica vazia.")
+
+    if not args.no_significance:
+        significance = build_significance_report(
+            rows, extras, n_bootstrap=args.significance_bootstrap
+        )
+        sig_path = out / "benchmark_significance.json"
+        sig_path.write_text(
+            json.dumps(significance, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        pairs = significance.get("pairs", []) or []
+        n_pairs = len(pairs)
+        print(f"-> {sig_path} ({n_pairs} comparações pareadas)")
+        if significance.get("protocol", {}).get("warning"):
+            print(f"   AVISO: {significance['protocol']['warning']}")
+
+        # Pares que falharam contam como "comparações" na linha acima, então a
+        # contagem sozinha não distingue um arquivo completo de um degradado.
+        # Foi assim que uma rodada sem scikit-learn instalado gravou os 55 pares
+        # apenas com McNemar, cada um carregando `status: error`, enquanto o
+        # console anunciava "55 comparações pareadas" — e o arquivo seguiu para
+        # as tabelas do artigo sem que nada denunciasse a falta do bootstrap.
+        falhos = [p for p in pairs if p.get("status") == "error"]
+        if falhos:
+            motivos = sorted({str(p.get("error") or "?") for p in falhos})
+            print(
+                f"   ATENÇÃO: {len(falhos)}/{n_pairs} comparações FALHARAM e "
+                f"ficaram sem bootstrap pareado — {'; '.join(motivos[:3])}"
+            )
+            print(
+                "   O arquivo está INCOMPLETO: corrija a causa e reconsolide "
+                "antes de usá-lo no artigo."
+            )
 
     if not args.no_figures:
         fig_dir = out / "figures"

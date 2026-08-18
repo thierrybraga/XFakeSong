@@ -36,6 +36,7 @@ from app.domain.models.architectures.layers import (
     AttentionLayer,
     DeltaFeatureLayer,
     ExpandDimsLayer,
+    ImageNetRangeScalingLayer,
     RepeatChannelLayer,
     ResizeLayer,
     create_classification_head,
@@ -70,6 +71,11 @@ class MelSpectrogramFrontEnd(layers.Layer):
         self.n_mels = n_mels
 
     def call(self, inputs):
+        # Remove o eixo de canal antes do STFT: com (batch, T, 1) a
+        # transformada cairia sobre o eixo de tamanho 1 e geraria 0 quadros
+        # (mesma correção aplicada em hybrid_cnn_transformer.py).
+        if inputs.shape.rank == 3 and inputs.shape[-1] == 1:
+            inputs = tf.squeeze(inputs, axis=-1)
         # STFT with Hamming window (paper specifies Hamming)
         window = tf.signal.hamming_window(self.n_fft)
         stft = tf.signal.stft(
@@ -153,7 +159,7 @@ def _create_efficientnet_lstm_model(
 
     # ---------- Front-end: audio -> spectrogram ----------
     if is_raw_audio(input_shape):
-        audio = ensure_flat_input(inputs, input_shape)
+        audio = ensure_flat_input(inputs)
 
         # Mel spectrogram (512 FFT, 160 hop, 128 mels, 0-Nyquist)
         x = MelSpectrogramFrontEnd(
@@ -182,6 +188,14 @@ def _create_efficientnet_lstm_model(
     # com fallback gracioso para None se offline). Antes era weights=None
     # (treino do zero) e o "unfreeze last 3" era inócuo — com weights=None
     # tudo já é treinável e nada havia sido congelado.
+    #
+    # CORREÇÃO: `EfficientNetB0` do Keras embute Rescaling+Normalization e
+    # espera entrada em [0, 255] (o `preprocess_input` da família é no-op). Um
+    # log-mel cru (~[-14, +5]) atravessava essa normalização como ruído perto
+    # de zero e deixava os pesos ImageNet praticamente inertes — o transfer
+    # learning existia no papel, não no sinal.
+    if pretrained:
+        x = ImageNetRangeScalingLayer(name='imagenet_range_scaling')(x)
     _weights = "imagenet" if pretrained else None
     try:
         efficientnet = EfficientNetB0(
@@ -214,28 +228,22 @@ def _create_efficientnet_lstm_model(
     temporal_features = TemporalPoolingLayer(name='temporal_pool')(feature_maps)
 
     # ---------- Bidirectional LSTM ----------
-    # Use CuDNN-accelerated LSTM on GPU (no dropout in recurrent kernel,
-    # which is the constraint for CuDNN).  On CPU fall back to standard LSTM.
-    _gpu = bool(tf.config.list_physical_devices("GPU"))
-    if _gpu:
-        logger.info("GPU detectada: usando LSTM otimizado (CuDNN path).")
-        lstm_out = layers.Bidirectional(
-            layers.LSTM(lstm_units, return_sequences=True),
-            name='bilstm_1'
-        )(temporal_features)
-        lstm_out = layers.Bidirectional(
-            layers.LSTM(lstm_units // 2, return_sequences=True),
-            name='bilstm_2'
-        )(lstm_out)
-    else:
-        lstm_out = layers.Bidirectional(
-            layers.LSTM(lstm_units, return_sequences=True, dropout=dropout_rate),
-            name='bilstm_1'
-        )(temporal_features)
-        lstm_out = layers.Bidirectional(
-            layers.LSTM(lstm_units // 2, return_sequences=True, dropout=dropout_rate),
-            name='bilstm_2'
-        )(lstm_out)
+    # CORREÇÃO: antes o dropout das BiLSTM só existia no caminho CPU (o
+    # argumento `dropout=` da LSTM desabilita o kernel cuDNN). O modelo tinha,
+    # portanto, REGULARIZAÇÃO DIFERENTE conforme o device — treinos em GPU e em
+    # CPU não eram comparáveis. Agora o dropout é aplicado por camadas
+    # `Dropout` externas, idênticas em qualquer device, e as LSTM permanecem
+    # elegíveis ao kernel cuDNN em ambos.
+    lstm_out = layers.Bidirectional(
+        layers.LSTM(lstm_units, return_sequences=True),
+        name='bilstm_1'
+    )(temporal_features)
+    lstm_out = layers.Dropout(dropout_rate, name='bilstm_1_drop')(lstm_out)
+    lstm_out = layers.Bidirectional(
+        layers.LSTM(lstm_units // 2, return_sequences=True),
+        name='bilstm_2'
+    )(lstm_out)
+    lstm_out = layers.Dropout(dropout_rate, name='bilstm_2_drop')(lstm_out)
 
     # ---------- Attention ----------
     attended, _ = AttentionLayer(
@@ -271,7 +279,8 @@ def _create_efficientnet_lstm_model(
 def _create_efficientnet_lstm_lite(
     input_shape: Tuple[int, ...],
     num_classes: int = 1,
-    architecture: str = 'efficientnet_lstm_lite'
+    architecture: str = 'efficientnet_lstm_lite',
+    pretrained: bool = True,
 ) -> models.Model:
     """Lightweight EfficientNet-LSTM variant.
 
@@ -280,7 +289,7 @@ def _create_efficientnet_lstm_lite(
     inputs = layers.Input(shape=input_shape, name='audio_input')
 
     if is_raw_audio(input_shape):
-        audio = ensure_flat_input(inputs, input_shape)
+        audio = ensure_flat_input(inputs)
         x = MelSpectrogramFrontEnd(
             sample_rate=16000, n_fft=512, hop_length=160, n_mels=40,
             name='mel_spectrogram'
@@ -299,11 +308,26 @@ def _create_efficientnet_lstm_lite(
             if input_shape[-1] != 3:
                 x = layers.Conv2D(3, (1, 1), name='channel_proj')(x)
 
-    efficientnet = EfficientNetB0(
-        weights=None,
-        include_top=False,
-        input_shape=(112, 112, 3)
-    )
+    # A variante lite ignorava `pretrained` e forçava weights=None — treinava
+    # sempre do zero, ao contrário da variante completa. Agora honra o flag
+    # (com o mesmo fallback gracioso quando os pesos não estão disponíveis).
+    if pretrained:
+        x = ImageNetRangeScalingLayer(name='imagenet_range_scaling')(x)
+    try:
+        efficientnet = EfficientNetB0(
+            weights="imagenet" if pretrained else None,
+            include_top=False,
+            input_shape=(112, 112, 3)
+        )
+    except Exception as e:
+        logger.warning(
+            f"Pesos ImageNet indisponíveis ({e}); EfficientNet-B0 do zero."
+        )
+        efficientnet = EfficientNetB0(
+            weights=None,
+            include_top=False,
+            input_shape=(112, 112, 3)
+        )
     feature_maps = efficientnet(x)
 
     temporal_features = TemporalPoolingLayer(name='temporal_pool')(feature_maps)
@@ -340,7 +364,10 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
         'efficientnet_lstm_lite': Lightweight (smaller input + single LSTM(64))
     """
     if architecture == 'efficientnet_lstm_lite':
-        return _create_efficientnet_lstm_lite(input_shape, num_classes, architecture)
+        return _create_efficientnet_lstm_lite(
+            input_shape, num_classes, architecture,
+            pretrained=kwargs.get('pretrained', True),
+        )
     else:
         return _create_efficientnet_lstm_model(
             input_shape=input_shape,

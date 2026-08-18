@@ -1,3 +1,4 @@
+import inspect
 import logging as _l
 import os
 import sys
@@ -15,7 +16,8 @@ from fastapi.templating import Jinja2Templates  # noqa: E402
 from slowapi import _rate_limit_exceeded_handler  # noqa: E402
 from slowapi.errors import RateLimitExceeded  # noqa: E402
 
-from app.core.db.setup import init_db  # noqa: E402
+from app.core.auth.auth_handler import get_gradio_auth  # noqa: E402
+from app.core.bootstrap import OperationalPaths  # noqa: E402
 from app.core.exceptions import setup_exception_handlers  # noqa: E402
 from app.core.feedback import configure_logging  # noqa: E402
 from app.core.gpu import describe_gpu_setup, setup_gpu  # noqa: E402
@@ -26,8 +28,6 @@ from app.core.version_check import check_versions  # noqa: E402
 
 # API.3: importa ALL_ROUTERS (inclui voice_profiles que faltava antes!).
 from app.interfaces.web.routers import ALL_ROUTERS  # noqa: E402
-
-from app.core.bootstrap import OperationalPaths  # noqa: E402
 
 configure_logging(
     level=_l.INFO,
@@ -134,25 +134,35 @@ for r in ALL_ROUTERS:
     app.include_router(r)
 
 if not _running_under_pytest() and not _api_only_mode():
+    operational_paths = OperationalPaths.resolve()
+    gradio_temp_dir = operational_paths.temp / "gradio"
+    gradio_exports_dir = gradio_temp_dir / "exports"
+    gradio_exports_dir.mkdir(parents=True, exist_ok=True)
+    os.environ["GRADIO_TEMP_DIR"] = str(gradio_temp_dir)
+
     import gradio as gr  # noqa: E402,I001
     from app.interfaces.gradio.app import demo as gradio_demo  # noqa: E402
 
-    # PROD.3: allowed_paths precisa incluir TODOS os diretórios que o Gradio
-    # vai servir arquivos. Restrito a só "." dá 403 (ERR_ABORTED) em:
-    #   - /tmp/gradio (uploads + cache, default temp dir)
-    #   - /tmp (fallback geral, cobre numba/matplotlib/hf caches também)
-    # Sem isto, drag-and-drop de áudio falha silenciosamente no browser.
-    allowed_paths = [
-        os.path.abspath("."),
-        os.environ.get("GRADIO_TEMP_DIR", "/tmp/gradio"),
-        "/tmp",
-    ]
-    app = gr.mount_gradio_app(
-        app,
-        gradio_demo,
-        path="/gradio",
-        allowed_paths=allowed_paths,
-    )
+    mount_parameters = inspect.signature(gr.mount_gradio_app).parameters
+    mount_kwargs = {
+        "path": "/gradio",
+        "allowed_paths": [str(gradio_exports_dir)],
+        "auth": get_gradio_auth(),
+    }
+    if "blocked_paths" in mount_parameters:
+        mount_kwargs["blocked_paths"] = [
+            str(operational_paths.root / ".env"),
+            str(operational_paths.root / ".git"),
+            str(operational_paths.database),
+            str(operational_paths.datasets),
+            str(operational_paths.logs),
+            str(operational_paths.models),
+        ]
+    max_upload_mb = int(os.getenv("XFAKE_MAX_UPLOAD_MB", "100"))
+    if "max_file_size" in mount_parameters:
+        mount_kwargs["max_file_size"] = f"{max_upload_mb}mb"
+
+    app = gr.mount_gradio_app(app, gradio_demo, **mount_kwargs)
 
 
 if __name__ == "__main__":

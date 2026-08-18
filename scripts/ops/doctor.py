@@ -95,7 +95,7 @@ def check_python_version() -> Tuple[bool, List[str]]:
     elif v.minor >= 14:
         warn(f"Python 3.{v.minor} é muito novo — pacotes podem não ter wheels")
     elif v.minor == 13:
-        ok(f"Python 3.13 (precisa TF 2.20+, OK no requirements atual)")
+        ok("Python 3.13 (precisa TF 2.20+, OK no requirements atual)")
     else:
         ok(f"Python 3.{v.minor} (versão recomendada)")
     return not errors, errors
@@ -111,8 +111,8 @@ def check_virtualenv() -> Tuple[bool, List[str]]:
         ok(f"Rodando em virtualenv ({sys.prefix})")
     elif venv_dir.exists():
         warn(
-            f".venv existe mas não está ativado. "
-            f"Ative com: .venv\\Scripts\\activate (Win) ou source .venv/bin/activate"
+            ".venv existe mas não está ativado. "
+            "Ative com: .venv\\Scripts\\activate (Win) ou source .venv/bin/activate"
         )
     else:
         warn("Nenhum venv detectado. Recomendado: python -m venv .venv")
@@ -346,7 +346,7 @@ def check_port(port: int = 7860) -> Tuple[bool, List[str]]:
             if sys.platform == "win32":
                 print(f"  {Color.BOLD}Fix Windows:{Color.END}")
                 print(f"    netstat -ano | findstr :{port}")
-                print(f"    taskkill /F /PID <pid>")
+                print("    taskkill /F /PID <pid>")
             else:
                 print(f"  {Color.BOLD}Fix Linux/Mac:{Color.END}")
                 print(f"    lsof -i :{port}")
@@ -470,7 +470,7 @@ def main() -> int:
         if args.fix and "missing_dep" in str(all_errors):
             try_fix_install()
         else:
-            print(f"\n  Tentar fix automático: python scripts/ops/doctor.py --fix")
+            print("\n  Tentar fix automático: python scripts/ops/doctor.py --fix")
         return 2
     else:
         print(

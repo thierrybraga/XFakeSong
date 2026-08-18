@@ -1,4 +1,4 @@
-"""Regressoes do protocolo academico de dataset v2."""
+"""Regressoes do pipeline de dataset: balanceamento, janela e proveniencia.`n`nExercitam a maquinaria compartilhada (composicao, manifesto de falante,`ncarregamento no benchmark), independente do protocolo vigente.`n"""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from benchmarks.evaluate import evaluate_grouped_scores, evaluate_scores
 from benchmarks.runner import _audit_source_label_shortcut
 from scripts.benchmark.run_tcc_pipeline import _load_wav
 from scripts.dataset import build_dataset
+from scripts.dataset.preprocess_dataset import _content_aware_class_allocation
 
 
 def _touch_wavs(directory: Path, prefix: str, count: int) -> None:
@@ -149,6 +150,79 @@ def test_predefined_split_overlap_fails() -> None:
 
     with pytest.raises(ValueError, match="sobrepostas"):
         data.stratified_split()
+
+
+def test_content_allocation_does_not_chase_irrelevant_class_deficit() -> None:
+    """Regressao: um split com deficit enorme de fake mas real ja excedente
+    nao deve atrair grupos de conteudo puro-real so por ter pontuacao total
+    inflada pelo deficit da OUTRA classe. Reproduz o desbalanceamento real
+    observado em producao (val: real=1433/fake=904, ratio 1.585 - fora da
+    faixa 0.8-1.25 de docs/data/public-datasets.md), causado pela formula
+    antiga somar (nr - n_real) + (nf - n_fake) mesmo quando o grupo so
+    continha uma das duas classes."""
+    n_real_groups = 300
+    n_fake_groups = 300
+    idx = np.arange(n_real_groups + n_fake_groups)
+    labels = np.array([0] * n_real_groups + [1] * n_fake_groups)
+    content_groups = np.array([f"g{i}" for i in idx], dtype=object)
+
+    # val ja tem excesso de real (deficit negativo) mas falta muito fake.
+    need = {"train": (50, -50), "val": (-50, 200), "test": (50, -50)}
+
+    train_idx, val_idx, test_idx = _content_aware_class_allocation(
+        idx, labels, content_groups, need, seed=42
+    )
+
+    val_real = int((labels[val_idx] == 0).sum())
+    # A formula antiga despejava ~200 grupos puro-real em val mesmo com
+    # deficit negativo; a correta mantem bem abaixo disso.
+    assert val_real < 100, f"val recebeu {val_real} grupos reais que nao precisava"
+
+    placed = sorted(train_idx.tolist() + val_idx.tolist() + test_idx.tolist())
+    assert placed == list(idx)
+
+
+def test_content_allocation_keeps_content_groups_atomic() -> None:
+    """Um grupo de conteudo (texto/enunciado) com multiplas amostras nunca
+    pode ser fatiado entre splits - isso constituiria vazamento de conteudo,
+    exatamente o que create_splits audita via `content_leakage`."""
+    rng = np.random.default_rng(3)
+    group_sizes = rng.integers(1, 6, size=50)
+    idx: list[int] = []
+    labels_list: list[int] = []
+    groups_list: list[str] = []
+    cursor = 0
+    for gi, size in enumerate(group_sizes):
+        label = gi % 2
+        for _ in range(int(size)):
+            idx.append(cursor)
+            labels_list.append(label)
+            groups_list.append(f"g{gi}")
+            cursor += 1
+
+    idx_arr = np.array(idx)
+    labels = np.array(labels_list)
+    content_groups = np.array(groups_list, dtype=object)
+    need = {"train": (60, 60), "val": (15, 15), "test": (15, 15)}
+
+    train_idx, val_idx, test_idx = _content_aware_class_allocation(
+        idx_arr, labels, content_groups, need, seed=42
+    )
+
+    placed = sorted(train_idx.tolist() + val_idx.tolist() + test_idx.tolist())
+    assert placed == list(idx_arr)
+
+    split_of = {}
+    for name, sel in (("train", train_idx), ("val", val_idx), ("test", test_idx)):
+        for i in sel.tolist():
+            split_of[i] = name
+
+    by_group: dict[str, set[str]] = {}
+    for i, key in zip(idx_arr.tolist(), content_groups.tolist()):
+        by_group.setdefault(key, set()).add(split_of[i])
+
+    violations = {g: s for g, s in by_group.items() if len(s) > 1}
+    assert not violations, f"grupos fatiados entre splits: {violations}"
 
 
 def test_manifest_keys_separate_real_and_fake_homonyms() -> None:

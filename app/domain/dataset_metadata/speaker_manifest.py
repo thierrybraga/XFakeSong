@@ -35,7 +35,7 @@ logger = logging.getLogger("speaker_manifest")
 BASE_DIR = Path(__file__).resolve().parents[3]
 
 DATASETS_DIR = BASE_DIR / "data" / "datasets"
-SPEAKER_MANIFEST_PATH = DATASETS_DIR / "speaker_manifest.json"
+SPEAKER_MANIFEST_PATH = DATASETS_DIR / "metadata" / "speaker_manifest.json"
 
 class MissingSampleMetadataError(ValueError):
     """Raised when a strict scientific protocol lacks required provenance."""

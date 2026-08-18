@@ -10,11 +10,10 @@ from typing import Tuple
 # Third-party imports
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras import layers, models, regularizers
+from tensorflow.keras import layers, models
 
 from app.domain.models.architectures.layers import (
-    AdaptiveGraphResize,
-    AttentionLayer,
+    AASISTGraphAttentionLayer,
     AudioFeatureNormalization,
     AxisMaxAbsLayer,
     GATConvLayer,
@@ -24,16 +23,28 @@ from app.domain.models.architectures.layers import (
     ResidualBlock1D,
     ResidualBlock2D,
     SincConvLayer,
-    apply_gru_block,
-    apply_reshape_for_cnn,
-    flatten_features_for_gru,
-    residual_block,
+)
+
+from app.domain.models.architectures.legacy_variants import (
+    LEGACY_VARIANTS,
+    build_legacy_model,
 )
 
 # Convenção do projeto: logger de módulo sem handlers manuais (a configuração
 # de handlers/formatters é responsabilidade da aplicação; handlers locais
 # duplicavam linhas de log).
 logger = logging.getLogger(__name__)
+
+# Temperatura da atenção de grafo (Tak et al., 2021). O AASIST, derivado deste
+# trabalho, usa 2.0 nos GATs espectral/temporal — mesma escala adotada aqui
+# para os três GATs (Gs, Gt e o espectro-temporal da fusão).
+GAT_TEMPERATURE = 2.0
+
+# Nº de nós a que Gs e Gt são reduzidos (por top-k) antes da fusão
+# element-wise. O artigo obtém grafos compatíveis pelos próprios ratios de
+# pooling; aqui o alvo é explícito porque o comprimento da janela é
+# configurável e os dois eixos (frequência e tempo) não encolhem juntos.
+GRAPH_FUSION_NODES = 12
 
 # ============================ CAMADAS CUSTOMIZADAS ======================
 
@@ -91,6 +102,7 @@ def _build_paper_rawgat(
     learning_rate: float,
     min_learning_rate: float,
     decay_steps: int,
+    global_clipnorm: float,
 ) -> models.Model:
     """RawGAT-ST: grafos S/T separados, fusão multiplicativa e terceiro GAT."""
     if num_classes < 2:
@@ -122,12 +134,15 @@ def _build_paper_rawgat(
     temporal = layers.Activation(
         "linear", dtype="float32", name="rawgat_temporal_graph_float32"
     )(temporal)
-    spectral = GATConvLayer(
-        out_features=64, num_heads=1, dropout_rate=dropout_rate,
+    # Atenção de grafo DO PAPER (produto par-a-par + tanh + temperatura), a
+    # mesma formulação que o AASIST herda deste trabalho — não o GAT aditivo
+    # de Velickovic que era usado aqui antes.
+    spectral = AASISTGraphAttentionLayer(
+        out_features=64, temperature=GAT_TEMPERATURE, dropout_rate=dropout_rate,
         name="rawgat_gat_spectral", dtype="float32",
     )(spectral)
-    temporal = GATConvLayer(
-        out_features=64, num_heads=1, dropout_rate=dropout_rate,
+    temporal = AASISTGraphAttentionLayer(
+        out_features=64, temperature=GAT_TEMPERATURE, dropout_rate=dropout_rate,
         name="rawgat_gat_temporal", dtype="float32",
     )(temporal)
     spectral = GraphPoolLayer(
@@ -136,18 +151,26 @@ def _build_paper_rawgat(
     temporal = GraphPoolLayer(
         0.64, name="rawgat_pool_temporal", dtype="float32"
     )(temporal)
-    spectral = AdaptiveGraphResize(
-        12, name="rawgat_align_spectral", dtype="float32"
+    # Alinhamento dos dois grafos antes da fusão element-wise por TOP-K
+    # pooling — a mesma primitiva de pooling de grafo usada pelo artigo.
+    # Antes isto era `AdaptiveGraphResize`, uma projeção DENSA aprendível sobre
+    # o eixo de nós: além de não existir no paper, uma combinação linear de nós
+    # não é uma operação de grafo (mistura nós arbitrariamente) e adicionava
+    # parâmetros sem contrapartida na referência.
+    spectral = GraphPoolLayer(
+        target_nodes=GRAPH_FUSION_NODES, name="rawgat_align_spectral",
+        dtype="float32",
     )(spectral)
-    temporal = AdaptiveGraphResize(
-        12, name="rawgat_align_temporal", dtype="float32"
+    temporal = GraphPoolLayer(
+        target_nodes=GRAPH_FUSION_NODES, name="rawgat_align_temporal",
+        dtype="float32",
     )(temporal)
 
     fused = layers.Multiply(
         name="rawgat_graph_fusion", dtype="float32"
     )([spectral, temporal])
-    fused = GATConvLayer(
-        out_features=32, num_heads=1, dropout_rate=dropout_rate,
+    fused = AASISTGraphAttentionLayer(
+        out_features=32, temperature=GAT_TEMPERATURE, dropout_rate=dropout_rate,
         name="rawgat_gat_spectro_temporal", dtype="float32",
     )(fused)
     fused = GraphPoolLayer(
@@ -172,7 +195,12 @@ def _build_paper_rawgat(
         optimizer=tf.keras.optimizers.AdamW(
             learning_rate=schedule,
             weight_decay=l2_reg_strength,
-            global_clipnorm=0.7,
+            # AJUSTE 2026-08-06: era o literal 0.7, enquanto
+            # registry.py::default_params declarava `gradient_clip: 0.5` — o
+            # valor do registry NUNCA chegava aqui (config morto, o mesmo
+            # padrão já eliminado do AASIST e do Conformer). Agora é
+            # parâmetro de verdade, promovido pelo runner.
+            global_clipnorm=float(global_clipnorm),
         ),
         loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
         metrics=["accuracy"],
@@ -187,16 +215,29 @@ def create_model(
     input_shape: Tuple[int, ...],
     num_classes: int = 2,
     architecture: str = "rawgat_st",
+    # AJUSTE 2026-08-06: dropout 0.35->0.5 e l2 1e-3->3e-3 (sobreajuste em
+    # clean_benchmark_15k — treino 0,998 vs val 0,85). Sincronizado com
+    # registry.py::default_params e planning.py::NEURAL_BENCHMARK_HPARAMS.
+    #
+    # REVERTIDO EM 2026-08-17 pelo fatorial que o ajuste acima nunca teve:
+    # dropout 0,50 (braço (d)) trava a validação em 0,5000 por 25 épocas com
+    # treino a 95,4%; L2 3e-3 (braço (l)) não move o teto. Volta a 0,35/1e-3
+    # nas TRÊS fontes. Tabela medida em planning.py::NEURAL_BENCHMARK_HPARAMS.
     dropout_rate: float = 0.35,
     l2_reg_strength: float = 0.001,
     attention_heads: int = 8,
     hidden_dim: int = 512,
-    num_layers: int = 6,
+    # (num_layers REMOVIDO: declarado e nunca lido — a profundidade é fixa
+    # tanto na variante do paper quanto nas legadas.)
     temporal_pool_stride: int = 4,
     fusion_mode: str = "multiply",
     learning_rate: float = 5e-5,
     min_learning_rate: float = 5e-6,
-    decay_steps: int = 100_000,
+    # 152.100 = ceil(24.324/16) x 100 épocas, o orçamento real do benchmark.
+    decay_steps: int = 152_100,
+    # Antes era o literal 0.7 dentro do compile; 0.5 é o valor que o
+    # registry já declarava em `gradient_clip` e nunca chegava ao modelo.
+    global_clipnorm: float = 0.5,
 ) -> models.Model:
     """
     Cria e compila um modelo Keras baseado na arquitetura especificada.
@@ -205,6 +246,12 @@ def create_model(
         input_shape: A forma dos dados de entrada (e.g., (frames, features_dim, 1) para CNN).
         num_classes: Número de classes de saída (padrão é 2 para REAL/FAKE).
         architecture: O tipo de arquitetura.
+
+    NOTA: ``attention_heads``, ``hidden_dim``, ``temporal_pool_stride`` e
+    ``fusion_mode`` valem SOMENTE para as variantes
+    legadas. A variante paper-faithful ``rawgat_st`` segue a topologia do
+    artigo (dois encoders 2D, GAT S/T, fusão element-wise, terceiro GAT) e os
+    ignora — não os coloque no registry esperando efeito.
 
     Variantes suportadas:
         - "rawgat_st"/"rawgat_st_paper": encoder 2D duplo + três GATs
@@ -232,126 +279,22 @@ def create_model(
         temporal_pool_stride = 8
         fusion_mode = "concat"
 
-    if architecture == "cnn_gru_simple":
-        x = apply_reshape_for_cnn(x, input_shape)
-        x = layers.Conv2D(32, (3, 3), activation='relu',
-                          padding='same', name="conv1")(x)
-        x = layers.BatchNormalization(name="bn1")(x)
-        x = layers.MaxPooling2D((2, 2), name="pool1")(x)
-        x = layers.Dropout(dropout_rate, name="classifier_dropout1")(x)
-        x = layers.Conv2D(64, (3, 3), activation='relu',
-                          padding='same', name="conv2")(x)
-        x = layers.BatchNormalization(name="bn2")(x)
-        x = layers.MaxPooling2D((2, 2), name="pool2")(x)
-        x = layers.Dropout(dropout_rate, name="classifier_dropout2")(x)
-        x = flatten_features_for_gru(x, name="reshape_for_gru")
-        # Apply GRU blocks (Standardized for CPU/GPU)
-        x = apply_gru_block(
-            x, 128, return_sequences=True, dropout_rate=dropout_rate, name="gru1"
-        )
-        x = apply_gru_block(
-            x, 64, return_sequences=True, dropout_rate=dropout_rate, name="gru2"
-        )
-        x = AttentionLayer(name="attention_layer")(x)
-
-    elif architecture == "cnn_baseline":
-        x = apply_reshape_for_cnn(x, input_shape)
-        x = layers.Conv2D(32, (5, 5), activation='relu',
-                          padding='same', name="conv_b1")(x)
-        x = layers.BatchNormalization(name="bn_b1")(x)
-        x = layers.MaxPooling2D((2, 2), name="pool_b1")(x)
-        x = layers.Dropout(dropout_rate, name="dropout_b1")(x)
-        x = layers.Conv2D(64, (5, 5), activation='relu',
-                          padding='same', name="conv_b2")(x)
-        x = layers.BatchNormalization(name="bn_b2")(x)
-        x = layers.MaxPooling2D((2, 2), name="pool_b2")(x)
-        x = layers.Dropout(dropout_rate, name="dropout_b2")(x)
-        x = layers.Flatten(name="flatten")(x)
-
-    elif architecture == "bidirectional_gru":
-        if len(input_shape) == 4 and input_shape[-1] == 1:
-            x = layers.Reshape(
-                (input_shape[0],
-                 input_shape[1]),
-                name="flatten_channel_for_gru")(x)
-        elif len(input_shape) == 2:
-            pass
-        elif len(input_shape) == 3 and input_shape[-1] != 1:
-            logger.warning(
-                f"Input shape {input_shape} for Bidirectional GRU expects 3D or 4D with last dim 1.")
-            pass
-        else:
-            raise ValueError(
-                f"Input shape {input_shape} not suitable for 'bidirectional_gru' architecture.")
-        x = layers.Bidirectional(
-            layers.GRU(128, return_sequences=True, dropout=dropout_rate),
-            name="bi_gru1")(x)
-        x = layers.Bidirectional(
-            layers.GRU(64, return_sequences=True, dropout=dropout_rate),
-            name="bi_gru2")(x)
-        x = AttentionLayer(name="attention_layer")(x)
-
-    elif architecture == "resnet_gru":
-        x = apply_reshape_for_cnn(x, input_shape)
-        x = layers.Conv2D(32, (3, 3), activation='relu',
-                          padding='same', name="resnet_conv_init")(x)
-        x = layers.BatchNormalization(name="resnet_bn_init")(x)
-        x = layers.MaxPooling2D((2, 2), name="resnet_pool_init")(x)
-        x = residual_block(x, 64, (3, 3), stage='a')
-        x = layers.MaxPooling2D((2, 2), name="resnet_pool_a")(x)
-        x = layers.Dropout(dropout_rate, name="resnet_dropout_a")(x)
-        x = residual_block(x, 128, (3, 3), stage='b')
-        x = layers.MaxPooling2D((2, 2), name="resnet_pool_b")(x)
-        x = layers.Dropout(dropout_rate, name="resnet_dropout_b")(x)
-        x = flatten_features_for_gru(x, name="resnet_reshape_for_gru")
-        x = apply_gru_block(
-            x,
-            units=128,
-            return_sequences=True,
+    if architecture in LEGACY_VARIANTS:
+        # Variantes LEGADAS — implementação compartilhada em
+        # legacy_variants.py (o mesmo código existia duplicado byte a byte
+        # aqui e em aasist.py). Nomes de camada preservados para que
+        # checkpoints antigos continuem carregando.
+        return build_legacy_model(
+            input_tensor=input_tensor,
+            x=x,
+            input_shape=input_shape,
+            architecture=architecture,
+            num_classes=num_classes,
+            hidden_dim=hidden_dim,
             dropout_rate=dropout_rate,
-            name="resnet_gru1"
+            l2_reg_strength=l2_reg_strength,
+            model_name="RawGAT_ST_legacy_variant",
         )
-        x = AttentionLayer(name="attention_layer_resnet")(x)
-
-    elif architecture == "transformer":
-        if len(input_shape) == 4 and input_shape[-1] == 1:
-            x = layers.Reshape(
-                (input_shape[0],
-                 input_shape[1]),
-                name="flatten_channel_for_transformer")(x)
-        elif len(input_shape) == 2:
-            pass
-        elif len(input_shape) == 3 and input_shape[-1] != 1:
-            logger.warning(
-                f"Input shape {input_shape} for Transformer expects 3D or 4D with last dim 1.")
-            pass
-        else:
-            raise ValueError(
-                f"Input shape {input_shape} not suitable for 'transformer' architecture.")
-        seq_len = input_shape[0] if len(input_shape) >= 2 else input_shape[0]
-        feature_dim = input_shape[1] if len(
-            input_shape) == 2 else input_shape[1] * input_shape[2] if len(input_shape) == 3 else input_shape[1]
-        if len(x.shape) == 2:
-            x = tf.expand_dims(x, axis=1)
-            seq_len = 1
-        pos_encoding = layers.Embedding(
-            seq_len, feature_dim)(
-            tf.range(seq_len))
-        x = x + pos_encoding
-        num_heads = 4
-        ff_dim = 64
-        attn_output = layers.MultiHeadAttention(
-            num_heads=num_heads,
-            key_dim=feature_dim)(
-            x,
-            x)
-        attn_output = layers.Dropout(dropout_rate)(attn_output)
-        x = layers.LayerNormalization(epsilon=1e-6)(x + attn_output)
-        ff_output = layers.Dense(ff_dim, activation="relu")(x)
-        ff_output = layers.Dense(feature_dim)(ff_output)
-        ff_output = layers.Dropout(dropout_rate)(ff_output)
-        x = layers.LayerNormalization(epsilon=1e-6)(x + ff_output)
-        x = layers.GlobalAveragePooling1D(name="transformer_avg_pool")(x)
 
     elif architecture == "rawgat_st":
         return _build_paper_rawgat(
@@ -363,6 +306,7 @@ def create_model(
             learning_rate=learning_rate,
             min_learning_rate=min_learning_rate,
             decay_steps=decay_steps,
+            global_clipnorm=global_clipnorm,
         )
 
     elif architecture == "rawgat_st_legacy":
@@ -475,8 +419,10 @@ def create_model(
         # AJUSTE (retune): LR 1e-4->5e-5 e clipnorm 1.0->0.7 para conter a
         # divergencia (val_loss subia de 0.39->1.85). weight_decay vem do
         # l2_reg_strength (registry: 0.0005->0.001).
+        # CORREÇÃO: o LR estava HARDCODED aqui e ignorava o parâmetro recebido
+        # do registry/planning — o mesmo drift já corrigido no AASIST.
         optimizer = tf.keras.optimizers.AdamW(
-            learning_rate=0.00005,
+            learning_rate=float(learning_rate),
             weight_decay=l2_reg_strength,
             global_clipnorm=0.7,  # estabilidade (grafos + SincConv)
         )
@@ -493,56 +439,12 @@ def create_model(
         )
         return model
 
-    else:
-        raise ValueError(
-            f"Arquitetura '{architecture}' não reconhecida. Escolha 'default', "
-            "'rawgat_st', 'rawgat_st_paper', 'rawgat_st_fast', "
-            "'cnn_baseline', 'bidirectional_gru', 'resnet_gru' ou 'transformer'.")
-
-    # Camadas densas com regularização aprimorada
-    x = layers.Dense(hidden_dim, activation='relu',
-                     kernel_regularizer=regularizers.l2(l2_reg_strength),
-                     bias_regularizer=regularizers.l2(l2_reg_strength / 2), name="dense1")(x)
-    x = layers.BatchNormalization(name="bn_dense1")(x)
-    x = layers.Dropout(dropout_rate, name="final_dropout1")(x)
-
-    # Camada intermediária adicional
-    x = layers.Dense(hidden_dim // 2, activation='relu',
-                     kernel_regularizer=regularizers.l2(l2_reg_strength),
-                     bias_regularizer=regularizers.l2(l2_reg_strength / 2), name="dense2")(x)
-    x = layers.BatchNormalization(name="bn_dense2")(x)
-    x = layers.Dropout(min(dropout_rate * 1.5, 0.9), name="final_dropout2")(x)
-
-    # Camada final antes da saída
-    x = layers.Dense(128, activation='relu',
-                     kernel_regularizer=regularizers.l2(l2_reg_strength),
-                     bias_regularizer=regularizers.l2(l2_reg_strength / 2), name="dense3")(x)
-    x = layers.BatchNormalization(name="bn_dense3")(x)
-    x = layers.Dropout(min(dropout_rate * 2, 0.9), name="dropout_final")(x)
-
-    # Camada de saída com regularização
-    output_tensor = layers.Dense(num_classes, activation='softmax',
-                                 kernel_regularizer=regularizers.l2(
-                                     l2_reg_strength / 2),
-                                 name="output_layer")(x)
-
-    model = models.Model(inputs=input_tensor, outputs=output_tensor)
-
-    # Otimizador com weight decay
-    optimizer = tf.keras.optimizers.AdamW(
-        learning_rate=0.001,
-        weight_decay=l2_reg_strength,
-        beta_1=0.9,
-        beta_2=0.999,
-        epsilon=1e-7
+    raise ValueError(
+        f"Arquitetura '{architecture}' não reconhecida. Escolha 'rawgat_st' "
+        f"(paper), 'rawgat_st_legacy' ou uma das variantes legadas "
+        f"{list(LEGACY_VARIANTS)}."
     )
 
-    model.compile(optimizer=optimizer,
-                  loss='sparse_categorical_crossentropy',
-                  # Remover precision/recall que podem causar problemas de
-                  # dimensão
-                  metrics=['accuracy'])
-    return model
 
 # ModelTrainer removido - usar a implementação principal em src.core.trainer
 

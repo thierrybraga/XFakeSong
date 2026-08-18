@@ -81,10 +81,13 @@ try {
         "--dataset", "/app/data/datasets/benchmark_audio_raw_balanced_15k_academic_v2.npz",
         "--out", "/app/data/results/$RunName/audits/leakage"
     )
+    # Era `audit_source_shortcut.py`, removido em 2026-08-02 junto com o corpus
+    # multi-fonte que ele auditava (ver docs/evaluation/retraining-adjustments.md).
+    # A auditoria estrutural equivalente sob o Protocolo de Dataset é a de
+    # sobreposição entre partições, feita direto nos arrays do .npz.
     Invoke-DockerPython @(
-        "scripts/dataset/audit_source_shortcut.py",
-        "--dataset", "/app/data/datasets/benchmark_audio_raw_balanced_15k_academic_v2.npz",
-        "--out", "/app/data/results/$RunName/audits/source_shortcut"
+        "scripts/dataset/audit_split_overlap.py",
+        "--dataset", "/app/data/datasets/benchmark_audio_raw_balanced_15k_academic_v2.npz"
     )
 
     Write-RunLog "Iniciando benchmark acadêmico GPU das 11 arquiteturas"

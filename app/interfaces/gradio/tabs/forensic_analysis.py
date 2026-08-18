@@ -19,6 +19,7 @@ from app.domain.services.forensic_visualization import (
 )
 from app.interfaces.gradio.utils.components import page_header
 from app.interfaces.gradio.utils.plotting import get_service_lock
+from app.utils.file_utils import get_gradio_exports_directory
 
 logger = logging.getLogger("gradio_forensic_tab")
 
@@ -41,6 +42,46 @@ def _get_detection_service():
                 logger.warning(f"Detection service unavailable: {e}")
                 return None
     return _detection_service
+
+
+def _estabilidade_de_formante(y: np.ndarray, sr: int) -> float:
+    """Dispersão relativa de F1 ao longo do sinal, via LPC quadro a quadro.
+
+    Voz sintetizada tende a apresentar trajetória de formante mais suave que a
+    fala natural; a dispersão relativa (desvio sobre média) é uma medida
+    adimensional disso, comparável entre áudios de durações diferentes.
+
+    Devolve 0.0 quando não há quadros suficientes — nunca uma constante
+    inventada, que era o comportamento anterior deste eixo do radar.
+    """
+    try:
+        import librosa
+
+        ordem = 2 + sr // 1000  # regra usual: 2 + fs/1000 coeficientes
+        tamanho, salto = 1024, 512
+        primeiros: list[float] = []
+        for inicio in range(0, max(len(y) - tamanho, 0), salto):
+            quadro = y[inicio:inicio + tamanho]
+            if np.max(np.abs(quadro)) < 1e-4:  # quadro em silêncio
+                continue
+            coef = librosa.lpc(quadro * np.hanning(len(quadro)), order=ordem)
+            raizes = np.roots(coef)
+            raizes = raizes[np.imag(raizes) > 0]
+            if raizes.size == 0:
+                continue
+            freqs = np.sort(np.angle(raizes) * (sr / (2 * np.pi)))
+            # F1: primeiro pico acima de 90 Hz (abaixo disso é F0/ruído DC)
+            acima = freqs[freqs > 90]
+            if acima.size:
+                primeiros.append(float(acima[0]))
+
+        if len(primeiros) < 3:
+            return 0.0
+        media = float(np.mean(primeiros))
+        return float(np.std(primeiros) / media) if media > 0 else 0.0
+    except Exception as exc:  # noqa: BLE001 — eixo do radar, não pode derrubar
+        logger.warning("Estabilidade de formante indisponível: %s", exc)
+        return 0.0
 
 
 def run_forensic_analysis(audio_path):
@@ -84,10 +125,8 @@ def run_forensic_analysis(audio_path):
                 segment_times = []
                 segment_confidences = []
 
-                audio_data_full = AudioData(
-                    samples=y, sample_rate=sr,
-                    duration=float(len(y) / sr)
-                )
+                # (o AudioData completo era montado aqui e nunca usado — a
+                # analise por segmento constroi o seu proprio abaixo)
 
                 # Deteccao por segmento
                 for start in range(0, len(y) - segment_samples, hop_samples):
@@ -150,22 +189,68 @@ def run_forensic_analysis(audio_path):
                     rms = librosa.feature.rms(y=y)[0]
                     importances.append(float(np.std(rms) / (np.mean(rms) + 1e-10)))
 
-                    # Phase discontinuity
+                    # Descontinuidade de fase.
+                    #
+                    # `np.angle` devolve fase em (-pi, pi]. Sem desdobrar, a
+                    # diferenca entre quadros mede o SALTO DE WRAP, nao a
+                    # descontinuidade: medido, um tom puro de 440 Hz dava 1,13
+                    # rad e ruido branco 2,09 rad — a metrica nao zerava nem
+                    # para o sinal mais limpo possivel. Com `unwrap` no eixo
+                    # temporal, o tom puro cai para 0,75.
                     D = librosa.stft(y)
-                    phase = np.angle(D)
+                    phase = np.unwrap(np.angle(D), axis=1)
                     phase_diff = np.diff(phase, axis=1)
                     importances.append(float(np.mean(np.abs(phase_diff))))
 
-                    # Formant stability (approximated via LPC)
-                    importances.append(0.5)  # placeholder
+                    # Formante, HNR e jitter: MEDIDOS.
+                    #
+                    # Ate 2026-07-28 estes tres eixos eram as constantes 0.5,
+                    # 0.4 e 0.3 — marcadas como "placeholder" no codigo, mas
+                    # exibidas no radar com os rotulos "Formant", "HNR" e
+                    # "Jitter/Shimmer". Tres dos oito eixos de um grafico
+                    # FORENSE nao variavam com o audio analisado. Os
+                    # extratores reais ja existiam em app/domain/features.
+                    from app.domain.features.extractors.voice_quality.components.noise import (  # noqa: E501
+                        compute_nhr,
+                    )
+                    from app.domain.features.extractors.voice_quality.components.perturbation import (  # noqa: E501
+                        compute_rap,
+                    )
 
-                    # HNR (approximated)
-                    importances.append(0.4)  # placeholder
+                    f0_contorno = librosa.yin(
+                        y, fmin=60, fmax=400, sr=sr,
+                    )
+                    f0_contorno = np.nan_to_num(f0_contorno, nan=0.0)
 
-                    # Jitter (approximated)
-                    importances.append(0.3)  # placeholder
+                    # Estabilidade de formante: dispersao relativa do primeiro
+                    # formante estimado por LPC quadro a quadro.
+                    importances.append(_estabilidade_de_formante(y, sr))
+                    # Harmonicidade: NHR (0 = puro harmonico, ~1 = puro ruido)
+                    importances.append(float(compute_nhr(y, f0_contorno, sr)))
+                    # Perturbacao de periodo (RAP), por trecho vozeado
+                    importances.append(float(compute_rap(y, f0_contorno, sr)))
 
-                    importances = np.array(importances)
+                    # Normalizacao POR EIXO, contra a faixa plausivel de cada
+                    # grandeza. As oito medidas tem unidades diferentes — CV
+                    # adimensional, unidades cepstrais, radianos, razao de
+                    # energia — e o radar dividia todas pelo MAXIMO GLOBAL. Com
+                    # o desvio de MFCC na casa de 10-50 e o desvio de ZCR na de
+                    # 0,01, o eixo de MFCC ficava sempre em 1,0 e os demais
+                    # colapsavam para perto de zero: o grafico tinha a mesma
+                    # forma para qualquer audio.
+                    faixas = (
+                        1.0,    # centroide espectral (CV)
+                        60.0,   # desvio de MFCC (unidades cepstrais)
+                        0.15,   # desvio de ZCR
+                        2.0,    # RMS (CV)
+                        np.pi,  # descontinuidade de fase (rad)
+                        0.5,    # estabilidade de formante (CV)
+                        1.0,    # NHR (0 = harmonico, 1 = ruido)
+                        0.02,   # RAP (2% ja e jitter severo)
+                    )
+                    importances = np.clip(
+                        np.array(importances) / np.array(faixas), 0.0, 1.0
+                    )
                     fig_radar = viz.plot_feature_importance_radar(
                         feature_names, importances)
                 except Exception as e:
@@ -346,7 +431,8 @@ def export_batch_report(files):
         # Write CSV
         tmp = tempfile.NamedTemporaryFile(
             suffix='.csv', delete=False, mode='w', newline='',
-            encoding='utf-8')
+            encoding='utf-8',
+            dir=get_gradio_exports_directory())
         writer = csv.writer(tmp)
         writer.writerow([
             'Arquivo', 'Resultado', 'Confiança', 'Modelo', 'Duração(s)'

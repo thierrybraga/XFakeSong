@@ -299,217 +299,232 @@ def _clear_feedback_ui():
 # Interface Principal (UI Fase 1 — 5 tabs role-based)
 # =====================================================================
 
-with gr.Blocks(
-    title="XFakeSong — Audio Deepfake Detection Platform",
-    theme=theme,
-    css=_CUSTOM_CSS,
-    head=_HEAD_HTML,
-) as demo:
-    # Estado de Login (Fixo como True para bypass)
-    is_logged_in = gr.State(True)
+def create_interface() -> "gr.Blocks":
+    """Constroi e devolve a interface Gradio.
 
-    # --- Container da Aplicação ---
-    with gr.Column(visible=True) as app_container:
-        # Status bar global + toolbar (sempre visível)
-        with gr.Row(elem_id="topbar_row"):
-            with gr.Column(scale=8, min_width=0):
-                status_bar_html = gr.HTML(_render_status_bar(), elem_id="status_bar")
-            with gr.Column(scale=1, min_width=120):
-                # UI Fase 3 — Toggles de tema e idioma
+    Antes, o `with gr.Blocks(...)` ficava em nivel de MODULO: importar
+    `app.interfaces.gradio.app` construia a UI inteira como efeito colateral —
+    carregava modelos, tocava o banco, montava 11 abas. Nao dava para importar
+    o modulo sem pagar por isso, nem para instanciar duas vezes, nem para
+    testar uma aba isolada.
+
+    O objeto `demo` de modulo continua existindo logo abaixo, porque
+    `app.py` (raiz) e `app/interfaces/web/main_fastapi.py` fazem
+    `from app.interfaces.gradio.app import demo`. Quem quiser controlar a
+    construcao usa esta funcao.
+    """
+    with gr.Blocks(
+        title="XFakeSong — Audio Deepfake Detection Platform",
+        theme=theme,
+        css=_CUSTOM_CSS,
+        head=_HEAD_HTML,
+    ) as demo:
+        # Login desativado (modo aberto): o `gr.State(True)` que existia aqui
+        # nao era lido por nada desde a desativacao da autenticacao.
+
+        # --- Container da Aplicação ---
+        with gr.Column(visible=True):
+            # Status bar global + toolbar (sempre visível)
+            with gr.Row(elem_id="topbar_row"):
+                with gr.Column(scale=8, min_width=0):
+                    status_bar_html = gr.HTML(_render_status_bar(), elem_id="status_bar")
+                with gr.Column(scale=1, min_width=120):
+                    # UI Fase 3 — Toggles de tema e idioma
+                    with gr.Row():
+                        theme_toggle_btn = gr.Button(
+                            "🌙",
+                            elem_classes="toolbar-toggle",
+                            size="sm",
+                            min_width=44,
+                            scale=0,
+                        )
+
+            with gr.Accordion("🔔 Notificações pendentes", open=False):
+                feedback_html = gr.HTML(
+                    _render_feedback_panel(),
+                    elem_id="global_feedback_center",
+                )
                 with gr.Row():
-                    theme_toggle_btn = gr.Button(
-                        "🌙",
-                        elem_classes="toolbar-toggle",
-                        size="sm",
-                        min_width=44,
-                        scale=0,
-                    )
-                    lang_toggle_btn = gr.Button(
-                        "🇧🇷 PT",
-                        elem_classes="toolbar-toggle",
-                        size="sm",
-                        min_width=70,
-                        scale=0,
-                    )
+                    feedback_refresh_btn = gr.Button("🔄 Atualizar", size="sm", scale=0)
+                    feedback_read_btn = gr.Button("Marcar lidas", size="sm", scale=0)
+                    feedback_clear_btn = gr.Button("Limpar histórico", size="sm", scale=0)
 
-        with gr.Accordion("🔔 Notificações pendentes", open=False):
-            feedback_html = gr.HTML(
-                _render_feedback_panel(),
-                elem_id="global_feedback_center",
-            )
-            with gr.Row():
-                feedback_refresh_btn = gr.Button("🔄 Atualizar", size="sm", scale=0)
-                feedback_read_btn = gr.Button("Marcar lidas", size="sm", scale=0)
-                feedback_clear_btn = gr.Button("Limpar histórico", size="sm", scale=0)
+            # Navbar consolidada (5 seções role-based):
+            # 🏠 Painel · 🎯 Detectar · 🔬 Investigar · 🎓 Treinar · 🗂️ Gerenciar
+            with gr.Tabs():
+                # 🏠 Painel — landing page com KPIs, status e atividade recente
+                # (a aba define seu próprio rótulo top-level "🏠 Painel")
+                create_dashboard_tab()
 
-        # Navbar consolidada (5 seções role-based):
-        # 🏠 Painel · 🎯 Detectar · 🔬 Investigar · 🎓 Treinar · 🗂️ Gerenciar
-        with gr.Tabs() as main_tabs:
-            # 🏠 Painel — landing page com KPIs, status e atividade recente
-            # (a aba define seu próprio rótulo top-level "🏠 Painel")
-            create_dashboard_tab()
-
-            # 🎯 Detectar — análise de áudio (single + lote) e perfis de voz
-            with gr.Tab("🎯 Detectar", id="tab_detect"):
-                with gr.Tabs():
-                    create_detection_tab()
-                    create_voice_profiles_tab()
-
-            # 🔬 Investigar — análise forense + explicabilidade (a aba define
-            # seu próprio rótulo top-level "🔬 Investigar")
-            create_forensic_analysis_tab()
-
-            # 🎓 Treinar — assistente linear + otimização
-            with gr.Tab("🎓 Treinar", id="tab_train"):
-                training_enabled = os.getenv(
-                    "ENABLE_TRAINING", "true"
-                ).strip().lower() not in {"0", "false", "no", "off"}
-                if training_enabled:
+                # 🎯 Detectar — análise de áudio (single + lote) e perfis de voz
+                with gr.Tab("🎯 Detectar", id="tab_detect"):
                     with gr.Tabs():
-                        create_training_wizard_tab()
-                        create_optimization_tab()
-                else:
-                    gr.Markdown(
-                        "### Modo demonstração\n\n"
-                        "O treinamento está desativado neste ambiente. "
-                        "Use a aba **Detectar** para inferência com os modelos "
-                        "já treinados."
+                        create_detection_tab()
+                        create_voice_profiles_tab()
+
+                # 🔬 Investigar — análise forense + explicabilidade (a aba define
+                # seu próprio rótulo top-level "🔬 Investigar")
+                create_forensic_analysis_tab()
+
+                # 🎓 Treinar — assistente linear + otimização
+                with gr.Tab("🎓 Treinar", id="tab_train"):
+                    training_enabled = os.getenv(
+                        "ENABLE_TRAINING", "true"
+                    ).strip().lower() not in {"0", "false", "no", "off"}
+                    if training_enabled:
+                        with gr.Tabs():
+                            create_training_wizard_tab()
+                            create_optimization_tab()
+                    else:
+                        gr.Markdown(
+                            "### Modo demonstração\n\n"
+                            "O treinamento está desativado neste ambiente. "
+                            "Use a aba **Detectar** para inferência com os modelos "
+                            "já treinados."
+                        )
+
+                # 🗂️ Gerenciar — datasets, features e histórico
+                with gr.Tab("🗂️ Gerenciar", id="tab_admin"):
+                    with gr.Tabs():
+                        create_dataset_management_tab()
+                        create_features_tab()
+                        create_history_tab()
+
+            # Auto-refresh da barra de status.
+            #
+            # O intervalo era 15 s FIXO, e o `tick` dispara para CADA cliente
+            # conectado: com o servidor ocioso e um cliente aberto, sao 240
+            # execucoes por hora de uma funcao que consulta GPU, contagem de
+            # modelos e perfis. O default subiu para 60 s — o botao de
+            # atualizar ao lado cobre quem precisa do estado imediato — e
+            # XFAKE_STATUS_REFRESH_S permite ajustar sem editar codigo.
+            # 0 (ou negativo) desliga o timer e deixa so o botao.
+            try:
+                _sb_interval = float(os.getenv("XFAKE_STATUS_REFRESH_S", "60"))
+            except (TypeError, ValueError):
+                _sb_interval = 60.0
+            if _sb_interval > 0:
+                try:
+                    _sb_timer = gr.Timer(_sb_interval)
+                    _sb_timer.tick(
+                        fn=_refresh_global_feedback,
+                        inputs=[],
+                        outputs=[status_bar_html, feedback_html],
                     )
+                except Exception:
+                    # gr.Timer ausente em versões antigas — degradação graciosa
+                    pass
 
-            # 🗂️ Gerenciar — datasets, features e histórico
-            with gr.Tab("🗂️ Gerenciar", id="tab_admin"):
-                with gr.Tabs():
-                    create_dataset_management_tab()
-                    create_features_tab()
-                    create_history_tab()
-
-        # Auto-refresh do status bar a cada 15s
-        try:
-            _sb_timer = gr.Timer(15.0)
-            _sb_timer.tick(
+            feedback_refresh_btn.click(
                 fn=_refresh_global_feedback,
                 inputs=[],
                 outputs=[status_bar_html, feedback_html],
             )
-        except Exception:
-            # gr.Timer não disponível em versões antigas — degradação graciosa
-            pass
+            feedback_read_btn.click(
+                fn=_mark_feedback_read_ui,
+                inputs=[],
+                outputs=[status_bar_html, feedback_html],
+            )
+            feedback_clear_btn.click(
+                fn=_clear_feedback_ui,
+                inputs=[],
+                outputs=[status_bar_html, feedback_html],
+            )
 
-        feedback_refresh_btn.click(
-            fn=_refresh_global_feedback,
-            inputs=[],
-            outputs=[status_bar_html, feedback_html],
-        )
-        feedback_read_btn.click(
-            fn=_mark_feedback_read_ui,
-            inputs=[],
-            outputs=[status_bar_html, feedback_html],
-        )
-        feedback_clear_btn.click(
-            fn=_clear_feedback_ui,
-            inputs=[],
-            outputs=[status_bar_html, feedback_html],
-        )
+            # ───── UI Fase 3: Tema + Idioma ─────
+            # Estados em memória do servidor (resetam ao recarregar página)
+            theme_state = gr.State("dark")
 
-        # ───── UI Fase 3: Tema + Idioma ─────
-        # Estados em memória do servidor (resetam ao recarregar página)
-        theme_state = gr.State("dark")
-        lang_state = gr.State("pt")
+            # NOTE: o toggle de tema usa um lambda inline com `js=` no .click()
+            # abaixo (aplica data-theme no DOM + persiste em localStorage). Não há
+            # função Python dedicada — a antiga `_toggle_theme` foi removida por ser
+            # código morto (nunca era chamada).
 
-        # NOTE: o toggle de tema usa um lambda inline com `js=` no .click()
-        # abaixo (aplica data-theme no DOM + persiste em localStorage). Não há
-        # função Python dedicada — a antiga `_toggle_theme` foi removida por ser
-        # código morto (nunca era chamada).
+            # SELETOR DE IDIOMA REMOVIDO (2026-07-28).
+            #
+            # O botao existia, chamava `i18n.set_language()` e trocava o proprio
+            # rotulo — mas NENHUMA aba chama `i18n.t()`, entao a interface seguia
+            # 100% em portugues. A propria notificacao admitia: "some tabs will keep
+            # Portuguese — full i18n WIP". Um controle visivel que nao faz o que
+            # promete e pior do que nao existir.
+            #
+            # Havia um agravante: `_current_lang` e estado GLOBAL do processo. Se as
+            # abas passarem a ler `t()`, um usuario trocando o idioma mudaria a
+            # interface de todos os outros — o Gradio serve varias sessoes no mesmo
+            # processo. Ao reintroduzir, o idioma precisa viver em `gr.State` (por
+            # sessao) e ser passado a `t(key, lang=...)`, nunca no modulo.
+            #
+            # `utils/i18n.py` permanece, com o dicionario de traducoes intacto.
 
-        def _toggle_lang(current_lang: str):
-            """Alterna PT <-> EN. Atualiza estado global do i18n."""
-            from app.interfaces.gradio.utils.i18n import set_language
-
-            new_lang = "en" if current_lang == "pt" else "pt"
-            set_language(new_lang)
-            new_label = "🇺🇸 EN" if new_lang == "en" else "🇧🇷 PT"
+            # JS injection helper: usa o atributo `js=` do click handler (Gradio 4.x)
             try:
-                from app.interfaces.gradio.utils import notify_info
+                theme_toggle_btn.click(
+                    fn=lambda t: (
+                        "light" if t == "dark" else "dark",
+                        gr.update(value="☀" if t == "dark" else "🌙"),
+                    ),
+                    inputs=[theme_state],
+                    outputs=[theme_state, theme_toggle_btn],
+                    js="""(theme) => {
+                        const next = theme === 'dark' ? 'light' : 'dark';
+                        document.body.setAttribute('data-theme', next);
+                        try { localStorage.setItem('xf_theme', next); } catch(e) {}
+                        return [theme];
+                    }""",
+                )
+            except TypeError:
+                # Versões mais antigas de Gradio não aceitam js= em click
+                theme_toggle_btn.click(
+                    fn=lambda t: (
+                        "light" if t == "dark" else "dark",
+                        gr.update(value="☀" if t == "dark" else "🌙"),
+                    ),
+                    inputs=[theme_state],
+                    outputs=[theme_state, theme_toggle_btn],
+                )
 
-                notify_info(
-                    "Language: English (some tabs will keep Portuguese — full i18n WIP)"
-                    if new_lang == "en"
-                    else "Idioma: Português"
+
+            # Restaura tema do localStorage no load (se disponível)
+            try:
+                demo.load(
+                    fn=None,
+                    inputs=[],
+                    outputs=[theme_state, theme_toggle_btn],
+                    js="""() => {
+                        let saved = 'dark';
+                        try {
+                            saved = localStorage.getItem('xf_theme') || 'dark';
+                            document.body.setAttribute('data-theme', saved);
+                        } catch(e) {}
+                        // A11y: os toggles da toolbar são botões só-com-emoji;
+                        // adiciona rótulos acessíveis para leitores de tela.
+                        try {
+                            const sel = 'button.toolbar-toggle';
+                            const labels = [
+                                'Alternar tema claro/escuro',
+                                'Alternar idioma (PT/EN)',
+                            ];
+                            document.querySelectorAll(sel).forEach((btn, i) => {
+                                const label = labels[i] || 'Alternar';
+                                btn.setAttribute('aria-label', label);
+                                btn.setAttribute('title', label);
+                            });
+                        } catch(e) {}
+                        return [saved, saved === 'light' ? '☀' : '🌙'];
+                    }""",
                 )
             except Exception:
                 pass
-            return new_lang, gr.update(value=new_label), _render_status_bar()
-
-        # JS injection helper: usa o atributo `js=` do click handler (Gradio 4.x)
-        try:
-            theme_toggle_btn.click(
-                fn=lambda t: (
-                    "light" if t == "dark" else "dark",
-                    gr.update(value="☀" if t == "dark" else "🌙"),
-                ),
-                inputs=[theme_state],
-                outputs=[theme_state, theme_toggle_btn],
-                js="""(theme) => {
-                    const next = theme === 'dark' ? 'light' : 'dark';
-                    document.body.setAttribute('data-theme', next);
-                    try { localStorage.setItem('xf_theme', next); } catch(e) {}
-                    return [theme];
-                }""",
-            )
-        except TypeError:
-            # Versões mais antigas de Gradio não aceitam js= em click
-            theme_toggle_btn.click(
-                fn=lambda t: (
-                    "light" if t == "dark" else "dark",
-                    gr.update(value="☀" if t == "dark" else "🌙"),
-                ),
-                inputs=[theme_state],
-                outputs=[theme_state, theme_toggle_btn],
-            )
-
-        lang_toggle_btn.click(
-            fn=_toggle_lang,
-            inputs=[lang_state],
-            outputs=[lang_state, lang_toggle_btn, status_bar_html],
-        )
-
-        # Restaura tema do localStorage no load (se disponível)
-        try:
-            demo.load(
-                fn=None,
-                inputs=[],
-                outputs=[theme_state, theme_toggle_btn],
-                js="""() => {
-                    let saved = 'dark';
-                    try {
-                        saved = localStorage.getItem('xf_theme') || 'dark';
-                        document.body.setAttribute('data-theme', saved);
-                    } catch(e) {}
-                    // A11y: os toggles da toolbar são botões só-com-emoji;
-                    // adiciona rótulos acessíveis para leitores de tela.
-                    try {
-                        const sel = 'button.toolbar-toggle';
-                        const labels = [
-                            'Alternar tema claro/escuro',
-                            'Alternar idioma (PT/EN)',
-                        ];
-                        document.querySelectorAll(sel).forEach((btn, i) => {
-                            const label = labels[i] || 'Alternar';
-                            btn.setAttribute('aria-label', label);
-                            btn.setAttribute('title', label);
-                        });
-                    } catch(e) {}
-                    return [saved, saved === 'light' ? '☀' : '🌙'];
-                }""",
-            )
-        except Exception:
-            pass
 
 
-# PROD.5: Queue com limites para evitar DoS via flood de requests:
-# - default_concurrency_limit=20: workers paralelos (matches detection.py expectation)
-# - max_size=100: requests aguardando — após isso, novas viram 503
-# Sem max_size, RAM pode esgotar com uploads grandes em fila.
+    # PROD.5: Queue com limites para evitar DoS via flood de requests:
+    # - default_concurrency_limit=20: workers paralelos (matches detection.py expectation)
+    # - max_size=100: requests aguardando — após isso, novas viram 503
+    # Sem max_size, RAM pode esgotar com uploads grandes em fila.
+    return demo
+
+
+demo = create_interface()
 demo.queue(default_concurrency_limit=20, max_size=100)
 
 

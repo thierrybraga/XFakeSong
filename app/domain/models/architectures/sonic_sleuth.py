@@ -18,14 +18,17 @@ Best result: LFCC achieves 98.27% accuracy, 0.016 EER on ASVspoof2019+In-the-Wil
 import logging
 from typing import Tuple
 
-import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers, models
 
 from app.domain.models.architectures.layers import (
+    ExpandDimsLayer,
     SqueezeExcitationBlock2D,
+    cqt_triangular_filterbank,
+    dct_matrix,
     ensure_flat_input,
     is_raw_audio,
+    linear_triangular_filterbank,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,39 +58,20 @@ class LFCCLayer(layers.Layer):
 
     def build(self, input_shape):
         super().build(input_shape)
-        # Create linearly-spaced filter bank (key difference from MFCC)
-        num_bins = self.n_fft // 2 + 1
-        low_freq = 0.0
-        high_freq = self.sample_rate / 2.0
-        # Linear spacing (not mel spacing)
-        linear_points = tf.linspace(low_freq, high_freq, self.n_filters + 2)
-        bin_points = tf.cast(
-            tf.round(linear_points * self.n_fft / self.sample_rate), tf.int32
+        # CORREÇÃO: o filterbank era montado com `tf.linspace(...).numpy()` e,
+        # quando o tensor não era eager (build em graph mode), caía num
+        # `np.linspace` de FALLBACK SILENCIOSO — produzindo um banco de filtros
+        # DIFERENTE do pretendido, sem qualquer aviso. Agora usa os helpers
+        # compartilhados em numpy puro (mesma construção do ensemble.py).
+        self.filter_bank = tf.constant(
+            linear_triangular_filterbank(
+                self.n_fft, self.sample_rate, self.n_filters
+            ),
+            dtype=tf.float32,
         )
-        # Build triangular filter bank
-        filters = np.zeros((num_bins, self.n_filters), dtype=np.float32)
-        bin_np = bin_points.numpy() if hasattr(bin_points, 'numpy') else np.linspace(
-            0, num_bins - 1, self.n_filters + 2, dtype=np.int32
+        self.dct_matrix = tf.constant(
+            dct_matrix(self.n_filters, self.n_lfcc), dtype=tf.float32
         )
-        for i in range(self.n_filters):
-            left = int(bin_np[i])
-            center = int(bin_np[i + 1])
-            right = int(bin_np[i + 2])
-            for j in range(left, center):
-                if center > left:
-                    filters[j, i] = (j - left) / (center - left)
-            for j in range(center, right):
-                if right > center:
-                    filters[j, i] = (right - j) / (right - center)
-        self.filter_bank = tf.constant(filters, dtype=tf.float32)
-        # DCT matrix for cepstral coefficients
-        dct_matrix = np.zeros((self.n_filters, self.n_lfcc), dtype=np.float32)
-        for k in range(self.n_lfcc):
-            for n in range(self.n_filters):
-                dct_matrix[n, k] = np.cos(np.pi * k * (2 * n + 1) / (2 * self.n_filters))
-        dct_matrix[:, 0] *= 1.0 / np.sqrt(self.n_filters)
-        dct_matrix[:, 1:] *= np.sqrt(2.0 / self.n_filters)
-        self.dct_matrix = tf.constant(dct_matrix, dtype=tf.float32)
 
     def call(self, inputs):
         # STFT
@@ -135,14 +119,10 @@ class MFCCLayer(layers.Layer):
 
     def build(self, input_shape):
         super().build(input_shape)
-        # DCT matrix
-        dct_matrix = np.zeros((self.n_mels, self.n_mfcc), dtype=np.float32)
-        for k in range(self.n_mfcc):
-            for n in range(self.n_mels):
-                dct_matrix[n, k] = np.cos(np.pi * k * (2 * n + 1) / (2 * self.n_mels))
-        dct_matrix[:, 0] *= 1.0 / np.sqrt(self.n_mels)
-        dct_matrix[:, 1:] *= np.sqrt(2.0 / self.n_mels)
-        self.dct_matrix = tf.constant(dct_matrix, dtype=tf.float32)
+        # DCT matrix (helper compartilhado — ver layers.py)
+        self.dct_matrix = tf.constant(
+            dct_matrix(self.n_mels, self.n_mfcc), dtype=tf.float32
+        )
 
     def call(self, inputs):
         stft = tf.signal.stft(
@@ -197,27 +177,12 @@ class CQTLayer(layers.Layer):
 
     def build(self, input_shape):
         super().build(input_shape)
-        num_stft_bins = self.n_fft // 2 + 1
-        # CQT center frequencies (log-spaced)
-        fmin = 32.70  # C1
-        freqs = fmin * (2.0 ** (np.arange(self.n_bins) / self.bins_per_octave))
-        # Map CQT bins to STFT bins via triangular filters
-        stft_freqs = np.linspace(0, self.sample_rate / 2, num_stft_bins)
-        cqt_filters = np.zeros((num_stft_bins, self.n_bins), dtype=np.float32)
-        for i, fc in enumerate(freqs):
-            bandwidth = fc * (2.0 ** (1.0 / self.bins_per_octave) - 1)
-            low = fc - bandwidth / 2
-            high = fc + bandwidth / 2
-            for j, sf in enumerate(stft_freqs):
-                if low <= sf <= high:
-                    if sf <= fc and fc > low:
-                        cqt_filters[j, i] = (sf - low) / (fc - low)
-                    elif sf > fc and high > fc:
-                        cqt_filters[j, i] = (high - sf) / (high - fc)
-        # Normalize each filter
-        norms = np.sum(cqt_filters, axis=0, keepdims=True) + 1e-8
-        cqt_filters = cqt_filters / norms
-        self.cqt_filter_bank = tf.constant(cqt_filters, dtype=tf.float32)
+        self.cqt_filter_bank = tf.constant(
+            cqt_triangular_filterbank(
+                self.n_fft, self.sample_rate, self.n_bins, self.bins_per_octave
+            ),
+            dtype=tf.float32,
+        )
 
     def call(self, inputs):
         stft = tf.signal.stft(
@@ -287,18 +252,25 @@ class MelSpectrogramLayer(layers.Layer):
 
 @tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class ConvBlock(layers.Layer):
-    """Conv2D + BatchNorm + ReLU + MaxPool2D + Dropout block."""
+    """Conv2D [+ BatchNorm] + ReLU + MaxPool2D + Dropout block.
 
-    def __init__(self, filters, kernel_size=(3, 3), dropout_rate=0.3, **kwargs):
+    ``use_batch_norm`` existe para permitir a configuração LITERAL da Figura 3
+    do paper (Conv2D + MaxPool2D, sem BN). Default True preserva os modelos já
+    treinados e desserializa configs antigas sem a chave.
+    """
+
+    def __init__(self, filters, kernel_size=(3, 3), dropout_rate=0.3,
+                 use_batch_norm=True, **kwargs):
         super(ConvBlock, self).__init__(**kwargs)
         self.filters = filters
         self.kernel_size = kernel_size
         self.dropout_rate = dropout_rate
+        self.use_batch_norm = bool(use_batch_norm)
         self.conv = layers.Conv2D(
             filters=filters, kernel_size=kernel_size,
-            padding='same', use_bias=False
+            padding='same', use_bias=not self.use_batch_norm
         )
-        self.bn = layers.BatchNormalization()
+        self.bn = layers.BatchNormalization() if self.use_batch_norm else None
         self.relu = layers.ReLU()
         self.maxpool = layers.MaxPooling2D(pool_size=(2, 2))
         self.dropout = layers.Dropout(dropout_rate)
@@ -306,7 +278,8 @@ class ConvBlock(layers.Layer):
     def build(self, input_shape):
         self.conv.build(input_shape)
         conv_shape = self.conv.compute_output_shape(input_shape)
-        self.bn.build(conv_shape)
+        if self.bn is not None:
+            self.bn.build(conv_shape)
         self.relu.build(conv_shape)
         pool_shape = self.maxpool.compute_output_shape(conv_shape)
         self.dropout.build(pool_shape)
@@ -314,7 +287,8 @@ class ConvBlock(layers.Layer):
 
     def call(self, inputs, training=None):
         x = self.conv(inputs)
-        x = self.bn(x, training=training)
+        if self.bn is not None:
+            x = self.bn(x, training=training)
         x = self.relu(x)
         x = self.maxpool(x)
         x = self.dropout(x, training=training)
@@ -325,14 +299,20 @@ class ConvBlock(layers.Layer):
         config.update({
             'filters': self.filters,
             'kernel_size': self.kernel_size,
-            'dropout_rate': self.dropout_rate
+            'dropout_rate': self.dropout_rate,
+            'use_batch_norm': self.use_batch_norm,
         })
         return config
 
 
-@tf.keras.utils.register_keras_serializable(package="XFakeSong")
+@tf.keras.utils.register_keras_serializable(
+    package="XFakeSong", name="sonic_sleuth_preprocess"
+)
 def preprocess(x):
     """Global preprocessing function for Sonic Sleuth compatibility.
+
+    Registrada com nome QUALIFICADO: várias arquiteturas exportavam funções
+    diferentes sob a chave global 'preprocess' e a última importação vencia.
 
     Vetorizado: `tf.signal.stft` opera direto no batch (B, T) — o loop
     Python anterior (`for i in range(tf.shape(x)[0])`) quebrava em graph
@@ -361,31 +341,64 @@ def preprocess(x):
 # Paper-faithful Sonic Sleuth model (Alshehri et al., 2024)
 # ---------------------------------------------------------------------------
 
-def _create_sonic_sleuth_paper(input_shape, num_classes=1, feature_type='lfcc',
-                               sample_rate=16000):
-    """Create paper-faithful Sonic Sleuth model.
+#: Progressão de filtros dos blocos convolucionais. Os três primeiros
+#: (32 → 64 → 128) são exatamente os da Figura 3 do paper; 256/512 pertencem à
+#: extensão usada por este projeto (`num_conv_blocks=5`).
+_SONIC_SLEUTH_FILTERS = [32, 64, 128, 256, 512]
 
-    Architecture per Alshehri et al., 2024, Figure 3:
+
+def _create_sonic_sleuth_paper(input_shape, num_classes=1, feature_type='lfcc',
+                               sample_rate=16000, num_conv_blocks=5,
+                               dropout_rate=0.3, classifier_dropout=None,
+                               use_batch_norm=True, use_residual=True,
+                               use_se_blocks=True, use_gap_gmp=True,
+                               learning_rate=1e-3,
+                               architecture='sonic_sleuth'):
+    """Create Sonic Sleuth model (Alshehri et al., 2024).
+
+    Configuração do paper (Figura 3), disponível via ``num_conv_blocks=3``,
+    ``use_residual=False``, ``use_se_blocks=False``, ``use_gap_gmp=False``,
+    ``use_batch_norm=False``, ``dropout_rate=0.0``, ``classifier_dropout=0.1``
+    — é o que a variante ``sonic_sleuth_paper`` monta:
     - Feature extraction: LFCC (best), MFCC, or CQT
-    - 3× Conv2D(filters, 3×3, relu, same) + MaxPool2D(2×2) each
-      filters: 32 → 64 → 128
-    - Flatten
-    - Dense(256, relu) → Dense(128, relu) → Dropout(0.1)
-    - Dense(1, sigmoid) — binary classification
-    - Optimizer: Adam(lr=0.001)
-    - Loss: binary_crossentropy
+    - 3× Conv2D(filters, 3×3, relu, same) + MaxPool2D(2×2) each (32 → 64 → 128)
+    - Flatten → Dense(256, relu) → Dense(128, relu) → Dropout(0.1)
+    - Dense(1, sigmoid), Adam(lr=0.001), binary_crossentropy
+
+    O DEFAULT deste projeto é a versão estendida (5 blocos + SE + residual +
+    GAP/GMP), que é a que está treinada e promovida no benchmark.
+
+    CORREÇÃO: estes parâmetros existiam no ``registry.default_params`` mas o
+    builder os IGNORAVA (só lia ``sample_rate``) — a topologia era fixa no
+    código e o dropout hardcoded em 0.3. Agora todos têm efeito real; os
+    defaults abaixo reproduzem exatamente o comportamento anterior.
 
     Args:
         input_shape: (samples,) for raw audio or (time, features) for pre-extracted
         num_classes: 1 for binary (paper default)
         feature_type: 'lfcc' (best per paper), 'mfcc', 'cqt', or 'lfcc_cqt' (ensemble)
         sample_rate: Audio sample rate (default 16000)
+        num_conv_blocks: 3 (paper) a 5 (extensão deste projeto)
+        dropout_rate: dropout dentro de cada bloco convolucional
+        classifier_dropout: dropout da cabeça (default: ``dropout_rate``)
+        use_batch_norm: BatchNorm nos blocos (fora da Figura 3)
+        use_residual: atalhos residuais a partir do 3º bloco
+        use_se_blocks: Squeeze-and-Excitation após cada bloco
+        use_gap_gmp: GAP+GMP concatenados no lugar de Flatten
+        learning_rate: LR do Adam (paper: 1e-3)
     """
+    num_conv_blocks = int(num_conv_blocks)
+    if not 1 <= num_conv_blocks <= len(_SONIC_SLEUTH_FILTERS):
+        raise ValueError(
+            f"num_conv_blocks deve estar entre 1 e {len(_SONIC_SLEUTH_FILTERS)}"
+        )
+    if classifier_dropout is None:
+        classifier_dropout = dropout_rate
     inputs = layers.Input(shape=input_shape, name='audio_input')
 
     # ---------- Feature extraction ----------
     if is_raw_audio(input_shape):
-        audio = ensure_flat_input(inputs, input_shape)
+        audio = ensure_flat_input(inputs)
         # Squeeze to (batch, time) if needed for STFT-based layers
         if len(input_shape) == 2 and input_shape[-1] == 1:
             audio = layers.Reshape((input_shape[0],), name='squeeze_channel')(audio)
@@ -427,83 +440,84 @@ def _create_sonic_sleuth_paper(input_shape, num_classes=1, feature_type='lfcc',
             raise ValueError(f"Unknown feature_type: {feature_type}. Use 'lfcc', 'mfcc', 'cqt', or 'lfcc_cqt'.")
 
         # Add channel dimension for Conv2D: (batch, time, features) → (batch, time, features, 1)
-        x = layers.Reshape(
-            (tf.shape(features)[1], features.shape[-1], 1) if features.shape[1] is None
-            else (features.shape[1], features.shape[-1], 1),
-            name='add_channel'
-        )(features) if features.shape[1] is not None else layers.Lambda(
-            lambda f: tf.expand_dims(f, axis=-1), name='add_channel'
-        )(features)
+        # ExpandDimsLayer (camada registrada) no lugar do `layers.Lambda`:
+        # Lambda com lambda Python não é recarregável em safe_mode (Keras 3).
+        if features.shape[1] is not None:
+            x = layers.Reshape(
+                (features.shape[1], features.shape[-1], 1), name='add_channel'
+            )(features)
+        else:
+            x = ExpandDimsLayer(axis=-1, name='add_channel')(features)
     else:
         # Pre-extracted features (spectrogram input)
         x = inputs
         if len(input_shape) == 2:
             x = layers.Reshape((*input_shape, 1), name='add_channel')(x)
 
-    # ---------- CNN (Enhanced from Paper Figure 3) ----------
-    # 5× Conv2D+BN+ReLU blocks: 32 → 64 → 128 → 256 → 512 filters
-    # With SE-blocks after each ConvBlock and residual connections for blocks 3-5
-
-    # Block 1: 32 filters (no residual — channel mismatch from input)
-    x = ConvBlock(filters=32, kernel_size=(3, 3), dropout_rate=0.3, name='conv_block_1')(x)
-    x = SqueezeExcitationBlock2D(reduction=16, name='se_block_1')(x)
-
-    # Block 2: 64 filters (no residual — channel mismatch 32→64)
-    x = ConvBlock(filters=64, kernel_size=(3, 3), dropout_rate=0.3, name='conv_block_2')(x)
-    x = SqueezeExcitationBlock2D(reduction=16, name='se_block_2')(x)
-
-    # Block 3: 128 filters (residual with 1x1 projection 64→128)
-    shortcut_3 = layers.Conv2D(128, (1, 1), padding='same', use_bias=False, name='res_proj_3')(x)
-    shortcut_3 = layers.MaxPooling2D((2, 2), name='res_pool_3')(shortcut_3)
-    x = ConvBlock(filters=128, kernel_size=(3, 3), dropout_rate=0.3, name='conv_block_3')(x)
-    x = layers.Add(name='res_add_3')([x, shortcut_3])
-    x = SqueezeExcitationBlock2D(reduction=16, name='se_block_3')(x)
-
-    # Block 4: 256 filters (residual with 1x1 projection 128→256)
-    shortcut_4 = layers.Conv2D(256, (1, 1), padding='same', use_bias=False, name='res_proj_4')(x)
-    shortcut_4 = layers.MaxPooling2D((2, 2), name='res_pool_4')(shortcut_4)
-    x = ConvBlock(filters=256, kernel_size=(3, 3), dropout_rate=0.3, name='conv_block_4')(x)
-    x = layers.Add(name='res_add_4')([x, shortcut_4])
-    x = SqueezeExcitationBlock2D(reduction=16, name='se_block_4')(x)
-
-    # Block 5: 512 filters (residual with 1x1 projection 256→512)
-    shortcut_5 = layers.Conv2D(512, (1, 1), padding='same', use_bias=False, name='res_proj_5')(x)
-    shortcut_5 = layers.MaxPooling2D((2, 2), name='res_pool_5')(shortcut_5)
-    x = ConvBlock(filters=512, kernel_size=(3, 3), dropout_rate=0.3, name='conv_block_5')(x)
-    x = layers.Add(name='res_add_5')([x, shortcut_5])
-    x = SqueezeExcitationBlock2D(reduction=16, name='se_block_5')(x)
+    # ---------- CNN ----------
+    # Blocos Conv2D+[BN]+ReLU+MaxPool+Dropout com a progressão de filtros do
+    # paper (32 → 64 → 128) estendida por 256 → 512. Residual (a partir do 3º
+    # bloco) e SE são OPCIONAIS: desligados, o grafo é o da Figura 3.
+    for index in range(num_conv_blocks):
+        filters = _SONIC_SLEUTH_FILTERS[index]
+        block_id = index + 1
+        # Residual só a partir do 3º bloco: nos dois primeiros o número de
+        # canais da entrada não bate com o do bloco.
+        add_residual = use_residual and index >= 2
+        if add_residual:
+            shortcut = layers.Conv2D(
+                filters, (1, 1), padding='same', use_bias=False,
+                name=f'res_proj_{block_id}',
+            )(x)
+            shortcut = layers.MaxPooling2D((2, 2), name=f'res_pool_{block_id}')(shortcut)
+        x = ConvBlock(
+            filters=filters, kernel_size=(3, 3), dropout_rate=dropout_rate,
+            use_batch_norm=use_batch_norm, name=f'conv_block_{block_id}',
+        )(x)
+        if add_residual:
+            x = layers.Add(name=f'res_add_{block_id}')([x, shortcut])
+        if use_se_blocks:
+            x = SqueezeExcitationBlock2D(reduction=16, name=f'se_block_{block_id}')(x)
 
     # ---------- Classification head ----------
-    # GAP + GMP instead of Flatten
-    gap = layers.GlobalAveragePooling2D(name='gap')(x)
-    gmp = layers.GlobalMaxPooling2D(name='gmp')(x)
-    x = layers.Concatenate(name='gap_gmp')([gap, gmp])
+    if use_gap_gmp:
+        gap = layers.GlobalAveragePooling2D(name='gap')(x)
+        gmp = layers.GlobalMaxPooling2D(name='gmp')(x)
+        x = layers.Concatenate(name='gap_gmp')([gap, gmp])
+    else:
+        x = layers.Flatten(name='flatten')(x)  # Figura 3 do paper
     x = layers.Dense(256, activation='relu', name='dense_1')(x)
     x = layers.Dense(128, activation='relu', name='dense_2')(x)
-    x = layers.Dropout(0.3, name='classifier_dropout')(x)
+    x = layers.Dropout(classifier_dropout, name='classifier_dropout')(x)
 
     # Cabeça de saída PADRONIZADA: num_classes>=2 → softmax N-unidades
     # (convenção única do projeto). Só num_classes==1 usa sigmoid 1-unidade.
+    # dtype='float32' para não saturar sob mixed_float16.
     if num_classes == 1:
-        outputs = layers.Dense(1, activation='sigmoid', name='output')(x)
+        outputs = layers.Dense(
+            1, activation='sigmoid', name='output', dtype='float32'
+        )(x)
         loss = 'binary_crossentropy'
     else:
-        outputs = layers.Dense(num_classes, activation='softmax', name='output')(x)
+        outputs = layers.Dense(
+            num_classes, activation='softmax', name='output', dtype='float32'
+        )(x)
         loss = 'sparse_categorical_crossentropy'
 
-    model = models.Model(inputs=inputs, outputs=outputs, name='sonic_sleuth')
+    model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
 
-    # Paper uses Adam optimizer with default lr
+    # Paper uses Adam optimizer with default lr (1e-3)
     model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+        optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
         loss=loss,
         metrics=['accuracy']
     )
 
     logger.info(
-        f"Sonic Sleuth (enhanced, paper-inspired: 5 ConvBlocks+SE+residual vs "
-        f"3 do paper) created: feature_type={feature_type}, "
-        f"params={model.count_params()}"
+        "Sonic Sleuth criado: feature_type=%s, blocos=%d, residual=%s, SE=%s, "
+        "GAP+GMP=%s, BN=%s, dropout=%s, params=%d",
+        feature_type, num_conv_blocks, use_residual, use_se_blocks,
+        use_gap_gmp, use_batch_norm, dropout_rate, model.count_params(),
     )
     return model
 
@@ -512,39 +526,88 @@ def _create_sonic_sleuth_paper(input_shape, num_classes=1, feature_type='lfcc',
 # Factory function
 # ---------------------------------------------------------------------------
 
+#: Parâmetros da configuração LITERAL da Figura 3 (Alshehri et al., 2024).
+_SONIC_SLEUTH_PAPER_CONFIG = {
+    'num_conv_blocks': 3,       # 32 → 64 → 128
+    'use_residual': False,
+    'use_se_blocks': False,
+    'use_gap_gmp': False,       # Flatten, como na figura
+    'use_batch_norm': False,    # a figura mostra Conv2D + MaxPool apenas
+    'dropout_rate': 0.0,        # sem dropout nos blocos
+    'classifier_dropout': 0.1,  # único Dropout(0.1), antes da saída
+    'learning_rate': 1e-3,
+}
+
+#: Chaves de construção aceitas por `_create_sonic_sleuth_paper`. Servem também
+#: de contrato: qualquer outra chave enviada pelo registry é ignorada e AVISADA
+#: (antes tudo caía em **kwargs silenciosamente e virava config morto).
+_SONIC_SLEUTH_MODEL_KEYS = {
+    'sample_rate', 'num_conv_blocks', 'dropout_rate', 'classifier_dropout',
+    'use_batch_norm', 'use_residual', 'use_se_blocks', 'use_gap_gmp',
+    'learning_rate',
+}
+
+
 def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
                  architecture: str = 'sonic_sleuth', **kwargs) -> models.Model:
     """Factory function for Sonic Sleuth model variants.
 
     Variants:
-        'sonic_sleuth': Paper-faithful with LFCC features (best per paper)
-        'sonic_sleuth_mfcc': Paper-faithful with MFCC features
-        'sonic_sleuth_cqt': Paper-faithful with CQT features
-        'sonic_sleuth_lfcc_cqt': Paper-faithful LFCC+CQT ensemble
+        'sonic_sleuth': LFCC + versão estendida (5 blocos + SE + residual)
+        'sonic_sleuth_mfcc' / 'sonic_sleuth_cqt' / 'sonic_sleuth_lfcc_cqt':
+            mesma topologia com outra representação de entrada
+        'sonic_sleuth_paper': configuração LITERAL da Figura 3 do artigo
+            (3 blocos 32/64/128, Flatten, Dropout(0.1), sem SE/residual/BN)
     """
     feature_map = {
         'sonic_sleuth': 'lfcc',
         'sonic_sleuth_lfcc': 'lfcc',
+        'sonic_sleuth_paper': 'lfcc',
         'sonic_sleuth_mfcc': 'mfcc',
         'sonic_sleuth_cqt': 'cqt',
         'sonic_sleuth_lfcc_cqt': 'lfcc_cqt',
     }
+    if architecture == 'default':
+        architecture = 'sonic_sleuth'
 
     feature_type = feature_map.get(architecture, 'lfcc')
+
+    params = dict(_SONIC_SLEUTH_PAPER_CONFIG) if architecture == 'sonic_sleuth_paper' else {}
+    ignored = sorted(set(kwargs) - _SONIC_SLEUTH_MODEL_KEYS)
+    if ignored:
+        logger.warning(
+            "Sonic Sleuth: parâmetros ignorados (não fazem parte da "
+            "construção do modelo): %s", ignored,
+        )
+    # A CONFIGURAÇÃO DA VARIANTE PREVALECE sobre kwargs. Os kwargs chegam aqui
+    # tanto de um override explícito quanto do `registry.default_params` — que
+    # descrevem a variante PADRÃO (5 blocos + SE + residual). Sem esta regra,
+    # pedir 'sonic_sleuth_paper' pelo registry/factory devolvia silenciosamente
+    # o modelo estendido com o nome do paper.
+    params.update({
+        k: v for k, v in kwargs.items()
+        if k in _SONIC_SLEUTH_MODEL_KEYS and k not in params
+    })
+
     return _create_sonic_sleuth_paper(
         input_shape=input_shape,
         num_classes=num_classes,
         feature_type=feature_type,
-        sample_rate=kwargs.get('sample_rate', 16000)
+        architecture=architecture,
+        **params,
     )
 
 
-# Register custom objects for model save/load compatibility
+# Register custom objects for model save/load compatibility.
+# `preprocess` é registrado com PREFIXO de módulo: rawnet2.py, multiscale_cnn.py
+# e wavlm.py registravam funções DIFERENTES sob a mesma chave global
+# 'preprocess', e a última importação vencia — um .keras podia ser recarregado
+# com o pré-processamento de outra arquitetura. A chave curta some.
 tf.keras.utils.get_custom_objects().update({
     'LFCCLayer': LFCCLayer,
     'MFCCLayer': MFCCLayer,
     'CQTLayer': CQTLayer,
     'MelSpectrogramLayer': MelSpectrogramLayer,
     'ConvBlock': ConvBlock,
-    'preprocess': preprocess,
+    'XFakeSong>sonic_sleuth_preprocess': preprocess,
 })

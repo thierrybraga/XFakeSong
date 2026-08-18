@@ -5,7 +5,7 @@ from typing import Dict
 
 import numpy as np
 
-from .utils import extract_pitch_periods
+from .utils import extract_pitch_periods, voiced_runs
 
 
 def compute_rap(y: np.ndarray, f0: np.ndarray, sr: int = 22050) -> float:
@@ -14,16 +14,21 @@ def compute_rap(y: np.ndarray, f0: np.ndarray, sr: int = 22050) -> float:
     Média da diferença absoluta entre um período e a média dele com seus dois vizinhos.
     """
     try:
+        # Por TRECHO VOZEADO CONTIGUO: RAP e medida ciclo-a-ciclo, e a
+        # concatenacao de trechos separados por silencio criava perturbacao
+        # inexistente (medido: 0,0088 num sinal de jitter real zero).
+        trechos = voiced_runs(f0, sr)
         periods = extract_pitch_periods(f0, sr)
         if len(periods) < 3:
             return 0.0
 
         # RAP = (1/N-2) * sum(|P(i) - (P(i-1) + P(i) + P(i+1))/3|) / mean(P)
         diffs = []
-        for i in range(1, len(periods) - 1):
-            avg_neighbors = (periods[i - 1] +
-                             periods[i] + periods[i + 1]) / 3.0
-            diffs.append(abs(periods[i] - avg_neighbors))
+        for trecho in trechos:
+            for i in range(1, len(trecho) - 1):
+                avg_neighbors = (trecho[i - 1] +
+                                 trecho[i] + trecho[i + 1]) / 3.0
+                diffs.append(abs(trecho[i] - avg_neighbors))
 
         if not diffs:
             return 0.0
@@ -44,15 +49,19 @@ def compute_ppq(y: np.ndarray, f0: np.ndarray, sr: int = 22050) -> float:
     Variação suavizada de 5 pontos do período de pitch.
     """
     try:
+        # Mesma correcao do RAP: a janela de 5 pontos nao pode atravessar
+        # fronteira de trecho vozeado.
+        trechos = voiced_runs(f0, sr)
         periods = extract_pitch_periods(f0, sr)
         if len(periods) < 5:
             return 0.0
 
         diffs = []
-        for i in range(2, len(periods) - 2):
-            # Média de 5 pontos
-            avg_5 = np.mean(periods[i - 2:i + 3])
-            diffs.append(abs(periods[i] - avg_5))
+        for trecho in trechos:
+            for i in range(2, len(trecho) - 2):
+                # Média de 5 pontos
+                avg_5 = np.mean(trecho[i - 2:i + 3])
+                diffs.append(abs(trecho[i] - avg_5))
 
         if not diffs:
             return 0.0

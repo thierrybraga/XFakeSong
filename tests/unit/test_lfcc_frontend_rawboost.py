@@ -1,11 +1,12 @@
-"""Testes das melhorias P0: front-end LFCC + RawBoost.
+"""Front-end LFCC e augmentation RawBoost.
 
-- Paridade train↔inference do LFCC (mesmo núcleo `lfcc_from_waveform`).
-- Shape preservado (T, 80, 1) e troca de front-end (lfcc vs logmel).
-- Fallback logmel para modelos legados (sem `feature_frontend`).
-- RawBoost: shape preservado, saída finita, identidade em algo=0.
+SUJEITO: paridade treino-inferência do núcleo `lfcc_from_waveform`, a troca de
+front-end (lfcc vs logmel) com fallback para modelos legados, e as garantias do
+RawBoost (forma preservada, saída finita, identidade em algo=0).
+
+Renomeado em 2026-08-17 (era `test_frontend_rawboost.py`, docstring "melhorias
+P0"): o rótulo de fase saiu, o sujeito ficou.
 """
-
 from __future__ import annotations
 
 import numpy as np

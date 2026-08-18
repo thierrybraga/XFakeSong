@@ -1,14 +1,14 @@
-"""Testes das otimizações Tier-1 (neutras em acurácia).
+"""Otimizações de desempenho que precisam ser NEUTRAS em acurácia.
 
-- #2 save sem otimizador: artefato menor, recarrega e prediz.
-- #1 inferência ONNX: o Predictor usa a sessão ONNX quando presente e CAI para
-  o TF em erro (provado com sessão mock — não exige onnxruntime instalado).
+SUJEITO: os atalhos de velocidade/memória do caminho de treino e inferência.
+O contrato é que nenhum deles mude a predição — é isso que os testes travam.
+
+Renomeado em 2026-08-17 (era `test_tier1_perf.py`): "Tier-1" era a etiqueta de
+um plano de otimização já encerrado.
 """
-
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 
 # ───────────────────────── #2: save sem otimizador ─────────────────────────

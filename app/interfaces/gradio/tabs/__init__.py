@@ -69,12 +69,6 @@ except Exception as e:
     logger.error(f"Falha ao carregar tab Features: {e}", exc_info=True)
     create_features_tab = _create_error_tab("Features", str(e))
 
-try:
-    from .training import create_training_tab
-except Exception as e:
-    logger.error(f"Falha ao carregar tab Training: {e}", exc_info=True)
-    create_training_tab = _create_error_tab("Training", str(e))
-
 # UI Fase 2: wizard de treino linear (substitui training.py na UI principal)
 try:
     from .training_wizard import create_training_wizard_tab
@@ -121,7 +115,6 @@ __all__ = [
     "create_forensic_analysis_tab",
     "create_history_tab",
     "create_optimization_tab",
-    "create_training_tab",
     "create_training_wizard_tab",
     "create_voice_profiles_tab",
 ]

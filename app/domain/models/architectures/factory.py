@@ -40,7 +40,7 @@ class IArchitectureFactory(ABC):
     @abstractmethod
     def create_model(self,
                      input_shape: tuple,
-                     num_classes: int = 1,
+                     num_classes: int = 2,
                      variant: str = "default",
                      **kwargs) -> tf.keras.Model:
         """Cria modelo da arquitetura."""
@@ -88,7 +88,13 @@ class BaseArchitectureFactory(IArchitectureFactory):
 
     def create_model(self,
                      input_shape: tuple,
-                     num_classes: int = 1,
+                     # num_classes=2 alinha com ``ArchitectureRegistry.create_model``
+                     # e com a convenção do projeto (real/fake = 2 classes,
+                     # softmax de 2 unidades). O default 1 anterior fazia as
+                     # duas portas de entrada produzirem CABEÇAS DIFERENTES
+                     # para a mesma chamada — e cabeças de 1 unidade degeneram
+                     # em arquiteturas com loss categórica.
+                     num_classes: int = 2,
                      variant: str = "default",
                      **kwargs) -> tf.keras.Model:
         """Cria modelo da arquitetura."""
@@ -239,7 +245,7 @@ class ArchitectureFactoryRegistry:
     def create_model(self,
                      architecture_name: str,
                      input_shape: tuple,
-                     num_classes: int = 1,
+                     num_classes: int = 2,
                      variant: str = "default",
                      **kwargs) -> tf.keras.Model:
         """Cria modelo usando factory registrada."""
@@ -274,19 +280,38 @@ class ArchitectureFactoryRegistry:
 
     # Saída esperada por arquitetura — única informação que NÃO vive no
     # ArchitectureRegistry; todo o resto é derivado dele (fonte única).
+    #
+    # CORREÇÃO: os valores estavam desatualizados. A convenção do projeto é
+    # `num_classes == 1 → sigmoid de 1 unidade`, `num_classes >= 2 → softmax de
+    # N unidades` — ou seja, a ativação depende de num_classes para quase todas
+    # as arquiteturas, e o benchmark usa num_classes=2 (softmax). Só AASIST e
+    # RawGAT-ST fogem disso: emitem LOGITS (a loss aplica o softmax).
+    # "sigmoid_or_softmax" deixa explícito que a ativação é condicional em vez
+    # de afirmar "sigmoid" para modelos que na prática emitem softmax.
     _OUTPUT_REQUIREMENTS = {
         "AASIST": {"type": "classification", "activation": "logits"},
         "RawGAT-ST": {"type": "classification", "activation": "logits"},
-        "EfficientNet-LSTM": {"type": "classification", "activation": "softmax"},
-        "MultiscaleCNN": {"type": "classification", "activation": "softmax"},
-        "SpectrogramTransformer": {"type": "classification", "activation": "sigmoid"},
-        "Conformer": {"type": "classification", "activation": "sigmoid"},
-        "Ensemble": {"type": "classification", "activation": "sigmoid"},
-        "Sonic Sleuth": {"type": "classification", "activation": "sigmoid"},
-        "RawNet2": {"type": "classification", "activation": "sigmoid"},
-        "WavLM": {"type": "classification", "activation": "sigmoid"},
-        "HuBERT": {"type": "classification", "activation": "sigmoid"},
-        "Hybrid CNN-Transformer": {"type": "classification", "activation": "sigmoid"},
+        "EfficientNet-LSTM": {
+            "type": "classification", "activation": "sigmoid_or_softmax"
+        },
+        "MultiscaleCNN": {
+            "type": "classification", "activation": "sigmoid_or_softmax"
+        },
+        "SpectrogramTransformer": {
+            "type": "classification", "activation": "sigmoid_or_softmax"
+        },
+        # Conformer promove num_classes<2 para 2 → sempre softmax.
+        "Conformer": {"type": "classification", "activation": "softmax"},
+        "Ensemble": {"type": "classification", "activation": "sigmoid_or_softmax"},
+        "Sonic Sleuth": {
+            "type": "classification", "activation": "sigmoid_or_softmax"
+        },
+        "RawNet2": {"type": "classification", "activation": "sigmoid_or_softmax"},
+        "WavLM": {"type": "classification", "activation": "sigmoid_or_softmax"},
+        "HuBERT": {"type": "classification", "activation": "sigmoid_or_softmax"},
+        "Hybrid CNN-Transformer": {
+            "type": "classification", "activation": "sigmoid_or_softmax"
+        },
     }
 
     def _register_default_architectures(self):
@@ -307,15 +332,9 @@ class ArchitectureFactoryRegistry:
         interno, que rejeitaria ``patience`` com TypeError).
         """
         from app.domain.models.architectures.registry import (
+            _TRAINING_ONLY_PARAM_KEYS as training_only_keys,
             architecture_registry,
         )
-
-        training_only_keys = {
-            "patience",
-            "lr_patience",
-            "gradient_clip",
-            "augmentation_strength",
-        }
 
         for info in architecture_registry.get_all_architectures().values():
             model_params = {
@@ -345,7 +364,7 @@ architecture_factory_registry = ArchitectureFactoryRegistry()
 # Funções de conveniência
 def create_model_by_name(architecture_name: str,
                          input_shape: tuple,
-                         num_classes: int = 1,
+                         num_classes: int = 2,
                          variant: str = "default",
                          **kwargs) -> tf.keras.Model:
     """Cria modelo usando o registry global."""

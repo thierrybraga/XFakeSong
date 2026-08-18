@@ -140,7 +140,12 @@ def main() -> int:
                         "como teste (protocolo de usuário não visto)")
     p.add_argument(
         "--fail-on-source-shortcut", action="store_true",
-        help="recusa dataset em que a fonte prediz o rotulo acima de 55%",
+        help="recusa dataset em que a fonte prediz o rotulo acima de 55%%",
+    )
+    p.add_argument(
+        "--source-shortcut-limit", type=float, default=None,
+        help="sobrepoe o limite do oraculo fonte-rotulo (default: 0.55; "
+             "use para datasets com confundimento fonte-classe documentado)",
     )
     p.add_argument("--codec-eval", nargs="+", default=None,
                    metavar="CODEC", choices=["mp3", "opus"],
@@ -149,6 +154,16 @@ def main() -> int:
     p.add_argument("--bootstrap-ci", type=int, default=None,
                    help="nº de reamostragens do IC 95%% de bootstrap "
                         "(default: 1000; 0 desliga)")
+    p.add_argument("--n-seeds", type=int, default=None,
+                   help="repetições por arquitetura com sementes de TREINO "
+                        "distintas; métricas viram média ± desvio (default: 1). "
+                        "O split e o ruído de avaliação NÃO mudam. Custo: "
+                        "multiplica o tempo de treino por N")
+    p.add_argument("--test-lock", metavar="JSON", default=None,
+                   help="selo do teste (scripts/dataset/freeze_benchmark_test.py). "
+                        "Confere SHA-256 do dataset e identidade da partição de "
+                        "teste ANTES de treinar; aborta se divergir. Exigido em "
+                        "execuções acadêmicas")
     args = p.parse_args()
 
     from benchmarks import (
@@ -247,14 +262,39 @@ def main() -> int:
         cfg.device_profile = args.device_profile
     if args.fail_on_source_shortcut:
         cfg.fail_on_source_shortcut = True
+    if args.source_shortcut_limit is not None:
+        cfg.source_oracle_threshold = args.source_shortcut_limit
     if args.codec_eval:
         cfg.codec_eval = list(args.codec_eval)
     if args.bootstrap_ci is not None:
         if args.bootstrap_ci < 0:
             p.error("--bootstrap-ci deve ser >= 0")
         cfg.bootstrap_ci_samples = args.bootstrap_ci
+    if args.n_seeds is not None:
+        if args.n_seeds < 1:
+            p.error("--n-seeds deve ser >= 1")
+        cfg.n_seeds = args.n_seeds
     if args.no_optimize_hparams:
         cfg.optimize_hyperparameters = False
+    # Selo do teste. Verificado AQUI e não só no orquestrador sequencial: este é
+    # o entrypoint documentado para `--full` e para modelo isolado, e até
+    # 2026-07-27 ele gravava o SHA da partição nos resultados sem nunca conferir.
+    validated_test_lock = None
+    if args.test_lock:
+        from benchmarks.test_lock import (
+            TestLockError,
+            validate_dataset_against_lock,
+        )
+
+        if not cfg.dataset_path:
+            p.error("--test-lock exige --dataset (não há NPZ para selar)")
+        try:
+            validated_test_lock = validate_dataset_against_lock(
+                cfg.dataset_path, args.test_lock
+            )
+        except TestLockError as exc:
+            p.error(f"selo do teste inválido: {exc}")
+        cfg.test_lock = validated_test_lock
     official = set(ALL_TCC_ARCHITECTURES)
     extended = {item["benchmark_name"] for item in EXTENDED_MODEL_MANIFEST}
     allowed = extended if cfg.experiment_scope == "extended" else official

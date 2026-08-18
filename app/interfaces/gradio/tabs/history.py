@@ -7,6 +7,8 @@ from sqlalchemy import desc
 import gradio as gr
 from app.core.db.session import SessionLocal
 from app.domain.models.analysis import AnalysisResult
+from app.interfaces.gradio.utils.components import ui_safe
+from app.utils.file_utils import get_gradio_exports_directory
 
 logger = logging.getLogger(__name__)
 
@@ -64,8 +66,10 @@ def export_history_csv():
         tmp = tempfile.NamedTemporaryFile(
             delete=False,
             suffix='.csv',
-            prefix='historico_analises_'
+            prefix='historico_analises_',
+            dir=get_gradio_exports_directory(),
         )
+        tmp.close()
         df.to_csv(tmp.name, index=False)
         return tmp.name
     except Exception as e:
@@ -262,6 +266,7 @@ def create_history_tab():
 
         # --- Event Handlers ---
 
+        @ui_safe("Falha ao recarregar o historico")
         def refresh_data(model, result, search):
             # Atualiza lista de modelos e carrega dados
             models = get_unique_models()
@@ -302,6 +307,7 @@ def create_history_tab():
         )
 
         # Exportação CSV
+        @ui_safe("Falha ao exportar")
         def on_export():
             path = export_history_csv()
             if path:

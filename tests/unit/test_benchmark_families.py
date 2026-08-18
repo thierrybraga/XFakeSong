@@ -1,5 +1,11 @@
+"""Escopos do benchmark: oficial x estendido, e o que cada um pode alegar.
+
+SUJEITO: `benchmarks/config.py` — que os dois escopos sejam disjuntos e
+completos, que o estendido se declare NÃO acadêmico, e que a política de limiar
+e o perfil de latência sejam reportados separadamente por escopo.
+"""
+
 from argparse import Namespace
-from pathlib import Path
 
 import numpy as np
 
@@ -29,15 +35,23 @@ def test_official_and_extended_scopes_are_disjoint_and_complete():
     extended = {item["benchmark_name"] for item in EXTENDED_MODEL_MANIFEST}
     assert official == set(DOCKER_TRAINING_ARCHITECTURES)
     assert official.isdisjoint(extended)
+    # As duas ajustadas (front-end destravado + grafo AASIST) SAIRAM do escopo
+    # oficial em 2026-08-11: os sistemas de topo do ASVspoof 5 usam SSL
+    # CONGELADO, e o resultado de referencia daquela receita usa wav2vec2
+    # XLS-R, nao WavLM/HuBERT base. As entradas `Original` ja sao a
+    # configuracao documentada. Ver benchmarks/config.py.
     assert set(MODEL_FAMILIES["ssl-pretrained"]) == {
         "WavLM Original", "HuBERT Original"
     }
 
 
-def test_family_wrapper_uses_confirmatory_dataset_and_protocol_controls():
+def test_family_wrapper_uses_canonical_dataset_and_protocol_controls():
+    # O dataset canonico passou a ser o do Protocolo de Dataset (CETUC pareado com clones
+    # XTTS-v2, disjuncao dupla locutor x frase) em 26/07/2026; os NPZ v2 foram
+    # apagados. Ver docs/data/dataset-protocol.md.
     cmd = build_command(_family_args("ssl-pretrained"))
     joined = " ".join(str(value) for value in cmd)
-    assert "benchmark_audio_raw_balanced_15k_confirmatory_v2.npz" in joined
+    assert "benchmark_dataset.npz" in joined
     assert "WavLM Original" in joined and "HuBERT Original" in joined
     assert "--academic-protocol" in cmd
     assert cmd[cmd.index("--scope") + 1] == "official"

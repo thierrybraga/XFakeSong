@@ -9,6 +9,14 @@ from typing import Any, Dict, List, Optional
 # Manifesto oficial do recorte experimental. Ele fixa nomes, variantes e
 # runners usados no TCC; listas derivadas abaixo devem ser consumidas pelos
 # scripts para evitar divergência entre treino, consolidação e LaTeX.
+# Os rótulos `variant` são a PROVENIÊNCIA que vai para os resultados (o runner
+# os copia para `architectures[<nome>].provenance`). Precisam descrever a
+# configuração REALMENTE treinada — em 2026-07-27 vários estavam defasados após
+# mudanças de arquitetura: "ast_vit_base_scratch" quando o AST passara a partir
+# de pesos AudioSet, "rawgat_st_multiply_stride4" com um stride que só vale nas
+# variantes legadas, e um "rawnet2_paper_like" que não dizia QUAL RawNet2
+# (verificação de locutor vs. baseline anti-spoofing — arquiteturas diferentes
+# com o mesmo nome). Ao alterar uma arquitetura, atualize o rótulo junto.
 OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
     {
         "benchmark_name": "RandomForest",
@@ -24,7 +32,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "benchmark_name": "SVM",
         "result_key": "SVM",
         "display_name": "SVM",
-        "variant": "sklearn_svc_rbf_gridsearch",
+        "variant": "sklearn_svc_gridsearch_linear_rbf",
         "runner": "benchmarks.runner:classical",
         "input_type": "tabular_features",
         "family": "classical-tabular",
@@ -34,7 +42,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "benchmark_name": "Hybrid CNN-Transformer",
         "result_key": "CCT",
         "display_name": "CCT",
-        "variant": "cct",
+        "variant": "cct_hassani2021_conv64_128_4layers_4heads_256d_no_se",
         "runner": "benchmarks.runner:keras",
         "input_type": "spectrogram",
         "family": "spectral-attention",
@@ -44,7 +52,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "benchmark_name": "SpectrogramTransformer",
         "result_key": "AST",
         "display_name": "AST",
-        "variant": "ast_vit_base_scratch",
+        "variant": "ast_gong2021_vit_base_audioset_pretrained_in300x128",
         "runner": "benchmarks.runner:keras",
         "input_type": "spectrogram",
         "family": "spectral-attention",
@@ -54,7 +62,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "benchmark_name": "MultiscaleCNN",
         "result_key": "Res2Net",
         "display_name": "Res2Net",
-        "variant": "res2net50_scale4_no_se",
+        "variant": "res2net50_gao2021_scale4_basewidth26_no_se",
         "runner": "benchmarks.runner:keras",
         "input_type": "spectrogram",
         "family": "spectral-convolutional",
@@ -64,7 +72,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "benchmark_name": "Conformer",
         "result_key": "Conformer",
         "display_name": "Conformer",
-        "variant": "conformer",
+        "variant": "conformer_m_gulati2020_16blocks_256d_4heads_kernel31",
         "runner": "benchmarks.runner:keras",
         "input_type": "spectrogram",
         "family": "spectral-attention",
@@ -74,7 +82,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "benchmark_name": "RawNet2",
         "result_key": "RawNet2",
         "display_name": "RawNet2",
-        "variant": "rawnet2_paper_like_gru1024_dense1024",
+        "variant": "rawnet2_speakerverification_jung2020_sinc128_1xgru1024",
         "runner": "benchmarks.runner:keras",
         "input_type": "raw_audio",
         "family": "waveform-end-to-end",
@@ -84,7 +92,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "benchmark_name": "AASIST",
         "result_key": "AASIST",
         "display_name": "AASIST",
-        "variant": "aasist",
+        "variant": "aasist_jung2022_paper_attention_gat_temp2_hsgal_temp100",
         "runner": "benchmarks.runner:keras",
         "input_type": "raw_audio",
         "family": "waveform-end-to-end",
@@ -94,7 +102,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "benchmark_name": "RawGAT-ST",
         "result_key": "RawGAT-ST",
         "display_name": "RawGAT-ST",
-        "variant": "rawgat_st_multiply_stride4",
+        "variant": "rawgat_st_tak2021_paper_attention_multiply_topk12",
         "runner": "benchmarks.runner:keras",
         "input_type": "raw_audio",
         "family": "waveform-end-to-end",
@@ -104,7 +112,12 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "benchmark_name": "WavLM Original",
         "result_key": "WavLM Original",
         "display_name": "WavLM Original",
-        "variant": "microsoft/wavlm-base:frozen_backbone",
+        # base-PLUS, nao base: o runner passou a `microsoft/wavlm-base-plus` em
+        # 2026-07-15 (mesma arquitetura, pre-treino de 94k h em vez de 960 h) e
+        # este rotulo ficou para tras, declarando nos resultados um checkpoint
+        # diferente do que foi realmente treinado — exatamente o que o
+        # comentario no topo deste arquivo proibe.
+        "variant": "microsoft/wavlm-base-plus:pytorch_runner_frozen_backbone",
         "runner": "scripts.benchmark.run_wavlm_original_benchmark:ssl_original",
         "input_type": "raw_audio_16khz_16000",
         "family": "ssl-pretrained",
@@ -114,12 +127,42 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "benchmark_name": "HuBERT Original",
         "result_key": "HuBERT Original",
         "display_name": "HuBERT Original",
-        "variant": "facebook/hubert-base-ls960:frozen_backbone",
+        "variant": "facebook/hubert-base-ls960:pytorch_runner_frozen_backbone",
         "runner": "scripts.benchmark.run_wavlm_original_benchmark:ssl_original",
         "input_type": "raw_audio_16khz_16000",
         "family": "ssl-pretrained",
         "scope": "official",
     },
+    # ── Por que NÃO há entradas com fine-tuning (revisto em 2026-08-11) ────
+    #
+    # Existiram "WavLM AASIST" e "HuBERT AASIST" por dois dias, sob a premissa
+    # de que destravar o front-end era "a receita de campeonato" e que o
+    # probing congelado não respondia à pergunta certa. A premissa estava
+    # DESATUALIZADA:
+    #
+    #   - ASVspoof 5 (2024): os baselines oficiais da Track 1 são RawNet2 e
+    #     AASIST, sem front-end SSL; e os sistemas de TOPO usam WavLM,
+    #     wav2vec 2.0, HuBERT e afins como upstreams CONGELADOS;
+    #   - há resultado publicado de front-end congelado batendo o treinável
+    #     com folga na mesma comparação (8,76% contra 21,67% de EER);
+    #   - a evidência pró-fine-tuning (Wang & Yamagishi, Odyssey 2022) é de
+    #     2022 e o campo se moveu na direção oposta.
+    #
+    # Além disso, o resultado de referência daquela receita (Tak et al.,
+    # Odyssey 2022 — 0,82% de EER no ASVspoof21 LA) usa wav2vec 2.0 XLS-R
+    # (~300M, 24 camadas), não WavLM/HuBERT base (94,5M, 12 camadas). Combinar
+    # esses backbones com o grafo AASIST seria uma abordagem NOVA, não a
+    # reprodução de uma configuração documentada — e o objetivo aqui é
+    # benchmark.
+    #
+    # As entradas `Original` acima JÁ SÃO a configuração documentada: backbone
+    # congelado, soma ponderada de camadas, pooling e cabeça treinada.
+    #
+    # O código do grafo (`app/domain/models/architectures/torch_ssl_aasist.py`)
+    # e as flags `--backend aasist`/`--no-freeze-backbone` do runner SSL
+    # permanecem no projeto, testados, como ABLAÇÃO disponível fora do escopo
+    # oficial. Se algum dia o eixo a explorar for o back-end sobre o backbone
+    # congelado — que é o que a literatura recente estuda —, a peça está lá.
 ]
 
 EXTENDED_MODEL_MANIFEST: List[Dict[str, Any]] = [
@@ -147,6 +190,49 @@ EXTENDED_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "family": "extended",
         "scope": "extended",
     },
+    # WavLM/HuBERT no caminho **Keras** — distintos dos "* Original" do escopo
+    # oficial, que rodam pelo runner PyTorch. Aqui o state_dict do checkpoint
+    # HuggingFace é portado para Keras (`architectures/ssl_backbone.py`), o
+    # backbone fica INTEIRAMENTE congelado e treinam apenas a soma ponderada de
+    # hidden-states (receita SUPERB) e a cabeça.
+    #
+    # Até 2026-07-27 eles não constavam de manifesto algum e o benchmark gravava
+    # `provenance: null` justamente nos dois modelos em que a proveniência (qual
+    # checkpoint) É a definição do experimento.
+    #
+    # `fallback_variant` existe porque este caminho DEGRADA para um CNN-1D
+    # treinado do zero quando o checkpoint não está acessível. O runner publica
+    # esse rótulo quando a degradação ocorre, para que nenhum artefato alegue
+    # backbone pré-treinado onde não houve (ver `runner._architecture_provenance`
+    # e `ssl_utils.record_ssl_backbone_status`).
+    {
+        "benchmark_name": "WavLM",
+        "display_name": "WavLM (port Keras)",
+        "variant": (
+            "microsoft/wavlm-base:keras_port_frozen_backbone_superb_weighted_sum"
+        ),
+        "fallback_variant": "wavlm_fallback_cnn1d_scratch_nao_e_o_ssl_real",
+        "runner": "benchmarks.runner:keras",
+        "input_type": "raw_audio_16khz_16000",
+        # `family` acompanha a derivação de MODEL_FAMILIES (que só monta as cinco
+        # famílias a partir do manifesto OFICIAL): estes pertencem à lista
+        # "extended". A natureza SSL está declarada no `variant`.
+        "family": "extended",
+        "scope": "extended",
+    },
+    {
+        "benchmark_name": "HuBERT",
+        "display_name": "HuBERT (port Keras)",
+        "variant": (
+            "facebook/hubert-base-ls960:"
+            "keras_port_frozen_backbone_superb_weighted_sum"
+        ),
+        "fallback_variant": "hubert_fallback_cnn1d_scratch_nao_e_o_ssl_real",
+        "runner": "benchmarks.runner:keras",
+        "input_type": "raw_audio_16khz_16000",
+        "family": "extended",
+        "scope": "extended",
+    },
 ]
 
 MODEL_FAMILIES: Dict[str, List[str]] = {
@@ -167,28 +253,52 @@ MODEL_FAMILIES["extended"] = [
     item["benchmark_name"] for item in EXTENDED_MODEL_MANIFEST
 ]
 
-OFFICIAL_TCC_RESULT_ORDER = [
-    item["result_key"] for item in OFFICIAL_TCC_MODEL_MANIFEST
-]
+OFFICIAL_TCC_RESULT_ORDER = [item["result_key"] for item in OFFICIAL_TCC_MODEL_MANIFEST]
 
 OFFICIAL_TCC_DISPLAY_NAMES = {
     item["result_key"]: item["display_name"] for item in OFFICIAL_TCC_MODEL_MANIFEST
 }
 
+#: Prefixo do runner SSL dedicado. A checagem é pelo MÓDULO, não pelo sufixo:
+#: com `endswith(":ssl_original")` as variantes `:ssl_finetuned` caíam em
+#: `ALL_TCC_ARCHITECTURES` — a lista dos modelos que `benchmarks.runner` sabe
+#: treinar — e o orquestrador tentaria rodá-las pelo caminho Keras.
+_SSL_RUNNER_MODULE = "scripts.benchmark.run_wavlm_original_benchmark"
+
+
+def _is_ssl_runner(item: Dict[str, Any]) -> bool:
+    return str(item.get("runner", "")).startswith(_SSL_RUNNER_MODULE)
+
+
 # Modelos suportados diretamente por benchmarks.runner/run_benchmark.py.
 ALL_TCC_ARCHITECTURES = [
     item["benchmark_name"]
     for item in OFFICIAL_TCC_MODEL_MANIFEST
-    if not str(item["runner"]).endswith(":ssl_original")
+    if not _is_ssl_runner(item)
 ]
 
 # WavLM/HuBERT reais são treinados no mesmo fluxo WSL/Docker, mas por um runner
-# SSL PyTorch/Hugging Face dedicado. O runner baixa o checkpoint base, congela o
-# backbone e treina somente a cabeça classificadora.
+# SSL PyTorch/Hugging Face dedicado. Duas receitas convivem ali: `ssl_original`
+# congela o backbone e treina só a cabeça sobre embeddings em cache;
+# `ssl_finetuned` destrava o backbone e liga a sequência a um grafo AASIST.
 SSL_DOCKER_ARCHITECTURES = [
     item["benchmark_name"]
     for item in OFFICIAL_TCC_MODEL_MANIFEST
-    if str(item["runner"]).endswith(":ssl_original")
+    if _is_ssl_runner(item)
+]
+
+#: Só as variantes com fine-tuning — usadas pelo orquestrador para escolher as
+#: flags (`--backend aasist --no-freeze-backbone`) e o timeout, muito maior.
+#:
+#: **VAZIA desde 2026-08-11**, e de propósito: o escopo oficial só tem SSL
+#: congelado (ver a justificativa no fim de `OFFICIAL_TCC_MODEL_MANIFEST`). A
+#: derivação continua aqui, e não como lista literal, para que reintroduzir uma
+#: entrada com `runner: ...:ssl_finetuned` volte a acionar as flags certas sem
+#: nenhuma outra edição.
+SSL_FINETUNED_ARCHITECTURES = [
+    item["benchmark_name"]
+    for item in OFFICIAL_TCC_MODEL_MANIFEST
+    if str(item.get("runner", "")).endswith(":ssl_finetuned")
 ]
 
 DOCKER_TRAINING_ARCHITECTURES = [
@@ -230,14 +340,17 @@ class BenchmarkConfig:
         converge_accuracy_threshold: acurácia mínima no threshold de decisão.
     """
 
-    architectures: List[str] = field(
-        default_factory=lambda: ["MultiscaleCNN", "SVM"]
-    )
+    architectures: List[str] = field(default_factory=lambda: ["MultiscaleCNN", "SVM"])
     dataset_path: Optional[str] = None
     epochs: int = 100
     batch_size: int = 32
     seed: int = 42
-    snr_levels_db: List[int] = field(default_factory=lambda: [30, 20, 10])
+    # 30/20/10 dB coincidem com `train_aug_snr_db` e medem robustez em CONDIÇÃO
+    # CASADA. 5 dB é deliberadamente NÃO VISTO no augmentation: sem ao menos um
+    # nível fora do treino, a tabela de robustez não distingue "aprendeu a lidar
+    # com ruído" de "decorou os níveis que viu". Custa só avaliação — nenhum
+    # treino extra. Mantenha 5 dB FORA de `train_aug_snr_db` ao ajustar.
+    snr_levels_db: List[int] = field(default_factory=lambda: [30, 20, 10, 5])
     latency_runs: int = 30
     output_dir: str = "data/results/benchmark"
     models_dir: str = "data/models"
@@ -296,6 +409,16 @@ class BenchmarkConfig:
     # regra de seleção: 100 épocas completas e melhor checkpoint em val limpa.
     fixed_epoch_budget: bool = True
     select_best_checkpoint: bool = True
+    #: Métrica de seleção do checkpoint: ``val_loss`` (padrão, o que produziu os
+    #: artefatos publicados) ou ``val_eer``.
+    #:
+    #: Custo medido da escolha no run `clean_benchmark_15k`, comparando a época
+    #: de menor `val_loss` com a de maior `val_accuracy`: 0,00 p.p. em cinco das
+    #: nove neurais, ≤0,62 p.p. em três, e **5,29 p.p. no RawGAT-ST** (época 17
+    #: contra 88). É por isso que o campo existe e o padrão não muda: só uma
+    #: arquitetura paga o descompasso, e trocar o padrão invalidaria as outras
+    #: dez sem ganho.
+    checkpoint_monitor: str = "val_loss"
     decision_threshold: float = 0.5
     metric_threshold_policy: str = "fixed_0.5_comparison"
     experiment_scope: str = "official"
@@ -303,6 +426,27 @@ class BenchmarkConfig:
     # nas métricas limpas e de robustez. 1000 reamostragens ≈ segundos por
     # condição; 0 desliga (testes/smokes).
     bootstrap_ci_samples: int = 1000
+
+    # Rigor acadêmico (2026-07-27): REPETIÇÕES com sementes de treino distintas.
+    #
+    # O bootstrap acima mede a variância de AMOSTRAGEM DO TESTE; ele não diz
+    # nada sobre a variância de TREINO (inicialização, dropout, ordem de batch,
+    # realização do ruído de augmentation). Com uma execução por modelo, uma
+    # diferença de 1–2 pp de EER entre duas arquiteturas pode ser apenas ruído
+    # de execução — e o artigo não teria como distinguir.
+    #
+    # `n_seeds > 1` roda cada arquitetura N vezes e reporta média ± desvio.
+    # IMPORTANTE: apenas a semente de TREINO varia. O split (teste selado) e a
+    # realização do ruído de AVALIAÇÃO permanecem presos a `seed`, para que
+    # todas as repetições sejam medidas exatamente no mesmo conjunto e nas
+    # mesmas condições de ruído.
+    n_seeds: int = 1
+
+    @property
+    def training_seeds(self) -> List[int]:
+        """Sementes de TREINO das repetições (a de dados continua sendo `seed`)."""
+        return [int(self.seed) + i for i in range(max(1, int(self.n_seeds)))]
+
     # Robustez a CODEC com perdas (round-trip via ffmpeg, na forma de onda,
     # antes dos frontends — mesmo ponto do AWGN). Ex.: ["mp3", "opus"].
     # Desligado por padrão (custo: ~2 chamadas ffmpeg por amostra de teste).
@@ -311,6 +455,10 @@ class BenchmarkConfig:
     source_oracle_threshold: float = 0.55
     fail_on_source_shortcut: bool = False
     codec_eval: List[str] = field(default_factory=list)
+    # Selo do teste validado (benchmarks/test_lock.py). Preenchido pelo CLI
+    # quando `--test-lock` é passado; vai para os resultados como prova de que o
+    # teste conferido era o mesmo congelado antes do treino.
+    test_lock: Optional[Dict[str, Any]] = None
     preserve_predefined_splits: bool = True
     fail_on_split_overlap: bool = True
 
@@ -337,7 +485,7 @@ class BenchmarkConfig:
         base = dict(
             architectures=list(ALL_TCC_ARCHITECTURES),
             epochs=100,
-            snr_levels_db=[30, 20, 10],
+            snr_levels_db=[30, 20, 10, 5],
             run_api_probe=True,
             preset_name="full_tcc",
             optimize_hyperparameters=True,
@@ -351,8 +499,9 @@ class BenchmarkConfig:
         return cls.full_tcc(**overrides)
 
     @classmethod
-    def cross_generator_tcc(cls, holdout_generator: str = "fkvoice",
-                            **overrides) -> "BenchmarkConfig":
+    def cross_generator_tcc(
+        cls, holdout_generator: str = "fkvoice", **overrides
+    ) -> "BenchmarkConfig":
         """Preset P0.4 — reteste cross-generator (anti-vazamento de fonte).
 
         Treina SEM o gerador `holdout_generator` (default XTTS=fkvoice) e o usa
@@ -362,7 +511,7 @@ class BenchmarkConfig:
         base = dict(
             architectures=list(ALL_TCC_ARCHITECTURES),
             epochs=100,
-            snr_levels_db=[30, 20, 10],
+            snr_levels_db=[30, 20, 10, 5],
             run_api_probe=False,
             preset_name=f"cross_generator:{holdout_generator}",
             optimize_hyperparameters=True,
@@ -372,8 +521,9 @@ class BenchmarkConfig:
         return cls(**base)
 
     @classmethod
-    def unseen_speaker_tcc(cls, holdout_speaker: Optional[str] = None,
-                           **overrides) -> "BenchmarkConfig":
+    def unseen_speaker_tcc(
+        cls, holdout_speaker: Optional[str] = None, **overrides
+    ) -> "BenchmarkConfig":
         """Preset tier `large` — protocolo de USUÁRIO NÃO VISTO (unseen speaker).
 
         Com `holdout_speaker`, segura um falante fora do treino e testa nele
@@ -384,10 +534,11 @@ class BenchmarkConfig:
         base = dict(
             architectures=list(ALL_TCC_ARCHITECTURES),
             epochs=100,
-            snr_levels_db=[30, 20, 10],
+            snr_levels_db=[30, 20, 10, 5],
             run_api_probe=False,
             preset_name=(
-                f"unseen_speaker:{holdout_speaker}" if holdout_speaker
+                f"unseen_speaker:{holdout_speaker}"
+                if holdout_speaker
                 else "unseen_speaker"
             ),
             optimize_hyperparameters=True,
@@ -409,7 +560,7 @@ class BenchmarkConfig:
         base = dict(
             architectures=list(ALL_TCC_ARCHITECTURES),
             epochs=100,
-            snr_levels_db=[30, 20, 10],
+            snr_levels_db=[30, 20, 10, 5],
             run_api_probe=False,
             preset_name="group_tcc",
             optimize_hyperparameters=True,
@@ -424,7 +575,7 @@ class BenchmarkConfig:
         base = dict(
             architectures=list(NEURAL_TCC_ARCHITECTURES),
             epochs=100,
-            snr_levels_db=[30, 20, 10],
+            snr_levels_db=[30, 20, 10, 5],
             run_api_probe=False,
             preset_name="neural_tcc",
             optimize_hyperparameters=True,
@@ -439,7 +590,7 @@ class BenchmarkConfig:
             architectures=["RawNet2"],
             epochs=100,
             batch_size=16,
-            snr_levels_db=[30, 20, 10],
+            snr_levels_db=[30, 20, 10, 5],
             run_api_probe=False,
             preset_name="single:RawNet2",
             device_profile="gpu",

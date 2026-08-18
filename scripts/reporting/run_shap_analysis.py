@@ -6,7 +6,8 @@ artefatos já treinados (``data/models/bench_*``), sem retreinar nada:
 
 1. **SHAP** — Random Forest via ``TreeExplainer`` (exato) e SVM via
    ``KernelExplainer`` (agnóstico, custo controlado por k-means no
-   background), ambos sobre o vetor tabular de 63 descritores
+   background), ambos sobre o vetor tabular vigente (183 no contrato
+   `benchmark_tabular_v2`; 63 no v1 legado)
    (``app/domain/xai/tabular.py``). Gera *beeswarm*, barras de importância
    média |SHAP| e CSV consolidado.
 2. **Grad-CAM** — mapas de ativação das redes espectrais Keras (Res2Net,
@@ -19,7 +20,7 @@ explicadas pertencem ao MESMO conjunto de teste das métricas reportadas.
 Uso:
     # análise completa com o dataset canônico:
     python scripts/reporting/run_shap_analysis.py \
-        --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz
+        --dataset data/datasets/benchmark_dataset_15k.npz
 
     # smoke rápido sem dataset real (dados sintéticos, sem artefatos):
     python scripts/reporting/run_shap_analysis.py --synthetic --skip-gradcam
@@ -108,7 +109,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--dataset",
-        default="data/datasets/benchmark_audio_raw_balanced_15k.npz",
+        # Era `benchmark_audio_raw_balanced_15k.npz`, artefato de um protocolo
+        # anterior já retirado do disco — o script abortava na primeira linha.
+        default="data/datasets/benchmark_dataset_15k.npz",
         help="NPZ canônico de áudio bruto do benchmark.",
     )
     parser.add_argument(
@@ -168,6 +171,24 @@ def _subsample(data, max_samples: int, seed: int):
     import copy
 
     if max_samples <= 0 or len(data.y) <= max_samples:
+        return data, False
+
+    # Com partições PRÉ-DEFINIDAS no NPZ, subamostrar é inválido em dois
+    # sentidos. Tecnicamente: `predefined_split_indices` referencia as posições
+    # do conjunto ORIGINAL, e reindexar um subconjunto estoura os limites
+    # (IndexError observado em 2026-08-16 com --max-samples 1200 sobre 15.000).
+    # Cientificamente: quebraria a garantia declarada no cabeçalho deste
+    # script — que as amostras explicadas pertencem ao MESMO conjunto de teste
+    # das métricas reportadas.
+    #
+    # Para conter custo, use --shap-explain/--svm-explain/--background, que
+    # limitam quantas amostras são EXPLICADAS sem tocar na partição.
+    if getattr(data, "predefined_split_indices", None):
+        logger.warning(
+            "--max-samples IGNORADO: o dataset traz partições pré-definidas e "
+            "subamostrar invalidaria a correspondência com o conjunto de teste "
+            "do benchmark. Use --shap-explain/--svm-explain para conter custo."
+        )
         return data, False
     idx = _balanced_indices(np.asarray(data.y), max_samples, seed)
     sub = copy.copy(data)
@@ -241,20 +262,27 @@ def run_shap(args: argparse.Namespace, data, out_dir: Path) -> list[str]:
         explain_with_kernel_shap,
         explain_with_tree_shap,
         split_sklearn_pipeline,
-        tabular_feature_names,
     )
+    from app.domain.xai.tabular import feature_names_for_width
 
     tabular = data.prepare_for_architecture("randomforest")
     X_train, y_train, X_val, y_val, X_test, y_test = tabular.stratified_split(
         seed=args.seed
     )
     del X_val, y_val
-    names = tabular_feature_names()
+    # AJUSTE 2026-08-16: o script fixava `tabular_feature_names()`, que é o
+    # vetor v1 de 63 colunas, e abortava contra os classificadores atuais —
+    # que consomem o v2 de 183 desde 2026-08-09 (`benchmark_tabular_v2`).
+    # `feature_names_for_width` resolve a nomenclatura pela largura recebida,
+    # de modo que o script acompanha o contrato em vez de fixá-lo.
+    names = feature_names_for_width(X_test.shape[1])
     if X_test.shape[1] != len(names):
         raise SystemExit(
-            f"Vetor tabular com {X_test.shape[1]} features (esperado "
-            f"{len(names)}) — contrato de benchmarks/data.py mudou?"
+            f"Vetor tabular com {X_test.shape[1]} features, sem nomenclatura "
+            "correspondente em app/domain/xai/tabular.py"
         )
+    logger.info("vetor tabular: %d descritores (%s)", len(names),
+                "v2" if len(names) > 63 else "v1")
 
     bg_idx = _balanced_indices(y_train, args.background, args.seed)
     generated: list[str] = []
@@ -277,11 +305,36 @@ def run_shap(args: argparse.Namespace, data, out_dir: Path) -> list[str]:
             if model_key == "random_forest":
                 matrix = explain_with_tree_shap(estimator, transform(X_explain))
             else:
-                def predict(X, _est=estimator, _tr=transform):
-                    return _est.predict_proba(_tr(X))[:, 1]
+                # O SVM do protocolo é treinado SEM `probability=True`: a
+                # calibração isotônica vive no invólucro do pipeline, e o
+                # estimador desembrulhado expõe apenas `decision_function`.
+                # Chamar `predict_proba` aqui levantava
+                # "This 'SVC' has no attribute 'predict_proba'".
+                #
+                # Explicar a MARGEM não é contorno, é a escolha correta: a
+                # Seção de métricas do trabalho declara que AUC, EER e t-DCF*
+                # dos clássicos são computados sobre a margem bruta, anterior à
+                # calibração, porque medem ordenação. Atribuir sobre a mesma
+                # grandeza mantém a explicação coerente com as métricas
+                # reportadas.
+                if hasattr(estimator, "decision_function"):
+                    def score(X, _est=estimator, _tr=transform):
+                        return np.asarray(_est.decision_function(_tr(X))).ravel()
+                    logger.info("SHAP %s: explicando a MARGEM "
+                                "(decision_function)", model_key)
+                elif hasattr(estimator, "predict_proba"):
+                    def score(X, _est=estimator, _tr=transform):
+                        return _est.predict_proba(_tr(X))[:, 1]
+                    logger.info("SHAP %s: explicando a probabilidade calibrada",
+                                model_key)
+                else:
+                    raise AttributeError(
+                        f"{type(estimator).__name__} não expõe "
+                        "`decision_function` nem `predict_proba`"
+                    )
 
                 matrix = explain_with_kernel_shap(
-                    predict, X_train[bg_idx], X_explain,
+                    score, X_train[bg_idx], X_explain,
                 )
         except Exception as exc:  # noqa: BLE001 - segue p/ os demais modelos
             logger.error("SHAP falhou para %s (%s): %s", model_key, used_path, exc)
@@ -453,7 +506,7 @@ def write_report(
         "## Interpretação e ressalvas",
         "",
         "- Os valores SHAP explicam a pontuação da classe *spoof* no espaço "
-        "tabular de 63 descritores; para o SVM, o `KernelExplainer` é uma "
+        "tabular vigente; para o SVM, o `KernelExplainer` é uma "
         "aproximação amostral (background k-means), não um valor exato.",
         "- Nos modelos em que a última camada 4D é a tokenização "
         "convolucional (CCT/AST), o Grad-CAM reflete a atenção espacial na "

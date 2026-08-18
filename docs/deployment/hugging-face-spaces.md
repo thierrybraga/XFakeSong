@@ -75,7 +75,7 @@ Arquivos usados no deploy:
 Os pesos devem ficar em um repositório separado do tipo **Model** para evitar
 rebuilds pesados do Space e permitir atualização independente dos modelos.
 O conteúdo publicado deve corresponder aos modelos treinados no dataset do
-benchmark (`data/datasets/benchmark_audio_raw_balanced_15k.npz`) e aos artefatos
+benchmark (`data/datasets/benchmark_dataset.npz`) e aos artefatos
 consolidados em `data/models/`.
 
 Faça uma simulação:
@@ -391,8 +391,16 @@ python scripts/benchmark/run_tcc_pipeline.py \
     RawNet2 WavLM HuBERT "Hybrid CNN-Transformer" \
     SVM RandomForest \
   --out /data/results/tcc_all_architectures \
-  --npz /data/datasets/benchmark_audio_raw_balanced_15k.npz
+  --npz /data/datasets/legacy_medium_15k.npz
 ```
+
+> Esse é o fluxo **legado** (`run_tcc_pipeline.py`, tier + janela de 5 s). Com o
+> dataset canônico atual, o `.npz` já vem pronto do pipeline pareado e a janela é
+> de 3 s — treine direto sobre ele:
+>
+> ```bash
+> python scripts/benchmark/run_models_sequential.py --dataset /data/datasets/benchmark_dataset.npz --epochs 100 --snr 30 20 10 --device-profile gpu --out /data/results/tcc_all_architectures --resume
+> ```
 
 Artefatos esperados:
 
@@ -400,7 +408,7 @@ Artefatos esperados:
 /data/models/
 /data/models/benchmark_final/
 /data/results/tcc_all_architectures/
-/data/datasets/benchmark_audio_raw_balanced_15k.npz
+/data/datasets/benchmark_dataset.npz
 ```
 
 ## 7. Checklist Pós-Deploy

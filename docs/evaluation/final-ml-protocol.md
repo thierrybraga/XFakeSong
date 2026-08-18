@@ -1,12 +1,28 @@
 # 28 — Protocolo Final de ML (versão consolidada)
 
-Este documento é a **referência canônica** da metodologia da versão final do
-XFakeSong: pré-processamento, splits, treinamento, ruído, calibração,
-hiperparâmetros e métricas dos **11 modelos promovidos**. Ele consolida o que
-está implementado no código (caminhos citados em cada seção) e ancora cada
-decisão na literatura da área. Documentos históricos (RETREINO_AJUSTES,
-planos 21/25/26) permanecem como trilha de auditoria — os números válidos são
-somente os da seção [Resultados finais](#8-resultados-finais-consolidados).
+Este documento é a **referência canônica da metodologia**: pré-processamento,
+splits, treinamento, ruído, calibração, hiperparâmetros e métricas. Consolida o
+que está implementado no código (caminhos citados em cada seção) e ancora cada
+decisão na literatura da área.
+
+!!! warning "Os NÚMEROS da §8 foram supersedidos (2026-08)"
+
+    A §8 reporta o run `final_consolidated_20260715`, medido sobre o corpus
+    anterior (janela de 5 s). **Esse diretório não existe mais em
+    `data/results/`** — os números da §8 sobrevivem apenas aqui e em
+    `data/results/paper/`, sem artefato reverificável por trás.
+
+    O run vigente é `data/results/clean_benchmark_15k/` —
+    `benchmark_dataset_15k.npz`, 15.000 amostras, janela de 3 s, protocolo
+    `waveform-awgn-v2`, test-lock v2 validado — e seus resultados estão em
+    [Benchmark e Resultados](benchmark.md#run-vigente--clean_benchmark_15k).
+    **Conjuntos de teste diferentes: as duas tabelas não são comparáveis entre
+    si.**
+
+    A metodologia descrita nas demais seções continua valendo, com três
+    atualizações posteriores marcadas no texto: janela do corpus 5 s → 3 s,
+    e vetor tabular 63 → 183 descritores. O escopo oficial segue com 11
+    entradas.
 
 ## 1. Pré-processamento
 
@@ -16,11 +32,11 @@ treino↔inferência) e `benchmarks/data.py::prepare_input_for_architecture`.
 | Etapa | Política |
 | --- | --- |
 | Decodificação | mono, `float32`, 16 kHz (`soxr_hq`) |
-| Janela do corpus | 5 s (80.000 amostras) por amostra |
+| Janela do corpus | **3 s (48.000 amostras)** por amostra desde o Protocolo de Dataset (era 5 s/80.000 no corpus anterior) |
 | AGC | RMS/LUFS (`app/utils/silero_vad.apply_agc`), idêntica no corpus e na inferência |
 | Normalização | z-score por amostra (frontend raw); dB-ref-max (log-Mel) |
 | Janela curta | repetição (`tile`), sem zero-padding |
-| Janela por família | raw 1 s (AASIST/RawGAT-ST legadas) ou 4,04 s (64.600, convenção do baseline ASVspoof 2021); log-Mel 128 bandas; vetor tabular de 63 descritores (SVM/RF) |
+| Janela por família | raw 48.000 amostras (3 s @ 16 kHz) para RawNet2/AASIST/RawGAT-ST — janela canônica atual, 26% menor que os 64.600 (4,04 s, convenção do baseline ASVspoof 2021) usados antes da migração; log-Mel 128 bandas; vetor tabular `benchmark_tabular_v2` de **183** descritores para SVM/RF (era o `v1` de 63 até 2026-08-09) |
 
 O contrato de entrada de cada modelo (`input_contract` no
 `bench_*_config.json`) grava janela, frontend, estratégia de crop e
@@ -29,24 +45,31 @@ paridade por construção.
 
 ## 2. Dataset e splits
 
-Dataset operacional: `data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz`
-— 15.000 amostras (7.500 reais / 7.500 falsas), 4 fontes PT-BR
-(BRSpeech-DF, Fake Voices, MLS Portuguese, TTS-Portuguese), splits
-congelados 10.500/2.250/2.250 com **test-lock** (o teste nunca participa de
+Dataset canônico: `data/datasets/benchmark_dataset.npz` — 40.980 amostras
+(20.490 reais / 20.490 falsas), CETUC pareado com clones XTTS-v2, splits
+congelados 33.226/3.976/3.778 com **test-lock** (o teste nunca participa de
 treino, validação, calibração ou HPO). Detalhes e auditoria:
-[29_DATASET_BENCHMARK_UTILIZADO](../data/benchmark-dataset.md) e
-[27_DATASET_PIPELINE](../data/pipeline-and-audit.md).
+[Protocolo de Dataset](../data/dataset-protocol.md),
+[Dataset do Benchmark](../data/benchmark-dataset.md) e
+[Pipeline e Auditoria](../data/pipeline-and-audit.md).
+
+> Os resultados desta página foram obtidos sobre o **dataset anterior** — 15.000
+> amostras de quatro fontes PT-BR, splits 10.500/2.250/2.250 —, já apagado do
+> disco. A ressalva abaixo se refere a ele.
 
 **Ressalva de validade (obrigatória ao citar resultados):** o conjunto é
 balanceado por classe mas **confundido por fonte** (MLS/TTS-Portuguese só
 contêm reais; Fake Voices só falsas; apenas BRSpeech tem as duas classes do
 mesmo locutor). Todos os resultados são portanto **in-domain**. A validação
 anti-atalho (teste isolado em BRSpeech, única fonte sem atalho possível:
-EER dos SSL permanece < 0,5%) mitiga, mas não elimina, essa limitação. O
-[Protocolo Acadêmico de Dataset v2](../data/academic-dataset-protocol-v2.md) define as
-garantias (proveniência hierárquica, oráculo de atalho por fonte, bootstrap
-por cluster) exigidas para reivindicar generalização — nenhuma métrica v2
-foi publicada ainda.
+EER dos SSL permanece < 0,5%) mitiga, mas não elimina, essa limitação.
+
+O dataset canônico atual elimina esse confundimento por construção — as duas
+classes compartilham locutor e frase, e o oráculo de fonte fica em 50%. As
+garantias exigidas para reivindicar generalização (proveniência hierárquica,
+oráculo de atalho, bootstrap por cluster, disjunção dupla) estão no
+[Protocolo de Dataset](../data/dataset-protocol.md). **Os resultados desta
+página precedem esse dataset e requerem retreino.**
 
 ## 3. Treinamento
 
@@ -84,7 +107,7 @@ Protocolo AWGN **no domínio da forma de onda, antes de qualquer frontend**
   completo LnL+ISD+SSI, simulação de codec, RIR sintética, shift temporal e
   compressão dinâmica — a cópia estática causava overfit à realização fixa
   de ruído; composição segue o RawBoost, Tak et al., ICASSP 2022).
-  **Nota v2**: por uniformidade comparativa, esse regime por-arquitetura é
+  **Nota**: por uniformidade comparativa, esse regime por-arquitetura é
   hoje *opt-in* e deve ser reportado como ablação — os números promovidos de
   AASIST/RawGAT-ST são declarados com esse regime explicitado.
 - **Codec**: round-trip MP3 64k / Opus 24k via ffmpeg
@@ -127,7 +150,7 @@ cenário tandem), ECE, curvas ROC e **DET** (escala probit), matriz de
 confusão, eficiência (parâmetros, MB, latência). **IC 95% por bootstrap**
 (1.000 reamostragens, percentil) em EER/AUC/accuracy — com n=2.250 o IC do
 EER é ±0,5–1 pp, sem o qual o ranking fino não é interpretável. O protocolo
-v2 exige adicionalmente bootstrap por `cluster_ids` e métricas por
+O protocolo exige adicionalmente bootstrap por `cluster_ids` e métricas por
 fonte/gerador (macro e worst-group).
 
 ## 8. Resultados finais consolidados
@@ -157,7 +180,7 @@ calibração não altera EER.
 ## 8.1 Execução por famílias
 
 O manifesto em `benchmarks/config.py` é a fonte única dos escopos. A suíte
-oficial contém 11 modelos; Sonic Sleuth, EfficientNet-LSTM e Ensemble pertencem
+oficial contém **11 entradas** — as desta tabela; Sonic Sleuth, EfficientNet-LSTM e Ensemble pertencem
 ao escopo `extended` e nunca são consolidados automaticamente com o artigo.
 
 Ordem recomendada: `classical-tabular`, `spectral-convolutional`,
@@ -178,7 +201,7 @@ dataset/test-lock, comando, código e revisão atuais. O plano também grava
 ## 9. Limitações declaradas
 
 1. Resultados **in-domain** (confundimento fonte-classe, §2) — não
-   sustentam generalização cross-domain/cross-gerador sem o protocolo v2.
+   sustentam generalização cross-domain/cross-gerador sem o protocolo atual.
 2. Semente única (42); multi-sementes suportado
    (`run_models_sequential --seeds`) mas não executado no run final.
 3. WavLM/HuBERT no caminho TF do benchmark usam fallback CNN-1D — os

@@ -1,0 +1,39 @@
+# Ignore especifico deste Dockerfile (o BuildKit prefere `<dockerfile>.dockerignore`
+# ao `.dockerignore` da raiz quando o arquivo existe).
+#
+# MOTIVO: `cache/huggingface/` guarda os checkpoints SSL no layout do Hugging
+# Face, em que cada `snapshots/<rev>/<arquivo>` e um symlink para `blobs/<sha>`.
+# O carregador de contexto do BuildKit tenta resolver esses symlinks e falha
+# ("invalid file request"), interrompendo o build — mesmo o cache nao sendo
+# necessario na imagem, ja que o compose o monta como volume em tempo de
+# execucao. Excluir aqui evita a falha e poupa ~1,4 GB de contexto.
+
+cache/
+.git/
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# Dados volumosos: montados como volume, nunca copiados para a imagem.
+data/datasets/
+data/results/
+data/uploads/
+data/logs/
+logs/
+
+# Dev / docs
+docs/
+site/
+notebooks/
+*.ipynb
+tests/
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Modelos promovidos SAO necessarios na imagem de inferencia.
+!data/models/
+!data/models/**

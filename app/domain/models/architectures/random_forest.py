@@ -20,18 +20,38 @@ from app.domain.models.architectures.classical_ml_helpers import (
     BaseClassicalModel,
     evaluate_model,
     optimize_hyperparameters,
+    unwrap_calibrated,
     wrap_calibration,
 )
 
-# Configure logger for Random Forest
+# Convenção do projeto: logger de módulo SEM handlers/level próprios — a
+# configuração de handlers, formatters e nível é responsabilidade da aplicação.
+# Handlers locais duplicavam linhas de log quando o root já estava configurado.
 logger = logging.getLogger(__name__)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter(
-        "%(asctime)s %(levelname)s [RandomForest] %(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-logger.setLevel(logging.INFO)
+
+#: Grid de busca do Random Forest — FONTE ÚNICA (treino do app e benchmark).
+#:
+#: AJUSTE (retune): o grid original selecionava max_depth=20/None com
+#: min_samples_leaf=1 → `train_score=1.0` (overfit) e robustez ruim sob ruído.
+#: Remove profundidade ilimitada e exige folhas/splits maiores.
+#:
+#: CORREÇÃO 2026-08-09: este grid NUNCA rodou. `benchmarks/runner.py::
+#: _classical_search_space` mantinha uma cópia própria — uma 4ª fonte de
+#: hiperparâmetros — com `max_depth: [None, 10, 20]`, `min_samples_leaf: [1,2]`
+#: e SEM `min_samples_split` (preso no default 2 do sklearn). No
+#: `clean_benchmark_15k` venceu `max_depth=None, min_samples_leaf=2` com
+#: `mean_train_score = 1.0`: o overfitting que este grid existia para corrigir
+#: seguiu intacto porque a correção morava no arquivo errado. Isso também
+#: invalida a conclusão de 2026-07-06/07 de que "as métricas idênticas provam
+#: que o ótimo já caía na faixa restrita" — comparava o grid do runner com ele
+#: mesmo. Agora o runner importa daqui.
+RANDOM_FOREST_PARAM_GRID = {
+    "rf__n_estimators": [200, 300],
+    "rf__max_depth": [10, 15, 20],
+    "rf__min_samples_split": [5, 10, 20],
+    "rf__min_samples_leaf": [2, 4, 8],
+    "rf__max_features": ["sqrt", "log2"],
+}
 
 
 class RandomForestModel(BaseClassicalModel):
@@ -102,8 +122,11 @@ class RandomForestModel(BaseClassicalModel):
 
         if getattr(self, 'feature_importances_', None) is None:
             # Try to get from pipeline if not set (e.g. if loaded from pickle without proper state restoration)
-            if hasattr(self.pipeline.named_steps['rf'], 'feature_importances_'):
-                self.feature_importances_ = self.pipeline.named_steps['rf'].feature_importances_
+            # `unwrap_calibrated`: sob calibração o passo 'rf' é o
+            # CalibratedClassifierCV, não a floresta.
+            step = unwrap_calibrated(self.pipeline.named_steps['rf'])
+            if hasattr(step, 'feature_importances_'):
+                self.feature_importances_ = step.feature_importances_
             else:
                 raise ValueError("Underlying Random Forest model does not provide feature importances")
 
@@ -147,6 +170,11 @@ def create_random_forest_model(
 ) -> RandomForestModel:
     """
     Cria um modelo Random Forest para detecção de deepfakes.
+
+    ``architecture`` é um SINK INTENCIONAL, não um parâmetro morto: a interface
+    comum das arquiteturas passa o nome da variante, e sem absorvê-lo aqui a
+    chave vazaria por ``**kwargs`` até o ``RandomForestClassifier`` do
+    scikit-learn (TypeError). O RF não tem variantes topológicas.
     """
     logger.info(f"Creating Random Forest model with {n_estimators} estimators")
     logger.info(f"Input shape: {input_shape}, num_classes: {num_classes}")
@@ -178,17 +206,7 @@ def optimize_random_forest_hyperparameters(
     Otimiza hiperparâmetros do Random Forest usando Grid Search.
     """
     if param_grid is None:
-        # AJUSTE (retune): grid anterior selecionava max_depth=20/None com
-        # min_samples_leaf=1 -> train_score=1.0 (overfit) e robustez ruim
-        # (0.98->0.68 sob ruido). Remove profundidade ilimitada e exige folhas/
-        # splits maiores para regularizar e generalizar melhor sob ruido.
-        param_grid = {
-            'rf__n_estimators': [200, 300],
-            'rf__max_depth': [10, 15, 20],
-            'rf__min_samples_split': [5, 10, 20],
-            'rf__min_samples_leaf': [2, 4, 8],
-            'rf__max_features': ['sqrt', 'log2']
-        }
+        param_grid = dict(RANDOM_FOREST_PARAM_GRID)
 
     return optimize_hyperparameters(
         model_class=RandomForestModel,

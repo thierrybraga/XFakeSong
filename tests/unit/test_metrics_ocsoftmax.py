@@ -1,5 +1,11 @@
-"""Testes P3: min-tDCF, OC-Softmax, refinos de arquitetura e calibração."""
+"""min t-DCF, OC-Softmax e a calibração das pontuações.
 
+SUJEITO: `training/metrics.py` e a camada OC-Softmax de
+`architectures/layers.py` — as métricas de anti-spoofing e a cabeça que as
+otimiza diretamente.
+
+Renomeado em 2026-08-17 (era `test_p3_metrics_ocsoftmax.py`).
+"""
 from __future__ import annotations
 
 import numpy as np

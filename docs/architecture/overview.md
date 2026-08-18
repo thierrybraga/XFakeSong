@@ -131,24 +131,24 @@ Esse fluxo é implementado por serviços reais do projeto:
 XFakeSong/
 ├── app/                            # Código-fonte principal
 │   ├── core/                       # Infraestrutura transversal (genérica, sem regras de negócio)
-│   │   ├── auth/                   # JWT, auth handler
+│   │   ├── auth/                   # API-Key (X-API-Key) + credenciais básicas do Gradio — sem JWT
+│   │   ├── bootstrap.py            # Inicialização/criação de diretórios padrão
 │   │   ├── config/                 # settings.py (SystemConfig)
 │   │   ├── exceptions.py           # Exceções customizadas de domínio
 │   │   ├── contracts/              # Contratos abstratos SOLID
 │   │   │   ├── audio.py            # AudioData, AudioFeatures, FeatureType
 │   │   │   ├── base.py             # ProcessingResult, ProcessingStatus
 │   │   │   └── services.py         # IDetectionService, ITrainingService, etc.
-│   │   ├── db/                     # session.py (engine/sessões) e setup.py (create_all/seed)
+│   │   ├── db/                     # session.py, setup.py (create_all/seed) e experiment_store.py
 │   │   ├── feedback.py             # Hub de notificações/histórico (usado pela UI Gradio)
 │   │   ├── gpu.py                  # Setup de GPU (memory growth, mixed precision)
+│   │   ├── hf_compat.py            # Compatibilidade com versões da lib Hugging Face
 │   │   ├── middleware.py           # CORS, error handlers
 │   │   ├── performance.py          # Configuração de runtime (TF32, threads)
 │   │   ├── security.py             # Rate limiter, sanitização
 │   │   └── version_check.py        # Checagem de compatibilidade de versões
 │   │
-│   ├── datasets/                   # Áudios para treinamento
-│   │   ├── fake/
-│   │   └── real/
+│   ├── voice_profiles/             # Perfis de voz salvos (profile_1/, ...)
 │   │
 │   ├── dependencies.py             # Injeção de dependência (lru_cache singletons)
 │   │
@@ -211,7 +211,7 @@ XFakeSong/
 │
 ├── docs/                           # Documentação
 ├── docker/compose/                 # Perfis Docker segmentados por uso/dispositivo
-├── environments/                   # Dockerfiles/requirements por família computacional
+├── docker/environments/             # Dockerfiles/requirements por família computacional
 ├── configs/                        # Configs YAML de dataset, treino e inferência
 ├── data/                           # Runtime local persistente
 │   ├── app.db                      # SQLite local padrão

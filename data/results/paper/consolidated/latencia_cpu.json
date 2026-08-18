@@ -1,0 +1,198 @@
+{
+ "protocolo": {
+  "device": "cpu",
+  "batch_size": 1,
+  "warmup_runs": 2,
+  "measured_runs": 30,
+  "component": "model_forward_only",
+  "cross_runtime_comparable": true,
+  "nota": "Todos os 11 modelos no MESMO dispositivo (CPU). Substitui as latências publicadas, medidas em 3 runtimes distintos.",
+  "cpu": "x86_64"
+ },
+ "resultados": {
+  "Random Forest": {
+   "median_ms": 65.04,
+   "mean_ms": 65.07,
+   "std_ms": 0.58,
+   "p95_ms": 66.14,
+   "min_ms": 63.98,
+   "measured_runs": 30,
+   "warmup_runs": 2,
+   "runtime": "sklearn",
+   "device": "cpu",
+   "batch_size": 1,
+   "component": "model_forward_only",
+   "input_shape": [
+    183
+   ]
+  },
+  "SVM": {
+   "median_ms": 1.03,
+   "mean_ms": 1.07,
+   "std_ms": 0.12,
+   "p95_ms": 1.29,
+   "min_ms": 0.98,
+   "measured_runs": 30,
+   "warmup_runs": 2,
+   "runtime": "sklearn",
+   "device": "cpu",
+   "batch_size": 1,
+   "component": "model_forward_only",
+   "input_shape": [
+    183
+   ]
+  },
+  "CCT": {
+   "median_ms": 27.46,
+   "mean_ms": 27.42,
+   "std_ms": 0.49,
+   "p95_ms": 28.26,
+   "min_ms": 26.24,
+   "measured_runs": 30,
+   "warmup_runs": 2,
+   "runtime": "keras",
+   "device": "cpu",
+   "batch_size": 1,
+   "component": "model_forward_only",
+   "input_shape": [
+    100,
+    80
+   ]
+  },
+  "AST": {
+   "median_ms": 255.41,
+   "mean_ms": 256.92,
+   "std_ms": 5.26,
+   "p95_ms": 265.0,
+   "min_ms": 251.64,
+   "measured_runs": 30,
+   "warmup_runs": 2,
+   "runtime": "keras",
+   "device": "cpu",
+   "batch_size": 1,
+   "component": "model_forward_only",
+   "input_shape": [
+    300,
+    128
+   ]
+  },
+  "Res2Net": {
+   "median_ms": 22.12,
+   "mean_ms": 22.16,
+   "std_ms": 0.47,
+   "p95_ms": 22.58,
+   "min_ms": 21.45,
+   "measured_runs": 30,
+   "warmup_runs": 2,
+   "runtime": "keras",
+   "device": "cpu",
+   "batch_size": 1,
+   "component": "model_forward_only",
+   "input_shape": [
+    100,
+    80
+   ]
+  },
+  "Conformer": {
+   "median_ms": 53.11,
+   "mean_ms": 53.36,
+   "std_ms": 1.45,
+   "p95_ms": 53.99,
+   "min_ms": 52.03,
+   "measured_runs": 30,
+   "warmup_runs": 2,
+   "runtime": "keras",
+   "device": "cpu",
+   "batch_size": 1,
+   "component": "model_forward_only",
+   "input_shape": [
+    100,
+    80
+   ]
+  },
+  "RawNet2": {
+   "median_ms": 556.19,
+   "mean_ms": 556.49,
+   "std_ms": 7.06,
+   "p95_ms": 566.8,
+   "min_ms": 543.19,
+   "measured_runs": 30,
+   "warmup_runs": 2,
+   "runtime": "keras",
+   "device": "cpu",
+   "batch_size": 1,
+   "component": "model_forward_only",
+   "input_shape": [
+    48000,
+    1
+   ]
+  },
+  "AASIST": {
+   "median_ms": 110.47,
+   "mean_ms": 111.84,
+   "std_ms": 4.18,
+   "p95_ms": 121.05,
+   "min_ms": 107.71,
+   "measured_runs": 30,
+   "warmup_runs": 2,
+   "runtime": "keras",
+   "device": "cpu",
+   "batch_size": 1,
+   "component": "model_forward_only",
+   "input_shape": [
+    48000,
+    1
+   ]
+  },
+  "RawGAT-ST": {
+   "median_ms": 196.37,
+   "mean_ms": 197.67,
+   "std_ms": 4.83,
+   "p95_ms": 206.72,
+   "min_ms": 191.8,
+   "measured_runs": 30,
+   "warmup_runs": 2,
+   "runtime": "keras",
+   "device": "cpu",
+   "batch_size": 1,
+   "component": "model_forward_only",
+   "input_shape": [
+    48000,
+    1
+   ]
+  },
+  "WavLM Original": {
+   "median_ms": 392.69,
+   "mean_ms": 394.53,
+   "std_ms": 5.66,
+   "p95_ms": 407.51,
+   "min_ms": 387.01,
+   "measured_runs": 30,
+   "warmup_runs": 2,
+   "runtime": "torch",
+   "device": "cpu",
+   "batch_size": 1,
+   "component": "model_forward_only",
+   "input_shape": [
+    48000
+   ]
+  },
+  "HuBERT Original": {
+   "median_ms": 387.59,
+   "mean_ms": 389.06,
+   "std_ms": 6.83,
+   "p95_ms": 405.75,
+   "min_ms": 380.76,
+   "measured_runs": 30,
+   "warmup_runs": 2,
+   "runtime": "torch",
+   "device": "cpu",
+   "batch_size": 1,
+   "component": "model_forward_only",
+   "input_shape": [
+    48000
+   ]
+  }
+ },
+ "falhas": {}
+}

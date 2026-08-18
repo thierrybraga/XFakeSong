@@ -17,6 +17,8 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from app.core.auth.auth_handler import is_production
+
 # Carregar variáveis de ambiente
 load_dotenv()
 
@@ -25,31 +27,34 @@ limiter = Limiter(key_func=get_remote_address)
 
 
 def setup_security(app: FastAPI):
-    """Configura middlewares e configurações de segurança."""
+    """Configura middlewares e falha fechado quando o perfil é produção."""
+    production = is_production()
 
-    # 1. CORS — restrito em produção, aberto em dev
-    origins_str = os.getenv("ALLOWED_ORIGINS", "*")
+    # 1. CORS — restrito em produção, aberto apenas no desenvolvimento.
+    origins_str = os.getenv("ALLOWED_ORIGINS", "" if production else "*").strip()
+    if production and origins_str == "*":
+        raise RuntimeError("ALLOWED_ORIGINS='*' não é permitido em produção.")
     if origins_str == "*":
         allow_origins = ["*"]
     else:
-        allow_origins = [origin.strip() for origin in origins_str.split(",")]
+        allow_origins = [
+            origin.strip() for origin in origins_str.split(",") if origin.strip()
+        ]
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allow_origins,
-        allow_credentials=True if origins_str != "*" else False,
+        allow_credentials=bool(allow_origins) and origins_str != "*",
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["*"],
+        allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-Request-ID"],
     )
 
     # 2. Trusted Host — protege contra DNS Rebinding.
-    # PROD.6: SEMPRE inclui 127.0.0.1/localhost para o healthcheck do Docker
-    # funcionar (HEALTHCHECK `curl http://127.0.0.1:...` precisa passar pelo
-    # Host validation). Caso contrário fica unhealthy mesmo com app saudável.
-    allowed_hosts = os.getenv("ALLOWED_HOSTS", "*")
+    allowed_hosts = os.getenv("ALLOWED_HOSTS", "" if production else "*").strip()
+    if production and not allowed_hosts:
+        raise RuntimeError("ALLOWED_HOSTS deve ser configurado em produção.")
     if allowed_hosts != "*":
         hosts = {h.strip() for h in allowed_hosts.split(",") if h.strip()}
-        # Garante interfaces locais (healthcheck, debug local)
         hosts.update({"127.0.0.1", "localhost", "::1"})
         app.add_middleware(
             TrustedHostMiddleware,
@@ -81,14 +86,14 @@ def sanitize_filename(filename: str) -> str:
     basename = basename.replace("..", "").replace("/", "").replace("\\", "")
 
     # Remover caracteres não-seguros (manter alphanum, -, _, .)
-    basename = re.sub(r'[^\w\-.]', '_', basename)
+    basename = re.sub(r"[^\w\-.]", "_", basename)
 
     # Remover pontos iniciais (previne arquivos ocultos)
-    basename = basename.lstrip('.')
+    basename = basename.lstrip(".")
 
     # Limitar comprimento
     if len(basename) > 200:
         name, ext = os.path.splitext(basename)
-        basename = name[:200 - len(ext)] + ext
+        basename = name[: 200 - len(ext)] + ext
 
     return basename or "unnamed"

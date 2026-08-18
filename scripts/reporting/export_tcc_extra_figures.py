@@ -18,7 +18,7 @@ import csv
 import logging
 from pathlib import Path
 from statistics import NormalDist
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 import matplotlib
 
@@ -30,7 +30,20 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
-RESULTS_ROOT = ROOT / "app" / "models" / "benchmark_final"
+
+# Fonte das predicoes: o DIRETORIO DO RUN, nao `benchmark_final/`.
+#
+# Apontava para `data/models/benchmark_final/<slug>/results/`, um layout que a
+# promocao atual nao produz (`sync_completed_benchmark_artifacts.py` grava
+# `results_copied: false`) — o script quebrava com FileNotFoundError. O run e a
+# fonte canonica das predicoes; `benchmark_final/` guarda o modelo empacotado.
+#
+# As figuras que este script gerava foram descartadas em 2026-08-09 porque
+# vinham do dataset com atalho de fonte (`benchmark_audio_raw_balanced_15k`).
+# O script em si nao tinha defeito: apontado para o run limpo, reproduz as duas
+# figuras a partir do protocolo valido.
+DEFAULT_RESULTS_ROOT = ROOT / "data" / "results" / "clean_benchmark_15k"
+RESULTS_ROOT = DEFAULT_RESULTS_ROOT
 FIGURES_DIR = ROOT / "data/results/paper" / "figures"
 
 MODELS: List[Tuple[str, str]] = [
@@ -49,8 +62,28 @@ MODELS: List[Tuple[str, str]] = [
 
 
 def load_predictions(slug: str) -> Tuple[np.ndarray, np.ndarray]:
-    """Carrega (y_true, p_fake) de predictions_clean.csv do modelo."""
-    path = RESULTS_ROOT / slug / "results" / "predictions_clean.csv"
+    """Carrega (y_true, score de ORDENACAO) de predictions_clean.csv.
+
+    Prefere `ranking_score` quando a coluna vem preenchida. Nos classicos, a
+    calibracao isotonica colapsa a margem em degraus (52 no SVM deste run), e
+    curva DET e distribuicao de score descrevem ORDENACAO — desenha-las sobre a
+    probabilidade calibrada mostraria uma escada que nao corresponde ao EER
+    publicado. Onde a coluna esta vazia, `p_fake` ja E o score de ordenacao.
+    """
+    path = RESULTS_ROOT / slug / "predictions_clean.csv"
+    y_true: List[int] = []
+    scores: List[float] = []
+    with path.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            y_true.append(int(row["y_true"]))
+            bruto = (row.get("ranking_score") or "").strip()
+            scores.append(float(bruto) if bruto else float(row["p_fake"]))
+    return np.asarray(y_true), np.asarray(scores)
+
+
+def load_p_fake(slug: str) -> Tuple[np.ndarray, np.ndarray]:
+    """Carrega (y_true, p_fake) — a probabilidade, para o histograma."""
+    path = RESULTS_ROOT / slug / "predictions_clean.csv"
     y_true: List[int] = []
     p_fake: List[float] = []
     with path.open(newline="", encoding="utf-8") as handle:
@@ -127,7 +160,12 @@ def export_score_distributions() -> Path:
 
     fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.2), sharey=True)
     for ax, (slug, label) in zip(axes, pair):
-        y_true, scores = load_predictions(slug)
+        # `p_fake` explicito: o eixo e a PROBABILIDADE em [0, 1] e os bins
+        # cobrem esse intervalo. Nestes dois modelos as duas leituras coincidem
+        # (nao ha calibracao separada), mas depender disso deixaria o
+        # histograma errado no dia em que alguem apontar a funcao para um
+        # classico, cujo score de ordenacao e uma margem centrada em zero.
+        y_true, scores = load_p_fake(slug)
         ax.hist(
             scores[y_true == 0], bins=bins, alpha=0.65,
             label="bonafide", color="#27ae60",

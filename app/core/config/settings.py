@@ -180,17 +180,55 @@ class TrainingConfig:
     early_stopping_patience: int = 10
     reduce_lr_on_plateau: bool = True
     reduce_lr_patience: int = 5
+    # Guarda de colapso (2026-08-06). Ortogonal ao early stopping: só dispara
+    # quando o modelo JÁ ESTEVE bom e depois virou palpite constante
+    # (val_accuracy no nível do acaso) por `collapse_patience` épocas
+    # seguidas, ou quando val_loss fica não-finito por `collapse_nan_patience`.
+    # No benchmark, o Conformer queimou 85 épocas nesse estado. Ver
+    # app/domain/models/training/trainer.py::CollapseAbort.
+    abort_on_collapse: bool = True
+    collapse_patience: int = 15
+    collapse_nan_patience: int = 3
 
-    # Arquiteturas disponíveis
+    # Métrica que o ModelCheckpoint usa para escolher a época publicada.
+    #
+    # `val_loss` é o padrão e preserva a reprodutibilidade dos 11 artefatos de
+    # `clean_benchmark_15k`, todos selecionados por ele. `val_eer` alinha a
+    # seleção à métrica primária de anti-spoofing e exige o callback
+    # `ValidationEER` (o ModelTrainer o registra sozinho, e falha alto se não
+    # houver validation_data).
+    #
+    # PRECISA SER UM CAMPO DECLARADO, não um atributo solto: o TrainingService
+    # filtra o dicionário de config pelos campos deste dataclass
+    # (`valid_fields`), então qualquer chave não declarada é DESCARTADA em
+    # silêncio. Foi o que aconteceu entre 2026-08-16 e 2026-08-17 — o
+    # `run_rawgat_retune.py` setava `cfg.checkpoint_monitor = "val_eer"`, o
+    # trainer lia `self.config.checkpoint_monitor`, e nada no meio ligava os
+    # dois: o smoke de 2 épocas gravou `{"monitor": "val_loss"}` no
+    # `best.json` e nenhum `val_eer` no histórico.
+    checkpoint_monitor: str = "val_loss"
+
+    # Arquiteturas disponíveis.
+    # FONTE DE VERDADE: app/domain/models/architectures/registry.py
+    # (`architecture_registry.list_architectures_snake()`). Esta lista é um
+    # espelho ESTÁTICO — `app/core/` não pode importar `app/domain/` (regra de
+    # camadas do projeto). Estava desatualizada, com 7 das 12 arquiteturas
+    # neurais registradas; ao adicionar uma arquitetura, atualize os dois
+    # lugares (o teste tests/unit/test_architectures.py cobre a divergência).
     available_architectures: List[str] = field(
         default_factory=lambda: [
             "aasist",
-            "conformer",
-            "efficientnet_lstm",
-            "ensemble",
-            "multiscale_cnn",
             "rawgat_st",
+            "efficientnet_lstm",
+            "multiscale_cnn",
             "spectrogram_transformer",
+            "conformer",
+            "ensemble",
+            "sonic_sleuth",
+            "rawnet2",
+            "wavlm",
+            "hubert",
+            "hybrid_cnn_transformer",
         ]
     )
 

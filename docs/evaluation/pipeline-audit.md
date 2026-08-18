@@ -26,8 +26,8 @@ primeiro o barato (valida o pipeline cedo e falha rápido) e deixa o caro por
 | 7 | Hybrid CNN-Transformer | CNN+Transformer | espectrograma | 32 | médio-alto |
 | 8 | SpectrogramTransformer | Transformer | espectrograma | 8 | alto |
 | 9 | RawNet2 | SincConv+GRU | áudio bruto | 16 | alto |
-| 10 | AASIST | Sinc+GAT | áudio bruto | 16 | alto |
-| 11 | RawGAT-ST | Sinc+GAT | áudio bruto | 8 | muito alto |
+| 10 | AASIST | Sinc+GAT | áudio bruto | 24 | alto |
+| 11 | RawGAT-ST | Sinc+GAT | áudio bruto | 16 | muito alto |
 | 12 | WavLM | SSL (fallback CNN-1D no TF) | áudio bruto | 8 | muito alto |
 | 13 | HuBERT | SSL (real/fallback) | áudio bruto | 8 | muito alto |
 | 14 | Ensemble | fusão | — | 16 | máximo (depende dos demais) |
@@ -51,7 +51,7 @@ mesmo `.npz`:
   estratificada e reprodutível (semente fixa, `val=0.15`/`test=0.15`) — o teste é
   idêntico para todos os modelos, independente do split original do `.npz`.
 - Todos os presets `configs/training/*.yaml` apontam para
-  `data/datasets/benchmark_audio_raw_balanced_15k.npz` (nome canônico).
+  `data/datasets/benchmark_dataset.npz` (nome canônico).
 
 **Atualizar o dataset = regerar esse `.npz`** (não versionado) a partir dos
 splits, e todos os modelos passam a usá-lo automaticamente:
@@ -59,12 +59,15 @@ splits, e todos os modelos passam a usá-lo automaticamente:
 ```bash
 python scripts/dataset/build_dataset.py --skip-download --target <N>   # dedup→balance→splits
 python scripts/dataset/export_npz_from_splits.py \
-    --out data/datasets/benchmark_audio_raw_balanced_15k.npz --sample-rate 16000 --duration-sec 5.0
+    --out data/datasets/legacy_dataset.npz --sample-rate 16000 --duration-sec 5.0
 ```
 
-> **Decisão consolidada: 15k total (7.500 real / 7.500 fake)**, nome canônico
-> `benchmark_audio_raw_balanced_15k.npz`. Composição por fonte registrada em
-> [29](../data/benchmark-dataset.md).
+> ⚠️ **Este fluxo e este snapshot são anteriores ao dataset canônico.** O
+> artefato atual é `data/datasets/benchmark_dataset.npz` — 40.980 amostras
+> (20.490 + 20.490), CETUC pareado com clones XTTS-v2, janela de 3 s —
+> construído pelo pipeline do
+> [Protocolo de Dataset](../data/dataset-protocol.md), não por
+> `build_dataset.py`. Ver [Dataset do Benchmark](../data/benchmark-dataset.md).
 
 Snapshot local do canônico reconstruído em 28/06/2026:
 
@@ -119,22 +122,56 @@ Augmentation: `use_augmentation=True`, `snr_range_db=(5,40)`.
    batch por VRAM + gating de mixed precision.
 
 ### 4.3 Presets por família — `configs/training/*.yaml`
-Todos: `dataset=...balanced_15k.npz`, `epochs=100`, `snr=[30,20,10]`,
-`latency_runs=30`, `optimize_hyperparameters=true`. Listas de modelos em ordem de
-custo crescente.
+Todos: `dataset=data/datasets/benchmark_dataset.npz`, `epochs=100`,
+`latency_runs=30`. Listas de modelos em ordem de custo crescente.
 
 | Preset | `device_profile` | batch | Modelos |
 |---|---|---:|---|
 | `classical.yaml` | cpu | 32 | RandomForest, SVM |
-| `tensorflow.yaml` | gpu | 32 | MultiscaleCNN, Sonic Sleuth, EfficientNet-LSTM, SpectrogramTransformer |
-| `pytorch.yaml` | gpu | — | Conformer, Hybrid CNN-Transformer, RawNet2, AASIST, RawGAT-ST |
-| `ssl.yaml` | gpu | 8 | WavLM, HuBERT |
-| `retune_ajustado.yaml` | gpu | — | modelos do diagnóstico de retreino |
+| `spectral_convolutional.yaml` | gpu | 32 | MultiscaleCNN |
+| `tensorflow.yaml` | gpu | 16 | Conformer, Hybrid CNN-Transformer, SpectrogramTransformer |
+| `pytorch.yaml` | gpu | 16 | RawNet2, AASIST, RawGAT-ST |
+| `ssl.yaml` | gpu | 8 | WavLM Original, HuBERT Original |
+| `extended.yaml` | gpu | 16 | Sonic Sleuth, EfficientNet-LSTM, Ensemble |
+| `retune_ajustado.yaml` | gpu | 32 | modelos do diagnóstico de retreino |
+| `retune_extended.yaml` | gpu | 16 | Ensemble, EfficientNet-LSTM |
 
 ### 4.4 Runtime/perf (env) — `app/core/performance.py`
 `XFAKE_TF_INTRA/INTER_OP_THREADS`, `XFAKE_NUM_WORKERS`, `XFAKE_ENABLE_XLA`,
 `XFAKE_ENABLE_ONEDNN`, `XFAKE_GPU_MEMORY_GROWTH`, `XFAKE_GPU_MEMORY_LIMIT_MB`,
 `XFAKE_CUDA_MALLOC_ASYNC`, `XFAKE_ENABLE_TF32` (opt-in, Ampere+).
+`XFAKE_TRAIN_BATCH_LOG_INTERVAL_S` (default 60): intervalo entre linhas de
+progresso `[TRAIN]` do `EpochProgressLogger`, que desde 2026-07-31 também loga
+o RSS do processo (`VmRSS` via `/proc/self/status`) — diagnóstico permanente
+para detectar crescimento de RAM durante o treino em si, não só no preparo
+dos dados.
+
+### 4.5 RAM do container de treino/benchmark
+
+`DOCKER_TRAIN_MEMORY_LIMIT` em `docker/compose/{benchmark,train}.nvidia.yml`
+subiu **16G → 24G → 36G**. O SpectrogramTransformer usa a maior grade
+espectral do escopo oficial (300×128 = 38.400 floats/amostra, a maior entre
+as arquiteturas `spectrogram`) e ainda bateu no teto de 24G mesmo depois do
+preparo de dados corrigido (pré-alocação em `benchmarks/runner.py` e em
+`app/domain/features/benchmark_frontend.py::log_mel_batch`, no lugar de
+lista + `np.concatenate`/`np.asarray` no final — o padrão antigo dobrava o
+pico bem no fim de cada etapa). Também é por isso que
+`_XLA_UNFRIENDLY_TRAINING_ARCHITECTURES` em
+`scripts/benchmark/run_models_sequential.py` desliga o auto-JIT do XLA
+(`XFAKE_ENABLE_XLA=0` no subprocesso) para `multiscalecnn`, `aasist`,
+`rawgatst` e `rawnet2`: o auto-JIT desses grafos (SincConv, GAT dinâmico,
+GRU) estourava RAM do host ou VRAM da GPU já no 1º batch — mesma classe de
+falha por trás da lista `Predictor._XLA_UNFRIENDLY_ARCHITECTURES` do lado de
+inferência (escopo diferente, ver `docs/models/inference.md`).
+
+O compose de benchmark (`benchmark.nvidia.yml`) já passa `--resume` e
+`restart: on-failure:3`: sem `--resume`, um restart do container (crash,
+reinício do host/Docker Desktop) refazia as 11 arquiteturas do zero mesmo as
+já concluídas, porque a lógica de pular modelo com fingerprint conferido só
+ativa com essa flag. O `BackupAndRestore` do Keras (sempre ligado via
+`backup_dir` em `benchmarks/runner.py::_run_neural`) já preservava o
+progresso NO MEIO do treino de uma arquitetura; faltava só o orquestrador
+externo não redescartar as que já tinham terminado.
 
 ---
 

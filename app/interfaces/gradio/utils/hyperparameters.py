@@ -20,6 +20,74 @@ logger = logging.getLogger("hyperparameters")
 _NUM_HP_UPDATE_FIELDS = 26
 
 
+_INTERFACE_SAFE_DEFAULTS: Dict[str, Any] = {
+    "batch_size": 32,
+    "epochs": 100,
+    "learning_rate": 1e-3,
+    "dropout_rate": 0.3,
+    "l2_reg_strength": 1e-4,
+    "validation_split": 0.2,
+}
+
+
+def get_interface_hyperparameters(
+    architecture: str,
+    saved_parameters: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """Resolve os defaults exibidos pela UI para uma arquitetura.
+
+    Precedência, do menor para o maior peso:
+
+    1. `_INTERFACE_SAFE_DEFAULTS` — piso operacional, para a UI nunca ficar
+       sem valor;
+    2. `saved_parameters` (linha `default` em `architecture_configs`) — traz a
+       ESTRUTURA que o plano não carrega: `patch_size`, `embed_dim`,
+       `num_blocks`, `num_heads`, `ff_dim`, `patience`…;
+    3. **o plano do benchmark** — vence sobre as duas anteriores.
+
+    O plano vir por último é deliberado. As linhas de `architecture_configs`
+    são SEMEADAS pela aplicação, não escritas pelo usuário, e já divergiram do
+    pipeline: a do SpectrogramTransformer trazia `learning_rate=5e-05` contra
+    os 1e-05 do plano e — pior — `pretrained=False`, quando o benchmark treina
+    o AST a partir dos pesos AudioSet. Tratá-las como "customização do
+    usuário" fazia a interface propor treinar do zero um modelo que o pipeline
+    treina por transferência.
+
+    Esta função serve `load_defaults`, que é o botão de RESTAURAR PADRÕES —
+    quem quer os próprios valores simplesmente não o aciona.
+    """
+    merged = dict(_INTERFACE_SAFE_DEFAULTS)
+
+    if saved_parameters:
+        merged.update(
+            {
+                key: value
+                for key, value in saved_parameters.items()
+                if value is not None
+            }
+        )
+
+    try:
+        from benchmarks.planning import effective_hyperparameters
+
+        benchmark_parameters = effective_hyperparameters(architecture)
+        merged.update(
+            {
+                key: value
+                for key, value in benchmark_parameters.items()
+                if value is not None
+            }
+        )
+    except Exception as exc:  # noqa: BLE001 - UI mantém fallback operacional
+        logger.warning(
+            "Defaults do benchmark indisponíveis para %s: %s",
+            architecture,
+            exc,
+        )
+
+    return merged
+
+
 def optimize_default(
     architecture: str,
     batch_v: float,
@@ -256,8 +324,10 @@ def optimize_default(
 
 def load_defaults(architecture: str) -> Tuple:
     """
-    Carrega os hiperparâmetros padrão para uma arquitetura do BANCO DE DADOS.
-    Não salva nem sobrescreve, apenas lê.
+    Carrega os defaults do benchmark para a arquitetura selecionada.
+
+    Parâmetros salvos no banco pelo usuário são tratados como overrides. A
+    função apenas lê; não persiste nem sobrescreve configuração alguma.
     """
     db = SessionLocal()
     try:
@@ -267,8 +337,8 @@ def load_defaults(architecture: str) -> Tuple:
             .first()
         )
         hp = arch_config.parameters if arch_config else {}
-        hp_state[architecture] = hp
-        merged = dict(hp)
+        merged = get_interface_hyperparameters(architecture, hp)
+        hp_state[architecture] = merged
 
         # Helper para pegar valor ou default seguro
         def get_val(key, default):

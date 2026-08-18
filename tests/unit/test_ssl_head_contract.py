@@ -87,7 +87,7 @@ def test_resolve_embedding_config_reads_checkpoint_contract():
 def test_protocol_swaps_static_copy_for_dynamic_augmenter():
     """AASIST/RawGAT-ST com `architecture_specific_augmentation=True`:
     sem cópia AWGN estática, augmenter dinâmico ligado. Este é o regime dos
-    resultados promovidos (retrain_weak4_20260715); desde o protocolo v2 ele
+    resultados promovidos (retrain_weak4_20260715); desde entao ele
     é OPT-IN — o default comparável usa cópia estática uniforme p/ todas as
     arquiteturas e o regime dinâmico deve ser reportado como ablação."""
     pytest.importorskip("tensorflow")
