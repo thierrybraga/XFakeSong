@@ -30,39 +30,39 @@
 # ── Núcleo numérico ───────────────────────────────────────────────────
 # numpy<2.3 é o teto que o TF 2.21 tolera. numba precisa acompanhar: 0.60
 # exige numpy<2.1 e quebraria com este numpy — 0.66 é a combinação validada.
-numpy==2.2.6
-numba==0.66.0
-llvmlite==0.48.0
-scipy==1.17.1
-pandas==2.3.3
+numpy==2.5.2
+numba==0.67.0
+llvmlite==0.49.0
+scipy==1.18.1
+pandas==3.0.5
 
 # ── Keras: o TF 2.16+ traz Keras 3, e o projeto depende disso ─────────
 # (safe_mode, register_keras_serializable, build() explícito das subcamadas)
-keras==3.15.0
-ml-dtypes==0.5.4
-h5py==3.14.0
+keras==3.15.1
+ml-dtypes==0.6.0
+h5py==3.16.0
 
 # ── Serialização: fontes clássicas de quebra entre TF e torch ─────────
-protobuf==7.35.1
+protobuf==7.36.0
 flatbuffers==25.12.19
-grpcio==1.82.1
+grpcio==1.83.0
 
 # ── Hugging Face: leitura dos checkpoints pré-treinados ───────────────
 # transformers 4.45.2 é a versão com que o port do AST e dos backbones SSL
 # foi validado. Note que o caminho TF do transformers NÃO é usado (ele exige
 # tf-keras sob Keras 3); lemos o state_dict PyTorch direto.
-transformers==4.45.2
-tokenizers==0.20.3
+transformers==5.15.1
+tokenizers==0.23.1
 safetensors==0.8.0
-huggingface-hub==0.36.2
-datasets==3.6.0
+huggingface-hub==1.28.0
+datasets==5.0.1
 
 # ── Áudio e ML clássico ──────────────────────────────────────────────
-librosa==0.11.0
+librosa==1.0.0
 soundfile==0.14.0
 soxr==1.1.0
 PyWavelets==1.9.0
-scikit-learn==1.8.0
+scikit-learn==1.9.0
 joblib==1.5.3
 
 # ── Relatórios ───────────────────────────────────────────────────────
@@ -74,11 +74,11 @@ seaborn==0.13.2
 # starlette>=0.47.2,<0.48). Os pinos antigos (0.115.14/0.41.3) ficavam FORA
 # dessas faixas e o `PIP_CONSTRAINT` das imagens quebrava o build inteiro com
 # ResolutionImpossible. gradio 4.44.1 resolve com este par.
-gradio==4.44.1
-fastapi==0.116.2
-starlette==0.47.3
+gradio==6.25.0
+fastapi==0.141.1
+starlette==1.6.0
 python-multipart==0.0.32
 pydantic==2.13.4
-sqlalchemy==2.0.51
+sqlalchemy==2.0.52
 pyyaml==6.0.3
 jsonschema==4.26.0
