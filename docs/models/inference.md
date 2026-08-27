@@ -24,6 +24,41 @@ sob demanda com `custom_objects`; modelos sklearn carregam o scaler lateral
 quando existe; artefatos `.pt` de WavLM/HuBERT originais usam wrapper PyTorch
 lazy.
 
+## Paridade treino → produção (2026-08-21)
+
+O que o modelo recebe em produção tem de ser o que ele recebeu no treino.
+Quatro divergências foram fechadas; todas eram silenciosas — nenhuma levantava
+erro, todas mudavam a entrada do modelo.
+
+**Correção de banda.** O treino aplica passa-baixas de 7,5 kHz, remoção de DC e
+renormalização de RMS às três partições. A inferência não aplicava nada disso: o
+modelo recebia, em produção, uma banda acima de 7,5 kHz que **não existia em
+nenhuma amostra de treino**. A política agora viaja no `input_contract`
+(`band_correction`, carimbada pelo runner) e o `FeaturePreparer` a reproduz.
+Artefatos anteriores não têm o campo e seguem pelo caminho antigo — cada modelo
+recebe o preparo da época em que foi treinado.
+
+**Nível.** A AGC da inferência normalizava a **−23 LUFS** e o corpus a
+**−26 dBFS**: 3 dB, fator 1,41. Para raw e log-Mel é inconsequente (z-score e
+dB-ref-max por amostra são invariantes a reescala linear), mas o vetor tabular
+do SVM/Random Forest é calculado direto sobre a amplitude — RMS, média |x|,
+mín/máx e percentis saíam todos fora. O alvo agora é o do corpus, pela fonte
+única `benchmark_frontend.normalize_corpus_level`.
+
+**Multicrop.** O contrato guardava o *placeholder* `resolved_at_eval` porque era
+carimbado ANTES da avaliação resolver a estratégia. A inferência decide o
+multicrop por `"multicrop" in crop_strategy`, e essa string não contém a
+palavra: produção rodava **1 crop** enquanto o benchmark media com **3 e média
+dos scores**. O carimbo agora acontece depois da avaliação, nas duas cópias do
+sidecar — a global e a preservada no run, que é a promovida.
+
+**Probabilidades.** `detection_service` lia `confidence` como se fosse `p_fake`,
+mas o `Predictor` grava `confidence = p_fake if is_deepfake else p_real` — a
+confiança **na classe decidida**. Toda amostra classificada como REAL saía com
+as duas probabilidades **invertidas** na aba Detectar, na API e no CLI: uma
+bonafide com `p_real` 0,95 era reportada como `fake: 0,95`. O `Predictor` já
+expõe `p_fake`/`p_real` separados; o serviço passou a lê-los.
+
 ## Resolução do Contrato de Entrada
 
 `FeaturePreparer._resolve_input_requirements` aplica esta prioridade:

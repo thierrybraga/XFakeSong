@@ -83,7 +83,8 @@ def main() -> int:
                    default=[1e-5, 3e-5, 1e-4],
                    help="learning rates de fine-tuning a comparar")
     p.add_argument("--epochs", type=int, default=30)
-    p.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10])
+    # Inclui o 5 dB NAO VISTO, em paridade com o protocolo do benchmark.
+    p.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10, 5])
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--out", default="data/results/ablation_wavlm")
     p.add_argument("--no-hubert", action="store_true",

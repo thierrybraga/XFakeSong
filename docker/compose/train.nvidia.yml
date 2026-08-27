@@ -26,16 +26,56 @@ x-train-common: &train-common
     XFAKE_SYNC_MODELS_ON_BOOT: "false"
     XFAKE_CREATE_DEFAULT_MODELS: "false"
     XFAKE_TRAIN_BATCH_LOG_INTERVAL_S: ${XFAKE_TRAIN_BATCH_LOG_INTERVAL_S:-60}
+    # As XFAKE_ENABLE_* de app/core/performance.py NAO chegavam ao container:
+    # --env-file so disponibiliza a variavel para substituicao ${...} no YAML,
+    # nao injeta no processo -- so o que esta listado aqui vira env var de
+    # verdade dentro do container. O .env ja declarava as tres como true, mas
+    # `enable_tf32` cai no default False quando ausente, entao o treino rodava
+    # SEM TF32 (a RTX 3060/Ampere acelera os modelos que rodam em float32
+    # puro). Corrigido no benchmark.nvidia.yml em 2026-08-13 e NAO propagado
+    # para o treino ate agora.
+    XFAKE_ENABLE_TF32: ${XFAKE_ENABLE_TF32:-false}
+    XFAKE_ENABLE_XLA: ${XFAKE_ENABLE_XLA:-true}
+    XFAKE_ENABLE_ONEDNN: ${XFAKE_ENABLE_ONEDNN:-true}
   deploy:
     resources:
       limits:
         cpus: "${DOCKER_TRAIN_CPU_LIMIT:-8.0}"
-        memory: ${DOCKER_TRAIN_MEMORY_LIMIT:-16G}
+        # 36G, nao 24G: em raw-audio o tensor de treino do benchmark e
+        # 33.226 x 48.000 x 4 B x 2 (limpo + copia AWGN) = ~12,8 GB, e o bloco
+        # cru de origem soma outros 6,4 GB antes de ser liberado. Com 16G o
+        # container era morto por OOM justamente nos modelos mais caros
+        # (RawNet2) — daí o primeiro ajuste para 24G.
+        #
+        # AJUSTE 2026-07-31: 24G ainda não bastava para o SpectrogramTransformer,
+        # cuja grade espectral (300 quadros x 128 mel = 38.400 floats/amostra) é
+        # a maior do escopo oficial — ~4,8x a do MultiscaleCNN. Mesmo com
+        # `log_mel_batch` corrigido (pré-alocação em vez de lista + concatenação
+        # final), o processo ainda era morto pelo OOM-killer a ~98,6% dos 24G
+        # bem no início do treino real. Com 32G o treino chegou a rodar
+        # (vários batches estáveis confirmados), mas com só ~200 MB de folga —
+        # risco real de OOM num run de horas por qualquer pico transitório
+        # (validação de fim de época, checkpoint, fragmentação acumulada). 36G
+        # dá ~4 GB de folga sobre o mesmo pico observado. Cabe numa VM WSL2 de
+        # 43 GB; ajuste por .env se a sua for menor.
+        memory: ${DOCKER_TRAIN_MEMORY_LIMIT:-36G}
       reservations:
         devices:
           - driver: nvidia
             count: ${NVIDIA_GPU_COUNT:-all}
             capabilities: [gpu, compute, utility]
+  # Retomada apos queda: mesma politica do benchmark.nvidia.yml. O comando
+  # termina com exit 0 so quando todas as arquiteturas ficam "ok", entao
+  # on-failure nao reinicia um sweep bem-sucedido. O --resume no command faz o
+  # orquestrador pular as concluidas, e o BackupAndRestore por epoca (dentro
+  # do volume montado) devolve a arquitetura em curso na epoca onde parou --
+  # verificado sob SIGKILL em 2026-08-19.
+  restart: on-failure:10
+  # 10 s (o default) e pouco para um `docker stop` durante a gravacao do
+  # checkpoint de fim de epoca: o SIGKILL chegava no meio da escrita. Nao e
+  # perda total (double_checkpoint=True mantem o anterior), mas custa uma
+  # epoca sem necessidade.
+  stop_grace_period: 120s
   healthcheck:
     disable: true
   logging:
@@ -53,8 +93,16 @@ services:
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
     image: xfakesong/classical-ml:cpu
-    container_name: xfakesong_classical_ml_cpu
-    command: ["python", "scripts/training/train_by_family.py", "--family", "classical-tabular", "--device-profile", "cpu"]
+    # Sufixo _nvidia embora a imagem seja :cpu (classico nao usa GPU): o
+    # nome COLIDIA com o mesmo servico em train.cpu.yml, e container_name e
+    # global no daemon -- os dois perfis nao coexistiam, e subir um com o
+    # outro parado ja falhava com 'container name already in use'.
+    container_name: xfakesong_classical_ml_nvidia
+    # --resume: sem ele o `restart: on-failure` do bloco comum refazia as
+    # arquiteturas JA concluidas a cada retomada, tornando a politica de
+    # restart pior que nenhuma. Mesmo motivo documentado em
+    # benchmark.nvidia.yml.
+    command: ["python", "scripts/training/train_by_family.py", "--family", "classical-tabular", "--device-profile", "cpu", "--resume"]
 
   tensorflow-keras:
     <<: *train-common
@@ -65,7 +113,11 @@ services:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
     image: xfakesong/tensorflow-keras:nvidia
     container_name: xfakesong_tensorflow_keras_nvidia
-    command: ["python", "scripts/training/train_by_family.py", "--family", "spectral-attention", "--device-profile", "gpu"]
+    # --resume: sem ele o `restart: on-failure` do bloco comum refazia as
+    # arquiteturas JA concluidas a cada retomada, tornando a politica de
+    # restart pior que nenhuma. Mesmo motivo documentado em
+    # benchmark.nvidia.yml.
+    command: ["python", "scripts/training/train_by_family.py", "--family", "spectral-attention", "--device-profile", "gpu", "--resume"]
 
   pytorch-audio:
     <<: *train-common
@@ -76,7 +128,11 @@ services:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
     image: xfakesong/pytorch-audio:nvidia
     container_name: xfakesong_pytorch_audio_nvidia
-    command: ["python", "scripts/training/train_by_family.py", "--family", "waveform-end-to-end", "--device-profile", "gpu"]
+    # --resume: sem ele o `restart: on-failure` do bloco comum refazia as
+    # arquiteturas JA concluidas a cada retomada, tornando a politica de
+    # restart pior que nenhuma. Mesmo motivo documentado em
+    # benchmark.nvidia.yml.
+    command: ["python", "scripts/training/train_by_family.py", "--family", "waveform-end-to-end", "--device-profile", "gpu", "--resume"]
 
   spectral-convolutional:
     <<: *train-common
@@ -87,7 +143,11 @@ services:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
     image: xfakesong/tensorflow-keras:nvidia
     container_name: xfakesong_spectral_convolutional_nvidia
-    command: ["python", "scripts/training/train_by_family.py", "--family", "spectral-convolutional", "--device-profile", "gpu"]
+    # --resume: sem ele o `restart: on-failure` do bloco comum refazia as
+    # arquiteturas JA concluidas a cada retomada, tornando a politica de
+    # restart pior que nenhuma. Mesmo motivo documentado em
+    # benchmark.nvidia.yml.
+    command: ["python", "scripts/training/train_by_family.py", "--family", "spectral-convolutional", "--device-profile", "gpu", "--resume"]
 
   extended:
     <<: *train-common
@@ -98,7 +158,11 @@ services:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
     image: xfakesong/tensorflow-keras:nvidia
     container_name: xfakesong_extended_nvidia
-    command: ["python", "scripts/training/train_by_family.py", "--family", "extended", "--device-profile", "gpu"]
+    # --resume: sem ele o `restart: on-failure` do bloco comum refazia as
+    # arquiteturas JA concluidas a cada retomada, tornando a politica de
+    # restart pior que nenhuma. Mesmo motivo documentado em
+    # benchmark.nvidia.yml.
+    command: ["python", "scripts/training/train_by_family.py", "--family", "extended", "--device-profile", "gpu", "--resume"]
   ssl-transformers:
     <<: *train-common
     build:
@@ -108,4 +172,8 @@ services:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
     image: xfakesong/ssl-transformers:nvidia
     container_name: xfakesong_ssl_transformers_nvidia
-    command: ["python", "scripts/training/train_by_family.py", "--family", "ssl-pretrained", "--device-profile", "gpu"]
+    # --resume: sem ele o `restart: on-failure` do bloco comum refazia as
+    # arquiteturas JA concluidas a cada retomada, tornando a politica de
+    # restart pior que nenhuma. Mesmo motivo documentado em
+    # benchmark.nvidia.yml.
+    command: ["python", "scripts/training/train_by_family.py", "--family", "ssl-pretrained", "--device-profile", "gpu", "--resume"]

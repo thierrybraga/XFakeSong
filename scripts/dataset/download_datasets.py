@@ -1078,7 +1078,7 @@ def download_fake_voices(max_speakers: int = 20, max_per_speaker: int = 100) -> 
     logger.info("=" * 60)
 
     try:
-        from huggingface_hub import HfApi, hf_hub_download
+        from huggingface_hub import HfApi
     except ImportError:
         logger.error("Instale: pip install huggingface_hub")
         return

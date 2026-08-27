@@ -12,24 +12,31 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
 import wave
 from pathlib import Path
 from typing import Iterable
 
 
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 DATASETS_DIR = ROOT / "data" / "datasets"
 
 
 def _load_manifest(dataset_dir: Path) -> dict[str, dict]:
-    path = dataset_dir / "speaker_manifest.json"
-    if not path.exists():
-        return {}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
+    """Manifesto CANONICO, pelo modulo do dominio.
+
+    Lia `dataset_dir/speaker_manifest.json` — caminho que nao existe — e ainda
+    engolia a ausencia com `return {}`. Com o dicionario vazio TODO arquivo caia
+    no ramo `fallback_source`, `speaker_key` virava o prefixo da fonte
+    (`ptpair` para o corpus inteiro) e a tabela de locutores do TCC saia com
+    1 locutor distinto e 100% de fallback, sem erro nenhum.
+    """
+    del dataset_dir  # o caminho e resolvido pelo modulo, nao pelo diretorio
+    from app.domain.dataset_metadata import speaker_manifest
+
+    return speaker_manifest.load_manifest()
 
 
 def _prefix(path: Path) -> str:
@@ -110,12 +117,24 @@ def main() -> int:
     if not jsonl_out.is_absolute():
         jsonl_out = ROOT / jsonl_out
 
+    from app.domain.dataset_metadata import speaker_manifest
+
     manifest = _load_manifest(dataset_dir)
+    if not manifest:
+        # Antes isto era silencioso e a tabela saia inteira em fallback.
+        print(
+            "AVISO: manifesto de locutores vazio ou ausente em "
+            f"{speaker_manifest.SPEAKER_MANIFEST_PATH} — a tabela sairia com "
+            "100% de fallback_source. Rode "
+            "scripts/dataset/rebuild_speaker_manifest.py antes.",
+            file=sys.stderr,
+        )
     rows = []
     for path in _iter_wavs(dataset_dir, args.scope):
         source = _prefix(path)
         cls, split = _class_and_split(path, dataset_dir)
-        entry = manifest.get(path.name) or {}
+        # Chave do dominio (`<classe>/<basename>`), nao `path.name` cru.
+        entry = speaker_manifest.sample_metadata_for_path(path) or {}
         speaker_id = str(entry.get("speaker_id", "")).strip()
         if speaker_id:
             manifest_source = str(entry.get("source") or source).strip().lower()

@@ -17,10 +17,13 @@ from app.domain.models.architectures.layers import (
 )
 
 # Importar custom layers para carregar modelos
+from app.domain.models.architectures.layers import (
+    MultiScaleConv1DBlock as _LegacyMultiScaleConv1DBlock,
+)
 from app.domain.models.architectures.rawnet2 import (
     AudioNormalizationLayer,
     AudioResamplingLayer,
-    MultiScaleConv1DBlock,
+    RawNet2MultiScaleConv1D,
 )
 from app.domain.models.architectures.registry import (
     create_model_by_name,
@@ -166,7 +169,6 @@ class TorchSSLOriginalModel:
             return
         try:
             import torch
-            import torch.nn as nn
             from transformers import HubertModel, WavLMModel
         except Exception as exc:  # noqa: BLE001 - dependency surfaced to UI
             raise RuntimeError(
@@ -177,7 +179,7 @@ class TorchSSLOriginalModel:
         checkpoint = torch.load(
             self.artifact_path,
             map_location="cpu",
-            weights_only=False,
+            weights_only=True,
         )
         model_class = checkpoint.get(
             "model_class",
@@ -354,7 +356,12 @@ class ModelLoader:
                 custom_objects = {
                     "AudioResamplingLayer": AudioResamplingLayer,
                     "AudioNormalizationLayer": AudioNormalizationLayer,
-                    "MultiScaleConv1DBlock": MultiScaleConv1DBlock,
+                    # Chave LEGADA -> classe LEGADA (ver a nota em
+                    # architectures/rawnet2.py): a classe nova nasce com banco
+                    # sinc fixo e nao aceita os pesos treinaveis dos artefatos
+                    # gravados antes de 2026-08-20.
+                    "MultiScaleConv1DBlock": _LegacyMultiScaleConv1DBlock,
+                    "RawNet2MultiScaleConv1D": RawNet2MultiScaleConv1D,
                     "AudioFeatureNormalization": AudioFeatureNormalization,
                     "AttentionLayer": AttentionLayer,
                     "GraphAttentionLayer": GraphAttentionLayer,
@@ -393,14 +400,14 @@ class ModelLoader:
                     model = tf.keras.models.load_model(
                         str(model_path),
                         custom_objects=custom_objects,
-                        safe_mode=False,
+                        safe_mode=True,
                         compile=False,
                     )
                 except TypeError:
                     # Fallback sem custom objects se não forem necessários
                     model = tf.keras.models.load_model(
                         str(model_path),
-                        safe_mode=False,
+                        safe_mode=True,
                         compile=False,
                     )
 

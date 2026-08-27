@@ -432,7 +432,10 @@ def _speaker_disjoint_indices(files, labels, groups, val_ratio, test_ratio):
 
     Espelha benchmarks/data.py:_grouped_split — usa StratifiedGroupKFold para
     segurar um fold como teste e, dentro do restante, um fold como validacao.
-    Cai para o split estratificado quando ha poucos grupos.
+    Cai para o split estratificado quando ha poucos grupos. Quando um unico
+    grupo domina a amostragem (ex.: um corpus de locutor unico) e impede
+    validacao/teste balanceados, esse grupo e forcado para o treino e o fold
+    e refeito com o restante.
     """
     from sklearn.model_selection import StratifiedGroupKFold
 
@@ -443,21 +446,211 @@ def _speaker_disjoint_indices(files, labels, groups, val_ratio, test_ratio):
         )
 
     idx = np.arange(len(labels))
-    n_splits = max(2, min(round(1.0 / max(test_ratio, 1e-6)), n_groups))
-    sgkf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=42)
-    trainval_idx, test_idx = next(sgkf.split(idx, labels, groups))
 
-    g_tv = groups[trainval_idx]
-    if len(np.unique(g_tv)) >= 2:
+    def _fold(idx_pool):
+        n_splits = max(
+            2, min(round(1.0 / max(test_ratio, 1e-6)), len(np.unique(groups[idx_pool])))
+        )
+        sgkf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=42)
+        trainval_rel, test_rel = next(
+            sgkf.split(idx_pool, labels[idx_pool], groups[idx_pool])
+        )
+        trainval_idx, test_idx = idx_pool[trainval_rel], idx_pool[test_rel]
+        g_tv = groups[trainval_idx]
+        if len(np.unique(g_tv)) < 2:
+            return None
         rel_val = val_ratio / (1.0 - test_ratio)
         inner = max(2, min(round(1.0 / max(rel_val, 1e-6)), len(np.unique(g_tv))))
         sgkf2 = StratifiedGroupKFold(n_splits=inner, shuffle=True, random_state=42)
         tr_rel, val_rel = next(sgkf2.split(trainval_idx, labels[trainval_idx], g_tv))
-        return trainval_idx[tr_rel], trainval_idx[val_rel], test_idx
+        train_idx, val_idx = trainval_idx[tr_rel], trainval_idx[val_rel]
+        for split_idx in (val_idx, test_idx):
+            if len(np.unique(labels[split_idx])) < 2:
+                return None
+        return train_idx, val_idx, test_idx
 
-    raise ValueError(
-        "speaker_disjoint cannot create validation without speaker overlap"
+    result = _fold(idx)
+    if result is not None:
+        return result
+
+    # Fallback: um grupo grande demais impede val/test balanceados. Forca-o
+    # para o treino (onde o desbalanceamento de tamanho pesa menos) e refaz
+    # o fold com o restante.
+    counts = {g: int((groups == g).sum()) for g in np.unique(groups)}
+    mega_group = max(counts, key=counts.get)
+    mega_mask = groups == mega_group
+    mega_idx = idx[mega_mask]
+    rest_idx = idx[~mega_mask]
+    if len(np.unique(groups[rest_idx])) < 3:
+        raise ValueError(
+            "speaker_disjoint cannot create validation without speaker overlap "
+            f"(grupo dominante: {mega_group!r})"
+        )
+    rest_result = _fold(rest_idx)
+    if rest_result is None:
+        raise ValueError(
+            "speaker_disjoint cannot create validation without speaker overlap "
+            f"mesmo apos isolar o grupo dominante ({mega_group!r})"
+        )
+    train_idx, val_idx, test_idx = rest_result
+    return np.concatenate([train_idx, mega_idx]), val_idx, test_idx
+
+
+def _content_aware_class_allocation(
+    unknown_idx, labels, content_groups, need: dict[str, tuple[int, int]], seed: int = 42
+):
+    """Aloca a fatia sem falante conhecido a train/val/test respeitando
+    `content_groups` (texto/enunciado) como unidade indivisivel - nunca
+    fatiando um grupo de conteudo entre splits - enquanto tenta chegar perto
+    das contagens real/fake pedidas em `need`.
+
+    Guloso: embaralha os grupos (seed fixa) e da cada grupo inteiro ao split
+    que ainda tem mais necessidade remanescente da(s) classe(s) presentes NO
+    PROPRIO GRUPO. Prioriza disjuncao de conteudo sobre cardinalidade exata,
+    no mesmo espirito do resto do pipeline (grupos de conteudo sao
+    indivisiveis - todo grupo e atribuido inteiro a um unico split, nunca
+    fatiado amostra a amostra).
+
+    BUG FIX: a pontuacao antiga somava `(nr - n_real) + (nf - n_fake)` para
+    QUALQUER grupo, mesmo quando ele so continha uma classe (ex.: grupo
+    100% real de uma fonte sem falante, como MLS/TTS-Portuguese). Isso
+    injetava o deficit da classe AUSENTE no grupo na decisao - um split com
+    enorme necessidade de fake (mas ja com excesso de real) ganhava pontuacao
+    artificialmente alta e atraia grupos puro-real que ele nao precisava,
+    inflando ainda mais o excesso de real ali (foi o que causou o
+    desbalanceamento observado em val: real=1433/fake=904, ratio 1.585,
+    fora da faixa 0.8-1.25 documentada). A pontuacao agora soma so o(s)
+    deficit(s) da(s) classe(s) que o grupo de fato contem.
+    """
+    if content_groups is None:
+        content_keys = [f"sample:{i}" for i in unknown_idx]
+    else:
+        content_keys = content_groups[unknown_idx].tolist()
+
+    group_members: dict[str, list[int]] = {}
+    for sample_idx, key in zip(unknown_idx.tolist(), content_keys):
+        group_members.setdefault(key, []).append(sample_idx)
+
+    group_keys = list(group_members.keys())
+    rng = np.random.default_rng(seed)
+    rng.shuffle(group_keys)
+
+    remaining = {name: [need[name][0], need[name][1]] for name in ("train", "val", "test")}
+    assigned: dict[str, list[int]] = {"train": [], "val": [], "test": []}
+
+    for key in group_keys:
+        members = group_members[key]
+        member_labels = labels[np.asarray(members)]
+        n_real = int((member_labels == 0).sum())
+        n_fake = int((member_labels == 1).sum())
+        best_split, best_score = None, None
+        for split_name in ("train", "val", "test"):
+            nr, nf = remaining[split_name]
+            # So conta o deficit das classes que este grupo realmente tem -
+            # um grupo puro-real nunca deve ser atraido pelo deficit de fake
+            # de um split (e vice-versa).
+            score = 0.0
+            if n_real > 0:
+                score += nr - n_real
+            if n_fake > 0:
+                score += nf - n_fake
+            if best_score is None or score > best_score:
+                best_score, best_split = score, split_name
+        assigned[best_split].extend(members)
+        remaining[best_split][0] -= n_real
+        remaining[best_split][1] -= n_fake
+
+    return (
+        np.asarray(assigned["train"], dtype="int64"),
+        np.asarray(assigned["val"], dtype="int64"),
+        np.asarray(assigned["test"], dtype="int64"),
     )
+
+
+def _speaker_disjoint_partial_indices(
+    files, labels, groups, val_ratio, test_ratio, identified_mask, content_groups=None
+):
+    """Split disjunto por falante quando so uma fracao das amostras tem
+    identidade de falante explicita (ex.: uma fonte pareada sem metadados de
+    locutor ao lado de fontes com locutor conhecido).
+
+    Estrategia hibrida: a fatia com falante conhecido usa
+    `_speaker_disjoint_indices` (falante nunca atravessa partes); a fatia sem
+    falante conhecido e alocada por GRUPO DE CONTEUDO (texto/enunciado, nunca
+    por amostra individual) para reequilibrar cada particao a 50/50 e
+    devolver o tamanho total ao alvo train/val/test - preservando a mesma
+    disjuncao de conteudo que a estrategia `content_disjoint` ja garantia.
+    Zero amostra e descartada; a fatia desconhecida so garante disjuncao por
+    conteudo/audio (ja assegurada rio acima pela deduplicacao), nao por
+    falante.
+    """
+    idx = np.arange(len(labels))
+    known_idx = idx[identified_mask]
+    unknown_idx = idx[~identified_mask]
+    if len(known_idx) == 0:
+        raise ValueError("Nenhuma amostra com falante identificado")
+    if len(unknown_idx) == 0:
+        return _speaker_disjoint_indices(files, labels, groups, val_ratio, test_ratio)
+
+    k_train, k_val, k_test = _speaker_disjoint_indices(
+        files[known_idx], labels[known_idx], groups[known_idx], val_ratio, test_ratio
+    )
+    k_train, k_val, k_test = known_idx[k_train], known_idx[k_val], known_idx[k_test]
+
+    n_total = len(labels)
+    target_train = round(n_total * (1.0 - val_ratio - test_ratio))
+    target_val = round(n_total * val_ratio)
+    target_test = n_total - target_train - target_val
+
+    def _need(split_idx, target_n):
+        y_split = labels[split_idx]
+        real = int((y_split == 0).sum())
+        fake = int((y_split == 1).sum())
+        need_real = target_n // 2 - real
+        need_fake = (target_n - target_n // 2) - fake
+        return need_real, need_fake
+
+    need = {
+        "train": _need(k_train, target_train),
+        "val": _need(k_val, target_val),
+        "test": _need(k_test, target_test),
+    }
+    for split_name, (nr, nf) in need.items():
+        if nr < 0 or nf < 0:
+            raise ValueError(
+                "speaker_disjoint_partial: fatia conhecida ja excede o alvo "
+                f"balanceado de '{split_name}' (real={nr}, fake={nf}); reduza "
+                "a cota da fonte com falante conhecido ou aumente o tamanho "
+                "do dataset"
+            )
+
+    y_unknown = labels[unknown_idx]
+    real_pool_n = int((y_unknown == 0).sum())
+    fake_pool_n = int((y_unknown == 1).sum())
+    need_real_total = sum(n[0] for n in need.values())
+    need_fake_total = sum(n[1] for n in need.values())
+    if need_real_total > real_pool_n or need_fake_total > fake_pool_n:
+        logger.warning(
+            "speaker_disjoint_partial: amostras sem falante identificado podem "
+            "nao bastar para o rebalanceamento exato (real disponivel=%d, "
+            "necessario=%d; fake disponivel=%d, necessario=%d) - grupos de "
+            "conteudo sao indivisiveis, entao as proporcoes finais podem "
+            "divergir levemente do alvo 70/15/15",
+            real_pool_n, need_real_total, fake_pool_n, need_fake_total,
+        )
+
+    unknown_train, unknown_val, unknown_test = _content_aware_class_allocation(
+        unknown_idx, labels, content_groups, need
+    )
+
+    train_idx = np.concatenate([k_train, unknown_train])
+    val_idx = np.concatenate([k_val, unknown_val])
+    test_idx = np.concatenate([k_test, unknown_test])
+    rng = np.random.default_rng(42)
+    rng.shuffle(train_idx)
+    rng.shuffle(val_idx)
+    rng.shuffle(test_idx)
+    return train_idx, val_idx, test_idx
 
 
 def create_splits(
@@ -549,6 +742,7 @@ def create_splits(
     # Hierarquia anti-leakage: texto > enunciado > amostra unica. IDs ausentes
     # nunca sao inventados como um mesmo grupo coletivo.
     groups = None
+    identified_mask = None
     content_groups = None
     source_groups = None
     try:
@@ -558,10 +752,15 @@ def create_splits(
             speaker_for_path,
         )
 
+        # strict=False sempre: amostras sem falante conhecido caem no nivel de
+        # fonte (`_infer_prefix`) em vez de levantar. A cobertura real e
+        # medida abaixo via `identified_mask` (chave contem ":") e roteada
+        # para o split hibrido quando parcial.
         groups = np.array(
-            [speaker_for_path(f, strict=speaker_disjoint) for f in files],
+            [speaker_for_path(f, strict=False) for f in files],
             dtype=object,
         )
+        identified_mask = np.array([":" in g for g in groups])
         content_values = []
         source_values = []
         for path in files:
@@ -585,10 +784,30 @@ def create_splits(
 
     strategy = "stratified"
     if speaker_disjoint and groups is not None:
-        train_idx, val_idx, test_idx = _speaker_disjoint_indices(
-            files, labels, groups, val_ratio, test_ratio
-        )
-        strategy = "speaker_disjoint"
+        n_identified = int(identified_mask.sum())
+        if n_identified == 0:
+            raise RuntimeError(
+                "speaker_disjoint exige pelo menos algumas amostras com "
+                "falante identificado; nenhuma encontrada"
+            )
+        if n_identified == len(files):
+            train_idx, val_idx, test_idx = _speaker_disjoint_indices(
+                files, labels, groups, val_ratio, test_ratio
+            )
+            strategy = "speaker_disjoint"
+        else:
+            logger.info(
+                "Cobertura de falante parcial: %d/%d amostras identificadas; "
+                "usando split hibrido (disjunto por falante na fatia "
+                "conhecida + rebalanceamento por classe na fatia sem "
+                "identidade)",
+                n_identified, len(files),
+            )
+            train_idx, val_idx, test_idx = _speaker_disjoint_partial_indices(
+                files, labels, groups, val_ratio, test_ratio, identified_mask,
+                content_groups=content_groups,
+            )
+            strategy = "speaker_disjoint_partial"
     elif content_groups is not None and len(np.unique(content_groups)) < len(files):
         train_idx, val_idx, test_idx = _speaker_disjoint_indices(
             files, labels, content_groups, val_ratio, test_ratio
@@ -606,6 +825,28 @@ def create_splits(
             raise ValueError(
                 f"{strategy} produced a single-class {split_name} split"
             )
+
+    # Trava defensiva: garante amostra unica por split, independente da
+    # estrategia usada acima. Nao confia em "correto por construcao" -
+    # qualquer regressao futura no split (nesta funcao ou numa estrategia
+    # nova) e pega aqui antes de copiar um WAV para mais de um split.
+    train_set, val_set, test_set = set(train_idx.tolist()), set(val_idx.tolist()), set(test_idx.tolist())
+    overlaps = {
+        "train_val": sorted(train_set & val_set),
+        "train_test": sorted(train_set & test_set),
+        "val_test": sorted(val_set & test_set),
+    }
+    if any(overlaps.values()):
+        raise RuntimeError(
+            f"{strategy}: amostra(s) repetida(s) entre splits (indices): {overlaps}"
+        )
+    all_idx = train_set | val_set | test_set
+    if len(all_idx) != len(files) or len(train_set) + len(val_set) + len(test_set) != len(files):
+        raise RuntimeError(
+            f"{strategy}: particao nao cobre exatamente todos os arquivos "
+            f"(esperado={len(files)}, coberto={len(all_idx)}, "
+            f"soma_splits={len(train_set)+len(val_set)+len(test_set)})"
+        )
 
     # Criar diretórios e copiar
     for split_name, indices in [("train", train_idx), ("val", val_idx), ("test", test_idx)]:
@@ -687,24 +928,31 @@ def create_splits(
             )
 
 
-    # Estatistica de falantes / usuarios nao vistos (quando ha grupos)
+    # Estatistica de falantes / usuarios nao vistos (quando ha grupos). O
+    # vazamento so e medido entre falantes IDENTIFICADOS (chave com ":") -
+    # amostras sem identidade caem no rotulo de fonte (fallback) e aparecem
+    # em varios splits por desenho (rebalanceamento de classe), o que nao
+    # constitui vazamento de falante.
     if groups is not None:
-        g_train = set(groups[train_idx].tolist())
-        g_val = set(groups[val_idx].tolist())
-        g_test = set(groups[test_idx].tolist())
+        identified_groups = groups[identified_mask] if identified_mask is not None else groups
+        g_train = set(groups[train_idx][identified_mask[train_idx]].tolist()) if identified_mask is not None else set(groups[train_idx].tolist())
+        g_val = set(groups[val_idx][identified_mask[val_idx]].tolist()) if identified_mask is not None else set(groups[val_idx].tolist())
+        g_test = set(groups[test_idx][identified_mask[test_idx]].tolist()) if identified_mask is not None else set(groups[test_idx].tolist())
         unseen = g_test - g_train - g_val
         metadata["speakers"] = {
             "total": int(len(set(groups.tolist()))),
-            "identified": int(sum(1 for g in set(groups.tolist()) if ":" in str(g))),
+            "identified": int(len(set(identified_groups.tolist()))),
             "train": len(g_train),
             "val": len(g_val),
             "test": len(g_test),
             "unseen_in_test": len(unseen),
+            "leakage_overlap_train_val": len(g_train & g_val),
             "leakage_overlap_train_test": len(g_train & g_test),
+            "leakage_overlap_val_test": len(g_val & g_test),
         }
         logger.info(
-            "  Falantes: %d total · teste %d (não vistos: %d · vazamento train∩test: %d)",
-            metadata["speakers"]["total"], len(g_test),
+            "  Falantes identificados: %d total · teste %d (não vistos: %d · vazamento train∩test: %d)",
+            metadata["speakers"]["identified"], len(g_test),
             len(unseen), len(g_train & g_test),
         )
 
@@ -775,7 +1023,13 @@ def main():
     )
     parser.add_argument(
         "--speaker-disjoint", action="store_true",
-        help="Split disjunto por falante (tier large / usuários não vistos)",
+        help=(
+            "Split disjunto por falante (usuários não vistos). Com cobertura "
+            "parcial de speaker_id (ex.: uma fonte pareada sem metadados de "
+            "locutor), usa automaticamente o modo híbrido: disjunto por "
+            "falante na fatia identificada + rebalanceamento de classe na "
+            "fatia sem identidade, preservando o tamanho total do dataset."
+        ),
     )
     parser.add_argument(
         "--expected-per-class",
@@ -855,3 +1109,107 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def audit_splits(splits_dir: Path | None = None) -> dict:
+    """Verifica se treino, validacao e teste sao disjuntos de verdade.
+
+    Espelha as auditorias que o benchmark roda antes de treinar
+    (`benchmarks/runner._audit_split_overlap` e `_audit_split_provenance`), mas
+    opera sobre o diretorio de splits em WAV, que e o que a interface produz.
+
+    Tres dimensoes, da mais forte para a mais fraca:
+
+    - **conteudo (PCM)**: o mesmo audio, byte a byte apos normalizacao
+      canonica, aparecendo em dois splits. E a repeticao literal de amostra;
+    - **falante**: o mesmo locutor em treino e teste faz o modelo ser avaliado
+      em voz que ja ouviu — a metrica mede memorizacao de timbre, nao deteccao
+      de sintese;
+    - **texto/enunciado**: a mesma frase nos dois lados permite decorar
+      conteudo linguistico.
+
+    Retorna um relatorio com `passed` global e o detalhamento por par de
+    splits. Nao levanta: a interface precisa mostrar o problema, nao morrer.
+    """
+    splits_dir = Path(splits_dir) if splits_dir else SPLITS_DIR
+    nomes = ("train", "val", "test")
+    pares = (("train", "val"), ("train", "test"), ("val", "test"))
+
+    arquivos: dict[str, list[Path]] = {}
+    for nome in nomes:
+        encontrados: list[Path] = []
+        for classe in ("real", "fake"):
+            pasta = splits_dir / nome / classe
+            if pasta.is_dir():
+                encontrados.extend(sorted(pasta.glob("*.wav")))
+        arquivos[nome] = encontrados
+
+    relatorio: dict = {
+        "splits_dir": str(splits_dir),
+        "counts": {nome: len(arquivos[nome]) for nome in nomes},
+        "available": any(arquivos.values()),
+    }
+    if not relatorio["available"]:
+        relatorio["passed"] = False
+        relatorio["reason"] = "nenhum split encontrado"
+        return relatorio
+
+    # --- conteudo: hash do PCM canonico (mesma funcao do dedup) ---
+    hashes = {
+        nome: {_canonical_pcm_sha256(caminho) for caminho in lista}
+        for nome, lista in arquivos.items()
+    }
+    relatorio["content_sha256"] = {
+        "unique_per_split": {n: len(h) for n, h in hashes.items()},
+        "overlap": {f"{a}_{b}": len(hashes[a] & hashes[b]) for a, b in pares},
+    }
+
+    # --- falante e conteudo linguistico, quando ha manifesto ---
+    try:
+        from app.domain.dataset_metadata.speaker_manifest import (
+            sample_metadata_for_path,
+            speaker_for_path,
+        )
+
+        falantes: dict[str, set] = {}
+        textos: dict[str, set] = {}
+        desconhecidos = 0
+        for nome, lista in arquivos.items():
+            f_set, t_set = set(), set()
+            for caminho in lista:
+                identificador = speaker_for_path(caminho, strict=False)
+                # Sem ":" o manifesto nao conhece o falante — cai para a fonte,
+                # e agrupar por fonte diria "disjunto" sem que seja.
+                if ":" in str(identificador):
+                    f_set.add(identificador)
+                else:
+                    desconhecidos += 1
+                item = sample_metadata_for_path(caminho) or {}
+                chave = item.get("text_id") or item.get("utterance_id")
+                if chave:
+                    t_set.add(f"{item.get('source', '?')}:{chave}")
+            falantes[nome], textos[nome] = f_set, t_set
+
+        relatorio["speakers"] = {
+            "per_split": {n: len(s) for n, s in falantes.items()},
+            "overlap": {f"{a}_{b}": len(falantes[a] & falantes[b]) for a, b in pares},
+            "unidentified_samples": desconhecidos,
+        }
+        relatorio["content_ids"] = {
+            "per_split": {n: len(s) for n, s in textos.items()},
+            "overlap": {f"{a}_{b}": len(textos[a] & textos[b]) for a, b in pares},
+        }
+    except Exception as exc:  # noqa: BLE001 — auditoria parcial ainda informa
+        relatorio["speakers"] = {"available": False, "reason": str(exc)}
+        relatorio["content_ids"] = {"available": False}
+
+    def _sem_sobreposicao(bloco) -> bool:
+        return isinstance(bloco, dict) and not any(
+            (bloco.get("overlap") or {}).values()
+        )
+
+    relatorio["passed"] = bool(
+        _sem_sobreposicao(relatorio["content_sha256"])
+        and _sem_sobreposicao(relatorio.get("speakers", {}))
+    )
+    return relatorio

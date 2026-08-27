@@ -1,189 +1,259 @@
-# 27 — Dataset: pipeline, consolidacao e auditoria
+# Dataset: pipeline, consolidacao e auditoria
 
-Referencia unica do ciclo de vida do dataset no XFakeSong — do download a criacao
-do `.npz`, passando pela interface Gradio, pelo benchmark e pelo treino. Inclui o
-resultado da auditoria de consistencia entre essas pecas.
+Referencia unica do ciclo de vida do dataset no XFakeSong — da aquisicao ao
+`.npz`, passando pela particao, pela auditoria, pelo benchmark e pelo treino.
 
-Fonte unica de verdade: **`app/domain/dataset_metadata/dataset_catalog.py`** (`DATASET_CATALOG` +
-`DATASET_TIERS`). Esse modulo e importado por `scripts/dataset/build_dataset.py`, pela aba
-Datasets do Gradio (`app/interfaces/gradio/tabs/dataset_management.py`), pelo
-benchmark e pela documentacao — garantindo que tamanho, fontes e split nao
-divirjam entre os componentes.
+A metodologia (por que cada decisao foi tomada, o que foi medido) esta no
+[Protocolo de Dataset](dataset-protocol.md). Aqui esta o **como**.
 
----
-
-## 1. Catalogo de fontes (13)
-
-| Fonte | Tipo | Idioma | Licenca | Prefixo(s) | Flag CLI | Full-bench |
-|---|---|---|---|---|---|:--:|
-| BRSpeech-DF | real+fake | pt-BR | Apache-2.0/CC BY 4.0 | `brspeech` | `--brspeech` | sim |
-| Fake Voices (XTTS) | fake | pt-BR | MIT | `fkvoice`,`fakevoice` | `--fake-voices` | sim |
-| FLEURS | real | pt-BR | consultar oficial | `fleurs` | `--fleurs` | sim |
-| CETUC | real | pt-BR | livre/variavel | `cetuc` | `--cetuc` | sim |
-| MLS Portuguese | real | pt | CC BY 4.0 | `mlspt` | `--mls-portuguese` | sim |
-| TTS-Portuguese Corpus | real | pt-BR | CC BY 4.0 | `ttsport` | `--tts-portuguese` | sim |
-| CORAA ASR | real | pt-BR | CC BY-NC-ND 4.0 | `coraa` | manual | nao |
-| Common Voice PT | real | pt | CC0 | `cvpt`,`cv` | `--common-voice-pt` | sim |
-| MLAAD-PT | fake | pt | CC-BY-NC 4.0 | `mlaad` | `--mlaad-pt` | nao (NC) |
-| ASVspoof 2019 | real+fake | ingles | ODC-BY 1.0 | `asv2019` | `--asvspoof2019` | sim |
-| WaveFake | fake | ingles/japones | CC-BY-SA 4.0 | `wavefake` | `--wavefake` | sim |
-| In-the-Wild | real+fake | ingles | Apache-2.0 | `itw` | `--in-the-wild` | sim |
-| ASVspoof 5 | real+fake | ingles | CC BY 4.0 | `asv5` | `--asvspoof5` | nao |
-
-O **prefixo** do nome do arquivo (`<prefixo>_NNNNN.wav`) e o que liga cada amostra
-a sua fonte/gerador em todo o sistema (catalogo, auditoria de vazamento, `groups`
-no `.npz`, splits cross-generator).
+Fonte unica de verdade do catalogo de fontes:
+**`app/domain/dataset_metadata/dataset_catalog.py`** (`DATASET_CATALOG` +
+`DATASET_TIERS`), importado pelos scripts de dataset, pela aba Datasets do
+Gradio, pelo benchmark e pela documentacao.
 
 ---
 
-## 2. Tiers de tamanho (`test` · `small` · `medium` · `large`)
+## 1. Ciclo de vida canonico (Protocolo de Dataset)
 
-| Tier | Por classe | Total | Split | Fontes | Habilita |
-|---|---:|---:|---|---|---|
-| `test` | 100 | 200 | 70/15/15 estratificado | BRSpeech-DF, Fake Voices | smoke (nada de desempenho) |
-| `small` | 5.000 | 10.000 | 70/15/15 estratificado | BRSpeech-DF, Fake Voices | treino rapido robusto |
-| `medium` | 7.500 | 15.000 | 70/15/15 estratificado | + MLS Portuguese, TTS-Portuguese | **benchmark canonico 15k** |
-| `large` | 10.000 | 20.000 | **disjunto por falante** | + MLS Portuguese, TTS-Portuguese | auditoria 20k + usuarios nao vistos |
-
-`small/test` puxam a classe real inteiramente do BRSpeech-DF bonafide
-(`skip_real_cv`); `medium/large` adicionam MLS/TTS-Portuguese, com
-Common Voice/FLEURS somente como legado local se já baixados. Apenas o
-`large` ativa `speaker_aware` (manifesto de falante + split disjunto).
-
-### Snapshot do canônico `medium`
-
-Revisão local: **28/06/2026**.
-
-| Métrica | Valor |
-|---|---:|
-| WAVs ativos | 15.000 |
-| Real / fake | 7.500 / 7.500 |
-| Tamanho dos WAVs ativos | 3.746,26 MiB |
-| Duração dos WAVs ativos | 2.045,61 min / 34,09 h |
-| Tamanho do `.npz` | 2.769,01 MiB |
-| Duração efetiva no `.npz` | 1.250,00 min / 20,83 h |
-| Formato | WAV PCM linear, 16 bits, mono, 16 kHz |
-| Fontes ativas | BRSpeech-DF, MLS Portuguese, TTS-Portuguese Corpus, Fake Voices XTTS |
-
----
-
-## 3. Ciclo de vida (download -> npz)
+Cinco scripts, nesta ordem. Cada um produz um artefato auditavel e resumivel.
 
 ```
-build_dataset.py --tier <t>
-   │
-   ├─ step_download()    fontes do tier (download_datasets.py por flag) -> datasets/real|fake/*.wav
-   ├─ step_balance()     balanceamento 1:1 por classe (arquiva/descarta excesso)
-   ├─ step_preprocess()  preprocess_dataset.py: normaliza + cria splits
-   │       ├─ estratificado (StratifiedShuffleSplit)        — test/small/medium
-   │       └─ disjunto por falante (StratifiedGroupKFold)   — large (usuarios nao vistos)
-   └─ save_dataset_config()  grava configs/.../dataset_config.json (tier, split, speakers)
+build_paired_pt_corpus.py --build
+   │   baixa CETUC (bonafide) + Fake Voices/XTTS (spoof) em revisoes fixadas,
+   │   alinha clone -> original por enunciado, canonicaliza e normaliza nivel
+   └─> data/datasets/corpus/{real,fake}/<LOCUTOR>/*.wav
+       + manifest.jsonl, sentences.json, acquisition.json, state.json
 
-run_tcc_pipeline.py --download --tier <t> --full-benchmark
-   └─ export_npz_from_splits()  WAVs -> .npz canonico em AUDIO BRUTO (samples, 1)
+build_paired_splits.py --build
+   │   particao de disjuncao DUPLA (locutor x frase), bloco diagonal;
+   │   exclui duplicatas da fonte e pares mais curtos que a janela
+   └─> data/datasets/splits/{train,val,test}/{real,fake}/*.wav  (hardlinks)
+       + assignment.jsonl, split_manifest.json, sentence_partition.json
+       + sincroniza data/datasets/metadata/speaker_manifest.json
+
+audit_paired_corpus.py
+   │   6 blocos de verificacao; sai com codigo != 0 se uma garantia falhar
+   └─> data/datasets/splits/audit_report.json
+
+export_paired_npz.py
+   │   le assignment.jsonl (nao os diretorios), recorta a janela, nivela,
+   │   e barra a exportacao se qualquer garantia for violada
+   └─> data/datasets/benchmark_dataset.npz
+
+freeze_benchmark_test.py --declare-untouched
+   │   sela a particao de teste (tamanho, SHA-256, identidade dos membros do
+   │   arquivo) ANTES do treino comecar; benchmarks/test_lock.py valida esse
+   │   lacre em toda execucao com --academic-protocol (default True)
+   └─> data/datasets/benchmark_dataset.npz.test-lock.json
 ```
+
+`run_models_sequential.py` recusa treinar (`parser.error`) se o test-lock nao
+bater com o `.npz` atual — troca de dataset sem regravar o lacre e um erro de
+configuracao, nao um aviso.
 
 Comandos:
 
 ```bash
-python scripts/dataset/build_dataset.py --tier small        # 5.000/classe, 10k total
-python scripts/dataset/build_dataset.py --tier medium       # 7.500/classe, 15k canonico
-python scripts/dataset/build_dataset.py --tier large        # 10.000/classe, split por falante
-python scripts/dataset/build_dataset.py --tier medium --target 7500   # override explicito
-
-# ponta a ponta (download + npz + benchmark) no tier medium canonico:
-python scripts/benchmark/run_tcc_pipeline.py --download --tier medium --full-benchmark \
-  --npz data/datasets/benchmark_audio_raw_balanced_15k.npz
+python scripts/dataset/build_paired_pt_corpus.py --plan
 ```
 
-### Esquema do `.npz` canonico
+```bash
+python scripts/dataset/build_paired_pt_corpus.py --build
+```
 
-`np.savez_compressed` grava:
+```bash
+python scripts/dataset/build_paired_splits.py --build --min-duration-sec 3.0
+```
 
-| Chave | Conteudo |
-|---|---|
-| `X_train`,`X_val`,`X_test` | audio bruto `(amostras, 1)` por split |
-| `y_train`,`y_val`,`y_test` | rotulos `0=real`, `1=fake` |
-| `groups`,`source_ids` | fonte explícita por amostra |
-| `speaker_ids`,`speaker_known` | falante e indicador de cobertura; desconhecido nunca vira fonte coletiva |
-| `utterance_ids`,`text_ids` | enunciado e conteúdo para disjunção/auditoria |
-| `generator_ids`,`generator_known` | gerador e indicador de cobertura |
-| `cluster_ids` | unidade do bootstrap: enunciado, falante ou amostra |
-| `sample_paths` | identidade e ordem das amostras |
-| `original_num_samples_*`,`window_start_*` | rastreabilidade da janela temporal por split |
-| `metadata_json` | splits, contagens, `paths`, `source_summary`, duracao, sample_rate |
+```bash
+python scripts/dataset/audit_paired_corpus.py
+```
+
+```bash
+python scripts/dataset/export_paired_npz.py --out data/datasets/benchmark_dataset.npz --no-compress
+```
+
+### Propriedades de operacao
+
+| Propriedade | Onde |
+| --- | --- |
+| Resumivel por locutor | `corpus/state.json`; um locutor interrompido no meio e reconstruido do zero |
+| Revisoes fixadas | `REV_REAL` / `REV_FAKE` no builder; avisa se o upstream avancar |
+| Poda de cache | a cada locutor — sem ela os 56 pacotes somariam ~40 GB de cache inutil no Windows |
+| Custo de disco | corpus 14,4 GB · splits em hardlink (sem custo extra) · NPZ 7,4 GB |
+| Tempo | ~25 min de aquisicao com `hf_xet` instalado |
 
 ---
 
-## 4. Consolidacao com o benchmark
+## 2. Estrutura em disco
+
+```
+data/datasets/
+├── corpus/                 # verdade unica: tudo o que as duas fontes tem em comum
+│   ├── real/<CODIGO>/ptpair_<CODIGO>_<NNNN>_bonafide.wav
+│   ├── fake/<CODIGO>/ptpair_<CODIGO>_<NNNN>_xttsv2.wav
+│   ├── manifest.jsonl         # uma linha por amostra, com proveniencia completa
+│   ├── sentences.json         # as 1000 frases canonicas + divergencias detectadas
+│   └── acquisition.json       # revisoes, cobertura, politica de audio, contagens
+├── splits/                 # particao (hardlinks para o corpus)
+│   ├── {train,val,test}/{real,fake}/*.wav
+│   ├── assignment.jsonl       # o manifesto + o campo `split` de cada amostra
+│   ├── split_manifest.json    # resumo, mapa locutor->particao, cobertura
+│   └── audit_report.json      # saida da auditoria
+├── metadata/speaker_manifest.json
+└── benchmark_dataset.npz
+```
+
+O **prefixo** do nome do arquivo (`ptpair_`) liga a amostra a sua fonte em todo o
+sistema. Ele e **o mesmo nas duas classes**, de proposito: um prefixo por classe
+daria um oraculo de fonte de 100% (ver [Protocolo de Dataset, §3.1](dataset-protocol.md)).
+A classe vem do diretorio e do campo `label` do manifesto.
+
+---
+
+## 3. Esquema do `.npz`
+
+| Chave | Conteudo |
+| --- | --- |
+| `X_train`,`X_val`,`X_test` | audio bruto `(N, 48000, 1)` `float32` por particao |
+| `y_train`,`y_val`,`y_test` | rotulos `0=real`, `1=fake` |
+| `groups`,`source_ids` | fonte por amostra (`ptpair` nas duas classes) |
+| `speaker_ids`,`speaker_known` | locutor; **100% conhecido** |
+| `utterance_ids`,`text_ids`,`sentence_indices` | enunciado e conteudo |
+| `generator_ids`,`generator_known` | `bonafide` / `xtts_v2`; 100% conhecido |
+| `cluster_ids` | unidade do bootstrap = `text_id` (997 clusters reais) |
+| `content_sha256` | identidade por conteudo, para auditoria externa |
+| `cetuc_official_split` | particao publicada pelo CETUC, para comparacao |
+| `sample_paths` | caminho no corpus, identidade e ordem |
+| `original_num_samples_*`,`window_start_*` | rastreabilidade da janela |
+| `metadata_json` | contrato, contagens por particao e **auditorias embutidas** |
+
+`metadata_json` carrega as auditorias **dentro** do artefato: quem receber apenas
+o `.npz` pode verificar sobreposicoes, balanceamento e oraculos sem o
+repositorio.
+
+---
+
+## 4. Auditoria — os seis blocos
+
+`scripts/dataset/audit_paired_corpus.py` roda sobre o artefato, nao sobre o
+plano, e **falha com codigo != 0** — pode ir para CI antes de qualquer treino.
+
+| Bloco | Verifica | Reprova quando |
+| --- | --- | --- |
+| A | pareamento, duplicatas exatas, arquivos ausentes, consistencia de texto | ha enunciado sem par, duplicata **na particao** ou arquivo faltando |
+| B | disjuncao de locutor, frase, texto, enunciado e hash | qualquer sobreposicao entre particoes |
+| C | balanceamento por particao e por locutor | classes desiguais |
+| D | oraculo de maioria por variavel de proveniencia | acima de 55% |
+| E | AUC de descritor unico **na janela que o modelo recebe** | RMS acima de 0,60 ou diferenca de repeticao acima de 0,02 |
+| F | quase-duplicatas espectrais: F1 interna, F2 entre particoes | qualquer par acima de 0,99 atravessando particoes |
+
+O bloco E distingue **empacotamento** (nivel, que nao carrega informacao sobre
+sintese e tem de ficar no acaso) de **sinal** (crista, centroide, rolloff — o que
+um detector legitimamente usa, apenas reportado). Essa distincao existe porque
+tratar tudo igual foi o que quase deixou passar um atalho de nivel com AUC 0,99.
+
+Barreira adicional: `export_paired_npz.py` repete as verificacoes de
+sobreposicao, balanceamento e oraculo **depois** da selecao e do recorte, e
+interrompe a gravacao se algo violar o protocolo. A particao ja foi auditada, mas
+e o `.npz` que chega ao benchmark.
+
+---
+
+## 4b. As auditorias REPROVAM (corrigido em 2026-08-21)
+
+Uma auditoria que detecta o problema e sai com codigo 0 nao e guarda-corpo — e
+decoracao. Tres scripts estavam nessa condicao:
+
+| Script | Antes | Agora |
+| --- | --- | --- |
+| `audit_split_overlap.py` | `--fail-on-overlap` era **opt-in**: rodado como o README documenta, detectava vazamento, gravava `"passed": false` e saia 0 | Default invertido (`--no-fail-on-overlap` para uso exploratorio). Dimensoes AUSENTES tambem reprovam: comparar conjuntos vazios passava trivialmente |
+| `audit_dataset_leakage.py` | Calculava "ATALHO CONFIRMADO" so para imprimir; sempre retornava 0 | `--fail-above` (default 0,75) e `--fail-on-warnings`. E a unica auditoria que treina um classificador sobre descritores triviais — o teste que teria pego a assinatura de reamostragem |
+| `audit_speaker_manifest.py` | Lia `data/datasets/speaker_manifest.json`, caminho que **nao existe**, indexado por `wav.name`. Reportava cobertura 0% sempre | Delega a `speaker_manifest.load_manifest()`, que resolve o caminho canonico `data/datasets/metadata/` e a chave `<classe>/<basename>` |
+
+O mesmo defeito de caminho afetava `export_speaker_table.py` — que engolia a
+ausencia com `return {}` e gerava a tabela de locutores do TCC com **100% de
+fallback e 1 locutor distinto**, sem erro — e `rebuild_speaker_manifest.py`, que
+gravava num arquivo que nenhum consumidor le. O manifesto real tem **98.528
+entradas**.
+
+## 5. Consolidacao com o benchmark
 
 `benchmarks/data.py::BenchmarkData.from_npz` e o ponto de uniao:
 
-- **Concatena** `X_train+X_val+X_test` para uma visão comum, mas preserva por
-  padrão os índices predefinidos; o teste congelado não é redividido por seed.
-- Carrega os vetores hierárquicos somente quando o alinhamento é exato.
-- Habilita os protocolos avancados via `run_benchmark.py`:
-  `--speaker-split` (disjunto por falante), `--unseen-speaker <fonte:id>` (holdout
-  de falante) e holdout de gerador (cross-generator, XTTS=`fkvoice`).
+- **concatena** `X_train+X_val+X_test` numa visao comum, preservando os indices
+  predefinidos — o teste nao e redividido por seed;
+- carrega os vetores hierarquicos somente quando o alinhamento e exato;
+- habilita os protocolos avancados de `run_benchmark.py`: `--speaker-split`,
+  `--unseen-speaker <fonte:id>` e holdout de gerador.
 
-Protocolos por grupo/falante/holdout são experimentos separados e fail-closed:
-metadados ausentes, grupo inexistente ou impossibilidade de manter as classes
-interrompem a execução em vez de cair para um split aleatório.
+Protocolos por grupo/falante/holdout sao fail-closed: metadado ausente, grupo
+inexistente ou impossibilidade de manter as classes interrompem a execucao em vez
+de cair para um split aleatorio.
+
+**Custo de memoria:** `from_npz` usa `mmap_mode="r"` (`benchmarks/data.py`) —
+o arquivo nao e materializado inteiro so para ser aberto; paginas mapeadas
+nao contam como RAM anonima e podem ser descartadas sob pressao em vez de
+matar o processo. O pico real acontece depois, na montagem do tensor de
+treino (limpo + copia AWGN) — ainda soma varios GB para as 40.980 amostras de
+3s (ver o historico de ajuste do limite de memoria dos containers em
+`docker/compose/{benchmark,train}.nvidia.yml`). Para hardware menor, exporte
+com `--max-pairs-train`, que corta **pares** (nunca amostras isoladas) em
+rodizio entre locutores, preservando o balanceamento.
 
 ---
 
-## 5. Uso no pipeline de treino
+## 6. Uso no pipeline de treino
 
 `app/domain/services/training_service.py` carrega o `.npz` exigindo
 `X_train`/`y_train`; usa `X_val`/`y_val` se presentes, senao o
-`SecureTrainingPipeline` cria os splits 70/15/15 com checagem de vazamento. A
-config global (LR, early stopping, augmentation com `snr_range_db`, calibracao)
-fica em `app/core/config/settings.py`. Hiperparametros por modelo no
-`registry.py` + `create_model` de cada arquitetura.
+`SecureTrainingPipeline` cria os splits com checagem de vazamento. A config
+global (LR, early stopping, augmentation com `snr_range_db`, calibracao) fica em
+`app/core/config/settings.py`; hiperparametros por modelo no `registry.py` e no
+`create_model` de cada arquitetura.
 
-`run_models_sequential.py` -> `run_benchmark.py --model <nome>` e o caminho usado
-no benchmark/retreino, treinando um modelo por vez com o mesmo `.npz`.
+`run_models_sequential.py` -> `run_benchmark.py --model <nome>` e o caminho do
+benchmark/retreino, um modelo por vez sobre o mesmo `.npz`.
 
----
-
-## 6. Interface Gradio
-
-A aba **Datasets** (`dataset_management.py`) consome o mesmo catalogo:
-`get_tier`, `tier_reference_markdown`, `DATASET_CATALOG`. O usuario escolhe um
-tier (radio), que pre-preenche alvo por classe + fontes; ha plano de download
-balance-aware, barra de balanceamento, distribuicao por classe/fonte e um quadro
-de **prontidao por familia de modelo**. Os limiares de prontidao
-(`Classico 300`, `CNN leve 1.000`, `CNN/RNN 2.000`, `Transformer 4.000`,
-`Ensemble 6.000` por classe) sao um eixo distinto dos tiers de tamanho — medem
-quando cada modelo pode treinar, nao o tamanho do dataset.
+> **Pendencia no retreino:** a janela do protocolo e de 3 s (48.000 amostras), mas o
+> contrato de inferencia ainda declara 80.000. A troca precisa acontecer **junto**
+> com o retreino — ver [Protocolo de Dataset, §9.2](dataset-protocol.md).
 
 ---
 
-## 7. Auditoria — resultado
+## 7. Interface Gradio
 
-**Consistente (OK):**
+A aba **Datasets** (`app/interfaces/gradio/tabs/dataset_management.py`) consome o
+mesmo catalogo: `get_tier`, `tier_reference_markdown`, `DATASET_CATALOG`. Mostra
+distribuicao por classe/fonte, barra de balanceamento e um quadro de **prontidao
+por familia de modelo**.
 
-- Catalogo unico compartilhado por build, Gradio, benchmark e docs.
-- Tiers identicos em todos os pontos (catalogo -> build -> Gradio -> docs).
-- Split 70/15/15 coerente entre criacao (`preprocess_dataset.py`) e benchmark
-  (`benchmarks/data.py`); `large` mantem disjuncao por falante nos dois.
-- Esquema do `.npz` (X/y por split + `groups` + `speaker_ids` + `metadata_json`)
-  e lido corretamente pelo benchmark e pelo treino.
-- Rotulos padronizados `0=real`/`1=fake` em todo o fluxo.
+Os limiares de prontidao (`Classico 300`, `CNN leve 1.000`, `CNN/RNN 2.000`,
+`Transformer 4.000`, `Ensemble 6.000` por classe) vivem em
+`dataset_catalog.py` (`MODEL_READINESS_TIERS`) e medem **quando cada modelo pode
+treinar** — eixo distinto do tamanho do dataset.
 
-**Pontos de atencao / a reconciliar:**
+---
 
-1. **Nome x tamanho do `.npz` canonico — DECISAO ATUAL.** O `.npz` canonico foi
-   padronizado em `benchmark_audio_raw_balanced_15k.npz`, coerente com
-   `target_per_class: 7500` (= 15.000 total, tier `medium`). O tier `large`
-   permanece como execucao estendida de 20.000 amostras (`10.000/classe`) e deve
-   usar outro nome de saida quando for materializado.
-2. **Dois conceitos de "tier" — CENTRALIZADO.** Tamanho de dataset (catalogo:
-   100/5.000/7.500/10.000 por classe) vs. prontidao por familia de modelo (300/1.000/2.000/
-   4.000/6.000) sao eixos diferentes e legitimos. A lista de prontidao deixou de
-   ser hardcoded no Gradio: agora vive em `dataset_catalog.py`
-   (`MODEL_READINESS_TIERS` / `ModelReadinessTier`) e `dataset_management.py` a
-   consome — fonte unica, sem duplicacao.
-3. **`.npz` nao versionado.** A proveniencia exata do arquivo usado no ultimo
-   benchmark vem do `metadata_json` interno e do `dataset_config.json`, nao do
-   git. Mantenha esses sidecars junto aos resultados ao promover artefatos.
+## 8. Scripts fora do fluxo canonico
+
+Estes scripts nao fazem parte do protocolo e continuam no repositorio por outras
+razoes:
+
+| Script | Papel | Situacao |
+| --- | --- | --- |
+| `download_datasets.py` | aquisicao multi-fonte por flag (13 fontes do catalogo) | **ativo** para fontes fora do protocolo — validacao externa, teste cross-corpus |
+| `build_dataset.py` | composicao por tier (`small`/`medium`/`large`) + cotas por fonte | fora do fluxo |
+| `preprocess_dataset.py` | normalizacao e criacao de splits estratificados | fora do fluxo |
+| `build_clean_dataset.py` | deduplicacao por impressao espectral | fora do fluxo |
+| `infer_speakers.py` | inferencia de falante por embeddings WavLM | fora do fluxo — o protocolo usa locutor publicado, nao inferido |
+| `export_npz_from_splits.py` | exportador generico a partir de diretorios | fora do fluxo — use `export_paired_npz.py`, que le o manifesto |
+
+O modelo de **tiers de tamanho** (`test`/`small`/`medium`/`large`) pertence a
+`build_dataset.py`, nao ao protocolo. O protocolo nao usa cotas: o tamanho e o
+que as duas fontes tem em comum, e a unica reducao possivel e o corte por pares
+na exportacao.
+
+Misturar as fontes puras de classe do catalogo no treino reintroduz o atalho de
+fonte — use-as como conjunto externo de validade, nunca no treino
+([Protocolo de Dataset, §2.2](dataset-protocol.md)).

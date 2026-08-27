@@ -2,9 +2,22 @@
 
 Este guia reúne os principais datasets públicos para detecção de deepfakes de áudio e documenta **como baixá-los e balanceá-los** no XFakeSong, tanto pela interface Gradio quanto pela linha de comando.
 
+> ## O dataset canônico não vem deste fluxo
+>
+> Desde 26/07/2026 o dataset do benchmark é o **CETUC-XTTS Pareado**
+> (`ptpair_`), construído pelos quatro scripts do
+> [Protocolo de Dataset](dataset-protocol.md) — não pelos tiers descritos abaixo. Ele
+> usa duas fontes que compartilham locutor e frase entre as classes, o que
+> elimina por construção o atalho de fonte que invalidou o artefato anterior.
+>
+> **Os tiers e o `build_dataset.py` são o fluxo legado.** Continuam úteis para
+> adquirir as outras 13 fontes do catálogo (validação externa, testes
+> cross-corpus, reforço de classe real), mas misturar fontes puras de classe no
+> treino reintroduz o atalho — ver [Protocolo de Dataset, §2.2](dataset-protocol.md).
+
 ---
 
-## Tiers de Dataset (test · small · medium · large)
+## Tiers de Dataset (fluxo legado: test · small · medium · large)
 
 O XFakeSong organiza a montagem do dataset em **quatro tiers** com finalidade
 bem definida. Eles são a **fonte única de verdade** de tamanho/finalidade
@@ -34,8 +47,8 @@ split de forma consistente em todo o sistema.
 - **`medium` — benchmark canônico (7.500/classe, 15.000 total).** Treino **e**
   teste robustos, com diversidade real adicional fora do HF
   (MLS Portuguese/TTS-Portuguese) e fake independente (Fake Voices XTTS).
-  Common Voice/FLEURS ficam como legado local quando já existirem. É o tier padrão para gerar
-  `data/datasets/benchmark_audio_raw_balanced_15k.npz`.
+  Common Voice/FLEURS ficam como legado local quando já existirem. Era o tier
+  padrão do artefato de 15k, hoje **retirado**.
 - **`large` — 20k + falantes não vistos (10.000/classe).** Tier estendido para
   auditoria de generalização. Além do volume que habilita **todas as 14 arquiteturas**
   (incluindo o Ensemble, ≥6.000/classe), ele:
@@ -120,9 +133,15 @@ python scripts/benchmark/run_benchmark.py --full --dataset SEU_large.npz --speak
 # holdout de um falante específico (teste = só ele + reais reservados)
 python scripts/benchmark/run_benchmark.py --full --dataset SEU_large.npz --unseen-speaker "fkvoice:<id>"
 
-# pipeline ponta a ponta canônico do benchmark
+# pipeline ponta a ponta do fluxo LEGADO (tier + janela de 5 s)
 python scripts/benchmark/run_tcc_pipeline.py --download --tier medium --full-benchmark \
-  --npz data/datasets/benchmark_audio_raw_balanced_15k.npz
+  --npz data/datasets/legacy_medium_15k.npz
+```
+
+Pipeline canônico atual (Protocolo de Dataset), que não usa tier:
+
+```bash
+python scripts/dataset/build_paired_pt_corpus.py --build && python scripts/dataset/build_paired_splits.py --build && python scripts/dataset/audit_paired_corpus.py && python scripts/dataset/export_paired_npz.py
 ```
 
 > Quando os falantes de uma fonte são correlacionados à classe (ex.: fonte pura
@@ -186,7 +205,8 @@ as contagens realmente baixadas.
 | Dataset | Tipo | Flag | Prefixo | Idioma | Arquivos/duração | Falantes | Licença | Uso no benchmark |
 |---|:---:|---|---|---|---|---|---|---|
 | BRSpeech-DF | both | `--brspeech` | `brspeech_` | pt-BR | 459.137 amostras; duração não informada pela fonte | não informado | Apache-2.0/CC BY 4.0 (HF divergente) | Fonte principal PT-BR para treino balanceado |
-| Fake Voices | fake | `--fake-voices` | `fkvoice_` | pt-BR | ~140 h; ~30,5 GB | 101 falantes | MIT | Fake PT-BR independente para teste cross-generator |
+| CETUC-XTTS Pareado | both | `build_paired_pt_corpus.py` | `ptpair_` | pt-BR | 56 × até 1000 × 2 classes; ~120 h | 56 pareados (nas duas classes) | MIT | **Fonte canônica do benchmark** (Protocolo de Dataset); locutor e frase publicados |
+| Fake Voices | fake | `--fake-voices` | `fkvoice_` | pt-BR | ~57 h; 19,7 GB | 56 falantes clonados | MIT | Fake PT-BR; pareado com CETUC no Protocolo de Dataset |
 | FLEURS | real | `--fleurs` | `fleurs_` | pt-BR | `pt_br` ~4,1 mil linhas; duração variável | não consolidado no catálogo local | CC BY 4.0 | Reforço de fala real PT-BR |
 | CETUC | real | `--cetuc` | `cetuc_` | pt-BR | variável conforme fallback | variável | livre/variável | Completar déficit de amostras reais; OpenSLR 132 404 em 27/06/2026 |
 | MLS Portuguese | real | `--mls-portuguese` | `mlspt_` | pt | ~59 h; pacote opus ~2,5 GB | diversos leitores LibriVox | CC BY 4.0 | Completar 15k quando PT-BR estrito não atinge volume |
@@ -370,8 +390,14 @@ fakes se precisar de volume rapidamente.
 - Mirror HF: [AKCIT-Deepfake/BRSpeech-DF](https://huggingface.co/datasets/AKCIT-Deepfake/BRSpeech-DF) — metadado HF Apache-2.0; card cita CC BY 4.0
 
 ### Fake Voices (XTTS, PT-BR)
-- Descrição: ~140 h geradas por XTTS, 101 falantes; ZIPs por falante.
+- Descrição: ~57 h geradas por XTTS a partir de gravações do CETUC; **56 falantes
+  clonados** (56 ZIPs, um por falante), até 1000 clones cada, 24 kHz FLOAT.
+  Verificado na revisão `541bf396` em 25/07/2026 — os "101 falantes" que
+  constavam aqui são os do CETUC, o corpus que condicionou o XTTS.
 - Mirror HF: [unfake/fake_voices](https://huggingface.co/datasets/unfake/fake_voices) — MIT
+- Os códigos de falante casam com os do CETUC (`AdrianaMalta_F049` ↔
+  `AdrianaMalta_F049_Fake`), o que permite o corpus pareado do
+  [Protocolo de Dataset](dataset-protocol.md). Isolado, é fonte pura de classe.
 
 ### MLAAD v9 (subset PT)
 - Descrição: Multi-Language Anti-spoofing; o script filtra o subconjunto PT (fake only).

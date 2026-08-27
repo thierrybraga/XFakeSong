@@ -34,7 +34,11 @@ SPLITS_DIR = BASE_DIR / "data" / "datasets" / "splits"
 MODELS_DIR = BASE_DIR / "data" / "results" / "models"
 OUTPUT_PATH = BASE_DIR / "data" / "results" / "robustness_results.json"
 
-SNR_LEVELS = [10, 20, 30]  # dB
+# dB, na mesma ordem do benchmark oficial: 30/20/10 sao a condicao CASADA com o
+# augmentation de treino e 5 dB fica FORA dele, medindo generalizacao a ruido.
+SNR_LEVELS = [30, 20, 10, 5]
+TRAIN_AUG_SNR_LEVELS = [30, 20, 10]
+UNSEEN_SNR_LEVELS = {snr for snr in SNR_LEVELS if snr not in TRAIN_AUG_SNR_LEVELS}
 
 MODELS_TO_TEST = {
     "res2net": MODELS_DIR / "multiscale_cnn_best.h5",
@@ -166,7 +170,7 @@ def main():
             mod = importlib.import_module(mod_path)
             model = mod.create_model(input_shape=(MAX_AUDIO_SAMPLES,), num_classes=1, architecture=variant)
             model.load_weights(str(model_path))
-            logger.info(f"  Pesos carregados com sucesso.")
+            logger.info("  Pesos carregados com sucesso.")
         except Exception as e:
             logger.error(f"Falha ao carregar {arch_name}: {e}")
             continue
@@ -198,6 +202,8 @@ def main():
         "experiment": {
             "test_samples": int(len(X_clean)),
             "snr_levels_db": SNR_LEVELS,
+            "train_aug_snr_db": TRAIN_AUG_SNR_LEVELS,
+            "unseen_snr_db": sorted(UNSEEN_SNR_LEVELS),
             "noise_type": "AWGN (white gaussian noise)",
             "audio_input_s": MAX_AUDIO_SAMPLES / SAMPLE_RATE,
         },
@@ -211,27 +217,38 @@ def main():
 
     # Imprimir Tabela 5
     print("\n=== TABELA 5 — ROBUSTEZ (Acuracia %) ===\n")
-    header = f"{'Arquitetura':<25} {'Limpo':>8} {'SNR30':>8} {'SNR20':>8} {'SNR10':>8}"
+    # Derivado de SNR_LEVELS: com a lista hardcoded, acrescentar um nivel
+    # (como o 5 dB) o avaliava mas nunca o imprimia.
+    header = f"{'Arquitetura':<25} {'Limpo':>8}" + "".join(
+        f" {'SNR' + str(snr) + ('*' if snr in UNSEEN_SNR_LEVELS else ''):>8}"
+        for snr in SNR_LEVELS
+    )
+    width = len(header)
     print(header)
-    print("-" * 60)
+    print("-" * width)
     for arch, r in results.items():
         row = f"{arch:<25}"
         row += f" {r['clean']['accuracy_pct']:>7.1f}%"
-        for snr in [30, 20, 10]:
+        for snr in SNR_LEVELS:
             k = f"snr_{snr}db"
             row += f" {r[k]['accuracy_pct']:>7.1f}%"
         print(row)
 
     print("\n=== TABELA 5 — ROBUSTEZ (EER %) ===\n")
     print(header.replace("Acuracia", "EER    "))
-    print("-" * 60)
+    print("-" * width)
     for arch, r in results.items():
         row = f"{arch:<25}"
         row += f" {r['clean']['eer_pct']:>7.1f}%"
-        for snr in [30, 20, 10]:
+        for snr in SNR_LEVELS:
             k = f"snr_{snr}db"
             row += f" {r[k]['eer_pct']:>7.1f}%"
         print(row)
+
+    if UNSEEN_SNR_LEVELS:
+        marcados = ", ".join(f"{snr} dB" for snr in sorted(UNSEEN_SNR_LEVELS))
+        print(f"\n* {marcados}: NÃO VISTO no augmentation de treino — mede "
+              "generalização a ruído, não condição casada.")
 
 
 if __name__ == "__main__":

@@ -7,154 +7,262 @@
 %   python scripts/reporting/update_tcc_latex.py
 % ====================================================================
 
-\begin{table}[ht]
+\begin{table}[htbp]
 \centering
-\caption{Resultados consolidados no conjunto de teste limpo.}
+\caption[Resultados consolidados no conjunto de teste limpo.]{Resultados consolidados no conjunto de teste limpo. A coluna
+\textbf{Treino} traz a \textbf{melhor época} sobre o orçamento
+(\textit{melhor}/\textit{total}): os pesos avaliados são os do
+\textit{checkpoint} dessa época, restaurado ao final, e não os da última.}
 \label{tab:resultados_consolidados}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lcccccccc}
 \hline
 Modelo & Acur. & EER & $t$-DCF$^\ast$ & AUC & F1 & Lat.\,(ms) & Treino & Status \\
 \hline
-        Random Forest & 97,82\% & 2,09\% & 0,0409 & 0,999 & 97,83\% & 36,53 & CV+fit & \textcolor{successgreen}{OK} \\
-        SVM & 99,24\% & 0,58\% & 0,0176 & 1,000 & 99,24\% & 0,28 & CV+fit & \textcolor{successgreen}{OK} \\
-        CCT & 99,20\% & 0,71\% & 0,0196 & 0,999 & 99,20\% & 41,61 & 100 & \textcolor{successgreen}{OK} \\
-        AST & 99,02\% & 0,98\% & 0,0265 & 0,998 & 99,02\% & 51,79 & 100 & \textcolor{successgreen}{OK} \\
-        Res2Net & 99,69\% & 0,36\% & 0,0069 & 1,000 & 99,69\% & 44,58 & 100 & \textcolor{successgreen}{OK} \\
-        Conformer & 99,82\% & 0,18\% & 0,0034 & 1,000 & 99,82\% & 45,34 & 100 & \textcolor{successgreen}{OK} \\
-        RawNet2 & 97,16\% & 2,71\% & 0,0624 & 0,998 & 97,11\% & 42,33 & 100 & \textcolor{successgreen}{OK} \\
-        AASIST & 95,02\% & 4,89\% & 0,1267 & 0,990 & 95,10\% & 53,86 & 100 & \textcolor{successgreen}{OK} \\
-        RawGAT-ST & 93,60\% & 6,22\% & 0,1745 & 0,986 & 93,87\% & 33,37 & 100 & \textcolor{successgreen}{OK} \\
-        WavLM Original & 99,69\% & 0,36\% & 0,0062 & 1,000 & 99,69\% & 18,73 & 100 & \textcolor{successgreen}{OK} \\
-        HuBERT Original & 99,87\% & 0,18\% & 0,0027 & 1,000 & 99,87\% & 17,00 & 100 & \textcolor{successgreen}{OK} \\
+        Random Forest & 91,53\% & 6,95\% & 0,1966 & 0,984 & 91,22\% & 56,43 & CV+fit & \textcolor{successgreen}{OK} \\
+        SVM & 93,20\% & 6,95\% & 0,1457 & 0,973 & 92,85\% & 0,90 & CV+fit & \textcolor{successgreen}{OK} \\
+        CCT & 99,57\% & 0,43\% & 0,0085 & 1,000 & 99,57\% & 31,83 & 48/100 & \textcolor{successgreen}{OK} \\
+        AST & 99,71\% & 0,14\% & 0,0041 & 0,999 & 99,71\% & 44,46 & 33/100 & \textcolor{successgreen}{OK} \\
+        Res2Net & 97,76\% & 2,17\% & 0,0513 & 0,998 & 97,74\% & 46,41 & 17/100 & \textcolor{successgreen}{OK} \\
+        Conformer & 98,91\% & 0,29\% & 0,0054 & 1,000 & 98,91\% & 50,46 & 69/100 & \textcolor{successgreen}{OK} \\
+        RawNet2 & 95,88\% & 3,18\% & 0,0762 & 0,997 & 95,72\% & 90,08 & 30/100 & \textcolor{successgreen}{OK} \\
+        AASIST & 94,72\% & 2,60\% & 0,0721 & 0,989 & 94,93\% & 53,38 & 52/100 & \textcolor{successgreen}{OK} \\
+        RawGAT-ST & 87,55\% & 11,87\% & 0,3149 & 0,947 & 88,55\% & 54,45 & 17/100 & \textcolor{successgreen}{OK} \\
+        WavLM Original & 96,09\% & 3,62\% & 0,0792 & 0,996 & 96,12\% & 15,77 & 57/100 & \textcolor{successgreen}{OK} \\
+        HuBERT Original & 93,92\% & 5,93\% & 0,1308 & 0,987 & 93,93\% & 15,98 & 12/100 & \textcolor{successgreen}{OK} \\
 \hline
 \end{tabular}
 }
 \end{table}
 
 \noindent\footnotesize{$t$-DCF$^\ast$: proxy interno de custo normalizado,
-sem acoplamento a um sistema ASV oficial.}\normalsize
+sem acoplamento a um sistema ASV oficial.
+\textbf{Critério de seleção da época}: as sete entradas do caminho Keras
+selecionam o \textit{checkpoint} pelo \textbf{EER de validação}
+(\texttt{val\_eer}), alinhando seleção e métrica primária de
+\textit{anti-spoofing}; WavLM Original e HuBERT Original rodam por um
+\textit{runner} PyTorch com laço de treino próprio e selecionam pela
+\textbf{perda de validação}. A época reportada é, em cada caso, a do critério
+efetivamente usado. \textbf{SVM} e \textbf{Random Forest} não têm época:
+são ajustados por busca em grade com validação cruzada agrupada
+(\texttt{CV+fit}).}\normalsize
 
-\begin{table}[ht]
+\begin{table}[htbp]
 \centering
-\caption{Eficiência computacional dos modelos consolidados.}
+\caption{Eficiência dos modelos consolidados: número de parâmetros, tamanho
+do artefato serializado em disco e tempo de passagem direta do modelo, sem
+\textit{frontend}.}
 \label{tab:eficiencia_modelos}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lccccc}
 \hline
-Modelo & Parâmetros & Tam.\,(MB) & Lat.\,(ms) & Acur. & EER \\
+Modelo & Parâmetros & Artef.\,(MB) & Fwd.\,(ms) & Acur. & EER \\
 \hline
-        Random Forest & -- & 46,45 & 36,53 & 97,82\% & 2,09\% \\
-        SVM & -- & 2,01 & 0,28 & 99,24\% & 0,58\% \\
-        CCT & 1.822.479 & 7,15 & 41,61 & 99,20\% & 0,71\% \\
-        AST & 85.304.834 & 325,89 & 51,79 & 99,02\% & 0,98\% \\
-        Res2Net & 23.707.438 & 91,01 & 44,58 & 99,69\% & 0,36\% \\
-        Conformer & 15.925.122 & 61,27 & 45,34 & 99,82\% & 0,18\% \\
-        RawNet2 & 7.004.418 & 26,90 & 42,33 & 97,16\% & 2,71\% \\
-        AASIST & 1.859.842 & 7,27 & 53,86 & 95,02\% & 4,89\% \\
-        RawGAT-ST & 241.024 & 1,02 & 33,37 & 93,60\% & 6,22\% \\
-        WavLM Original & 94.775.935 & 361,63 & 18,73 & 99,69\% & 0,36\% \\
-        HuBERT Original & 94.765.711 & 361,58 & 17,00 & 99,87\% & 0,18\% \\
+        Random Forest & -- & 52,04 & 56,43 & 91,53\% & 6,95\% \\
+        SVM & -- & 11,31 & 0,90 & 93,20\% & 6,95\% \\
+        CCT & 1.819.715 & 7,13 & 31,83 & 99,57\% & 0,43\% \\
+        AST & 85.523.714 & 326,73 & 44,46 & 99,71\% & 0,14\% \\
+        Res2Net & 23.707.438 & 91,01 & 46,41 & 97,76\% & 2,17\% \\
+        Conformer & 28.632.962 & 110,23 & 50,46 & 98,91\% & 0,29\% \\
+        RawNet2 & 7.004.418 & 26,90 & 90,08 & 95,88\% & 3,18\% \\
+        AASIST & 396.312 & 1,88 & 53,38 & 94,72\% & 2,60\% \\
+        RawGAT-ST & 650.204 & 2,80 & 54,45 & 87,55\% & 11,87\% \\
+        WavLM Original & 94.775.935 & 361,63 & 15,77 & 96,09\% & 3,62\% \\
+        HuBERT Original & 94.765.711 & 361,58 & 15,98 & 93,92\% & 5,93\% \\
 \hline
 \end{tabular}
 }
 \end{table}
 
-\begin{table}[ht]
+\begin{table}[htbp]
 \centering
-\caption{Robustez a ruído AWGN, aplicada à forma de onda antes dos frontends, por modelo consolidado.}
+\caption[Robustez a ruído AWGN por modelo consolidado.]{Acurácia no limiar
+fixo $\theta=0{,}5$ sob ruído AWGN aplicado à forma de onda antes dos
+\textit{frontends}, por modelo consolidado. Os níveis de 30, 20 e
+\SI{10}{\decibel} são \textbf{casados} com o \textit{augmentation} de
+treino; \SI{5}{\decibel} é \textbf{não visto}. A última coluna traz a
+acurácia no pior dos 11 locutores do teste (nenhum visto no treino), medida em
+áudio limpo.}
 \label{tab:robustez_awgn}
 \resizebox{\textwidth}{!}{%
-\begin{tabular}{lcccc}
+\begin{tabular}{lcccccc}
 \hline
-Modelo & Limpo & 30\,dB & 20\,dB & 10\,dB \\
+Modelo & Limpo & 30\,dB & 20\,dB & 10\,dB & 5\,dB$^\dagger$ & Pior locutor \\
 \hline
-        Random Forest & 97,82\% & 95,69\% & 94,22\% & 92,36\% \\
-        SVM & 99,24\% & 97,96\% & 96,04\% & 93,78\% \\
-        CCT & 99,20\% & 98,84\% & 97,96\% & 94,98\% \\
-        AST & 99,02\% & 97,78\% & 96,44\% & 93,24\% \\
-        Res2Net & 99,69\% & 99,24\% & 99,02\% & 97,51\% \\
-        Conformer & 99,82\% & 99,64\% & 99,47\% & 97,96\% \\
-        RawNet2 & 97,16\% & 95,47\% & 95,33\% & 92,98\% \\
-        AASIST & 95,02\% & 92,98\% & 91,51\% & 88,71\% \\
-        RawGAT-ST & 93,60\% & 93,29\% & 91,07\% & 83,96\% \\
-        WavLM Original & 99,69\% & 99,51\% & 99,56\% & 98,76\% \\
-        HuBERT Original & 99,87\% & 99,38\% & 98,89\% & 96,80\% \\
+        Random Forest & 91,53\% & 86,69\% & 85,31\% & 82,71\% & 74,96\% & 73,39\% \\
+        SVM & 93,20\% & 88,42\% & 87,63\% & 85,53\% & 58,68\% & 54,03\% \\
+        CCT & 99,57\% & 98,99\% & 96,31\% & 90,30\% & 81,84\% & 97,58\% \\
+        AST & 99,71\% & 98,05\% & 95,08\% & 88,21\% & 84,88\% & 98,41\% \\
+        Res2Net & 97,76\% & 95,73\% & 94,79\% & 92,40\% & 88,13\% & 87,30\% \\
+        Conformer & 98,91\% & 97,25\% & 95,95\% & 91,46\% & 86,25\% & 90,32\% \\
+        RawNet2 & 95,88\% & 95,30\% & 94,14\% & 90,38\% & 84,01\% & 74,19\% \\
+        AASIST & 94,72\% & 95,01\% & 95,08\% & 91,68\% & 84,73\% & 88,10\% \\
+        RawGAT-ST & 87,55\% & 87,63\% & 85,38\% & 77,21\% & 77,64\% & 65,08\% \\
+        WavLM Original & 96,09\% & 93,27\% & 91,46\% & 88,35\% & 85,96\% & 81,45\% \\
+        HuBERT Original & 93,92\% & 91,24\% & 88,21\% & 85,75\% & 80,17\% & 70,97\% \\
 \hline
 \end{tabular}
 }
+
+\noindent\footnotesize{$^\dagger$ SNR ausente do \textit{augmentation} de
+treino: é a única coluna que mede generalização a uma degradação fora da
+distribuição vista.}\normalsize
 \end{table}
 
 \begin{table}[ht]
 \centering
-\caption{Resumo descritivo das curvas de validação em execução única.}
+\caption[Curvas de validação em execução única.]{Curvas de validação em execução única. \textbf{Val.\,pico} é o
+máximo da acurácia de validação e \textbf{Ép.\,pico} a época em que ocorre;
+\textbf{Ép.\,sel.} é a época do \textit{checkpoint} efetivamente avaliado,
+escolhido por EER de validação nas entradas Keras e por perda de validação nos
+\textit{runners} SSL, e \textbf{Val.\,@sel.} é a acurácia de validação nessa
+época. O pico de acurácia e a época selecionada podem divergir. A última coluna traz
+o diagnóstico automático do \textit{pipeline} (campo
+\texttt{training\_stability}), baseado no desvio do monitor nas últimas
+\num{50} épocas e na maior queda entre épocas consecutivas.}
 \label{tab:estabilidade_treinamento}
 \resizebox{\textwidth}{!}{%
-\begin{tabular}{lccccc}
+\begin{tabular}{lcccccc}
 \hline
-Modelo & Val.\,pico & Época & Val.\,final & Queda & Nota \\
+Modelo & Val.\,pico & Ép.\,pico & Ép.\,sel. & Val.\,@sel. & Val.\,final & Diagnóstico \\
 \hline
-        Random Forest & -- & CV+fit & -- & -- & não aplicável (modelo clássico) \\
-        SVM & -- & CV+fit & -- & -- & não aplicável (modelo clássico) \\
-        CCT & 99,64\% & 57 & 99,56\% & 0,09\% & descritivo; 1 execução \\
-        AST & 99,02\% & 53 & 98,93\% & 0,09\% & descritivo; 1 execução \\
-        Res2Net & 99,82\% & 47 & 99,78\% & 0,04\% & descritivo; 1 execução \\
-        Conformer & 99,87\% & 41 & 99,73\% & 0,13\% & descritivo; 1 execução \\
-        RawNet2 & 97,51\% & 16 & 97,16\% & 0,36\% & descritivo; 1 execução \\
-        AASIST & 95,51\% & 34 & 93,42\% & 2,09\% & descritivo; 1 execução \\
-        RawGAT-ST & 94,09\% & 23 & 93,69\% & 0,40\% & descritivo; 1 execução \\
-        WavLM Original & 99,73\% & 97 & 99,47\% & 0,27\% & descritivo; 1 execução \\
-        HuBERT Original & 99,78\% & 82 & 99,47\% & 0,31\% & descritivo; 1 execução \\
+        Random Forest & -- & -- & CV+fit & -- & -- & não aplicável (modelo clássico) \\
+        SVM & -- & -- & CV+fit & -- & -- & não aplicável (modelo clássico) \\
+        CCT & 99,45\% & 42 & 48 & 99,45\% & 98,35\% & estável \\
+        AST & 99,38\% & 20 & 33 & 99,38\% & 98,63\% & estável \\
+        Res2Net & 99,45\% & 22 & 17 & 99,18\% & 98,01\% & estável \\
+        Conformer & 99,59\% & 69 & 69 & 99,59\% & 99,24\% & \textbf{oscilação} \\
+        RawNet2 & 98,01\% & 30 & 30 & 98,01\% & 96,50\% & estável \\
+        AASIST & 96,63\% & 52 & 52 & 96,63\% & 94,64\% & estável \\
+        RawGAT-ST & 89,97\% & 88 & 17 & 84,68\% & 88,12\% & \textbf{oscilação} \\
+        WavLM Original & 97,46\% & 97 & 57 & 96,84\% & 96,50\% & estável \\
+        HuBERT Original & 95,88\% & 45 & 12 & 95,26\% & 95,19\% & estável \\
 \hline
 \end{tabular}
 }
 \end{table}
 
-\begin{figure}[ht]\centering
-\includegraphics[width=\textwidth]{figures/benchmark_accuracy_auc.png}
+\begin{table}[htbp]
+\centering
+\caption{Taxas de falso positivo e falso negativo no conjunto limpo, no
+limiar fixo $\theta=0{,}5$.}
+\label{tab:erros_decisao}
+\begin{tabular}{lcc}
+\hline
+Modelo & FPR & FNR \\
+\hline
+        Random Forest & 4,92\% & 12,01\% \\
+        SVM & 1,88\% & 11,72\% \\
+        CCT & 0,43\% & 0,43\% \\
+        AST & 0,58\% & 0,00\% \\
+        Res2Net & 1,30\% & 3,18\% \\
+        Conformer & 0,29\% & 1,88\% \\
+        RawNet2 & 0,43\% & 7,81\% \\
+        AASIST & 9,55\% & 1,01\% \\
+        RawGAT-ST & 21,13\% & 3,76\% \\
+        WavLM Original & 4,49\% & 3,33\% \\
+        HuBERT Original & 6,22\% & 5,93\% \\
+\hline
+\end{tabular}
+\end{table}
+\FloatBarrier
+
+\begin{figure}[htbp]\centering
 \caption{Acurácia e AUC-ROC no conjunto de teste limpo.}
 \label{fig:benchmark_accuracy_auc}
+\includegraphics[width=\textwidth]{figures/benchmark_accuracy_auc.png}
 \end{figure}
+\FloatBarrier
 
-\begin{figure}[ht]\centering
-\includegraphics[width=\textwidth]{figures/benchmark_robustness.png}
-\caption{Robustez a AWGN na forma de onda (acurácia vs.\ SNR).}
+\begin{figure}[htbp]\centering
+\caption{Robustez a AWGN na forma de onda: acurácia no limiar fixo
+$\theta=0{,}5$ em função da SNR. Os dois painéis separam as arquiteturas pela
+acurácia limpa apenas para legibilidade; a separação não altera o ranking nem a
+escala.}
 \label{fig:benchmark_robustness}
+\includegraphics[width=\textwidth]{figures/benchmark_robustness.png}
 \end{figure}
+\FloatBarrier
 
-\begin{figure}[ht]\centering
-\includegraphics[width=0.92\textwidth]{figures/benchmark_eer.png}
+\begin{figure}[htbp]\centering
+\caption{Robustez a AWGN por métricas livres de limiar. AUC-ROC maior e EER
+menor indicam melhor separabilidade. A leitura conjunta com a
+Figura~\ref{fig:benchmark_robustness} distingue perda de discriminação de
+deriva do ponto de operação fixo.}
+\label{fig:benchmark_robustness_threshold_free}
+\includegraphics[width=\textwidth]{figures/benchmark_robustness_threshold_free.png}
+\end{figure}
+\FloatBarrier
+
+\begin{figure}[htbp]\centering
 \caption{Taxa de Erro Igual (EER) por arquitetura.}
 \label{fig:benchmark_eer}
+\includegraphics[width=0.92\textwidth]{figures/benchmark_eer.png}
 \end{figure}
+\FloatBarrier
 
-\begin{figure}[ht]\centering
-\includegraphics[width=0.92\textwidth]{figures/benchmark_tdcf.png}
+\begin{figure}[htbp]\centering
+\caption[Curvas DET no conjunto de teste limpo.]{Curvas DET no conjunto de
+teste limpo, em eixos de probabilidade normal. FPR é a fração de áudios
+\textit{bonafide} rejeitados e FNR a fração de ataques aceitos; a interseção
+com a diagonal aproxima o EER. O recorte de \num{0,1}\% a \num{40}\% amplia
+a região operacional e não exibe taxas fora desse intervalo.}
+\label{fig:benchmark_det}
+\includegraphics[width=0.98\textwidth]{figures/benchmark_det_curves.png}
+\end{figure}
+\FloatBarrier
+
+\begin{figure}[htbp]\centering
 \caption{$t$-DCF$^\ast$ por arquitetura.}
 \label{fig:benchmark_tdcf}
+\includegraphics[width=0.92\textwidth]{figures/benchmark_tdcf.png}
 \end{figure}
+\FloatBarrier
 
-\begin{figure}[ht]\centering
-\includegraphics[width=0.95\textwidth]{figures/benchmark_latency.png}
+\begin{figure}[htbp]\centering
+\caption{Tamanho dos artefatos dos modelos.}
+\label{fig:benchmark_size}
 \includegraphics[width=0.95\textwidth]{figures/benchmark_size.png}
-\caption{Latência e tamanho dos modelos.}
-\label{fig:benchmark_latency_size}
 \end{figure}
+\FloatBarrier
 
-\begin{figure}[ht]\centering
-\includegraphics[width=0.95\textwidth]{figures/benchmark_accuracy_latency_tradeoff.png}
-\caption{Trade-off entre acurácia, latência e tamanho dos artefatos.}
+\begin{figure}[htbp]\centering
+\caption[Compromisso entre acurácia, latência e tamanho do artefato.]{Compromisso
+descritivo entre acurácia limpa, latência de passagem direta e tamanho do
+artefato. Formas distintas identificam os \textit{runtimes}; latências são
+comparáveis apenas dentro do mesmo \textit{runtime} e não sustentam ranking
+global de velocidade.}
 \label{fig:benchmark_accuracy_latency_tradeoff}
+\includegraphics[width=\textwidth]{figures/benchmark_accuracy_latency_tradeoff.png}
 \end{figure}
+\FloatBarrier
 
-\begin{figure}[ht]\centering
-\includegraphics[width=0.95\textwidth]{figures/training_stability.png}
-\caption{Resumo descritivo das curvas de validação em execução única; a diferença pico--final não demonstra, isoladamente, estabilidade de otimização. Modelos clássicos não possuem trajetória por época.}
+\begin{figure}[htbp]\centering
+\caption[Distribuições de escores de AASIST e RawGAT-ST.]{Distribuições de
+$p_{fake}$ por classe verdadeira em AASIST e RawGAT-ST, com contagens em
+escala logarítmica. O percentual no título mede escores abaixo de \num{0,05}
+ou acima de \num{0,95}. A figura descreve concentração e sobreposição; não
+demonstra, isoladamente, calibração nem atribui causalidade à topologia.}
+\label{fig:score_distributions_gat}
+\includegraphics[width=\textwidth]{figures/score_distributions_gat.png}
+\end{figure}
+\FloatBarrier
+
+\begin{figure}[htbp]\centering
+\caption[Importância por permutação do Random Forest.]{Quinze maiores
+importâncias por permutação do \textit{Random Forest} no teste canônico,
+com média e desvio-padrão em \num{30} repetições. A análise é exploratória:
+o \textit{frontend} tabular v2 foi definido após uma rodada de teste, e
+descritores correlacionados podem repartir importância entre si. As barras não
+são efeitos causais.}
+\label{fig:rf_permutation_importance}
+\includegraphics[width=\textwidth]{figures/rf_feature_importance.png}
+\end{figure}
+\FloatBarrier
+
+\begin{figure}[htbp]\centering
+\caption[Seleção de \textit{checkpoint} e validação em execução única.]{Seleção de \textit{checkpoint} e validação em execução única. A figura resume as curvas de validação; não mede, isoladamente, estabilidade de otimização. Modelos clássicos não possuem trajetória por época.}
 \label{fig:training_stability}
+\includegraphics[width=0.95\textwidth]{figures/training_stability.png}
 \end{figure}
-
-\begin{figure}[ht]\centering
-\includegraphics[width=\textwidth]{figures/confusion_matrices_article.png}
-\caption{Matrizes de confusão dos onze modelos avaliados no artigo.}
-\label{fig:confusion_matrices_article}
-\end{figure}
+\FloatBarrier

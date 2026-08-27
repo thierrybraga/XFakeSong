@@ -13,9 +13,9 @@ import sys
 import threading
 import time
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import gradio as gr
+from app.interfaces.gradio.utils.components import ui_safe
 
 logger = logging.getLogger("gradio_dashboard")
 
@@ -378,6 +378,7 @@ def create_dashboard_tab():
 
         # ────────────────────────── Handlers ──────────────────────────
 
+        @ui_safe("Nao foi possivel atualizar o painel")
         def refresh_dashboard():
             """Re-renderiza os componentes do Dashboard."""
             return (
@@ -388,6 +389,7 @@ def create_dashboard_tab():
             )
 
         # Re-detectar GPU sem reiniciar app (útil após instalar pynvml/DML plugin)
+        @ui_safe("Falha ao redetectar a GPU")
         def _redetect_gpu():
             # Força nova execução do setup_gpu — _setup_done já está True então
             # essa chamada é idempotente; para forçar nova detecção, resetamos

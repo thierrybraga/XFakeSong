@@ -40,8 +40,14 @@ def is_raw_audio(input_shape):
         return input_shape[-1] == 1 and input_shape[1] == 1 # Very specific case
     return False
 
-def ensure_flat_input(x, input_shape=None):
-    """Ensure input is (batch, time, 1) or (batch, time)."""
+def ensure_flat_input(x):
+    """Ensure input is (batch, time, 1) or (batch, time).
+
+    (O parâmetro `input_shape` foi REMOVIDO: era declarado, todos os callers o
+    passavam e a função nunca o lia — a decisão sai do `x.shape` real. Uma
+    assinatura que mente sobre o que usa é a mesma classe de problema do
+    "config morto" no registry.)
+    """
     if len(x.shape) == 3 and x.shape[-1] > 1:
         # If we have channels, we might want to take the first one or mean?
         # For now assume it's mono or we take mean.
@@ -65,6 +71,31 @@ def apply_gru_block(x, units, return_sequences=True, go_backwards=False, dropout
         name=name
     )(x)
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
+class FlattenTimeFeaturesLayer(layers.Layer):
+    """(B, T, F, C) -> (B, T, F*C) para formas dinâmicas, como camada serializável.
+
+    Substitui `layers.Lambda(lambda t: tf.reshape(...))` — Lambda de função
+    Python não é reconstruível pelo carregador safe_mode do Keras 3.
+    """
+
+    def call(self, inputs):
+        shape = tf.shape(inputs)
+        return tf.reshape(inputs, [shape[0], shape[1], -1])
+
+    def compute_output_shape(self, input_shape):
+        tail = input_shape[2:]
+        flat = None
+        if all(dim is not None for dim in tail):
+            flat = 1
+            for dim in tail:
+                flat *= dim
+        return (input_shape[0], input_shape[1], flat)
+
+    def get_config(self):
+        return super().get_config()
+
+
 def flatten_features_for_gru(x, name=None):
     """
     Flatten feature dimensions (freq * channel) for GRU input (batch, time, features).
@@ -78,11 +109,9 @@ def flatten_features_for_gru(x, name=None):
              shape_before_gru[2] *
              shape_before_gru[3]), name=name)(x)
     else:
-        # Dynamic shape: Lambda avoids Reshape receiving a tensor in the shape tuple
-        x = layers.Lambda(
-            lambda t: tf.reshape(t, [tf.shape(t)[0], tf.shape(t)[1], -1]),
-            name=name
-        )(x)
+        # Forma dinâmica: camada registrada (não Lambda) para que o modelo
+        # salvo volte a carregar em safe_mode.
+        x = FlattenTimeFeaturesLayer(name=name)(x)
     return x
 
 def apply_reshape_for_cnn(tensor, target_shape):
@@ -154,9 +183,19 @@ class STFTLayer(layers.Layer):
         if len(inputs.shape) == 3:
             inputs = tf.squeeze(inputs, axis=-1)
 
-        # Calculate STFT
+        # `tf.signal.stft` chama RFFT, que aceita SÓ float32/float64. Sob a
+        # política `mixed_float16` a entrada chega em float16 e a construção do
+        # modelo falha com "RFFT requires tf.float32 or tf.float64 inputs"
+        # (2026-08-02: reproduzido ao criar o MultiscaleCNN com entrada de áudio
+        # bruto em GPU). O benchmark não via isso porque alimenta log-mel já
+        # pronto, mas qualquer caminho raw-audio + mixed precision quebrava.
+        # A análise espectral é feita em float32 e o resultado volta ao dtype
+        # da camada, então a política de precisão do resto do grafo é
+        # preservada — só a FFT fica fora dela, que é o exigido.
+        entrada_fp32 = tf.cast(inputs, tf.float32)
+
         stft = tf.signal.stft(
-            inputs,
+            entrada_fp32,
             frame_length=self.frame_length,
             frame_step=self.frame_step,
             fft_length=self.fft_length
@@ -164,6 +203,7 @@ class STFTLayer(layers.Layer):
 
         # Calculate magnitude
         spectrogram = tf.abs(stft)
+        spectrogram = tf.cast(spectrogram, self.compute_dtype)
 
         if self.add_channel_dim:
             spectrogram = tf.expand_dims(spectrogram, axis=-1)
@@ -254,8 +294,17 @@ class LogMelFromMagnitudeLayer(layers.Layer):
             lower_edge_hertz=self.lower_edge_hertz,
             upper_edge_hertz=self.upper_edge_hertz,
         )
+        # `linear_to_mel_weight_matrix` devolve float32 SEMPRE. Sob
+        # `mixed_float16` a magnitude chega em float16 e o matmul falha com
+        # "Input 'y' of 'BatchMatMulV2' Op has type float32 that does not match
+        # type float16" (2026-08-02, mesmo caminho raw-audio que quebrava o
+        # STFTLayer). O log fica em float32 de propósito: `log(mel + 1e-6)` com
+        # mel em float16 satura — 1e-6 é menor que o menor subnormal útil da
+        # meia precisão, então o épsilon somiria e valores nulos virariam -inf.
+        mag = tf.cast(mag, tf.float32)
         mel = tf.matmul(mag, mel_w)
         log_mel = tf.math.log(mel + 1e-6)
+        log_mel = tf.cast(log_mel, self.compute_dtype)
         return tf.expand_dims(log_mel, axis=-1)
 
     def get_config(self):
@@ -268,6 +317,276 @@ class LogMelFromMagnitudeLayer(layers.Layer):
             "upper_edge_hertz": self.upper_edge_hertz,
         })
         return config
+
+
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
+class LogMelSpectrogramLayer(layers.Layer):
+    """Áudio bruto -> log-mel, como camada serializável (STFT + filtros mel).
+
+    Front-end único para as arquiteturas que precisam converter forma de onda
+    em log-mel dentro do grafo. Substitui closures locais passadas a
+    `layers.Lambda` (não recarregáveis em safe_mode, o default do Keras 3).
+    """
+
+    def __init__(
+        self,
+        sample_rate: int = 16000,
+        n_fft: int = 512,
+        hop_length: int = 128,
+        n_mels: int = 80,
+        lower_edge_hertz: float = 0.0,
+        upper_edge_hertz: float = None,
+        pad_end: bool = True,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.sample_rate = int(sample_rate)
+        self.n_fft = int(n_fft)
+        self.hop_length = int(hop_length)
+        self.n_mels = int(n_mels)
+        self.lower_edge_hertz = float(lower_edge_hertz)
+        self.upper_edge_hertz = float(
+            upper_edge_hertz if upper_edge_hertz is not None else sample_rate / 2.0
+        )
+        self.pad_end = bool(pad_end)
+
+    def build(self, input_shape):
+        self.mel_weight = tf.constant(
+            tf.signal.linear_to_mel_weight_matrix(
+                num_mel_bins=self.n_mels,
+                num_spectrogram_bins=self.n_fft // 2 + 1,
+                sample_rate=self.sample_rate,
+                lower_edge_hertz=self.lower_edge_hertz,
+                upper_edge_hertz=self.upper_edge_hertz,
+            ),
+            dtype=tf.float32,
+        )
+        super().build(input_shape)
+
+    def call(self, inputs):
+        x = inputs
+        if x.shape.rank == 3 and x.shape[-1] == 1:
+            x = tf.squeeze(x, axis=-1)
+        stft = tf.signal.stft(
+            tf.cast(x, tf.float32),
+            frame_length=self.n_fft,
+            frame_step=self.hop_length,
+            fft_length=self.n_fft,
+            pad_end=self.pad_end,
+        )
+        magnitude = tf.abs(stft)
+        mel = tf.matmul(magnitude, self.mel_weight)
+        return tf.cast(tf.math.log(mel + 1e-6), self.compute_dtype)
+
+    def compute_output_shape(self, input_shape):
+        # Nº de quadros ESTÁTICO quando o comprimento da entrada é conhecido.
+        # Sem isto o eixo temporal saía como None e quebrava consumidores que
+        # precisam da forma em tempo de construção — o AST, por exemplo, calcula
+        # a grade de patches a partir dela ("unsupported operand ... NoneType").
+        samples = input_shape[1] if len(input_shape) > 1 else None
+        frames = None
+        if samples is not None:
+            if self.pad_end:
+                # tf.signal.stft com pad_end=True: ceil(samples / frame_step)
+                frames = -(-int(samples) // self.hop_length)
+            elif int(samples) >= self.n_fft:
+                frames = (int(samples) - self.n_fft) // self.hop_length + 1
+            else:
+                frames = 0
+        return (input_shape[0], frames, self.n_mels)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "sample_rate": self.sample_rate,
+            "n_fft": self.n_fft,
+            "hop_length": self.hop_length,
+            "n_mels": self.n_mels,
+            "lower_edge_hertz": self.lower_edge_hertz,
+            "upper_edge_hertz": self.upper_edge_hertz,
+            "pad_end": self.pad_end,
+        })
+        return config
+
+
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
+class TimeResizeLayer(layers.Layer):
+    """Reamostra o eixo temporal de (B, T, C) para (B, target_length, C).
+
+    Camada serializável no lugar de `layers.Lambda(_resize_time)` (back-end de
+    grafo SSL): o grafo do GAT espectral precisa de dimensão temporal ESTÁTICA,
+    mas a saída do backbone SSL tem T dinâmico.
+    """
+
+    def __init__(self, target_length: int, **kwargs):
+        super().__init__(**kwargs)
+        self.target_length = int(target_length)
+
+    def call(self, inputs):
+        z4 = tf.expand_dims(inputs, axis=1)               # (B, 1, T, C)
+        z4 = tf.image.resize(z4, [1, self.target_length])  # (B, 1, T_fix, C)
+        return tf.cast(tf.squeeze(z4, axis=1), self.compute_dtype)
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0], self.target_length, input_shape[-1])
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({"target_length": self.target_length})
+        return config
+
+
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
+class WeightedScoreFusionLayer(layers.Layer):
+    """sum_i w_i * score_i sobre o eixo dos ramos, como camada serializável.
+
+    Substitui o `layers.Lambda` da fusão adaptativa do Ensemble (Eq. 28 do
+    TCC). Entradas: `[scores (B, N, U), weights (B, N, 1)]`.
+    """
+
+    def call(self, inputs):
+        scores, weights = inputs
+        return tf.reduce_sum(scores * tf.cast(weights, scores.dtype), axis=1)
+
+    def compute_output_shape(self, input_shape):
+        scores_shape = input_shape[0]
+        return (scores_shape[0], scores_shape[-1])
+
+    def get_config(self):
+        return super().get_config()
+
+
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
+class ASTInputNormalization(layers.Layer):
+    """Normalização de entrada do AST (Gong et al., 2021, §2.1).
+
+    O artigo normaliza o espectrograma de entrada para **média 0 e desvio
+    padrão 0,5** ("we normalize the input audio spectrogram so that the dataset
+    mean and standard deviation are 0 and 0.5"). Sem isso, a escala do log-mel
+    (tipicamente média ≈ −5, desvio ≈ 3) desloca a distribuição de entrada para
+    longe do regime em que a inicialização do Transformer foi calibrada.
+
+    Aqui a estatística é calculada POR AMOSTRA, e não sobre o dataset: é uma
+    aproximação deliberada que evita vazamento de estatística global entre
+    treino/validação/teste — a mesma política do resto do projeto
+    (``SafeInstanceNormalization``).
+    """
+
+    def __init__(self, target_std: float = 0.5, epsilon: float = 1e-6, **kwargs):
+        super().__init__(**kwargs)
+        self.target_std = float(target_std)
+        self.epsilon = float(epsilon)
+
+    def call(self, inputs):
+        x = tf.cast(inputs, tf.float32)
+        axes = list(range(1, x.shape.rank))
+        mean = tf.reduce_mean(x, axis=axes, keepdims=True)
+        std = tf.math.reduce_std(x, axis=axes, keepdims=True)
+        normalized = (x - mean) / (std + self.epsilon) * self.target_std
+        return tf.cast(normalized, self.compute_dtype)
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "target_std": self.target_std,
+            "epsilon": self.epsilon,
+        })
+        return config
+
+
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
+class ImageNetRangeScalingLayer(layers.Layer):
+    """Escala cada amostra para a faixa [0, 255] esperada pelos backbones Keras.
+
+    `tf.keras.applications.EfficientNet*` embute Rescaling+Normalization e
+    espera entrada em [0, 255] (o `preprocess_input` da família é no-op). Um
+    log-mel cru (~[-14, +5]) atravessa essa normalização como ruído próximo de
+    zero e torna os pesos ImageNet praticamente inertes. A escala é por amostra
+    (min-max no próprio exemplo) — não usa estatística do dataset, portanto não
+    introduz vazamento.
+    """
+
+    def call(self, inputs):
+        x = tf.cast(inputs, tf.float32)
+        axes = list(range(1, x.shape.rank))
+        min_v = tf.reduce_min(x, axis=axes, keepdims=True)
+        max_v = tf.reduce_max(x, axis=axes, keepdims=True)
+        scaled = (x - min_v) / tf.maximum(max_v - min_v, 1e-6) * 255.0
+        return tf.cast(scaled, self.compute_dtype)
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+    def get_config(self):
+        return super().get_config()
+
+
+# ─── Filterbanks/DCT compartilhados (numpy puro) ───────────────────────────
+# LFCC/MFCC/CQT eram construídos com código duplicado em sonic_sleuth.py e
+# ensemble.py — e a versão do Sonic Sleuth dependia de `tf...numpy()` dentro do
+# `build()`, com um fallback SILENCIOSO para um filterbank diferente quando o
+# tensor não era eager. Estas funções são a fonte única, em numpy puro.
+
+def linear_triangular_filterbank(
+    n_fft: int, sample_rate: int, n_filters: int
+) -> np.ndarray:
+    """Filterbank triangular LINEARMENTE espaçado (base do LFCC)."""
+    num_bins = n_fft // 2 + 1
+    linear_points = np.linspace(0.0, sample_rate / 2.0, n_filters + 2)
+    bin_points = np.round(linear_points * n_fft / sample_rate).astype(np.int32)
+    bin_points = np.clip(bin_points, 0, num_bins - 1)
+
+    filters = np.zeros((num_bins, n_filters), dtype=np.float32)
+    for i in range(n_filters):
+        left, center, right = (
+            int(bin_points[i]),
+            int(bin_points[i + 1]),
+            int(bin_points[i + 2]),
+        )
+        for j in range(left, center):
+            if center > left:
+                filters[j, i] = (j - left) / (center - left)
+        for j in range(center, right):
+            if right > center:
+                filters[j, i] = (right - j) / (right - center)
+    return filters
+
+
+def dct_matrix(n_filters: int, n_coeffs: int) -> np.ndarray:
+    """Matriz DCT-II ortonormal (filtros -> coeficientes cepstrais)."""
+    matrix = np.zeros((n_filters, n_coeffs), dtype=np.float32)
+    for k in range(n_coeffs):
+        for n in range(n_filters):
+            matrix[n, k] = np.cos(np.pi * k * (2 * n + 1) / (2 * n_filters))
+    matrix[:, 0] *= 1.0 / np.sqrt(n_filters)
+    matrix[:, 1:] *= np.sqrt(2.0 / n_filters)
+    return matrix
+
+
+def cqt_triangular_filterbank(
+    n_fft: int, sample_rate: int, n_bins: int, bins_per_octave: int,
+    fmin: float = 32.70,
+) -> np.ndarray:
+    """Aproximação do CQT por filtros triangulares log-espaçados sobre a STFT."""
+    num_stft_bins = n_fft // 2 + 1
+    freqs = fmin * (2.0 ** (np.arange(n_bins) / bins_per_octave))
+    stft_freqs = np.linspace(0, sample_rate / 2, num_stft_bins)
+
+    cqt_filters = np.zeros((num_stft_bins, n_bins), dtype=np.float32)
+    for i, fc in enumerate(freqs):
+        bandwidth = fc * (2.0 ** (1.0 / bins_per_octave) - 1)
+        low, high = fc - bandwidth / 2, fc + bandwidth / 2
+        for j, sf in enumerate(stft_freqs):
+            if low <= sf <= high:
+                if sf <= fc and fc > low:
+                    cqt_filters[j, i] = (sf - low) / (fc - low)
+                elif sf > fc and high > fc:
+                    cqt_filters[j, i] = (high - sf) / (high - fc)
+    norms = np.sum(cqt_filters, axis=0, keepdims=True) + 1e-8
+    return (cqt_filters / norms).astype(np.float32)
 
 
 @tf.keras.utils.register_keras_serializable(package="XFakeSong")
@@ -381,24 +700,30 @@ def create_classification_head(x, num_classes, dropout_rate=0.3, hidden_dims=Non
 
 @tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class AudioFeatureNormalization(SafeInstanceNormalization):
-    """
-    DEPRECATED: Esta classe foi substituída por SafeAudioNormalization/SafeInstanceNormalization.
-    Mantida apenas para compatibilidade com modelos existentes.
-    Agora usa SafeInstanceNormalization internamente para garantir segurança.
+    """Normalização de áudio POR AMOSTRA (alias histórico).
+
+    Hoje é apenas uma subclasse de :class:`SafeInstanceNormalization` — a
+    versão antiga, que fazia ``adapt()`` sobre o dataset inteiro (vazamento de
+    estatística), não existe mais. O NOME é mantido porque AASIST e RawGAT-ST
+    usam esta camada no grafo (``audio_norm_layer``): trocar a classe
+    invalidaria os checkpoints já treinados.
+
+    Antes esta classe registrava um WARNING de "DEPRECATED" a cada
+    instanciação, ou seja, em toda construção de AASIST/RawGAT-ST — ruído para
+    uma troca que não pode ser feita sem retreinar. Em código NOVO prefira
+    ``SafeInstanceNormalization`` diretamente.
     """
 
     def __init__(self, axis=-1, **kwargs):
-        # Remove 'epsilon' from kwargs if present, as SafeInstanceNormalization handles it via super or default
-        # Actually SafeInstanceNormalization might accept epsilon.
-        # But let's check SafeInstanceNormalization definition if needed.
-        # Assuming it accepts axis and standard layer kwargs.
+        # `epsilon` é tratado pela superclasse; descartado aqui por compat com
+        # configs antigas que o serializavam.
         if 'epsilon' in kwargs:
             kwargs.pop('epsilon')
 
         super().__init__(axis=axis, **kwargs)
-        logger.warning(
-            "AudioFeatureNormalization está DEPRECATED. "
-            "Use SafeInstanceNormalization em vez disso."
+        logger.debug(
+            "AudioFeatureNormalization: alias de SafeInstanceNormalization "
+            "(mantido para compatibilidade de checkpoints)."
         )
 
     # adapt method is not needed as SafeInstanceNormalization doesn't use it in the same way (stateless)
@@ -647,10 +972,62 @@ class FeatureMapScalingLayer(layers.Layer):
         return config
 
 
+def build_sinc_bandpass_filters(low, high, n_time, window, normalize="l1"):
+    """Banco de filtros passa-banda sinc — implementação ÚNICA e compartilhada.
+
+    ``filters_k(t) = 2·f_high·sinc(2π·f_high·t) − 2·f_low·sinc(2π·f_low·t)``,
+    janelado por Hamming. Usada por :class:`SincConvLayer` (AASIST/RawGAT-ST) e
+    :class:`SincNetLayer` (RawNet2), que antes mantinham cópias divergentes da
+    mesma matemática — inclusive com normalizações diferentes e sem contrato
+    explícito sobre qual era qual.
+
+    Args:
+        low: (n_filters,) frequências de corte inferiores em Hz.
+        high: (n_filters,) frequências de corte superiores em Hz.
+        n_time: (kernel_size,) eixo temporal já centrado e dividido por ``sr``.
+        window: (kernel_size,) janela (Hamming).
+        normalize: ``"l1"`` (energia unitária) ou ``"max"`` (pico unitário).
+
+    Returns:
+        Tensor ``(kernel_size, n_filters)``.
+
+    Nota numérica: ``sinc`` é avaliada com um epsilon SUBSTITUINDO x≈0 ANTES da
+    divisão. Um ``tf.where`` sobre o resultado de ``sin(x)/x`` avaliaria 0/0 no
+    ramo descartado e propagaria NaN pelo gradiente — armadilha clássica que já
+    zerou o treino do RawNet2 no primeiro passo.
+    """
+    def _sinc(x):
+        safe_x = tf.where(tf.abs(x) < 1e-7, tf.ones_like(x) * 1e-7, x)
+        return tf.sin(np.pi * safe_x) / (np.pi * safe_x)
+
+    low = tf.expand_dims(low, 1)    # (n_filters, 1)
+    high = tf.expand_dims(high, 1)
+    n_row = tf.expand_dims(n_time, 0)  # (1, kernel_size)
+
+    band_pass = (
+        2 * high * _sinc(2 * high * n_row) - 2 * low * _sinc(2 * low * n_row)
+    )                                # (n_filters, kernel_size)
+    band_pass = band_pass * tf.expand_dims(window, 0)
+
+    if normalize == "max":
+        denom = tf.reduce_max(tf.abs(band_pass), axis=1, keepdims=True) + 1e-8
+    else:
+        denom = tf.reduce_sum(tf.abs(band_pass), axis=1, keepdims=True) + 1e-7
+    band_pass = band_pass / denom
+
+    # (kernel_size, n_filters)
+    return tf.transpose(band_pass)
+
+
 class SincNetLayer(layers.Layer):
     """
     SincNet layer for raw waveform processing.
     Implementation of the Sinc-convolution from Ravanelli & Bengio (2018).
+
+    Usada pelo RawNet2. Compartilha a construção dos filtros com
+    :class:`SincConvLayer` via :func:`build_sinc_bandpass_filters`; o que
+    permanece próprio desta classe é o ``memory_efficient_gpu`` (o kernel de
+    1024 amostras do RawNet2 faz o cuDNN pedir workspace de dezenas de GB).
     """
 
     def __init__(
@@ -734,49 +1111,21 @@ class SincNetLayer(layers.Layer):
             min_low_hz,
             nyquist,
         )
-        band = high - low
-
-        # Sinc function components
-        n = tf.cast(self.n_, tf.float32)
-        window = tf.cast(self.window_, tf.float32)
-        f_times_t_low = tf.matmul(tf.expand_dims(low, 1), tf.expand_dims(n, 0))
-        f_times_t_high = tf.matmul(tf.expand_dims(high, 1), tf.expand_dims(n, 0))
-
-        # Band-pass sinc filters
-        # sinc(x) = sin(pi*x) / (pi*x)
-        # filters = 2*f_high*sinc(2*pi*f_high*t) - 2*f_low*sinc(2*pi*f_low*t)
-
-        # BUG FIX (gradiente NaN em low_hz/band_hz): a versão antiga fazia
-        #   tf.where(x==0, 1, sin(pi*x)/(pi*x))
-        # O ramo sin(pi*x)/(pi*x) era avaliado para TODOS os x (inclusive x=0,
-        # que existe no centro do vetor de tempo) → 0/0 = NaN. O forward ficava
-        # OK (where escolhia 1.0), mas o GRADIENTE do ramo NaN se propagava de
-        # volta — armadilha clássica do tf.where — zerando/estourando o treino
-        # do RawNet2 logo no 1º passo.
-        #
-        # Correção: substituir x próximo de zero por um epsilon ANTES de dividir
-        # (igual ao SincConvLayer). Assim não há 0/0 em lugar nenhum — forward e
-        # backward finitos.
-        def sinc(x):
-            safe_x = tf.where(tf.abs(x) < 1e-7, tf.ones_like(x) * 1e-7, x)
-            return tf.sin(np.pi * safe_x) / (np.pi * safe_x)
-
-        filters_low = 2 * tf.expand_dims(low, 1) * sinc(
-            2 * tf.expand_dims(low, 1) * tf.expand_dims(n, 0)
-        )
-        filters_high = 2 * tf.expand_dims(high, 1) * sinc(
-            2 * tf.expand_dims(high, 1) * tf.expand_dims(n, 0)
-        )
-
-        filters = filters_high - filters_low
-        filters = filters * window
-
-        # Normalize filters
-        filters = filters / (tf.reduce_max(tf.abs(filters), axis=1, keepdims=True) + 1e-8)
+        # Construção dos filtros por `build_sinc_bandpass_filters` — a mesma
+        # função usada pelo SincConvLayer (AASIST/RawGAT-ST). Antes cada classe
+        # tinha sua própria cópia da matemática, com normalizações divergentes.
+        # Aqui a normalização é por PICO ("max"), preservando o comportamento
+        # histórico dos checkpoints do RawNet2.
+        filters = build_sinc_bandpass_filters(
+            low=low,
+            high=high,
+            n_time=tf.cast(self.n_, tf.float32),
+            window=tf.cast(self.window_, tf.float32),
+            normalize="max",
+        )  # (kernel_size, n_filters)
 
         # Reshape for Conv1D: (kernel_size, in_channels, out_channels)
         # SincNet expects (kernel_size, 1, filters)
-        filters = tf.transpose(filters)
         filters = tf.expand_dims(filters, 1)
 
         # cuDNN may select a >35 GiB backward workspace for RawNet2's
@@ -996,13 +1345,24 @@ class SincConvLayer(layers.Layer):
     """
 
     def __init__(self, n_filters=70, kernel_size=129, sample_rate=16000,
-                 min_low_hz=50.0, min_band_hz=50.0, **kwargs):
+                 min_low_hz=50.0, min_band_hz=50.0, trainable_filters=False,
+                 **kwargs):
         super(SincConvLayer, self).__init__(**kwargs)
         self.n_filters = n_filters
         self.kernel_size = kernel_size
         self.sample_rate = sample_rate
         self.min_low_hz = min_low_hz
         self.min_band_hz = min_band_hz
+        # BANCO FIXO por padrao (2026-08-20), como a referencia.
+        #
+        # No codigo oficial do RawGAT-ST e do AASIST (classe `CONV`), o banco
+        # sinc e montado no forward a partir de pontos mel calculados uma vez
+        # no `__init__` e guardado num `torch.Tensor` — NAO um `nn.Parameter`,
+        # portanto sem gradiente. Aqui as frequencias de corte eram pesos
+        # treinaveis: um grau de liberdade a mais na camada que define o que o
+        # modelo enxerga, ausente no baseline com que a tabela do TCC compara.
+        # `trainable_filters=True` mantem o comportamento antigo para ablacao.
+        self.trainable_filters = bool(trainable_filters)
 
     def _hz_to_mel(self, hz):
         return 2595.0 * tf.math.log(1.0 + hz / 700.0)
@@ -1030,13 +1390,13 @@ class SincConvLayer(layers.Layer):
             name="low_hz",
             shape=(self.n_filters,),
             initializer=tf.keras.initializers.Constant(init_low.numpy()),
-            trainable=True
+            trainable=self.trainable_filters
         )
         self.band_hz_ = self.add_weight(
             name="band_hz",
             shape=(self.n_filters,),
             initializer=tf.keras.initializers.Constant(init_band.numpy()),
-            trainable=True
+            trainable=self.trainable_filters
         )
 
         # Hamming window (not trainable)
@@ -1068,45 +1428,24 @@ class SincConvLayer(layers.Layer):
             clip_value_max=nyquist,
         )
 
-        # Time vector centered at 0
+        # Eixo temporal centrado, em SEGUNDOS (n − centro)/fs.
         n = tf.cast(tf.range(0, self.kernel_size), tf.float32)
-        n = n - (self.kernel_size - 1.0) / 2.0  # Center at 0
+        n = (n - (self.kernel_size - 1.0) / 2.0) / self.sample_rate
 
-        # Build bandpass filters: (kernel_size, n_filters)
-        # low and high are (n_filters,), n is (kernel_size,)
-        # We need outer product-like computation
-        low_expanded = tf.expand_dims(low, 0)      # (1, n_filters)
-        high_expanded = tf.expand_dims(high, 0)     # (1, n_filters)
-        n_expanded = tf.expand_dims(n, 1)           # (kernel_size, 1)
-
-        # Band-pass filter = high_pass - low_pass
-        # h(n) = 2*f_high*sinc(2*pi*f_high*n/fs) - 2*f_low*sinc(2*pi*f_low*n/fs)
-        # com sinc(x) = sin(x)/x. Para f̂ = 2f/fs (freq. normalizada) e n em
-        # AMOSTRAS, o argumento correto é π·f̂·n = 2π·f·n/fs.
-        #
-        # BUG FIX (filtros degenerados): a versão anterior passava
-        # `f̂·n·sample_rate` = 2·f·n como argumento — faltava o fator π e
-        # sobrava um ×fs (~5·10³ vezes maior). O seno aliasava em argumentos
-        # da ordem de 10⁵–10⁶ e os "passa-banda mel-inicializados" viravam um
-        # banco pseudo-aleatório fixo — as frequências aprendíveis (low/band)
-        # deixavam de definir bordas de banda reais. A SincNetLayer (RawNet2)
-        # sempre esteve correta; esta camada (AASIST/RawGAT-ST) não.
-        # Modelos treinados antes desta correção precisam de RETREINO para
-        # se beneficiar (scripts/training/retrain_ajustado.sh).
-        f_low = 2.0 * low_expanded / self.sample_rate
-        f_high = 2.0 * high_expanded / self.sample_rate
-
-        band_pass_low = f_low * self._sinc(np.pi * f_low * n_expanded)
-        band_pass_high = f_high * self._sinc(np.pi * f_high * n_expanded)
-
-        band_pass = band_pass_high - band_pass_low  # (kernel_size, n_filters)
-
-        # Apply Hamming window
-        window = tf.expand_dims(self.window_, 1)  # (kernel_size, 1)
-        band_pass = band_pass * window
-
-        # Normalize each filter to unit energy
-        band_pass = band_pass / (tf.reduce_sum(tf.abs(band_pass), axis=0, keepdims=True) + 1e-7)
+        # Construção dos filtros por `build_sinc_bandpass_filters` — a MESMA
+        # função usada pelo SincNetLayer (RawNet2). Antes cada camada mantinha
+        # sua própria cópia da matemática do sinc; a daqui já teve um bug de
+        # argumento (faltava π e sobrava ×fs, degenerando os passa-banda
+        # mel-inicializados num banco pseudo-aleatório) que a outra nunca teve.
+        # Uma implementação só elimina a classe inteira de divergência.
+        # Verificado numericamente: saída idêntica à versão anterior (1e-5).
+        band_pass = build_sinc_bandpass_filters(
+            low=low,
+            high=high,
+            n_time=n,
+            window=tf.cast(self.window_, tf.float32),
+            normalize="l1",   # energia unitária (convenção desta camada)
+        )  # (kernel_size, n_filters)
 
         # Reshape for conv1d: (kernel_size, 1, n_filters)
         filters = tf.expand_dims(band_pass, 1)
@@ -1123,7 +1462,10 @@ class SincConvLayer(layers.Layer):
             'kernel_size': self.kernel_size,
             'sample_rate': self.sample_rate,
             'min_low_hz': self.min_low_hz,
-            'min_band_hz': self.min_band_hz
+            'min_band_hz': self.min_band_hz,
+            # Sem isto, um artefato salvo com banco treinavel recarregaria com
+            # banco fixo (ou vice-versa) em silencio.
+            'trainable_filters': self.trainable_filters,
         })
         return config
 
@@ -1308,6 +1650,261 @@ class GATConvLayer(layers.Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
+class AASISTGraphAttentionLayer(layers.Layer):
+    """Atenção de grafo FIEL a RawGAT-ST/AASIST (Tak 2021; Jung ICASSP 2022).
+
+    Diferente do GAT aditivo de Velickovic (``GATConvLayer``), estes artigos
+    derivam o mapa de atenção do **produto elemento a elemento entre pares de
+    nós**, projetado e comprimido por ``tanh``, reduzido a um escalar por uma
+    direção aprendível e **escalado por uma temperatura** antes do softmax::
+
+        A_ij = softmax_i( w^T · tanh(W_att (h_i ⊙ h_j)) / τ )
+        h'   = W_att_proj (A · h) + W_res h          (projeção com e sem atenção)
+        h'   = SELU(BN(h'))
+
+    A temperatura é um hiperparâmetro por camada no AASIST (2.0 nos GATs
+    espectral/temporal, 100.0 nas HS-GAL) e controla o quanto a atenção se
+    aproxima de uma média uniforme.
+
+    NOTA: o softmax é normalizado sobre ``axis=-2`` e a agregação soma sobre o
+    último eixo — exatamente como no código de referência dos autores.
+    """
+
+    def __init__(self, out_features, temperature=1.0, dropout_rate=0.2,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.out_features = int(out_features)
+        self.temperature = float(temperature)
+        self.dropout_rate = float(dropout_rate)
+
+    def build(self, input_shape):
+        in_dim = int(input_shape[-1])
+        self.att_proj = layers.Dense(self.out_features, name="att_proj")
+        self.att_weight = self.add_weight(
+            name="att_weight", shape=(self.out_features, 1),
+            initializer="glorot_uniform", trainable=True,
+        )
+        self.proj_with_att = layers.Dense(self.out_features, name="proj_with_att")
+        self.proj_without_att = layers.Dense(
+            self.out_features, name="proj_without_att"
+        )
+        self.bn = layers.BatchNormalization(name="bn")
+        self.input_drop = layers.Dropout(self.dropout_rate)
+
+        # Build EXPLÍCITO das sub-camadas: criadas aqui, elas ficariam com
+        # `built=False` na reconstrução do modelo salvo e o Keras 3 aborta o
+        # load ("objects could not be loaded ... Dense name=att_proj").
+        self.att_proj.build((None, None, None, in_dim))   # tensor par-a-par
+        self.proj_with_att.build((None, None, in_dim))
+        self.proj_without_att.build((None, None, in_dim))
+        self.bn.build((None, None, self.out_features))
+        super().build(input_shape)
+
+    def _derive_att_map(self, x):
+        # Produto par-a-par: (B, N, 1, C) * (B, 1, N, C) -> (B, N, N, C)
+        pairwise = tf.expand_dims(x, 2) * tf.expand_dims(x, 1)
+        att = tf.tanh(self.att_proj(pairwise))          # (B, N, N, out)
+        att = tf.matmul(att, tf.cast(self.att_weight, att.dtype))  # (B, N, N, 1)
+        att = att / tf.cast(self.temperature, att.dtype)
+        return tf.nn.softmax(att, axis=-2)
+
+    def call(self, inputs, training=None):
+        x = self.input_drop(inputs, training=training)
+        att_map = tf.squeeze(self._derive_att_map(x), axis=-1)  # (B, N, N)
+        out = self.proj_with_att(tf.matmul(att_map, x)) + self.proj_without_att(x)
+        out = self.bn(out, training=training)
+        return tf.nn.selu(out)
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0], input_shape[1], self.out_features)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "out_features": self.out_features,
+            "temperature": self.temperature,
+            "dropout_rate": self.dropout_rate,
+        })
+        return config
+
+
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
+class MasterNodeSeed(layers.Layer):
+    """Master node treinável ``(1, 1, C)`` replicado para o batch.
+
+    O AASIST declara ``master1``/``master2`` como ``nn.Parameter`` e os injeta
+    na primeira HS-GAL de cada ramo. Recebe um tensor apenas para herdar o
+    tamanho do batch; o conteúdo dele é ignorado.
+    """
+
+    def __init__(self, feature_dim: int, **kwargs):
+        super().__init__(**kwargs)
+        self.feature_dim = int(feature_dim)
+
+    def build(self, input_shape):
+        self.seed = self.add_weight(
+            name="master_seed", shape=(1, 1, self.feature_dim),
+            initializer="random_normal", trainable=True,
+        )
+        super().build(input_shape)
+
+    def call(self, inputs):
+        batch = tf.shape(inputs)[0]
+        return tf.tile(tf.cast(self.seed, self.compute_dtype), [batch, 1, 1])
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0], 1, self.feature_dim)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({"feature_dim": self.feature_dim})
+        return config
+
+
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
+class AASISTHtrgGraphAttentionLayer(layers.Layer):
+    """HS-GAL heterogênea FIEL ao AASIST (Jung et al., ICASSP 2022, §2.3).
+
+    A contribuição que dá nome à camada são **três conjuntos distintos de
+    parâmetros de atenção por TIPO DE ARESTA**: nó-tipo1↔nó-tipo1 (``w11``),
+    nó-tipo2↔nó-tipo2 (``w22``) e o par cruzado tipo1↔tipo2 (``w12``,
+    compartilhado nas duas direções). Uma atenção homogênea com *type
+    embeddings* — como fazia a implementação anterior — não reproduz isso.
+
+    O **master node** agrega o grafo inteiro por uma atenção própria
+    (``att_projM``/``att_weightM``) e é devolvido para alimentar a HS-GAL
+    seguinte (o "stack"). Quando nenhum master é fornecido, ele é inicializado
+    como a MÉDIA de todos os nós, como no código de referência; o AASIST, na
+    prática, injeta um master treinável por ramo.
+
+    Entrada: ``[x1, x2]`` ou ``[x1, x2, master]``.
+    Saída:   ``(x1', x2', master')``.
+    """
+
+    def __init__(self, out_features=32, temperature=100.0, dropout_rate=0.2,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.out_features = int(out_features)
+        self.temperature = float(temperature)
+        self.dropout_rate = float(dropout_rate)
+
+    def build(self, input_shape):
+        in_dim = int(input_shape[0][-1])
+        self.proj_type1 = layers.Dense(in_dim, name="proj_type1")
+        self.proj_type2 = layers.Dense(in_dim, name="proj_type2")
+
+        self.att_proj = layers.Dense(self.out_features, name="att_proj")
+        self.att_projM = layers.Dense(self.out_features, name="att_projM")
+
+        def _att_vec(name):
+            return self.add_weight(
+                name=name, shape=(self.out_features, 1),
+                initializer="glorot_uniform", trainable=True,
+            )
+
+        # Três conjuntos por tipo de aresta + o do master (paper §2.3).
+        self.att_weight11 = _att_vec("att_weight11")
+        self.att_weight22 = _att_vec("att_weight22")
+        self.att_weight12 = _att_vec("att_weight12")
+        self.att_weightM = _att_vec("att_weightM")
+
+        self.proj_with_att = layers.Dense(self.out_features, name="proj_with_att")
+        self.proj_without_att = layers.Dense(
+            self.out_features, name="proj_without_att"
+        )
+        self.proj_with_attM = layers.Dense(
+            self.out_features, name="proj_with_attM"
+        )
+        self.proj_without_attM = layers.Dense(
+            self.out_features, name="proj_without_attM"
+        )
+        self.bn = layers.BatchNormalization(name="bn")
+        self.input_drop = layers.Dropout(self.dropout_rate)
+
+        # Build EXPLÍCITO — ver nota em AASISTGraphAttentionLayer.build().
+        self.proj_type1.build((None, None, in_dim))
+        self.proj_type2.build((None, None, in_dim))
+        self.att_proj.build((None, None, None, in_dim))  # tensor par-a-par
+        self.att_projM.build((None, None, in_dim))
+        self.proj_with_att.build((None, None, in_dim))
+        self.proj_without_att.build((None, None, in_dim))
+        self.proj_with_attM.build((None, None, in_dim))
+        self.proj_without_attM.build((None, None, in_dim))
+        self.bn.build((None, None, self.out_features))
+        super().build(input_shape)
+
+    def _derive_att_map(self, x, n1):
+        pairwise = tf.expand_dims(x, 2) * tf.expand_dims(x, 1)   # (B,N,N,C)
+        att = tf.tanh(self.att_proj(pairwise))                    # (B,N,N,out)
+
+        # Blocos por tipo de aresta: 11 (tipo1↔tipo1), 22 (tipo2↔tipo2) e 12
+        # (cruzado, compartilhado nas duas direções) — §2.3 do AASIST.
+        a11 = tf.matmul(att[:, :n1, :n1, :], tf.cast(self.att_weight11, att.dtype))
+        a12 = tf.matmul(att[:, :n1, n1:, :], tf.cast(self.att_weight12, att.dtype))
+        a21 = tf.matmul(att[:, n1:, :n1, :], tf.cast(self.att_weight12, att.dtype))
+        a22 = tf.matmul(att[:, n1:, n1:, :], tf.cast(self.att_weight22, att.dtype))
+
+        top = tf.concat([a11, a12], axis=2)      # (B, n1, N, 1)
+        bottom = tf.concat([a21, a22], axis=2)   # (B, n2, N, 1)
+        att_map = tf.concat([top, bottom], axis=1) / tf.cast(
+            self.temperature, att.dtype
+        )
+        return tf.nn.softmax(att_map, axis=-2)
+
+    def _update_master(self, x, master):
+        att = tf.tanh(self.att_projM(x * master))                 # (B,N,out)
+        att = tf.matmul(att, tf.cast(self.att_weightM, att.dtype))  # (B,N,1)
+        att = att / tf.cast(self.temperature, att.dtype)
+        att = tf.nn.softmax(att, axis=-2)
+        # (B,1,N) @ (B,N,C) -> (B,1,C)
+        pooled = tf.matmul(tf.transpose(att, [0, 2, 1]), x)
+        return self.proj_with_attM(pooled) + self.proj_without_attM(master)
+
+    def call(self, inputs, training=None):
+        if len(inputs) == 3:
+            x1, x2, master = inputs
+        else:
+            x1, x2 = inputs
+            master = None
+
+        n1 = x1.shape[1] if x1.shape[1] is not None else tf.shape(x1)[1]
+
+        x1 = self.proj_type1(x1)
+        x2 = self.proj_type2(x2)
+        x = tf.concat([x1, x2], axis=1)
+
+        if master is None:
+            master = tf.reduce_mean(x, axis=1, keepdims=True)
+
+        x = self.input_drop(x, training=training)
+        att_map = tf.squeeze(self._derive_att_map(x, n1), axis=-1)  # (B,N,N)
+        master = self._update_master(x, master)
+
+        out = self.proj_with_att(tf.matmul(att_map, x)) + self.proj_without_att(x)
+        out = self.bn(out, training=training)
+        out = tf.nn.selu(out)
+
+        return out[:, :n1, :], out[:, n1:, :], master
+
+    def compute_output_shape(self, input_shape):
+        s1, s2 = input_shape[0], input_shape[1]
+        return (
+            (s1[0], s1[1], self.out_features),
+            (s2[0], s2[1], self.out_features),
+            (s1[0], 1, self.out_features),
+        )
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "out_features": self.out_features,
+            "temperature": self.temperature,
+            "dropout_rate": self.dropout_rate,
+        })
+        return config
+
+
 class GraphPoolLayer(layers.Layer):
     """Learnable graph pooling via top-k node selection.
 
@@ -1317,9 +1914,15 @@ class GraphPoolLayer(layers.Layer):
     Reference: Graph U-Nets (Gao & Ji, 2019)
     """
 
-    def __init__(self, ratio=0.5, **kwargs):
+    def __init__(self, ratio=0.5, target_nodes=None, **kwargs):
         super(GraphPoolLayer, self).__init__(**kwargs)
         self.ratio = ratio
+        # `target_nodes` seleciona um número ABSOLUTO de nós (top-k), em vez de
+        # uma fração. Serve para alinhar dois grafos antes de uma fusão
+        # element-wise usando a MESMA primitiva de pooling dos artigos, sem
+        # recorrer a uma projeção densa sobre o eixo de nós (que mistura nós
+        # arbitrariamente e não é uma operação de grafo).
+        self.target_nodes = None if target_nodes is None else int(target_nodes)
 
     def build(self, input_shape):
         in_features = input_shape[-1]
@@ -1336,14 +1939,35 @@ class GraphPoolLayer(layers.Layer):
     def call(self, inputs):
         # inputs: (batch, nodes, features)
         num_nodes = tf.shape(inputs)[1]
-        k = tf.maximum(tf.cast(tf.cast(num_nodes, tf.float32) * self.ratio, tf.int32), 1)
+        if self.target_nodes is not None:
+            k = tf.minimum(tf.constant(self.target_nodes, tf.int32), num_nodes)
+            k = tf.maximum(k, 1)
+        else:
+            k = tf.maximum(
+                tf.cast(tf.cast(num_nodes, tf.float32) * self.ratio, tf.int32), 1
+            )
 
         # Compute scores: (batch, nodes, 1)
         scores = tf.matmul(inputs, self.score_proj)
         scores = tf.squeeze(scores, axis=-1)  # (batch, nodes)
 
-        # Top-k selection
-        _, top_indices = tf.math.top_k(scores, k=k, sorted=False)
+        # Top-k selection.
+        #
+        # `sorted=True` NÃO é cosmético aqui. Com `sorted=False` o TensorFlow
+        # declara a ordem do resultado como não especificada, e medido nesta
+        # base (TF 2.21, CPU) ela difere da ordenada em 200 de 200 casos. Essa
+        # ordem define QUAIS nós se emparelham na fusão elemento a elemento do
+        # RawGAT-ST (`rawgat_st.py`: Multiply entre Gs e Gt), a operação que dá
+        # nome à arquitetura — permutar os nós de um dos lados muda o produto
+        # em ~130% relativo. Dentro de um run a ordem é estável, então o modelo
+        # aprende com o pareamento que recebeu; o risco é de REPRODUTIBILIDADE:
+        # outra versão do TF ou o kernel de GPU podem parear diferente e
+        # produzir outro modelo a partir do mesmo código.
+        #
+        # `sorted=True` fixa o pareamento por ranking de score (nó espectral
+        # mais saliente com nó temporal mais saliente), que é também a
+        # semântica que a referência PyTorch obtém de `torch.topk`.
+        _, top_indices = tf.math.top_k(scores, k=k, sorted=True)
 
         # Gather selected nodes
         batch_size = tf.shape(inputs)[0]
@@ -1365,57 +1989,69 @@ class GraphPoolLayer(layers.Layer):
 
     def compute_output_shape(self, input_shape):
         nodes = input_shape[1]
-        pooled_nodes = (
-            max(int(nodes * self.ratio), 1)
-            if nodes is not None
-            else None
-        )
+        if self.target_nodes is not None:
+            pooled_nodes = (
+                min(self.target_nodes, int(nodes)) if nodes is not None
+                else self.target_nodes
+            )
+        else:
+            pooled_nodes = (
+                max(int(nodes * self.ratio), 1)
+                if nodes is not None
+                else None
+            )
         return tf.TensorShape((input_shape[0], pooled_nodes, input_shape[-1]))
 
     def get_config(self):
         config = super(GraphPoolLayer, self).get_config()
-        config.update({'ratio': self.ratio})
+        config.update({'ratio': self.ratio, 'target_nodes': self.target_nodes})
         return config
 
 
 class GraphReadoutLayer(layers.Layer):
-    """Graph readout combining max readout and attention-weighted readout.
+    """Readout de grafo: máximo do VALOR ABSOLUTO concatenado com a MÉDIA.
 
-    Produces a fixed-size graph-level representation from variable-size node features
-    by concatenating max-pooled and attention-weighted node features.
+    Formulação de AASIST (Jung et al., ICASSP 2022, §2.4) e RawGAT-ST (Tak et
+    al., 2021)::
 
-    Output shape: (batch, 2 * in_features)
+        T_max = max(|out|, dim=nós)
+        T_avg = mean(out, dim=nós)
+        readout = concat[T_max, T_avg]
 
-    Reference: AASIST (Jung et al., ICASSP 2022)
+    Saída: ``(batch, 2 * in_features)``.
+
+    CORREÇÃO 2026-08-20. A implementação anterior fazia ``reduce_max`` SEM
+    valor absoluto e, no lugar da média, uma soma ponderada por atenção
+    aprendida (um peso ``att_w`` de ``in_features`` parâmetros). Divergia dos
+    dois papers em duas frentes:
+
+    - **Sem o abs**, os nós chegam aqui depois do SELU, cujo alcance é
+      ``(-1.758, +inf)``: um canal fortemente NEGATIVO — evidência tão válida
+      quanto uma positiva — era descartado pelo máximo. O paper usa a magnitude
+      justamente para não perder esse lado.
+    - **Atenção no lugar da média** troca uma estatística fixa por uma
+      aprendida, mudando metade do vetor que alimenta a camada de saída.
+
+    O AASIST deste mesmo repositório já monta o readout CORRETO inline
+    (``aasist.py``: ``MagnitudeLayer`` + ``GlobalMaxPooling1D`` e
+    ``GlobalAveragePooling1D``); era o RawGAT-ST, que consome esta camada
+    compartilhada, que ficava com a versão divergente.
+
+    A forma de saída não muda, mas o peso ``att_w`` deixa de existir: artefatos
+    salvos com a versão anterior não recarregam sem retreino.
     """
 
     def __init__(self, **kwargs):
         super(GraphReadoutLayer, self).__init__(**kwargs)
 
     def build(self, input_shape):
-        in_features = input_shape[-1]
-
-        self.att_w = self.add_weight(
-            name="att_w",
-            shape=(in_features, 1),
-            initializer="glorot_uniform",
-            trainable=True
-        )
-
         super(GraphReadoutLayer, self).build(input_shape)
 
     def call(self, inputs):
         # inputs: (batch, nodes, features)
-
-        # Max readout
-        h_max = tf.reduce_max(inputs, axis=1)  # (batch, features)
-
-        # Attention readout
-        scores = tf.matmul(inputs, self.att_w)   # (batch, nodes, 1)
-        alpha = tf.nn.softmax(scores, axis=1)    # (batch, nodes, 1)
-        h_att = tf.reduce_sum(inputs * alpha, axis=1)  # (batch, features)
-
-        return tf.concat([h_max, h_att], axis=-1)  # (batch, 2*features)
+        h_max = tf.reduce_max(tf.abs(inputs), axis=1)  # (batch, features)
+        h_avg = tf.reduce_mean(inputs, axis=1)         # (batch, features)
+        return tf.concat([h_max, h_avg], axis=-1)      # (batch, 2*features)
 
     def get_config(self):
         return super(GraphReadoutLayer, self).get_config()
@@ -1640,6 +2276,99 @@ class AMSoftmaxLayer(layers.Layer):
             'num_classes': self.num_classes,
             'scale': self.scale,
             'margin': self.margin,
+        })
+        return config
+
+
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
+class AMSoftmaxCrossEntropy(tf.keras.losses.Loss):
+    """Entropia cruzada com margem aditiva (AM-Softmax/CosFace) NA LOSS.
+
+    A ``AMSoftmaxLayer`` emite ``s·cos(θ)`` SEM margem: no grafo funcional os
+    rótulos nunca chegam ao ``call`` da camada, então a margem lá é código
+    morto. É aqui, com ``y_true`` disponível, que o AM-Softmax do paper
+    acontece::
+
+        logit_alvo ← s·(cos θ − m) = s·cos θ − s·m
+
+    Mantenha ``scale``/``margin`` em sincronia com os da ``AMSoftmaxLayer``.
+
+    Args:
+        scale: fator ``s`` usado pela camada (default 15.0).
+        margin: margem aditiva ``m`` do CosFace (default 0.35).
+        label_smoothing: suavização de rótulo aplicada depois da margem.
+    """
+
+    def __init__(self, scale: float = 15.0, margin: float = 0.35,
+                 label_smoothing: float = 0.1, name: str = "am_softmax_ce",
+                 **kwargs):
+        super().__init__(name=name, **kwargs)
+        self.scale = float(scale)
+        self.margin = float(margin)
+        self.label_smoothing = float(label_smoothing)
+
+    def call(self, y_true, y_pred):
+        num_classes = tf.shape(y_pred)[-1]
+        y_true_int = tf.cast(tf.reshape(y_true, [-1]), tf.int32)
+        one_hot = tf.cast(tf.one_hot(y_true_int, num_classes), y_pred.dtype)
+        # CosFace: subtrai s·m do logit da classe-alvo.
+        y_pred = y_pred - one_hot * tf.cast(
+            self.scale * self.margin, y_pred.dtype
+        )
+        k = tf.cast(num_classes, y_pred.dtype)
+        ls = tf.cast(self.label_smoothing, y_pred.dtype)
+        smoothed = one_hot * (1.0 - ls) + ls / k
+        return tf.keras.losses.categorical_crossentropy(
+            smoothed, y_pred, from_logits=True
+        )
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "scale": self.scale,
+            "margin": self.margin,
+            "label_smoothing": self.label_smoothing,
+        })
+        return config
+
+
+@tf.keras.utils.register_keras_serializable(package="XFakeSong")
+class SparseLabelSmoothingCrossEntropy(tf.keras.losses.Loss):
+    """Entropia cruzada com label smoothing para rótulos INTEIROS (esparsos).
+
+    O Keras só oferece `label_smoothing` na versão categórica (one-hot). Esta
+    classe faz a conversão internamente, e — por ser uma `Loss` registrada, e
+    não uma closure definida dentro do builder — sobrevive a
+    `load_model(..., compile=True)`.
+
+    Args:
+        label_smoothing: fator de suavização (0.0 desliga).
+        from_logits: True se `y_pred` são logits; False para saída softmax.
+    """
+
+    def __init__(self, label_smoothing: float = 0.05, from_logits: bool = False,
+                 name: str = "sparse_label_smoothing_ce", **kwargs):
+        super().__init__(name=name, **kwargs)
+        self.label_smoothing = float(label_smoothing)
+        self.from_logits = bool(from_logits)
+
+    def call(self, y_true, y_pred):
+        num_classes = tf.shape(y_pred)[-1]
+        # reshape em vez de squeeze: squeeze total colapsaria batch=1 a escalar.
+        y_true_int = tf.cast(tf.reshape(y_true, [-1]), tf.int32)
+        one_hot = tf.cast(tf.one_hot(y_true_int, num_classes), y_pred.dtype)
+        k = tf.cast(num_classes, y_pred.dtype)
+        ls = tf.cast(self.label_smoothing, y_pred.dtype)
+        smoothed = one_hot * (1.0 - ls) + ls / k
+        return tf.keras.losses.categorical_crossentropy(
+            smoothed, y_pred, from_logits=self.from_logits
+        )
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "label_smoothing": self.label_smoothing,
+            "from_logits": self.from_logits,
         })
         return config
 
@@ -2040,15 +2769,28 @@ tf.keras.utils.get_custom_objects().update({
 class ResidualBlock2D(layers.Layer):
     """Bloco residual 2D para os encoders AASIST/RawGAT-ST fiéis."""
 
-    def __init__(self, out_channels, kernel_size=(3, 3), pool_size=(1, 3),
-                 **kwargs):
+    def __init__(self, out_channels, kernel_size=(2, 3), pool_size=(1, 3),
+                 first=False, **kwargs):
         super().__init__(**kwargs)
         self.out_channels = int(out_channels)
+        # KERNEL (2, 3), como o `Residual_block` da familia RawGAT-ST/AASIST.
+        # O default era (3, 3): 50% mais parametros por convolucao no eixo de
+        # frequencia e um campo receptivo diferente do baseline publicado.
         self.kernel_size = tuple(kernel_size)
         self.pool_size = tuple(pool_size)
+        # `first=True` PULA a BN + ativacao iniciais, como na referencia. Sem
+        # isto, o primeiro bloco da pilha aplicava BN+SELU sobre um tensor que
+        # ja vinha normalizado e ativado do front-end sinc — uma segunda
+        # saturacao do SELU que o paper nao tem.
+        self.first = bool(first)
 
     def build(self, input_shape):
-        self.bn1 = layers.BatchNormalization(name=f"{self.name}_bn1")
+        # Com `first=True` a pre-ativacao nao roda, entao `bn1` seria um peso
+        # orfao (sem gradiente, e o Keras avisa a cada passo).
+        self.bn1 = (
+            None if self.first
+            else layers.BatchNormalization(name=f"{self.name}_bn1")
+        )
         self.conv1 = layers.Conv2D(
             self.out_channels, self.kernel_size, padding="same",
             use_bias=False, name=f"{self.name}_conv1",
@@ -2071,8 +2813,11 @@ class ResidualBlock2D(layers.Layer):
         super().build(input_shape)
 
     def call(self, inputs, training=None):
-        x = self.bn1(inputs, training=training)
-        x = tf.nn.selu(x)
+        if self.first:
+            x = inputs
+        else:
+            x = self.bn1(inputs, training=training)
+            x = tf.nn.selu(x)
         x = self.conv1(x)
         x = self.bn2(x, training=training)
         x = tf.nn.selu(x)
@@ -2091,6 +2836,7 @@ class ResidualBlock2D(layers.Layer):
             "out_channels": self.out_channels,
             "kernel_size": self.kernel_size,
             "pool_size": self.pool_size,
+            "first": self.first,
         })
         return config
 
@@ -2116,7 +2862,14 @@ class SpectralPositionEmbedding(layers.Layer):
 
 @tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class AdaptiveGraphResize(layers.Layer):
-    """Projeção aprendível do eixo de nós para tamanho comum S/T."""
+    """Projeção aprendível do eixo de nós para tamanho comum S/T.
+
+    LEGADO (desde 2026-07-27) — nenhum builder a instancia. Uma projeção densa
+    sobre o eixo de nós MISTURA nós arbitrariamente (não é operação de grafo) e
+    não existe em Tak et al. (2021). O alinhamento de Gs/Gt antes da fusão
+    element-wise passou a usar ``GraphPoolLayer(target_nodes=...)``, o mesmo
+    top-k dos artigos. Mantida só para desserializar checkpoints antigos.
+    """
 
     def __init__(self, target_nodes=12, **kwargs):
         super().__init__(**kwargs)
@@ -2155,76 +2908,3 @@ class AdaptiveGraphResize(layers.Layer):
         return config
 
 
-@tf.keras.utils.register_keras_serializable(package="XFakeSong")
-class HeterogeneousStackGraphAttentionLayer(layers.Layer):
-    """HS-GAL com tipos espectral/temporal e master (stack) node."""
-
-    def __init__(self, out_features=32, dropout_rate=0.2,
-                 negative_slope=0.2, **kwargs):
-        super().__init__(**kwargs)
-        self.out_features = int(out_features)
-        self.dropout_rate = float(dropout_rate)
-        self.negative_slope = float(negative_slope)
-
-    def build(self, input_shape):
-        self.spec_projection = layers.Dense(
-            self.out_features, use_bias=False, name=f"{self.name}_spec_proj"
-        )
-        self.temp_projection = layers.Dense(
-            self.out_features, use_bias=False, name=f"{self.name}_temp_proj"
-        )
-        self.master_projection = layers.Dense(
-            self.out_features, use_bias=False, name=f"{self.name}_master_proj"
-        )
-        self.type_embeddings = self.add_weight(
-            name="type_embeddings", shape=(2, self.out_features),
-            initializer="random_normal", trainable=True,
-        )
-        self.master_seed = None
-        if len(input_shape) != 3:
-            self.master_seed = self.add_weight(
-                name="master_seed", shape=(1, 1, self.out_features),
-                initializer="random_normal", trainable=True,
-            )
-        self.gat = GATConvLayer(
-            out_features=self.out_features, num_heads=1, concat_heads=True,
-            dropout_rate=self.dropout_rate, negative_slope=self.negative_slope,
-            name=f"{self.name}_gat",
-        )
-        self.norm = layers.LayerNormalization(name=f"{self.name}_norm")
-        self.dropout = layers.Dropout(self.dropout_rate)
-        super().build(input_shape)
-
-    def call(self, inputs, training=None):
-        if len(inputs) == 3:
-            spectral_nodes, temporal_nodes, master = inputs
-            master = self.master_projection(master)
-        else:
-            spectral_nodes, temporal_nodes = inputs
-            batch = tf.shape(spectral_nodes)[0]
-            if self.master_seed is None:
-                raise RuntimeError("master_seed não foi inicializado")
-            master = tf.tile(self.master_seed, [batch, 1, 1])
-
-        spectral_nodes = self.spec_projection(spectral_nodes)
-        temporal_nodes = self.temp_projection(temporal_nodes)
-        spectral_nodes = spectral_nodes + self.type_embeddings[0][None, None, :]
-        temporal_nodes = temporal_nodes + self.type_embeddings[1][None, None, :]
-        n_spec = tf.shape(spectral_nodes)[1]
-        nodes = tf.concat([master, spectral_nodes, temporal_nodes], axis=1)
-        updated = self.gat(self.dropout(nodes, training=training), training=training)
-        updated = self.norm(nodes + updated)
-        return (
-            updated[:, 1:1 + n_spec, :],
-            updated[:, 1 + n_spec:, :],
-            updated[:, :1, :],
-        )
-
-    def get_config(self):
-        config = super().get_config()
-        config.update({
-            "out_features": self.out_features,
-            "dropout_rate": self.dropout_rate,
-            "negative_slope": self.negative_slope,
-        })
-        return config

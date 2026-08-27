@@ -103,7 +103,7 @@ chmod +x start.sh
 ./start.sh test         # Python local (usa GPU se disponível)
 ./start.sh gpu          # Docker + GPU
 ./start.sh install-gpu  # Instala TF + CUDA local (não-Docker)
-./start.sh gpu-test     # Diagnóstico GPU standalone
+./start.sh gpu-config   # Diagnóstico GPU standalone
 ```
 
 Ou via `make`:
@@ -136,7 +136,7 @@ make docker-config      # valida todos os perfis Compose segmentados
 | `status` | `compose ps` + `docker stats` |
 | `install` | Instala dependências em `.venv` (CPU) |
 | `bootstrap` | Cria estrutura de diretórios padrão |
-| `deploy` | Push para Hugging Face Spaces |
+| `deploy` | Push para Hugging Face Spaces (só `start.bat` — `start.sh` não tem esse comando) |
 | `help` | Mostra ajuda |
 
 Sem argumento, ambos abrem **menu interativo**.
@@ -250,7 +250,7 @@ Editáveis via `.env`:
 ```env
 DOCKER_MEMORY_LIMIT=8G       # Default 8GB
 DOCKER_CPU_LIMIT=4.0         # Default 4 CPUs
-DOCKER_TRAIN_MEMORY_LIMIT=16G
+DOCKER_TRAIN_MEMORY_LIMIT=36G
 DOCKER_TRAIN_CPU_LIMIT=8.0
 NVIDIA_GPU_COUNT=all
 GRADIO_PORT=7860             # Porta exposta
@@ -568,13 +568,13 @@ make env                # via Makefile
 
 | Variável | Default | Descrição |
 |----------|---------|-----------|
-| `DEEPFAKE_ENV` | `production` | `development` ou `production` |
+| `DEEPFAKE_ENV` | `development` | `development` ou `production` — default real quando a variável não é setada (`settings.py`, `auth_handler.py`); `.env.example` já vem com `development` |
 | `DEEPFAKE_LOG_LEVEL` | `INFO` | `DEBUG` \| `INFO` \| `WARNING` \| `ERROR` |
 | `GRADIO_PORT` | `7860` | Porta exposta (compose) |
-| `GRADIO_SERVER_PORT` | `7860` | Porta interna do Gradio (container) |
+| `GRADIO_SERVER_PORT` | `7860` | Aparece nos compose e é ecoada pelo `docker-entrypoint.sh`, mas **nenhum código Python a lê** — a porta real vem de `--gradio-port 7860` fixo no `CMD` do `Dockerfile`, ou de `--port`/`$PORT` em `main.py`. Setar só essa variável não muda a porta do app. |
 | `DOCKER_MEMORY_LIMIT` | `8G` | Limite RAM do container |
 | `DOCKER_CPU_LIMIT` | `4.0` | Limite CPUs do container |
-| `DOCKER_TRAIN_MEMORY_LIMIT` | `16G` | RAM para containers de treino/benchmark |
+| `DOCKER_TRAIN_MEMORY_LIMIT` | `36G` | RAM para containers de treino/benchmark |
 | `DOCKER_TRAIN_CPU_LIMIT` | `8.0` | CPUs para containers de treino/benchmark |
 | `NVIDIA_GPU_COUNT` | `all` | Perfis `docker/compose/*.nvidia.yml` |
 

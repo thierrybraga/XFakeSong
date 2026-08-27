@@ -40,7 +40,12 @@ sys.path.insert(0, str(BASE_DIR))
 
 SAMPLE_RATE = 16_000
 MAX_AUDIO_SAMPLES_CPU = 16_000   # 1s @ 16kHz — CPU training
-MAX_AUDIO_SAMPLES_GPU = 80_000   # 5s @ 16kHz — GPU training (raw-audio models)
+# 3s @ 16kHz — GPU training (raw-audio models). Casa com a janela canônica do
+# benchmark (48.000 = `benchmark_frontend.DEFAULT_SOURCE_SAMPLES` e o
+# `target_sequence_length` de RawNet2/AASIST/RawGAT-ST no registry). Estava em
+# 80.000 (5 s), então este caminho treinava numa janela que nenhum modelo do
+# benchmark vê — e custava ~67% mais memória de ativação por amostra.
+MAX_AUDIO_SAMPLES_GPU = 48_000
 MAX_AUDIO_SAMPLES     = MAX_AUDIO_SAMPLES_CPU   # updated in main() after GPU setup
 RESULTS_DIR = BASE_DIR / "data" / "results"
 
@@ -186,7 +191,6 @@ def get_callbacks(model_path: Path, patience: int = 10, lr_patience: int = 5):
 
 def compute_metrics(model, X_test: np.ndarray, y_test: np.ndarray) -> dict:
     """Calcula accuracy, EER, AUC-ROC conforme TCC Secao 6.2."""
-    import tensorflow as tf
     from sklearn.metrics import roc_auc_score, roc_curve
 
     preds_raw = model.predict(X_test, verbose=0)

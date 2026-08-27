@@ -1,3 +1,11 @@
+"""Fluxo funcional de detecção: do upload ao veredito.
+
+SUJEITO: a jornada completa que um usuário percorre, atravessando interface,
+serviço e modelo. Diferente dos testes de API (contrato de uma rota) e dos de
+integração (dois módulos conversando): aqui o critério é o resultado que o
+usuário vê.
+"""
+
 import pytest
 import numpy as np
 from unittest.mock import MagicMock, patch

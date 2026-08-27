@@ -9,9 +9,10 @@
 
 - `tf.config.list_physical_devices("GPU")` retorna **vazio** no Windows nativo
   (TF ≥2.11). Sob WSL2 + `tensorflow[and-cuda]`, a RTX 3060 é exposta.
-- O **dataset já existe** no repo (`data/datasets/benchmark_audio_raw_balanced_15k.npz`,
-  2.769,01 MiB). Ele deriva de 15.000 WAVs ativos em PCM linear, 16 bits,
-  mono, 16 kHz, somando 2.045,61 min de áudio validado — **não há download**.
+- O **dataset já existe** no repo (`data/datasets/benchmark_dataset.npz`,
+  7,99 GB). São 40.980 amostras (20.490 reais / 20.490 falsas) em janelas de
+  3 s, PCM linear 16 bits, mono, 16 kHz — **não há download**. Ver
+  [Protocolo de Dataset](../data/dataset-protocol.md).
 - Os ajustes de código (P0–P3) já estão aplicados; aqui só se **executa**.
 
 ## Pré-requisitos (uma vez)
@@ -40,7 +41,7 @@ bash scripts/training/retrain_wsl2.sh --check
 
 > Observação de E/S: treinar lendo o `.npz` de 2.769,01 MiB via `/mnt/d` (disco
 > Windows) é mais lento que copiar para o filesystem do WSL2. Para máxima
-> velocidade: `cp data/datasets/benchmark_audio_raw_balanced_15k.npz ~/ds.npz`
+> velocidade: `cp data/datasets/benchmark_dataset.npz ~/ds.npz`
 > e use `--dataset ~/ds.npz`.
 
 ## Caminho B — container GPU (Docker Desktop + WSL2 backend)
@@ -78,7 +79,7 @@ Equivalente "cru" (sem o driver), via orquestrador:
 ```bash
 python scripts/benchmark/run_clean_benchmark_pipeline.py \
   --phase full \
-  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset data/datasets/benchmark_dataset.npz \
   --epochs 100 \
   --batch-size 32 \
   --device-profile gpu \
@@ -96,7 +97,7 @@ somente a cabeça classificadora PyTorch sobre embeddings SSL.
 ```bash
 python scripts/benchmark/run_clean_benchmark_pipeline.py \
   --models "HuBERT Original" \
-  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset data/datasets/benchmark_dataset.npz \
   --epochs 100 \
   --batch-size 32 \
   --ssl-feature-batch-size 16 \
@@ -112,14 +113,14 @@ python scripts/benchmark/run_models_sequential.py \
   --models "HuBERT Original" \
   --plan-only \
   --no-academic-protocol \
-  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz
+  --dataset data/datasets/benchmark_dataset.npz
 ```
 
 ### Ablação do WavLM (opcional, P2)
 
 ```bash
 python scripts/training/ablate_wavlm_finetune.py \
-  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset data/datasets/benchmark_dataset.npz \
   --lrs 1e-5 3e-5 1e-4 --epochs 30 --out data/results/ablation_wavlm
 ```
 

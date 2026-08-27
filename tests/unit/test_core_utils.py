@@ -1,3 +1,10 @@
+"""Utilitários transversais de `app/core`.
+
+SUJEITO: as funções pequenas de infraestrutura que muitos módulos importam.
+Cobertura de borda (entrada vazia, tipo inesperado) mais do que de caminho
+feliz.
+"""
+
 from app.utils.helpers import (
     safe_filename, get_file_hash, format_file_size, format_duration
 )

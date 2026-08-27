@@ -1,3 +1,11 @@
+"""Integração do treino: TrainingService com arquitetura e dataset reais.
+
+SUJEITO: o caminho `train_model` ponta a ponta em escala mínima — config
+resolvida, modelo construído, treino curto, artefato salvo. Os callbacks
+isolados são cobertos em `tests/unit/test_training_guards.py` e
+`test_checkpoint_monitor.py`.
+"""
+
 import pytest
 from unittest.mock import MagicMock, patch
 import numpy as np

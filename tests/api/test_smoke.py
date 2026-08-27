@@ -158,11 +158,13 @@ def test_system_bootstrap_ok(client):
     assert resp.json() == {"status": "ok"}
 
 
-def test_system_feedback_ok(client):
+def test_system_feedback_ok(client, api_key_headers):
     import logging
 
     logging.getLogger("tests.feedback").warning("feedback smoke event")
-    resp = client.get("/api/v1/system/feedback?limit=5&mark_read=true")
+    resp = client.get(
+        "/api/v1/system/feedback?limit=5&mark_read=true", headers=api_key_headers
+    )
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "ok"
@@ -349,8 +351,6 @@ def test_onnx_export_response_optional_int8():
     """OnnxExportResponse aceita resultado só FP32 (sem INT8)."""
     from app.interfaces.web.schemas.api_models import OnnxExportResponse
 
-    r = OnnxExportResponse(
-        success=True, onnx_path="x.onnx", size_mb=4.2, message="ok"
-    )
+    r = OnnxExportResponse(success=True, onnx_path="x.onnx", size_mb=4.2, message="ok")
     assert r.onnx_int8_path is None
     assert r.size_int8_mb is None

@@ -1,3 +1,8 @@
+"""API de features: `/api/v1/features` (extratores disponíveis e extração).
+
+SUJEITO: o contrato HTTP do registry de features exposto pela API.
+"""
+
 def test_list_feature_types(client):
     response = client.get("/api/v1/features/types")
     assert response.status_code == 200

@@ -1,5 +1,11 @@
-"""Testes P3: min-tDCF, OC-Softmax, refinos de arquitetura e calibração."""
+"""min t-DCF, OC-Softmax e a calibração das pontuações.
 
+SUJEITO: `training/metrics.py` e a camada OC-Softmax de
+`architectures/layers.py` — as métricas de anti-spoofing e a cabeça que as
+otimiza diretamente.
+
+Renomeado em 2026-08-17 (era `test_p3_metrics_ocsoftmax.py`).
+"""
 from __future__ import annotations
 
 import numpy as np
@@ -75,15 +81,37 @@ def test_ocsoftmax_loss_finite_and_grad():
 
 def test_aasist_has_six_residual_blocks():
     """O default 'aasist' (paper-faithful, _build_paper_aasist) usa o encoder
-    2D estilo RawNet2 com 6 ResidualBlock2D (canais 32,32,64,64,64,64) via
+    2D estilo RawNet2 com 6 blocos residuais (canais 32,32,64,64,64,64) via
     _build_aasist_encoder — nomeados 'aasist_encoder_N', não 'res_block_N'
-    (essa era a convenção só do 'aasist_legacy' 1D)."""
+    (essa era a convenção só do 'aasist_legacy' 1D).
+
+    A classe é `AasistResidualBlock2D`, do módulo PRÓPRIO do AASIST. Desde a
+    separação de camadas de 2026-08-20 cada arquitetura tem a sua: o
+    `layers.ResidualBlock2D` compartilhado deixou de ser usado por qualquer
+    builder e este teste, apontado para ele, contava 0 blocos — passava a
+    afirmar sobre uma classe que o modelo não instancia mais.
+    """
     from app.domain.models.architectures import aasist
-    from app.domain.models.architectures.layers import ResidualBlock2D
+    from app.domain.models.architectures.aasist_layers import AasistResidualBlock2D
 
     m = aasist.create_model(input_shape=(48000, 1), num_classes=2, architecture="aasist")
-    n = sum(1 for lyr in m.layers if isinstance(lyr, ResidualBlock2D))
+    n = sum(1 for lyr in m.layers if isinstance(lyr, AasistResidualBlock2D))
     assert n == 6  # paridade com o paper (RawNet2 encoder)
+
+
+def test_rawgat_st_has_six_residual_blocks_por_ramo():
+    """O RawGAT-ST tem DOIS encoders (espectral e temporal), 6 blocos cada.
+
+    Escrito junto com a correção acima: a separação de camadas tornou possível
+    — e necessário — afirmar sobre a classe de CADA arquitetura. Sem este
+    teste, trocar a topologia de um ramo do RawGAT-ST não reprovaria nada.
+    """
+    from app.domain.models.architectures import rawgat_st
+    from app.domain.models.architectures.rawgat_layers import RawGatResidualBlock2D
+
+    m = rawgat_st.create_model(input_shape=(48000, 1), num_classes=2)
+    n = sum(1 for lyr in m.layers if isinstance(lyr, RawGatResidualBlock2D))
+    assert n == 12, f"esperado 6 blocos por ramo (12 no total), veio {n}"
 
 
 def test_feature_map_scaling_is_multiplicative_and_identity_centered():

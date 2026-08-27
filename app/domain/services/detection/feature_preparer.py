@@ -183,6 +183,7 @@ class FeaturePreparer:
                 FRONTEND_LOGMEL,
                 FRONTEND_RAW,
                 FRONTEND_TABULAR,
+                FRONTEND_TABULAR_V2,
                 prepare_single,
             )
 
@@ -195,20 +196,54 @@ class FeaturePreparer:
                         else samples.reshape(-1)
                     )
 
-                # BUG FIX (paridade treino/inferência, Limitação (viii) do
-                # TCC): `AudioData.from_file` só faz `librosa.load` — nenhuma
-                # AGC é aplicada antes daqui. Para raw/log-mel isso é
-                # inconsequente (z-score/dB-ref-max por amostra, aplicados
-                # dentro de `prepare_single`, são invariantes a qualquer
-                # reescala linear prévia), mas para o vetor tabular (SVM/
-                # Random Forest) as 11 estatísticas temporais (média, RMS,
-                # min/máx, percentis) são calculadas direto sobre `samples`
-                # sem normalização nenhuma — a AGC muda o resultado de fato.
-                # Aplica a mesma AGC por RMS/LUFS (Eq. 5 do TCC) usada na
-                # construção do corpus, via `app.utils.silero_vad`.
-                from app.utils.silero_vad import apply_agc
+                # PARIDADE DE FORMATO E NÍVEL (Limitação (viii) do TCC).
+                #
+                # `AudioData.from_file` só faz `librosa.load`: nada de nível nem
+                # de banda é aplicado antes daqui. Para raw/log-mel o nível é
+                # inconsequente (z-score e dB-ref-max por amostra são
+                # invariantes a reescala linear), mas o vetor tabular do SVM/
+                # RandomForest é calculado direto sobre a amplitude — média,
+                # RMS, mín/máx e percentis mudam de fato.
+                #
+                # Duas correções aqui:
+                #
+                # 1. CORREÇÃO DE BANDA. O treino aplica passa-baixas de 7,5 kHz,
+                #    remoção de DC e renormalização às três partições
+                #    (`benchmarks/runner.py`), e o build do corpus faz o mesmo
+                #    em `extract_window`. A inferência não fazia nada disso: o
+                #    modelo recebia em produção uma banda acima de 7,5 kHz que
+                #    não existia em NENHUMA amostra de treino, com o offset DC
+                #    que o protocolo removeu. Agora a política vem do
+                #    `input_contract` (carimbada pelo runner), então artefatos
+                #    antigos — sem o campo — seguem pelo caminho de antes.
+                #
+                # 2. NÍVEL. A AGC normalizava a −23 LUFS enquanto o corpus
+                #    normaliza a −26 dBFS: 3 dB, fator 1,41, aplicado a todas as
+                #    colunas lineares em amplitude do vetor tabular. O alvo agora
+                #    é o do corpus, pela fonte única `normalize_corpus_level`.
+                _band = _contract_bm.get("band_correction") or {}
+                if _band:
+                    from app.domain.features.benchmark_frontend import (
+                        BAND_CORRECTION_HZ,
+                        apply_band_correction,
+                    )
 
-                samples = apply_agc(samples)
+                    samples = apply_band_correction(
+                        samples[np.newaxis, :],
+                        float(_band.get("cutoff_hz") or BAND_CORRECTION_HZ),
+                        sample_rate=_target_sr,
+                        remove_dc=bool(_band.get("remove_dc", True)),
+                        renormalize_rms_dbfs=_band.get("renormalize_rms_dbfs"),
+                    )[0]
+                else:
+                    from app.domain.features.benchmark_frontend import (
+                        BAND_CORRECTION_RMS_DBFS,
+                    )
+                    from app.utils.silero_vad import apply_agc
+
+                    samples = apply_agc(
+                        samples, target_lufs=BAND_CORRECTION_RMS_DBFS
+                    )
 
                 shape = tuple(model_info.input_shape or ())
                 features = prepare_single(
@@ -220,26 +255,27 @@ class FeaturePreparer:
                         or (shape[1] if len(shape) >= 2 else 80)
                     ),
                     time_steps=int(
-                        _contract_bm.get("time_steps")
-                        or (shape[0] if shape else 100)
+                        _contract_bm.get("time_steps") or (shape[0] if shape else 100)
                     ),
                     target_sequence_length=int(
                         _contract_bm.get("target_sequence_length")
                         or (shape[0] if shape else 16000)
                     ),
-                    source_samples=int(
-                        _contract_bm.get("source_samples") or 80000
-                    ),
+                    source_samples=int(_contract_bm.get("source_samples") or 48000),
+                    # PARIDADE: a janela de análise do TREINO. Sem repassar,
+                    # o AST — treinado com os 25 ms que o artigo especifica
+                    # (400 amostras) — inferia com a janela derivada, e o
+                    # espectrograma de produção não era o do benchmark.
+                    n_fft=_contract_bm.get("n_fft"),
                     add_channel_dim=bool(len(shape) == 3 and shape[-1] == 1),
                     raw_num_crops=(
                         3
-                        if "multicrop" in str(
-                            _contract_bm.get("crop_strategy", "")
-                        ).lower()
+                        if "multicrop"
+                        in str(_contract_bm.get("crop_strategy", "")).lower()
                         else 1
                     ),
                 )
-                if _bm_frontend == FRONTEND_TABULAR:
+                if _bm_frontend in (FRONTEND_TABULAR, FRONTEND_TABULAR_V2):
                     expected = int(shape[0]) if shape else features.size
                     if int(features.size) != expected:
                         return {
@@ -257,6 +293,7 @@ class FeaturePreparer:
                         FRONTEND_RAW: "raw",
                         FRONTEND_LOGMEL: "benchmark_log_mel",
                         FRONTEND_TABULAR: "benchmark_tabular_63",
+                        FRONTEND_TABULAR_V2: "benchmark_tabular_183",
                     }[_bm_frontend],
                     "feature_frontend": _bm_frontend,
                     "features_shape": tuple(np.asarray(features).shape),
@@ -321,9 +358,9 @@ class FeaturePreparer:
                     n_lfcc=n_lfcc,
                 )
                 metadata = {
-                    "feature_type": "raw"
-                    if input_type == "raw_audio"
-                    else "log_mel_spectrogram",
+                    "feature_type": (
+                        "raw" if input_type == "raw_audio" else "log_mel_spectrogram"
+                    ),
                     "feature_names": (
                         ["waveform"]
                         if input_type == "raw_audio"
@@ -347,13 +384,15 @@ class FeaturePreparer:
                         else ["log_mel_spectrogram"]
                     ),
                     "input_type": input_type,
-                    "stft_params": {
-                        "n_fft": n_fft,
-                        "hop_length": hop,
-                        "n_mels": n_mels,
-                    }
-                    if input_type == "spectrogram"
-                    else None,
+                    "stft_params": (
+                        {
+                            "n_fft": n_fft,
+                            "hop_length": hop,
+                            "n_mels": n_mels,
+                        }
+                        if input_type == "spectrogram"
+                        else None
+                    ),
                 }
                 try:
                     from pathlib import Path
@@ -591,14 +630,10 @@ class FeaturePreparer:
                             import os
 
                             expected_dim = int(expected_dim)
-                            if os.environ.get(
-                                "XFAKESONG_ALLOW_FEATURE_ADJUST"
-                            ) == "1":
+                            if os.environ.get("XFAKESONG_ALLOW_FEATURE_ADJUST") == "1":
                                 if features.size > expected_dim:
                                     features = features[:expected_dim]
-                                    feature_names = list(feature_names)[
-                                        :expected_dim
-                                    ]
+                                    feature_names = list(feature_names)[:expected_dim]
                                     feature_adjustment = "truncated"
                                 else:
                                     features = np.pad(
@@ -701,9 +736,11 @@ class FeaturePreparer:
             if features_result.status != ProcessingStatus.SUCCESS:
                 return {
                     "status": "error",
-                    "error": features_result.errors[0]
-                    if features_result.errors
-                    else "Erro desconhecido",  # noqa: E501
+                    "error": (
+                        features_result.errors[0]
+                        if features_result.errors
+                        else "Erro desconhecido"
+                    ),  # noqa: E501
                 }
 
             extraction_result = features_result.data
@@ -740,21 +777,27 @@ class FeaturePreparer:
                 )
 
             metadata = {
-                "feature_type": audio_features.feature_type.value
-                if hasattr(audio_features, "feature_type")
-                else None,
+                "feature_type": (
+                    audio_features.feature_type.value
+                    if hasattr(audio_features, "feature_type")
+                    else None
+                ),
                 "feature_names": feature_names_list,
                 "feature_shapes": feature_shapes_map,
-                "feature_count_total": int(features.size)
-                if isinstance(features, np.ndarray) and features.ndim == 1
-                else (
-                    features.shape[0] * features.shape[1]
-                    if isinstance(features, np.ndarray) and features.ndim >= 2
-                    else 0
+                "feature_count_total": (
+                    int(features.size)
+                    if isinstance(features, np.ndarray) and features.ndim == 1
+                    else (
+                        features.shape[0] * features.shape[1]
+                        if isinstance(features, np.ndarray) and features.ndim >= 2
+                        else 0
+                    )
                 ),
-                "features_shape": extraction_result.feature_shape
-                if hasattr(extraction_result, "feature_shape")
-                else (features.shape if hasattr(features, "shape") else None),
+                "features_shape": (
+                    extraction_result.feature_shape
+                    if hasattr(extraction_result, "feature_shape")
+                    else (features.shape if hasattr(features, "shape") else None)
+                ),
                 "sample_rate": audio_data.sample_rate,
                 "duration_s": audio_data.duration,
                 "channels": audio_data.channels,

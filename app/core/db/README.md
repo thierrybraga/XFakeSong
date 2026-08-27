@@ -18,6 +18,33 @@ perfis de voz e configurações de arquitetura) continuam no mesmo banco para
 compatibilidade. Novos consumidores devem usar `ExperimentStore` para resultados
 e configuração científica.
 
+## Esquema estranho ao projeto (auditado em 2026-07-31)
+
+O arquivo carregava **18 tabelas de outro domínio** — `workouts`, `exercises`,
+`mentors`, `workout_sessions`, `workout_exercises`, `workout_session_sets`,
+`events`, `event_registrations`, `event_prize_tiers`, `runs`, `run_points`,
+`achievements`, `user_achievements`, `follows`, `store_items`,
+`store_redemptions`, `wallet_transactions`, `fraud_flags`. Todas vazias e
+**sem uma única referência no código**: o `Base.metadata` do projeto declara 11
+tabelas, então elas não vieram do `create_all` — vieram no próprio arquivo,
+reaproveitado de outro projeto.
+
+Onze delas declaram FK para `users`, o que faz qualquer limpeza futura de
+usuários esbarrar em dependências que não existem no código. `integrity_check`
+e `foreign_key_check` passam limpos; o problema é de esquema morto, não de
+corrupção.
+
+Auditar e remover:
+
+```bash
+python scripts/ops/audit_database_schema.py            # só relata
+python scripts/ops/audit_database_schema.py --apply    # derruba e compacta
+```
+
+A lista de tabelas legítimas é derivada do `Base.metadata` (nunca escrita à
+mão, senão uma tabela nova viraria "órfã") e nenhuma órfã **com linhas** é
+derrubada sem `--force-drop-non-empty`.
+
 ## Migração e manutenção
 
 ```bash

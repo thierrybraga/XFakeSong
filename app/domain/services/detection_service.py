@@ -468,9 +468,31 @@ class DetectionService(IDetectionService):
             result = DeepfakeDetectionResult(
                 is_fake=prediction_result.data["is_deepfake"],
                 confidence=prediction_result.data["confidence"],
+                # `confidence` NÃO é p_fake: o predictor grava
+                # `confidence = p_fake if is_deepfake else p_real`
+                # (detection/predictor.py:708), ou seja, a confiança NA CLASSE
+                # DECIDIDA. Usá-la como "fake" invertia as duas probabilidades
+                # sempre que o veredito era REAL — uma amostra bonafide com
+                # p_real 0,95 era reportada como `fake: 0,95` na aba Detectar,
+                # na API e no CLI. O predictor já expõe `p_fake`/`p_real`
+                # separados; basta lê-los.
                 probabilities={
-                    "fake": prediction_result.data["confidence"],
-                    "real": 1.0 - prediction_result.data["confidence"],
+                    "fake": float(
+                        prediction_result.data.get(
+                            "p_fake",
+                            prediction_result.data["confidence"]
+                            if prediction_result.data["is_deepfake"]
+                            else 1.0 - prediction_result.data["confidence"],
+                        )
+                    ),
+                    "real": float(
+                        prediction_result.data.get(
+                            "p_real",
+                            1.0 - prediction_result.data["confidence"]
+                            if prediction_result.data["is_deepfake"]
+                            else prediction_result.data["confidence"],
+                        )
+                    ),
                 },
                 model_name=model_name,
                 features_used=["raw"],
@@ -510,7 +532,7 @@ class DetectionService(IDetectionService):
                 if isinstance(model_info.input_contract, dict)
                 else {}
             )
-            # Janela nativa do benchmark (5 s @16 kHz; benchmark_frontend
+            # Janela nativa do benchmark (3 s @16 kHz; benchmark_frontend
             # recorta/ajusta internamente para o que cada modelo precisa —
             # 1 s cru, mapa Mel ou vetor tabular). Modelos legados sem
             # feature_frontend usam o input_shape diretamente, como antes.
@@ -518,7 +540,7 @@ class DetectionService(IDetectionService):
             if not window_samples:
                 target_shape = model_info.input_shape or ()
                 window_samples = (
-                    int(target_shape[0]) if target_shape and target_shape[0] else 80000
+                    int(target_shape[0]) if target_shape and target_shape[0] else 48000
                 )
             window_samples = max(window_samples, 16000)
 
@@ -800,6 +822,7 @@ class DetectionService(IDetectionService):
         """Persiste o resultado da análise no banco de dados."""
         try:
             from app.core.db.session import SessionLocal
+
             from ...domain.models.analysis import AnalysisResult
 
             metadata = result.metadata or {}

@@ -6,7 +6,6 @@ decorators, merge/flatten/chunk, normalização de array, validação de áudio,
 IDs únicos e o ProgressTracker.
 """
 
-import logging
 
 import numpy as np
 import pytest

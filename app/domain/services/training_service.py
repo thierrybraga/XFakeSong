@@ -20,7 +20,7 @@ from app.core.contracts.services import (
 from app.domain.models.architectures.registry import (
     get_architecture_by_any_name as get_architecture_info,
 )
-from app.domain.models.training.trainer import ModelTrainer
+from app.domain.models.training.trainer import ModelTrainer, validation_eer
 
 logger = logging.getLogger(__name__)
 importlib = types.SimpleNamespace(import_module=_stdlib_importlib.import_module)
@@ -49,12 +49,37 @@ class TrainingService(ITrainingService):
         "parameters",
         "architecture",
         "dataset_path",
+        # Chaves de specs antigas do Ensemble: nenhum builder as aceita e o
+        # repasse cego quebrava a criação com TypeError. Já foram removidas do
+        # registry; a guarda fica como rede de segurança.
+        # ('use_se_blocks' SAIU desta lista: virou um parâmetro REAL do Sonic
+        # Sleuth — ver sonic_sleuth.py.)
         "use_mfcc_branch",
         "use_cross_attention",
         "use_gated_fusion",
-        "use_se_blocks",
         "aux_loss_weight",
         "use_mixed_precision",
+    }
+
+    # Chaves que COLIDEM com campos de TrainingConfig mas pertencem ao
+    # CONSTRUTOR do modelo (política "compile-respect": a arquitetura compila o
+    # próprio otimizador/schedule e o pipeline não os sobrescreve).
+    #
+    # CORREÇÃO: como `_NON_MODEL_PARAM_KEYS` é derivado dos campos do
+    # TrainingConfig — e `learning_rate` é um deles — o `learning_rate` do
+    # `registry.default_params` era DESCARTADO em silêncio. Treinar o AASIST
+    # pelo app/Gradio usava o default da assinatura (1e-4) em vez do LR
+    # retunado (3e-4); só o benchmark escapava, porque o runner promove essas
+    # chaves para `config["parameters"]` manualmente.
+    _COMPILE_PARAM_KEYS = {
+        "learning_rate",
+        "min_learning_rate",
+        "decay_steps",
+        "warmup_steps",
+        "weight_decay",
+        "alpha",
+        "clipnorm",
+        "label_smoothing",
     }
 
     def __init__(self, models_dir: str | Path | None = None):
@@ -180,16 +205,44 @@ class TrainingService(ITrainingService):
         checkpoint_file: Path,
         validation_data,
         batch_size: int = 32,
+        monitor: str = "val_loss",
     ) -> bool:
         """Restaura o melhor checkpoint SOMENTE se ele não degradar no val set.
 
-        O critério "melhor por val_loss" do ModelCheckpoint pode selecionar uma
-        época ruim/instável, e uma restauração corrompida pode até produzir NaN
-        (observado no Res2Net: EER 14,9% → 50% após restaurar o checkpoint).
-        Estratégia: snapshot dos pesos em memória → load_weights → reavalia a
-        val_loss; se ela ficar não-finita ou pior que a dos pesos em memória,
-        reverte o snapshot. Retorna True se o checkpoint foi mantido.
+        O critério do ModelCheckpoint pode selecionar uma época ruim/instável, e
+        uma restauração corrompida pode até produzir NaN (observado no Res2Net:
+        EER 14,9% → 50% após restaurar o checkpoint). Estratégia: snapshot dos
+        pesos em memória → load_weights → reavalia; se a métrica ficar
+        não-finita ou pior que a dos pesos em memória, reverte o snapshot.
+        Retorna True se o checkpoint foi mantido.
+
+        A comparação usa a MESMA métrica que selecionou o checkpoint
+        (``monitor``). Comparar sempre por ``val_loss`` — o que este guard fazia
+        até 2026-08-22 — transformava a proteção em uma segunda seleção, por um
+        critério diferente do declarado, e a segunda vencia: na bateria
+        corrigida o Conformer teve o checkpoint da época 50 (val_eer 1,374%)
+        DESCARTADO porque sua val_loss (0,2524) era pior que a dos pesos da
+        época 100 (0,1946), e o resultado publicado saiu da época 100 (val_eer
+        1,923%) sob um rodapé que declarava seleção por val_eer. Perda e EER
+        medem coisas distintas — calibração contra ordenação —, então exigir que
+        o checkpoint vença nas DUAS é exigir algo que o protocolo não pede.
+
+        A proteção contra restauração corrompida continua valendo em qualquer
+        monitor: pesos NaN dão perda não-finita e pontuações não-finitas, e as
+        duas situações revertem o snapshot.
         """
+        monitor = str(monitor or "val_loss").strip() or "val_loss"
+        if monitor not in ("val_loss", "val_eer"):
+            # Um monitor desconhecido não pode ser reavaliado aqui; cair para
+            # val_loss em silêncio reintroduziria exatamente o descompasso
+            # acima, então o guard AVISA e usa a perda só como detector de
+            # corrupção (o `mode` de comparação segue sendo "menor é melhor").
+            logger.warning(
+                "Monitor '%s' não é reavaliável na restauração guardada; "
+                "usando val_loss apenas como detector de corrupção.",
+                monitor,
+            )
+            monitor = "val_loss"
 
         def _val_loss() -> float:
             if validation_data is None:
@@ -200,8 +253,27 @@ class TrainingService(ITrainingService):
             )
             return float(metrics.get("loss", float("nan")))
 
+        def _val_eer() -> float:
+            if validation_data is None:
+                return float("nan")
+            try:
+                return float(
+                    validation_eer(model, validation_data, batch_size=batch_size)
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("val_eer não calculável na restauração: %s", exc)
+                return float("nan")
+
+        def _monitorada() -> float:
+            return _val_eer() if monitor == "val_eer" else _val_loss()
+
         baseline_weights = model.get_weights()
+        # A perda entra SEMPRE, mesmo quando o monitor é o EER: é ela que
+        # denuncia pesos NaN. Um checkpoint corrompido não produz EER
+        # não-finito — produz EER de acaso (~0,5), que um teste de finitude
+        # sozinho deixaria passar.
         baseline_loss = _val_loss()
+        baseline_valor = baseline_loss if monitor == "val_loss" else _val_eer()
         try:
             model.load_weights(str(checkpoint_file))
         except Exception as e:
@@ -219,24 +291,39 @@ class TrainingService(ITrainingService):
             return True
 
         ckpt_loss = _val_loss()
-        if not np.isfinite(ckpt_loss) or (
-            np.isfinite(baseline_loss) and ckpt_loss > baseline_loss + 1e-6
+        if not np.isfinite(ckpt_loss):
+            model.set_weights(baseline_weights)
+            logger.warning(
+                "Checkpoint %s descartado: val_loss não-finita (%s) — "
+                "restauração corrompida. Pesos finais mantidos.",
+                checkpoint_file,
+                ckpt_loss,
+            )
+            return False
+
+        ckpt_valor = ckpt_loss if monitor == "val_loss" else _val_eer()
+        if not np.isfinite(ckpt_valor) or (
+            np.isfinite(baseline_valor) and ckpt_valor > baseline_valor + 1e-6
         ):
             model.set_weights(baseline_weights)
             logger.warning(
-                "Checkpoint %s descartado: val_loss=%s pior/não-finita vs "
-                "pesos em memória (val_loss=%s). Pesos finais mantidos.",
+                "Checkpoint %s descartado: %s=%s pior/não-finita vs "
+                "pesos em memória (%s=%s). Pesos finais mantidos.",
                 checkpoint_file,
-                ckpt_loss,
-                baseline_loss,
+                monitor,
+                ckpt_valor,
+                monitor,
+                baseline_valor,
             )
             return False
 
         logger.info(
-            "Checkpoint validado no val set: val_loss=%.6g "
-            "(pesos finais em memória: %.6g)",
+            "Checkpoint validado no val set por %s: %.6g "
+            "(pesos finais em memória: %.6g; val_loss do checkpoint: %.6g)",
+            monitor,
+            ckpt_valor,
+            baseline_valor,
             ckpt_loss,
-            baseline_loss,
         )
         return True
 
@@ -362,7 +449,9 @@ class TrainingService(ITrainingService):
                 model_params = {
                     k: v
                     for k, v in merged_params.items()
-                    if k not in self._NON_MODEL_PARAM_KEYS or k in explicit_model_params
+                    if k not in self._NON_MODEL_PARAM_KEYS
+                    or k in explicit_model_params
+                    or k in self._COMPILE_PARAM_KEYS
                 }
                 sig = inspect.signature(create_model_fn)
                 has_var_keyword = any(
@@ -452,6 +541,11 @@ class TrainingService(ITrainingService):
                 )
 
             checkpoint_path = config.get("checkpoint_path")
+            checkpoint_monitor = str(
+                config.get("checkpoint_monitor")
+                or getattr(training_config, "checkpoint_monitor", "")
+                or "val_loss"
+            )
             if checkpoint_path:
                 checkpoint_file = Path(checkpoint_path)
                 if checkpoint_file.exists():
@@ -463,16 +557,40 @@ class TrainingService(ITrainingService):
                         # que falhava silenciosamente e mantinha os pesos da
                         # última época em vez do melhor checkpoint (val_loss).
                         #
-                        # Restauração GUARDADA: o "melhor" checkpoint pode ser
-                        # pior que os pesos em memória (ou até produzir NaN —
-                        # observado no Res2Net: EER 14,9% → 50% após restaurar).
-                        # Valida no val set e reverte se a restauração degradar.
+                        # Restauração GUARDADA: o "melhor" checkpoint pode
+                        # ser pior que os pesos em memória (ou até produzir NaN
+                        # — observado no Res2Net: EER 14,9% → 50% após
+                        # restaurar). Valida no val set PELA MESMA MÉTRICA que
+                        # o selecionou e reverte se a restauração degradar.
                         restored = self._guarded_checkpoint_restore(
                             model,
                             checkpoint_file,
                             validation_data,
                             batch_size=int(config.get("batch_size", 32) or 32),
+                            # MESMA métrica que salvou o checkpoint. Sem este
+                            # argumento o guard comparava val_loss mesmo com o
+                            # monitor em val_eer, e descartava a época eleita.
+                            monitor=checkpoint_monitor,
                         )
+                        # O DESFECHO da restauração precisa sair do log e
+                        # entrar no artefato: sem isto, nada em `metrics.json`
+                        # distingue um modelo avaliado no checkpoint eleito de
+                        # um avaliado nos pesos da última época. Foi assim que
+                        # o Conformer da bateria corrigida ficou publicado com
+                        # os pesos da época 100 sob um rodapé que declarava
+                        # seleção por val_eer — a informação existia só como
+                        # um WARNING no meio de 70 mil linhas de log.
+                        if isinstance(train_result.data, dict):
+                            train_result.data["checkpoint_restore"] = {
+                                "attempted": True,
+                                "restored": bool(restored),
+                                "monitor": checkpoint_monitor,
+                                "weights_evaluated": (
+                                    "best_checkpoint" if restored
+                                    else "last_epoch"
+                                ),
+                                "checkpoint_path": str(checkpoint_file),
+                            }
                         if restored and validation_data is not None:
                             trainer._calibrated_temperature = (
                                 trainer._auto_calibrate_temperature(
@@ -503,6 +621,15 @@ class TrainingService(ITrainingService):
                             "Checkpoint encontrado, mas não pôde ser restaurado; "
                             f"mantendo pesos em memória: {e}"
                         )
+                        if isinstance(train_result.data, dict):
+                            train_result.data["checkpoint_restore"] = {
+                                "attempted": True,
+                                "restored": False,
+                                "monitor": checkpoint_monitor,
+                                "weights_evaluated": "last_epoch",
+                                "checkpoint_path": str(checkpoint_file),
+                                "error": str(e),
+                            }
 
             # 5. Salvar Modelo e Metadados
             model_name = config.get(

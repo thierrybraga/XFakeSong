@@ -17,6 +17,7 @@ from app.interfaces.gradio.utils.plotting import (
     PLOT_ACCENT,
     PLOT_DANGER,
     PLOT_TEXT_MUTED,
+    new_figure,
     safe_tight_layout,
     style_ax,
 )
@@ -48,7 +49,6 @@ def render_tuning_figure(study: Any):
 
     Retorna a `matplotlib.figure.Figure` (o chamador fecha com close_fig).
     """
-    import matplotlib.pyplot as plt
 
     values = _completed_values(study)
     maximize = _is_maximize(study)
@@ -60,7 +60,7 @@ def render_tuning_figure(study: Any):
         cur = v if cur is None else (max(cur, v) if maximize else min(cur, v))
         best_so_far.append(cur)
 
-    fig, ax = plt.subplots(1, 2, figsize=(12, 4))
+    fig, ax = new_figure(1, 2, figsize=(12, 4))
 
     # ── Painel 1: Convergência ──
     style_ax(ax[0], fig, "Convergência da busca")

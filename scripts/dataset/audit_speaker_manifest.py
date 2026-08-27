@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 DATASETS_DIR = ROOT / "data" / "datasets"
 
 
@@ -22,11 +25,27 @@ def _prefix(path: Path) -> str:
     return path.stem.split("_", 1)[0].lower()
 
 
-def _load_manifest(path: Path) -> dict[str, dict]:
-    if not path.exists():
-        return {}
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return data if isinstance(data, dict) else {}
+def _load_manifest(path: Path | None = None) -> dict[str, dict]:
+    """Carrega o manifesto CANONICO, via o modulo que o projeto usa.
+
+    Este script lia `data/datasets/speaker_manifest.json` e indexava por
+    `wav.name`. Nenhuma das duas coisas confere: o manifesto canonico e
+    `app.domain.dataset_metadata.speaker_manifest.SPEAKER_MANIFEST_PATH`
+    (`data/datasets/metadata/speaker_manifest.json`), e a chave e a de
+    `_manifest_key` (`<classe>/<basename>`, com queda para o basename). O
+    resultado era cobertura 0% SEMPRE — a auditoria reprovava qualquer que
+    fosse o estado real do manifesto, entao ninguem a rodava.
+
+    `path` fica so para teste; em producao resolve pelo modulo.
+    """
+    if path is not None:
+        if not path.exists():
+            return {}
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    from app.domain.dataset_metadata import speaker_manifest
+
+    return speaker_manifest.load_manifest()
 
 
 def _collect_wavs(base: Path) -> list[Path]:
@@ -62,8 +81,10 @@ def main() -> int:
     dataset_dir = Path(args.dataset_dir)
     if not dataset_dir.is_absolute():
         dataset_dir = ROOT / dataset_dir
-    manifest_path = dataset_dir / "speaker_manifest.json"
-    manifest = _load_manifest(manifest_path)
+    from app.domain.dataset_metadata import speaker_manifest
+
+    manifest_path = speaker_manifest.SPEAKER_MANIFEST_PATH
+    manifest = _load_manifest()
 
     if args.scope == "splits":
         wavs = _collect_wavs(dataset_dir / "splits")
@@ -76,9 +97,10 @@ def main() -> int:
     speakers_by_prefix: dict[str, set[str]] = defaultdict(set)
 
     for wav in wavs:
-        name = wav.name
         prefix = _prefix(wav)
-        entry = manifest.get(name)
+        # Busca pela MESMA chave que o dominio usa (`<classe>/<basename>`, com
+        # queda para o basename), nao por `wav.name` cru.
+        entry = speaker_manifest.sample_metadata_for_path(wav)
         if entry and entry.get("speaker_id"):
             identified += 1
             sid = str(entry["speaker_id"])

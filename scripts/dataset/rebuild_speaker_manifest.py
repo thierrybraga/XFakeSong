@@ -13,12 +13,15 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 DATASETS_DIR = ROOT / "data" / "datasets"
 FKVOICE_RE = re.compile(r"^fkvoice_(\d+)\.wav$", re.IGNORECASE)
 
@@ -134,10 +137,27 @@ def _inspect_brspeech_columns(dataset_dir: Path) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Gera data/datasets/speaker_manifest.json com IDs reais disponíveis."
+        description=(
+            "Gera o manifesto de locutores no caminho canônico "
+            "(data/datasets/metadata/speaker_manifest.json)."
+        )
     )
     parser.add_argument("--dataset-dir", default="data/datasets")
-    parser.add_argument("--out", default="data/datasets/speaker_manifest.json")
+    # O default era `data/datasets/speaker_manifest.json` — um arquivo que
+    # NENHUM consumidor do pipeline lê. O leitor único do manifesto no domínio
+    # é `speaker_manifest.SPEAKER_MANIFEST_PATH`
+    # (`data/datasets/metadata/speaker_manifest.json`), então reconstruir o
+    # manifesto não tinha efeito sobre `speaker_for_path`, sobre
+    # `BenchmarkData._extract_speakers` nem sobre `audit_splits`: o conteúdo ia
+    # para um arquivo órfão e o operador achava que tinha corrigido a cobertura.
+    parser.add_argument(
+        "--out",
+        default=None,
+        help=(
+            "destino do manifesto (default: o caminho canônico resolvido por "
+            "app.domain.dataset_metadata.speaker_manifest)"
+        ),
+    )
     parser.add_argument("--report", default="data/datasets/speaker_manifest_report.json")
     parser.add_argument(
         "--fkvoice-block-size",
@@ -150,9 +170,14 @@ def main() -> int:
     dataset_dir = Path(args.dataset_dir)
     if not dataset_dir.is_absolute():
         dataset_dir = ROOT / dataset_dir
-    out_path = Path(args.out)
-    if not out_path.is_absolute():
-        out_path = ROOT / out_path
+    if args.out is None:
+        from app.domain.dataset_metadata import speaker_manifest
+
+        out_path = speaker_manifest.SPEAKER_MANIFEST_PATH
+    else:
+        out_path = Path(args.out)
+        if not out_path.is_absolute():
+            out_path = ROOT / out_path
     report_path = Path(args.report)
     if not report_path.is_absolute():
         report_path = ROOT / report_path
@@ -164,8 +189,23 @@ def main() -> int:
     fkvoice_report = _add_fkvoice_manifest(dataset_dir, manifest, args.fkvoice_block_size)
     brspeech_report = _inspect_brspeech_columns(dataset_dir)
 
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+    # GUARDA DE REESCRITA. Este script é legado das fontes fkvoice/brspeech e
+    # não conhece o corpus pareado atual, cujo manifesto é escrito por
+    # `build_paired_pt_corpus.py`. Agora que `--out` aponta para o caminho
+    # CANÔNICO, uma execução sem nada a acrescentar reescreveria por cima de um
+    # manifesto de dezenas de milhares de entradas sem ganho nenhum.
+    if not fkvoice_report["entries_added"] and manifest:
+        print(
+            f"Nada a acrescentar ({fkvoice_report['entries_added']} entradas "
+            f"fkvoice encontradas) e o manifesto em {out_path} já tem "
+            f"{len(manifest)} entradas — arquivo preservado.",
+            file=sys.stderr,
+        )
+    else:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(
+            json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
 
     total_wavs = list((dataset_dir / "splits").rglob("*.wav"))
     identified = sum(1 for p in total_wavs if p.name in manifest)

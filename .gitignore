@@ -186,8 +186,23 @@ data/
 !data/
 data/*
 !data/results/
-data!data/results/paper/
+# Artefatos de benchmark sao regeneraveis e NAO sao versionados; a excecao e o
+# material do artigo. A linha abaixo estava corrompida ("data!data/results/
+# paper/", concatenacao de duas regras), o que anulava o ignore e deixava toda
+# a arvore data/results/ rastreavel — contrariando o CLAUDE.md.
+data/results/*
+!data/results/paper/
 !data/results/paper/**
+# ...mas o material do artigo tambem nao versiona backup manual nem binario
+# regeneravel (2026-08-17). `main.tex.pre-*.bak` e `.antes` duplicam o que o
+# proprio historico ja guarda — duas fontes de verdade para o mesmo texto — e
+# o `main.pdf` (2,2 MB) sai do `.tex`, gerando diff binario a cada
+# recompilacao. Os que existiam estao no commit 0814732 e seguem recuperaveis.
+data/results/paper/**/*.bak
+data/results/paper/**/*.antes
+data/results/paper/*.bak
+data/results/paper/*.antes
+data/results/paper/*.pdf
 # Diretório runtime padrão do TrainingService/DetectionService/benchmark.
 data/models/*.h5
 data/models/*.pkl
@@ -234,3 +249,17 @@ instance/
 
 # Backups locais de sidecars regenerados (rebuild_inference_contracts.py)
 *.stale.bak
+# Residuo de compilacao do LaTeX. As MESMAS regras ja existem por volta da
+# linha 157, mas sao ANULADAS pela negacao `!data/results/paper/**` acima: no
+# gitignore vence a ULTIMA regra que casa, entao precisam ser repetidas DEPOIS
+# dela. Sem isto, `pdflatex main.tex` deixa seis arquivos nao rastreados
+# (2026-08-17).
+data/results/paper/*.aux
+data/results/paper/*.log
+data/results/paper/*.lof
+data/results/paper/*.lot
+data/results/paper/*.out
+data/results/paper/*.toc
+data/results/paper/*.synctex.gz
+
+data/

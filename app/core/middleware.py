@@ -2,7 +2,7 @@
 
 O middleware combina em uma passagem:
 - Request ID tracking via contextvars
-- Limite de upload por Content-Length
+- Limite real do corpo, mesmo sem Content-Length
 - Header X-Request-ID em toda resposta
 - Logging estruturado com filtro de ruído para assets/filas da UI
 """
@@ -30,6 +30,11 @@ except ImportError:  # pragma: no cover - caminho Colab/treino sem web layer
     ASGIApp = Message = Receive = Scope = Send = Any
 
 logger = logging.getLogger(__name__)
+
+
+class _PayloadTooLarge(Exception):
+    """Sinal interno para interromper streaming acima do limite."""
+
 
 request_id_ctx: ContextVar[Optional[str]] = ContextVar("request_id", default=None)
 
@@ -118,9 +123,7 @@ def _build_security_headers() -> dict:
         "Permissions-Policy": "camera=(), geolocation=(), microphone=(self)",
     }
     if _env_bool("XFAKE_ENABLE_HSTS", False):
-        headers["Strict-Transport-Security"] = (
-            "max-age=63072000; includeSubDomains"
-        )
+        headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
     csp = os.getenv("XFAKE_CSP")
     if csp and csp.strip():
         headers["Content-Security-Policy"] = csp.strip()
@@ -149,6 +152,8 @@ class SystemASGIMiddleware:
         token = request_id_ctx.set(req_id)
         start = time.perf_counter()
         status_code = 500
+        response_started = False
+        received_size = 0
         path = str(scope.get("path") or "")
         method = str(scope.get("method") or "")
 
@@ -170,9 +175,19 @@ class SystemASGIMiddleware:
             except ValueError:
                 pass
 
+        async def receive_wrapper() -> Message:
+            nonlocal received_size
+            message = await receive()
+            if message["type"] == "http.request":
+                received_size += len(message.get("body", b""))
+                if received_size > self.max_size:
+                    raise _PayloadTooLarge
+            return message
+
         async def send_wrapper(message: Message) -> None:
-            nonlocal status_code
+            nonlocal response_started, status_code
             if message["type"] == "http.response.start":
+                response_started = True
                 status_code = int(message.get("status", 500))
                 headers = MutableHeaders(scope=message)
                 headers["X-Request-ID"] = req_id
@@ -183,7 +198,11 @@ class SystemASGIMiddleware:
             await send(message)
 
         try:
-            await self.app(scope, receive, send_wrapper)
+            await self.app(scope, receive_wrapper, send_wrapper)
+        except _PayloadTooLarge:
+            status_code = 413
+            if not response_started:
+                await self._send_payload_too_large(send, req_id)
         finally:
             elapsed_ms = (time.perf_counter() - start) * 1000
             self._log_request(

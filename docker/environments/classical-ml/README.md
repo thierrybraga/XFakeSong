@@ -10,7 +10,7 @@ Recommended command:
 
 ```bash
 python scripts/training/train_by_family.py --family classical-ml \
-  --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
+  --dataset data/datasets/benchmark_dataset.npz \
   --epochs 100 \
   --out data/results/classical_benchmark
 ```

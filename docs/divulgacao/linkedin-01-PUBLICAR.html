@@ -1,0 +1,235 @@
+<meta charset="utf-8">
+<title>LinkedIn — Artigo 1</title>
+<style>
+  body{max-width:760px;margin:40px auto;padding:0 24px;font:17px/1.7 Georgia,serif;color:#191919;background:#fff}
+  h1{font:600 30px/1.3 -apple-system,"Segoe UI",Helvetica,Arial,sans-serif;margin:0 0 4px}
+  h2{font:600 22px/1.35 -apple-system,"Segoe UI",Helvetica,Arial,sans-serif;margin:38px 0 12px}
+  blockquote{margin:20px 0;padding:2px 0 2px 18px;border-left:3px solid #0a66c2;font-style:italic}
+  hr{border:0;border-top:1px solid #e0e0e0;margin:34px 0}
+  a{color:#0a66c2}
+  ol.refs{font-size:15px;line-height:1.6}
+  ol.refs li{margin-bottom:9px}
+  .nota{font:14px/1.6 -apple-system,"Segoe UI",Helvetica,Arial,sans-serif;background:#f3f6f8;border:1px solid #d9e1e8;border-radius:8px;padding:14px 18px;color:#404040;margin-bottom:34px}
+</style>
+
+<div class="nota">
+<strong>Como publicar:</strong> abra este arquivo no navegador, selecione tudo, copie e cole no editor de artigos do LinkedIn (apague este quadro cinza depois de colar). Títulos, negrito, listas, citação e links são preservados. <strong>O título vai no campo "Title", não no corpo.</strong> Limite: 100 caracteres no título (este tem 83) e 110.000 no corpo.
+</div>
+
+<h1>Quando ouvir deixou de ser suficiente: por que detectar voz sintética é tão difícil</h1>
+
+<p><em>Artigo 1 de uma série sobre detecção de fala sintética.</em></p>
+
+<p>Entre maio e outubro de 2024, período das eleições municipais brasileiras, o Digital Forensic Research Lab (DFRLab/Atlantic Council) identificou <strong>78 casos confirmados ou alegados de deepfakes políticos</strong> no país (<a href="https://dfrlab.org/2024/11/26/brazil-election-ai-deepfakes/">Farrugia, 2024</a>). No mesmo período, um estudo publicado na <em>PLOS ONE</em> mediu o quanto conseguimos nos defender sozinhos: seres humanos identificam corretamente um deepfake de áudio em cerca de <strong>73% dos casos</strong> — e acertam a fala genuína em apenas <strong>68%</strong>. Treinar o ouvinte com exemplos sintéticos antes do teste produz ganho apenas marginal (<a href="https://doi.org/10.1371/journal.pone.0285333">Mai et al., 2023</a>).</p>
+
+<p>Ou seja: o ouvido humano opera pouco acima do acaso, e não melhora muito com prática. Ele deixou de ser um mecanismo de autenticação.</p>
+
+<p>A reação natural é delegar a tarefa a um detector automático. Só que essa transferência não é tão direta quanto parece — e este artigo é sobre <em>por quê</em>. Venho estudando esse problema, e o que mais me chamou atenção não foi a dificuldade de treinar um bom classificador: foi a quantidade de maneiras pelas quais um detector aparentemente excelente pode estar medindo a coisa errada.</p>
+
+<hr>
+
+<h2>Como a máquina aprendeu a falar</h2>
+
+<p>Síntese de fala não é tecnologia recente. Os primeiros marcos da síntese eletrônica vêm dos <strong>vocoders de Homer Dudley</strong>, na virada para os anos 1940 (Dudley, 1939). Baseados no modelo fonte-filtro da produção vocal, separavam a excitação — a fonte, as cordas vocais — das características do trato vocal, o filtro. Foram fundamentais para a compressão em telecomunicações, mas produziam vozes de aspecto robótico.</p>
+
+<p>Nos anos 1990 veio a <strong>síntese concatenativa</strong> por seleção de unidades (Hunt &amp; Black, 1996): bancos extensos de gravações humanas segmentados em unidades fonéticas, selecionadas e recombinadas por minimização de custo. Mais natural, porém cara e rígida.</p>
+
+<p>A ruptura veio com o aprendizado profundo. O <strong>WaveNet</strong> mostrou que era possível modelar a forma de onda de maneira neural e autorregressiva (van den Oord et al., 2016). <strong>Tacotron</strong> e <strong>Tacotron 2</strong> mapearam texto diretamente para espectrogramas Mel (Wang et al., 2017; Shen et al., 2018). <strong>FastSpeech</strong> (Ren et al., 2019) e <strong>VITS</strong> (Kim, Kong &amp; Son, 2021) resolveram velocidade e integração.</p>
+
+<p>Mas o salto que mudou a natureza do risco não foi a naturalidade — foi a dispensa do treino. Enquanto sintetizar a voz de uma pessoa específica exigia horas de gravação dela, o dano possível era limitado por um custo. Quando passou a exigir segundos, deixou de ser.</p>
+
+<hr>
+
+<h2>Três tecnologias que costumam ser confundidas</h2>
+<p>"Voz gerada por IA" virou guarda-chuva para coisas que funcionam de maneiras bem diferentes. Para um detector, a diferença é o que determina onde procurar.</p>
+<p><strong>Text-to-Speech.</strong> Parte de texto, ou de uma representação fonética dele. Na decomposição clássica (Klatt, 1987), um modelo acústico converte o conteúdo linguístico numa representação intermediária — tipicamente um espectrograma Mel — e um <em>vocoder</em> transforma essa representação em forma de onda. Foi exatamente essa divisão que a era neural absorveu: o Tacotron 2 é uma rede sequência-a-sequência que prevê o espectrograma, acoplada a um WaveNet modificado no papel de vocoder (Shen et al., 2018). Depois vieram os sistemas de estágio único — o VITS treina texto-para-onda de uma vez só, combinando autoencoder variacional condicional, fluxos normalizadores e treino adversarial, com um preditor estocástico de duração para variar o ritmo (Kim, Kong &amp; Son, 2021). A decomposição deixou de ser a arquitetura, mas continua sendo o melhor mapa de onde os artefatos nascem.</p>
+<p><strong>Clonagem <em>zero-shot</em>.</strong> Acrescenta uma entrada ao TTS: um vetor que codifica a identidade vocal do alvo. A ideia que destravou o problema foi tomar esse vetor emprestado de um sistema de <em>verificação de locutor</em>, treinado à parte em milhares de vozes, e usá-lo para condicionar a síntese — o que dispensa retreinar qualquer coisa para cada voz nova (Jia et al., 2018). O YourTTS estendeu a receita para o cenário multilíngue e para conversão de voz (Casanova et al., 2022). O VALL-E mudou o paradigma: em vez de regredir um sinal contínuo, trata a fala como sequência de <em>tokens</em> discretos de um codec neural e gera a continuação com um modelo de linguagem, a partir de <strong>três segundos</strong> de gravação do alvo — preservando inclusive a emoção e o ambiente acústico daquela referência (Wang et al., 2023). O XTTS levou a abordagem a escala multilíngue aberta (Casanova et al., 2024).</p>
+<p><strong>Conversão de voz.</strong> Não parte de texto nenhum. Recebe um áudio falado por A e devolve o mesmo conteúdo com as características de B, separando no caminho o que é conteúdo linguístico do que é identidade. Abordagens adversariais como o StarGAN-VC fizeram isso sem exigir gravações pareadas — sem precisar dos dois locutores dizendo a mesma frase (Kameoka et al., 2018). E o RVC popularizou a técnica a ponto de ela rodar em tempo real numa GPU doméstica, o que já motivou detectores dedicados (Bird &amp; Lotfi, 2023).</p>
+<p>Cada rota deixa vestígio em lugar diferente:</p>
+<ul>
+<li><strong>O vocoder</strong> introduz padrões periódicos e comportamento característico em alta frequência — é o artefato mais explorado historicamente;</li>
+<li><strong>A previsão do espectrograma</strong> tende a suavizar detalhe espectral que a fala real tem, porque o modelo aprende algo próximo da média de muitas realizações possíveis;</li>
+<li><strong>A clonagem</strong> carrega resíduo do <em>embedding</em> de locutor — e, no caso do VALL-E e sucessores, herda também os limites do codec que gerou os <em>tokens</em>;</li>
+<li><strong>A conversão de voz</strong> impõe o timbre do alvo sobre a prosódia de quem falou de fato, o que produz inconsistência entre entonação e identidade;</li>
+<li><strong>A codificação e a transmissão</strong> — codecs, reamostragem, compressão — somam artefatos próprios, que se confundem com todos os anteriores.</li>
+</ul>
+<p>Esse último item é a raiz de metade dos problemas adiante.</p>
+
+<hr>
+
+<h2>Onde o detector procura</h2>
+
+<p>Há basicamente quatro famílias de representação em uso, e a escolha não é detalhe de implementação.</p>
+
+<p><strong>Forma de onda bruta.</strong> O RawNet2 (Tak et al., 2021a) opera direto sobre as amostras, com um banco de filtros sinc na entrada. AASIST (Jung et al., 2022) e RawGAT-ST (Tak et al., 2021b) vão além e modelam o sinal como um <em>grafo</em> com atenção sobre nós espectrais e temporais — a intuição é que o artefato de spoofing não está num ponto do espectro nem num instante, mas na relação entre eles.</p>
+
+<p><strong>Tempo-frequência.</strong> Espectrogramas Mel tratados como imagem, com arquiteturas de visão adaptadas — o AST (Gong, Chung &amp; Glass, 2021) é o caso típico.</p>
+
+<p><strong>Descritores cepstrais.</strong> MFCCs (Davis &amp; Mermelstein, 1980) e, especificamente para anti-spoofing, os CQCCs (Todisco, Delgado &amp; Evans, 2016), que usam resolução de Q constante — mais fina nas altas frequências, onde vocoders costumam falhar.</p>
+
+<p><strong>Modelos autossupervisionados.</strong> wav2vec 2.0 (Baevski et al., 2020), WavLM (Chen et al., 2022) e HuBERT (Hsu et al., 2021), pré-treinados em milhares de horas de fala sem rótulo, usados como extratores de representação.</p>
+
+<p>Um dado dá a dimensão de quanto isso pesa: Müller et al. (2022) reportam que trocar espectrograma Mel por espectro de Q constante ou log-espectro melhora o EER em <strong>37% em média</strong>. A representação não é um detalhe — é parte da hipótese sobre onde o artefato mora.</p>
+
+<hr>
+
+<h2>Desafio 1: o detector pode estar aprendendo a coisa errada</h2>
+
+<p>Este é o mais desconfortável, e o mais bem documentado.</p>
+
+<p>Müller et al. (2021) analisaram o ASVspoof — o principal conjunto de dados da área — e encontraram um artefato constrangedor: as amostras genuínas têm silêncios inicial e final <strong>sistematicamente mais longos</strong> que as sintéticas. A distribuição da duração do silêncio correlaciona com o rótulo.</p>
+
+<p>O teste que fizeram é o que torna o achado devastador. Treinaram um modelo usando <strong>exclusivamente a duração do silêncio inicial</strong> — nenhuma informação de fala, nenhum espectro, nada além de quantos milissegundos de nada existem antes da primeira palavra. O modelo chegou a <strong>85% de acurácia e 15,1% de EER</strong>.</p>
+
+<p>E o efeito contamina modelos consagrados: ao remover o silêncio durante o treino, o EER do RawNet2 sobe de <strong>3,6% para 15,5%</strong> na tarefa de acesso lógico. Boa parte do que se considerava "detecção de spoofing" era, em alguma medida, medição de silêncio.</p>
+
+<p>O problema é mais geral que esse caso. Corpora de anti-spoofing costumam montar as duas classes a partir de <em>origens diferentes</em>: a fala genuína vem de um corpus, a sintética é gerada à parte. Isso confunde o processo de síntese com texto, locutor e canal de gravação — e permite que um classificador exiba alto desempenho explorando qualquer uma dessas correlações (Müller et al., 2022).</p>
+
+<blockquote><strong>Um detector com 99% de acurácia responde a uma pergunta: as duas classes são separáveis neste conjunto? Ele não responde: separáveis por quê?</strong></blockquote>
+
+<hr>
+
+<h2>Desafio 2: o benchmark pode estar medindo sobreajuste</h2>
+
+<p>O ASVspoof 2021 registrou um episódio que deveria ser leitura obrigatória.</p>
+
+<p>Na tarefa de <em>DeepFake</em>, durante a fase de <em>progresso</em> — em que os participantes submetem várias vezes e veem o resultado —, o EER da melhor submissão caiu de 11,6% para <strong>0,10%</strong>. Quando começou a fase de <em>avaliação</em>, sobre dados que ninguém tinha visto, o mesmo tipo de sistema foi para <strong>15,6%</strong>. Os organizadores registram o diagnóstico no próprio artigo: a diferença sugere "alto grau de sobreajuste", e o conjunto de avaliação continha ataques, condições e métodos de compressão ausentes da partição anterior (Yamagishi et al., 2021).</p>
+
+<p>Uma queda de 0,10% para 15,6% não é ruído. É a diferença entre um sistema que parece resolvido e um que erra um a cada seis casos.</p>
+
+<p>O mesmo relatório dá a escala do problema quando ele é bem medido. Na tarefa de acesso lógico, o sistema vencedor obteve min t-DCF de 0,2177 e <strong>EER de 1,32%</strong>. Na tarefa de <em>DeepFake</em> — mais próxima do cenário de um áudio que chega por WhatsApp, sem acoplamento a um verificador de locutor — o vencedor ficou em <strong>15,64%</strong>, e a melhor das linhas de base oficiais, o RawNet2, em <strong>22,38%</strong>.</p>
+
+<p>Guarde essas duas ordens de grandeza. Elas são a régua para ler qualquer número publicado nesta área.</p>
+
+<hr>
+
+<h2>Desafio 3: o mundo real degrada tudo</h2>
+
+<p>Um áudio real quase nunca chega ao detector como saiu da fonte. Ele passa por compressão com perdas, transmissão, reamostragem, ganho automático, ruído ambiente e o codec de alguma plataforma de mensagens.</p>
+
+<p>Müller et al. (2022) montaram o conjunto <em>In-the-Wild</em> com material encontrado na internet — <strong>37,9 horas</strong> de fala genuína e <strong>17,2 horas</strong> de deepfakes de celebridades e políticos — e avaliaram detectores treinados nos benchmarks padrão. A degradação chegou a <strong>uma ordem de grandeza</strong>. A conclusão dos autores é direta: as soluções existentes estão ajustadas de perto demais ao benchmark dominante, e deepfakes são muito mais difíceis de detectar fora do laboratório do que se supunha.</p>
+
+<p>Deepfake-Eval-2024 (Chandra et al., 2025) chegou à mesma conclusão por outro caminho, com material ainda mais realista: <strong>56,5 horas</strong> de áudio efetivamente circulado em redes sociais em 2024, coletado de <strong>88 sítios</strong> em <strong>52 idiomas</strong>. Sobre esse material, a AUC dos detectores de código aberto do estado da arte cai <strong>48%</strong> em relação aos números que eles reportam nos próprios benchmarks.</p>
+
+<hr>
+
+<h2>Desafio 4: o alvo se move — e não só de posição</h2>
+
+<p>Um detector treinado contra uma família de vocoders aprende os artefatos daquela família. Quando surge uma técnica nova, ele pode não ter o que procurar.</p>
+
+<p>Mas há uma mudança mais profunda em curso. Quando a síntese passa a ser feita por modelos de linguagem de áudio operando sobre <strong>codecs neurais</strong> — a arquitetura do VALL-E e sucessores —, o vestígio detectável <em>migra</em>: sai do vocoder e vai para o decodificador do codec. Xie et al. (2024) construíram o Codecfake, com mais de <strong>um milhão de amostras</strong>, justamente sobre essa hipótese. Não é um ataque novo contra a mesma defesa; é um lugar diferente para procurar.</p>
+
+<p>O levantamento sistemático de Li, Chen &amp; Wei (2025) converge por outro caminho e acrescenta um resultado contraintuitivo: modelos de fundação de fala generalizam melhor entre idiomas do que se esperava, mesmo treinados só em inglês, e o obstáculo dominante da área não é a particularidade linguística — é a <strong>qualidade crescente do áudio sintético</strong>.</p>
+
+<hr>
+
+<h2>Desafio 5: e o português é um caso à parte</h2>
+
+<p>O achado anterior tem uma exceção prática importante, e ela foi medida.</p>
+
+<p>O BRSpeech-DF (Filho et al., 2025) é o primeiro conjunto público de detecção de deepfake de áudio para português: mais de <strong>458 mil amostras</strong> de <strong>62 locutores</strong>, com a classe sintética gerada por <strong>cinco</strong> sistemas TTS <em>zero-shot</em> — Fish-Speech, XTTS, F5-TTS, YourTTS e ToucanTTS.</p>
+
+<p>Os autores pegaram quatro detectores de referência, treinados em inglês, e aplicaram sobre a partição em português. O resultado, comparado ao EER que cada um publica no seu benchmark de origem:</p>
+
+<ul>
+<li><strong>AASIST</strong>: de 0,83% para <strong>48,12%</strong> de EER — praticamente o acaso;</li>
+<li><strong>XLSR-MAMBA</strong>: de 1,88% para <strong>63,03%</strong> — pior que o acaso;</li>
+<li><strong>SLS-ECAPA</strong>: de 1,92% para <strong>30,67%</strong>;</li>
+<li><strong>SSL Anti-spoof</strong>: de 2,85% para <strong>35,38%</strong>.</li>
+</ul>
+
+<p>Quatro sistemas que reportam EER abaixo de 3% caem para a faixa de 30% a 63%. A conclusão dos autores é que detectores treinados em inglês simplesmente <strong>não transferem</strong> para o português, e que recursos específicos por idioma são necessários.</p>
+
+<p>Vale registrar a ressalva que eles próprios fazem: todas as amostras do BRSpeech-DF são limpas, sem compressão nem ruído ambiente. Ou seja, esses números severos foram obtidos na condição <em>mais fácil</em> possível.</p>
+
+<hr>
+
+<h2>Desafio 6: acurácia é a métrica errada</h2>
+
+<p>Há um último problema, menos visível e mais consequente: quase todo número divulgado sobre detecção de deepfake é a métrica errada para a decisão que se quer tomar.</p>
+
+<p>Acurácia depende de um limiar arbitrário e do balanceamento do conjunto. O <strong>EER</strong> — ponto em que a taxa de falsos positivos iguala a de falsos negativos — resolve parte disso, mas é um <em>oráculo</em>: escolhe o limiar olhando o resultado, o que nenhum sistema em produção pode fazer.</p>
+
+<p>E, principalmente, o EER supõe que os dois erros custam a mesma coisa. Em biometria de voz, não custam: aceitar um ataque como legítimo e rejeitar um usuário genuíno têm consequências completamente diferentes. Foi para isso que se criou o <strong>t-DCF</strong> (Kinnunen et al., 2018), que pondera os dois erros por custos explícitos e avalia o detector <em>acoplado</em> ao sistema de verificação que ele protege.</p>
+
+<p>Um detector pode ter EER excelente e ainda assim ser inútil no ponto de operação que você precisa usar — porque a separação existe, mas o limiar calibrado no laboratório se deslocou.</p>
+
+<hr>
+
+<h2>Por que existem benchmarks padronizados</h2>
+
+<p>Todos os problemas acima têm a mesma origem: comparar resultados entre trabalhos diferentes é enganoso quando muda o corpus, mudam os locutores, muda o método de síntese, muda a partição e mudam as condições de canal.</p>
+
+<p>É essa a função das campanhas. O <strong>ASVspoof</strong>, em suas edições sucessivas (Todisco et al., 2019; Yamagishi et al., 2021), fixa partição, métrica e — crucialmente — reserva ataques <em>não vistos</em> para a avaliação. A edição mais recente, ASVspoof 5 (Wang et al., 2024), usa dados coletados de forma distribuída, com um número muito maior de locutores em condições acústicas diversas, e incorpora ataques adversariais pela primeira vez. O desafio <strong>ADD</strong> (Yi et al., 2022) cobre o mesmo problema com ênfase em áudio parcialmente manipulado.</p>
+
+<p>Eles não resolvem a questão. Mas estabelecem qual é o patamar honesto — e é por isso que aquele contraste importa: <strong>1,32% de EER</strong> na tarefa mais controlada contra <strong>15,64%</strong> na mais próxima do mundo real, na mesma campanha, no mesmo ano.</p>
+
+<hr>
+
+<h2>Esta série começa aqui</h2>
+
+<p>A síntese de voz vai continuar melhorando, a clonagem vai continuar ficando mais acessível, e nossa confiança intuitiva no áudio como evidência vai continuar erodindo.</p>
+
+<p>Durante muito tempo, uma gravação respondia à pergunta <em>"essa pessoa realmente disse isso?"</em>. Hoje essa pergunta não se responde ouvindo. Ela se responde analisando o sinal — e, como espero ter mostrado, analisar o sinal é bem mais difícil do que treinar um classificador e reportar a acurácia.</p>
+
+<p>Nos próximos artigos desta série pretendo destrinchar cada uma dessas etapas:</p>
+
+<ol>
+<li>a evolução da síntese de voz, do modelo fonte-filtro aos codecs neurais;</li>
+<li>como funcionam por dentro TTS, clonagem <em>zero-shot</em> e conversão de voz;</li>
+<li>que artefatos cada família de gerador deixa no sinal, e por quê;</li>
+<li>as representações de entrada: forma de onda, tempo-frequência, cepstral e autossupervisionada;</li>
+<li>as arquiteturas de detecção, de classificadores clássicos a grafos de atenção espectro-temporal;</li>
+<li>vazamento e atalhos em conjuntos de dados: como auditar antes de acreditar;</li>
+<li>métricas e ponto de operação: EER, DET, t-DCF e calibração;</li>
+<li>robustez: ruído, codecs e o que sobrevive fora do laboratório.</li>
+</ol>
+
+<p>A pergunta que costura tudo isso é uma só: <strong>quando uma máquina aprende a reproduzir uma voz humana, o que ainda permite distinguir a máquina do ser humano?</strong></p>
+
+<p><em>Se você trabalha com processamento de fala, biometria de voz, segurança ou detecção de fraude: qual dessas etapas você gostaria de ver primeiro? Comenta aí.</em></p>
+
+<hr>
+
+<h2>Referências</h2>
+
+<ol class="refs">
+<li>BAEVSKI, A. et al. <a href="https://arxiv.org/abs/2006.11477">wav2vec 2.0: A Framework for Self-Supervised Learning of Speech Representations</a>. <em>NeurIPS</em>, v. 33, p. 12449–12460, 2020.</li>
+<li>BIRD, J. J.; LOTFI, A. <a href="https://arxiv.org/abs/2308.12734">Real-time Detection of AI-Generated Speech for DeepFake Voice Conversion</a>. <em>arXiv preprint</em> arXiv:2308.12734, 2023.</li>
+<li>CASANOVA, E. et al. <a href="https://arxiv.org/abs/2112.02418">YourTTS: Towards Zero-Shot Multi-Speaker TTS and Zero-Shot Voice Conversion for everyone</a>. <em>ICML</em>, p. 2709–2720, 2022.</li>
+<li>CASANOVA, E. et al. <a href="https://arxiv.org/abs/2406.04904">XTTS: a Massively Multilingual Zero-Shot Text-to-Speech Model</a>. <em>Proc. Interspeech 2024</em>, p. 4978–4982, 2024.</li>
+<li>CHANDRA, N. A. et al. <a href="https://arxiv.org/abs/2503.02857">Deepfake-Eval-2024: A Multi-Modal In-the-Wild Benchmark of Deepfakes Circulated in 2024</a>. <em>arXiv preprint</em> arXiv:2503.02857, 2025.</li>
+<li>CHEN, S. et al. <a href="https://arxiv.org/abs/2110.13900">WavLM: Large-Scale Self-Supervised Pre-Training for Full Stack Speech Processing</a>. <em>IEEE JSTSP</em>, v. 16, n. 6, p. 1505–1518, 2022.</li>
+<li>DAVIS, S. B.; MERMELSTEIN, P. <a href="https://doi.org/10.1109/TASSP.1980.1163420">Comparison of parametric representations for monosyllabic word recognition in continuously spoken sentences</a>. <em>IEEE Trans. ASSP</em>, v. 28, n. 4, p. 357–366, 1980.</li>
+<li>DUDLEY, H. The vocoder. <em>Bell Labs Record</em>, v. 18, n. 4, p. 122–126, 1939. (periódico técnico de 1939; sem DOI ou versão eletrônica oficial)</li>
+<li>FARRUGIA, B. <a href="https://dfrlab.org/2024/11/26/brazil-election-ai-deepfakes/">Brazil's electoral deepfake law tested as AI-generated content targeted local elections</a>. <em>DFRLab (Atlantic Council)</em>, 26 nov. 2024.</li>
+<li>FILHO, A. C. F. et al. <a href="https://aclanthology.org/2025.emnlp-main.1780/">BRSpeech-DF: A Deep Fake Synthetic Speech Dataset for Portuguese Zero-Shot TTS</a>. <em>Proc. EMNLP 2025</em>, Suzhou, p. 35122–35127, 2025.</li>
+<li>GONG, Y.; CHUNG, Y.-A.; GLASS, J. <a href="https://arxiv.org/abs/2104.01778">AST: Audio Spectrogram Transformer</a>. <em>Proc. Interspeech 2021</em>, p. 571–575, 2021.</li>
+<li>HSU, W.-N. et al. <a href="https://arxiv.org/abs/2106.07447">HuBERT: Self-Supervised Speech Representation Learning by Masked Prediction of Hidden Units</a>. <em>IEEE/ACM TASLP</em>, v. 29, p. 3451–3460, 2021.</li>
+<li>HUNT, A. J.; BLACK, A. W. <a href="https://doi.org/10.1109/ICASSP.1996.541110">Unit selection in a concatenative speech synthesis system using a large speech database</a>. <em>ICASSP</em>, p. 373–376, 1996.</li>
+<li>JIA, Y. et al. <a href="https://arxiv.org/abs/1806.04558">Transfer Learning from Speaker Verification to Multispeaker Text-To-Speech Synthesis</a>. <em>NeurIPS</em>, v. 31, 2018.</li>
+<li>JUNG, J. W. et al. <a href="https://arxiv.org/abs/2110.01200">AASIST: Audio Anti-Spoofing using Integrated Spectro-Temporal Graph Attention Networks</a>. <em>ICASSP</em>, p. 6367–6371, 2022.</li>
+<li>KAMEOKA, H. et al. <a href="https://arxiv.org/abs/1806.02169">StarGAN-VC: Non-parallel many-to-many voice conversion using star generative adversarial networks</a>. <em>IEEE SLT</em>, p. 266–273, 2018.</li>
+<li>KIM, J.; KONG, J.; SON, J. <a href="https://arxiv.org/abs/2106.06103">Conditional Variational Autoencoder with Adversarial Learning for End-to-End Text-to-Speech</a>. [VITS] <em>ICML</em>, p. 5530–5540, 2021.</li>
+<li>KINNUNEN, T. et al. <a href="https://arxiv.org/abs/1804.09618">t-DCF: a Detection Cost Function for the Tandem Assessment of Spoofing Countermeasures and Automatic Speaker Verification</a>. <em>Odyssey 2018</em>, p. 312–319, 2018.</li>
+<li>KLATT, D. H. <a href="https://doi.org/10.1121/1.395275">Review of text-to-speech conversion for English</a>. <em>JASA</em>, v. 82, n. 3, p. 737–793, 1987.</li>
+<li>LI, X.; CHEN, P.-Y.; WEI, W. <a href="https://arxiv.org/abs/2410.04324">Where Are We in Audio Deepfake Detection? A Systematic Analysis over Generative and Detection Models</a>. <em>ACM Transactions on Internet Technology</em>, v. 25, n. 3, 2025.</li>
+<li>MAI, K. T. et al. <a href="https://doi.org/10.1371/journal.pone.0285333">Warning: humans cannot reliably detect speech deepfakes</a>. <em>PLOS ONE</em>, v. 18, n. 8, e0285333, 2023.</li>
+<li>MÜLLER, N. M. et al. <a href="https://arxiv.org/abs/2106.12914">Speech is Silver, Silence is Golden: What do ASVspoof-trained Models Really Learn?</a>. <em>Proc. ASVspoof 2021 Workshop</em>, 2021.</li>
+<li>MÜLLER, N. M. et al. <a href="https://arxiv.org/abs/2203.16263">Does Audio Deepfake Detection Generalize?</a>. <em>Proc. Interspeech 2022</em>, p. 2783–2787, 2022.</li>
+<li>REN, Y. et al. <a href="https://arxiv.org/abs/1905.09263">FastSpeech: Fast, Robust and Controllable Text to Speech</a>. <em>NeurIPS</em>, v. 32, 2019.</li>
+<li>SHEN, J. et al. <a href="https://arxiv.org/abs/1712.05884">Natural TTS Synthesis by Conditioning WaveNet on Mel Spectrogram Predictions</a>. [Tacotron 2] <em>ICASSP</em>, p. 4779–4783, 2018.</li>
+<li>TAK, H. et al. <a href="https://arxiv.org/abs/2011.01108">End-to-End Anti-Spoofing with RawNet2</a>. <em>ICASSP</em>, p. 6369–6373, 2021a.</li>
+<li>TAK, H. et al. <a href="https://arxiv.org/abs/2107.12710">End-to-End Spectro-Temporal Graph Attention Networks for Speaker Verification Anti-Spoofing and Speech Deepfake Detection</a>. [RawGAT-ST] <em>Proc. ASVspoof 2021 Workshop</em>, p. 1–8, 2021b.</li>
+<li>TODISCO, M.; DELGADO, H.; EVANS, N. <a href="https://www.isca-archive.org/odyssey_2016/todisco16_odyssey.html">A New Feature for Automatic Speaker Verification Anti-Spoofing: Constant Q Cepstral Coefficients</a>. <em>Odyssey 2016</em>, p. 283–290, 2016.</li>
+<li>TODISCO, M. et al. <a href="https://arxiv.org/abs/1904.05441">ASVspoof 2019: Future Horizons in Spoofed and Fake Audio Detection</a>. <em>Proc. Interspeech 2019</em>, p. 1008–1012, 2019.</li>
+<li>VAN DEN OORD, A. et al. <a href="https://arxiv.org/abs/1609.03499">WaveNet: A generative model for raw audio</a>. <em>arXiv preprint</em> arXiv:1609.03499, 2016.</li>
+<li>WANG, C. et al. <a href="https://arxiv.org/abs/2301.02111">VALL-E: Neural Codec Language Models are Zero-Shot Text-to-Speech Synthesizers</a>. <em>arXiv preprint</em> arXiv:2301.02111, 2023.</li>
+<li>WANG, X. et al. <a href="https://arxiv.org/abs/2408.08739">ASVspoof 5: Crowdsourced Speech Data, Deepfakes, and Adversarial Attacks at Scale</a>. <em>arXiv preprint</em> arXiv:2408.08739, 2024.</li>
+<li>WANG, Y. et al. <a href="https://arxiv.org/abs/1703.10135">Tacotron: Towards End-to-End Speech Synthesis</a>. <em>Proc. Interspeech 2017</em>, 2017.</li>
+<li>XIE, Y. et al. <a href="https://arxiv.org/abs/2405.04880">The Codecfake Dataset and Countermeasures for the Universally Detection of Deepfake Audio</a>. <em>arXiv preprint</em> arXiv:2405.04880, 2024.</li>
+<li>YAMAGISHI, J. et al. <a href="https://arxiv.org/abs/2109.00537">ASVspoof 2021: Accelerating Progress in Spoofed and Deepfake Speech Detection</a>. <em>Proc. ASVspoof 2021 Workshop</em>, p. 47–54, 2021.</li>
+<li>YI, J. et al. <a href="https://arxiv.org/abs/2202.08433">ADD 2022: The First Audio Deep Synthesis Detection Challenge</a>. <em>ICASSP</em>, p. 9216–9220, 2022.</li>
+</ol>
+
+<p>#DeepfakeDetection #AudioAI #MachineLearning #ProcessamentoDeSinais #Telecomunicações #AntiSpoofing #SpeechProcessing</p>

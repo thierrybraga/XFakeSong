@@ -10,8 +10,9 @@ import sys
 import time
 from functools import lru_cache
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 
+from app.core.auth.auth_handler import get_api_key
 from app.core.db.session import check_database_health
 from app.core.feedback import (
     clear_feedback_events,
@@ -133,6 +134,7 @@ async def bootstrap(request: Request):
 
 @router.get(
     "/feedback",
+    dependencies=[Depends(get_api_key)],
     summary="Eventos recentes de feedback, logs e notificações",
 )
 @limiter.limit("60/minute")
@@ -154,6 +156,7 @@ async def get_feedback(request: Request, limit: int = 50, mark_read: bool = Fals
 
 @router.post(
     "/feedback/read",
+    dependencies=[Depends(get_api_key)],
     summary="Marca todos os eventos de feedback como lidos",
 )
 @limiter.limit("30/minute")
@@ -164,6 +167,7 @@ async def mark_feedback_as_read(request: Request):
 
 @router.post(
     "/feedback/clear",
+    dependencies=[Depends(get_api_key)],
     summary="Limpa o histórico em memória de feedback",
 )
 @limiter.limit("10/minute")

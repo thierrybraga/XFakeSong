@@ -50,9 +50,12 @@ Os notebooks ficam organizados por finalidade:
 | `docs/notebooks/models/*.ipynb` | Um notebook de estudo para cada arquitetura | CPU para inspeção, GPU para treino |
 
 Para o experimento completo do TCC, comece por
-`docs/notebooks/pipeline/01_benchmark_tcc_full_pipeline.ipynb`. Ele documenta o
-roteiro consolidado com `7.500` amostras reais + `7.500` amostras fake,
-exportado como `data/datasets/benchmark_audio_raw_balanced_15k.npz`.
+`docs/notebooks/pipeline/01_benchmark_tcc_full_pipeline.ipynb`.
+
+> O dataset canônico passou a ser `data/datasets/benchmark_dataset.npz`
+> ([Protocolo de Dataset](../data/dataset-protocol.md)): **20.490 amostras reais +
+> 20.490 falsas**, CETUC pareado com clones XTTS-v2, janela de 3 s. O roteiro de
+> `7.500 + 7.500` que o caderno descreve pertence ao fluxo legado.
 
 ---
 

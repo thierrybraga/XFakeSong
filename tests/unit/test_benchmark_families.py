@@ -1,5 +1,11 @@
+"""Escopos do benchmark: oficial x estendido, e o que cada um pode alegar.
+
+SUJEITO: `benchmarks/config.py` — que os dois escopos sejam disjuntos e
+completos, que o estendido se declare NÃO acadêmico, e que a política de limiar
+e o perfil de latência sejam reportados separadamente por escopo.
+"""
+
 from argparse import Namespace
-from pathlib import Path
 
 import numpy as np
 
@@ -11,17 +17,24 @@ from benchmarks.config import (
 )
 from benchmarks.efficiency import measure_latency_profile
 from benchmarks.evaluate import evaluate_scores
-from scripts.training.train_by_family import build_command
+from scripts.training.train_by_family import build_command, build_parser
 
 
 def _family_args(family: str) -> Namespace:
-    return Namespace(
-        family=family, config=None, dataset=None, models=None, out=None,
-        epochs=None, batch_size=None, device_profile=None, latency_runs=None,
-        timeout_min=None, snr=None, resume=False, seeds=[42, 43],
-        test_lock="sealed.json", plan_only=True, api=False,
-        no_optimize_hparams=False, verbose=False,
+    """Namespace derivado do PARSER de verdade, nao montado campo a campo.
+
+    A versao anterior listava cada atributo na mao: uma flag nova em
+    `train_by_family.py` quebrava aqui com `AttributeError` em vez de ser
+    coberta pelo teste. Foi o que aconteceu com `--band-correction-hz` e
+    `--checkpoint-monitor` -- as duas do protocolo corrigido, justamente as
+    que mais importava vigiar. Derivando do parser, uma flag nova entra no
+    teste ja com o default real.
+    """
+    args = build_parser().parse_args(
+        ["--family", family, "--seeds", "42", "43",
+         "--test-lock", "sealed.json", "--plan-only"]
     )
+    return args
 
 
 def test_official_and_extended_scopes_are_disjoint_and_complete():
@@ -29,19 +42,53 @@ def test_official_and_extended_scopes_are_disjoint_and_complete():
     extended = {item["benchmark_name"] for item in EXTENDED_MODEL_MANIFEST}
     assert official == set(DOCKER_TRAINING_ARCHITECTURES)
     assert official.isdisjoint(extended)
+    # As duas ajustadas (front-end destravado + grafo AASIST) SAIRAM do escopo
+    # oficial em 2026-08-11: os sistemas de topo do ASVspoof 5 usam SSL
+    # CONGELADO, e o resultado de referencia daquela receita usa wav2vec2
+    # XLS-R, nao WavLM/HuBERT base. As entradas `Original` ja sao a
+    # configuracao documentada. Ver benchmarks/config.py.
     assert set(MODEL_FAMILIES["ssl-pretrained"]) == {
         "WavLM Original", "HuBERT Original"
     }
 
 
-def test_family_wrapper_uses_confirmatory_dataset_and_protocol_controls():
+def test_family_wrapper_uses_canonical_dataset_and_protocol_controls():
+    # O dataset canonico passou a ser o do Protocolo de Dataset (CETUC pareado com clones
+    # XTTS-v2, disjuncao dupla locutor x frase) em 26/07/2026; os NPZ v2 foram
+    # apagados. Ver docs/data/dataset-protocol.md.
     cmd = build_command(_family_args("ssl-pretrained"))
     joined = " ".join(str(value) for value in cmd)
-    assert "benchmark_audio_raw_balanced_15k_confirmatory_v2.npz" in joined
+    assert "benchmark_dataset.npz" in joined
     assert "WavLM Original" in joined and "HuBERT Original" in joined
     assert "--academic-protocol" in cmd
     assert cmd[cmd.index("--scope") + 1] == "official"
     assert cmd[cmd.index("--seeds") + 1:cmd.index("--test-lock")] == ["42", "43"]
+
+
+def test_todas_as_familias_treinam_com_o_protocolo_corrigido():
+    """O caminho de TREINO tem que carregar as duas correcoes, nao so o benchmark.
+
+    Ate 2026-08-19 `train_by_family.py` nao expunha nenhuma das duas: os doze
+    servicos de `train.cpu.yml`/`train.nvidia.yml` treinavam com o atalho de
+    reamostragem INTACTO e selecionavam epoca por val_loss, sem aviso -- flag
+    ausente nao e erro. O default aqui e o corrigido para que quem nao souber
+    da correcao acerte por omissao.
+    """
+    for familia in ("ssl-pretrained", "extended", "classical-tabular"):
+        cmd = [str(v) for v in build_command(_family_args(familia))]
+        assert float(cmd[cmd.index("--band-correction-hz") + 1]) == 7500.0, familia
+        assert cmd[cmd.index("--checkpoint-monitor") + 1] == "val_eer", familia
+
+
+def test_ablacao_pode_desligar_o_protocolo_corrigido():
+    """O default e o corrigido, mas uma ablacao precisa conseguir desligar."""
+    args = build_parser().parse_args(
+        ["--family", "ssl-pretrained", "--band-correction-hz", "0",
+         "--checkpoint-monitor", "val_loss"]
+    )
+    cmd = [str(v) for v in build_command(args)]
+    assert float(cmd[cmd.index("--band-correction-hz") + 1]) == 0.0
+    assert cmd[cmd.index("--checkpoint-monitor") + 1] == "val_loss"
 
 
 def test_extended_family_is_explicitly_non_academic():

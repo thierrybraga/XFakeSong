@@ -38,12 +38,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY requirements-base.txt ./
+COPY requirements-base.txt constraints.txt ./
+COPY docker/environments/tensorflow-keras/requirements.txt docker/environments/tensorflow-keras/
+# Versoes travadas: PIP_CONSTRAINT vale para TODO pip install desta imagem, sem
+# precisar repetir `-c` em cada linha.
+ENV PIP_CONSTRAINT=/app/constraints.txt
 RUN pip install --upgrade pip setuptools wheel \
     && pip install -r requirements-base.txt \
+    && pip install -r docker/environments/tensorflow-keras/requirements.txt \
     && pip install 'tensorflow[and-cuda]>=2.16,<2.22' \
     && pip install --upgrade --no-deps 'nvidia-cudnn-cu12>=9.3.0.75,<10' \
-    && pip install --no-deps 'nvidia-cuda-nvcc-cu12'
+    && pip install --no-deps 'nvidia-cuda-nvcc-cu12' \
+    && pip install --index-url https://download.pytorch.org/whl/cpu 'torch==2.5.1'
+# torch vem do indice CPU de proposito: nesta imagem ele apenas LE o state_dict
+# dos checkpoints (AST/AudioSet, WavLM, HuBERT) e nunca treina. O wheel CUDA
+# arrastaria os nvidia-* do cu124, que fixam nvidia-cudnn-cu12==9.1.0.70 e
+# conflitam com o 9.3+ exigido pelo TensorFlow.
 
 COPY . .
 

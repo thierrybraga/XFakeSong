@@ -167,14 +167,33 @@ def main() -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--dataset", required=True, help=".npz com X_train/.../metadata_json")
-    ap.add_argument("--source", default="brspeech",
-                    help="fonte a auditar (única com real+fake). Default: brspeech")
+    # Sem default fixo: "brspeech" era a fonte do corpus multi-fonte anterior e
+    # não existe no Protocolo de Dataset atual (fonte única "ptpair"), então o
+    # teste intra-fonte reportava "insufficient" com n_train=0/n_test=0 — parecia
+    # falta de dados quando era só o nome errado. Omitir escolhe a fonte com mais
+    # amostras que tenha as DUAS classes, que é exatamente o que o teste exige.
+    ap.add_argument("--source", default=None,
+                    help="fonte a auditar (precisa ter real+fake). "
+                         "Default: a maior fonte com as duas classes no dataset")
     ap.add_argument("--max-per-class", type=int, default=1500,
                     help="subamostra por classe (memória/velocidade). 0 = tudo")
     ap.add_argument("--chunk", type=int, default=256)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--out", default="data/results/audit_dataset_leakage",
                     help="pasta de saída do relatório (json + md)")
+    ap.add_argument(
+        "--fail-above", type=float, default=0.75,
+        help=(
+            "reprova (exit 1) quando a acurácia do detector de atalho "
+            "intra-fonte alcança este valor. 0.75 é o limiar de 'atalho "
+            "parcial' que o próprio veredito imprime; use 1.01 para nunca "
+            "reprovar (default: 0.75)"
+        ),
+    )
+    ap.add_argument(
+        "--fail-on-warnings", action="store_true",
+        help="reprova também quando houver avisos de alinhamento",
+    )
     args = ap.parse_args()
 
     p = Path(args.dataset)
@@ -195,13 +214,34 @@ def main() -> int:
                   ("val", "X_val", "y_val"),
                   ("test", "X_test", "y_test")]
 
+    # Proveniência: o exportador pareado (`export_paired_npz.py`, o canônico do
+    # Protocolo de Dataset) grava um array PLANO `sample_paths` com uma entrada
+    # por amostra, na ordem train → val → test, e não popula
+    # `metadata.splits[*].paths` — que é o formato do exportador antigo
+    # (`run_tcc_pipeline.export_npz_from_splits`). Ler só do formato antigo
+    # deixava esta auditoria inoperante para o dataset canônico do projeto:
+    # emitia "sem proveniência confiável" nos três splits e reportava o teste de
+    # atalho intra-fonte como "insufficient", sem nunca falhar. Corrigido em
+    # 2026-08-02: fatia o array plano quando ele existe, e cai no formato antigo
+    # por retrocompatibilidade.
+    flat_paths = [str(p) for p in d["sample_paths"]] if "sample_paths" in d.files else []
+    total_y = sum(
+        len(np.asarray(d[yk]).ravel()) for _, xk, yk in split_keys if xk in d.files
+    )
+    usa_plano = len(flat_paths) == total_y and total_y > 0
+    cursor = 0
+
     per_split = {}
     align_warnings = []
     for name, xk, yk in split_keys:
         if xk not in d.files:
             continue
         y = np.asarray(d[yk]).ravel().astype("int64")
-        paths = (splits_meta.get(name, {}) or {}).get("paths", [])
+        if usa_plano:
+            paths = flat_paths[cursor:cursor + len(y)]
+            cursor += len(y)
+        else:
+            paths = (splits_meta.get(name, {}) or {}).get("paths", [])
         if len(paths) != len(y):
             align_warnings.append(
                 f"{name}: n_paths={len(paths)} != n_y={len(y)} (sem proveniência confiável)"
@@ -251,7 +291,24 @@ def main() -> int:
         }
 
     # ---- Atalho intra-fonte: fit no train, avalia no test (mesma fonte) ----
-    src = args.source.lower()
+    if args.source:
+        src = args.source.lower()
+    else:
+        # A maior fonte que tem real E fake — as unicas em que este teste faz
+        # sentido. Fonte pura de classe nao permite separar atalho de deteccao.
+        candidatas = {
+            fonte
+            for fonte in all_sources
+            if src_class.get((fonte, 0), 0) and src_class.get((fonte, 1), 0)
+        }
+        src = (
+            max(
+                candidatas,
+                key=lambda f: src_class.get((f, 0), 0) + src_class.get((f, 1), 0),
+            ).lower()
+            if candidatas
+            else ""
+        )
     tr = per_split.get("train")
     te = per_split.get("test")
     intra = {"source": src, "status": "skipped"}
@@ -329,7 +386,8 @@ def main() -> int:
     print("\n" + "=" * 64)
     print("MATRIZ FONTE x CLASSE")
     for s in all_sources:
-        r = src_class.get((s, 0), 0); f = src_class.get((s, 1), 0)
+        r = src_class.get((s, 0), 0)
+        f = src_class.get((s, 1), 0)
         tag = "  <- pura" if (r == 0) ^ (f == 0) else ""
         print(f"  {s:10s} real={r:6d} fake={f:6d}{tag}")
     if trivial_detail:
@@ -360,6 +418,28 @@ def main() -> int:
     print("=" * 64)
     print(f"\nRelatório: {out_dir / 'leakage_report.json'}")
     print(f"           {out_dir / 'leakage_report.md'}\n")
+
+    # VEREDITO COM CÓDIGO DE SAÍDA.
+    #
+    # O script calculava "ATALHO CONFIRMADO" apenas para IMPRIMIR e sempre
+    # retornava 0. É a única auditoria que treina um classificador sobre
+    # descritores triviais para medir atalho de domínio — exatamente o teste que
+    # teria pego a assinatura de reamostragem antes de 2026-08-19 — e ela não
+    # reprovava nada. Sem código de saída, nenhum pipeline ou CI podia usá-la.
+    motivos = []
+    if intra.get("status") == "ok":
+        acc = float(intra["combined"]["test_accuracy"])
+        if acc >= args.fail_above:
+            motivos.append(
+                f"atalho intra-fonte: acurácia de teste {acc*100:.2f}% "
+                f">= limite {args.fail_above*100:.2f}%"
+            )
+    if align_warnings and args.fail_on_warnings:
+        motivos.append(f"{len(align_warnings)} aviso(s) de alinhamento")
+    if motivos:
+        for motivo in motivos:
+            print(f"FALHA: {motivo}", file=sys.stderr)
+        return 1
     return 0
 
 

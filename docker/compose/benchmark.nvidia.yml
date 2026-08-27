@@ -9,6 +9,27 @@ services:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
     image: xfakesong/benchmark:nvidia
     container_name: xfakesong_benchmark_nvidia
+    # on-failure, nao always/unless-stopped: o comando termina com exit 0 só
+    # quando TODAS as arquiteturas ficam "ok" (run_models_sequential.py,
+    # `return 0 if summary["status"] == "ok" else 2`) — always/unless-stopped
+    # reiniciariam o sweep inteiro em loop mesmo depois de concluído com
+    # sucesso. Com on-failure + --resume no comando, um crash (OOM
+    # transitório, reinício do host/Docker Desktop) retoma sozinho de onde
+    # parou; o teto de 3 tentativas evita queimar GPU indefinidamente se a
+    # causa for uma configuração realmente quebrada, não transitória.
+    #
+    # AJUSTE 2026-08-19: teto 3 -> 10. Com 3 tentativas, três quedas de energia
+    # (a máquina não tem no-break) esgotavam o orçamento de restart e a bateria
+    # ficava parada até alguém notar. Cada retomada custa no máximo UMA época
+    # de treino — o BackupAndRestore por época foi verificado sob SIGKILL, e o
+    # --resume abaixo pula as arquiteturas já concluídas —, então tentar mais
+    # vezes é barato. Uma configuração de fato quebrada continua morrendo nas
+    # primeiras tentativas, que é o que o teto existe para conter.
+    restart: on-failure:10
+    # 10 s (o default) e pouco para um `docker stop` durante a gravacao do
+    # checkpoint de fim de epoca. Nao e perda total (double_checkpoint=True
+    # mantem o anterior), mas custa uma epoca sem necessidade.
+    stop_grace_period: 120s
     working_dir: /app
     shm_size: 2gb
     volumes:
@@ -20,6 +41,7 @@ services:
       DEEPFAKE_ENV: benchmark
       DEEPFAKE_LOG_LEVEL: ${DEEPFAKE_LOG_LEVEL:-INFO}
       PYTHONIOENCODING: utf-8
+      GRADIO_ANALYTICS_ENABLED: "False"
       TF_CPP_MIN_LOG_LEVEL: "2"
       TF_FORCE_GPU_ALLOW_GROWTH: "true"
       TF_GPU_ALLOCATOR: cuda_malloc_async
@@ -33,11 +55,35 @@ services:
       XFAKE_SYNC_MODELS_ON_BOOT: "false"
       XFAKE_CREATE_DEFAULT_MODELS: "false"
       XFAKE_TRAIN_BATCH_LOG_INTERVAL_S: ${XFAKE_TRAIN_BATCH_LOG_INTERVAL_S:-60}
+      # As XFAKE_ENABLE_* de app/core/performance.py NÃO chegavam ao container:
+      # --env-file só disponibiliza a variável para substituição ${...} neste
+      # YAML, não injeta automaticamente tudo no processo — só o que está
+      # listado aqui vira env var de verdade dentro do container. O .env já
+      # declarava XFAKE_ENABLE_TF32=true (RTX 3060/Ampere acelera RawNet2/
+      # WavLM/HuBERT/Ensemble, os únicos que rodam em float32 puro) mas o
+      # log sempre mostrava TF32=False — era esse o motivo, não o código.
+      XFAKE_ENABLE_TF32: ${XFAKE_ENABLE_TF32:-false}
+      XFAKE_ENABLE_XLA: ${XFAKE_ENABLE_XLA:-true}
+      XFAKE_ENABLE_ONEDNN: ${XFAKE_ENABLE_ONEDNN:-true}
     deploy:
       resources:
         limits:
           cpus: "${DOCKER_TRAIN_CPU_LIMIT:-8.0}"
-          memory: ${DOCKER_TRAIN_MEMORY_LIMIT:-16G}
+          # 36G, nao 24G — ver a justificativa em train.nvidia.yml. 24G ja
+          # cobria o tensor raw-audio (limpo + copia AWGN, ~19,2 GB de pico
+          # documentado), mas o SpectrogramTransformer usa a MAIOR grade
+          # espectral do escopo oficial (300 quadros x 128 mel = 38.400
+          # floats/amostra, ~4,8x a do MultiscaleCNN) e ainda precisa manter
+          # vivo o bloco de forma de onda crua (fonte do AWGN) enquanto
+          # constroi esse tensor maior. Reproduzido em 2026-07-31: mesmo com
+          # `log_mel_batch` corrigido (pre-alocacao em vez de lista +
+          # `np.asarray` final), o processo era morto pelo OOM-killer a 98,6%
+          # dos 24G bem no inicio do treino real. Com 32G o treino chegou a
+          # rodar (confirmado por varios batches estaveis), mas com so ~200 MB
+          # de folga — risco real de OOM num run de horas por qualquer pico
+          # transitorio (validacao de fim de epoca, checkpoint, fragmentacao
+          # acumulada). 36G da ~4 GB de folga sobre o mesmo pico observado.
+          memory: ${DOCKER_TRAIN_MEMORY_LIMIT:-36G}
         reservations:
           devices:
             - driver: nvidia
@@ -53,20 +99,90 @@ services:
     command:
       - python
       - scripts/benchmark/run_models_sequential.py
-      # Dataset canônico: data/datasets/ (raiz consolidada em 2026-07-14).
+      # Dataset canônico, o mesmo declarado em configs/dataset.yaml e nos seis
+      # configs/training/*.yaml. Apontava para
+      # benchmark_audio_raw_balanced_15k_confirmatory_v2.npz, artefato do
+      # protocolo anterior já retirado do disco — o run morria na primeira linha.
+      #
+      # Parametrizado para as variantes de configs/dataset.yaml::dataset_variants.
+      # A saída acompanha o dataset DE PROPÓSITO: variantes têm conjuntos de
+      # teste diferentes, então seus resultados não são comparáveis e não podem
+      # cair na mesma pasta. Trocar só o dataset e manter o --out não corrompe
+      # nada (o run_fingerprint inclui caminho, tamanho e SHA-256 do selo, então
+      # o --resume reexecuta em vez de reaproveitar), mas mistura no mesmo
+      # diretório dois runs que a consolidação trataria como um só.
+      #
+      #   XFAKE_BENCHMARK_DATASET=data/datasets/benchmark_dataset_15k.npz \
+      #   XFAKE_BENCHMARK_OUT=data/results/clean_benchmark_15k \
+      #     docker compose -f docker/compose/benchmark.nvidia.yml up -d benchmark
       - --dataset
-      - data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz
+      - ${XFAKE_BENCHMARK_DATASET:-data/datasets/benchmark_dataset.npz}
       - --out
-      - data/results/clean_benchmark_latest
+      - ${XFAKE_BENCHMARK_OUT:-data/results/clean_benchmark_latest}
       - --epochs
       - "100"
       - --device-profile
       - gpu
-      - --timeout-min
-      - "240"
+      # SEM --timeout-min: o default deriva o limite do custo estimado de cada
+      # arquitetura (planning.EXPECTED_TRAINING_HOURS x 3, escalado por épocas e
+      # tamanho do treino). Com o valor fixo de 240 min que estava aqui, 10 das
+      # 11 arquiteturas do escopo oficial tinham timeout derivado ACIMA de 4 h
+      # (só o RandomForest, com 180 min, cabia) e sete delas já passavam de 4 h
+      # só no tempo de treino esperado — RawGAT-ST 54 h, AASIST 28 h,
+      # SpectrogramTransformer 28 h, RawNet2 18 h, SVM 8 h, WavLM e HuBERT 6 h.
+      # O limite fixo matava justamente os modelos que o benchmark existe para
+      # medir.
       - --latency-runs
       - "30"
+      # 30/20/10 casam com o augmentation de treino; 5 dB é a condição NÃO VISTA
+      # que mede generalização a ruído. Este compose era o único ponto do
+      # projeto que omitia o 5.
       - --snr
       - "30"
       - "20"
       - "10"
+      - "5"
+      # SEM --resume, um restart do container (crash, reinício do host/Docker
+      # Desktop, `docker compose down && up`) refazia TODAS as 11 arquiteturas
+      # do zero — inclusive as já concluídas — porque a lógica de pular
+      # `[SKIP] X ja concluido; fingerprint confere` em run_models_sequential.py
+      # só entra em ação com essa flag (linha ~1007: `if args.resume and
+      # model in completed and done`). O `BackupAndRestore` do Keras já
+      # retomava uma arquitetura NO MEIO do treino (pesos/otimizador/época
+      # preservados em `training_backup/`, dentro do volume montado — ver
+      # comentário em `_run_one`), mas isso não adiantava se o orquestrador
+      # nem chegava a pular as que já tinham `results.json` com status "ok".
+      - --resume
+      # PROTOCOLO CORRIGIDO (2026-08-19). Sem estas duas flags o compose roda o
+      # protocolo ANTIGO, com o atalho de reamostragem intacto — e era o que
+      # acontecia: elas existiam só no runner, então a bateria corrigida não
+      # tinha como subir pelo caminho endurecido (36G, shm, restart, caches de
+      # HF/torch, rotação de log). Ficam parametrizadas por env para que uma
+      # ablação possa desligá-las de propósito, mas o DEFAULT é o corrigido.
+      #
+      #   --band-correction-hz: passa-baixas casado nas DUAS classes, uma vez,
+      #   antes do split. A bonafide do CETUC vinha de 24 kHz e os clones do
+      #   XTTS-v2 de 16 kHz reamostrados; a assinatura do filtro anti-aliasing
+      #   correlacionava 100% com a classe (AUC de um modelo linear sobre a
+      #   banda isolada: 1,0000 -> 0,8329 depois da correção).
+      #
+      #   --checkpoint-monitor: seleciona a época pelo EER de validação, não
+      #   pela perda, alinhando seleção e métrica de anti-spoofing. Cobertura
+      #   verificada nas 9 arquiteturas Keras antes da bateria.
+      - --band-correction-hz
+      - "${XFAKE_BENCHMARK_BAND_CORRECTION_HZ:-7500}"
+      - --checkpoint-monitor
+      - ${XFAKE_BENCHMARK_CHECKPOINT_MONITOR:-val_eer}
+      # O `--models RawGAT-ST AASIST` que restringia o sweep foi REMOVIDO em
+      # 2026-08-15: era declarado TEMPORÁRIO até que os dois concluíssem, e
+      # ambos constam com `status: ok` em
+      # data/results/clean_benchmark_15k/*/results.json. Mantê-lo fazia o
+      # compose rodar apenas 2 das 11 arquiteturas do escopo oficial, em
+      # silêncio — quem subisse o benchmark do zero teria um recorte
+      # incompleto sem nenhum aviso.
+      #
+      # Se for preciso restringir de novo, prefira passar --models na linha de
+      # comando (`docker compose run --rm benchmark python
+      # scripts/benchmark/run_models_sequential.py ... --models X`) em vez de
+      # fixar no compose, justamente para a restrição não sobreviver ao seu
+      # motivo.

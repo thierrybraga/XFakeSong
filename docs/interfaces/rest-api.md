@@ -63,7 +63,10 @@ Regras de acoplamento:
 
 ### Autenticação
 
-Endpoints de mutação ou custo alto usam API Key:
+Endpoints de mutação ou custo alto usam API Key — mas os routers de
+`datasets`, `history` e `voice_profiles` aplicam `Depends(get_api_key)` no
+**router inteiro**, então todas as rotas desses três (inclusive `GET`
+somente-leitura) também exigem a chave, não só as de escrita:
 
 ```http
 X-API-Key: <sua_chave>
@@ -233,34 +236,43 @@ Para progresso intermediário, consulte `/status/{job_id}`.
 
 ## History (`/api/v1/history`)
 
-| Método | Path | Descrição |
-|---|---|---|
-| GET | `/` | histórico paginado de análises |
-| GET | `/{analysis_id}` | detalhe de uma análise |
-| DELETE | `/{analysis_id}` | exclui uma análise |
-
-## Datasets (`/api/v1/datasets`)
+Router inteiro atrás de API Key (`dependencies=[Depends(get_api_key)]`),
+inclusive as leituras.
 
 | Método | Path | API Key | Descrição |
 |---|---|---:|---|
-| GET | `/` | não | lista datasets, com filtro `type` |
+| GET | `/` | sim | histórico paginado de análises |
+| GET | `/{analysis_id}` | sim | detalhe de uma análise |
+| DELETE | `/{analysis_id}` | sim | exclui uma análise |
+
+## Datasets (`/api/v1/datasets`)
+
+Router inteiro atrás de API Key, inclusive `GET /`.
+
+| Método | Path | API Key | Descrição |
+|---|---|---:|---|
+| GET | `/` | sim | lista datasets, com filtro `type` |
 | POST | `/` | sim | cria dataset vazio |
 | POST | `/{name}/upload` | sim | upload de arquivo para dataset |
 | DELETE | `/{name}` | sim | remove dataset |
 
 ## Voice Profiles (`/api/v1/profiles`)
 
-| Método | Path | Descrição |
-|---|---|---|
-| GET | `/` | lista perfis |
-| POST | `/` | cria perfil |
-| GET | `/{id}` | detalhes |
-| PUT | `/{id}` | atualiza |
-| DELETE | `/{id}` | remove |
-| POST | `/{id}/samples` | upload de amostras |
-| DELETE | `/{id}/samples/{filename}` | remove amostra |
-| POST | `/{id}/train` | treina modelo do perfil |
-| POST | `/{id}/detect` | verifica se áudio pertence ao perfil |
+Router inteiro atrás de API Key, inclusive as leituras (`GET /`,
+`GET /{id}`) — apesar da regra geral de "mutação ou custo alto" na seção de
+Autenticação acima, aqui a chave é exigida em todas as 9 rotas.
+
+| Método | Path | API Key | Descrição |
+|---|---|---:|---|
+| GET | `/` | sim | lista perfis |
+| POST | `/` | sim | cria perfil |
+| GET | `/{id}` | sim | detalhes |
+| PUT | `/{id}` | sim | atualiza |
+| DELETE | `/{id}` | sim | remove |
+| POST | `/{id}/samples` | sim | upload de amostras |
+| DELETE | `/{id}/samples/{filename}` | sim | remove amostra |
+| POST | `/{id}/train` | sim | treina modelo do perfil |
+| POST | `/{id}/detect` | sim | verifica se áudio pertence ao perfil |
 
 ## Validação Local
 

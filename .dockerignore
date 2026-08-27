@@ -67,7 +67,6 @@ data/results/
 cache/
 data/
 datasets/
-app/datasets/
 data/models/*.keras
 data/models/*.h5
 data/models/*.pkl

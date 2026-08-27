@@ -15,7 +15,7 @@ def _toy_dataset(n=600, seed=0):
 
     rng = np.random.default_rng(seed)
     X = rng.standard_normal((n, 8, 4)).astype("float32")
-    # 6 fontes, TODAS com as duas classes: o protocolo v2 exige que cada
+    # 6 fontes, TODAS com as duas classes: o protocolo exige que cada
     # partição contenha real e fake mesmo sob split disjunto por grupo. O
     # fixture antigo (3 fontes, cvpt só real e fkvoice só fake) tornava o
     # split em 3 partições insatisfazível — e o pipeline agora falha cedo
@@ -23,8 +23,22 @@ def _toy_dataset(n=600, seed=0):
     sources = ["brspeech", "cvpt", "fkvoice", "mlspt", "ttsport", "extra"]
     groups = [sources[i % len(sources)] for i in range(n)]
     y = [(i // len(sources)) % 2 for i in range(n)]
+    # O holdout de gerador passou a ser resolvido contra `generators`, nao contra
+    # `groups` (a fonte). Sao coisas distintas: um corpus pareado compartilha a
+    # fonte entre as classes de proposito. Aqui as falsas se dividem em tres
+    # geradores sinteticos, que e o que torna o protocolo aplicavel.
+    sinteticos = ["xtts_v2", "griffin_lim", "hifigan"]
+    generators = [
+        "bonafide" if label == 0 else sinteticos[i % len(sinteticos)]
+        for i, label in enumerate(y)
+    ]
     return BenchmarkData(
-        X=X, y=np.array(y), name="toy", groups=np.array(groups)
+        X=X,
+        y=np.array(y),
+        name="toy",
+        groups=np.array(groups),
+        generators=np.array(generators),
+        generator_known=np.ones(n, dtype=bool),
     )
 
 
@@ -37,11 +51,7 @@ def test_group_split_is_disjoint_by_source():
 
     def groups_of(Xsub):
         keys = {row.tobytes() for row in Xsub}
-        return {
-            bd.groups[i]
-            for i, row in enumerate(bd.X)
-            if row.tobytes() in keys
-        }
+        return {bd.groups[i] for i, row in enumerate(bd.X) if row.tobytes() in keys}
 
     g_tr, g_v, g_te = groups_of(Xtr), groups_of(Xv), groups_of(Xte)
     assert g_tr.isdisjoint(g_te)
@@ -53,11 +63,11 @@ def test_cross_generator_excludes_holdout_from_train():
     """O gerador segurado não aparece no treino e o teste tem ambas as classes."""
     bd = _toy_dataset()
     Xtr, ytr, Xv, yv, Xte, yte = bd.stratified_split(
-        42, holdout_generator="fkvoice"
+        42, holdout_generator="griffin_lim"
     )
     train_keys = {row.tobytes() for row in Xtr}
     held_in_train = any(
-        bd.groups[i] == "fkvoice"
+        bd.generators[i] == "griffin_lim"
         for i, row in enumerate(bd.X)
         if row.tobytes() in train_keys
     )
@@ -78,7 +88,7 @@ def test_add_noise_hits_target_snr():
     out, _ = aug._add_noise(x, tf.constant(1))
     noise = (out - x).numpy()
     sig_p = float(np.mean(x.numpy() ** 2))
-    noi_p = float(np.mean(noise ** 2))
+    noi_p = float(np.mean(noise**2))
     snr = 10.0 * np.log10(sig_p / noi_p)
     assert snr == pytest.approx(15.0, abs=0.5)
 
@@ -106,6 +116,7 @@ def test_add_noise_matches_benchmark_awgn_definition():
 
 
 # ----------------------- Follow-ups (P2/P3) -----------------------
+
 
 def test_classical_features_include_rasta_plp():
     """O vetor tabular clássico passa a incluir estatísticas RASTA-PLP."""

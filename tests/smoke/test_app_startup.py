@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Smoke test de importação e inicialização do gradio_app.
+"""Smoke: a aplicação sobe.
 
-Verifica que o módulo principal pode ser importado sem erros e que
-o objeto 'demo' (Gradio Blocks) está presente.
+SUJEITO: o startup completo — importar o módulo principal do Gradio e
+encontrar o objeto `demo` (Blocks) montado. É opt-in (marcador `smoke`) porque
+carrega o stack inteiro.
 
 Uso standalone:
     python tests/smoke/test_app_startup.py
 
-Uso via pytest (inclui mark smoke):
+Uso via pytest:
     pytest -m smoke tests/smoke/test_app_startup.py
 """
 from __future__ import annotations

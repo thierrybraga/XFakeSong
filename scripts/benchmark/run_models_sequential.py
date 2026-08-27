@@ -5,7 +5,7 @@ Este orquestrador chama `scripts/benchmark/run_benchmark.py --model <nome>` para
 arquitetura. Cada modelo recebe uma pasta própria, log próprio e status próprio.
 
 Exemplos:
-  python scripts/benchmark/run_models_sequential.py --dataset data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz
+  python scripts/benchmark/run_models_sequential.py --dataset data/datasets/benchmark_dataset.npz
   python scripts/benchmark/run_models_sequential.py --models SVM RandomForest --timeout-min 20
   python scripts/benchmark/run_models_sequential.py --neural-only --resume --device-profile gpu
   python scripts/benchmark/run_models_sequential.py --neural-only --plan-only
@@ -14,12 +14,11 @@ Exemplos:
 from __future__ import annotations
 
 import argparse
-import ast
 import hashlib
 import json
 import os
 import queue
-import struct
+import shutil
 import subprocess
 import sys
 import threading
@@ -27,6 +26,8 @@ import time
 import zipfile
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
@@ -38,9 +39,66 @@ from app.core.config.paths import resolve_results_output  # noqa: E402
 from benchmarks.config import (  # noqa: E402
     CLASSICAL_TCC_ARCHITECTURES,
     DOCKER_TRAINING_ARCHITECTURES,
-    NEURAL_DOCKER_ARCHITECTURES,
     MODEL_FAMILIES,
+    NEURAL_DOCKER_ARCHITECTURES,
 )
+
+# Selo do teste: implementação compartilhada em benchmarks/test_lock.py, para
+# que o entrypoint direto (run_benchmark.py) também consiga verificá-lo.
+from benchmarks.test_lock import (  # noqa: E402
+    inspect_npz as _inspect_npz,
+)
+from benchmarks.test_lock import (  # noqa: E402
+    sha256_file as _sha256_file,
+)
+from benchmarks.test_lock import (  # noqa: E402
+    validate_test_lock as _validate_test_lock,
+)
+
+#: Arquiteturas cujo grafo de treino (STFT/filterbank in-graph + laços de
+#: sub-blocos, ex.: `Bottle2neck` do Res2Net) faz o auto-JIT do XLA
+#: (`TF_XLA_FLAGS=--tf_xla_auto_jit=1`, ligado por padrão em
+#: `app/core/performance.py`) compilar clusters caros o bastante para estourar
+#: a RAM do HOST (não da GPU) já no 1º batch — confirmado via OOM-killer do
+#: kernel para MultiscaleCNN (mata em ~33-39GB dependendo do teto do
+#: container, sempre no mesmo ponto do treino, não crescendo com mais tempo
+#: como um pico de dado real cresceria). Mesma classe de sintoma do
+#: `Predictor._XLA_UNFRIENDLY_ARCHITECTURES` (inferência) — aqui é o
+#: equivalente para o treino, aplicado via env var no subprocesso porque cada
+#: modelo já roda isolado (`run_benchmark.py --model <nome>`).
+#:
+#: AJUSTE 2026-07-31: `aasist` e `rawgatst` (graph attention dinâmico, mesmo
+#: motivo pelo qual já constam em `Predictor._XLA_UNFRIENDLY_ARCHITECTURES`
+#: linha 522) morriam no run oficial exatamente com a mesma assinatura do
+#: MultiscaleCNN pré-fix: processo encerrado logo após a config de GPU, sem
+#: nenhuma linha de treino no log — nunca tinham sido adicionados aqui.
+#: `rawnet2` morria por um caminho distinto (CUDA_ERROR_OUT_OF_MEMORY
+#: explícito tentando alocar ~36 GB numa GPU de 12 GB, mesmo já no cap de
+#: batch=16/float32 de `planning._fit_to_device`) — GRU(1024) sob auto-JIT
+#: também é conhecido por gerar kernels fundidos com scratch buffer
+#: desproporcional; mesma mitigação disponível, root cause de VRAM em vez de
+#: RAM do host.
+#:
+#: CHAVES NA FORMA COMPACTA (sem separadores), e o teste de pertinencia usa
+#: `_compact`, NAO `_slug`. Ate 2026-08-20 o teste usava `_slug`, que troca
+#: separador por underscore: `_slug("RawGAT-ST")` devolve "rawgat_st", que nao
+#: pertence a este conjunto — a guarda NUNCA disparava para o RawGAT-ST. As
+#: outras tres casavam por nao terem hifen no nome, o que escondeu o defeito.
+#:
+#: Confirmado nos logs do run `clean_benchmark_15k`: `rawgat_st/run.log`
+#: registra `XLA=True` e nenhuma linha "[XLA] auto-JIT desligado", enquanto
+#: `aasist/run.log` e `rawnet2/run.log` registram `XLA=False`. A arquitetura de
+#: maior custo estimado do escopo oficial (73,4 h de GPU) rodou exatamente na
+#: condicao que este conjunto existe para evitar.
+_XLA_UNFRIENDLY_TRAINING_ARCHITECTURES = {"multiscalecnn", "aasist", "rawgatst", "rawnet2"}
+
+#: Rótulo de protocolo por monitor de checkpoint. Existe para o
+#: `benchmark_protocol.json` declarar o critério REAL do run — ver o comentário
+#: em `_run_suite`.
+_CHECKPOINT_SELECTION_LABEL = {
+    "val_loss": "minimum_clean_validation_loss",
+    "val_eer": "minimum_clean_validation_eer",
+}
 
 SSL_ORIGINAL_MODELS = {
     "wavlm": {
@@ -66,111 +124,6 @@ SSL_ORIGINAL_MODELS = {
 }
 
 
-def _npy_shape(member) -> tuple[int, ...]:
-    """Lê apenas o cabeçalho NPY dentro do NPZ, sem descompactar os tensores."""
-
-    if member.read(6) != b"\x93NUMPY":
-        raise ValueError("membro NPZ sem cabeçalho NPY válido")
-    major, _minor = member.read(2)
-    size_fmt = "<H" if major == 1 else "<I"
-    size = struct.calcsize(size_fmt)
-    header_len = struct.unpack(size_fmt, member.read(size))[0]
-    header = ast.literal_eval(member.read(header_len).decode("latin1").strip())
-    return tuple(int(v) for v in header["shape"])
-
-
-def _inspect_npz(path: Path) -> dict[str, Any]:
-    """Valida estrutura e cria identidade leve do teste congelado."""
-
-    with zipfile.ZipFile(path) as archive:
-        names = set(archive.namelist())
-        required = {
-            "X_train.npy",
-            "y_train.npy",
-            "X_val.npy",
-            "y_val.npy",
-            "X_test.npy",
-            "y_test.npy",
-        }
-        predefined = required.issubset(names)
-        y_members = (
-            ["y_train.npy", "y_val.npy", "y_test.npy"] if predefined else ["y.npy"]
-        )
-        if not all(name in names for name in y_members):
-            raise ValueError("NPZ sem rótulos completos X/y ou train/val/test")
-        counts = {}
-        for name in y_members:
-            with archive.open(name) as member:
-                shape = _npy_shape(member)
-            counts[name.removesuffix(".npy")] = int(shape[0])
-        test_identity = None
-        if predefined:
-            parts = []
-            identity_members = ["X_test.npy", "y_test.npy"]
-            identity_members.extend(
-                name
-                for name in ("cluster_ids.npy", "source_ids.npy", "sample_paths.npy")
-                if name in names
-            )
-            for name in identity_members:
-                info = archive.getinfo(name)
-                parts.append(f"{name}:{info.CRC:08x}:{info.file_size}")
-            test_identity = hashlib.sha256("|".join(parts).encode("ascii")).hexdigest()
-    has_cluster_ids = "cluster_ids.npy" in names
-    has_source_ids = "source_ids.npy" in names or "groups.npy" in names
-    has_sample_paths = "sample_paths.npy" in names
-    return {
-        "predefined_splits": predefined,
-        "split_counts": counts,
-        "sample_count": int(sum(counts.values())),
-        "test_archive_identity_sha256": test_identity,
-        "test_archive_identity_method": "sha256(zip_member_name_crc32_uncompressed_size)",
-        "has_cluster_ids": has_cluster_ids,
-        "has_source_ids": has_source_ids,
-        "has_sample_paths": has_sample_paths,
-    }
-
-
-def _sha256_file(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as source:
-        for chunk in iter(lambda: source.read(chunk_size), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def _validate_test_lock(
-    dataset_path: Path,
-    inspection: dict[str, Any],
-    lock_path: Path,
-) -> dict[str, Any]:
-    if not lock_path.exists():
-        raise ValueError(
-            f"selo do teste não encontrado: {lock_path}. Gere um novo teste intocado "
-            "e execute scripts/dataset/freeze_benchmark_test.py antes do treino."
-        )
-    payload = json.loads(lock_path.read_text(encoding="utf-8"))
-    required_true = (
-        payload.get("declared_untouched") is True
-        and payload.get("created_before_training") is True
-    )
-    if not required_true:
-        raise ValueError("selo não declara teste intocado e criado antes do treino")
-    if int(payload.get("dataset_size_bytes", -1)) != dataset_path.stat().st_size:
-        raise ValueError("dataset mudou de tamanho após o selo do teste")
-    expected_test = inspection.get("test_archive_identity_sha256")
-    if payload.get("test_archive_identity_sha256") != expected_test:
-        raise ValueError("partição de teste difere daquela registrada no selo")
-    actual_dataset_sha256 = _sha256_file(dataset_path)
-    if payload.get("dataset_sha256") != actual_dataset_sha256:
-        raise ValueError("SHA-256 do dataset difere daquele registrado no selo")
-    return {
-        **payload,
-        "lock_path": str(lock_path.resolve()),
-        "validated": True,
-    }
-
-
 def _slug(name: str) -> str:
     return "".join(ch if ch.isalnum() else "_" for ch in name.lower()).strip("_")
 
@@ -193,11 +146,22 @@ def _load_json(path: Path, default: Any) -> Any:
 
 
 def _write_json(path: Path, payload: Any) -> None:
+    """Grava JSON ATOMICAMENTE (tmp + replace).
+
+    O compose oficial roda com `restart: on-failure:10`: uma queda de energia
+    ou um SIGKILL no meio de um `write_text` deixava o arquivo truncado. O
+    `_load_json` engole a corrupção e o modelo é reexecutado (falha segura, mas
+    custa o treino inteiro); pior é o JSON que ainda PARSEIA sem `status`, que
+    `rebuild_run_summary.py` carimbava como "ok". `os.replace` é atômico no
+    mesmo sistema de arquivos: ou o conteúdo antigo, ou o novo, nunca metade.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(
         json.dumps(payload, indent=2, ensure_ascii=False, default=str),
         encoding="utf-8",
     )
+    os.replace(tmp, path)
 
 
 def _git_revision() -> dict[str, Any]:
@@ -246,6 +210,44 @@ def _run_fingerprint(args: argparse.Namespace, model: str) -> dict[str, Any]:
     }
     encoded = json.dumps(payload, sort_keys=True, ensure_ascii=True, default=str)
     return {**payload, "sha256": hashlib.sha256(encoded.encode("utf-8")).hexdigest()}
+
+
+def _archive_superseded(model_dir: Path, root_out: Path, sha256: str) -> Path | None:
+    """Move o artefato ANTERIOR para fora do caminho antes de um `[RERUN]`.
+
+    Sem isto o retreino herda o estado de treino do run que ele existe para
+    substituir. Dois vazamentos, ambos silenciosos:
+
+    * ``best_checkpoint.weights.h5.best.json`` — o `ResumableModelCheckpoint`
+      restaura o melhor valor persistido, e com `save_best_only` a época nova
+      só é gravada se BATER a barra do run velho. Observado em 2026-08-22 no
+      `[RERUN]` do Conformer: "melhor val_eer restaurado como 0.013736", a
+      marca da época 50 do run anterior. Uma execução que nunca superasse esse
+      valor terminaria com o `history` novo e os PESOS velhos.
+    * ``training_backup/`` — o `BackupAndRestore` retomaria da última época do
+      run anterior, e o retreino não treinaria nada.
+
+    Mover, não apagar: o artefato substituído é a evidência do defeito que
+    motivou o retreino. O destino fica em ``_superseded/``, dois níveis abaixo
+    da raiz do run, fora do ``glob("*/results.json")`` que a consolidação e o
+    backfill usam — senão o artefato aposentado voltaria à tabela.
+
+    Só é chamado no caminho `[RERUN]`, que exige ``_model_done()``: um treino
+    interrompido no meio não tem `results.json`, não entra aqui, e continua
+    retomando pelo `training_backup` como deve.
+    """
+    if not model_dir.is_dir():
+        return None
+    destino = root_out / "_superseded" / f"{model_dir.name}_{sha256[:8]}"
+    if destino.exists():
+        # Já arquivado numa tentativa anterior com o MESMO fingerprint: o que
+        # está em `model_dir` agora é resto de uma execução abortada, não o
+        # artefato original. Preserva o primeiro e descarta a sobra.
+        shutil.rmtree(model_dir, ignore_errors=True)
+        return destino
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(model_dir), str(destino))
+    return destino
 
 
 def _resume_matches(model_dir: Path, expected: dict[str, Any]) -> bool:
@@ -317,6 +319,17 @@ def _build_command(args: argparse.Namespace, model: str, model_dir: Path) -> lis
             if args.waveform_train_augmentation
             else "--no-train-augmentation"
         )
+        # CORRECAO DE FORMATO tambem no ramo SSL. Este ramo faz `return` antes
+        # do trecho comum la embaixo, entao sem esta linha WavLM e HuBERT
+        # treinariam COM o atalho de reamostragem (AUC 0,98 sozinho) enquanto
+        # os outros nove treinariam sem -- e a tabela ficaria incomparavel sem
+        # que nada avisasse.
+        #
+        # `--checkpoint-monitor` NAO entra aqui: o runner SSL tem laco de treino
+        # proprio em PyTorch, sem o ModelCheckpoint do Keras que aquela opcao
+        # controla. Passa-la seria config morto.
+        if getattr(args, "band_correction_hz", None) is not None:
+            cmd.extend(["--band-correction-hz", str(args.band_correction_hz)])
         return cmd
 
     cmd = [
@@ -371,9 +384,109 @@ def _build_command(args: argparse.Namespace, model: str, model_dir: Path) -> lis
         cmd.extend(["--cross-generator", str(args.cross_generator)])
     if getattr(args, "codec_eval", None):
         cmd.extend(["--codec-eval", *[str(c) for c in args.codec_eval]])
+    # CORRECAO DE FORMATO e CRITERIO DE SELECAO (2026-08-19). Sem repassar,
+    # a bateria inteira rodaria sem correcao e com o monitor antigo, EM
+    # SILENCIO -- e o operador so descobriria ao comparar os artefatos.
+    if getattr(args, "band_correction_hz", None) is not None:
+        cmd.extend(["--band-correction-hz", str(args.band_correction_hz)])
+    if getattr(args, "checkpoint_monitor", None):
+        cmd.extend(["--checkpoint-monitor", str(args.checkpoint_monitor)])
     if getattr(args, "academic_protocol", False):
         cmd.append("--fail-on-source-shortcut")
+        if getattr(args, "source_shortcut_limit", None) is not None:
+            cmd.extend(["--source-shortcut-limit", str(args.source_shortcut_limit)])
     return cmd
+
+
+def _fit_samples(args: argparse.Namespace) -> int:
+    """Amostras que o `fit` realmente ve, incluindo as copias de ruido.
+
+    `expected_training_timeout_min` escala por isto, mas ninguem passava o
+    valor: o default do parametro descreve o dataset de 40.980, entao QUALQUER
+    outro tamanho herdava o timeout do completo. Num dataset 2,7x menor o limite
+    ficava 2,7x mais generoso que o pretendido — falha segura, mas o timeout
+    deixava de cumprir a funcao de matar um treino travado.
+
+    Devolve 0 quando o tamanho e desconhecido; a funcao de planejamento cai no
+    default nesse caso, que e o comportamento antigo.
+    """
+    contagens = getattr(args, "npz_split_counts", None) or {}
+    treino = int(contagens.get("y_train") or 0)
+    if treino <= 0:
+        return 0
+    copias = int(getattr(args, "train_noise_copies", 0) or 0)
+    if not getattr(args, "waveform_train_augmentation", False):
+        copias = 0
+    return treino * (1 + copias)
+
+
+def _expected_cost_min(args: argparse.Namespace, model: str) -> float:
+    """Custo estimado deste modelo, em minutos (base da ordem de execucao)."""
+    try:
+        from benchmarks.planning import (
+            _REFERENCE_FIT_SAMPLES,
+            expected_training_timeout_min,
+        )
+
+        # safety_factor=1 e minimum_min=0: aqui interessa a ESTIMATIVA de custo,
+        # nao o timeout (que aplica margem e piso e achataria os mais baratos).
+        return expected_training_timeout_min(
+            model,
+            device_profile=getattr(args, "device_profile", "gpu") or "gpu",
+            epochs=int(getattr(args, "epochs", 100) or 100),
+            fit_samples=_fit_samples(args) or _REFERENCE_FIT_SAMPLES,
+            safety_factor=1.0,
+            minimum_min=0.0,
+        )
+    except Exception:  # noqa: BLE001 — sem estimativa, nao reordene
+        return float("inf")
+
+
+def _order_models(args: argparse.Namespace, models: list[str]) -> list[str]:
+    """Ordena a suite do mais barato para o mais caro (default `cost`).
+
+    A ordem do manifesto e de RELATORIO, nao de execucao: nela o
+    SpectrogramTransformer (~28 h de GPU) roda em 4o, antes do Conformer
+    (~1,4 h) e do Res2Net (~1,6 h). Uma falha de ambiente que atinja todos os
+    modelos (OOM do container, checkpoint SSL ausente, dataset invalido) so
+    apareceria depois de dias de GPU. Executando do mais barato para o mais
+    caro, a mesma falha aparece na primeira hora e o run inteiro pode ser
+    corrigido antes de queimar as arquiteturas longas.
+
+    A ordem dos RESULTADOS nao depende disto: `consolidate_results.py` reordena
+    por `OFFICIAL_TCC_RESULT_ORDER`.
+    """
+    if getattr(args, "order", "cost") != "cost":
+        return list(models)
+    indexed = list(enumerate(models))
+    indexed.sort(key=lambda pair: (_expected_cost_min(args, pair[1]), pair[0]))
+    return [model for _, model in indexed]
+
+
+def _timeout_for(args: argparse.Namespace, model: str) -> float:
+    """Timeout deste modelo: o do usuario, ou o derivado da estimativa.
+
+    Um valor unico para todas as arquiteturas nao existe: no orcamento de 100
+    epocas o Sonic Sleuth leva ~0,4 h de GPU e o RawGAT-ST ~54 h. Um timeout
+    generoso para o primeiro mata o segundo; um generoso para o segundo deixa
+    de proteger contra travamento no primeiro.
+    """
+    if getattr(args, "timeout_min", None):
+        return float(args.timeout_min)
+    try:
+        from benchmarks.planning import (
+            _REFERENCE_FIT_SAMPLES,
+            expected_training_timeout_min,
+        )
+
+        return expected_training_timeout_min(
+            model,
+            device_profile=getattr(args, "device_profile", "gpu") or "gpu",
+            epochs=int(getattr(args, "epochs", 100) or 100),
+            fit_samples=_fit_samples(args) or _REFERENCE_FIT_SAMPLES,
+        )
+    except Exception:  # noqa: BLE001 — sem estimativa, nao estrangule o run
+        return 24 * 60.0
 
 
 def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, Any]:
@@ -382,15 +495,20 @@ def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, 
     model_dir.mkdir(parents=True, exist_ok=True)
     log_path = model_dir / "run.log"
     cmd = _build_command(args, model, model_dir)
-    timeout_s = int(args.timeout_min * 60)
+    timeout_min = _timeout_for(args, model)
+    timeout_s = int(timeout_min * 60)
     started = time.time()
     ssl_meta = _ssl_meta(model)
 
     if args.plan_only and ssl_meta is not None:
+        # Mesmos checkpoints que `run_wavlm_original_benchmark.py::arch_meta`
+        # aplica de fato. Estava "microsoft/wavlm-base" enquanto o runner usa
+        # base-PLUS desde 2026-07-15: o benchmark_plan.json anunciava um
+        # backbone e o treino carregava outro.
         model_name = (
             "facebook/hubert-base-ls960"
             if ssl_meta["architecture"] == "hubert"
-            else "microsoft/wavlm-base"
+            else "microsoft/wavlm-base-plus"
         )
         plan = {
             "model": ssl_meta["display"],
@@ -458,6 +576,30 @@ def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, 
         log.write(" ".join(cmd) + "\n\n")
         log.flush()
         try:
+            subprocess_env = {
+                **os.environ,
+                "PYTHONIOENCODING": "utf-8",
+                # TF_USE_LEGACY_KERAS=0: transformers.modeling_tf_utils seta
+                # =1 no processo que o importa; se o pai estiver poluído, o
+                # filho carregaria tensorflow.keras como Keras 2 (tf_keras) e
+                # o código Keras 3 do projeto quebraria. O runner SSL
+                # (PyTorch) não usa tf.keras — pinar 0 é seguro p/ ambos.
+                "TF_USE_LEGACY_KERAS": "0",
+            }
+            if _compact(model) in _XLA_UNFRIENDLY_TRAINING_ARCHITECTURES:
+                # Ver _XLA_UNFRIENDLY_TRAINING_ARCHITECTURES: sem isso o
+                # auto-JIT do XLA compila um cluster caro o bastante pra
+                # estourar memoria (RAM do host para multiscalecnn/aasist/
+                # rawgatst, confirmado via OOM-killer do kernel; VRAM da GPU
+                # para rawnet2, confirmado via CUDA_ERROR_OUT_OF_MEMORY
+                # tentando alocar dezenas de GB numa GPU de 12 GB) ja no 1o
+                # batch, independente do teto de memoria do container.
+                subprocess_env["XFAKE_ENABLE_XLA"] = "0"
+                log.write(
+                    f"[XLA] auto-JIT desligado para {model} "
+                    "(arquitetura conhecida por estourar memoria na compilacao)\n"
+                )
+                log.flush()
             proc = subprocess.Popen(
                 cmd,
                 cwd=str(ROOT),
@@ -465,16 +607,7 @@ def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, 
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
-                # TF_USE_LEGACY_KERAS=0: transformers.modeling_tf_utils seta
-                # =1 no processo que o importa; se o pai estiver poluído, o
-                # filho carregaria tensorflow.keras como Keras 2 (tf_keras) e
-                # o código Keras 3 do projeto quebraria. O runner SSL
-                # (PyTorch) não usa tf.keras — pinar 0 é seguro p/ ambos.
-                env={
-                    **os.environ,
-                    "PYTHONIOENCODING": "utf-8",
-                    "TF_USE_LEGACY_KERAS": "0",
-                },
+                env=subprocess_env,
             )
             output_queue: queue.Queue[str | None] = queue.Queue()
 
@@ -514,13 +647,14 @@ def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, 
         except subprocess.TimeoutExpired:
             returncode = None
             status = "timeout"
-            error = f"timeout_min={args.timeout_min}"
+            error = f"timeout_min={timeout_min:.0f}"
             log.write(f"\n[TIMEOUT] {model}: {error}\n")
             log.flush()
             _emit(f"[TIMEOUT] {model}: {error}")
 
     elapsed = round(time.time() - started, 1)
     metrics = {}
+
     results_path = model_dir / "results.json"
     if results_path.exists():
         data = _load_json(results_path, {})
@@ -557,6 +691,9 @@ def _run_one(args: argparse.Namespace, model: str, root_out: Path) -> dict[str, 
         "status": status,
         "error": error,
         "elapsed_s": elapsed,
+        # timeout que valeu para ESTE modelo: sem ele, um status "timeout" no
+        # resumo nao diz se o limite era generoso ou apertado demais.
+        "timeout_min": round(timeout_min, 1),
         "output_dir": str(model_dir),
         "log": str(log_path),
         "returncode": returncode,
@@ -573,7 +710,7 @@ def _write_summary(root_out: Path, summary: dict[str, Any]) -> None:
         "",
         f"- Dataset: `{summary.get('dataset')}`",
         f"- Device profile: `{summary.get('device_profile')}`",
-        f"- Timeout por modelo: `{summary.get('timeout_min')}` min",
+        f"- Timeout por modelo: `{summary.get('timeout_min')}`",
         "",
         "| Modelo | Status | Accuracy | AUC | EER | Latência ms | Tempo s |",
         "|---|---|---:|---:|---:|---:|---:|",
@@ -632,7 +769,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--dataset",
-        default="data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz",
+        default="data/datasets/benchmark_dataset.npz",
         help="Dataset .npz usado por todos os modelos.",
     )
     parser.add_argument(
@@ -665,6 +802,14 @@ def main() -> int:
         action=argparse.BooleanOptionalAction,
         default=True,
         help="exige teste predefinido/congelado e controles acadêmicos padronizados",
+    )
+    parser.add_argument(
+        "--source-shortcut-limit",
+        type=float,
+        default=None,
+        help="sobrepoe o limite do oraculo fonte-rotulo (default: 0.55; "
+             "use para datasets com confundimento fonte-classe documentado, "
+             "ex.: 0.80 para um acervo cujo oraculo de fonte e 75%%)",
     )
     parser.add_argument(
         "--min-samples",
@@ -702,6 +847,31 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--band-correction-hz",
+        type=float,
+        default=None,
+        metavar="HZ",
+        help=(
+            "Passa-baixas (Hz) aplicado as DUAS classes antes de qualquer "
+            "frontend, removendo a assinatura de reamostragem que distingue "
+            "bonafide (16 kHz nativo) de spoof (24 kHz reamostrado). Use 7500 "
+            "nos runs corrigidos. Omitir preserva o comportamento dos "
+            "artefatos anteriores -- e mantem o confundimento."
+        ),
+    )
+    parser.add_argument(
+        "--checkpoint-monitor",
+        default=None,
+        choices=["val_loss", "val_eer"],
+        help=(
+            "Metrica de selecao do checkpoint. `val_loss` e o padrao e o que "
+            "produziu os artefatos publicados; `val_eer` alinha a selecao a "
+            "metrica de avaliacao e recupera 5,29 p.p. no RawGAT-ST. So use "
+            "`val_eer` se TODOS os modelos da bateria receberem -- aplicar a "
+            "um subconjunto quebra a comparabilidade da tabela."
+        ),
+    )
+    parser.add_argument(
         "--codec-eval",
         nargs="+",
         default=None,
@@ -724,13 +894,26 @@ def main() -> int:
         default=16,
         help="batch para extracao de embeddings HuBERT/WavLM no runner SSL",
     )
-    parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10])
+    parser.add_argument(
+        "--snr",
+        nargs="+",
+        type=int,
+        default=[30, 20, 10, 5],
+        help=(
+            "SNRs (dB) do teste de robustez. 30/20/10 casam com o augmentation "
+            "de treino e medem condicao CASADA; 5 dB fica FORA do treino e e o "
+            "unico nivel que mede generalizacao a ruido"
+        ),
+    )
     parser.add_argument(
         "--train-aug-snr",
         nargs="+",
         type=int,
         default=[30, 20, 10],
-        help="SNRs balanceados na cópia ruidosa de treino",
+        help=(
+            "SNRs balanceados na copia ruidosa de treino. NAO inclua 5 dB: e o "
+            "nivel reservado para medir generalizacao na avaliacao"
+        ),
     )
     parser.add_argument("--train-noise-copies", type=int, default=1)
     parser.add_argument("--waveform-noise-batch-size", type=int, default=64)
@@ -739,7 +922,31 @@ def main() -> int:
         action=argparse.BooleanOptionalAction,
         default=True,
     )
-    parser.add_argument("--timeout-min", type=float, default=60.0)
+    parser.add_argument(
+        "--timeout-min",
+        type=float,
+        default=None,
+        help=(
+            "timeout POR MODELO em minutos. Omitido (recomendado), e derivado "
+            "do custo estimado de cada arquitetura "
+            "(benchmarks.planning.EXPECTED_TRAINING_HOURS x fator de seguranca "
+            "3x), escalado por epocas e tamanho do treino. O default anterior "
+            "era 60 min FIXO — menor que o treino de QUALQUER modelo neural no "
+            "orcamento de 100 epocas, e portanto matava o run"
+        ),
+    )
+    parser.add_argument(
+        "--order",
+        choices=["cost", "manifest"],
+        default="cost",
+        help=(
+            "ordem de EXECUÇÃO: `cost` roda do mais barato para o mais caro "
+            "(estimativa de benchmarks.planning.EXPECTED_TRAINING_HOURS), para "
+            "que uma falha comum a todos apareça em minutos e não depois de "
+            "dias de GPU; `manifest` preserva a ordem do manifesto oficial. A "
+            "ordem das TABELAS não muda (consolidate_results reordena)"
+        ),
+    )
     parser.add_argument(
         "--resume", action="store_true", help="pula modelos já concluídos"
     )
@@ -797,6 +1004,9 @@ def main() -> int:
     except (OSError, ValueError, zipfile.BadZipFile) as exc:
         parser.error(f"NPZ inválido: {exc}")
     sample_count = int(npz_inspection["sample_count"])
+    # Consumido por `_fit_samples`, que alimenta o escalonamento do timeout pelo
+    # tamanho real do treino em vez do default de 40.980 amostras.
+    args.npz_split_counts = npz_inspection.get("split_counts") or {}
     test_lock = None
     lock_path = (
         Path(args.test_lock).resolve()
@@ -826,16 +1036,42 @@ def main() -> int:
         parser.error("--epochs deve ser positivo")
     if args.train_noise_copies < 0:
         parser.error("--train-noise-copies deve ser >= 0")
+    # O orçamento de épocas é independente da integridade dos dados: exigir
+    # exatamente 100 no mesmo `if` que valida test-lock/source-shortcut/split
+    # predefinido amarrava as duas coisas ao mesmo interruptor, forçando
+    # `--no-academic-protocol` (que troca split_policy para
+    # preserve_predefined_else_stratified_70_15_15 — arrisca re-split
+    # diferente da partição locked) só para reduzir épocas. O que importa
+    # para comparação justa entre arquiteturas é o MESMO orçamento para
+    # todas (fixed_epoch_budget, já garantido em benchmark_plan), não que
+    # esse orçamento seja especificamente 100. As demais garantias
+    # (fail-on-source-shortcut, test-lock, predefined_frozen_npz)
+    # permanecem obrigatórias sob academic_protocol, sem exceção.
     if args.academic_protocol:
-        if args.epochs != 100:
-            parser.error("protocolo acadêmico exige exatamente 100 épocas")
         if not npz_inspection["predefined_splits"]:
             parser.error(
                 "protocolo acadêmico exige X_train/y_train/X_val/y_val/X_test/y_test "
                 "predefinidos; um split gerado por semente alteraria o teste"
             )
-        if args.snr != [30, 20, 10] or args.train_aug_snr != [30, 20, 10]:
-            parser.error("protocolo acadêmico exige SNRs 30, 20 e 10 dB nessa ordem")
+        # Avaliação em 30/20/10 (condição CASADA com o augmentation) MAIS 5 dB,
+        # que fica deliberadamente fora do treino e é o único nível que mede
+        # generalização a ruído — ver docs/evaluation/benchmark.md e o invariante
+        # em tests/unit/test_benchmark_protocol_fixes.py::
+        # test_default_protocol_includes_an_unseen_snr_level.
+        # Até aqui o guard exigia `snr == [30, 20, 10]`, contradizendo o default
+        # de BenchmarkConfig.snr_levels_db e a própria doc: quem passasse o 5 dB
+        # documentado tomava parser.error, e quem não passasse rodava um
+        # benchmark sem a coluna de generalização.
+        if args.snr != [30, 20, 10, 5]:
+            parser.error(
+                "protocolo acadêmico exige SNRs de avaliação 30, 20, 10 e 5 dB "
+                "nessa ordem"
+            )
+        if args.train_aug_snr != [30, 20, 10]:
+            parser.error(
+                "protocolo acadêmico exige augmentation de treino em 30, 20 e "
+                "10 dB nessa ordem; 5 dB precisa continuar NÃO VISTO no treino"
+            )
         if not npz_inspection["has_cluster_ids"]:
             parser.error("protocolo acadêmico exige cluster_ids para IC por cluster")
         if not npz_inspection["has_source_ids"]:
@@ -856,6 +1092,9 @@ def main() -> int:
                 "cross-generator altera o teste; execute como experimento "
                 "separado, sem --academic-protocol"
             )
+
+    selected_models = _order_models(args, selected_models)
+    _emit(f"[ORDER:{args.order}] {' -> '.join(selected_models)}")
 
     seeds = list(args.seeds) if args.seeds else [int(args.seed)]
     if len(seeds) != len(set(seeds)):
@@ -912,7 +1151,29 @@ def _run_suite(
             "minimum_dataset_samples": int(args.min_samples),
             "fixed_epoch_budget": True,
             "early_stopping": False,
-            "checkpoint_selection": "minimum_clean_validation_loss",
+            # DERIVADO de --checkpoint-monitor, não fixo. O literal
+            # "minimum_clean_validation_loss" que ficava aqui sobreviveu à
+            # adoção do val_eer (2026-08-19): a bateria corrigida rodou com
+            # `--checkpoint-monitor val_eer` e mesmo assim gravou um
+            # benchmark_protocol.json declarando seleção por perda — e é este
+            # arquivo que o rodapé da tabela do TCC cita.
+            #
+            # As 2 entradas SSL não passam pelo ModelCheckpoint do Keras: o
+            # runner PyTorch dedicado tem laço próprio e restaura a melhor
+            # época por val_loss. Declarar um critério só para as 11 entradas
+            # apagaria essa diferença, então o manifesto declara os dois.
+            "checkpoint_selection": _CHECKPOINT_SELECTION_LABEL.get(
+                str(getattr(args, "checkpoint_monitor", "") or "val_loss"),
+                f"minimum_clean_validation_{args.checkpoint_monitor}",
+            ),
+            "checkpoint_selection_por_runner": {
+                "keras": _CHECKPOINT_SELECTION_LABEL.get(
+                    str(getattr(args, "checkpoint_monitor", "") or "val_loss"),
+                    f"minimum_clean_validation_{args.checkpoint_monitor}",
+                ),
+                "classical": "nao_se_aplica_sem_selecao_de_epoca",
+                "ssl_original_pytorch": "minimum_clean_validation_loss",
+            },
             "decision_threshold": 0.5,
             "seed": int(args.seed),
             "split_policy": (
@@ -964,7 +1225,7 @@ def _run_suite(
         "academic_protocol": bool(args.academic_protocol),
         "experiment_scope": args.scope,
         "device_profile": args.device_profile,
-        "timeout_min": args.timeout_min,
+        "timeout_min": args.timeout_min or "derivado por arquitetura",
         "epochs": args.epochs,
         "batch_size": args.batch_size,
         "ssl_train_batch_size": args.ssl_train_batch_size,
@@ -990,6 +1251,11 @@ def _run_suite(
             _emit(
                 f"[RERUN] {model}: artefato antigo não corresponde ao protocolo atual"
             )
+            arquivado = _archive_superseded(
+                model_dir, root_out, str(fingerprint.get("sha256") or "")
+            )
+            if arquivado is not None:
+                _emit(f"[RERUN] {model}: artefato anterior movido para {arquivado}")
         _write_json(model_dir / "run_fingerprint.json", fingerprint)
         _write_json(
             model_dir / "effective_training_config.json",

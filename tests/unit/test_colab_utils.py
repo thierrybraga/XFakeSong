@@ -1,3 +1,10 @@
+"""Helper de execução no Google Colab.
+
+SUJEITO: `app/utils/colab.py`, isolado de propósito — é o único módulo do
+projeto que existe só para um ambiente externo, e não pode arrastar
+dependência para o caminho normal.
+"""
+
 import unittest
 from unittest.mock import patch, MagicMock
 import sys

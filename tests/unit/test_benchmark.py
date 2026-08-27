@@ -126,7 +126,7 @@ def test_prepare_for_architecture_adapts_input_contracts():
     spec = d.prepare_for_architecture("MultiscaleCNN")
     svm = d.prepare_for_architecture("SVM")
 
-    assert raw.X.shape == (20, 16000, 1)
+    assert raw.X.shape == (20, 48000, 1)
     assert spec.X.shape == (20, 100, 80)
     assert svm.X.shape == d.X.shape
     assert raw.metadata["input_type"] == "raw_audio"
@@ -158,15 +158,15 @@ def test_prepare_raw_audio_center_crops_long_clips_for_rawnet2():
     )
     raw = d.prepare_for_architecture("RawNet2")
 
-    assert raw.X.shape == (8, 16000, 1)
-    assert raw.metadata["prepared_shape"] == [16000, 1]
+    assert raw.X.shape == (8, 48000, 1)
+    assert raw.metadata["prepared_shape"] == [48000, 1]
 
 
 def test_prepare_raw_audio_center_crops_long_clips_for_aasist():
     """AASIST usa janela 64.600 (~4,04s, protocolo ASVspoof2021 baseline
     compartilhado com RawGAT-ST) + crop_strategy multicrop na avaliação —
     diferente do RawNet2 (1s, sem TTA). Ver registry.py::input_requirements
-    e tests/unit/test_p2_rawgatst_sslaasist.py."""
+    e tests/unit/test_rawgat_aasist_ssl_backends.py."""
     from benchmarks.data import BenchmarkData
 
     rng = np.random.default_rng(34)
@@ -176,9 +176,9 @@ def test_prepare_raw_audio_center_crops_long_clips_for_aasist():
     )
     raw = d.prepare_for_architecture("AASIST")
 
-    assert raw.X.shape == (8, 64600, 1)
+    assert raw.X.shape == (8, 48000, 1)
     assert raw.metadata["input_type"] == "raw_audio"
-    assert raw.metadata["prepared_shape"] == [64600, 1]
+    assert raw.metadata["prepared_shape"] == [48000, 1]
 
 
 def test_prepare_raw_audio_center_crops_long_clips_for_ensemble():
@@ -191,9 +191,9 @@ def test_prepare_raw_audio_center_crops_long_clips_for_ensemble():
     )
     raw = d.prepare_for_architecture("Ensemble")
 
-    assert raw.X.shape == (8, 16000, 1)
+    assert raw.X.shape == (8, 48000, 1)
     assert raw.metadata["input_type"] == "raw_audio"
-    assert raw.metadata["prepared_shape"] == [16000, 1]
+    assert raw.metadata["prepared_shape"] == [48000, 1]
 
 
 def test_prepare_raw_audio_center_crops_long_clips_for_wavlm():
@@ -206,9 +206,9 @@ def test_prepare_raw_audio_center_crops_long_clips_for_wavlm():
     )
     raw = d.prepare_for_architecture("WavLM")
 
-    assert raw.X.shape == (8, 16000, 1)
+    assert raw.X.shape == (8, 48000, 1)
     assert raw.metadata["input_type"] == "raw_audio"
-    assert raw.metadata["prepared_shape"] == [16000, 1]
+    assert raw.metadata["prepared_shape"] == [48000, 1]
 
 
 def test_prepare_raw_audio_for_classical_uses_compact_features():
@@ -341,15 +341,24 @@ def test_report_write_all_creates_artifacts():
         resultados = (out / "tables" / "tab_resultados.tex").read_text(
             encoding="utf-8"
         )
-        assert "\\begin{tabular}{lccccccc}" in resultados
-        assert "\\multicolumn{7}{c}" in resultados
+        # 9 colunas desde 2026-07-27: Acur.@EER (oráculo) entrou ao lado da
+        # acurácia no limiar fixo, para separar calibração de separabilidade.
+        assert "\\begin{tabular}{lcccccccc}" in resultados
+        assert "\\multicolumn{8}{c}" in resultados
+        assert "Acur.@EER" in resultados
+        assert "limiar fixo de decisão 0,5" in resultados
         # figuras desenhadas a partir de scores/história
         assert (out / "figures" / "roc.png").exists()
         assert (out / "figures" / "convergencia.png").exists()
         assert (out / "figures" / "confusion_matrices.png").exists()
         assert (out / "figures" / "score_distributions.png").exists()
         pred_csv = (out / "predictions_clean.csv").read_text("utf-8")
-        assert "architecture,sample_index,y_true,p_fake,y_pred,correct" in pred_csv
+        # `ranking_score` acompanha o arquivo por arquitetura: nos clássicos é
+        # dele que saem AUC/EER, e o `p_fake` calibrado não os reproduz.
+        assert (
+            "architecture,sample_index,y_true,p_fake,ranking_score,y_pred,correct"
+            in pred_csv
+        )
         arch_dir = out / "architectures" / "multiscalecnn"
         assert (arch_dir / "metrics.json").exists()
         assert (arch_dir / "summary.md").exists()
@@ -365,7 +374,7 @@ def test_report_write_all_creates_artifacts():
         assert "(architectures/multiscalecnn/confusion_matrix.png)" in report
 
 
-def test_robustez_table_uses_dynamic_colspan_without_converged_models():
+def test_robustez_table_usa_colspan_quando_nenhuma_arquitetura_conclui():
     from benchmarks.report import write_all
 
     fake = {
@@ -393,10 +402,16 @@ def test_robustez_table_uses_dynamic_colspan_without_converged_models():
             }
         },
     }
+    # A marcação `\dagger` do modelo não convergido é verificada em
+    # `test_benchmark_protocol_fixes.py::
+    # test_robustness_table_keeps_non_converged_models_marked`, que também
+    # cobre a legenda. Aqui fica só o que é exclusivo deste caso: o colspan
+    # dinâmico quando NENHUMA arquitetura conclui (2026-08-17, deduplicação).
+    empty = {**fake, "architectures": {"SVM": {"status": "error", "error": "x"}}}
     with tempfile.TemporaryDirectory() as td:
-        write_all(fake, td)
+        write_all(empty, td)
         tex = (Path(td) / "tables" / "tab_robustez.tex").read_text("utf-8")
-        assert "\\multicolumn{5}{c}{(nenhum modelo convergente)}" in tex
+        assert "\\multicolumn{5}{c}{(nenhuma arquitetura concluiu)}" in tex
 
 
 def test_report_creates_convergence_placeholder_for_classical_models():
@@ -574,6 +589,7 @@ def test_full_tcc_preset_includes_all_architectures():
         DOCKER_TRAINING_ARCHITECTURES,
         NEURAL_TCC_ARCHITECTURES,
         SSL_DOCKER_ARCHITECTURES,
+        SSL_FINETUNED_ARCHITECTURES,
         BenchmarkConfig,
     )
 
@@ -587,7 +603,19 @@ def test_full_tcc_preset_includes_all_architectures():
     assert "HuBERT Original" not in cfg.architectures
     assert BenchmarkConfig.full_all_architectures().architectures == cfg.architectures
     assert CLASSICAL_TCC_ARCHITECTURES == ["RandomForest", "SVM"]
+    # 2026-08-11: as duas variantes com fine-tuning saíram do escopo oficial.
+    # Os sistemas de topo do ASVspoof 5 usam SSL CONGELADO, e o resultado de
+    # referência da receita ajustada usa wav2vec2 XLS-R, não WavLM/HuBERT base
+    # — combiná-los seria abordagem nova, não benchmark de configuração
+    # documentada. As entradas `Original` já são a documentada.
     assert SSL_DOCKER_ARCHITECTURES == ["WavLM Original", "HuBERT Original"]
+    # Vazia por consequência, não por literal: a derivação segue no lugar para
+    # que reintroduzir uma entrada `:ssl_finetuned` volte a acionar as flags.
+    assert SSL_FINETUNED_ARCHITECTURES == []
+    # Nenhuma variante SSL pode vazar para a lista que `benchmarks.runner`
+    # tenta treinar pelo caminho Keras — era o que `endswith(":ssl_original")`
+    # deixava acontecer com as variantes `:ssl_finetuned`.
+    assert set(ALL_TCC_ARCHITECTURES) & set(SSL_DOCKER_ARCHITECTURES) == set()
     assert DOCKER_TRAINING_ARCHITECTURES == [
         *ALL_TCC_ARCHITECTURES,
         *SSL_DOCKER_ARCHITECTURES,
@@ -661,10 +689,17 @@ def test_neural_benchmark_plan_uses_curated_hyperparameters():
         assert ast["early_stopping_patience"] == 20
         assert ast["epochs"] == 7
         assert ast["recommended_epochs"] == 100
-        assert conformer["learning_rate"] == 1e-4
+        # AJUSTE 2026-08-06: o Conformer colapsou para `loss = ln 2` a partir da
+        # época ~14 em duas sessões independentes. LR de pico 1e-4 -> 5e-5,
+        # warmup 1500 -> 3000 passos e `decay_steps` explícito em 76.100 — que é
+        # o número REAL de passos do orçamento (ceil(24.324/32) x 100 épocas).
+        # Com o default de 50.000 o cosseno zerava na época ~66. Ver
+        # docs/evaluation/retraining-adjustments.md, seção 2026-08-06.
+        assert conformer["learning_rate"] == 5e-5
         assert conformer["optimizer"] == "AdamW"
         assert conformer["weight_decay"] == 1e-4
-        assert conformer["warmup_steps"] == 1500
+        assert conformer["warmup_steps"] == 3000
+        assert conformer["decay_steps"] == 76100
         assert conformer["clipnorm"] == 1.0
         assert conformer["batch_size"] <= 16
 
@@ -714,7 +749,7 @@ def test_all_architectures_benchmark_smoke_contract(monkeypatch):
     import benchmarks.runner as runner
     from benchmarks import BenchmarkConfig, run_benchmark
 
-    def fake_run_neural(_arch, _cfg, splits, _tmp, _models_dir):
+    def fake_run_neural(_arch, _cfg, splits, _tmp, _models_dir, **_kwargs):
         # Protocolo 2026-07-12: _prepare_protocol_splits retorna 8 itens
         # (6 arrays + clean_train_count + protocol) — mesmo fatiamento do
         # runner real (_run_neural usa splits[:6]).
@@ -732,8 +767,9 @@ def test_all_architectures_benchmark_smoke_contract(monkeypatch):
             "model_artifact": str(_models_dir / f"bench_{_arch}.keras"),
         }
 
-    def fake_run_classical(arch, cfg, splits, tmp, models_dir):
-        return fake_run_neural(arch, cfg, splits, tmp, models_dir)
+    def fake_run_classical(arch, cfg, splits, tmp, models_dir, **kwargs):
+        # **kwargs acompanha `training_seed` (repetições com sementes distintas)
+        return fake_run_neural(arch, cfg, splits, tmp, models_dir, **kwargs)
 
     monkeypatch.setattr(runner, "_run_neural", fake_run_neural)
     monkeypatch.setattr(runner, "_run_classical", fake_run_classical)
@@ -821,9 +857,16 @@ def test_conformer_benchmark_smoke_generates_model_results_and_figures(monkeypat
         assert conformer["epochs"] == 1
         assert conformer["model_parameters"]["dropout_rate"] == 0.3
 
+        # AJUSTE 2026-08-09: `model_artifact` aponta para a cópia PRESERVADA no
+        # run. `models_dir` é global e chaveado só pela arquitetura — qualquer
+        # execução posterior sobrescreve o arquivo de lá (foi como o
+        # bench_svm.pkl do clean_benchmark_15k virou um artefato de smoke).
         model_artifact = Path(conformer["model_artifact"])
         assert model_artifact.exists()
-        assert model_artifact.parent == models_dir
+        assert model_artifact.parent == output_dir / "architectures" / "conformer" / "models"
+        shared = Path(conformer["model_artifact_shared_copy"])
+        assert shared.exists() and shared.parent == models_dir
+        assert conformer["model_artifact_fingerprint"]["integrity"] == "recorded_at_run"
         assert (output_dir / "results.json").exists()
 
         saved = json.loads((output_dir / "results.json").read_text("utf-8"))
@@ -886,9 +929,13 @@ def test_run_benchmark_quick_svm_integration(monkeypatch):
         assert "clean" in svm and "auc_roc" in svm["clean"]
         assert "20" in svm["robustness"]
         assert svm["efficiency"]["latency_ms"] is not None
+        # O caminho clássico não deixava NENHUMA cópia no run — o `.pkl` só
+        # existia no `models_dir` global. Agora acompanha os neurais.
         model_artifact = Path(svm["model_artifact"])
         assert model_artifact.exists()
-        assert model_artifact.parent == models_dir
+        assert model_artifact.parent == Path(td) / "architectures" / "svm" / "models"
+        shared = Path(svm["model_artifact_shared_copy"])
+        assert shared.exists() and shared.parent == models_dir
         # artefatos
         saved = json.loads((Path(td) / "results.json").read_text("utf-8"))
         assert saved["dataset"]["n_test"] > 0
@@ -928,15 +975,58 @@ def test_svm_optimized_benchmark_reports_real_fit_strategy(monkeypatch):
         assert svm["type"] == "classical"
         assert svm["epochs"] is None
         assert svm["fit_strategy"]["kind"] == "grid_search_cv_then_refit"
-        assert svm["fit_strategy"]["cv"] == 3
-        assert svm["fit_strategy"]["n_candidates"] == 12
-        assert svm["fit_strategy"]["n_fits"] == 36
+        # 5 dobras (era 3) e 24 candidatos (era 12) desde 2026-08-09: o grid
+        # passou a vir de `svm.py::SVM_PARAM_GRID` — antes o runner usava uma
+        # cópia própria, com o eixo `gamma` duplicado (scale ≈ auto depois do
+        # StandardScaler).
+        assert svm["fit_strategy"]["cv"] == 5
+        # 15 candidatos: 3 C x 4 gamma no RBF + 3 C no linear. Como dicionário
+        # único seriam 24, com 9 lineares redundantes (gamma não afeta linear).
+        assert svm["fit_strategy"]["n_candidates"] == 15
+        assert svm["fit_strategy"]["n_fits"] == 75
         assert svm["fit_strategy"]["final_refit"] is True
-        assert svm["fit_strategy"]["total_fit_calls_estimate"] == 37
+        assert svm["fit_strategy"]["total_fit_calls_estimate"] == 76
 
         report = (Path(td) / "tcc_report.md").read_text("utf-8")
-        assert "Treino executado: `CV 36+fit`" in report
+        assert "Treino executado: `CV 75+fit`" in report
         assert "Épocas executadas: `100`" not in report
+
+
+def test_classical_grid_comes_from_the_architecture_modules():
+    """O grid do runner É o da arquitetura — não uma quarta fonte própria.
+
+    Até 2026-08-09 `_classical_search_space` carregava uma cópia divergente e
+    os grids regularizados de `svm.py`/`random_forest.py` não tinham NENHUM
+    chamador: o benchmark rodava `max_depth=None` e `min_samples_leaf=1` para o
+    RF, exatamente o overfitting que aqueles grids existiam para corrigir.
+    """
+    from app.domain.models.architectures.random_forest import (
+        RANDOM_FOREST_PARAM_GRID,
+    )
+    from app.domain.models.architectures.svm import SVM_PARAM_GRID
+    from benchmarks.runner import _classical_search_space
+
+    svm_grid, _, svm_step = _classical_search_space("SVM", 42)
+    rf_grid, _, rf_step = _classical_search_space("RandomForest", 42)
+    assert (svm_step, rf_step) == ("svm", "rf")
+    assert svm_grid == SVM_PARAM_GRID
+    assert rf_grid == RANDOM_FOREST_PARAM_GRID
+
+    # Regressões concretas que o grid antigo do runner tinha:
+    assert None not in rf_grid["rf__max_depth"], "profundidade ilimitada de volta"
+    assert 1 not in rf_grid["rf__min_samples_leaf"], "folha de 1 amostra de volta"
+    assert "rf__min_samples_split" in rf_grid, "min_samples_split não explorado"
+    # O grid do SVM é uma LISTA de blocos: `gamma` só cruza com o kernel RBF.
+    from sklearn.model_selection import ParameterGrid
+
+    candidatos = list(ParameterGrid(svm_grid))
+    assert len(candidatos) == 15
+    gammas = {c["svm__gamma"] for c in candidatos if "svm__gamma" in c}
+    # 'auto' == 'scale' depois do StandardScaler (ambos ≈1/n_features): manter
+    # os dois desperdiçava metade do eixo.
+    assert "auto" not in gammas
+    assert any(isinstance(g, float) for g in gammas)
+    assert "poly" not in {c["svm__kernel"] for c in candidatos}
 
 
 def test_npz_predefined_splits_are_preserved_without_duplicate_aggregate(tmp_path):
@@ -1009,3 +1099,75 @@ def test_plan_preserves_model_hparams_but_forces_common_training_controls():
     assert effective["decision_threshold"] == 0.5
     assert effective["learning_rate"] == 7e-5
     assert effective["dropout_rate"] == 0.37
+
+
+def test_multiscalecnn_treina_em_float32_na_gpu():
+    """MultiscaleCNN nao pode receber mixed_float16 no perfil GPU.
+
+    Nao e preferencia de precisao: com `mixed_float16` o processo morre de
+    SIGSEGV no BACKWARD do Res2Net. Reproduzido em 2026-08-02 num repro minimo
+    (log-mel 100x80, batch 32, RTX 3060) — o primeiro passo de treino completa
+    e o segundo mata o processo. Foi o `returncode=-11` aos 336 s no benchmark
+    de 2026-08-01, que deixou a arquitetura sem nenhum artefato.
+
+    Isolado: float32 roda limpo, forward puro em fp16 roda limpo,
+    `TF_CUDNN_USE_AUTOTUNE=0` nao muda nada.
+    """
+    # `_fit_to_device` recebe o dispositivo como argumento, entao o caminho de
+    # GPU e testavel numa maquina sem GPU — o que importa aqui e a decisao do
+    # plano, nao o hardware de quem roda a suite.
+    from benchmarks.planning import _base_recommended_hparams, _fit_to_device
+
+    gpu = {"resolved_profile": "gpu"}
+    for arch in ("MultiscaleCNN", "RawNet2"):
+        tuned = _fit_to_device(_base_recommended_hparams(arch), arch, gpu)
+        assert tuned["use_mixed_precision"] is False, (
+            f"{arch} voltou a pedir mixed precision — o treino morre de "
+            f"SIGSEGV no backward"
+        )
+
+
+def test_aasist_treina_em_float32_na_gpu():
+    """AASIST nao pode receber mixed_float16 no perfil GPU.
+
+    Falha diferente da do MultiscaleCNN: nao e SIGSEGV, e divergencia para
+    NaN. Em 2026-08-04 o AASIST morreu no batch 502 da epoca 1, TRES execucoes
+    seguidas com o mesmo seed (`TerminateOnNaN`), e o `ModelCheckpoint` chegou
+    a promover pesos com 384 parametros nao-finitos.
+
+    O carve-out anterior forcava fp16 aqui com a justificativa de que "Sinc e
+    logits permanecem float32 e o encoder 2D/GAT usa loss scaling automatico".
+    Isso cobre so metade: o loss scaling age no BACKWARD (detecta inf/NaN no
+    gradiente e pula o passo) e nao protege contra overflow no FORWARD, que e
+    o risco do softmax de atencao do GAT em float16.
+
+    A/B com mesma LR (3e-4), mesmo lote (24), mesmo seed e mesmos dados: em
+    float32 a epoca 1 fecha com loss=0.669 e val_accuracy=0.709. E sem custo
+    de tempo — 11,1 min contra ~12 min em fp16, entao o argumento de
+    velocidade nao se aplica a esta arquitetura.
+    """
+    from benchmarks.planning import _base_recommended_hparams, _fit_to_device
+
+    gpu = {"resolved_profile": "gpu"}
+    tuned = _fit_to_device(_base_recommended_hparams("AASIST"), "AASIST", gpu)
+    assert tuned["use_mixed_precision"] is False, (
+        "AASIST voltou a pedir mixed precision — o treino diverge para NaN "
+        "no batch 502 da primeira epoca"
+    )
+
+
+def test_arquiteturas_sem_restricao_seguem_com_mixed_precision():
+    """A blocklist e cirurgica: quem nao esta nela continua usando fp16.
+
+    Sem esta guarda, alguem "consertaria" o SIGSEGV desligando mixed precision
+    para todo mundo e o benchmark inteiro ficaria ~2x mais lento sem motivo.
+
+    AASIST saiu desta lista em 2026-08-04 — entrou na blocklist com repro
+    deterministico, ver `test_aasist_treina_em_float32_na_gpu`.
+    """
+    from benchmarks.planning import _base_recommended_hparams, _fit_to_device
+
+    gpu = {"resolved_profile": "gpu"}
+    for arch in ("Conformer", "Hybrid CNN-Transformer"):
+        tuned = _fit_to_device(_base_recommended_hparams(arch), arch, gpu)
+        assert tuned["use_mixed_precision"] is True, arch

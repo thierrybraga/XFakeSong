@@ -99,12 +99,37 @@ _style_ax = style_ax
 # Gestão de memória (FE.2: leak fix)
 # =====================================================================
 
-def close_fig(fig: Optional[Figure]) -> None:
-    """Fecha a figura libera memória. Idempotente.
+def new_figure(nrows: int = 1, ncols: int = 1, *, figsize: tuple = (10, 4)):
+    """Cria ``(fig, ax)`` FORA do registro global do pyplot.
 
-    Gradio mantém a figura no transfer até serializar — pode-se fechar
-    com segurança APÓS a função retornar. Mas em handlers que retornam
-    a Figure, o ideal é o caller fechar OU usar `make_figure`.
+    A assinatura espelha a de `plt.subplots(nrows, ncols, figsize=...)` de
+    propósito: é substituta direta nas chamadas existentes, inclusive as que
+    passam linhas/colunas posicionalmente.
+
+    Esta é a forma correta de gerar gráficos num servidor Gradio, e substitui
+    `plt.subplots` em todo o pacote.
+
+    `plt.subplots` registra a figura no gerenciador global do pyplot, que
+    mantém a referência viva até alguém chamar `plt.close`. Num handler que
+    devolve a figura para `gr.Plot`, ninguém chama — e o processo, que fica
+    dias no ar, acumula uma figura por interação. Havia 22 chamadas assim, e
+    `features.py`/`dataset_management.py` não fechavam nenhuma.
+
+    `Figure()` direto não entra em registro nenhum: quando o Gradio termina de
+    serializar e o handler sai de escopo, o coletor de lixo leva a figura. Não
+    há o que fechar, e portanto não há como esquecer de fechar.
+    """
+    fig = Figure(figsize=figsize)
+    axes = fig.subplots(nrows, ncols)
+    return fig, axes
+
+
+def close_fig(fig: Optional[Figure]) -> None:
+    """Fecha a figura e libera memória. Idempotente.
+
+    Só é necessária para figuras vindas de `plt.subplots`. Com `new_figure`
+    não há registro global e a chamada é inócua — mantida por compatibilidade
+    com chamadores existentes.
     """
     if fig is None:
         return
@@ -121,25 +146,21 @@ def make_figure(
     xlabel: str = "",
     ylabel: str = "",
 ) -> Iterator[tuple]:
-    """Context manager que cria (fig, ax) com estilo dark e fecha automaticamente.
+    """Context manager que cria ``(fig, ax)`` com o tema escuro aplicado.
 
     Uso:
         with make_figure(figsize=(10, 4), title="Forma de Onda") as (fig, ax):
             ax.plot(x, y, color=PLOT_ACCENT)
-            return fig    # CLOSE acontece automaticamente no exit
+            return fig
 
-    NOTA: se você retornar `fig` para Gradio dentro do `with`, o close vai
-    rodar APÓS o retorno do context manager — Gradio já serializou. Safe.
+    A figura vem de `new_figure` — fora do registro do pyplot —, então
+    devolvê-la ao Gradio não vaza e não exige `close_fig` depois. A versão
+    anterior usava `plt.subplots` e tinha um `finally` VAZIO, apesar de o
+    exemplo do docstring prometer fechamento automático.
     """
-    fig, ax = plt.subplots(figsize=figsize)
-    try:
-        style_ax(ax, fig, title=title, xlabel=xlabel, ylabel=ylabel)
-        yield fig, ax
-    finally:
-        # NÃO fecha aqui — caller pode estar retornando a figura.
-        # Quem usa `make_figure` deve chamar close_fig(fig) após gr.Plot()
-        # consumir, ou usar gerenciamento de pool de figures.
-        pass
+    fig, ax = new_figure(figsize=figsize)
+    style_ax(ax, fig, title=title, xlabel=xlabel, ylabel=ylabel)
+    yield fig, ax
 
 
 def safe_tight_layout(fig: Figure) -> None:

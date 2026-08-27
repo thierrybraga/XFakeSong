@@ -118,11 +118,15 @@ def main():
 
             from app.interfaces.web.main_fastapi import app
 
+            environment = os.getenv("DEEPFAKE_ENV", "development").lower()
+            default_host = "0.0.0.0" if environment == "production" else "127.0.0.1"
+            server_host = os.getenv("GRADIO_SERVER_NAME", default_host)
+
             # Iniciar servidor Uvicorn
-            logger.info(f"Servidor iniciado em http://0.0.0.0:{args.port}")
+            logger.info(f"Servidor iniciado em http://{server_host}:{args.port}")
             uvicorn.run(
                 app,
-                host="0.0.0.0",
+                host=server_host,
                 port=args.port,
                 timeout_keep_alive=300,
                 ws_ping_interval=None,

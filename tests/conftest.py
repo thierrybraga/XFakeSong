@@ -32,6 +32,68 @@ def pytest_collection_modifyitems(config, items):
 # Configurar API Key para testes
 os.environ["XFAKESONG_API_KEY"] = "test-api-key"
 
+# SEGFAULT INTERMITENTE NA SUÍTE (2026-08-17): uma execução em três terminava
+# com `Segmentation fault (core dumped)` e ZERO testes falhando — o crash
+# acontecia na FINALIZAÇÃO do interpretador, com o traço apontando para o
+# thread alimentador das filas do `loky` (joblib) sobre módulos do scipy.
+#
+# Causa: SVM e RandomForest têm `n_jobs=-1` por default
+# (`architectures/{svm,random_forest}.py`), então todo teste que os ajusta sobe
+# workers `loky` em todos os cores — dentro de um processo que já carregou o
+# TensorFlow. Os dois runtimes disputando o desligamento é uma combinação
+# conhecida por travar ou crashar no `atexit`.
+#
+# Sequencial no teste NÃO muda o que está sob contrato: nenhum teste afirma
+# nada sobre paralelismo, e o `n_jobs=-1` do código de produção segue intacto —
+# esta variável só afeta o processo do pytest.
+os.environ.setdefault("JOBLIB_MULTIPROCESSING", "0")
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _isolate_models_dir(tmp_path_factory):
+    """Nenhum teste escreve em ``data/models`` — o diretório é de PRODUÇÃO.
+
+    `benchmarks/runner.py::_models_dir` cai em `cfg.models_dir`, cujo default é
+    `data/models`: um diretório GLOBAL chaveado só pela arquitetura. Onze
+    `BenchmarkConfig` da suíte não passam `models_dir`, então cada execução de
+    `run_benchmark` com SVM gravava por cima de `data/models/bench_svm.pkl`.
+
+    Foi exatamente assim que o artefato do `clean_benchmark_15k` (63 features,
+    3,6 MB) virou um `.pkl` de smoke com 47 KB e 8 amostras — o
+    `model_artifact_fingerprint` do run registrou `integrity: size_mismatch`, e
+    o modelo que produziu as métricas publicadas deixou de existir.
+
+    `_models_dir` consulta as variáveis nesta ORDEM, parando na primeira
+    definida: `MODELS_DIR`, `DEEPFAKE_MODELS_DIR`, `XFAKE_MODELS_DIR`, depois
+    `XFAKE_STORAGE_DIR`/`DEEPFAKE_STORAGE_DIR`, e só então `cfg.models_dir`.
+    Por isso a fixture escreve em TODAS elas.
+
+    Definir só `XFAKE_MODELS_DIR` não bastava — e essa foi a primeira versão
+    desta fixture, que não protegia nada: o `.env` do projeto declara
+    `DEEPFAKE_MODELS_DIR=./data/models` e o `python-dotenv` o carrega no import
+    de `app.*`, que este próprio conftest faz no topo. A variável do `.env`
+    vence por vir antes na cadeia, e o diretório de produção seguia exposto.
+
+    Os testes que exercitam a resolução de caminho apagam essas variáveis via
+    `monkeypatch.delenv` e passam `models_dir` explícito — continuam válidos,
+    porque o `monkeypatch` restaura no teardown.
+    """
+    sandbox = tmp_path_factory.mktemp("models_dir_sandbox")
+    variaveis = (
+        "MODELS_DIR",
+        "DEEPFAKE_MODELS_DIR",
+        "XFAKE_MODELS_DIR",
+    )
+    anteriores = {nome: os.environ.get(nome) for nome in variaveis}
+    for nome in variaveis:
+        os.environ[nome] = str(sandbox)
+    yield sandbox
+    for nome, valor in anteriores.items():
+        if valor is None:
+            os.environ.pop(nome, None)
+        else:
+            os.environ[nome] = valor
+
 
 @pytest.fixture(autouse=True)
 def _reset_tf_mixed_precision_policy():
@@ -82,10 +144,12 @@ def mock_detection_service():
 
 
 @pytest.fixture
-def mock_upload_service():
+def mock_upload_service(tmp_path):
     mock = MagicMock(spec=AudioUploadService)
-    mock.upload_directory = MagicMock()
-    mock.upload_directory.exists.return_value = True
+    mock.upload_directory = tmp_path / "uploads"
+    mock.upload_directory.mkdir()
+    mock.SUPPORTED_FORMATS = AudioUploadService.SUPPORTED_FORMATS
+    mock.MAX_FILE_SIZE = AudioUploadService.MAX_FILE_SIZE
 
     # Mock create_dataset return.
     # O serviço REAL retorna ProcessingResult[DatasetMetadata] (não o

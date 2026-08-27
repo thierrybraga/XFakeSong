@@ -28,7 +28,7 @@ fontes canônicas de cada assunto.
 | Publicar no Hugging Face Spaces | [Deploy Hugging Face](deployment/hugging-face-spaces.md) |
 | Publicar documentação e demo | [GitHub Pages e Hugging Face](deployment/github-pages-and-hugging-face.md) |
 | Preparar datasets | [Datasets Públicos](data/public-datasets.md) |
-| Aplicar o protocolo acadêmico de dataset | [Protocolo de Dataset v2](data/academic-dataset-protocol-v2.md) |
+| Aplicar o protocolo acadêmico de dataset | [Protocolo de Dataset](data/dataset-protocol.md) |
 | Executar no Google Colab | [Guia Google Colab](getting-started/google-colab.md) |
 | Auditar a aderência das arquiteturas | [Revisão das Arquiteturas](models/literature-review.md) |
 | Consultar a metodologia canônica da versão final | [Protocolo Final de ML](evaluation/final-ml-protocol.md) |
@@ -49,7 +49,7 @@ fontes canônicas de cada assunto.
 | --- | --- |
 | Artigo (fonte LaTeX) | `data/results/paper/main.tex` |
 | Tabelas geradas do benchmark | `data/results/paper/tabelas_benchmark.tex` |
-| Dataset do benchmark atual | `data/datasets/benchmark_audio_raw_balanced_15k_confirmatory_v2.npz` — 15.000 amostras, 2.769,01 MiB |
+| Dataset do benchmark atual | `data/datasets/benchmark_dataset.npz` — CETUC pareado com clones XTTS-v2, disjunção dupla locutor × frase, identidades publicadas (ver [Protocolo de Dataset](data/dataset-protocol.md)) |
 | Modelos default da aplicação | [`data/models`](https://github.com/thierrybraga/XFakeSong/tree/main/data/models) |
 | Modelos completos por arquitetura | [`data/models/benchmark_final`](https://github.com/thierrybraga/XFakeSong/tree/main/data/models/benchmark_final) |
 | Métricas, gráficos e relatórios | [`results`](https://github.com/thierrybraga/XFakeSong/tree/main/results) |
@@ -80,7 +80,10 @@ consolidadas a partir do trabalho:
 - **14 arquiteturas** de detecção: 12 neurais (AASIST, RawGAT-ST, RawNet2,
   WavLM, HuBERT, Conformer, SpectrogramTransformer, Hybrid CNN-Transformer,
   EfficientNet-LSTM, MultiscaleCNN, Ensemble, Sonic Sleuth) + 2 clássicas
-  (SVM, RandomForest).
+  (SVM, RandomForest). O benchmark as cobre em **11 entradas** no escopo
+  oficial e 5 no estendido — WavLM e HuBERT aparecem como `Original`
+  (backbone congelado, cabeça treinada: a configuração documentada) no oficial
+  e em porte Keras no estendido.
 - **Front-end real** por modelo: forma de onda bruta (raw-audio), log-mel ou
   **LFCC** (espectrograma), via `tf.signal` in-graph — paridade treino↔inferência
   garantida pelo `input_contract`.

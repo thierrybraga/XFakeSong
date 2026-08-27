@@ -92,7 +92,11 @@ def _validate_result(path: Path) -> list[str]:
                 f"{path}: {name} scores={len(scores)} e y_test={len(y_test)}"
             )
         robustness = result.get("robustness") or {}
-        if set(robustness) != {"30", "20", "10"}:
+        required_snrs = {"30", "20", "10"}
+        available_snrs = set(robustness)
+        if not required_snrs.issubset(available_snrs) or not available_snrs.issubset(
+            required_snrs | {"5"}
+        ):
             errors.append(f"{path}: {name} SNRs={sorted(robustness)}")
         protocol = result.get("noise_protocol") or result.get("input_preparation") or {}
         if protocol.get("evaluation_domain") != "waveform":
@@ -206,10 +210,9 @@ def main() -> int:
     FINAL_DIR.mkdir(parents=True, exist_ok=True)
     shutil.copy2(main_tex, FINAL_DIR / "main.tex")
     shutil.copy2(table, FINAL_DIR / "tabelas_benchmark.tex")
-    shutil.copy2(
-        PAPER_DIR / "MELHORIAS_POS_RETREINO.md",
-        FINAL_DIR / "MELHORIAS_POS_RETREINO.md",
-    )
+    improvements = PAPER_DIR / "MELHORIAS_POS_RETREINO.md"
+    if improvements.exists():
+        shutil.copy2(improvements, FINAL_DIR / improvements.name)
     if (PAPER_DIR / "main.pdf").exists():
         shutil.copy2(PAPER_DIR / "main.pdf", FINAL_DIR / "main.pdf")
     shutil.copytree(PAPER_DIR / "figures", FINAL_DIR / "figures", dirs_exist_ok=True)

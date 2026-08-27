@@ -47,7 +47,7 @@ from scripts._bootstrap import setup_logging  # noqa: E402
 
 logger = logging.getLogger("contracts")
 
-BENCH_FINAL = ROOT / "app" / "models" / "benchmark_final"
+BENCH_FINAL = ROOT / "data" / "models" / "benchmark_final"
 
 # arch dir -> (feature_frontend, display architecture, model_type)
 ARCH_SPECS: dict[str, dict[str, str]] = {
@@ -67,11 +67,30 @@ ARCH_SPECS: dict[str, dict[str, str]] = {
     "ast": {"frontend": "benchmark_logmel_v1",
             "architecture": "SpectrogramTransformer",
             "model_type": "tensorflow"},
-    "svm": {"frontend": "benchmark_tabular_v1", "architecture": "SVM",
+    # v2 (183 colunas), nao v1 (63). Os artefatos promovidos declaram
+    # `benchmark_tabular_v2` (confira data/models/benchmark_final/svm/
+    # bench_svm_config.json). Com o v1 aqui, rodar este reparo gravava um
+    # contrato pedindo 63 descritores para um modelo de 183: a guarda de
+    # `feature_preparer` recusa o vetor e SVM/RandomForest param de inferir.
+    "svm": {"frontend": "benchmark_tabular_v2", "architecture": "SVM",
             "model_type": "sklearn"},
-    "random_forest": {"frontend": "benchmark_tabular_v1",
+    "random_forest": {"frontend": "benchmark_tabular_v2",
                       "architecture": "Random Forest",
                       "model_type": "sklearn"},
+    # Escopo estendido (2026-07-28). Faltavam aqui, então nunca recebiam
+    # `feature_frontend` e iam para produção com o front-end errado.
+    "sonic_sleuth": {"frontend": "benchmark_logmel_v1",
+                     "architecture": "Sonic Sleuth",
+                     "model_type": "tensorflow"},
+    "efficientnet_lstm": {"frontend": "benchmark_logmel_v1",
+                          "architecture": "EfficientNet-LSTM",
+                          "model_type": "tensorflow"},
+    "ensemble": {"frontend": "benchmark_raw_v1", "architecture": "Ensemble",
+                 "model_type": "tensorflow"},
+    "wavlm": {"frontend": "benchmark_raw_v1", "architecture": "WavLM",
+              "model_type": "tensorflow"},
+    "hubert": {"frontend": "benchmark_raw_v1", "architecture": "HuBERT",
+               "model_type": "tensorflow"},
     # SSL originais (PyTorch): o runner dedicado grava calibração própria
     # (limiar de EER sob ruído) nos artefatos .pt/metrics.json — não são
     # regenerados aqui para não sobrescrever a calibração sob ruído.
@@ -107,14 +126,20 @@ def load_predictions(arch_dir: Path) -> tuple[np.ndarray, np.ndarray] | None:
 
 
 def build_contract(arch_key: str, spec: dict, metrics: dict,
-                   eer: float | None, threshold: float | None) -> dict:
+                   eer: float | None, threshold: float | None,
+                   temperature: float = 1.0) -> dict:
     frontend = spec["frontend"]
     input_shape = metrics.get("input_shape")
     if not input_shape:
         input_shape = {
-            "benchmark_raw_v1": [16000, 1],
+            # 48000 = janela canonica de 3 s @ 16 kHz (o 16000 anterior era de
+            # uma convencao antiga e produzia contrato quebrado em silencio).
+            "benchmark_raw_v1": [48000, 1],
             "benchmark_logmel_v1": [100, 80],
             "benchmark_tabular_v1": [63],
+            # v2 = os 63 do v1 + 120 descritores LFCC (20 estaticos, delta e
+            # delta-delta, com media e desvio de cada bloco).
+            "benchmark_tabular_v2": [183],
         }[frontend]
     input_shape = [int(v) for v in input_shape]
 
@@ -123,10 +148,14 @@ def build_contract(arch_key: str, spec: dict, metrics: dict,
         "input_shape": input_shape,
         "sample_rate": 16000,
         "feature_frontend": frontend,
-        "source_samples": 80000,  # janela canônica de 5 s do benchmark
+        "source_samples": 48000,  # janela canônica de 3 s do benchmark
         "normalization": "per_sample_zscore",
         "label_classes": [0, 1],
-        "temperature": 1.0,
+        # A temperatura calibrada e parte da ESCALA em que o eer_threshold foi
+        # derivado: o `model_loader` le este campo e o `Predictor` a aplica.
+        # Fixa-la em 1,0 fazia a producao aplicar o limiar numa escala diferente
+        # da avaliada — o mesmo defeito ja corrigido no runner do benchmark.
+        "temperature": float(temperature),
         "scaler_applied": False,
     }
     if frontend == "benchmark_raw_v1":
@@ -179,7 +208,56 @@ def rebuild(arch_key: str, dry_run: bool = False) -> bool:
     if preds is not None:
         eer, threshold = compute_eer(*preds)
 
-    contract = build_contract(arch_key, spec, metrics, eer, threshold)
+    # Preserva o que o treino gravou e este reparo NAO sabe derivar.
+    #
+    # `build_contract` monta um dicionario LITERAL a partir do frontend e do
+    # metrics.json. Tudo que so o runner conhece — a politica de correcao de
+    # banda, a estrategia de crop resolvida na avaliacao, a janela de STFT do
+    # AST, a convencao de logits, o limiar de OOD — nao tem como ser
+    # reconstruido aqui. Ate 2026-08-20 so a `temperature` era resgatada, e
+    # rodar o reparo APAGAVA o resto em silencio: o AST voltava a inferir com a
+    # janela derivada em vez dos 25 ms do artigo, e as arquiteturas raw-audio
+    # perdiam o multicrop que o benchmark usou para medir.
+    previous_contract: dict = {}
+    sidecar_path = arch_dir / f"{model_path.stem}_config.json"
+    if sidecar_path.exists():
+        try:
+            previous = json.loads(sidecar_path.read_text(encoding="utf-8"))
+            previous_contract = dict(previous.get("input_contract") or {})
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            previous_contract = {}
+    try:
+        temperature = float(previous_contract.get("temperature", 1.0))
+    except (TypeError, ValueError):
+        temperature = 1.0
+
+    contract = build_contract(arch_key, spec, metrics, eer, threshold, temperature)
+
+    #: Campos que so o treino/benchmark produz. Se existirem no sidecar
+    #: anterior, sobrevivem ao reparo.
+    PRESERVADOS = (
+        "band_correction",
+        "crop_strategy",
+        "eval_num_crops",
+        "eval_score_aggregation",
+        "n_fft",
+        "hop_length",
+        "output_is_logits",
+        "ood_threshold",
+        "feature_frontend_reason",
+        "target_sequence_length",
+    )
+    resgatados = []
+    for chave in PRESERVADOS:
+        if chave in previous_contract and chave not in contract:
+            contract[chave] = previous_contract[chave]
+            resgatados.append(chave)
+    if resgatados:
+        logger.info(
+            "%s: campos preservados do sidecar anterior: %s",
+            arch_key,
+            ", ".join(resgatados),
+        )
     sidecar = {
         "architecture": spec["architecture"],
         "input_shape": contract["input_shape"],

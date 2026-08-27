@@ -1,10 +1,16 @@
-"""Contrato do vetor tabular (63 descritores) e utilidades scikit-learn.
+"""Contrato do vetor tabular (63 no v1, 183 no v2) e utilidades scikit-learn.
 
 Fonte única dos nomes das características consumidas por SVM e Random
 Forest, na ordem exata de construção em
-``benchmarks/data.py::_to_tabular_features`` (11 estatísticas temporais +
-26 MFCC + 26 RASTA-PLP). Consumido por
-``scripts/reporting/export_rf_feature_importance.py`` e pelo módulo SHAP.
+``benchmarks/data.py::_to_tabular_features``:
+
+- **v1** (63): 11 estatísticas temporais + 26 MFCC + 26 RASTA-PLP;
+- **v2** (183): o v1 inteiro, na mesma ordem, + 120 descritores LFCC
+  (20 coeficientes estáticos, Δ e ΔΔ, com média e desvio de cada bloco).
+
+Consumido por ``scripts/reporting/export_rf_feature_importance.py`` e pelo
+módulo SHAP — que resolvem a largura pelo próprio artefato, então os dois
+contratos convivem.
 """
 
 from __future__ import annotations
@@ -18,9 +24,13 @@ N_MFCC = 26
 N_RASTA = 26
 N_FEATURES = N_TEMPORAL + N_MFCC + N_RASTA
 
+N_LFCC = 20
+N_LFCC_FEATURES = 6 * N_LFCC
+N_FEATURES_V2 = N_FEATURES + N_LFCC_FEATURES
+
 
 def tabular_feature_names() -> list[str]:
-    """Nomes na ordem exata de ``benchmarks/data.py::_to_tabular_features``."""
+    """Nomes do vetor v1, na ordem de ``_to_tabular_features``."""
     temporal = [
         "média",
         "desvio-padrão",
@@ -45,13 +55,52 @@ def tabular_feature_names() -> list[str]:
     return names
 
 
+def tabular_feature_names_v2() -> list[str]:
+    """Nomes do vetor v2: os do v1 seguidos do bloco LFCC (Δ e ΔΔ inclusos)."""
+    lfcc: list[str] = []
+    for label in ("LFCC", "ΔLFCC", "ΔΔLFCC"):
+        lfcc += [f"{label}{i + 1} (média)" for i in range(N_LFCC)]
+        lfcc += [f"{label}{i + 1} (desvio)" for i in range(N_LFCC)]
+    names = tabular_feature_names() + lfcc
+    assert len(names) == N_FEATURES_V2
+    return names
+
+
+def feature_names_for_width(n_features: int) -> list[str]:
+    """Nomes correspondentes à largura de um artefato (63 ou 183).
+
+    Existe para que os consumidores de XAI não tenham de adivinhar a versão do
+    front-end: a largura do modelo carregado decide.
+    """
+    if int(n_features) == N_FEATURES_V2:
+        return tabular_feature_names_v2()
+    if int(n_features) == N_FEATURES:
+        return tabular_feature_names()
+    raise ValueError(
+        f"largura tabular desconhecida: {n_features} "
+        f"(esperado {N_FEATURES} no v1 ou {N_FEATURES_V2} no v2)"
+    )
+
+
 def feature_group(name: str) -> str:
-    """Família de um descritor: ``Temporal``, ``MFCC`` ou ``RASTA-PLP``."""
+    """Família: ``Temporal``, ``MFCC``, ``RASTA-PLP`` ou ``LFCC``."""
     if name.startswith("MFCC"):
         return "MFCC"
     if name.startswith("RASTA"):
         return "RASTA-PLP"
+    # Cobre LFCC, ΔLFCC e ΔΔLFCC — as três compartilham o mesmo front-end.
+    if "LFCC" in name:
+        return "LFCC"
     return "Temporal"
+
+
+def _unwrap_calibrated(estimator: Any) -> Any:
+    """Estimador interno de um ``CalibratedClassifierCV``, ou ele mesmo."""
+    calibrated = getattr(estimator, "calibrated_classifiers_", None)
+    if not calibrated:
+        return estimator
+    inner = getattr(calibrated[0], "estimator", None)
+    return inner if inner is not None else estimator
 
 
 def extract_sklearn_estimator(obj: Any) -> Optional[Any]:
@@ -63,6 +112,13 @@ def extract_sklearn_estimator(obj: Any) -> Optional[Any]:
     """
     if hasattr(obj, "best_estimator_"):
         return extract_sklearn_estimator(obj.best_estimator_)
+    # CalibratedClassifierCV(ensemble=False) tem UM classificador calibrado,
+    # cujo `.estimator` foi ajustado no conjunto inteiro. Sem desembrulhar, o
+    # TreeExplainer receberia o invólucro de calibração e falharia — foi o que
+    # ligar a calibração dos clássicos em 2026-08-09 introduziria.
+    unwrapped = _unwrap_calibrated(obj)
+    if unwrapped is not obj:
+        return extract_sklearn_estimator(unwrapped)
     if hasattr(obj, "named_steps"):
         for step in reversed(list(obj.named_steps.values())):
             found = extract_sklearn_estimator(step)
@@ -104,7 +160,12 @@ def split_sklearn_pipeline(
         steps = list(obj.steps)
         if not steps:
             raise ValueError("Pipeline vazio.")
-        estimator = steps[-1][1]
+        # Desembrulha a calibração: o TreeExplainer precisa da floresta, não do
+        # CalibratedClassifierCV que a envolve. Com `ensemble=False` o
+        # `.estimator` interno foi ajustado no conjunto inteiro, então explicar
+        # ele é explicar o modelo — o que a calibração acrescenta é uma
+        # transformação monotônica do score, que não muda a atribuição.
+        estimator = _unwrap_calibrated(steps[-1][1])
         if len(steps) == 1:
             return (lambda X: np.asarray(X)), estimator
 

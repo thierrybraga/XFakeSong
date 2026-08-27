@@ -1,3 +1,10 @@
+"""Integração do pipeline de detecção: FeaturePreparer + Predictor + serviço.
+
+SUJEITO: os módulos reais conversando entre si, sem mocks nas fronteiras
+internas — é o que pega incompatibilidade de contrato entre preparo de features
+e modelo carregado.
+"""
+
 import pytest
 import numpy as np
 import tensorflow as tf
