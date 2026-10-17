@@ -82,7 +82,7 @@ def test_academic_lock_validates_dataset_and_test_identity(tmp_path) -> None:
     lock.write_text(
         json.dumps(
             {
-                "protocol_version": "xfakesong-test-lock-v1",
+                "protocol_version": "speechchecker-test-lock-v1",
                 "dataset_size_bytes": dataset.stat().st_size,
                 "dataset_sha256": _sha256_file(dataset),
                 "test_archive_identity_sha256": inspection[

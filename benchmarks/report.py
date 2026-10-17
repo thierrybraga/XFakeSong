@@ -1253,7 +1253,7 @@ def _write_summary(results, path: Path) -> None:
     env = results["environment"]
     ds = results["dataset"]
     lines = [
-        "# Benchmark XFakeSong — resumo\n",
+        "# Benchmark SpeechChecker — resumo\n",
         f"- Ambiente: {env.get('platform')} · Python {env.get('python')} · "
         f"TF {env.get('tensorflow')} · GPU={env.get('gpu')}",
         f"- Dispositivo: {env.get('device')}",
@@ -1361,7 +1361,7 @@ def _write_tcc_report(results: Dict[str, Any], path: Path) -> None:
     cfg = results.get("config", {})
     snrs = cfg.get("snr_levels_db", [])
     lines = [
-        "# Relatório de Benchmark para TCC - XFakeSong",
+        "# Relatório de Benchmark para TCC - SpeechChecker",
         "",
         "## 1. Dataset",
         "",

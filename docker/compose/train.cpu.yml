@@ -1,4 +1,4 @@
-name: xfakesong-train-cpu
+name: speechchecker-train-cpu
 
 x-train-common: &train-common
   working_dir: /app
@@ -71,8 +71,8 @@ services:
       dockerfile: docker/environments/classical-ml/Dockerfile.cpu
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
-    image: xfakesong/classical-ml:cpu
-    container_name: xfakesong_classical_ml_cpu
+    image: speechchecker/classical-ml:cpu
+    container_name: speechchecker_classical_ml_cpu
     # --resume: sem ele o `restart: on-failure` do bloco comum refazia as
     # arquiteturas JA concluidas a cada retomada, tornando a politica de
     # restart pior que nenhuma. Mesmo motivo documentado em
@@ -86,8 +86,8 @@ services:
       dockerfile: docker/environments/tensorflow-keras/Dockerfile.cpu
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
-    image: xfakesong/tensorflow-keras:cpu
-    container_name: xfakesong_tensorflow_keras_cpu
+    image: speechchecker/tensorflow-keras:cpu
+    container_name: speechchecker_tensorflow_keras_cpu
     # --resume: sem ele o `restart: on-failure` do bloco comum refazia as
     # arquiteturas JA concluidas a cada retomada, tornando a politica de
     # restart pior que nenhuma. Mesmo motivo documentado em
@@ -101,8 +101,8 @@ services:
       dockerfile: docker/environments/pytorch-audio/Dockerfile.cpu
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
-    image: xfakesong/pytorch-audio:cpu
-    container_name: xfakesong_pytorch_audio_cpu
+    image: speechchecker/pytorch-audio:cpu
+    container_name: speechchecker_pytorch_audio_cpu
     # --resume: sem ele o `restart: on-failure` do bloco comum refazia as
     # arquiteturas JA concluidas a cada retomada, tornando a politica de
     # restart pior que nenhuma. Mesmo motivo documentado em
@@ -116,8 +116,8 @@ services:
       dockerfile: docker/environments/tensorflow-keras/Dockerfile.cpu
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
-    image: xfakesong/tensorflow-keras:cpu
-    container_name: xfakesong_spectral_convolutional_cpu
+    image: speechchecker/tensorflow-keras:cpu
+    container_name: speechchecker_spectral_convolutional_cpu
     # --resume: sem ele o `restart: on-failure` do bloco comum refazia as
     # arquiteturas JA concluidas a cada retomada, tornando a politica de
     # restart pior que nenhuma. Mesmo motivo documentado em
@@ -131,8 +131,8 @@ services:
       dockerfile: docker/environments/tensorflow-keras/Dockerfile.cpu
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
-    image: xfakesong/tensorflow-keras:cpu
-    container_name: xfakesong_extended_cpu
+    image: speechchecker/tensorflow-keras:cpu
+    container_name: speechchecker_extended_cpu
     # --resume: sem ele o `restart: on-failure` do bloco comum refazia as
     # arquiteturas JA concluidas a cada retomada, tornando a politica de
     # restart pior que nenhuma. Mesmo motivo documentado em
@@ -145,8 +145,8 @@ services:
       dockerfile: docker/environments/ssl-transformers/Dockerfile.cpu
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
-    image: xfakesong/ssl-transformers:cpu
-    container_name: xfakesong_ssl_transformers_cpu
+    image: speechchecker/ssl-transformers:cpu
+    container_name: speechchecker_ssl_transformers_cpu
     # --resume: sem ele o `restart: on-failure` do bloco comum refazia as
     # arquiteturas JA concluidas a cada retomada, tornando a politica de
     # restart pior que nenhuma. Mesmo motivo documentado em

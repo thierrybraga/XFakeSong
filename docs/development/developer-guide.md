@@ -1,6 +1,6 @@
 # Guia do Desenvolvedor
 
-Para quem mantém ou estende o **XFakeSong**. Veja também
+Para quem mantém ou estende o **SpeechChecker**. Veja também
 [`AGENTS.md`](https://github.com/thierrybraga/XFakeSong/blob/main/AGENTS.md) e
 [`CONTRIBUTING.md`](https://github.com/thierrybraga/XFakeSong/blob/main/CONTRIBUTING.md).
 
@@ -43,7 +43,7 @@ Variáveis de ambiente úteis (ver `settings.py` e `app/core/middleware.py`):
 | `DEEPFAKE_DEVICE` | dispositivo preferido (CPU/GPU) |
 | `XFAKE_LOG_EVERY_REQUEST` | loga toda request (default só erros/lentas) |
 | `XFAKE_MAX_UPLOAD_MB` | limite de upload (default 100) |
-| `XFAKESONG_API_KEY` | chave da API |
+| `SPEECHCHECKER_API_KEY` | chave da API |
 | `ALLOWED_ORIGINS` / `ALLOWED_HOSTS` | CORS e TrustedHost |
 
 ## Artefatos gerados

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Synchronize trained XFakeSong models from a Hugging Face model repository.
+"""Synchronize trained SpeechChecker models from a Hugging Face model repository.
 
 The script is intentionally conservative for Spaces:
 - no-op when MODEL_REPO_ID/XFAKE_MODEL_REPO_ID is not configured;

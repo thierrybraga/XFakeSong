@@ -1,4 +1,4 @@
-"""Upload trained XFakeSong artifacts to Hugging Face Hub.
+"""Upload trained SpeechChecker artifacts to Hugging Face Hub.
 
 The script is intentionally conservative: it uploads the consolidated model
 folder by default, supports a dry-run without credentials, and never prints the
@@ -42,12 +42,12 @@ DEFAULT_IGNORE_PATTERNS = [
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Upload trained XFakeSong models to Hugging Face Hub."
+        description="Upload trained SpeechChecker models to Hugging Face Hub."
     )
     parser.add_argument(
         "--repo-id",
         required=True,
-        help="Hugging Face repository id, for example: usuario/xfakesong-models",
+        help="Hugging Face repository id, for example: usuario/speechchecker-models",
     )
     parser.add_argument(
         "--repo-type",
@@ -112,7 +112,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--commit-message",
-        default="Upload XFakeSong trained models",
+        default="Upload SpeechChecker trained models",
         help="Commit message used by Hugging Face Hub.",
     )
     parser.add_argument(

@@ -1,4 +1,4 @@
-# XFakeSong - classical ML training environment
+# SpeechChecker - classical ML training environment
 # Python 3.11 recommended.
 
 scikit-learn==1.8.0

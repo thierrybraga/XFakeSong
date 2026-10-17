@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Helper de build/execucao dos perfis Docker do XFakeSong.
+"""Helper de build/execucao dos perfis Docker do SpeechChecker.
 
 Encapsula os composes segmentados de ``docker/compose/`` em um unico CLI,
 mapeando cada perfil (inference/train/benchmark x cpu/nvidia) para o par
@@ -58,7 +58,7 @@ def _compose_cmd(compose_file: str, action: str, service: str | None,
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Docker build/run helper for segmented XFakeSong profiles.",
+        description="Docker build/run helper for segmented SpeechChecker profiles.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("profile", choices=sorted(PROFILES))

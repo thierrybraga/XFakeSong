@@ -1,4 +1,4 @@
-# Notebooks XFakeSong
+# Notebooks SpeechChecker
 
 Estrutura reorganizada para estudo e reprodução dos experimentos do TCC.
 

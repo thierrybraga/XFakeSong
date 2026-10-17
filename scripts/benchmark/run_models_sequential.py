@@ -195,7 +195,7 @@ def _code_identity() -> dict[str, str]:
 
 def _run_fingerprint(args: argparse.Namespace, model: str) -> dict[str, Any]:
     payload = {
-        "schema": "xfakesong-run-fingerprint-v1",
+        "schema": "speechchecker-run-fingerprint-v1",
         "model": model,
         "scope": getattr(args, "scope", "official"),
         "dataset": str(Path(args.dataset).resolve()),
@@ -753,7 +753,7 @@ def _aggregate_multiseed(base_out: Path, seeds: list[int]) -> dict[str, Any]:
                 "max": float(np.max(arr)),
             }
     payload = {
-        "schema": "xfakesong-multiseed-summary-v1",
+        "schema": "speechchecker-multiseed-summary-v1",
         "seeds": seeds,
         "test_policy": "predefined_frozen_npz",
         "models": models,

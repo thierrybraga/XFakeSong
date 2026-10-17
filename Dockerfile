@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # =====================================================================
-# XFakeSong — Dockerfile de deploy no Hugging Face Spaces
+# SpeechChecker — Dockerfile de deploy no Hugging Face Spaces
 # =====================================================================
 # Existe SÓ neste caminho (raiz) porque HF Spaces (SDK Docker) exige um
 # arquivo chamado literalmente `Dockerfile` na raiz do repo — não é o
@@ -86,7 +86,7 @@ RUN pip install --upgrade pip setuptools wheel && \
 FROM python:${PYTHON_VERSION}-slim AS runtime
 
 # Metadata OCI — útil para registries (GHCR, Docker Hub, etc.)
-LABEL org.opencontainers.image.title="XFakeSong" \
+LABEL org.opencontainers.image.title="SpeechChecker" \
       org.opencontainers.image.description="Deepfake audio detection platform" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.source="https://github.com/thierrybraga/XFakeSong" \

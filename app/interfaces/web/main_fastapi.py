@@ -80,7 +80,7 @@ async def lifespan(app: FastAPI):
 
 # Inicializar App
 app = FastAPI(
-    title="XFakeSong API",
+    title="SpeechChecker API",
     description=(
         "API para detecção de deepfakes de áudio. "
         "Inclui detecção single + multi-model fusion + uncertainty (MC Dropout), "

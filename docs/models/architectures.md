@@ -1,6 +1,6 @@
 # Arquiteturas Neurais
 
-O XFakeSong implementa **14 arquiteturas** de detecção de deepfake, organizadas
+O SpeechChecker implementa **14 arquiteturas** de detecção de deepfake, organizadas
 por contrato de entrada: áudio bruto, espectrograma/LFCC e features tabulares.
 Todos os modelos expõem a interface unificada
 `create_model(input_shape, num_classes, **kwargs)` via

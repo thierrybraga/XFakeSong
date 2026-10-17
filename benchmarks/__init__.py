@@ -1,4 +1,4 @@
-"""Sistema de benchmark e teste do XFakeSong (para o TCC).
+"""Sistema de benchmark e teste do SpeechChecker (para o TCC).
 
 Gera, de forma reprodutível e usando o PIPELINE REAL (TrainingService →
 ModelLoader → Predictor → MetricsCalculator) e a API (FastAPI TestClient),

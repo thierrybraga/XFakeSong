@@ -1,5 +1,5 @@
 # =====================================================================
-# XFakeSong — Dependências COMPARTILHADAS (fonte única)
+# SpeechChecker — Dependências COMPARTILHADAS (fonte única)
 # =====================================================================
 # Tudo EXCETO o TensorFlow. Os arquivos de runtime referenciam este base e
 # adicionam apenas a variante de TF:

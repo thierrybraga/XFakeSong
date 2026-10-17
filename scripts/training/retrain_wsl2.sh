@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =====================================================================
-# XFakeSong — driver de RETREINO em WSL2 (GPU)
+# SpeechChecker — driver de RETREINO em WSL2 (GPU)
 # =====================================================================
 # Executa, sob GPU NVIDIA (WSL2), o retreino + benchmark com TODOS os
 # ajustes de robustez já aplicados no código:
@@ -62,7 +62,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 echo "==================================================================="
-echo " XFakeSong — retreino WSL2 (GPU)"
+echo " SpeechChecker — retreino WSL2 (GPU)"
 echo "==================================================================="
 
 # --- 1. Sanidade do ambiente -----------------------------------------

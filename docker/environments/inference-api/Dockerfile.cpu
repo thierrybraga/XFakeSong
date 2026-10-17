@@ -1,14 +1,14 @@
 # syntax=docker/dockerfile:1.7
 # =====================================================================
-# XFakeSong — ambiente de inferência: Gradio + FastAPI (CPU)
+# SpeechChecker — ambiente de inferência: Gradio + FastAPI (CPU)
 # Mapa completo dos 5 ambientes: docker/environments/README.md
 # =====================================================================
 ARG PYTHON_VERSION=3.11
 
 FROM python:${PYTHON_VERSION}-slim
 
-LABEL org.opencontainers.image.title="xfakesong-inference-api" \
-      org.opencontainers.image.description="XFakeSong — inferência Gradio/FastAPI (CPU)" \
+LABEL org.opencontainers.image.title="speechchecker-inference-api" \
+      org.opencontainers.image.description="SpeechChecker — inferência Gradio/FastAPI (CPU)" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.source="https://github.com/thierrybraga/XFakeSong"
 

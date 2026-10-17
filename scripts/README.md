@@ -1,4 +1,4 @@
-# scripts/ — CLIs operacionais do XFakeSong
+# scripts/ — CLIs operacionais do SpeechChecker
 
 CLIs organizados por domínio. Todos são executados **a partir da raiz do
 repositório**:

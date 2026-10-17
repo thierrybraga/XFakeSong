@@ -1,6 +1,6 @@
 # 23 — Frontend Gradio e Fluxos de Análise
 
-A interface Gradio é a superfície principal de demonstração do XFakeSong. Ela é
+A interface Gradio é a superfície principal de demonstração do SpeechChecker. Ela é
 montada no mesmo processo FastAPI que expõe a API REST, permitindo usar UI e
 HTTP lado a lado.
 

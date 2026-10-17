@@ -1,7 +1,7 @@
 # CI/CD e Segurança
 
 Este documento descreve o pipeline de integração contínua e o modelo de
-segurança do XFakeSong. As políticas de reporte e governança estão em
+segurança do SpeechChecker. As políticas de reporte e governança estão em
 [`SECURITY.md`](https://github.com/thierrybraga/XFakeSong/blob/main/SECURITY.md)
 e [`CONTRIBUTING.md`](https://github.com/thierrybraga/XFakeSong/blob/main/CONTRIBUTING.md).
 
@@ -54,7 +54,7 @@ python scripts/ops/docker_build.py train-nvidia config
 | --- | --- |
 | `ALLOWED_ORIGINS` | lista explícita (não `*`) |
 | `ALLOWED_HOSTS` | hosts públicos do serviço |
-| `XFAKESONG_API_KEY` | chave forte e secreta |
+| `SPEECHCHECKER_API_KEY` | chave forte e secreta |
 | `XFAKE_ENABLE_HSTS` | `1` quando atrás de HTTPS |
 | `XFAKE_CSP` | política CSP adequada ao deploy |
 | `XFAKE_MAX_UPLOAD_MB` | limite de upload (default 100) |

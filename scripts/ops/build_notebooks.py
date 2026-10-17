@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gerador dos notebooks de estudo/reprodução do XFakeSong (TCC).
+"""Gerador dos notebooks de estudo/reprodução do SpeechChecker (TCC).
 
 Reconstrói, de forma reprodutível, os notebooks ATIVOS em `docs/notebooks/`
 (`00_index`, `features/`, `models/`, `pipeline/`) com células limpas:
@@ -62,10 +62,10 @@ def _project_root() -> Path:
 
 # Colab/Kaggle limpos: clona o repositório se o projeto não estiver no disco.
 if not (_project_root() / "app").exists():
-    if not Path("XFakeSong").exists():
-        print("Clonando XFakeSong...")
+    if not Path("SpeechChecker").exists():
+        print("Clonando SpeechChecker...")
         subprocess.run(["git", "clone", "--depth", "1", _REPO_URL], check=True)
-    os.chdir("XFakeSong")
+    os.chdir("SpeechChecker")
 
 _DEPS = {"librosa": "librosa>=0.10", "soundfile": "soundfile>=0.12",
          "pywt": "PyWavelets>=1.4"}
@@ -279,7 +279,7 @@ def build_index():
     )
     write_nb("00_index.ipynb", [
         md("""
-        # XFakeSong — Índice dos Notebooks
+        # SpeechChecker — Índice dos Notebooks
 
         Estudos organizados em três blocos:
 
@@ -307,7 +307,7 @@ def build_index():
         ### Google Colab (recomendado para treinar com GPU)
 
         Abra qualquer notebook por:
-        `https://colab.research.google.com/github/thierrybraga/XFakeSong/blob/main/notebooks/<caminho>`
+        `https://colab.research.google.com/github/thierrybraga/SpeechChecker/blob/main/notebooks/<caminho>`
         (ex.: `notebooks/pipeline/02_training_model.ipynb`). Depois:
 
         1. **Ambiente de execução → Alterar o tipo de hardware → GPU** (T4 grátis).
@@ -1024,7 +1024,7 @@ def build_pipeline():
             from google.colab import drive
 
             drive.mount("/content/drive")
-            STORAGE_ROOT = Path("/content/drive/MyDrive/XFakeSong")
+            STORAGE_ROOT = Path("/content/drive/MyDrive/SpeechChecker")
         else:
             STORAGE_ROOT = Path(os.environ.get("XFAKE_STORAGE_DIR", ROOT / "storage"))
 

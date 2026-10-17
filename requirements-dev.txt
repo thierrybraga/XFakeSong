@@ -1,5 +1,5 @@
 # =====================================================================
-# XFakeSong — Development-only dependencies
+# SpeechChecker — Development-only dependencies
 # Instalar via:  pip install -r requirements-dev.txt
 # Inclui ferramentas de qualidade, testes e otimização (opcional)
 # =====================================================================

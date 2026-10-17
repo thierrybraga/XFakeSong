@@ -1,4 +1,4 @@
-name: xfakesong-train-nvidia
+name: speechchecker-train-nvidia
 
 x-train-common: &train-common
   working_dir: /app
@@ -92,12 +92,12 @@ services:
       dockerfile: docker/environments/classical-ml/Dockerfile.cpu
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
-    image: xfakesong/classical-ml:cpu
+    image: speechchecker/classical-ml:cpu
     # Sufixo _nvidia embora a imagem seja :cpu (classico nao usa GPU): o
     # nome COLIDIA com o mesmo servico em train.cpu.yml, e container_name e
     # global no daemon -- os dois perfis nao coexistiam, e subir um com o
     # outro parado ja falhava com 'container name already in use'.
-    container_name: xfakesong_classical_ml_nvidia
+    container_name: speechchecker_classical_ml_nvidia
     # --resume: sem ele o `restart: on-failure` do bloco comum refazia as
     # arquiteturas JA concluidas a cada retomada, tornando a politica de
     # restart pior que nenhuma. Mesmo motivo documentado em
@@ -111,8 +111,8 @@ services:
       dockerfile: docker/environments/tensorflow-keras/Dockerfile.nvidia
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
-    image: xfakesong/tensorflow-keras:nvidia
-    container_name: xfakesong_tensorflow_keras_nvidia
+    image: speechchecker/tensorflow-keras:nvidia
+    container_name: speechchecker_tensorflow_keras_nvidia
     # --resume: sem ele o `restart: on-failure` do bloco comum refazia as
     # arquiteturas JA concluidas a cada retomada, tornando a politica de
     # restart pior que nenhuma. Mesmo motivo documentado em
@@ -126,8 +126,8 @@ services:
       dockerfile: docker/environments/pytorch-audio/Dockerfile.nvidia
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
-    image: xfakesong/pytorch-audio:nvidia
-    container_name: xfakesong_pytorch_audio_nvidia
+    image: speechchecker/pytorch-audio:nvidia
+    container_name: speechchecker_pytorch_audio_nvidia
     # --resume: sem ele o `restart: on-failure` do bloco comum refazia as
     # arquiteturas JA concluidas a cada retomada, tornando a politica de
     # restart pior que nenhuma. Mesmo motivo documentado em
@@ -141,8 +141,8 @@ services:
       dockerfile: docker/environments/tensorflow-keras/Dockerfile.nvidia
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
-    image: xfakesong/tensorflow-keras:nvidia
-    container_name: xfakesong_spectral_convolutional_nvidia
+    image: speechchecker/tensorflow-keras:nvidia
+    container_name: speechchecker_spectral_convolutional_nvidia
     # --resume: sem ele o `restart: on-failure` do bloco comum refazia as
     # arquiteturas JA concluidas a cada retomada, tornando a politica de
     # restart pior que nenhuma. Mesmo motivo documentado em
@@ -156,8 +156,8 @@ services:
       dockerfile: docker/environments/tensorflow-keras/Dockerfile.nvidia
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
-    image: xfakesong/tensorflow-keras:nvidia
-    container_name: xfakesong_extended_nvidia
+    image: speechchecker/tensorflow-keras:nvidia
+    container_name: speechchecker_extended_nvidia
     # --resume: sem ele o `restart: on-failure` do bloco comum refazia as
     # arquiteturas JA concluidas a cada retomada, tornando a politica de
     # restart pior que nenhuma. Mesmo motivo documentado em
@@ -170,8 +170,8 @@ services:
       dockerfile: docker/environments/ssl-transformers/Dockerfile.nvidia
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
-    image: xfakesong/ssl-transformers:nvidia
-    container_name: xfakesong_ssl_transformers_nvidia
+    image: speechchecker/ssl-transformers:nvidia
+    container_name: speechchecker_ssl_transformers_nvidia
     # --resume: sem ele o `restart: on-failure` do bloco comum refazia as
     # arquiteturas JA concluidas a cada retomada, tornando a politica de
     # restart pior que nenhuma. Mesmo motivo documentado em

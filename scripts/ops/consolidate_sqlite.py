@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Consolida configuração, resultados e estado do XFakeSong em data/app.db."""
+"""Consolida configuração, resultados e estado do SpeechChecker em data/app.db."""
 
 from __future__ import annotations
 

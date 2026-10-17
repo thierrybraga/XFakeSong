@@ -1,6 +1,6 @@
 # Visão geral da documentação
 
-Esta pasta reúne a documentação técnica e operacional do XFakeSong e é a
+Esta pasta reúne a documentação técnica e operacional do SpeechChecker e é a
 **única fonte editorial** do website. O diretório `site/` é gerado por MkDocs,
 não deve ser editado nem versionado e pode ser removido a qualquer momento.
 

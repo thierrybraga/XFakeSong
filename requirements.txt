@@ -1,5 +1,5 @@
 # =====================================================================
-# XFakeSong — Runtime (TensorFlow padrão, CPU+GPU)
+# SpeechChecker — Runtime (TensorFlow padrão, CPU+GPU)
 # =====================================================================
 # Ambiente de referência: Python 3.11 (testado; compatível 3.11–3.12).
 # Teto 3.12: `torch==2.5.1` não tem wheels cp313 (suporte a 3.13 só no torch

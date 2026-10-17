@@ -175,7 +175,7 @@ class CommonErrors:
     def port_in_use(port: int = 7860) -> ActionableError:
         return ActionableError(
             title=f"Porta {port} já em uso",
-            message="Outra instância do XFakeSong (ou outro app) está usando essa porta.",
+            message="Outra instância do SpeechChecker (ou outro app) está usando essa porta.",
             hint=(
                 f"Encerre o processo (Windows: `netstat -ano | findstr :{port}` "
                 f"+ `taskkill /F /PID <pid>`) ou rode em outra porta."

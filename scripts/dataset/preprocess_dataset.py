@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Pré-processamento e validação de datasets de áudio para o XFakeSong.
+Pré-processamento e validação de datasets de áudio para o SpeechChecker.
 
 Funcionalidades:
   - Verifica integridade dos WAVs (corrompidos, silenciosos)
@@ -967,7 +967,7 @@ def create_splits(
 # Criar ZIP para upload via UI
 # ---------------------------------------------------------------------------
 def create_training_zip(output_name: str = "dataset_pt_deepfake.zip"):
-    """Cria ZIP com estrutura real/ + fake/ para upload na UI do XFakeSong."""
+    """Cria ZIP com estrutura real/ + fake/ para upload na UI do SpeechChecker."""
     logger.info("=" * 60)
     logger.info("CRIANDO ZIP PARA UPLOAD")
     logger.info("=" * 60)

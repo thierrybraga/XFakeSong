@@ -1,5 +1,5 @@
 ---
-title: XFakeSong
+title: SpeechChecker
 emoji: 🛡️
 colorFrom: blue
 colorTo: slate
@@ -9,9 +9,9 @@ pinned: false
 license: mit
 ---
 
-# XFakeSong
+# SpeechChecker
 
-XFakeSong é uma plataforma open source para detecção de deepfakes de áudio.
+SpeechChecker é uma plataforma open source para detecção de deepfakes de áudio.
 O projeto combina extração de features acústicas, modelos neurais modernos,
 baselines clássicos e um pipeline de benchmark reprodutível para gerar os
 resultados numéricos e gráficos do TCC.
@@ -63,7 +63,7 @@ teste é selado antes de qualquer treino por
 
 ```bash
 git clone https://github.com/thierrybraga/XFakeSong.git
-cd XFakeSong
+cd SpeechChecker
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
@@ -267,11 +267,11 @@ para um repositório do tipo **Model** no Hugging Face Hub:
 
 ```bash
 python scripts/ops/upload_models_to_hf.py \
-  --repo-id SEU_USUARIO/xfakesong-models \
+  --repo-id SEU_USUARIO/speechchecker-models \
   --dry-run
 
 python scripts/ops/upload_models_to_hf.py \
-  --repo-id SEU_USUARIO/xfakesong-models \
+  --repo-id SEU_USUARIO/speechchecker-models \
   --private
 ```
 
@@ -284,7 +284,7 @@ consolidados. O passo a passo completo está em
 Para baixar modelos pré-treinados do benchmark em outra máquina ou no Space:
 
 ```bash
-MODEL_REPO_ID=SEU_USUARIO/xfakesong-models \
+MODEL_REPO_ID=SEU_USUARIO/speechchecker-models \
 python scripts/ops/sync_hf_models.py --models-dir data/models --force
 ```
 
@@ -298,7 +298,7 @@ Space:
 
 | Tipo | Nome | Valor recomendado |
 | --- | --- | --- |
-| Variable | `MODEL_REPO_ID` | `SEU_USUARIO/xfakesong-models` |
+| Variable | `MODEL_REPO_ID` | `SEU_USUARIO/speechchecker-models` |
 | Variable | `ENABLE_TRAINING` | `false` |
 | Variable | `XFAKE_SYNC_MODELS_ON_BOOT` | `true` |
 | Variable | `DEEPFAKE_MODELS_DIR` | `data/models` |

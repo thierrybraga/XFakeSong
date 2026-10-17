@@ -1,4 +1,4 @@
-"""Catalogo central dos datasets de audio usados pelo XFakeSong.
+"""Catalogo central dos datasets de audio usados pelo SpeechChecker.
 
 Este modulo evita divergencia entre interface Gradio, scripts de download,
 documentacao e manifesto do benchmark. Os valores de duracao/falantes sao
@@ -436,7 +436,7 @@ DATASET_TIERS: Dict[str, DatasetTier] = {
     "medium": DatasetTier(
         name="medium",
         per_class=7_500,
-        purpose="Benchmark canonico 15k do XFakeSong.",
+        purpose="Benchmark canonico 15k do SpeechChecker.",
         description=(
             "Dataset canonico de benchmark com 15k total (7.500 por classe). "
             "Quando Common Voice/FLEURS estiverem indisponiveis, completa a "

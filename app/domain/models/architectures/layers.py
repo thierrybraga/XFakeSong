@@ -2417,7 +2417,7 @@ class OCSoftmaxLayer(layers.Layer):
 def oc_softmax_loss(m0: float = 0.9, m1: float = 0.2, alpha: float = 20.0):
     """Loss do OC-Softmax (Zhang et al., 2021). `m0 > m1`.
 
-    Convenção de rótulos do XFakeSong: **0 = real/bonafide** (target, deve ter
+    Convenção de rótulos do SpeechChecker: **0 = real/bonafide** (target, deve ter
     score ≥ m0) e **1 = fake/spoof** (deve ter score ≤ m1).
 
     `y_pred`: score escalar (batch, 1) da `OCSoftmaxLayer`.

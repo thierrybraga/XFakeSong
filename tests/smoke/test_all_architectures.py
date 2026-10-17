@@ -135,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
     targets = [m.strip() for m in args.models.split(",")] if args.models else list(CANDIDATE_INPUTS.keys())
 
     print("=" * 80)
-    print("Smoke test — 14 arquiteturas XFakeSong")
+    print("Smoke test — 14 arquiteturas SpeechChecker")
     print("=" * 80)
 
     results = []

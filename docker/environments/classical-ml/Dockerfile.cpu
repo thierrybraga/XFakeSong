@@ -1,14 +1,14 @@
 # syntax=docker/dockerfile:1.7
 # =====================================================================
-# XFakeSong — ambiente de treino: classical-ml (SVM, RandomForest)
+# SpeechChecker — ambiente de treino: classical-ml (SVM, RandomForest)
 # Mapa completo dos 5 ambientes: docker/environments/README.md
 # =====================================================================
 ARG PYTHON_VERSION=3.11
 
 FROM python:${PYTHON_VERSION}-slim
 
-LABEL org.opencontainers.image.title="xfakesong-classical-ml" \
-      org.opencontainers.image.description="XFakeSong — treino classical ML (SVM, RandomForest)" \
+LABEL org.opencontainers.image.title="speechchecker-classical-ml" \
+      org.opencontainers.image.description="SpeechChecker — treino classical ML (SVM, RandomForest)" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.source="https://github.com/thierrybraga/XFakeSong"
 

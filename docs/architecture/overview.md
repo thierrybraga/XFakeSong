@@ -1,6 +1,6 @@
 # Arquitetura do Sistema
 
-O sistema XFakeSong segue os princípios da **Clean Architecture** (Arquitetura Limpa), separando responsabilidades em camadas concêntricas para garantir independência de frameworks, testabilidade e manutenibilidade.
+O sistema SpeechChecker segue os princípios da **Clean Architecture** (Arquitetura Limpa), separando responsabilidades em camadas concêntricas para garantir independência de frameworks, testabilidade e manutenibilidade.
 
 ## Visão Geral das Camadas
 
@@ -128,7 +128,7 @@ Esse fluxo é implementado por serviços reais do projeto:
 ## Estrutura de Diretórios
 
 ```
-XFakeSong/
+SpeechChecker/
 ├── app/                            # Código-fonte principal
 │   ├── core/                       # Infraestrutura transversal (genérica, sem regras de negócio)
 │   │   ├── auth/                   # API-Key (X-API-Key) + credenciais básicas do Gradio — sem JWT

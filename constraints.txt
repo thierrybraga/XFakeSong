@@ -1,5 +1,5 @@
 # =====================================================================
-# XFakeSong — versões travadas das bibliotecas compartilhadas
+# SpeechChecker — versões travadas das bibliotecas compartilhadas
 # =====================================================================
 # Por que este arquivo existe (2026-07-28): todos os requirements do projeto
 # declaram FAIXAS (`>=2.16,<2.22`, `>=0.10`, ...). Duas builds em datas

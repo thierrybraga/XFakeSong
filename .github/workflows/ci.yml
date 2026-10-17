@@ -92,7 +92,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Build da imagem (TF_VARIANT=cpu)
-        run: docker build --build-arg TF_VARIANT=cpu -t xfakesong:ci .
+        run: docker build --build-arg TF_VARIANT=cpu -t speechchecker:ci .
       - name: Validar compose segmentado
         run: |
           python scripts/ops/docker_build.py inference-cpu config

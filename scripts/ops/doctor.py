@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""XFakeSong Doctor — diagnóstico rápido de problemas de instalação/inicialização.
+"""SpeechChecker Doctor — diagnóstico rápido de problemas de instalação/inicialização.
 
 Uso:
     python scripts/ops/doctor.py           # diagnóstico completo
@@ -427,7 +427,7 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=7860)
     args = parser.parse_args()
 
-    print(f"{Color.BOLD}XFakeSong Doctor{Color.END}\n")
+    print(f"{Color.BOLD}SpeechChecker Doctor{Color.END}\n")
 
     all_errors: List[str] = []
     has_critical = False

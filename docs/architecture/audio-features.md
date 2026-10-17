@@ -1,6 +1,6 @@
 # Extração de Features de Áudio
 
-O coração do XFakeSong é seu pipeline de extração de características. O sistema transforma sinais de áudio brutos em representações matemáticas que alimentam os modelos de detecção de deepfake.
+O coração do SpeechChecker é seu pipeline de extração de características. O sistema transforma sinais de áudio brutos em representações matemáticas que alimentam os modelos de detecção de deepfake.
 
 ## Registry de Extratores
 

@@ -1,6 +1,6 @@
 # Documentação de Inferência das Arquiteturas
 
-Este documento descreve o fluxo real de inferência do XFakeSong: descoberta do
+Este documento descreve o fluxo real de inferência do SpeechChecker: descoberta do
 artefato, resolução do contrato de entrada, preparação do tensor e
 pós-processamento da predição. A fonte de verdade para a entrada de um modelo
 treinado é sempre o `input_contract` salvo no `_config.json`; quando ele não

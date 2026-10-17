@@ -48,7 +48,7 @@ O deploy recomendado é **Docker Space**, não Gradio SDK simples.
 | Porta | `app_port: 7860` |
 | Startup | `python main.py --gradio` via `docker-entrypoint.sh` |
 | Modelos | Model Hub separado, sincronizado por `scripts/ops/sync_hf_models.py` |
-| Variável de modelos | `MODEL_REPO_ID=SEU_USUARIO/xfakesong-models` |
+| Variável de modelos | `MODEL_REPO_ID=SEU_USUARIO/speechchecker-models` |
 | Storage opcional | `/data` com `XFAKE_STORAGE_DIR=/data` |
 | Demo pública | `ENABLE_TRAINING=false` |
 
@@ -58,7 +58,7 @@ O `README.md` deve manter o front matter:
 
 ```yaml
 ---
-title: XFakeSong
+title: SpeechChecker
 emoji: 🛡️
 colorFrom: blue
 colorTo: slate
@@ -73,7 +73,7 @@ license: mit
 
 | Tipo | Nome | Valor |
 | --- | --- | --- |
-| Variable | `MODEL_REPO_ID` | `SEU_USUARIO/xfakesong-models` |
+| Variable | `MODEL_REPO_ID` | `SEU_USUARIO/speechchecker-models` |
 | Variable | `XFAKE_SYNC_MODELS_ON_BOOT` | `true` |
 | Variable | `DEEPFAKE_MODELS_DIR` | `data/models` |
 | Variable | `ENABLE_TRAINING` | `false` para demo |
@@ -102,11 +102,11 @@ Esse diretório deve conter os modelos pré-treinados com o dataset do benchmark
 
 ```bash
 python scripts/ops/upload_models_to_hf.py \
-  --repo-id SEU_USUARIO/xfakesong-models \
+  --repo-id SEU_USUARIO/speechchecker-models \
   --dry-run
 
 python scripts/ops/upload_models_to_hf.py \
-  --repo-id SEU_USUARIO/xfakesong-models \
+  --repo-id SEU_USUARIO/speechchecker-models \
   --private
 ```
 
@@ -121,7 +121,7 @@ models/registry.json
 Para baixar novamente os modelos do Hub:
 
 ```bash
-MODEL_REPO_ID=SEU_USUARIO/xfakesong-models \
+MODEL_REPO_ID=SEU_USUARIO/speechchecker-models \
 python scripts/ops/sync_hf_models.py \
   --models-dir data/models \
   --force

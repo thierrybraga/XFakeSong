@@ -1,4 +1,4 @@
-"""Tabs Gradio do XFakeSong.
+"""Tabs Gradio do SpeechChecker.
 
 Cada tab é uma função `create_<nome>_tab()` que constrói o layout e
 event handlers da aba. Os imports são "lazy" — se uma tab falhar ao

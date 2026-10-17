@@ -1,6 +1,6 @@
 # Datasets Públicos de Deepfake de Áudio
 
-Este guia reúne os principais datasets públicos para detecção de deepfakes de áudio e documenta **como baixá-los e balanceá-los** no XFakeSong, tanto pela interface Gradio quanto pela linha de comando.
+Este guia reúne os principais datasets públicos para detecção de deepfakes de áudio e documenta **como baixá-los e balanceá-los** no SpeechChecker, tanto pela interface Gradio quanto pela linha de comando.
 
 > ## O dataset canônico não vem deste fluxo
 >
@@ -19,7 +19,7 @@ Este guia reúne os principais datasets públicos para detecção de deepfakes d
 
 ## Tiers de Dataset (fluxo legado: test · small · medium · large)
 
-O XFakeSong organiza a montagem do dataset em **quatro tiers** com finalidade
+O SpeechChecker organiza a montagem do dataset em **quatro tiers** com finalidade
 bem definida. Eles são a **fonte única de verdade** de tamanho/finalidade
 (`app/domain/dataset_metadata/dataset_catalog.py` → `DATASET_TIERS`), compartilhada por
 `scripts/dataset/build_dataset.py`, pela interface Gradio, pelo benchmark e por esta
@@ -30,7 +30,7 @@ split de forma consistente em todo o sistema.
 |------|-----------:|------:|------------|--------|-------|:------:|
 | **test** | 100 | 200 | **Smoke** — validar que treino e modelo funcionam de ponta a ponta. Não mede desempenho. | BRSpeech-DF + Fake Voices | 70/15/15 estratificado | — |
 | **small** | 5.000 | 10.000 | **Treino rápido robusto**. Habilita clássicos, CNNs leves e principais redes neurais. | BRSpeech-DF + Fake Voices | 70/15/15 estratificado | parcial |
-| **medium** | 7.500 | 15.000 | **Benchmark canônico viável** do XFakeSong/TCC. Habilita as 14 arquiteturas sob protocolo balanceado. | BRSpeech-DF + MLS Portuguese + TTS-Portuguese + Fake Voices | 70/15/15 estratificado | parcial |
+| **medium** | 7.500 | 15.000 | **Benchmark canônico viável** do SpeechChecker/TCC. Habilita as 14 arquiteturas sob protocolo balanceado. | BRSpeech-DF + MLS Portuguese + TTS-Portuguese + Fake Voices | 70/15/15 estratificado | parcial |
 | **large** | 10.000 | 20.000 | **Completo** com falantes identificados e **usuários não vistos**. Habilita todas as 14 arquiteturas suportadas pelo catálogo/harness (incluindo Ensemble). | BRSpeech-DF + MLS Portuguese + TTS-Portuguese + Fake Voices | **disjunto por falante** + cross-generator | **sim** |
 
 ### Descrição detalhada
@@ -161,15 +161,15 @@ python scripts/dataset/build_paired_pt_corpus.py --build && python scripts/datas
 
 ---
 
-## Download via XFakeSong
+## Download via SpeechChecker
 
-O XFakeSong oferece **dois caminhos** para popular `data/datasets/real/` e `data/datasets/fake/`:
+O SpeechChecker oferece **dois caminhos** para popular `data/datasets/real/` e `data/datasets/fake/`:
 
 ### 1. Interface Gradio (recomendado) — Download balanceado
 
 Abra a interface (`python main.py --gradio`) → **Gerenciar → Datasets/Download**.
 
-O sistema é **balance-aware**: você define um *alvo por classe* e seleciona as fontes; o XFakeSong calcula automaticamente quantas amostras baixar de cada fonte para chegar a um dataset equilibrado.
+O sistema é **balance-aware**: você define um *alvo por classe* e seleciona as fontes; o SpeechChecker calcula automaticamente quantas amostras baixar de cada fonte para chegar a um dataset equilibrado.
 
 Fluxo:
 1. **Barra de balanço** no topo mostra o estado atual (real vs fake, ratio, badge ✅/⚠️/❌).
@@ -344,7 +344,7 @@ pip install -r requirements.txt
 ### "To support decoding audio data, please install 'torchcodec'"
 A partir de `datasets` >= 4.0, o decode automático de áudio em streaming passou a
 exigir o pacote `torchcodec` (que depende de torch + FFmpeg e é problemático no
-Windows). **Você NÃO precisa instalar torchcodec** — o XFakeSong desativa o decode
+Windows). **Você NÃO precisa instalar torchcodec** — o SpeechChecker desativa o decode
 automático (`Audio(decode=False)`) e decodifica os bytes com `soundfile`
 internamente. Se ainda vir esse erro, atualize o repositório para a versão com a
 correção (`cast_no_decode` / `extract_audio` em `scripts/dataset/download_datasets.py`).
@@ -420,7 +420,7 @@ fakes se precisar de volume rapidamente.
 
 ## Organização no Projeto
 
-O XFakeSong usa estrutura de dois estágios em `data/datasets/`:
+O SpeechChecker usa estrutura de dois estágios em `data/datasets/`:
 
 ```
 data/datasets/

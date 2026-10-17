@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Clean benchmark orchestrator for XFakeSong.
+"""Clean benchmark orchestrator for SpeechChecker.
 
 This script coordinates a fresh benchmark run without mixing artifacts from
 older experiments. It can clean model/result directories, build a named Docker
@@ -44,7 +44,7 @@ from app.core.config.paths import resolve_results_dir, resolve_results_output  #
 DEFAULT_DATASET = ROOT / "data" / "datasets" / "benchmark_dataset.npz"
 DEFAULT_MODELS_DIR = ROOT / "data" / "models"
 DEFAULT_RESULTS_DIR = resolve_results_dir(ROOT)
-DEFAULT_IMAGE = "xfakesong:benchmark-gpu"
+DEFAULT_IMAGE = "speechchecker:benchmark-gpu"
 
 ALL_MODELS = list(DOCKER_TRAINING_ARCHITECTURES)
 CLASSICAL_MODELS = list(CLASSICAL_TCC_ARCHITECTURES)
@@ -288,7 +288,7 @@ def _docker_run_command(args: argparse.Namespace, models: Iterable[str]) -> list
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run a clean XFakeSong benchmark/training pipeline.",
+        description="Run a clean SpeechChecker benchmark/training pipeline.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
@@ -319,7 +319,7 @@ def parse_args() -> argparse.Namespace:
     # 30/20/10, definido pelo run_models_sequential).
     parser.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10, 5])
     parser.add_argument("--image", default=DEFAULT_IMAGE)
-    parser.add_argument("--container-name", default="xfakesong_benchmark_run")
+    parser.add_argument("--container-name", default="speechchecker_benchmark_run")
     parser.add_argument("--clean", action="store_true")
     parser.add_argument("--build", action="store_true")
     parser.add_argument("--resume", action="store_true")

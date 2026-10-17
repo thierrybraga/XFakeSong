@@ -1,6 +1,6 @@
 # core
 
-Infraestrutura transversal do XFakeSong.
+Infraestrutura transversal do SpeechChecker.
 
 ## Responsabilidade
 

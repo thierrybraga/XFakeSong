@@ -411,7 +411,7 @@ pela Gradio/API como default. Antes de enviar, verifique o plano de upload:
 
 ```bash
 python scripts/ops/upload_models_to_hf.py \
-    --repo-id SEU_USUARIO/xfakesong-models \
+    --repo-id SEU_USUARIO/speechchecker-models \
     --dry-run
 ```
 
@@ -419,7 +419,7 @@ Depois envie para um repositório do tipo **Model**:
 
 ```bash
 python scripts/ops/upload_models_to_hf.py \
-    --repo-id SEU_USUARIO/xfakesong-models \
+    --repo-id SEU_USUARIO/speechchecker-models \
     --private
 ```
 

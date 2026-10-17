@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =====================================================================
-# XFakeSong — Docker container entrypoint (inference-api)
+# SpeechChecker — Docker container entrypoint (inference-api)
 # Executado como appuser (UID/GID 1000). PID 1 é tini.
 # =====================================================================
 set -euo pipefail
@@ -28,7 +28,7 @@ for dir in /app/data/logs /app/data/models /app/data; do
 done
 
 # Log de início (útil para debug)
-echo "[entrypoint] Starting XFakeSong as $(id -un) ($(id -u):$(id -g))"
+echo "[entrypoint] Starting SpeechChecker as $(id -un) ($(id -u):$(id -g))"
 echo "[entrypoint] DEEPFAKE_ENV=${DEEPFAKE_ENV:-development}"
 echo "[entrypoint] GRADIO_SERVER_PORT=${GRADIO_SERVER_PORT:-7860}"
 

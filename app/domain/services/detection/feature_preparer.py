@@ -625,12 +625,20 @@ class FeaturePreparer:
                             # erro (foi assim que um artefato de 64 features
                             # passou despercebido). Dimensão divergente agora é
                             # ERRO; o escape explícito via
-                            # XFAKESONG_ALLOW_FEATURE_ADJUST=1 preserva o
-                            # comportamento antigo para emergências.
+                            # SPEECHCHECKER_ALLOW_FEATURE_ADJUST=1 preserva o
+                            # comportamento antigo para emergências. A variável
+                            # XFAKESONG_ALLOW_FEATURE_ADJUST continua aceita por
+                            # compatibilidade.
                             import os
 
                             expected_dim = int(expected_dim)
-                            if os.environ.get("XFAKESONG_ALLOW_FEATURE_ADJUST") == "1":
+                            allow_feature_adjustment = (
+                                os.environ.get("SPEECHCHECKER_ALLOW_FEATURE_ADJUST")
+                                == "1"
+                                or os.environ.get("XFAKESONG_ALLOW_FEATURE_ADJUST")
+                                == "1"
+                            )
+                            if allow_feature_adjustment:
                                 if features.size > expected_dim:
                                     features = features[:expected_dim]
                                     feature_names = list(feature_names)[:expected_dim]

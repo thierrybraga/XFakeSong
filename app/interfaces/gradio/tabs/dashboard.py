@@ -1,4 +1,4 @@
-"""Dashboard — landing page do XFakeSong (UI Fase 1).
+"""Dashboard — landing page do SpeechChecker (UI Fase 1).
 
 Mostra KPIs do sistema, atividade recente, status e notificações.
 Todos os service calls têm fallback gracioso para não quebrar a UI quando

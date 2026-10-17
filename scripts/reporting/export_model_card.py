@@ -114,9 +114,9 @@ def main() -> int:
     results = _load_json(results_json)
 
     lines = [
-        "# XFakeSong benchmark models",
+        "# SpeechChecker benchmark models",
         "",
-        "Trained artifacts for the XFakeSong deepfake audio detection benchmark.",
+        "Trained artifacts for the SpeechChecker deepfake audio detection benchmark.",
         "",
         f"- Generated at: `{datetime.now(timezone.utc).isoformat()}`",
         f"- Models directory: `{_display_path(models_dir)}`",

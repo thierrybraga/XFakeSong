@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # =====================================================================
-# XFakeSong — ambiente de treino: tensorflow-keras (modelos neurais Keras, GPU)
+# SpeechChecker — ambiente de treino: tensorflow-keras (modelos neurais Keras, GPU)
 # Requer NVIDIA Container Toolkit no host (Linux nativo ou Windows+WSL2).
 # Mapa completo dos 5 ambientes: docker/environments/README.md
 # =====================================================================
@@ -10,8 +10,8 @@ FROM python:${PYTHON_VERSION}-slim
 
 ARG PYTHON_VERSION
 
-LABEL org.opencontainers.image.title="xfakesong-tensorflow-keras" \
-      org.opencontainers.image.description="XFakeSong — treino TensorFlow/Keras (NVIDIA GPU)" \
+LABEL org.opencontainers.image.title="speechchecker-tensorflow-keras" \
+      org.opencontainers.image.description="SpeechChecker — treino TensorFlow/Keras (NVIDIA GPU)" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.source="https://github.com/thierrybraga/XFakeSong"
 

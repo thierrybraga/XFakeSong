@@ -1,4 +1,4 @@
-"""Middleware centralizado e leve para a API XFakeSong.
+"""Middleware centralizado e leve para a API SpeechChecker.
 
 O middleware combina em uma passagem:
 - Request ID tracking via contextvars

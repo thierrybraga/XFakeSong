@@ -1,6 +1,6 @@
 # 07 — API REST e Comunicação
 
-Esta é a referência canônica para integrar o XFakeSong via HTTP e entender como
+Esta é a referência canônica para integrar o SpeechChecker via HTTP e entender como
 a interface Gradio conversa com o backend. A API é servida por FastAPI no mesmo
 processo que monta a UI.
 
@@ -72,8 +72,9 @@ somente-leitura) também exigem a chave, não só as de escrita:
 X-API-Key: <sua_chave>
 ```
 
-Configure com `XFAKESONG_API_KEY`. Em desenvolvimento, se a variável estiver
-ausente, o acesso pode ser permitido com aviso em log.
+Configure com `SPEECHCHECKER_API_KEY`. `XFAKESONG_API_KEY` continua aceita como
+alias legado. Em desenvolvimento, se a variável estiver ausente, o acesso pode
+ser permitido com aviso em log.
 
 ### Rate limiting
 

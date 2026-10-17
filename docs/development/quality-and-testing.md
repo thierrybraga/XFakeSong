@@ -1,6 +1,6 @@
 # 06 — Qualidade e Testes
 
-Esta é a fonte canônica da estratégia de testes do XFakeSong. A suíte é
+Esta é a fonte canônica da estratégia de testes do SpeechChecker. A suíte é
 organizada por categoria, usa marcadores automáticos por pasta e separa o que é
 rápido do que é pesado com TensorFlow real.
 

@@ -1,6 +1,6 @@
 # Guia de Integração com Google Colab
 
-Este guia detalha como executar a plataforma XFakeSong de detecção de deepfakes de áudio no Google Colab.
+Este guia detalha como executar a plataforma SpeechChecker de detecção de deepfakes de áudio no Google Colab.
 
 ## 1. Configuração Inicial
 
@@ -13,7 +13,7 @@ detecta o ambiente, clona o repositório e instala as dependências de áudio.
 Abra qualquer notebook pela URL `colab.research.google.com/github/…`:
 
 ```
-https://colab.research.google.com/github/thierrybraga/XFakeSong/blob/main/docs/notebooks/<caminho>
+https://colab.research.google.com/github/thierrybraga/SpeechChecker/blob/main/docs/notebooks/<caminho>
 ```
 
 Exemplos:
@@ -25,7 +25,7 @@ Exemplos:
 ### 1.2. Selecionar GPU e rodar o setup
 
 1. **Ambiente de execução → Alterar o tipo de hardware → GPU** (T4 grátis).
-2. Rode a **primeira célula**: ela clona o `XFakeSong`, entra na pasta e instala
+2. Rode a **primeira célula**: ela clona o `SpeechChecker`, entra na pasta e instala
    `librosa` / `soundfile` / `PyWavelets` (TensorFlow, NumPy e scikit-learn já
    vêm no Colab — por isso o setup é rápido, ~1–2 min na 1ª execução).
 

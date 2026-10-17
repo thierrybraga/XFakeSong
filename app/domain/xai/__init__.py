@@ -1,4 +1,4 @@
-"""XAI (Explainable AI) — wrappers de explicabilidade do XFakeSong.
+"""XAI (Explainable AI) — wrappers de explicabilidade do SpeechChecker.
 
 Camada de domínio (``app/domain``) — lógica de explicabilidade específica
 dos modelos do projeto (não é infraestrutura genérica, por isso vive fora

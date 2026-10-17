@@ -1,1 +1,1 @@
-"""Pacote de scripts operacionais do XFakeSong (CLIs por categoria)."""
+"""Pacote de scripts operacionais do SpeechChecker (CLIs por categoria)."""

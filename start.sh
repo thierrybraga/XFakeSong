@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# XFakeSong Launcher v4.0
+# SpeechChecker Launcher v4.0
 # Plataforma operacional unificada
 # Compatível: Ubuntu/Debian • Linux • macOS • WSL2
 # ==============================================================================
@@ -43,14 +43,14 @@ IFS=$'\n\t'
 # ==============================================================================
 
 readonly VERSION="4.0.0"
-readonly APP_NAME="XFakeSong"
+readonly APP_NAME="SpeechChecker"
 readonly DEFAULT_PORT="7860"
 readonly HEALTH_TIMEOUT="300"
 readonly HEALTH_INTERVAL="5"
 # CONTAINER_NAME e COMPOSE_FILE não são readonly: dependem do perfil
 # (cpu/nvidia) ativo, resolvido em tempo de execução por
 # detect_active_profile() — mesma lógica de start.bat (:DETECT_ACTIVE_PROFILE).
-CONTAINER_NAME="xfakesong_inference_cpu"
+CONTAINER_NAME="speechchecker_inference_cpu"
 COMPOSE_FILE="docker/compose/inference.cpu.yml"
 readonly PY_MIN_MINOR="11"   # Python 3.11 é a referência (compatível 3.11–3.12)
 readonly PY_MAX_MINOR="12"   # teto: torch==2.5.1 não tem wheels p/ Python 3.13
@@ -374,12 +374,12 @@ get_compose() {
 # invocações separadas do script (ex.: "start.sh gpu" numa janela e depois
 # "start.sh stop" noutra). Mesma lógica de start.bat (:DETECT_ACTIVE_PROFILE).
 detect_active_profile() {
-    if docker inspect xfakesong_inference_nvidia >/dev/null 2>&1; then
+    if docker inspect speechchecker_inference_nvidia >/dev/null 2>&1; then
         COMPOSE_FILE="docker/compose/inference.nvidia.yml"
-        CONTAINER_NAME="xfakesong_inference_nvidia"
+        CONTAINER_NAME="speechchecker_inference_nvidia"
     else
         COMPOSE_FILE="docker/compose/inference.cpu.yml"
-        CONTAINER_NAME="xfakesong_inference_cpu"
+        CONTAINER_NAME="speechchecker_inference_cpu"
     fi
 }
 
@@ -459,7 +459,7 @@ check_port() {
 # UBUNTU SETUP (privilegiado)
 # ==============================================================================
 
-# Pacotes de sistema necessários ao XFakeSong no Ubuntu/Debian:
+# Pacotes de sistema necessários ao SpeechChecker no Ubuntu/Debian:
 #  - build-essential/python3-dev: compilar wheels nativos (numba, soundfile…)
 #  - ffmpeg: decodificação de áudio (librosa/datasets)
 #  - libsndfile1: backend do soundfile
@@ -553,7 +553,7 @@ setup_nvidia_driver() {
 }
 
 setup_cuda() {
-    # No XFakeSong, o caminho SUPORTADO de GPU é o pacote pip
+    # No SpeechChecker, o caminho SUPORTADO de GPU é o pacote pip
     # tensorflow[and-cuda], que já EMBUTE as libs CUDA/cuDNN. No host só é
     # preciso o DRIVER NVIDIA — não é necessário instalar o CUDA Toolkit
     # de sistema. Esta função instala o TF-GPU no .venv.
@@ -588,7 +588,7 @@ gpu_config() {
     detect_os
     if check_nvidia_gpu; then
         if [[ -d ".venv" ]] && check_cuda_tensorflow; then
-            success "GPU pronta para uso pelo XFakeSong."
+            success "GPU pronta para uso pelo SpeechChecker."
         else
             warn "Driver OK, mas o TensorFlow ainda não usa a GPU."
             info "Próximo passo: ./start.sh cuda"
@@ -598,7 +598,7 @@ gpu_config() {
     elif check_nvidia_pci && is_debian_like; then
         info "Próximo passo: ./start.sh nvidia-driver  (depois reinicie)"
     else
-        info "Nenhuma GPU NVIDIA encontrada — o XFakeSong usará CPU (funcional, mais lento)."
+        info "Nenhuma GPU NVIDIA encontrada — o SpeechChecker usará CPU (funcional, mais lento)."
     fi
 }
 
@@ -606,7 +606,7 @@ gpu_config() {
 full_setup() {
     show_header
     detect_os
-    info "Setup completo do XFakeSong para ${OS_PRETTY}"
+    info "Setup completo do SpeechChecker para ${OS_PRETTY}"
     echo
 
     if ! is_debian_like; then
@@ -773,7 +773,7 @@ run_docker() {
 
     if [[ "$gpu_mode" == "1" ]]; then
         COMPOSE_FILE="docker/compose/inference.nvidia.yml"
-        CONTAINER_NAME="xfakesong_inference_nvidia"
+        CONTAINER_NAME="speechchecker_inference_nvidia"
         [[ -f "$COMPOSE_FILE" ]] || fatal "$COMPOSE_FILE não encontrado"
         info "Modo GPU ativo — validando pré-requisitos..."
 
@@ -799,7 +799,7 @@ run_docker() {
         fi
     else
         COMPOSE_FILE="docker/compose/inference.cpu.yml"
-        CONTAINER_NAME="xfakesong_inference_cpu"
+        CONTAINER_NAME="speechchecker_inference_cpu"
     fi
 
     info "Buildando e iniciando containers..."

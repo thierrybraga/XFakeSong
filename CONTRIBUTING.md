@@ -1,6 +1,6 @@
-# Contributing to XfakeSong
+# Contributing to SpeechChecker
 
-Obrigado por contribuir com o XfakeSong. Este arquivo mantem apenas o fluxo de
+Obrigado por contribuir com o SpeechChecker. Este arquivo mantem apenas o fluxo de
 contribuicao; as regras tecnicas detalhadas ficam nos documentos canonicos:
 
 - [Guia do Desenvolvedor](docs/development/developer-guide.md)
@@ -22,7 +22,7 @@ contribuicao; as regras tecnicas detalhadas ficam nos documentos canonicos:
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/XFakeSong.git
-cd XFakeSong
+cd SpeechChecker
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt

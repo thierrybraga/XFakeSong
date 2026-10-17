@@ -1,5 +1,5 @@
 # ============================================================
-# Docker build context exclusions (XFakeSong)
+# Docker build context exclusions (SpeechChecker)
 # Reduz tamanho do build context em ~95% e evita layer cache miss
 # ============================================================
 

@@ -56,7 +56,7 @@
 # container, como este script faz.
 set -euo pipefail
 
-IMAGEM="${XFAKE_IMAGE:-xfakesong/benchmark:nvidia}"
+IMAGEM="${XFAKE_IMAGE:-speechchecker/benchmark:nvidia}"
 DATASET="${XFAKE_DATASET:-data/datasets/benchmark_dataset_15k.npz}"
 SAIDA="${XFAKE_OUT:-data/results/rawgat_retune_decay}"
 NOME="${XFAKE_CONTAINER:-xfake_rawgat_retune}"

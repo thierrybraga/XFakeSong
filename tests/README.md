@@ -1,4 +1,4 @@
-# Testes XFakeSong
+# Testes SpeechChecker
 
 Esta pasta contém a suíte pytest do projeto. A documentação completa está em
 [`docs/development/quality-and-testing.md`](../docs/development/quality-and-testing.md).

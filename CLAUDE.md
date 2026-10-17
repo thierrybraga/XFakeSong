@@ -1,6 +1,6 @@
-# XFakeSong — Guia para Claude Code
+# SpeechChecker — Guia para Claude Code
 
-XFakeSong e uma plataforma open source de deteccao de audio deepfake (analise
+SpeechChecker e uma plataforma open source de deteccao de audio deepfake (analise
 espectral classica + Transformers SSL como WavLM/HuBERT), com foco em XAI e
 processamento 100% local. Interface Gradio, Python 3.11+, licenca MIT.
 
@@ -48,7 +48,7 @@ docker compose up --build -d            # alternativa direta
 ## Estrutura de pastas
 
 ```
-XFakeSong/
+SpeechChecker/
 ├── main.py                 # entrypoint (--gradio | --bootstrap-dirs | --deploy | --port)
 ├── app.py                  # entrada para Hugging Face Spaces (importa app/interfaces/gradio/app.py)
 ├── Makefile                # build/up/down, train-*, benchmark-*, test-*, lint/format

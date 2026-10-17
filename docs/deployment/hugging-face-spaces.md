@@ -1,6 +1,6 @@
 # Deploy no Hugging Face Spaces
 
-Este guia descreve o deploy do XFakeSong no Hugging Face usando **Docker
+Este guia descreve o deploy do SpeechChecker no Hugging Face usando **Docker
 Spaces**, **GPU Spaces** e **Storage Bucket**. O fluxo recomendado para
 apresentação é executar a aplicação em modo demonstração, usando os modelos já
 treinados e publicados em um repositório do tipo **Model** no Hugging Face Hub.
@@ -29,7 +29,7 @@ o sistema completo.
 - Space criado como **Docker**.
 - Modelos finais consolidados em `data/models/`.
 - Repositório do tipo **Model**, por exemplo
-  `SEU_USUARIO/xfakesong-models`.
+  `SEU_USUARIO/speechchecker-models`.
 - `HF_TOKEN` se o model repo for privado.
 - GPU paga apenas se quiser acelerar modelos pesados ou treinar no Space.
 - Storage Bucket apenas se quiser persistir uploads, datasets, logs, resultados
@@ -49,7 +49,7 @@ O `README.md` do Space deve conter o bloco YAML:
 
 ```yaml
 ---
-title: XFakeSong
+title: SpeechChecker
 emoji: 🛡️
 colorFrom: blue
 colorTo: slate
@@ -82,7 +82,7 @@ Faça uma simulação:
 
 ```bash
 python scripts/ops/upload_models_to_hf.py \
-  --repo-id SEU_USUARIO/xfakesong-models \
+  --repo-id SEU_USUARIO/speechchecker-models \
   --dry-run
 ```
 
@@ -90,7 +90,7 @@ Envie os modelos:
 
 ```bash
 python scripts/ops/upload_models_to_hf.py \
-  --repo-id SEU_USUARIO/xfakesong-models \
+  --repo-id SEU_USUARIO/speechchecker-models \
   --private
 ```
 
@@ -124,7 +124,7 @@ Faça o plano de upload sem enviar arquivos:
 
 ```bash
 python scripts/ops/upload_models_to_hf.py \
-  --repo-id SEU_USUARIO/xfakesong-benchmark-models \
+  --repo-id SEU_USUARIO/speechchecker-benchmark-models \
   --dry-run
 ```
 
@@ -134,7 +134,7 @@ Envie os modelos pré-treinados:
 export HF_TOKEN=hf_xxx
 
 python scripts/ops/upload_models_to_hf.py \
-  --repo-id SEU_USUARIO/xfakesong-benchmark-models \
+  --repo-id SEU_USUARIO/speechchecker-benchmark-models \
   --private \
   --commit-message "Upload benchmark 15k pretrained models"
 ```
@@ -146,7 +146,7 @@ Para anexar resultados e pacote acadêmico ao mesmo Model Hub:
 
 ```bash
 python scripts/ops/upload_models_to_hf.py \
-  --repo-id SEU_USUARIO/xfakesong-benchmark-models \
+  --repo-id SEU_USUARIO/speechchecker-benchmark-models \
   --private \
   --include-results \
   --include-paper
@@ -159,7 +159,7 @@ O script ignora arquivos temporários, PDF, `.aux`, `.log`, `.toc` e caches.
 Para baixar os modelos em uma máquina local, Docker ou Space:
 
 ```bash
-export MODEL_REPO_ID=SEU_USUARIO/xfakesong-benchmark-models
+export MODEL_REPO_ID=SEU_USUARIO/speechchecker-benchmark-models
 export HF_TOKEN=hf_xxx        # apenas se o repo for privado
 
 python scripts/ops/sync_hf_models.py \
@@ -171,7 +171,7 @@ python scripts/ops/sync_hf_models.py \
 No Windows PowerShell:
 
 ```powershell
-$env:MODEL_REPO_ID="SEU_USUARIO/xfakesong-benchmark-models"
+$env:MODEL_REPO_ID="SEU_USUARIO/speechchecker-benchmark-models"
 $env:HF_TOKEN="hf_xxx"
 
 python scripts/ops/sync_hf_models.py `
@@ -184,7 +184,7 @@ Após o download, valide:
 
 ```bash
 python scripts/ops/sync_hf_models.py \
-  --repo-id SEU_USUARIO/xfakesong-benchmark-models \
+  --repo-id SEU_USUARIO/speechchecker-benchmark-models \
   --models-dir data/models
 
 python main.py --gradio
@@ -207,7 +207,7 @@ No Space, abra **Settings → Variables and secrets**.
 
 | Tipo | Nome | Valor recomendado |
 | --- | --- | --- |
-| Variable | `MODEL_REPO_ID` | `SEU_USUARIO/xfakesong-models` |
+| Variable | `MODEL_REPO_ID` | `SEU_USUARIO/speechchecker-models` |
 | Variable | `ENABLE_TRAINING` | `false` |
 | Variable | `XFAKE_SYNC_MODELS_ON_BOOT` | `true` |
 | Variable | `DEEPFAKE_MODELS_DIR` | `data/models` |
@@ -274,7 +274,7 @@ TensorFlow GPU: [PhysicalDevice(..., device_type='GPU')]
 torch.cuda.is_available(): True
 ```
 
-O XFakeSong usa TensorFlow/Keras na maioria dos modelos e PyTorch/Transformers
+O SpeechChecker usa TensorFlow/Keras na maioria dos modelos e PyTorch/Transformers
 para WavLM/HuBERT originais. Em GPU Spaces, o Docker deve ser reconstruído com
 as dependências CUDA disponíveis no runtime.
 
@@ -338,7 +338,7 @@ DEEPFAKE_MODELS_DIR=/data/models
 ### 6.1 Demonstração com Modelos Já Treinados
 
 1. Criar Docker Space.
-2. Subir modelos para `SEU_USUARIO/xfakesong-models`.
+2. Subir modelos para `SEU_USUARIO/speechchecker-models`.
 3. Configurar `MODEL_REPO_ID`.
 4. Configurar `ENABLE_TRAINING=false`.
 5. Selecionar CPU Upgrade, T4 ou L4.
@@ -416,7 +416,7 @@ Artefatos esperados:
 ### Build
 
 - O build terminou sem erro.
-- Os logs mostram `Starting XFakeSong`.
+- Os logs mostram `Starting SpeechChecker`.
 - O healthcheck responde em `/api/v1/system/health` ou `/`.
 
 ### Modelos

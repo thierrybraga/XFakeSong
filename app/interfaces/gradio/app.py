@@ -75,16 +75,16 @@ logger = logging.getLogger("gradio_app")
 # SEO e Metadados
 _HEAD_HTML = """
 <meta name="description"
- content="XfakeSong Platform - Plataforma avançada para detecção, análise e
+ content="SpeechChecker Platform - Plataforma avançada para detecção, análise e
  treinamento de modelos anti-spoofing.">
 <meta name="keywords"
  content="deepfake, audio, detection, ai, machine learning, security,
  forensics">
-<meta name="author" content="XFakeSong Team">
+<meta name="author" content="SpeechChecker Team">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="dark light">
 <meta name="mobile-web-app-capable" content="yes">
-<meta property="og:title" content="XfakeSong Platform">
+<meta property="og:title" content="SpeechChecker Platform">
 <meta property="og:description"
  content="Ferramenta profissional para análise de integridade de áudio e
  detecção de deepfakes.">
@@ -245,7 +245,7 @@ def _render_status_bar() -> str:
     return f"""
     <div id="status_bar_inner">
       <span class="brand">
-        🛡️ XFakeSong <span class="brand-version">v1.1</span>
+        🛡️ SpeechChecker <span class="brand-version">v1.1</span>
       </span>
       <span class="status-pill status-online">
         <span class="dot"></span>
@@ -314,7 +314,7 @@ def create_interface() -> "gr.Blocks":
     construcao usa esta funcao.
     """
     with gr.Blocks(
-        title="XFakeSong — Audio Deepfake Detection Platform",
+        title="SpeechChecker — Audio Deepfake Detection Platform",
         theme=theme,
         css=_CUSTOM_CSS,
         head=_HEAD_HTML,

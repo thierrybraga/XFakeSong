@@ -1,4 +1,4 @@
-name: xfakesong-inference-nvidia
+name: speechchecker-inference-nvidia
 
 services:
   inference-api:
@@ -7,8 +7,8 @@ services:
       dockerfile: docker/environments/inference-api/Dockerfile.nvidia
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
-    image: xfakesong/inference-api:nvidia
-    container_name: xfakesong_inference_nvidia
+    image: speechchecker/inference-api:nvidia
+    container_name: speechchecker_inference_nvidia
     working_dir: /app
     restart: unless-stopped
     stop_grace_period: 30s
@@ -25,7 +25,7 @@ services:
     environment:
       DEEPFAKE_ENV: ${DEEPFAKE_ENV:-production}
       DEEPFAKE_LOG_LEVEL: ${DEEPFAKE_LOG_LEVEL:-INFO}
-      XFAKESONG_API_KEY: "${XFAKESONG_API_KEY:?Defina XFAKESONG_API_KEY}"
+      SPEECHCHECKER_API_KEY: "${SPEECHCHECKER_API_KEY:-${XFAKESONG_API_KEY:?Defina SPEECHCHECKER_API_KEY}}"
       XFAKE_GRADIO_USERNAME: "${XFAKE_GRADIO_USERNAME:?Defina XFAKE_GRADIO_USERNAME}"
       XFAKE_GRADIO_PASSWORD: "${XFAKE_GRADIO_PASSWORD:?Defina XFAKE_GRADIO_PASSWORD}"
       ALLOWED_HOSTS: "${ALLOWED_HOSTS:?Defina ALLOWED_HOSTS}"

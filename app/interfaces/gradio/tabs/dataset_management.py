@@ -1,5 +1,5 @@
 """
-Aba de Gestão de Dataset — XFakeSong
+Aba de Gestão de Dataset — SpeechChecker
 
 Centraliza visualização, download, preprocessamento e análise de
 compatibilidade dos datasets de áudio para detecção de deepfake.

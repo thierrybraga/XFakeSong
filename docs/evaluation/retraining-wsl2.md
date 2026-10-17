@@ -27,8 +27,8 @@ wsl --install -d Ubuntu
 ## Caminho A — venv nativo no WSL2 (recomendado, mais simples)
 
 ```bash
-# Dentro do Ubuntu/WSL2, na raiz do repo (ex.: /mnt/d/Github/XFakeSong):
-cd /mnt/d/Github/XFakeSong
+# Dentro do Ubuntu/WSL2, na raiz do repo (ex.: /mnt/d/Github/SpeechChecker):
+cd /mnt/d/Github/SpeechChecker
 python3 -m venv .venv-wsl
 source .venv-wsl/bin/activate
 pip install --upgrade pip

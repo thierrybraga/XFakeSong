@@ -23,7 +23,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 SAIDA="${XFAKE_BENCHMARK_OUT:-data/results/bateria_corrigida_15k_2026-08-20}"
 DATASET="${XFAKE_BENCHMARK_DATASET:-data/datasets/benchmark_dataset_15k.npz}"
 
-if docker ps --format '{{.Names}}' | grep -q '^xfakesong_benchmark_nvidia$'; then
+if docker ps --format '{{.Names}}' | grep -q '^speechchecker_benchmark_nvidia$'; then
   echo "ERRO: a bateria ainda esta rodando. Aguarde o fim para nao disputar a GPU." >&2
   exit 1
 fi
@@ -37,7 +37,7 @@ docker run --rm --gpus all \
   -e TF_CPP_MIN_LOG_LEVEL=2 -e PYTHONIOENCODING=utf-8 \
   -e TF_FORCE_GPU_ALLOW_GROWTH=true \
   --name xfake_ssl_regravar \
-  xfakesong/benchmark:nvidia \
+  speechchecker/benchmark:nvidia \
   python scripts/benchmark/run_models_sequential.py \
     --dataset "$DATASET" \
     --out "$SAIDA" \

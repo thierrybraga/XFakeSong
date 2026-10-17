@@ -1,6 +1,6 @@
 # app
 
-Codigo-fonte principal do XFakeSong.
+Codigo-fonte principal do SpeechChecker.
 
 ## Responsabilidade
 

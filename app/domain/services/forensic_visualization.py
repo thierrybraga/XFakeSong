@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class ForensicTheme:
     """Tema visual escuro consistente para todas as visualizacoes forenses.
 
-    Paleta alinhada com o design system XfakeSong (slate/blue dark theme).
+    Paleta alinhada com o design system SpeechChecker (slate/blue dark theme).
     """
 
     BG_COLOR = '#0f172a'

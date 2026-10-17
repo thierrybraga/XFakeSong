@@ -70,7 +70,7 @@ def get_gradio_exports_directory() -> Path:
     gradio_temp = (
         Path(configured).expanduser()
         if configured
-        else Path(tempfile.gettempdir()) / "xfakesong-gradio"
+        else Path(tempfile.gettempdir()) / "speechchecker-gradio"
     )
     exports_dir = (gradio_temp / "exports").resolve()
     exports_dir.mkdir(parents=True, exist_ok=True)

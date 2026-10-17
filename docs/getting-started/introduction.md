@@ -1,8 +1,8 @@
-# Visão Geral do Sistema XFakeSong
+# Visão Geral do Sistema SpeechChecker
 
 ## Introdução
 
-O **XFakeSong** é uma plataforma open source para **detecção de deepfakes de
+O **SpeechChecker** é uma plataforma open source para **detecção de deepfakes de
 áudio** (anti-spoofing). Ele combina processamento digital de sinais (DSP) e
 aprendizado profundo para analisar um sinal de voz, extrair representações e
 classificá-lo como **real** (bonafide) ou **fake** (spoof).

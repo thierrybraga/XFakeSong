@@ -1,6 +1,6 @@
 # Dataset: pipeline, consolidacao e auditoria
 
-Referencia unica do ciclo de vida do dataset no XFakeSong — da aquisicao ao
+Referencia unica do ciclo de vida do dataset no SpeechChecker — da aquisicao ao
 `.npz`, passando pela particao, pela auditoria, pelo benchmark e pelo treino.
 
 A metodologia (por que cada decisao foi tomada, o que foi medido) esta no

@@ -48,7 +48,9 @@ async def get_api_key(
     api_key_header: str | None = Security(api_key_header),
 ) -> str:
     """Valida a API Key para proteger endpoints sensíveis."""
-    server_api_key = os.getenv("XFAKESONG_API_KEY", "")
+    server_api_key = os.getenv("SPEECHCHECKER_API_KEY") or os.getenv(
+        "XFAKESONG_API_KEY", ""
+    )
 
     if not server_api_key:
         if insecure_development_allowed():
@@ -56,7 +58,9 @@ async def get_api_key(
                 "API sem autenticação por opção explícita de desenvolvimento."
             )
             return "insecure-development"
-        logger.warning("XFAKESONG_API_KEY não configurada; acesso protegido recusado.")
+        logger.warning(
+            "SPEECHCHECKER_API_KEY não configurada; acesso protegido recusado."
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Autenticação do servidor não configurada.",

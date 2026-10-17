@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Ponto de entrada principal do sistema XfakeSong.
+Ponto de entrada principal do sistema SpeechChecker.
 Fornece acesso à interface de linha de comando (CLI) e interface gráfica (Gradio).
 """
 
@@ -34,7 +34,7 @@ def setup_logging():
 
 def main():
     """Função principal."""
-    parser = argparse.ArgumentParser(description="XfakeSong System")
+    parser = argparse.ArgumentParser(description="SpeechChecker System")
     parser.add_argument(
         "--gui", action="store_true", help="Iniciar interface gráfica (Gradio)"
     )

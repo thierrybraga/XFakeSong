@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =====================================================================
-# Build Smoke Test — XFakeSong (PROD.10)
+# Build Smoke Test — SpeechChecker (PROD.10)
 # =====================================================================
 # Verifica que a imagem Docker builda, sobe, healthcheck passa e endpoints
 # críticos respondem. Use ANTES de promover uma imagem para produção.
@@ -16,8 +16,8 @@ set -uo pipefail
 # Cores
 G='\033[0;32m'; Y='\033[1;33m'; R='\033[0;31m'; B='\033[0;34m'; N='\033[0m'
 
-IMAGE_TAG="xfakesong:smoke"
-CONTAINER_NAME="xfakesong_smoke"
+IMAGE_TAG="speechchecker:smoke"
+CONTAINER_NAME="speechchecker_smoke"
 PORT="${PORT:-7868}"   # porta alternativa para não conflitar com instância rodando
 HOST="127.0.0.1"
 HEALTH_TIMEOUT=240     # segundos para o healthcheck virar healthy
@@ -200,7 +200,7 @@ test_endpoint GET "/api/openapi.json"        200 "openapi schema" || errors=$((e
 # Gradio root deve retornar HTML
 step "Testando renderização do Gradio (raiz)..."
 gradio_response=$(curl -s --max-time 15 "http://${HOST}:${PORT}/" | head -200)
-if echo "$gradio_response" | grep -qi "gradio\|XfakeSong"; then
+if echo "$gradio_response" | grep -qi "gradio\|SpeechChecker"; then
     ok "Gradio renderiza HTML na raiz /"
 else
     warn "Gradio não retornou HTML esperado na raiz"

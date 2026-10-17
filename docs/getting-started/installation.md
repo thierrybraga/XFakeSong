@@ -1,6 +1,6 @@
 # Instalação e Configuração
 
-Guia completo para executar o XFakeSong em **Local (Python)**, **Docker** e **Hugging Face Spaces**, com seções específicas para Windows, Linux e GPU.
+Guia completo para executar o SpeechChecker em **Local (Python)**, **Docker** e **Hugging Face Spaces**, com seções específicas para Windows, Linux e GPU.
 
 ---
 
@@ -23,7 +23,7 @@ Guia completo para executar o XFakeSong em **Local (Python)**, **Docker** e **Hu
 
 ```cmd
 git clone https://github.com/thierrybraga/XFakeSong.git
-cd XFakeSong
+cd SpeechChecker
 start.bat
 ```
 
@@ -66,7 +66,7 @@ Após reiniciar, abra o Ubuntu pelo menu Iniciar e:
 # 3. Dentro do Ubuntu WSL2
 sudo apt update && sudo apt install -y python3 python3-pip python3-venv git
 git clone https://github.com/thierrybraga/XFakeSong.git
-cd XFakeSong
+cd SpeechChecker
 chmod +x start.sh
 
 # 4. Instala TensorFlow com CUDA embutido (tensorflow[and-cuda]) + deps:
@@ -97,7 +97,7 @@ Performance esperada (RTX 3060 12 GB):
 
 ```bash
 git clone https://github.com/thierrybraga/XFakeSong.git
-cd XFakeSong
+cd SpeechChecker
 chmod +x start.sh
 ./start.sh prod         # Docker
 ./start.sh test         # Python local (usa GPU se disponível)
@@ -481,16 +481,16 @@ python main.py --gradio --gradio-port 7860   # inicia
 
 ### Docker manual
 ```bash
-docker build -t xfakesong:latest .
+docker build -t speechchecker:latest .
 docker run -d \
-    --name xfakesong_app \
+    --name speechchecker_app \
     -p 7860:7860 \
     -v $(pwd)/data/models:/app/data/models \
     -v $(pwd)/data/datasets:/app/data/datasets \
     -v $(pwd)/data/results:/app/data/results \
     -v $(pwd)/logs:/app/data/logs \
     -v $(pwd)/data:/app/data \
-    xfakesong:latest
+    speechchecker:latest
 ```
 
 ---
@@ -510,18 +510,18 @@ TensorFlow, PyTorch, FFmpeg, GPU, healthcheck e Storage.
 
 ```bash
 python scripts/ops/upload_models_to_hf.py \
-  --repo-id SEU_USUARIO/xfakesong-models \
+  --repo-id SEU_USUARIO/speechchecker-models \
   --dry-run
 
 python scripts/ops/upload_models_to_hf.py \
-  --repo-id SEU_USUARIO/xfakesong-models \
+  --repo-id SEU_USUARIO/speechchecker-models \
   --private
 ```
 
 4. Configure no Space:
 
 ```env
-MODEL_REPO_ID=SEU_USUARIO/xfakesong-models
+MODEL_REPO_ID=SEU_USUARIO/speechchecker-models
 ENABLE_TRAINING=false
 XFAKE_SYNC_MODELS_ON_BOOT=true
 DEEPFAKE_MODELS_DIR=data/models
@@ -583,7 +583,7 @@ make env                # via Makefile
 ## 📁 Estrutura de diretórios (auto-criada)
 
 ```
-XFakeSong/
+SpeechChecker/
 ├── app/
 │   ├── models/         # Modelos treinados (.keras, .onnx, scaler.pkl) [VOLUME]
 │   └── ...
@@ -644,7 +644,7 @@ start.bat rebuild       # Windows
 - **Reverse proxy + WebSocket**: Gradio queue usa WS. Em nginx/Caddy/Traefik, garanta upgrade headers:
   ```nginx
   location / {
-      proxy_pass http://xfakesong:7860;
+      proxy_pass http://speechchecker:7860;
       proxy_http_version 1.1;
       proxy_set_header Upgrade $http_upgrade;
       proxy_set_header Connection "upgrade";

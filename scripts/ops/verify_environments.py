@@ -224,7 +224,7 @@ def main() -> int:
             p.error(f"chaves desconhecidas: {', '.join(sorted(unknown))}")
 
     print("=" * 64)
-    print(f" Verificação de ambientes XFakeSong ({len(selected)} alvo(s))")
+    print(f" Verificação de ambientes SpeechChecker ({len(selected)} alvo(s))")
     print(f" build={args.build} · gpu_check={args.gpu_check} · require_gpu={args.require_gpu}")
     print("=" * 64)
 

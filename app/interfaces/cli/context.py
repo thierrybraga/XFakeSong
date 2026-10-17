@@ -59,4 +59,4 @@ class AppContext:
             "sonic_sleuth",
         ]
 
-        self.logger = logging.getLogger("XfakeSongCLI")
+        self.logger = logging.getLogger("SpeechCheckerCLI")

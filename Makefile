@@ -1,5 +1,5 @@
 # =====================================================================
-# XFakeSong — Makefile
+# SpeechChecker — Makefile
 # Auto-detecta `docker compose` (v2) ou `docker-compose` (v1)
 # Compatível com Make 3.81+ no Windows (Git Bash / MinGW / WSL)
 # =====================================================================
@@ -13,7 +13,7 @@ DC := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" ||
 
 PYTHON ?= python3
 PORT ?= 7860
-IMAGE_NAME := xfakesong
+IMAGE_NAME := speechchecker
 IMAGE_TAG ?= latest
 
 # Perfis Docker segmentados. Os arquivos docker-compose*.yml da raiz ficam
@@ -32,7 +32,7 @@ BENCHMARK_NVIDIA_COMPOSE := docker/compose/benchmark.nvidia.yml
 # =====================================================================
 .PHONY: help
 help:  ## Mostra esta ajuda
-	@echo "XFakeSong — comandos disponíveis:"
+	@echo "SpeechChecker — comandos disponíveis:"
 	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?##.*$$' $(MAKEFILE_LIST) | \
 	    awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -89,8 +89,8 @@ stats:  ## Stats em tempo real
 
 .PHONY: health
 health:  ## Status do healthcheck
-	@docker inspect -f '{{.State.Status}}' xfakesong_inference_cpu 2>/dev/null || \
-	docker inspect -f '{{.State.Status}}' xfakesong_inference_nvidia 2>/dev/null || \
+	@docker inspect -f '{{.State.Status}}' speechchecker_inference_cpu 2>/dev/null || \
+	docker inspect -f '{{.State.Status}}' speechchecker_inference_nvidia 2>/dev/null || \
 	echo "Container não encontrado"
 
 .PHONY: clean

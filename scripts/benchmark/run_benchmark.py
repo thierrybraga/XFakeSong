@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI do sistema de benchmark/teste do XFakeSong (para o TCC).
+"""CLI do sistema de benchmark/teste do SpeechChecker (para o TCC).
 
 Treina/avalia arquiteturas pelo PIPELINE real e (opcionalmente) testa a API,
 gerando tabelas LaTeX + figuras + JSON/CSV prontos para a monografia.
@@ -349,7 +349,7 @@ def main() -> int:
             logger.setLevel(logging.WARNING)
             logger.disabled = True
 
-    print("\n=== Benchmark XFakeSong ===")
+    print("\n=== Benchmark SpeechChecker ===")
     print(f"Arquiteturas : {', '.join(cfg.architectures)}")
     print(f"Dataset      : {cfg.dataset_path or '(sintetico)'}")
     print(f"Preset       : {cfg.preset_name} | HParams: "

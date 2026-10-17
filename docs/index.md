@@ -1,6 +1,6 @@
-# Documentação do XFakeSong
+# Documentação do SpeechChecker
 
-O **XFakeSong** é uma plataforma open source para detecção de deepfakes de
+O **SpeechChecker** é uma plataforma open source para detecção de deepfakes de
 áudio com execução local: interface Gradio, API FastAPI e pipelines modulares
 de extração de features, treinamento, inferência e benchmark reprodutível para
 o TCC.

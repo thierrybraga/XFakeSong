@@ -1,14 +1,14 @@
 # syntax=docker/dockerfile:1.7
 # =====================================================================
-# XFakeSong — ambiente de treino: tensorflow-keras (modelos neurais Keras)
+# SpeechChecker — ambiente de treino: tensorflow-keras (modelos neurais Keras)
 # Mapa completo dos 5 ambientes: docker/environments/README.md
 # =====================================================================
 ARG PYTHON_VERSION=3.11
 
 FROM python:${PYTHON_VERSION}-slim
 
-LABEL org.opencontainers.image.title="xfakesong-tensorflow-keras" \
-      org.opencontainers.image.description="XFakeSong — treino TensorFlow/Keras (CPU)" \
+LABEL org.opencontainers.image.title="speechchecker-tensorflow-keras" \
+      org.opencontainers.image.description="SpeechChecker — treino TensorFlow/Keras (CPU)" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.source="https://github.com/thierrybraga/XFakeSong"
 

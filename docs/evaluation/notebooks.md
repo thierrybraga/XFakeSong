@@ -10,7 +10,7 @@ estrutura de navegação e referência.
 !!! tip "Rodar no Google Colab (com GPU)"
     Todos os notebooks são **auto-suficientes no Colab**: a primeira célula
     detecta o ambiente, clona o repositório e instala as dependências. Abra por
-    `colab.research.google.com/github/thierrybraga/XFakeSong/blob/main/docs/notebooks/<caminho>`,
+    `colab.research.google.com/github/thierrybraga/SpeechChecker/blob/main/docs/notebooks/<caminho>`,
     selecione um runtime com **GPU** e rode a 1ª célula. Os notebooks de modelo
     **treinam por padrão** (defina `XFAKE_RUN_EVAL=0` para pular). Passo a passo
     no [Guia Google Colab](../getting-started/google-colab.md).

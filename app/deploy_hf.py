@@ -44,7 +44,7 @@ def deploy_interface():
         print(f"Erro ao obter informacoes do usuario: {e}")
         return
 
-    default_name = f"{user}/xfakesong"
+    default_name = f"{user}/speechchecker"
     repo_name = input(f"Nome do Space para deploy [{default_name}]: ").strip()
     if not repo_name:
         repo_name = default_name

@@ -1,8 +1,8 @@
-# XFakeSong — Guia para Codex
+# SpeechChecker — Guia para Codex
 
 ## Visão Geral
 
-XFakeSong é uma plataforma open source de detecção de áudio deepfake. Combina análise espectral clássica com modelos Transformer modernos (WavLM, HuBERT), com foco em Explainable AI (XAI) e processamento 100% local.
+SpeechChecker é uma plataforma open source de detecção de áudio deepfake. Combina análise espectral clássica com modelos Transformer modernos (WavLM, HuBERT), com foco em Explainable AI (XAI) e processamento 100% local.
 
 **Interface**: Gradio (`python main.py --gradio`, porta 7860)
 **Python**: 3.11+ | **Licença**: MIT

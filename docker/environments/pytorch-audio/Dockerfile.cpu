@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # =====================================================================
-# XFakeSong — ambiente de treino: pytorch-audio (Conformer, Hybrid CNN-
+# SpeechChecker — ambiente de treino: pytorch-audio (Conformer, Hybrid CNN-
 # Transformer, RawNet2, AASIST, RawGAT-ST — implementações Keras/TF; torch é
 # reservado para portes nativos futuros)
 # Mapa completo dos 5 ambientes: docker/environments/README.md
@@ -9,8 +9,8 @@ ARG PYTHON_VERSION=3.11
 
 FROM python:${PYTHON_VERSION}-slim
 
-LABEL org.opencontainers.image.title="xfakesong-pytorch-audio" \
-      org.opencontainers.image.description="XFakeSong — treino audio (CPU)" \
+LABEL org.opencontainers.image.title="speechchecker-pytorch-audio" \
+      org.opencontainers.image.description="SpeechChecker — treino audio (CPU)" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.source="https://github.com/thierrybraga/XFakeSong"
 

@@ -6,7 +6,7 @@
 > [../architecture/overview.md](../architecture/overview.md).
 
 Este documento define o plano de acao para separar ambientes de treinamento,
-inferencia, benchmark e publicacao do XFakeSong por familia computacional. O
+inferencia, benchmark e publicacao do SpeechChecker por familia computacional. O
 objetivo e reduzir conflitos de dependencias, melhorar reprodutibilidade
 cientifica e manter a aplicacao Gradio/FastAPI estavel para demonstracao e
 inferencia com modelos ja treinados.
@@ -44,7 +44,7 @@ excessivamente grandes para tarefas que nao precisam de todas as dependencias.
 
 ## Diagnostico tecnico
 
-O projeto XFakeSong possui escopo amplo:
+O projeto SpeechChecker possui escopo amplo:
 
 - treinamento de modelos classicos e neurais;
 - inferencia local via Gradio e API;
@@ -90,7 +90,7 @@ da raiz permanece so pelo requisito de deploy do Hugging Face Spaces.
 ## Arquitetura-alvo
 
 ```text
-XFakeSong/
+SpeechChecker/
 ├── app/
 │   ├── domain/
 │   ├── application/

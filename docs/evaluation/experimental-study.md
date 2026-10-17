@@ -1,13 +1,13 @@
 # Estudo Experimental de Detecção de Áudio Sintético
 
 Esta página organiza, em formato de documentação navegável, a fundamentação
-técnica e a análise experimental do XFakeSong. A fonte LaTeX em
+técnica e a análise experimental do SpeechChecker. A fonte LaTeX em
 `data/results/paper/main.tex` continua sendo um artefato acadêmico separado; esta
 versão existe para consulta técnica no GitHub Pages.
 
 ## Resumo técnico
 
-O XFakeSong é um pipeline modular e de código aberto para detecção de áudio
+O SpeechChecker é um pipeline modular e de código aberto para detecção de áudio
 sintético. A metodologia integra pré-processamento, extração de características
 acústicas, treinamento supervisionado, inferência e geração automática de
 relatórios de benchmark.

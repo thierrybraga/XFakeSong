@@ -130,7 +130,7 @@ gravado pela execução do RawGAT-ST registra os hiperparâmetros **antigos**
 (LR 1e-4, dropout 0.2, l2 1e-4, `use_augmentation: false`), apesar de o
 repositório conter os valores ajustados desde 2026-06-21 (`ba37c6f`) e de
 `optimize_hyperparameters: true`. A execução rodou na imagem
-`xfakesong/benchmark:nvidia` construída antes dos ajustes — ou seja, **os
+`speechchecker/benchmark:nvidia` construída antes dos ajustes — ou seja, **os
 ajustes deste documento nunca foram aplicados de fato** nesse run. O sintoma
 original se repetiu idêntico (val_loss mínima na época 6 subindo de 0.35 para
 1.20 na época 31; recall 0.08 @10dB).
@@ -784,7 +784,7 @@ Reavaliação pedida explicitamente pelo usuário sobre o conjunto já promovido
 mescla `retrain_full_20260714` + `retrain_weak4_20260715` — a fonte vigente,
 ver seções acima). Antes de concluir, confirmado que o retreino confirmatório
 de AASIST/RawGAT-ST de outra sessão (`data/results/retrain_aasist_rawgat_confirmatory_20260715/`,
-container `xfakesong_retrain_rawgat_float32_resilient_20260718`) **não tem
+container `speechchecker_retrain_rawgat_float32_resilient_20260718`) **não tem
 resultado válido ainda** — `run_summary.json` mostra `status: running` e
 `AASIST: timeout` (57.600 s = 16 h). Nenhum dado supera os números abaixo.
 
@@ -848,7 +848,7 @@ RandomForest.
 ## 2026-07-18 — encerramento do retreino confirmatório
 
 O retreino confirmatório foi encerrado por solicitação do usuário durante a
-consolidação do projeto na branch `main`. As execuções Docker do XFakeSong
+consolidação do projeto na branch `main`. As execuções Docker do SpeechChecker
 foram interrompidas e tiveram a política de reinício automático desativada.
 
 - **AASIST:** o treino chegou a concluir e o melhor checkpoint da época 35 foi

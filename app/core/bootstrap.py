@@ -1,4 +1,4 @@
-"""Bootstrap canônico e idempotente do XFakeSong.
+"""Bootstrap canônico e idempotente do SpeechChecker.
 
 Recursos científicos ausentes são estados válidos. Somente falhas estruturais
 (permissão, banco corrompido ou configuração obrigatória inválida) interrompem

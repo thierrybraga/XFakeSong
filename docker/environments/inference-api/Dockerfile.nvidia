@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # =====================================================================
-# XFakeSong — ambiente de inferência: Gradio + FastAPI (NVIDIA GPU)
+# SpeechChecker — ambiente de inferência: Gradio + FastAPI (NVIDIA GPU)
 # Requer NVIDIA Container Toolkit no host (Linux nativo ou Windows+WSL2).
 # Mapa completo dos 5 ambientes: docker/environments/README.md
 # =====================================================================
@@ -10,8 +10,8 @@ FROM python:${PYTHON_VERSION}-slim
 
 ARG PYTHON_VERSION
 
-LABEL org.opencontainers.image.title="xfakesong-inference-api" \
-      org.opencontainers.image.description="XFakeSong — inferência Gradio/FastAPI (NVIDIA GPU)" \
+LABEL org.opencontainers.image.title="speechchecker-inference-api" \
+      org.opencontainers.image.description="SpeechChecker — inferência Gradio/FastAPI (NVIDIA GPU)" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.source="https://github.com/thierrybraga/XFakeSong"
 

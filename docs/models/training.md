@@ -1,6 +1,6 @@
 # Treinamento das Arquiteturas
 
-Este documento detalha o processo de treinamento, configurações de otimização e peculiaridades de cada arquitetura implementada no XFakeSong.
+Este documento detalha o processo de treinamento, configurações de otimização e peculiaridades de cada arquitetura implementada no SpeechChecker.
 
 ## Ambientes consolidados
 

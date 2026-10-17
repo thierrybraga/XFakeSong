@@ -1,4 +1,4 @@
-"""Metadados de dataset do domínio XFakeSong.
+"""Metadados de dataset do domínio SpeechChecker.
 
 Consolida conhecimento específico do domínio de construção de datasets de
 áudio (catálogo de fontes/licenças e manifesto de falantes) — movido de

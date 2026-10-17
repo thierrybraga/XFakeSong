@@ -9,7 +9,7 @@ forma do banco (quais tabelas existem) e derruba as que nao pertencem a ele.
 O arquivo carregava 18 tabelas de OUTRO dominio (`workouts`, `exercises`,
 `mentors`, `store_items`, `wallet_transactions`, `events`, `runs`,
 `achievements`, ...) — nenhuma delas referenciada em lugar algum do
-XFakeSong. Elas nao vieram do `create_all`: o `Base.metadata` do projeto so
+SpeechChecker. Elas nao vieram do `create_all`: o `Base.metadata` do projeto so
 conhece 11 tabelas. Vieram no proprio arquivo, reaproveitado de outro projeto.
 
 Consequencias praticas de deixa-las: `PRAGMA integrity_check` e backups

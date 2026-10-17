@@ -46,7 +46,7 @@ Para o passo a passo completo de instalação e os erros detalhados, veja
 
 ??? question "Como rodo os notebooks no Google Colab?"
     Eles são auto-suficientes: abra por
-    `colab.research.google.com/github/thierrybraga/XFakeSong/blob/main/docs/notebooks/<caminho>`,
+    `colab.research.google.com/github/thierrybraga/SpeechChecker/blob/main/docs/notebooks/<caminho>`,
     selecione **GPU** (Ambiente de execução → Alterar o tipo de hardware) e rode
     a **primeira célula** — ela clona o repo e instala as dependências. Os
     notebooks de modelo treinam por padrão. Guia completo:

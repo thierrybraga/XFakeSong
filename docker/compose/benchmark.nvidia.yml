@@ -1,4 +1,4 @@
-name: xfakesong-benchmark-nvidia
+name: speechchecker-benchmark-nvidia
 
 services:
   benchmark:
@@ -7,8 +7,8 @@ services:
       dockerfile: docker/environments/inference-api/Dockerfile.nvidia
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
-    image: xfakesong/benchmark:nvidia
-    container_name: xfakesong_benchmark_nvidia
+    image: speechchecker/benchmark:nvidia
+    container_name: speechchecker_benchmark_nvidia
     # on-failure, nao always/unless-stopped: o comando termina com exit 0 só
     # quando TODAS as arquiteturas ficam "ok" (run_models_sequential.py,
     # `return 0 if summary["status"] == "ok" else 2`) — always/unless-stopped

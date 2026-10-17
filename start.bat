@@ -1,6 +1,6 @@
 @echo off
 REM ====================================================================
-REM XFakeSong Launcher (Windows)
+REM SpeechChecker Launcher (Windows)
 REM Uso: start.bat [auto|test|prod|gpu|stop|logs|rebuild|clean|status|install|bootstrap]
 REM Sem argumento: abre menu interativo.
 REM "auto" (recomendado) detecta GPU NVIDIA (nvidia-smi) e usa
@@ -10,7 +10,7 @@ REM NVIDIA Container Toolkit ausente no host/WSL2).
 REM ====================================================================
 chcp 65001 >nul 2>&1
 SETLOCAL EnableDelayedExpansion EnableExtensions
-TITLE XFakeSong Launcher
+TITLE SpeechChecker Launcher
 
 REM Cores ANSI (Windows 10+ com cmd.exe / Terminal moderno)
 SET "ESC="
@@ -53,7 +53,7 @@ REM ====================================================================
 :MENU
 CLS
 ECHO ===============================================================================
-ECHO                              XFAKESONG LAUNCHER
+ECHO                              SPEECHCHECKER LAUNCHER
 ECHO ===============================================================================
 ECHO.
 ECHO  [1]  Modo TESTE (Python local)
@@ -195,11 +195,11 @@ IF "%FORCE_PROFILE%"=="" (
 IF "%PROFILE%"=="gpu" (
     ECHO GPU NVIDIA detectada — perfil GPU ^(docker/compose/inference.nvidia.yml^)
     SET "COMPOSE_FILE=docker\compose\inference.nvidia.yml"
-    SET "CONTAINER=xfakesong_inference_nvidia"
+    SET "CONTAINER=speechchecker_inference_nvidia"
 ) ELSE (
     ECHO Perfil CPU — docker/compose/inference.cpu.yml
     SET "COMPOSE_FILE=docker\compose\inference.cpu.yml"
-    SET "CONTAINER=xfakesong_inference_cpu"
+    SET "CONTAINER=speechchecker_inference_cpu"
 )
 ECHO Compose detectado: %DC%
 ECHO.
@@ -211,7 +211,7 @@ IF ERRORLEVEL 1 (
         ECHO Falha no perfil GPU ^(driver/NVIDIA Container Toolkit ausente no host?^).
         ECHO Aplicando fallback automatico para CPU...
         SET "COMPOSE_FILE=docker\compose\inference.cpu.yml"
-        SET "CONTAINER=xfakesong_inference_cpu"
+        SET "CONTAINER=speechchecker_inference_cpu"
         SET "PROFILE=cpu"
         %DC% -f !COMPOSE_FILE! up --build -d
         IF ERRORLEVEL 1 (
@@ -450,20 +450,20 @@ REM Descobre qual perfil (cpu/gpu) esta ativo checando qual container foi
 REM criado por um MODE_PROD_RUN anterior — evita persistir estado em disco
 REM entre invocacoes separadas do .bat (ex.: "start.bat gpu" e depois
 REM "start.bat stop" em outra janela).
-docker inspect xfakesong_inference_nvidia >nul 2>&1
+docker inspect speechchecker_inference_nvidia >nul 2>&1
 IF NOT ERRORLEVEL 1 (
     SET "COMPOSE_FILE=docker\compose\inference.nvidia.yml"
-    SET "CONTAINER=xfakesong_inference_nvidia"
+    SET "CONTAINER=speechchecker_inference_nvidia"
     EXIT /B 0
 )
 SET "COMPOSE_FILE=docker\compose\inference.cpu.yml"
-SET "CONTAINER=xfakesong_inference_cpu"
+SET "CONTAINER=speechchecker_inference_cpu"
 EXIT /B 0
 
 :WAIT_HEALTHY
-REM %1 = nome do container a monitorar (default xfakesong_inference_cpu)
+REM %1 = nome do container a monitorar (default speechchecker_inference_cpu)
 SET "HEALTH_CONTAINER=%~1"
-IF "%HEALTH_CONTAINER%"=="" SET "HEALTH_CONTAINER=xfakesong_inference_cpu"
+IF "%HEALTH_CONTAINER%"=="" SET "HEALTH_CONTAINER=speechchecker_inference_cpu"
 REM Aguarda container ficar healthy com timeout de 300s
 SET "MAX_WAIT=300"
 SET "ELAPSED=0"

@@ -1,5 +1,5 @@
 # =====================================================================
-# XFakeSong — Runtime CPU-only (~250 MB menor; sem libs CUDA)
+# SpeechChecker — Runtime CPU-only (~250 MB menor; sem libs CUDA)
 # =====================================================================
 # Idêntico a requirements.txt, mas troca `tensorflow` por `tensorflow-cpu`.
 # Deps compartilhadas vêm de requirements-base.txt (fonte única — sem drift).

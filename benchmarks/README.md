@@ -1,6 +1,6 @@
 # benchmarks
 
-Harness de benchmark e avaliacao experimental do XFakeSong.
+Harness de benchmark e avaliacao experimental do SpeechChecker.
 
 ## Responsabilidade
 

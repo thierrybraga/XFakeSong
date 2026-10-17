@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Prepara WSL2 + Docker Engine + GPU NVIDIA para rodar o benchmark do XFakeSong.
+    Prepara WSL2 + Docker Engine + GPU NVIDIA para rodar o benchmark do SpeechChecker.
 
 .DESCRIPTION
     Instala a distro Ubuntu no WSL2 e, DENTRO dela, o Docker Engine e o
@@ -147,7 +147,7 @@ docker info --format '  storage-driver={{.Driver}} runtime-default={{.DefaultRun
 '@
 
 $provision = $provision -replace "`r`n", "`n"
-$tmp = Join-Path $env:TEMP 'xfakesong_provision.sh'
+$tmp = Join-Path $env:TEMP 'speechchecker_provision.sh'
 [IO.File]::WriteAllText($tmp, $provision, (New-Object Text.UTF8Encoding $false))
 $wslTmp = & wsl -d $Distro -u root -- wslpath -a ($tmp -replace '\\', '/')
 & wsl -d $Distro -u root -- bash $wslTmp
@@ -173,7 +173,7 @@ Write-Ok "GPU no container: $check"
 
 # --- 5. Build da imagem do benchmark ----------------------------------------
 if ($BuildImage) {
-    Write-Step 'Build da imagem xfakesong/benchmark:nvidia'
+    Write-Step 'Build da imagem speechchecker/benchmark:nvidia'
     $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     $repoWsl = & wsl -d $Distro -u root -- wslpath -a ($repo -replace '\\', '/')
     & wsl -d $Distro -u root -- bash -lc `
@@ -190,5 +190,5 @@ Write-Host @"
     cd <repo>
     docker compose -f docker/compose/benchmark.nvidia.yml build      # se ainda nao fez
     docker compose -f docker/compose/benchmark.nvidia.yml up -d
-    docker logs -f xfakesong_benchmark_nvidia
+    docker logs -f speechchecker_benchmark_nvidia
 "@ -ForegroundColor Green

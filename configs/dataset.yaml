@@ -1,4 +1,4 @@
-# XFakeSong benchmark dataset defaults.
+# SpeechChecker benchmark dataset defaults.
 #
 # Fonte canônica da metodologia: docs/data/dataset-protocol.md
 # O dataset é construído pelos quatro scripts de scripts/dataset/

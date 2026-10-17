@@ -1,4 +1,4 @@
-# XFakeSong - lightweight inference/API environment
+# SpeechChecker - lightweight inference/API environment
 # Python 3.11 recommended.
 #
 # This file intentionally excludes most training-only dependencies. TensorFlow

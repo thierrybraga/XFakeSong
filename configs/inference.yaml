@@ -1,4 +1,4 @@
-# XFakeSong inference defaults.
+# SpeechChecker inference defaults.
 
 inference:
   models_dir: data/models

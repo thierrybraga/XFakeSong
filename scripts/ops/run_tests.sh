@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Runner padronizado da suíte de testes do XFakeSong.
+# Runner padronizado da suíte de testes do SpeechChecker.
 # Categorias espelham as subpastas de tests/ (marcadas automaticamente pelo
 # conftest). Veja docs/development/quality-and-testing.md (caderno de testes).
 #

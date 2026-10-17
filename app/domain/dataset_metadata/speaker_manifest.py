@@ -1,6 +1,6 @@
 """Manifesto de falantes do dataset (identificacao de falante, aditiva).
 
-Os nomes de arquivo do XFakeSong seguem `<fonte>_NNNNN.wav` e NAO embutem o
+Os nomes de arquivo do SpeechChecker seguem `<fonte>_NNNNN.wav` e NAO embutem o
 falante. Este modulo mantem um sidecar `data/datasets/speaker_manifest.json` que
 mapeia o nome do arquivo -> falante, quando a fonte expoe esse identificador
 (Fake Voices por ZIP, Common Voice por `client_id`, In-the-Wild por celebridade,

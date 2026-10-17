@@ -1,4 +1,4 @@
-"""Interface Web (FastAPI + Jinja2) do XFakeSong.
+"""Interface Web (FastAPI + Jinja2) do SpeechChecker.
 
 Terceira interface de entrada do projeto, ao lado de `app.interfaces.gradio`
 e `app.interfaces.cli`. Expõe a API REST (`routers/`, `schemas/`) e a página

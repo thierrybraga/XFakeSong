@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================================
-REM  XFakeSong - Setup GPU para Windows
+REM  SpeechChecker - Setup GPU para Windows
 REM ============================================================================
 REM
 REM  Diagnostica a situação atual e mostra as opções para habilitar GPU
@@ -16,7 +16,7 @@ setlocal enabledelayedexpansion
 
 echo.
 echo ===============================================================================
-echo  XFakeSong - Diagnostico e Setup de GPU NVIDIA (Windows)
+echo  SpeechChecker - Diagnostico e Setup de GPU NVIDIA (Windows)
 echo ===============================================================================
 echo.
 
