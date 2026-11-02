@@ -94,7 +94,7 @@ SQLite usam `data/voice_profiles/`, junto aos demais dados operacionais.
 |-----------|------------|
 | ML / DL | Keras 3, TensorFlow, scikit-learn |
 | Áudio | librosa, soundfile, scipy, numpy |
-| Interface | Gradio 4.x |
+| Interface | Gradio 6.17 |
 | API | FastAPI (implementada: routers, middleware de segurança, rate limiting) |
 | Deploy | Docker, Hugging Face Spaces |
 | Qualidade | black, isort, ruff, bandit, pytest, pytest-cov |

@@ -14,7 +14,6 @@ from typing import Callable
 
 from app.core.hf_compat import ensure_hf_folder_shim
 
-# Gradio v4 ainda importa HfFolder, removido em huggingface_hub >= 0.16.
 ensure_hf_folder_shim()
 
 import gradio as gr  # noqa: E402

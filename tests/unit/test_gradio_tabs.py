@@ -277,6 +277,30 @@ def test_ui_safe_mantem_handler_gerador_como_gerador():
     assert "Falha ao treinar: sem memória" in str(excecao.value)
 
 
+def test_aparencia_chega_a_interface_na_montagem():
+    """No Gradio 6, tema e CSS passados ao `Blocks` são ignorados com um aviso.
+
+    A interface sobe e funciona, só que sem aparência: nenhum outro teste percebe.
+    """
+    import inspect
+
+    from fastapi import FastAPI
+
+    from app.interfaces.gradio import app as modulo
+
+    fonte = inspect.getsource(modulo.create_interface)
+    assert "theme=" not in fonte and "css=" not in fonte
+    assert "responsive-grid" in modulo.APPEARANCE["css"]
+
+    with gr.Blocks() as interface:
+        gr.Markdown("teste")
+    gr.mount_gradio_app(FastAPI(), interface, path="/g", **modulo.APPEARANCE)
+
+    assert interface.css == modulo.APPEARANCE["css"]
+    assert interface.head == modulo.APPEARANCE["head"]
+    assert interface.theme is modulo.APPEARANCE["theme"]
+
+
 def test_intervalo_do_status_bar_e_configuravel():
     """15 s fixos disparavam 240 execuções/hora por cliente conectado."""
     import inspect

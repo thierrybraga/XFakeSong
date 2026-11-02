@@ -10,10 +10,10 @@ from app.core.hf_compat import ensure_hf_folder_shim  # noqa: E402
 load_environment()
 ensure_hf_folder_shim()  # antes do import do Gradio (que precisa de HfFolder)
 
-from app.interfaces.gradio.app import demo  # noqa: E402
+from app.interfaces.gradio.app import APPEARANCE, demo  # noqa: E402
 
 if __name__ == "__main__":
     # Hugging Face Spaces disponibiliza a porta na variável de ambiente
     # Mas o demo.launch() lida com isso automaticamente se não
     # especificarmos server_name/port ou podemos ser explícitos.
-    demo.launch()
+    demo.launch(**APPEARANCE)

@@ -313,14 +313,17 @@ Pela UI: aba **Dataset → Preprocessamento → Pipeline Completo**.
 Os scripts agora dão **mensagens acionáveis**. Os erros mais comuns:
 
 ### `ImportError: ... please install 'torchcodec'` (datasets 4.x)
-A biblioteca `datasets` **4.x** passou a exigir o `torchcodec` (torch + FFmpeg)
-para decodificar áudio e **quebra o download** — mesmo com `Audio(decode=False)`.
-O projeto fixa `datasets>=2.14,<4.0` (onde o decode é via `soundfile`). Se você
-estiver com a 4.x (ex.: ambiente novo, Colab):
+A biblioteca `datasets` **4.x** exigia o `torchcodec` (torch + FFmpeg) para
+decodificar áudio e **quebrava o download** — mesmo com `Audio(decode=False)`.
+O projeto fixa `datasets>=5.0.1,<6.0`, em que o download funciona com o decode via
+`soundfile`. Se você estiver com a 4.x (ex.: ambiente antigo, Colab):
 ```bash
-pip install 'datasets>=2.14,<4.0'
+pip install 'datasets>=5.0.1,<6.0'
 ```
 Os notebooks de treino já fazem isso na célula de download.
+
+O `datasets` 5 não carrega repositórios baseados em script. Se um repositório falhar
+por isso, o projeto usa o fallback daquela fonte, quando existe.
 
 ### "requer AUTENTICAÇÃO no HuggingFace" (401)
 ```bash
@@ -345,14 +348,14 @@ Afeta principalmente: `mozilla-foundation/common_voice_*`.
 
 ### "Dependências faltando"
 ```bash
-pip install datasets>=4.0 huggingface_hub pandas requests tqdm
+pip install 'datasets>=5.0.1,<6.0' huggingface_hub pandas requests tqdm
 # ou simplesmente:
 pip install -r requirements.txt
 ```
 
 ### "To support decoding audio data, please install 'torchcodec'"
 A partir de `datasets` >= 4.0, o decode automático de áudio em streaming passou a
-exigir o pacote `torchcodec` (que depende de torch + FFmpeg e é problemático no
+pedir o pacote `torchcodec` (que depende de torch + FFmpeg e é problemático no
 Windows). **Você NÃO precisa instalar torchcodec** — o SpeechChecker desativa o decode
 automático (`Audio(decode=False)`) e decodifica os bytes com `soundfile`
 internamente. Se ainda vir esse erro, atualize o repositório para a versão com a

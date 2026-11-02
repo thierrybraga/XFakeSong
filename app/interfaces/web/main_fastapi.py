@@ -119,6 +119,9 @@ if not _running_under_pytest() and not _api_only_mode():
     os.environ["GRADIO_TEMP_DIR"] = str(gradio_temp_dir)
 
     import gradio as gr  # noqa: E402,I001
+    from app.interfaces.gradio.app import (  # noqa: E402
+        APPEARANCE as gradio_appearance,
+    )
     from app.interfaces.gradio.app import demo as gradio_demo  # noqa: E402
 
     mount_parameters = inspect.signature(gr.mount_gradio_app).parameters
@@ -126,6 +129,7 @@ if not _running_under_pytest() and not _api_only_mode():
         "path": "/gradio",
         "allowed_paths": [str(gradio_exports_dir)],
         "auth": get_gradio_auth(),
+        **gradio_appearance,
     }
     if "blocked_paths" in mount_parameters:
         mount_kwargs["blocked_paths"] = [

@@ -336,24 +336,23 @@ File ".../jinja2/utils.py", line 515, in __getitem__
 TypeError: unhashable type: 'dict'
 ```
 
-**Causa**: incompatibilidade entre versões.
+**Causa**: ambiente desatualizado, com versões incompatíveis.
 - Gradio < 4.31 chama `templates.TemplateResponse(context_dict, name, ...)` (API antiga)
 - Starlette ≥ 0.36 (puxado por `fastapi>=0.110`) mudou para `(request, name, context, ...)` (API nova)
 - O dict é interpretado como `template_name` → Jinja2 falha no cache key (dict não é hashable).
 
 **Fix imediato**:
 ```bash
-# Atualizar requirements (já feito a partir do commit BUG.Render.1):
-pip install --upgrade 'gradio>=4.31,<5.0'
+pip install -r requirements.txt -c constraints.txt
 
 # OU em Docker, força rebuild:
 docker compose build --no-cache --pull
 docker compose up -d
 ```
 
-**Verificação**: ao subir o app, o log inicial deve mostrar uma linha:
+**Verificação**: ao subir o app, o log inicial deve mostrar uma linha como:
 ```
-INFO ... Version check: gradio=4.36.1, starlette=0.40.0, fastapi=0.115.0, jinja2=3.1.5
+INFO ... Version check: gradio=6.17.3, starlette=1.10.0, fastapi=0.162.0, jinja2=3.1.6
 ```
 
 Se aparecer `ERROR ... INCOMPATIBILIDADE CRÍTICA: gradio==X.Y.Z ...`, **siga o fix acima** — o servidor sobe mas falhará na primeira request à raiz.
@@ -367,20 +366,20 @@ Se aparecer `ERROR ... INCOMPATIBILIDADE CRÍTICA: gradio==X.Y.Z ...`, **siga o 
 ImportError: cannot import name 'HfFolder' from 'huggingface_hub'
 ```
 
-**Causa**: o `huggingface_hub` **1.0** removeu a classe `HfFolder`, que o **gradio 4.x**
-ainda importa. Um `pip install` sem teto de versão (`huggingface_hub>=0.20`) puxa a
-linha 1.x e quebra a UI inteira — afeta qualquer instalação nova, **inclusive Linux**.
+**Causa**: ambiente desatualizado. O `huggingface_hub` **1.0** removeu a classe `HfFolder`,
+que o **gradio 4.x** importava. O projeto usa o Gradio 6, que não depende dela, então esse
+erro indica um Gradio antigo instalado.
 
 **Fix**:
 ```bash
-pip install 'huggingface_hub>=0.25,<1.0'
+pip install -r requirements.txt -c constraints.txt
 ```
-O `requirements.txt` já fixa `huggingface_hub>=0.25,<1.0` (teto firme `<1.0`; piso
-`0.25` é a exigência do `datasets`, então a faixa satisfaz **gradio E datasets**).
+O `requirements-base.txt` mantém `huggingface_hub>=0.25,<1.0`: o teto é exigido pelo
+`transformers` fixado e o piso, pelo `datasets`.
 
 **Verificação**: `python tools/ops/doctor.py` mostra na seção *Compatibilidade de versões*:
 ```
-OK  gradio=4.44.1, huggingface_hub=0.36.2 (compatíveis)
+OK  gradio=6.17.3, huggingface_hub=0.36.2 (compatíveis)
 ```
 Se aparecer `IMPORT QUEBRADO` em `gradio` na seção *Dependências* ou
 `INCOMPATIBILIDADE CRÍTICA: ... HfFolder ...` no log de startup, aplique o fix acima.

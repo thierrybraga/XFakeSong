@@ -48,18 +48,18 @@ TTS_PORTUGUESE_URL = (
 
 
 def warn_if_datasets_incompatible() -> None:
-    """A `datasets` 4.x passou a exigir `torchcodec` para decodificar áudio e
-    quebra o download (mesmo com Audio(decode=False)). Avisa claramente, com o
-    comando de correção, em vez de deixar estourar um ImportError obscuro de
-    torchcodec no meio da iteração do streaming."""
+    """A `datasets` 4.x exigia `torchcodec` para decodificar áudio e quebrava o
+    download (mesmo com Audio(decode=False)). A linha fixada, 5.x, baixa sem ele.
+    Num ambiente desatualizado, avisa com o comando de correção, em vez de deixar
+    estourar um ImportError obscuro no meio da iteração do streaming."""
     try:
         import datasets
 
-        if int(datasets.__version__.split(".")[0]) >= 4:
+        if int(datasets.__version__.split(".")[0]) == 4:
             logger.warning(
                 "datasets %s detectado — a 4.x exige 'torchcodec' e QUEBRA o "
-                "download de áudio. Instale uma versão compatível:\n"
-                "    pip install 'datasets>=2.14,<4.0'",
+                "download de áudio. Instale a versão fixada:\n"
+                "    pip install 'datasets>=5.0.1,<6.0'",
                 datasets.__version__,
             )
     except Exception:
@@ -80,7 +80,7 @@ def check_dependencies(required: list[str]) -> list[str]:
     """
     import importlib.util
     _pip_names = {
-        "datasets": "datasets>=2.14,<4.0",
+        "datasets": "datasets>=5.0.1,<6.0",
         "huggingface_hub": "huggingface_hub",
         "pandas": "pandas",
         "requests": "requests",
@@ -637,7 +637,7 @@ def download_brspeech(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     try:
         from datasets import load_dataset
     except ImportError:
-        logger.error("Instale: pip install datasets>=2.14,<4.0")
+        logger.error("Instale: pip install 'datasets>=5.0.1,<6.0'")
         return
 
     samples_per_class = max_samples // 2
@@ -799,7 +799,7 @@ def download_cetuc(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     try:
         from datasets import load_dataset
     except ImportError:
-        logger.error("Instale: pip install datasets>=2.14,<4.0")
+        logger.error("Instale: pip install 'datasets>=5.0.1,<6.0'")
         return _download_cetuc_openslr(max_samples)
 
     dataset = None
@@ -1155,7 +1155,7 @@ def download_fleurs(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     try:
         from datasets import load_dataset
     except ImportError:
-        logger.error("Instale: pip install datasets>=2.14,<4.0")
+        logger.error("Instale: pip install 'datasets>=5.0.1,<6.0'")
         return
 
     existing = count_wavs(REAL_DIR, "fleurs")
@@ -1207,7 +1207,7 @@ def download_mlaad_pt(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     try:
         from datasets import load_dataset
     except ImportError:
-        logger.error("Instale: pip install datasets>=2.14,<4.0")
+        logger.error("Instale: pip install 'datasets>=5.0.1,<6.0'")
         return
 
     existing = count_wavs(FAKE_DIR, "mlaad")
@@ -1216,7 +1216,7 @@ def download_mlaad_pt(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
         return
 
     try:
-        ds = load_dataset("OU-CSAIL/MLAAD", split="train", streaming=True, trust_remote_code=True)
+        ds = load_dataset("OU-CSAIL/MLAAD", split="train", streaming=True)
         ds = cast_no_decode(ds)  # evita exigir torchcodec
     except Exception as e:
         logger.error(diagnose_hf_error(e, "MLAAD", "OU-CSAIL/MLAAD"))
@@ -1286,7 +1286,7 @@ def download_asvspoof2019(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     try:
         from datasets import load_dataset
     except ImportError:
-        logger.error("Instale: pip install datasets>=2.14,<4.0")
+        logger.error("Instale: pip install 'datasets>=5.0.1,<6.0'")
         return
 
     samples_per_class = max_samples // 2
@@ -1553,7 +1553,7 @@ def download_in_the_wild(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     try:
         from datasets import load_dataset
     except ImportError:
-        logger.error("Instale: pip install datasets>=2.14,<4.0")
+        logger.error("Instale: pip install 'datasets>=5.0.1,<6.0'")
         return
 
     samples_per_class = max_samples // 2
@@ -1665,7 +1665,7 @@ def download_common_voice_pt(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     try:
         from datasets import load_dataset
     except ImportError:
-        logger.error("Instale: pip install datasets>=2.14,<4.0")
+        logger.error("Instale: pip install 'datasets>=5.0.1,<6.0'")
         return
 
     existing = count_wavs(REAL_DIR, "cvpt")
@@ -1685,7 +1685,7 @@ def download_common_voice_pt(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
         ("google/fleurs", "pt_br"),  # fallback sem token
     ]:
         try:
-            ds = load_dataset(repo, config, split="train", streaming=True, trust_remote_code=True)
+            ds = load_dataset(repo, config, split="train", streaming=True)
             logger.info(f"  Usando {repo} ({config})")
             break
         except Exception as e:
@@ -1741,7 +1741,7 @@ def download_asvspoof5(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     try:
         from datasets import load_dataset
     except ImportError:
-        logger.error("Instale: pip install datasets>=2.14,<4.0")
+        logger.error("Instale: pip install 'datasets>=5.0.1,<6.0'")
         return
 
     samples_per_class = max_samples // 2

@@ -815,7 +815,7 @@ def build_pipeline():
         Baixa um dataset real do HuggingFace, monta o `.npz` e treina pelo MESMO
         `TrainingService`. Desligado por padrão (download + treino são pesados).
 
-        > ⚠️ **Requer `datasets<4.0`** — a 4.x exige `torchcodec` e quebra o
+        > ⚠️ **Requer `datasets` 5.x** — a 4.x exige `torchcodec` e quebra o
         > download de áudio (a célula instala a versão certa). Algumas fontes
         > pedem um **token do HuggingFace** (erro 401) — exporte `HF_TOKEN` antes
         > ou veja `docs/data/public-datasets.md`. **FLEURS** (real, PT-BR) é público e leve;
@@ -831,7 +831,7 @@ def build_pipeline():
         if DOWNLOAD_REAL:
             # 1. datasets compatível (a 4.x quebra o download de áudio).
             subprocess.run([sys.executable, "-m", "pip", "install", "-q",
-                            "datasets>=2.14,<4.0"], check=True)
+                            "datasets>=5.0.1,<6.0"], check=True)
             # 2. Pipeline genérico por tiers, separado do protocolo do artigo.
             cmd = [
                 sys.executable, str(ROOT / "benchmarks" / "run_tcc_pipeline.py"),
@@ -854,7 +854,7 @@ def build_pipeline():
         direto (sem o pipeline completo):
 
         ```bash
-        pip install 'datasets>=2.14,<4.0'                                  # obrigatório
+        pip install 'datasets>=5.0.1,<6.0'                                 # obrigatório
         python tools/dataset/download_datasets.py --fleurs --max-samples 300     # real (público)
         python tools/dataset/download_datasets.py --brspeech --max-samples 600   # real+fake (pode pedir token)
         ```

@@ -198,7 +198,7 @@ def check_critical_deps() -> Tuple[bool, List[str]]:
             print(f"    • {name}: {detail}")
         print(
             f"  {Color.BOLD}Causa comum:{Color.END} versão de uma sub-dependência "
-            f"incompatível (ex.: huggingface_hub 1.x quebra gradio 4.x)."
+            f"incompatível com os pinos de constraints.txt."
         )
         print(
             f"  {Color.BOLD}Fix:{Color.END}  pip install -r requirements.txt --upgrade"
@@ -245,7 +245,7 @@ def check_version_compatibility() -> Tuple[bool, List[str]]:
             err(
                 f"INCOMPATIBILIDADE: gradio=={g} + starlette=={s}\n"
                 f"  → TypeError em runtime na primeira request a '/'.\n"
-                f"  Fix: pip install 'gradio>=4.31,<5.0'"
+                f"  Fix: pip install -r requirements.txt -c constraints.txt"
             )
             errors.append("gradio_starlette_incompat")
         else:
@@ -253,8 +253,8 @@ def check_version_compatibility() -> Tuple[bool, List[str]]:
     elif g:
         ok(f"gradio={g}")
 
-    # gradio 4.x importa `HfFolder`, removido no huggingface_hub 1.0 → ImportError
-    # que quebra TODA a UI. Pin correto: huggingface_hub>=0.20,<1.0.
+    # Só afeta um ambiente antigo: gradio<5 importa `HfFolder`, removido no
+    # huggingface_hub 1.0. A linha atual está em constraints.txt.
     if g and hub:
         if parse(g) < (5, 0, 0) and parse(hub) >= (1, 0, 0):
             err(

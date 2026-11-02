@@ -39,9 +39,9 @@ Para o passo a passo completo de instalação e os erros detalhados, veja
     primeiro carregamento; predições seguintes são rápidas (há *warm-up*).
 
 ??? question "`TypeError: unhashable type: 'dict'` ao abrir a página"
-    Incompatibilidade entre `gradio` e `starlette`. Use as versões pinadas
-    (`gradio>=4.31,<5.0`, `starlette>=0.36,<0.42`); o `app/core/version_check.py`
-    detecta e loga isso no *startup*. Detalhes em
+    Incompatibilidade entre `gradio` e `starlette` em um ambiente desatualizado.
+    Reinstale com `pip install -r requirements.txt -c constraints.txt`; o
+    `app/core/version_check.py` detecta e loga isso no *startup*. Detalhes em
     [Instalação e Configuração](../getting-started/installation.md).
 
 ??? question "Como rodo os notebooks no Google Colab?"

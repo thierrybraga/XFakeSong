@@ -1,8 +1,9 @@
-"""Patch para compatibilizar Pydantic v2 + Gradio v4 schema generation.
+"""Patch criado para a geração de schemas do Pydantic v2 com o Gradio v4.
 
-Gradio 4.x + Pydantic 2.5+ podem gerar schemas com valores booleanos em
+Gradio 4.x + Pydantic 2.5+ podiam gerar schemas com valores booleanos em
 posições onde dicts são esperados. Este módulo intercepta e corrige
-antes de Gradio processar.
+antes de Gradio processar. Com o Gradio 6, a aplicação do patch continua
+funcionando, mas não foi verificado se ele ainda é necessário.
 """
 
 import json

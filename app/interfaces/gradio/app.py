@@ -8,7 +8,7 @@ from app.core.performance import configure_runtime_environment
 
 configure_runtime_environment()
 
-# === Patch para compatibilidade Pydantic v2 + Gradio v4 ===
+# === Patch de schemas, criado para Pydantic v2 + Gradio v4 ===
 # Deve ser ANTES de qualquer import de gradio ou pydantic
 from app.interfaces.gradio.schema_patch import (  # noqa: E402
     patch_gradio_schema_validator,
@@ -16,7 +16,6 @@ from app.interfaces.gradio.schema_patch import (  # noqa: E402
 
 patch_gradio_schema_validator()
 
-# HfFolder saiu do huggingface_hub >= 0.16, mas o Gradio 4 ainda o importa.
 ensure_hf_folder_shim()
 
 # FE.2: força backend matplotlib não-interativo ANTES de qualquer
@@ -258,6 +257,12 @@ def _clear_feedback_ui():
     return _render_status_bar(), _render_feedback_panel()
 
 
+# Desde o Gradio 6 a aparência vai para `launch`/`mount_gradio_app`, não para
+# `gr.Blocks`. Passada ao `Blocks` ela é ignorada com um aviso: a interface sobe e
+# funciona, mas sem o tema e o CSS. Nenhum teste de lógica percebe.
+APPEARANCE = {"theme": theme, "css": _CUSTOM_CSS, "head": _HEAD_HTML}
+
+
 # =====================================================================
 # Interface principal (cinco seções funcionais)
 # =====================================================================
@@ -278,9 +283,6 @@ def create_interface() -> "gr.Blocks":
     """
     with gr.Blocks(
         title="SpeechChecker — Audio Deepfake Detection Platform",
-        theme=theme,
-        css=_CUSTOM_CSS,
-        head=_HEAD_HTML,
     ) as demo:
         # Login desativado (modo aberto): o `gr.State(True)` que existia aqui
         # nao era lido por nada desde a desativacao da autenticacao.
@@ -419,7 +421,7 @@ def create_interface() -> "gr.Blocks":
             #
             # `utils/i18n.py` permanece, com o dicionario de traducoes intacto.
 
-            # JS injection helper: usa o atributo `js=` do click handler (Gradio 4.x)
+            # JS injection helper: usa o atributo `js=` do click handler
             try:
                 theme_toggle_btn.click(
                     fn=lambda t: (

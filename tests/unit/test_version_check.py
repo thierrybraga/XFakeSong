@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+import re
+import sys
+import types
+from pathlib import Path
+
 import app.core.version_check as vc
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def _stub(monkeypatch, versions: dict):
@@ -43,3 +51,33 @@ def test_strict_raises(monkeypatch):
 
     with pytest.raises(RuntimeError):
         vc.check_versions(strict=True)
+
+
+def _avisos_de_datasets(monkeypatch, caplog, versao: str) -> list[str]:
+    from app.domain.services.dataset import download
+
+    monkeypatch.setitem(sys.modules, "datasets", types.SimpleNamespace(__version__=versao))
+    with caplog.at_level(logging.WARNING, logger=download.logger.name):
+        download.warn_if_datasets_incompatible()
+    return [r.getMessage() for r in caplog.records]
+
+
+def test_datasets_fixado_nao_manda_rebaixar(monkeypatch, caplog):
+    # A guarda antiga disparava em qualquer major >=4 e mandava instalar <4.0.
+    assert _avisos_de_datasets(monkeypatch, caplog, "5.0.1") == []
+
+
+def test_datasets_4_avisa_com_a_versao_fixada(monkeypatch, caplog):
+    avisos = _avisos_de_datasets(monkeypatch, caplog, "4.0.0")
+    assert len(avisos) == 1 and "datasets>=5.0.1,<6.0" in avisos[0]
+
+
+def test_dica_de_instalacao_do_datasets_acompanha_o_pino(monkeypatch):
+    import importlib.util
+
+    from app.domain.services.dataset import download
+
+    monkeypatch.setattr(importlib.util, "find_spec", lambda _nome: None)
+    dica = download.check_dependencies(["datasets"])[0]
+    base = (ROOT / "requirements-base.txt").read_text(encoding="utf-8")
+    assert re.search(rf"(?m)^{re.escape(dica)}\s*(#|$)", base)

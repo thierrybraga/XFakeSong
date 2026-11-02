@@ -1,6 +1,7 @@
-"""Compatibilidade com huggingface_hub para bibliotecas que ainda esperam
-``HfFolder`` (removido em huggingface_hub >= 0.16, mas ainda importado
-transitivamente por Gradio v4 e por versões antigas de ``transformers``).
+"""Compatibilidade com bibliotecas que esperam ``huggingface_hub.HfFolder``.
+
+Criado para o Gradio 4, que importava essa classe. Com os pinos atuais o shim não
+faz nada: ``huggingface_hub<1.0`` ainda a oferece, e o Gradio 6 não a usa.
 """
 
 import logging
@@ -20,7 +21,7 @@ def ensure_hf_folder_shim() -> None:
         import huggingface_hub
 
         class _HfFolder:
-            """Shim para HfFolder removido em huggingface_hub >= 0.16."""
+            """Shim para HfFolder, removido em huggingface_hub 1.0."""
 
         huggingface_hub.HfFolder = _HfFolder
-        logger.debug("Shim HfFolder aplicado (huggingface_hub >= 0.16).")
+        logger.debug("Shim HfFolder aplicado (huggingface_hub sem a classe).")

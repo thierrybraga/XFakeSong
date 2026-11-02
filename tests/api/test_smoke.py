@@ -72,14 +72,13 @@ EXPECTED_ROUTES = [
 
 def test_all_expected_routes_registered(client):
     """Todas as rotas esperadas devem estar registradas no app."""
-    registered = set()
-    for route in client.app.routes:
-        # APIRoute tem path + methods
-        path = getattr(route, "path", None)
-        methods = getattr(route, "methods", set()) or set()
-        if path:
-            for m in methods:
-                registered.add((m, path))
+    # Pelo schema, não por `app.routes`: o FastAPI novo mantém os routers incluídos
+    # aninhados, e a lista de topo só tem as rotas do próprio app.
+    registered = {
+        (metodo.upper(), path)
+        for path, operacoes in client.app.openapi()["paths"].items()
+        for metodo in operacoes
+    }
 
     missing = []
     for method, path in EXPECTED_ROUTES:
