@@ -20,9 +20,10 @@ Princípio do menor privilégio: `permissions: contents: read`.
 
 O workflow de release `.github/workflows/release-gate.yml` é estrito e roda em
 tags `v*` ou manualmente: bloqueia a promoção se falharem compatibilidade de
-dependências (Python 3.11/3.12), Ruff, testes, Bandit HIGH, pip-audit, MkDocs,
-build Docker CPU ou validação dos perfis Compose. A política e seus limites
-estão em [Dependências e Gates de Release](release-gates.md).
+dependências (Python 3.11/3.12), Ruff, testes, Bandit HIGH, avisos do pip-audit
+fora da lista de exceções, MkDocs, build Docker CPU ou validação dos perfis
+Compose. A política e seus limites estão em
+[Dependências e Gates de Release](release-gates.md).
 
 Workflows auxiliares:
 
@@ -34,7 +35,8 @@ Workflows auxiliares:
 Para reproduzir todos os gates localmente (instalação maior, com todos os extras):
 
 ```bash
-python -m pip install \
+python -m pip install --upgrade pip setuptools
+python -m pip install -c constraints.txt \
   -r requirements-notebooks.txt \
   -r requirements-docs.txt \
   -r requirements-xai.txt \
@@ -42,7 +44,7 @@ python -m pip install \
 bash tools/ops/run_tests.sh cov            # testes + cobertura
 ruff check app tests benchmarks tools  # lint estrito
 bandit -r app benchmarks tools -lll    # SAST (HIGH)
-pip-audit                                    # todos os grupos instalados
+python tools/ops/check_pip_audit.py    # avisos fora da lista de exceções
 mkdocs build --strict --clean                # docs
 python tools/ops/check_docs_site.py infrastructure/site   # páginas, links e fragmentos
 docker build --build-arg TF_VARIANT=cpu .    # imagem CPU

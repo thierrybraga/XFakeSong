@@ -679,14 +679,104 @@ e o carregamento depende do registro no Keras.
 | `pytest -m smoke tests/smoke/` | idem | **10 aprovados** |
 | `ruff check app/ benchmarks/ tools/ tests/` | idem | limpo |
 
+### Fase 5 — gates de produção (2026-11-02)
+
+- **Pilha web:** o `pip-audit` encontrava 197 avisos em 8 pacotes, quase todos em
+  Gradio 4, Starlette, datasets e dependências. Com aprovação do usuário, a pilha subiu
+  para Gradio 6.17.3, FastAPI 0.162, Starlette 1.10, Pillow 12.3 e datasets 5, sem tocar
+  em `torch`, `transformers`, TensorFlow, Keras, NumPy e scikit-learn. Sobram 84 IDs em
+  3 pacotes. A cadeia de tetos está em
+  [release-gates.md](release-gates.md#pilha-web-e-seus-tetos).
+- **Mudanças que a migração exigiu:** `theme`, `css` e `head` saíram de `gr.Blocks`,
+  onde o Gradio 6 os ignora com um aviso e a interface sobe sem tema (agora em
+  `APPEARANCE`, passado a `launch()` e `mount_gradio_app()`); `trust_remote_code` saiu
+  do download de datasets; o teste de rotas lê `app.openapi()`, porque o FastAPI novo
+  guarda os routers incluídos aninhados; `warn_if_datasets_incompatible` passou a
+  avisar só na 4.x (disparava em qualquer major >=4 e mandava rebaixar), e as dicas de
+  instalação, a documentação e o notebook de treino pararam de pedir `datasets<4.0`.
+- **Gate:** `pip-audit` puro reprovaria toda release por causa dos pinos deliberados.
+  `tools/ops/check_pip_audit.py` só tolera os IDs de
+  `configs/security/pip-audit-exceptions.json` e falha fechado se o `pip-audit` não
+  concluir. A CI agora instala com `constraints.txt`: sem isso auditava outras versões,
+  e não as que as imagens publicam.
+- **Justificativas conferidas no código, aviso por aviso.** Duas hipóteses iniciais não
+  se sustentaram: `weights_only=True` não protege no torch 2.5.1 (CVE-2025-32434,
+  CVE-2026-24747), e "nenhuma rota escolhe o repositório" é falso para a API de treino.
+  `parameters` chega a `create_model`, e `model_name` ou `wavlm_model` vão ao
+  `from_pretrained`. A rota exige a chave da API, e o Gradio não alcança esse caminho.
+  Ficou declarado como risco residual, não corrigido: bloquear muda o contrato da API.
+- **Revisão manual:** feita e registrada em [release-review.md](release-review.md). A
+  publicação acadêmica segue **bloqueada** por licença do corpus e proveniência das
+  métricas, e as duas decisões são humanas.
+
+Verificação da migração no app real, com banco de rascunho:
+
+| Fluxo | Resultado |
+| --- | --- |
+| Tema e CSS | Restaurados, sem aviso de `Blocks` |
+| Navegador: upload, forma de onda, análise forense | 13 figuras renderizadas; todas as requisições para `localhost`, nenhum erro HTTP |
+| Detecção, modo simples e avançado | Modelo escolhido é respeitado, com a variante vinda de `/update_variants` |
+| Lote e exportação CSV | Funcionam |
+| Assistente, na ordem do botão | Dataset de 12 WAVs: 9 s, streaming, 8 figuras |
+| Paridade com o caminho de treino, 60 janelas de validação | 9 modelos: decisões iguais, diferença máxima 8e-05 |
+| 200 WAVs de validação | Iguais à verificação anterior: AASIST 99,0; Conformer 99,0; Hybrid 100; MultiscaleCNN 98,5; RF 89,0; RawGAT-ST 93,5; RawNet2 94,5; AST 99,5; SVM 91,0 |
+| Download pelo datasets 5, sem `torchcodec` | Funciona em streaming com `hf-internal-testing/librispeech_asr_dummy`. Repositórios Common Voice da Mozilla não testados: podem cair no fallback |
+
+Duas falhas aparentes eram do meu teste, não do código. O assistente não terminava
+porque o script pulava `attach_path_to_scan`: sem o caminho, ele cai em `data/datasets` e
+treinava 19.706 lotes do corpus real. Já `/update_variants` devolve uma tupla, que o
+script passava inteira ao Dropdown.
+
+AASIST e SpectrogramTransformer repetem a mesma confiança em real e fake (0,97891 e
+0,997973). Não é defeito da migração: é o teto da calibração para a saída saturada,
+`sigmoid(logit(1-1e-7)/T)`, com T de 4,2 e 2,6.
+
+| Gate (Fase 5) | Ambiente | Resultado |
+| --- | --- | --- |
+| `make test` | Python 3.11.9, `.venv` do projeto | **1.049 aprovados**, 0 falhas, 10 pulados; `data/app.db` e `data/models` intocados |
+| Os 10 pulados (`nbformat`, `nbclient`, `shap`), que a CI instala | idem, com esses pacotes numa pasta de rascunho | 8 notebooks executados e 2 testes de SHAP aprovados |
+| `pytest -m smoke tests/smoke/` | idem | **10 aprovados** |
+| `ruff check` e `bandit -lll` | idem | limpo; nenhum achado HIGH |
+| `mkdocs build --strict --clean` e `check_docs_site.py` | ambiente de docs | passam |
+| `pip check` | `.venv` do projeto | sem conflitos |
+| `docker_build.py <perfil> config`, 5 perfis | env fictício do workflow | válidos |
+| `check_pip_audit.py` | `.venv` (160 pacotes); todos os perfis, Windows (288) e Linux (303) | aprova; 84 IDs tolerados, nenhum aviso novo |
+| Mutação do gate | ID a menos, versão diferente, sem a exceção, data vencida, aviso novo | todas reprovam; justificativa vazia sai com código 2 |
+| Resolução com `constraints.txt` | Linux, Python 3.11 e 3.12, `requirements.txt` e `requirements-cpu.txt`; todos os perfis em 3.11 | resolve (`uv`, com marcadores de Linux) |
+
+**Não verificado aqui:** o workflow no GitHub e o build Docker, que rodam na primeira
+execução, e a instalação real em Linux. O Python 3.12 não está instalado nesta máquina,
+então em 3.12 as dependências só foram resolvidas, sem executar nada. A resolução usou o
+`uv`, que pode escolher versões diferentes das do pip. Pode faltar disco no runner ao
+instalar `torch` e CUDA junto com o build da imagem.
+
 ### Pendente
 
-- Decidir o hardlink de `_preserve_run_artifact` (tabela acima): é a única
-  falha que resta das Fases 1–2.
-- O job `docker` do `ci.yml` (só em PR) roda `inference-cpu config` sem
-  `.env` e para na mesma checagem fail-closed; precisa de um env de CI com
-  valores fictícios. O `.env` local também precisa das cinco variáveis acima
-  para subir a inferência.
+- **Decisão: API de treino escolhe o repositório do modelo.** Validar `parameters`
+  contra uma lista de checkpoints permitidos fecharia o caminho e encolheria o risco
+  residual das exceções.
+- **Checkpoints sem `revision`:** `DEFAULT_CHECKPOINTS` e `DEFAULT_AST_CHECKPOINT` usam o
+  ramo principal do Hugging Face. Fixar o commit protege e melhora a reprodutibilidade.
+- **Analytics do Gradio fora do Docker:** `GRADIO_ANALYTICS_ENABLED` só é desligado no
+  Dockerfile e nos composes. Rodando localmente, o servidor consulta
+  `https://api.gradio.app/pkg-version`, o que contradiz "processamento 100% local".
+- **Código de compatibilidade do Gradio 4:** o shim de `HfFolder` não faz nada (entre as
+  dependências, só `transformers/commands/user.py` cita a classe). Remover
+  `hf_compat.py`. Para `schema_patch.py`, verificar antes se o Gradio 6 ainda precisa.
+- **Painel:** "Últimas análises" mostra tempos negativos (`-9545s atrás`). `created_at`
+  vem em UTC do SQLite, e `dashboard.py::_recent_analyses` compara com a hora local.
+- **Interface, cosmético:** o rótulo do Gradio cobre o título de algumas figuras da aba
+  Investigar.
+- **Notebooks defasados do gerador:** `tools/ops/build_notebooks.py` já não reproduz
+  `docs/notebooks/`: gera outra numeração em `models/` (nove arquivos novos) e reescreve
+  cinco notebooks. Por isso o `datasets` foi ajustado à mão no notebook versionado e no
+  gerador. Falta regenerar e revisar. O comando `git diff --exit-code -- notebooks/` em
+  `quality-and-testing.md` também aponta para a pasta antiga.
+- **Reconciliar o artigo com os resultados** e gerar o PDF de novo
+  ([release-review.md](release-review.md)).
+- Os limites `gradio<6.18` e `pillow<13` saem junto com o pino do `transformers`.
+- O `ci.yml` não instala com `constraints.txt`, ao contrário do gate de release, e não
+  dispara em push para `refactor/**`.
 - Fase 3, restante: `benchmarks.planning` consumido pela UI (inverter a
   dependência `app → benchmarks`, que o teste de fronteiras ainda não
   proíbe); código morto do harness que resta do P2-14
@@ -716,11 +806,12 @@ e o carregamento depende do registro no Keras.
   promovida, então os 9 modelos corretos seriam trocados pelos antigos. É preciso
   promover a geração atual. Nesta máquina Windows os snapshots do cache do HF são
   links que o `from_pretrained` não resolve.
-- **RawNet2 sem resultado no run corrente:** o retreino de 25/08 parou na época 5
-  (`data/results/benchmark/rawnet2/` sem `results.json`, e `run_summary.json` com
-  métricas nulas). O modelo em uso é o do run arquivado em `_superseded/` (21/08, 100
-  épocas, `val_eer`, banda, mesmo teste: acurácia 91,17%, EER 8,10%). A tabela do
-  artigo precisa decidir entre restaurar esse run ou retreinar.
+- **Pasta do RawNet2 no run corrente:** o retreino de 25/08 parou na época 5, e
+  `data/results/benchmark/rawnet2/` ficou sem `results.json`. O `run_summary.json` e o
+  modelo em uso têm o resultado válido, do run arquivado em
+  `_superseded/rawnet2_d9f23c0d` (21/08, 100 épocas, `val_eer`, banda, mesmo teste:
+  acurácia 91,17%, EER 8,10%). Falta organizar a pasta, e o `results.json` está no
+  arquivo.
 - Análise em lote: arquivo que falha entra como `REAL` na tabela e na pizza
   (`is_fake=False`, confiança 0), e o `test_lote_resume_e_exporta_csv` fixa isso
   como está. Uma ferramenta forense deveria marcá-lo como erro.

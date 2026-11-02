@@ -162,6 +162,7 @@ nav:
     - Convenções: development/conventions.md
     - Qualidade e Testes: development/quality-and-testing.md
     - Dependências e Gates de Release: development/release-gates.md
+    - Registro da Revisão de Release: development/release-review.md
     - CI/CD e Segurança: development/ci-cd-and-security.md
     - Ambientes Docker: development/docker-environments.md
     - Histórico de organização:
