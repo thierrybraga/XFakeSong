@@ -28,8 +28,8 @@ jobs:
       - run: pip install ruff
       # Advisório: a base ainda não está 100% lint-clean. `--exit-zero` mantém
       # o job verde e publica os achados como anotações no PR (sem bloquear).
-      # Remover `--exit-zero` quando zerar os achados para tornar o gate firme.
-      - run: ruff check app tests benchmarks scripts --output-format=github --exit-zero
+      # O workflow release-gate.yml executa o lint sem --exit-zero.
+      - run: ruff check app tests benchmarks tools --output-format=github --exit-zero
 
   test:
     name: Testes + cobertura
@@ -47,12 +47,12 @@ jobs:
       - name: Instalar dependências
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt
+          pip install -r requirements-dev.txt
       - name: Suíte rápida (exclui smoke) + cobertura
-        run: bash scripts/ops/run_tests.sh cov
+        run: bash tools/ops/run_tests.sh cov
 
   security:
-    name: Segurança (bandit bloqueia HIGH + pip-audit advisório)
+    name: Segurança (Bandit bloqueia HIGH + auditoria runtime advisória)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -62,8 +62,8 @@ jobs:
           cache: pip
       - run: pip install bandit pip-audit
       - name: Bandit (SAST — falha em severidade HIGH)
-        run: bandit -r app benchmarks scripts -lll
-      - name: pip-audit (CVEs em dependências — advisório)
+        run: bandit -r app benchmarks tools -lll
+      - name: pip-audit (CVEs do runtime — advisório; release usa gate estrito)
         continue-on-error: true
         run: pip-audit -r requirements.txt
 
@@ -76,9 +76,11 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - run: pip install mkdocs mkdocs-material
-      - name: Build estrito (falha em links/refs quebrados)
-        run: mkdocs build --strict
+      - run: pip install -r requirements-docs.txt
+      - name: Build estrito
+        run: mkdocs build --strict --clean
+      - name: Validar links locais e fragmentos
+        run: python tools/ops/check_docs_site.py infrastructure/site
 
   docker:
     name: Docker build/config
@@ -95,7 +97,7 @@ jobs:
         run: docker build --build-arg TF_VARIANT=cpu -t speechchecker:ci .
       - name: Validar compose segmentado
         run: |
-          python scripts/ops/docker_build.py inference-cpu config
-          python scripts/ops/docker_build.py train-cpu config
-          python scripts/ops/docker_build.py train-nvidia config
-          python scripts/ops/docker_build.py benchmark-nvidia config
+          python tools/ops/docker_build.py inference-cpu config
+          python tools/ops/docker_build.py train-cpu config
+          python tools/ops/docker_build.py train-nvidia config
+          python tools/ops/docker_build.py benchmark-nvidia config

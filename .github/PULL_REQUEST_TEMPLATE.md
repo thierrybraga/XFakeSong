@@ -12,9 +12,9 @@
 
 ## Checklist
 
-- [ ] `./scripts/ops/run_tests.sh fast` verde localmente
+- [ ] `./tools/ops/run_tests.sh fast` verde localmente
 - [ ] Cobertura mantida ou aumentada para o código novo
-- [ ] `bandit -r app benchmarks scripts -lll` sem achados HIGH
+- [ ] `bandit -r app benchmarks tools -lll` sem achados HIGH
 - [ ] `mkdocs build --strict` ok quando há mudança em `docs/`
 - [ ] Sem segredos, tokens ou credenciais no diff
 

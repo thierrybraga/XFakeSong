@@ -3,7 +3,7 @@ scope: extended
 models:
   - Ensemble
   - EfficientNet-LSTM
-dataset: data/datasets/benchmark_dataset.npz
+dataset: data/datasets/benchmark_dataset_15k.npz
 output_dir: data/results/retune_extended
 epochs: 100
 batch_size: 16

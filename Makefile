@@ -1,33 +1,43 @@
 # =====================================================================
 # SpeechChecker — Makefile
 # Auto-detecta `docker compose` (v2) ou `docker-compose` (v1)
-# Compatível com Make 3.81+ no Windows (Git Bash / MinGW / WSL)
+# Requer GNU Make e Bash. No Windows, use Git Bash ou WSL; PowerShell usa
+# os comandos documentados nos guias, não os alvos Make.
 # =====================================================================
 
+ifeq ($(OS),Windows_NT)
+SHELL := bash
+PYTHON ?= python
+VENV_PYTHON := .venv/Scripts/python.exe
+VENV_ACTIVATION_MSG := Git Bash: source .venv/Scripts/activate; PowerShell: .venv/Scripts/Activate.ps1
+else
 SHELL := /bin/bash
+PYTHON ?= python3
+VENV_PYTHON := .venv/bin/python
+VENV_ACTIVATION_MSG := source .venv/bin/activate
+endif
 .SHELLFLAGS := -eu -o pipefail -c
 MAKEFLAGS += --no-print-directory
 
 # Auto-detect Docker Compose v2 vs v1
 DC := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
 
-PYTHON ?= python3
 PORT ?= 7860
 IMAGE_NAME := speechchecker
 IMAGE_TAG ?= latest
 
-# Perfis Docker segmentados. Os arquivos docker-compose*.yml da raiz ficam
-# como aliases legados; novos builds devem usar docker/compose/*.yml.
+# Perfis de desenvolvimento/treino ficam em infrastructure/docker/compose/.
+# O Dockerfile da raiz e mantido para deploy em Hugging Face Spaces.
 SERVICE ?= inference-api
-COMPOSE_FILE := docker/compose/inference.cpu.yml
+COMPOSE_FILE := infrastructure/docker/compose/inference.cpu.yml
 ifeq ($(GPU),1)
-COMPOSE_FILE := docker/compose/inference.nvidia.yml
+COMPOSE_FILE := infrastructure/docker/compose/inference.nvidia.yml
 endif
 COMPOSE_FILES := -f $(COMPOSE_FILE)
 
-TRAIN_CPU_COMPOSE := docker/compose/train.cpu.yml
-TRAIN_NVIDIA_COMPOSE := docker/compose/train.nvidia.yml
-BENCHMARK_NVIDIA_COMPOSE := docker/compose/benchmark.nvidia.yml
+TRAIN_CPU_COMPOSE := infrastructure/docker/compose/train.cpu.yml
+TRAIN_NVIDIA_COMPOSE := infrastructure/docker/compose/train.nvidia.yml
+BENCHMARK_NVIDIA_COMPOSE := infrastructure/docker/compose/benchmark.nvidia.yml
 
 # =====================================================================
 .PHONY: help
@@ -41,7 +51,7 @@ help:  ## Mostra esta ajuda
 	@echo "  GPU=1               Habilita GPU (NVIDIA)"
 	@echo "  PORT=7860           Porta Gradio (default 7860)"
 	@echo "  SERVICE=inference-api Serviço Compose alvo"
-	@echo "  PYTHON=python3      Binário Python para venv local"
+	@echo "  PYTHON              Python base (Windows: python; Linux/macOS: python3)"
 
 # =====================================================================
 # Docker
@@ -121,11 +131,11 @@ benchmark-nvidia:  ## Executa benchmark completo NVIDIA/WSL2
 
 .PHONY: docker-config
 docker-config:  ## Valida configuração Compose dos perfis segmentados
-	$(PYTHON) scripts/ops/docker_build.py inference-cpu config
-	$(PYTHON) scripts/ops/docker_build.py inference-nvidia config
-	$(PYTHON) scripts/ops/docker_build.py train-cpu config
-	$(PYTHON) scripts/ops/docker_build.py train-nvidia config
-	$(PYTHON) scripts/ops/docker_build.py benchmark-nvidia config
+	"$(VENV_PYTHON)" tools/ops/docker_build.py inference-cpu config
+	"$(VENV_PYTHON)" tools/ops/docker_build.py inference-nvidia config
+	"$(VENV_PYTHON)" tools/ops/docker_build.py train-cpu config
+	"$(VENV_PYTHON)" tools/ops/docker_build.py train-nvidia config
+	"$(VENV_PYTHON)" tools/ops/docker_build.py benchmark-nvidia config
 
 # =====================================================================
 # Desenvolvimento local (Python venv)
@@ -134,25 +144,25 @@ docker-config:  ## Valida configuração Compose dos perfis segmentados
 .PHONY: venv
 venv:  ## Cria virtualenv local em .venv
 	$(PYTHON) -m venv .venv
-	@echo "Ative com:  source .venv/bin/activate  (ou .venv\\Scripts\\activate no Windows)"
+	@echo "Ative com: $(VENV_ACTIVATION_MSG)"
 
 .PHONY: install
 install:  ## Instala dependências em .venv (cria se não existe)
-	@if [ ! -d .venv ]; then $(PYTHON) -m venv .venv; fi
-	.venv/bin/pip install --upgrade pip
-	.venv/bin/pip install -r requirements.txt
+	@if [ ! -x "$(VENV_PYTHON)" ]; then $(PYTHON) -m venv .venv; fi
+	"$(VENV_PYTHON)" -m pip install --upgrade pip
+	"$(VENV_PYTHON)" -m pip install -r requirements.txt
 
 .PHONY: install-dev
 install-dev: install  ## Instala dependências + dev tools
-	.venv/bin/pip install -r requirements-dev.txt
+	"$(VENV_PYTHON)" -m pip install -r requirements-dev.txt
 
 .PHONY: dev
 dev:  ## Roda Gradio local (sem Docker)
-	$(PYTHON) main.py --gradio --gradio-port $(PORT)
+	"$(VENV_PYTHON)" main.py --gradio --gradio-port $(PORT)
 
 .PHONY: bootstrap
 bootstrap:  ## Cria estrutura de diretórios padrão
-	$(PYTHON) main.py --bootstrap-dirs
+	"$(VENV_PYTHON)" main.py --bootstrap-dirs
 
 # =====================================================================
 # Qualidade de código
@@ -160,15 +170,15 @@ bootstrap:  ## Cria estrutura de diretórios padrão
 
 .PHONY: lint
 lint:  ## Roda ruff lint
-	.venv/bin/ruff check app/ tests/
+	"$(VENV_PYTHON)" -m ruff check app/ benchmarks/ tools/ tests/
 
 .PHONY: format
 format:  ## Formata com black + isort
-	.venv/bin/black app/ tests/
-	.venv/bin/isort app/ tests/
+	"$(VENV_PYTHON)" -m black app/ benchmarks/ tools/ tests/
+	"$(VENV_PYTHON)" -m isort app/ benchmarks/ tools/ tests/
 
 # Runner padronizado. Veja docs/development/quality-and-testing.md.
-RUN_TESTS := ./scripts/ops/run_tests.sh
+RUN_TESTS := bash tools/ops/run_tests.sh
 
 .PHONY: test
 test:  ## Roda a suíte rápida (tudo EXCETO smoke) — run padrão da CI
@@ -224,12 +234,12 @@ version:  ## Mostra versões críticas
 
 .PHONY: deploy-hf
 deploy-hf:  ## Deploy para Hugging Face Spaces
-	$(PYTHON) main.py --deploy
+	"$(VENV_PYTHON)" main.py --deploy
 
 .PHONY: doctor
 doctor:  ## Diagnóstico do ambiente (deps, porta, db)
-	$(PYTHON) scripts/ops/doctor.py
+	"$(VENV_PYTHON)" tools/ops/doctor.py
 
 .PHONY: doctor-fix
 doctor-fix:  ## Diagnóstico + tenta corrigir automaticamente
-	$(PYTHON) scripts/ops/doctor.py --fix
+	"$(VENV_PYTHON)" tools/ops/doctor.py --fix

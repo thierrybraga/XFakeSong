@@ -1,0 +1,17 @@
+# inference-api
+
+Lightweight runtime for Gradio and FastAPI inference. It consumes trained models
+from `data/models` and should not run benchmark or full training jobs.
+
+Recommended command:
+
+```bash
+python main.py --gradio --gradio-port 7860
+```
+
+Docker:
+
+```bash
+docker compose -f infrastructure/docker/compose/inference.cpu.yml up --build inference-api
+docker compose -f infrastructure/docker/compose/inference.nvidia.yml up --build inference-api
+```

@@ -51,7 +51,7 @@ readonly HEALTH_INTERVAL="5"
 # (cpu/nvidia) ativo, resolvido em tempo de execução por
 # detect_active_profile() — mesma lógica de start.bat (:DETECT_ACTIVE_PROFILE).
 CONTAINER_NAME="speechchecker_inference_cpu"
-COMPOSE_FILE="docker/compose/inference.cpu.yml"
+COMPOSE_FILE="infrastructure/docker/compose/inference.cpu.yml"
 readonly PY_MIN_MINOR="11"   # Python 3.11 é a referência (compatível 3.11–3.12)
 readonly PY_MAX_MINOR="12"   # teto: torch==2.5.1 não tem wheels p/ Python 3.13
 
@@ -375,10 +375,10 @@ get_compose() {
 # "start.sh stop" noutra). Mesma lógica de start.bat (:DETECT_ACTIVE_PROFILE).
 detect_active_profile() {
     if docker inspect speechchecker_inference_nvidia >/dev/null 2>&1; then
-        COMPOSE_FILE="docker/compose/inference.nvidia.yml"
+        COMPOSE_FILE="infrastructure/docker/compose/inference.nvidia.yml"
         CONTAINER_NAME="speechchecker_inference_nvidia"
     else
-        COMPOSE_FILE="docker/compose/inference.cpu.yml"
+        COMPOSE_FILE="infrastructure/docker/compose/inference.cpu.yml"
         CONTAINER_NAME="speechchecker_inference_cpu"
     fi
 }
@@ -772,7 +772,7 @@ run_docker() {
     get_compose
 
     if [[ "$gpu_mode" == "1" ]]; then
-        COMPOSE_FILE="docker/compose/inference.nvidia.yml"
+        COMPOSE_FILE="infrastructure/docker/compose/inference.nvidia.yml"
         CONTAINER_NAME="speechchecker_inference_nvidia"
         [[ -f "$COMPOSE_FILE" ]] || fatal "$COMPOSE_FILE não encontrado"
         info "Modo GPU ativo — validando pré-requisitos..."
@@ -798,7 +798,7 @@ run_docker() {
             success "NVIDIA Container Toolkit detectado"
         fi
     else
-        COMPOSE_FILE="docker/compose/inference.cpu.yml"
+        COMPOSE_FILE="infrastructure/docker/compose/inference.cpu.yml"
         CONTAINER_NAME="speechchecker_inference_cpu"
     fi
 
@@ -846,9 +846,9 @@ show_status() {
 
     echo
     echo "--- Compose status (CPU) ---"
-    "${COMPOSE_CMD[@]}" -f docker/compose/inference.cpu.yml ps
+    "${COMPOSE_CMD[@]}" -f infrastructure/docker/compose/inference.cpu.yml ps
     echo "--- Compose status (GPU) ---"
-    "${COMPOSE_CMD[@]}" -f docker/compose/inference.nvidia.yml ps
+    "${COMPOSE_CMD[@]}" -f infrastructure/docker/compose/inference.nvidia.yml ps
     echo
 
     timeout 5 docker stats \
@@ -874,8 +874,8 @@ clean_environment() {
 
     # Desce os dois perfis (CPU/GPU) — não sabemos qual estava ativo, e down
     # num compose file cujo container já não existe é um no-op inofensivo.
-    "${COMPOSE_CMD[@]}" -f docker/compose/inference.cpu.yml down -v --remove-orphans
-    "${COMPOSE_CMD[@]}" -f docker/compose/inference.nvidia.yml down -v --remove-orphans 2>/dev/null || true
+    "${COMPOSE_CMD[@]}" -f infrastructure/docker/compose/inference.cpu.yml down -v --remove-orphans
+    "${COMPOSE_CMD[@]}" -f infrastructure/docker/compose/inference.nvidia.yml down -v --remove-orphans 2>/dev/null || true
     docker image prune -f
     docker builder prune -f
 
@@ -925,7 +925,7 @@ run_doctor() {
 
     check_item 'Docker daemon'              'docker info'
     check_item 'Docker Compose'             'docker compose version || docker-compose version'
-    check_item 'docker/compose/inference.cpu.yml' '[ -f docker/compose/inference.cpu.yml ]'
+    check_item 'infrastructure/docker/compose/inference.cpu.yml' '[ -f infrastructure/docker/compose/inference.cpu.yml ]'
 
     if is_wsl; then
         check_item 'WSL2'                   'is_wsl'

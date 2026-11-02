@@ -1,11 +1,62 @@
 version: 2
 updates:
-  # Dependências Python (requirements.txt + requirements-dev.txt)
+  # Dependabot acompanha manifests requirements*.txt na raiz.
   - package-ecosystem: pip
     directory: "/"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns: ["*"]
+    commit-message:
+      prefix: "deps"
+
+  # Requirements isolados dos ambientes de container também recebem updates.
+  - package-ecosystem: pip
+    directory: "/infrastructure/docker/environments/classical-ml"
+    schedule:
+      interval: weekly
+    groups:
+      python-dependencies:
+        patterns: ["*"]
+    commit-message:
+      prefix: "deps"
+
+  - package-ecosystem: pip
+    directory: "/infrastructure/docker/environments/inference-api"
+    schedule:
+      interval: weekly
+    groups:
+      python-dependencies:
+        patterns: ["*"]
+    commit-message:
+      prefix: "deps"
+
+  - package-ecosystem: pip
+    directory: "/infrastructure/docker/environments/pytorch-audio"
+    schedule:
+      interval: weekly
+    groups:
+      python-dependencies:
+        patterns: ["*"]
+    commit-message:
+      prefix: "deps"
+
+  - package-ecosystem: pip
+    directory: "/infrastructure/docker/environments/ssl-transformers"
+    schedule:
+      interval: weekly
+    groups:
+      python-dependencies:
+        patterns: ["*"]
+    commit-message:
+      prefix: "deps"
+
+  - package-ecosystem: pip
+    directory: "/infrastructure/docker/environments/tensorflow-keras"
+    schedule:
+      interval: weekly
     groups:
       python-dependencies:
         patterns: ["*"]

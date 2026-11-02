@@ -1,0 +1,86 @@
+name: Release gates
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-gates-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dependency-compatibility:
+    name: Dependências — Python ${{ matrix.python-version }} / ${{ matrix.profile }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+        profile: ["requirements.txt", "requirements-cpu.txt"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: ${{ matrix.profile }}
+      - name: Resolver perfil e validar dependências instaladas
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r "${{ matrix.profile }}"
+          python -m pip check
+
+  quality:
+    name: Qualidade, segurança, documentação e container
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      XFAKE_API_ONLY: "1"
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            requirements-docs.txt
+            requirements-notebooks.txt
+            requirements-xai.txt
+            requirements-experiments.txt
+      - name: Instalar todos os perfis publicados
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            -r requirements-notebooks.txt \
+            -r requirements-docs.txt \
+            -r requirements-xai.txt \
+            -r requirements-experiments.txt
+          python -m pip check
+      - name: Ruff — sem achados na release
+        run: ruff check app tests benchmarks tools
+      - name: Testes rápidos + relatório de cobertura
+        run: bash tools/ops/run_tests.sh cov
+      - name: Bandit — bloquear achados HIGH
+        run: bandit -r app benchmarks tools -lll
+      - name: pip-audit — bloquear vulnerabilidades nos perfis instalados
+        run: pip-audit
+      - name: MkDocs — build estrito
+        run: |
+          mkdocs build --strict --clean
+          python tools/ops/check_docs_site.py infrastructure/site
+      - name: Build da imagem de publicação CPU
+        run: docker build --build-arg TF_VARIANT=cpu -t speechchecker:release-gate .
+      - name: Validar perfis Compose
+        run: |
+          python tools/ops/docker_build.py inference-cpu config
+          python tools/ops/docker_build.py inference-nvidia config
+          python tools/ops/docker_build.py train-cpu config
+          python tools/ops/docker_build.py train-nvidia config
+          python tools/ops/docker_build.py benchmark-nvidia config

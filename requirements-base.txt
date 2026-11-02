@@ -34,7 +34,6 @@ numpy>=1.24,<2.3       # TF aceita numpy 2.x estável; teto evita majors não te
 # (evita ResolutionImpossible quando o Dependabot tenta pandas>=3.0.3).
 pandas>=2.0,<3.0
 matplotlib>=3.7
-seaborn>=0.13
 
 # --- Web / API ---
 # Baseline compatível e corrigida da linha Gradio 4.x.
@@ -48,7 +47,6 @@ python-multipart>=0.0.20,<0.1
 httpx>=0.27
 jinja2>=3.1.5
 slowapi>=0.1.9
-a2wsgi>=1.10
 
 # --- Datasets (scripts de download HuggingFace) ---
 # Teto <4.0: o datasets 4.x passou a exigir `torchcodec` (torch + FFmpeg) para
@@ -61,21 +59,12 @@ sqlalchemy>=2.0
 pydantic>=2.5
 python-dotenv>=1.0
 pyyaml>=6.0
-jsonschema>=4.20
-redis>=5.0
 
 # --- Hugging Face / deploy ---
 # Teto <1.0: hub 1.0 removeu `HfFolder` que o gradio 4.x importa (quebra a UI no
 # boot). Piso 0.25 = exigência do `datasets`; a faixa 0.25–0.36 satisfaz ambos.
 huggingface_hub>=0.25,<1.0
 requests>=2.31
-
-# --- Documentação ---
-mkdocs>=1.5
-mkdocs-material>=9.5
-
-# --- Testes mínimos (rotas importam pytest em runtime) ---
-pytest>=7.4
 
 # --- Diagnóstico de GPU ---
 # pynvml detecta hardware NVIDIA mesmo sem CUDA no TF (Windows nativo, builds

@@ -1,0 +1,6 @@
+# Ambiente de notebook inclui runtime e ferramentas de teste para executar
+# exemplos que importam a aplicação, além do kernel/renderizador Jupyter.
+-r requirements-dev.txt
+jupyter>=1.0
+ipython>=8.18
+nbconvert>=7.0

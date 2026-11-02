@@ -4,8 +4,8 @@ REM SpeechChecker Launcher (Windows)
 REM Uso: start.bat [auto|test|prod|gpu|stop|logs|rebuild|clean|status|install|bootstrap]
 REM Sem argumento: abre menu interativo.
 REM "auto" (recomendado) detecta GPU NVIDIA (nvidia-smi) e usa
-REM docker/compose/inference.nvidia.yml, com fallback automatico para
-REM docker/compose/inference.cpu.yml se o build/up da GPU falhar (driver ou
+REM infrastructure/docker/compose/inference.nvidia.yml, com fallback automatico para
+REM infrastructure/docker/compose/inference.cpu.yml se o build/up da GPU falhar (driver ou
 REM NVIDIA Container Toolkit ausente no host/WSL2).
 REM ====================================================================
 chcp 65001 >nul 2>&1
@@ -157,7 +157,7 @@ GOTO MENU_RETURN
 
 REM ====================================================================
 REM MODO PRODUCAO: detecta GPU NVIDIA automaticamente (nvidia-smi + WSL2/
-REM NVIDIA Container Toolkit) e usa docker/compose/inference.{cpu,nvidia}.yml.
+REM NVIDIA Container Toolkit) e usa infrastructure/docker/compose/inference.{cpu,nvidia}.yml.
 REM "gpu"/"prod" forcam um perfil especifico; sem argumento, auto-detecta com
 REM fallback automatico para CPU se o perfil GPU falhar (driver/toolkit ausente).
 :MODE_PROD
@@ -193,12 +193,12 @@ IF "%FORCE_PROFILE%"=="" (
 )
 
 IF "%PROFILE%"=="gpu" (
-    ECHO GPU NVIDIA detectada — perfil GPU ^(docker/compose/inference.nvidia.yml^)
-    SET "COMPOSE_FILE=docker\compose\inference.nvidia.yml"
+    ECHO GPU NVIDIA detectada — perfil GPU ^(infrastructure/docker/compose/inference.nvidia.yml^)
+    SET "COMPOSE_FILE=infrastructure\docker\compose\inference.nvidia.yml"
     SET "CONTAINER=speechchecker_inference_nvidia"
 ) ELSE (
-    ECHO Perfil CPU — docker/compose/inference.cpu.yml
-    SET "COMPOSE_FILE=docker\compose\inference.cpu.yml"
+    ECHO Perfil CPU — infrastructure/docker/compose/inference.cpu.yml
+    SET "COMPOSE_FILE=infrastructure\docker\compose\inference.cpu.yml"
     SET "CONTAINER=speechchecker_inference_cpu"
 )
 ECHO Compose detectado: %DC%
@@ -210,7 +210,7 @@ IF ERRORLEVEL 1 (
         ECHO.
         ECHO Falha no perfil GPU ^(driver/NVIDIA Container Toolkit ausente no host?^).
         ECHO Aplicando fallback automatico para CPU...
-        SET "COMPOSE_FILE=docker\compose\inference.cpu.yml"
+        SET "COMPOSE_FILE=infrastructure\docker\compose\inference.cpu.yml"
         SET "CONTAINER=speechchecker_inference_cpu"
         SET "PROFILE=cpu"
         %DC% -f !COMPOSE_FILE! up --build -d
@@ -246,7 +246,7 @@ GOTO MENU_RETURN
 
 REM ====================================================================
 REM Stop/logs/rebuild re-detectam GPU (mesma logica do MODE_PROD_RUN) para
-REM saber qual dos dois perfis (docker/compose/inference.{cpu,nvidia}.yml)
+REM saber qual dos dois perfis (infrastructure/docker/compose/inference.{cpu,nvidia}.yml)
 REM esta ativo — sem precisar persistir estado entre invocacoes do .bat.
 :MODE_STOP
 CLS
@@ -300,8 +300,8 @@ IF ERRORLEVEL 1 GOTO MENU_RETURN
 
 REM Desce os dois perfis (CPU/GPU) — nao sabemos qual estava ativo, e down
 REM num compose file cujo container ja nao existe e um no-op inofensivo.
-%DC% -f docker\compose\inference.cpu.yml down -v --remove-orphans
-%DC% -f docker\compose\inference.nvidia.yml down -v --remove-orphans 2>nul
+%DC% -f infrastructure\docker\compose\inference.cpu.yml down -v --remove-orphans
+%DC% -f infrastructure\docker\compose\inference.nvidia.yml down -v --remove-orphans 2>nul
 docker image prune -f
 docker builder prune -f
 ECHO Limpeza concluida.
@@ -313,9 +313,9 @@ CLS
 CALL :CHECK_DOCKER_RUNNING
 IF ERRORLEVEL 1 GOTO MENU_RETURN
 ECHO --- Compose status (CPU) ---
-%DC% -f docker\compose\inference.cpu.yml ps
+%DC% -f infrastructure\docker\compose\inference.cpu.yml ps
 ECHO --- Compose status (GPU) ---
-%DC% -f docker\compose\inference.nvidia.yml ps
+%DC% -f infrastructure\docker\compose\inference.nvidia.yml ps
 ECHO.
 ECHO --- docker stats (snapshot) ---
 docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}" 2>nul
@@ -452,11 +452,11 @@ REM entre invocacoes separadas do .bat (ex.: "start.bat gpu" e depois
 REM "start.bat stop" em outra janela).
 docker inspect speechchecker_inference_nvidia >nul 2>&1
 IF NOT ERRORLEVEL 1 (
-    SET "COMPOSE_FILE=docker\compose\inference.nvidia.yml"
+    SET "COMPOSE_FILE=infrastructure\docker\compose\inference.nvidia.yml"
     SET "CONTAINER=speechchecker_inference_nvidia"
     EXIT /B 0
 )
-SET "COMPOSE_FILE=docker\compose\inference.cpu.yml"
+SET "COMPOSE_FILE=infrastructure\docker\compose\inference.cpu.yml"
 SET "CONTAINER=speechchecker_inference_cpu"
 EXIT /B 0
 

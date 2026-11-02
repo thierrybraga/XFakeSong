@@ -36,7 +36,7 @@ line_length = 88
 minversion = "6.0"
 # Exclui smoke tests do run padrão (lentos, precisam de TF real).
 # Para rodar smoke: pytest -m smoke tests/smoke/
-addopts = "-ra -q --ignore=data --ignore=logs -m 'not smoke'"
+addopts = "-ra -q --ignore=data -m 'not smoke'"
 testpaths = [
     "tests",
 ]
@@ -78,3 +78,9 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "app/interfaces/web/routers/*.py" = ["B008"]
+# CLIs de tools/ inserem a raiz no sys.path antes dos imports do projeto
+# (cabeçalho padrão documentado em tools/_bootstrap.py).
+"tools/**/*.py" = ["E402"]
+# O conftest fixa o ambiente da suíte ANTES de importar o app (que lê o
+# `.env` no import); ver o bloco do topo de tests/conftest.py.
+"tests/conftest.py" = ["E402"]

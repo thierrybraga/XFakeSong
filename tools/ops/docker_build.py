@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""Helper de build/execucao dos perfis Docker do SpeechChecker.
+
+Encapsula os composes segmentados de ``infrastructure/docker/compose/`` em um unico CLI,
+mapeando cada perfil (inference/train/benchmark x cpu/nvidia) para o par
+(arquivo compose, servico) correto.
+
+Uso:
+    python tools/ops/docker_build.py <perfil> config   # valida a config
+    python tools/ops/docker_build.py <perfil> build    # build da imagem
+    python tools/ops/docker_build.py <perfil> up       # sobe o servico
+    python tools/ops/docker_build.py <perfil> run      # execucao one-shot
+
+Perfis: inference-cpu, inference-nvidia, train-cpu, train-nvidia,
+benchmark-nvidia. Consumido pelo Makefile (``make build``/``docker-config``)
+e pela CI.
+"""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+
+PROFILES = {
+    "inference-cpu": ("infrastructure/docker/compose/inference.cpu.yml", "inference-api"),
+    "inference-nvidia": ("infrastructure/docker/compose/inference.nvidia.yml", "inference-api"),
+    "train-cpu": ("infrastructure/docker/compose/train.cpu.yml", None),
+    "train-nvidia": ("infrastructure/docker/compose/train.nvidia.yml", None),
+    "benchmark-nvidia": ("infrastructure/docker/compose/benchmark.nvidia.yml", "benchmark"),
+}
+
+
+def _compose_cmd(compose_file: str, action: str, service: str | None,
+                 extra: list[str]) -> list[str]:
+    cmd = ["docker", "compose", "-f", compose_file]
+    # Compose resolve o `.env` relativo ao diretório do compose file
+    # (infrastructure/docker/compose/), não ao CWD. Apontar explicitamente para o `.env` da
+    # raiz garante que DOCKER_TRAIN_*/NVIDIA_*/GRADIO_PORT/PYTHON_VERSION sejam
+    # aplicados. `--env-file` não altera a resolução dos volumes `../..`.
+    root_env = ROOT / ".env"
+    if root_env.is_file():
+        cmd += ["--env-file", str(root_env)]
+    if action == "config":
+        return [*cmd, "config", "--quiet"]
+    if action == "build":
+        return [*cmd, "build", *( [service] if service else [] ), *extra]
+    if action == "up":
+        return [*cmd, "up", "--build", *( [service] if service else [] ), *extra]
+    if action == "run":
+        if not service:
+            raise SystemExit("Use --service with action=run for multi-service profiles.")
+        return [*cmd, "run", "--rm", service, *extra]
+    raise SystemExit(f"Unsupported action: {action}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Docker build/run helper for segmented SpeechChecker profiles.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument("profile", choices=sorted(PROFILES))
+    parser.add_argument("action", choices=["config", "build", "up", "run"])
+    parser.add_argument("--service", help="Override compose service.")
+    parser.add_argument("extra", nargs=argparse.REMAINDER,
+                        help="Arguments appended after the compose action.")
+    args = parser.parse_args()
+
+    compose_file, default_service = PROFILES[args.profile]
+    service = args.service or default_service
+    cmd = _compose_cmd(compose_file, args.action, service, args.extra)
+    print("Executing:", " ".join(cmd), flush=True)
+    return int(subprocess.run(cmd, cwd=str(ROOT)).returncode)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+

@@ -61,12 +61,22 @@ temp/
 data/results/
 
 # --- Data e modelos pesados (volumes montados em runtime) ---
-# cache/ (HF Hub/Torch/TF) usa symlinks internos que o build context do
+# data/cache/ (HF Hub/Torch/TF) usa symlinks internos que o build context do
 # Docker não consegue transferir de forma confiável ("invalid file request") —
-# sempre montado via volume (../../cache/*:/app/cache/*), nunca baked-in.
-cache/
+# persistido em data/cache/ pelo bind da raiz (treino) ou pelo volume data/ -> /app/data (inferência); nao e baked-in.
+data/cache/
 data/
+!data/
+data/*
+!tools/
+!tools/**
+tools/**/__pycache__/
+!benchmarks/
+!benchmarks/**
+benchmarks/**/__pycache__/
 datasets/
+!data/models/
+data/models/*
 data/models/*.keras
 data/models/*.h5
 data/models/*.pkl
@@ -88,12 +98,11 @@ models/
 # --- Dev / docs (não necessários em produção) ---
 docs/
 mkdocs.yml
-site/
+infrastructure/site/
 notebooks/
 *.ipynb
 .ipynb_checkpoints/
 tests/
-benchmarks/
 
 # --- Claude / IA assist (memory local) ---
 .claude/

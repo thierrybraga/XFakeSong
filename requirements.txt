@@ -9,7 +9,7 @@
 # Variantes:
 #   - CPU-only menor:  pip install -r requirements-cpu.txt
 #   - GPU (Linux NVIDIA): + pip install 'tensorflow[and-cuda]>=2.16,<2.22'
-#     (ou use docker-compose.gpu.yml)
+#     (ou use infrastructure/docker/compose/inference.nvidia.yml)
 # Dev tools (pytest, ruff, black, …): requirements-dev.txt
 # =====================================================================
 
