@@ -1,5 +1,10 @@
 # 30 — Auditoria e consolidação do pipeline de benchmark
 
+> **Mapa técnico com trechos históricos.** A ordem e os presets desta página
+> não substituem o protocolo nem os hiperparâmetros efetivos do artigo. Use o
+> [inventário canônico](canonical-study-and-legacy-inventory.md) como referência
+> do estudo e valide qualquer preset antes de reproduzir resultados.
+
 Consolida, em um único lugar, a **ordem de execução por custo**, a garantia de
 **dataset único**, a **política de fallback** e o **levantamento de todas as
 configurações de treino e inferência**. Complementa [27](../data/pipeline-and-audit.md)
@@ -42,32 +47,33 @@ corrida completa (coluna *Eficiência* do `results.json`).
 
 ## 2. Dataset único para todos os modelos
 
-O benchmark **garante por construção** que todos os modelos treinam/avaliam no
-mesmo `.npz`:
+O runner **garante por construção** que todos os modelos recebem o mesmo `.npz`.
+Para a reprodução do artigo, esse arquivo deve ser
+`data/datasets/benchmark_dataset_15k.npz` e os splits predefinidos devem ser
+preservados:
 
 - `run_models_sequential.py --dataset <npz>` passa o **mesmo** arquivo a cada
   `run_benchmark.py --model <nome>`.
-- `benchmarks/data.py::BenchmarkData.from_npz` **re-divide** o conjunto de forma
-  estratificada e reprodutível (semente fixa, `val=0.15`/`test=0.15`) — o teste é
-  idêntico para todos os modelos, independente do split original do `.npz`.
+- `benchmarks/data.py::BenchmarkData.from_npz` preserva os splits quando o NPZ
+  os contém; só conjuntos sem splits predefinidos seguem a política de divisão
+  estratificada. No artigo, vale o split selado do NPZ, não uma nova divisão.
 - Todos os presets `configs/training/*.yaml` apontam para
-  `data/datasets/benchmark_dataset.npz` (nome canônico).
+  defaults de treinamento genéricos; eles não substituem o caminho de dataset
+  declarado pelo protocolo do TCC.
 
-**Atualizar o dataset = regerar esse `.npz`** (não versionado) a partir dos
-splits, e todos os modelos passam a usá-lo automaticamente:
+Para reproduzir o artefato do artigo a partir do corpus e dos splits:
 
 ```bash
-python scripts/dataset/build_dataset.py --skip-download --target <N>   # dedup→balance→splits
-python scripts/dataset/export_npz_from_splits.py \
-    --out data/datasets/legacy_dataset.npz --sample-rate 16000 --duration-sec 5.0
+python tools/dataset/export_paired_npz.py \
+    --out data/datasets/benchmark_dataset_15k.npz \
+    --target-samples 15000 --no-compress
 ```
 
-> ⚠️ **Este fluxo e este snapshot são anteriores ao dataset canônico.** O
-> artefato atual é `data/datasets/benchmark_dataset.npz` — 40.980 amostras
-> (20.490 + 20.490), CETUC pareado com clones XTTS-v2, janela de 3 s —
-> construído pelo pipeline do
-> [Protocolo de Dataset](../data/dataset-protocol.md), não por
-> `build_dataset.py`. Ver [Dataset do Benchmark](../data/benchmark-dataset.md).
+> ⚠️ **Este fluxo e este snapshot são anteriores ao estudo canônico do TCC.**
+> O artigo avalia `data/datasets/benchmark_dataset_15k.npz` — 15.000 amostras
+> CETUC–XTTS-v2, janela de 3 s, split disjunto por locutor × frase. O arquivo
+> integral de 40.980 amostras é uma exportação do corpus pai e não está neste
+> checkout. Ver [Estudo Canônico e Inventário de Legado](canonical-study-and-legacy-inventory.md).
 
 Snapshot local do canônico reconstruído em 28/06/2026:
 
@@ -122,7 +128,8 @@ Augmentation: `use_augmentation=True`, `snr_range_db=(5,40)`.
    batch por VRAM + gating de mixed precision.
 
 ### 4.3 Presets por família — `configs/training/*.yaml`
-Todos: `dataset=data/datasets/benchmark_dataset.npz`, `epochs=100`,
+Todos os presets abaixo descrevem um fluxo anterior e não substituem o artigo.
+Para o TCC: `dataset=data/datasets/benchmark_dataset_15k.npz`, `epochs=100`,
 `latency_runs=30`. Listas de modelos em ordem de custo crescente.
 
 | Preset | `device_profile` | batch | Modelos |
@@ -148,16 +155,16 @@ dos dados.
 
 ### 4.5 RAM do container de treino/benchmark
 
-`DOCKER_TRAIN_MEMORY_LIMIT` em `docker/compose/{benchmark,train}.nvidia.yml`
+`DOCKER_TRAIN_MEMORY_LIMIT` em `infrastructure/docker/compose/{benchmark,train}.nvidia.yml`
 subiu **16G → 24G → 36G**. O SpectrogramTransformer usa a maior grade
 espectral do escopo oficial (300×128 = 38.400 floats/amostra, a maior entre
 as arquiteturas `spectrogram`) e ainda bateu no teto de 24G mesmo depois do
-preparo de dados corrigido (pré-alocação em `benchmarks/runner.py` e em
+preparo de dados corrigido (pré-alocação em `benchmarks/protocol.py` e em
 `app/domain/features/benchmark_frontend.py::log_mel_batch`, no lugar de
 lista + `np.concatenate`/`np.asarray` no final — o padrão antigo dobrava o
 pico bem no fim de cada etapa). Também é por isso que
 `_XLA_UNFRIENDLY_TRAINING_ARCHITECTURES` em
-`scripts/benchmark/run_models_sequential.py` desliga o auto-JIT do XLA
+`benchmarks/run_models_sequential.py` desliga o auto-JIT do XLA
 (`XFAKE_ENABLE_XLA=0` no subprocesso) para `multiscalecnn`, `aasist`,
 `rawgatst` e `rawnet2`: o auto-JIT desses grafos (SincConv, GAT dinâmico,
 GRU) estourava RAM do host ou VRAM da GPU já no 1º batch — mesma classe de
@@ -169,7 +176,7 @@ O compose de benchmark (`benchmark.nvidia.yml`) já passa `--resume` e
 reinício do host/Docker Desktop) refazia as 11 arquiteturas do zero mesmo as
 já concluídas, porque a lógica de pular modelo com fingerprint conferido só
 ativa com essa flag. O `BackupAndRestore` do Keras (sempre ligado via
-`backup_dir` em `benchmarks/runner.py::_run_neural`) já preservava o
+`backup_dir` em `benchmarks/fit_neural.py::_run_neural`) já preservava o
 progresso NO MEIO do treino de uma arquitetura; faltava só o orquestrador
 externo não redescartar as que já tinham terminado.
 
@@ -177,9 +184,9 @@ externo não redescartar as que já tinham terminado.
 
 ## 5. Configurações de INFERÊNCIA (levantamento)
 
-- `configs/inference.yaml`: `models_dir=data/models`,
-  `benchmark_models_dir=data/models/benchmark_final`, `registry_path=.../registry.json`,
-  `results_dir=results`, Gradio `0.0.0.0:7860`, caches HF/torch/TF.
+- Diretórios de inferência vêm de `app.core.bootstrap.OperationalPaths`
+  (`MODELS_DIR`, `XFAKE_STORAGE_DIR`…), não de YAML: o antigo
+  `configs/inference.yaml` nunca foi lido pelo código e saiu em 2026-10-18.
 - `app/domain/services/detection_service.py`: carrega modelos de `models_dir`;
   GPU via `app.core.gpu.setup_gpu` (memory-growth, probe cuDNN com fallback p/ CPU,
   mixed precision em Tensor Cores).

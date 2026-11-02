@@ -13,10 +13,16 @@ Princípio do menor privilégio: `permissions: contents: read`.
 | Job | Bloqueia? | O que faz |
 | --- | --- | --- |
 | **Testes + cobertura** | ✅ sim | `run_tests.sh cov` (suíte rápida, exclui smoke) em Python 3.11 |
-| **Docs** | ✅ sim | `mkdocs build --strict` — pega links/refs quebrados |
-| **Segurança** | ✅ HIGH | `bandit -lll` (SAST, falha em severidade alta); `pip-audit -r requirements.txt` **bloqueante** (sem `continue-on-error`/`--exit-zero` — CVE encontrada falha o job) |
+| **Docs** | ✅ sim | Build limpo `mkdocs build --strict --clean` + verificação de páginas, links e fragmentos |
+| **Segurança** | ✅ parcial | `bandit -lll` bloqueia achados HIGH; `pip-audit -r requirements.txt` audita o runtime, mas é advisório no CI normal |
 | **Docker build** | ✅ (só em PR) | `docker build --build-arg TF_VARIANT=cpu` + `docker compose config` dos perfis segmentados |
 | **Lint (ruff)** | ⚠️ advisório | publica achados como anotações (`--exit-zero`) sem bloquear |
+
+O workflow de release `.github/workflows/release-gate.yml` é estrito e roda em
+tags `v*` ou manualmente: bloqueia a promoção se falharem compatibilidade de
+dependências (Python 3.11/3.12), Ruff, testes, Bandit HIGH, pip-audit, MkDocs,
+build Docker CPU ou validação dos perfis Compose. A política e seus limites
+estão em [Dependências e Gates de Release](release-gates.md).
 
 Workflows auxiliares:
 
@@ -25,17 +31,30 @@ Workflows auxiliares:
 - **`dependabot.yml`** — PRs semanais de atualização de dependências `pip` e
   `github-actions`.
 
-Para reproduzir os gates localmente:
+Para reproduzir todos os gates localmente (instalação maior, com todos os extras):
 
 ```bash
-./scripts/ops/run_tests.sh cov                 # testes + cobertura
-mkdocs build --strict                      # docs
-bandit -r app benchmarks scripts -lll      # SAST (HIGH)
-docker build --build-arg TF_VARIANT=cpu .  # valida o Dockerfile (deploy HF Spaces)
-python scripts/ops/docker_build.py inference-cpu config
-python scripts/ops/docker_build.py train-cpu config
-python scripts/ops/docker_build.py train-nvidia config
+python -m pip install \
+  -r requirements-notebooks.txt \
+  -r requirements-docs.txt \
+  -r requirements-xai.txt \
+  -r requirements-experiments.txt
+bash tools/ops/run_tests.sh cov            # testes + cobertura
+ruff check app tests benchmarks tools  # lint estrito
+bandit -r app benchmarks tools -lll    # SAST (HIGH)
+pip-audit                                    # todos os grupos instalados
+mkdocs build --strict --clean                # docs
+python tools/ops/check_docs_site.py infrastructure/site   # páginas, links e fragmentos
+docker build --build-arg TF_VARIANT=cpu .    # imagem CPU
+python tools/ops/docker_build.py inference-cpu config
+python tools/ops/docker_build.py inference-nvidia config
+python tools/ops/docker_build.py train-cpu config
+python tools/ops/docker_build.py train-nvidia config
+python tools/ops/docker_build.py benchmark-nvidia config
 ```
+
+Para auditar ou reproduzir os grupos de dependências, veja
+[requirements e perfis](release-gates.md#perfis-de-dependencias).
 
 ## Modelo de segurança da aplicação
 

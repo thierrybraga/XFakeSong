@@ -9,6 +9,9 @@ Apenas a versão mais recente do SpeechChecker recebe correções de segurança.
 | 1.1.x  | :white_check_mark: |
 | < 1.1  | :x:                |
 
+A versão atual do aplicativo é definida em `app/__init__.py`; os endpoints,
+configurações e interfaces importam esse valor para evitar divergências.
+
 ## Reportando uma vulnerabilidade
 
 **Não abra uma issue pública.** Use o canal privado do GitHub:

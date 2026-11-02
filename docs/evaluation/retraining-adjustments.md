@@ -51,7 +51,7 @@ mesmo padrão de baixa regularização).
 Mantidos sem alteração (sólidos e robustos): **Conformer, HuBERT,
 SpectrogramTransformer, WavLM, RawNet2**.
 **Sonic Sleuth** (1.0 perfeito) — auditar vazamento antes de confiar
-(`scripts/dataset/audit_dataset_leakage.py`), não retreinado por ora.
+(`tools/dataset/audit_dataset_leakage.py`), não retreinado por ora.
 
 ## Ajustes aplicados
 
@@ -78,10 +78,10 @@ recalibram a decisão do Ensemble pós-treino.
 
 ```bash
 # Linux / WSL2 / Docker GPU
-bash scripts/training/retrain_ajustado.sh
+bash tools/training/retrain_ajustado.sh
 
 # Windows
-scripts\training\retrain_ajustado.bat
+tools\training\retrain_ajustado.bat
 ```
 
 Roda apenas os 8 modelos ajustados (um por vez, `--resume`, 120 épocas, SNR
@@ -101,13 +101,13 @@ RUN=data/results/retune_ajustado_<data>
 
 # 1. consolida (posicional) — gera benchmark_summary.json, figuras e
 #    benchmark_significance.json (McNemar + bootstrap pareado + Holm)
-python scripts/reporting/consolidate_results.py "$RUN" --prefer-last
+python tools/reporting/consolidate_results.py "$RUN" --prefer-last
 
 # 2. valida os artefatos do run
-python scripts/reporting/validate_artifacts.py --results-dir "$RUN"
+python tools/reporting/validate_artifacts.py --results-dir "$RUN"
 
 # 4. só então promove (aponta para o run_summary.json, não para a pasta)
-python scripts/reporting/sync_completed_benchmark_artifacts.py \
+python tools/reporting/sync_completed_benchmark_artifacts.py \
   --summary "$RUN/run_summary.json"
 ```
 
@@ -138,14 +138,14 @@ original se repetiu idêntico (val_loss mínima na época 6 subindo de 0.35 para
 Checklist obrigatório antes de qualquer novo retreino via Docker:
 
 1. `make build-nocache` (ou rebuild explícito da imagem de benchmark);
-2. `python scripts/benchmark/run_benchmark.py --plan-only` e conferir no plano gravado
+2. `python benchmarks/run_benchmark.py --plan-only` e conferir no plano gravado
    os hparams ajustados (RawGAT-ST: LR 5e-5/dropout 0.35/l2 1e-3/aug on;
    AASIST: LR 3e-4/l2 2e-4/aug on);
 3. conferir que o plano registra o split por falante quando `--speaker-split`
    for passado.
 
 **Runner SSL corrigido (WavLM/HuBERT Original).** O
-`scripts/benchmark/run_wavlm_original_benchmark.py` treinava a cabeça só com áudio
+`benchmarks/run_wavlm_original_benchmark.py` treinava a cabeça só com áudio
 limpo (AWGN apenas na avaliação), rodava as 100 épocas sem early stopping
 (val_loss mínima ~época 13) e decidia com threshold 0.5 sobre scores
 descalibrados — robustez colapsava (recall ~0.08 @10dB; HuBERT 0.507 de
@@ -164,8 +164,8 @@ com flags `--no-*` para desligar):
 
 **Escopo do TCC pendente à época deste diagnóstico** (consolidado
 `tcc_consolidated_20260701`): RawGAT-ST, AASIST, WavLM Original e HuBERT
-Original — `bash scripts/training/retrain_ajustado.sh --tcc-pending`
-(Windows: `scripts\training\retrain_ajustado.bat tcc-pending`). Conformer, Res2Net,
+Original — `bash tools/training/retrain_ajustado.sh --tcc-pending`
+(Windows: `tools\training\retrain_ajustado.bat tcc-pending`). Conformer, Res2Net,
 AST, RawNet2, CCT e os clássicos não precisam de retreino. **Concluído em
 2026-07-02** — ver
 ["Retreino de 2026-07-02 — concluído"](#retreino-2026-07-02)
@@ -234,8 +234,8 @@ Todos os 4 modelos convergiram (`converged: True`) e ganharam robustez
 substancial a 10 dB, à custa de perda marginal de acurácia/EER no conjunto
 limpo (WavLM e HuBERT) — *trade-off* esperado ao expor o classificador a
 ruído no treino. Artefatos sincronizados para `data/models/benchmark_final/`
-(11/11 modelos, `python scripts/reporting/sync_completed_benchmark_artifacts.py`) e
-tabelas/figuras do TCC regeneradas (`python scripts/reporting/update_tcc_latex.py`).
+(11/11 modelos, `python tools/reporting/sync_completed_benchmark_artifacts.py`) e
+tabelas/figuras do TCC regeneradas (`python tools/reporting/update_tcc_latex.py`).
 `data/results/paper/main.tex` (Seção 5 — Análise dos Resultados — e Conclusão)
 reescrito para refletir os números corrigidos; a narrativa de robustez a
 ruído deixou de apontar RawGAT-ST/SSL como os mais frágeis e passou a
@@ -280,7 +280,7 @@ comparação que estava no texto do TCC.
 **Achado de calibração (importante para produção):** os scores brutos do
 AASIST retreinado saturam quase totalmente em 0/1 (apenas 4 valores distintos
 em 2250 amostras de teste — cabeça AM-Softmax + `mixed_float16`), o que faz o
-recálculo ingênuo de `eer_threshold` por `scripts/reporting/rebuild_inference_contracts.py`
+recálculo ingênuo de `eer_threshold` por `tools/reporting/rebuild_inference_contracts.py`
 (cruzamento FPR=FNR sobre `predictions_clean.csv`) cair num limiar degenerado
 (`0.0`, que classificaria tudo como "fake" em produção). O próprio treino já
 calcula uma calibração melhor — `temperature`/`ood_threshold`/`eer_threshold`
@@ -335,7 +335,7 @@ O protocolo corrigido foi implementado com as seguintes garantias:
 O retreino integral é necessário, pois a correção altera tanto os dados de
 ajuste quanto a avaliação sob ruído. Execute na raiz do repositório:
 
-    python scripts/benchmark/run_models_sequential.py --dataset data/datasets/benchmark_dataset.npz --test-lock data/datasets/benchmark_dataset.npz.test-lock.json --epochs 100 --device-profile gpu --seed 42 --snr 30 20 10 --train-aug-snr 30 20 10 --train-noise-copies 1 --waveform-noise-batch-size 64 --waveform-train-augmentation --timeout-min 120 --out data/results/retrain_waveform_awgn
+    python benchmarks/run_models_sequential.py --dataset data/datasets/benchmark_dataset.npz --test-lock data/datasets/benchmark_dataset.npz.test-lock.json --epochs 100 --device-profile gpu --seed 42 --snr 30 20 10 --train-aug-snr 30 20 10 --train-noise-copies 1 --waveform-noise-batch-size 64 --waveform-train-augmentation --timeout-min 120 --out data/results/retrain_waveform_awgn
 
 Para retomada após interrupção, repita o comando com a opção --resume. Antes
 de substituir tabelas e pesos promovidos, confirme em cada
@@ -425,10 +425,10 @@ Auditoria de ambientes, protocolo AWGN, benchmark e inferência:
    `app/datasets/benchmark_audio_raw_balanced_15k.npz` é um **stub de smoke
    com 64 amostras de 1 s** criado em 2026-07-11 com o MESMO nome do dataset
    real (15k × 5 s, com `groups`/`speaker_ids`, em `data/datasets/`).
-   `docker/compose/benchmark.nvidia.yml`, `docker-compose.benchmark.yml`,
+   `infrastructure/docker/compose/benchmark.nvidia.yml`, `docker-compose.benchmark.yml`,
    os 5 presets de `configs/training/*.yaml` (incluindo
    `retune_ajustado.yaml`!), o comando do CLAUDE.md e os READMEs de
-   `docker/environments/*` apontavam para o stub — `make benchmark-nvidia`
+   `infrastructure/docker/environments/*` apontavam para o stub — `make benchmark-nvidia`
    rodaria 100 épocas sobre 64 amostras sem nenhum erro visível. Todos
    corrigidos para `data/datasets/`. Os runs anteriores NÃO foram afetados
    (usaram `run_models_sequential.py`/`retrain_ajustado.sh`, cujos defaults
@@ -468,7 +468,7 @@ verificação numérica (SNR realizado vs alvo por amostra):
 | `benchmarks/data.py::add_awgn` (canônico) | SNR realizado EXATO (normaliza a potência realizada do ruído por amostra); silêncio → sem ruído, sem NaN | nenhum ajuste |
 | `add_awgn_assigned`/`balanced_snr_assignments` | atribuição 3500/3500/3500 exata e reprodutível | nenhum ajuste |
 | `ModelTrainer._add_awgn` (calibração) | calibrava só a potência ESPERADA (~0,4% de desvio) apesar de prometer paridade | normalização exata — agora byte-idêntico ao canônico com a mesma semente |
-| `scripts/benchmark/robustness_test.py::add_awgn` | **divergente**: `np.clip(x+ruído, ±1)` distorcia o ruído (não-gaussiano, SNR realizado sobe a 10 dB), sem normalização realizada, RNG global sem semente, e o call-site geraria a MESMA realização p/ todas as amostras | delegado ao canônico, em lote, com a convenção de semente do benchmark (`seed+20000+snr`) |
+| `benchmarks/robustness_test.py::add_awgn` | **divergente**: `np.clip(x+ruído, ±1)` distorcia o ruído (não-gaussiano, SNR realizado sobe a 10 dB), sem normalização realizada, RNG global sem semente, e o call-site geraria a MESMA realização p/ todas as amostras | delegado ao canônico, em lote, com a convenção de semente do benchmark (`seed+20000+snr`) |
 | `AudioAugmenter._add_noise` (augmentation legado) | potência esperada (desvio <1% em 16k amostras) — aceitável p/ augmentation, coberto por teste (±0,5 dB) | mantido |
 | runner SSL `_add_awgn_raw` | já delegava ao canônico | nenhum ajuste |
 
@@ -642,7 +642,7 @@ dentro da fonte mais representada.
 
 **Nota operacional:** WavLM (`wavlm-base-plus`, nunca baixado antes) falhou
 2× com `PermissionError` ao criar `models--microsoft--wavlm-base-plus/` sob
-`cache/huggingface/hub/` — o bind-mount Docker Desktop/Windows permite
+`data/cache/huggingface/hub/` — o bind-mount Docker Desktop/Windows permite
 leitura/escrita em diretórios pré-existentes mas não a CRIAÇÃO de novos
 diretórios de topo pelo UID do container. Contornado pré-criando a árvore
 (`hub/models--microsoft--wavlm-base-plus/{blobs,snapshots,refs}` e
@@ -683,7 +683,7 @@ Correções derivadas da análise metodológica para o artigo:
    `benchmarks/perturbations.py`; resultado em `codec_robustness` no
    results.json). MP3 64k e Opus 24k ≈ mensageria/VoIP.
 8. **Auditoria de shortcut de fonte** *(histórico — não se aplica mais)*:
-   `scripts/dataset/audit_source_shortcut.py` media se um RandomForest
+   `audit_source_shortcut.py` media se um RandomForest
    previa a FONTE (brspeech/fkvoice/mlspt/ttsport) a partir dos mesmos 63
    descritores — quantificava o confounder fonte↔classe (mlspt/ttsport só
    real; fkvoice só fake) e o teto de acurácia real/fake atingível sem
@@ -1103,7 +1103,7 @@ RawGAT-ST) continuam sendo as da seção de 2026-08-06.
 
 ### P0 — a janela do SSL declarada não era a usada
 
-`scripts/benchmark/run_wavlm_original_benchmark.py` gravava o literal
+`benchmarks/run_wavlm_original_benchmark.py` gravava o literal
 `[16000, 1]` em **quatro** pontos (sidecar `_config.json`,
 `dataset.prepared_shape`, `architectures[].input_shape` e
 `input_preparation.prepared_shape`) enquanto o run usava `--target-samples`,
@@ -1279,7 +1279,7 @@ chave.
 Os campos acima nasceram depois do run. Reexecutar as 9 arquiteturas restantes
 só para ganhar metadata custaria ~60 h de GPU — e todos eles são **deriváveis
 do que já está gravado**. Daí
-`scripts/reporting/backfill_artifact_metadata.py`:
+`tools/reporting/backfill_artifact_metadata.py`:
 
 | Campo | De onde sai |
 | --- | --- |
@@ -1508,9 +1508,10 @@ terceiro pior é 0,0416.
 ### Achado principal: o grid regularizado nunca rodou
 
 `svm.py::optimize_svm_hyperparameters` e
-`random_forest.py::optimize_random_forest_hyperparameters` — os grids
+`random_forest.py::optimize_random_forest_hyperparameters` (ambas removidas
+em 2026-10-18 por seguirem sem chamador) — os grids
 "aplicados no código" desde 2026-06 — não tinham **nenhum chamador** em `app/`,
-`benchmarks/`, `scripts/` ou `tests/`. O benchmark usava
+`benchmarks/`, `tools/` ou `tests/`. O benchmark usava
 `benchmarks/runner.py::_classical_search_space`, uma **quarta fonte de
 hiperparâmetros** ausente das três que o `CLAUDE.md` lista:
 
@@ -1912,7 +1913,7 @@ código sem ter efeito nenhum.
 ### O ajuste de 2026-08-06 estava errado pela metade
 
 O diagnóstico daquele dia mandou subir dropout 0,35→0,50 **e** L2 1e-3→3e-3 ao
-mesmo tempo, e nunca foi executado. `scripts/benchmark/run_rawgat_retune.py`
+mesmo tempo, e nunca foi executado. `benchmarks/run_rawgat_retune.py`
 existe para não repetir esse erro: um fator por braço. Os dois braços rodaram
 (≈26 h de GPU somadas), ambos já com `decay_steps` = 152.100:
 
@@ -2154,7 +2155,7 @@ container.
 
 ## 2026-08-17 (3) — retreino preparado do RawGAT-ST
 
-`scripts/training/retrain_rawgat_decay.sh`, pronto para rodar. Valida o plano
+`tools/training/retrain_rawgat_decay.sh`, pronto para rodar. Valida o plano
 DENTRO do container e aborta antes de treinar se algo divergir.
 
 ### O alvo pedido não é diretamente alcançável, e por quê

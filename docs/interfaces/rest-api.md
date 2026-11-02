@@ -14,17 +14,17 @@ python main.py --gradio
 
 | Recurso | URL |
 |---|---|
-| Página inicial | `http://localhost:7860/` |
+| Interface visual | `http://localhost:7860/` (redireciona para `/gradio/`) |
 | Interface Gradio | `http://localhost:7860/gradio` |
 | API REST | `http://localhost:7860/api/v1` |
 | Swagger UI | `http://localhost:7860/api/docs` |
 | ReDoc | `http://localhost:7860/api/redoc` |
 | OpenAPI Schema | `http://localhost:7860/api/openapi.json` |
 
-`app/interfaces/gradio/app.py` é o entry point unificado usado por
-`python main.py --gradio`. `app/interfaces/web/main_fastapi.py` também monta
-FastAPI, `StaticFiles`, templates Jinja2 e, fora de pytest/modo API-only, a UI
-Gradio em `/gradio`.
+`app/interfaces/gradio/app.py` é a única interface visual, montada em
+`/gradio` pelo entry point unificado `python main.py --gradio`.
+`app/interfaces/web/main_fastapi.py` expõe a API REST e redireciona a raiz para
+a UI. Em modo API-only, a raiz redireciona para `/api/docs`.
 
 Para subir só a API sem montar Gradio, use `XFAKE_API_ONLY=true` ou
 `XFAKE_SKIP_GRADIO=true`.
@@ -278,8 +278,8 @@ Autenticação acima, aqui a chave é exigida em todas as 9 rotas.
 ## Validação Local
 
 ```bash
-./scripts/ops/run_tests.sh api
-./scripts/ops/run_tests.sh functional
+./tools/ops/run_tests.sh api
+./tools/ops/run_tests.sh functional
 ```
 
 Cobertura relevante:

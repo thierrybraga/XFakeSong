@@ -1,50 +1,17 @@
-# Notebooks SpeechChecker
+# Notebooks
 
-Estrutura reorganizada para estudo e reprodução dos experimentos do TCC.
+Esta pasta contém os notebooks executáveis do SpeechChecker. O catálogo
+canônico de finalidade, status, dados de entrada, requisitos e resultados
+esperados está no [Guia de Notebooks](../evaluation/notebooks.md).
 
-## Estrutura
+## Organização
 
-| Pasta | Conteúdo |
-|---|---|
-| `00_index.ipynb` | Índice executável dos notebooks |
-| `README.md` | Visão geral e guia de navegação |
-| `pipeline/` | Benchmark completo, todas as arquiteturas, treino e inferência |
-| `features/` | Extração e estudo de features |
-| `models/` | Um notebook por modelo/arquitetura |
+- `00_index.ipynb`: índice navegável.
+- `features/`: demonstrações de extração de features.
+- `pipeline/`: treinamento, inferência e pipelines de benchmark.
+- `models/`: demonstrações por arquitetura.
 
-## Ordem recomendada
-
-1. `00_index.ipynb`
-2. `features/01_feature_extraction_study.ipynb`
-3. `pipeline/01_benchmark_tcc_full_pipeline.ipynb`
-4. `pipeline/02_training_model.ipynb`
-5. `pipeline/03_inference.ipynb`
-6. `pipeline/04_all_architectures_full_benchmark.ipynb`
-7. `models/<modelo>.ipynb`
-
-O dataset canônico é `data/datasets/benchmark_dataset.npz`
-([Protocolo de Dataset](../data/dataset-protocol.md)): 20.490 amostras reais + 20.490
-falsas, CETUC pareado com clones XTTS-v2, construído por
-`scripts/dataset/build_paired_pt_corpus.py` e os três scripts seguintes. O
-roteiro legado (`run_tcc_pipeline.py --download --target-per-class 7500
---full-benchmark`, 7.500 por classe) permanece nos cadernos como registro.
-Para treinar e auditar todas as arquiteturas em um único caderno, use
-`pipeline/04_all_architectures_full_benchmark.ipynb`. A documentação de
-referência para o fluxo completo está em [docs/evaluation/benchmark.md](../evaluation/benchmark.md).
-
-## Relação com documentação e interface
-
-| Tema | Documento |
-|---|---|
-| Benchmark, dataset, artefatos e gráficos | `docs/evaluation/benchmark.md` |
-| Uso das abas Gradio e fluxos de análise | `docs/interfaces/gradio.md` |
-| Deploy em Hugging Face Spaces | `docs/deployment/hugging-face-spaces.md` |
-| GitHub Pages e publicação coordenada | `docs/deployment/github-pages-and-hugging-face.md` |
-
-## Geração e validação
-
-Os notebooks ativos (`00_index`, `features/`, `models/`, `pipeline/`) são
-**gerados** por `python scripts/ops/build_notebooks.py` — todas as células de código
-são validadas com `compile()` e usam a API real do projeto. O teste
-`tests/unit/test_notebooks_compile.py` garante que continuam funcionais. O
-gerador é determinístico e não depende de TensorFlow no build.
+Os notebooks são gerados por `python tools/ops/build_notebooks.py`. Edite o
+gerador, não os arquivos `.ipynb` diretamente. Antes de executar, confira o
+status do caderno no guia: alguns são históricos e nenhum resultado sintético
+deve ser citado como resultado do artigo.

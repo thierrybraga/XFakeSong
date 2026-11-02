@@ -7,18 +7,18 @@ Este guia consolida a visão operacional do projeto para Docker, ambientes de tr
 - `main.py`: ponto de entrada principal do CLI e da interface Gradio.
 - `app/interfaces/gradio/app.py`: montagem da interface unificada.
 - `app.py`: entrada para Hugging Face Spaces.
-- `docker/environments/inference-api/docker-entrypoint.sh`: bootstrap do container.
+- `infrastructure/docker/environments/inference-api/docker-entrypoint.sh`: bootstrap do container.
 
 ## Estrutura recomendada
 
-- [`docker/compose`](https://github.com/thierrybraga/XFakeSong/tree/main/docker/compose): perfis de execução.
-- [`docker/environments`](https://github.com/thierrybraga/XFakeSong/tree/main/docker/environments): Dockerfiles por família de ambiente.
+- [`infrastructure/docker/compose`](https://github.com/thierrybraga/XFakeSong/tree/main/infrastructure/docker/compose): perfis de execução.
+- [`infrastructure/docker/environments`](https://github.com/thierrybraga/XFakeSong/tree/main/infrastructure/docker/environments): Dockerfiles por família de ambiente.
 - [`data/results`](https://github.com/thierrybraga/XFakeSong/tree/main/data/results): artefatos regeneráveis do benchmark (não há `results/` na raiz).
 - [`data/models`](https://github.com/thierrybraga/XFakeSong/tree/main/data/models): modelos inferidos e exportados.
 
 ## Fluxos principais
 
 - Inferência local: `python main.py --gradio`
-- Inferência Docker: `docker compose -f docker/compose/inference.cpu.yml up --build inference-api`
-- Treino Docker: `docker compose -f docker/compose/train.nvidia.yml run --rm tensorflow-keras`
-- Benchmark Docker: `docker compose -f docker/compose/benchmark.nvidia.yml run --rm benchmark`
+- Inferência Docker: `docker compose -f infrastructure/docker/compose/inference.cpu.yml up --build inference-api`
+- Treino Docker: `docker compose -f infrastructure/docker/compose/train.nvidia.yml run --rm tensorflow-keras`
+- Benchmark Docker: `docker compose -f infrastructure/docker/compose/benchmark.nvidia.yml run --rm benchmark`

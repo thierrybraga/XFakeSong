@@ -42,14 +42,16 @@ docker compose up --build -d
 | Recurso | URL |
 |---|---|
 | Interface Gradio | `http://localhost:7860/gradio` |
-| Página inicial | `http://localhost:7860/` |
+| Entrada principal | `http://localhost:7860/` (redireciona para `/gradio/`) |
+| Compatibilidade de inicialização | `/loading` (redireciona para a entrada principal) |
 | Healthcheck | `http://localhost:7860/api/v1/system/health` |
 | OpenAPI | `http://localhost:7860/api/docs` |
 
-`app/interfaces/gradio/app.py` monta o app unificado usado pelo comando
-principal. O módulo `app/interfaces/web/main_fastapi.py` também monta
-FastAPI, templates, assets estáticos e, fora de pytest/modo API-only, a UI
-Gradio em `/gradio`.
+`app/interfaces/gradio/app.py` monta a única interface visual e carrega seu
+tema de `app/interfaces/gradio/static/css/theme.css`. O módulo
+`app/interfaces/web/main_fastapi.py` monta FastAPI, a API REST e a UI Gradio em
+`/gradio`; a raiz redireciona para essa UI. Em modo API-only, a raiz leva à
+documentação Swagger em `/api/docs`.
 
 ## Configurações Necessárias
 
@@ -153,7 +155,7 @@ Saídas:
 
 Para lote, envie múltiplos arquivos e revise distribuição, tabela por arquivo e
 relatório exportável. Para benchmark científico, prefira
-`scripts/benchmark/run_tcc_pipeline.py` ou `scripts/benchmark/run_benchmark.py`.
+`benchmarks/run_tcc_pipeline.py` ou `benchmarks/run_benchmark.py`.
 
 ## Serving de Inferência
 
@@ -306,24 +308,25 @@ para a aplicação.
     `StratifiedGroupKFold` sobre o manifesto de falantes — o mesmo protocolo
     do benchmark.
 
-    Depois de criar, a aba roda `preprocess_dataset.audit_splits()` e mostra a
+    Depois de criar, a aba roda `audit_splits()`
+    (`app/domain/services/dataset/preprocessing.py`) e mostra a
     tabela de sobreposição em três dimensões: **conteúdo (SHA-256 do PCM
     canônico)**, **falante** e **texto/enunciado**. Amostras sem falante no
     manifesto são contadas à parte — para elas a disjunção não pode ser
     afirmada, e o relatório diz isso em vez de silenciar.
 
-    Nota: o script `scripts/dataset/preprocess_dataset.py` (uso via CLI,
-    fora desta aba) mantém `--speaker-disjoint` desligado por padrão — só o
+    Nota: a CLI `tools/dataset/preprocess_dataset.py` (fora desta aba, sobre
+    a mesma lógica) mantém `--speaker-disjoint` desligado por padrão — só o
     checkbox da UI foi alterado.
 
 ## Relação com Benchmark e Notebooks
 
 | Objetivo | Interface | Script equivalente |
 |---|---|---|
-| Testar um áudio | Detectar | `scripts/benchmark/robustness_test.py` |
-| Treinar um modelo | Treinar | `scripts/training/train_by_family.py` |
-| Rodar benchmark completo | Não recomendado pela UI | `scripts/benchmark/run_models_sequential.py` |
-| Auditar todos os modelos | Painel/Gerenciar | `scripts/reporting/validate_artifacts.py` |
+| Testar um áudio | Detectar | `benchmarks/robustness_test.py` |
+| Treinar um modelo | Treinar | `tools/training/train_by_family.py` |
+| Rodar benchmark completo | Não recomendado pela UI | `benchmarks/run_models_sequential.py` |
+| Auditar todos os modelos | Painel/Gerenciar | `tools/reporting/validate_artifacts.py` |
 | Gerar resultados do TCC | Scripts | [Benchmark e Resultados](../evaluation/benchmark.md) |
 
 ## Checklist de Validação da UI
@@ -353,9 +356,9 @@ para a aplicação.
 ## Testes Relacionados
 
 ```bash
-./scripts/ops/run_tests.sh functional
-./scripts/ops/run_tests.sh api
-./scripts/ops/run_tests.sh smoke
+./tools/ops/run_tests.sh functional
+./tools/ops/run_tests.sh api
+./tools/ops/run_tests.sh smoke
 ```
 
 Use smoke quando tocar em startup, wizard, `DetectionService`, `ModelLoader`,

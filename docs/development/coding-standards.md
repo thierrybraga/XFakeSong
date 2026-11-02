@@ -10,7 +10,7 @@
 
 ## Imports
 
-- Codigo novo deve usar `app.core.contracts`, nao `app.core.interfaces`.
+- Contratos vivem so em `app.core.contracts` (o alias `app.core.interfaces` foi removido em 2026-10-18). Pacotes nao re-exportam nomes: importe do submodulo.
 - `domain` nao importa `interfaces`.
 - `interfaces` pode importar `domain`, `core` e `dependencies`.
 - Imports pesados opcionais devem ser lazy quando afetam startup.

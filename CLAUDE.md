@@ -36,7 +36,7 @@ make test                               # suite rapida (tudo exceto smoke) — r
 make test-unit | test-api | test-integration | test-smoke
 make lint                               # ruff
 make format                             # black + isort
-flake8 app/ tests/ ; bandit -r app/
+ruff check app/ benchmarks/ tools/ tests/ ; bandit -r app/ benchmarks/ tools/
 
 # Docker
 make build | up | down | logs | shell   # ciclo de vida dos containers
@@ -53,13 +53,16 @@ SpeechChecker/
 ├── app.py                  # entrada para Hugging Face Spaces (importa app/interfaces/gradio/app.py)
 ├── Makefile                # build/up/down, train-*, benchmark-*, test-*, lint/format
 ├── Dockerfile              # imagem multi-stage (CPU/GPU)
-├── docker-compose*.yml     # compose raiz + .train / .gpu / .benchmark
-├── docker/compose/         # composes segmentados (inference/train/benchmark x cpu/nvidia)
+├── infrastructure/       # infraestrutura auxiliar
+│   ├── docker/            # composes e Dockerfiles por ambiente
+│   │   ├── compose/
+│   │   └── environments/
+│   └── site/              # site gerado pelo MkDocs
 ├── configs/                # YAMLs de configuracao
-│   ├── dataset.yaml, inference.yaml
+│   ├── dataset.yaml
 │   └── training/           # presets de treino por familia + retune_ajustado.yaml
 ├── benchmarks/             # motor do benchmark (runner, evaluate, planning, report...)
-├── scripts/                # CLIs por categoria: dataset/, training/, benchmark/, reporting/, ops/ (ver scripts/README.md)
+├── tools/                # CLIs por categoria: dataset/, training/, reporting/, ops/ (ver tools/README.md)
 ├── app/                    # codigo-fonte (Clean Architecture)
 │   ├── domain/             # regras de negocio puras (sem frameworks de UI)
 │   │   ├── features/       # extractors/, adapters/, registry de features
@@ -67,19 +70,26 @@ SpeechChecker/
 │   │   ├── services/       # DetectionService, TrainingService, UploadService, ...
 │   │   ├── dataset_metadata/  # dataset_catalog.py, speaker_manifest.py (catalogo/manifesto do dataset)
 │   │   └── xai/            # gradcam.py, shap_explainer.py, tabular.py (explicabilidade dos modelos)
-│   ├── core/               # infra transversal: config/, db/, auth/, contracts/ (interfaces SOLID)
+│   ├── core/               # infra transversal: config/ (settings, env, paths), db/ (sessao +
+│   │                       #   models/ ORM), auth/, contracts/ (interfaces SOLID)
 │   ├── interfaces/         # as 3 interfaces de entrada do projeto:
 │   │   ├── gradio/         # app.py (montagem, ex-gradio_app.py raiz), schema_patch.py, 5 abas role-based (tabs/), utils/
 │   │   ├── cli/            # menu interativo (context.py, menus/)
-│   │   └── web/            # FastAPI: main_fastapi.py, routers/, schemas/, static/, templates/
-│   ├── models/             # artefatos treinados (.keras/.pkl) — benchmark_final/
-│   └── utils/              # audio_utils/file_utils/helpers/silero_vad/system_utils (centrais)
+│   │   └── web/            # FastAPI: main_fastapi.py, routers/, schemas/ (UI Gradio montada em /gradio)
+│   ├── utils/              # audio_utils/file_utils/file_storage/helpers/silero_vad (centrais)
 │                           #   + colab.py (helper isolado so para execucao via Google Colab)
-├── data/datasets/          # RAIZ CANONICA dos dados (real/, fake/, raw/, .npz) — nao versionado.
-│                           #   (app/datasets/ foi descontinuado em 2026-07-14 — causava fragmentacao)
+├── data/                   # artefatos e estado local; codigo-fonte nao deve ficar aqui
+│   ├── cache/              # cache compartilhado de frameworks e modelos
+│   ├── datasets/           # dados canonicos de treino e benchmark
+│   ├── logs/               # logs locais
+│   ├── models/             # modelos carregados pela inferencia
+│   ├── results/            # resultados regeneraveis e material em results/paper/
+│   ├── temp/               # arquivos temporarios
+│   ├── uploads/            # uploads locais
+│   ├── voice_profiles/     # dados persistidos do VoiceProfileService
+│   └── app.db              # banco SQLite local
 ├── docs/                   # documentacao MkDocs por tema (architecture/, models/,
 │                           #   evaluation/, data/, interfaces/, development/) — indice em docs/index.md
-├── data/results/paper/     # material academico (TCC): main.tex, figuras
 └── tests/                  # unit/, integration/, api/, functional/ espelhando app/
 ```
 
@@ -99,14 +109,14 @@ ou web) nem de frameworks de UI. Bibliotecas externas entram via wrapper em
 | Grafo AASIST em PyTorch (back-end dos SSL ajustados) | `architectures/torch_ssl_aasist.py` |
 | Grid de busca dos classicos (FONTE UNICA) | `architectures/svm.py::SVM_PARAM_GRID`, `random_forest.py::RANDOM_FOREST_PARAM_GRID` |
 | Camadas PRÓPRIAS de cada arquitetura | `architectures/aasist_layers.py`, `rawgat_layers.py`, `rawnet2_layers.py` |
-| Camadas compartilhadas (DSP, AMSoftmax, plumbing) | `architectures/layers.py` |
+| Camadas compartilhadas, por tema | `architectures/layers.py` (porta de entrada e registro no Keras); definicoes em `spectral_layers.py`, `sinc_layers.py`, `block_layers.py`, `head_layers.py`, `plumbing_layers.py` e `graph_layers.py` (legadas) |
 | Orquestracao de treino | `app/domain/services/training_service.py`, `app/domain/models/training/secure_training_pipeline.py` |
-| Guardas de retomada e colapso de treino | `app/domain/models/training/trainer.py` (`ResumableModelCheckpoint`, `PersistentEpochHistory`, `CollapseAbort`) |
+| Guardas de retomada e colapso de treino | `app/domain/models/training/callbacks.py` (`ResumableModelCheckpoint`, `PersistentEpochHistory`, `CollapseAbort`) |
 | Deteccao/inferencia | `app/domain/services/detection_service.py` |
 | Extracao de features | `app/domain/features/` (implementar `IFeatureExtractor`, registrar no registry) |
 | Front-end do benchmark (paridade treino<->inferencia) | `app/domain/features/benchmark_frontend.py` (raw / log-Mel / tabular v1 e v2) |
 | Config global de treino (LR, early stop, augmentation, calibracao) | `app/core/config/settings.py` (`TrainingConfig`) |
-| Motor de benchmark | `benchmarks/` (`runner.py`, `evaluate.py`, `planning.py`, `report.py`) |
+| Motor de benchmark | `benchmarks/` (`runner.py`, `protocol.py`, `fit_neural.py`, `fit_classical.py`, `evaluate.py`, `planning.py`, `report.py`) |
 | Diagnostico de estabilidade de treino (pos-hoc) | `benchmarks/stability.py` (`analyze_training_stability`) |
 | Testes pareados (McNemar, bootstrap, Holm) | `benchmarks/significance.py` |
 
@@ -115,7 +125,7 @@ ou web) nem de frameworks de UI. Bibliotecas externas entram via wrapper em
 ## Build
 
 Imagens Docker multi-stage (CPU e NVIDIA), orquestradas por composes segmentados
-em `docker/compose/`. Pelo Makefile:
+em `infrastructure/docker/compose/`. Pelo Makefile:
 
 ```bash
 make build            # build com cache (SERVICE=inference-api por padrao)
@@ -155,7 +165,7 @@ drift; chaves como `dropout_rate`/`l2_reg_strength` se sobrepoem):
 Os CLASSICOS (SVM, RandomForest) nao passam por nenhuma das tres: o que os
 define e o GRID de busca, e ele tem **fonte unica** desde 2026-08-09 —
 `svm.py::SVM_PARAM_GRID` e `random_forest.py::RANDOM_FOREST_PARAM_GRID`, de onde
-`benchmarks/runner.py::_classical_search_space` importa. Ate entao o runner
+`benchmarks/fit_classical.py::_classical_search_space` importa. Ate entao o runner
 carregava uma copia propria, divergente, e era ela que rodava: os grids
 regularizados das arquiteturas nao tinham chamador NENHUM no projeto, e o
 benchmark treinava com `max_depth=None`/`min_samples_leaf=1` (train_score 1.0).
@@ -191,22 +201,25 @@ make train-nvidia     # perfil TensorFlow/Keras em GPU (Docker)
 make train-cpu        # perfil classical/CPU (Docker)
 
 # Sequencial, um modelo por vez (timeout, --resume, log por modelo):
-# Dataset canônico: benchmark_dataset.npz (Protocolo de Dataset — CETUC pareado com
-# clones XTTS-v2; ver docs/data/dataset-protocol.md).
-python scripts/benchmark/run_models_sequential.py \
-  --dataset data/datasets/benchmark_dataset.npz \
-  --models AASIST Ensemble --epochs 100 --snr 30 20 10 5 \
-  --device-profile gpu --out data/results/<run> --resume
+# Reprodução do artigo: subamostra CETUC–Fake Voices/XTTS-v2 de 15 mil
+# (ver docs/evaluation/canonical-study-and-legacy-inventory.md).
+python benchmarks/run_models_sequential.py \
+  --dataset data/datasets/benchmark_dataset_15k.npz \
+  --test-lock data/datasets/benchmark_dataset_15k.npz.test-lock.json \
+  --experiment-scope official --epochs 100 --seed 42 --snr 30 20 10 5 \
+  --train-aug-snr 30 20 10 --train-noise-copies 1 \
+  --band-correction-hz 7500 --device-profile gpu \
+  --out data/results/<run-novo> --resume
 
-# Duas variantes de tamanho, MESMA partição locutor x frase
-# (configs/dataset.yaml::dataset_variants). Gerar a reduzida:
-python scripts/dataset/export_paired_npz.py \
+# O corpus pai de 40.980 amostras é uma fonte para reconstrução/auditoria,
+# não a entrada do artigo. Gerar o recorte de 15 mil a partir do corpus validado:
+python tools/dataset/export_paired_npz.py \
   --out data/datasets/benchmark_dataset_15k.npz --target-samples 15000 --no-compress
-python scripts/dataset/freeze_benchmark_test.py \
+python tools/dataset/freeze_benchmark_test.py \
   --dataset data/datasets/benchmark_dataset_15k.npz --declare-untouched
 
 # Um modelo isolado:
-python scripts/benchmark/run_benchmark.py --model AASIST --dataset <npz> --out data/results/bench_aasist
+python benchmarks/run_benchmark.py --model AASIST --dataset <npz> --out data/results/bench_aasist
 ```
 
 Pre-requisitos: dataset `.npz` em `data/datasets/`, TensorFlow/PyTorch e GPU
@@ -215,7 +228,7 @@ Pre-requisitos: dataset `.npz` em `data/datasets/`, TensorFlow/PyTorch e GPU
 ### Retreino dos modelos ajustados
 Apos diagnostico de um benchmark, os ajustes ficam aplicados no codigo
 (registry + arquiteturas) e o retreino dos modelos afetados roda por:
-`bash scripts/training/retrain_ajustado.sh` (ou `scripts\training\retrain_ajustado.bat` no
+`bash tools/training/retrain_ajustado.sh` (ou `tools\training\retrain_ajustado.bat` no
 Windows), config em `configs/training/retune_ajustado.yaml`. Mapa
 diagnostico->ajuste e checklist de verificacao em
 [docs/evaluation/retraining-adjustments.md](docs/evaluation/retraining-adjustments.md).
@@ -224,15 +237,21 @@ diagnostico->ajuste e checklist de verificacao em
 
 ## Estado do protocolo (2026-08-21)
 
+> Registro histórico de ajustes do código, não uma especificação alternativa do
+> estudo. Para dataset, partições, métricas e comandos do artigo, prevalece
+> `docs/evaluation/canonical-study-and-legacy-inventory.md`. Resultados
+> históricos citados nesta seção não estão automaticamente vinculados ao run
+> canônico.
+
 Correcoes de 2026-08-19/21 que mudam o que o benchmark treina e o que a tabela
 do TCC pode afirmar. Sao a referencia para nao reintroduzir nada disso.
 
 | O que | Estado |
 | --- | --- |
 | Correcao de banda | Passa-baixas 7,5 kHz + remocao de DC + RMS -26 dBFS, nas DUAS classes, ligado por padrao no compose. Removia um atalho de reamostragem que dava AUC 1,0000 a uma regressao sobre 40 energias de banda. Aplicada UMA vez: se o NPZ ja vier corrigido do build, o runner recusa a flag. |
-| Selecao de epoca | `--checkpoint-monitor val_eer` nas 9 entradas Keras; perda de validacao nas 2 SSL (runner PyTorch, laco proprio). A tabela reporta `melhor/orcamento` e declara o criterio no rodape. |
+| Selecao de epoca | `--checkpoint-monitor val_eer` nas 9 entradas Keras (as 7 neurais tem epoca; SVM/RF usam CV+fit); perda de validacao nas 2 SSL (runner PyTorch, laco proprio). A tabela reporta `melhor/orcamento` e declara o criterio no rodape. |
 | RawNet2 | Escopo oficial constroi o baseline ANTI-SPOOFING (Tak et al.): Sinc 20, blocos [20,20,128,128,128,128], 3xGRU(1024), ~17,6M params. A topologia vive em `planning.NEURAL_BENCHMARK_HPARAMS`, que benchmark e Gradio leem. |
-| Camadas por arquitetura | `aasist_layers.py`, `rawgat_layers.py`, `rawnet2_layers.py`. Uma correcao dirigida a uma arquitetura nao alcanca outra. `layers.py` fica com DSP generico, AMSoftmax e as classes legadas para desserializacao. |
+| Camadas por arquitetura | `aasist_layers.py`, `rawgat_layers.py`, `rawnet2_layers.py`. Uma correcao dirigida a uma arquitetura nao alcanca outra. `layers.py` e a porta de entrada dos modulos tematicos: DSP generico, AMSoftmax e as classes legadas para desserializacao. |
 | Banco sinc | FIXO nas tres arquiteturas (`trainable_filters=False`), como a referencia. |
 | RawGAT-ST | Readout `max(\|x\|)`+media; `top_k(sorted=True)` (a ordem define o pareamento da fusao); temperatura 100 no GAT de fusao; pooling 0,5/0,7/0,5; bloco residual kernel (2,3) com `first=True`. |
 | Guarda de XLA | Compara por `_compact`, nao `_slug`: `_slug("RawGAT-ST")` devolvia `rawgat_st`, fora do conjunto, e a arquitetura mais cara do escopo rodava com auto-JIT LIGADO. |
@@ -247,7 +266,7 @@ do TCC pode afirmar. Sao a referencia para nao reintroduzir nada disso.
 
 ## Benchmark
 
-Motor em `benchmarks/`; orquestracao em `scripts/`. As 14 arquiteturas sao
+Motor em `benchmarks/`; orquestracao em `tools/`. As 14 arquiteturas sao
 cobertas em DOIS escopos (`benchmarks/config.py`). Uma arquitetura pode aparecer
 em mais de uma ENTRADA de manifesto: WavLM rende "WavLM Original" (congelado, no
 escopo oficial) e "WavLM" (porte Keras, no estendido) — sao receitas distintas
@@ -259,7 +278,7 @@ do mesmo backbone, nao duplicatas.
   MultiscaleCNN) com hiperparametros de
   `planning.py::NEURAL_BENCHMARK_HPARAMS`, mais **WavLM Original** e
   **HuBERT Original**, que rodam por um runner PyTorch separado
-  (`scripts/benchmark/run_wavlm_original_benchmark.py`) — sao os SSL REAIS,
+  (`benchmarks/run_wavlm_original_benchmark.py`) — sao os SSL REAIS,
   nao o fallback TF: backbone CONGELADO, soma ponderada de camadas + pooling
   media⊕desvio, cabeca MLP treinada.
   >
@@ -288,28 +307,29 @@ latencia) e artefatos (figuras, tabelas LaTeX, summary.md, tcc_report.md).
 
 ```bash
 make benchmark-nvidia                       # benchmark completo (Docker/WSL2 GPU)
-python scripts/benchmark/run_benchmark.py --full --dataset <npz>
-python scripts/benchmark/run_clean_benchmark_pipeline.py   # run limpo, sem misturar artefatos
-python scripts/benchmark/run_benchmark.py --plan-only      # valida e grava benchmark_plan.* sem treinar
+python benchmarks/run_benchmark.py --full --dataset <npz>
+python benchmarks/run_clean_benchmark_pipeline.py   # run limpo, sem misturar artefatos
+python benchmarks/run_benchmark.py --plan-only      # valida e grava benchmark_plan.* sem treinar
 
-# O compose de benchmark escolhe a variante por env (default: dataset completo).
+# O compose usa o recorte do artigo por padrão; indique outra variante somente
+# para uma análise separada, com saída e proveniência próprias.
 # As DUAS variaveis andam juntas: variantes tem conjuntos de teste diferentes,
 # entao seus resultados nao sao comparaveis e nao podem cair na mesma pasta.
 XFAKE_BENCHMARK_DATASET=data/datasets/benchmark_dataset_15k.npz \
-XFAKE_BENCHMARK_OUT=data/results/clean_benchmark_15k \
-  docker compose -f docker/compose/benchmark.nvidia.yml --env-file .env up -d benchmark
+XFAKE_BENCHMARK_OUT=data/results/tcc_article_reproduction_2026-10-17 \
+  docker compose -f infrastructure/docker/compose/benchmark.nvidia.yml --env-file .env up -d benchmark
 
 # Pos-processamento (as tres flags SAO DIFERENTES — nao existe um `--results`
 # comum; consolidate recebe o run como argumento posicional):
-python scripts/reporting/consolidate_results.py data/results/<run> \
+python tools/reporting/consolidate_results.py data/results/<run> \
   --prefer-last --copy-to data/results/paper/figures
-python scripts/reporting/validate_artifacts.py --results-dir data/results/<run>
-python scripts/reporting/sync_completed_benchmark_artifacts.py \
+python tools/reporting/validate_artifacts.py --results-dir data/results/<run>
+python tools/reporting/sync_completed_benchmark_artifacts.py \
   --summary data/results/<run>/run_summary.json
 
 # Reparo de artefato (nao retreinam nada; rodam sobre o run ja concluido):
-python scripts/reporting/backfill_artifact_metadata.py --results-dir data/results/<run>
-python scripts/reporting/rebuild_run_summary.py --results-dir data/results/<run>
+python tools/reporting/backfill_artifact_metadata.py --results-dir data/results/<run>
+python tools/reporting/rebuild_run_summary.py --results-dir data/results/<run>
 ```
 
 `backfill_artifact_metadata.py` completa campos que nasceram depois de um run
@@ -343,13 +363,13 @@ Scripts uteis: `build_dataset.py`, `preprocess_dataset.py`,
 `export_model_card.py`, `update_tcc_latex.py`.
 
 **RAM do container de treino/benchmark**: `DOCKER_TRAIN_MEMORY_LIMIT` subiu
-16G -> 24G -> **36G** (`docker/compose/{benchmark,train}.nvidia.yml`) — o
+16G -> 24G -> **36G** (`infrastructure/docker/compose/{benchmark,train}.nvidia.yml`) — o
 SpectrogramTransformer usa a maior grade espectral do escopo oficial e batia
 no teto mesmo apos o preparo de dados ser corrigido (pre-alocacao em vez de
-lista + concatenate/asarray no final, em `benchmarks/runner.py` e
+lista + concatenate/asarray no final, em `benchmarks/protocol.py` e
 `app/domain/features/benchmark_frontend.py::log_mel_batch`). Por isso
 `_XLA_UNFRIENDLY_TRAINING_ARCHITECTURES`
-(`scripts/benchmark/run_models_sequential.py`) desliga o auto-JIT do XLA para
+(`benchmarks/run_models_sequential.py`) desliga o auto-JIT do XLA para
 `multiscalecnn`, `aasist`, `rawgatst` e `rawnet2` — o auto-JIT desses grafos
 (SincConv, GAT dinamico, GRU) estourava RAM do host ou VRAM da GPU. Detalhes
 completos em [docs/evaluation/pipeline-audit.md](docs/evaluation/pipeline-audit.md)
@@ -359,7 +379,7 @@ O compose de benchmark ja passa `--resume` e `restart: on-failure:3`: sem
 isso, um restart do container (crash, reinicio do host/Docker Desktop)
 refazia as 11 arquiteturas do zero mesmo as ja concluidas. O
 `BackupAndRestore` do Keras (sempre ligado via `backup_dir` em
-`benchmarks/runner.py::_run_neural`) ja preservava o progresso NO MEIO do
+`benchmarks/fit_neural.py::_run_neural`) ja preservava o progresso NO MEIO do
 treino de uma arquitetura.
 
 ---

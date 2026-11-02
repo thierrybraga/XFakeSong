@@ -5,8 +5,8 @@ Este documento detalha o processo de treinamento, configurações de otimizaçã
 ## Ambientes consolidados
 
 O treinamento operacional foi organizado por família computacional. Os arquivos
-ficam em `environments/`, os presets em `configs/training/` e os entrypoints em
-`scripts/train_*.py`.
+ficam em `infrastructure/docker/environments/`, os presets em `configs/training/`
+e o entrypoint por família em `tools/training/train_by_family.py`.
 
 | Família | Config | Modelos |
 |---|---|---|
@@ -17,14 +17,14 @@ ficam em `environments/`, os presets em `configs/training/` e os entrypoints em
 | `ssl-pretrained` | `ssl.yaml` | WavLM Original, HuBERT Original |
 | `extended` | `extended.yaml` | Sonic Sleuth, EfficientNet-LSTM, Ensemble |
 ```bash
-python scripts/training/train_by_family.py --family classical-tabular --plan-only
-python scripts/training/train_by_family.py --family spectral-convolutional --models MultiscaleCNN --epochs 100 --device-profile gpu
-python scripts/training/train_by_family.py --family waveform-end-to-end --models RawNet2 AASIST --epochs 100 --device-profile gpu
-python scripts/training/train_by_family.py --family ssl-pretrained --models "WavLM Original" "HuBERT Original" --epochs 100 --device-profile gpu
+python tools/training/train_by_family.py --family classical-tabular --plan-only
+python tools/training/train_by_family.py --family spectral-convolutional --models MultiscaleCNN --epochs 100 --device-profile gpu
+python tools/training/train_by_family.py --family waveform-end-to-end --models RawNet2 AASIST --epochs 100 --device-profile gpu
+python tools/training/train_by_family.py --family ssl-pretrained --models "WavLM Original" "HuBERT Original" --epochs 100 --device-profile gpu
 ```
 
-Todos os entrypoints chamam `scripts/benchmark/run_models_sequential.py`, que executa
-`scripts/benchmark/run_benchmark.py --model <nome>` para cada arquitetura, salvando logs,
+Todos os entrypoints chamam `benchmarks/run_models_sequential.py`, que executa
+`benchmarks/run_benchmark.py --model <nome>` para cada arquitetura, salvando logs,
 modelos, métricas e figuras em pasta própria por modelo.
 
 ## 1. Pipeline de Treinamento
@@ -42,7 +42,7 @@ TrainingService.train_model(architecture, dataset_path, config)
     │       ├─ AudioAugmenter            ← 7 técnicas de augmentation
     │       ├─ model.compile(optimizer, loss, metrics)
     │       ├─ model.fit(...)            ← com callbacks
-    │       └─ save_training_artifacts() ← model.keras + scaler.pkl + config.json
+    │       └─ save_model()               ← model.keras + scaler.pkl + config.json
     └─ ModelMetadata                     ← retorna métricas + caminho do arquivo
 ```
 
@@ -65,7 +65,7 @@ O parâmetro `num_classes` pode ser passado no `config`; se omitido, é inferido
 
 O tamanho e a composição do dataset são padronizados em **tiers** definidos em
 `app/domain/dataset_metadata/dataset_catalog.py` (`DATASET_TIERS`) — fonte única de verdade
-compartilhada por `scripts/dataset/build_dataset.py`, pela aba Datasets do Gradio, pelo
+compartilhada por `tools/dataset/build_dataset.py`, pela aba Datasets do Gradio, pelo
 benchmark e pela documentação. Escolher um tier pré-configura tamanho, fontes e
 estratégia de split. Detalhes de fontes/licenças em
 [docs/data/public-datasets.md](../data/public-datasets.md).
@@ -74,32 +74,38 @@ estratégia de split. Detalhes de fontes/licenças em
 |------|-----------:|------:|-------|----------|----------------------|
 | `test` | 100 | 200 | 70/15/15 estratificado | nenhum (abaixo do mínimo clássico) | smoke de ponta a ponta |
 | `small` | 5.000 | 10.000 | 70/15/15 estratificado | clássicos, CNNs leves e principais neurais | iteração robusta |
-| `medium` | 7.500 | 15.000 | 70/15/15 estratificado | **todas as 14 arquiteturas** | **benchmark canônico do TCC** |
+| `medium` | 7.500 | 15.000 | 70/15/15 estratificado | todas as 14 arquiteturas do fluxo genérico | treino/avaliação auxiliar |
 | `large` | 10.000 | 20.000 | **disjunto por falante** + cross-generator | todas as 14 + auditoria de falantes | execução estendida |
 
-> ⚠️ **Os tiers pertencem ao fluxo legado (anterior a este protocolo).** O `.npz`
-> canônico atual é `data/datasets/benchmark_dataset.npz`, produzido pelo
-> pipeline pareado do [Protocolo de Dataset](../data/dataset-protocol.md) — 40.980
-> amostras, janela de 3 s, sem cotas por tier: o tamanho é o que as duas fontes
-> têm em comum. A tabela acima e os comandos `build_dataset.py --tier` continuam
-> válidos apenas para reconstruir os artefatos antigos.
+> ⚠️ **Os tiers pertencem ao fluxo legado.** Para reproduzir o estudo do TCC,
+> use `data/datasets/benchmark_dataset_15k.npz` (7.500 pares), conforme o
+> [artigo canônico](../evaluation/canonical-study-and-legacy-inventory.md).
+> O corpus pai e a exportação integral de 40.980 amostras são documentados no
+> [Protocolo de Dataset](../data/dataset-protocol.md); o NPZ integral não está
+> presente neste checkout. Os comandos `build_dataset.py --tier` só reconstroem
+> os artefatos antigos.
 
 **Montar um tier** (download + balanceamento + splits + `dataset_config.json`):
 
 ```bash
-python scripts/dataset/build_dataset.py --tier small     # 5.000/classe, 10k total
-python scripts/dataset/build_dataset.py --tier medium    # 7.500/classe, 15k canônico
-python scripts/dataset/build_dataset.py --tier large     # 10.000/classe, split por falante
+python tools/dataset/build_dataset.py --tier small     # 5.000/classe, 10k total
+python tools/dataset/build_dataset.py --tier medium    # 7.500/classe, tier genérico (não é o artigo)
+python tools/dataset/build_dataset.py --tier large     # 10.000/classe, split por falante
 
 # override do tamanho mantendo fontes/split do tier:
-python scripts/dataset/build_dataset.py --tier medium --target 7500
+python tools/dataset/build_dataset.py --tier medium --target 7500
 ```
 
-**Como o tier afeta o treino:**
+> **Contexto:** a seção de tiers abaixo descreve o fluxo legado genérico de
+> construção/treino, não a configuração canônica do artigo. A reprodução do
+> TCC usa o artefato `benchmark_dataset_15k.npz` e está documentada no
+> [inventário canônico](../evaluation/canonical-study-and-legacy-inventory.md).
+
+**Como o tier afeta o treino legado:**
 
 - **Prontidão por modelo.** O treino só habilita um modelo quando o tier atinge o
   mínimo de amostras dele — `small` já cobre os principais modelos; `medium`
-  é o alvo canônico para comparar as 14 arquiteturas; `large` aumenta a margem
+  cobre o conjunto do fluxo genérico; `large` aumenta a margem
   para auditorias.
 - **Split.** `test/small/medium` usam 70/15/15 estratificado; `large` usa split
   **disjunto por falante** (`speaker_manifest.json`), medindo generalização a
@@ -107,33 +113,35 @@ python scripts/dataset/build_dataset.py --tier medium --target 7500
 - **Pipeline de ponta a ponta** (download → benchmark) por tier, no fluxo legado:
 
 ```bash
-python scripts/benchmark/run_tcc_pipeline.py --download --tier medium --full-benchmark --npz data/datasets/legacy_medium_15k.npz
+python benchmarks/run_tcc_pipeline.py --download --tier medium --full-benchmark --npz data/datasets/legacy_medium_15k.npz
 ```
 
 Recomendação prática no fluxo legado: prototipe hiperparâmetros em `small`,
 produza os números finais no `medium` e use `large` para auditoria de falantes.
 
-**No fluxo atual** não há tier a escolher — o pipeline é fixo e o único
-controle de tamanho é o corte por pares na exportação:
+**No fluxo de construção do corpus pai** não há tier a escolher; o estudo do
+artigo usa o alvo explícito de 15.000 amostras durante a exportação:
 
 ```bash
-python scripts/dataset/export_paired_npz.py --out data/datasets/benchmark_dataset.npz --max-pairs-train 7500
+python tools/dataset/export_paired_npz.py --out data/datasets/benchmark_dataset_15k.npz --target-samples 15000 --no-compress
 ```
 
 ### 1.3 ModelTrainer
 
-Classe principal de treinamento (`app/domain/models/training/trainer.py`). Funcionalidades:
+Classe principal de treinamento (`app/domain/models/training/trainer.py`). Os
+callbacks ficam em `callbacks.py`, a calibração pós-treino em `calibration.py`,
+o salvamento e o `input_contract` em `artifacts.py` e o EER de validação em
+`metrics.py`. Funcionalidades:
 
-- **Compilação**: `model.compile(optimizer, loss, metrics)` usando `OptimizerFactory` e `LossFactory`
+- **Compilação**: respeita o `compile()` feito pelo `create_model` de cada arquitetura (LR, loss, clipnorm); quando recompila, o otimizador vem do `OptimizerFactory`
 - **SecureTrainingPipeline**: Previne data leakage — aplica `StandardScaler` apenas com dados de treino e armazena o scaler para inferência
-- **TTA (Test-Time Augmentation)**: `predict_with_tta()` executa 5 versões perturbadas e faz média das predições (melhora ~1–3%)
 - **Class weighting automático** (`use_class_weighting=True`): calcula `compute_class_weight('balanced')` e passa via `model.fit(class_weight=...)`. Compensa datasets desbalanceados típicos de deepfake (ASVspoof ~9:1). Suporta y categórico e one-hot.
 - **Calibração automática de temperatura** (`auto_calibrate_temperature=True`): após o treino, busca o T que minimiza NLL no val set (Guo et al., ICML 2017). Salvo no `input_contract` e aplicado automaticamente pelo Predictor. Requer ≥ `calibration_min_samples` (default 50) no val set.
 - **Sprint 2.3 — Stochastic Weight Averaging (SWA)** (`use_swa=True`, opt-in): mantém média móvel dos pesos nas últimas ~20% épocas e aplica ao final do treino. +0.5–1.5% accuracy típica (Izmailov et al., UAI 2018). Aplicado via `SWACallback`. Compatível com BatchNorm (recomputa stats automaticamente se `bn_update_data` for fornecido).
 - **Sprint 2.4 — Mixup** (`use_mixup=True`, opt-in): interpola pares de amostras no batch (`λ ~ Beta(α, α)`). Convertido em soft labels automaticamente. **Importante**: incompatível com `class_weighting` (Keras requer int classes); o trainer detecta e desativa class weighting automaticamente.
 - **Sprint 2.5 — OOD threshold** (`compute_ood_threshold=True`): calibra threshold de Out-of-Distribution no val set usando energy score / entropia (quantile=0.95). Predições com score abaixo do threshold são marcadas como `is_ood=True` pelo Predictor.
 - **Sprint 3.2 — Mixed precision auto** (`use_mixed_precision=None` → auto): detecta GPU Tensor Core (CC≥7.0: V100, T4, RTX 20xx+, A100, H100) e habilita `mixed_float16` automaticamente. ~2× speedup + 50% menos VRAM.
-- **Sprint 3.4 — ONNX export** (`export_onnx=True`, `export_onnx_int8=True`): exporta modelo Keras → ONNX FP32 + INT8 quantizado após o treino. Requer `pip install tf2onnx onnxruntime`. Habilita deploy CPU 2-3× mais rápido e 4× menor footprint. Falhas são silenciosas — não bloqueiam `.keras`.
+- **Sprint 3.4 — ONNX export**: NÃO roda no treino. As flags `export_onnx`/`export_onnx_int8` do `TrainingConfig` não são lidas — o método do trainer que as usaria nunca teve chamador e saiu na divisão do módulo (2026-10-31). A exportação existe sob demanda pela API (`POST /api/v1/training/export-onnx`, `app/interfaces/web/routers/training.py`), sobre um modelo já carregado. Requer `pip install tf2onnx onnxruntime`.
 - **Sprint 4.5 — EER threshold adaptativo**: calibra automaticamente o threshold de Equal Error Rate (FPR=FNR) no val set ao final do treino. Salvo em `input_contract.eer_threshold` e usado pelo Predictor como threshold de classificação (em vez de 0.5 fixo). Reportado também `eer_value` (métrica anti-spoofing padrão).
 - **input_contract**: Salvo junto ao modelo — garante que inferência use o mesmo formato/features/temperatura/ood_threshold/eer_threshold do treino
 - **Formato de save**: `.keras` (formato nativo Keras 3, substitui o legado `.h5`)
@@ -229,7 +237,7 @@ Definidos em `_prepare_callbacks()`:
 | `EarlyStopping` | `val_loss`, patience=`early_stopping_patience`, restaura melhores pesos |
 | `ReduceLROnPlateau` | Fator 0.5, min_lr=1e-7 quando val_loss estagna |
 | `ModelCheckpoint` | Salva melhor modelo por val_loss (se `checkpoint_path` passado) |
-| `BackupAndRestore` | Preserva pesos/otimizador/época em `backup_dir` (se passado) — permite retomar o `fit()` de onde parou após reinício do host/Docker; `benchmarks/runner.py` sempre passa `backup_dir`, então todo treino do benchmark tem esse resume automático |
+| `BackupAndRestore` | Preserva pesos/otimizador/época em `backup_dir` (se passado) — permite retomar o `fit()` de onde parou após reinício do host/Docker; `benchmarks/fit_neural.py` sempre passa `backup_dir`, então todo treino do benchmark tem esse resume automático |
 | `TensorBoard` | Histogramas + gráfico (se `tensorboard_dir` passado) |
 | `CSVLogger` | Histórico em CSV (se `csv_log_path` passado) |
 | `EpochProgressLogger` | Log `[TRAIN]` de progresso por época/batch (intervalo via `XFAKE_TRAIN_BATCH_LOG_INTERVAL_S`, default 60s); desde 2026-07-31 também loga `rss_mb` (RSS do processo, `/proc/self/status`) — diagnóstico de memória por batch |
@@ -243,7 +251,7 @@ observada no Conformer) em vez de sobrepor preparo de dado (CPU) com cômputo
 Para RawNet2/AASIST/RawGAT-ST/MultiscaleCNN, o **treino do benchmark**
 (não o `ModelTrainer` isoladamente) desliga o auto-JIT do XLA no subprocesso
 (`XFAKE_ENABLE_XLA=0`, `_XLA_UNFRIENDLY_TRAINING_ARCHITECTURES` em
-`scripts/benchmark/run_models_sequential.py`) — o auto-JIT desses grafos
+`benchmarks/run_models_sequential.py`) — o auto-JIT desses grafos
 (SincConv, GAT dinâmico, GRU) estourava RAM do host ou VRAM da GPU já no 1º
 batch. É a contraparte, do lado do treino, da lista
 `Predictor._XLA_UNFRIENDLY_ARCHITECTURES` já usada na inferência (ver
@@ -264,13 +272,13 @@ idênticos porque a causa raiz (compile-time vs. runtime) é diferente.
 | `_rawboost` | RawBoost (Tak et al. 2022): ruído convolutivo + impulsivo + estacionário |
 | `_codec_simulation` | Artefatos de codec lossy (MP3/AAC): quantização + atenuação HF |
 
-`apply_mixup()` e `apply_cutmix()` também disponíveis para uso manual.
+Mixup no treino é aplicado por `apply_mixup_to_dataset()` quando `use_mixup=True` (ver §1.3).
 
 ### 1.6 Otimizadores e Losses
 
 `OptimizerFactory` suporta: `adam`, `adamw`, `sgd`, `rmsprop`, `adagrad`, `adadelta`, `adamax`, `nadam`.
 
-`LossFactory` inclui: `focal_loss`, `weighted_bce`, `am_softmax`, `label_smoothing`, `label_smoothing_bce`.
+As losses são definidas no `create_model` de cada arquitetura (ex.: AM-Softmax/OC-Softmax em `head_layers.py`). A antiga `LossFactory` nunca teve chamador e saiu em 2026-10-18.
 
 `WarmupCosineDecaySchedule`: warmup linear seguido de decaimento cosseno — recomendado para Conformer e Transformers.
 
@@ -454,9 +462,8 @@ O `input_contract` salvo no JSON garante consistência entre treino e inferênci
   **todo** cálculo de EER do projeto caía silenciosamente no fallback (menos
   preciso) sem que a interpolação nunca de fato executasse. Os thresholds
   não-finitos agora são descartados antes da interpolação.
-- **Curva DET**: dados FPR/FNR para plotagem
+- **min t-DCF**: `calculate_min_tdcf()`, sobre a curva DET interna (`_det_curve`)
 
-`calculate_threshold_metrics()` avalia métricas para thresholds 0.3 a 0.7 — útil para encontrar o ponto de operação ideal por dataset.
 
 ---
 
@@ -513,7 +520,7 @@ model = create_model_by_name("AASIST", input_shape, num_classes=2,
 
 ## Execução canônica por famílias
 
-Use `scripts/training/train_by_family.py`; `train_advanced.py` é um caminho
+Use `tools/training/train_by_family.py`; `train_advanced.py` é um caminho
 legado de debug, bloqueado por padrão e não produz resultados acadêmicos.
 As famílias canônicas são: `classical-tabular`, `spectral-convolutional`,
 `spectral-attention`, `waveform-end-to-end`, `ssl-pretrained` e `extended`.

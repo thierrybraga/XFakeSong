@@ -52,10 +52,13 @@ Os notebooks ficam organizados por finalidade:
 Para o experimento completo do TCC, comece por
 `docs/notebooks/pipeline/01_benchmark_tcc_full_pipeline.ipynb`.
 
-> O dataset canônico passou a ser `data/datasets/benchmark_dataset.npz`
-> ([Protocolo de Dataset](../data/dataset-protocol.md)): **20.490 amostras reais +
-> 20.490 falsas**, CETUC pareado com clones XTTS-v2, janela de 3 s. O roteiro de
-> `7.500 + 7.500` que o caderno descreve pertence ao fluxo legado.
+> O estudo do TCC usa `data/datasets/benchmark_dataset_15k.npz` ([artigo e
+> inventário canônico](../evaluation/canonical-study-and-legacy-inventory.md)):
+> 7.500 amostras reais + 7.500 clones pareados, split 12.162/1.456/1.382 e
+> janela de 3 s. O corpus pai de 40.980 amostras é descrito no
+> [Protocolo de Dataset](../data/dataset-protocol.md). Este notebook ainda
+> precisa ser alinhado ao protocolo do artigo antes de ser usado para reproduzir
+> resultados do TCC.
 
 ---
 

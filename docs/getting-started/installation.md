@@ -13,7 +13,7 @@ Guia completo para executar o SpeechChecker em **Local (Python)**, **Docker** e 
 | **Docker Desktop** | 4.x (Compose v2) | Para modo produção |
 | **NVIDIA Driver** | 535+ | Apenas para GPU (Windows: via WSL2) |
 | **Git LFS** | qualquer | Para clonar modelos grandes |
-| **Make** (opcional) | 3.81+ | Habilita `make <target>` |
+| **GNU Make + Bash** (opcional) | GNU Make 3.81+ | Linux/macOS; no Windows, use Git Bash ou WSL |
 
 ---
 
@@ -23,7 +23,7 @@ Guia completo para executar o SpeechChecker em **Local (Python)**, **Docker** e 
 
 ```cmd
 git clone https://github.com/thierrybraga/XFakeSong.git
-cd SpeechChecker
+cd XFakeSong
 start.bat
 ```
 
@@ -31,10 +31,18 @@ No menu, escolha **[2] Modo PRODUCAO**. Aguarde o healthcheck (~60–90s na prim
 
 ### Cenário 2: Python local (mais rápido para iterar)
 
-```cmd
-start.bat install
-start.bat test
+No PowerShell, com Python 3.11 instalado:
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe main.py --bootstrap-dirs
+.\.venv\Scripts\python.exe main.py --gradio
 ```
+
+Como alternativa, `start.bat install` prepara o ambiente local e `start.bat
+test` inicia a aplicação pelo launcher.
 
 ### Cenário 3: GPU NVIDIA (Windows 11 + WSL2)
 
@@ -66,7 +74,7 @@ Após reiniciar, abra o Ubuntu pelo menu Iniciar e:
 # 3. Dentro do Ubuntu WSL2
 sudo apt update && sudo apt install -y python3 python3-pip python3-venv git
 git clone https://github.com/thierrybraga/XFakeSong.git
-cd SpeechChecker
+cd XFakeSong
 chmod +x start.sh
 
 # 4. Instala TensorFlow com CUDA embutido (tensorflow[and-cuda]) + deps:
@@ -97,7 +105,7 @@ Performance esperada (RTX 3060 12 GB):
 
 ```bash
 git clone https://github.com/thierrybraga/XFakeSong.git
-cd SpeechChecker
+cd XFakeSong
 chmod +x start.sh
 ./start.sh prod         # Docker
 ./start.sh test         # Python local (usa GPU se disponível)
@@ -106,15 +114,21 @@ chmod +x start.sh
 ./start.sh gpu-config   # Diagnóstico GPU standalone
 ```
 
-Ou via `make`:
+Ou via `make` (GNU Make + Bash; no Windows, Git Bash ou WSL):
 ```bash
-make install            # Cria .venv e instala
-make up                 # inferência CPU/onboard via docker/compose/inference.cpu.yml
-make up GPU=1           # inferência NVIDIA via docker/compose/inference.nvidia.yml
+make install-dev        # Cria .venv e instala dependências de desenvolvimento
+make dev                # Inicia a aplicação usando o Python do .venv
+make up                 # inferência CPU/onboard via infrastructure/docker/compose/inference.cpu.yml
+make up GPU=1           # inferência NVIDIA via infrastructure/docker/compose/inference.nvidia.yml
 make logs               # tail logs
 make down               # para containers
 make docker-config      # valida todos os perfis Compose segmentados
 ```
+
+No Windows com Git Bash, o Python base padrão é `python`. Para selecionar uma
+instalação específica, por exemplo Python 3.11 pelo launcher, use
+`make install-dev PYTHON="py -3.11"`. O Makefile não deve ser executado no
+PowerShell; ali use os comandos PowerShell desta página ou `start.bat`.
 
 ---
 
@@ -159,14 +173,14 @@ O **Dashboard → 🎮 Diagnóstico de GPU** mostra qual situação você está 
 
 ## 🐳 Docker — Detalhes
 
-### Imagens por família (`docker/environments/`)
+### Imagens por família (`infrastructure/docker/environments/`)
 
 Cada Dockerfile é **single-stage** (`python:3.11-slim` + runtime libs via apt
 + `pip install` de wheels pré-compilados — nada compila localmente, então o
 estágio builder separado do antigo `Dockerfile` multi-stage não trazia
 benefício real e foi removido). Todas as imagens rodam como usuário não-root
 (`appuser`, UID/GID 1000) e usam um `docker-entrypoint.sh` compartilhado
-(`docker/environments/inference-api/docker-entrypoint.sh`) que faz bootstrap
+(`infrastructure/docker/environments/inference-api/docker-entrypoint.sh`) que faz bootstrap
 idempotente de diretórios, checa writability dos volumes montados (comum
 falhar no Windows/WSL2 — ver aviso explícito no log) e sincroniza modelos do
 Hugging Face Hub no boot quando `XFAKE_SYNC_MODELS_ON_BOOT` está setado.
@@ -175,16 +189,16 @@ Hugging Face Hub no boot quando `XFAKE_SYNC_MODELS_ON_BOOT` está setado.
 
 ### Perfis Docker segmentados
 
-Todo build usa os arquivos em `docker/compose/`, que separam inferência,
+Todo build usa os arquivos em `infrastructure/docker/compose/`, que separam inferência,
 treino CPU/onboard, treino NVIDIA e benchmark.
 
 | Perfil | Compose | Uso |
 |---|---|---|
-| Inferência CPU/onboard | `docker/compose/inference.cpu.yml` | Gradio/FastAPI sem CUDA |
-| Inferência NVIDIA | `docker/compose/inference.nvidia.yml` | Gradio/FastAPI com CUDA |
-| Treino CPU/onboard | `docker/compose/train.cpu.yml` | SVM/RF e smoke neural sem CUDA |
-| Treino NVIDIA/WSL2 | `docker/compose/train.nvidia.yml` | treino neural com CUDA |
-| Benchmark NVIDIA/WSL2 | `docker/compose/benchmark.nvidia.yml` | benchmark sequencial completo |
+| Inferência CPU/onboard | `infrastructure/docker/compose/inference.cpu.yml` | Gradio/FastAPI sem CUDA |
+| Inferência NVIDIA | `infrastructure/docker/compose/inference.nvidia.yml` | Gradio/FastAPI com CUDA |
+| Treino CPU/onboard | `infrastructure/docker/compose/train.cpu.yml` | SVM/RF e smoke neural sem CUDA |
+| Treino NVIDIA/WSL2 | `infrastructure/docker/compose/train.nvidia.yml` | treino neural com CUDA |
+| Benchmark NVIDIA/WSL2 | `infrastructure/docker/compose/benchmark.nvidia.yml` | benchmark sequencial completo |
 
 CPU/onboard significa que o container não solicita dispositivo GPU. É o perfil
 correto para Windows nativo, Intel/AMD integrado e máquinas sem NVIDIA. Para
@@ -193,20 +207,20 @@ habilitado.
 
 ```bash
 # Validar configuração sem build
-python scripts/ops/docker_build.py train-nvidia config
+python tools/ops/docker_build.py train-nvidia config
 
 # Inferência
-docker compose -f docker/compose/inference.cpu.yml up --build inference-api
-docker compose -f docker/compose/inference.nvidia.yml up --build inference-api
+docker compose -f infrastructure/docker/compose/inference.cpu.yml up --build inference-api
+docker compose -f infrastructure/docker/compose/inference.nvidia.yml up --build inference-api
 
 # Treino por família
-docker compose -f docker/compose/train.cpu.yml run --rm classical-ml
-docker compose -f docker/compose/train.nvidia.yml run --rm tensorflow-keras
-docker compose -f docker/compose/train.nvidia.yml run --rm pytorch-audio
-docker compose -f docker/compose/train.nvidia.yml run --rm ssl-transformers
+docker compose -f infrastructure/docker/compose/train.cpu.yml run --rm classical-ml
+docker compose -f infrastructure/docker/compose/train.nvidia.yml run --rm tensorflow-keras
+docker compose -f infrastructure/docker/compose/train.nvidia.yml run --rm pytorch-audio
+docker compose -f infrastructure/docker/compose/train.nvidia.yml run --rm ssl-transformers
 
 # Benchmark completo em GPU NVIDIA
-docker compose -f docker/compose/benchmark.nvidia.yml run --rm benchmark
+docker compose -f infrastructure/docker/compose/benchmark.nvidia.yml run --rm benchmark
 ```
 
 Os serviços NVIDIA declaram reserva de GPU no próprio compose; mantenha Docker
@@ -227,6 +241,7 @@ artefatos de inferência:
 | Uso | Caminho local | Caminho no container |
 |---|---|---|
 | Banco SQLite | `data/app.db` | `/app/data/app.db` |
+| Cache de frameworks/modelos | `data/cache/` | `/app/data/cache/` |
 | Uploads Gradio/API | `data/uploads/` | `/app/data/uploads/` |
 | Resultados regeneráveis | `data/results/` | `/app/data/results/` |
 | Datasets de benchmark | `data/datasets/` | `/app/data/datasets/` |
@@ -363,7 +378,7 @@ pip install 'huggingface_hub>=0.25,<1.0'
 O `requirements.txt` já fixa `huggingface_hub>=0.25,<1.0` (teto firme `<1.0`; piso
 `0.25` é a exigência do `datasets`, então a faixa satisfaz **gradio E datasets**).
 
-**Verificação**: `python scripts/ops/doctor.py` mostra na seção *Compatibilidade de versões*:
+**Verificação**: `python tools/ops/doctor.py` mostra na seção *Compatibilidade de versões*:
 ```
 OK  gradio=4.44.1, huggingface_hub=0.36.2 (compatíveis)
 ```
@@ -378,8 +393,8 @@ Antes de abrir um problema, rode o doctor — ele cobre Python, dependências (d
 *ausente* de *import quebrado*), compatibilidade de versões, **GPU/CUDA** (hardware NVIDIA,
 visibilidade pelo TensorFlow e dicas acionáveis por SO) e porta:
 ```bash
-python scripts/ops/doctor.py          # diagnóstico completo
-python scripts/ops/doctor.py --fix    # tenta reinstalar deps faltantes
+python tools/ops/doctor.py          # diagnóstico completo
+python tools/ops/doctor.py --fix    # tenta reinstalar deps faltantes
 ```
 No Linux/WSL o `./start.sh doctor` faz o equivalente em shell (e checa Docker + toolkit).
 
@@ -430,8 +445,8 @@ Ou adicione `.gitattributes`:
 4. Use um dos comandos abaixo. `start.bat gpu` continua disponível por
    compatibilidade e usa o compose legado.
    ```cmd
-   docker compose -f docker/compose/inference.nvidia.yml up --build inference-api
-   docker compose -f docker/compose/train.nvidia.yml run --rm tensorflow-keras
+   docker compose -f infrastructure/docker/compose/inference.nvidia.yml up --build inference-api
+   docker compose -f infrastructure/docker/compose/train.nvidia.yml run --rm tensorflow-keras
    ```
 
 ---
@@ -441,7 +456,7 @@ Ou adicione `.gitattributes`:
 ### Permissões em volumes montados
 O container roda como `appuser` (UID 1000). Se seus diretórios estiverem com outro owner:
 ```bash
-sudo chown -R 1000:1000 ./data/models ./results ./data/logs ./data
+sudo chown -R 1000:1000 ./data
 ```
 
 Em todos os perfis Docker, os resultados regeneráveis usam uma única raiz:
@@ -472,8 +487,10 @@ source .venv/bin/activate           # Linux/Mac
 .venv\Scripts\activate              # Windows
 
 pip install --upgrade pip
-pip install -r requirements.txt              # produção
-pip install -r requirements-dev.txt          # + dev tools
+pip install -r requirements.txt              # runtime padrão
+pip install -r requirements-dev.txt          # runtime + testes/lint/segurança
+pip install -r requirements-docs.txt         # documentação
+pip install -r requirements-notebooks.txt    # notebooks + runtime/dev
 
 python main.py --bootstrap-dirs              # cria diretórios
 python main.py --gradio --gradio-port 7860   # inicia
@@ -485,10 +502,6 @@ docker build -t speechchecker:latest .
 docker run -d \
     --name speechchecker_app \
     -p 7860:7860 \
-    -v $(pwd)/data/models:/app/data/models \
-    -v $(pwd)/data/datasets:/app/data/datasets \
-    -v $(pwd)/data/results:/app/data/results \
-    -v $(pwd)/logs:/app/data/logs \
     -v $(pwd)/data:/app/data \
     speechchecker:latest
 ```
@@ -509,11 +522,11 @@ TensorFlow, PyTorch, FFmpeg, GPU, healthcheck e Storage.
 3. Envie os modelos de `data/models/` para um Model Repo:
 
 ```bash
-python scripts/ops/upload_models_to_hf.py \
+python tools/ops/upload_models_to_hf.py \
   --repo-id SEU_USUARIO/speechchecker-models \
   --dry-run
 
-python scripts/ops/upload_models_to_hf.py \
+python tools/ops/upload_models_to_hf.py \
   --repo-id SEU_USUARIO/speechchecker-models \
   --private
 ```
@@ -544,12 +557,21 @@ Guia completo: [Deploy Hugging Face](../deployment/hugging-face-spaces.md).
 
 ## 🧪 Testes
 
+PowerShell no Windows (após instalar `requirements-dev.txt`):
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/
+.\.venv\Scripts\python.exe -m pytest --cov=app --cov=benchmarks tests/
+```
+
+Linux/macOS, ou Windows pelo Git Bash/WSL:
+
 ```bash
 make test               # suíte rápida, exclui smoke
 make test-cov           # cobertura app + benchmarks
 # ou diretamente
-./scripts/ops/run_tests.sh fast
-./scripts/ops/run_tests.sh cov
+bash tools/ops/run_tests.sh fast
+bash tools/ops/run_tests.sh cov
 ```
 
 ---
@@ -576,43 +598,39 @@ make env                # via Makefile
 | `DOCKER_CPU_LIMIT` | `4.0` | Limite CPUs do container |
 | `DOCKER_TRAIN_MEMORY_LIMIT` | `36G` | RAM para containers de treino/benchmark |
 | `DOCKER_TRAIN_CPU_LIMIT` | `8.0` | CPUs para containers de treino/benchmark |
-| `NVIDIA_GPU_COUNT` | `all` | Perfis `docker/compose/*.nvidia.yml` |
+| `NVIDIA_GPU_COUNT` | `all` | Perfis `infrastructure/docker/compose/*.nvidia.yml` |
 
 ---
 
 ## 📁 Estrutura de diretórios (auto-criada)
 
-```
+```text
 SpeechChecker/
-├── app/
-│   ├── models/         # Modelos treinados (.keras, .onnx, scaler.pkl) [VOLUME]
-│   └── ...
-├── data/
-│   ├── app.db          # SQLite local
-│   ├── datasets/       # Datasets reais/fake, raw, splits e NPZs [VOLUME]
-│   └── uploads/        # Uploads runtime da API/Gradio
-├── data/results/            # Resultados regeneráveis de benchmark/treino
-├── data/logs/          # Logs da aplicação [VOLUME]
-├── .venv/              # Virtualenv local (ignorado no Docker)
-├── docker/
-│   ├── build.env.example
-│   ├── environments/
-│   │   ├── inference-api/     # Dockerfile.{cpu,nvidia} + docker-entrypoint.sh
-│   │   ├── tensorflow-keras/
-│   │   ├── pytorch-audio/
-│   │   ├── ssl-transformers/
-│   │   └── classical-ml/
-│   └── compose/
-│       ├── inference.cpu.yml
-│       ├── inference.nvidia.yml
-│       ├── train.cpu.yml
-│       ├── train.nvidia.yml
-│       └── benchmark.nvidia.yml
-├── Makefile                    # Comandos uniformes
-├── start.bat / start.sh        # Launchers
-├── requirements.txt            # Deps runtime
-├── requirements-dev.txt        # Deps dev (testes, optuna, mlflow, onnx)
-└── .env                        # Suas configurações (criar a partir do .env.example)
+├── app/                         # código da aplicação
+│   └── voice_profiles/          # perfis atuais usados pelo serviço
+├── benchmarks/                  # motor experimental
+├── configs/                     # configuracoes YAML
+├── data/                        # dados e artefatos locais
+│   ├── cache/                   # cache compartilhado
+│   ├── datasets/                # datasets de treino e benchmark
+│   ├── logs/                    # logs de runtime
+│   ├── models/                  # modelos e registry local
+│   ├── results/                 # resultados; inclui results/paper/
+│   ├── temp/                    # temporários
+│   ├── uploads/                 # uploads da API/Gradio
+│   └── app.db                   # banco SQLite local
+├── docs/                        # fonte editorial MkDocs
+├── infrastructure/
+│   └── docker/                  # compose/ e environments/
+├── tests/                       # unit/, integration/, api/, functional/
+├── tools/                       # ferramentas de dataset, treino, relatorios e ops
+├── .venv/                       # ambiente Python local, ignorado pelo Git
+├── main.py                      # entrypoint local
+├── app.py                       # entrypoint Hugging Face Spaces
+├── Dockerfile                   # imagem Hugging Face Spaces
+├── Makefile
+├── mkdocs.yml
+└── requirements*.txt
 ```
 
 ---

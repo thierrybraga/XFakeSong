@@ -35,7 +35,7 @@ dos backbones SSL originais.
 | Fine-tuning SSL parcial | Implementado quando backbone TF existe | `app/domain/models/architectures/ssl_utils.py` |
 | SSL→AASIST | Implementado em variantes `wavlm_aasist`/`hubert_aasist` | `wavlm.py`, `hubert.py`, `ssl_utils.py` |
 | RawGAT-ST fiel ao paper | Implementado: raw audio + grafo espectral/temporal | `rawgat_st.py` |
-| OC-Softmax | Implementado como camada/loss opcional | `layers.py` |
+| OC-Softmax | Implementado como camada/loss opcional | `head_layers.py` |
 | EER/min-tDCF | Métricas implementadas no pipeline de avaliação | `training/metrics.py` |
 | SVM/RF calibrados | Opt-in por `CalibratedClassifierCV` | `classical_ml_helpers.py`, `svm.py`, `random_forest.py` |
 

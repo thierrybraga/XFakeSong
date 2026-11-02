@@ -58,8 +58,9 @@ representative at an online or offline event.
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement at [INSERT EMAIL ADDRESS].
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported
+privately to the repository maintainers using the contact details published on the
+repository profile. Do not include sensitive personal information in a public issue.
 All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the

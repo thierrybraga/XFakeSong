@@ -26,7 +26,11 @@ Todos os modelos expõem a interface unificada
     é justamente o que não pode divergir, e o `AMSoftmax*`, que é
     infraestrutura de treino usada também por `trainer.py` e `optimization.py`.
     `layers.py` mantém as classes originais para desserializar artefatos
-    gravados antes da separação.
+    gravados antes da separação. Desde a divisão do módulo, as definições estão
+    por tema (`spectral_layers.py`, `sinc_layers.py`, `block_layers.py`,
+    `head_layers.py`, `plumbing_layers.py`, `graph_layers.py`), e `layers.py` é a
+    porta de entrada: importá-lo é o que as registra no Keras, que resolve classe
+    própria só pelo registro, nunca pelo campo `module` do `.keras`.
 
 !!! check "A porta Keras do WavLM foi VERIFICADA numericamente (2026-08-20)"
     A reimplementação do forward do WavLM em Keras — extrator convolucional,
@@ -93,7 +97,7 @@ Todos os modelos expõem a interface unificada
     aceitar o fallback silenciosamente.
 
     Os artefatos `*_original.pt` e o runner PyTorch
-    (`scripts/benchmark/run_wavlm_original_benchmark.py`) continuam sendo o
+    (`benchmarks/run_wavlm_original_benchmark.py`) continuam sendo o
     caminho do escopo oficial para "WavLM Original"/"HuBERT Original".
 
 !!! warning "Retratação: o fine-tuning do front-end SSL saiu do escopo (2026-08-11)"
@@ -495,7 +499,7 @@ Encapsulados para seguir a interface do projeto, úteis como baseline e em cená
 O que define um clássico não é uma topologia, é o **grid de busca** — e ele tem
 fonte única: `svm.py::SVM_PARAM_GRID` e
 `random_forest.py::RANDOM_FOREST_PARAM_GRID`, de onde
-`benchmarks/runner.py::_classical_search_space` importa. Até 2026-08-09 o runner
+`benchmarks/fit_classical.py::_classical_search_space` importa. Até 2026-08-09 o runner
 carregava uma cópia própria e divergente (uma 4ª fonte de hiperparâmetros,
 ausente das três que o `CLAUDE.md` documenta), então os grids regularizados das
 arquiteturas não tinham chamador nenhum no projeto e o benchmark treinava com

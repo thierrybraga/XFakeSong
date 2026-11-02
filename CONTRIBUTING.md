@@ -20,21 +20,51 @@ contribuicao; as regras tecnicas detalhadas ficam nos documentos canonicos:
 
 ## Setup Local
 
+### Windows (PowerShell)
+
+```powershell
+git clone https://github.com/thierrybraga/XFakeSong.git
+cd XFakeSong
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe main.py --bootstrap-dirs
+.\.venv\Scripts\python.exe main.py --gradio
+```
+
+### Linux / macOS
+
 ```bash
-git clone https://github.com/YOUR_USERNAME/XFakeSong.git
-cd SpeechChecker
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+git clone https://github.com/thierrybraga/XFakeSong.git
+cd XFakeSong
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements-dev.txt
 python main.py --bootstrap-dirs
 python main.py --gradio
 ```
 
+Os alvos `make` usam Bash. No Windows, execute-os no Git Bash ou WSL; no
+PowerShell, use os comandos nativos acima.
+Para editar documentação ou notebooks, instale também `requirements-docs.txt`
+ou `requirements-notebooks.txt`, conforme o perfil descrito em
+[`docs/development/release-gates.md`](docs/development/release-gates.md).
+
 ## Validacao Basica
+
+No Windows (PowerShell):
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/
+.\.venv\Scripts\python.exe -m pytest --cov=app --cov=benchmarks tests/
+```
+
+Linux/macOS, ou Windows pelo Git Bash/WSL:
 
 ```bash
 pytest tests/
-pytest --cov=app tests/
+pytest --cov=app --cov=benchmarks tests/
 ```
 
 Use testes mais focados durante o desenvolvimento:
