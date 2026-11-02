@@ -45,7 +45,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.utils.file_storage import link_or_copy_file  # noqa: E402
+from app.utils.file_storage import copy_file_atomic  # noqa: E402
 
 # Modelos clássicos (sklearn) — não passam pelo TrainingService (Keras).
 CLASSICAL_ARCH_SLUGS = {"svm", "randomforest"}
@@ -180,8 +180,10 @@ def _preserve_run_artifact(
     caminhos Keras e clássico passam a fazer o mesmo.
 
     ``data/models/bench_*`` continua como a versão CORRENTE que a inferência
-    carrega. Run e modelo corrente compartilham blocos em disco; antes de um
-    novo treino, o runner desassocia os caminhos para preservar o snapshot.
+    carrega. A cópia do run é REAL, nunca hardlink: com o inode compartilhado,
+    qualquer gravação in-place no modelo corrente (um smoke, um script, um
+    ``joblib.dump``) alteraria em silêncio o artefato que o run registrou, que é
+    o incidente acima. Custa o espaço de um modelo por run.
     """
     if artifact is None:
         return None, None
@@ -192,10 +194,10 @@ def _preserve_run_artifact(
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / src.name
     if dest.resolve() != src.resolve():
-        link_or_copy_file(src, dest)
+        copy_file_atomic(src, dest)
         sidecar = src.with_name(f"{src.stem}_config.json")
         if sidecar.is_file():
-            link_or_copy_file(sidecar, dest_dir / sidecar.name)
+            copy_file_atomic(sidecar, dest_dir / sidecar.name)
     return dest, _file_fingerprint(dest)
 
 
