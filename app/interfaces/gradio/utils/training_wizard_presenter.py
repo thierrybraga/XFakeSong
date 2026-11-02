@@ -153,7 +153,7 @@ def step_visibility(current: int):
 def stepper_html(current: int) -> str:
     """Indicador visual de progresso para os passos 1-4."""
     steps = [
-        ("1", "Dataset"),
+        ("1", "Dados"),
         ("2", "Modelo"),
         ("3", "Hiperparâmetros"),
         ("4", "Treinar"),

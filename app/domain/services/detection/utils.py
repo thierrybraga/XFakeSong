@@ -64,11 +64,3 @@ def get_available_devices() -> List[str]:
         logger.warning(f"Erro ao listar dispositivos GPU: {e}")
     return devices
 
-def set_memory_growth():
-    """Configura crescimento de memória para GPUs."""
-    try:
-        gpus = tf.config.list_physical_devices('GPU')
-        for gpu in gpus:
-            tf.config.experimental.set_memory_growth(gpu, True)
-    except Exception as e:
-        logger.warning(f"Erro ao configurar memory growth: {e}")

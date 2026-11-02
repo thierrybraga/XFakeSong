@@ -7,7 +7,7 @@ Define as estruturas de dados para features extraídas de segmentos de áudio.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import numpy as np
 
@@ -59,13 +59,6 @@ class SegmentedFeatures:
         """Número total de features."""
         return len(self.combined_features)
 
-    def get_feature_by_name(self, name: str) -> Optional[float]:
-        """Obtém o valor de uma feature pelo nome."""
-        try:
-            index = self.feature_names.index(name)
-            return float(self.combined_features[index])
-        except ValueError:
-            return None
 
     def to_dict(self) -> Dict[str, Any]:
         """Converte para dicionário."""

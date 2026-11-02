@@ -1,20 +1,8 @@
-"""Configurações do sistema"""
+"""Configuração do sistema.
 
-from .settings import (
-    APIConfig,
-    AudioConfig,
-    DatabaseConfig,
-    FeatureConfig,
-    LoggingConfig,
-    MonitoringConfig,
-    PathConfig,
-    SecurityConfig,
-    SystemConfig,
-    TrainingConfig,
-)
+- ``settings``: dataclasses de configuração (``SystemConfig``, ``TrainingConfig``…);
+- ``paths``: raiz canônica de resultados;
+- ``env``: leitura de variáveis de ambiente e do ``.env``.
 
-__all__ = [
-    "PathConfig", "AudioConfig", "FeatureConfig",
-    "TrainingConfig", "APIConfig", "DatabaseConfig", "LoggingConfig",
-    "MonitoringConfig", "SecurityConfig", "SystemConfig"
-]
+Sem re-exports: importe do submódulo.
+"""

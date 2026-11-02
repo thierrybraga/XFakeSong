@@ -5,8 +5,9 @@ do contrato de inferência, carregá-lo e produzir uma pontuação. É onde um
 `feature_frontend` incompatível entre artefato e preparo se manifesta.
 """
 
-import numpy as np
 import json
+
+import numpy as np
 
 from app.domain.services.detection.model_loader import (
     ModelInfo,

@@ -268,15 +268,6 @@ class SecureFeatureScaler:
         joblib.dump(self.scaler, path)
         self.logger.info(f"Scaler salvo em: {path}")
 
-    def load_scaler(self, path: Union[str, Path]) -> None:
-        """Carrega scaler salvo."""
-        path = Path(path)
-        if not path.exists():
-            raise FileNotFoundError(f"Scaler não encontrado: {path}")
-
-        self.scaler = joblib.load(path)
-        self.logger.info(f"Scaler carregado de: {path}")
-
 
 class DataLeakageValidator:
     """Validador para detectar possíveis vazamentos de dados."""
@@ -428,11 +419,3 @@ class SecureTrainingPipeline:
 # Função de conveniência para uso rápido
 
 
-def create_secure_pipeline(use_temporal_split: bool = True,
-                           scaler_type: str = "standard") -> SecureTrainingPipeline:
-    """Cria pipeline seguro com configurações padrão."""
-    config = SecureTrainingConfig(
-        use_temporal_split=use_temporal_split,
-        scaler_type=scaler_type
-    )
-    return SecureTrainingPipeline(config)

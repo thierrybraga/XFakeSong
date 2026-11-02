@@ -17,7 +17,7 @@ import pytest
 
 tf = pytest.importorskip("tensorflow")
 
-from app.domain.models.training.trainer import (  # noqa: E402
+from app.domain.models.training.callbacks import (  # noqa: E402
     EpochProgressLogger,
     ResumableModelCheckpoint,
 )

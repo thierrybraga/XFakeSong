@@ -125,51 +125,6 @@ class CommonErrors:
     Reusar evita reinventar mensagens em vários lugares do código.
     """
 
-    @staticmethod
-    def model_not_found(model_name: str = "") -> ActionableError:
-        return ActionableError(
-            title="Modelo não encontrado",
-            message=(
-                f"O modelo '{model_name}' não está carregado."
-                if model_name
-                else "Nenhum modelo treinado disponível."
-            ),
-            hint=(
-                "Treine um modelo na aba 🎓 Treinar (Wizard) ou importe um "
-                "modelo existente em ⚙ Admin → Datasets."
-            ),
-            error_code="MODEL_NOT_FOUND",
-        )
-
-    @staticmethod
-    def no_audio_provided() -> ActionableError:
-        return ActionableError(
-            title="Nenhum áudio fornecido",
-            message="Não foi possível analisar — nenhum arquivo enviado.",
-            hint="Arraste e solte um arquivo .wav/.mp3/.flac no campo de upload.",
-            error_code="NO_AUDIO",
-        )
-
-    @staticmethod
-    def unsupported_format(ext: str, supported: List[str]) -> ActionableError:
-        return ActionableError(
-            title="Formato não suportado",
-            message=f"O arquivo '{ext}' não é aceito.",
-            hint=f"Use um dos formatos suportados: {', '.join(supported)}",
-            error_code="UNSUPPORTED_FORMAT",
-        )
-
-    @staticmethod
-    def dataset_invalid(path: str, reason: str) -> ActionableError:
-        return ActionableError(
-            title="Dataset inválido",
-            message=f"`{path}`: {reason}",
-            hint=(
-                "Verifique se a pasta contém subdiretórios para cada classe "
-                "(ex: real/, fake/) e arquivos .wav dentro de cada um."
-            ),
-            error_code="DATASET_INVALID",
-        )
 
     @staticmethod
     def port_in_use(port: int = 7860) -> ActionableError:
@@ -183,17 +138,6 @@ class CommonErrors:
             error_code="PORT_IN_USE",
         )
 
-    @staticmethod
-    def db_unavailable(detail: str = "") -> ActionableError:
-        return ActionableError(
-            title="Banco de dados indisponível",
-            message=detail or "Não foi possível conectar ao SQLite.",
-            hint=(
-                "Verifique se `data/` é writable e se o disco não está cheio. "
-                "Em Docker, garanta que o volume `./data:/app/data` está mapeado."
-            ),
-            error_code="DB_UNAVAILABLE",
-        )
 
     @staticmethod
     def training_failed(reason: str) -> ActionableError:

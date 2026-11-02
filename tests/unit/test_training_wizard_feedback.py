@@ -80,16 +80,26 @@ def test_sinal_de_parada_e_reversivel():
 
 
 def test_treino_respeita_o_pedido_de_parada():
-    """O Keras não interrompe no meio da época — só em `stop_training`."""
+    """O Keras não interrompe no meio da época — só em `stop_training`.
+
+    O treino saiu da aba para `app.domain.services.interactive_training`; a aba
+    só entrega o seu `_PEDIDO_DE_PARADA` como `stop_event`.
+    """
     import inspect
 
+    from app.domain.services import interactive_training
     from app.interfaces.gradio.tabs import training_wizard
 
-    fonte = inspect.getsource(training_wizard._run_training)
-    assert "_PEDIDO_DE_PARADA.is_set()" in fonte
-    assert "stop_training = True" in fonte
+    assert "stop_event=_PEDIDO_DE_PARADA" in inspect.getsource(
+        training_wizard._run_training
+    )
+    neural = inspect.getsource(interactive_training._train_neural)
+    assert "stop_event.is_set()" in neural
+    assert "stop_training = True" in neural
     # e o pedido pendente de um treino anterior não pode matar o próximo
-    assert "_PEDIDO_DE_PARADA.clear()" in fonte
+    assert "stop_event.clear()" in inspect.getsource(
+        interactive_training.InteractiveTrainingService.train
+    )
 
 
 # ─────────────── sobreajuste ao vivo ───────────────

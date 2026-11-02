@@ -11,12 +11,12 @@ import numpy as np
 import pytest
 
 import app.utils.helpers as helpers
+from app.utils.file_utils import ensure_directory
 from app.utils.helpers import (
     ProgressTracker,
     chunk_list,
     create_unique_id,
     deep_merge_dicts,
-    ensure_directory,
     flatten_dict,
     format_duration,
     format_file_size,
@@ -30,7 +30,6 @@ from app.utils.helpers import (
     timing_decorator,
     validate_audio_file,
 )
-
 
 # ── filesystem ────────────────────────────────────────────────────────────
 

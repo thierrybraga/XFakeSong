@@ -12,7 +12,7 @@ de ``app/core``):
   canônica, ``benchmark_tabular_v1`` de 63 e ``v2`` de 183 descritores) e
   utilidades para artefatos scikit-learn.
 
-CLI correspondente: ``scripts/reporting/run_shap_analysis.py``.
+CLI correspondente: ``tools/reporting/run_shap_analysis.py``.
 """
 
 from typing import TYPE_CHECKING

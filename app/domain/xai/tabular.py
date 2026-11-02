@@ -8,7 +8,7 @@ Forest, na ordem exata de construção em
 - **v2** (183): o v1 inteiro, na mesma ordem, + 120 descritores LFCC
   (20 coeficientes estáticos, Δ e ΔΔ, com média e desvio de cada bloco).
 
-Consumido por ``scripts/reporting/export_rf_feature_importance.py`` e pelo
+Consumido por ``tools/reporting/export_rf_feature_importance.py`` e pelo
 módulo SHAP — que resolvem a largura pelo próprio artefato, então os dois
 contratos convivem.
 """

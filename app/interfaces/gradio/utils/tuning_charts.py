@@ -68,7 +68,7 @@ def render_tuning_figure(study: Any):
         xs = list(range(1, len(values) + 1))
         ax[0].plot(
             xs, values, color=PLOT_DANGER, linestyle=":", marker=".",
-            ms=7, label="trial",
+            ms=7, label="tentativa",
         )
         ax[0].plot(
             xs, best_so_far, color=PLOT_ACCENT, marker="o", ms=4,
@@ -79,10 +79,10 @@ def render_tuning_figure(study: Any):
         ax[0].legend()
     else:
         ax[0].text(
-            0.5, 0.5, "Sem trials concluídos", ha="center", va="center",
+            0.5, 0.5, "Sem tentativas concluídas", ha="center", va="center",
             transform=ax[0].transAxes, color=PLOT_TEXT_MUTED,
         )
-    ax[0].set_xlabel("Trial")
+    ax[0].set_xlabel("Tentativa")
     ax[0].set_ylabel("Métrica objetivo")
 
     # ── Painel 2: Importância dos hiperparâmetros ──
@@ -106,7 +106,7 @@ def render_tuning_figure(study: Any):
     else:
         ax[1].text(
             0.5, 0.5,
-            "Importância indisponível\n(requer optuna e ≥2 trials concluídos)",
+            "Importância indisponível\n(requer Optuna e ≥2 tentativas concluídas)",
             ha="center", va="center", transform=ax[1].transAxes,
             color=PLOT_TEXT_MUTED, fontsize=9,
         )

@@ -774,7 +774,7 @@ def _create_ensemble_adaptive(
     block_diagonal) -- o mesmo dataset com atalho de fonte de 87,6% ja
     invalidado e apagado do disco (ver docs/data/benchmark-dataset.md). Nao
     cite esse numero; regenere-o rodando o benchmark sob o dataset vigente
-    (data/datasets/benchmark_dataset.npz).
+    (data/datasets/benchmark_dataset_15k.npz).
     """
     inputs = layers.Input(shape=input_shape, name='audio_input')
 

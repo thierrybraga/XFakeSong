@@ -89,29 +89,6 @@ class TimeFrequencyFeatureExtractor:
 
         return features
 
-    # Métodos auxiliares removidos em favor de componentes especializados
-
-    def _simple_emd(self, y: np.ndarray, max_imfs: int = 5) -> list:
-        """Implementação simplificada de EMD."""
-        imfs = []
-        residue = y.copy()
-
-        for _ in range(max_imfs):
-            # Critério de parada simples
-            if len(residue) < 10 or np.std(residue) < 1e-6:
-                break
-
-            # Processo de peneiramento simplificado
-            imf = self._sifting_process(residue)
-
-            if imf is not None and len(imf) > 0:
-                imfs.append(imf)
-                residue = residue - imf
-            else:
-                break
-
-        return imfs
-
     def _sifting_process(self, signal: np.ndarray,
                          max_iterations: int = 10) -> Optional[np.ndarray]:
         """Processo de peneiramento para EMD."""

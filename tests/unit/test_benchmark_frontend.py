@@ -277,10 +277,13 @@ class TestFeaturePreparerBenchmarkPath:
         # essa divergência de 3 dB deslocava em 1,41x todas as colunas lineares
         # em amplitude do vetor tabular do SVM/RandomForest. Aqui a referência
         # precisa usar o mesmo alvo da produção para a igualdade exata valer.
+        # E a mesma ORDEM: a janela de 3 s é recortada antes do nível, como no
+        # export (ver `test_janela_e_recortada_antes_de_banda_e_nivel`).
+        janela = bf.fit_length_tile(samples[np.newaxis, :], 48000)[0]
         np.testing.assert_array_equal(
             result["features"],
             bf.log_mel_single(
-                apply_agc(samples, target_lufs=bf.BAND_CORRECTION_RMS_DBFS)
+                apply_agc(janela, target_lufs=bf.BAND_CORRECTION_RMS_DBFS)
             ),
         )
         assert result["metadata"]["feature_frontend"] == bf.FRONTEND_LOGMEL
@@ -300,3 +303,53 @@ class TestFeaturePreparerBenchmarkPath:
         result = preparer.prepare_input(audio, model_info, arch_info=None)
         assert result["status"] == "error"
         assert "63" in result["error"] and "64" in result["error"]
+
+    def test_janela_e_recortada_antes_de_banda_e_nivel(self):
+        """O export recorta os 3 s centrais e SÓ ENTÃO filtra e nivela.
+
+        Com silêncio nas pontas (como no CETUC), nivelar o arquivo inteiro
+        deixa o miolo mais alto do que no treino; o vetor tabular é linear em
+        amplitude e o SVM caía de 91% para 80,5% em validação.
+        """
+        pytest.importorskip("librosa")
+        pytest.importorskip("scipy")
+        from unittest.mock import MagicMock
+
+        from app.core.contracts.audio import AudioData
+
+        rng = np.random.default_rng(11)
+        fala = (rng.normal(size=48000) * 0.2).astype("float32")
+        silencio = (rng.normal(size=24000) * 0.002).astype("float32")
+        arquivo = np.concatenate([silencio, fala, silencio])  # 6 s, miolo central
+        politica = {"cutoff_hz": 7500.0, "remove_dc": True,
+                    "renormalize_rms_dbfs": -26.0}
+
+        def corrigir(sinal):
+            return bf.apply_band_correction(
+                sinal[np.newaxis, :], 7500.0, sample_rate=16000,
+                remove_dc=True, renormalize_rms_dbfs=-26.0,
+            )[0]
+
+        inicio = (len(arquivo) - 48000) // 2  # mesmo recorte do export
+        esperado = bf.tabular_features_v2_single(
+            corrigir(arquivo[inicio:inicio + 48000]), source_samples=48000
+        )
+
+        model_info = MagicMock()
+        model_info.input_shape = (183,)
+        model_info.input_contract = {
+            "feature_frontend": bf.FRONTEND_TABULAR_V2,
+            "sample_rate": 16000,
+            "source_samples": 48000,
+            "band_correction": politica,
+        }
+        audio = AudioData(samples=arquivo, sample_rate=16000, duration=6.0)
+        result = self._make_preparer().prepare_input(audio, model_info, None)
+        assert result["status"] == "ok", result.get("error")
+        obtido = np.asarray(result["features"]).reshape(-1)
+        np.testing.assert_allclose(obtido, esperado, rtol=1e-4, atol=1e-5)
+
+        # A ordem antiga dá outro vetor: o teste enxerga a regressão.
+        antigo = bf.tabular_features_v2_single(corrigir(arquivo), source_samples=48000)
+        assert not np.allclose(antigo, esperado, rtol=1e-3)
+

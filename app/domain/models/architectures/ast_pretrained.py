@@ -199,7 +199,7 @@ def load_ast_pretrained_weights(
 
         # MultiHeadAttention do Keras: kernels (embed, heads, key_dim);
         # PyTorch guarda Linear como (out, in) → transpõe antes de fatiar.
-        def _qkv(name: str):
+        def _qkv(name: str, p: str = p):
             kernel = w(p + f"attention.attention.{name}.weight").T   # (in, out)
             bias = w(p + f"attention.attention.{name}.bias")
             return (kernel.reshape(embed_dim, num_heads, key_dim),

@@ -51,10 +51,6 @@ class ExtractorSpec:
             self.dependencies = []
 
 
-# Interface IFeatureExtractor agora importada de
-# app.domain.features.interfaces
-
-
 class FeatureExtractorRegistry:
     """Registry centralizado para extratores de features."""
 
@@ -157,29 +153,6 @@ class FeatureExtractorRegistry:
             raise ValueError(f"Extrator '{name}' não encontrado")
         return self._extractors[name]
 
-    def get_extractors_by_type(self, feature_type: FeatureType) -> List[str]:
-        """Obtém extratores por tipo de feature.
-
-        Args:
-            feature_type: Tipo de feature
-
-        Returns:
-            Lista de nomes de extratores
-        """
-        return self._type_index.get(feature_type, [])
-
-    def get_extractors_by_complexity(
-        self, complexity: ExtractorComplexity
-    ) -> List[str]:
-        """Obtém extratores por complexidade.
-
-        Args:
-            complexity: Nível de complexidade
-
-        Returns:
-            Lista de nomes de extratores
-        """
-        return self._complexity_index.get(complexity, [])
 
     def is_registered(self, name: str) -> bool:
         """Verifica se um extrator está registrado.
@@ -192,60 +165,9 @@ class FeatureExtractorRegistry:
         """
         return name in self._extractors
 
-    def unregister(self, name: str) -> bool:
-        """Remove um extrator do registry.
-
-        Args:
-            name: Nome do extrator
-
-        Returns:
-            True se removido com sucesso
-        """
-        if name not in self._extractors:
-            return False
-
-        spec = self._extractors[name]
-
-        # Remover dos índices
-        if spec.feature_type in self._type_index:
-            if name in self._type_index[spec.feature_type]:
-                self._type_index[spec.feature_type].remove(name)
-
-        if spec.complexity in self._complexity_index:
-            if name in self._complexity_index[spec.complexity]:
-                self._complexity_index[spec.complexity].remove(name)
-
-        del self._extractors[name]
-        logger.info(f"Extrator '{name}' removido do registry")
-        return True
-
-    def get_stats(self) -> Dict[str, Any]:
-        """Obtém estatísticas do registry.
-
-        Returns:
-            Dicionário com estatísticas
-        """
-        return {
-            "total_extractors": len(self._extractors),
-            "by_type": {
-                ft.value: len(extractors)
-                for ft, extractors in self._type_index.items()
-            },
-            "by_complexity": {
-                comp.value: len(extractors)
-                for comp, extractors in self._complexity_index.items()
-            },
-            "registered_extractors": list(self._extractors.keys())
-        }
-
 
 # Instância global do registry
 extractor_registry = FeatureExtractorRegistry()
-
-
-def get_extractor_registry() -> FeatureExtractorRegistry:
-    """Retorna a instância global do registry."""
-    return extractor_registry
 
 
 def register_default_extractors():

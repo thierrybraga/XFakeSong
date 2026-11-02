@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
@@ -24,6 +25,7 @@ from typing import Iterator, Optional
 # falha com "main thread is not in main loop". Agg renderiza para buffer
 # de bytes — exatamente o que precisamos para gr.Plot().
 import matplotlib
+
 if not os.environ.get("MPLBACKEND"):
     matplotlib.use("Agg", force=True)
 
@@ -174,8 +176,6 @@ def safe_tight_layout(fig: Figure) -> None:
 # =====================================================================
 # Helpers de serviços (singletons thread-safe — FE.3)
 # =====================================================================
-
-import threading
 
 _service_locks: dict = {}
 _service_locks_lock = threading.Lock()

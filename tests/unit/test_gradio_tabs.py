@@ -74,6 +74,13 @@ def test_interface_completa_monta_sem_modelos():
     assert "(erro)" not in config, "alguma aba caiu no placeholder de erro"
 
 
+def test_tema_visual_carregado_do_pacote_gradio():
+    from app.interfaces.gradio.app import _CUSTOM_CSS
+
+    assert ".gradio-container" in _CUSTOM_CSS
+    assert "--xf-bg:" in _CUSTOM_CSS
+
+
 def test_analise_sem_audio_devolve_a_aridade_esperada():
     """`_empty_analysis_result` protege o contrato de saída do handler.
 
@@ -236,6 +243,38 @@ def test_ui_safe_nao_reembrulha_erro_ja_destinado_ao_usuario():
     with pytest.raises(gr.Error) as excecao:
         recusa()
     assert "prefixo generico" not in str(excecao.value)
+
+
+def test_ui_safe_mantem_handler_gerador_como_gerador():
+    """O Gradio só faz streaming se o handler FOR função geradora.
+
+    Com o invólucro comum, `on_scan`, `start_training` e `on_save_model` do
+    assistente de treino devolviam o objeto gerador como valor único e o
+    Gradio recusava a saída ("didn't receive enough output values") — o
+    assistente não passava da etapa 1.
+    """
+    import inspect
+
+    from app.interfaces.gradio.utils.components import ui_safe
+
+    @ui_safe("Falha ao varrer")
+    def em_etapas(n):
+        yield "validando"
+        yield n
+
+    assert inspect.isgeneratorfunction(em_etapas)
+    assert list(em_etapas(3)) == ["validando", 3]
+
+    @ui_safe("Falha ao treinar")
+    def quebra_no_meio():
+        yield "época 1"
+        raise RuntimeError("sem memória")
+
+    passos = quebra_no_meio()
+    assert next(passos) == "época 1"
+    with pytest.raises(gr.Error) as excecao:
+        next(passos)
+    assert "Falha ao treinar: sem memória" in str(excecao.value)
 
 
 def test_intervalo_do_status_bar_e_configuravel():

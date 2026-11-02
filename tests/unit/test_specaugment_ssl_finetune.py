@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import pytest
 
-
 # ───────────────────────── SpecAugment ─────────────────────────
 
 @pytest.mark.parametrize("shape", [(8, 375, 80), (8, 375, 80, 1)])

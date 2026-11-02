@@ -13,7 +13,6 @@ import pytest
 
 from app.utils import file_utils as fu
 
-
 # ── básicos ───────────────────────────────────────────────────────────────
 
 def test_ensure_directory(tmp_path):
@@ -22,9 +21,9 @@ def test_ensure_directory(tmp_path):
 
 
 def test_safe_filename_variants():
-    assert fu.safe_filename("a/b:c.txt") == "abc.txt"
+    assert fu.safe_filename("a/b:c.txt") == "a_b_c.txt"
     assert fu.safe_filename("  ...  ") == "unnamed_file"
-    assert fu.safe_filename("***") == "unnamed_file"
+    assert fu.safe_filename("***") == "___"
     long = "a" * 300 + ".txt"
     assert len(fu.safe_filename(long)) <= 255
 

@@ -69,7 +69,7 @@ def test_mixed_awgn_is_balanced_and_reproducible():
 
 
 def test_protocol_adds_noise_before_frontend(monkeypatch):
-    from benchmarks import BenchmarkConfig, runner
+    from benchmarks import BenchmarkConfig, protocol
 
     rng = np.random.default_rng(5)
     raw_splits = (
@@ -86,7 +86,7 @@ def test_protocol_adds_noise_before_frontend(monkeypatch):
         seen.append(np.asarray(X).copy())
         return np.asarray(X)[:, :4], "tabular_audio_features"
 
-    monkeypatch.setattr(runner, "prepare_input_for_architecture", fake_frontend)
+    monkeypatch.setattr(protocol, "prepare_input_for_architecture", fake_frontend)
     cfg = BenchmarkConfig(
         architectures=["SVM"],
         dataset_path="raw.npz",
@@ -94,7 +94,7 @@ def test_protocol_adds_noise_before_frontend(monkeypatch):
         train_noise_copies=1,
         strict_waveform_awgn=True,
     )
-    prepared = runner._prepare_protocol_splits("SVM", cfg, raw_splits)
+    prepared = protocol._prepare_protocol_splits("SVM", cfg, raw_splits)
 
     assert len(seen) == 4  # treino/val/teste limpos + treino ruidoso
     assert seen[0].shape == seen[3].shape == raw_splits[0].shape
@@ -508,7 +508,7 @@ def test_report_creates_graph_placeholders_when_scores_are_missing():
 
 
 def test_tcc_pipeline_verifies_per_architecture_artifacts(tmp_path):
-    from scripts.benchmark.run_tcc_pipeline import _verify_outputs
+    from benchmarks.run_tcc_pipeline import _verify_outputs
 
     results = {
         "architectures": {
@@ -568,7 +568,7 @@ def test_quick_preset_is_classical_and_fast():
 
 def test_benchmark_relative_paths_are_anchored_to_project_root(monkeypatch, tmp_path):
     from benchmarks import BenchmarkConfig, plan_benchmark
-    from benchmarks.runner import PROJECT_ROOT
+    from benchmarks.common import PROJECT_ROOT
 
     monkeypatch.chdir(tmp_path)
     cfg = BenchmarkConfig.quick(
@@ -637,7 +637,7 @@ def test_neural_benchmark_plan_uses_curated_hyperparameters():
 
     with tempfile.TemporaryDirectory() as td:
         # WavLM/HuBERT (Original) rodam por um runner PyTorch/transformers
-        # dedicado (scripts/benchmark/run_wavlm_original_benchmark.py), fora do
+        # dedicado (benchmarks/run_wavlm_original_benchmark.py), fora do
         # caminho benchmarks.runner:keras que plan_benchmark cobre; e
         # EfficientNet-LSTM/Ensemble/Sonic Sleuth ficam fora do recorte
         # oficial de 11 modelos do TCC (ver ARCH_ALIASES/NEURAL_BENCHMARK_
@@ -1004,7 +1004,7 @@ def test_classical_grid_comes_from_the_architecture_modules():
         RANDOM_FOREST_PARAM_GRID,
     )
     from app.domain.models.architectures.svm import SVM_PARAM_GRID
-    from benchmarks.runner import _classical_search_space
+    from benchmarks.fit_classical import _classical_search_space
 
     svm_grid, _, svm_step = _classical_search_space("SVM", 42)
     rf_grid, _, rf_step = _classical_search_space("RandomForest", 42)
@@ -1061,7 +1061,7 @@ def test_npz_predefined_splits_are_preserved_without_duplicate_aggregate(tmp_pat
 
 
 def test_split_overlap_audit_rejects_exact_contamination():
-    from benchmarks.runner import _audit_split_overlap
+    from benchmarks.split_audit import _audit_split_overlap
 
     shared = np.ones((1, 1000), dtype="float32")
     train = np.concatenate([shared, np.zeros((1, 1000), dtype="float32")])

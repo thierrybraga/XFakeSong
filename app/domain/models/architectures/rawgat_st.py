@@ -12,6 +12,17 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers, models
 
+# Plumbing de tensor sem parâmetro de paper: continua compartilhado.
+from app.domain.models.architectures.layers import (
+    AudioFeatureNormalization,
+    AxisMaxAbsLayer,
+    MagnitudeLayer,
+)
+from app.domain.models.architectures.legacy_variants import (
+    LEGACY_VARIANTS,
+    build_legacy_model,
+)
+
 # CAMADAS PRÓPRIAS DO RawGAT-ST (separadas de layers.py em 2026-08-20).
 #
 # Estas cópias carregam as correções de fidelidade a Tak et al. (2021) feitas
@@ -27,18 +38,6 @@ from app.domain.models.architectures.rawgat_layers import (
     RawGatResidualBlock1D,
     RawGatResidualBlock2D,
     RawGatSincConv,
-)
-
-# Plumbing de tensor sem parâmetro de paper: continua compartilhado.
-from app.domain.models.architectures.layers import (
-    AudioFeatureNormalization,
-    AxisMaxAbsLayer,
-    MagnitudeLayer,
-)
-
-from app.domain.models.architectures.legacy_variants import (
-    LEGACY_VARIANTS,
-    build_legacy_model,
 )
 
 # Convenção do projeto: logger de módulo sem handlers manuais (a configuração

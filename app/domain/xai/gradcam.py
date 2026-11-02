@@ -17,7 +17,7 @@ Generalizações necessárias para as arquiteturas deste projeto:
   tenta candidatas da mais profunda para a mais rasa até obter um CAM válido.
 
 As limitações de interpretação (tokenização vs. camadas profundas) são
-registradas no relatório do CLI ``scripts/reporting/run_shap_analysis.py``.
+registradas no relatório do CLI ``tools/reporting/run_shap_analysis.py``.
 """
 
 from __future__ import annotations

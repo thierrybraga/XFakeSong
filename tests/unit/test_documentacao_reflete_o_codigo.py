@@ -73,10 +73,13 @@ def test_docs_nao_anunciam_o_rawnet2_de_locutor_como_o_do_escopo_oficial():
 
 def test_doc_nao_descreve_o_banco_sinc_como_aprendivel():
     """Se o código fixa o banco, a doc não pode chamá-lo de aprendível."""
-    from app.domain.models.architectures import (  # noqa: F401
-        aasist_layers, rawgat_layers, rawnet2_layers,
-    )
     import inspect
+
+    from app.domain.models.architectures import (  # noqa: F401
+        aasist_layers,
+        rawgat_layers,
+        rawnet2_layers,
+    )
 
     fixo_por_padrao = []
     for mod, classe in (
@@ -100,7 +103,7 @@ def test_doc_nao_descreve_o_banco_sinc_como_aprendivel():
 
 def test_doc_do_benchmark_declara_o_monitor_de_selecao_real():
     """`val_eer` é o critério do compose — a doc não pode anunciar `val_loss`."""
-    compose = (ROOT / "docker" / "compose" / "benchmark.nvidia.yml").read_text(
+    compose = (ROOT / "infrastructure" / "docker" / "compose" / "benchmark.nvidia.yml").read_text(
         encoding="utf-8"
     )
     if "val_eer" not in compose:
@@ -139,7 +142,7 @@ def test_limitacoes_declaradas_batem_com_o_compose():
     limitação é o mínimo; escondê-la faria o TCC ordenar modelos separados por
     ruído amostral.
     """
-    compose = (ROOT / "docker" / "compose" / "benchmark.nvidia.yml").read_text(
+    compose = (ROOT / "infrastructure" / "docker" / "compose" / "benchmark.nvidia.yml").read_text(
         encoding="utf-8"
     )
     uma_semente = "--seeds" not in compose

@@ -9,6 +9,7 @@ import json
 import logging
 import mimetypes
 import os
+import re
 import shutil
 import tarfile
 import tempfile
@@ -85,31 +86,44 @@ def ensure_directory(directory_path: Union[str, Path]) -> Path:
 
 
 def safe_filename(filename: str, max_length: int = 255) -> str:
-    """Cria um nome de arquivo seguro removendo caracteres problemáticos"""
-    # Caracteres não permitidos em nomes de arquivo
+    """Nome de arquivo válido no Windows e no POSIX, para nomes já confiáveis.
+
+    Troca por ``_`` os caracteres proibidos, remove espaços e pontos das
+    bordas, limita o comprimento preservando a extensão e nunca devolve
+    vazio. Para nomes vindos de clientes use :func:`sanitize_filename`.
+    """
     invalid_chars = '<>:"/\\|?*'
-
-    # Remover caracteres inválidos
-    safe_name = ''.join(c for c in filename if c not in invalid_chars)
-
-    # Remover espaços extras e pontos no início/fim
-    safe_name = safe_name.strip(' .')
-
-    # Limitar comprimento
+    safe_name = "".join("_" if c in invalid_chars else c for c in filename)
+    safe_name = safe_name.strip(" .")
     if len(safe_name) > max_length:
         name, ext = os.path.splitext(safe_name)
-        max_name_length = max_length - len(ext)
-        safe_name = name[:max_name_length] + ext
+        safe_name = name[: max_length - len(ext)] + ext
+    return safe_name or "unnamed_file"
 
-    # Garantir que não está vazio
-    if not safe_name:
-        safe_name = "unnamed_file"
 
-    return safe_name
+def sanitize_filename(filename: str) -> str:
+    """Nome seguro para um arquivo enviado por cliente (upload HTTP/UI).
+
+    1. Decodifica URL-encoding (``%2f``, ``%2e``…), que burlaria os passos seguintes.
+    2. Mantém só o basename e remove ``..``, ``/`` e ``\\``.
+    3. Troca tudo fora de ``[A-Za-z0-9_.-]`` por ``_``.
+    4. Remove pontos iniciais (arquivo oculto) e limita a 200 caracteres.
+    """
+    if not filename:
+        return "unnamed"
+    basename = os.path.basename(urllib.parse.unquote(filename))
+    basename = basename.replace("..", "").replace("/", "").replace("\\", "")
+    basename = re.sub(r"[^\w\-.]", "_", basename).lstrip(".")
+    if len(basename) > 200:
+        name, ext = os.path.splitext(basename)
+        basename = name[: 200 - len(ext)] + ext
+    return basename or "unnamed"
 
 
 def get_file_hash(file_path: Union[str, Path], algorithm: str = 'md5') -> str:
     """Calcula hash de um arquivo"""
+    if not Path(file_path).exists():
+        raise FileNotFoundError(f"Arquivo não encontrado: {file_path}")
     hash_func = hashlib.new(algorithm)
 
     with open(file_path, 'rb') as f:

@@ -8,18 +8,14 @@ compatibilidade dos datasets de áudio para detecção de deepfake.
 import json
 import logging
 import math
-import sys
-from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+import gradio as gr
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
-import gradio as gr
-
-from app.interfaces.gradio.utils.plotting import new_figure
-from app.interfaces.gradio.utils.components import ui_safe
+from app.core.bootstrap import OperationalPaths
 from app.domain.dataset_metadata.dataset_catalog import (
     MODEL_READINESS_TIERS,
     PRESET_SELECTIONS,
@@ -29,6 +25,8 @@ from app.domain.dataset_metadata.dataset_catalog import (
     source_type_map,
     tier_reference_markdown,
 )
+from app.interfaces.gradio.utils.components import ui_safe
+from app.interfaces.gradio.utils.plotting import new_figure
 
 matplotlib.use("Agg")
 
@@ -37,15 +35,13 @@ logger = logging.getLogger("gradio_dataset_management")
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent
-DATASETS_DIR = BASE_DIR / "data" / "datasets"
-REAL_DIR = DATASETS_DIR / "real"
-FAKE_DIR = DATASETS_DIR / "fake"
+# Mesmos diretórios do bootstrap (honra XFAKE_STORAGE_DIR), não um caminho
+# recalculado a partir deste arquivo.
+_PATHS = OperationalPaths.resolve()
+DATASETS_DIR = _PATHS.datasets
+REAL_DIR = _PATHS.dataset_real
+FAKE_DIR = _PATHS.dataset_fake
 SPLITS_DIR = DATASETS_DIR / "splits"
-
-# Adiciona raiz ao path para importar scripts/
-if str(BASE_DIR) not in sys.path:
-    sys.path.insert(0, str(BASE_DIR))
 
 # ---------------------------------------------------------------------------
 # Dark theme tokens (idênticos a voice_profiles.py)
@@ -824,7 +820,10 @@ def create_dataset_management_tab():
                                 maximum=50,
                                 value=0,
                                 step=5,
-                                label="Max falantes Fake Voices (0 = auto calculado pelo alvo)",
+                                label=(
+                                    "Máximo de falantes do Fake Voices "
+                                    "(0 = automático)"
+                                ),
                                 visible=True,
                             )
 
@@ -856,7 +855,7 @@ def create_dataset_management_tab():
                         + "\n\n"
                         "> Os tiers são a fonte única de verdade do tamanho/finalidade "
                         "do dataset (`app/domain/dataset_metadata/dataset_catalog.py`), compartilhada com "
-                        "`scripts/dataset/build_dataset.py --tier ...`, o benchmark e a "
+                        "`tools/dataset/build_dataset.py --tier ...`, o benchmark e a "
                         "documentação. Detalhes em `docs/data/public-datasets.md`."
                     )
 
@@ -1019,14 +1018,15 @@ def create_dataset_management_tab():
                         return
 
                     try:
-                        import scripts.dataset.download_datasets as dl_mod
+                        from app.domain.services.dataset import download as dl_mod
                     except ImportError as exc:
                         yield (
                             _balance_bar_html(data["real_count"], data["fake_count"]),
                             "",
                             _assess_training_readiness(data["real_count"], data["fake_count"]),
                             f"Erro de importação:\n{exc}",
-                            "❌ Não foi possível importar scripts/dataset/download_datasets.py",
+                            "❌ Não foi possível importar "
+                            "app/domain/services/dataset/download.py",
                         )
                         return
 
@@ -1278,13 +1278,18 @@ def create_dataset_management_tab():
                                 "que o benchmark usa."
                             ),
                         )
-                        pp_splits_btn = gr.Button("Criar Splits", variant="primary")
+                        pp_splits_btn = gr.Button("Criar partições", variant="primary")
                         gr.Markdown("---")
-                        pp_full_btn = gr.Button("Pipeline Completo", variant="primary")
+                        pp_full_btn = gr.Button("Fluxo completo", variant="primary")
                         pp_zip_btn = gr.Button("Criar ZIP para Upload", variant="secondary")
 
                     with gr.Column(scale=2):
-                        pp_log = gr.Textbox(label="Log", lines=16, max_lines=25, interactive=False)
+                        pp_log = gr.Textbox(
+                            label="Registro de execução",
+                            lines=16,
+                            max_lines=25,
+                            interactive=False,
+                        )
                         pp_summary = gr.Markdown("*Aguardando...*")
                         pp_issues_df = gr.Dataframe(
                             headers=["Tipo", "Quantidade", "Detalhes"],
@@ -1293,7 +1298,7 @@ def create_dataset_management_tab():
                         )
 
                 def _get_pp_module():
-                    import scripts.dataset.preprocess_dataset as pp
+                    from app.domain.services.dataset import preprocessing as pp
                     return pp
 
                 def _render_auditoria(relatorio: dict) -> str:

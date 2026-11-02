@@ -74,8 +74,9 @@ def _train_one_epoch(arch: str, dataset_path: str) -> tuple[bool, str]:
     Helper (NÃO é um teste pytest — prefixo ``_`` evita coleta; o teste real é
     ``test_smoke_wizard_pipeline`` abaixo).
     """
-    import tensorflow as tf
     import importlib
+
+    import tensorflow as tf
 
     factory_mod = importlib.import_module("app.domain.models.architectures.factory")
 

@@ -6,10 +6,12 @@ tinham um `test_create_dataset` cada; os nomes foram desambiguados em
 2026-08-17.
 """
 
-import pytest
 from pathlib import Path
+
+import pytest
+
+from app.core.contracts.base import DatasetType, ProcessingStatus
 from app.domain.services.upload_service import AudioUploadService
-from app.core.contracts.base import ProcessingStatus, DatasetType
 
 
 @pytest.fixture

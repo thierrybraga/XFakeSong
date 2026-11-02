@@ -15,6 +15,8 @@ import time
 from datetime import datetime, timedelta
 
 import gradio as gr
+
+from app import __version__
 from app.interfaces.gradio.utils.components import ui_safe
 
 logger = logging.getLogger("gradio_dashboard")
@@ -49,9 +51,9 @@ def _count_models() -> int:
 def _count_profiles() -> int:
     """Conta perfis de voz cadastrados."""
     try:
-        from app.domain.services.voice_profile_service import VoiceProfileService
+        from app.dependencies import get_voice_profile_service
 
-        return len(VoiceProfileService().list_profiles() or [])
+        return len(get_voice_profile_service().list_profiles() or [])
     except Exception as e:
         logger.debug(f"count_profiles fallback: {e}")
         return 0
@@ -60,19 +62,10 @@ def _count_profiles() -> int:
 def _count_analyses_24h() -> int:
     """Conta análises das últimas 24h no histórico."""
     try:
-        from sqlalchemy import func
+        from app.dependencies import get_analysis_result_repository
 
-        from app.core.db.session import SessionLocal
-        from app.domain.models.analysis import AnalysisResult
-
-        with SessionLocal() as db:
-            cutoff = datetime.now() - timedelta(hours=24)
-            count = (
-                db.query(func.count(AnalysisResult.id))
-                .filter(AnalysisResult.created_at >= cutoff)
-                .scalar()
-            )
-            return int(count or 0)
+        cutoff = datetime.now() - timedelta(hours=24)
+        return get_analysis_result_repository().count_since(cutoff)
     except Exception as e:
         logger.debug(f"count_analyses_24h fallback: {e}")
         return 0
@@ -117,44 +110,37 @@ def _refresh_datasets_size_gb() -> None:
 def _recent_analyses(limit: int = 5) -> list:
     """Últimas N análises do histórico."""
     try:
-        from app.core.db.session import SessionLocal
-        from app.domain.models.analysis import AnalysisResult
+        from app.dependencies import get_analysis_result_repository
 
-        with SessionLocal() as db:
-            rows = (
-                db.query(AnalysisResult)
-                .order_by(AnalysisResult.created_at.desc())
-                .limit(limit)
-                .all()
+        rows = get_analysis_result_repository().list_recent(limit)
+        out = []
+        for r in rows:
+            ago = "?"
+            try:
+                if r.created_at:
+                    delta = datetime.now() - r.created_at.replace(tzinfo=None)
+                    if delta.total_seconds() < 60:
+                        ago = f"{int(delta.total_seconds())}s atrás"
+                    elif delta.total_seconds() < 3600:
+                        ago = f"{int(delta.total_seconds() / 60)}min atrás"
+                    elif delta.total_seconds() < 86400:
+                        ago = f"{int(delta.total_seconds() / 3600)}h atrás"
+                    else:
+                        ago = f"{int(delta.total_seconds() / 86400)}d atrás"
+            except Exception:
+                pass
+            label = "FAKE" if r.is_fake else "REAL"
+            icon = "⚠" if r.is_fake else "✓"
+            out.append(
+                [
+                    f"{icon} {label}",
+                    r.filename or "unknown",
+                    f"{r.confidence:.2f}" if r.confidence is not None else "—",
+                    r.model_name or "—",
+                    ago,
+                ]
             )
-            out = []
-            for r in rows:
-                ago = "?"
-                try:
-                    if r.created_at:
-                        delta = datetime.now() - r.created_at.replace(tzinfo=None)
-                        if delta.total_seconds() < 60:
-                            ago = f"{int(delta.total_seconds())}s atrás"
-                        elif delta.total_seconds() < 3600:
-                            ago = f"{int(delta.total_seconds() / 60)}min atrás"
-                        elif delta.total_seconds() < 86400:
-                            ago = f"{int(delta.total_seconds() / 3600)}h atrás"
-                        else:
-                            ago = f"{int(delta.total_seconds() / 86400)}d atrás"
-                except Exception:
-                    pass
-                label = "FAKE" if r.is_fake else "REAL"
-                icon = "⚠" if r.is_fake else "✓"
-                out.append(
-                    [
-                        f"{icon} {label}",
-                        r.filename or "unknown",
-                        f"{r.confidence:.2f}" if r.confidence is not None else "—",
-                        r.model_name or "—",
-                        ago,
-                    ]
-                )
-            return out
+        return out
     except Exception as e:
         logger.debug(f"recent_analyses fallback: {e}")
         return []
@@ -186,7 +172,7 @@ def _gpu_status() -> str:
 def _system_status() -> dict:
     """Snapshot consolidado do estado do sistema."""
     status = {
-        "version": "1.1.0",
+        "version": __version__,
         "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
         "platform": platform.system(),
         "gpu": _gpu_status(),

@@ -57,12 +57,12 @@ def _tiny_model(units=1, activation="sigmoid"):
 
 
 def _config(**over):
-    base = dict(
-        epochs=1,
-        batch_size=16,
-        use_augmentation=False,
-        use_class_weighting=False,
-    )
+    base = {
+        "epochs": 1,
+        "batch_size": 16,
+        "use_augmentation": False,
+        "use_class_weighting": False,
+    }
     base.update(over)
     return TrainingConfig(**base)
 

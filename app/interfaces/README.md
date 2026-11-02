@@ -15,7 +15,7 @@ ou menus CLI. Regras de negocio devem permanecer em `app.domain`.
 ## Modulos
 
 - `gradio/`: interface visual e abas.
-- `web/`: FastAPI, routers, schemas, templates e assets.
+- `web/`: FastAPI, routers e schemas; monta a UI Gradio em `/gradio`.
 - `cli/`: menus interativos e contexto de execucao.
 
 ## Dependencias

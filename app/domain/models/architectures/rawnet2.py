@@ -20,18 +20,6 @@ from typing import Tuple
 import tensorflow as tf
 from tensorflow.keras import layers, models
 
-# CAMADAS PRÓPRIAS DO RawNet2 (separadas de layers.py em 2026-08-20).
-#
-# O RawNet2 tem front-end sinc PRÓPRIO (`RawNet2SincConv`), diferente do que
-# AASIST e RawGAT-ST usam — mais um motivo para os módulos serem separados: uma
-# correção no sinc de uma família não pode alcançar a outra.
-from app.domain.models.architectures.rawnet2_layers import (
-    RawNet2FeatureMapScaling,
-    RawNet2MultiScaleConv1D,
-    RawNet2ResidualBlock1D,
-    RawNet2SincConv,
-)
-
 # Pré-processamento de sinal genérico: continua compartilhado.
 from app.domain.models.architectures.layers import (
     AudioNormalizationLayer,
@@ -45,9 +33,27 @@ from app.domain.models.architectures.layers import (
 # treináveis que aqueles artefatos gravaram.
 from app.domain.models.architectures.layers import (
     FeatureMapScalingLayer as _LegacyFeatureMapScalingLayer,
+)
+from app.domain.models.architectures.layers import (
     MultiScaleConv1DBlock as _LegacyMultiScaleConv1DBlock,
+)
+from app.domain.models.architectures.layers import (
     ResidualBlock1D as _LegacyResidualBlock1D,
+)
+from app.domain.models.architectures.layers import (
     SincNetLayer as _LegacySincNetLayer,
+)
+
+# CAMADAS PRÓPRIAS DO RawNet2 (separadas de layers.py em 2026-08-20).
+#
+# O RawNet2 tem front-end sinc PRÓPRIO (`RawNet2SincConv`), diferente do que
+# AASIST e RawGAT-ST usam — mais um motivo para os módulos serem separados: uma
+# correção no sinc de uma família não pode alcançar a outra.
+from app.domain.models.architectures.rawnet2_layers import (
+    RawNet2FeatureMapScaling,
+    RawNet2MultiScaleConv1D,
+    RawNet2ResidualBlock1D,
+    RawNet2SincConv,
 )
 from app.utils.audio_utils import preprocess_legacy as preprocess
 

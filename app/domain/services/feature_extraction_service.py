@@ -90,48 +90,6 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
         """Extrair características de um arquivo de áudio"""
         return self.core.extract_features(audio_data, config)
 
-    def extract_batch_with_config(
-        self, audio_files: List[AudioData], config: ExtractionConfig
-    ) -> ProcessingResult:
-        """Extrair características de múltiplos arquivos (com config)"""
-        results = []
-        errors = []
-
-        progress = ProgressTracker(
-            len(audio_files),
-            "Extração de características")
-
-        for i, audio_data in enumerate(audio_files):
-            result = self.extract_features(audio_data, config)
-
-            if result.status == ProcessingStatus.SUCCESS:
-                if result.data:
-                    results.append(result.data)
-            else:
-                msg = (
-                    result.errors[0] if result.errors
-                    else 'Erro desconhecido'
-                )
-                errors.append(f"audio_data: {msg}")
-
-            progress.update(i + 1)
-
-        if errors:
-            status = (
-                ProcessingStatus.PARTIAL_SUCCESS if results
-                else ProcessingStatus.ERROR
-            )
-            return ProcessingResult(
-                status=status,
-                data=results,
-                errors=errors
-            )
-
-        return ProcessingResult(
-            status=ProcessingStatus.SUCCESS,
-            data=results
-        )
-
     def extract_single(
         self, audio_data: AudioData, feature_types: List[str]
     ) -> ProcessingResult:
@@ -206,14 +164,6 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
                 status=ProcessingStatus.ERROR,
                 errors=[str(e)]
             )
-
-    def extract_from_dataset(self, dataset_name: str,
-                             feature_types: List[str]) -> ProcessingResult[str]:
-        """Extrai características de dataset completo."""
-        return ProcessingResult(
-            status=ProcessingStatus.SUCCESS,
-            data=f"Dataset {dataset_name} processado"
-        )
 
     def get_available_extractors(self) -> List[str]:
         """Retorna extratores disponíveis."""

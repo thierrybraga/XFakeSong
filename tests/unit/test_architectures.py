@@ -465,7 +465,7 @@ def test_global_clipnorm_do_rawgat_chega_ao_construtor():
     assinatura = inspect.signature(rawgat_st.create_model).parameters
     assert "global_clipnorm" in assinatura
 
-    runner = Path(__file__).resolve().parents[2] / "benchmarks/runner.py"
+    runner = Path(__file__).resolve().parents[2] / "benchmarks/fit_neural.py"
     fonte = runner.read_text(encoding="utf-8")
     inicio = fonte.find('elif compact in {"aasist", "rawgatst"}')
     assert inicio > 0, "ramo de promoção do rawgatst não encontrado"

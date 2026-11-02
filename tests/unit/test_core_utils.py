@@ -5,8 +5,10 @@ Cobertura de borda (entrada vazia, tipo inesperado) mais do que de caminho
 feliz.
 """
 
+from app.utils.file_utils import get_file_hash, safe_filename
 from app.utils.helpers import (
-    safe_filename, get_file_hash, format_file_size, format_duration
+    format_duration,
+    format_file_size,
 )
 
 

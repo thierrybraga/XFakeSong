@@ -5,13 +5,15 @@ internas — é o que pega incompatibilidade de contrato entre preparo de featur
 e modelo carregado.
 """
 
-import pytest
-import numpy as np
-import tensorflow as tf
 import json
-from app.domain.services.detection_service import DetectionService
+
+import numpy as np
+import pytest
+import tensorflow as tf
+
 from app.core.contracts.audio import AudioData
 from app.core.contracts.base import ProcessingStatus
+from app.domain.services.detection_service import DetectionService
 
 
 @pytest.fixture

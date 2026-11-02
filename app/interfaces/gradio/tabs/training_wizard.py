@@ -17,15 +17,43 @@ lógica de binarização de labels (BUG.Training.4).
 from __future__ import annotations
 
 import logging
-import os
 import threading as _threading
-import re
-import time
 from pathlib import Path
 from typing import List
 
 import gradio as gr
-from app.core.performance import optimize_tf_dataset
+
+from app.domain.services.interactive_training import (
+    CLASSICAL_FEATURE_TYPES,
+    ClassicalCompleted,
+    ClassicalDatasetInsufficient,
+    ClassicalExtractionProgress,
+    ClassicalFitting,
+    ClassicalStarted,
+    ClassicalTooFewFeatures,
+    DatasetLoading,
+    DatasetReady,
+    EpochCompleted,
+    FitCompleted,
+    FitHeartbeat,
+    FitStarted,
+    SmokeTestFailed,
+    TrainedModel,
+    TrainingFailed,
+    save_trained_model,
+)
+from app.domain.services.interactive_training import (
+    REAL_CLASS_PATTERN as _REAL_PATTERNS,
+)
+from app.domain.services.interactive_training import (
+    history_series as _history_series,
+)
+from app.domain.services.interactive_training import (
+    normalize_true_labels as _normalize_true_labels,
+)
+from app.domain.services.interactive_training import (
+    resolve_accuracy_history_keys as _resolve_accuracy_history_keys,
+)
 from app.interfaces.gradio.utils.components import ui_safe
 from app.interfaces.gradio.utils.notifications import (
     CommonErrors,
@@ -36,129 +64,77 @@ from app.interfaces.gradio.utils.plotting import (
     PLOT_ACCENT,
     PLOT_DANGER,
     close_fig,
-    safe_tight_layout,
     new_figure,
+    safe_tight_layout,
     style_ax,
 )
 from app.interfaces.gradio.utils.training_wizard_presenter import (
     get_model_catalog as _get_model_catalog,
+)
+from app.interfaces.gradio.utils.training_wizard_presenter import (
     render_model_cards_html as _render_model_cards_html,
+)
+from app.interfaces.gradio.utils.training_wizard_presenter import (
     step_visibility as _step_visibility,
+)
+from app.interfaces.gradio.utils.training_wizard_presenter import (
     stepper_html as _stepper_html,
 )
 
 logger = logging.getLogger("gradio_training_wizard")
 
-# Diretório onde os modelos treinados são persistidos (mesmo lido pelo
-# ModelLoader / DetectionService em app/dependencies.py).
-_STORAGE_DIR = os.getenv("XFAKE_STORAGE_DIR") or os.getenv("DEEPFAKE_STORAGE_DIR")
-MODELS_DIR = Path(
-    os.getenv("MODELS_DIR")
-    or os.getenv("DEEPFAKE_MODELS_DIR")
-    or os.getenv("XFAKE_MODELS_DIR")
-    or (_STORAGE_DIR and str(Path(_STORAGE_DIR) / "models"))
-    or str(Path(__file__).resolve().parents[4] / "data" / "models")
-)
-
 # Holder do ÚLTIMO modelo treinado com sucesso nesta sessão do servidor.
-# O modelo Keras é criado dentro do gerador _run_training e seria coletado
-# pelo GC ao terminar — guardamos a referência aqui para o botão "Salvar"
-# do Step 4 conseguir persisti-lo. (App local single-user: holder de slot único.)
-_LAST_TRAINED: dict | None = None
-
-
-def _slugify_model_name(name: str) -> str:
-    """Normaliza o nome do modelo para um nome de arquivo seguro."""
-    name = (name or "").strip().lower()
-    name = re.sub(r"[^a-z0-9_-]+", "_", name)
-    name = re.sub(r"_+", "_", name).strip("_")
-    return name or "modelo"
+# O modelo Keras é criado dentro do gerador do treino e seria coletado pelo GC
+# ao terminar — guardamos a referência aqui para o botão "Salvar" do Step 4
+# conseguir persisti-lo. (App local single-user: holder de slot único.)
+_LAST_TRAINED: TrainedModel | None = None
 
 
 def _save_trained_model(name: str) -> tuple[bool, str]:
-    """Persiste o último modelo treinado em data/models/ (.keras + _config.json).
+    """Persiste o último modelo treinado no diretório de modelos do app.
 
-    O config inclui o input_contract (n_fft/hop/n_mels/sample_rate) para que a
-    INFERÊNCIA reproduza exatamente as features usadas no treino — caso
-    contrário as predições saem erradas (mismatch train/inference).
+    A gravação (.keras/.pkl + _config.json com o input_contract) é do domínio,
+    em ``interactive_training.save_trained_model``; aqui ficam a mensagem e o
+    recarregamento do DetectionService. O diretório é o de
+    ``OperationalPaths`` — o mesmo que o ModelLoader lê.
 
     Returns (ok, mensagem_markdown).
     """
-    global _LAST_TRAINED
-    if not _LAST_TRAINED or _LAST_TRAINED.get("model") is None:
+    if _LAST_TRAINED is None or _LAST_TRAINED.model is None:
         return False, (
             "⚠️ Nenhum modelo treinado nesta sessão. "
             "Conclua um treino no Step 4 antes de salvar."
         )
 
-    import json
-
-    info = _LAST_TRAINED
-    kind = info.get("kind", "keras")
-    slug = _slugify_model_name(name)
     try:
-        MODELS_DIR.mkdir(parents=True, exist_ok=True)
-        # Keras → .keras ; sklearn (SVM/RF) → .pkl (+ _scaler.pkl)
-        suffix = ".pkl" if kind == "sklearn" else ".keras"
-        model_path = MODELS_DIR / f"{slug}{suffix}"
-        config_path = MODELS_DIR / f"{slug}_config.json"
+        from app.core.bootstrap import OperationalPaths
 
-        if model_path.exists() or config_path.exists():
-            return False, (
-                f"⚠️ Já existe um modelo chamado **{slug}**. "
-                "Escolha outro nome para não sobrescrever."
-            )
-
-        if kind == "sklearn":
-            import joblib
-
-            joblib.dump(info["model"], str(model_path))
-            if info.get("scaler") is not None:
-                joblib.dump(info["scaler"], str(MODELS_DIR / f"{slug}_scaler.pkl"))
-        else:
-            # Artefato de inferência sem o estado do otimizador (~3× menor, load
-            # mais rápido, saída idêntica). Ver trainer.save_inference_keras.
-            from app.domain.models.training.trainer import save_inference_keras
-
-            save_inference_keras(info["model"], model_path)
-
-        config = {
-            "architecture": info["arch"],
-            "input_shape": list(info["input_shape"]),
-            "input_contract": info["input_contract"],
-            "trained_by": "wizard",
-            "model_type": "sklearn" if kind == "sklearn" else "tensorflow",
-            "feature_names": info.get("feature_names"),
-            "val_accuracy": info.get("val_acc"),
-            "val_loss": info.get("val_loss"),
-            "epochs": info.get("epochs"),
-        }
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
-
-        size_mb = model_path.stat().st_size / (1024 * 1024)
-        logger.info(f"Modelo salvo: {model_path} ({size_mb:.1f} MB)")
-
-        # Recarrega os modelos no DetectionService para uso imediato em Detectar.
-        reload_note = " Reinicie ou abra a aba Detectar para carregá-lo."
-        try:
-            from app.dependencies import get_detection_service
-
-            svc = get_detection_service()
-            loader = getattr(svc, "model_loader", None)
-            if loader is not None and hasattr(loader, "load_available_models"):
-                loader.load_available_models()
-                reload_note = " Já disponível na aba **🎯 Detectar**."
-        except Exception as e:
-            logger.debug(f"Reload do DetectionService pulado: {e}")
-
-        return True, (
-            f"✅ Modelo salvo como **{slug}** "
-            f"(`{model_path.name}`, {size_mb:.1f} MB).{reload_note}"
+        salvo = save_trained_model(
+            _LAST_TRAINED, name, OperationalPaths.resolve().models
+        )
+    except FileExistsError as e:
+        return False, (
+            f"⚠️ Já existe um modelo chamado **{e.args[0]}**. "
+            "Escolha outro nome para não sobrescrever."
         )
     except Exception as e:
         logger.error(f"Falha ao salvar modelo: {e}", exc_info=True)
         return False, f"❌ Erro ao salvar: {e}"
+
+    # Recarrega os modelos no DetectionService para uso imediato em Detectar.
+    reload_note = " Reinicie ou abra a aba Detectar para carregá-lo."
+    try:
+        from app.dependencies import get_detection_service
+
+        get_detection_service().reload_models()
+        reload_note = " Já disponível na aba **🎯 Detectar**."
+    except Exception as e:
+        logger.debug(f"Reload do DetectionService pulado: {e}")
+
+    return True, (
+        f"✅ Modelo salvo como **{salvo.slug}** "
+        f"(`{salvo.model_path.name}`, {salvo.size_mb:.1f} MB).{reload_note}"
+    )
 
 
 # =====================================================================
@@ -217,7 +193,7 @@ def _history_figure(train_loss, val_loss, train_acc, val_acc):
     fig, ax = new_figure(1, 2, figsize=(12, 4))
 
     # ── Loss ──
-    style_ax(ax[0], fig, "Loss")
+    style_ax(ax[0], fig, "Perda")
     ax[0].plot(
         range(1, len(tl) + 1), tl, label="treino", color=PLOT_ACCENT, marker="o", ms=3
     )
@@ -236,7 +212,7 @@ def _history_figure(train_loss, val_loss, train_acc, val_acc):
     ax[0].legend()
 
     # ── Accuracy ──
-    style_ax(ax[1], fig, "Accuracy")
+    style_ax(ax[1], fig, "Acurácia")
     ax[1].plot(
         range(1, len(ta) + 1), ta, label="treino", color=PLOT_ACCENT, marker="o", ms=3
     )
@@ -259,46 +235,6 @@ def _history_figure(train_loss, val_loss, train_acc, val_acc):
     return fig
 
 
-def _history_series(history, *keys):
-    """Retorna a primeira série não vazia encontrada no Keras history."""
-    data = getattr(history, "history", history) or {}
-    for key in keys:
-        values = data.get(key)
-        if values:
-            return values
-    return []
-
-
-def _resolve_accuracy_history_keys(history, preferred_train: str = None):
-    """Resolve chaves de accuracy gravadas pelo Keras para qualquer arquitetura."""
-    data = getattr(history, "history", history) or {}
-    candidates = []
-    if preferred_train:
-        candidates.append(preferred_train)
-    candidates.extend(
-        [
-            "accuracy",
-            "binary_accuracy",
-            "categorical_accuracy",
-            "sparse_categorical_accuracy",
-            "acc",
-        ]
-    )
-    for key in candidates:
-        if data.get(key):
-            val_key = f"val_{key}"
-            if data.get(val_key):
-                return key, val_key
-            return key, None
-    for key in data:
-        if key.startswith("val_"):
-            continue
-        if "acc" in key.lower() or "accuracy" in key.lower():
-            val_key = f"val_{key}"
-            return key, val_key if data.get(val_key) else None
-    return None, None
-
-
 def _history_figure_from_history(history, preferred_train_acc_key: str = None):
     """Cria o gráfico canônico diretamente de um dict/History do Keras."""
     train_acc_key, val_acc_key = _resolve_accuracy_history_keys(
@@ -309,63 +245,6 @@ def _history_figure_from_history(history, preferred_train_acc_key: str = None):
         _history_series(history, "val_loss"),
         _history_series(history, train_acc_key) if train_acc_key else [],
         _history_series(history, val_acc_key) if val_acc_key else [],
-    )
-
-
-def _normalize_true_labels(labels):
-    """Converte labels Keras/sparse/one-hot/(B,1) para vetor binário int."""
-    import numpy as np
-
-    arr = np.asarray(labels)
-    if arr.ndim > 1 and arr.shape[-1] > 1:
-        arr = np.argmax(arr, axis=-1)
-    return np.asarray(arr).reshape(-1).astype("int32")
-
-
-def _prediction_labels_and_scores(predictions):
-    """Converte saída sigmoid/softmax/logits em labels e score da classe fake."""
-    import numpy as np
-
-    pred = np.asarray(predictions, dtype="float32")
-    if pred.ndim == 1 or (pred.ndim > 1 and pred.shape[-1] == 1):
-        scores = pred.reshape(-1)
-        if scores.size and (float(scores.min()) < 0.0 or float(scores.max()) > 1.0):
-            scores = 1.0 / (1.0 + np.exp(-scores))
-        labels = (scores >= 0.5).astype("int32")
-        return labels, scores.astype("float32")
-
-    labels = np.argmax(pred, axis=-1).astype("int32")
-    scores_src = pred
-    row_sums = np.sum(scores_src, axis=-1)
-    if scores_src.size and (
-        float(scores_src.min()) < 0.0
-        or float(scores_src.max()) > 1.0
-        or not np.allclose(row_sums, 1.0, atol=1e-3)
-    ):
-        scores_src = scores_src - np.max(scores_src, axis=-1, keepdims=True)
-        exp = np.exp(scores_src)
-        scores_src = exp / np.sum(exp, axis=-1, keepdims=True)
-    scores = scores_src[:, 1] if scores_src.shape[-1] > 1 else labels.astype("float32")
-    return labels, scores.astype("float32")
-
-
-def _collect_validation_predictions(model, val_ds):
-    """Coleta y_true, y_pred e y_score do dataset de validação."""
-    import numpy as np
-
-    y_true_all = []
-    y_pred_all = []
-    y_score_all = []
-    for x_batch, y_batch in val_ds:
-        preds = model.predict_on_batch(x_batch)
-        y_true_all.extend(_normalize_true_labels(y_batch.numpy()).tolist())
-        labels, scores = _prediction_labels_and_scores(preds)
-        y_pred_all.extend(labels.tolist())
-        y_score_all.extend(scores.tolist())
-    return (
-        np.asarray(y_true_all, dtype="int32"),
-        np.asarray(y_pred_all, dtype="int32"),
-        np.asarray(y_score_all, dtype="float32"),
     )
 
 
@@ -443,8 +322,8 @@ def _roc_figure(y_true, y_scores):
     ax.plot([0, 1], [0, 1], color="#334155", lw=1.5, linestyle="--")
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1.05)
-    ax.set_xlabel("False Positive Rate")
-    ax.set_ylabel("True Positive Rate")
+    ax.set_xlabel("Taxa de falsos positivos")
+    ax.set_ylabel("Taxa de verdadeiros positivos")
     ax.legend()
     safe_tight_layout(fig)
     return fig
@@ -458,18 +337,18 @@ def _precision_recall_figure(y_true, y_scores):
     y_scores = np.asarray(y_scores, dtype="float32").reshape(-1)
     if len(np.unique(y_true)) < 2:
         return _message_figure(
-            "Curva Precisão-Recall",
-            "Precisão-Recall indisponível: validação tem uma única classe.",
+            "Curva precisão-revocação",
+            "Curva precisão-revocação indisponível: validação tem uma única classe.",
         )
     precision, recall, _ = precision_recall_curve(y_true, y_scores)
     pr_auc = auc(recall, precision)
     fig, ax = new_figure(figsize=(8, 5))
-    style_ax(ax, fig, "Curva Precisão-Recall")
+    style_ax(ax, fig, "Curva precisão-revocação")
     ax.plot(recall, precision, color=PLOT_ACCENT, lw=2, label=f"AUC = {pr_auc:.3f}")
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1.05)
-    ax.set_xlabel("Recall")
-    ax.set_ylabel("Precision")
+    ax.set_xlabel("Revocação")
+    ax.set_ylabel("Precisão")
     ax.legend()
     safe_tight_layout(fig)
     return fig
@@ -484,7 +363,7 @@ def _det_figure(y_true, y_scores):
             "Curva DET / EER", "DET indisponível: validação tem uma única classe."
         )
     try:
-        from app.domain.services.forensic_visualization import (
+        from app.interfaces.gradio.presenters.forensic_plots import (
             TrainingAnalyticsVisualizer,
         )
 
@@ -502,11 +381,11 @@ def _threshold_figure(y_true, y_scores):
     y_true = _normalize_true_labels(y_true)
     if len(np.unique(y_true)) < 2:
         return _message_figure(
-            "Otimização de Threshold",
-            "Threshold indisponível: validação tem uma única classe.",
+            "Otimização do limiar de decisão",
+            "Limiar indisponível: validação tem uma única classe.",
         )
     try:
-        from app.domain.services.forensic_visualization import (
+        from app.interfaces.gradio.presenters.forensic_plots import (
             TrainingAnalyticsVisualizer,
         )
 
@@ -515,7 +394,8 @@ def _threshold_figure(y_true, y_scores):
         )
     except Exception as exc:
         return _message_figure(
-            "Otimização de Threshold", f"Falha ao gerar threshold:\n{exc}"
+            "Otimização do limiar de decisão",
+            f"Falha ao calcular o limiar de decisão:\n{exc}",
         )
 
 
@@ -532,7 +412,7 @@ def _class_accuracy_figure(y_true, y_pred):
     style_ax(ax, fig, "Acurácia por Classe")
     ax.bar(["real", "fake"], scores, color=[PLOT_ACCENT, PLOT_DANGER])
     ax.set_ylim(0, 1.05)
-    ax.set_ylabel("Accuracy")
+    ax.set_ylabel("Acurácia")
     for i, score in enumerate(scores):
         ax.text(i, min(1.0, score + 0.03), f"{score:.3f}", ha="center")
     safe_tight_layout(fig)
@@ -550,18 +430,19 @@ def _standalone_confusion_figure(y_true, y_pred):
 def _lr_schedule_figure(lr_history):
     if not lr_history:
         return _message_figure(
-            "Schedule de Learning Rate",
+            "Evolução da taxa de aprendizado",
             "Learning-rate schedule indisponível: nenhuma época concluída.",
         )
     try:
-        from app.domain.services.forensic_visualization import (
+        from app.interfaces.gradio.presenters.forensic_plots import (
             TrainingAnalyticsVisualizer,
         )
 
         return TrainingAnalyticsVisualizer().plot_lr_schedule(lr_history)
     except Exception as exc:
         return _message_figure(
-            "Schedule de Learning Rate", f"Falha ao gerar LR:\n{exc}"
+            "Evolução da taxa de aprendizado",
+            f"Falha ao gerar o gráfico da taxa de aprendizado:\n{exc}",
         )
 
 
@@ -604,7 +485,7 @@ def _history_confusion_figure_from_history(
 
     fig, ax = new_figure(1, 3, figsize=(16, 4))
 
-    style_ax(ax[0], fig, "Loss")
+    style_ax(ax[0], fig, "Perda")
     ax[0].plot(
         range(1, len(tl) + 1), tl, label="treino", color=PLOT_ACCENT, marker="o", ms=3
     )
@@ -622,7 +503,7 @@ def _history_confusion_figure_from_history(
         ax[0].set_xticks(list(range(1, len(tl) + 1)))
     ax[0].legend()
 
-    style_ax(ax[1], fig, "Accuracy")
+    style_ax(ax[1], fig, "Acurácia")
     ax[1].plot(
         range(1, len(ta) + 1), ta, label="treino", color=PLOT_ACCENT, marker="o", ms=3
     )
@@ -665,9 +546,9 @@ def _estimativa_de_treino(arch: str, epochs: int, n_amostras: int) -> str:
     """
     try:
         from benchmarks.planning import (
-            EXPECTED_TRAINING_HOURS,
             _REFERENCE_EPOCHS,
             _REFERENCE_FIT_SAMPLES,
+            EXPECTED_TRAINING_HOURS,
             _compact,
         )
 
@@ -818,13 +699,6 @@ def _train_status_html(
     """
 
 
-# Heurística de classificação real/fake reusada (BUG.Training.4)
-_REAL_PATTERNS = re.compile(
-    r"^(real|bonafide|genuine|original|authentic|natural)",
-    re.IGNORECASE,
-)
-
-
 # =====================================================================
 # Helpers de dados (validação)
 # =====================================================================
@@ -947,6 +821,92 @@ def _scan_dataset(path_str: str) -> dict:
 # =====================================================================
 
 
+def _training_error_panel(error: Exception) -> str:
+    return (
+        '<div class="train-live train-live-error">'
+        '<div class="tl-head"><span class="tl-head-title tl-head-title-error">'
+        "✗ Treinamento falhou</span></div>"
+        '<div class="tl-note tl-note-error">'
+        f"{str(error)[:300]}</div></div>"
+    )
+
+
+def _fmt_metric(v) -> str:
+    return "nan" if (v is None or (isinstance(v, float) and v != v)) else f"{v:.4f}"
+
+
+def _classical_figure(ev: "ClassicalCompleted"):
+    """Matriz de confusão + (RF) importância das features ou distribuição."""
+    import numpy as np
+
+    cm = ev.confusion
+    feat_names = ev.trained.feature_names
+    fig, ax = new_figure(1, 2, figsize=(12, 4))
+    style_ax(ax[0], fig, "Matriz de Confusão (val)")
+    ax[0].imshow(cm, cmap="Blues")
+    ax[0].set_xticks([0, 1])
+    ax[0].set_yticks([0, 1])
+    ax[0].set_xticklabels(["real", "fake"])
+    ax[0].set_yticklabels(["real", "fake"])
+    ax[0].set_xlabel("Predito")
+    ax[0].set_ylabel("Verdadeiro")
+    cm_max = int(cm.max()) if cm.size and cm.max() > 0 else 1
+    for r in range(2):
+        for c in range(2):
+            # Contraste por célula: texto CLARO nas células escuras (contagem
+            # alta) e ESCURO nas claras (contagem baixa). Antes era sempre
+            # claro → o número ficava invisível nas células de baixa contagem
+            # do colormap Blues.
+            txt_color = "#f1f5f9" if cm[r, c] > cm_max / 2 else "#0f172a"
+            ax[0].text(
+                c,
+                r,
+                str(cm[r, c]),
+                ha="center",
+                va="center",
+                color=txt_color,
+                fontweight="bold",
+            )
+    if ev.feature_importances is not None:
+        style_ax(ax[1], fig, "Top-15 features (importância)")
+        imp = ev.feature_importances
+        idx = np.argsort(imp)[::-1][:15]
+        ax[1].barh(range(len(idx))[::-1], imp[idx], color=PLOT_ACCENT)
+        labels = [
+            (feat_names[j] if feat_names and j < len(feat_names) else f"f{j}")
+            for j in idx
+        ]
+        ax[1].set_yticks(range(len(idx))[::-1])
+        ax[1].set_yticklabels(labels, fontsize=7)
+    else:
+        style_ax(ax[1], fig, "Distribuição de classes (treino)")
+        ax[1].bar(
+            ["real", "fake"],
+            ev.train_class_counts,
+            color=[PLOT_ACCENT, PLOT_DANGER],
+        )
+    safe_tight_layout(fig)
+    return fig
+
+
+def _eval_outputs(eval_figs: dict) -> tuple:
+    return (
+        eval_figs["roc"],
+        eval_figs["cm"],
+        eval_figs["pr"],
+        eval_figs["det"],
+        eval_figs["threshold"],
+        eval_figs["class_acc"],
+        eval_figs["lr"],
+    )
+
+
+_DONE_NOTE = (
+    "✓ Treino concluído — dê um nome e clique em "
+    "<b>💾 Salvar Modelo</b> abaixo para usá-lo na detecção."
+)
+
+
 def _run_training(
     arch: str,
     dataset_path: str,
@@ -956,1510 +916,303 @@ def _run_training(
     use_class_weighting: bool,
     use_swa: bool,
     use_mixup: bool,
-    progress=gr.Progress(),
+    progress=gr.Progress(),  # noqa: B008 - o Gradio injeta o rastreador por este default
 ):
-    """Executa o treinamento real e yielda updates de progresso.
+    """Roda o treino do domínio e traduz cada evento nas saídas da etapa 4.
 
-    Reusa a mesma lógica de binarização do training.py (BUG.Training.4 fix).
+    O pipeline (dados, front-end, treino, avaliação) está em
+    ``app.domain.services.interactive_training``; aqui ficam painel, log,
+    gráficos e notificações. Cada ``yield`` é ``(painel, log, gráfico)`` ou,
+    no fim, os mesmos três seguidos dos 7 gráficos de avaliação. A parada vem
+    do botão "Interromper" por ``_PEDIDO_DE_PARADA``. ``use_swa``/``use_mixup``
+    são aceitos pela tela, mas o treino interativo nunca os aplicou.
     """
-    import numpy as np
-    import tensorflow as tf
+    global _LAST_TRAINED
+    from app.dependencies import get_interactive_training_service
 
-    # Marcador de versão: se você NÃO vê "[treino v3: float32+clipvalue]" nos logs/UI,
-    # o app está rodando código ANTIGO — reinicie (Ctrl+C + python main.py --gradio).
-    logger.info(
-        "[treino v3: float32+clipvalue] iniciando _run_training (anti-NaN robusto)"
-    )
-    # Um pedido de parada pendente de um treino anterior nao pode matar este.
-    _PEDIDO_DE_PARADA.clear()
-    progress(0.05, desc="Carregando dataset...")
-    yield (
-        "Carregando dataset...",
-        f"[treino v3: float32+clipvalue] Iniciando treino: {arch}, "
-        f"{epochs} épocas, batch={batch_size}",
-        None,
+    eventos = get_interactive_training_service().train(
+        arch,
+        dataset_path,
+        epochs=epochs,
+        batch_size=batch_size,
+        lr=lr,
+        use_class_weighting=use_class_weighting,
+        stop_event=_PEDIDO_DE_PARADA,
+        on_progress=lambda fracao, descricao: progress(fracao, desc=descricao),
     )
 
-    # Guardará a política de precisão anterior para restaurar no finally.
-    _saved_policy = None
-
-    try:
-        from app.domain.models.architectures.factory import (
-            architecture_factory_registry,
-            create_model_by_name,
-        )
-
-        # SVM e Random Forest são modelos clássicos (scikit-learn) que operam em
-        # FEATURES TABULARES (espectral/cepstral/temporal agregadas), não em
-        # espectrogramas/áudio bruto. Têm um pipeline de treino dedicado que
-        # extrai as MESMAS features que a inferência usa (contrato garantido).
-        _CLASSICAL_ML = {"svm", "random forest", "randomforest", "rf"}
-        if arch.strip().lower() in _CLASSICAL_ML:
-            yield from _run_classical_training(
-                arch=arch,
-                dataset_path=dataset_path,
-                progress=progress,
-            )
-            return
-
-        # ─────────────────────────────────────────────────────────────────
-        # BUG FIX (NaN mid-época com train_acc alto): treinar em FLOAT32.
-        # Sintoma: o modelo treina bem (ex. acc=0.78) e SÓ ENTÃO loss→nan.
-        # Causa: política global mixed_float16 (auto em GPUs Tensor Core).
-        # O LossScaleOptimizer protege contra UNDERFLOW de gradiente, mas NÃO
-        # contra OVERFLOW de ativação no forward — float16 satura em ~65504.
-        # Conforme o modelo aprende, ativações crescem e estouram → inf → nan.
-        # Treino em float32 elimina esse overflow (a inferência pode continuar
-        # em float16 para velocidade). Restaurado no finally.
-        try:
-            _saved_policy = tf.keras.mixed_precision.global_policy()
-            if _saved_policy is not None and _saved_policy.name == "mixed_float16":
-                tf.keras.mixed_precision.set_global_policy("float32")
-                logger.info(
-                    "Treino forçado para float32 (estabilidade numérica). "
-                    "mixed_float16 será restaurado após o treino para inferência."
-                )
-            else:
-                # Já é float32 (ou CPU) — nada a restaurar
-                _saved_policy = None
-        except Exception as e:
-            logger.debug(f"Não foi possível ajustar a política de precisão: {e}")
-            _saved_policy = None
-
-        SAMPLE_RATE = 16000
-        AUDIO_LEN = SAMPLE_RATE * 3  # 3s
-        # Parâmetros do front-end espectral (alinhados com audio_preprocessing)
-        N_FFT = 512
-        HOP = 128  # 48000 / 128 ≈ 375 frames; coerente para Conv2D
-        N_MELS = 80
-        FMIN, FMAX = 0.0, SAMPLE_RATE / 2
-        # Front-end padrão para modelos de espectrograma: LFCC (literatura
-        # anti-spoofing — LFCC > mel). N_LFCC=80 preserva o shape (T, 80, 1),
-        # então nenhuma arquitetura precisa mudar. Gravado no input_contract
-        # para a inferência usar exatamente o mesmo front-end.
-        FRONTEND = "lfcc"
-        N_LFCC = 80
-
-        # Descobre tipo de input esperado pelo modelo escolhido
-        spec = architecture_factory_registry.get_architecture_info(arch)
-        if spec is None:
-            raise ValueError(f"Arquitetura '{arch}' não registrada no factory.")
-        input_type = spec.input_requirements.get("input_type", "spectrogram")
-
-        # BUG FIX: o usuário costuma apontar para `data/datasets/`, que contém
-        # subpastas que NÃO são classes: `raw/` (caches de download),
-        # `splits/` (duplica real+fake já divididos), `features/`, etc.
-        # audio_dataset_from_directory trata CADA subpasta como uma classe →
-        # "Found N files belonging to 4 classes" → labels poluídos + dados
-        # duplicados (splits/ repete real/ e fake/). Filtramos para usar apenas
-        # subpastas que parecem classes de áudio reais.
-        from pathlib import Path as _Path
-
-        _EXCLUDE_DIRS = {
-            "raw",
-            "splits",
-            "features",
-            "segmented",
-            "processed",
-            "cache",
-            "__pycache__",
-            ".git",
-            ".ipynb_checkpoints",
-            "metadata",
-            "tmp",
-            "checkpoints",
-            "models",
-            "logs",
-        }
-        _ds_root = _Path(dataset_path)
-        _explicit_classes = None
-        try:
-            _subdirs = sorted(
-                d.name
-                for d in _ds_root.iterdir()
-                if d.is_dir() and not d.name.startswith(".")
-            )
-            _valid = [d for d in _subdirs if d.lower() not in _EXCLUDE_DIRS]
-            _excluded = [d for d in _subdirs if d.lower() in _EXCLUDE_DIRS]
-            if _excluded and _valid:
-                _explicit_classes = _valid
-                logger.warning(
-                    f"Subpastas ignoradas (não são classes): {_excluded}. "
-                    f"Usando apenas: {_valid}. "
-                    "Para treinar com um conjunto limpo, aponte para uma pasta "
-                    "que contenha SOMENTE subpastas de classe (ex.: real/ e fake/)."
-                )
-        except Exception as e:
-            logger.debug(f"Filtragem de classes pulada: {e}")
-
-        _ds_common = dict(
-            directory=dataset_path,
-            batch_size=batch_size,
-            validation_split=0.2,
-            seed=42,
-            output_sequence_length=AUDIO_LEN,
-            label_mode="int",
-        )
-        if _explicit_classes is not None:
-            _ds_common["class_names"] = _explicit_classes
-
-        train_ds = tf.keras.utils.audio_dataset_from_directory(
-            subset="training",
-            **_ds_common,
-        )
-        val_ds = tf.keras.utils.audio_dataset_from_directory(
-            subset="validation",
-            **_ds_common,
-        )
-
-        # Binarização de labels (BUG.Training.4)
-        class_names = list(train_ds.class_names)
-        binary_map = {
-            i: 0 if _REAL_PATTERNS.match(n.strip()) else 1
-            for i, n in enumerate(class_names)
-        }
-        _table = tf.constant(
-            [binary_map[i] for i in range(len(class_names))],
-            dtype=tf.int32,
-        )
-
-        # --------------------------------------------------------------
-        # Pré-processamento on-the-fly: raw_audio vs spectrogram
-        #   - raw_audio   → (T, 1)
-        #   - spectrogram → log-mel (T_frames, n_mels, 1)
-        # Reaproveita o tf.signal nativo para rodar 100% no graph.
-        # --------------------------------------------------------------
-        # Mel matrix (cacheada, mesma p/ todos os batches)
-        n_freq = N_FFT // 2 + 1
-        mel_w = tf.signal.linear_to_mel_weight_matrix(
-            num_mel_bins=N_MELS,
-            num_spectrogram_bins=n_freq,
-            sample_rate=SAMPLE_RATE,
-            lower_edge_hertz=FMIN,
-            upper_edge_hertz=FMAX,
-        )
-
-        def _to_log_mel(audio):
-            # audio: (B, T) ou (B, T, 1) → squeeze
-            if audio.shape.rank == 3:
-                audio = tf.squeeze(audio, axis=-1)
-            # BUG FIX: substituir NaN/Inf em áudio ANTES do STFT.
-            # Arquivos corrompidos (silêncio clipped, NaN em WAV/MP3 corrompido)
-            # propagam NaN por todo o pipeline → loss: nan na 1ª época.
-            audio = tf.where(tf.math.is_finite(audio), audio, tf.zeros_like(audio))
-            # Clip extremos (alguns WAVs vêm com amostras fora de [-1, 1])
-            audio = tf.clip_by_value(audio, -10.0, 10.0)
-            stft = tf.signal.stft(
-                audio,
-                frame_length=N_FFT,
-                frame_step=HOP,
-                fft_length=N_FFT,
-                window_fn=tf.signal.hann_window,
-                pad_end=True,
-            )
-            mag = tf.abs(stft)  # (B, T_frames, n_freq)
-            mel = tf.tensordot(mag, mel_w, axes=1)  # (B, T_frames, n_mels)
-            # max() previne mel=0 → log(0)=-inf que TF não captura como NaN mas
-            # propaga -inf nos gradientes (NaN ao multiplicar com 0 depois)
-            mel = tf.maximum(mel, 1e-10)
-            log_mel = tf.math.log(mel)
-            # Sanitização final + clip da magnitude (log de valores muito pequenos
-            # produz -23 ≈ log(1e-10); clipping em [-15, 15] é gentil e estável)
-            log_mel = tf.where(
-                tf.math.is_finite(log_mel), log_mel, tf.fill(tf.shape(log_mel), -15.0)
-            )
-            log_mel = tf.clip_by_value(log_mel, -15.0, 15.0)
-            return tf.expand_dims(log_mel, axis=-1)  # (B, T_frames, n_mels, 1)
-
-        # LFCC via núcleo COMPARTILHADO com a inferência (audio_preprocessing.
-        # lfcc_from_waveform) — garante paridade train↔test bit-a-bit.
-        from app.domain.services.detection.audio_preprocessing import (
-            lfcc_from_waveform,
-        )
-
-        def _to_lfcc(audio):
-            if audio.shape.rank == 3:
-                audio = tf.squeeze(audio, axis=-1)
-            audio = tf.where(tf.math.is_finite(audio), audio, tf.zeros_like(audio))
-            audio = tf.clip_by_value(audio, -10.0, 10.0)
-            lfcc = lfcc_from_waveform(
-                audio,
-                sample_rate=SAMPLE_RATE,
-                n_fft=N_FFT,
-                hop_length=HOP,
-                n_filters=N_LFCC,
-                n_lfcc=N_LFCC,
-            )  # (B, T_frames, n_lfcc)
-            return tf.expand_dims(lfcc, axis=-1)  # (B, T_frames, n_lfcc, 1)
-
-        def _to_spec(audio):
-            # Despacha conforme o front-end escolhido (default LFCC).
-            return _to_lfcc(audio) if FRONTEND == "lfcc" else _to_log_mel(audio)
-
-        def _prep_raw(audio, label):
-            # Garante shape (B, T, 1)
-            if audio.shape.rank == 2:
-                audio = tf.expand_dims(audio, axis=-1)
-            # BUG FIX: sanitizar NaN/Inf em áudio bruto ANTES de chegar ao modelo.
-            # Arquivos corrompidos (silêncio clipped, MP3/WAV com NaN) causam
-            # NaN imediato nas ativações — o SincConv propaga zeros → AMSoftmax
-            # recebe zeros → l2_normalize(0) = NaN → loss NaN na época 1.
-            audio = tf.where(tf.math.is_finite(audio), audio, tf.zeros_like(audio))
-            # Clip extremos (alguns WAVs vêm com amostras fora de [-1, 1] por escalas
-            # erradas ou conversão sem normalização). Esses outliers explodem na
-            # primeira camada Conv → propaga +inf → NaN nos gradientes.
-            audio = tf.clip_by_value(audio, -10.0, 10.0)
-            return audio, tf.gather(_table, label)
-
-        def _prep_spec(audio, label):
-            spec_x = _to_spec(audio)
-            return spec_x, tf.gather(_table, label)
-
-        # Augmentation (Tak et al. 2022 / Park et al. 2019) — aplicada SOMENTE
-        # ao conjunto de treino (val/test ficam intactos):
-        #   - raw_audio   → RawBoost (substitui o placeholder de ruído gaussiano)
-        #   - spectrogram → SpecAugment (mascaramento tempo/frequência)
-        from app.domain.models.training.rawboost import rawboost_tf
-        from app.domain.models.training.spec_augment import spec_augment_tf
-
-        # Tier-1 perf: separa FEATURIZAÇÃO (cara: STFT/resample — determinística,
-        # cacheável) de AUGMENTATION (estocástica). Cacheamos a featurização para
-        # NÃO recalculá-la a cada época, e aplicamos a augmentation DEPOIS do
-        # cache, para que RawBoost/SpecAugment continuem variando por época
-        # (cachear após a augmentation a congelaria → pioraria a generalização).
-        if input_type == "raw_audio":
-            _feat_prep = _prep_raw
-
-            def _augment(a, lab):
-                return rawboost_tf(a, sr=SAMPLE_RATE, algo=4, p=0.7), lab
-
-        else:
-            _feat_prep = _prep_spec
-
-            def _augment(s, lab):
-                return spec_augment_tf(s, p=0.7), lab
-
-        train_ds = train_ds.map(_feat_prep, num_parallel_calls=tf.data.AUTOTUNE)
-        val_ds = val_ds.map(_feat_prep, num_parallel_calls=tf.data.AUTOTUNE)
-
-        # Cache em memória só para datasets pequenos/médios (guard de OOM):
-        # cardinalidade finita e ≲ 4000 amostras. Datasets grandes seguem sem
-        # cache (comportamento anterior, sem risco de estourar a RAM).
-        def _maybe_cache(ds):
-            try:
-                card = int(tf.data.experimental.cardinality(ds))
-                if 0 < card * int(batch_size) <= 4000:
-                    return ds.cache()
-            except Exception:
-                pass
-            return ds
-
-        train_ds = _maybe_cache(train_ds)  # featurização cacheada (sem aug)
-        val_ds = _maybe_cache(val_ds)  # val não tem augmentation → seguro
-
-        # Augmentation DEPOIS do cache → re-randomiza a cada época.
-        train_ds = train_ds.map(_augment, num_parallel_calls=tf.data.AUTOTUNE)
-
-        train_ds = optimize_tf_dataset(train_ds, cache=False, prefetch=True)
-        val_ds = optimize_tf_dataset(val_ds, cache=False, prefetch=True)
-
-        # Computa shape final inspecionando 1 batch (sem consumir o ds em cache)
-        for sample_x, _ in train_ds.take(1):
-            input_shape = tuple(sample_x.shape[1:])  # ignora dim batch
-            break
-
-        progress(0.15, desc=f"Criando modelo {arch}...")
-        yield (
-            "Criando modelo...",
-            f"Input type: {input_type} | shape: {input_shape}\n"
-            f"Mapeamento detectado: {len(class_names)} subdirs -> binário\n"
-            f"{', '.join(f'{n}->{binary_map[i]}' for i, n in enumerate(class_names))}",
-            None,
-        )
-
-        # HIPERPARÂMETROS DA ARQUITETURA — resolvidos pelo MESMO caminho do
-        # benchmark, não deixados no default do registry.
-        #
-        # Até 2026-08-20 esta chamada não passava parâmetro nenhum: o assistente
-        # construía sempre a topologia de `registry.default_params`, mesmo com o
-        # painel de hiperparâmetros exibindo os valores do plano. Para o RawNet2
-        # isso produzia a arquitetura ERRADA — o "Improved RawNet" de
-        # verificação de locutor (~7,0M parâmetros) com o rótulo "RawNet2" que o
-        # TCC usa para o baseline anti-spoofing de Tak et al. (~17,6M) — e o
-        # modelo salvo entrava em `data/models/` indistinguível do outro.
-        #
-        # O FILTRO é o `default_params` da própria arquitetura, não uma lista de
-        # exclusão. O plano mistura três naturezas de chave (topologia, regime
-        # de treino e metadado como `notes`/`model_family`), e vários
-        # construtores aceitam `**kwargs` — passar uma chave estranha levanta
-        # TypeError. O registry declara exatamente o que cada `create_model`
-        # aceita, então intersectar com ele dá o subconjunto que vai ao
-        # construtor; o plano só sobrescreve o VALOR das chaves que já existem
-        # lá. Chaves de treino puro (`patience`, `gradient_clip`) saem pelo
-        # `_TRAINING_ONLY_PARAM_KEYS`.
-        parametros_arquitetura: dict = {}
-        try:
-            from app.domain.models.architectures.registry import (
-                _TRAINING_ONLY_PARAM_KEYS,
-                architecture_registry,
-            )
-            from benchmarks.planning import effective_hyperparameters
-
-            _aceitos = set(
-                architecture_registry.get_architecture_by_any_name(arch).default_params
-                or {}
-            ) - set(_TRAINING_ONLY_PARAM_KEYS)
-            parametros_arquitetura = {
-                chave: valor
-                for chave, valor in (effective_hyperparameters(arch) or {}).items()
-                if valor is not None and chave in _aceitos
-            }
-        except Exception as exc:  # noqa: BLE001 — a UI não pode quebrar por isto
-            logger.warning(
-                "Hiperparâmetros do plano indisponíveis para %s (%s); "
-                "usando os defaults do registry.",
-                arch,
-                exc,
-            )
-
-        model = create_model_by_name(
-            arch,
-            input_shape=input_shape,
-            num_classes=2,
-            **parametros_arquitetura,
-        )
-
-        # Detecta dimensão da saída para escolher loss apropriada:
-        #   - 1 unidade (sigmoid) → binary_crossentropy
-        #   - 2+ unidades (softmax) → sparse_categorical_crossentropy
-        out_units = (
-            model.output_shape[-1] if isinstance(model.output_shape, tuple) else 2
-        )
-        if out_units == 1:
-            chosen_loss = "binary_crossentropy"
-            chosen_metric = "binary_accuracy"
-            # BUG FIX: labels float32 para BCE são corretos, MAS Keras's
-            # class_weight não funciona com labels float (exige int para indexar
-            # o dict {class_id: weight}). Marcamos para desativar class_weight
-            # quando BCE + float labels forem usados (ver abaixo).
-            _bce_float_labels = True
-            # BUG FIX (rank mismatch): a saída sigmoid de 1 unidade tem shape
-            # (B, 1). O label vinha como (B,) → BCE falha com
-            # "target and output must have the same rank". Reshape p/ (B, 1).
-            # Afeta Sonic Sleuth e Hybrid CNN-Transformer (saída 1-unit).
-            train_ds = train_ds.map(
-                lambda x, y: (x, tf.reshape(tf.cast(y, tf.float32), (-1, 1))),
-                num_parallel_calls=tf.data.AUTOTUNE,
-            )
-            val_ds = val_ds.map(
-                lambda x, y: (x, tf.reshape(tf.cast(y, tf.float32), (-1, 1))),
-                num_parallel_calls=tf.data.AUTOTUNE,
-            )
-            train_ds = optimize_tf_dataset(train_ds, cache=False, prefetch=True)
-            val_ds = optimize_tf_dataset(val_ds, cache=False, prefetch=True)
-        else:
-            chosen_loss = "sparse_categorical_crossentropy"
-            chosen_metric = "accuracy"
-            _bce_float_labels = False
-
-        # BUG FIX: Detecta dinamicamente se o modelo emite LOGITS (não probabilidades).
-        # AMSoftmaxLayer / Dense linear / Activation('linear') → logits brutos.
-        # sparse_categorical_crossentropy padrão (from_logits=False) faz
-        # log(y_pred[classe_verdadeira]). Se y_pred < 0 → log(negativo) = NaN.
-        # Walk-through das camadas: se a saída é linear/AMSoftmax → from_logits=True.
-        def _detect_logit_output(m) -> bool:
-            """Detecta se a saída do modelo são logits (não probabilidades)."""
-            # 1. Procura AMSoftmaxLayer em qualquer profundidade
-            for lyr in m.layers:
-                cls_name = type(lyr).__name__
-                if cls_name == "AMSoftmaxLayer":
-                    return True
-            # 2. Verifica a ÚLTIMA camada com peso na saída (ignora Activation
-            #    'linear' que é só cast de dtype para float32).
-            tail_layers = [
-                lyr
-                for lyr in m.layers
-                if not (
-                    type(lyr).__name__ == "Activation"
-                    and getattr(lyr.activation, "__name__", "") == "linear"
-                )
-            ]
-            if not tail_layers:
-                return False
-            last = tail_layers[-1]
-            # Dense com activation=None → logits
-            act = getattr(last, "activation", None)
-            if act is not None and getattr(act, "__name__", "") in ("linear",):
-                return True
-            return False
-
-        output_is_logits = False
-        try:
-            output_is_logits = _detect_logit_output(model)
-        except Exception as e:
-            logger.debug(f"Detecção de logit falhou: {e}")
-
-        if output_is_logits and out_units > 1:
-            chosen_loss = tf.keras.losses.SparseCategoricalCrossentropy(
-                from_logits=True
-            )
-            logger.info(
-                f"{arch}: modelo emite LOGITS — usando "
-                "SparseCategoricalCrossentropy(from_logits=True) "
-                "(log-sum-exp numericamente estável)."
-            )
-        elif output_is_logits and out_units == 1:
-            chosen_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True)
-            logger.info(
-                f"{arch}: modelo emite LOGITS (1 unit) — "
-                "BinaryCrossentropy(from_logits=True)."
-            )
-
-        # BUG FIX CRÍTICO: o matching de arquitetura quebrava porque `arch` é o
-        # NOME DE EXIBIÇÃO ("SpectrogramTransformer", "Hybrid CNN-Transformer",
-        # "RawGAT-ST") mas o set usava snake_case. arch.lower() produzia
-        # "spectrogramtransformer"/"hybrid cnn-transformer"/"rawgat-st" que NÃO
-        # batiam → LR NÃO era limitado → treino a 8e-4 → gradientes explodem →
-        # loss:nan. Só AASIST/Conformer batiam por coincidência (palavra única).
-        #
-        # Solução: normalizar AMBOS os lados (remove espaços/hífens/underscores).
-        def _norm_arch(s: str) -> str:
-            return s.lower().replace(" ", "").replace("-", "").replace("_", "")
-
-        _TRANSFORMER_ARCHS = {
-            _norm_arch(x)
-            for x in (
-                "conformer",
-                "spectrogram_transformer",
-                "hybrid_cnn_transformer",
-                "aasist",
-                "rawgat_st",
-                # Nomes de exibição (defensivo, caso a normalização mude):
-                "SpectrogramTransformer",
-                "Hybrid CNN-Transformer",
-                "RawGAT-ST",
-            )
-        }
-        # LR padrão 8e-4 é alto demais para arquiteturas com atenção sem warmup.
-        # Cap em 1e-4 — comprovado estável nos dados reais COM clipvalue
-        # (ver bloco do otimizador abaixo). O fator decisivo de estabilidade é
-        # clipvalue (não a LR): nos testes, clipnorm quebrava até a 1e-5, mas
-        # clipvalue era estável a 1e-4 (loss 0.55) e a 1e-5.
-        effective_lr = lr
-        if _norm_arch(arch) in _TRANSFORMER_ARCHS and lr > 1e-4:
-            effective_lr = min(lr, 1e-4)
-            logger.warning(
-                f"LR ajustado de {lr:.2e} → {effective_lr:.2e} para {arch} "
-                "(arquiteturas com atenção/grafos precisam de LR ≤ 1e-4)"
-            )
-
-        # BUG FIX CRÍTICO (explosão de gradiente → 85 pesos NaN no step 1):
-        #
-        # 1) clipVALUE em vez de clipNORM. clipnorm calcula a norma global do
-        #    gradiente e divide por ela; se UM elemento for inf, a norma é inf e
-        #    g/inf = NaN em TODOS os elementos → corrompe o modelo inteiro.
-        #    clipvalue limita CADA elemento a [-v, v] independentemente:
-        #    clip(inf, -v, v) = v (finito). Quebra a cascata de NaN.
-        #
-        # 2) LossScaleOptimizer SOMENTE em mixed_float16. Em float32 ele é inútil
-        #    (não há underflow a corrigir) e PERIGOSO: escala a loss por 32768×,
-        #    e em grafos profundos (SincConv+ResBlocks+GAT+HS-GAL) isso empurra
-        #    os gradientes para overflow (>3.4e38) → inf → NaN. Verificado: com
-        #    LSO em float32 o AASIST quebra no step 1; com Adam puro + clipvalue
-        #    é estável.
-        base_optimizer = tf.keras.optimizers.Adam(
-            learning_rate=effective_lr,
-            clipvalue=1.0,  # limita por elemento; lida com inf (clipnorm não)
-        )
-        _policy_name = tf.keras.mixed_precision.global_policy().name
-        if _policy_name == "mixed_float16":
-            # Só aqui o loss scaling faz sentido (corrige underflow de gradiente
-            # float16). Em float32 NÃO usamos — causaria overflow.
-            try:
-                optimizer = tf.keras.mixed_precision.LossScaleOptimizer(base_optimizer)
-                logger.info("LossScaleOptimizer ativo (mixed_float16).")
-            except Exception as e:
-                logger.debug(f"LSO indisponível ({e}); usando Adam puro")
-                optimizer = base_optimizer
-        else:
-            optimizer = base_optimizer
-            logger.info(
-                f"Otimizador: Adam(lr={effective_lr:.1e}, clipvalue=1.0) em "
-                f"{_policy_name} (sem LSO — evita overflow 32768× em float32)."
-            )
-
-        # Re-compile se necessário (algumas archs pré-compilam)
-        try:
-            model.compile(
-                optimizer=optimizer,
-                loss=chosen_loss,
-                metrics=[chosen_metric],
-            )
-        except Exception as e:
-            logger.debug(f"Re-compile pulado: {e}")
-
-        # ─────────────────────────────────────────────────────────────────
-        # BUG FIX (Smoke test): Roda 1 batch (forward + loss) ANTES de fit()
-        # para detectar NaN/Inf imediatamente, com diagnóstico preciso de ONDE.
-        # Evita esperar 1ª época inteira para descobrir que loss=nan.
-        # ─────────────────────────────────────────────────────────────────
-        try:
-            for smoke_x, smoke_y in train_ds.take(1):
-                # Estatísticas do batch de input
-                x_finite = bool(tf.reduce_all(tf.math.is_finite(smoke_x)).numpy())
-                x_min = float(tf.reduce_min(smoke_x).numpy())
-                x_max = float(tf.reduce_max(smoke_x).numpy())
-                x_mean = float(tf.reduce_mean(smoke_x).numpy())
-                x_std = float(tf.math.reduce_std(smoke_x).numpy())
-
-                logger.info(
-                    f"[smoke] input shape={smoke_x.shape} finite={x_finite} "
-                    f"range=[{x_min:.4f},{x_max:.4f}] mean={x_mean:.4f} std={x_std:.4f}"
-                )
-
-                if not x_finite:
-                    raise ValueError(
-                        "[smoke] Input contém NaN/Inf APÓS sanitização — "
-                        "verifique se o dataset tem arquivos válidos. "
-                        "Caminho: " + str(dataset_path)
-                    )
-
-                # Forward pass
-                preds = model(smoke_x, training=False)
-                p_finite = bool(tf.reduce_all(tf.math.is_finite(preds)).numpy())
-                p_min = float(tf.reduce_min(preds).numpy())
-                p_max = float(tf.reduce_max(preds).numpy())
-                logger.info(
-                    f"[smoke] output shape={preds.shape} finite={p_finite} "
-                    f"range=[{p_min:.4f},{p_max:.4f}] "
-                    f"is_logits={output_is_logits}"
-                )
-
-                if not p_finite:
-                    raise ValueError(
-                        f"[smoke] Forward pass produziu NaN/Inf — modelo {arch} "
-                        f"tem instabilidade numérica nas camadas. "
-                        f"Range da saída: [{p_min},{p_max}]. "
-                        "Isso normalmente significa: (a) camada custom com divisão "
-                        "por zero, (b) BatchNorm em batch degenerado, ou "
-                        "(c) input com escala extrema. "
-                        "Tente reduzir o batch_size ou usar outra arquitetura."
-                    )
-
-                # Loss test
-                try:
-                    if callable(chosen_loss):
-                        loss_val = chosen_loss(smoke_y, preds)
-                    else:
-                        loss_fn = tf.keras.losses.get(chosen_loss)
-                        loss_val = loss_fn(smoke_y, preds)
-                    loss_finite = bool(
-                        tf.reduce_all(tf.math.is_finite(loss_val)).numpy()
-                    )
-                    loss_mean = float(tf.reduce_mean(loss_val).numpy())
-                    logger.info(
-                        f"[smoke] loss finite={loss_finite} mean={loss_mean:.4f} "
-                        f"(loss_fn={getattr(chosen_loss, 'name', str(chosen_loss))})"
-                    )
-                    if not loss_finite:
-                        raise ValueError(
-                            f"[smoke] Loss produziu NaN/Inf com output finito. "
-                            f"Isso indica que from_logits está MAL configurado. "
-                            f"output_is_logits={output_is_logits}, "
-                            f"chosen_loss={chosen_loss}. "
-                            "Solução: verifique se a saída do modelo é "
-                            "probabilidade [0,1] ou logit [-inf,+inf]."
-                        )
-                except ValueError:
-                    raise
-                except Exception as e:
-                    logger.warning(f"[smoke] Loss test pulado: {e}")
-                break
-        except ValueError as ve:
-            # Erro de smoke test → propaga com mensagem clara
-            logger.error(str(ve))
+    header_lines: List[str] = []
+    epoch_lines: List[str] = []
+    live_fig = None
+    device = ""
+    for ev in eventos:
+        if isinstance(ev, DatasetLoading):
             yield (
-                "Smoke test falhou",
-                f"❌ Treinamento abortado ANTES da época 1:\n\n{ve}",
+                "Carregando dataset...",
+                f"[treino v3: float32+clipvalue] Iniciando treino: {ev.arch}, "
+                f"{ev.epochs} épocas, batch={ev.batch_size}",
                 None,
             )
-            return
-        except Exception as e:
-            # Erro inesperado no smoke test → log mas continua (não bloquear)
-            logger.warning(f"[smoke] Pulado por erro inesperado: {e}")
-
-        # Callbacks
-        log_lines = []
-        # Nome da métrica de acurácia depende da loss escolhida
-        _acc_key = chosen_metric  # "accuracy" ou "binary_accuracy"
-        _val_acc_key = f"val_{_acc_key}"
-
-        class _ProgressCb(tf.keras.callbacks.Callback):
-            def on_epoch_end(self, epoch, logs=None):
-                # Cancelamento: o Keras nao expoe interrupcao, mas respeita
-                # `stop_training` ao fim da epoca. O treino para no proximo
-                # limite de epoca, com o modelo em estado consistente — nao
-                # no meio de um passo de gradiente.
-                if _PEDIDO_DE_PARADA.is_set():
-                    self.model.stop_training = True
-                    log_lines.append(
-                        f"[INTERROMPIDO] parada solicitada na epoca {epoch + 1}"
-                    )
-                    return
-                logs = logs or {}
-                pct = 0.2 + 0.75 * (epoch + 1) / epochs
-                line = (
-                    f"Epoch {epoch + 1}/{epochs} — "
-                    f"loss: {logs.get('loss', 0):.4f}, "
-                    f"acc: {logs.get(_acc_key, 0):.4f}, "
-                    f"val_loss: {logs.get('val_loss', 0):.4f}, "
-                    f"val_acc: {logs.get(_val_acc_key, 0):.4f}"
-                )
-                log_lines.append(line)
-                progress(pct, desc=line[:60])
-
-        class _NaNDiagnosticCb(tf.keras.callbacks.Callback):
-            """Callback que dá diagnóstico detalhado quando TerminateOnNaN dispara.
-
-            Monitora NaN em DOIS níveis:
-              - on_train_batch_end: detecta o BATCH exato onde NaN apareceu
-              - on_epoch_end: diagnóstico geral se loss=NaN no fim da época
-            """
-
-            def __init__(self):
-                super().__init__()
-                self._nan_batch_logged = False
-
-            def on_train_batch_end(self, batch, logs=None):
-                logs = logs or {}
-                loss_val = logs.get("loss", 0.0)
-                if loss_val != loss_val and not self._nan_batch_logged:
-                    self._nan_batch_logged = True
-                    logger.error(
-                        f"[NaN] Primeira aparição de loss=NaN no batch #{batch} "
-                        f"da época 1.\nIsso significa que o modelo produziu "
-                        f"ativações NaN/Inf neste batch específico — provavelmente "
-                        f"por (a) gradient explosion (LR muito alto), "
-                        f"(b) BatchNorm em batch degenerado (todos samples iguais), "
-                        f"ou (c) arquivo de áudio corrompido no batch."
-                    )
-
-            def on_epoch_end(self, epoch, logs=None):
-                logs = logs or {}
-                loss_val = logs.get("loss", 0.0)
-                if loss_val != loss_val:  # NaN check (NaN != NaN é sempre True)
-                    logit_hint = (
-                        "\n⚠️  Modelo emite LOGITS — confirmado uso de from_logits=True."
-                        if output_is_logits
-                        else ""
-                    )
-                    logger.error(
-                        f"[NaN] loss=NaN detectado na época {epoch + 1}.{logit_hint}\n"
-                        f"Configuração ativa:\n"
-                        f"  • arch={arch}, out_units={out_units}, "
-                        f"output_is_logits={output_is_logits}\n"
-                        f"  • effective_lr={effective_lr:.2e}, clipvalue=1.0\n"
-                        f"  • mixed_precision="
-                        f"{tf.keras.mixed_precision.global_policy().name}\n"
-                        "Causas prováveis (em ordem de frequência):\n"
-                        "  1. Explosão de gradiente (LR alto p/ esta arquitetura)\n"
-                        "  2. Dataset extremamente desbalanceado (1 classe << outra)\n"
-                        "  3. Dataset poluído (subpastas raw/ splits/ tratadas "
-                        "como classes — aponte para uma pasta só com real/ e fake/)\n"
-                        "  4. Arquivos de áudio corrompidos/silentes\n"
-                        "Diagnósticos sugeridos:\n"
-                        "  • Reduza o LR para 1e-6\n"
-                        "  • Reduza o batch_size pela metade\n"
-                        "  • Tente uma arquitetura mais simples (Sonic Sleuth)\n"
-                        "  • Reinicie o app para garantir o código mais recente"
-                    )
-
-        class _WeightNaNGuard(tf.keras.callbacks.Callback):
-            """Para o treino só se os PESOS ficarem NaN (corrupção REAL).
-
-            Diferente de TerminateOnNaN (que para na 1ª loss NaN), tolera uma
-            loss NaN transitória de um batch venenoso — o LossScaleOptimizer já
-            pulou esse passo e preservou os pesos. Só aborta se a corrupção for
-            real (pesos NaN), o que com o LSO ativo praticamente não ocorre.
-            """
-
-            def on_epoch_end(self, epoch, logs=None):
-                corrupted = False
-                for w in self.model.trainable_variables:
-                    if not tf.reduce_all(tf.math.is_finite(w)).numpy():
-                        corrupted = True
-                        break
-                if corrupted:
-                    logger.error(
-                        f"[WeightGuard] Pesos do modelo ficaram NaN/Inf na época "
-                        f"{epoch + 1} — corrupção real. Abortando treino."
-                    )
-                    self.model.stop_training = True
-
-        log_cb = _ProgressCb()
-        nan_diag_cb = _NaNDiagnosticCb()
-        callbacks = [
-            log_cb,
-            nan_diag_cb,
-            # Substituímos TerminateOnNaN pelo guard baseado em PESOS: com o
-            # LossScaleOptimizer, uma loss NaN transitória não corrompe o modelo,
-            # então não devemos abortar por ela. Abortamos só se os pesos forem NaN.
-            _WeightNaNGuard(),
-        ]
-
-        # BUG FIX: class_weight com BCE + labels float32 é incompatível.
-        # Keras aplica class_weight indexando o dict {int_class: weight} com
-        # as labels. Quando labels são float32 (0.0/1.0 para BCE), o índice
-        # float→int pode produzir comportamento incorreto em algumas versões
-        # de TF, causando pesos errados ou NaN na loss ponderada.
-        # Solução: desabilitar class_weight quando BCE + float labels são usados.
-        # Class weighting (Sprint 1.3)
-        class_weight = None
-        if use_class_weighting and not _bce_float_labels:
-            try:
-                from sklearn.utils.class_weight import compute_class_weight
-
-                # BUG FIX: unbatch() produz labels ESCALARES (0-d); np.concatenate
-                # de arrays 0-d falha ("zero-dimensional arrays cannot be
-                # concatenated"). Iteramos os batches (labels 1-d) e achatamos.
-                ys = np.concatenate(
-                    [np.asarray(y).reshape(-1) for _, y in train_ds]
-                ).astype(int)
-                classes = np.unique(ys)
-                if len(classes) < 2:
-                    logger.warning(
-                        f"class_weighting pulado: dataset tem só 1 classe ({classes}). "
-                        "Verifique se o caminho aponta para subpastas real/ e fake/."
-                    )
-                else:
-                    cw = compute_class_weight("balanced", classes=classes, y=ys)
-                    class_weight = {int(c): float(w) for c, w in zip(classes, cw)}
-                    logger.info(f"class_weight calculado: {class_weight}")
-            except Exception as e:
-                logger.warning(f"class_weighting falhou: {e}")
-        elif use_class_weighting and _bce_float_labels:
-            logger.info(
-                "class_weight desabilitado: BCE com labels float32 é incompatível "
-                "com class_weight em Keras (use sparse_categorical_crossentropy "
-                "para habilitar ponderação de classes)."
+        elif isinstance(ev, DatasetReady):
+            yield (
+                "Criando modelo...",
+                f"Input type: {ev.input_type} | shape: {ev.input_shape}\n"
+                f"Mapeamento detectado: {len(ev.class_names)} subdirs -> binário\n"
+                f"{', '.join(f'{n}->{ev.binary_map[i]}' for i, n in enumerate(ev.class_names))}",
+                None,
             )
-
-        # GPU.10: Escolhe device explícito. Quando TF detectou GPU,
-        # força fit() em /GPU:0 (evita silenciosamente cair em CPU se houver
-        # ops não-GPU intercaladas — TF normalmente faz placement automático,
-        # mas o context explícito serve como "load-bearing" para a UI mostrar
-        # ao usuário onde está rodando).
-        try:
-            import tensorflow as _tf
-
-            _gpus_present = bool(_tf.config.list_physical_devices("GPU"))
-        except Exception:
-            _gpus_present = False
-        train_device = "/GPU:0" if _gpus_present else "/CPU:0"
-
-        # ─────────────────────────────────────────────────────────────────
-        # FEEDBACK AO VIVO: roda model.fit() numa THREAD e faz polling de uma
-        # fila de épocas. Sem isso, fit() bloqueia e a UI fica "congelada" até
-        # o fim — o usuário não vê loss/acc por época nem ETA. Com a thread, o
-        # gerador yielda painel de métricas + plot atualizados a cada época.
-        # ─────────────────────────────────────────────────────────────────
-        import queue as _queue
-        import threading as _threading
-
-        _n_train = sum(1 for _ in train_ds)
-        _n_val = sum(1 for _ in val_ds)
-        header_lines = [
-            f"Modelo: {arch} ({model.count_params():,} params)",
-            f"Treino: {_n_train} batches · Validação: {_n_val} batches",
-            f"Class weight: {class_weight or 'desabilitado'} · Device: {train_device}",
-            "─" * 48,
-        ]
-
-        # Chaves de métrica reais (callback usa exatamente _acc_key/_val_acc_key)
-        hist = {"loss": [], "acc": [], "val_loss": [], "val_acc": []}
-        epoch_q: "_queue.Queue" = _queue.Queue()
-        lr_history: List[float] = []
-
-        class _LiveQueueCb(tf.keras.callbacks.Callback):
-            def on_epoch_end(self, epoch, logs=None):
-                try:
-                    lr = float(
-                        tf.keras.backend.get_value(self.model.optimizer.learning_rate)
-                    )
-                    lr_history.append(lr)
-                except Exception:
-                    pass
-                logs = logs or {}
-                epoch_q.put(
-                    {
-                        "epoch": epoch + 1,
-                        "loss": logs.get("loss"),
-                        "acc": logs.get(_acc_key),
-                        "val_loss": logs.get("val_loss"),
-                        "val_acc": logs.get(_val_acc_key),
-                    }
+        elif isinstance(ev, SmokeTestFailed):
+            yield (
+                "Smoke test falhou",
+                f"❌ Treinamento abortado ANTES da época 1:\n\n{ev.message}",
+                None,
+            )
+        elif isinstance(ev, FitStarted):
+            device = ev.device
+            header_lines = [
+                f"Modelo: {ev.arch} ({ev.n_params:,} params)",
+                f"Treino: {ev.n_train_batches} batches · "
+                f"Validação: {ev.n_val_batches} batches",
+                f"Class weight: {ev.class_weight or 'desabilitado'} · "
+                f"Device: {ev.device}",
+                "─" * 48,
+            ]
+            yield (
+                _train_status_html(
+                    ev.arch,
+                    ev.device,
+                    0,
+                    ev.epochs,
+                    ev.history,
+                    0.0,
+                    phase="preparing",
+                    note="Compilando o grafo e iniciando a 1ª época "
+                    "(pode levar alguns segundos)…",
+                ),
+                "\n".join(header_lines + ["Iniciando treinamento…"]),
+                None,
+            )
+        elif isinstance(ev, FitHeartbeat):
+            if ev.epochs_done > 0:
+                yield (
+                    _train_status_html(
+                        arch,
+                        device,
+                        ev.epochs_done,
+                        ev.epochs,
+                        ev.history,
+                        ev.elapsed,
+                        phase="running",
+                    ),
+                    "\n".join(header_lines + epoch_lines),
+                    gr.update(),  # não recria o plot no heartbeat
                 )
-
-        fit_box = {"history": None, "error": None}
-
-        def _fit_worker():
-            try:
-                with tf.device(train_device):
-                    fit_box["history"] = model.fit(
-                        train_ds,
-                        validation_data=val_ds,
-                        epochs=epochs,
-                        callbacks=callbacks + [_LiveQueueCb()],
-                        class_weight=class_weight,
-                        verbose=0,
-                    )
-            except Exception as exc:  # propaga para o gerador
-                fit_box["error"] = exc
-
-        worker = _threading.Thread(target=_fit_worker, daemon=True)
-        _t0 = time.time()
-        worker.start()
-
-        progress(0.2, desc=f"Treinando {arch} em {train_device}...")
-        yield (
-            _train_status_html(
-                arch,
-                train_device,
-                0,
-                epochs,
-                hist,
-                0.0,
-                phase="preparing",
-                note="Compilando o grafo e iniciando a 1ª época "
-                "(pode levar alguns segundos)…",
-            ),
-            "\n".join(header_lines + ["Iniciando treinamento…"]),
-            None,
-        )
-
-        _live_fig = None
-        epoch_lines: List[str] = []
-        while worker.is_alive() or not epoch_q.empty():
-            try:
-                ev = epoch_q.get(timeout=1.0)
-            except _queue.Empty:
-                # Heartbeat (a cada 1s): mantém a UI VIVA mesmo durante a 1ª época.
-                # BUG FIX "trava nos 20%": antes só yieldava se done>0, então
-                # durante a 1ª época (que na CPU pode levar minutos) a UI ficava
-                # congelada no painel "preparando". Agora o relógio sempre avança.
-                done = len(hist["loss"])
-                elapsed = time.time() - _t0
-                if done > 0:
-                    yield (
-                        _train_status_html(
-                            arch,
-                            train_device,
-                            done,
-                            epochs,
-                            hist,
-                            elapsed,
-                            phase="running",
-                        ),
-                        "\n".join(header_lines + epoch_lines),
-                        gr.update(),  # não recria o plot no heartbeat
-                    )
-                else:
-                    # 1ª época ainda em andamento — relógio vivo + aviso
-                    yield (
-                        _train_status_html(
-                            arch,
-                            train_device,
-                            0,
-                            epochs,
-                            hist,
-                            elapsed,
-                            phase="preparing",
-                            note="Treinando a 1ª época… na CPU pode levar "
-                            "vários minutos (áudio bruto). O relógio acima "
-                            "confirma que está rodando.",
-                        ),
-                        "\n".join(
-                            header_lines
-                            + [f"⏱ {_fmt_secs(elapsed)} — 1ª época em andamento…"]
-                        ),
-                        gr.update(),
-                    )
-                continue
-
-            # Nova época concluída
-            for k in ("loss", "acc", "val_loss", "val_acc"):
-                hist[k].append(ev.get(k))
-            ep = ev["epoch"]
-
-            def _fmt(v):
-                return (
-                    "nan"
-                    if (v is None or (isinstance(v, float) and v != v))
-                    else f"{v:.4f}"
+            else:
+                # 1ª época ainda em andamento — relógio vivo + aviso
+                yield (
+                    _train_status_html(
+                        arch,
+                        device,
+                        0,
+                        ev.epochs,
+                        ev.history,
+                        ev.elapsed,
+                        phase="preparing",
+                        note="Treinando a 1ª época… na CPU pode levar "
+                        "vários minutos (áudio bruto). O relógio acima "
+                        "confirma que está rodando.",
+                    ),
+                    "\n".join(
+                        header_lines
+                        + [f"⏱ {_fmt_secs(ev.elapsed)} — 1ª época em andamento…"]
+                    ),
+                    gr.update(),
                 )
-
+        elif isinstance(ev, EpochCompleted):
+            m = ev.metrics
             epoch_lines.append(
-                f"Época {ep:>3}/{epochs} — loss {_fmt(ev['loss'])} · "
-                f"acc {_fmt(ev['acc'])} · val_loss {_fmt(ev['val_loss'])} · "
-                f"val_acc {_fmt(ev['val_acc'])}"
+                f"Época {ev.epoch:>3}/{ev.epochs} — loss {_fmt_metric(m.get('loss'))} · "
+                f"acc {_fmt_metric(m.get('acc'))} · "
+                f"val_loss {_fmt_metric(m.get('val_loss'))} · "
+                f"val_acc {_fmt_metric(m.get('val_acc'))}"
             )
-            progress(0.2 + 0.75 * ep / epochs, desc=f"Época {ep}/{epochs}")
-
             # Plot ao vivo (fecha o anterior p/ evitar leak de memória)
-            close_fig(_live_fig)
-            _live_fig = _history_figure(
-                hist["loss"], hist["val_loss"], hist["acc"], hist["val_acc"]
+            close_fig(live_fig)
+            h = ev.history
+            live_fig = _history_figure(h["loss"], h["val_loss"], h["acc"], h["val_acc"])
+            yield (
+                _train_status_html(
+                    arch, device, ev.epoch, ev.epochs, h, ev.elapsed, phase="running"
+                ),
+                "\n".join(header_lines + epoch_lines),
+                live_fig,
             )
-
+        elif isinstance(ev, FitCompleted):
+            eval_figs = _training_eval_figures(
+                ev.y_true, ev.y_pred, ev.y_score, ev.lr_history
+            )
+            close_fig(live_fig)
+            fig = _history_confusion_figure_from_history(
+                ev.history, ev.y_true, ev.y_pred, ev.train_acc_key
+            )
+            progress(1.0, desc="Concluído!")
+            notify_success(
+                f"Treino de {arch} concluído",
+                message=f"val_acc={ev.final_acc:.4f}, val_loss={ev.final_loss:.4f}",
+            )
+            # Guarda o modelo treinado para o botão "Salvar" do Step 4.
+            _LAST_TRAINED = ev.trained
             yield (
                 _train_status_html(
                     arch,
-                    train_device,
-                    ep,
-                    epochs,
-                    hist,
-                    time.time() - _t0,
-                    phase="running",
+                    ev.device,
+                    ev.epochs,
+                    ev.epochs,
+                    ev.live_history,
+                    ev.elapsed,
+                    phase="done",
+                    note=_DONE_NOTE,
                 ),
-                "\n".join(header_lines + epoch_lines),
-                _live_fig,
+                "\n".join(
+                    header_lines
+                    + epoch_lines
+                    + [
+                        "─" * 48,
+                        f"✓ Treino concluído — val_accuracy={ev.final_acc:.4f}, "
+                        f"val_loss={ev.final_loss:.4f}",
+                        "Matriz de confusão gerada com o conjunto de validação.",
+                    ]
+                ),
+                fig,
+                *_eval_outputs(eval_figs),
             )
-
-        worker.join()
-        if fit_box["error"] is not None:
-            raise fit_box["error"]
-        history = fit_box["history"]
-
-        # Plot final (canônico, a partir do history completo). Resolve chaves de
-        # métrica para qualquer saída de arquitetura: sigmoid usa binary_accuracy;
-        # softmax pode registrar accuracy/sparse_categorical_accuracy etc.
-        train_acc_key, val_acc_key = _resolve_accuracy_history_keys(history, _acc_key)
-        progress(0.97, desc="Gerando matriz de confusão...")
-        y_true_val, y_pred_val, _y_score_val = _collect_validation_predictions(
-            model, val_ds
-        )
-        eval_figs = _training_eval_figures(
-            y_true_val,
-            y_pred_val,
-            _y_score_val,
-            lr_history,
-        )
-
-        close_fig(_live_fig)
-        fig = _history_confusion_figure_from_history(
-            history,
-            y_true_val,
-            y_pred_val,
-            train_acc_key,
-        )
-
-        progress(1.0, desc="Concluído!")
-
-        # Última métrica VÁLIDA (ignora None). Cai para a métrica de treino se
-        # não houver validação, e para NaN se nada existir — em vez de reportar
-        # um '0.0' enganoso (o que acontecia com .get(key, [0])[-1]).
-        def _last_metric(primary: str, fallback: str = None) -> float:
-            for key in (primary, fallback):
-                if not key:
-                    continue
-                seq = [v for v in (history.history.get(key) or []) if v is not None]
-                if seq:
-                    return float(seq[-1])
-            return float("nan")
-
-        final_acc = _last_metric(val_acc_key, train_acc_key)
-        final_loss = _last_metric("val_loss", "loss")
-        notify_success(
-            f"Treino de {arch} concluído",
-            message=f"val_acc={final_acc:.4f}, val_loss={final_loss:.4f}",
-        )
-
-        # Guarda o modelo treinado para o botão "Salvar" do Step 4.
-        # input_contract registra o pré-processamento EXATO usado no treino,
-        # garantindo que a inferência reproduza as mesmas features.
-        global _LAST_TRAINED
-        _LAST_TRAINED = {
-            "model": model,
-            "arch": arch,
-            "input_shape": input_shape,
-            "input_contract": {
-                "input_type": input_type,
-                "n_fft": N_FFT,
-                "hop_length": HOP,
-                "n_mels": N_MELS,
-                # Front-end espectral usado no treino (default LFCC). A inferência
-                # lê este campo para reproduzir EXATAMENTE o mesmo front-end.
-                "feature_frontend": FRONTEND,
-                "n_lfcc": N_LFCC,
-                "sample_rate": SAMPLE_RATE,
-                "audio_len": AUDIO_LEN,
-            },
-            "val_acc": float(final_acc) if final_acc == final_acc else None,
-            "val_loss": float(final_loss) if final_loss == final_loss else None,
-            "epochs": epochs,
-        }
-
-        yield (
-            _train_status_html(
-                arch,
-                train_device,
-                epochs,
-                epochs,
-                hist,
-                time.time() - _t0,
-                phase="done",
-                note="✓ Treino concluído — dê um nome e clique em "
-                "<b>💾 Salvar Modelo</b> abaixo para usá-lo na detecção.",
-            ),
-            "\n".join(
-                header_lines
-                + epoch_lines
-                + [
-                    "─" * 48,
-                    f"✓ Treino concluído — val_accuracy={final_acc:.4f}, "
-                    f"val_loss={final_loss:.4f}",
-                    "Matriz de confusão gerada com o conjunto de validação.",
-                ]
-            ),
-            fig,
-            eval_figs["roc"],
-            eval_figs["cm"],
-            eval_figs["pr"],
-            eval_figs["det"],
-            eval_figs["threshold"],
-            eval_figs["class_acc"],
-            eval_figs["lr"],
-        )
-
-    except Exception as e:
-        logger.error(f"Erro no treino: {e}", exc_info=True)
-        # Notify.5: erro acionável com hint específico
-        notify_from_actionable(CommonErrors.training_failed(str(e)))
-        err_panel = (
-            '<div class="train-live train-live-error">'
-            '<div class="tl-head"><span class="tl-head-title tl-head-title-error">'
-            "✗ Treinamento falhou</span></div>"
-            '<div class="tl-note tl-note-error">'
-            f"{str(e)[:300]}</div></div>"
-        )
-        yield (
-            err_panel,
-            f"❌ Erro durante o treino:\n\n{e}\n\n"
-            "(Stack trace completo nos logs do servidor.)",
-            None,
-        )
-    finally:
-        # Restaura a política de precisão original (mixed_float16 p/ inferência).
-        if _saved_policy is not None:
-            try:
-                tf.keras.mixed_precision.set_global_policy(_saved_policy)
-                logger.info(
-                    f"Política de precisão restaurada para {_saved_policy.name}."
-                )
-            except Exception as e:
-                logger.debug(f"Falha ao restaurar política de precisão: {e}")
-
-
-# =====================================================================
-# Treinamento de modelos CLÁSSICOS (SVM / Random Forest)
-# =====================================================================
-
-# Conjunto de features tabulares — PINADO no input_contract para garantir
-# que a inferência (FeaturePreparer) extraia exatamente as mesmas.
-# 'spectral' + 'cepstral' (MFCC/LFCC) + 'temporal' são rápidas e robustas;
-# 'prosodic' é evitado (pyin é lento).
-_CLASSICAL_FEATURE_TYPES = ["spectral", "cepstral", "temporal"]
-_CLASSICAL_AGG = "mean"
-
-
-def _list_class_files(dataset_path: str):
-    """Lista (filepath, label) das subpastas de classe, ignorando dirs espúrios.
-
-    Mesma filtragem do caminho DL: ignora raw/, splits/, features/, etc.
-    Label: 0 = real, 1 = fake (convenção do projeto).
-    """
-    _EXCLUDE = {
-        "raw",
-        "splits",
-        "features",
-        "segmented",
-        "processed",
-        "cache",
-        "__pycache__",
-        ".git",
-        ".ipynb_checkpoints",
-        "metadata",
-        "tmp",
-        "checkpoints",
-        "models",
-        "logs",
-    }
-    root = Path(dataset_path)
-    items = []
-    if not root.exists():
-        return items
-    for sub in sorted(root.iterdir()):
-        if not sub.is_dir() or sub.name.startswith(".") or sub.name.lower() in _EXCLUDE:
-            continue
-        label = 0 if _REAL_PATTERNS.match(sub.name.strip()) else 1
-        for ext in ("*.wav", "*.flac", "*.mp3", "*.ogg"):
-            for f in sub.glob(ext):
-                items.append((f, label))
-    return items
-
-
-def _run_classical_training(arch: str, dataset_path: str, progress):
-    """Treina SVM / Random Forest com features tabulares (gerador de feedback).
-
-    Extrai EXATAMENTE as mesmas features que a inferência usará
-    (extract_segmented_features + ExtractionConfig pinado no contrato),
-    treina o estimador sklearn, calcula val accuracy e popula _LAST_TRAINED
-    para o botão Salvar persistir (.pkl + scaler + config).
-    """
-    import time as _time
-
-    import numpy as np
-
-    global _LAST_TRAINED
-    is_rf = arch.strip().lower() in ("random forest", "randomforest", "rf")
-    nice = "Random Forest" if is_rf else "SVM"
-    _t0 = _time.time()
-
-    yield (
-        _train_status_html(
-            nice,
-            "CPU",
-            0,
-            1,
-            {},
-            0.0,
-            phase="preparing",
-            note="Coletando arquivos do dataset…",
-        ),
-        f"[clássico] Iniciando treino {nice} em {dataset_path}",
-        None,
-    )
-
-    try:
-        from sklearn.model_selection import train_test_split
-        from sklearn.preprocessing import StandardScaler
-
-        from app.core.contracts.audio import AudioData, FeatureType
-        from app.domain.services.feature_extraction_service import (
-            AudioFeatureExtractionService,
-            ExtractionConfig,
-        )
-
-        files = _list_class_files(dataset_path)
-        n_real = sum(1 for _, y in files if y == 0)
-        n_fake = sum(1 for _, y in files if y == 1)
-        if len(files) < 10 or n_real == 0 or n_fake == 0:
+        elif isinstance(ev, ClassicalStarted):
             yield (
                 _train_status_html(
-                    nice,
+                    ev.arch,
                     "CPU",
                     0,
                     1,
                     {},
-                    _time.time() - _t0,
+                    0.0,
+                    phase="preparing",
+                    note="Coletando arquivos do dataset…",
+                ),
+                f"[clássico] Iniciando treino {ev.arch} em {ev.dataset_path}",
+                None,
+            )
+        elif isinstance(ev, ClassicalDatasetInsufficient):
+            yield (
+                _train_status_html(
+                    ev.arch,
+                    "CPU",
+                    0,
+                    1,
+                    {},
+                    ev.elapsed,
                     phase="error",
                     note="Dataset insuficiente — precisa de áudios "
                     "em subpastas real/ e fake/.",
                 ),
-                f"❌ Encontrados {n_real} real + {n_fake} fake "
-                f"({len(files)} total). Mínimo: 5 por classe.",
+                f"❌ Encontrados {ev.n_real} real + {ev.n_fake} fake "
+                f"({ev.total} total). Mínimo: 5 por classe.",
                 None,
             )
-            return
-
-        # A extração tabular calcula ~13 categorias por segmento (inclui prosodic/
-        # formant via pyin/LPC — caras: ~1-3s/arquivo na CPU). SVM/RF não precisam
-        # de milhares de amostras, então fazemos subamostragem balanceada para o
-        # treino concluir em tempo razoável. (Mesma extração da inferência →
-        # paridade mantida; só reduzimos a QUANTIDADE de exemplos.)
-        import random as _random
-
-        _MAX_PER_CLASS = 500
-        reals = [f for f in files if f[1] == 0]
-        fakes = [f for f in files if f[1] == 1]
-        _rng = _random.Random(42)
-        if len(reals) > _MAX_PER_CLASS:
-            reals = _rng.sample(reals, _MAX_PER_CLASS)
-        if len(fakes) > _MAX_PER_CLASS:
-            fakes = _rng.sample(fakes, _MAX_PER_CLASS)
-        sampled = reals + fakes
-        _rng.shuffle(sampled)
-        if len(sampled) < len(files):
-            logger.info(
-                f"[clássico] Subamostragem: {len(sampled)}/{len(files)} arquivos "
-                f"(cap {_MAX_PER_CLASS}/classe) para acelerar a extração."
-            )
-        files = sampled
-
-        # Reutiliza o feature_service do DetectionService (mesma instância da
-        # inferência → contrato idêntico).
-        try:
-            from app.dependencies import get_detection_service
-
-            feat_svc = get_detection_service().feature_service
-        except Exception:
-            feat_svc = AudioFeatureExtractionService()
-
-        cfg = ExtractionConfig(
-            feature_types=[FeatureType(t) for t in _CLASSICAL_FEATURE_TYPES],
-            normalize=True,
-            aggregate_method=_CLASSICAL_AGG,
-        )
-
-        # ── Extração de features (parte lenta — feedback por arquivo) ──
-        X, y, feat_names = [], [], None
-        total = len(files)
-        skipped = 0
-        for i, (fpath, label) in enumerate(files):
-            try:
-                ad = AudioData.from_file(fpath, sr=16000, mono=True)
-                res = feat_svc.extract_segmented_features(ad, cfg)
-                vec = res.features.get("combined_features")
-                if vec is None or np.asarray(vec).size == 0:
-                    skipped += 1
-                    continue
-                vec = np.asarray(vec, dtype=np.float32).flatten()
-                if not np.all(np.isfinite(vec)):
-                    vec = np.nan_to_num(vec, nan=0.0, posinf=0.0, neginf=0.0)
-                X.append(vec)
-                y.append(label)
-                if feat_names is None:
-                    feat_names = res.features.get("feature_names")
-            except Exception as e:
-                skipped += 1
-                logger.debug(f"[clássico] falha em {fpath.name}: {e}")
-
-            if (i + 1) % 10 == 0 or i + 1 == total:
-                pct = (i + 1) / total
-                progress(0.05 + 0.70 * pct, desc=f"Features {i + 1}/{total}")
-                yield (
-                    _train_status_html(
-                        nice,
-                        "CPU",
-                        0,
-                        1,
-                        {},
-                        _time.time() - _t0,
-                        phase="preparing",
-                        note=f"Extraindo features tabulares: {i + 1}/{total} "
-                        f"arquivos ({len(X)} OK, {skipped} pulados)…",
-                    ),
-                    f"[clássico] Extração: {i + 1}/{total} · válidos={len(X)} · "
-                    f"pulados={skipped}",
-                    None,
-                )
-
-        if len(X) < 10:
+        elif isinstance(ev, ClassicalExtractionProgress):
             yield (
                 _train_status_html(
-                    nice,
+                    ev.arch,
                     "CPU",
                     0,
                     1,
                     {},
-                    _time.time() - _t0,
+                    ev.elapsed,
+                    phase="preparing",
+                    note=f"Extraindo features tabulares: {ev.done}/{ev.total} "
+                    f"arquivos ({ev.valid} OK, {ev.skipped} pulados)…",
+                ),
+                f"[clássico] Extração: {ev.done}/{ev.total} · válidos={ev.valid} · "
+                f"pulados={ev.skipped}",
+                None,
+            )
+        elif isinstance(ev, ClassicalTooFewFeatures):
+            yield (
+                _train_status_html(
+                    ev.arch,
+                    "CPU",
+                    0,
+                    1,
+                    {},
+                    ev.elapsed,
                     phase="error",
                     note="Poucas features válidas.",
                 ),
-                f"❌ Só {len(X)} amostras válidas após extração. "
+                f"❌ Só {ev.valid} amostras válidas após extração. "
                 "Verifique se os áudios não estão corrompidos.",
                 None,
             )
-            return
-
-        X = np.vstack(X)
-        y = np.asarray(y, dtype=int)
-        n_features = X.shape[1]
-
-        # ── Split + scaler + fit ──
-        progress(0.80, desc="Treinando estimador…")
-        yield (
-            _train_status_html(
-                nice,
-                "CPU",
-                0,
-                1,
-                {},
-                _time.time() - _t0,
-                phase="running",
-                note=f"Treinando {nice} em {X.shape[0]} amostras × "
-                f"{n_features} features…",
-            ),
-            f"[clássico] Matriz: {X.shape} · treinando {nice}…",
-            None,
-        )
-
-        strat = y if (np.bincount(y).min() >= 2) else None
-        X_tr, X_va, y_tr, y_va = train_test_split(
-            X,
-            y,
-            test_size=0.2,
-            random_state=42,
-            stratify=strat,
-        )
-        scaler = StandardScaler()
-        X_tr_s = scaler.fit_transform(X_tr)
-        X_va_s = scaler.transform(X_va)
-
-        if is_rf:
-            from sklearn.ensemble import RandomForestClassifier
-
-            est = RandomForestClassifier(
-                n_estimators=300,
-                max_depth=None,
-                n_jobs=-1,
-                class_weight="balanced",
-                random_state=42,
+        elif isinstance(ev, ClassicalFitting):
+            yield (
+                _train_status_html(
+                    ev.arch,
+                    "CPU",
+                    0,
+                    1,
+                    {},
+                    ev.elapsed,
+                    phase="running",
+                    note=f"Treinando {ev.arch} em {ev.n_samples} amostras × "
+                    f"{ev.n_features} features…",
+                ),
+                f"[clássico] Matriz: ({ev.n_samples}, {ev.n_features}) · "
+                f"treinando {ev.arch}…",
+                None,
             )
-        else:
-            from sklearn.svm import SVC
-
-            est = SVC(
-                kernel="rbf",
-                C=1.0,
-                gamma="scale",
-                probability=True,
-                class_weight="balanced",
-                random_state=42,
+        elif isinstance(ev, ClassicalCompleted):
+            nice = ev.trained.arch
+            eval_figs = _training_eval_figures(ev.y_val, ev.y_pred, ev.y_score, [])
+            fig = _classical_figure(ev)
+            _LAST_TRAINED = ev.trained
+            notify_success(
+                f"Treino de {nice} concluído", message=f"val_accuracy={ev.val_acc:.4f}"
             )
-        est.fit(X_tr_s, y_tr)
-
-        val_acc = float(est.score(X_va_s, y_va))
-        # F1/confusão simples
-        from sklearn.metrics import confusion_matrix
-
-        y_pred = est.predict(X_va_s)
-        if hasattr(est, "predict_proba"):
-            y_score = est.predict_proba(X_va_s)[:, 1]
-        else:
-            y_score = y_pred.astype("float32")
-        cm = confusion_matrix(y_va, y_pred, labels=[0, 1])
-        eval_figs = _training_eval_figures(y_va, y_pred, y_score, [])
-
-        # ── Plot: matriz de confusão + (RF) importância das features ──
-        fig, ax = new_figure(1, 2, figsize=(12, 4))
-        style_ax(ax[0], fig, "Matriz de Confusão (val)")
-        ax[0].imshow(cm, cmap="Blues")
-        ax[0].set_xticks([0, 1])
-        ax[0].set_yticks([0, 1])
-        ax[0].set_xticklabels(["real", "fake"])
-        ax[0].set_yticklabels(["real", "fake"])
-        ax[0].set_xlabel("Predito")
-        ax[0].set_ylabel("Verdadeiro")
-        cm_max = int(cm.max()) if cm.size and cm.max() > 0 else 1
-        for r in range(2):
-            for c in range(2):
-                # Contraste por célula: texto CLARO nas células escuras (contagem
-                # alta) e ESCURO nas claras (contagem baixa). Antes era sempre
-                # claro → o número ficava invisível nas células de baixa contagem
-                # do colormap Blues.
-                txt_color = "#f1f5f9" if cm[r, c] > cm_max / 2 else "#0f172a"
-                ax[0].text(
-                    c,
-                    r,
-                    str(cm[r, c]),
-                    ha="center",
-                    va="center",
-                    color=txt_color,
-                    fontweight="bold",
-                )
-        if is_rf and hasattr(est, "feature_importances_"):
-            style_ax(ax[1], fig, "Top-15 features (importância)")
-            imp = est.feature_importances_
-            idx = np.argsort(imp)[::-1][:15]
-            ax[1].barh(range(len(idx))[::-1], imp[idx], color=PLOT_ACCENT)
-            labels = [
-                (feat_names[j] if feat_names and j < len(feat_names) else f"f{j}")
-                for j in idx
-            ]
-            ax[1].set_yticks(range(len(idx))[::-1])
-            ax[1].set_yticklabels(labels, fontsize=7)
-        else:
-            style_ax(ax[1], fig, "Distribuição de classes (treino)")
-            ax[1].bar(
-                ["real", "fake"],
-                np.bincount(y_tr, minlength=2),
-                color=[PLOT_ACCENT, PLOT_DANGER],
+            progress(1.0, desc="Concluído!")
+            yield (
+                _train_status_html(
+                    nice,
+                    "CPU",
+                    1,
+                    1,
+                    {"acc": [ev.val_acc], "val_acc": [ev.val_acc]},
+                    ev.elapsed,
+                    phase="done",
+                    note=_DONE_NOTE,
+                ),
+                "\n".join(
+                    [
+                        f"✓ {nice} treinado",
+                        f"Amostras: {ev.n_samples} ({ev.n_real} real + "
+                        f"{ev.n_fake} fake, {ev.skipped} pulados)",
+                        f"Características por amostra: {ev.n_features} "
+                        f"({'+'.join(CLASSICAL_FEATURE_TYPES)})",
+                        f"Val accuracy: {ev.val_acc:.4f}",
+                        f"Matriz de confusão [real,fake]:\n{ev.confusion}",
+                    ]
+                ),
+                fig,
+                *_eval_outputs(eval_figs),
             )
-        safe_tight_layout(fig)
-
-        # ── Persistência: popula _LAST_TRAINED (flavor sklearn) ──
-        _LAST_TRAINED = {
-            "kind": "sklearn",
-            "model": est,
-            "scaler": scaler,
-            "arch": nice,
-            "input_shape": (n_features,),
-            "feature_names": feat_names,
-            "input_contract": {
-                "format": "tabular",
-                "feature_types": _CLASSICAL_FEATURE_TYPES,
-                "aggregate_method": _CLASSICAL_AGG,
-                "sample_rate": 16000,
-                "scaler_applied": True,
-                "n_features": n_features,
-            },
-            "val_acc": val_acc,
-            "val_loss": None,
-            "epochs": None,
-        }
-
-        notify_success(
-            f"Treino de {nice} concluído", message=f"val_accuracy={val_acc:.4f}"
-        )
-        progress(1.0, desc="Concluído!")
-        yield (
-            _train_status_html(
-                nice,
-                "CPU",
-                1,
-                1,
-                {"acc": [val_acc], "val_acc": [val_acc]},
-                _time.time() - _t0,
-                phase="done",
-                note="✓ Treino concluído — dê um nome e clique em "
-                "<b>💾 Salvar Modelo</b> abaixo para usá-lo na detecção.",
-            ),
-            "\n".join(
-                [
-                    f"✓ {nice} treinado",
-                    f"Amostras: {X.shape[0]} ({n_real} real + {n_fake} fake, "
-                    f"{skipped} pulados)",
-                    f"Features por amostra: {n_features} "
-                    f"({'+'.join(_CLASSICAL_FEATURE_TYPES)})",
-                    f"Val accuracy: {val_acc:.4f}",
-                    f"Matriz de confusão [real,fake]:\n{cm}",
-                ]
-            ),
-            fig,
-            eval_figs["roc"],
-            eval_figs["cm"],
-            eval_figs["pr"],
-            eval_figs["det"],
-            eval_figs["threshold"],
-            eval_figs["class_acc"],
-            eval_figs["lr"],
-        )
-
-    except Exception as e:
-        logger.error(f"Erro no treino clássico: {e}", exc_info=True)
-        notify_from_actionable(CommonErrors.training_failed(str(e)))
-        yield (
-            (
-                '<div class="train-live train-live-error"><div class="tl-head">'
-                '<span class="tl-head-title tl-head-title-error">'
-                "✗ Treinamento falhou</span></div>"
-                f'<div class="tl-note tl-note-error">{str(e)[:300]}'
-                "</div></div>"
-            ),
-            f"❌ Erro no treino clássico:\n{e}",
-            None,
-        )
+        elif isinstance(ev, TrainingFailed):
+            # Notify.5: erro acionável com hint específico
+            notify_from_actionable(CommonErrors.training_failed(str(ev.error)))
+            yield (
+                _training_error_panel(ev.error),
+                f"❌ Erro no treino clássico:\n{ev.error}"
+                if ev.classical
+                else f"❌ Erro durante o treino:\n\n{ev.error}\n\n"
+                "(Stack trace completo nos logs do servidor.)",
+                None,
+            )
 
 
 # =====================================================================
@@ -2488,7 +1241,7 @@ def create_training_wizard_tab():
 
         # ───────────── Step 1: Dataset ─────────────
         with gr.Group(visible=True) as group_s1:
-            gr.Markdown("## Step 1 — Escolha do Dataset")
+            gr.Markdown("## Etapa 1 — Escolha do dataset")
             gr.Markdown(
                 "Selecione uma pasta com **subdiretórios para cada classe**. "
                 "Subdiretórios começando com `real`, `bonafide`, `genuine`, "
@@ -2498,7 +1251,7 @@ def create_training_wizard_tab():
 
             with gr.Row(elem_classes="action-row"):
                 dataset_path_s1 = gr.Textbox(
-                    label="Caminho do Dataset",
+                    label="Caminho do dataset",
                     value="data/datasets",
                     placeholder="ex: /data/asvspoof2019",
                     scale=4,
@@ -2518,10 +1271,11 @@ def create_training_wizard_tab():
 
         # ───────────── Step 2: Modelo ─────────────
         with gr.Group(visible=False) as group_s2:
-            gr.Markdown("## Step 2 — Escolha do Modelo")
+            gr.Markdown("## Etapa 2 — Escolha do modelo")
             gr.Markdown(
                 "Selecione a arquitetura. Modelos com **GAT** (AASIST) oferecem maior "
-                "accuracy. **Sonic Sleuth** é o mais leve. **Ensemble** é o mais robusto."
+                "acurácia. **Sonic Sleuth** é o mais leve. "
+                "**Ensemble** é o mais robusto."
             )
 
             cards_html = gr.HTML(_render_model_cards_html())
@@ -2539,7 +1293,7 @@ def create_training_wizard_tab():
 
         # ───────────── Step 3: Hiperparâmetros ─────────────
         with gr.Group(visible=False) as group_s3:
-            gr.Markdown("## Step 3 — Hiperparâmetros")
+            gr.Markdown("## Etapa 3 — Hiperparâmetros")
             gr.Markdown(
                 "Os valores padrão funcionam bem na maioria dos casos. "
                 "Expanda **Opções Avançadas** para flags dos Sprints 1-5."
@@ -2552,20 +1306,26 @@ def create_training_wizard_tab():
                     value=50,
                     step=1,
                     label="Épocas",
-                    info="Mais épocas = melhor accuracy mas mais tempo",
+                    info=(
+                        "Mais épocas podem melhorar a acurácia, mas aumentam "
+                        "o tempo de treino."
+                    ),
                 )
                 batch_s3 = gr.Slider(
                     4,
                     128,
                     value=16,
                     step=4,
-                    label="Batch Size",
-                    info="Maior = mais rápido, mas precisa mais RAM/VRAM",
+                    label="Tamanho do lote",
+                    info=(
+                        "Lotes maiores podem acelerar o treino, mas exigem "
+                        "mais memória RAM ou VRAM."
+                    ),
                 )
 
             lr_s3 = gr.Number(
                 value=0.0008,
-                label="Learning Rate",
+                label="Taxa de aprendizado",
                 precision=5,
                 info="Padrão: 8e-4. Arquiteturas com atenção/grafos "
                 "(AASIST, Conformer, Transformers) são auto-limitadas a "
@@ -2619,7 +1379,7 @@ def create_training_wizard_tab():
         # ───────────── Step 4: Treinar ─────────────
         with gr.Group(visible=False) as group_s4:
             with gr.Row():
-                gr.Markdown("## Step 4 — Treinamento")
+                gr.Markdown("## Etapa 4 — Treinamento")
                 parar_btn = gr.Button(
                     "⏹ Interromper",
                     variant="stop",
@@ -2636,7 +1396,7 @@ def create_training_wizard_tab():
 
             with gr.Row(elem_classes="responsive-grid"):
                 with gr.Column(scale=1):
-                    history_plot = gr.Plot(label="Loss, Accuracy & Matriz de Confusão")
+                    history_plot = gr.Plot(label="Perda, acurácia e matriz de confusão")
                 with gr.Column(scale=1):
                     logs_box = gr.TextArea(
                         label="Log por época",
@@ -2649,12 +1409,14 @@ def create_training_wizard_tab():
                 with gr.Row(elem_classes="responsive-grid responsive-grid-3 plot-grid"):
                     eval_roc_plot = gr.Plot(label="Curva ROC")
                     eval_cm_plot = gr.Plot(label="Matriz de Confusão")
-                    eval_pr_plot = gr.Plot(label="Curva Precisão-Recall")
+                    eval_pr_plot = gr.Plot(label="Curva precisão-revocação")
                 with gr.Row(elem_classes="responsive-grid responsive-grid-3 plot-grid"):
                     eval_det_plot = gr.Plot(label="Curva DET / EER")
-                    eval_threshold_plot = gr.Plot(label="Otimização de Threshold")
+                    eval_threshold_plot = gr.Plot(
+                        label="Otimização do limiar de decisão"
+                    )
                     eval_class_acc_plot = gr.Plot(label="Acurácia por Classe")
-                eval_lr_plot = gr.Plot(label="Schedule de Learning Rate")
+                eval_lr_plot = gr.Plot(label="Evolução da taxa de aprendizado")
 
             # ── Salvar modelo treinado ──────────────────────────────────
             with gr.Group():

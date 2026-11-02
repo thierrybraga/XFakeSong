@@ -150,7 +150,7 @@ class ExperimentStore:
         init_db(raise_on_error=True)
 
     def record_system_snapshot(self, purpose: str) -> str:
-        from app.domain.models.experiment import SystemSnapshot
+        from app.core.db.models.experiment import SystemSnapshot
 
         payload = collect_system_snapshot()
         digest = content_hash(payload)
@@ -185,7 +185,7 @@ class ExperimentStore:
         source: str | None = None,
         secret: bool | None = None,
     ) -> None:
-        from app.domain.models.experiment import ConfigurationEntry
+        from app.core.db.models.experiment import ConfigurationEntry
 
         is_secret = _is_secret(key) if secret is None else secret
         wrapped = _wrap_value(value, secret=is_secret)
@@ -224,7 +224,7 @@ class ExperimentStore:
     def get_configuration(
         self, namespace: str, key: str, *, scope: str = "global"
     ) -> Any | None:
-        from app.domain.models.experiment import ConfigurationEntry
+        from app.core.db.models.experiment import ConfigurationEntry
 
         with SessionLocal() as db:
             entry = (
@@ -292,7 +292,7 @@ class ExperimentStore:
         source: str | None = None,
     ) -> str:
         """Grava payload completo e projeções normalizadas de modelos/métricas."""
-        from app.domain.models.experiment import (
+        from app.core.db.models.experiment import (
             ArtifactRecord,
             ExperimentRun,
             MetricRecord,
@@ -420,7 +420,7 @@ class ExperimentStore:
         return run_uid
 
     def load_run_payload(self, run_uid: str) -> dict[str, Any] | None:
-        from app.domain.models.experiment import ExperimentRun
+        from app.core.db.models.experiment import ExperimentRun
 
         with SessionLocal() as db:
             run = db.query(ExperimentRun).filter_by(run_uid=run_uid).first()

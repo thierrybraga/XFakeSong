@@ -16,7 +16,7 @@ import pytest
 
 from benchmarks.config import BenchmarkConfig
 from benchmarks.report import _pct_with_uncertainty, _uncertainty_note
-from benchmarks.runner import _aggregate_seed_runs
+from benchmarks.seed_aggregation import _aggregate_seed_runs
 
 
 def test_training_seeds_derive_from_base_seed():
@@ -116,7 +116,7 @@ def test_seed_runs_preserva_o_motivo_da_falha():
     estouro de memoria de um colapso de treino ou de um bug -- e a media entre
     sementes fica silenciosamente apoiada em menos repeticoes do que se pediu.
     """
-    from benchmarks.runner import _aggregate_seed_runs
+    from benchmarks.seed_aggregation import _aggregate_seed_runs
 
     bloco_ok = {
         "accuracy": 0.98,

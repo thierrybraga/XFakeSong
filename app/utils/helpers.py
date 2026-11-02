@@ -3,10 +3,8 @@
 Este módulo contém funções utilitárias reutilizáveis em todo o sistema.
 """
 
-import hashlib
 import json
 import logging
-import os
 import time
 from datetime import datetime, timezone
 from functools import wraps
@@ -15,44 +13,9 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 import numpy as np
 
+from app.utils.file_utils import ensure_directory
+
 T = TypeVar('T')
-
-
-def ensure_directory(path: Union[str, Path]) -> Path:
-    """Garante que um diretório existe, criando-o se necessário."""
-    path = Path(path)
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def safe_filename(filename: str, max_length: int = 255) -> str:
-    """Sanitiza nome de arquivo removendo caracteres perigosos."""
-    # Remove caracteres perigosos
-    unsafe_chars = '<>:"/\\|?*'
-    for char in unsafe_chars:
-        filename = filename.replace(char, '_')
-
-    # Limita comprimento
-    if len(filename) > max_length:
-        name, ext = os.path.splitext(filename)
-        max_name_length = max_length - len(ext)
-        filename = name[:max_name_length] + ext
-
-    return filename
-
-
-def get_file_hash(file_path: Union[str, Path], algorithm: str = 'md5') -> str:
-    """Calcula hash de arquivo."""
-    file_path = Path(file_path)
-    if not file_path.exists():
-        raise FileNotFoundError(f"Arquivo não encontrado: {file_path}")
-
-    hash_obj = hashlib.new(algorithm)
-    with open(file_path, 'rb') as f:
-        for chunk in iter(lambda: f.read(4096), b""):
-            hash_obj.update(chunk)
-
-    return hash_obj.hexdigest()
 
 
 def get_file_size(file_path: Union[str, Path]) -> int:
@@ -252,34 +215,11 @@ def validate_audio_file(file_path: Union[str, Path]) -> bool:
     return True
 
 
-def get_system_info() -> Dict[str, Any]:
-    """Retorna informações do sistema."""
-    import platform
-
-    import psutil
-
-    return {
-        'platform': platform.platform(),
-        'python_version': platform.python_version(),
-        'cpu_count': psutil.cpu_count(),
-        'memory_total': psutil.virtual_memory().total,
-        'memory_available': psutil.virtual_memory().available,
-        'disk_usage': psutil.disk_usage('/').percent if os.name != 'nt' else psutil.disk_usage('C:\\').percent
-    }
-
-
 def create_unique_id(prefix: str = '', length: int = 8) -> str:
     """Cria ID único."""
     import uuid
     unique_part = str(uuid.uuid4()).replace('-', '')[:length]
     return f"{prefix}_{unique_part}" if prefix else unique_part
-
-
-def memory_usage_mb() -> float:
-    """Retorna uso de memória atual em MB."""
-    import psutil
-    process = psutil.Process(os.getpid())
-    return process.memory_info().rss / 1024 / 1024
 
 
 def setup_logging(name: str, level: str = 'INFO',

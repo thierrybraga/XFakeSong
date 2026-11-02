@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import functools
 import html
+import inspect
 import logging
 
 import gradio as gr
@@ -107,8 +108,32 @@ def ui_safe(mensagem: str = "Falha ao processar a solicitação"):
         @ui_safe("Não foi possível atualizar o painel")
         def refresh_dashboard():
             ...
+
+    Handlers geradores (streaming, `yield`) recebem um invólucro que também é
+    gerador. O Gradio decide se faz streaming por
+    `inspect.isgeneratorfunction(fn)`: com um invólucro comum ele recebia o
+    objeto gerador como valor único e recusava a saída ("didn't receive
+    enough output values") — foi assim que validar, treinar e salvar do
+    assistente de treino quebraram.
     """
     def decorador(funcao):
+        def _converter(exc: Exception):
+            logger.exception("%s: %s", funcao.__qualname__, exc)
+            return gr.Error(f"{mensagem}: {exc}")
+
+        if inspect.isgeneratorfunction(funcao):
+
+            @functools.wraps(funcao)
+            def envolvida_gerador(*args, **kwargs):
+                try:
+                    yield from funcao(*args, **kwargs)
+                except gr.Error:
+                    raise
+                except Exception as exc:  # noqa: BLE001 — superfície de UI
+                    raise _converter(exc) from exc
+
+            return envolvida_gerador
+
         @functools.wraps(funcao)
         def envolvida(*args, **kwargs):
             try:
@@ -116,8 +141,7 @@ def ui_safe(mensagem: str = "Falha ao processar a solicitação"):
             except gr.Error:
                 raise  # já é uma mensagem destinada ao usuário
             except Exception as exc:  # noqa: BLE001 — superfície de UI
-                logger.exception("%s: %s", funcao.__qualname__, exc)
-                raise gr.Error(f"{mensagem}: {exc}") from exc
+                raise _converter(exc) from exc
 
         return envolvida
 

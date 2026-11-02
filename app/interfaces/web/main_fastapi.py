@@ -3,19 +3,19 @@ import logging as _l
 import os
 import sys
 from contextlib import asynccontextmanager
-from pathlib import Path
 
+from app.core.config.env import env_flag, env_int, load_environment
 from app.core.hf_compat import ensure_hf_folder_shim
 
+load_environment()
 ensure_hf_folder_shim()  # antes de qualquer import que precise de Gradio
 
-from fastapi import FastAPI, Request  # noqa: E402
-from fastapi.responses import HTMLResponse  # noqa: E402
-from fastapi.staticfiles import StaticFiles  # noqa: E402
-from fastapi.templating import Jinja2Templates  # noqa: E402
+from fastapi import FastAPI  # noqa: E402
+from fastapi.responses import RedirectResponse  # noqa: E402
 from slowapi import _rate_limit_exceeded_handler  # noqa: E402
 from slowapi.errors import RateLimitExceeded  # noqa: E402
 
+from app import __version__  # noqa: E402
 from app.core.auth.auth_handler import get_gradio_auth  # noqa: E402
 from app.core.bootstrap import OperationalPaths  # noqa: E402
 from app.core.exceptions import setup_exception_handlers  # noqa: E402
@@ -41,15 +41,8 @@ def _running_under_pytest() -> bool:
     return "pytest" in sys.modules or "PYTEST_CURRENT_TEST" in os.environ
 
 
-def _env_flag(name: str, default: bool = False) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
-
-
 def _api_only_mode() -> bool:
-    return _env_flag("XFAKE_API_ONLY") or _env_flag("XFAKE_SKIP_GRADIO")
+    return env_flag("XFAKE_API_ONLY") or env_flag("XFAKE_SKIP_GRADIO")
 
 
 # BUG.Render.2: verifica versões críticas — detecta incompatibilidade
@@ -62,16 +55,11 @@ if not _running_under_pytest() and not _api_only_mode():
     _gpu_info = setup_gpu()
     _l.getLogger(__name__).info(f"GPU setup: {describe_gpu_setup()}")
 
-# Adicionar raiz ao path
-# (app/interfaces/web/main_fastapi.py -> web -> interfaces -> app -> raiz)
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-
-
 # API.8: lifespan moderno substitui on_event("startup") deprecado
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from app.core.bootstrap import bootstrap_application
     from app.core.db.experiment_store import experiment_store
+    from app.dependencies import bootstrap_application
 
     bootstrap_application()
     experiment_store.record_system_snapshot("api_startup")
@@ -87,7 +75,7 @@ app = FastAPI(
         "extração de features, treinamento + K-fold CV, gestão de datasets "
         "e perfis de voz."
     ),
-    version="1.1.0",
+    version=__version__,
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
@@ -101,32 +89,22 @@ setup_exception_handlers(app)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-_WEB_DIR = Path(__file__).resolve().parent
-_STATIC_DIR = _WEB_DIR / "static"
-_TEMPLATES_DIR = _WEB_DIR / "templates"
 
-app.mount(
-    "/static",
-    StaticFiles(directory=str(_STATIC_DIR)),
-    name="static",
-)
-templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+def _entrypoint_destination() -> str:
+    """Retorna o destino padrão conforme a composição do servidor."""
+    return "/api/docs" if _api_only_mode() else "/gradio/"
 
 
-@app.get("/", response_class=HTMLResponse, include_in_schema=False)
-async def index(request: Request):
-    return templates.TemplateResponse(
-        "index.html",
-        {"request": request},
-    )
+@app.get("/", include_in_schema=False)
+async def index() -> RedirectResponse:
+    """Direciona o acesso ao ponto de entrada visual canônico."""
+    return RedirectResponse(url=_entrypoint_destination(), status_code=307)
 
 
-@app.get("/loading", response_class=HTMLResponse, include_in_schema=False)
-async def loading(request: Request):
-    return templates.TemplateResponse(
-        "pages/loading.html",
-        {"request": request},
-    )
+@app.get("/loading", include_in_schema=False)
+async def loading() -> RedirectResponse:
+    """Mantém o caminho legado e o encaminha sem recargas periódicas."""
+    return RedirectResponse(url=_entrypoint_destination(), status_code=307)
 
 
 # API.3: incluir TODOS os routers via lista única (inclui voice_profiles)
@@ -158,16 +136,9 @@ if not _running_under_pytest() and not _api_only_mode():
             str(operational_paths.logs),
             str(operational_paths.models),
         ]
-    max_upload_mb = int(os.getenv("XFAKE_MAX_UPLOAD_MB", "100"))
+    max_upload_mb = env_int("XFAKE_MAX_UPLOAD_MB", 100)
     if "max_file_size" in mount_parameters:
         mount_kwargs["max_file_size"] = f"{max_upload_mb}mb"
 
     app = gr.mount_gradio_app(app, gradio_demo, **mount_kwargs)
 
-
-if __name__ == "__main__":
-    import uvicorn
-
-    # Ler porta do ambiente ou usar padrão
-    port = int(os.getenv("PORT", 7861))
-    uvicorn.run(app, host="0.0.0.0", port=port)

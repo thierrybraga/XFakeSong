@@ -5,9 +5,10 @@ projeto que existe só para um ambiente externo, e não pode arrastar
 dependência para o caminho normal.
 """
 
-import unittest
-from unittest.mock import patch, MagicMock
 import sys
+import unittest
+from unittest.mock import MagicMock, patch
+
 from app.utils.colab import is_colab, mount_drive
 
 

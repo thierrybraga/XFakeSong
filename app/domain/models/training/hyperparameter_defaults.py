@@ -128,8 +128,8 @@ def save_default_hyperparameters_json(
     """
     from sqlalchemy.orm.attributes import flag_modified
 
+    from app.core.db.models.architecture_config import ArchitectureConfig
     from app.core.db.session import SessionLocal
-    from app.domain.models.architecture_config import ArchitectureConfig
 
     # Carrega defaults
     params = get_recommended_hyperparameters(model_name)
@@ -188,8 +188,8 @@ def load_hyperparameters_json(model_name: str, search_dir: str) -> Dict[str, Any
 
     Mantém assinatura para compatibilidade, mas `search_dir` é ignorado.
     """
+    from app.core.db.models.architecture_config import ArchitectureConfig
     from app.core.db.session import SessionLocal
-    from app.domain.models.architecture_config import ArchitectureConfig
 
     default = get_recommended_hyperparameters(model_name)
 

@@ -293,7 +293,7 @@ def resolve_n_fft(hop_length: int, declared: Optional[int] = None) -> int:
 #:
 #: FONTE ÚNICA (2026-07-28). Antes, quem precisava dessa correspondência a
 #: reimplementava: o `registry` declarava `feature_frontend` em apenas 2 das 12
-#: arquiteturas, e `scripts/reporting/rebuild_inference_contracts.py` mantinha um
+#: arquiteturas, e `tools/reporting/rebuild_inference_contracts.py` mantinha um
 #: mapa manual por nome de modelo que cobria 9 e esquecia Sonic Sleuth,
 #: EfficientNet-LSTM, Ensemble, WavLM e HuBERT.
 #:

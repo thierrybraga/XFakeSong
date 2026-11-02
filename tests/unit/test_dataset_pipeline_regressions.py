@@ -8,12 +8,14 @@ import numpy as np
 import pytest
 
 from app.domain.dataset_metadata import speaker_manifest
+from app.domain.services.dataset.preprocessing import (
+    _content_aware_class_allocation,
+)
 from benchmarks.data import BenchmarkData
 from benchmarks.evaluate import evaluate_grouped_scores, evaluate_scores
-from benchmarks.runner import _audit_source_label_shortcut
-from scripts.benchmark.run_tcc_pipeline import _load_wav
-from scripts.dataset import build_dataset
-from scripts.dataset.preprocess_dataset import _content_aware_class_allocation
+from benchmarks.run_tcc_pipeline import _load_wav
+from benchmarks.split_audit import _audit_source_label_shortcut
+from tools.dataset import build_dataset
 
 
 def _touch_wavs(directory: Path, prefix: str, count: int) -> None:

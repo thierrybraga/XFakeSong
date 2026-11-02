@@ -8,8 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.db import experiment_store as store_module
 from app.core.db.experiment_store import ExperimentStore, content_hash, json_safe
-from app.core.db.session import Base
-from app.domain.models import (  # noqa: F401
+from app.core.db.models import (  # noqa: F401
     ArtifactRecord,
     ConfigurationEntry,
     ExperimentRun,
@@ -17,6 +16,7 @@ from app.domain.models import (  # noqa: F401
     ModelRun,
     SystemSnapshot,
 )
+from app.core.db.session import Base
 
 
 @dataclass

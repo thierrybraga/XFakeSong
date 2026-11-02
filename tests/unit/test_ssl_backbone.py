@@ -105,11 +105,9 @@ def test_backbone_is_frozen_and_only_head_trains(family):
 def test_relative_position_buckets_match_reference():
     """Bucketização das posições relativas do WavLM (bidirecional, 320 buckets)."""
     _require("torch")
-    import torch
-
-    from transformers.models.wavlm.modeling_wavlm import WavLMAttention
-
     import tensorflow as tf
+    import torch
+    from transformers.models.wavlm.modeling_wavlm import WavLMAttention
 
     from app.domain.models.architectures.ssl_backbone import PretrainedSSLBackbone
 

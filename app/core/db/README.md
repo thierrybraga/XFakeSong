@@ -6,6 +6,19 @@ não são a única fonte de verdade para cálculos ou resultados.
 
 ## Modelo de dados
 
+As entidades ORM ficam em `models/` (`base.py`, `analysis.py`,
+`architecture_config.py`, `experiment.py`, `training_job.py`, `voice_profile.py`).
+Importar `app.core.db.models` registra todas no `Base.metadata`.
+
+As consultas das tabelas operacionais ficam em `repositories/`
+(`analysis_results.py`, `training_jobs.py`, `architecture_configs.py`,
+`persistence.py`); routers e abas os obtêm por `app.dependencies` e não montam
+SQL. `init_db` (`setup.py`) só cria/migra o schema: a semeadura de
+`architecture_configs` com o registry de arquiteturas é feita pela composição
+(`app.dependencies.bootstrap_application`), para que `app.core` não importe o
+domínio. `ExperimentStore.ensure_schema()` (benchmark, treino) cria o schema
+sem semear.
+
 - `experiment_runs`: configuração, dataset, ambiente e payload completo da execução.
 - `model_runs`: família, parâmetros, hiperparâmetros e contrato de entrada por modelo.
 - `metric_records`: métricas normalizadas por condição (`clean`, ruído, codec e eficiência).
@@ -13,8 +26,8 @@ não são a única fonte de verdade para cálculos ou resultados.
 - `system_snapshots`: ambiente reprodutível, hardware e versões; segredos são redigidos.
 - `artifact_records`: ligação entre execuções e arquivos gerados.
 
-As tabelas operacionais anteriores (`training_jobs`, `analysis_results`, usuários,
-perfis de voz e configurações de arquitetura) continuam no mesmo banco para
+As tabelas operacionais anteriores (`training_jobs`, `analysis_results`, perfis de
+voz e configurações de arquitetura) continuam no mesmo banco para
 compatibilidade. Novos consumidores devem usar `ExperimentStore` para resultados
 e configuração científica.
 
@@ -34,11 +47,15 @@ usuários esbarrar em dependências que não existem no código. `integrity_chec
 e `foreign_key_check` passam limpos; o problema é de esquema morto, não de
 corrupção.
 
+Desde 2026-10-18 a própria `users` saiu do ORM: a autenticação é por API key
+e Basic Auth do Gradio, e a entidade `User` nunca teve chamador. Bancos já
+criados mantêm a tabela; o auditor passa a listá-la entre as órfãs.
+
 Auditar e remover:
 
 ```bash
-python scripts/ops/audit_database_schema.py            # só relata
-python scripts/ops/audit_database_schema.py --apply    # derruba e compacta
+python tools/ops/audit_database_schema.py            # só relata
+python tools/ops/audit_database_schema.py --apply    # derruba e compacta
 ```
 
 A lista de tabelas legítimas é derivada do `Base.metadata` (nunca escrita à
@@ -48,7 +65,7 @@ derrubada sem `--force-drop-non-empty`.
 ## Migração e manutenção
 
 ```bash
-python scripts/ops/consolidate_sqlite.py
+python tools/ops/consolidate_sqlite.py
 ```
 
 O comando cria um backup antes da primeira consolidação, aplica o schema, importa

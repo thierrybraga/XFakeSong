@@ -5,7 +5,7 @@ A aba de Dataset chamava `create_splits(train, val, test)` sem
 classe. O mesmo locutor caía em treino, validação e teste, e a métrica passava
 a medir memorização de timbre em vez de detecção de síntese. É exatamente o
 vazamento que o protocolo do benchmark existe para impedir
-(`benchmarks/runner._audit_split_overlap`), e que motivou o descarte do dataset
+(`benchmarks/split_audit._audit_split_overlap`), e que motivou o descarte do dataset
 anterior.
 
 Aqui a verificação acontece no momento da CRIAÇÃO, quando ainda dá para refazer.
@@ -37,7 +37,7 @@ def _montar_splits(raiz, mapa):
 
 def test_auditoria_detecta_a_mesma_amostra_em_dois_splits(tmp_path, monkeypatch):
     """Repetição literal de áudio — o caso mais grave."""
-    import scripts.dataset.preprocess_dataset as pp
+    from app.domain.services.dataset import preprocessing as pp
 
     # a MESMA semente gera o mesmo PCM: amostra duplicada entre treino e teste
     _montar_splits(tmp_path, {
@@ -56,7 +56,7 @@ def test_auditoria_detecta_a_mesma_amostra_em_dois_splits(tmp_path, monkeypatch)
 
 
 def test_auditoria_aprova_particoes_realmente_disjuntas(tmp_path):
-    import scripts.dataset.preprocess_dataset as pp
+    from app.domain.services.dataset import preprocessing as pp
 
     _montar_splits(tmp_path, {
         "train": {"real": [("a", 1)], "fake": [("b", 2)]},
@@ -73,7 +73,7 @@ def test_auditoria_aprova_particoes_realmente_disjuntas(tmp_path):
 
 def test_auditoria_reporta_ausencia_de_splits(tmp_path):
     """Sem partição alguma, o relatório informa em vez de levantar."""
-    import scripts.dataset.preprocess_dataset as pp
+    from app.domain.services.dataset import preprocessing as pp
 
     relatorio = pp.audit_splits(tmp_path / "inexistente")
     assert relatorio["available"] is False
@@ -115,7 +115,7 @@ def test_interface_audita_o_split_depois_de_criar():
 def test_create_splits_expoe_o_parametro_de_disjuncao():
     import inspect
 
-    import scripts.dataset.preprocess_dataset as pp
+    from app.domain.services.dataset import preprocessing as pp
 
     assinatura = inspect.signature(pp.create_splits)
     assert "speaker_disjoint" in assinatura.parameters

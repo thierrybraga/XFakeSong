@@ -2,10 +2,6 @@ import logging
 from typing import Any, Dict, Tuple
 
 import gradio as gr
-from sqlalchemy.orm.attributes import flag_modified
-
-from app.core.db.session import SessionLocal
-from app.domain.models.architecture_config import ArchitectureConfig
 
 # Global state for hyperparameters (cache local da sessão)
 hp_state: Dict[str, Dict[str, Any]] = {}
@@ -121,13 +117,12 @@ def optimize_default(
     Otimiza e salva os hiperparâmetros padrão para uma arquitetura no BANCO.
     Retorna atualizações para os componentes da interface Gradio.
     """
-    db = SessionLocal()
     try:
+        from app.dependencies import get_architecture_config_repository
+
+        repository = get_architecture_config_repository()
         # 1. Carregar configuração atual do Banco
-        arch_config = db.query(ArchitectureConfig).filter_by(
-            architecture_name=architecture,
-            variant_name="default"
-        ).first()
+        arch_config = repository.find_default(architecture)
 
         current_hp = arch_config.parameters if arch_config else {}
 
@@ -227,20 +222,11 @@ def optimize_default(
                 merged["dense_units"] = int(dense_units_v)
 
         # 3. Salvar configurações atualizadas no BANCO
-        if not arch_config:
-            arch_config = ArchitectureConfig(
-                architecture_name=architecture,
-                variant_name="default",
-                parameters=merged,
-                description=f"Configuração padrão para {architecture}"
-            )
-            db.add(arch_config)
-        else:
-            arch_config.parameters = merged
-            # Forçar atualização de flag de modificação se necessário
-            flag_modified(arch_config, "parameters")
-
-        db.commit()
+        repository.save_default_parameters(
+            architecture,
+            merged,
+            description=f"Configuração padrão para {architecture}",
+        )
         logger.info(
             f"Hiperparâmetros para {architecture} salvos no banco."
         )
@@ -318,8 +304,6 @@ def optimize_default(
         logger.error(f"Erro ao salvar hiperparâmetros: {e}")
         # Retorna erro e updates vazios (sem alteração)
         return ({"error": str(e)},) + (gr.update(),) * _NUM_HP_UPDATE_FIELDS
-    finally:
-        db.close()
 
 
 def load_defaults(architecture: str) -> Tuple:
@@ -329,13 +313,10 @@ def load_defaults(architecture: str) -> Tuple:
     Parâmetros salvos no banco pelo usuário são tratados como overrides. A
     função apenas lê; não persiste nem sobrescreve configuração alguma.
     """
-    db = SessionLocal()
     try:
-        arch_config = (
-            db.query(ArchitectureConfig)
-            .filter_by(architecture_name=architecture, variant_name="default")
-            .first()
-        )
+        from app.dependencies import get_architecture_config_repository
+
+        arch_config = get_architecture_config_repository().find_default(architecture)
         hp = arch_config.parameters if arch_config else {}
         merged = get_interface_hyperparameters(architecture, hp)
         hp_state[architecture] = merged
@@ -452,5 +433,3 @@ def load_defaults(architecture: str) -> Tuple:
     except Exception as e:
         logger.error(f"Erro ao carregar defaults: {e}")
         return ({"error": str(e)},) + (gr.update(),) * _NUM_HP_UPDATE_FIELDS
-    finally:
-        db.close()

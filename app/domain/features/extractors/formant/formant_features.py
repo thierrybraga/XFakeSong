@@ -11,10 +11,13 @@ from typing import Any, Dict
 import librosa
 import numpy as np
 
-from app.core.contracts.audio import AudioData, AudioFeatures
+from app.core.contracts.audio import (
+    AudioData,
+    AudioFeatures,
+    FeatureType,
+    IFeatureExtractor,
+)
 from app.core.contracts.base import ProcessingResult, ProcessingStatus
-from app.domain.features.interfaces import IFeatureExtractor
-from app.domain.features.types import FeatureType
 
 from .components.formants import find_formants_from_lpc
 from .components.lpc import levinson_durbin_autocorr, preemphasis

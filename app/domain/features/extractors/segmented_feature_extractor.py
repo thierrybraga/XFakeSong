@@ -15,11 +15,6 @@ from typing import Any, List, Optional
 import librosa
 import numpy as np
 
-# Logger dedicado — substitui os print() de DEBUG que poluíam o stdout
-# (geravam MBs de saída por treino/extração). Silenciosos por padrão (nível
-# INFO); ative DEBUG para ver os detalhes de extração por segmento.
-logger = logging.getLogger(__name__)
-
 # Importações do projeto
 from ....core.contracts.audio import AudioData
 from ....core.contracts.base import ProcessingResult, ProcessingStatus
@@ -38,6 +33,11 @@ from .temporal.temporal_features import TemporalFeatureExtractor
 from .timefreq.timefreq_features import TimeFrequencyFeatureExtractor
 from .transform.transform_features import TransformFeatureExtractor
 from .voice_quality.voice_quality_features import VoiceQualityFeatureExtractor
+
+# Logger dedicado — substitui os print() de DEBUG que poluíam o stdout
+# (geravam MBs de saída por treino/extração). Silenciosos por padrão (nível
+# INFO); ative DEBUG para ver os detalhes de extração por segmento.
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -361,75 +361,6 @@ class SegmentedFeatureExtractor:
             }
         )
 
-    def export_features_to_csv(
-            self, features: List[SegmentedFeatures], output_path: str, label: str = None) -> ProcessingResult:
-        """Exporta features para CSV."""
-        try:
-            import pandas as pd
-
-            # Converter features para lista de dicionários
-            data = []
-            for feature in features:
-                row = {
-                    'segment_index': feature.segment_index,
-                    'start_time': feature.start_time,
-                    'end_time': feature.end_time
-                }
-
-                # Adicionar features de cada categoria
-                if feature.spectral_features is not None:
-                    for i, val in enumerate(feature.spectral_features):
-                        row[f'spectral_{i}'] = val
-
-                if feature.temporal_features is not None:
-                    for i, val in enumerate(feature.temporal_features):
-                        row[f'temporal_{i}'] = val
-
-                if feature.cepstral_features is not None:
-                    for i, val in enumerate(feature.cepstral_features):
-                        row[f'cepstral_{i}'] = val
-
-                if feature.prosodic_features is not None:
-                    for i, val in enumerate(feature.prosodic_features):
-                        row[f'prosodic_{i}'] = val
-
-                if feature.perceptual_features is not None:
-                    for i, val in enumerate(feature.perceptual_features):
-                        row[f'perceptual_{i}'] = val
-
-                if feature.formant_features is not None:
-                    for i, val in enumerate(feature.formant_features):
-                        row[f'formant_{i}'] = val
-
-                if feature.speech_features is not None:
-                    for i, val in enumerate(feature.speech_features):
-                        row[f'speech_{i}'] = val
-
-                # Adicionar metadata features
-                if hasattr(feature, 'metadata') and feature.metadata:
-                    for key, value in feature.metadata.items():
-                        if isinstance(value, (list, tuple)):
-                            for i, val in enumerate(value):
-                                row[f'{key}_{i}'] = val
-                        else:
-                            row[key] = value
-
-                data.append(row)
-
-            # Criar DataFrame e salvar
-            df = pd.DataFrame(data)
-            csv_path = f"{output_path}_features.csv"
-            df.to_csv(csv_path, index=False)
-
-            return ProcessingResult.success(
-                data={"csv_path": csv_path, "rows": len(df)},
-                metadata={"label": label, "features_count": len(features)}
-            )
-
-        except Exception as e:
-            return ProcessingResult.error(
-                errors=[f"Erro ao exportar CSV: {e}"]
-            )
 
     def _export_individual_csv(
             self, features: List[SegmentedFeatures], file_path: str, label: int = None):

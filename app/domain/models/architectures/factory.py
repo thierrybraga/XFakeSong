@@ -333,6 +333,8 @@ class ArchitectureFactoryRegistry:
         """
         from app.domain.models.architectures.registry import (
             _TRAINING_ONLY_PARAM_KEYS as training_only_keys,
+        )
+        from app.domain.models.architectures.registry import (
             architecture_registry,
         )
 
@@ -385,9 +387,3 @@ def get_architecture_info(
         architecture_name)
 
 
-def validate_architecture_compatibility(architecture_name: str,
-                                        input_shape: tuple) -> bool:
-    """Valida compatibilidade entre arquitetura e entrada."""
-    return architecture_factory_registry.validate_compatibility(
-        architecture_name, input_shape
-    )

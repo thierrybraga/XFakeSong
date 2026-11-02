@@ -17,4 +17,6 @@ de dominio.
 - `app.py`: montagem principal do `gr.Blocks`.
 - `schema_patch.py`: compatibilidade Gradio/Pydantic/Starlette.
 - `tabs/`: telas funcionais da UI.
+- `presenters/`: figuras montadas a partir de medidas do dominio
+  (`forensic_plots.py`: aba Investigar e graficos de analise do treino).
 - `utils/`: helpers de UI, graficos, i18n e notificacoes.

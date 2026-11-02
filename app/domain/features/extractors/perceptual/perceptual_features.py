@@ -12,8 +12,6 @@ from typing import Dict
 import numpy as np
 
 from .components import (
-    bark_to_hz,
-    erb_to_hz,
     extract_bark_features,
     extract_erb_features,
     extract_fluctuation_features,
@@ -22,8 +20,6 @@ from .components import (
     extract_roughness_features,
     extract_sharpness_features,
     extract_tonality_features,
-    hz_to_bark,
-    hz_to_erb,
 )
 
 
@@ -119,21 +115,6 @@ class PerceptualFeatureExtractor:
 
         return features
 
-    def _hz_to_bark(self, freq_hz: np.ndarray) -> np.ndarray:
-        """Converte frequência em Hz para escala Bark."""
-        return hz_to_bark(freq_hz)
-
-    def _bark_to_hz(self, bark: np.ndarray) -> np.ndarray:
-        """Converte escala Bark para frequência em Hz (aproximação)."""
-        return bark_to_hz(bark)
-
-    def _hz_to_erb(self, freq_hz: np.ndarray) -> np.ndarray:
-        """Converte frequência em Hz para escala ERB."""
-        return hz_to_erb(freq_hz)
-
-    def _erb_to_hz(self, erb: np.ndarray) -> np.ndarray:
-        """Converte escala ERB para frequência em Hz."""
-        return erb_to_hz(erb)
 
     def _extract_bark_features(self, y: np.ndarray) -> Dict:
         """Extrai características baseadas na escala Bark."""

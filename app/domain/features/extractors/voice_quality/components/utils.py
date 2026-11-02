@@ -78,14 +78,3 @@ def voiced_runs(f0: np.ndarray, sr: int) -> list[np.ndarray]:
     return trechos
 
 
-def compute_amplitude_envelope(
-        y: np.ndarray, frame_length: int = 2048,
-        hop_length: int = 512) -> np.ndarray:
-    """Calcula envelope de amplitude do sinal."""
-    # Usar RMS por frame como aproximação da amplitude
-    import librosa
-    rms = librosa.feature.rms(
-        y=y,
-        frame_length=frame_length,
-        hop_length=hop_length)[0]
-    return rms

@@ -91,12 +91,12 @@ def test_fase_desdobrada_separa_sinal_limpo_de_ruido():
     assert descontinuidade(tom, True) < descontinuidade(tom, False)
 
 
-def test_aba_forense_desdobra_a_fase():
+def test_radar_forense_desdobra_a_fase():
     import inspect
 
-    from app.interfaces.gradio.tabs import forensic_analysis
+    from app.domain.services import forensic_measures
 
-    fonte = inspect.getsource(forensic_analysis)
+    fonte = inspect.getsource(forensic_measures.radar_axes)
     assert "np.unwrap(np.angle(D), axis=1)" in fonte
 
 
@@ -104,9 +104,7 @@ def test_aba_forense_desdobra_a_fase():
 
 def test_estabilidade_de_formante_varia_com_o_audio():
     """Era a constante 0.5."""
-    from app.interfaces.gradio.tabs.forensic_analysis import (
-        _estabilidade_de_formante,
-    )
+    from app.domain.services.forensic_measures import formant_stability
 
     t = np.arange(2 * SR) / SR
     fixo = _tom(300.0, dur=2.0)
@@ -114,8 +112,8 @@ def test_estabilidade_de_formante_varia_com_o_audio():
         0.4 * np.sin(2 * np.pi * np.cumsum(np.linspace(300, 1200, len(t))) / SR)
     ).astype("float32")
 
-    v_fixo = _estabilidade_de_formante(fixo, SR)
-    v_varredura = _estabilidade_de_formante(varredura, SR)
+    v_fixo = formant_stability(fixo, SR)
+    v_varredura = formant_stability(varredura, SR)
 
     assert v_fixo != v_varredura, "o eixo voltou a ser constante"
     assert v_varredura > v_fixo, (
@@ -126,19 +124,21 @@ def test_estabilidade_de_formante_varia_com_o_audio():
 def test_radar_nao_tem_mais_valores_fabricados():
     import inspect
 
+    from app.domain.services import forensic_measures
     from app.interfaces.gradio.tabs import forensic_analysis
 
-    fonte = inspect.getsource(forensic_analysis)
-    assert "# placeholder" not in fonte, (
-        "voltou a existir eixo fabricado no grafico forense"
-    )
-    for medida in ("compute_nhr", "compute_rap", "_estabilidade_de_formante"):
+    for modulo in (forensic_measures, forensic_analysis):
+        assert "# placeholder" not in inspect.getsource(modulo), (
+            "voltou a existir eixo fabricado no grafico forense"
+        )
+    fonte = inspect.getsource(forensic_measures.radar_axes)
+    for medida in ("compute_nhr", "compute_rap", "formant_stability"):
         assert medida in fonte, f"{medida} nao esta sendo medido"
 
 
 def test_radar_normaliza_por_eixo_e_nao_pelo_maximo_global():
     """Grandezas de unidades diferentes no mesmo gráfico."""
-    from app.domain.services.forensic_visualization import (
+    from app.interfaces.gradio.presenters.forensic_plots import (
         AudioForensicVisualizer,
     )
 

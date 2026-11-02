@@ -6,12 +6,14 @@ isolados são cobertos em `tests/unit/test_training_guards.py` e
 `test_checkpoint_monitor.py`.
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
+
 import numpy as np
-from app.domain.services.training_service import TrainingService
-from app.core.contracts.base import ProcessingStatus, ProcessingResult
+import pytest
+
+from app.core.contracts.base import ProcessingResult, ProcessingStatus
 from app.domain.models.architectures.registry import ArchitectureInfo
+from app.domain.services.training_service import TrainingService
 
 
 @pytest.fixture

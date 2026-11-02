@@ -11,7 +11,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-
 # ───────────────── RawGAT-ST (paper-faithful, raw audio) ─────────────────
 
 def test_rawgatst_is_raw_audio_in_registry():

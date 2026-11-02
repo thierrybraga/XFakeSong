@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import numpy as np
 
-
 # ───────────────────────── #2: save sem otimizador ─────────────────────────
 
 def test_save_model_excludes_optimizer(tmp_path):

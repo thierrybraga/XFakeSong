@@ -11,13 +11,10 @@ from typing import Any, Dict
 
 import numpy as np
 
-from app.core.contracts.audio import AudioData, FeatureType
+from app.core.contracts.audio import AudioData, FeatureType, IFeatureExtractor
 from app.core.contracts.base import ProcessingResult, ProcessingStatus
-from app.domain.features.interfaces import IFeatureExtractor
 
 from .components.dynamics import (
-    compute_amplitude_modulation,
-    compute_tremolo_rate,
     extract_envelope_statistics,
 )
 from .components.energy import (
@@ -268,67 +265,3 @@ class TemporalFeatureExtractor(IFeatureExtractor):
             'amplitude_modulation': 0.0,
             'tremolo_rate': 0.0
         }
-
-    # Backward compatibility methods (proxies to components)
-    def _compute_sign_change_rate(self, y: np.ndarray) -> float:
-        return compute_sign_change_rate(y)
-
-    def _compute_mean_crossing_rate(self, y: np.ndarray) -> float:
-        return compute_mean_crossing_rate(y)
-
-    def _compute_log_energy(self, y: np.ndarray) -> np.ndarray:
-        return compute_log_energy(y, self.frame_length, self.hop_length)
-
-    def _compute_frame_energy_variance(self, y: np.ndarray) -> float:
-        return compute_frame_energy_variance(
-            y, self.frame_length, self.hop_length)
-
-    def _compute_roughness(self, y: np.ndarray) -> float:
-        return compute_roughness(y)
-
-    def _compute_rms_energy(self, y: np.ndarray) -> np.ndarray:
-        return compute_rms_energy(y, self.frame_length, self.hop_length)
-
-    def _compute_short_time_energy(self, y: np.ndarray) -> np.ndarray:
-        return compute_short_time_energy(y, self.frame_length, self.hop_length)
-
-    def _compute_energy_entropy(self, y: np.ndarray) -> float:
-        return compute_energy_entropy(y, self.frame_length, self.hop_length)
-
-    def _compute_teager_energy(self, y: np.ndarray) -> np.ndarray:
-        return compute_teager_energy(y, self.frame_length, self.hop_length)
-
-    def _compute_zcr(self, y: np.ndarray) -> np.ndarray:
-        return compute_zcr(y, self.frame_length, self.hop_length)
-
-    def _compute_zcr_variance(self, y: np.ndarray) -> float:
-        return compute_zcr_variance(y, self.frame_length, self.hop_length)
-
-    def _compute_temporal_centroid(self, y: np.ndarray) -> float:
-        return compute_temporal_centroid(
-            y, self.sr, self.frame_length, self.hop_length)
-
-    def _compute_temporal_rolloff(
-            self, y: np.ndarray, rolloff_percent: float = 0.85) -> float:
-        return compute_temporal_rolloff(
-            y, self.sr, self.frame_length, self.hop_length, rolloff_percent)
-
-    def _compute_temporal_flux(self, y: np.ndarray) -> float:
-        return compute_temporal_flux(y, self.frame_length, self.hop_length)
-
-    def _compute_attack_time(self, y: np.ndarray) -> float:
-        return compute_attack_time(
-            y, self.sr, self.frame_length, self.hop_length)
-
-    def _compute_decay_time(self, y: np.ndarray) -> float:
-        return compute_decay_time(
-            y, self.sr, self.frame_length, self.hop_length)
-
-    def _compute_sustain_level(self, y: np.ndarray) -> float:
-        return compute_sustain_level(y, self.frame_length, self.hop_length)
-
-    def _compute_amplitude_modulation(self, y: np.ndarray) -> float:
-        return compute_amplitude_modulation(y)
-
-    def _compute_tremolo_rate(self, envelope: np.ndarray) -> float:
-        return compute_tremolo_rate(envelope, self.sr)

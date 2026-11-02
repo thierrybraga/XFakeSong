@@ -280,8 +280,7 @@ def test_runner_recusa_destravar_backbone_no_caminho_de_cache():
             sys.executable,
             str(
                 _PROJECT_ROOT
-                / "scripts"
-                / "benchmark"
+                / "benchmarks"
                 / "run_wavlm_original_benchmark.py"
             ),
             "--architecture",
@@ -319,8 +318,7 @@ def test_runner_recusa_grafo_aasist_com_backbone_congelado():
             sys.executable,
             str(
                 _PROJECT_ROOT
-                / "scripts"
-                / "benchmark"
+                / "benchmarks"
                 / "run_wavlm_original_benchmark.py"
             ),
             "--architecture",

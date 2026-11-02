@@ -8,16 +8,16 @@ import argparse
 import logging
 import os
 import sys
-from pathlib import Path
 
+from app.core.config.env import load_environment
 from app.core.hf_compat import ensure_hf_folder_shim
 from app.core.performance import configure_runtime_environment
 
+# O .env vem antes de tudo: configure_runtime_environment() fixa variáveis
+# de TF/BLAS com setdefault, e um .env carregado depois seria ignorado.
+load_environment()
 configure_runtime_environment()
 ensure_hf_folder_shim()
-
-# Adicionar diretório raiz ao PYTHONPATH
-sys.path.insert(0, str(Path(__file__).parent))
 
 
 def setup_logging():
@@ -95,7 +95,7 @@ def main():
     if args.bootstrap_dirs:
         logger.info("Criando estrutura de diretórios...")
         try:
-            from app.core.bootstrap import bootstrap_application
+            from app.dependencies import bootstrap_application
 
             report = bootstrap_application()
             logger.info(
@@ -143,7 +143,7 @@ def main():
     else:
         logger.info("Iniciando interface CLI...")
         try:
-            from app.core.bootstrap import bootstrap_application
+            from app.dependencies import bootstrap_application
             from app.interfaces.cli.context import AppContext
             from app.interfaces.cli.menus.main_menu import MainMenu
 

@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -18,8 +17,6 @@ from sklearn.preprocessing import StandardScaler
 # Project imports
 from app.domain.models.architectures.classical_ml_helpers import (
     BaseClassicalModel,
-    evaluate_model,
-    optimize_hyperparameters,
     unwrap_calibrated,
     wrap_calibration,
 )
@@ -199,91 +196,3 @@ def create_random_forest_model(
     return model
 
 
-def optimize_random_forest_hyperparameters(
-    X_train: np.ndarray,
-    y_train: np.ndarray,
-    param_grid: Optional[Dict[str, List]] = None,
-    cv: int = 5,
-    scoring: str = 'accuracy',
-    n_jobs: int = -1
-) -> Tuple[RandomForestModel, Dict[str, Any]]:
-    """
-    Otimiza hiperparâmetros do Random Forest usando Grid Search.
-    """
-    if param_grid is None:
-        param_grid = dict(RANDOM_FOREST_PARAM_GRID)
-
-    return optimize_hyperparameters(
-        model_class=RandomForestModel,
-        X_train=X_train,
-        y_train=y_train,
-        param_grid=param_grid,
-        base_estimator=RandomForestClassifier(random_state=42, n_jobs=n_jobs),
-        step_name='rf',
-        cv=cv,
-        scoring=scoring,
-        n_jobs=n_jobs
-    )
-
-
-def evaluate_random_forest_model(
-    model: RandomForestModel,
-    X_test: np.ndarray,
-    y_test: np.ndarray,
-    feature_names: Optional[List[str]] = None,
-    verbose: bool = True
-) -> Dict[str, Any]:
-    """
-    Avalia o desempenho do modelo Random Forest.
-    """
-    return evaluate_model(model, X_test, y_test, feature_names, verbose)
-
-
-def analyze_feature_importance(
-    model: RandomForestModel,
-    feature_names: Optional[List[str]] = None,
-    top_n: int = 20
-) -> Dict[str, Any]:
-    """
-    Analisa a importância das features do modelo Random Forest.
-    """
-    if not model.is_fitted:
-        raise ValueError(
-            "Model must be fitted before analyzing feature importance")
-
-    feature_importance = model.get_feature_importance(feature_names)
-
-    # Ordenar por importância
-    sorted_features = sorted(
-        feature_importance.items(),
-        key=lambda x: x[1],
-        reverse=True)
-
-    # Top N features
-    top_features = sorted_features[:top_n]
-
-    # Estatísticas
-    importances = list(feature_importance.values())
-    stats = {
-        'mean_importance': np.mean(importances),
-        'std_importance': np.std(importances),
-        'max_importance': np.max(importances),
-        'min_importance': np.min(importances)
-    }
-
-    analysis = {
-        'feature_importance': feature_importance,
-        'top_features': dict(top_features),
-        'statistics': stats,
-        'total_features': len(feature_importance)
-    }
-
-    logger.info(
-        f"Feature importance analysis completed for {len(feature_importance)} features"
-    )
-    logger.info(
-        f"Top feature: {top_features[0][0]} "
-        f"(importance: {top_features[0][1]:.4f})"
-    )
-
-    return analysis

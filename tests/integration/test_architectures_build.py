@@ -1,8 +1,8 @@
 """Cobertura de construção das arquiteturas pelo MESMO caminho dos notebooks.
 
-Os notebooks de modelo (`notebooks/models/*.ipynb`) preparam dados sintéticos com
-`BenchmarkData.synthetic(...).prepare_for_architecture(arch)` e instanciam o
-modelo via `create_model_by_name(arch, input_shape=prepared.X.shape[1:])`. Antes,
+Os notebooks de modelo (`docs/notebooks/models/*.ipynb`) preparam dados
+sintéticos com `BenchmarkData.synthetic(...).prepare_for_architecture(arch)` e
+instanciam o modelo via `create_model_by_name(arch, input_shape=prepared.X.shape[1:])`. Antes,
 no gate bloqueante do CI (suíte `not smoke`), só DUAS arquiteturas eram
 realmente construídas — `MultiscaleCNN` (espectrograma) e `RawNet2` (raw-audio),
 ambas via execução de notebook (nbclient, lento). Este teste constrói as **10
@@ -60,7 +60,7 @@ def _seed():
 def test_architecture_builds_and_forwards(architecture):
     """Constrói a arquitetura pelo caminho do notebook e faz 1 forward pass.
 
-    Replica `notebooks/models/*`: dados sintéticos -> contrato da arquitetura ->
+    Replica `docs/notebooks/models/*`: dados sintéticos -> contrato da arquitetura ->
     `create_model_by_name(..., input_shape=prepared.X.shape[1:])`. Como o
     input_shape vem da PRÓPRIA forma preparada, build e forward são sempre
     consistentes; a única falha possível é a arquitetura não construir/rodar —

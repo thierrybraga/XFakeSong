@@ -16,6 +16,9 @@ registrar claramente uma excecao.
 
 - `factory.py`: criacao por nome.
 - `registry.py`: metadados, aliases e requisitos de entrada.
-- `layers.py`: camadas compartilhadas.
+- `layers.py`: porta de entrada das camadas compartilhadas e registro no Keras.
+- `spectral_layers.py`, `sinc_layers.py`, `block_layers.py`, `head_layers.py`,
+  `plumbing_layers.py`: definições compartilhadas por tema.
+- `graph_layers.py`: camadas de grafo legadas, para artefatos antigos.
 - `*_cnn*`, `aasist.py`, `rawgat_st.py`, `rawnet2.py`, `wavlm.py`, `hubert.py`: arquiteturas.
 - `svm.py`, `random_forest.py`, `classical_ml_helpers.py`: modelos classicos.

@@ -13,10 +13,13 @@ import librosa
 import numpy as np
 from scipy.stats import kurtosis, skew
 
-from app.core.contracts.audio import AudioData, AudioFeatures
+from app.core.contracts.audio import (
+    AudioData,
+    AudioFeatures,
+    FeatureType,
+    IFeatureExtractor,
+)
 from app.core.contracts.base import ProcessingResult, ProcessingStatus
-from app.domain.features.interfaces import IFeatureExtractor
-from app.domain.features.types import FeatureType
 
 from .advanced import (
     compute_apq,

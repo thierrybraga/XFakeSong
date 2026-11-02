@@ -3,60 +3,50 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 
-from app.core.config.paths import resolve_results_dir
+from app.core.bootstrap import OperationalPaths
 from app.core.config.settings import TrainingConfig
+from app.dependencies import get_detection_service, get_training_service
+from app.domain.models.architectures.registry import architecture_registry
 from app.domain.services.detection_service import DetectionService
+from app.domain.services.training_service import TrainingService
 
 
 @dataclass
 class AppContext:
-    """Contexto da aplicação compartilhado entre os menus."""
+    """Contexto compartilhado entre os menus.
 
-    app_dir: Path
+    Diretórios e serviços vêm das mesmas fontes que a API e o Gradio usam
+    (``OperationalPaths`` e ``app.dependencies``): um modelo treinado por uma
+    interface aparece nas outras, e ``MODELS_DIR``/``XFAKE_STORAGE_DIR`` valem
+    também para a CLI.
+    """
+
+    paths: OperationalPaths
     datasets_dir: Path
     models_dir: Path
     results_dir: Path
     detection_service: DetectionService
+    training_service: TrainingService
     training_config: TrainingConfig
     available_architectures: List[str]
     logger: logging.Logger
 
     def __init__(self):
-        repo_root = Path(__file__).resolve().parent.parent.parent.parent
-        self.app_dir = repo_root / "app"
-        self.datasets_dir = repo_root / "data" / "datasets"
-        self.models_dir = repo_root / "data" / "models"
-        self.results_dir = resolve_results_dir(repo_root)
+        self.paths = OperationalPaths.resolve()
+        self.datasets_dir = self.paths.datasets
+        self.models_dir = self.paths.models
+        self.results_dir = self.paths.results
+        for directory in (
+            self.models_dir,
+            self.results_dir,
+            self.datasets_dir / "samples",
+            self.datasets_dir / "features",
+        ):
+            directory.mkdir(parents=True, exist_ok=True)
 
-        # Criar diretórios se não existirem
-        self.models_dir.mkdir(exist_ok=True, parents=True)
-        self.results_dir.mkdir(exist_ok=True, parents=True)
-        self.datasets_dir.mkdir(exist_ok=True, parents=True)
-        (self.datasets_dir / "samples").mkdir(exist_ok=True)
-        (self.datasets_dir / "features").mkdir(exist_ok=True)
-
-        # Inicializar serviços
-        self.detection_service = DetectionService(self.models_dir)
-
-        # Criar configuração de treinamento
-        self.training_config = TrainingConfig(
-            batch_size=32, epochs=100, learning_rate=0.001, validation_split=0.2
-        )
-
-        # Arquiteturas disponíveis
-        self.available_architectures = [
-            "aasist",
-            "conformer",
-            "efficientnet_lstm",
-            "ensemble",
-            "multiscale_cnn",
-            "rawgat_st",
-            "spectrogram_transformer",
-            "hubert",
-            "rawnet2",
-            "wavlm",
-            "hybrid_cnn_transformer",
-            "sonic_sleuth",
-        ]
-
+        self.detection_service = get_detection_service()
+        self.training_service = get_training_service()
+        self.training_config = TrainingConfig()
+        # Fonte única: as arquiteturas que o TrainingService sabe treinar.
+        self.available_architectures = architecture_registry.list_architectures()
         self.logger = logging.getLogger("SpeechCheckerCLI")

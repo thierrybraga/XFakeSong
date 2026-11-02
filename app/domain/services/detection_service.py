@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # ponderados (0.82/0.50) apesar de serem o 3º e o 2º modelos mais robustos
 # do conjunto. Atualizados = acurácia @10dB / 100 da tabela "Robustez a
 # ruído AWGN" em data/results/paper/tabelas_benchmark.tex (fonte:
-# scripts/reporting/consolidate_results.py); regenerar junto do TCC a cada
+# tools/reporting/consolidate_results.py); regenerar junto do TCC a cada
 # retreino. Sonic Sleuth/EfficientNet-LSTM/Ensemble ficam fora da tabela
 # oficial de 11 modelos (retreino pendente / suspeita de vazamento não
 # auditada) — mantidos com a estimativa anterior, não medida nesta rodada.
@@ -144,6 +144,11 @@ class DetectionService(IDetectionService):
     def get_available_models(self) -> List[str]:
         """Retorna lista de modelos disponíveis."""
         return self.model_loader.get_available_models()
+
+    def reload_models(self) -> List[str]:
+        """Relê o diretório de modelos (ex.: após um treino) e lista os disponíveis."""
+        self.model_loader.load_available_models()
+        return self.get_available_models()
 
     def get_available_architectures(self) -> List[str]:
         """Retorna lista de arquiteturas disponíveis."""
@@ -823,7 +828,7 @@ class DetectionService(IDetectionService):
         try:
             from app.core.db.session import SessionLocal
 
-            from ...domain.models.analysis import AnalysisResult
+            from ...core.db.models.analysis import AnalysisResult
 
             metadata = result.metadata or {}
             analysis = AnalysisResult(

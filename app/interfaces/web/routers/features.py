@@ -12,18 +12,19 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 
+from app.core.contracts.audio import AudioData, FeatureType
+from app.core.contracts.base import ProcessingStatus
 from app.core.exceptions import (
     AudioProcessingError,
     UnsupportedFormatError,
     ValidationError,
 )
-from app.core.contracts.audio import AudioData, FeatureType
-from app.core.contracts.base import ProcessingStatus
-from app.core.security import limiter, sanitize_filename
+from app.core.security import limiter
 from app.dependencies import get_feature_extraction_service
 from app.domain.services.feature_extraction_service import AudioFeatureExtractionService
 from app.domain.services.upload_service import AudioUploadService
 from app.interfaces.web.schemas.api_models import FeatureExtractionResult
+from app.utils.file_utils import sanitize_filename
 
 router = APIRouter(prefix="/api/v1/features", tags=["Features"])
 

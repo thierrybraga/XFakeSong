@@ -2,85 +2,33 @@ import logging
 
 from sqlalchemy import text
 
-from app.core.db.session import Base, SessionLocal, engine
+from app.core.db.session import Base, engine
 
 logger = logging.getLogger(__name__)
 SCHEMA_VERSION = 2
 
 
-def _load_domain_models():
-    """Carrega modelos SQLAlchemy somente no bootstrap explicito do banco.
+def _load_orm_models() -> None:
+    """Registra as entidades ORM no ``Base.metadata`` antes do ``create_all``.
 
-    O metadata do SQLAlchemy precisa conhecer as classes mapeadas antes do
-    `create_all`, mas importar o dominio no topo deste modulo acopla qualquer
-    consumidor de `app.core.db` a toda a camada de dominio. Mantendo a importacao
-    tardia, o acoplamento fica restrito ao ponto de composicao da aplicacao.
+    Importação tardia: quem só precisa de uma sessão (``app.core.db.session``)
+    não paga o custo de carregar todas as entidades.
     """
-    from app.domain.models import (  # noqa: F401
-        AnalysisResult,
-        ArchitectureConfig,
-        ArtifactRecord,
-        ConfigurationEntry,
-        ExperimentRun,
-        MetricRecord,
-        ModelRun,
-        SystemSnapshot,
-        TrainingJob,
-        User,
-    )
-    from app.domain.models.voice_profile import VoiceProfile  # noqa: F401
-
-    return ArchitectureConfig
-
-
-def seed_architectures():
-    """Popula o banco com as configurações padrão do registry se estiver vazio."""
-    ArchitectureConfig = _load_domain_models()
-    db = SessionLocal()
-    try:
-        # Importação tardia para evitar ciclo com registry -> db_setup
-        from app.domain.models.architectures.registry import architecture_registry
-
-        # Verificar se já existem configs
-        if db.query(ArchitectureConfig).first():
-            return
-
-        logger.info(
-            "Populando banco de dados com configurações de arquitetura padrão..."
-        )
-
-        architectures = architecture_registry.get_all_architectures()
-
-        for name, info in architectures.items():
-            # Configuração Padrão (Default)
-            default_config = ArchitectureConfig(
-                architecture_name=name,
-                variant_name="default",
-                description=info.description,
-                parameters=info.default_params,
-                is_active=True,
-            )
-            db.add(default_config)
-
-        db.commit()
-        logger.info(f"{len(architectures)} arquiteturas semeadas com sucesso.")
-
-    except Exception as e:
-        logger.error(f"Erro ao semear arquiteturas: {e}")
-        db.rollback()
-    finally:
-        db.close()
+    from app.core.db import models  # noqa: F401
 
 
 def init_db(*, raise_on_error: bool = False) -> bool:
-    """Inicializa/migra o schema e informa se a operação foi concluída."""
+    """Inicializa/migra o schema e informa se a operação foi concluída.
+
+    Só schema: a semeadura de ``architecture_configs`` depende do registry do
+    domínio e é feita pela composição (``app.dependencies.bootstrap_application``).
+    """
     try:
-        _load_domain_models()
+        _load_orm_models()
         Base.metadata.create_all(bind=engine)
         if engine.dialect.name == "sqlite":
             with engine.begin() as connection:
                 connection.execute(text(f"PRAGMA user_version={SCHEMA_VERSION}"))
-        seed_architectures()
         logger.info("Banco de dados SQLite inicializado e tabelas criadas.")
         return True
     except Exception as e:

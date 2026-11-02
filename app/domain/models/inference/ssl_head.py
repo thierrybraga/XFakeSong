@@ -1,7 +1,7 @@
 """Cabeça classificadora compartilhada dos modelos SSL originais (WavLM/HuBERT).
 
 Fonte ÚNICA da topologia da cabeça usada (1) pelo runner de treino
-(`scripts/benchmark/run_wavlm_original_benchmark.py`) e (2) pelo wrapper de
+(`benchmarks/run_wavlm_original_benchmark.py`) e (2) pelo wrapper de
 inferência (`TorchSSLOriginalModel` em model_loader.py) — evita drift de
 paridade treino↔inferência quando o contrato de embedding muda.
 

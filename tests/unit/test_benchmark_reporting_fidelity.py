@@ -39,7 +39,7 @@ from benchmarks.significance import (
 from benchmarks.stability import analyze_training_stability
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_SSL_RUNNER = _PROJECT_ROOT / "scripts" / "benchmark" / "run_wavlm_original_benchmark.py"
+_SSL_RUNNER = _PROJECT_ROOT / "benchmarks" / "run_wavlm_original_benchmark.py"
 
 
 # ─── P0. Janela do SSL ──────────────────────────────────────────────────────
@@ -256,7 +256,7 @@ def test_modelo_classico_sem_historico_nao_finge_veredito():
 def test_criterio_pos_hoc_usa_os_mesmos_defaults_do_callback():
     """Se os dois divergirem, o artefato contradiz a guarda que rodou."""
     pytest.importorskip("tensorflow")
-    from app.domain.models.training.trainer import CollapseAbort
+    from app.domain.models.training.callbacks import CollapseAbort
 
     params = inspect.signature(CollapseAbort.__init__).parameters
     assert params["patience"].default == stability.DEFAULT_COLLAPSE_PATIENCE
@@ -664,7 +664,10 @@ def test_classico_ajusta_so_no_treino_como_as_neurais():
     diferente, o `eer_threshold` do contrato de inferência é derivado desse
     mesmo val — ou seja, era um limiar IN-SAMPLE.
     """
-    source = (_PROJECT_ROOT / "benchmarks" / "runner.py").read_text(encoding="utf-8")
+    source = "".join(
+        (_PROJECT_ROOT / "benchmarks" / nome).read_text(encoding="utf-8")
+        for nome in ("fit_classical.py", "fit_neural.py")
+    )
     assert '"fit_splits": ["train", "val"] if len(yv) else ["train"]' not in source
     assert source.count('"fit_splits": ["train"],') >= 2  # clássico + neural
     assert '"probability_calibration"' in source
@@ -689,7 +692,7 @@ def test_comparacao_pareada_recusa_conjuntos_de_teste_diferentes():
 
     spec = importlib.util.spec_from_file_location(
         "_consolidate",
-        _PROJECT_ROOT / "scripts" / "reporting" / "consolidate_results.py",
+        _PROJECT_ROOT / "tools" / "reporting" / "consolidate_results.py",
     )
     consolidate = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(consolidate)
@@ -715,7 +718,7 @@ def test_comparacao_pareada_roda_com_fingerprint_unico():
 
     spec = importlib.util.spec_from_file_location(
         "_consolidate2",
-        _PROJECT_ROOT / "scripts" / "reporting" / "consolidate_results.py",
+        _PROJECT_ROOT / "tools" / "reporting" / "consolidate_results.py",
     )
     consolidate = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(consolidate)
@@ -785,7 +788,7 @@ def test_figuras_de_robustez_incluem_limiar_fixo_e_metricas_livres(tmp_path):
     """Acurácia sozinha não separa discriminação de deriva de limiar."""
     pytest.importorskip("matplotlib")
     image_module = pytest.importorskip("PIL.Image")
-    from scripts.reporting import consolidate_results as consolidate
+    from tools.reporting import consolidate_results as consolidate
 
     rows = _rows_para_figuras()
     consolidate.fig_robustness(rows, tmp_path)
@@ -809,7 +812,7 @@ def test_figuras_det_e_distribuicoes_usam_scores_canonicos_e_300_dpi(tmp_path):
     pytest.importorskip("matplotlib")
     image_module = pytest.importorskip("PIL.Image")
     np = pytest.importorskip("numpy")
-    from scripts.reporting import consolidate_results as consolidate
+    from tools.reporting import consolidate_results as consolidate
 
     rows = [
         {"model": "AASIST", "slug": "aasist"},
@@ -841,9 +844,9 @@ def test_figuras_det_e_distribuicoes_usam_scores_canonicos_e_300_dpi(tmp_path):
 
 
 def test_fragmento_declara_sete_keras_e_duas_ssl():
-    from scripts.reporting.update_tcc_latex import tables_fragment
+    from tools.reporting.update_tcc_latex import tables_fragment
 
-    fragment = tables_fragment("", "", "", "", "", "figures")
+    fragment = tables_fragment("", "", "", "", "", "", "figures")
 
     assert "sete entradas do caminho Keras" in fragment
     assert "WavLM Original e HuBERT Original" in fragment
@@ -860,11 +863,11 @@ def test_fragmento_declara_sete_keras_e_duas_ssl():
 
 
 def _load_script(name: str):
-    """Importa um script de `scripts/reporting/` pelo caminho (não é pacote)."""
+    """Importa um script de `tools/reporting/` pelo caminho (não é pacote)."""
     import importlib.util
 
     spec = importlib.util.spec_from_file_location(
-        f"_script_{name}", _PROJECT_ROOT / "scripts" / "reporting" / f"{name}.py"
+        f"_script_{name}", _PROJECT_ROOT / "tools" / "reporting" / f"{name}.py"
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -1272,7 +1275,7 @@ def test_dry_run_nao_escreve_nada(tmp_path):
 
 def test_artefato_e_copiado_para_dentro_do_run(tmp_path):
     """`data/models/` e global: outro run sobrescreve e o artefato some."""
-    from benchmarks.runner import _preserve_run_artifact
+    from benchmarks.common import _preserve_run_artifact
 
     shared = tmp_path / "models"
     shared.mkdir()
@@ -1296,7 +1299,7 @@ def test_artefato_e_copiado_para_dentro_do_run(tmp_path):
 
 
 def test_preserve_artifact_tolera_artefato_inexistente(tmp_path):
-    from benchmarks.runner import _preserve_run_artifact
+    from benchmarks.common import _preserve_run_artifact
 
     assert _preserve_run_artifact(None, tmp_path) == (None, None)
     assert _preserve_run_artifact(tmp_path / "nada.keras", tmp_path) == (None, None)
@@ -1309,11 +1312,12 @@ def test_runner_ssl_tambem_grava_o_fingerprint_do_pt():
     `not_verifiable` para sempre e a promoção não consegue detectar troca.
     """
     ssl = (
-        _PROJECT_ROOT / "scripts" / "benchmark" / "run_wavlm_original_benchmark.py"
+        _PROJECT_ROOT / "benchmarks" / "run_wavlm_original_benchmark.py"
     ).read_text(encoding="utf-8")
 
     assert '"model_artifact_fingerprint": _file_fingerprint(artifact)' in ssl
-    assert "_file_fingerprint," in ssl  # importado do runner canônico
+    # A função canônica, a mesma dos caminhos Keras e clássico.
+    assert "from benchmarks.common import _file_fingerprint" in ssl
 
 
 # ─── B2. speaker_ids persistido nos dois runners ───────────────────────────
@@ -1322,7 +1326,7 @@ def test_runner_ssl_tambem_grava_o_fingerprint_do_pt():
 def test_os_dois_runners_persistem_test_speaker_ids():
     keras = (_PROJECT_ROOT / "benchmarks" / "runner.py").read_text(encoding="utf-8")
     ssl = (
-        _PROJECT_ROOT / "scripts" / "benchmark" / "run_wavlm_original_benchmark.py"
+        _PROJECT_ROOT / "benchmarks" / "run_wavlm_original_benchmark.py"
     ).read_text(encoding="utf-8")
 
     assert '"test_speaker_ids"' in keras
@@ -1439,7 +1443,7 @@ def test_runner_ssl_nao_reintroduz_writers_paralelos():
     arquivos — que foi o que escondeu o CSV vazio por um run inteiro.
     """
     fonte = Path(__file__).resolve().parents[2] / (
-        "scripts/benchmark/run_wavlm_original_benchmark.py"
+        "benchmarks/run_wavlm_original_benchmark.py"
     )
     arvore = ast.parse(fonte.read_text(encoding="utf-8"))
     definidas = {n.name for n in ast.walk(arvore) if isinstance(n, ast.FunctionDef)}
@@ -1457,7 +1461,7 @@ def _sequential():
     """Importa o orquestrador sem executar o `main`."""
     import importlib.util
 
-    caminho = _PROJECT_ROOT / "scripts" / "benchmark" / "run_models_sequential.py"
+    caminho = _PROJECT_ROOT / "benchmarks" / "run_models_sequential.py"
     spec = importlib.util.spec_from_file_location("_seq_runner", caminho)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

@@ -12,11 +12,11 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers, models
 
-from app.utils.audio_utils import normalize_audio
 from app.domain.models.architectures.layers import (
     AttentionPoolingLayer,
     create_classification_head,
 )
+from app.utils.audio_utils import normalize_audio
 
 # Convenção do projeto: logger de módulo, SEM logging.basicConfig — configurar
 # o root logger no import contamina qualquer processo que importe este módulo

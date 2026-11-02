@@ -219,7 +219,7 @@ def test_runner_sequencial_repassa_as_flags():
 
     fonte = (
         Path(__file__).resolve().parents[2]
-        / "scripts/benchmark/run_models_sequential.py"
+        / "benchmarks/run_models_sequential.py"
     ).read_text(encoding="utf-8")
 
     for flag in ("--band-correction-hz", "--checkpoint-monitor"):
@@ -245,13 +245,13 @@ def test_ramo_ssl_tambem_recebe_a_correcao():
     import re
     from pathlib import Path as _P
 
-    from scripts.benchmark.run_models_sequential import _build_command
+    from benchmarks.run_models_sequential import _build_command
 
     fonte = inspect.getsource(_build_command)
     attrs = set(re.findall(r"args\.(\w+)", fonte)) | set(
         re.findall(r'getattr\(args, "(\w+)"', fonte)
     )
-    base = {a: "" for a in attrs}
+    base = dict.fromkeys(attrs, "")
     base.update(
         dataset="data/datasets/benchmark_dataset_15k.npz", epochs=2,
         snr=[20], train_aug_snr=[20], seed=42, batch_size=8,
@@ -321,5 +321,5 @@ def test_corte_zero_desliga_a_correcao_em_vez_de_zerar_o_sinal():
     # E o filtro em si nunca deve ser chamado com corte 0: se for, e erro
     # ruidoso, nao um corpus zerado.
     X = np.random.default_rng(0).standard_normal((4, 2048)).astype("float32")
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         apply_band_correction(X, cutoff_hz=0.0)

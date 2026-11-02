@@ -1,38 +1,23 @@
 import logging
 import os
-import sys
 from pathlib import Path
 
+from app import __version__
+from app.core.hf_compat import ensure_hf_folder_shim
 from app.core.performance import configure_runtime_environment
 
 configure_runtime_environment()
 
-# Adicionar raiz do projeto ao path ANTES de imports do projeto
-# (app/interfaces/gradio/app.py -> gradio -> interfaces -> app -> raiz)
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-
 # === Patch para compatibilidade Pydantic v2 + Gradio v4 ===
 # Deve ser ANTES de qualquer import de gradio ou pydantic
-from app.interfaces.gradio.schema_patch import (
+from app.interfaces.gradio.schema_patch import (  # noqa: E402
     patch_gradio_schema_validator,
-)  # noqa: E402
+)
 
 patch_gradio_schema_validator()
 
-# === Compatibilidade huggingface_hub ===
-# HfFolder foi removido em versoes >= 0.16. Criar shim para evitar
-# erros de import transitive de dependencias antigas.
-try:
-    from huggingface_hub import HfFolder  # noqa: F401
-except ImportError:
-    import huggingface_hub
-
-    class _HfFolder:
-        """Shim para HfFolder removido em huggingface_hub >= 0.16."""
-
-        pass
-
-    huggingface_hub.HfFolder = _HfFolder
+# HfFolder saiu do huggingface_hub >= 0.16, mas o Gradio 4 ainda o importa.
+ensure_hf_folder_shim()
 
 # FE.2: força backend matplotlib não-interativo ANTES de qualquer
 # import que importe pyplot transitivamente. Imprescindível em
@@ -44,10 +29,10 @@ if not os.environ.get("MPLBACKEND"):
 
 import gradio as gr  # noqa: E402
 
+from app.core.bootstrap import OperationalPaths  # noqa: E402
+
 # Configurar logging
 from app.core.feedback import configure_logging  # noqa: E402
-
-from app.core.bootstrap import OperationalPaths  # noqa: E402
 
 configure_logging(
     level=logging.INFO,
@@ -55,22 +40,6 @@ configure_logging(
     force=False,
 )
 logger = logging.getLogger("gradio_app")
-
-# Imports de Autenticação e DB
-# from app.core.db.setup import get_flask_app  # Unused at top level
-
-# --- Funções de Autenticação e Navegação (DESATIVADAS) ---
-# O sistema agora opera em modo aberto sem login obrigatório.
-# As funções abaixo foram mantidas comentadas para referência futura
-# ou reativação.
-
-# def login(username, password): ...
-# def register(...): ...
-# def recover(email): ...
-# def logout(): ...
-# def show_login(): ...
-# def show_register(): ...
-# def show_recovery(): ...
 
 # SEO e Metadados
 _HEAD_HTML = """
@@ -101,13 +70,7 @@ def _load_custom_css() -> str:
     # app/interfaces/gradio/app.py -> gradio -> interfaces -> app -> raiz
     _repo_root = Path(__file__).resolve().parents[3]
     css_path = (
-        _repo_root
-        / "app"
-        / "interfaces"
-        / "web"
-        / "static"
-        / "css"
-        / "gradio_theme.css"
+        _repo_root / "app" / "interfaces" / "gradio" / "static" / "css" / "theme.css"
     )
     try:
         css = css_path.read_text(encoding="utf-8")
@@ -245,11 +208,11 @@ def _render_status_bar() -> str:
     return f"""
     <div id="status_bar_inner">
       <span class="brand">
-        🛡️ SpeechChecker <span class="brand-version">v1.1</span>
+        🛡️ SpeechChecker <span class="brand-version">v{__version__}</span>
       </span>
       <span class="status-pill status-online">
         <span class="dot"></span>
-        <span class="label">Online</span>
+        <span class="label">Operacional</span>
       </span>
       <span class="status-pill {gpu_class}">
         {gpu_short}
@@ -296,7 +259,7 @@ def _clear_feedback_ui():
 
 
 # =====================================================================
-# Interface Principal (UI Fase 1 — 5 tabs role-based)
+# Interface principal (cinco seções funcionais)
 # =====================================================================
 
 def create_interface() -> "gr.Blocks":
@@ -329,7 +292,7 @@ def create_interface() -> "gr.Blocks":
                 with gr.Column(scale=8, min_width=0):
                     status_bar_html = gr.HTML(_render_status_bar(), elem_id="status_bar")
                 with gr.Column(scale=1, min_width=120):
-                    # UI Fase 3 — Toggles de tema e idioma
+                    # Preferência visual do tema, persistida no navegador.
                     with gr.Row():
                         theme_toggle_btn = gr.Button(
                             "🌙",
@@ -349,7 +312,7 @@ def create_interface() -> "gr.Blocks":
                     feedback_read_btn = gr.Button("Marcar lidas", size="sm", scale=0)
                     feedback_clear_btn = gr.Button("Limpar histórico", size="sm", scale=0)
 
-            # Navbar consolidada (5 seções role-based):
+            # Navegação visual única (cinco seções):
             # 🏠 Painel · 🎯 Detectar · 🔬 Investigar · 🎓 Treinar · 🗂️ Gerenciar
             with gr.Tabs():
                 # 🏠 Painel — landing page com KPIs, status e atividade recente
@@ -431,7 +394,7 @@ def create_interface() -> "gr.Blocks":
                 outputs=[status_bar_html, feedback_html],
             )
 
-            # ───── UI Fase 3: Tema + Idioma ─────
+            # ───── Preferência de tema ─────
             # Estados em memória do servidor (resetam ao recarregar página)
             theme_state = gr.State("dark")
 
@@ -500,12 +463,8 @@ def create_interface() -> "gr.Blocks":
                         // adiciona rótulos acessíveis para leitores de tela.
                         try {
                             const sel = 'button.toolbar-toggle';
-                            const labels = [
-                                'Alternar tema claro/escuro',
-                                'Alternar idioma (PT/EN)',
-                            ];
-                            document.querySelectorAll(sel).forEach((btn, i) => {
-                                const label = labels[i] || 'Alternar';
+                            document.querySelectorAll(sel).forEach((btn) => {
+                                const label = 'Alternar tema claro/escuro';
                                 btn.setAttribute('aria-label', label);
                                 btn.setAttribute('title', label);
                             });
@@ -532,7 +491,7 @@ demo.queue(default_concurrency_limit=20, max_size=100)
 # /api/v1/*) é montada uma única vez em `app.interfaces.web.main_fastapi`,
 # que já importa `demo` daqui para fazer `gr.mount_gradio_app(...)`. Este
 # módulo não duplica mais essa montagem (consolidação — havia uma segunda
-# cópia quase idêntica de setup_security/middleware/routers/static/templates
+# cópia quase idêntica de setup_security/middleware/routers
 # aqui, com um bug de allowed_paths incompleto no `main_fastapi.py` que só
 # foi corrigido num dos dois lugares até então).
 #

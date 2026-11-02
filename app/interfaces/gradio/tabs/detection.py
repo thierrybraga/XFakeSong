@@ -2,6 +2,13 @@ import json
 import logging
 from pathlib import Path
 
+# Componentes de UI compartilhados (cabeçalho padronizado, callout, divisor)
+from app.interfaces.gradio.utils.components import (  # noqa: E402
+    info_callout,
+    page_header,
+    section_divider,
+)
+
 # FE.2 + FE.8: importa helpers compartilhados ANTES de matplotlib.pyplot.
 # `plotting` força backend Agg (necessário em ambiente Gradio threaded).
 from app.interfaces.gradio.utils.plotting import (
@@ -17,13 +24,6 @@ from app.interfaces.gradio.utils.plotting import (
     style_ax,
 )
 
-# Componentes de UI compartilhados (cabeçalho padronizado, callout, divisor)
-from app.interfaces.gradio.utils.components import (  # noqa: E402
-    info_callout,
-    page_header,
-    section_divider,
-)
-
 # Aliases legados para minimizar diff em código existente
 _PLOT_BG = PLOT_FACE
 _PLOT_FACE = PLOT_FACE
@@ -34,15 +34,15 @@ _PLOT_ACCENT2 = PLOT_ACCENT2
 _PLOT_DANGER = PLOT_DANGER
 _style_ax = style_ax
 
+import gradio as gr  # noqa: E402
 import librosa  # noqa: E402
 import librosa.display  # noqa: E402
 import numpy as np  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
 
-import gradio as gr  # noqa: E402
 from app.core.contracts.audio import AudioData  # noqa: E402
-from app.interfaces.gradio.utils.plotting import new_figure
-from app.interfaces.gradio.utils.components import ui_safe
+from app.interfaces.gradio.utils.components import ui_safe  # noqa: E402
+from app.interfaces.gradio.utils.plotting import new_figure  # noqa: E402
 
 # Configurar logging
 logger = logging.getLogger("gradio_detection_tab")
@@ -535,7 +535,10 @@ def process_stream(new_chunk, state):
                                 color=_PLOT_ACCENT2,
                                 linestyle='--',
                                 alpha=0.6,
-                                label=f'Pitch Est. ({int(f0_est)}Hz)'
+                                label=(
+                                    "Frequência fundamental estimada "
+                                    f"({int(f0_est)} Hz)"
+                                )
                             )
         except Exception as e:
             # FE.7: pitch estimation é best-effort; log em debug
@@ -707,7 +710,7 @@ def create_detection_tab():
                         label="Análise Prosódica (Pitch/Energia)")
 
             with gr.Accordion("Metadados Técnicos (JSON)", open=False):
-                json_output = gr.JSON(label="Raw Output")
+                json_output = gr.JSON(label="Saída técnica (JSON)")
 
         def update_variants(arch_name):
             try:
@@ -889,7 +892,7 @@ def create_detection_tab():
             with gr.Column():
                 plot_pie = gr.Plot(label="Distribuição de Resultados")
             with gr.Column():
-                plot_conf_dist = gr.Plot(label="Distribuição de Confiança")
+                plot_conf_dist = gr.Plot(label="Distribuição de P(fake)")
 
         batch_table = gr.Dataframe(
             label="Resultados por Arquivo",

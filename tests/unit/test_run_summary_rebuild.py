@@ -27,7 +27,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 def _rebuild_module():
     spec = importlib.util.spec_from_file_location(
         "_rebuild_run_summary",
-        _PROJECT_ROOT / "scripts" / "reporting" / "rebuild_run_summary.py",
+        _PROJECT_ROOT / "tools" / "reporting" / "rebuild_run_summary.py",
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

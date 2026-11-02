@@ -1,12 +1,10 @@
 import logging
 import tempfile
 
-import pandas as pd
-from sqlalchemy import desc
-
 import gradio as gr
-from app.core.db.session import SessionLocal
-from app.domain.models.analysis import AnalysisResult
+import pandas as pd
+
+from app.dependencies import get_analysis_result_repository
 from app.interfaces.gradio.utils.components import ui_safe
 from app.utils.file_utils import get_gradio_exports_directory
 
@@ -17,31 +15,21 @@ def get_unique_models():
     """
     Busca os nomes únicos dos modelos salvos no banco de dados.
     """
-    db = SessionLocal()
     try:
-        models = db.query(
-            AnalysisResult.model_name
-        ).distinct().all()
-        # models é uma lista de tuplas [('model1',), ('model2',)]
-        model_list = [m[0] for m in models if m[0]]
+        model_list = get_analysis_result_repository().distinct_model_names()
         return ["Todos"] + sorted(model_list)
     except Exception as e:
         logger.error(f"Erro ao buscar modelos: {e}")
         return ["Todos"]
-    finally:
-        db.close()
 
 
 def export_history_csv():
     """
     Exporta o histórico completo para um arquivo CSV temporário.
     """
-    db = SessionLocal()
     try:
         # Busca todos os registros para exportação
-        results = db.query(AnalysisResult).order_by(
-            desc(AnalysisResult.created_at)
-        ).all()
+        results = get_analysis_result_repository().list_recent()
 
         data = []
         for r in results:
@@ -75,46 +63,37 @@ def export_history_csv():
     except Exception as e:
         logger.error(f"Erro ao exportar CSV: {e}")
         return None
-    finally:
-        db.close()
 
 
+@ui_safe("Falha ao carregar o histórico")
 def load_history(filter_model=None, filter_result=None, search_query=None):
     """
     Carrega o histórico de análises do banco de dados com filtros e busca.
     """
-    db = SessionLocal()
-    try:
-        query = db.query(AnalysisResult).order_by(desc(AnalysisResult.created_at))
+    model_name = filter_model if filter_model and filter_model != "Todos" else None
+    is_fake = None
+    if filter_result and filter_result != "Todos":
+        is_fake = filter_result == "Fake"
 
-        if filter_model and filter_model != "Todos":
-            query = query.filter(AnalysisResult.model_name == filter_model)
+    results = get_analysis_result_repository().search(
+        model_name=model_name,
+        is_fake=is_fake,
+        filename_contains=search_query or None,
+        limit=500,
+    )
 
-        if filter_result and filter_result != "Todos":
-            is_fake_val = True if filter_result == "Fake" else False
-            query = query.filter(AnalysisResult.is_fake == is_fake_val)
-
-        if search_query:
-            query = query.filter(
-                AnalysisResult.filename.ilike(f"%{search_query}%")
-            )
-
-        results = query.limit(500).all()  # Aumentado para 500
-
-        data = []
-        for r in results:
-            data.append([
-                r.id,
-                r.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-                r.filename or "N/A",
-                "FAKE" if r.is_fake else "REAL",
-                f"{r.confidence * 100:.2f}%",
-                r.model_name or "N/A",
-                f"{r.duration_seconds:.2f}s" if r.duration_seconds else "N/A"
-            ])
-        return data
-    finally:
-        db.close()
+    data = []
+    for r in results:
+        data.append([
+            r.id,
+            r.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+            r.filename or "N/A",
+            "FAKE" if r.is_fake else "REAL",
+            f"{r.confidence * 100:.2f}%",
+            r.model_name or "N/A",
+            f"{r.duration_seconds:.2f}s" if r.duration_seconds else "N/A"
+        ])
+    return data
 
 
 def get_details_and_id(evt: gr.SelectData, history_data):
@@ -128,7 +107,6 @@ def get_details_and_id(evt: gr.SelectData, history_data):
             gr.update(interactive=False)
         )
 
-    db = SessionLocal()
     try:
         row_index = evt.index[0]
         # O ID está na primeira coluna (índice 0)
@@ -136,7 +114,7 @@ def get_details_and_id(evt: gr.SelectData, history_data):
         # Dataframe do Gradio em eventos
         analysis_id = int(history_data.iloc[row_index, 0])
 
-        result = db.query(AnalysisResult).get(analysis_id)
+        result = get_analysis_result_repository().get(analysis_id)
         if not result:
             return (
                 "Análise não encontrada.",
@@ -167,38 +145,26 @@ def get_details_and_id(evt: gr.SelectData, history_data):
             None,
             gr.update(interactive=False)
         )
-    finally:
-        db.close()
 
 
 def delete_analysis(analysis_id):
     if not analysis_id:
         return "Nenhuma análise selecionada."
 
-    db = SessionLocal()
     try:
-        result = db.query(AnalysisResult).get(analysis_id)
-        if result:
-            db.delete(result)
-            db.commit()
+        if get_analysis_result_repository().delete(analysis_id):
             return "Análise excluída com sucesso."
         return "Análise não encontrada."
     except Exception as e:
         return f"Erro ao excluir: {e}"
-    finally:
-        db.close()
 
 
 def clear_all_history():
-    db = SessionLocal()
     try:
-        db.query(AnalysisResult).delete()
-        db.commit()
+        get_analysis_result_repository().delete_all()
         return "Histórico limpo com sucesso."
     except Exception as e:
         return f"Erro ao limpar histórico: {e}"
-    finally:
-        db.close()
 
 
 def create_history_tab():

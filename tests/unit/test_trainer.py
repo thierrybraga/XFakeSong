@@ -6,13 +6,14 @@ parar o treino ou selecionar o checkpoint têm arquivos próprios:
 `test_resumable_checkpoint.py` e `test_guarded_checkpoint_restore.py`.
 """
 
-import pytest
-import numpy as np
 from unittest.mock import MagicMock, patch
-from app.domain.models.training.trainer import ModelTrainer
-from app.core.config.settings import TrainingConfig
 
+import numpy as np
+import pytest
+
+from app.core.config.settings import TrainingConfig
 from app.core.contracts.base import ProcessingStatus
+from app.domain.models.training.trainer import ModelTrainer
 
 
 @pytest.fixture

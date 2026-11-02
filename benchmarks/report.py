@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import csv
 import json
-import os
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List
 
 import numpy as np
+
+from app.utils.file_storage import break_hardlinks_in_tree
 
 logger = logging.getLogger("benchmark")
 
@@ -1534,8 +1536,14 @@ def _write_tcc_report(results: Dict[str, Any], path: Path) -> None:
 
 def write_all(results: Dict[str, Any], output_dir: str) -> None:
     """Grava todos os artefatos do benchmark em `output_dir`."""
-    _apply_style()  # tipografia/qualidade consistente em todas as figuras
     out = Path(output_dir)
+    break_hardlinks_in_tree(
+        out,
+        exclude=lambda path: bool(
+            {"models", "_superseded"}.intersection(path.relative_to(out).parts)
+        ),
+    )
+    _apply_style()  # tipografia/qualidade consistente em todas as figuras
     (out / "tables").mkdir(parents=True, exist_ok=True)
     (out / "figures").mkdir(parents=True, exist_ok=True)
 

@@ -15,7 +15,7 @@ from __future__ import annotations
 import pytest
 
 from benchmarks.config import EXTENDED_MODEL_MANIFEST, OFFICIAL_TCC_MODEL_MANIFEST
-from benchmarks.runner import (
+from benchmarks.provenance import (
     _architecture_provenance,
     _env_snapshot,
     _git_provenance,

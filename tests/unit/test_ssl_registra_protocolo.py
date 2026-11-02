@@ -1,7 +1,7 @@
 """O artefato SSL declara o protocolo sob o qual rodou.
 
 SUJEITO: o bloco ``config`` do ``results.json`` que
-``scripts/benchmark/run_wavlm_original_benchmark.py`` grava, comparado ao que
+``benchmarks/run_wavlm_original_benchmark.py`` grava, comparado ao que
 ``benchmarks/runner.py`` grava para as 9 entradas Keras.
 
 Por que este teste existe
@@ -35,7 +35,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-RUNNER_SSL = ROOT / "scripts" / "benchmark" / "run_wavlm_original_benchmark.py"
+RUNNER_SSL = ROOT / "benchmarks" / "run_wavlm_original_benchmark.py"
 
 
 @pytest.fixture(scope="module")
@@ -53,7 +53,7 @@ def test_politica_de_banda_e_igual_a_do_runner_keras(runner_ssl):
     Se as duas divergirem, os artefatos das 11 entradas deixam de ser
     comparáveis por leitura direta, que é o ponto de gravar a política.
     """
-    from benchmarks.runner import _band_correction_policy
+    from benchmarks.protocol import _band_correction_policy
 
     class _Cfg:
         band_correction_hz = 7500.0

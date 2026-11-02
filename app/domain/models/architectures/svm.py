@@ -9,9 +9,8 @@ Agora integrado com features extraídas da pasta segmented.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Tuple
 
-import numpy as np
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
@@ -19,8 +18,6 @@ from sklearn.svm import SVC
 # Project imports
 from app.domain.models.architectures.classical_ml_helpers import (
     BaseClassicalModel,
-    evaluate_model,
-    optimize_hyperparameters,
     wrap_calibration,
 )
 
@@ -181,45 +178,6 @@ def create_svm_model(
     )
 
     return model
-
-
-def optimize_svm_hyperparameters(
-    X_train: np.ndarray,
-    y_train: np.ndarray,
-    param_grid: Optional[Dict[str, List]] = None,
-    cv: int = 5,
-    scoring: str = 'accuracy',
-    n_jobs: int = -1
-) -> Tuple[SVMModel, Dict[str, Any]]:
-    """
-    Otimiza hiperparâmetros do SVM usando Grid Search.
-    """
-    if param_grid is None:
-        param_grid = [dict(bloco) for bloco in SVM_PARAM_GRID]
-
-    return optimize_hyperparameters(
-        model_class=SVMModel,
-        X_train=X_train,
-        y_train=y_train,
-        param_grid=param_grid,
-        base_estimator=SVC(probability=True, random_state=42),
-        step_name='svm',
-        cv=cv,
-        scoring=scoring,
-        n_jobs=n_jobs
-    )
-
-
-def evaluate_svm_model(
-    model: SVMModel,
-    X_test: np.ndarray,
-    y_test: np.ndarray,
-    verbose: bool = True
-) -> Dict[str, Any]:
-    """
-    Avalia o desempenho do modelo SVM.
-    """
-    return evaluate_model(model, X_test, y_test, None, verbose)
 
 
 # Função de compatibilidade com o sistema

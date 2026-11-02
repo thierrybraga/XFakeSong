@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import subprocess
@@ -123,7 +124,10 @@ def test_main_bootstrap_twice_from_another_cwd(tmp_path):
             ]
         ),
     }
-    env.pop("DATABASE_URL", None)
+    # Explícito, nunca removido: sem a variável o `main.py` relê a do `.env` e o
+    # bootstrap roda no `data/app.db` real — a cada `make test`, no banco do
+    # usuário. O `.env` não sobrescreve o que já está no ambiente.
+    env["DATABASE_URL"] = f"sqlite:///{(storage / 'app.db').as_posix()}"
     command = [sys.executable, str(ROOT / "main.py"), "--bootstrap-dirs"]
     first = subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True)
     second = subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True)
@@ -132,3 +136,91 @@ def test_main_bootstrap_twice_from_another_cwd(tmp_path):
     assert (storage / "datasets" / "real").is_dir()
     assert (storage / "datasets" / "fake").is_dir()
     assert inspect_database(storage / "app.db") == DatabaseState.COMPATIBLE
+
+
+
+def test_importar_a_composicao_nao_cria_o_engine():
+    """O bootstrap define `DATABASE_URL` antes de o `engine` nascer.
+
+    `app.core.db.session` lê a variável no import. Se importar
+    `app.dependencies` já criasse o `engine`, o `main.py --bootstrap-dirs`
+    gravaria o schema no banco padrão, não em `XFAKE_STORAGE_DIR/app.db` —
+    e `test_main_bootstrap_twice_from_another_cwd` só enxerga isso quando o
+    `.env` local não define `DATABASE_URL`. Subprocesso: neste processo a
+    sessão já foi importada pelo `conftest`.
+    """
+    codigo = "; ".join(
+        [
+            "import sys",
+            "import app.dependencies",
+            "carregados = [m for m in ('app.core.db.session', 'tensorflow')"
+            " if m in sys.modules]",
+            "assert not carregados, carregados",
+        ]
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", codigo],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+
+
+def test_bootstrap_da_composicao_passa_a_semeadura_ao_core(monkeypatch):
+    """`app.core` não importa o domínio: a semeadura entra pela composição."""
+    import app.dependencies as composicao
+
+    recebido = {}
+
+    def _core(root, *, initialize_database, seed_database):
+        recebido.update(
+            root=root, initialize_database=initialize_database, seed=seed_database
+        )
+        return "relatorio"
+
+    monkeypatch.setattr(composicao, "bootstrap_infrastructure", _core)
+    assert composicao.bootstrap_application("raiz") == "relatorio"
+    assert recebido == {
+        "root": "raiz",
+        "initialize_database": True,
+        "seed": composicao.seed_architecture_configs,
+    }
+
+
+def test_semeadura_cobre_o_registry_e_e_idempotente(monkeypatch):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    import app.dependencies as composicao
+    from app.core.db import models
+    from app.core.db.repositories.architecture_configs import (
+        ArchitectureConfigRepository,
+    )
+    from app.core.db.session import Base
+    from app.domain.models.architectures.registry import architecture_registry
+
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    fabrica = sessionmaker(bind=engine)
+    repositorio = ArchitectureConfigRepository(fabrica)
+    monkeypatch.setattr(
+        composicao, "get_architecture_config_repository", lambda: repositorio
+    )
+
+    composicao.seed_architecture_configs()
+    composicao.seed_architecture_configs()
+
+    with fabrica() as db:
+        linhas = db.query(models.ArchitectureConfig).all()
+    registry = architecture_registry.get_all_architectures()
+    assert sorted(linha.architecture_name for linha in linhas) == sorted(registry)
+    for linha in linhas:
+        assert linha.variant_name == "default"
+        # JSON não tem tupla: `patch_size=(16, 16)` volta como lista.
+        esperado = json.loads(json.dumps(registry[linha.architecture_name].default_params))
+        assert linha.parameters == esperado
+    engine.dispose()

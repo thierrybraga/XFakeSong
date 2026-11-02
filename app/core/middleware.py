@@ -16,6 +16,8 @@ import uuid
 from contextvars import ContextVar
 from typing import Any, Callable, Optional
 
+from app.core.config.env import env_flag, env_int
+
 # Web layer OPCIONAL: em ambientes de treino/Colab (sem FastAPI/Starlette), este
 # módulo ainda precisa importar — `get_request_id`/`request_id_ctx` são usados pelo
 # domínio. A classe ASGI e `setup_middleware` só rodam dentro da API. Com
@@ -39,7 +41,6 @@ class _PayloadTooLarge(Exception):
 request_id_ctx: ContextVar[Optional[str]] = ContextVar("request_id", default=None)
 
 _DEFAULT_NOISY_PREFIXES = (
-    "/static/",
     "/assets/",
     "/favicon",
     "/gradio/queue/",
@@ -53,20 +54,6 @@ def get_request_id() -> Optional[str]:
     """Retorna o request ID da request atual."""
 
     return request_id_ctx.get()
-
-
-def _env_bool(name: str, default: bool = False) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _env_int(name: str, default: int) -> int:
-    try:
-        return int(os.getenv(name, str(default)))
-    except (TypeError, ValueError):
-        return default
 
 
 def _client_host(scope: Scope) -> str:
@@ -84,11 +71,11 @@ def _header_value(scope: Scope, name: bytes) -> Optional[str]:
 
 
 def _should_log_request(path: str, status: int, elapsed_ms: float) -> bool:
-    if _env_bool("XFAKE_LOG_EVERY_REQUEST", False):
+    if env_flag("XFAKE_LOG_EVERY_REQUEST", False):
         return True
     if status >= 400:
         return True
-    slow_ms = _env_int("XFAKE_SLOW_REQUEST_MS", 1500)
+    slow_ms = env_int("XFAKE_SLOW_REQUEST_MS", 1500)
     if elapsed_ms >= slow_ms:
         return True
     if path.startswith("/api/") and not any(
@@ -122,7 +109,7 @@ def _build_security_headers() -> dict:
         "Cross-Origin-Opener-Policy": "same-origin",
         "Permissions-Policy": "camera=(), geolocation=(), microphone=(self)",
     }
-    if _env_bool("XFAKE_ENABLE_HSTS", False):
+    if env_flag("XFAKE_ENABLE_HSTS", False):
         headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
     csp = os.getenv("XFAKE_CSP")
     if csp and csp.strip():
@@ -270,7 +257,7 @@ def setup_middleware(app: FastAPI) -> None:
     este middleware como camada única para reduzir overhead e ruído.
     """
 
-    max_upload_mb = _env_int("XFAKE_MAX_UPLOAD_MB", 100)
+    max_upload_mb = env_int("XFAKE_MAX_UPLOAD_MB", 100)
     app.add_middleware(
         SystemASGIMiddleware,
         max_size_mb=max_upload_mb,

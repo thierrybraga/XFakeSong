@@ -220,46 +220,6 @@ class SafeGroupNormalization(layers.Layer):
         return config
 
 
-def replace_batch_normalization(layer_name: str, **kwargs) -> layers.Layer:
-    """
-    Substitui BatchNormalization por uma alternativa segura.
-
-    Args:
-        layer_name: Nome da camada de normalização desejada
-        **kwargs: Argumentos para a camada
-
-    Returns:
-        Camada de normalização segura
-    """
-    normalization_map = {
-        'instance': SafeInstanceNormalization,
-        'layer': SafeLayerNormalization,
-        'group': SafeGroupNormalization
-    }
-
-    if layer_name.lower() not in normalization_map:
-        logger.warning(
-            f"Tipo de normalização '{layer_name}' não reconhecido. Usando LayerNormalization.")
-        return SafeLayerNormalization(**kwargs)
-
-    return normalization_map[layer_name.lower()](**kwargs)
-
-
-def get_safe_normalization_layer(
-        normalization_type: str = "layer", **kwargs) -> layers.Layer:
-    """
-    Retorna uma camada de normalização segura que previne data leakage.
-
-    Args:
-        normalization_type: Tipo de normalização ('instance', 'layer', 'group')
-        **kwargs: Argumentos para a camada de normalização
-
-    Returns:
-        Camada de normalização segura
-    """
-    return replace_batch_normalization(normalization_type, **kwargs)
-
-
 # Registrar camadas customizadas
 tf.keras.utils.get_custom_objects().update({
     'SafeInstanceNormalization': SafeInstanceNormalization,

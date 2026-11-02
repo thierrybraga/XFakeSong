@@ -1,24 +1,24 @@
 import logging
 
+import gradio as gr  # noqa: E402
+import librosa  # noqa: E402
+import librosa.display  # noqa: E402
+import numpy as np  # noqa: E402
+
+from app.core.contracts.audio import AudioData, FeatureType  # noqa: E402
+from app.domain.services.feature_extraction_service import (  # noqa: E402
+    AudioFeatureExtractionService,
+    ExtractionConfig,
+)
+
 # FE.8: helpers compartilhados (configura matplotlib Agg + paleta dark)
 from app.interfaces.gradio.utils.plotting import (
     PLOT_BG,
     PLOT_FACE,
     PLOT_GRID,
     PLOT_TEXT,
+    new_figure,
     style_ax,
-)
-
-import librosa  # noqa: E402
-import librosa.display  # noqa: E402
-import numpy as np  # noqa: E402
-
-import gradio as gr  # noqa: E402
-from app.core.contracts.audio import AudioData, FeatureType  # noqa: E402
-from app.interfaces.gradio.utils.plotting import new_figure
-from app.domain.services.feature_extraction_service import (  # noqa: E402
-    AudioFeatureExtractionService,
-    ExtractionConfig,
 )
 
 logger = logging.getLogger("gradio_features_tab")
@@ -40,13 +40,13 @@ def _style_feat_ax(ax, fig, title=""):
 
 
 def create_features_tab():
-    with gr.Tab("🎼 Features"):
+    with gr.Tab("🎼 Características"):
         from app.interfaces.gradio.utils.components import page_header
 
         page_header(
             "🎼",
-            "Extração de Features",
-            "Visualize features espectrais, cepstrais, prosódicas e temporais "
+            "Extração de características",
+            "Visualize características espectrais, cepstrais, prosódicas e temporais "
             "extraídas de um arquivo de áudio.",
         )
 
@@ -57,7 +57,7 @@ def create_features_tab():
                 feature_type_dropdown = gr.Dropdown(
                     choices=[ft.value for ft in FeatureType],
                     value=FeatureType.SPECTRAL.value,
-                    label="Tipo de Feature"
+                    label="Tipo de característica"
                 )
                 normalize_chk = gr.Checkbox(value=True, label="Normalizar")
                 extract_btn = gr.Button(
@@ -67,12 +67,15 @@ def create_features_tab():
                 with gr.Tabs():
                     with gr.Tab("Visualização Gráfica"):
                         gr.Markdown("#### Forma de Onda")
-                        wave_output = gr.Plot(label="Waveform")
+                        wave_output = gr.Plot(label="Forma de onda")
                         with gr.Row(elem_classes="responsive-grid plot-grid"):
                             with gr.Column():
-                                gr.Markdown("#### Feature Heatmap")
+                                gr.Markdown(
+                                    "#### Mapa de calor de características"
+                                )
                                 plot_output = gr.Plot(
-                                    label="Visualização da Feature")
+                                    label="Visualização da característica"
+                                )
                             with gr.Column():
                                 gr.Markdown("#### Distribuição de Valores")
                                 hist_output = gr.Plot(label="Histograma")
@@ -125,7 +128,7 @@ def create_features_tab():
 
                 # 1. Plot Waveform
                 fig_wave, ax_wave = new_figure(figsize=(10, 3))
-                _style_feat_ax(ax_wave, fig_wave, "Waveform (Time Domain)")
+                _style_feat_ax(ax_wave, fig_wave, "Forma de onda (domínio temporal)")
                 librosa.display.waveshow(
                     audio_data.samples, sr=audio_data.sample_rate,
                     ax=ax_wave, color="#3b82f6", alpha=0.85)
@@ -133,7 +136,9 @@ def create_features_tab():
 
                 # 2. Plot Feature Heatmap
                 fig_feat, ax_feat = new_figure(figsize=(10, 6))
-                _style_feat_ax(ax_feat, fig_feat, "Feature Heatmap")
+                _style_feat_ax(
+                    ax_feat, fig_feat, "Mapa de calor de características"
+                )
                 plotted = False
                 first_key = list(feature_data.keys())[
                     0] if feature_data else None
@@ -145,7 +150,7 @@ def create_features_tab():
                     main_feature_array = S_db
                     if S_db.ndim == 1:
                         ax_feat.plot(S_db, color="#3b82f6")
-                        ax_feat.set_title("Spectral Feature (Mean)",
+                        ax_feat.set_title("Característica espectral (média)",
                                           color=_PLOT_TEXT, fontweight="600")
                     else:
                         img = librosa.display.specshow(
@@ -221,7 +226,7 @@ def create_features_tab():
                 fig_hist.tight_layout()
 
                 # --- Estatísticas Detalhadas ---
-                stats_md = "### 📊 Estatísticas das Features\n\n"
+                stats_md = "### 📊 Estatísticas das características\n\n"
                 stats_md += f"**Duração do Áudio:** {audio_data.duration:.2f}s\n"
                 stats_md += f"**Sample Rate:** {audio_data.sample_rate} Hz\n\n"
 

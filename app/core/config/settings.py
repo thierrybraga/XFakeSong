@@ -4,12 +4,13 @@ Este módulo centraliza todas as configurações seguindo o princípio DRY
 e facilita a manutenção e modificação de parâmetros do sistema.
 """
 
-import json
 import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
+
+from app import __version__
 
 from .paths import resolve_results_dir
 
@@ -36,7 +37,11 @@ class LogLevel(Enum):
 
 @dataclass
 class PathConfig:
-    """Configurações de caminhos."""
+    """Configurações de caminhos legadas, mantidas para compatibilidade.
+
+    Novos componentes devem resolver os diretórios operacionais por
+    :class:`app.core.bootstrap.OperationalPaths`, que é a fonte canônica.
+    """
 
     base_dir: Path = field(default_factory=lambda: PROJECT_ROOT)
     data_dir: Path = field(default_factory=lambda: Path("./data/datasets"))
@@ -185,7 +190,7 @@ class TrainingConfig:
     # (val_accuracy no nível do acaso) por `collapse_patience` épocas
     # seguidas, ou quando val_loss fica não-finito por `collapse_nan_patience`.
     # No benchmark, o Conformer queimou 85 épocas nesse estado. Ver
-    # app/domain/models/training/trainer.py::CollapseAbort.
+    # app/domain/models/training/callbacks.py::CollapseAbort.
     abort_on_collapse: bool = True
     collapse_patience: int = 15
     collapse_nan_patience: int = 3
@@ -428,11 +433,15 @@ class SecurityConfig:
 
 @dataclass
 class SystemConfig:
-    """Configuração principal do sistema."""
+    """Configuração principal legada do sistema.
+
+    A resolução de diretórios por ``paths`` será removida em uma migração
+    futura; componentes novos devem usar ``OperationalPaths``.
+    """
 
     environment: Environment = Environment.DEVELOPMENT
     debug: bool = True
-    version: str = "1.0.0"
+    version: str = __version__
 
     # Configurações por módulo
     paths: PathConfig = field(default_factory=PathConfig)
@@ -456,50 +465,6 @@ class SystemConfig:
 
         # Criar diretórios necessários
         self.paths.create_directories()
-
-    @classmethod
-    def from_file(cls, config_path: Union[str, Path]) -> "SystemConfig":
-        """Carrega configuração de arquivo JSON."""
-        config_path = Path(config_path)
-        if not config_path.exists():
-            raise FileNotFoundError(
-                f"Arquivo de configuração não encontrado: {config_path}"
-            )
-
-        with open(config_path, "r", encoding="utf-8") as f:
-            config_data = json.load(f)
-
-        return cls(**config_data)
-
-    def to_file(self, config_path: Union[str, Path]):
-        """Salva configuração em arquivo JSON."""
-        config_path = Path(config_path)
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Converter para dicionário serializável
-        config_dict = self._to_serializable_dict()
-
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(config_dict, f, indent=2, ensure_ascii=False)
-
-    def _to_serializable_dict(self) -> Dict[str, Any]:
-        """Converte configuração para dicionário serializável."""
-
-        def convert_value(value):
-            if isinstance(value, Path):
-                return str(value)
-            elif isinstance(value, Enum):
-                return value.value
-            elif hasattr(value, "__dict__"):
-                return {k: convert_value(v) for k, v in value.__dict__.items()}
-            elif isinstance(value, (list, tuple)):
-                return [convert_value(item) for item in value]
-            elif isinstance(value, dict):
-                return {k: convert_value(v) for k, v in value.items()}
-            else:
-                return value
-
-        return convert_value(self)
 
     @classmethod
     def from_env(cls) -> "SystemConfig":
@@ -600,16 +565,3 @@ def get_config() -> SystemConfig:
     if _config_instance is None:
         _config_instance = SystemConfig.from_env()
     return _config_instance
-
-
-def set_config(config: SystemConfig):
-    """Define instância global de configuração."""
-    global _config_instance
-    _config_instance = config
-
-
-def load_config_from_file(config_path: Union[str, Path]):
-    """Carrega e define configuração de arquivo."""
-    config = SystemConfig.from_file(config_path)
-    set_config(config)
-    return config

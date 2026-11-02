@@ -6,12 +6,14 @@ integração (dois módulos conversando): aqui o critério é o resultado que o
 usuário vê.
 """
 
-import pytest
-import numpy as np
 from unittest.mock import MagicMock, patch
-from app.domain.services.detection_service import DetectionService
-from app.core.contracts.base import ProcessingStatus
+
+import numpy as np
+import pytest
+
 from app.core.contracts.audio import AudioData
+from app.core.contracts.base import ProcessingStatus
+from app.domain.services.detection_service import DetectionService
 
 
 @pytest.fixture

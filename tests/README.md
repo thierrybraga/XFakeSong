@@ -18,12 +18,12 @@ Os markers são aplicados automaticamente por `tests/conftest.py`.
 ## Comandos
 
 ```bash
-./scripts/ops/run_tests.sh fast
-./scripts/ops/run_tests.sh unit
-./scripts/ops/run_tests.sh api
-./scripts/ops/run_tests.sh integration
-./scripts/ops/run_tests.sh smoke
-./scripts/ops/run_tests.sh cov
+./tools/ops/run_tests.sh fast
+./tools/ops/run_tests.sh unit
+./tools/ops/run_tests.sh api
+./tools/ops/run_tests.sh integration
+./tools/ops/run_tests.sh smoke
+./tools/ops/run_tests.sh cov
 ```
 
 `pytest tests/` exclui `smoke` por padrão via `pyproject.toml`.
@@ -35,5 +35,5 @@ Os markers são aplicados automaticamente por `tests/conftest.py`.
 - Mocke rede, downloads, pesos grandes e I/O caro.
 - Não grave artefatos versionáveis em `data/models/`, `data/results/` ou datasets reais.
 - Funções auxiliares não coletáveis devem começar com `_`.
-- Notebooks ativos são gerados por `scripts/ops/build_notebooks.py`; teste com
+- Notebooks ativos são gerados por `tools/ops/build_notebooks.py`; teste com
   `pytest tests/unit/test_notebooks_compile.py -q`.

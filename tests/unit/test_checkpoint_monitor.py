@@ -15,7 +15,7 @@ import json
 import numpy as np
 import pytest
 
-from app.domain.models.training.trainer import ValidationEER
+from app.domain.models.training.callbacks import ValidationEER
 
 
 class _ModeloFalso:
@@ -354,7 +354,8 @@ def test_validation_eer_prediz_em_lotes():
     """
     import inspect
 
-    from app.domain.models.training.trainer import ValidationEER, validation_eer
+    from app.domain.models.training.callbacks import ValidationEER
+    from app.domain.models.training.metrics import validation_eer
 
     assert "batch_size" in inspect.signature(ValidationEER.__init__).parameters
     fonte = inspect.getsource(ValidationEER.on_epoch_end)

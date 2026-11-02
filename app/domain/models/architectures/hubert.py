@@ -15,11 +15,11 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 
-from app.utils.audio_utils import normalize_audio, pad_or_truncate
 from app.domain.models.architectures.layers import (
     AttentionPoolingLayer,
     create_classification_head,
 )
+from app.utils.audio_utils import normalize_audio, pad_or_truncate
 
 # Convenção do projeto: logger de módulo, SEM logging.basicConfig — configurar
 # o root logger no import contamina qualquer processo que importe este módulo.

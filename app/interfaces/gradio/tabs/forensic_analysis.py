@@ -1,6 +1,7 @@
 """Aba de Analise Forense Completa para o Gradio UI.
 
-Integra o motor de visualizacao forense com a interface Gradio.
+Integra as medidas de `domain/services/forensic_measures` e os graficos de
+`gradio/presenters/forensic_plots` com a interface Gradio.
 """
 
 import csv
@@ -8,12 +9,17 @@ import logging
 import tempfile
 from pathlib import Path
 
+import gradio as gr
 import numpy as np
 import pandas as pd
 
-import gradio as gr
 from app.core.contracts.audio import AudioData
-from app.domain.services.forensic_visualization import (
+from app.domain.services.forensic_measures import (
+    RADAR_AXES,
+    batch_report,
+    radar_axes,
+)
+from app.interfaces.gradio.presenters.forensic_plots import (
     AudioForensicVisualizer,
     BatchAnalysisVisualizer,
 )
@@ -44,44 +50,43 @@ def _get_detection_service():
     return _detection_service
 
 
-def _estabilidade_de_formante(y: np.ndarray, sr: int) -> float:
-    """Dispersão relativa de F1 ao longo do sinal, via LPC quadro a quadro.
+def _limiar_de(result, padrao: float = 0.5) -> float:
+    """Limiar que decidiu o veredito: é por modelo, não um 0,5 fixo."""
+    limiar = (result.data.metadata or {}).get("classification_threshold")
+    return padrao if limiar is None else float(limiar)
 
-    Voz sintetizada tende a apresentar trajetória de formante mais suave que a
-    fala natural; a dispersão relativa (desvio sobre média) é uma medida
-    adimensional disso, comparável entre áudios de durações diferentes.
 
-    Devolve 0.0 quando não há quadros suficientes — nunca uma constante
-    inventada, que era o comportamento anterior deste eixo do radar.
+def _pontuacao_por_segmento(service, y, sr, segment_duration: float = 1.0):
+    """``(tempos, p_fake, limiar)`` por trecho, com 50% de sobreposição.
+
+    ``result.data.confidence`` é a confiança do VEREDITO: ``p_real`` quando ele é
+    real. Plotada como probabilidade de fake, invertia a leitura: num áudio real
+    com ``p_fake`` 0,02, a linha marcava 0,98 e pintava o trecho como fake.
+
+    Trecho em que a detecção falha fica de fora. Antes entrava como 0,5, um número
+    que ninguém mediu e que cai de um lado ou do outro do limiar do modelo.
     """
-    try:
-        import librosa
-
-        ordem = 2 + sr // 1000  # regra usual: 2 + fs/1000 coeficientes
-        tamanho, salto = 1024, 512
-        primeiros: list[float] = []
-        for inicio in range(0, max(len(y) - tamanho, 0), salto):
-            quadro = y[inicio:inicio + tamanho]
-            if np.max(np.abs(quadro)) < 1e-4:  # quadro em silêncio
-                continue
-            coef = librosa.lpc(quadro * np.hanning(len(quadro)), order=ordem)
-            raizes = np.roots(coef)
-            raizes = raizes[np.imag(raizes) > 0]
-            if raizes.size == 0:
-                continue
-            freqs = np.sort(np.angle(raizes) * (sr / (2 * np.pi)))
-            # F1: primeiro pico acima de 90 Hz (abaixo disso é F0/ruído DC)
-            acima = freqs[freqs > 90]
-            if acima.size:
-                primeiros.append(float(acima[0]))
-
-        if len(primeiros) < 3:
-            return 0.0
-        media = float(np.mean(primeiros))
-        return float(np.std(primeiros) / media) if media > 0 else 0.0
-    except Exception as exc:  # noqa: BLE001 — eixo do radar, não pode derrubar
-        logger.warning("Estabilidade de formante indisponível: %s", exc)
-        return 0.0
+    segment_samples = int(sr * segment_duration)
+    hop_samples = segment_samples // 2  # 50% overlap
+    tempos, pontos = [], []
+    limiar = 0.5
+    for start in range(0, len(y) - segment_samples, hop_samples):
+        segment = y[start:start + segment_samples]
+        seg_audio = AudioData(
+            samples=segment, sample_rate=sr, duration=segment_duration
+        )
+        try:
+            result = service.detect_single(seg_audio)
+            if result.status.name == "SUCCESS":
+                pontos.append(float(result.data.probabilities["fake"]))
+                tempos.append((start + segment_samples / 2) / sr)
+                limiar = _limiar_de(result, limiar)
+        except Exception as e:
+            # FE.7: log do segmento que falhou (útil em loops grandes)
+            logger.debug(
+                f"Segmento [{start}:{start+segment_samples}] falhou: {e}"
+            )
+    return np.array(tempos), np.array(pontos), limiar
 
 
 def run_forensic_analysis(audio_path):
@@ -117,142 +122,23 @@ def run_forensic_analysis(audio_path):
         service = _get_detection_service()
         if service:
             try:
-                # Analise segmentada para confianca temporal
-                segment_duration = 1.0  # 1 segundo
-                segment_samples = int(sr * segment_duration)
-                hop_samples = segment_samples // 2  # 50% overlap
-
-                segment_times = []
-                segment_confidences = []
-
-                # (o AudioData completo era montado aqui e nunca usado — a
-                # analise por segmento constroi o seu proprio abaixo)
-
-                # Deteccao por segmento
-                for start in range(0, len(y) - segment_samples, hop_samples):
-                    segment = y[start:start + segment_samples]
-                    seg_audio = AudioData(
-                        samples=segment, sample_rate=sr,
-                        duration=segment_duration
-                    )
-                    try:
-                        result = service.detect_single(seg_audio)
-                        if result.status.name == "SUCCESS":
-                            conf = float(result.data.confidence)
-                            segment_confidences.append(conf)
-                            segment_times.append(
-                                (start + segment_samples / 2) / sr)
-                    except Exception as e:
-                        # FE.7: log do segmento que falhou (útil em loops grandes)
-                        logger.debug(
-                            f"Segmento [{start}:{start+segment_samples}] falhou: {e}"
-                        )
-                        segment_confidences.append(0.5)
-                        segment_times.append(
-                            (start + segment_samples / 2) / sr)
-
-                if segment_confidences:
-                    seg_times = np.array(segment_times)
-                    seg_confs = np.array(segment_confidences)
-
-                    # Confidence timeline
-                    fig_confidence = viz.plot_confidence_timeline(
-                        seg_times, seg_confs)
+                # Analise segmentada: P(fake) e o limiar que decide
+                seg_times, seg_scores, limiar = _pontuacao_por_segmento(
+                    service, y, sr
+                )
+                if len(seg_scores):
+                    fig_confidence = viz.plot_fake_score_timeline(
+                        seg_times, seg_scores, limiar)
 
                     # Anomaly heatmap
                     fig_anomaly = viz.plot_anomaly_heatmap(
-                        y, seg_confs, seg_times)
+                        y, seg_scores, seg_times)
 
-                # Feature importance radar (mock baseado em features usadas)
-                feature_names = [
-                    'Spectral', 'Cepstral', 'Temporal', 'Prosodic',
-                    'Phase', 'Formant', 'HNR', 'Jitter/Shimmer'
-                ]
-
-                # Compute simple importance from feature statistics
-                importances = []
+                # Radar de explicabilidade: oito medidas do sinal, cada uma
+                # normalizada pela sua faixa plausível (ver forensic_measures).
                 try:
-                    import librosa
-                    # Spectral centroid variability
-                    sc = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
-                    importances.append(float(np.std(sc) / (np.mean(sc) + 1e-10)))
-
-                    # MFCC variability
-                    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
-                    importances.append(float(np.mean(np.std(mfcc, axis=1))))
-
-                    # ZCR variability
-                    zcr = librosa.feature.zero_crossing_rate(y)[0]
-                    importances.append(float(np.std(zcr)))
-
-                    # RMS variability
-                    rms = librosa.feature.rms(y=y)[0]
-                    importances.append(float(np.std(rms) / (np.mean(rms) + 1e-10)))
-
-                    # Descontinuidade de fase.
-                    #
-                    # `np.angle` devolve fase em (-pi, pi]. Sem desdobrar, a
-                    # diferenca entre quadros mede o SALTO DE WRAP, nao a
-                    # descontinuidade: medido, um tom puro de 440 Hz dava 1,13
-                    # rad e ruido branco 2,09 rad — a metrica nao zerava nem
-                    # para o sinal mais limpo possivel. Com `unwrap` no eixo
-                    # temporal, o tom puro cai para 0,75.
-                    D = librosa.stft(y)
-                    phase = np.unwrap(np.angle(D), axis=1)
-                    phase_diff = np.diff(phase, axis=1)
-                    importances.append(float(np.mean(np.abs(phase_diff))))
-
-                    # Formante, HNR e jitter: MEDIDOS.
-                    #
-                    # Ate 2026-07-28 estes tres eixos eram as constantes 0.5,
-                    # 0.4 e 0.3 — marcadas como "placeholder" no codigo, mas
-                    # exibidas no radar com os rotulos "Formant", "HNR" e
-                    # "Jitter/Shimmer". Tres dos oito eixos de um grafico
-                    # FORENSE nao variavam com o audio analisado. Os
-                    # extratores reais ja existiam em app/domain/features.
-                    from app.domain.features.extractors.voice_quality.components.noise import (  # noqa: E501
-                        compute_nhr,
-                    )
-                    from app.domain.features.extractors.voice_quality.components.perturbation import (  # noqa: E501
-                        compute_rap,
-                    )
-
-                    f0_contorno = librosa.yin(
-                        y, fmin=60, fmax=400, sr=sr,
-                    )
-                    f0_contorno = np.nan_to_num(f0_contorno, nan=0.0)
-
-                    # Estabilidade de formante: dispersao relativa do primeiro
-                    # formante estimado por LPC quadro a quadro.
-                    importances.append(_estabilidade_de_formante(y, sr))
-                    # Harmonicidade: NHR (0 = puro harmonico, ~1 = puro ruido)
-                    importances.append(float(compute_nhr(y, f0_contorno, sr)))
-                    # Perturbacao de periodo (RAP), por trecho vozeado
-                    importances.append(float(compute_rap(y, f0_contorno, sr)))
-
-                    # Normalizacao POR EIXO, contra a faixa plausivel de cada
-                    # grandeza. As oito medidas tem unidades diferentes — CV
-                    # adimensional, unidades cepstrais, radianos, razao de
-                    # energia — e o radar dividia todas pelo MAXIMO GLOBAL. Com
-                    # o desvio de MFCC na casa de 10-50 e o desvio de ZCR na de
-                    # 0,01, o eixo de MFCC ficava sempre em 1,0 e os demais
-                    # colapsavam para perto de zero: o grafico tinha a mesma
-                    # forma para qualquer audio.
-                    faixas = (
-                        1.0,    # centroide espectral (CV)
-                        60.0,   # desvio de MFCC (unidades cepstrais)
-                        0.15,   # desvio de ZCR
-                        2.0,    # RMS (CV)
-                        np.pi,  # descontinuidade de fase (rad)
-                        0.5,    # estabilidade de formante (CV)
-                        1.0,    # NHR (0 = harmonico, 1 = ruido)
-                        0.02,   # RAP (2% ja e jitter severo)
-                    )
-                    importances = np.clip(
-                        np.array(importances) / np.array(faixas), 0.0, 1.0
-                    )
                     fig_radar = viz.plot_feature_importance_radar(
-                        feature_names, importances)
+                        list(RADAR_AXES), radar_axes(y, sr))
                 except Exception as e:
                     logger.warning(f"Feature importance computation failed: {e}")
 
@@ -296,6 +182,7 @@ def run_batch_analysis(files):
         service = _get_detection_service()
 
         results = []
+        limiar = 0.5
         for file_obj in files:
             file_path = file_obj.name if hasattr(file_obj, 'name') else str(file_obj)
             filename = Path(file_path).name
@@ -310,10 +197,12 @@ def run_batch_analysis(files):
                 if service:
                     result = service.detect_single(audio_data)
                     if result.status.name == "SUCCESS":
+                        limiar = _limiar_de(result, limiar)
                         results.append({
                             'filename': filename,
                             'is_fake': result.data.is_fake,
                             'confidence': float(result.data.confidence),
+                            'p_fake': float(result.data.probabilities["fake"]),
                             'model_name': result.data.model_name,
                             'duration': float(len(y) / sr)
                         })
@@ -352,7 +241,10 @@ def run_batch_analysis(files):
         confidences = np.array([r['confidence'] for r in results])
 
         fig_pie = batch_viz.plot_batch_summary_pie(n_real, n_fake)
-        fig_conf = batch_viz.plot_confidence_distribution(confidences)
+        # A tabela mostra a confiança do veredito; o histograma, P(fake) e só do
+        # que foi medido: arquivo que falhou tem confiança 0, mas nenhum P(fake).
+        p_fakes = np.array([r['p_fake'] for r in results if 'p_fake' in r])
+        fig_conf = batch_viz.plot_fake_score_distribution(p_fakes, limiar)
 
         # Build results table
         table_data = []
@@ -391,8 +283,6 @@ def export_batch_report(files):
     try:
         import librosa
         service = _get_detection_service()
-        batch_viz = BatchAnalysisVisualizer()
-
         results = []
         for file_obj in files:
             file_path = file_obj.name if hasattr(file_obj, 'name') else str(file_obj)
@@ -426,7 +316,7 @@ def export_batch_report(files):
                 'duration': 0.0
             })
 
-        report = batch_viz.generate_forensic_report_data(results)
+        report = batch_report(results)
 
         # Write CSV
         tmp = tempfile.NamedTemporaryFile(
@@ -511,20 +401,20 @@ def create_forensic_analysis_tab():
                     with gr.Column():
                         gr.Markdown("#### Cromograma")
                         plot_chroma = gr.Plot(
-                            label="Chroma Features (12 classes de pitch)")
+                            label="Características cromáticas (12 classes de pitch)")
 
             # --- Tab: Análise Espectral ---
             with gr.Tab("🌈 Análise Espectral"):
-                gr.Markdown("#### Envelope Espectral & Formantes")
+                gr.Markdown("#### Envelope espectral e formantes")
                 plot_formants = gr.Plot(
                     label="Espectrograma com trilhas de formantes F1-F4")
                 with gr.Row(elem_classes="responsive-grid plot-grid"):
                     with gr.Column():
-                        gr.Markdown("#### Zero-Crossing Rate")
+                        gr.Markdown("#### Taxa de cruzamento por zero")
                         plot_zcr = gr.Plot(
                             label="Taxa de cruzamento por zero temporal")
                     with gr.Column():
-                        gr.Markdown("#### Features Espectrais Temporais")
+                        gr.Markdown("#### Características espectrais e temporais")
                         plot_spectral = gr.Plot(
                             label="Centroide / Rolloff / Bandwidth")
 
@@ -532,22 +422,26 @@ def create_forensic_analysis_tab():
             with gr.Tab("⏱️ Análise Temporal"):
                 gr.Markdown("#### Contorno de Energia")
                 plot_energy = gr.Plot(
-                    label="RMS Energy com deteccao de silencio")
+                    label="Energia RMS com detecção de silêncio")
                 with gr.Row(elem_classes="responsive-grid plot-grid"):
                     with gr.Column():
                         gr.Markdown("#### HNR Temporal")
                         plot_hnr = gr.Plot(
-                            label="Harmonic-to-Noise Ratio por frame")
+                            label="Relação harmônico-ruído por quadro")
                     with gr.Column():
                         gr.Markdown("#### Jitter / Shimmer")
                         plot_jitter = gr.Plot(
-                            label="Micro-perturbacoes vocais")
+                            label="Microperturbações vocais")
 
             # --- Tab: Análise de Pitch ---
             with gr.Tab("🎵 Análise de Pitch"):
                 gr.Markdown("#### Análise Detalhada de F0")
                 plot_f0 = gr.Plot(
-                    label="Contorno de pitch com confiança e vibrato")
+                    label=(
+                        "Contorno de frequência fundamental com confiança "
+                        "e vibrato"
+                    )
+                )
 
             # --- Tab: Explicabilidade (XAI) ---
             # (renomeada de "Análise de Detecção" — são visualizações de
@@ -560,13 +454,14 @@ def create_forensic_analysis_tab():
                 with gr.Row(elem_classes="responsive-grid plot-grid"):
                     with gr.Column():
                         plot_radar = gr.Plot(
-                            label="Importância Relativa de Features")
+                            label="Importância relativa das características")
                     with gr.Column():
                         plot_anomaly = gr.Plot(
-                            label="Heatmap de Anomalias sobre Espectrograma")
-                gr.Markdown("#### Confiança por Segmento Temporal")
+                            label="Mapa de calor de anomalias sobre o espectrograma"
+                        )
+                gr.Markdown("#### Probabilidade de fake por segmento")
                 plot_confidence = gr.Plot(
-                    label="Score de confiança ao longo do áudio")
+                    label="P(fake) ao longo do áudio, com o limiar do modelo")
 
         # ===== Event Handlers =====
         # NOTA: a análise em lote foi movida para a aba 🎯 Detectar →

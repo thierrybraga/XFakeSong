@@ -16,6 +16,7 @@ Cobertura:
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 # ────────────────────────────────────────────────────────────────────────
 # Registro de rotas
@@ -282,7 +283,7 @@ def test_multi_model_request_validates_fusion():
     """MultiModelDetectionRequest deve rejeitar fusion inválido."""
     from app.interfaces.web.schemas.api_models import MultiModelDetectionRequest
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         MultiModelDetectionRequest(model_names=["a", "b"], fusion="unknown_strategy")
 
     # Caso válido
@@ -294,7 +295,7 @@ def test_multi_model_request_min_2_models():
     """multi-model exige ≥2 modelos."""
     from app.interfaces.web.schemas.api_models import MultiModelDetectionRequest
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         MultiModelDetectionRequest(model_names=["only_one"])
 
 
@@ -305,9 +306,9 @@ def test_uncertainty_request_n_samples_bounds():
     req = UncertaintyRequest(n_samples=20)
     assert req.n_samples == 20
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         UncertaintyRequest(n_samples=1)  # < 5
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         UncertaintyRequest(n_samples=500)  # > 200
 
 
@@ -323,10 +324,10 @@ def test_cross_validation_request_validates_n_folds():
     assert req.n_folds == 5
     assert req.architecture == "aasist"
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         CrossValidationRequest(architecture="aasist", dataset_path="x.npz", n_folds=1)
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         CrossValidationRequest(
             architecture="invalid_arch_xyz",
             dataset_path="x.npz",
@@ -341,9 +342,9 @@ def test_onnx_export_request_validates_opset():
     assert req.opset == 13  # default
     assert req.dynamic_batch is True
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         OnnxExportRequest(model_name="m", opset=99)  # > 20
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         OnnxExportRequest(model_name="")  # vazio
 
 

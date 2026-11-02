@@ -46,6 +46,8 @@ def test_resolve_within_directory_keeps_path_inside_base(tmp_path):
 
 
 def test_api_key_fails_closed_when_server_key_is_missing(monkeypatch):
+    # As duas: a canônica e o alias legado (`get_api_key` lê ambas).
+    monkeypatch.delenv("SPEECHCHECKER_API_KEY", raising=False)
     monkeypatch.delenv("XFAKESONG_API_KEY", raising=False)
     monkeypatch.delenv("XFAKE_ALLOW_INSECURE_DEV", raising=False)
     monkeypatch.setenv("DEEPFAKE_ENV", "development")
@@ -57,6 +59,7 @@ def test_api_key_fails_closed_when_server_key_is_missing(monkeypatch):
 
 
 def test_api_key_allows_only_explicit_insecure_development(monkeypatch):
+    monkeypatch.delenv("SPEECHCHECKER_API_KEY", raising=False)
     monkeypatch.delenv("XFAKESONG_API_KEY", raising=False)
     monkeypatch.setenv("DEEPFAKE_ENV", "development")
     monkeypatch.setenv("XFAKE_ALLOW_INSECURE_DEV", "true")

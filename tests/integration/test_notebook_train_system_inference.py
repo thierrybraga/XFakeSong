@@ -55,8 +55,8 @@ def _synthetic_audio() -> AudioData:
 def test_notebook_trained_model_runs_in_detection_pipeline(
     tmp_path, architecture, shape, name
 ):
-    from app.domain.services.training_service import TrainingService
     from app.domain.services.detection_service import DetectionService
+    from app.domain.services.training_service import TrainingService
 
     # 1. Treina como o notebook: TrainingService sobre um .npz sintético.
     rng = np.random.default_rng(0)

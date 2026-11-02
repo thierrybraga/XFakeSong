@@ -12,40 +12,29 @@ Melhorias v2:
 import logging
 from pathlib import Path
 
+import gradio as gr  # noqa: E402
+import numpy as np  # noqa: E402
+from matplotlib.figure import Figure  # noqa: E402
+
+from app.interfaces.gradio.utils.components import ui_safe
+
 # FE.8: helpers compartilhados (força backend Agg para matplotlib)
 from app.interfaces.gradio.utils.plotting import (
     PLOT_BG,
     PLOT_FACE,
     PLOT_GRID,
     PLOT_TEXT,
-    get_service_lock,
     style_ax,
 )
 
-import numpy as np  # noqa: E402
-from matplotlib.figure import Figure  # noqa: E402
-
-import gradio as gr  # noqa: E402
-from app.interfaces.gradio.utils.components import ui_safe
-
 logger = logging.getLogger("gradio_voice_profiles_tab")
-
-# FE.3: Singleton do serviço com lock thread-safe
-_service_instance = None
-_service_lock = get_service_lock("voice_profiles_service")
 
 
 def _get_service():
-    """Retorna singleton VoiceProfileService — FE.3: thread-safe."""
-    global _service_instance
-    if _service_instance is not None:
-        return _service_instance
-    with _service_lock:
-        # Double-checked locking
-        if _service_instance is None:
-            from app.domain.services.voice_profile_service import VoiceProfileService
-            _service_instance = VoiceProfileService()
-    return _service_instance
+    """Mesma instância de VoiceProfileService usada pela API."""
+    from app.dependencies import get_voice_profile_service
+
+    return get_voice_profile_service()
 
 
 def _get_architecture_choices():
@@ -106,23 +95,6 @@ def _profiles_to_table(profiles) -> list:
             p.email or "—",
         ])
     return rows
-
-
-def _get_profile_choices():
-    """Retorna choices para dropdown de perfis."""
-    svc = _get_service()
-    profiles = svc.list_profiles()
-    choices = [(f"{p.name} (ID: {p.id}) [{p.status}]", p.id) for p in profiles]
-    return choices
-
-
-def _refresh_profiles_table():
-    """Atualiza tabela e dropdowns."""
-    svc = _get_service()
-    profiles = svc.list_profiles()
-    table_data = _profiles_to_table(profiles)
-    choices = [(f"{p.name} (ID: {p.id}) [{p.status}]", p.id) for p in profiles]
-    return table_data, gr.update(choices=choices), gr.update(choices=choices), gr.update(choices=choices)
 
 
 # Estilo dos plots vem do módulo compartilhado utils.plotting (style_ax),
@@ -269,16 +241,24 @@ def create_voice_profiles_tab():
                             info="14 arquiteturas: 12 DL + SVM + Random Forest",
                         )
                         train_epochs = gr.Slider(
-                            label="Épocas (DL)", minimum=5, maximum=200,
-                            value=30, step=5,
+                            label="Épocas (DL)",
+                            minimum=5,
+                            maximum=200,
+                            value=30,
+                            step=5,
                             info="Ignorado para SVM/Random Forest",
                         )
                         train_batch = gr.Slider(
-                            label="Batch Size (DL)", minimum=4, maximum=64,
-                            value=16, step=4,
+                            label="Tamanho do lote (DL)",
+                            minimum=4,
+                            maximum=64,
+                            value=16,
+                            step=4,
                         )
                         train_lr = gr.Slider(
-                            label="Learning Rate (DL)", minimum=0.0001, maximum=0.01,
+                            label="Taxa de aprendizado (DL)",
+                            minimum=0.0001,
+                            maximum=0.01,
                             value=0.001, step=0.0001,
                         )
                         train_validation_info = gr.Markdown("")
@@ -294,10 +274,10 @@ def create_voice_profiles_tab():
                             autoscroll=True,
                         )
                         with gr.Row(elem_classes="responsive-grid plot-grid"):
-                            train_loss_plot = gr.Plot(label="Loss")
-                            train_acc_plot = gr.Plot(label="Accuracy")
+                            train_loss_plot = gr.Plot(label="Perda")
+                            train_acc_plot = gr.Plot(label="Acurácia")
                         with gr.Row(elem_classes="responsive-grid plot-grid"):
-                            train_cm_plot = gr.Plot(label="Confusion Matrix")
+                            train_cm_plot = gr.Plot(label="Matriz de confusão")
                             train_metrics_json = gr.JSON(
                                 label="Métricas Finais"
                             )
@@ -564,9 +544,9 @@ def create_voice_profiles_tab():
                 # Resumo de métricas avançadas
                 log_lines.append(
                     f"\n✅ Treinamento concluído!\n"
-                    f"  Val Accuracy: {metrics.get('val_accuracy', 0):.4f}\n"
-                    f"  Precision:    {metrics.get('precision', 0):.4f}\n"
-                    f"  Recall:       {metrics.get('recall', 0):.4f}\n"
+                    f"  Acurácia val.: {metrics.get('val_accuracy', 0):.4f}\n"
+                    f"  Precisão:      {metrics.get('precision', 0):.4f}\n"
+                    f"  Revocação:     {metrics.get('recall', 0):.4f}\n"
                     f"  F1-Score:     {metrics.get('f1_score', 0):.4f}\n"
                     f"  EER:          {metrics.get('eer', 0):.4f}"
                 )
@@ -582,13 +562,13 @@ def create_voice_profiles_tab():
                     if history and history.get("loss"):
                         loss_fig = Figure(figsize=(6, 4))
                         ax = loss_fig.add_subplot(111)
-                        _style_ax(ax, loss_fig, "Loss por Época")
-                        ax.plot(history.get('loss', []), label='Train Loss',
+                        _style_ax(ax, loss_fig, "Perda por época")
+                        ax.plot(history.get('loss', []), label='Treino: perda',
                                 color='#3b82f6', linewidth=2)
-                        ax.plot(history.get('val_loss', []), label='Val Loss',
+                        ax.plot(history.get('val_loss', []), label='Validação: perda',
                                 color='#ef4444', linewidth=2, linestyle='--')
                         ax.set_xlabel('Época')
-                        ax.set_ylabel('Loss')
+                        ax.set_ylabel('Perda')
                         ax.legend(facecolor=PLOT_FACE, edgecolor=PLOT_GRID,
                                   labelcolor=PLOT_TEXT, fontsize=9)
                         loss_fig.tight_layout()
@@ -596,13 +576,18 @@ def create_voice_profiles_tab():
                         # Accuracy plot
                         acc_fig = Figure(figsize=(6, 4))
                         ax2 = acc_fig.add_subplot(111)
-                        _style_ax(ax2, acc_fig, "Accuracy por Época")
-                        ax2.plot(history.get('accuracy', []), label='Train Acc',
+                        _style_ax(ax2, acc_fig, "Acurácia por época")
+                        ax2.plot(history.get('accuracy', []), label='Treino: acurácia',
                                  color='#10b981', linewidth=2)
-                        ax2.plot(history.get('val_accuracy', []), label='Val Acc',
-                                 color='#f59e0b', linewidth=2, linestyle='--')
+                        ax2.plot(
+                            history.get('val_accuracy', []),
+                            label='Validação: acurácia',
+                            color='#f59e0b',
+                            linewidth=2,
+                            linestyle='--',
+                        )
                         ax2.set_xlabel('Época')
-                        ax2.set_ylabel('Accuracy')
+                        ax2.set_ylabel('Acurácia')
                         ax2.legend(facecolor=PLOT_FACE, edgecolor=PLOT_GRID,
                                    labelcolor=PLOT_TEXT, fontsize=9)
                         acc_fig.tight_layout()
@@ -616,9 +601,9 @@ def create_voice_profiles_tab():
                         ax3.set_facecolor(PLOT_FACE)
                         cm_arr = np.array(cm)
                         ax3.imshow(cm_arr, cmap='magma', interpolation='nearest')
-                        ax3.set_title("Confusion Matrix", color=PLOT_TEXT,
+                        ax3.set_title("Matriz de confusão", color=PLOT_TEXT,
                                       fontweight="600", fontsize=12, pad=10)
-                        labels = ["Real", "Fake"]
+                        labels = ["Real", "Sintético"]
                         ax3.set_xticks([0, 1])
                         ax3.set_yticks([0, 1])
                         ax3.set_xticklabels(labels, color=PLOT_TEXT, fontsize=10)

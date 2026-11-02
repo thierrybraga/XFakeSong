@@ -11,11 +11,11 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Union
 
 import numpy as np
 
-from .base import IExtractor, IProcessor, IValidator, ProcessingResult
+from .base import IExtractor, ProcessingResult
 
 
 class AudioFormat(Enum):
@@ -102,43 +102,6 @@ class DeepfakeDetectionResult:
             self.metadata = {}
 
 
-class IAudioLoader(IProcessor[Union[str, Path], AudioData]):
-    """Interface para carregamento de áudio."""
-
-    @abstractmethod
-    def load_audio(self, file_path: Union[str, Path]
-                   ) -> ProcessingResult[AudioData]:
-        """Carrega arquivo de áudio."""
-        pass
-
-    @abstractmethod
-    def get_supported_formats(self) -> List[AudioFormat]:
-        """Retorna formatos suportados."""
-        pass
-
-
-class IAudioValidator(IValidator[Union[str, Path, AudioData]]):
-    """Interface para validação de áudio."""
-
-    @abstractmethod
-    def validate_format(
-            self, file_path: Union[str, Path]) -> ProcessingResult[bool]:
-        """Valida formato do arquivo."""
-        pass
-
-    @abstractmethod
-    def validate_quality(
-            self, audio_data: AudioData) -> ProcessingResult[bool]:
-        """Valida qualidade do áudio."""
-        pass
-
-    @abstractmethod
-    def validate_duration(self, audio_data: AudioData, min_duration: float = None,
-                          max_duration: float = None) -> ProcessingResult[bool]:
-        """Valida duração do áudio."""
-        pass
-
-
 class IFeatureExtractor(IExtractor[AudioData, AudioFeatures]):
     """Interface para extração de características."""
 
@@ -161,31 +124,6 @@ class IFeatureExtractor(IExtractor[AudioData, AudioFeatures]):
     @abstractmethod
     def get_extraction_params(self) -> Dict[str, Any]:
         """Retorna parâmetros de extração."""
-        pass
-
-
-class IModelArchitecture(ABC):
-    """Interface para arquiteturas de modelo."""
-
-    @abstractmethod
-    def create_model(
-            self, input_shape: Tuple[int, ...], num_classes: int = 2, **kwargs) -> Any:
-        """Cria modelo com arquitetura específica."""
-        pass
-
-    @abstractmethod
-    def get_architecture_name(self) -> str:
-        """Retorna nome da arquitetura."""
-        pass
-
-    @abstractmethod
-    def get_default_params(self) -> Dict[str, Any]:
-        """Retorna parâmetros padrão."""
-        pass
-
-    @abstractmethod
-    def validate_input_shape(self, input_shape: Tuple[int, ...]) -> bool:
-        """Valida formato de entrada."""
         pass
 
 
@@ -217,27 +155,3 @@ class IModelTrainer(ABC):
         pass
 
 
-class IDeepfakeDetector(IProcessor[AudioData, DeepfakeDetectionResult]):
-    """Interface para detecção de deepfake."""
-
-    @abstractmethod
-    def detect(
-            self, audio_data: AudioData) -> ProcessingResult[DeepfakeDetectionResult]:
-        """Detecta se áudio é deepfake."""
-        pass
-
-    @abstractmethod
-    def get_model_info(self) -> Dict[str, Any]:
-        """Retorna informações do modelo."""
-        pass
-
-    @abstractmethod
-    def get_confidence_threshold(self) -> float:
-        """Retorna limiar de confiança."""
-        pass
-
-    @abstractmethod
-    def set_confidence_threshold(
-            self, threshold: float) -> ProcessingResult[bool]:
-        """Define limiar de confiança."""
-        pass

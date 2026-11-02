@@ -10,14 +10,12 @@ from typing import Any, Dict, List, Tuple
 import librosa
 import numpy as np
 
-# Imports de interface
-try:
-    from .interfaces import IFeatureExtractor
-except ImportError:
-    # Fallback para imports básicos
-    from app.domain.features.interfaces import IFeatureExtractor
-
-from .....core.contracts.audio import AudioData, AudioFeatures, FeatureType
+from .....core.contracts.audio import (
+    AudioData,
+    AudioFeatures,
+    FeatureType,
+    IFeatureExtractor,
+)
 from .....core.contracts.base import ProcessingResult, ProcessingStatus
 from .components.delta import DeltaFeaturesExtractor
 from .components.lpcc import extract_lpcc_features

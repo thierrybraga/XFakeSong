@@ -1,6 +1,6 @@
 """A guarda de XLA casa com os NOMES REAIS do manifesto oficial.
 
-SUJEITO: ``scripts/benchmark/run_models_sequential.py``
+SUJEITO: ``benchmarks/run_models_sequential.py``
 ::``_XLA_UNFRIENDLY_TRAINING_ARCHITECTURES``.
 
 Por que este teste existe
@@ -37,7 +37,7 @@ import pytest
 
 @pytest.fixture(scope="module")
 def runner():
-    return importlib.import_module("scripts.benchmark.run_models_sequential")
+    return importlib.import_module("benchmarks.run_models_sequential")
 
 
 #: Nomes de manifesto que PRECISAM desligar o auto-JIT, com o motivo medido.

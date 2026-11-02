@@ -12,7 +12,9 @@ from functools import lru_cache
 
 from fastapi import APIRouter, Depends, Request
 
+from app import __version__
 from app.core.auth.auth_handler import get_api_key
+from app.core.bootstrap import OperationalPaths
 from app.core.db.session import check_database_health
 from app.core.feedback import (
     clear_feedback_events,
@@ -77,7 +79,7 @@ async def get_system_status(request: Request):
     return SystemStatus(
         status="operational",
         message="System is running correctly",
-        version="1.1.0",
+        version=__version__,
         active_services=[
             "detection",
             "features",
@@ -109,10 +111,9 @@ async def health_check(request: Request):
         # API.9: log do erro (em vez de silenciar) — útil para diagnóstico
         logger.debug(f"Não foi possível contar modelos no health check: {e}")
 
-    # Verificar storage
-    from pathlib import Path
-
-    storage_ok = Path("data/models").exists() or Path("models").exists()
+    # Verificar storage no diretório configurado (MODELS_DIR, XFAKE_STORAGE_DIR…),
+    # não em um caminho relativo ao diretório corrente.
+    storage_ok = OperationalPaths.resolve().models.is_dir()
 
     uptime = time.monotonic() - _start_time
     overall = "healthy" if db_ok else "degraded"
@@ -126,7 +127,12 @@ async def health_check(request: Request):
     )
 
 
-@router.get("/bootstrap", summary="Bootstrap endpoint")
+@router.get(
+    "/bootstrap",
+    summary="Ping legado da antiga página de carregamento",
+    description="Mantido por compatibilidade. Use `/api/v1/system/health`.",
+    deprecated=True,
+)
 @limiter.limit("10/minute")
 async def bootstrap(request: Request):
     return {"status": "ok"}
@@ -192,7 +198,7 @@ async def clear_feedback(request: Request):
 async def get_version(request: Request):
     """Útil para debug em produção: versão do app, Python, TF/Keras, git SHA."""
     return SystemVersionResponse(
-        version="1.1.0",
+        version=__version__,
         python_version=sys.version.split()[0],
         tensorflow_version=_safe_pkg_version("tensorflow"),
         keras_version=_safe_pkg_version("keras"),
@@ -231,28 +237,11 @@ async def get_info(request: Request):
     persistence = {"schema_version": None, "counts": {}}
     if db_ok:
         try:
-            from sqlalchemy import text
+            from app.dependencies import get_persistence_stats_repository
 
-            from app.core.db.session import SessionLocal
-            from app.domain.models.experiment import (
-                ConfigurationEntry,
-                ExperimentRun,
-                MetricRecord,
-                ModelRun,
-                SystemSnapshot,
-            )
-
-            with SessionLocal() as db:
-                persistence["schema_version"] = db.execute(
-                    text("PRAGMA user_version")
-                ).scalar()
-                persistence["counts"] = {
-                    "experiments": db.query(ExperimentRun).count(),
-                    "model_runs": db.query(ModelRun).count(),
-                    "metrics": db.query(MetricRecord).count(),
-                    "configurations": db.query(ConfigurationEntry).count(),
-                    "system_snapshots": db.query(SystemSnapshot).count(),
-                }
+            stats = get_persistence_stats_repository()
+            persistence["schema_version"] = stats.schema_version()
+            persistence["counts"] = stats.table_counts()
         except Exception as e:
             logger.debug(f"Não foi possível obter estatísticas persistidas: {e}")
 
@@ -261,7 +250,7 @@ async def get_info(request: Request):
     return {
         "status": "operational" if db_ok else "degraded",
         "uptime_seconds": round(uptime, 2),
-        "version": "1.1.0",
+        "version": __version__,
         "git_sha": _get_git_sha(),
         "python": sys.version.split()[0],
         "platform": platform.system(),

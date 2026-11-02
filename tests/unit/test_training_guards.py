@@ -52,7 +52,7 @@ class _ModeloFalso:
 
 
 def _guarda(**kwargs):
-    from app.domain.models.training.trainer import CollapseAbort
+    from app.domain.models.training.callbacks import CollapseAbort
 
     cb = CollapseAbort(label="teste", **kwargs)
     cb.set_model(_ModeloFalso())
@@ -222,7 +222,7 @@ def test_nao_aborta_quando_a_metrica_de_treino_falta():
 
 
 def _historico(path):
-    from app.domain.models.training.trainer import PersistentEpochHistory
+    from app.domain.models.training.callbacks import PersistentEpochHistory
 
     return PersistentEpochHistory(path)
 
@@ -288,10 +288,8 @@ def test_historico_fica_fora_do_backup_dir(tmp_path):
     terminam bem — que são os que viram artefato.
     """
     from app.core.config.settings import TrainingConfig
-    from app.domain.models.training.trainer import (
-        ModelTrainer,
-        PersistentEpochHistory,
-    )
+    from app.domain.models.training.callbacks import PersistentEpochHistory
+    from app.domain.models.training.trainer import ModelTrainer
 
     checkpoint = tmp_path / "models" / "best_checkpoint.weights.h5"
     checkpoint.parent.mkdir(parents=True)

@@ -27,7 +27,6 @@ from app.core.exceptions import (
     setup_exception_handlers,
 )
 
-
 # ── classes de exceção ────────────────────────────────────────────────────
 
 def test_app_error_defaults():

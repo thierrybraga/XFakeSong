@@ -8,12 +8,14 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app import __version__
+
 # ── System ─────────────────────────────────────────────────────────────
 
 class SystemStatus(BaseModel):
     status: str
     message: str
-    version: str = "1.0.0"
+    version: str = __version__
     active_services: List[str]
 
 
@@ -27,12 +29,6 @@ class HealthCheckResponse(BaseModel):
 
 
 # ── Detection ──────────────────────────────────────────────────────────
-
-class DetectionRequest(BaseModel):
-    model_name: Optional[str] = None
-    feature_types: Optional[List[str]] = None
-    normalize: bool = True
-    segmented: bool = False
 
 
 class PredictionResult(BaseModel):
@@ -113,7 +109,7 @@ class MultiModelPredictionResult(BaseModel):
     model_agreement: float = Field(..., ge=0.0, le=1.0)
     per_model: List[Dict[str, Any]]
     metadata: Dict[str, Any] = Field(default={}, description="Metadata adicional")
-    
+
     model_config = ConfigDict(json_schema_extra={"metadata": {"type": "object", "additionalProperties": True}})
 
 
@@ -227,13 +223,6 @@ class SystemVersionResponse(BaseModel):
 
 
 # ── Features ───────────────────────────────────────────────────────────
-
-class FeatureExtractionRequest(BaseModel):
-    feature_types: List[str] = Field(..., min_length=1, max_length=20)
-    normalize: bool = True
-    n_mfcc: int = Field(13, ge=1, le=40)
-    n_fft: int = Field(2048, ge=256, le=8192)
-    hop_length: int = Field(512, ge=64, le=4096)
 
 
 class FeatureExtractionResult(BaseModel):
@@ -459,12 +448,3 @@ class ProfileDetectionResult(BaseModel):
 
 # ── Error Response (RFC 7807) ──────────────────────────────────────────
 
-class ErrorResponse(BaseModel):
-    """RFC 7807 Problem Details."""
-    type: str = "about:blank"
-    title: str
-    status: int
-    detail: str
-    error_code: Optional[str] = None
-    request_id: Optional[str] = None
-    errors: Optional[List[Dict[str, str]]] = None

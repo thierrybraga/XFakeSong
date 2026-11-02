@@ -11,7 +11,7 @@ from typing import Any, Dict, List
 import librosa
 import numpy as np
 
-from app.domain.features.interfaces import IFeatureExtractor
+from app.core.contracts.audio import IFeatureExtractor
 
 from .....core.contracts.audio import AudioData, AudioFeatures, FeatureType
 from .....core.contracts.base import ProcessingResult, ProcessingStatus

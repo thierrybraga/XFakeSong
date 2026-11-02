@@ -300,7 +300,7 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         #
         # ─── REVERSÃO PARCIAL 2026-08-17, medida ───────────────────────────
         # O ajuste acima mudou DOIS fatores de uma vez e nunca foi executado.
-        # O fatorial de `scripts/benchmark/run_rawgat_retune.py` rodou os dois
+        # O fatorial de `benchmarks/run_rawgat_retune.py` rodou os dois
         # braços isolados, ambos já com `decay_steps` = 152.100:
         #
         #   publicado  dropout 0,35 + L2 1e-3 -> pico val_acc 0,8997 (ép. 88)

@@ -707,12 +707,6 @@ class ArchitectureRegistry:
         # Já é snake_case ou desconhecido
         return name.lower().replace("-", "_").replace(" ", "_")
 
-    @classmethod
-    def to_display_name(cls, snake: str) -> str:
-        """Converte snake_case → display name para UI."""
-        if snake in cls._SNAKE_TO_DISPLAY:
-            return cls._SNAKE_TO_DISPLAY[snake]
-        return snake
 
     @classmethod
     def normalize_architecture_name(cls, name: str) -> str:
@@ -769,8 +763,8 @@ class ArchitectureRegistry:
     ) -> Dict[str, Any]:
         """Obtém a configuração ativa do banco de dados (ou default se falhar)."""
         try:
+            from app.core.db.models.architecture_config import ArchitectureConfig
             from app.core.db.session import SessionLocal
-            from app.domain.models.architecture_config import ArchitectureConfig
 
             db_session = SessionLocal()
             try:
@@ -961,41 +955,6 @@ class ArchitectureRegistry:
             return False
 
         return True
-
-    def sync_defaults_to_db(self):
-        """Sincroniza os parâmetros padrão do registry para o banco de dados."""
-        try:
-            from app.core.db.session import SessionLocal
-            from app.domain.models.architecture_config import ArchitectureConfig
-
-            db_session = SessionLocal()
-            try:
-                # Iterar sobre todas as arquiteturas registradas
-                for name, info in self._architectures.items():
-                    # Verificar se já existe configuração default
-                    config = (
-                        db_session.query(ArchitectureConfig)
-                        .filter_by(architecture_name=name, variant_name="default")
-                        .first()
-                    )
-
-                    if not config:
-                        logger.info(f"Criando configuração default no DB para {name}")
-                        new_config = ArchitectureConfig(
-                            architecture_name=name,
-                            variant_name="default",
-                            description=info.description,
-                            parameters=info.default_params,
-                            is_active=True,
-                        )
-                        db_session.add(new_config)
-
-                db_session.commit()
-                logger.info("Sincronização de configurações padrão concluída.")
-            finally:
-                db_session.close()
-        except Exception as e:
-            logger.error(f"Erro ao sincronizar defaults para o DB: {e}")
 
 
 # Instância global do registry

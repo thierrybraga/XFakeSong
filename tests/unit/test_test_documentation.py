@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 TESTS = ROOT / "tests"
 # O documento foi movido em b18a32f (reestruturação de docs/); o caminho antigo
@@ -30,8 +29,8 @@ def test_test_documentation_counts_match_tree():
 def test_test_documentation_mentions_standard_entrypoints():
     text = DOC.read_text(encoding="utf-8")
     for term in (
-        "./scripts/ops/run_tests.sh fast",
-        "./scripts/ops/run_tests.sh cov",
+        "./tools/ops/run_tests.sh fast",
+        "./tools/ops/run_tests.sh cov",
         "make test",
         "pytest -m smoke tests/smoke/",
         ".github/workflows/ci.yml",

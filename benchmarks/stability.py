@@ -8,7 +8,7 @@ acurácia do **checkpoint selecionado**, então descreve se o artefato promovido
 e o artefato saiu com ``converged: True``. Nada no JSON dizia que 90 das 100
 épocas do orçamento declarado não produziram nada.
 
-``CollapseAbort`` (``app/domain/models/training/trainer.py``) passou a abortar
+``CollapseAbort`` (``app/domain/models/training/callbacks.py``) passou a abortar
 esse padrão *durante* o treino, mas só protege execuções novas e não deixa
 registro em quem já rodou. Este módulo aplica o MESMO critério à série completa
 depois do fato, para que o artefato conte a história do treino.

@@ -14,15 +14,15 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 
+from app.core.contracts.audio import AudioData
+from app.core.contracts.base import ProcessingStatus
 from app.core.exceptions import (
     AudioProcessingError,
     ModelNotFoundError,
     UnsupportedFormatError,
     ValidationError,
 )
-from app.core.contracts.audio import AudioData
-from app.core.contracts.base import ProcessingStatus
-from app.core.security import limiter, sanitize_filename
+from app.core.security import limiter
 from app.dependencies import get_detection_service
 from app.domain.services.detection_service import DetectionService
 from app.domain.services.upload_service import AudioUploadService
@@ -32,6 +32,7 @@ from app.interfaces.web.schemas.api_models import (
     PredictionResult,
     UncertaintyResult,
 )
+from app.utils.file_utils import sanitize_filename
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/detection", tags=["Detection"])
