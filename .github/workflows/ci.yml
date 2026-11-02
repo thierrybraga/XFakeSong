@@ -96,6 +96,15 @@ jobs:
       - name: Build da imagem (TF_VARIANT=cpu)
         run: docker build --build-arg TF_VARIANT=cpu -t speechchecker:ci .
       - name: Validar compose segmentado
+        # Os perfis de inferência recusam subir sem credenciais e origens
+        # explícitas (fail-closed). Aqui só se valida a configuração: valores
+        # fictícios, definidos apenas neste passo, sem segredo nenhum.
+        env:
+          XFAKESONG_API_KEY: ci-validacao-sem-segredo
+          XFAKE_GRADIO_USERNAME: ci-validacao
+          XFAKE_GRADIO_PASSWORD: ci-validacao-sem-segredo
+          ALLOWED_HOSTS: localhost
+          ALLOWED_ORIGINS: http://localhost
         run: |
           python tools/ops/docker_build.py inference-cpu config
           python tools/ops/docker_build.py train-cpu config
