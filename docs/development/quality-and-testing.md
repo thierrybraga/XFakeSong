@@ -31,18 +31,18 @@ make test-cov
 ```text
 tests/
 ├── conftest.py          # fixtures globais + marcação automática por pasta
-├── unit/                # 79 arquivos
+├── unit/                # 80 arquivos
 ├── api/                 # 5 arquivos
 ├── functional/          # 2 arquivos
 ├── integration/         # 10 arquivos
 └── smoke/               # 6 arquivos, opt-in
 ```
 
-Total atual: **102 arquivos de teste**.
+Total atual: **103 arquivos de teste**.
 
 | Categoria | Marcador | Arquivos | Objetivo | Run padrão |
 |---|---:|---:|---|---|
-| Unit | `unit` | 79 | Componentes isolados, utilitários, treinamento, benchmark, notebooks, segurança local | Sim |
+| Unit | `unit` | 80 | Componentes isolados, utilitários, treinamento, benchmark, notebooks, segurança local | Sim |
 | API | `api` | 5 | Contratos FastAPI com `TestClient` e serviços mockados | Sim |
 | Functional | `functional` | 2 | Fluxos de usuário e rotas/frontend | Sim |
 | Integration | `integration` | 10 | Cooperação real entre serviços, podendo treinar modelos pequenos | Sim |
@@ -114,6 +114,7 @@ diz qual módulo está sob contrato, não em que semana o teste foi escrito.
 | `test_training_calibration.py` | calibração pós-treino e `input_contract`, sem montar um `ModelTrainer` |
 | `test_trainer_compile_respect.py` | compile-respect, `from_logits`, augmentation |
 | `test_training_guards.py` | `CollapseAbort` e `PersistentEpochHistory` |
+| `test_check_pip_audit.py` | gate de release: avisos fora da lista, exceção vencida e versão diferente da registrada |
 | `test_checkpoint_monitor.py` | `checkpoint_monitor`, `ValidationEER` e o encanamento |
 | `test_resumable_checkpoint.py` | melhor valor sobrevive a retomadas |
 | `test_guarded_checkpoint_restore.py` | restauração validada contra os pesos em memória |
@@ -380,7 +381,7 @@ Gates locais equivalentes:
 python -m pip install -r requirements-dev.txt -r requirements-docs.txt
 ruff check app tests benchmarks tools
 bash tools/ops/run_tests.sh cov
-pip-audit -r requirements.txt
+python tools/ops/check_pip_audit.py
 mkdocs build --strict --clean
 python tools/ops/check_docs_site.py infrastructure/site
 bandit -r app benchmarks tools -lll

@@ -28,11 +28,16 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-          cache-dependency-path: ${{ matrix.profile }}
+          cache-dependency-path: |
+            ${{ matrix.profile }}
+            requirements-base.txt
+            constraints.txt
       - name: Resolver perfil e validar dependências instaladas
+        # constraints.txt é o que as imagens usam (PIP_CONSTRAINT): testar sem ele
+        # aprovaria um ambiente diferente do publicado.
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r "${{ matrix.profile }}"
+          python -m pip install -r "${{ matrix.profile }}" -c constraints.txt
           python -m pip check
 
   quality:
@@ -49,15 +54,20 @@ jobs:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: |
+            requirements-base.txt
+            requirements.txt
             requirements-dev.txt
             requirements-docs.txt
             requirements-notebooks.txt
             requirements-xai.txt
             requirements-experiments.txt
+            constraints.txt
       - name: Instalar todos os perfis publicados
+        # O pip-audit também audita pip e setuptools, e o setuptools que vem com o
+        # Python do runner é antigo o bastante para reprovar o gate.
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install \
+          python -m pip install --upgrade pip setuptools
+          python -m pip install -c constraints.txt \
             -r requirements-notebooks.txt \
             -r requirements-docs.txt \
             -r requirements-xai.txt \
@@ -69,8 +79,8 @@ jobs:
         run: bash tools/ops/run_tests.sh cov
       - name: Bandit — bloquear achados HIGH
         run: bandit -r app benchmarks tools -lll
-      - name: pip-audit — bloquear vulnerabilidades nos perfis instalados
-        run: pip-audit
+      - name: pip-audit — bloquear o que a lista de exceções não cobre
+        run: python tools/ops/check_pip_audit.py
       - name: MkDocs — build estrito
         run: |
           mkdocs build --strict --clean

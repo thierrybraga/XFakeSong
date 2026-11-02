@@ -97,6 +97,7 @@ de execução ao lado das configurações, métricas e relatórios. Veja o
 | `docker_build.py` | Helper de build/execução dos perfis Docker (`inference/train/benchmark × cpu/nvidia`) sobre os composes segmentados. |
 | `verify_environments.py` | Sobe containers efêmeros por família e verifica importações/versões das bibliotecas-chave (e GPU nos perfis NVIDIA). |
 | `run_tests.sh` | Entrypoint de testes usado pela CI (`fast`, `cov`, suites por marcador). |
+| `check_pip_audit.py` | Gate de release: roda o `pip-audit` e reprova todo aviso fora de `configs/security/pip-audit-exceptions.json`, versão diferente da registrada e exceção vencida. |
 | `build_smoke_test.sh` | Smoke test do build Docker completo. |
 | `sync_hf_models.py` | Baixa modelos treinados do HF Hub para `data/models` (no-op sem `MODEL_REPO_ID`; usado no boot de Spaces). |
 | `deduplicate_artifacts.py` | Audita e substitui conteúdo idêntico em `data/models`/`data/results` por hardlinks NTFS, preservando todos os caminhos. Rode sem flags para prévia e com `--apply` para aplicar; geradores e promoções separam o link antes de regravar. |
