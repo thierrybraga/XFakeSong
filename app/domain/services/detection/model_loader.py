@@ -1,5 +1,6 @@
 import importlib
 import logging
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Union
@@ -37,6 +38,27 @@ logger = logging.getLogger(__name__)
 
 def _load_custom_architecture_modules() -> None:
     """Import custom architecture modules so Keras registrations are available."""
+@contextmanager
+def _neutral_keras_policy():
+    """Desserializa o artefato sem herdar a política global do processo.
+
+    Com GPU, `setup_gpu` liga `mixed_float16` na thread principal, e as sub-camadas
+    criadas no `__init__` das camadas próprias herdam a política de quem carrega.
+    No AASIST, treinado em float32, isso misturava float16 e float32 e a predição
+    falhava (`Input 'y' of 'Mul' Op has type float32`). Sem GPU o erro não aparece,
+    e a temperatura e o limiar dos sidecars foram medidos nesta mesma condição.
+    A política salva camada a camada no artefato continua valendo.
+
+    O Keras guarda a política por thread: restaurar aqui não afeta as demais.
+    """
+    anterior = tf.keras.mixed_precision.global_policy()
+    tf.keras.mixed_precision.set_global_policy("float32")
+    try:
+        yield
+    finally:
+        tf.keras.mixed_precision.set_global_policy(anterior)
+
+
     for module_name in (
         "app.domain.models.architectures.aasist",
         "app.domain.models.architectures.conformer",
@@ -396,20 +418,21 @@ class ModelLoader:
                     )
                 custom_objects.update(tf.keras.utils.get_custom_objects())
 
-                try:
-                    model = tf.keras.models.load_model(
-                        str(model_path),
-                        custom_objects=custom_objects,
-                        safe_mode=True,
-                        compile=False,
-                    )
-                except TypeError:
-                    # Fallback sem custom objects se não forem necessários
-                    model = tf.keras.models.load_model(
-                        str(model_path),
-                        safe_mode=True,
-                        compile=False,
-                    )
+                with _neutral_keras_policy():
+                    try:
+                        model = tf.keras.models.load_model(
+                            str(model_path),
+                            custom_objects=custom_objects,
+                            safe_mode=True,
+                            compile=False,
+                        )
+                    except TypeError:
+                        # Fallback sem custom objects se não forem necessários
+                        model = tf.keras.models.load_model(
+                            str(model_path),
+                            safe_mode=True,
+                            compile=False,
+                        )
 
                 model_type = "tensorflow"
 

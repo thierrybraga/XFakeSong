@@ -80,6 +80,34 @@ def test_sklearn_predictor_uses_model_eer_threshold():
     assert result.data["is_deepfake"] is True
 
 
+def test_load_nao_herda_a_precisao_mista_global(tmp_path):
+    """Com GPU, a sub-camada herdava `mixed_float16` e o AASIST falhava ao predizer."""
+    import keras
+
+    @keras.saving.register_keras_serializable("teste_politica_de_carga")
+    class ComSubcamada(keras.layers.Layer):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.densa = keras.layers.Dense(2)
+
+        def call(self, entrada):
+            return self.densa(entrada)
+
+    entrada = keras.Input((4,))
+    keras.Model(entrada, ComSubcamada()(entrada)).save(tmp_path / "bench_politica.keras")
+
+    loader = ModelLoader(tmp_path, create_default_models=False)
+    keras.mixed_precision.set_global_policy("mixed_float16")
+    try:
+        loader._load_single_model(tmp_path / "bench_politica.keras", warmup=False)
+        assert keras.mixed_precision.global_policy().name == "mixed_float16"
+    finally:
+        keras.mixed_precision.set_global_policy("float32")
+
+    carregado = loader.get_model("bench_politica").model
+    assert carregado.layers[-1].densa.dtype_policy.name == "float32"
+
+
 def test_model_loader_infers_hybrid_and_randomforest_names(tmp_path):
     loader = ModelLoader(tmp_path, create_default_models=False)
 
