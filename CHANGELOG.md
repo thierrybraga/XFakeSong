@@ -40,6 +40,8 @@ no Git, e `app/__init__.py` declara a versão `1.1.0`.
   imagens órfãs e todo o cache de build da máquina, inclusive de outros projetos. Agora só removem
   imagens órfãs da inferência. O cache de build fica, e quem quiser liberá-lo roda
   `docker builder prune` sabendo o alcance.
+- **Imagens de treino:** o cache do pip também saiu delas. Em `ssl-transformers:nvidia`, o TensorFlow
+  rodava em CPU sem nenhum erro, porque o Dockerfile não publicava as bibliotecas CUDA. Corrigido.
 - **CI das imagens de inferência:** o workflow `docker-inference.yml` constrói e confere as duas
   imagens. Antes a CI só construía o `Dockerfile` da raiz.
 - **Docker parado:** `start.bat` e `start.sh` tentam iniciar o Docker Desktop antes de desistir.

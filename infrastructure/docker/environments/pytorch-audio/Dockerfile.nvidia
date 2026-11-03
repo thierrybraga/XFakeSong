@@ -45,7 +45,8 @@ RUN pip install --upgrade pip setuptools wheel \
     && pip install -r infrastructure/docker/environments/pytorch-audio/requirements.txt \
     && pip install 'tensorflow[and-cuda]>=2.16,<2.22' \
     && pip install --upgrade --no-deps 'nvidia-cudnn-cu12>=9.3.0.75,<10' \
-    && pip install --no-deps 'nvidia-cuda-nvcc-cu12'
+    && pip install --no-deps 'nvidia-cuda-nvcc-cu12' \
+    && pip cache purge
 
 COPY . .
 

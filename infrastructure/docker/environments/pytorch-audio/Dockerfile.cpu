@@ -31,7 +31,8 @@ COPY requirements-base.txt constraints.txt ./
 COPY infrastructure/docker/environments/pytorch-audio/requirements.txt infrastructure/docker/environments/pytorch-audio/
 ENV PIP_CONSTRAINT=/app/constraints.txt
 RUN pip install --upgrade pip setuptools wheel \
-    && pip install -r infrastructure/docker/environments/pytorch-audio/requirements.txt
+    && pip install -r infrastructure/docker/environments/pytorch-audio/requirements.txt \
+    && pip cache purge
 
 COPY . .
 

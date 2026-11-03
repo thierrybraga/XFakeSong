@@ -32,13 +32,24 @@ Valores medidos em 2026-11-03 no Docker Desktop com WSL2, um build por vez:
 | `speechchecker/inference-api:nvidia` | 16,7 GB | 13 min |
 | `speechchecker/inference-api:cpu` | 15,4 GB | 9 min |
 
-O tempo depende da conexão: em 2026-11-02, a 2,5 MB/s, a imagem NVIDIA levou 68 min. A retirada do
-cache do pip reduziu os tamanhos de 30,3 e 22,7 GB. Com o armazenamento containerd do Docker
-Desktop, o tamanho informado por `docker images` é bem maior que os arquivos da imagem, porque
-inclui também as camadas comprimidas.
+| `speechchecker/pytorch-audio:nvidia` | 16,2 GB | 13 min |
+| `speechchecker/ssl-transformers:nvidia` | 16,3 GB | 14 min |
+| `speechchecker/tensorflow-keras:nvidia` | 13,7 GB | 9 min |
+| `speechchecker/pytorch-audio:cpu` | 13,6 GB | 29 min |
+| `speechchecker/ssl-transformers:cpu` | 13,7 GB | 16 min |
+| `speechchecker/tensorflow-keras:cpu` | 5,4 GB | 4 min |
+| `speechchecker/classical-ml:cpu` | 1,8 GB | 1 min |
+
+`speechchecker/benchmark:nvidia` sai do mesmo Dockerfile da inferência NVIDIA. O tempo depende da
+conexão: em 2026-11-02, a 2,5 MB/s, a imagem NVIDIA levou 68 min. A retirada do cache do pip reduziu
+os tamanhos de inferência de 30,3 e 22,7 GB. Com o armazenamento containerd do Docker Desktop, o
+tamanho informado por `docker images` é bem maior que os arquivos da imagem, porque inclui também as
+camadas comprimidas.
 
 Reserve o espaço no disco do `docker_data.vhdx`, que fica em `C:` por padrão. O arquivo cresce
-durante os builds e não encolhe sozinho quando imagens são removidas.
+durante os builds, mesmo com espaço livre dentro dele, e não encolhe sozinho quando imagens são
+removidas. Em 2026-11-03 ele chegou a 160 GB com 125 GB em uso. Para manter todas as imagens, deixe
+esse arquivo em um disco com folga, em **Settings > Resources > Advanced > Disk image location**.
 
 **Mudar só o código pode refazer a instalação.** Depois de construir a NVIDIA e a CPU nessa ordem,
 só a camada do `pip install` da CPU continuou no cache de build. A causa provável é o limite de

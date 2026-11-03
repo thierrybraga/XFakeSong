@@ -39,7 +39,15 @@ RUN pip install --upgrade pip setuptools wheel \
     && pip install -r infrastructure/docker/environments/ssl-transformers/requirements.txt \
     && pip install 'tensorflow[and-cuda]>=2.16,<2.22' \
     && pip install --upgrade --no-deps 'nvidia-cudnn-cu12>=9.3.0.75,<10' \
-    && pip install --no-deps 'nvidia-cuda-nvcc-cu12'
+    && pip install --no-deps 'nvidia-cuda-nvcc-cu12' \
+    && pip cache purge
+
+# tensorflow[and-cuda] installs NVIDIA runtime libraries inside site-packages.
+# Publish them to the dynamic loader: without this, TensorFlow here runs on CPU
+# with no error, while torch still finds the GPU through its own paths.
+ARG PYTHON_VERSION
+ENV NVIDIA_PIP_LIBS=/usr/local/lib/python${PYTHON_VERSION}/site-packages/nvidia
+ENV LD_LIBRARY_PATH=${NVIDIA_PIP_LIBS}/cuda_cupti/lib:${NVIDIA_PIP_LIBS}/cuda_nvrtc/lib:${NVIDIA_PIP_LIBS}/cusparse/lib:${NVIDIA_PIP_LIBS}/nccl/lib:${NVIDIA_PIP_LIBS}/cuda_runtime/lib:${NVIDIA_PIP_LIBS}/cudnn/lib:${NVIDIA_PIP_LIBS}/cufft/lib:${NVIDIA_PIP_LIBS}/cusolver/lib:${NVIDIA_PIP_LIBS}/cublas/lib:${NVIDIA_PIP_LIBS}/nvjitlink/lib:${NVIDIA_PIP_LIBS}/curand/lib
 
 COPY . .
 

@@ -143,6 +143,30 @@ def test_comentario_do_compose_nao_cita_contagem_de_modelos(perfil):
     assert not re.search(r"\b\d+ modelos\b", texto)
 
 
+AMBIENTES = ROOT / "infrastructure" / "docker" / "environments"
+
+
+@pytest.mark.parametrize(
+    "dockerfile",
+    sorted(p.relative_to(AMBIENTES).as_posix() for p in AMBIENTES.glob("*/Dockerfile.nvidia")),
+)
+def test_imagem_nvidia_publica_as_bibliotecas_cuda_do_tensorflow(dockerfile):
+    """Sem isto o TensorFlow roda em CPU sem nenhum erro, como ocorria no ssl-transformers."""
+    texto = (AMBIENTES / dockerfile).read_text(encoding="utf-8")
+    assert "tensorflow[and-cuda]" in texto
+    assert re.search(r"^ENV LD_LIBRARY_PATH=.*cudnn/lib", texto, re.M)
+
+
+@pytest.mark.parametrize(
+    "dockerfile",
+    sorted(p.relative_to(AMBIENTES).as_posix() for p in AMBIENTES.glob("*/Dockerfile.*") if p.suffix != ".dockerignore"),
+)
+def test_imagem_nao_guarda_o_cache_do_pip(dockerfile):
+    """O cache chegava a 6,4 GB por imagem, sem uso em execução."""
+    texto = (AMBIENTES / dockerfile).read_text(encoding="utf-8")
+    assert "pip cache purge" in texto or "PIP_NO_CACHE_DIR=1" in texto
+
+
 @pytest.mark.parametrize("dockerfile", DOCKERFILES_INFERENCIA)
 def test_healthcheck_nao_cai_na_raiz_depois_da_falha(dockerfile):
     """`/` responde mesmo sem banco ou sem modelos e escondia o 503 de `/health`."""
