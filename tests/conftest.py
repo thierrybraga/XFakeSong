@@ -1,5 +1,8 @@
+import atexit
 import os
 import pathlib
+import shutil
+import tempfile
 from unittest.mock import MagicMock
 
 # A suíte não pode depender do `.env` local. O app o carrega no import
@@ -15,6 +18,12 @@ os.environ["SPEECHCHECKER_API_KEY"] = "test-api-key"
 os.environ["XFAKESONG_API_KEY"] = "test-api-key"
 os.environ["ALLOWED_HOSTS"] = "*"
 os.environ["ALLOWED_ORIGINS"] = "*"
+
+# Nem o banco real: `app.core.db.session` abre `DATABASE_URL` no import e, sem esta
+# linha, cada execução gravava em `data/app.db` (runs, métricas, jobs de treino).
+_BANCO_DE_TESTE = pathlib.Path(tempfile.mkdtemp(prefix="speechchecker_tests_"))
+atexit.register(shutil.rmtree, _BANCO_DE_TESTE, ignore_errors=True)
+os.environ["DATABASE_URL"] = f"sqlite:///{(_BANCO_DE_TESTE / 'app.db').as_posix()}"
 
 import pytest
 from fastapi.testclient import TestClient
