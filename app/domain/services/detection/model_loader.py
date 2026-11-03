@@ -33,11 +33,11 @@ from app.domain.models.architectures.registry import (
 )
 from app.domain.models.architectures.safe_normalization import SafeInstanceNormalization
 
+from .temperature_scaling import logit_output_model
+
 logger = logging.getLogger(__name__)
 
 
-def _load_custom_architecture_modules() -> None:
-    """Import custom architecture modules so Keras registrations are available."""
 @contextmanager
 def _neutral_keras_policy():
     """Desserializa o artefato sem herdar a política global do processo.
@@ -59,6 +59,8 @@ def _neutral_keras_policy():
         tf.keras.mixed_precision.set_global_policy(anterior)
 
 
+def _load_custom_architecture_modules() -> None:
+    """Import custom architecture modules so Keras registrations are available."""
     for module_name in (
         "app.domain.models.architectures.aasist",
         "app.domain.models.architectures.conformer",
@@ -113,6 +115,10 @@ class ModelInfo:
     # usa para inferência (FP32, mais rápida em CPU; mesmos pesos → mesma saída),
     # com fallback automático para o modelo Keras.
     onnx_session: Optional[Any] = None
+    # Mesmo modelo devolvendo o logit, para a temperatura não passar pela
+    # probabilidade cortada (ver temperature_scaling.py). None = não há acesso.
+    logit_model: Optional[Any] = None
+    jit_logit_fn: Optional[Any] = None
 
 
 class TorchSSLOriginalModel:
@@ -530,6 +536,12 @@ class ModelLoader:
             # mesmos pesos → mesma saída, porém mais rápida em CPU). Degrada
             # graciosamente: sem .onnx ou sem onnxruntime → segue com Keras/TF.
             if model_type == "tensorflow":
+                # Só quando o contrato declara: artefato anterior foi avaliado na
+                # escala cortada, e assim continua reproduzindo o seu run.
+                if isinstance(input_contract, dict) and input_contract.get(
+                    "temperature_on_logits"
+                ):
+                    model_info.logit_model = logit_output_model(model)
                 onnx_path = model_path.parent / f"{model_name}.onnx"
                 if onnx_path.exists():
                     try:

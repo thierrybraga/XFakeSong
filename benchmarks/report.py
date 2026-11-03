@@ -133,10 +133,11 @@ def _uncertainty_note(results) -> str:
 
 _THRESHOLD_NOTE = (
     "Acurácia medida no limiar fixo de decisão 0,5 (política comum a todas as "
-    "arquiteturas). Acur.@EER usa o limiar do ponto de EER derivado do PRÓPRIO "
-    "teste: é um ORÁCULO, teto de separabilidade, não desempenho operável. A "
-    "distância entre as duas colunas mede o quanto de erro é apenas calibração "
-    "de limiar."
+    "arquiteturas). Acur.@cal usa o limiar de EER derivado na VALIDAÇÃO: é a "
+    "decisão que o sistema implantado toma. Acur.@EER usa o limiar do ponto de "
+    "EER derivado do PRÓPRIO teste: é um ORÁCULO, teto de separabilidade, não "
+    "desempenho operável. A distância entre as colunas mede o quanto de erro é "
+    "apenas calibração de limiar."
 )
 
 
@@ -177,12 +178,13 @@ def _table_resultados(results) -> str:
     rows = []
     for name, r in results["architectures"].items():
         if r.get("status") != "ok":
-            rows.append(f"{name} & \\multicolumn{{8}}{{c}}{{"
+            rows.append(f"{name} & \\multicolumn{{9}}{{c}}{{"
                         f"\\textit{{falhou: {r.get('error','?')[:40]}}}}} \\\\")
             continue
         c, e = r["clean"], r["efficiency"]
         rows.append(
             f"{name} & {_pct_with_uncertainty(c, 'accuracy')} & "
+            f"{_pct_with_uncertainty(c, 'accuracy_at_calibrated_threshold')} & "
             f"{_pct_with_uncertainty(c, 'accuracy_at_eer_oracle')} & "
             f"{_pct_with_uncertainty(c, 'eer')} & "
             f"{_num(c.get('auc_roc'))} & {_num(c.get('min_tdcf'),4)} & "
@@ -196,9 +198,9 @@ def _table_resultados(results) -> str:
         f"{results['dataset']['n_test']} amostras). {_THRESHOLD_NOTE} "
         f"{_uncertainty_note(results)} Gerado pelo benchmark.}}\n"
         "\\label{tab:bench_resultados}\n\\small\\singlespacing\n"
-        "\\begin{tabular}{lcccccccc}\n\\toprule\n"
-        "\\textbf{Arquitetura} & \\textbf{Acur.} & \\textbf{Acur.@EER} & "
-        "\\textbf{EER} & "
+        "\\begin{tabular}{lccccccccc}\n\\toprule\n"
+        "\\textbf{Arquitetura} & \\textbf{Acur.} & \\textbf{Acur.@cal} & "
+        "\\textbf{Acur.@EER} & \\textbf{EER} & "
         "\\textbf{AUC-ROC} & \\textbf{min-tDCF} & \\textbf{Lat.\\,(ms)} & "
         "\\textbf{Treino} & \\textbf{Conv.?} \\\\\n\\midrule\n"
         f"{body}\n\\bottomrule\n\\end{{tabular}}\n\\end{{table}}\n"
@@ -1409,24 +1411,26 @@ def _write_tcc_report(results: Dict[str, Any], path: Path) -> None:
         "",
         "## 4. Resultados Numéricos",
         "",
-        "Acurácia no limiar fixo 0,5. `Acur.@EER` usa o limiar do ponto de EER "
-        "derivado do próprio teste — é um **oráculo** (teto de separabilidade), "
-        "não desempenho operável; a diferença entre as duas colunas é erro de "
-        "calibração de limiar, não de separabilidade.",
+        "Acurácia no limiar fixo 0,5. `Acur.@cal` usa o limiar de EER derivado na "
+        "validação — é a decisão que o sistema implantado toma. `Acur.@EER` usa o "
+        "limiar do ponto de EER derivado do próprio teste — é um **oráculo** (teto "
+        "de separabilidade), não desempenho operável; a diferença entre as colunas "
+        "é erro de calibração de limiar, não de separabilidade.",
         "",
-        "| Arquitetura | Status | Acurácia | Acur.@EER | AUC-ROC | EER | min-tDCF | Latência ms | Params |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Arquitetura | Status | Acurácia | Acur.@cal | Acur.@EER | AUC-ROC | EER | min-tDCF | Latência ms | Params |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for name, r in results.get("architectures", {}).items():
         if r.get("status") != "ok":
             lines.append(
-                f"| {name} | erro |  |  |  |  |  |  |  |"
+                f"| {name} | erro |  |  |  |  |  |  |  |  |"
             )
             continue
         clean = r.get("clean") or {}
         eff = r.get("efficiency") or {}
         lines.append(
             f"| {name} | ok | {_num(clean.get('accuracy'), 4)} | "
+            f"{_num(clean.get('accuracy_at_calibrated_threshold'), 4)} | "
             f"{_num(clean.get('accuracy_at_eer_oracle'), 4)} | "
             f"{_num(clean.get('auc_roc'), 4)} | {_num(clean.get('eer'), 4)} | "
             f"{_num(clean.get('min_tdcf'), 4)} | "

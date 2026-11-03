@@ -107,6 +107,9 @@ def build_input_contract(
         "scaler_applied": scaler_applied,
         # Temperatura calibrada (Sprint 1.4) — aplicada na inferência pelo Predictor
         "temperature": float(temperature),
+        # Escala em que T e o limiar foram derivados: o logit real do modelo, não a
+        # probabilidade cortada (ver detection/temperature_scaling.py).
+        "temperature_on_logits": True,
     }
 
     # Persiste o contrato canônico da arquitetura (frontend, crop e janela).

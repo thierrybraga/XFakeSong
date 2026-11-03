@@ -341,10 +341,11 @@ def test_report_write_all_creates_artifacts():
         resultados = (out / "tables" / "tab_resultados.tex").read_text(
             encoding="utf-8"
         )
-        # 9 colunas desde 2026-07-27: Acur.@EER (oráculo) entrou ao lado da
-        # acurácia no limiar fixo, para separar calibração de separabilidade.
-        assert "\\begin{tabular}{lcccccccc}" in resultados
-        assert "\\multicolumn{8}{c}" in resultados
+        # 10 colunas desde 2026-11-02: além do limiar fixo e do oráculo, a acurácia
+        # no limiar de validação, que é a decisão do sistema implantado.
+        assert "\\begin{tabular}{lccccccccc}" in resultados
+        assert "\\multicolumn{9}{c}" in resultados
+        assert "Acur.@cal" in resultados
         assert "Acur.@EER" in resultados
         assert "limiar fixo de decisão 0,5" in resultados
         # figuras desenhadas a partir de scores/história

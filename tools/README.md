@@ -87,6 +87,8 @@ de execução ao lado das configurações, métricas e relatórios. Veja o
 | `export_model_card.py` | Exporta o model card Markdown consolidado dos artefatos treinados (`data/models/MODEL_CARD.md`). |
 | `export_rf_feature_importance.py` | Calcula importância por permutação do Random Forest promovido e gera figura+CSV (nomes resolvidos pela largura do artefato: 63 no v1, 183 no v2); no artigo v2, a análise é exploratória porque o frontend tabular foi revisto após uma observação do teste. |
 | `rebuild_inference_contracts.py` | Regenera os sidecars `bench_*_config.json` dos modelos promovidos a partir do run real (`metrics.json` + `predictions_clean.csv`): `eer_threshold` verdadeiro e `input_contract` completo com `feature_frontend` do benchmark. |
+| `recalibrate_temperature.py` | Refaz a temperatura dos modelos neurais promovidos sobre o logit real, na validação e sem treinar. Transporta o limiar, então nenhum veredito da validação muda, e recusa o modelo se algum mudar. Simulação por padrão; `--apply` grava com backup. |
+| `select_fusion.py` | Mede a fusão pela pontuação centrada, na validação e por locutor não visto: cada modelo, conjuntos e condição de ruído. Só lê `X_val`; a estimativa final de um conjunto escolhido é do teste. |
 | `run_shap_analysis.py` | **XAI**: análise SHAP dos clássicos (RF/SVM sobre o vetor tabular) e mapas de ativação Grad-CAM das redes espectrais Keras; ver `app/domain/xai/`. |
 
 ## ops/ — operação, infraestrutura e qualidade
@@ -98,9 +100,9 @@ de execução ao lado das configurações, métricas e relatórios. Veja o
 | `verify_environments.py` | Sobe containers efêmeros por família e verifica importações/versões das bibliotecas-chave (e GPU nos perfis NVIDIA). |
 | `run_tests.sh` | Entrypoint de testes usado pela CI (`fast`, `cov`, suites por marcador). |
 | `check_pip_audit.py` | Gate de release: roda o `pip-audit` e reprova todo aviso fora de `configs/security/pip-audit-exceptions.json`, versão diferente da registrada e exceção vencida. |
+| `docker_release.py` | Imagem de inferência: guarda antes de atualizar (`snapshot`), volta (`rollback`), confere como a CI (`check`) e regrava as versões fixadas (`lock`). |
 | `build_smoke_test.sh` | Smoke test do build Docker completo. |
 | `sync_hf_models.py` | Baixa modelos treinados do HF Hub para `data/models` (no-op sem `MODEL_REPO_ID`; usado no boot do container e de Spaces). Não sobrescreve arquivo local sem `--force`. |
-| `docker_release.py` | Imagem de inferência: guarda antes de atualizar (`snapshot`), volta (`rollback`), confere como a CI (`check`) e regrava as versões fixadas (`lock`). |
 | `deduplicate_artifacts.py` | Audita e substitui conteúdo idêntico em `data/models`/`data/results` por hardlinks NTFS, preservando todos os caminhos. Rode sem flags para prévia e com `--apply` para aplicar; geradores e promoções separam o link antes de regravar. |
 | `upload_models_to_hf.py` | Publica artefatos consolidados no HF Hub (dry-run sem credenciais; nunca imprime token). |
 | `build_notebooks.py` | Regenera os notebooks de estudo/reprodução em `docs/notebooks/` com API real do projeto. |

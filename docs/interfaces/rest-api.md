@@ -142,7 +142,8 @@ Resposta 200 (`PredictionResult`):
 {
   "is_fake": true,
   "confidence": 0.92,
-  "probabilities": {"real": 0.08, "fake": 0.92},
+  "fake_score": 0.92,
+  "probabilities": {"real": 0.04, "fake": 0.96},
   "model_name": "AASIST_v1",
   "features_used": ["mel_spectrogram"],
   "metadata": {},
@@ -167,6 +168,10 @@ Form-data:
 | `fusion` | string | não | `weighted_avg`, `soft_voting`, `majority_vote` ou `max_conf` |
 | `weights` | JSON string | não | pesos como `[0.4, 0.6]` |
 | `use_tta` | bool | não | ativa TTA por modelo |
+
+A fusão combina `fake_score`, a pontuação centrada no limiar de cada modelo, e decide em
+0,5. Por isso `probabilities` da resposta traz a pontuação fundida, que não é uma
+probabilidade calibrada; a P(fake) de cada modelo fica em `per_model[].fake_prob`.
 
 ### `POST /uncertainty`
 

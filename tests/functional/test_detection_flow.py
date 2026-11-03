@@ -85,6 +85,74 @@ def test_detect_single_flow(mock_detection_service):
         assert result.data.model_name == "test_model"
 
 
+def test_limiar_calibrado_nao_contradiz_veredito_e_confianca(mock_detection_service):
+    """P(fake) 0,8 com corte em 0,94: veredito real, com pontuação abaixo de 0,5."""
+    info = mock_detection_service.model_loader.loaded_models["test_model"]
+    info.eer_threshold = 0.94
+    audio_data = AudioData(
+        samples=np.random.rand(64600).astype(np.float32),
+        sample_rate=16000,
+        metadata={"source": "dummy.wav"},
+        duration=4.0,
+    )
+    with patch.object(
+        mock_detection_service.feature_preparer, "prepare_input"
+    ) as mock_prep:
+        mock_prep.return_value = {
+            "status": "ok",
+            "features": np.random.rand(1, 100, 80),
+            "metadata": {},
+        }
+        result = mock_detection_service.detect_single(audio_data, "test_model")
+
+    assert result.status == ProcessingStatus.SUCCESS
+    assert result.data.is_fake is False, "a decisão continua sendo a do limiar"
+    assert result.data.probabilities["fake"] == pytest.approx(0.8), "o bruto se mantém"
+    pontuacao = 0.8 / 0.94 * 0.5
+    assert result.data.metadata["fake_score"] == pytest.approx(pontuacao)
+    assert result.data.confidence == pytest.approx(1 - pontuacao)
+
+
+def test_analise_por_arquivo_mantem_limiar_e_ood(mock_detection_service):
+    """Sem isto a aba Detectar anunciava "limiar fixo 0,5" para um corte de 0,94."""
+    audio_data = AudioData(
+        samples=np.random.rand(16000).astype(np.float32),
+        sample_rate=16000,
+        duration=1.0,
+    )
+    predicao = {
+        "is_deepfake": False,
+        "confidence": 0.2,
+        "p_fake": 0.8,
+        "p_real": 0.2,
+        "classification_threshold": 0.94,
+        "fake_score": 0.4255,
+        "temperature_applied": 4.2,
+        "is_ood": True,
+    }
+    with patch.object(
+        mock_detection_service.feature_preparer,
+        "prepare_input",
+        return_value={"status": "ok", "features": np.zeros((1, 10)), "metadata": {"x": 1}},
+    ), patch.object(
+        mock_detection_service.predictor,
+        "predict",
+        return_value=MagicMock(status=ProcessingStatus.SUCCESS, data=predicao),
+    ), patch.object(
+        mock_detection_service.model_loader,
+        "get_model",
+        return_value=mock_detection_service.model_loader.loaded_models["test_model"],
+    ):
+        result = mock_detection_service._detect_with_config(audio_data, "test_model", [])
+
+    assert result.status == ProcessingStatus.SUCCESS
+    assert result.data.metadata["classification_threshold"] == 0.94
+    assert result.data.metadata["fake_score"] == 0.4255
+    assert result.data.metadata["is_ood"] is True
+    assert result.data.metadata["x"] == 1, "os metadados do preparo continuam"
+    assert result.data.probabilities["fake"] == 0.8
+
+
 def test_detect_model_not_found(mock_detection_service):
     audio_data = AudioData(
         samples=np.zeros(100),

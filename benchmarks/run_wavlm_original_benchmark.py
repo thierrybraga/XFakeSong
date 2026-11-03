@@ -305,7 +305,8 @@ def _write_model_card(path: Path, payload: dict[str, Any]) -> None:
 
 def _evaluate_scores(
     y_true: np.ndarray, p_fake: np.ndarray, threshold: float = 0.5,
-    n_bootstrap: int = 1000, cluster_ids: np.ndarray | None = None
+    n_bootstrap: int = 1000, cluster_ids: np.ndarray | None = None,
+    calibrated_threshold: float | None = None,
 ) -> dict[str, float]:
     """Delegado ao evaluate_scores canônico do benchmark.
 
@@ -320,7 +321,7 @@ def _evaluate_scores(
 
     return evaluate_scores(
         y_true, p_fake, threshold=threshold, n_bootstrap=n_bootstrap,
-        cluster_ids=cluster_ids,
+        cluster_ids=cluster_ids, calibrated_threshold=calibrated_threshold,
     )
 
 
@@ -1077,6 +1078,13 @@ def main() -> int:
         decision_threshold,
         calibration_info["threshold_source"],
     )
+    # Limiar operacional, derivado da validação limpa como nas entradas Keras. Não muda
+    # a comparação em 0,5: alimenta `accuracy_at_calibrated_threshold`, que faltava só
+    # nestas duas linhas da tabela.
+    calibrated_threshold = _evaluate_scores(
+        y_val, predict_scores_from_embeddings(Z_val), n_bootstrap=0
+    ).get("eer_threshold")
+    calibration_info["val_clean_eer_threshold"] = calibrated_threshold
 
     test_cluster_ids = getattr(data, "test_cluster_ids", None)
     if test_cluster_ids is None:
@@ -1090,7 +1098,7 @@ def main() -> int:
     scores_clean = predict_scores_from_embeddings(Z_test)
     clean = _evaluate_scores(
         y_test, scores_clean, threshold=decision_threshold,
-        cluster_ids=test_cluster_ids,
+        cluster_ids=test_cluster_ids, calibrated_threshold=calibrated_threshold,
     )
 
     # PARIDADE 2026-08-09: até aqui o runner SSL não emitia `grouped_clean`
@@ -1125,6 +1133,7 @@ def main() -> int:
             scores_noisy,
             threshold=decision_threshold,
             cluster_ids=test_cluster_ids,
+            calibrated_threshold=calibrated_threshold,
         )
 
     # Em LOTES, pela mesma razão da validação: com o backbone no caminho, o

@@ -161,6 +161,18 @@ def test_results_table_declares_threshold_policy_and_oracle_column():
     assert "99,00" in table
 
 
+def test_results_table_shows_the_decision_of_the_deployed_system():
+    """O limiar 0,5 fazia o RawGAT-ST parecer 84,4%, quando a decisão real dá 93,5%."""
+    results = _results_fixture()
+    results["architectures"]["AASIST"]["clean"][
+        "accuracy_at_calibrated_threshold"
+    ] = 0.8765
+    table = _table_resultados(results)
+    assert "Acur.@cal" in table
+    assert "VALIDAÇÃO" in table
+    assert "87,65" in table
+
+
 def test_bootstrap_unit_reaches_the_caption():
     """"IC 95% bootstrap" sozinho não distingue cluster de amostra."""
     results = _results_fixture()

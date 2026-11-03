@@ -148,8 +148,8 @@ def render_markdown(payload: dict[str, Any]) -> str:
         "- Resumo **regenerado** a partir dos `results.json` "
         "(`tools/reporting/rebuild_run_summary.py`).",
         "",
-        "| Modelo | Status | Estabilidade | Accuracy | AUC | EER | Latência ms |",
-        "|---|---|---|---:|---:|---:|---:|",
+        "| Modelo | Status | Estabilidade | Accuracy | Acur.@cal | AUC | EER | Latência ms |",
+        "|---|---|---|---:|---:|---:|---:|---:|",
     ]
 
     def fmt(value: Any, nd: int = 4) -> str:
@@ -161,7 +161,9 @@ def render_markdown(payload: dict[str, Any]) -> str:
         stab = (m.get("training_stability") or {}).get("status") or "-"
         lines.append(
             f"| {m.get('model')} | {m.get('status')} | {stab} | "
-            f"{fmt(clean.get('accuracy'))} | {fmt(clean.get('auc_roc'))} | "
+            f"{fmt(clean.get('accuracy'))} | "
+            f"{fmt(clean.get('accuracy_at_calibrated_threshold'))} | "
+            f"{fmt(clean.get('auc_roc'))} | "
             f"{fmt(clean.get('eer'))} | {fmt(eff.get('latency_ms'), 2)} |"
         )
     return "\n".join(lines) + "\n"

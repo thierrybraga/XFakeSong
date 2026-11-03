@@ -80,6 +80,7 @@ def test_contrato_leva_a_calibracao_e_a_politica_da_arquitetura():
     assert (contrato["type"], contrato["format"]) == ("audio", "raw")
     assert contrato["input_shape"] == [1600, 1]
     assert contrato["temperature"] == 1.5 and contrato["scaler_applied"] is False
+    assert contrato["temperature_on_logits"] is True
     assert (contrato["ood_threshold"], contrato["eer_threshold"]) == (-2.0, 0.42)
     assert contrato["eer_value"] == 0.07
     assert contrato["output_is_logits"] is False  # softmax na saída

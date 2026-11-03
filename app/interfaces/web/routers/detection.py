@@ -60,6 +60,7 @@ def _build_prediction_result(data, model_name_fallback: str = "unknown") -> Pred
         ood_score=meta.get("ood_score"),
         is_ood=meta.get("is_ood"),
         ood_threshold=meta.get("ood_threshold"),
+        fake_score=meta.get("fake_score"),
         classification_threshold=meta.get("classification_threshold"),
     )
 

@@ -56,10 +56,7 @@ def test_contract_calibration_belongs_to_the_saved_model():
     import tensorflow as tf
 
     from app.domain.models.training.metrics import MetricsCalculator
-    from app.domain.services.detection.predictor import (
-        apply_temperature_scaling,
-        normalize_logits_to_probs,
-    )
+    from app.domain.services.detection.predictor import predict_calibrated
     from app.domain.services.training_service import TrainingService
 
     with tempfile.TemporaryDirectory() as td:
@@ -99,14 +96,11 @@ def test_contract_calibration_belongs_to_the_saved_model():
             X_val = np.array(arquivo["X_val"])
             y_val = np.array(arquivo["y_val"])
         model = tf.keras.models.load_model(tmp / "t.keras")
-        probs = normalize_logits_to_probs(
-            # mesmo batch do trainer: com scores saturados, batches diferentes
-            # mudam o resultado no ultimo digito e desempatam em outro ponto
-            model.predict(X_val, batch_size=16, verbose=0),
-            contract.get("output_is_logits"),
-        )
+        # mesmo batch do trainer: com scores saturados, batches diferentes
+        # mudam o resultado no ultimo digito e desempatam em outro ponto
         probs = np.asarray(
-            apply_temperature_scaling(probs, temperature), dtype="float64"
+            predict_calibrated(model, X_val, temperature, batch_size=16),
+            dtype="float64",
         )
         scores = (
             probs[:, 1] if probs.ndim > 1 and probs.shape[-1] > 1

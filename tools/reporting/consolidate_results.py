@@ -221,6 +221,9 @@ def collect_rows(paths: List[str], prefer_last: bool = False):
                 "slug": slug,
                 "path": str(jf.parent),
                 "accuracy": clean.get("accuracy"),
+                "accuracy_at_calibrated_threshold": clean.get(
+                    "accuracy_at_calibrated_threshold"
+                ),
                 "auc": clean.get("auc_roc"),
                 "eer": clean.get("eer"),
                 "min_tdcf": clean.get("min_tdcf"),

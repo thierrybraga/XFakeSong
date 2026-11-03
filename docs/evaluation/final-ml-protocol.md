@@ -124,8 +124,13 @@ Protocolo AWGN **no domínio da forma de onda, antes de qualquer frontend**
   persiste no `input_contract`; quando avaliado, aparece separadamente como
   `accuracy_at_calibrated_threshold`.
 - `accuracy_at_eer_oracle` usa o EER do próprio conjunto avaliado e é apenas teto
-  diagnóstico; não é uma métrica operacional nem substitui a tabela principal.- **Temperature scaling** (Guo et al., ICML 2017): grid search de T por
-  NLL na validação (`TemperatureScaler`), aplicado pelo `Predictor`.
+  diagnóstico; não é uma métrica operacional nem substitui a tabela principal.
+- **Temperature scaling** (Guo et al., ICML 2017): T minimiza a NLL na validação, por
+  busca contínua sobre o logit real do modelo (`temperature_scaling.py`), e é aplicada
+  pelo `Predictor`. O contrato declara essa escala em `temperature_on_logits`; um artefato
+  sem o campo segue na escala antiga (grade de 0,5 a 4,9, probabilidade cortada em 1e-7),
+  que é a dos seus números. `tools/reporting/recalibrate_temperature.py` migra sem treinar
+  e transporta o limiar, então nenhum veredito da validação muda.
 - **Calibração Platt** adicional quando o modelo permanece miscalibrado
   (bloco `calibration` no `input_contract`, aplicado por
   `apply_posthoc_calibration` em

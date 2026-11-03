@@ -388,6 +388,7 @@ def rebuild(arch_key: str, dry_run: bool = False) -> bool:
         "n_fft",
         "hop_length",
         "output_is_logits",
+        "temperature_on_logits",
         "ood_threshold",
         "feature_frontend_reason",
         "target_sequence_length",

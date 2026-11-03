@@ -100,11 +100,12 @@ def calibrate_temperature(
     validation_data: Tuple[np.ndarray, np.ndarray],
     config,
 ) -> float:
-    """Calibração post-hoc de temperatura via grid search no conjunto de validação.
+    """Calibração post-hoc de temperatura no conjunto de validação.
 
     Implementa Temperature Scaling (Guo et al., ICML 2017): busca o T que
-    minimiza NLL nas predições do val set. O valor é salvo no input_contract
-    e aplicado automaticamente pelo Predictor na inferência.
+    minimiza NLL nas predições do val set, sobre os logits do modelo (ver
+    ``temperature_scaling.py``). O valor é salvo no input_contract e aplicado
+    automaticamente pelo Predictor na inferência.
 
     Returns:
         Temperatura calibrada (1.0 se desabilitado/falhar).
@@ -173,18 +174,15 @@ def compute_ood_threshold(
 
     try:
         from app.domain.services.detection.predictor import (
-            apply_temperature_scaling,
             compute_energy_score,
-            normalize_logits_to_probs,
+            predict_calibrated,
         )
 
         X_val, _ = validation_data
-        predictions = model.predict(
-            X_val, batch_size=config.batch_size, verbose=0
-        )
         # Aplica mesma temperatura que será usada em inferência
-        predictions = normalize_logits_to_probs(predictions)
-        predictions = apply_temperature_scaling(predictions, temperature)
+        predictions = predict_calibrated(
+            model, X_val, temperature, batch_size=config.batch_size
+        )
         energy_scores = compute_energy_score(predictions, temperature=temperature)
 
         # Threshold = quantil inferior. ood_quantile=0.95 → 5% das amostras
@@ -255,17 +253,12 @@ def compute_eer_threshold(
         - eer_value: valor de EER (taxa de erro no ponto FPR=FNR)
     """
     try:
-        from app.domain.services.detection.predictor import (
-            apply_temperature_scaling,
-            normalize_logits_to_probs,
-        )
+        from app.domain.services.detection.predictor import predict_calibrated
 
         X_val, y_val = validation_data
-        predictions = model.predict(
-            X_val, batch_size=config.batch_size, verbose=0
+        predictions = predict_calibrated(
+            model, X_val, temperature, batch_size=config.batch_size
         )
-        predictions = normalize_logits_to_probs(predictions)
-        predictions = apply_temperature_scaling(predictions, temperature)
 
         # Extrai score de probabilidade da classe "fake" (índice 1)
         if predictions.ndim > 1 and predictions.shape[-1] > 1:

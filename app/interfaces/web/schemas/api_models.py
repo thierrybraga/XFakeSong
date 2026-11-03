@@ -38,7 +38,12 @@ class PredictionResult(BaseModel):
     - `temperature_applied`: T de calibração (Sprint 1.4)
     - `ood_score` / `is_ood` / `ood_threshold`: detecção OOD (Sprint 2.5)
     - `classification_threshold`: EER threshold ou 0.5 (Sprint 4.5)
+    - `fake_score`: pontuação centrada no limiar; `is_fake` equivale a `>= 0.5`
     Todos opcionais para compatibilidade retroativa com clientes antigos.
+
+    `confidence` é a confiança no veredito, nessa mesma escala (0.5 a 1).
+    `probabilities` traz P(fake) e P(real) como saem do modelo, a comparar com
+    `classification_threshold`, e não com 0.5.
     """
     is_fake: bool
     confidence: float = Field(..., ge=0.0, le=1.0)
@@ -59,6 +64,11 @@ class PredictionResult(BaseModel):
     )
     ood_threshold: Optional[float] = Field(
         None, description="Threshold OOD calibrado no val set"
+    )
+    # Pontuação em que 0.5 é sempre o ponto de decisão do modelo
+    fake_score: Optional[float] = Field(
+        default=None,
+        description="P(fake) reescalada para que o limiar do modelo fique em 0.5.",
     )
     # Sprint 4.5 — EER threshold adaptativo
     classification_threshold: Optional[float] = Field(

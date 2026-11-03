@@ -59,6 +59,27 @@ no Git, e `app/__init__.py` declara a versão `1.1.0`.
   gravava em `data/app.db` (runs, métricas, artefatos, snapshots e jobs de treino). Agora usa um
   banco temporário. As linhas já gravadas continuam lá.
 
+### Calibração e fusão
+
+- **Temperatura sobre o logit real:** a busca era uma grade de 0,5 a 4,9 sobre a
+  probabilidade cortada em 1e-7. Conformer parou no piso, RawGAT-ST no teto, e o corte
+  criava um teto de P(fake): 0,97891 no AASIST, atingido por 84% da validação. Treinos novos
+  usam busca contínua e declaram `temperature_on_logits` no contrato. Artefatos sem o campo
+  continuam como estão e reproduzem os números do seu run.
+- **`tools/reporting/recalibrate_temperature.py`:** migra os modelos promovidos sem treinar.
+  Transporta o limiar, então nenhum veredito da validação muda, nem EER, AUC ou t-DCF. Só
+  grava com `--apply`, guardando o sidecar anterior.
+- **Fusão multi-modelo:** `detect_multi_model` e `POST /multi-model` combinam `fake_score`,
+  não P(fake), e decidem em 0,5. Antes, dois modelos que diziam "real" podiam fundir em
+  "fake". **Muda vereditos da fusão**, e `probabilities` da resposta passa a trazer a
+  pontuação fundida. `majority_vote` não contradiz mais o voto, e um modelo que falha não
+  desloca mais os pesos dos seguintes.
+- **`tools/reporting/select_fusion.py`:** mede modelos e conjuntos na validação, em locutor
+  não visto, limpo e sob ruído, sem abrir o teste.
+- **Relatórios:** tabelas e resumos ganham `Acur.@cal`, a acurácia no limiar de validação,
+  que é a decisão do sistema implantado. O runner SSL passa a derivar esse limiar da
+  validação limpa, em runs novos.
+
 ### Alterado
 
 - **Pilha web:** Gradio 4.44 para 6.17, FastAPI 0.116 para 0.162, Starlette 0.47 para
@@ -74,6 +95,17 @@ no Git, e `app/__init__.py` declara a versão `1.1.0`.
   Módulos grandes foram decompostos mantendo as APIs públicas: assistente de treino,
   perfis de voz, análise forense, `trainer.py`, runner do benchmark e `layers.py`. Os
   modelos `.keras` já salvos continuam carregando.
+
+### Alterado na detecção
+
+- **`confidence` agora é a confiança no veredito, de 0,5 a 1, em todos os modelos.** Antes
+  era a probabilidade da classe decidida: com limiar calibrado de 0,94, um veredito "real"
+  de P(fake) 0,80 saía com confiança 0,20, e a tela dizia "provável voz real" com "80% de
+  probabilidade de ser sintética". O novo campo `fake_score` reescala P(fake) para que 50%
+  seja sempre o ponto de decisão do modelo. **Nenhum veredito muda**, e `probabilities`
+  segue com os valores brutos, a comparar com `classification_threshold`. Clientes da API
+  que liam `confidence` como probabilidade devem usar `probabilities`. Análises já gravadas
+  no histórico mantêm o valor antigo.
 
 ### Corrigido
 

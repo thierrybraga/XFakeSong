@@ -301,10 +301,29 @@ def _run_neural(
             apply_temperature_scaling(probs, _temperature), dtype="float64"
         )
 
+    # Mesma regra da inferência: a temperatura incide sobre o logit real, não sobre
+    # a probabilidade cortada em 1e-7 (ver detection/temperature_scaling.py).
+    from app.domain.services.detection.temperature_scaling import (
+        calibrated_probabilities,
+        logit_output_model,
+    )
+
+    _logit_model = (
+        logit_output_model(model)
+        if input_contract.get("temperature_on_logits")
+        else None
+    )
+
     def predict_p_fake(X: np.ndarray) -> np.ndarray:
-        pred = model.predict(np.asarray(X, dtype="float32"), verbose=0)
-        pred = _normalize_probs(np.asarray(pred, dtype="float64"))
-        pred = _apply_temperature(pred)
+        entrada = np.asarray(X, dtype="float32")
+        if _logit_model is not None:
+            pred = calibrated_probabilities(
+                _logit_model.predict(entrada, verbose=0), _temperature
+            )
+        else:
+            pred = model.predict(entrada, verbose=0)
+            pred = _normalize_probs(np.asarray(pred, dtype="float64"))
+            pred = _apply_temperature(pred)
         if pred.ndim > 1 and pred.shape[-1] > 1:
             return pred[:, 1]
         return pred.reshape(-1)

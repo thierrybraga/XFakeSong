@@ -203,8 +203,13 @@ fused = result.data
 print(f"Consenso: is_fake={fused.is_fake}, conf={fused.confidence:.3f}")
 print(f"Acordo entre modelos: {fused.metadata['model_agreement']:.2%}")
 for r in fused.metadata['per_model']:
-    print(f"  {r['model']}: {r['fake_prob']:.3f}")
+    print(f"  {r['model']}: P(fake)={r['fake_prob']:.3f}, pontuação={r['fake_score']:.3f}")
 ```
+
+A fusão usa a pontuação centrada no limiar de cada modelo (`fake_score`), não P(fake), e
+decide em 0,5. `probabilities` do resultado fundido traz essa pontuação, que não é uma
+probabilidade calibrada. Para medir conjuntos na validação, sem abrir o teste, use
+`tools/reporting/select_fusion.py`.
 
 ### 1.14 MC Dropout para Uncertainty (Sprint 5.4)
 
