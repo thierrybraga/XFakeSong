@@ -25,41 +25,15 @@ from app.utils.audio_utils import normalize_audio, pad_or_truncate
 # o root logger no import contamina qualquer processo que importe este módulo.
 logger = logging.getLogger(__name__)
 
-# O import de `transformers` é mantido lazy para evitar inicializar torch/triton
-# no boot do container. A interface deve subir mesmo quando o backbone HF real
-# estiver indisponível; o fallback Keras continua funcional.
-HF_AVAILABLE = None
-TFHubertModel = None
-
-
-def _load_tf_hubert() -> bool:
-    global HF_AVAILABLE, TFHubertModel
-
-    if HF_AVAILABLE is not None:
-        return HF_AVAILABLE
-
-    try:
-        from transformers import TFHubertModel as _TFHubertModel
-
-        TFHubertModel = _TFHubertModel
-        HF_AVAILABLE = True
-    except Exception as exc:
-        HF_AVAILABLE = False
-        TFHubertModel = None
-        logger.info(
-            "Transformers/TFHubert indisponível (%s). "
-            "Usando implementação HuBERT simplificada.",
-            exc,
-        )
-
-    return HF_AVAILABLE
+# O `transformers` não importa modelos TF com Keras 3 (`TFHubertModel` falha já no
+# import). O backbone real vem de `ssl_backbone.PretrainedSSLBackbone`, que lê o
+# checkpoint PyTorch; o extrator abaixo fica só para quando ele não está acessível.
 
 
 class HuBERTFeatureExtractor(layers.Layer):
-    """Extrator de características baseado em HuBERT.
+    """Extrator simplificado, em Keras, para quando o checkpoint HuBERT não está acessível.
 
-    Usa o modelo pré-treinado do HuggingFace com soma ponderada de estados ocultos
-    ou uma implementação simplificada como fallback.
+    `model_name` não carrega pesos aqui: o backbone real é o de `ssl_backbone`.
     """
 
     def __init__(self,
@@ -79,51 +53,12 @@ class HuBERTFeatureExtractor(layers.Layer):
         # Fine-tuning parcial: nº de camadas do encoder a descongelar (do topo).
         self.n_trainable_layers = int(n_trainable_layers)
 
-        if _load_tf_hubert():
-            try:
-                # Carregar modelo HuBERT pré-treinado. O checkpoint do hub
-                # (facebook/hubert-base-ls960) só tem pesos PyTorch — é
-                # preciso `from_pt=True` para a conversão automática PT→TF.
-                # (Antes usava `from_tf=True`, que procurava um tf_model.h5
-                # inexistente → falhava SEMPRE e caía no simplificado.)
-                self.hubert_model = TFHubertModel.from_pretrained(
-                    model_name,
-                    from_pt=True
-                )
-
-                # Configurar para retornar todos os hidden states para weighted sum
-                # HuBERT base tem 12 camadas + 1 embedding inicial
-                self.actual_num_layers = self.hubert_model.config.num_hidden_layers + 1
-                from app.domain.models.architectures.layers import WeightedSumLayer
-                self.weighted_sum = WeightedSumLayer(num_layers=self.actual_num_layers)
-
-                # Trainability do backbone (congelado | fine-tune parcial | total)
-                from app.domain.models.architectures.ssl_utils import (
-                    set_ssl_backbone_trainability,
-                )
-                _mode = set_ssl_backbone_trainability(
-                    self.hubert_model, freeze_weights, self.n_trainable_layers
-                )
-
-                logger.info(
-                    f"HuBERT model {model_name} carregado "
-                    f"({self.actual_num_layers} camadas) — backbone: {_mode}"
-                )
-
-            except Exception as e:
-                logger.warning(
-                    f"Failed to load HuBERT model: {e}. Using simplified implementation.")
-                self._use_simplified = True
-        else:
-            self._use_simplified = True
-
-        if hasattr(self, '_use_simplified'):
-            # Fallback explícito: aborta em modo estrito (XFAKE_STRICT_SSL) quando
-            # o backbone HuBERT real está indisponível, p/ não comprometer o benchmark.
-            from app.domain.models.architectures.ssl_utils import strict_ssl_guard
-            strict_ssl_guard("HuBERT")
-            # Implementação simplificada usando CNN 1D + Transformers (Keras nativo)
-            self._build_simplified_extractor()
+        # Fallback explícito: aborta em modo estrito (XFAKE_STRICT_SSL) para não
+        # comprometer o benchmark com um backbone que não é o HuBERT real.
+        from app.domain.models.architectures.ssl_utils import strict_ssl_guard
+        strict_ssl_guard("HuBERT")
+        # Implementação simplificada usando CNN 1D + Transformers (Keras nativo)
+        self._build_simplified_extractor()
 
     def _build_simplified_extractor(self):
         """Constrói um extrator simplificado usando CNN 1D + Transformers."""
@@ -169,40 +104,27 @@ class HuBERTFeatureExtractor(layers.Layer):
 
     def call(self, inputs, training=None):
         """Forward pass do extrator de características."""
-        if hasattr(self, '_use_simplified'):
-            x = inputs
-            if len(x.shape) == 2:
-                x = tf.expand_dims(x, axis=-1)
+        x = inputs
+        if len(x.shape) == 2:
+            x = tf.expand_dims(x, axis=-1)
 
-            # Aplicar camadas convolucionais
-            for conv_layer in self.conv_layers:
-                x = conv_layer(x)
+        # Aplicar camadas convolucionais
+        for conv_layer in self.conv_layers:
+            x = conv_layer(x)
 
-            # Projeção das características
-            x = self.feature_projection(x)
-            x = self.layer_norm(x)
+        # Projeção das características
+        x = self.feature_projection(x)
+        x = self.layer_norm(x)
 
-            # Aplicar camadas de atenção e feed-forward
-            for i in range(self.num_hidden_layers):
-                attn_out = self.attention_layers[i](x, x, training=training)
-                x = self.attention_layer_norms[i](x + attn_out)
+        # Aplicar camadas de atenção e feed-forward
+        for i in range(self.num_hidden_layers):
+            attn_out = self.attention_layers[i](x, x, training=training)
+            x = self.attention_layer_norms[i](x + attn_out)
 
-                ff_out = self.ff_layers[i](x, training=training)
-                x = self.ff_layer_norms[i](x + ff_out)
+            ff_out = self.ff_layers[i](x, training=training)
+            x = self.ff_layer_norms[i](x + ff_out)
 
-            return x
-        else:
-            # Usar modelo HuBERT pré-treinado
-            if len(inputs.shape) == 3:
-                inputs = tf.squeeze(inputs, axis=-1)
-
-            # Extrair com hidden states para weighted sum (Fidelidade ao paper)
-            outputs = self.hubert_model(inputs, output_hidden_states=True, training=False)
-
-            # Soma ponderada de todos os hidden states
-            x = self.weighted_sum(list(outputs.hidden_states))
-
-            return x
+        return x
 
     def get_config(self):
         config = super().get_config()

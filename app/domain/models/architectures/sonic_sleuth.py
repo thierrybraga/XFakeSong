@@ -366,7 +366,8 @@ def _create_sonic_sleuth_paper(input_shape, num_classes=1, feature_type='lfcc',
     - Dense(1, sigmoid), Adam(lr=0.001), binary_crossentropy
 
     O DEFAULT deste projeto é a versão estendida (5 blocos + SE + residual +
-    GAP/GMP), que é a que está treinada e promovida no benchmark.
+    GAP/GMP), e não a do artigo, apesar do nome. Esta geração do benchmark não
+    tem artefato treinado de nenhuma das duas.
 
     CORREÇÃO: estes parâmetros existiam no ``registry.default_params`` mas o
     builder os IGNORAVA (só lia ``sample_rate``) — a topologia era fixa no

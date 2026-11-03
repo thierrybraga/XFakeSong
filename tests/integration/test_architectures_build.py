@@ -10,8 +10,8 @@ arquiteturas neurais não-SSL** de forma rápida (build + 1 forward pass, sem
 treino), pegando drift de construção que o `compile()` dos notebooks não detecta.
 
 Exclusões deliberadas:
-- **WavLM / HuBERT**: usam `TFWavLMModel/TFHubertModel.from_pretrained(...)`, que
-  baixam checkpoints SSL do HuggingFace (rede + `transformers`). Continuam
+- **WavLM / HuBERT**: `ssl_backbone.py` lê os checkpoints SSL do HuggingFace
+  (rede + `transformers`). Continuam
   cobertos só no smoke (`tests/smoke/test_all_architectures.py`, TF real, manual).
 - **SVM / RandomForest**: clássicos (sklearn), não passam pelo factory Keras;
   cobertos pelos notebooks `models/13_svm` e `models/14_random_forest` (nbclient).
