@@ -65,13 +65,21 @@ def resolve_within_directory(
     return candidate
 
 
+def get_gradio_temp_directory() -> Path:
+    """Cache do Gradio, no mesmo disco em que ele recebe os uploads.
+
+    O Gradio recebe cada upload em ``tempfile.gettempdir()`` e renomeia para o cache. Em
+    outro disco o rename falha, e a cópia fica para depois da resposta: o evento seguinte
+    não encontra o arquivo, ou lê só parte dele.
+    """
+    return Path(tempfile.gettempdir()) / "speechchecker-gradio"
+
+
 def get_gradio_exports_directory() -> Path:
     """Retorna a única pasta destinada a downloads gerados pela interface."""
     configured = os.getenv("GRADIO_TEMP_DIR")
     gradio_temp = (
-        Path(configured).expanduser()
-        if configured
-        else Path(tempfile.gettempdir()) / "speechchecker-gradio"
+        Path(configured).expanduser() if configured else get_gradio_temp_directory()
     )
     exports_dir = (gradio_temp / "exports").resolve()
     exports_dir.mkdir(parents=True, exist_ok=True)

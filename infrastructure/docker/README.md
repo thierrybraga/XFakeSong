@@ -42,5 +42,9 @@ só em `127.0.0.1`. Para abrir na rede, defina `GRADIO_BIND_HOST` e use um proxy
 | [data/datasets](../../data/datasets) | /app/data/datasets | datasets de treino e benchmark |
 | [data/models](../../data/models) | /app/data/models | modelos de inferência |
 
+Os áudios enviados ou gravados na interface ficam no cache do Gradio, em
+`/tmp/speechchecker-gradio`, dentro do container. Eles não vão para `data/` e somem ao
+recriar o container.
+
 Todo fluxo (dev, treino, benchmark, deploy) usa os arquivos em
 [infrastructure/docker/compose](compose) e as definições em [infrastructure/docker/environments](environments).

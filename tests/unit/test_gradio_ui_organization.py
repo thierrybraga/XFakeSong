@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import inspect
 import json
+import tempfile
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -41,6 +43,72 @@ def _abas_principais(config: dict) -> list[str]:
         componentes[filho["id"]]["props"]["label"]
         for filho in achar(config["layout"])["children"]
     ]
+
+
+def _microfone(config: dict) -> dict:
+    return next(
+        componente
+        for componente in config["components"]
+        if componente["type"] == "audio"
+        and componente["props"].get("sources") == ["microphone"]
+    )
+
+
+def test_gravacao_chega_inteira_na_analise(config):
+    """O streaming analisava só o último pedaço de 0,5 s e falhava da segunda gravação em diante."""
+    microfone = _microfone(config)["props"]
+    assert microfone["streaming"] is False
+    assert microfone["type"] == "filepath"
+    eventos = [alvo[1] for dep in config["dependencies"] for alvo in dep["targets"]]
+    assert "stream" not in eventos
+
+
+@pytest.mark.parametrize(
+    ("arquivo", "gravacao", "esperado", "do_microfone"),
+    [
+        ("a.wav", None, "a.wav", False),
+        (None, "b.wav", "b.wav", True),
+        ("a.wav", "b.wav", "a.wav", False),
+    ],
+)
+def test_analise_usa_o_arquivo_ou_a_gravacao(
+    monkeypatch, arquivo, gravacao, esperado, do_microfone
+):
+    from app.interfaces.gradio.tabs import detection
+
+    with gr.Blocks() as demo:
+        detection.create_detection_tab()
+    handler = next(f.fn for f in demo.fns.values() if f.name == "handle_analysis")
+    monkeypatch.setattr(
+        detection,
+        "analyze_audio",
+        lambda caminho, modelo, janelas, gravado_no_microfone: (
+            caminho,
+            gravado_no_microfone,
+        ),
+    )
+    assert handler(arquivo, gravacao, "modelo", False) == (esperado, do_microfone)
+
+
+def test_cartao_do_resultado_repassa_a_origem_do_audio():
+    from app.interfaces.gradio.tabs import detection
+
+    servico = SimpleNamespace(loaded_models={})
+    dados = SimpleNamespace(
+        is_fake=False, confidence=0.9, model_name="bench_aasist", metadata={}
+    )
+    cartao = detection._cartao_do_resultado
+    assert "Gravação de microfone" in cartao(servico, dados, 3.0, True)
+    assert "Gravação de microfone" not in cartao(servico, dados, 3.0)
+
+
+def test_analise_sem_audio_orienta_a_pessoa():
+    from app.interfaces.gradio.tabs import detection
+
+    with gr.Blocks() as demo:
+        detection.create_detection_tab()
+    handler = next(f.fn for f in demo.fns.values() if f.name == "handle_analysis")
+    assert "Nenhum áudio enviado." in handler(None, None, "modelo", False)[0]
 
 
 def test_navegacao_segue_a_ordem_de_uso(config):
@@ -128,6 +196,14 @@ def test_veredito_com_pouca_margem_avisa():
 def test_veredito_avisa_quando_o_audio_foge_do_treino():
     assert "fora do padrão" not in _veredito()
     assert "fora do padrão" in _veredito(fora_do_padrao=True)
+
+
+@pytest.mark.parametrize("is_fake", [True, False])
+def test_veredito_de_microfone_avisa_nos_dois_sentidos(is_fake):
+    """Medido em 2026-11-03: o perfil de um microfone baixa a detecção do AASIST para 48%."""
+    assert "Gravação de microfone" not in _veredito(is_fake=is_fake)
+    cartao = _veredito(is_fake=is_fake, gravado_no_microfone=True)
+    assert "Gravação de microfone" in cartao and "dois lados" in cartao
 
 
 def test_veredito_sem_pontuacao_nao_desenha_medidor():
@@ -289,3 +365,12 @@ def test_contagem_do_sino_zera_ao_marcar_como_lidas(monkeypatch):
     assert modulo.attention_count() == 2
     modulo.mark_all_read()
     assert modulo.attention_count() == 0
+
+
+def test_cache_do_gradio_fica_no_disco_em_que_os_uploads_chegam():
+    """Em outro disco o arquivo só aparece depois da resposta, e o evento seguinte falha."""
+    from app.utils.file_utils import get_gradio_temp_directory
+
+    assert get_gradio_temp_directory().parent == Path(tempfile.gettempdir())
+    codigo = Path("app/interfaces/web/main_fastapi.py").read_text(encoding="utf-8")
+    assert "gradio_temp_dir = get_gradio_temp_directory()" in codigo

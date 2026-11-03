@@ -69,6 +69,7 @@ def render_verdict(
     modelo: Optional[str] = None,
     duracao_s: Optional[float] = None,
     fora_do_padrao: bool = False,
+    gravado_no_microfone: bool = False,
 ) -> str:
     """Veredito, pontuação centrada no limiar e o que foi usado.
 
@@ -76,6 +77,9 @@ def render_verdict(
     modelo (`detection/operating_point.py`). Assim o veredito e o número nunca apontam
     para lados opostos, e a marca do medidor fica no mesmo lugar em todos os modelos.
     Abaixo de `_POUCA_MARGEM`, o cartão avisa que a decisão foi apertada.
+
+    `gravado_no_microfone` vem da origem do áudio, não da análise: o estudo não avaliou
+    gravações de campo, e o alerta de `fora_do_padrao` não dispara nelas com segurança.
     """
     classe = "verdict-fake" if is_fake else "verdict-real"
     icone = "⚠" if is_fake else "✓"
@@ -108,6 +112,12 @@ def render_verdict(
     )
 
     avisos = ""
+    if gravado_no_microfone:
+        avisos += (
+            '<p class="verdict-warn">⚠ Gravação de microfone: os modelos não foram '
+            "validados com este tipo de áudio e podem errar para os dois lados. Não "
+            "conclua nada só por este veredito.</p>"
+        )
     if fora_do_padrao:
         avisos += (
             '<p class="verdict-warn">⚠ Este áudio está fora do padrão dos dados de '

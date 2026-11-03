@@ -43,9 +43,7 @@ import gradio as gr  # noqa: E402
 import librosa  # noqa: E402
 import librosa.display  # noqa: E402
 import numpy as np  # noqa: E402
-from matplotlib.figure import Figure  # noqa: E402
 
-from app.core.contracts.audio import AudioData  # noqa: E402
 from app.interfaces.gradio.utils.components import ui_safe  # noqa: E402
 from app.interfaces.gradio.utils.plotting import new_figure  # noqa: E402
 
@@ -56,8 +54,6 @@ logger = logging.getLogger("gradio_detection_tab")
 _detection_service_instance = None
 _service_lock = get_service_lock("detection_service")
 
-# FE.4: limite de buffer de streaming (máx 30s de áudio acumulado)
-_STREAM_MAX_BUFFER_SECONDS = 30
 # Áudios mais longos que isto fazem prosody/pitch ser pulado por performance (FE.5)
 _PROSODY_PYIN_MAX_DURATION_S = 15
 # Valor da opção "Automático" na lista de modelos.
@@ -259,7 +255,7 @@ def _resolver_modelo(service, selecionado):
     return service.default_model or (disponiveis[0] if disponiveis else None)
 
 
-def _cartao_do_resultado(service, data, duracao_s):
+def _cartao_do_resultado(service, data, duracao_s, gravado_no_microfone=False):
     """Monta o veredito a partir do resultado do serviço."""
     metadados = data.metadata or {}
     return render_verdict(
@@ -269,10 +265,11 @@ def _cartao_do_resultado(service, data, duracao_s):
         modelo=_nome_do_modelo(service, data.model_name),
         duracao_s=duracao_s,
         fora_do_padrao=bool(metadados.get("is_ood")),
+        gravado_no_microfone=gravado_no_microfone,
     )
 
 
-def analyze_audio(audio_path, model_name, segmented):
+def analyze_audio(audio_path, model_name, segmented, gravado_no_microfone=False):
     if not audio_path:
         return _empty_analysis_result(
             "Nenhum áudio enviado.",
@@ -328,7 +325,9 @@ def analyze_audio(audio_path, model_name, segmented):
                 if result_proc.status.name == "SUCCESS":
                     data = result_proc.data
                     result_label = "DEEPFAKE" if data.is_fake else "REAL"
-                    card = _cartao_do_resultado(service, data, duracao_s)
+                    card = _cartao_do_resultado(
+                        service, data, duracao_s, gravado_no_microfone
+                    )
                     # PONTO DE OPERACAO no topo dos detalhes, nao enterrado em
                     # `metadata`. O limiar NAO e 0,5: desde a calibracao por
                     # validacao ele varia por modelo (medidos 0,79 no AASIST e
@@ -395,207 +394,6 @@ def analyze_audio(audio_path, model_name, segmented):
         return _empty_analysis_result(str(e))
 
 
-def process_stream(new_chunk, state):
-    """Processamento em tempo real do stream de áudio com detecção contínua."""
-    try:
-        if new_chunk is None:
-            return (
-                state,
-                gr.update(),
-                gr.update(),
-                gr.update(),
-                gr.update()
-            )
-
-        sr, data = new_chunk
-
-        # Inicializar estado
-        if state is None:
-            state = {
-                "audio": np.array([], dtype=np.float32),
-                "sr": sr,
-                "last_update": 0
-            }
-
-        # Converter e normalizar
-        if data.dtype == np.int16:
-            data = data.astype(np.float32) / 32768.0
-        elif data.dtype == np.int32:
-            data = data.astype(np.float32) / 2147483648.0
-
-        # Converter estéreo para mono
-        if data.ndim > 1:
-            data = np.mean(data, axis=1)
-
-        # Acumular — FE.4: cap em _STREAM_MAX_BUFFER_SECONDS para evitar
-        # crescimento ilimitado (gravação infinita = vazamento RAM).
-        state["audio"] = np.concatenate((state["audio"], data))
-        max_samples = _STREAM_MAX_BUFFER_SECONDS * (state.get("sr", sr) or sr)
-        if len(state["audio"]) > max_samples:
-            # Descarta os samples mais antigos (rolling window)
-            state["audio"] = state["audio"][-max_samples:]
-
-        # Otimização: Gerar plots apenas se tiver dados suficientes
-        # e não for muito frequente
-        y = state["audio"]
-
-        if len(y) < sr * 0.1:  # Menos de 0.1s
-            return (
-                state,
-                gr.update(),
-                gr.update(),
-                gr.update(),
-                gr.update()
-            )
-
-        # Throttling: Atualizar visualização no máximo a cada 0.5s (2 FPS)
-        # Isso evita sobrecarregar a fila e o navegador
-        # (causa de AbortError)
-        import time
-        current_time = time.time()
-        if current_time - state.get("last_update", 0) < 0.5:
-            return (
-                state,
-                gr.update(),
-                gr.update(),
-                gr.update(),
-                gr.update()
-            )
-
-        state["last_update"] = current_time
-
-        # Gerar plots rápidos (dark theme)
-        fig_wave = Figure(figsize=(10, 3))
-        ax_wave = fig_wave.add_subplot(111)
-        _style_ax(ax_wave, fig_wave, "Forma de Onda (Tempo Real)")
-
-        # Limitar visualização aos últimos 5 segundos
-        window_size = sr * 5
-        if len(y) > window_size:
-            y_plot = y[-window_size:]
-            x_start = (len(y) - window_size) / sr
-        else:
-            y_plot = y
-            x_start = 0
-
-        # Downsample para plotagem rápida (máx 2000 pontos)
-        step = max(1, len(y_plot) // 2000)
-        times_plot = np.linspace(
-            x_start,
-            x_start + len(y_plot)/sr,
-            len(y_plot)
-        )[::step]
-        y_plot_ds = y_plot[::step]
-
-        ax_wave.plot(times_plot, y_plot_ds, alpha=0.85, color=_PLOT_ACCENT)
-        ax_wave.set_ylim(-1.0, 1.0)
-        fig_wave.tight_layout()
-
-        # 1. Espectrograma Mel
-        fig_spec = Figure(figsize=(10, 4))
-        ax_spec = fig_spec.add_subplot(111)
-        _style_ax(ax_spec, fig_spec, f"Espectrograma Mel — {len(y) / sr:.1f}s")
-
-        S = librosa.feature.melspectrogram(
-            y=y, sr=sr, n_mels=64, hop_length=1024)
-        S_dB = librosa.power_to_db(S, ref=np.max)
-        img = librosa.display.specshow(
-            S_dB, x_axis='time', y_axis='mel', sr=sr, fmax=8000,
-            ax=ax_spec, cmap='magma')
-        cb = fig_spec.colorbar(img, ax=ax_spec, format='%+2.0f dB', pad=0.02)
-        cb.ax.tick_params(colors=_PLOT_TEXT, labelsize=8)
-        cb.outline.set_edgecolor(_PLOT_GRID)
-        fig_spec.tight_layout()
-
-        # 2. Prosódia
-        fig_pros = Figure(figsize=(10, 4))
-        ax_pros = fig_pros.add_subplot(111)
-        _style_ax(ax_pros, fig_pros, "Análise Prosódica (Tempo Real)")
-
-        rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=1024)[0]
-        times = librosa.times_like(rms, sr=sr, hop_length=1024)
-        ax_pros.plot(times, rms, label='Energia (RMS)', color=_PLOT_DANGER, alpha=0.7, linewidth=1.5)
-
-        # Pitch (Estimativa rápida via Autocorrelação para Real-time)
-        try:
-            # Calcular autocorrelação apenas num frame recente para velocidade
-            frame_len = int(sr * 0.05)  # 50ms
-            if len(y) > frame_len:
-                y_frame = y[-frame_len:]
-
-                # Autocorrelação normalizada
-                result = np.correlate(y_frame, y_frame, mode='full')
-                result = result[len(result)//2:]
-
-                # Encontrar pico entre lags correspondentes a 50Hz e 1000Hz
-                min_lag = int(sr / 1000)
-                max_lag = int(sr / 50)
-
-                if len(result) > max_lag:
-                    relevant = result[min_lag:max_lag]
-                    if len(relevant) > 0:
-                        lag = np.argmax(relevant) + min_lag
-                        # Threshold de periodicidade
-                        if result[lag] > 0.1 * result[0]:
-                            f0_est = sr / lag
-                            # Plotar linha horizontal indicando F0
-                            # estimado atual
-                            ax_pros.axhline(
-                                y=f0_est/1000,
-                                color=_PLOT_ACCENT2,
-                                linestyle='--',
-                                alpha=0.6,
-                                label=(
-                                    "Frequência fundamental estimada "
-                                    f"({int(f0_est)} Hz)"
-                                )
-                            )
-        except Exception as e:
-            # FE.7: pitch estimation é best-effort; log em debug
-            logger.debug(f"Pitch estimation pulado: {e}")
-
-        ax_pros.legend(loc='upper right', facecolor=_PLOT_FACE,
-                       edgecolor=_PLOT_GRID, labelcolor=_PLOT_TEXT, fontsize=9)
-        ax_pros.set_xlabel("Tempo (s)")
-        fig_pros.tight_layout()
-
-        # 3. Detecção Real-time (Analise Acumulada)
-        card_upd = gr.update()
-
-        # Executar detecção se tiver pelo menos 0.5s de áudio
-        if len(y) > sr * 0.5:
-            service = get_detection_service()
-            if service:
-                try:
-                    # Cria AudioData com o buffer acumulado
-                    audio_data = AudioData(
-                        samples=y,
-                        sample_rate=sr,
-                        duration=float(len(y) / sr)
-                    )
-
-                    res = service.detect_single(audio_data)
-                    if res.status.name == "SUCCESS":
-                        card_upd = _cartao_do_resultado(
-                            service, res.data, float(len(y) / sr)
-                        )
-                except Exception as e:
-                    # FE.7: stream detection é best-effort; log em debug
-                    logger.debug(f"Stream detection pulada: {e}")
-
-        return state, fig_wave, fig_pros, fig_spec, card_upd
-
-    except Exception as e:
-        logger.error(f"Erro no stream: {e}")
-        return (
-            state,
-            gr.update(),
-            gr.update(),
-            gr.update(),
-            gr.update()
-        )
-
-
 def create_detection_tab():
     """Constrói "Um áudio" e "Em lote"; devolve a lista de modelos para atualização."""
     with gr.Tab("🎙️ Um áudio", id="tab_detection"):
@@ -620,14 +418,16 @@ def create_detection_tab():
                                 elem_classes="detect-audio-input",
                             )
                         with gr.Tab("Gravar"):
+                            # Sem `streaming=True`: a análise precisa da gravação
+                            # inteira. No Gradio 6.17, esse modo entrega pedaços de
+                            # 0,5 s, e da segunda gravação da página em diante eles
+                            # chegam sem o cabeçalho WAV.
                             audio_mic = gr.Audio(
-                                type="numpy",
-                                label="Microfone",
+                                type="filepath",
+                                label="Microfone: grave, pare e analise",
                                 sources=["microphone"],
-                                streaming=True,
                                 elem_classes="detect-audio-input",
                             )
-                    stream_state = gr.State()
 
                 with gr.Group(elem_classes="detect-card"):
                     gr.Markdown("#### 2. Escolha o modelo")
@@ -677,76 +477,14 @@ def create_detection_tab():
         with gr.Accordion("Dados técnicos (JSON)", open=False):
             json_output = gr.JSON(label="Saída técnica")
 
-        # Limpar estado ao limpar áudio
-        @ui_safe("Falha ao limpar o estado")
-        def clear_state():
-            return None
-
-        audio_mic.clear(
-            fn=clear_state,
-            inputs=None,
-            outputs=[stream_state]
-        )
         # Uma origem substitui a outra: sem isso, um arquivo esquecido na outra aba
         # seria analisado no lugar da gravação recém-feita.
-        audio_mic.start_recording(fn=clear_state, inputs=None, outputs=[audio_file])
-        audio_file.upload(
-            fn=lambda: (None, None), inputs=None, outputs=[audio_mic, stream_state]
-        )
+        audio_mic.start_recording(fn=lambda: None, inputs=None, outputs=[audio_file])
+        audio_file.upload(fn=lambda: None, inputs=None, outputs=[audio_mic])
 
-        # Wrapper para lidar com upload vs stream
         @ui_safe("Falha ao analisar o áudio")
-        def handle_analysis(file_path, mic_chunk, stream_state, model_name, segmented):
-            import tempfile
-
-            import numpy as np
-            import soundfile as sf
-
-            final_path = file_path or None
-
-            # Gravação: o componente entrega (taxa, amostras).
-            if not final_path and isinstance(mic_chunk, tuple):
-                sr, data = mic_chunk
-                try:
-                    # Save to temp file
-                    temp_file = tempfile.NamedTemporaryFile(
-                        suffix=".wav", delete=False)
-                    temp_file.close()
-
-                    # Convert to float32 if needed
-                    if data.dtype == np.int16:
-                        data = data.astype(np.float32) / 32768.0
-                    elif data.dtype == np.int32:
-                        data = data.astype(np.float32) / 2147483648.0
-
-                    sf.write(temp_file.name, data, sr)
-                    final_path = temp_file.name
-                    logger.info(
-                        f"Áudio convertido de numpy para: {final_path}"
-                    )
-                except Exception as e:
-                    logger.error(f"Erro convertendo áudio numpy: {e}")
-                    # FE.1: retorna 5 valores (arity correta)
-                    return _empty_analysis_result(f"Falha ao processar o áudio: {e}")
-
-            # Se não há path (ex: microfone stream) mas tem estado acumulado
-            if not final_path and stream_state is not None and len(
-                    stream_state.get("audio", [])) > 0:
-                try:
-                    temp_file = tempfile.NamedTemporaryFile(
-                        suffix=".wav", delete=False)
-                    temp_file.close()
-                    sr = stream_state.get("sr", 16000)
-                    audio_data = stream_state["audio"]
-                    sf.write(temp_file.name, audio_data, sr)
-                    final_path = temp_file.name
-                    logger.info(
-                        f"Usando áudio do stream salvo em: {final_path}")
-                except Exception as e:
-                    logger.error(f"Erro ao salvar stream para análise: {e}")
-                    # FE.1: retorna 5 valores
-                    return _empty_analysis_result(f"Falha ao processar a gravação: {e}")
-
+        def handle_analysis(file_path, mic_path, model_name, segmented):
+            final_path = file_path or mic_path
             if not final_path:
                 # FE.1: nada para analisar
                 return _empty_analysis_result(
@@ -755,14 +493,15 @@ def create_detection_tab():
                     error_code="NO_AUDIO",
                 )
 
-            return analyze_audio(final_path, model_name, segmented)
+            return analyze_audio(
+                final_path, model_name, segmented, gravado_no_microfone=not file_path
+            )
 
         analyze_btn.click(
             handle_analysis,
             inputs=[
                 audio_file,
                 audio_mic,
-                stream_state,
                 model_select,
                 segmented_chk],
             outputs=[
@@ -771,15 +510,6 @@ def create_detection_tab():
                 plot_prosody,
                 plot_spectrogram,
                 json_output]
-        )
-
-        # Eventos de Streaming (Real-time)
-        audio_mic.stream(
-            fn=process_stream,
-            inputs=[audio_mic, stream_state],
-            outputs=[stream_state, plot_waveform, plot_prosody,
-                     plot_spectrogram, verdict_output],
-            show_progress="hidden"
         )
 
     # ── 📦 Análise em Lote (sub-aba irmã, movida da antiga aba Forense) ──

@@ -28,6 +28,7 @@ from app.core.version_check import check_versions  # noqa: E402
 
 # API.3: importa ALL_ROUTERS (inclui voice_profiles que faltava antes!).
 from app.interfaces.web.routers import ALL_ROUTERS  # noqa: E402
+from app.utils.file_utils import get_gradio_temp_directory  # noqa: E402
 
 configure_logging(
     level=_l.INFO,
@@ -113,7 +114,7 @@ for r in ALL_ROUTERS:
 
 if not _running_under_pytest() and not _api_only_mode():
     operational_paths = OperationalPaths.resolve()
-    gradio_temp_dir = operational_paths.temp / "gradio"
+    gradio_temp_dir = get_gradio_temp_directory()
     gradio_exports_dir = gradio_temp_dir / "exports"
     gradio_exports_dir.mkdir(parents=True, exist_ok=True)
     os.environ["GRADIO_TEMP_DIR"] = str(gradio_temp_dir)

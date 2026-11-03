@@ -151,24 +151,38 @@ foram encontrados antes de executar uma análise.
 
 ## Aba Detectar
 
-Objetivo: executar inferência em áudio individual, streaming curto ou lote, e
+Objetivo: executar inferência em áudio individual, enviado ou gravado, ou em lote, e
 consultar o histórico.
 
 Fluxo recomendado:
 
 1. Abra **Detectar → Um áudio**.
-2. Envie um arquivo ou, na aba **Gravar**, use o microfone. Uma origem substitui a
-   outra.
+2. Envie um arquivo ou, na aba **Gravar**, grave e clique em **Parar**. Uma origem
+   substitui a outra.
 3. Escolha o modelo. A lista traz só os modelos instalados, e **Automático** usa o
    padrão do sistema.
 4. Use **Analisar em janelas** para áudios longos.
 5. Execute a análise.
 
+A gravação é analisada inteira, depois de parar. Enquanto ela acontece, a tela mostra só
+a forma de onda desenhada pelo navegador; o veredito e os gráficos vêm com a análise.
+
+!!! warning "Gravações de microfone"
+    Os modelos só viram voz do CETUC e clones do XTTS-v2, e o estudo não avaliou gravações
+    de campo. Por isso, o cartão sempre avisa quando o áudio veio do microfone.
+
+    Em 2026-11-03, uma voz real gravada no navegador dividiu os 9 modelos, com 5 votos em
+    sintética e 4 em real. Em uma simulação com 100 vozes reais e 100 sintéticas da
+    validação, a compressão Opus quase não mudou o resultado, mas aplicar o perfil de
+    frequências dessa gravação baixou a detecção de voz sintética do AASIST de 98% para 48%
+    e a do RawGAT-ST de 95% para 34%. Esses números vêm de uma gravação e de uma simulação,
+    não de uma avaliação de campo.
+
 Saídas:
 
 | Saída | Descrição |
 |---|---|
-| Veredito | conclusão em texto, pontuação de voz sintética, modelo usado e avisos (fora do padrão de treino, pouca margem) |
+| Veredito | conclusão em texto, pontuação de voz sintética, modelo usado e avisos (gravação de microfone, fora do padrão de treino, pouca margem) |
 | Pontuação de voz sintética | P(fake) reescalada para que 50% seja sempre o ponto de decisão do modelo: acima, sintética; abaixo, real |
 | Confiança no veredito | distância da pontuação até o limite, de 50% a 100% |
 | Gráficos do áudio | forma de onda, espectrograma Mel, energia RMS e pitch quando aplicável |
@@ -390,6 +404,7 @@ scripts. Esta aba serve para verificar se os dados estão visíveis para a aplic
 |---|---|---|
 | Nenhum modelo aparece | `data/models` vazio ou `DEEPFAKE_MODELS_DIR` errado | sincronizar Model Hub ou restaurar `data/models/benchmark_final/` |
 | Upload falha silenciosamente | `allowed_paths`/temp dir incorreto | usar build atual e `GRADIO_TEMP_DIR=/tmp/gradio` |
+| Erro de `process_stream` ao gravar | imagem anterior à gravação inteira | reconstruir a imagem |
 | Treino bloqueado | `ENABLE_TRAINING=false` | habilitar somente em ambiente de treino |
 | GPU não aparece | Windows nativo/sem passthrough | usar WSL2, Docker GPU ou GPU Space |
 | Space perde arquivos | disco efêmero | montar Storage em `/data` |
