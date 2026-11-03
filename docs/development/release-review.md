@@ -37,9 +37,14 @@ nenhum foi resolvido nesta revisão.
 
 O artigo descreve uma geração de resultados diferente da que está no checkout.
 `data/results/paper/tabelas_benchmark.tex` e os números do texto de `main.tex`
-coincidem com a geração anterior, guardada em `data/models/benchmark/`, enquanto
+coincidem com a geração anterior, guardada em
+`data/results/archive/pre_bateria_2026-08-20/models_benchmark_final/`, enquanto
 `main.tex` cita a impressão digital de teste `66ffed25…` do run atual. Por isso uma
 tabela do artigo não pode ser apresentada como reprodução do run atual.
+
+Em 2026-11-03, a cópia que ficava em `data/models/benchmark/` foi para uma quarentena
+local, fora do repositório e com manifesto. Os 33 arquivos de artefatos dela têm o
+mesmo SHA-256 na pasta acima; só o `README.md` não tem cópia lá.
 
 Medidas no conjunto de teste limpo, em porcentagem:
 
@@ -58,19 +63,20 @@ Medidas no conjunto de teste limpo, em porcentagem:
 | WavLM Original | 96,16 | 3,62 | 96,09 | 3,62 |
 
 "Atual" vem de `data/results/benchmark/run_summary.json`; "anterior", dos
-`artifact_manifest.json` em `data/models/benchmark/`. A geração atual é a que tem
-correção de banda, e a queda de desempenho em relação à anterior é coerente com a
-remoção do atalho de reamostragem descrito em `CLAUDE.md`, sem que esta revisão
-tenha isolado essa causa modelo a modelo.
+`artifact_manifest.json` em
+`data/results/archive/pre_bateria_2026-08-20/models_benchmark_final/`. A geração
+atual é a que tem correção de banda, e a queda de desempenho em relação à anterior é
+coerente com a remoção do atalho de reamostragem descrito em `CLAUDE.md`, sem que esta
+revisão tenha isolado essa causa modelo a modelo.
 
 Dois avisos para a reconciliação:
 
-- O run atual guarda o RawNet2 válido em `_superseded/rawnet2_d9f23c0d`. A pasta
-  `data/results/benchmark/rawnet2/` contém um retreino abortado na época 5. Os
-  números da tabela acima são do run válido.
-- Promover a geração atual para o app não se resume a renomear
-  `data/models/benchmark/`. Hoje WavLM e HuBERT da geração atual não chegam à
-  inferência.
+- O run atual guarda o RawNet2 válido em `_superseded/rawnet2_d9f23c0d`. O retreino
+  abortado na época 5 saiu de `data/results/benchmark/rawnet2/` em 2026-11-03 e está
+  na quarentena local. Os números da tabela acima são do run válido.
+- Promover a geração atual para o app não se resume a restaurar
+  `data/results/archive/pre_bateria_2026-08-20/models_benchmark_final/`, que é a
+  geração anterior. Hoje WavLM e HuBERT da geração atual não chegam à inferência.
 
 ### 3. Versão, changelog e instalação
 

@@ -849,21 +849,24 @@ que gravava a confiança como probabilidade de fake, passou a usar `p_fake`.
   `tools/dataset/download_datasets.py`, cuja lógica foi para
   `app/domain/services/dataset/download.py` na Fase 3 sem ser repartida.
 - **WavLM/HuBERT Original não chegam à inferência:** o carregador procura
-  `data/models/benchmark_final/`, e a pasta é `data/models/benchmark/`. Com o
+  `data/models/benchmark_final/`, que não existe. Com o
   backbone disponível os `.pt` da geração atual funcionam (WavLM 96,7%, HuBERT 91,7%
   em 60 janelas; a correção de banda não mudou nenhuma decisão), mas estão só em
   `data/results/benchmark/`, sem `input_contract` (limiar fixo 0,5). NÃO basta
-  renomear: `data/models/benchmark/` guarda a geração ANTERIOR (`clean_benchmark_15k`,
-  sem correção de banda, outro teste), e o carregador dá prioridade à pasta
-  promovida, então os 9 modelos corretos seriam trocados pelos antigos. É preciso
-  promover a geração atual. Nesta máquina Windows os snapshots do cache do HF são
-  links que o `from_pretrained` não resolve.
-- **Pasta do RawNet2 no run corrente:** o retreino de 25/08 parou na época 5, e
-  `data/results/benchmark/rawnet2/` ficou sem `results.json`. O `run_summary.json` e o
-  modelo em uso têm o resultado válido, do run arquivado em
-  `_superseded/rawnet2_d9f23c0d` (21/08, 100 épocas, `val_eer`, banda, mesmo teste:
-  acurácia 91,17%, EER 8,10%). Falta organizar a pasta, e o `results.json` está no
-  arquivo.
+  restaurar os artefatos arquivados:
+  `data/results/archive/pre_bateria_2026-08-20/models_benchmark_final/` guarda a
+  geração ANTERIOR (`clean_benchmark_15k`, sem correção de banda, outra impressão
+  digital de teste), e o carregador dá prioridade à pasta promovida, então os 9
+  modelos corretos seriam trocados pelos antigos. É preciso promover a geração atual.
+  A cópia que ficava em `data/models/benchmark/` foi para uma quarentena local, fora
+  do repositório e com manifesto, em 2026-11-03. Nesta máquina Windows os snapshots
+  do cache do HF são links que o `from_pretrained` não resolve.
+- **Pasta do RawNet2 no run corrente:** o retreino de 25/08 parou na época 5, sem
+  `results.json`. Em 2026-11-03 a pasta saiu de `data/results/benchmark/rawnet2/` para
+  a mesma quarentena. O `run_summary.json` e o modelo em uso têm o resultado válido,
+  do run arquivado em `_superseded/rawnet2_d9f23c0d` (21/08, 100 épocas, `val_eer`,
+  banda, mesmo teste: acurácia 91,17%, EER 8,10%), onde também está o `results.json`.
+  O registro do RawNet2 no `run_summary.json` ainda aponta para a pasta `rawnet2/`.
 - Análise em lote: arquivo que falha entra como `REAL` na tabela e na pizza
   (`is_fake=False`, confiança 0), e o `test_lote_resume_e_exporta_csv` fixa isso
   como está. Uma ferramenta forense deveria marcá-lo como erro.

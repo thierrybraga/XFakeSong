@@ -6,7 +6,12 @@ sidecar declara. Limiares e conjunto saem de dez locutores, e a medida vem do d�
 (ver ``benchmarks/fusion.py``). Não abre a partição de teste nem altera nada no modelo.
 
 Os SSL não estão entre os modelos do app. Para incluí-los, aponte a pasta do artefato e a do
-backbone: ``--ssl data/models/benchmark/wavlm_original=<pasta do backbone>``.
+backbone. Os da geração atual ficam no run:
+
+    --ssl data/results/benchmark/wavlm_original/architectures/wavlm_original/models=<backbone>
+
+O rótulo vem da última pasta (aqui, ``bench_models``), então um segundo ``--ssl`` de pasta com
+o mesmo nome substitui o primeiro.
 
 Uso:
     python tools/reporting/select_fusion.py --report fusao.json
