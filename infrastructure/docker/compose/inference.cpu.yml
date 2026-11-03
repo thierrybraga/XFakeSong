@@ -16,7 +16,8 @@ services:
     ports:
       # Só nesta máquina por padrão: o serviço fala HTTP sem TLS. Para abrir na
       # rede, defina GRADIO_BIND_HOST e coloque um proxy HTTPS na frente.
-      - "${GRADIO_BIND_HOST:-127.0.0.1}:${GRADIO_PORT:-7860}:7860"
+      # Cada perfil tem a sua porta no host: ver docs/development/docker-environments.md.
+      - "${GRADIO_BIND_HOST:-127.0.0.1}:${GRADIO_PORT_CPU:-7861}:7860"
     volumes:
       - ../../../data:/app/data
     environment:

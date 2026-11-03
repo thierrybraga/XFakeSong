@@ -113,7 +113,7 @@ if "%IS_WSL%"=="0" (
 
 echo  Diagnostico detalhado disponivel no Dashboard ^(apos iniciar a app^):
 echo    1. start.bat
-echo    2. Abra http://localhost:7860
+echo    2. Abra o endereco que o start.bat mostrar
 echo    3. Aba "Dashboard" ^-^> "Diagnostico de GPU"
 echo.
 

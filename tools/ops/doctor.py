@@ -9,7 +9,7 @@ Verifica:
 - Versão do Python compatível
 - Virtualenv ativado / detectado
 - Dependências críticas instaladas
-- Porta 7860 disponível
+- Porta local disponível e quem está nas portas dos perfis Docker
 - Diretórios writable
 - Banco de dados inicializável
 - Compatibilidade de versões (gradio × starlette)
@@ -334,7 +334,30 @@ def check_gpu() -> Tuple[bool, List[str]]:
     return False, [f"gpu:{code or 'not_visible'}"]
 
 
-def check_port(port: int = 7860) -> Tuple[bool, List[str]]:
+def check_docker_ports() -> Tuple[bool, List[str]]:
+    """Só outro programa em uma destas portas impede o perfil de subir."""
+    from app.core.config.ports import docker_instance_ports, is_speechchecker
+
+    section("Portas dos perfis Docker")
+    errors = []
+    for container, port in docker_instance_ports().items():
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(0.5)
+        try:
+            ocupada = sock.connect_ex(("127.0.0.1", port)) == 0
+        finally:
+            sock.close()
+        if not ocupada:
+            ok(f"{port} livre para {container}")
+        elif is_speechchecker(port):
+            ok(f"{port} em uso pelo SpeechChecker ({container} ou instância manual)")
+        else:
+            warn(f"{port} ocupada por outro programa: {container} não vai subir")
+            errors.append(f"docker_port_in_use:{port}")
+    return not errors, errors
+
+
+def check_port(port: int) -> Tuple[bool, List[str]]:
     """Porta disponível?"""
     section(f"Porta {port}")
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -381,6 +404,14 @@ def check_db_init() -> Tuple[bool, List[str]]:
     """Pode inicializar o banco?"""
     section("Banco de dados")
     try:
+        from app.core.config.ports import conflicting_docker_instances
+
+        # Abrir daqui o banco que um container está usando é o que a trava evita.
+        em_uso = conflicting_docker_instances(own_port=0)
+        if em_uso:
+            ok(f"Verificação pulada: banco em uso por {', '.join(em_uso)}")
+            return True, []
+
         from app.core.db.session import check_database_health
 
         if check_database_health():
@@ -420,11 +451,13 @@ def try_fix_install() -> bool:
 
 
 def main() -> int:
+    from app.core.config.ports import LOCAL_PORT
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--fix", action="store_true", help="Tenta corrigir problemas automaticamente"
     )
-    parser.add_argument("--port", type=int, default=7860)
+    parser.add_argument("--port", type=int, default=LOCAL_PORT)
     args = parser.parse_args()
 
     print(f"{Color.BOLD}SpeechChecker Doctor{Color.END}\n")
@@ -439,6 +472,7 @@ def main() -> int:
         ("compat", check_version_compatibility, True),
         ("gpu", check_gpu, False),
         ("port", lambda: check_port(args.port), False),
+        ("docker_ports", check_docker_ports, False),
         ("dirs", check_writable_dirs, False),
         ("db", check_db_init, False),
     ]

@@ -28,9 +28,9 @@ copy .env.example .env
 start.bat
 ```
 
-Antes de continuar, defina no `.env` as variáveis `SPEECHCHECKER_API_KEY`, `XFAKE_GRADIO_USERNAME` e `XFAKE_GRADIO_PASSWORD`: a inferência não sobe sem elas. A aplicação fica acessível só nesta máquina; para abrir na rede, veja `GRADIO_BIND_HOST` no `.env.example`.
+Antes de continuar, defina no `.env` as variáveis `SPEECHCHECKER_API_KEY`, `XFAKE_GRADIO_USERNAME` e `XFAKE_GRADIO_PASSWORD`: a inferência não sobe sem elas. Esses valores valem para todos os perfis e continuam os mesmos depois de reconstruir as imagens; veja [Credenciais](../development/docker-environments.md#credenciais). A aplicação fica acessível só nesta máquina; para abrir na rede, veja `GRADIO_BIND_HOST` no `.env.example`.
 
-No menu, escolha **[2] Modo PRODUCAO**. Aguarde o healthcheck (~60–90s na primeira vez — TensorFlow carregando). Acesse http://localhost:7860.
+No menu, escolha **[2] Modo PRODUCAO**. Aguarde o healthcheck (~60–90s na primeira vez — TensorFlow carregando). Acesse o endereço que o script mostrar: http://localhost:7860 no perfil NVIDIA ou http://localhost:7861 no CPU.
 
 ### Cenário 2: Python local (mais rápido para iterar)
 
@@ -95,7 +95,7 @@ O `./start.sh cuda` fará:
 2. Cria `.venv` e instala `tensorflow[and-cuda]` (CUDA/cuDNN embutidos no wheel)
 3. Instala `requirements.txt`
 
-E `./start.sh gpu-local` valida o CUDA e inicia o app em `http://localhost:7860`
+E `./start.sh gpu-local` valida o CUDA e inicia o app em `http://localhost:7862`
 (usando a GPU automaticamente).
 
 Performance esperada (RTX 3060 12 GB):
@@ -271,7 +271,8 @@ DOCKER_CPU_LIMIT=4.0         # Default 4 CPUs
 DOCKER_TRAIN_MEMORY_LIMIT=36G
 DOCKER_TRAIN_CPU_LIMIT=8.0
 NVIDIA_GPU_COUNT=all
-GRADIO_PORT=7860             # Porta exposta
+GRADIO_PORT_NVIDIA=7860      # Porta publicada pelo perfil NVIDIA
+GRADIO_PORT_CPU=7861         # Porta publicada pelo perfil CPU
 ```
 
 Para datasets grandes ou treinamento, aumente `DOCKER_MEMORY_LIMIT` (ex: 16G).
@@ -403,15 +404,17 @@ No Linux/WSL o `./start.sh doctor` faz o equivalente em shell (e checa Docker + 
 ---
 
 ### "Error response from daemon: cannot create container"
-Provavelmente conflito de porta. Verifique se algo está usando 7860:
+Provavelmente conflito de porta. Verifique se algo está usando a porta do perfil, 7860 no NVIDIA ou 7861 no CPU. O `netstat` mostra outros programas, mas nem sempre lista as portas publicadas pelo Docker; para os containers, use `docker ps`:
 ```cmd
-netstat -ano | findstr :7860
+netstat -ano | findstr :7861
+docker ps
 ```
-Para mudar a porta:
+Para mudar a porta do perfil CPU (no NVIDIA, use `GRADIO_PORT_NVIDIA` e `start.bat gpu`):
 ```cmd
-set GRADIO_PORT=8080
+set GRADIO_PORT_CPU=8080
 start.bat prod
 ```
+O [mapa de portas](../development/docker-environments.md#portas) lista todas as portas do projeto.
 
 ### Build extremamente lento (10+ min)
 - Confira que o `.dockerignore` existe (criado neste projeto)
@@ -495,7 +498,7 @@ pip install -r requirements-docs.txt         # documentação
 pip install -r requirements-notebooks.txt    # notebooks + runtime/dev
 
 python main.py --bootstrap-dirs              # cria diretórios
-python main.py --gradio --gradio-port 7860   # inicia
+python main.py --gradio                      # inicia em http://localhost:7862
 ```
 
 ### Docker manual
@@ -503,7 +506,7 @@ python main.py --gradio --gradio-port 7860   # inicia
 docker build -t speechchecker:latest .
 docker run -d \
     --name speechchecker_app \
-    -p 7860:7860 \
+    -p 127.0.0.1:7863:7860 \
     -v $(pwd)/data:/app/data \
     speechchecker:latest
 ```
@@ -594,8 +597,10 @@ make env                # via Makefile
 |----------|---------|-----------|
 | `DEEPFAKE_ENV` | `development` | `development` ou `production` — default real quando a variável não é setada (`settings.py`, `auth_handler.py`); `.env.example` já vem com `development` |
 | `DEEPFAKE_LOG_LEVEL` | `INFO` | `DEBUG` \| `INFO` \| `WARNING` \| `ERROR` |
-| `GRADIO_PORT` | `7860` | Porta exposta (compose) |
-| `GRADIO_SERVER_PORT` | `7860` | Aparece nos compose e é ecoada pelo `docker-entrypoint.sh`, mas **nenhum código Python a lê** — a porta real vem de `--gradio-port 7860` fixo no `CMD` do `Dockerfile`, ou de `--port`/`$PORT` em `main.py`. Setar só essa variável não muda a porta do app. |
+| `GRADIO_PORT_NVIDIA` | `7860` | Porta publicada pelo perfil Docker NVIDIA |
+| `GRADIO_PORT_CPU` | `7861` | Porta publicada pelo perfil Docker CPU |
+| `PORT` | `7862` | Porta de `python main.py --gradio`; `--port` tem precedência |
+| `GRADIO_SERVER_PORT` | `7860` | Porta interna do container. Aparece nos compose e é ecoada pelo `docker-entrypoint.sh`, mas `main.py` não a lê — a porta real vem de `--gradio-port 7860` fixo no `CMD` do `Dockerfile`. Setar só essa variável não muda a porta do app. |
 | `DOCKER_MEMORY_LIMIT` | `8G` | Limite RAM do container |
 | `DOCKER_CPU_LIMIT` | `4.0` | Limite CPUs do container |
 | `DOCKER_TRAIN_MEMORY_LIMIT` | `36G` | RAM para containers de treino/benchmark |

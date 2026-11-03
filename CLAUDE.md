@@ -18,6 +18,8 @@ em `docs/`. Em caso de divergencia, AGENTS.md + docs/ prevalecem.
 | Benchmark e metricas | [docs/evaluation/benchmark.md](docs/evaluation/benchmark.md) |
 | Datasets | [docs/data/public-datasets.md](docs/data/public-datasets.md) |
 | Retreino apos diagnostico | [docs/evaluation/retraining-adjustments.md](docs/evaluation/retraining-adjustments.md) |
+| Portas | [docs/development/docker-environments.md](docs/development/docker-environments.md#portas), `app/core/config/ports.py` |
+| Login e chave da API | [docs/development/docker-environments.md](docs/development/docker-environments.md#credenciais), sempre no `.env` |
 
 ---
 
@@ -25,7 +27,7 @@ em `docs/`. Em caso de divergencia, AGENTS.md + docs/ prevalecem.
 
 ```bash
 # App / dev
-python main.py --gradio                 # interface Gradio (porta 7860)
+python main.py --gradio                 # interface Gradio (porta 7862)
 python main.py --bootstrap-dirs         # cria estrutura de diretorios padrao
 make dev                                # Gradio local (sem Docker)
 make install-dev                        # cria .venv + instala deps + dev tools
@@ -132,7 +134,7 @@ em `infrastructure/docker/compose/`. Pelo Makefile:
 ```bash
 make build            # build com cache (SERVICE=inference-api por padrao)
 make build-nocache    # build limpo + pull das imagens base
-make up / make down   # sobe/derruba; app em http://localhost:7860
+make up / make down   # sobe/derruba; app na porta 7861, ou 7860 com GPU=1
 make docker-config    # valida a config dos perfis (inference/train/benchmark)
 make snapshot / make rollback   # guarda a imagem e o banco / volta e espera o health check
 ```

@@ -14,12 +14,15 @@ python main.py --gradio
 
 | Recurso | URL |
 |---|---|
-| Interface visual | `http://localhost:7860/` (redireciona para `/gradio/`) |
-| Interface Gradio | `http://localhost:7860/gradio` |
-| API REST | `http://localhost:7860/api/v1` |
-| Swagger UI | `http://localhost:7860/api/docs` |
-| ReDoc | `http://localhost:7860/api/redoc` |
-| OpenAPI Schema | `http://localhost:7860/api/openapi.json` |
+| Interface visual | `http://localhost:7862/` (redireciona para `/gradio/`) |
+| Interface Gradio | `http://localhost:7862/gradio` |
+| API REST | `http://localhost:7862/api/v1` |
+| Swagger UI | `http://localhost:7862/api/docs` |
+| ReDoc | `http://localhost:7862/api/redoc` |
+| OpenAPI Schema | `http://localhost:7862/api/openapi.json` |
+
+No Docker, troque a porta: 7860 no perfil NVIDIA e 7861 no CPU. Veja o
+[mapa de portas](../development/docker-environments.md#portas).
 
 `app/interfaces/gradio/app.py` é a única interface visual, montada em
 `/gradio` pelo entry point unificado `python main.py --gradio`.

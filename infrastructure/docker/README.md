@@ -16,7 +16,8 @@ principal concentrada em [infrastructure/docker/compose](compose).
 ## Antes de subir
 
 1. Copie `.env.example` para `.env` na raiz e defina `SPEECHCHECKER_API_KEY`,
-   `XFAKE_GRADIO_USERNAME` e `XFAKE_GRADIO_PASSWORD`.
+   `XFAKE_GRADIO_USERNAME` e `XFAKE_GRADIO_PASSWORD`. Esses valores valem para todos os
+   perfis e continuam os mesmos depois de reconstruir as imagens.
 2. Use `make`, `start.bat`, `start.sh` ou `tools/ops/docker_build.py`, que já passam
    o arquivo ao Compose. Em um comando manual, inclua `--env-file .env`: sem a flag, o
    Compose procura o `.env` na pasta do arquivo compose.

@@ -18,10 +18,83 @@ Este guia consolida a visão operacional do projeto para Docker, ambientes de tr
 
 ## Fluxos principais
 
-- Inferência local: `python main.py --gradio`
-- Inferência Docker: `docker compose --env-file .env -f infrastructure/docker/compose/inference.cpu.yml up --build inference-api`
+- Inferência local: `python main.py --gradio`, em `http://localhost:7862`
+- Inferência Docker: `docker compose --env-file .env -f infrastructure/docker/compose/inference.cpu.yml up --build inference-api`, em `http://localhost:7861`
 - Treino Docker: `docker compose --env-file .env -f infrastructure/docker/compose/train.nvidia.yml run --rm tensorflow-keras`
 - Benchmark Docker: `docker compose --env-file .env -f infrastructure/docker/compose/benchmark.nvidia.yml run --rm benchmark`
+
+## Portas
+
+Cada uso tem a sua porta no host, e nenhuma se repete. Os valores em Python ficam em
+`app/core/config/ports.py`, e `tests/unit/test_ports.py` confere se compose, scripts e este guia
+continuam iguais a eles.
+
+| Porta no host | Quem usa | Como mudar |
+| --- | --- | --- |
+| 7860 | Inferência Docker NVIDIA (`inference.nvidia.yml`) | `GRADIO_PORT_NVIDIA` no `.env` |
+| 7861 | Inferência Docker CPU (`inference.cpu.yml`) | `GRADIO_PORT_CPU` no `.env` |
+| 7862 | Aplicação local, sem Docker: `python main.py --gradio`, `make dev` e `start.* test` | `--port` ou `PORT` |
+| 7863 em diante | Livres, para uma instância manual | Escolha ao subir |
+| 7868 | `tools/ops/build_smoke_test.sh` | `--port=` ou `PORT` |
+| 8000 | `mkdocs serve` | `mkdocs serve -a 127.0.0.1:<porta>` |
+| 17860 | `docker_release.py check nvidia` | `--porta` |
+| 17861 | `docker_release.py check cpu` | `--porta` |
+
+Dentro de qualquer container, a aplicação escuta sempre na 7860. É essa porta que aparece no
+`CMD` das imagens, no health check, no `proxy_pass` de um proxy na mesma rede Docker e no
+`app_port` do Hugging Face Spaces. `GRADIO_SERVER_PORT` também é essa porta interna: mudá-la não
+muda a porta publicada. Treino e benchmark não publicam nenhuma porta.
+
+`make up`, `start.bat` e `start.sh` mostram o endereço que o Compose publicou. Para consultá-lo:
+
+```bash
+docker compose --env-file .env -f infrastructure/docker/compose/inference.cpu.yml port inference-api 7860
+```
+
+`python tools/ops/doctor.py` mostra se a porta local está livre e quem está nas portas dos perfis
+Docker. Antes desse mapa, os perfis usavam `GRADIO_PORT`, que deixou de ser lida. Se o seu `.env`
+define um valor diferente de 7860, passe-o para a variável do perfil.
+
+### Uma instância por vez sobre o mesmo `data/`
+
+Portas diferentes permitem subir mais de uma instância, mas todas usam o mesmo `data/app.db`, e
+essa combinação não é segura. O modo WAL do SQLite exige processos na mesma máquina, e um processo
+no Windows e um container na VM do WSL estão em máquinas diferentes. Dois containers sobre o mesmo
+banco também não foram validados.
+
+| Ao subir | O que acontece com outra instância no ar |
+| --- | --- |
+| `make up`, `start.bat` ou `start.sh`, em um perfil Docker | Recusa se o outro perfil estiver rodando |
+| `python main.py --gradio`, `make dev` ou `start.* test` | Recusa se um perfil Docker responder na sua porta e `DATABASE_URL` for o `data/app.db` |
+| `up` direto do Compose ou **Start** no Docker Desktop | Não verifica |
+| Um perfil Docker com a aplicação local já aberta | Não verifica |
+
+Para usar outra instância ao mesmo tempo, aponte `DATABASE_URL` da aplicação local para outro
+arquivo, ou troque o volume `data/` de um perfil Docker com um override do Compose.
+
+## Credenciais
+
+Há uma única fonte: o `.env` da raiz, que não vai para o Git nem para as imagens.
+
+| Variável | Para quê | Quem lê |
+| --- | --- | --- |
+| `XFAKE_GRADIO_USERNAME` e `XFAKE_GRADIO_PASSWORD` | Login da interface | Docker NVIDIA, Docker CPU e aplicação local |
+| `SPEECHCHECKER_API_KEY` | Header `X-API-Key` da API REST | Docker NVIDIA, Docker CPU e aplicação local |
+
+O Compose entrega os valores ao criar o container, e o banco não guarda contas de usuário. Por isso
+reconstruir a imagem, recriar o container ou voltar com `rollback` mantém o mesmo login. Sem esses
+valores, os perfis de inferência recusam subir: não existe senha de reserva. Treino e benchmark não
+têm login.
+
+Para trocar, edite o `.env` e recrie o container, porque `restart` não relê o arquivo:
+
+```bash
+docker compose --env-file .env -f infrastructure/docker/compose/inference.nvidia.yml up -d --no-build --force-recreate inference-api
+```
+
+Guarde uma cópia em um gerenciador de senhas: o `.env` só existe nesta máquina, e `git clean -x` o
+apagaria. As únicas outras credenciais são descartáveis: `docker_release.py check` gera valores
+aleatórios a cada execução, para um container sem dados, e a CI usa valores fictícios.
 
 ## Tamanho e tempo de build
 

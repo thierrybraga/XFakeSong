@@ -28,10 +28,20 @@ Para o passo a passo completo de instalação e os erros detalhados, veja
 
 ## Execução
 
-??? question "Erro: porta 7860 já está em uso"
-    Há uma instância antiga rodando. Finalize-a ou use outra porta:
-    `python main.py --gradio --gradio-port 7861`. No Docker, `make down` (ou
-    `start.bat stop`) antes de subir de novo.
+??? question "Erro: a porta já está em uso"
+    Cada instância tem a sua porta: 7860 no Docker NVIDIA, 7861 no Docker CPU e
+    7862 na aplicação local. Veja o
+    [mapa de portas](../development/docker-environments.md#portas). Se outro
+    programa ocupa a porta, use `python main.py --gradio --gradio-port 7863` ou
+    defina `GRADIO_PORT_NVIDIA` ou `GRADIO_PORT_CPU` no `.env`. Se for uma instância
+    antiga, use `make down` (ou `start.bat stop`) antes de subir de novo.
+
+??? question "A aplicação recusa subir porque outra instância usa o mesmo `data/`"
+    Todas as instâncias usam o mesmo `data/app.db`, e duas ao mesmo tempo podem
+    danificar o banco. Pare a outra com o `docker stop` indicado na mensagem. Para
+    rodar a aplicação local ao lado do Docker, aponte `DATABASE_URL` para outro
+    arquivo. Detalhes no
+    [guia de portas](../development/docker-environments.md#uma-instancia-por-vez-sobre-o-mesmo-data).
 
 ??? question "A UI demora a abrir / o healthcheck falha no boot"
     O TensorFlow tem *boot* lento. O healthcheck usa `/api/v1/system/health`

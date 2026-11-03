@@ -309,7 +309,6 @@ class APIConfig:
     """Configurações da API."""
 
     host: str = "0.0.0.0"
-    port: int = 8000
     debug: bool = False
     cors_enabled: bool = True
     max_request_size: int = 100 * 1024 * 1024  # 100MB
@@ -333,7 +332,6 @@ class DatabaseConfig:
 
     type: str = "sqlite"  # sqlite, postgresql, mysql
     host: str = "localhost"
-    port: int = 5432
     database: str = "deepfake_detection"
     username: Optional[str] = None
     password: Optional[str] = None
@@ -480,9 +478,6 @@ class SystemConfig:
 
         if os.getenv("DEEPFAKE_API_HOST"):
             config.api.host = os.getenv("DEEPFAKE_API_HOST")
-
-        if os.getenv("DEEPFAKE_API_PORT"):
-            config.api.port = int(os.getenv("DEEPFAKE_API_PORT"))
 
         storage_dir = os.getenv("XFAKE_STORAGE_DIR") or os.getenv(
             "DEEPFAKE_STORAGE_DIR"

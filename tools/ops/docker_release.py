@@ -33,6 +33,8 @@ PERFIS = ("cpu", "nvidia")
 REPOSITORIO = "speechchecker/inference-api"
 SERVICO = "inference-api"
 ARQUIVOS_DO_BANCO = ("app.db", "app.db-wal", "app.db-shm")
+# Fora das portas das instâncias, para conferir uma imagem com a aplicação no ar.
+PORTAS_CHECK = {"nvidia": 17860, "cpu": 17861}
 
 # start_period (180 s) + 5 falhas a cada 30 s: só depois disso vira `unhealthy`.
 ESPERA_SAUDE_S = 420
@@ -409,7 +411,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("check", help="confere conteúdo e respostas de uma imagem")
     p.add_argument("perfil", choices=PERFIS)
-    p.add_argument("--porta", type=int, default=17860)
+    p.add_argument("--porta", type=int, help="padrão: ver PORTAS_CHECK")
 
     p = sub.add_parser("lock", help="grava as versões da imagem validada")
     p.add_argument("perfil", choices=PERFIS)
@@ -420,7 +422,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.acao == "rollback":
         return rollback(args.perfil, args.compose_extra)
     if args.acao == "check":
-        return check(args.perfil, args.porta)
+        return check(args.perfil, args.porta or PORTAS_CHECK[args.perfil])
     return lock(args.perfil)
 
 

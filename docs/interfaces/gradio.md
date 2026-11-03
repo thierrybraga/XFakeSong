@@ -39,13 +39,17 @@ ou via Docker:
 docker compose --env-file .env -f infrastructure/docker/compose/inference.cpu.yml up --build -d
 ```
 
+A porta depende de como a aplicação subiu: 7862 no modo local, 7861 no Docker CPU e
+7860 no Docker NVIDIA. Veja o
+[mapa de portas](../development/docker-environments.md#portas). Os exemplos usam a local:
+
 | Recurso | URL |
 |---|---|
-| Interface Gradio | `http://localhost:7860/gradio` |
-| Entrada principal | `http://localhost:7860/` (redireciona para `/gradio/`) |
+| Interface Gradio | `http://localhost:7862/gradio` |
+| Entrada principal | `http://localhost:7862/` (redireciona para `/gradio/`) |
 | Compatibilidade de inicialização | `/loading` (redireciona para a entrada principal) |
-| Healthcheck | `http://localhost:7860/api/v1/system/health` |
-| OpenAPI | `http://localhost:7860/api/docs` |
+| Healthcheck | `http://localhost:7862/api/v1/system/health` |
+| OpenAPI | `http://localhost:7862/api/docs` |
 
 `app/interfaces/gradio/app.py` monta a única interface visual e carrega seu
 tema de `app/interfaces/gradio/static/css/theme.css`. O módulo
@@ -61,7 +65,7 @@ Antes de abrir a interface, confirme:
 |---|---|
 | Modelos default | `data/models/benchmark_final/` e manifesto consolidado |
 | Diretório de modelos | `DEEPFAKE_MODELS_DIR=data/models` |
-| Porta | `GRADIO_SERVER_PORT=7860` |
+| Porta | [Mapa de portas](../development/docker-environments.md#portas) |
 | Host Docker/HF | `GRADIO_SERVER_NAME=0.0.0.0` |
 | Ambiente demo | `DEEPFAKE_ENV=production` |
 | Treino em demo pública | `ENABLE_TRAINING=false` |
@@ -369,7 +373,7 @@ scripts. Esta aba serve para verificar se os dados estão visíveis para a aplic
 
 ## Checklist de Validação da UI
 
-- `http://localhost:7860/gradio` abre sem erro.
+- `/gradio`, na porta da instância, abre sem erro.
 - `/api/v1/system/health` retorna `healthy` (200) ou um `degraded` explicável (503).
 - A barra superior mostra GPU quando aplicável.
 - A aba **Detectar** lista os modelos instalados.

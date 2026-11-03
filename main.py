@@ -10,6 +10,7 @@ import os
 import sys
 
 from app.core.config.env import load_environment
+from app.core.config.ports import LOCAL_PORT, conflicting_docker_instances
 from app.core.hf_compat import ensure_hf_folder_shim
 from app.core.performance import configure_runtime_environment
 
@@ -41,7 +42,7 @@ def main():
     parser.add_argument(
         "--gradio", action="store_true", dest="gui", help="Alias para --gui"
     )
-    _default_port = int(os.environ.get("PORT", 7860))
+    _default_port = int(os.environ.get("PORT", LOCAL_PORT))
     parser.add_argument(
         "--port",
         type=int,
@@ -65,6 +66,17 @@ def main():
 
     setup_logging()
     logger = logging.getLogger("Main")
+
+    if args.gui:
+        conflitos = conflicting_docker_instances(args.port)
+        for nome, porta in conflitos.items():
+            logger.error(
+                f"{nome} está no ar na porta {porta} e usa o mesmo data/app.db. "
+                f"Pare-o com `docker stop {nome}` ou aponte DATABASE_URL para "
+                "outro arquivo."
+            )
+        if conflitos:
+            sys.exit(1)
 
     # GPU.9: Setup TF/GPU ANTES de qualquer import de tabs Gradio ou serviços
     # de domínio. `memory_growth` + `mixed_precision` precisam ser aplicados

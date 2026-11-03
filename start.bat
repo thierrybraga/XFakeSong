@@ -119,23 +119,24 @@ IF ERRORLEVEL 1 (
     GOTO MENU_RETURN
 )
 
-REM BUG.Startup.3: verifica porta 7860 antes de iniciar
+REM BUG.Startup.3: verifica a porta local antes de iniciar. Cada perfil Docker
+REM publica a sua: 7860 (NVIDIA) e 7861 (CPU).
 ECHO.
-ECHO Verificando porta 7860...
+ECHO Verificando porta 7862...
 SET "PORT_BUSY=0"
-FOR /F "tokens=5" %%P IN ('netstat -ano 2^>nul ^| findstr ":7860 " ^| findstr "LISTENING"') DO (
+FOR /F "tokens=5" %%P IN ('netstat -ano 2^>nul ^| findstr ":7862 " ^| findstr "LISTENING"') DO (
     SET "PORT_BUSY=1"
     SET "OLD_PID=%%P"
 )
 IF "%PORT_BUSY%"=="1" (
     ECHO.
     ECHO ===============================================================
-    ECHO  Porta 7860 ja em uso pelo PID %OLD_PID%.
+    ECHO  Porta 7862 ja em uso pelo PID %OLD_PID%.
     ECHO ===============================================================
     ECHO Encerre a instancia anterior antes de continuar:
     ECHO   taskkill /F /PID %OLD_PID%
     ECHO Ou rode em outra porta:
-    ECHO   python main.py --gradio --gradio-port 7861
+    ECHO   python main.py --gradio --gradio-port 7863
     ECHO.
     SET /P "KILL=Encerrar PID %OLD_PID% automaticamente? [y/N] "
     IF /I "!KILL!"=="y" (
@@ -152,10 +153,10 @@ IF "%PORT_BUSY%"=="1" (
 )
 
 ECHO.
-ECHO Aplicacao em http://localhost:7860
+ECHO Aplicacao em http://localhost:7862
 ECHO Pressione Ctrl+C para parar.
 ECHO.
-python main.py --gradio --gradio-port 7860
+python main.py --gradio --gradio-port 7862
 GOTO MENU_RETURN
 
 REM ====================================================================
@@ -204,6 +205,8 @@ IF "%PROFILE%"=="gpu" (
     SET "COMPOSE_FILE=infrastructure\docker\compose\inference.cpu.yml"
     SET "CONTAINER=speechchecker_inference_cpu"
 )
+CALL :CHECK_OTHER_INSTANCE
+IF ERRORLEVEL 1 GOTO MENU_RETURN
 ECHO Compose detectado: %DC%
 ECHO.
 REM Antes do build: um .env incompleto nao pode cair no fallback de CPU abaixo,
@@ -248,9 +251,11 @@ IF ERRORLEVEL 1 (
     GOTO MENU_RETURN
 )
 
+SET "APP_ADDRESS="
+FOR /F "delims=" %%A IN ('%DC% -f %COMPOSE_FILE% port inference-api 7860 2^>nul') DO SET "APP_ADDRESS=%%A"
 ECHO.
 ECHO ===============================================================
-ECHO   Aplicacao rodando em http://localhost:7860  ^(perfil: %PROFILE%^)
+ECHO   Aplicacao rodando em http://%APP_ADDRESS%  ^(perfil: %PROFILE%^)
 ECHO ===============================================================
 ECHO.
 ECHO Comandos uteis:
@@ -293,6 +298,8 @@ ECHO Forcando rebuild SEM cache...
 CALL :CHECK_DOCKER_RUNNING
 IF ERRORLEVEL 1 GOTO MENU_RETURN
 CALL :DETECT_ACTIVE_PROFILE
+CALL :CHECK_OTHER_INSTANCE
+IF ERRORLEVEL 1 GOTO MENU_RETURN
 
 %DC% -f %COMPOSE_FILE% down
 %DC% -f %COMPOSE_FILE% build --no-cache --pull
@@ -479,6 +486,18 @@ IF NOT ERRORLEVEL 1 (
 SET "COMPOSE_FILE=infrastructure\docker\compose\inference.cpu.yml"
 SET "CONTAINER=speechchecker_inference_cpu"
 EXIT /B 0
+
+:CHECK_OTHER_INSTANCE
+REM Os dois perfis montam o mesmo data/ e gravariam no mesmo SQLite. Chame depois
+REM de definir CONTAINER. Mesma logica de start.sh (refuse_other_instance).
+SET "OTHER=speechchecker_inference_cpu"
+IF "%CONTAINER%"=="speechchecker_inference_cpu" SET "OTHER=speechchecker_inference_nvidia"
+SET "OTHER_RUNNING="
+FOR /F "delims=" %%R IN ('docker inspect -f "{{.State.Running}}" %OTHER% 2^>nul') DO SET "OTHER_RUNNING=%%R"
+IF NOT "%OTHER_RUNNING%"=="true" EXIT /B 0
+ECHO %OTHER% esta rodando com o mesmo data/.
+ECHO Pare-o antes: docker stop %OTHER%
+EXIT /B 1
 
 :WAIT_HEALTHY
 REM %1 = nome do container a monitorar (default speechchecker_inference_cpu)

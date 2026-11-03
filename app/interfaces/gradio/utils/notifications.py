@@ -37,6 +37,7 @@ from dataclasses import dataclass, field
 from html import escape
 from typing import List, Literal, Optional
 
+from app.core.config.ports import LOCAL_PORT
 from app.core.feedback import (
     clear_feedback_events,
     get_feedback_events,
@@ -127,7 +128,7 @@ class CommonErrors:
 
 
     @staticmethod
-    def port_in_use(port: int = 7860) -> ActionableError:
+    def port_in_use(port: int = LOCAL_PORT) -> ActionableError:
         return ActionableError(
             title=f"Porta {port} já em uso",
             message="Outra instância do SpeechChecker (ou outro app) está usando essa porta.",

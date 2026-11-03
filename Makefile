@@ -22,7 +22,8 @@ MAKEFLAGS += --no-print-directory
 # Auto-detect Docker Compose v2 vs v1
 DC := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
 
-PORT ?= 7860
+# Só de `make dev`. Cada perfil Docker publica a sua: 7860 (GPU=1) e 7861 (CPU).
+PORT ?= 7862
 IMAGE_NAME := speechchecker
 IMAGE_TAG ?= latest
 
@@ -31,9 +32,11 @@ IMAGE_TAG ?= latest
 SERVICE ?= inference-api
 COMPOSE_FILE := infrastructure/docker/compose/inference.cpu.yml
 RELEASE_PROFILE := cpu
+OTHER_CONTAINER := speechchecker_inference_nvidia
 ifeq ($(GPU),1)
 COMPOSE_FILE := infrastructure/docker/compose/inference.nvidia.yml
 RELEASE_PROFILE := nvidia
+OTHER_CONTAINER := speechchecker_inference_cpu
 endif
 # Sem `--env-file`, o Compose procura o `.env` na pasta do arquivo compose, e não
 # na raiz: a inferência recusa subir e treino/benchmark ignoram o arquivo em silêncio.
@@ -55,7 +58,7 @@ help:  ## Mostra esta ajuda
 	@echo ""
 	@echo "Variáveis:"
 	@echo "  GPU=1               Habilita GPU (NVIDIA)"
-	@echo "  PORT=7860           Porta Gradio (default 7860)"
+	@echo "  PORT=7862           Porta de make dev (Docker: GRADIO_PORT_NVIDIA e GRADIO_PORT_CPU)"
 	@echo "  SERVICE=inference-api Serviço Compose alvo"
 	@echo "  PYTHON              Python base (Windows: python; Linux/macOS: python3)"
 
@@ -71,11 +74,19 @@ build:  ## Build da imagem Docker (com cache)
 build-nocache:  ## Build sem cache + pull base images
 	$(DC) $(COMPOSE_FILES) build --no-cache --pull $(SERVICE)
 
+# Os dois perfis montam o mesmo data/ e gravariam no mesmo SQLite.
+.PHONY: check-other-instance
+check-other-instance:
+	@if [ "$$(docker inspect -f '{{.State.Running}}' $(OTHER_CONTAINER) 2>/dev/null)" = "true" ]; then \
+	    echo "$(OTHER_CONTAINER) está rodando com o mesmo data/. Pare-o antes: docker stop $(OTHER_CONTAINER)"; \
+	    exit 1; \
+	fi
+
 .PHONY: up
-up:  ## Sobe containers em background
+up: check-other-instance  ## Sobe containers em background
 	$(DC) $(COMPOSE_FILES) up -d $(SERVICE)
 	@echo ""
-	@echo "Aplicação em http://localhost:$(PORT)"
+	@echo "Aplicação em http://$$($(DC) $(COMPOSE_FILES) port $(SERVICE) 7860)"
 
 .PHONY: down
 down:  ## Para e remove containers

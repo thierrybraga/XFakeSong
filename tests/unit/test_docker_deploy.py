@@ -116,7 +116,7 @@ def test_inferencia_usa_o_ignore_da_raiz(dockerfile):
 def test_inferencia_roda_em_producao_e_so_na_maquina_local(perfil):
     texto = (COMPOSE / perfil).read_text(encoding="utf-8")
     assert re.search(r"^\s+DEEPFAKE_ENV: production$", texto, re.M)
-    assert '"${GRADIO_BIND_HOST:-127.0.0.1}:${GRADIO_PORT:-7860}:7860"' in texto
+    assert '"${GRADIO_BIND_HOST:-127.0.0.1}:${GRADIO_PORT_' in texto
 
 
 @pytest.mark.parametrize("perfil", PERFIS_INFERENCIA)
@@ -165,6 +165,40 @@ def test_imagem_nao_guarda_o_cache_do_pip(dockerfile):
     """O cache chegava a 6,4 GB por imagem, sem uso em execução."""
     texto = (AMBIENTES / dockerfile).read_text(encoding="utf-8")
     assert "pip cache purge" in texto or "PIP_NO_CACHE_DIR=1" in texto
+
+
+CREDENCIAIS = ("SPEECHCHECKER_API_KEY", "XFAKE_GRADIO_USERNAME", "XFAKE_GRADIO_PASSWORD")
+
+
+def test_perfis_leem_as_mesmas_credenciais_sem_senha_de_reserva():
+    """Mesmo login em todo perfil. Sem `.env`, o compose recusa subir."""
+    linhas = [
+        sorted(
+            linha.strip()
+            for linha in (COMPOSE / perfil).read_text(encoding="utf-8").splitlines()
+            if linha.strip().startswith(CREDENCIAIS)
+        )
+        for perfil in PERFIS_INFERENCIA
+    ]
+    assert linhas[0] == linhas[1]
+    assert len(linhas[0]) == len(CREDENCIAIS)
+    for linha in linhas[0]:
+        assert ":?Defina" in linha
+
+
+@pytest.mark.parametrize(
+    "dockerfile",
+    [
+        ROOT / "Dockerfile",
+        *sorted(p for p in AMBIENTES.glob("*/Dockerfile.*") if p.suffix != ".dockerignore"),
+    ],
+    ids=lambda p: p.relative_to(ROOT).as_posix(),
+)
+def test_imagem_nao_guarda_credenciais(dockerfile):
+    """O login só entra ao criar o container, e por isso sobrevive a um rebuild."""
+    texto = dockerfile.read_text(encoding="utf-8")
+    for nome in CREDENCIAIS:
+        assert nome not in texto
 
 
 @pytest.mark.parametrize("dockerfile", DOCKERFILES_INFERENCIA)

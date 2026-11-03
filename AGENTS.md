@@ -4,7 +4,7 @@
 
 SpeechChecker é uma plataforma open source de detecção de áudio deepfake. Combina análise espectral clássica com modelos Transformer modernos (WavLM, HuBERT), com foco em Explainable AI (XAI) e processamento 100% local.
 
-**Interface**: Gradio (`python main.py --gradio`, porta 7860)
+**Interface**: Gradio (`python main.py --gradio`, porta 7862; Docker: 7860 NVIDIA, 7861 CPU)
 **Python**: 3.11 (referência testada), compatível com 3.11–3.12 | **Licença**: MIT
 
 ---
@@ -147,7 +147,8 @@ Use `from app.domain.models.architectures.factory import create_model` para inst
 
 ```env
 DEEPFAKE_ENV=development           # development | production
-GRADIO_SERVER_PORT=7860
+GRADIO_PORT_NVIDIA=7860            # porta publicada pelo perfil Docker NVIDIA
+GRADIO_PORT_CPU=7861               # porta publicada pelo perfil Docker CPU
 DEEPFAKE_MODELS_DIR=./data/models
 DEEPFAKE_LOG_LEVEL=INFO            # DEBUG | INFO | WARNING | ERROR
 ```

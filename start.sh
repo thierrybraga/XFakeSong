@@ -44,7 +44,8 @@ IFS=$'\n\t'
 
 readonly VERSION="4.0.0"
 readonly APP_NAME="SpeechChecker"
-readonly DEFAULT_PORT="7860"
+# Só da aplicação local. Cada perfil Docker publica a sua: 7860 (NVIDIA) e 7861 (CPU).
+readonly LOCAL_PORT="7862"
 readonly HEALTH_TIMEOUT="300"
 readonly HEALTH_INTERVAL="5"
 # CONTAINER_NAME e COMPOSE_FILE não são readonly: dependem do perfil
@@ -391,6 +392,16 @@ detect_active_profile() {
     fi
 }
 
+# Os dois perfis montam o mesmo data/ e gravariam no mesmo SQLite. Chame depois de
+# definir CONTAINER_NAME. Mesma lógica de start.bat (:CHECK_OTHER_INSTANCE).
+refuse_other_instance() {
+    local other="speechchecker_inference_cpu"
+    [[ "$CONTAINER_NAME" == "$other" ]] && other="speechchecker_inference_nvidia"
+    if [[ "$(docker inspect -f '{{.State.Running}}' "$other" 2>/dev/null || true)" == "true" ]]; then
+        fatal "${other} está rodando com o mesmo data/. Pare-o antes: docker stop ${other}"
+    fi
+}
+
 wait_for_healthy() {
     local elapsed=0
     info "Aguardando container healthy (timeout ${HEALTH_TIMEOUT}s)..."
@@ -429,7 +440,7 @@ wait_for_healthy() {
 # ==============================================================================
 
 check_port() {
-    local port="${1:-$DEFAULT_PORT}"
+    local port="${1:-$LOCAL_PORT}"
     local pid=""
 
     if command -v lsof >/dev/null 2>&1; then
@@ -654,7 +665,7 @@ full_setup() {
 
     success "Setup completo!"
     echo
-    if confirm "Iniciar a aplicação agora (local, http://localhost:${DEFAULT_PORT})?"; then
+    if confirm "Iniciar a aplicação agora (local, http://localhost:${LOCAL_PORT})?"; then
         run_local
     else
         info "Para iniciar depois: ./start.sh test"
@@ -740,10 +751,10 @@ run_local() {
     fi
 
     apply_runtime_optimizations
-    check_port "$DEFAULT_PORT"
+    check_port "$LOCAL_PORT"
     show_gpu_status
 
-    exec "$PYTHON_BIN" main.py --gradio --gradio-port "$DEFAULT_PORT"
+    exec "$PYTHON_BIN" main.py --gradio --gradio-port "$LOCAL_PORT"
 }
 
 run_gpu_local() {
@@ -766,10 +777,10 @@ run_gpu_local() {
     fi
 
     apply_runtime_optimizations
-    check_port "$DEFAULT_PORT"
+    check_port "$LOCAL_PORT"
     show_gpu_status
 
-    exec "$PYTHON_BIN" main.py --gradio --gradio-port "$DEFAULT_PORT"
+    exec "$PYTHON_BIN" main.py --gradio --gradio-port "$LOCAL_PORT"
 }
 
 run_docker() {
@@ -810,6 +821,7 @@ run_docker() {
         CONTAINER_NAME="speechchecker_inference_cpu"
     fi
 
+    refuse_other_instance
     [[ -f .env ]] || fatal "Arquivo .env não encontrado. Copie .env.example para .env e defina SPEECHCHECKER_API_KEY, XFAKE_GRADIO_USERNAME e XFAKE_GRADIO_PASSWORD."
     "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" config --quiet \
         || fatal "Configuração inválida: revise o .env, conforme a mensagem acima."
@@ -818,7 +830,7 @@ run_docker() {
     "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up --build -d
 
     wait_for_healthy
-    success "Aplicação disponível em http://localhost:${DEFAULT_PORT}"
+    success "Aplicação disponível em http://$("${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" port inference-api 7860)"
 }
 
 stop_containers() {
@@ -842,6 +854,7 @@ rebuild() {
     ensure_docker
     get_compose
     detect_active_profile
+    refuse_other_instance
 
     info "Rebuild completo sem cache (perfil: ${COMPOSE_FILE})..."
     "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" down
@@ -925,9 +938,9 @@ run_doctor() {
     check_item 'main.py'                    '[ -f main.py ]'
     check_item ".env"                       '[ -f .env ]'
     check_item 'curl'                       'command -v curl'
-    check_item "Porta ${DEFAULT_PORT} livre" \
-        "! ( lsof -ti :${DEFAULT_PORT} 2>/dev/null || \
-             ss -tlnp 2>/dev/null | grep -q ':${DEFAULT_PORT} ' ) >/dev/null 2>&1"
+    check_item "Porta ${LOCAL_PORT} livre" \
+        "! ( lsof -ti :${LOCAL_PORT} 2>/dev/null || \
+             ss -tlnp 2>/dev/null | grep -q ':${LOCAL_PORT} ' ) >/dev/null 2>&1"
 
     if is_debian_like; then
         check_item 'ffmpeg'                 'command -v ffmpeg'

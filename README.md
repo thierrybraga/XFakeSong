@@ -97,8 +97,10 @@ python main.py --gradio
 No Windows, os alvos `make` exigem GNU Make e Bash; execute-os no Git Bash ou
 WSL. No PowerShell, use os comandos acima ou `start.bat`.
 
-A interface visual canônica fica disponível em `http://localhost:7860/` e em
-`http://localhost:7860/gradio/`.
+A interface visual canônica fica disponível em `http://localhost:7862/` e em
+`http://localhost:7862/gradio/`. No Docker, a porta é 7860 no perfil NVIDIA e 7861
+no CPU; o mapa completo está em
+[docs/development/docker-environments.md](docs/development/docker-environments.md#portas).
 O uso das abas, análises e notificações está documentado em
 [docs/interfaces/gradio.md](docs/interfaces/gradio.md).
 Os perfis de instalação opcionais e gates para releases estão em

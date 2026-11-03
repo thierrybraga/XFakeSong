@@ -190,7 +190,8 @@ externo não redescartar as que já tinham terminado.
 - `app/domain/services/detection_service.py`: carrega modelos de `models_dir`;
   GPU via `app.core.gpu.setup_gpu` (memory-growth, probe cuDNN com fallback p/ CPU,
   mixed precision em Tensor Cores).
-- `settings.py::APIConfig`: `0.0.0.0:8000`, rate limit 60 rpm, upload 100 MB.
+- `settings.py::APIConfig`: rate limit 60 rpm, upload 100 MB. A porta não vem daqui: ver
+  o [mapa de portas](../development/docker-environments.md#portas).
 
 ---
 
