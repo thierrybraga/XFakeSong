@@ -40,7 +40,7 @@ ruff check app/ benchmarks/ tools/ tests/ ; bandit -r app/ benchmarks/ tools/
 
 # Docker
 make build | up | down | logs | shell   # ciclo de vida dos containers
-docker compose up --build -d            # alternativa direta
+docker compose --env-file .env -f infrastructure/docker/compose/inference.cpu.yml up --build -d  # alternativa direta; sem --env-file o .env da raiz nao e lido
 ```
 
 ---
@@ -134,8 +134,14 @@ make up / make down   # sobe/derruba; app em http://localhost:7860
 make docker-config    # valida a config dos perfis (inference/train/benchmark)
 ```
 
+make snapshot / make rollback   # guarda a imagem e o banco / volta e espera o health check
 Dev local sem Docker: `make venv && make install-dev` (cria `.venv`,
 instala `requirements.txt` + `requirements-dev.txt`), depois `make dev`.
+As imagens de inferencia (e a do benchmark, que usa o mesmo Dockerfile) instalam
+as versoes exatas de `inference-api/constraints-<perfil>.txt`, geradas da imagem
+validada por `tools/ops/docker_release.py lock`. Mudou uma dependencia? Veja
+[docs/development/docker-environments.md](docs/development/docker-environments.md).
+
 
 ---
 
@@ -408,7 +414,8 @@ treino de uma arquitetura.
   (a CI usa essa suite rapida) antes de abrir PR. Nenhum teste escreve em
   `data/models`: o `conftest.py` redireciona `XFAKE_MODELS_DIR` para um
   diretorio temporario da sessao — sem isso um `BenchmarkConfig` sem
-  `models_dir` grava por cima do artefato promovido.
+  `models_dir` grava por cima do artefato promovido. O mesmo vale para o banco:
+  `DATABASE_URL` aponta para um SQLite temporario, nunca para `data/app.db`.
 - `.gitignore` ignora `data/results/`, `data/models/*.keras|*.pkl`,
   `logs/` e caches — artefatos de treino sao regeneraveis, nao versione.
 - Copie `.env.example` para `.env` antes de executar.

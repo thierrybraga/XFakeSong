@@ -99,7 +99,8 @@ de execução ao lado das configurações, métricas e relatórios. Veja o
 | `run_tests.sh` | Entrypoint de testes usado pela CI (`fast`, `cov`, suites por marcador). |
 | `check_pip_audit.py` | Gate de release: roda o `pip-audit` e reprova todo aviso fora de `configs/security/pip-audit-exceptions.json`, versão diferente da registrada e exceção vencida. |
 | `build_smoke_test.sh` | Smoke test do build Docker completo. |
-| `sync_hf_models.py` | Baixa modelos treinados do HF Hub para `data/models` (no-op sem `MODEL_REPO_ID`; usado no boot de Spaces). |
+| `sync_hf_models.py` | Baixa modelos treinados do HF Hub para `data/models` (no-op sem `MODEL_REPO_ID`; usado no boot do container e de Spaces). Não sobrescreve arquivo local sem `--force`. |
+| `docker_release.py` | Imagem de inferência: guarda antes de atualizar (`snapshot`), volta (`rollback`), confere como a CI (`check`) e regrava as versões fixadas (`lock`). |
 | `deduplicate_artifacts.py` | Audita e substitui conteúdo idêntico em `data/models`/`data/results` por hardlinks NTFS, preservando todos os caminhos. Rode sem flags para prévia e com `--apply` para aplicar; geradores e promoções separam o link antes de regravar. |
 | `upload_models_to_hf.py` | Publica artefatos consolidados no HF Hub (dry-run sem credenciais; nunca imprime token). |
 | `build_notebooks.py` | Regenera os notebooks de estudo/reprodução em `docs/notebooks/` com API real do projeto. |

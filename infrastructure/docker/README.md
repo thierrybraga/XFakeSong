@@ -13,6 +13,17 @@ principal concentrada em [infrastructure/docker/compose](compose).
 | Treino NVIDIA | [infrastructure/docker/compose/train.nvidia.yml](compose/train.nvidia.yml) | Treino neural/SSL com GPU |
 | Benchmark NVIDIA | [infrastructure/docker/compose/benchmark.nvidia.yml](compose/benchmark.nvidia.yml) | Benchmark sequencial completo |
 
+## Antes de subir
+
+1. Copie `.env.example` para `.env` na raiz e defina `SPEECHCHECKER_API_KEY`,
+   `XFAKE_GRADIO_USERNAME` e `XFAKE_GRADIO_PASSWORD`.
+2. Use `make`, `start.bat`, `start.sh` ou `tools/ops/docker_build.py`, que já passam
+   o arquivo ao Compose. Em um comando manual, inclua `--env-file .env`: sem a flag, o
+   Compose procura o `.env` na pasta do arquivo compose.
+
+Os perfis de inferência rodam sempre com `DEEPFAKE_ENV=production` e publicam a porta
+só em `127.0.0.1`. Para abrir na rede, defina `GRADIO_BIND_HOST` e use um proxy HTTPS.
+
 ## Estrutura de pastas
 
 - [compose/](compose): perfis de execução, único caminho de build do projeto.

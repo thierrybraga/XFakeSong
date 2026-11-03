@@ -27,6 +27,11 @@ Compose. A política e seus limites estão em
 
 Workflows auxiliares:
 
+- **`docker-inference.yml`** — constrói as imagens de inferência CPU e NVIDIA e as
+  confere com `tools/ops/docker_release.py check`: conteúdo sem segredos e sem
+  cache do pip, usuário não-root, health check e autenticação. Roda em PR que muda
+  algo que entra nelas, em tags `v*` ou manualmente. O runner não tem GPU nem
+  modelos, então não valida inferência em GPU nem os vereditos.
 - **`static.yml`** — publica a documentação (MkDocs) no GitHub Pages a cada push
   na `main`.
 - **`dependabot.yml`** — PRs semanais de atualização de dependências `pip` e
@@ -75,6 +80,7 @@ Para auditar ou reproduzir os grupos de dependências, veja
 | --- | --- |
 | `ALLOWED_ORIGINS` | lista explícita (não `*`) |
 | `ALLOWED_HOSTS` | hosts públicos do serviço |
+| `GRADIO_BIND_HOST` | `127.0.0.1` (padrão dos perfis de inferência); abra para a rede só atrás de um proxy HTTPS |
 | `SPEECHCHECKER_API_KEY` | chave forte e secreta |
 | `XFAKE_ENABLE_HSTS` | `1` quando atrás de HTTPS |
 | `XFAKE_CSP` | política CSP adequada ao deploy |

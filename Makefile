@@ -30,10 +30,16 @@ IMAGE_TAG ?= latest
 # O Dockerfile da raiz e mantido para deploy em Hugging Face Spaces.
 SERVICE ?= inference-api
 COMPOSE_FILE := infrastructure/docker/compose/inference.cpu.yml
+RELEASE_PROFILE := cpu
 ifeq ($(GPU),1)
 COMPOSE_FILE := infrastructure/docker/compose/inference.nvidia.yml
+RELEASE_PROFILE := nvidia
 endif
-COMPOSE_FILES := -f $(COMPOSE_FILE)
+# Sem `--env-file`, o Compose procura o `.env` na pasta do arquivo compose, e não
+# na raiz: a inferência recusa subir e treino/benchmark ignoram o arquivo em silêncio.
+ENV_FILE ?= .env
+ENV_FLAG := $(if $(wildcard $(ENV_FILE)),--env-file $(ENV_FILE))
+COMPOSE_FILES := $(ENV_FLAG) -f $(COMPOSE_FILE)
 
 TRAIN_CPU_COMPOSE := infrastructure/docker/compose/train.cpu.yml
 TRAIN_NVIDIA_COMPOSE := infrastructure/docker/compose/train.nvidia.yml
@@ -87,7 +93,7 @@ logs:  ## Tail dos logs (follow)
 
 .PHONY: ps
 ps:  ## Status do compose
-	$(DC) ps
+	$(DC) $(COMPOSE_FILES) ps
 
 .PHONY: shell
 shell:  ## Abre shell no container
@@ -103,31 +109,41 @@ health:  ## Status do healthcheck
 	docker inspect -f '{{.State.Status}}' speechchecker_inference_nvidia 2>/dev/null || \
 	echo "Container não encontrado"
 
+# Só o que é do projeto. `docker image prune` sem filtro e `docker builder prune`
+# alcançam também imagens e cache de outros projetos da máquina.
 .PHONY: clean
-clean:  ## Down + remove volumes anônimos + prune
+clean:  ## Down + remove volumes anônimos + imagens órfãs deste projeto
 	$(DC) $(COMPOSE_FILES) down -v --remove-orphans
-	docker image prune -f
-	docker builder prune -f
+	docker image prune -f --filter label=org.opencontainers.image.title=speechchecker-inference-api
+
+# O caminho de volta: `make down snapshot build up`; se der errado, `make rollback`.
+.PHONY: snapshot
+snapshot:  ## Guarda a imagem atual e copia o banco (com o container parado)
+	"$(VENV_PYTHON)" tools/ops/docker_release.py snapshot $(RELEASE_PROFILE)
+
+.PHONY: rollback
+rollback:  ## Volta para a imagem guardada e espera o health check
+	"$(VENV_PYTHON)" tools/ops/docker_release.py rollback $(RELEASE_PROFILE)
 
 .PHONY: train-cpu
 train-cpu:  ## Executa perfil de treino CPU/classical
-	$(DC) -f $(TRAIN_CPU_COMPOSE) run --rm classical-ml
+	$(DC) $(ENV_FLAG) -f $(TRAIN_CPU_COMPOSE) run --rm classical-ml
 
 .PHONY: train-nvidia
 train-nvidia:  ## Executa perfil de treino NVIDIA TensorFlow/Keras
-	$(DC) -f $(TRAIN_NVIDIA_COMPOSE) run --rm tensorflow-keras
+	$(DC) $(ENV_FLAG) -f $(TRAIN_NVIDIA_COMPOSE) run --rm tensorflow-keras
 
 .PHONY: train-pytorch
 train-pytorch:  ## Executa perfil de treino NVIDIA PyTorch (RawNet2/AASIST/RawGAT-ST/Conformer/Hybrid)
-	$(DC) -f $(TRAIN_NVIDIA_COMPOSE) run --rm pytorch-audio
+	$(DC) $(ENV_FLAG) -f $(TRAIN_NVIDIA_COMPOSE) run --rm pytorch-audio
 
 .PHONY: train-ssl
 train-ssl:  ## Executa perfil de treino NVIDIA SSL (WavLM/HuBERT originais)
-	$(DC) -f $(TRAIN_NVIDIA_COMPOSE) run --rm ssl-transformers
+	$(DC) $(ENV_FLAG) -f $(TRAIN_NVIDIA_COMPOSE) run --rm ssl-transformers
 
 .PHONY: benchmark-nvidia
 benchmark-nvidia:  ## Executa benchmark completo NVIDIA/WSL2
-	$(DC) -f $(BENCHMARK_NVIDIA_COMPOSE) run --rm benchmark
+	$(DC) $(ENV_FLAG) -f $(BENCHMARK_NVIDIA_COMPOSE) run --rm benchmark
 
 .PHONY: docker-config
 docker-config:  ## Valida configuração Compose dos perfis segmentados

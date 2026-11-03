@@ -352,6 +352,10 @@ get_docker_status() {
 
 ensure_docker() {
     require_command docker
+    docker info >/dev/null 2>&1 && return 0
+    # Só existe no Docker Desktop; no Linux o comando falha e a mensagem abaixo orienta.
+    info "Docker parado. Tentando iniciar o Docker Desktop..."
+    docker desktop start --timeout 180 >/dev/null 2>&1 || true
     docker info >/dev/null 2>&1 || fatal "Docker daemon não está rodando. Inicie o Docker."
 }
 
@@ -360,13 +364,17 @@ get_compose() {
 
     if docker compose version >/dev/null 2>&1; then
         COMPOSE_CMD=(docker compose)
-        return 0
-    fi
-    if command -v docker-compose >/dev/null 2>&1; then
+    elif command -v docker-compose >/dev/null 2>&1; then
         COMPOSE_CMD=(docker-compose)
-        return 0
+    else
+        fatal "Docker Compose não encontrado. Instale Docker >= 20.10 ou docker-compose."
     fi
-    fatal "Docker Compose não encontrado. Instale Docker >= 20.10 ou docker-compose."
+    # Sem --env-file, o Compose procura o .env na pasta do arquivo compose, e não
+    # na raiz: a inferência recusa subir, inclusive em stop e logs.
+    if [[ -f .env ]]; then
+        COMPOSE_CMD+=(--env-file .env)
+    fi
+    return 0
 }
 
 # Descobre qual perfil (cpu/gpu) está ativo checando qual container foi
@@ -802,6 +810,10 @@ run_docker() {
         CONTAINER_NAME="speechchecker_inference_cpu"
     fi
 
+    [[ -f .env ]] || fatal "Arquivo .env não encontrado. Copie .env.example para .env e defina SPEECHCHECKER_API_KEY, XFAKE_GRADIO_USERNAME e XFAKE_GRADIO_PASSWORD."
+    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" config --quiet \
+        || fatal "Configuração inválida: revise o .env, conforme a mensagem acima."
+
     info "Buildando e iniciando containers..."
     "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up --build -d
 
@@ -876,8 +888,8 @@ clean_environment() {
     # num compose file cujo container já não existe é um no-op inofensivo.
     "${COMPOSE_CMD[@]}" -f infrastructure/docker/compose/inference.cpu.yml down -v --remove-orphans
     "${COMPOSE_CMD[@]}" -f infrastructure/docker/compose/inference.nvidia.yml down -v --remove-orphans 2>/dev/null || true
-    docker image prune -f
-    docker builder prune -f
+    # Só o que é do projeto: sem filtro, o prune alcança outros projetos da máquina.
+    docker image prune -f --filter label=org.opencontainers.image.title=speechchecker-inference-api
 
     success 'Limpeza concluída'
 }

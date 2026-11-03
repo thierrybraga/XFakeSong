@@ -51,18 +51,23 @@ RUN groupadd --system --gid ${APP_GID} appuser && \
     useradd --system --uid ${APP_UID} --gid appuser --shell /bin/bash --create-home appuser
 
 WORKDIR /app
-COPY requirements-base.txt constraints.txt ./
+COPY requirements-base.txt ./
 # Versoes travadas: valem para todo pip install desta imagem (inclusive a que
 # constroi o benchmark, via infrastructure/docker/compose/benchmark.nvidia.yml).
-ENV PIP_CONSTRAINT=/app/constraints.txt
-COPY infrastructure/docker/environments/inference-api/requirements-torch.txt infrastructure/docker/environments/inference-api/
+# O arquivo e gerado da imagem validada: ver tools/ops/docker_release.py lock.
+ENV PIP_CONSTRAINT=/app/infrastructure/docker/environments/inference-api/constraints-nvidia.txt
+COPY infrastructure/docker/environments/inference-api/requirements-torch.txt infrastructure/docker/environments/inference-api/constraints-nvidia.txt infrastructure/docker/environments/inference-api/
+# nvidia-*-cu12 fica fora do arquivo porque TF e torch pedem versoes diferentes:
+# o torch fixa quase todos com ==, e os dois que sobram sao fixados aqui. O cache
+# so serve dentro deste RUN: ficava na imagem, com 6,4 GB sem uso em execucao.
 RUN pip install --upgrade pip setuptools wheel \
     && pip install -r requirements-base.txt \
-    && pip install 'tensorflow[and-cuda]>=2.16,<2.22' \
-    && pip install --upgrade --no-deps 'nvidia-cudnn-cu12>=9.3.0.75,<10' \
-    && pip install --no-deps 'nvidia-cuda-nvcc-cu12' \
+    && pip install 'tensorflow[and-cuda]==2.21.0' \
+    && pip install --upgrade --no-deps 'nvidia-cudnn-cu12==9.27.0.42' \
+    && pip install --no-deps 'nvidia-cuda-nvcc-cu12==12.9.86' \
     && pip install -r infrastructure/docker/environments/inference-api/requirements-torch.txt \
-    && pip install --upgrade --no-deps 'nvidia-cudnn-cu12>=9.3.0.75,<10'
+    && pip install --upgrade --no-deps 'nvidia-cudnn-cu12==9.27.0.42' \
+    && pip cache purge
 
 COPY infrastructure/docker/environments/inference-api/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
@@ -78,13 +83,12 @@ USER appuser
 
 EXPOSE 7860
 
-# start_period 180s: dá tempo do TF/Keras + carregamento dos 13 modelos
-# terminar antes do primeiro health check contar como falha.
+# start_period 180s: dá tempo do TF/Keras + carregamento dos modelos terminar
+# antes do primeiro health check contar como falha. Sem tentar `/` em seguida: a
+# raiz responde mesmo sem banco ou sem modelos, e o container parecia saudável.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=5 \
-    CMD curl -fsSL -o /dev/null --max-time 5 \
+    CMD curl -fsS -o /dev/null --max-time 5 \
             http://127.0.0.1:7860/api/v1/system/health \
-        || curl -fsSL -o /dev/null --max-time 5 \
-            http://127.0.0.1:7860/ \
         || exit 1
 
 ENTRYPOINT ["tini", "--", "docker-entrypoint.sh"]

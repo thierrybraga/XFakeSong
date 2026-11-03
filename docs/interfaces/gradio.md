@@ -36,7 +36,7 @@ python main.py --gradio
 ou via Docker:
 
 ```bash
-docker compose up --build -d
+docker compose --env-file .env -f infrastructure/docker/compose/inference.cpu.yml up --build -d
 ```
 
 | Recurso | URL |

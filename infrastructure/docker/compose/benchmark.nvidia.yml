@@ -113,7 +113,7 @@ services:
       #
       #   XFAKE_BENCHMARK_DATASET=data/datasets/benchmark_dataset_15k.npz \
       #   XFAKE_BENCHMARK_OUT=data/results/tcc_article_reproduction_2026-10-17 \
-      #     docker compose -f infrastructure/docker/compose/benchmark.nvidia.yml up -d benchmark
+      #     docker compose --env-file .env -f infrastructure/docker/compose/benchmark.nvidia.yml up -d benchmark
       - --dataset
       - ${XFAKE_BENCHMARK_DATASET:-data/datasets/benchmark_dataset_15k.npz}
       - --out

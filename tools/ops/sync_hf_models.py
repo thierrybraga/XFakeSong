@@ -4,7 +4,9 @@
 The script is intentionally conservative for Spaces:
 - no-op when MODEL_REPO_ID/XFAKE_MODEL_REPO_ID is not configured;
 - skips download when the expected benchmark artifacts already exist;
-- copies only model/runtime artifacts into data/models by default.
+- copies only model/runtime artifacts into data/models by default;
+- never replaces a local file without --force: in Docker, data/models is the
+  host's own folder, with artifacts and calibration the Hub may not have.
 """
 
 from __future__ import annotations
@@ -83,13 +85,15 @@ def _expected_artifacts(models_dir: Path) -> tuple[str, ...]:
     return EXPECTED_ARTIFACTS
 
 
-def _copy_tree_contents(src: Path, dst: Path) -> int:
+def _copy_tree_contents(src: Path, dst: Path, force: bool = False) -> int:
     copied = 0
     for item in src.rglob("*"):
         if item.is_dir():
             continue
         rel = item.relative_to(src)
         target = dst / rel
+        if target.exists() and not force:
+            continue
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(item, target)
         copied += 1
@@ -134,7 +138,7 @@ def sync_models(repo_id: str | None, models_dir: Path, force: bool = False) -> i
         if (snapshot_path / "models").is_dir()
         else snapshot_path
     )
-    copied = _copy_tree_contents(source_path, models_dir)
+    copied = _copy_tree_contents(source_path, models_dir, force=force)
     missing_after = _missing_artifacts(models_dir)
     print(f"[sync_hf_models] Arquivos copiados: {copied}")
     if missing_after:

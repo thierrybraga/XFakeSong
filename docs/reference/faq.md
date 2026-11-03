@@ -30,8 +30,8 @@ Para o passo a passo completo de instalação e os erros detalhados, veja
 
 ??? question "Erro: porta 7860 já está em uso"
     Há uma instância antiga rodando. Finalize-a ou use outra porta:
-    `python main.py --gradio --gradio-port 7861`. No Docker, `docker compose down`
-    antes de subir de novo.
+    `python main.py --gradio --gradio-port 7861`. No Docker, `make down` (ou
+    `start.bat stop`) antes de subir de novo.
 
 ??? question "A UI demora a abrir / o healthcheck falha no boot"
     O TensorFlow tem *boot* lento. O healthcheck usa `/api/v1/system/health`
@@ -94,7 +94,7 @@ Para o passo a passo completo de instalação e os erros detalhados, veja
     ambiente e os cuidados de boot em ambiente sem internet de saída.
 
 ??? question "Docker ou execução local?"
-    Docker (`docker compose up --build -d`) isola dependências e é o modo de
+    Docker (`make up` ou `start.bat prod`) isola dependências e é o modo de
     produção recomendado. Execução local (`.venv`) é melhor para desenvolvimento.
     Ambos cobertos em [Instalação e Configuração](../getting-started/installation.md).
 

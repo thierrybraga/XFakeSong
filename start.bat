@@ -31,6 +31,9 @@ IF "%DC%"=="" (
 ) ELSE (
     SET "COMPOSE_OK=1"
 )
+REM Sem --env-file, o Compose procura o .env na pasta do arquivo compose, e nao na
+REM raiz: a inferencia recusa subir, inclusive em stop e logs.
+IF DEFINED DC IF EXIST .env SET "DC=%DC% --env-file .env"
 
 REM Dispatcher de argumentos
 IF /I "%~1"=="test"      GOTO MODE_TEST
@@ -64,7 +67,7 @@ ECHO  [5]  Stop containers
 ECHO  [6]  Ver logs (follow)
 ECHO  [7]  Rebuild SEM cache
 ECHO  [8]  Status / health
-ECHO  [9]  Limpeza profunda (down -v + prune)
+ECHO  [9]  Limpeza do projeto (down -v + imagens orfas)
 ECHO  [10] Instalar dependencias locais
 ECHO  [11] Bootstrap diretorios
 ECHO  [12] Deploy Hugging Face Spaces
@@ -203,6 +206,19 @@ IF "%PROFILE%"=="gpu" (
 )
 ECHO Compose detectado: %DC%
 ECHO.
+REM Antes do build: um .env incompleto nao pode cair no fallback de CPU abaixo,
+REM que culparia o driver da GPU por um erro de configuracao.
+IF NOT EXIST .env (
+    ECHO Arquivo .env nao encontrado.
+    ECHO Copie .env.example para .env e defina SPEECHCHECKER_API_KEY,
+    ECHO XFAKE_GRADIO_USERNAME e XFAKE_GRADIO_PASSWORD.
+    GOTO MENU_RETURN
+)
+%DC% -f %COMPOSE_FILE% config --quiet
+IF ERRORLEVEL 1 (
+    ECHO Configuracao invalida: revise o .env, conforme a mensagem acima.
+    GOTO MENU_RETURN
+)
 ECHO Build + Up...
 %DC% -f %COMPOSE_FILE% up --build -d
 IF ERRORLEVEL 1 (
@@ -302,8 +318,8 @@ REM Desce os dois perfis (CPU/GPU) — nao sabemos qual estava ativo, e down
 REM num compose file cujo container ja nao existe e um no-op inofensivo.
 %DC% -f infrastructure\docker\compose\inference.cpu.yml down -v --remove-orphans
 %DC% -f infrastructure\docker\compose\inference.nvidia.yml down -v --remove-orphans 2>nul
-docker image prune -f
-docker builder prune -f
+REM So o que e do projeto: sem filtro, o prune alcanca outros projetos da maquina.
+docker image prune -f --filter "label=org.opencontainers.image.title=speechchecker-inference-api"
 ECHO Limpeza concluida.
 GOTO MENU_RETURN
 
@@ -377,7 +393,7 @@ ECHO   gpu        Sobe Docker forcando perfil GPU (NVIDIA)
 ECHO   stop       Para containers
 ECHO   logs       Tail dos logs do container
 ECHO   rebuild    Force rebuild sem cache
-ECHO   clean      Limpeza profunda (down -v + prune)
+ECHO   clean      Limpeza do projeto (down -v + imagens orfas)
 ECHO   status     Status do compose + docker stats
 ECHO   install    Instala dependencias em .venv
 ECHO   bootstrap  Cria diretorios padrao
@@ -408,6 +424,10 @@ IF ERRORLEVEL 1 (
     ECHO   https://www.docker.com/products/docker-desktop/
     EXIT /B 1
 )
+docker info >nul 2>&1
+IF NOT ERRORLEVEL 1 EXIT /B 0
+ECHO Docker parado. Tentando iniciar o Docker Desktop...
+docker desktop start --timeout 180 >nul 2>&1
 docker info >nul 2>&1
 IF ERRORLEVEL 1 (
     ECHO Docker daemon nao esta rodando.

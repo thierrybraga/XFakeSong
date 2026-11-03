@@ -20,11 +20,11 @@ python tools/training/train_by_family.py --family tensorflow-keras \
 GPU Docker:
 
 ```bash
-docker compose -f infrastructure/docker/compose/train.nvidia.yml run --rm tensorflow-keras
+docker compose --env-file .env -f infrastructure/docker/compose/train.nvidia.yml run --rm tensorflow-keras
 ```
 
 CPU/onboard Docker:
 
 ```bash
-docker compose -f infrastructure/docker/compose/train.cpu.yml run --rm tensorflow-keras
+docker compose --env-file .env -f infrastructure/docker/compose/train.cpu.yml run --rm tensorflow-keras
 ```

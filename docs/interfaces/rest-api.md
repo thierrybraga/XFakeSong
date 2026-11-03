@@ -108,7 +108,7 @@ Erros seguem RFC 7807 Problem Details:
 | Método | Path | Descrição |
 |---|---|---|
 | GET | `/status` | Status operacional e serviços ativos |
-| GET | `/health` | DB, modelos carregados, storage e uptime |
+| GET | `/health` | DB, modelos carregados, storage e uptime. Responde 503 com o mesmo corpo se o banco falhar, se o diretório de modelos não existir ou se nenhum modelo estiver disponível |
 | GET | `/bootstrap` | Endpoint mínimo de bootstrap |
 | GET | `/feedback` | Eventos recentes usados por terminal, API e UI |
 | POST | `/feedback/read` | Marca feedback em memória como lido |

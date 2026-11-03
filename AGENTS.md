@@ -34,7 +34,7 @@ ruff check app/ benchmarks/ tools/ tests/
 bandit -r app/ benchmarks/ tools/
 
 # Docker (produção) — perfis segmentados em infrastructure/docker/compose/*.yml
-make build && make up      # ou: docker compose -f infrastructure/docker/compose/inference.cpu.yml up --build -d
+make build && make up      # ou: docker compose --env-file .env -f infrastructure/docker/compose/inference.cpu.yml up --build -d
 make logs
 make down
 ```

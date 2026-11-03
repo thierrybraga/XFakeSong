@@ -11,6 +11,7 @@ import time
 from functools import lru_cache
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
 
 from app import __version__
 from app.core.auth.auth_handler import get_api_key
@@ -93,11 +94,17 @@ async def get_system_status(request: Request):
 @router.get(
     "/health",
     response_model=HealthCheckResponse,
+    responses={
+        503: {
+            "model": HealthCheckResponse,
+            "description": "Banco, diretório de modelos ou nenhum modelo disponível",
+        }
+    },
     summary="Health check detalhado com verificação de DB e modelos",
 )
 @limiter.limit("60/minute")
 async def health_check(request: Request):
-    """Verifica saúde do banco de dados, modelos e storage."""
+    """Verifica banco, modelos e storage; devolve 503 se algum deles faltar."""
     db_ok = check_database_health()
 
     # Verificar modelos carregados
@@ -109,22 +116,26 @@ async def health_check(request: Request):
         models_count = len(svc.get_available_models())
     except Exception as e:
         # API.9: log do erro (em vez de silenciar) — útil para diagnóstico
-        logger.debug(f"Não foi possível contar modelos no health check: {e}")
+        logger.warning(f"Não foi possível contar modelos no health check: {e}")
 
     # Verificar storage no diretório configurado (MODELS_DIR, XFAKE_STORAGE_DIR…),
     # não em um caminho relativo ao diretório corrente.
     storage_ok = OperationalPaths.resolve().models.is_dir()
 
     uptime = time.monotonic() - _start_time
-    overall = "healthy" if db_ok else "degraded"
+    healthy = db_ok and storage_ok and models_count > 0
 
-    return HealthCheckResponse(
-        status=overall,
+    body = HealthCheckResponse(
+        status="healthy" if healthy else "degraded",
         database="ok" if db_ok else "error",
         models_loaded=models_count,
         storage_available=storage_ok,
         uptime_seconds=round(uptime, 2),
     )
+    if healthy:
+        return body
+    # Com 200, o HEALTHCHECK do container (curl -f) não via a falha.
+    return JSONResponse(status_code=503, content=body.model_dump())
 
 
 @router.get(

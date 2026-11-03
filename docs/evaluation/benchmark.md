@@ -599,10 +599,10 @@ python tools/training/train_by_family.py --family spectral-attention \
     --out data/results/spectrogram_transformer_retrain
 
 # Execução Docker com GPU para SSL
-docker compose -f infrastructure/docker/compose/train.nvidia.yml run --rm ssl-transformers
+docker compose --env-file .env -f infrastructure/docker/compose/train.nvidia.yml run --rm ssl-transformers
 
 # Benchmark completo em container NVIDIA
-docker compose -f infrastructure/docker/compose/benchmark.nvidia.yml run --rm benchmark
+docker compose --env-file .env -f infrastructure/docker/compose/benchmark.nvidia.yml run --rm benchmark
 ```
 
 Cada wrapper delega para `benchmarks/run_models_sequential.py`; por isso o padrão

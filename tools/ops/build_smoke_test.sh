@@ -168,7 +168,13 @@ test_endpoint() {
 errors=0
 
 # System endpoints (críticos)
-test_endpoint GET "/api/v1/system/health"    200 "health check" || errors=$((errors+1))
+# Esta imagem pode nascer sem modelos, e aí /health responde 503 de propósito.
+health_body=$(curl -s --max-time 10 "http://${HOST}:${PORT}/api/v1/system/health")
+if echo "$health_body" | grep -q '"models_loaded":0'; then
+    test_endpoint GET "/api/v1/system/health" 503 "health check sem modelos" || errors=$((errors+1))
+else
+    test_endpoint GET "/api/v1/system/health" 200 "health check" || errors=$((errors+1))
+fi
 test_endpoint GET "/api/v1/system/status"    200 "status" || errors=$((errors+1))
 test_endpoint GET "/api/v1/system/version"   200 "version" || errors=$((errors+1))
 test_endpoint GET "/api/v1/system/info"      200 "info snapshot" || errors=$((errors+1))

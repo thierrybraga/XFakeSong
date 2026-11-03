@@ -26,11 +26,11 @@ python tools/training/train_by_family.py --family pytorch-audio \
 GPU Docker:
 
 ```bash
-docker compose -f infrastructure/docker/compose/train.nvidia.yml run --rm pytorch-audio
+docker compose --env-file .env -f infrastructure/docker/compose/train.nvidia.yml run --rm pytorch-audio
 ```
 
 CPU/onboard Docker:
 
 ```bash
-docker compose -f infrastructure/docker/compose/train.cpu.yml run --rm pytorch-audio
+docker compose --env-file .env -f infrastructure/docker/compose/train.cpu.yml run --rm pytorch-audio
 ```

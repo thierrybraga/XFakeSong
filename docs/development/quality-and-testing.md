@@ -31,18 +31,18 @@ make test-cov
 ```text
 tests/
 ├── conftest.py          # fixtures globais + marcação automática por pasta
-├── unit/                # 80 arquivos
+├── unit/                # 83 arquivos
 ├── api/                 # 5 arquivos
 ├── functional/          # 2 arquivos
 ├── integration/         # 10 arquivos
 └── smoke/               # 6 arquivos, opt-in
 ```
 
-Total atual: **103 arquivos de teste**.
+Total atual: **106 arquivos de teste**.
 
 | Categoria | Marcador | Arquivos | Objetivo | Run padrão |
 |---|---:|---:|---|---|
-| Unit | `unit` | 80 | Componentes isolados, utilitários, treinamento, benchmark, notebooks, segurança local | Sim |
+| Unit | `unit` | 83 | Componentes isolados, utilitários, treinamento, benchmark, notebooks, segurança local | Sim |
 | API | `api` | 5 | Contratos FastAPI com `TestClient` e serviços mockados | Sim |
 | Functional | `functional` | 2 | Fluxos de usuário e rotas/frontend | Sim |
 | Integration | `integration` | 10 | Cooperação real entre serviços, podendo treinar modelos pequenos | Sim |
@@ -162,6 +162,9 @@ diz qual módulo está sob contrato, não em que semana o teste foi escrito.
 | `test_detection_utils.py` | utilitários do serviço de detecção |
 | `test_audio_resample_safety.py` | rede de segurança de reamostragem |
 | `test_device_support.py` | seleção de dispositivo CPU/GPU |
+| `test_docker_deploy.py` | contexto de build sem segredos, `.env` lido pelos scripts, modo produção, porta local e limpeza restrita ao projeto |
+| `test_docker_release.py` | guardar e voltar a imagem de inferência, versões fixadas e workflow de build |
+| `test_sync_hf_models.py` | sincronização do Hub no boot sem sobrescrever arquivos locais |
 | `test_gpu_diagnosis.py` | matriz de diagnóstico + probe read-only |
 | `test_upload_service.py` | criação de dataset e recepção de arquivos |
 | `test_experiment_store.py` | persistência científica consolidada |

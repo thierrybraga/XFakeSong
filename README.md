@@ -163,17 +163,17 @@ Execução via Docker por perfil:
 
 ```bash
 # CPU/onboard, sem CUDA
-docker compose -f infrastructure/docker/compose/train.cpu.yml run --rm classical-ml
-docker compose -f infrastructure/docker/compose/train.cpu.yml run --rm tensorflow-keras
+docker compose --env-file .env -f infrastructure/docker/compose/train.cpu.yml run --rm classical-ml
+docker compose --env-file .env -f infrastructure/docker/compose/train.cpu.yml run --rm tensorflow-keras
 
 # NVIDIA CUDA via Linux/WSL2/Docker Desktop GPU
-docker compose -f infrastructure/docker/compose/train.nvidia.yml run --rm tensorflow-keras
-docker compose -f infrastructure/docker/compose/train.nvidia.yml run --rm pytorch-audio
-docker compose -f infrastructure/docker/compose/train.nvidia.yml run --rm ssl-transformers
+docker compose --env-file .env -f infrastructure/docker/compose/train.nvidia.yml run --rm tensorflow-keras
+docker compose --env-file .env -f infrastructure/docker/compose/train.nvidia.yml run --rm pytorch-audio
+docker compose --env-file .env -f infrastructure/docker/compose/train.nvidia.yml run --rm ssl-transformers
 
 # Inferência
-docker compose -f infrastructure/docker/compose/inference.cpu.yml up --build inference-api
-docker compose -f infrastructure/docker/compose/inference.nvidia.yml up --build inference-api
+docker compose --env-file .env -f infrastructure/docker/compose/inference.cpu.yml up --build inference-api
+docker compose --env-file .env -f infrastructure/docker/compose/inference.nvidia.yml up --build inference-api
 ```
 
 Também há um helper único:
@@ -428,9 +428,9 @@ python main.py --bootstrap-dirs
 python main.py --gradio
 ./tools/ops/run_tests.sh fast
 ./tools/ops/run_tests.sh cov
-docker compose up --build -d
-docker compose logs -f
-docker compose down
+docker compose --env-file .env -f infrastructure/docker/compose/inference.cpu.yml up --build -d
+docker compose --env-file .env -f infrastructure/docker/compose/inference.cpu.yml logs -f
+docker compose --env-file .env -f infrastructure/docker/compose/inference.cpu.yml down
 ```
 
 ## Contribuição e Segurança

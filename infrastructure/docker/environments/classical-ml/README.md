@@ -18,5 +18,5 @@ python tools/training/train_by_family.py --family classical-ml \
 Docker:
 
 ```bash
-docker compose -f infrastructure/docker/compose/train.cpu.yml run --rm classical-ml
+docker compose --env-file .env -f infrastructure/docker/compose/train.cpu.yml run --rm classical-ml
 ```

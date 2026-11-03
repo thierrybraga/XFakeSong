@@ -27,11 +27,11 @@ Torch/Transformers. This environment includes both stacks intentionally.
 GPU Docker:
 
 ```bash
-docker compose -f infrastructure/docker/compose/train.nvidia.yml run --rm ssl-transformers
+docker compose --env-file .env -f infrastructure/docker/compose/train.nvidia.yml run --rm ssl-transformers
 ```
 
 CPU/onboard Docker:
 
 ```bash
-docker compose -f infrastructure/docker/compose/train.cpu.yml run --rm ssl-transformers
+docker compose --env-file .env -f infrastructure/docker/compose/train.cpu.yml run --rm ssl-transformers
 ```

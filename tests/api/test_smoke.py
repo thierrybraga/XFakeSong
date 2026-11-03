@@ -15,6 +15,8 @@ Cobertura:
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from pydantic import ValidationError
 
@@ -120,15 +122,35 @@ def test_system_status_ok(client):
     assert isinstance(body["active_services"], list)
 
 
-def test_system_health_ok(client):
+def _health_com(monkeypatch, banco: bool, modelos: list[str]) -> None:
+    servico = SimpleNamespace(get_available_models=lambda: modelos)
+    monkeypatch.setattr("app.dependencies.get_detection_service", lambda: servico)
+    monkeypatch.setattr(
+        "app.interfaces.web.routers.system.check_database_health", lambda: banco
+    )
+
+
+def test_system_health_ok(client, monkeypatch):
+    _health_com(monkeypatch, banco=True, modelos=["bench_svm"])
     resp = client.get("/api/v1/system/health")
     assert resp.status_code == 200
     body = resp.json()
-    # Status é "healthy" ou "degraded" (depende do DB no test env)
-    assert body["status"] in {"healthy", "degraded"}
-    assert "database" in body
+    assert body["status"] == "healthy"
+    assert body["database"] == "ok"
+    assert body["models_loaded"] == 1
     assert "uptime_seconds" in body
     assert isinstance(body["uptime_seconds"], (int, float))
+
+
+@pytest.mark.parametrize(
+    ("banco", "modelos"), [(True, []), (False, ["bench_svm"])], ids=["sem_modelos", "sem_banco"]
+)
+def test_system_health_falha_com_503(client, monkeypatch, banco, modelos):
+    """O HEALTHCHECK usa `curl -f`: com 200, o container pareceria saudável."""
+    _health_com(monkeypatch, banco=banco, modelos=modelos)
+    resp = client.get("/api/v1/system/health")
+    assert resp.status_code == 503
+    assert resp.json()["status"] == "degraded"
 
 
 def test_system_version_ok(client):

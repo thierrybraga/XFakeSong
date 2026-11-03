@@ -24,8 +24,11 @@ Guia completo para executar o SpeechChecker em **Local (Python)**, **Docker** e 
 ```cmd
 git clone https://github.com/thierrybraga/XFakeSong.git
 cd XFakeSong
+copy .env.example .env
 start.bat
 ```
+
+Antes de continuar, defina no `.env` as variáveis `SPEECHCHECKER_API_KEY`, `XFAKE_GRADIO_USERNAME` e `XFAKE_GRADIO_PASSWORD`: a inferência não sobe sem elas. A aplicação fica acessível só nesta máquina; para abrir na rede, veja `GRADIO_BIND_HOST` no `.env.example`.
 
 No menu, escolha **[2] Modo PRODUCAO**. Aguarde o healthcheck (~60–90s na primeira vez — TensorFlow carregando). Acesse http://localhost:7860.
 
@@ -146,7 +149,7 @@ PowerShell; ali use os comandos PowerShell desta página ou `start.bat`.
 | `stop` | Para containers |
 | `logs` | Tail dos logs do container (`-f`) |
 | `rebuild` | Force rebuild sem cache |
-| `clean` | Limpeza profunda (volumes + prune) |
+| `clean` | Limpeza do projeto (containers, volumes anônimos e imagens órfãs da inferência) |
 | `status` | `compose ps` + `docker stats` |
 | `install` | Instala dependências em `.venv` (CPU) |
 | `bootstrap` | Cria estrutura de diretórios padrão |
@@ -210,17 +213,17 @@ habilitado.
 python tools/ops/docker_build.py train-nvidia config
 
 # Inferência
-docker compose -f infrastructure/docker/compose/inference.cpu.yml up --build inference-api
-docker compose -f infrastructure/docker/compose/inference.nvidia.yml up --build inference-api
+docker compose --env-file .env -f infrastructure/docker/compose/inference.cpu.yml up --build inference-api
+docker compose --env-file .env -f infrastructure/docker/compose/inference.nvidia.yml up --build inference-api
 
 # Treino por família
-docker compose -f infrastructure/docker/compose/train.cpu.yml run --rm classical-ml
-docker compose -f infrastructure/docker/compose/train.nvidia.yml run --rm tensorflow-keras
-docker compose -f infrastructure/docker/compose/train.nvidia.yml run --rm pytorch-audio
-docker compose -f infrastructure/docker/compose/train.nvidia.yml run --rm ssl-transformers
+docker compose --env-file .env -f infrastructure/docker/compose/train.cpu.yml run --rm classical-ml
+docker compose --env-file .env -f infrastructure/docker/compose/train.nvidia.yml run --rm tensorflow-keras
+docker compose --env-file .env -f infrastructure/docker/compose/train.nvidia.yml run --rm pytorch-audio
+docker compose --env-file .env -f infrastructure/docker/compose/train.nvidia.yml run --rm ssl-transformers
 
 # Benchmark completo em GPU NVIDIA
-docker compose -f infrastructure/docker/compose/benchmark.nvidia.yml run --rm benchmark
+docker compose --env-file .env -f infrastructure/docker/compose/benchmark.nvidia.yml run --rm benchmark
 ```
 
 Os serviços NVIDIA declaram reserva de GPU no próprio compose; mantenha Docker
@@ -346,8 +349,8 @@ TypeError: unhashable type: 'dict'
 pip install -r requirements.txt -c constraints.txt
 
 # OU em Docker, força rebuild:
-docker compose build --no-cache --pull
-docker compose up -d
+docker compose --env-file .env -f infrastructure/docker/compose/inference.cpu.yml build --no-cache --pull
+docker compose --env-file .env -f infrastructure/docker/compose/inference.cpu.yml up -d
 ```
 
 **Verificação**: ao subir o app, o log inicial deve mostrar uma linha como:
@@ -444,8 +447,8 @@ Ou adicione `.gitattributes`:
 4. Use um dos comandos abaixo. `start.bat gpu` continua disponível por
    compatibilidade e usa o compose legado.
    ```cmd
-   docker compose -f infrastructure/docker/compose/inference.nvidia.yml up --build inference-api
-   docker compose -f infrastructure/docker/compose/train.nvidia.yml run --rm tensorflow-keras
+   docker compose --env-file .env -f infrastructure/docker/compose/inference.nvidia.yml up --build inference-api
+   docker compose --env-file .env -f infrastructure/docker/compose/train.nvidia.yml run --rm tensorflow-keras
    ```
 
 ---

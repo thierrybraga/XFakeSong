@@ -49,11 +49,16 @@ SpectrogramTransformer) e WavLM/HuBERT degradavam para o CNN-1D do zero.
 
 ## Versões travadas
 
-Todas as imagens definem `PIP_CONSTRAINT=/app/constraints.txt`, então **todo**
+As imagens de treino definem `PIP_CONSTRAINT=/app/constraints.txt`, então **todo**
 `pip install` do build respeita os pinos de [constraints.txt](../../../constraints.txt).
 Os requirements continuam declarando faixas; as constraints fixam a combinação
 validada. `tensorflow`, `torch` e os `nvidia-*` ficam de fora de propósito —
 variam por imagem (CPU × CUDA).
+
+A imagem de inferência, que também é a base do benchmark, vai além: usa
+`inference-api/constraints-<perfil>.txt`, com a versão exata de todos os pacotes
+da imagem validada. Ver
+[Versões fixadas](../../../docs/development/docker-environments.md#versoes-fixadas).
 
 Os arquivos `requirements.txt` de cada ambiente listam apenas os **extras** além
 de `requirements-base.txt`, que eles incluem com `-r ../../../../requirements-base.txt`
