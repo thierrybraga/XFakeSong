@@ -107,130 +107,132 @@ def create_voice_profiles_tab():
 
     arch_choices = _get_architecture_choices()
 
-    with gr.Tab("🎤 Perfis de Voz", id="tab_voice_profiles"):
+    with gr.Tab("🎤 Perfis de voz", id="tab_voice_profiles") as voice_tab:
         from app.interfaces.gradio.utils.components import page_header
 
         page_header(
             "🎤",
-            "Perfis de Voz Personalizados",
-            "Crie perfis biométricos vocais, envie amostras, treine modelos "
-            "com 14 arquiteturas (12 DL + SVM + Random Forest) e verifique "
-            "autenticidade com precisão individualizada.",
+            "Perfis de voz",
+            "Compare um áudio com a voz de uma pessoa conhecida: crie o perfil, envie "
+            "amostras, treine um modelo individual e verifique.",
         )
 
+        # As abas seguem a ordem do fluxo.
         with gr.Tabs():
             # ============================================================ #
             #  Sub-tab 1: Gerenciar Perfis                                  #
             # ============================================================ #
-            with gr.Tab("📋 Gerenciar Perfis"):
+            with gr.Tab("1. Perfis"):
                 with gr.Row(elem_classes="responsive-grid"):
-                    with gr.Column(scale=1):
-                        gr.Markdown("#### Criar Novo Perfil")
-                        profile_name = gr.Textbox(
-                            label="Nome", placeholder="Ex: João Silva"
-                        )
-                        profile_telegram = gr.Textbox(
-                            label="Telegram ID", placeholder="@usuario"
-                        )
-                        profile_phone = gr.Textbox(
-                            label="Telefone", placeholder="+55 11 99999-9999"
-                        )
-                        profile_email = gr.Textbox(
-                            label="Email", placeholder="joao@email.com"
-                        )
-                        profile_desc = gr.Textbox(
-                            label="Descrição",
-                            placeholder="Notas sobre o perfil...",
-                            lines=2,
-                        )
-                        profile_arch = gr.Dropdown(
-                            label="Arquitetura Padrão",
-                            choices=arch_choices,
-                            value="sonic_sleuth",
-                        )
-                        create_btn = gr.Button(
-                            "➕ Criar Perfil", variant="primary"
-                        )
-                        create_status = gr.Textbox(
-                            label="Status", interactive=False
-                        )
+                    with gr.Column(scale=1, min_width=300):
+                        with gr.Group():
+                            gr.Markdown("#### Novo perfil")
+                            profile_name = gr.Textbox(
+                                label="Nome", placeholder="Ex: João Silva"
+                            )
+                            profile_arch = gr.Dropdown(
+                                label="Arquitetura padrão",
+                                choices=arch_choices,
+                                value="sonic_sleuth",
+                            )
+                            with gr.Accordion("Contato e notas (opcional)", open=False):
+                                profile_telegram = gr.Textbox(
+                                    label="Telegram", placeholder="@usuario"
+                                )
+                                profile_phone = gr.Textbox(
+                                    label="Telefone", placeholder="+55 11 99999-9999"
+                                )
+                                profile_email = gr.Textbox(
+                                    label="E-mail", placeholder="joao@email.com"
+                                )
+                                profile_desc = gr.Textbox(
+                                    label="Descrição",
+                                    placeholder="Notas sobre o perfil...",
+                                    lines=2,
+                                )
+                            create_btn = gr.Button("Criar perfil", variant="primary")
+                            create_status = gr.Markdown("")
 
-                    with gr.Column(scale=2):
-                        gr.Markdown("#### Perfis Existentes")
+                    with gr.Column(scale=2, min_width=320):
                         profiles_table = gr.Dataframe(
                             headers=[
                                 "ID", "Nome", "Status", "Amostras",
-                                "Duração", "Arquitetura", "Telegram", "Email",
+                                "Duração", "Arquitetura", "Telegram", "E-mail",
                             ],
                             datatype=[
                                 "number", "str", "str", "number",
                                 "str", "str", "str", "str",
                             ],
                             interactive=False,
-                            label="Perfis",
+                            label="Perfis cadastrados",
                         )
                         with gr.Row(elem_classes="action-row"):
-                            refresh_btn = gr.Button("🔄 Atualizar Lista")
+                            refresh_btn = gr.Button("Atualizar lista")
                             delete_id = gr.Number(
-                                label="ID para excluir", precision=0
+                                label="ID do perfil a excluir", precision=0
                             )
-                            delete_btn = gr.Button(
-                                "🗑️ Excluir Perfil", variant="stop"
+                            delete_btn = gr.Button("Excluir perfil", variant="stop")
+                        # Excluir apaga amostras e modelo: pede confirmação na tela.
+                        with gr.Row(
+                            visible=False, elem_classes="confirm-row"
+                        ) as confirm_delete_row:
+                            gr.Markdown(
+                                "**Excluir este perfil?** As amostras e o modelo dele "
+                                "também serão apagados, sem como desfazer."
                             )
-                        delete_status = gr.Textbox(
-                            label="Status", interactive=False
-                        )
+                            confirm_delete_btn = gr.Button(
+                                "Sim, excluir", variant="stop"
+                            )
+                            cancel_delete_btn = gr.Button("Cancelar", variant="secondary")
+                        delete_status = gr.Markdown("")
 
             # ============================================================ #
             #  Sub-tab 2: Dataset de Voz                                    #
             # ============================================================ #
-            with gr.Tab("🎵 Dataset de Voz"):
+            with gr.Tab("2. Amostras"):
                 with gr.Row(elem_classes="responsive-grid"):
-                    with gr.Column(scale=1):
-                        dataset_profile_dd = gr.Dropdown(
-                            label="Selecionar Perfil",
-                            choices=[],
-                            interactive=True,
-                        )
-                        audio_upload = gr.File(
-                            label="Upload de Amostras de Áudio",
-                            file_count="multiple",
-                            file_types=["audio"],
-                            type="filepath",
-                        )
-                        upload_btn = gr.Button(
-                            "📤 Adicionar Amostras", variant="primary"
-                        )
-                        upload_status = gr.Textbox(
-                            label="Status do Upload", interactive=False
-                        )
+                    with gr.Column(scale=1, min_width=300):
+                        with gr.Group():
+                            dataset_profile_dd = gr.Dropdown(
+                                label="Perfil",
+                                choices=[],
+                                interactive=True,
+                            )
+                            audio_upload = gr.File(
+                                label="Amostras de áudio",
+                                file_count="multiple",
+                                file_types=["audio"],
+                                type="filepath",
+                            )
+                            upload_btn = gr.Button(
+                                "Adicionar amostras", variant="primary"
+                            )
+                            upload_status = gr.Markdown("")
 
-                    with gr.Column(scale=2):
-                        dataset_info = gr.Markdown("Selecione um perfil para ver o dataset.")
+                    with gr.Column(scale=2, min_width=320):
+                        dataset_info = gr.Markdown("*Selecione um perfil para ver as amostras.*")
                         dataset_validation = gr.Markdown("")
                         samples_table = gr.Dataframe(
                             headers=["Arquivo", "Duração (s)", "Taxa (Hz)", "Tamanho"],
                             datatype=["str", "number", "number", "str"],
                             interactive=False,
-                            label="Amostras no Dataset",
+                            label="Amostras do perfil",
                         )
                         with gr.Row(elem_classes="action-row"):
                             sample_to_remove = gr.Textbox(
-                                label="Nome do arquivo para remover"
+                                label="Arquivo a remover"
                             )
-                            remove_sample_btn = gr.Button("❌ Remover Amostra")
-                        remove_status = gr.Textbox(
-                            label="Status", interactive=False
-                        )
+                            remove_sample_btn = gr.Button("Remover amostra")
+                        remove_status = gr.Markdown("")
 
             # ============================================================ #
             #  Sub-tab 3: Treinar Modelo                                    #
             # ============================================================ #
-            with gr.Tab("🧠 Treinar Modelo"):
+            with gr.Tab("3. Treinar"):
                 with gr.Row(elem_classes="responsive-grid"):
-                    with gr.Column(scale=1):
+                    with gr.Column(scale=1, min_width=300):
                         train_profile_dd = gr.Dropdown(
-                            label="Selecionar Perfil",
+                            label="Perfil",
                             choices=[],
                             interactive=True,
                         )
@@ -238,37 +240,36 @@ def create_voice_profiles_tab():
                             label="Arquitetura",
                             choices=arch_choices,
                             value="sonic_sleuth",
-                            info="14 arquiteturas: 12 DL + SVM + Random Forest",
                         )
                         train_epochs = gr.Slider(
-                            label="Épocas (DL)",
+                            label="Épocas",
                             minimum=5,
                             maximum=200,
                             value=30,
                             step=5,
-                            info="Ignorado para SVM/Random Forest",
+                            info="Não se aplica a SVM e Random Forest.",
                         )
                         train_batch = gr.Slider(
-                            label="Tamanho do lote (DL)",
+                            label="Tamanho do lote",
                             minimum=4,
                             maximum=64,
                             value=16,
                             step=4,
                         )
                         train_lr = gr.Slider(
-                            label="Taxa de aprendizado (DL)",
+                            label="Taxa de aprendizado",
                             minimum=0.0001,
                             maximum=0.01,
                             value=0.001, step=0.0001,
                         )
                         train_validation_info = gr.Markdown("")
                         train_btn = gr.Button(
-                            "🚀 Iniciar Treinamento", variant="primary"
+                            "Iniciar treinamento", variant="primary"
                         )
 
-                    with gr.Column(scale=2):
+                    with gr.Column(scale=2, min_width=320):
                         train_log = gr.Textbox(
-                            label="Log de Treinamento",
+                            label="Log de treinamento",
                             lines=15,
                             interactive=False,
                             autoscroll=True,
@@ -279,36 +280,36 @@ def create_voice_profiles_tab():
                         with gr.Row(elem_classes="responsive-grid plot-grid"):
                             train_cm_plot = gr.Plot(label="Matriz de confusão")
                             train_metrics_json = gr.JSON(
-                                label="Métricas Finais"
+                                label="Métricas finais"
                             )
 
             # ============================================================ #
             #  Sub-tab 4: Verificar Voz                                     #
             # ============================================================ #
-            with gr.Tab("🔍 Verificar Voz"):
+            with gr.Tab("4. Verificar"):
                 with gr.Row(elem_classes="responsive-grid"):
-                    with gr.Column(scale=1):
+                    with gr.Column(scale=1, min_width=300):
                         verify_profile_dd = gr.Dropdown(
-                            label="Selecionar Perfil (com modelo treinado)",
+                            label="Perfil com modelo treinado",
                             choices=[],
                             interactive=True,
                         )
                         verify_audio = gr.Audio(
-                            label="Áudio para Verificação",
+                            label="Áudio para verificação",
                             type="filepath",
                         )
                         verify_btn = gr.Button(
-                            "🔎 Verificar", variant="primary"
+                            "Verificar voz", variant="primary"
                         )
 
-                    with gr.Column(scale=2):
+                    with gr.Column(scale=2, min_width=320):
                         verify_result = gr.Markdown(
-                            "Selecione um perfil e faça upload de um áudio."
+                            "*Selecione um perfil e envie um áudio.*"
                         )
                         verify_confidence = gr.Number(
                             label="Confiança (%)", interactive=False
                         )
-                        verify_details = gr.JSON(label="Detalhes Técnicos")
+                        verify_details = gr.JSON(label="Detalhes técnicos")
 
         # ================================================================ #
         #  Event Handlers                                                    #
@@ -366,6 +367,13 @@ def create_voice_profiles_tab():
             outputs=[profiles_table, dataset_profile_dd,
                      train_profile_dd, verify_profile_dd],
         )
+        # Ao abrir a aba, a lista e os seletores de perfil já vêm preenchidos.
+        voice_tab.select(
+            fn=handle_refresh,
+            outputs=[profiles_table, dataset_profile_dd,
+                     train_profile_dd, verify_profile_dd],
+            show_progress="hidden",
+        )
 
         @ui_safe("Falha ao remover")
         def handle_delete(pid):
@@ -387,10 +395,24 @@ def create_voice_profiles_tab():
             return "❌ Perfil não encontrado.", gr.update(), gr.update(), gr.update(), gr.update()
 
         delete_btn.click(
+            fn=lambda: gr.update(visible=True),
+            outputs=[confirm_delete_row],
+            show_progress="hidden",
+        )
+        cancel_delete_btn.click(
+            fn=lambda: gr.update(visible=False),
+            outputs=[confirm_delete_row],
+            show_progress="hidden",
+        )
+        confirm_delete_btn.click(
             fn=handle_delete,
             inputs=[delete_id],
             outputs=[delete_status, profiles_table, dataset_profile_dd,
                      train_profile_dd, verify_profile_dd],
+        ).then(
+            fn=lambda: gr.update(visible=False),
+            outputs=[confirm_delete_row],
+            show_progress="hidden",
         )
 
         # ── Dataset handlers ──

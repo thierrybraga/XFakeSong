@@ -62,7 +62,7 @@ app/
 │   └── contracts/   # Contratos abstratos SOLID (IFeatureExtractor, IDetectionService, ...)
 └── interfaces/      # As 3 interfaces de entrada do projeto
     ├── gradio/      # app.py (montagem unificada), schema_patch.py, 5 seções visuais
-    │                # (Painel, Detectar, Investigar, Treinar, Gerenciar) em tabs/, utils/
+    │                # (Painel, Detectar, Investigar, Perfis de voz, Treinar, Datasets) em tabs/, utils/
     ├── cli/         # CLI com menus interativos (context.py, menus/)
     └── web/         # FastAPI: main_fastapi.py, routers/ (endpoints), schemas/
                       # (Pydantic request/response); raiz encaminha para Gradio

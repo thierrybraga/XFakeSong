@@ -914,8 +914,6 @@ def _run_training(
     batch_size: int,
     lr: float,
     use_class_weighting: bool,
-    use_swa: bool,
-    use_mixup: bool,
     progress=gr.Progress(),  # noqa: B008 - o Gradio injeta o rastreador por este default
 ):
     """Roda o treino do domínio e traduz cada evento nas saídas da etapa 4.
@@ -924,8 +922,7 @@ def _run_training(
     ``app.domain.services.interactive_training``; aqui ficam painel, log,
     gráficos e notificações. Cada ``yield`` é ``(painel, log, gráfico)`` ou,
     no fim, os mesmos três seguidos dos 7 gráficos de avaliação. A parada vem
-    do botão "Interromper" por ``_PEDIDO_DE_PARADA``. ``use_swa``/``use_mixup``
-    são aceitos pela tela, mas o treino interativo nunca os aplicou.
+    do botão "Interromper" por ``_PEDIDO_DE_PARADA``.
     """
     global _LAST_TRAINED
     from app.dependencies import get_interactive_training_service
@@ -1241,12 +1238,12 @@ def create_training_wizard_tab():
 
         # ───────────── Step 1: Dataset ─────────────
         with gr.Group(visible=True) as group_s1:
-            gr.Markdown("## Etapa 1 — Escolha do dataset")
+            gr.Markdown("### Etapa 1: escolha o dataset")
             gr.Markdown(
-                "Selecione uma pasta com **subdiretórios para cada classe**. "
-                "Subdiretórios começando com `real`, `bonafide`, `genuine`, "
-                "`original`, `authentic` ou `natural` são tratados como REAIS. "
-                "Os demais (`spoof`, `fake`, etc.) são tratados como FAKE."
+                "Indique uma pasta com **uma subpasta por classe**. Subpastas começando "
+                "com `real`, `bonafide`, `genuine`, `original`, `authentic` ou `natural` "
+                "contam como voz real. As demais (`spoof`, `fake` etc.) contam como "
+                "sintética."
             )
 
             with gr.Row(elem_classes="action-row"):
@@ -1255,49 +1252,48 @@ def create_training_wizard_tab():
                     value="data/datasets",
                     placeholder="ex: /data/asvspoof2019",
                     scale=4,
+                    min_width=240,
                 )
-                scan_btn = gr.Button("🔍 Validar", variant="primary", scale=1)
+                scan_btn = gr.Button("Validar dataset", variant="secondary", scale=1)
 
-            scan_output = gr.Markdown("*Aguardando validação...*")
+            scan_output = gr.Markdown("*Valide o dataset para continuar.*")
 
-            with gr.Row(elem_classes="action-row"):
-                gr.Button("← Voltar", interactive=False, scale=1)  # placeholder
+            with gr.Row(elem_classes="action-row wizard-actions"):
                 next_s1_btn = gr.Button(
                     "Próximo →",
                     variant="primary",
-                    scale=1,
                     interactive=False,
                 )
 
         # ───────────── Step 2: Modelo ─────────────
         with gr.Group(visible=False) as group_s2:
-            gr.Markdown("## Etapa 2 — Escolha do modelo")
-            gr.Markdown(
-                "Selecione a arquitetura. Modelos com **GAT** (AASIST) oferecem maior "
-                "acurácia. **Sonic Sleuth** é o mais leve. "
-                "**Ensemble** é o mais robusto."
-            )
-
-            cards_html = gr.HTML(_render_model_cards_html())
+            gr.Markdown("### Etapa 2: escolha o modelo")
 
             arch_select = gr.Dropdown(
                 choices=[m["name"] for m in _get_model_catalog()],
-                label="Arquitetura escolhida",
+                label="Arquitetura",
                 value="AASIST",
                 interactive=True,
+                info=(
+                    "Modelos com grafos (AASIST) tendem a ser mais precisos, o Sonic "
+                    "Sleuth é o mais leve e o Ensemble, o mais robusto."
+                ),
             )
 
-            with gr.Row(elem_classes="action-row"):
-                back_s2_btn = gr.Button("← Voltar", scale=1)
-                next_s2_btn = gr.Button("Próximo →", variant="primary", scale=1)
+            with gr.Accordion("Comparar arquiteturas", open=False):
+                cards_html = gr.HTML(_render_model_cards_html())
+
+            with gr.Row(elem_classes="action-row wizard-actions"):
+                back_s2_btn = gr.Button("← Voltar")
+                next_s2_btn = gr.Button("Próximo →", variant="primary")
 
         # ───────────── Step 3: Hiperparâmetros ─────────────
+        # Saíram desta tela as opções que não tinham efeito: SWA e mixup chegavam ao
+        # handler e paravam ali, e a calibração de temperatura e o limiar EER eram
+        # caixas soltas, sem ligação com o treino interativo.
         with gr.Group(visible=False) as group_s3:
-            gr.Markdown("## Etapa 3 — Hiperparâmetros")
-            gr.Markdown(
-                "Os valores padrão funcionam bem na maioria dos casos. "
-                "Expanda **Opções Avançadas** para flags dos Sprints 1-5."
-            )
+            gr.Markdown("### Etapa 3: ajuste o treino")
+            gr.Markdown("Os valores sugeridos funcionam bem na maioria dos casos.")
 
             with gr.Row(elem_classes="responsive-grid"):
                 epochs_s3 = gr.Slider(
@@ -1332,54 +1328,27 @@ def create_training_wizard_tab():
                 "1e-4 para estabilidade numérica.",
             )
 
-            with gr.Accordion("Opções Avançadas (Sprints 1-5)", open=False):
-                gr.Markdown("### Sprint 1 — Quick wins")
-                use_cw = gr.Checkbox(
-                    True,
-                    label="Class weighting automático (Sprint 1.3)",
-                    info="Compensa datasets desbalanceados (recomendado SEMPRE).",
-                )
-                gr.Checkbox(
-                    True,
-                    label="Calibração de temperatura (Sprint 1.4)",
-                    info="Confidências mais confiáveis pós-treino.",
-                )
-
-                gr.Markdown("### Sprint 2 — Treino")
-                use_swa = gr.Checkbox(
-                    False,
-                    label="SWA — Stochastic Weight Averaging (Sprint 2.3)",
-                    info="Média móvel dos pesos nas últimas 20% épocas. +0.5–1.5% acc.",
-                )
-                use_mixup = gr.Checkbox(
-                    False,
-                    label="Mixup augmentation (Sprint 2.4)",
-                    info="Interpola pares no batch. +0.5–1.5% acc. Desabilita class weighting.",
-                )
-
-                gr.Markdown("### Sprint 4 — Métricas")
-                gr.Checkbox(
-                    True,
-                    label="EER threshold adaptativo (Sprint 4.5)",
-                    info="Calibra threshold de classificação no val set.",
-                )
+            use_cw = gr.Checkbox(
+                True,
+                label="Compensar desbalanceamento entre classes",
+                info="Dá mais peso à classe com menos amostras. Recomendado.",
+            )
 
             estimativa_html = gr.HTML(
                 "", elem_classes="wizard-estimate"
             )
 
-            with gr.Row(elem_classes="action-row"):
-                back_s3_btn = gr.Button("← Voltar", scale=1)
+            with gr.Row(elem_classes="action-row wizard-actions"):
+                back_s3_btn = gr.Button("← Voltar")
                 next_s3_btn = gr.Button(
-                    "Iniciar Treinamento →",
+                    "Iniciar treinamento →",
                     variant="primary",
-                    scale=1,
                 )
 
         # ───────────── Step 4: Treinar ─────────────
         with gr.Group(visible=False) as group_s4:
-            with gr.Row():
-                gr.Markdown("## Etapa 4 — Treinamento")
+            with gr.Row(elem_classes="action-row wizard-actions"):
+                gr.Markdown("### Etapa 4: treinamento")
                 parar_btn = gr.Button(
                     "⏹ Interromper",
                     variant="stop",
@@ -1395,9 +1364,9 @@ def create_training_wizard_tab():
             )
 
             with gr.Row(elem_classes="responsive-grid"):
-                with gr.Column(scale=1):
+                with gr.Column(scale=1, min_width=320):
                     history_plot = gr.Plot(label="Perda, acurácia e matriz de confusão")
-                with gr.Column(scale=1):
+                with gr.Column(scale=1, min_width=320):
                     logs_box = gr.TextArea(
                         label="Log por época",
                         interactive=False,
@@ -1405,43 +1374,47 @@ def create_training_wizard_tab():
                         max_lines=40,
                     )
 
-            with gr.Accordion("Avaliação do Treinamento", open=True):
+            # Avaliação e salvamento só existem depois que o treino termina: antes
+            # eram sete gráficos vazios e um botão sem nada para salvar.
+            with gr.Accordion(
+                "Avaliação do treinamento", open=True, visible=False
+            ) as eval_section:
                 with gr.Row(elem_classes="responsive-grid responsive-grid-3 plot-grid"):
                     eval_roc_plot = gr.Plot(label="Curva ROC")
-                    eval_cm_plot = gr.Plot(label="Matriz de Confusão")
+                    eval_cm_plot = gr.Plot(label="Matriz de confusão")
                     eval_pr_plot = gr.Plot(label="Curva precisão-revocação")
                 with gr.Row(elem_classes="responsive-grid responsive-grid-3 plot-grid"):
                     eval_det_plot = gr.Plot(label="Curva DET / EER")
                     eval_threshold_plot = gr.Plot(
                         label="Otimização do limiar de decisão"
                     )
-                    eval_class_acc_plot = gr.Plot(label="Acurácia por Classe")
+                    eval_class_acc_plot = gr.Plot(label="Acurácia por classe")
                 eval_lr_plot = gr.Plot(label="Evolução da taxa de aprendizado")
 
             # ── Salvar modelo treinado ──────────────────────────────────
-            with gr.Group():
+            with gr.Group(visible=False) as save_section:
                 gr.Markdown(
-                    "### 💾 Salvar modelo\n"
+                    "#### Salvar modelo\n"
                     "Dê um nome e salve para usar na aba **🎯 Detectar**. "
-                    "O pré-processamento do treino é gravado junto (garante que "
-                    "a inferência use exatamente as mesmas features)."
+                    "O pré-processamento do treino é gravado junto, para a inferência "
+                    "usar exatamente as mesmas características."
                 )
                 with gr.Row(elem_classes="action-row"):
                     save_name = gr.Textbox(
                         label="Nome do modelo",
                         placeholder="ex: aasist_ptbr_v1",
                         scale=3,
+                        min_width=220,
                     )
                     save_btn = gr.Button(
-                        "💾 Salvar Modelo",
+                        "Salvar modelo",
                         variant="primary",
                         scale=1,
                     )
                 save_status = gr.Markdown("")
 
-            with gr.Row(elem_classes="action-row"):
-                back_s4_btn = gr.Button("← Novo Treino", scale=1)
-                gr.HTML('<div class="xf-spacer"></div>')
+            with gr.Row(elem_classes="action-row wizard-actions"):
+                back_s4_btn = gr.Button("← Novo treino")
 
         # ────────────────────────── Event handlers ──────────────────────────
 
@@ -1495,6 +1468,10 @@ def create_training_wizard_tab():
             fn=lambda: goto_step(1),
             inputs=[],
             outputs=[current_step, stepper, group_s1, group_s2, group_s3, group_s4],
+        ).then(
+            fn=lambda: (gr.update(visible=False), gr.update(visible=False)),
+            outputs=[eval_section, save_section],
+            show_progress="hidden",
         )
 
         # Salvar modelo treinado (Step 4)
@@ -1564,8 +1541,6 @@ def create_training_wizard_tab():
             batch,
             lr,
             use_cw_val,
-            use_swa_val,
-            use_mixup_val,
         ):
             # Vai para Step 4
             updates_step = [4, _stepper_html(4), *_step_visibility(4)]
@@ -1580,8 +1555,6 @@ def create_training_wizard_tab():
                 batch_size=int(batch),
                 lr=float(lr),
                 use_class_weighting=bool(use_cw_val),
-                use_swa=bool(use_swa_val),
-                use_mixup=bool(use_mixup_val),
             ):
                 status, logs, plot, *eval_plots = update
                 while len(eval_plots) < 7:
@@ -1611,8 +1584,6 @@ def create_training_wizard_tab():
                 batch_s3,
                 lr_s3,
                 use_cw,
-                use_swa,
-                use_mixup,
             ],
             outputs=[
                 current_step,
@@ -1632,4 +1603,8 @@ def create_training_wizard_tab():
                 eval_class_acc_plot,
                 eval_lr_plot,
             ],
+        ).success(
+            fn=lambda: (gr.update(visible=True), gr.update(visible=True)),
+            outputs=[eval_section, save_section],
+            show_progress="hidden",
         )

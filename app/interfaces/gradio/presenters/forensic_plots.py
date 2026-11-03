@@ -114,7 +114,7 @@ class AudioForensicVisualizer:
         img1 = ax1.imshow(S_mel_db, aspect='auto', origin='lower', cmap=cmap,
                           extent=[0, len(y) / self.sr, 0, self.sr / 2])
         ax1.set_title('Mel Spectrogram')
-        ax1.set_ylabel('Frequencia (Hz)')
+        ax1.set_ylabel('Frequência (Hz)')
         fig.colorbar(img1, ax=ax1, format='%+.0f dB', fraction=0.046)
 
         # STFT Magnitude
@@ -124,7 +124,7 @@ class AudioForensicVisualizer:
         img2 = ax2.imshow(S_db, aspect='auto', origin='lower', cmap=cmap,
                           extent=[0, len(y) / self.sr, 0, self.sr / 2])
         ax2.set_title('STFT Magnitude (dB)')
-        ax2.set_ylabel('Frequencia (Hz)')
+        ax2.set_ylabel('Frequência (Hz)')
         fig.colorbar(img2, ax=ax2, format='%+.0f dB', fraction=0.046)
 
         # CQT
@@ -161,7 +161,7 @@ class AudioForensicVisualizer:
         for ax in [ax1, ax2, ax3, ax4]:
             ax.set_xlabel('Tempo (s)')
 
-        fig.suptitle('Comparacao Multi-Espectrograma', fontsize=14,
+        fig.suptitle('Comparação de espectrogramas', fontsize=14,
                      color=ForensicTheme.TEXT_COLOR, fontweight='bold')
         ForensicTheme.apply(fig)
         fig.tight_layout(rect=[0, 0, 1, 0.96])
@@ -185,7 +185,7 @@ class AudioForensicVisualizer:
                         vmin=-np.pi, vmax=np.pi)
         ax.set_title('Espectro de Fase (STFT)')
         ax.set_xlabel('Tempo (s)')
-        ax.set_ylabel('Frequencia (Hz)')
+        ax.set_ylabel('Frequência (Hz)')
         fig.colorbar(img, ax=ax, label='Fase (rad)', fraction=0.046)
 
         ForensicTheme.apply(fig)
@@ -250,7 +250,7 @@ class AudioForensicVisualizer:
 
         ax.set_title('Envelope Espectral & Formantes')
         ax.set_xlabel('Tempo (s)')
-        ax.set_ylabel('Frequencia (Hz)')
+        ax.set_ylabel('Frequência (Hz)')
 
         ForensicTheme.apply(fig)
         fig.tight_layout()
@@ -465,7 +465,7 @@ class AudioForensicVisualizer:
                     ha='center', va='center', color=ForensicTheme.TEXT_COLOR,
                     transform=ax.transAxes)
 
-        fig.suptitle('Analise de Micro-Perturbacoes Vocais',
+        fig.suptitle('Análise de microperturbações vocais',
                      color=ForensicTheme.TEXT_COLOR, fontweight='bold')
         ForensicTheme.apply(fig)
         fig.tight_layout(rect=[0, 0, 1, 0.95])
@@ -501,8 +501,8 @@ class AudioForensicVisualizer:
                 ax1.fill_between(times, f0_mean - f0_std, f0_mean + f0_std,
                                  alpha=0.1, color=ForensicTheme.ACCENT_ORANGE)
 
-            ax1.set_title('Contorno de Pitch (F0) com Confianca')
-            ax1.set_ylabel('Frequencia (Hz)')
+            ax1.set_title('Contorno de pitch (F0) com confiança')
+            ax1.set_ylabel('Frequência (Hz)')
             ax1.legend(facecolor=ForensicTheme.BG_COLOR,
                        labelcolor=ForensicTheme.TEXT_COLOR, fontsize=9)
 
@@ -524,7 +524,7 @@ class AudioForensicVisualizer:
                 ax2.axhline(y=-vibrato_extent, color=ForensicTheme.ACCENT_ORANGE,
                             linestyle='--', alpha=0.5)
 
-            ax2.set_title('Analise de Vibrato (Flutuacao F0)')
+            ax2.set_title('Análise de vibrato (flutuação de F0)')
             ax2.set_xlabel('Tempo (s)')
             ax2.set_ylabel('Delta F0 (Hz)')
             ax2.legend(facecolor=ForensicTheme.BG_COLOR,
@@ -593,7 +593,7 @@ class AudioForensicVisualizer:
         ax.tick_params(axis='y', colors=ForensicTheme.TEXT_COLOR)
 
         fig.patch.set_facecolor(ForensicTheme.BG_COLOR)
-        ax.set_title('Importancia Relativa de Features',
+        ax.set_title('Importância relativa das características',
                      color=ForensicTheme.TEXT_COLOR, fontweight='bold', pad=20)
         fig.tight_layout()
         return fig
@@ -638,7 +638,7 @@ class AudioForensicVisualizer:
 
         ax.set_title('Heatmap de Anomalias sobre Espectrograma')
         ax.set_xlabel('Tempo (s)')
-        ax.set_ylabel('Frequencia (Hz)')
+        ax.set_ylabel('Frequência (Hz)')
 
         ForensicTheme.apply(fig)
         fig.tight_layout()
@@ -650,7 +650,7 @@ class AudioForensicVisualizer:
     def plot_fake_score_timeline(self, segment_times: np.ndarray,
                                  segment_scores: np.ndarray,
                                  threshold: float = 0.5) -> Figure:
-        """P(fake) por segmento, com o limiar de decisão do modelo."""
+        """Pontuação por segmento, com o limite de decisão."""
         fig = Figure(figsize=(12, 4))
         ax = fig.add_subplot(111)
 
@@ -663,21 +663,21 @@ class AudioForensicVisualizer:
         # Threshold line
         ax.axhline(y=threshold, color=ForensicTheme.ACCENT_RED, linestyle='--',
                    linewidth=1.5, alpha=0.8,
-                   label=f'Limiar do modelo ({threshold:.2f})')
+                   label=f'Limite de decisão ({threshold:.0%})')
 
         # Color regions (a decisão do Predictor é `p_fake >= limiar`)
         above = segment_scores >= threshold
         ax.fill_between(segment_times, threshold, segment_scores,
                         where=above, alpha=0.15, color=ForensicTheme.ACCENT_RED,
-                        label='Fake (>= limiar)')
+                        label='Sintética (>= limite)')
         ax.fill_between(segment_times, segment_scores, threshold,
                         where=~above, alpha=0.15, color=ForensicTheme.ACCENT_GREEN,
-                        label='Real (< limiar)')
+                        label='Real (< limite)')
 
         ax.set_ylim(-0.05, 1.05)
-        ax.set_title('Probabilidade de Fake por Segmento')
+        ax.set_title('Pontuação de voz sintética por segmento')
         ax.set_xlabel('Tempo (s)')
-        ax.set_ylabel('P(fake)')
+        ax.set_ylabel('Pontuação de voz sintética')
         ax.legend(loc='upper right', facecolor=ForensicTheme.BG_COLOR,
                   labelcolor=ForensicTheme.TEXT_COLOR, fontsize=9)
 
@@ -818,7 +818,7 @@ class BatchAnalysisVisualizer:
             autotext.set_color('white')
             autotext.set_fontweight('bold')
 
-        ax.set_title(f'Distribuicao de Resultados (Total: {total})',
+        ax.set_title(f'Distribuição de resultados (total: {total})',
                      color=ForensicTheme.TEXT_COLOR, fontweight='bold')
         fig.patch.set_facecolor(ForensicTheme.BG_COLOR)
         fig.tight_layout()
@@ -829,7 +829,7 @@ class BatchAnalysisVisualizer:
     # -----------------------------------------------------------------
     def plot_fake_score_distribution(self, fake_scores: np.ndarray,
                                      threshold: float = 0.5) -> Figure:
-        """Histograma de P(fake), com o limiar de decisão do modelo."""
+        """Histograma da pontuação, com o limite de decisão."""
         fig = Figure(figsize=(10, 5))
         ax = fig.add_subplot(111)
 
@@ -851,7 +851,7 @@ class BatchAnalysisVisualizer:
 
         # Threshold line
         ax.axvline(x=threshold, color='white', linestyle='--', linewidth=2,
-                   label=f'Limiar do modelo ({threshold:.2f})')
+                   label=f'Limite de decisão ({threshold:.0%})')
 
         # Stats
         mean_score = np.mean(fake_scores)
@@ -859,8 +859,8 @@ class BatchAnalysisVisualizer:
                    linestyle=':', linewidth=1.5,
                    label=f'Media: {mean_score:.3f}')
 
-        ax.set_title('Distribuicao da Probabilidade de Fake')
-        ax.set_xlabel('P(fake)')
+        ax.set_title('Distribuição da pontuação de voz sintética')
+        ax.set_xlabel('Pontuação de voz sintética')
         ax.set_ylabel('Contagem')
         ax.legend(facecolor=ForensicTheme.BG_COLOR,
                   labelcolor=ForensicTheme.TEXT_COLOR)

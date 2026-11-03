@@ -73,7 +73,7 @@ SpeechChecker/
 │   ├── core/               # infra transversal: config/ (settings, env, paths), db/ (sessao +
 │   │                       #   models/ ORM), auth/, contracts/ (interfaces SOLID)
 │   ├── interfaces/         # as 3 interfaces de entrada do projeto:
-│   │   ├── gradio/         # app.py (montagem, ex-gradio_app.py raiz), schema_patch.py, 5 abas role-based (tabs/), utils/
+│   │   ├── gradio/         # app.py (montagem, ex-gradio_app.py raiz), schema_patch.py, 6 seções (tabs/), presenters/, utils/
 │   │   ├── cli/            # menu interativo (context.py, menus/)
 │   │   └── web/            # FastAPI: main_fastapi.py, routers/, schemas/ (UI Gradio montada em /gradio)
 │   ├── utils/              # audio_utils/file_utils/file_storage/helpers/silero_vad (centrais)
@@ -113,6 +113,8 @@ ou web) nem de frameworks de UI. Bibliotecas externas entram via wrapper em
 | Orquestracao de treino | `app/domain/services/training_service.py`, `app/domain/models/training/secure_training_pipeline.py` |
 | Guardas de retomada e colapso de treino | `app/domain/models/training/callbacks.py` (`ResumableModelCheckpoint`, `PersistentEpochHistory`, `CollapseAbort`) |
 | Deteccao/inferencia | `app/domain/services/detection_service.py` |
+| Temperatura sobre o logit real (`temperature_on_logits` no contrato) | `app/domain/services/detection/temperature_scaling.py`; migracao sem treino em `tools/reporting/recalibrate_temperature.py` |
+| Pontuacao centrada e fusao entre modelos | `detection/operating_point.py` (`fake_score`, `fuse_scores`); medida na validacao em `benchmarks/fusion.py` e `tools/reporting/select_fusion.py` |
 | Extracao de features | `app/domain/features/` (implementar `IFeatureExtractor`, registrar no registry) |
 | Front-end do benchmark (paridade treino<->inferencia) | `app/domain/features/benchmark_frontend.py` (raw / log-Mel / tabular v1 e v2) |
 | Config global de treino (LR, early stop, augmentation, calibracao) | `app/core/config/settings.py` (`TrainingConfig`) |
@@ -132,16 +134,16 @@ make build            # build com cache (SERVICE=inference-api por padrao)
 make build-nocache    # build limpo + pull das imagens base
 make up / make down   # sobe/derruba; app em http://localhost:7860
 make docker-config    # valida a config dos perfis (inference/train/benchmark)
+make snapshot / make rollback   # guarda a imagem e o banco / volta e espera o health check
 ```
 
-make snapshot / make rollback   # guarda a imagem e o banco / volta e espera o health check
-Dev local sem Docker: `make venv && make install-dev` (cria `.venv`,
-instala `requirements.txt` + `requirements-dev.txt`), depois `make dev`.
 As imagens de inferencia (e a do benchmark, que usa o mesmo Dockerfile) instalam
 as versoes exatas de `inference-api/constraints-<perfil>.txt`, geradas da imagem
 validada por `tools/ops/docker_release.py lock`. Mudou uma dependencia? Veja
 [docs/development/docker-environments.md](docs/development/docker-environments.md).
 
+Dev local sem Docker: `make venv && make install-dev` (cria `.venv`,
+instala `requirements.txt` + `requirements-dev.txt`), depois `make dev`.
 
 ---
 

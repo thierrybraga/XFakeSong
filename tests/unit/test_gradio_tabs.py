@@ -84,15 +84,15 @@ def test_tema_visual_carregado_do_pacote_gradio():
 def test_analise_sem_audio_devolve_a_aridade_esperada():
     """`_empty_analysis_result` protege o contrato de saída do handler.
 
-    A aba Detectar tem 6 saídas e vários caminhos de retorno. Se um deles
+    A aba Detectar tem 5 saídas e vários caminhos de retorno. Se um deles
     devolver aridade diferente, o Gradio falha em tempo de execução — foi o
     bug FE.1 que originou a função centralizada.
     """
     from app.interfaces.gradio.tabs.detection import _empty_analysis_result
 
     resultado = _empty_analysis_result("teste")
-    assert len(resultado) == 6, (
-        f"o handler de análise devolve 6 saídas; o caminho vazio devolveu "
+    assert len(resultado) == 5, (
+        f"o handler de análise devolve 5 saídas; o caminho vazio devolveu "
         f"{len(resultado)}"
     )
 

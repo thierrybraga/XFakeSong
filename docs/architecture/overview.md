@@ -192,7 +192,7 @@ SpeechChecker/
 │   │   └── xai/                    # gradcam.py, shap_explainer.py, tabular.py
 │   │
 │   ├── interfaces/                 # As 3 interfaces de entrada do projeto
-│   │   ├── gradio/                 # Interface visual canônica (5 seções)
+│   │   ├── gradio/                 # Interface visual canônica (6 seções)
 │   │   │   ├── app.py              # Monta `demo` (gr.Blocks) — a app unificada é montada 1x em web/main_fastapi.py
 │   │   │   ├── schema_patch.py     # Monkey-patch de schemas, criado para Pydantic v2 + Gradio v4
 │   │   │   ├── presenters/         # Figuras a partir de medidas do domínio (forensic_plots.py)

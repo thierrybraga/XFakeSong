@@ -2,8 +2,8 @@
 
 SUJEITO: os handlers de `app.interfaces.gradio.tabs.forensic_analysis`, que
 só tinham cobertura por inspeção de fonte. Fixa o que a aba devolve antes de a
-plotagem sair de `domain/services` (P1-7): 13 figuras + resumo, o `p_fake` por
-segmento vindo do detector, o radar de oito eixos e o lote. O detector é falso
+plotagem sair de `domain/services` (P1-7): 13 figuras + resumo, a pontuação por
+segmento vinda do detector, o radar de oito eixos e o lote. O detector é falso
 e determinístico; nenhum modelo de `data/models` é carregado.
 
 O detector falso separa de propósito `confidence` (a do VEREDITO: `p_real` quando
@@ -23,6 +23,7 @@ pytest.importorskip("gradio")
 pytest.importorskip("librosa")
 soundfile = pytest.importorskip("soundfile")
 
+from app.domain.services.detection.operating_point import fake_score  # noqa: E402
 from app.interfaces.gradio.tabs import forensic_analysis as fa  # noqa: E402
 
 SR = 16000
@@ -101,10 +102,10 @@ def test_analise_completa_devolve_as_treze_figuras_e_o_resumo(analise):
         "Contorno de Energia (RMS)",
         "Harmonic-to-Noise Ratio (HNR) Temporal",
         _titulos(figuras[8])[0],  # "Jitter Local (x.xx%)"
-        "Contorno de Pitch (F0) com Confianca",
-        "Importancia Relativa de Features",
+        "Contorno de pitch (F0) com confiança",
+        "Importância relativa das características",
         "Heatmap de Anomalias sobre Espectrograma",
-        "Probabilidade de Fake por Segmento",
+        "Pontuação de voz sintética por segmento",
     ]
     assert _titulos(figuras[0]) == [
         "Mel Spectrogram",
@@ -126,32 +127,36 @@ def test_formantes_saem_em_quatro_trilhas(analise):
     assert validos.any() and np.all(f1[validos] <= f2[validos])  # ordenadas
 
 
-def test_linha_do_tempo_mostra_p_fake_e_o_limiar_do_modelo(analise, audio):
+def test_linha_do_tempo_usa_a_pontuacao_centrada_no_limiar_do_modelo(analise, audio):
     seg, salto = SR, SR // 2
     inicios = range(0, len(audio) - seg, salto)
-    esperado = [_p_fake(audio[i:i + seg]) for i in inicios]
+    brutos = [_p_fake(audio[i:i + seg]) for i in inicios]
+    esperado = [fake_score(p, LIMIAR) for p in brutos]
     tempos = [(i + seg / 2) / SR for i in inicios]
-    assert min(esperado) < LIMIAR, "a fixture precisa ter trecho com veredito real"
+    assert min(brutos) < LIMIAR, "a fixture precisa ter trecho com veredito real"
 
     ax = analise[12].axes[0]
     np.testing.assert_allclose(ax.lines[0].get_ydata(), esperado)
     np.testing.assert_allclose(ax.lines[0].get_xdata(), tempos)
-    # O limiar desenhado é o que decidiu, não um 0,5 fixo.
-    np.testing.assert_allclose(ax.lines[1].get_ydata(), [LIMIAR, LIMIAR])
-    assert f"{LIMIAR:.2f}" in ax.lines[1].get_label()
-    assert ax.get_ylabel() == "P(fake)"
+    # O limiar do modelo já está na escala: o limite é o mesmo para todo modelo.
+    np.testing.assert_allclose(ax.lines[1].get_ydata(), [0.5, 0.5])
+    assert "50%" in ax.lines[1].get_label()
+    assert ax.get_ylabel() == "Pontuação de voz sintética"
 
 
-def test_mapa_de_anomalias_pinta_p_fake_e_nao_a_confianca(analise, audio):
+def test_mapa_de_anomalias_pinta_a_pontuacao_e_nao_a_confianca(analise, audio):
     from app.interfaces.gradio.presenters.forensic_plots import ForensicTheme
 
     seg, salto = SR, SR // 2
-    esperado = [_p_fake(audio[i:i + seg]) for i in range(0, len(audio) - seg, salto)]
+    esperado = [
+        fake_score(_p_fake(audio[i:i + seg]), LIMIAR)
+        for i in range(0, len(audio) - seg, salto)
+    ]
     faixas = analise[11].axes[0].patches
     assert len(faixas) == len(esperado)  # uma faixa por segmento
     mapa = ForensicTheme.get_anomaly_cmap()
-    for faixa, p_fake in zip(faixas, esperado):
-        np.testing.assert_allclose(faixa.get_facecolor()[:3], mapa(p_fake)[:3])
+    for faixa, pontuacao in zip(faixas, esperado):
+        np.testing.assert_allclose(faixa.get_facecolor()[:3], mapa(pontuacao)[:3])
 
 
 def test_audio_real_com_veredito_real_nao_aparece_acima_do_limiar():
@@ -160,7 +165,7 @@ def test_audio_real_com_veredito_real_nao_aparece_acima_do_limiar():
 
     _, pontos, limiar = fa._pontuacao_por_segmento(_Detector(), audio, SR)
 
-    assert limiar == LIMIAR
+    assert limiar == 0.5
     assert len(pontos) > 0 and np.all(pontos < limiar)
 
 
@@ -234,14 +239,14 @@ def test_lote_resume_e_exporta_csv(wav, tmp_path, monkeypatch):
     assert tabela["Resultado"].tolist() == ["FAKE", "REAL", "REAL"]
     assert tabela["Modelo"].tolist()[2].startswith("error: ")
     assert "**Total analisado:** 3" in resumo and "**Fake:** 1 (33.3%)" in resumo
-    assert _titulos(pizza) == ["Distribuicao de Resultados (Total: 3)"]
-    # O histograma é de P(fake), com o limiar do modelo, e só com o que foi medido:
-    # o arquivo que falhou tem confiança 0 na tabela, mas nenhum p_fake.
+    assert _titulos(pizza) == ["Distribuição de resultados (total: 3)"]
+    # O histograma é da pontuação, com o limite em 50%, e só com o que foi medido:
+    # o arquivo que falhou tem confiança 0 na tabela, mas nenhuma pontuação.
     ax = histograma.axes[0]
-    assert _titulos(histograma) == ["Distribuicao da Probabilidade de Fake"]
-    assert ax.get_xlabel() == "P(fake)"
+    assert _titulos(histograma) == ["Distribuição da pontuação de voz sintética"]
+    assert ax.get_xlabel() == "Pontuação de voz sintética"
     assert sum(barra.get_height() for barra in ax.patches) == 2
-    np.testing.assert_allclose(ax.lines[0].get_xdata(), [LIMIAR, LIMIAR])
+    np.testing.assert_allclose(ax.lines[0].get_xdata(), [0.5, 0.5])
 
     caminho = fa.export_batch_report([str(wav), str(baixa)])
     with open(caminho, encoding="utf-8", newline="") as fh:

@@ -750,6 +750,54 @@ então em 3.12 as dependências só foram resolvidas, sem executar nada. A resol
 `uv`, que pode escolher versões diferentes das do pip. Pode faltar disco no runner ao
 instalar `torch` e CUDA junto com o build da imagem.
 
+### Revisão da interface (2026-11-02)
+
+Auditoria no navegador em 1.440, 768 e 375 px, seguida de ajustes. A organização e o que
+mudou por tela estão em [Frontend Gradio](../interfaces/gradio.md) e no `CHANGELOG.md`.
+Três achados valem o registro, porque nenhum teste os via:
+
+- **O tema tinha sido escrito para o DOM do Gradio 4.** `.tab-nav`, `.gr-accordion` e
+  `.svelte-*` já não existem no 6, e `margin-inline: auto` em `.contain` e `.wrap`
+  desligava o esticamento do flex: a página tinha a largura do conteúdo de cada aba. O
+  CSS caiu de 1.917 para cerca de 1.400 linhas, só com classes presentes hoje.
+- **Opções que não faziam nada.** A escolha do modelo só valia com uma caixa escondida
+  marcada, sem aviso. O campo de hiperparâmetros JSON nunca era lido. No assistente, SWA e
+  mixup paravam no handler, e calibração de temperatura e limiar EER eram caixas soltas:
+  `interactive_training.py` não faz nenhum dos dois. Saíram da tela, sem prometer em troca.
+- **A análise por arquivo perdia a calibração.** `_detect_with_config` não repassava
+  `classification_threshold` nem `is_ood`, e o JSON afirmava "limiar fixo 0,5" para o
+  AASIST, cujo corte é 0,94. Com o limiar à vista, apareceu o caso em que a confiança sozinha
+  engana: P(fake) de 0,80 abaixo de um corte de 0,94 dá "real" com confiança de 0,20. Por
+  isso o cartão compara P(fake) com o limiar e avisa quando a margem é pequena.
+
+Essa mudança de domínio é aditiva: `metadata` ganha chaves na detecção por arquivo.
+
+### Pontuação centrada no limiar (2026-11-02)
+
+O cartão dizia "provável voz real" com "80,2% de probabilidade de ser sintética" e
+confiança de 19,8%. A decisão estava certa e o número enganava: cada modelo decide em
+`p_fake >= limiar`, e o limiar vai de 0,05 (SVM) a 0,99 (Hybrid), então o mesmo valor tinha
+significados opostos. Com aprovação do usuário, `confidence` passou a ser a confiança no
+veredito, e o novo `fake_score` (`detection/operating_point.py`) leva o limiar a 0,5.
+
+A fórmula veio de medição, com 200 áudios de validação por modelo (1.800 inferências; a
+partição de teste não foi lida). Nos 37 casos em que P(fake) e o veredito discordam:
+
+| Escala | Confiança média declarada | Acerto real |
+| --- | ---: | ---: |
+| Linear em dois segmentos (adotada) | 54,6% | 59,5% |
+| Translação em logit | 66,4% | 59,5% |
+
+A translação em logit, a primeira hipótese, declararia cerca de 95% para P(fake) de 0,50
+com corte em 0,95. Nas faixas gerais da linear, o acerto real fica acima do declarado (0,5
+a 0,6: 83,7%; 0,6 a 0,7: 73,9%; 0,7 a 0,8: 94,0%; 0,8 a 0,9: 94,9%), salvo a mais alta
+(97,9% contra 98,7%). P(fake) bruta continua mais bem calibrada como probabilidade (ECE
+0,039 contra 0,078), então ela segue em `probabilities`, e a pontuação não é chamada de
+probabilidade na tela.
+
+Vale em todo caminho do `Predictor` e na janela segmentada. O `DetectionService.detect_batch`,
+que gravava a confiança como probabilidade de fake, passou a usar `p_fake`.
+
 ### Pendente
 
 - **Decisão: API de treino escolhe o repositório do modelo.** Validar `parameters`
@@ -763,10 +811,14 @@ instalar `torch` e CUDA junto com o build da imagem.
 - **Código de compatibilidade do Gradio 4:** o shim de `HfFolder` não faz nada (entre as
   dependências, só `transformers/commands/user.py` cita a classe). Remover
   `hf_compat.py`. Para `schema_patch.py`, verificar antes se o Gradio 6 ainda precisa.
-- **Painel:** "Últimas análises" mostra tempos negativos (`-9545s atrás`). `created_at`
-  vem em UTC do SQLite, e `dashboard.py::_recent_analyses` compara com a hora local.
-- **Interface, cosmético:** o rótulo do Gradio cobre o título de algumas figuras da aba
-  Investigar.
+- **Figuras no tema claro:** as figuras têm fundo escuro fixo no servidor. Funcionam,
+  mas destoam da tela clara. Gerar nos dois temas exige saber o tema no servidor.
+- **Microfone na aba Detectar não testado no navegador:** não há microfone neste
+  ambiente. O caminho de streaming manteve o código, com a saída trocada pelo cartão.
+- **Tela de login:** é do Gradio e não recebe CSS, título nem `head`; os painéis laterais
+  ficam como estão.
+- **Menu principal no celular:** o Gradio move o que não cabe para o menu "…". As abas
+  continuam acessíveis, mas só as primeiras ficam à vista.
 - **Notebooks defasados do gerador:** `tools/ops/build_notebooks.py` já não reproduz
   `docs/notebooks/`: gera outra numeração em `models/` (nove arquivos novos) e reescreve
   cinco notebooks. Por isso o `datasets` foi ajustado à mão no notebook versionado e no
@@ -815,9 +867,21 @@ instalar `torch` e CUDA junto com o build da imagem.
 - Análise em lote: arquivo que falha entra como `REAL` na tabela e na pizza
   (`is_fake=False`, confiança 0), e o `test_lote_resume_e_exporta_csv` fixa isso
   como está. Uma ferramenta forense deveria marcá-lo como erro.
-- `DetectionService.detect_batch` ainda grava `"fake": pred["confidence"]`, o mesmo
-  engano corrigido em `detect_single` e na aba Investigar. Não tem chamador hoje, mas
-  é método do contrato `IDetectionService`: usar `pred["p_fake"]` ou removê-lo.
+- **Sidecars recalibrados, `results.json` não:** em 2026-11-02 os sete neurais de
+  `data/models` passaram a `temperature_on_logits`, com autorização, pela
+  `tools/reporting/recalibrate_temperature.py --apply` (os anteriores estão em
+  `*.json.pre-temperature.bak`; `data/models` não é versionado). Nenhum dos 1.456 vereditos de
+  validação mudou em nenhum modelo, conferido pelo serviço real. A acurácia em 0,5 e o ECE dos
+  `results.json` e do artigo descrevem a calibração anterior; EER, AUC e t-DCF continuam valendo.
+- **RawGAT-ST com o limiar dentro de um platô:** as pontuações de áudio sintético param numa
+  faixa estreita logo acima do limiar, e por isso o cartão mostra perto de 50% de confiança em
+  todo veredito "sintética" (erro de confiança de 25%, com ou sem a recalibração). Vem do
+  modelo, não do corte: pede revisão junto da correção de fidelidade da arquitetura.
+- **Fusão AASIST + Hybrid CNN-Transformer:** é o conjunto mais barato e o de maior ganho sob
+  ruído na validação, em locutor não visto e com a temperatura nova (EER 2,68% a 10 dB e
+  7,90% a 5 dB, contra 5,22% e 11,13% do melhor modelo sozinho). Foi escolhido depois de ver
+  esses números, e a validação já elegeu a época de cada modelo: falta a medida única no teste.
+- **Histórico antigo:** análises gravadas antes da pontuação mantêm a confiança antiga.
 - **Veredito sobre silêncio:** silêncio digital recebe decisão (AASIST: fake a 97,9%;
   SVM: fake; Conformer: real). Só há guarda de duração mínima; uma ferramenta forense
   deveria recusar entrada sem sinal.

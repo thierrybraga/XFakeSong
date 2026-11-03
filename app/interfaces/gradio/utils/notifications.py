@@ -307,6 +307,41 @@ def get_history(limit: int = 10) -> List[Notification]:
     return get_feedback_events(limit=limit)
 
 
+# Janela de eventos lida para filtrar: o hub guarda todo log do processo, então as N
+# últimas entradas podem ser só ruído.
+_JANELA_DE_EVENTOS = 500
+_NIVEIS_DE_ATENCAO = {"warning", "error", "critical"}
+_SIMBOLOS = {"success": "✓", "info": "ℹ", "warning": "⚠", "error": "✕", "critical": "✕"}
+_lido_ate = 0.0
+
+
+def _para_o_usuario(evento: Notification) -> bool:
+    """O painel é para quem usa a aplicação; o espelho do terminal fica no log.
+
+    O hub recebe todo log do processo, e `GET /favicon.ico -> 404` e avisos de boot do
+    TensorFlow apareciam como "notificações pendentes". Do log só passam os erros, e o
+    registro de requisição nunca passa.
+    """
+    if evento.category != "log":
+        return True
+    return evento.title != "request_completed" and evento.level in {"error", "critical"}
+
+
+def get_user_history(limit: int = 10) -> List[Notification]:
+    """Últimas N notificações destinadas à pessoa usuária (mais recentes primeiro)."""
+    eventos = get_feedback_events(limit=_JANELA_DE_EVENTOS)
+    return [evento for evento in eventos if _para_o_usuario(evento)][:limit]
+
+
+def attention_count() -> int:
+    """Quantos avisos e erros para a pessoa usuária chegaram desde a última leitura."""
+    return sum(
+        1
+        for evento in get_user_history(limit=_JANELA_DE_EVENTOS)
+        if evento.level in _NIVEIS_DE_ATENCAO and evento.timestamp > _lido_ate
+    )
+
+
 def clear_history() -> int:
     """Limpa o histórico e retorna quantas notificações foram removidas."""
     return clear_feedback_events()
@@ -319,6 +354,8 @@ def get_unread_count() -> int:
 
 def mark_all_read() -> None:
     """Marca todas como lidas (zera o counter, mantém histórico)."""
+    global _lido_ate
+    _lido_ate = time.time()
     mark_feedback_read()
 
 
@@ -327,12 +364,12 @@ def mark_all_read() -> None:
 
 def render_notification_center_html(limit: int = 10) -> str:
     """HTML do painel de notificações (para gr.HTML no Dashboard / dropdown)."""
-    notes = get_history(limit=limit)
+    notes = get_user_history(limit=limit)
     if not notes:
         return (
             '<div class="notif-empty">'
-            '<div class="notif-empty-icon">📭</div>'
-            "<div>Nenhuma notificação ainda</div>"
+            '<div class="notif-empty-icon" aria-hidden="true">📭</div>'
+            "<div>Nenhuma notificação por enquanto</div>"
             "</div>"
         )
 
@@ -350,7 +387,7 @@ def render_notification_center_html(limit: int = 10) -> str:
         source_html = f'<span class="notif-code">{source}</span>' if source else ""
         items_html += f"""
         <div class="notif-item notif-{n.level}">
-            <div class="notif-icon">{n.icon}</div>
+            <div class="notif-icon" aria-hidden="true">{_SIMBOLOS.get(n.level, "ℹ")}</div>
             <div class="notif-body">
                 <div class="notif-header">
                     <span class="notif-title">{title}</span>
@@ -380,6 +417,8 @@ __all__ = [
     "notify_critical",
     "notify_from_actionable",
     "get_history",
+    "get_user_history",
+    "attention_count",
     "clear_history",
     "get_unread_count",
     "mark_all_read",

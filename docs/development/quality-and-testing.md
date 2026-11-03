@@ -31,18 +31,18 @@ make test-cov
 ```text
 tests/
 ├── conftest.py          # fixtures globais + marcação automática por pasta
-├── unit/                # 86 arquivos
+├── unit/                # 87 arquivos
 ├── api/                 # 5 arquivos
 ├── functional/          # 2 arquivos
 ├── integration/         # 10 arquivos
 └── smoke/               # 6 arquivos, opt-in
 ```
 
-Total atual: **109 arquivos de teste**.
+Total atual: **110 arquivos de teste**.
 
 | Categoria | Marcador | Arquivos | Objetivo | Run padrão |
 |---|---:|---:|---|---|
-| Unit | `unit` | 86 | Componentes isolados, utilitários, treinamento, benchmark, notebooks, segurança local | Sim |
+| Unit | `unit` | 87 | Componentes isolados, utilitários, treinamento, benchmark, notebooks, segurança local | Sim |
 | API | `api` | 5 | Contratos FastAPI com `TestClient` e serviços mockados | Sim |
 | Functional | `functional` | 2 | Fluxos de usuário e rotas/frontend | Sim |
 | Integration | `integration` | 10 | Cooperação real entre serviços, podendo treinar modelos pequenos | Sim |
@@ -115,6 +115,7 @@ diz qual módulo está sob contrato, não em que semana o teste foi escrito.
 | `test_trainer_compile_respect.py` | compile-respect, `from_logits`, augmentation |
 | `test_training_guards.py` | `CollapseAbort` e `PersistentEpochHistory` |
 | `test_operating_point.py` | pontuação centrada no limiar: mesma decisão, mesma ordem e confiança de 0,5 a 1 |
+| `test_gradio_ui_organization.py` | navegação, opções sem efeito, veredito, tempos e notificações da interface |
 | `test_check_pip_audit.py` | gate de release: avisos fora da lista, exceção vencida e versão diferente da registrada |
 | `test_checkpoint_monitor.py` | `checkpoint_monitor`, `ValidationEER` e o encanamento |
 | `test_resumable_checkpoint.py` | melhor valor sobrevive a retomadas |

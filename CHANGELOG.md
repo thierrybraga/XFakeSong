@@ -96,6 +96,28 @@ no Git, e `app/__init__.py` declara a versão `1.1.0`.
   perfis de voz, análise forense, `trainer.py`, runner do benchmark e `layers.py`. Os
   modelos `.keras` já salvos continuam carregando.
 
+### Interface
+
+- **Navegação reorganizada** em seis seções por objetivo: Painel, Detectar (um áudio, em
+  lote, histórico), Investigar (forense, características), Perfis de voz, Treinar e
+  Datasets. Antes, perfis de voz ficavam dentro de Detectar, e o histórico, em Gerenciar.
+- **Detectar:** o modelo agora é uma escolha visível, só entre os instalados. Antes, a
+  escolha era ignorada sem marcar uma caixa escondida. O resultado virou um cartão com o
+  veredito em texto, P(fake) comparado ao limiar do modelo e avisos de pouca margem e de
+  áudio fora do padrão de treino. Enviar arquivo e gravar são abas separadas, e o
+  histórico guarda o nome real do arquivo.
+- **Opções sem efeito removidas:** hiperparâmetros JSON na detecção; SWA, mixup,
+  calibração de temperatura e limiar EER no assistente de treino. "Sprints 1-5" saiu da
+  tela.
+- **Layout:** largura estável entre as abas (variava de 726 a 1.179 px), sem bordas
+  brancas nos cartões, figuras sem o rótulo por cima do título, tema claro completo e
+  navegação fixa ao rolar. Sem rolagem horizontal da página em celular e tablet, com
+  alvos de toque de 44 px.
+- **Estados vazios:** gráficos, relatório e salvamento só aparecem quando há resultado.
+- **Confirmação** antes de apagar todo o histórico e antes de excluir um perfil.
+- **Notificações:** o sino mostra avisos e erros para a pessoa usuária. Logs de
+  requisição, como `GET /favicon.ico -> 404`, saíram do painel.
+
 ### Alterado na detecção
 
 - **`confidence` agora é a confiança no veredito, de 0,5 a 1, em todos os modelos.** Antes
@@ -109,6 +131,10 @@ no Git, e `app/__init__.py` declara a versão `1.1.0`.
 
 ### Corrigido
 
+- **Detectar e API:** a análise por arquivo perdia o limiar calibrado e o indicador de
+  fora do padrão, e a tela afirmava "limiar fixo 0,5" para um modelo com corte de 0,94.
+- **Painel e Histórico:** tempos negativos (`-9545s atrás`) e datas em UTC mostradas como
+  se fossem locais.
 - **Investigar:** a linha do tempo, o mapa de anomalias e o histograma do lote mostravam
   a confiança do veredito como se fosse a probabilidade de fake, com limiar fixo de 0,5.
   Agora usam P(fake) e o limiar do modelo.

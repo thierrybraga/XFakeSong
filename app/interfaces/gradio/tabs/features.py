@@ -46,43 +46,40 @@ def create_features_tab():
         page_header(
             "🎼",
             "Extração de características",
-            "Visualize características espectrais, cepstrais, prosódicas e temporais "
-            "extraídas de um arquivo de áudio.",
+            "Veja as características espectrais, cepstrais, prosódicas e temporais "
+            "de um áudio.",
         )
 
         with gr.Row(elem_classes="responsive-grid"):
-            with gr.Column(scale=1):
-                audio_input = gr.Audio(
-                    type="filepath", label="Arquivo de Áudio")
-                feature_type_dropdown = gr.Dropdown(
-                    choices=[ft.value for ft in FeatureType],
-                    value=FeatureType.SPECTRAL.value,
-                    label="Tipo de característica"
-                )
-                normalize_chk = gr.Checkbox(value=True, label="Normalizar")
+            with gr.Column(scale=1, min_width=320):
+                with gr.Group():
+                    audio_input = gr.Audio(
+                        type="filepath",
+                        label="Arquivo de áudio",
+                        sources=["upload"],
+                    )
+                    feature_type_dropdown = gr.Dropdown(
+                        choices=[ft.value for ft in FeatureType],
+                        value=FeatureType.SPECTRAL.value,
+                        label="Tipo de característica"
+                    )
+                    normalize_chk = gr.Checkbox(value=True, label="Normalizar")
                 extract_btn = gr.Button(
-                    "Extrair e Visualizar", variant="primary")
+                    "Extrair e visualizar", variant="primary", size="lg")
 
-            with gr.Column(scale=2):
-                with gr.Tabs():
-                    with gr.Tab("Visualização Gráfica"):
-                        gr.Markdown("#### Forma de Onda")
-                        wave_output = gr.Plot(label="Forma de onda")
-                        with gr.Row(elem_classes="responsive-grid plot-grid"):
-                            with gr.Column():
-                                gr.Markdown(
-                                    "#### Mapa de calor de características"
-                                )
-                                plot_output = gr.Plot(
-                                    label="Visualização da característica"
-                                )
-                            with gr.Column():
-                                gr.Markdown("#### Distribuição de Valores")
-                                hist_output = gr.Plot(label="Histograma")
+            with gr.Column(scale=2, min_width=320):
+                wave_output = gr.Plot(label="Forma de onda")
+                with gr.Row(elem_classes="responsive-grid plot-grid"):
+                    with gr.Column():
+                        plot_output = gr.Plot(
+                            label="Mapa de calor da característica"
+                        )
+                    with gr.Column():
+                        hist_output = gr.Plot(label="Distribuição de valores")
 
-                    with gr.Tab("Informações Detalhadas"):
-                        stats_output = gr.Markdown("### Estatísticas")
-                        json_output = gr.JSON(label="Dados Brutos")
+                with gr.Accordion("Estatísticas e dados brutos", open=False):
+                    stats_output = gr.Markdown("*Extraia uma característica para ver.*")
+                    json_output = gr.JSON(label="Dados brutos")
 
         def extract_and_plot(audio_path, feature_type_str, normalize):
             if not audio_path:

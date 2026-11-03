@@ -98,39 +98,11 @@ def create_optimization_tab():
         page_header(
             "⚡",
             "Otimização",
-            "Configure hardware, arquiteturas e parâmetros de treinamento "
-            "para otimizar a detecção.",
+            "Ajuste os hiperparâmetros de cada arquitetura, busque os melhores "
+            "automaticamente e escolha o hardware.",
         )
 
-        # --- Seção de Hardware ---
-        with gr.Row(elem_classes="responsive-grid"):
-            with gr.Column():
-                gr.Markdown("#### 🖥️ Configuração de Hardware")
-                devices = get_available_devices()
-                default_dev = devices[0] if devices else "CPU"
-
-                with gr.Row(elem_classes="action-row"):
-                    device_dropdown = gr.Dropdown(
-                        choices=devices,
-                        label="Dispositivo de Processamento",
-                        value=default_dev,
-                        interactive=True
-                    )
-                    apply_dev_btn = gr.Button(
-                        "Aplicar Configuração", variant="primary"
-                    )
-
-                dev_status = gr.Textbox(
-                    label="Status", value="", interactive=False
-                )
-
-                apply_dev_btn.click(
-                    update_device_settings,
-                    inputs=[device_dropdown],
-                    outputs=[dev_status]
-                )
-
-        gr.Markdown("---")  # Separator
+        gr.Markdown("#### Hiperparâmetros padrão por arquitetura")
 
         with gr.Row(elem_classes="responsive-grid"):
             with gr.Column(scale=1):
@@ -143,8 +115,8 @@ def create_optimization_tab():
                     value=default_arch,
                 )
 
-                with gr.Group():
-                    gr.Markdown("#### Parâmetros Gerais")
+                with gr.Group(elem_classes="params-grid"):
+                    gr.Markdown("#### Parâmetros gerais")
                     opt_batch = gr.Number(
                         label="Tamanho do lote", value=int(initial_hp["batch_size"])
                     )
@@ -171,8 +143,8 @@ def create_optimization_tab():
                     )
 
                 # Specific params
-                with gr.Group():
-                    gr.Markdown("#### Parâmetros Específicos")
+                with gr.Group(elem_classes="params-grid"):
+                    gr.Markdown("#### Parâmetros da arquitetura")
 
                     # Transformer / Spectrogram
                     opt_d_model = gr.Number(label="Dimensão do modelo", visible=False)
@@ -224,10 +196,10 @@ def create_optimization_tab():
                         label="Unidades densas", visible=False)
 
                 opt_save_btn = gr.Button(
-                    "💾 Salvar Hiperparâmetros Padrão", variant="primary")
+                    "Salvar como padrão", variant="primary")
 
             with gr.Column(scale=1):
-                opt_json = gr.JSON(label="Configuração Atual (JSON)")
+                opt_json = gr.JSON(label="Configuração atual (JSON)")
 
         # Inputs list for optimize_default
         inputs_list = [
@@ -258,17 +230,16 @@ def create_optimization_tab():
             outputs=outputs_list
         )
 
-        gr.Markdown("---")  # Separator
 
         # --- Busca Automática de Hiperparâmetros (Optuna) ---
         with gr.Accordion(
-            "🔍 Busca Automática de Hiperparâmetros (Optuna)", open=False
+            "Busca automática de hiperparâmetros (Optuna)", open=False
         ):
             gr.Markdown(
                 "Busca Bayesiana (Optuna/TPE) que **treina vários modelos** e "
                 "mostra a **convergência** das tentativas e a **importância** de cada "
                 "hiperparâmetro. Requer um dataset `.npz` (`X_train`/`y_train`) e "
-                "`optuna` instalado. ⚠️ Pode levar **vários minutos** — treina um "
+                "`optuna` instalado. Pode levar **vários minutos**: treina um "
                 "modelo por tentativa."
             )
             with gr.Row(elem_classes="responsive-grid"):
@@ -300,7 +271,7 @@ def create_optimization_tab():
                         value="val_accuracy",
                     )
                     tune_btn = gr.Button(
-                        "🔍 Buscar melhores hiperparâmetros", variant="primary"
+                        "Buscar melhores hiperparâmetros", variant="primary"
                     )
                 with gr.Column(scale=1):
                     tune_status = gr.Markdown("")
@@ -318,3 +289,33 @@ def create_optimization_tab():
                 ],
                 outputs=[tune_status, tune_best, tune_plot],
             )
+
+        # Configuração pouco frequente: fica por último.
+        with gr.Accordion("Hardware de processamento", open=False):
+            # --- Seção de Hardware ---
+            with gr.Row(elem_classes="responsive-grid"):
+                with gr.Column():
+                    gr.Markdown("Dispositivo usado no processamento.")
+                    devices = get_available_devices()
+                    default_dev = devices[0] if devices else "CPU"
+
+                    with gr.Row(elem_classes="action-row"):
+                        device_dropdown = gr.Dropdown(
+                            choices=devices,
+                            label="Dispositivo",
+                            value=default_dev,
+                            interactive=True
+                        )
+                        apply_dev_btn = gr.Button(
+                            "Aplicar", variant="secondary"
+                        )
+
+                    dev_status = gr.Textbox(
+                        label="Status", value="", interactive=False
+                    )
+
+                    apply_dev_btn.click(
+                        update_device_settings,
+                        inputs=[device_dropdown],
+                        outputs=[dev_status]
+                    )

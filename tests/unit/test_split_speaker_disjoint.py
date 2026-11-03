@@ -92,7 +92,7 @@ def test_interface_pede_disjuncao_por_falante_por_padrao():
     assert "speaker_disjoint=bool(speaker_disjoint)" in fonte, (
         "a interface voltou a criar splits sem passar speaker_disjoint"
     )
-    assert 'label="Disjunção por falante"' in fonte
+    assert 'label="Separar por falante"' in fonte
     # o controle precisa vir LIGADO: o caminho de menor esforco tem de ser o
     # correto, nao o que vaza
     trecho = fonte[fonte.index("pp_speaker_disjoint = gr.Checkbox"):][:200]

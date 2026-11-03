@@ -501,7 +501,7 @@ def _build_duration_histogram(data: Dict) -> plt.Figure:
         ax.hist(df, bins=30, alpha=0.6, color=_DANGER, label=f"Fake (n={len(df)})", edgecolor=_GRID, linewidth=0.3)
 
     ax.set_xlabel("Duração (s)")
-    ax.set_ylabel("Frequencia")
+    ax.set_ylabel("Frequência")
     ax.set_title("Distribuição de Durações")
     ax.legend(facecolor=_FACE, edgecolor=_GRID, labelcolor=_TEXT, fontsize=8)
     fig.tight_layout()
@@ -648,46 +648,49 @@ def _analyze_compatibility(data: Dict) -> Tuple[List[List], str]:
 def create_dataset_management_tab():
     """Cria a aba de Gestao de Dataset."""
 
-    with gr.Tab("📁 Datasets", id="tab_dataset_mgmt"):
+    with gr.Tab("🗂️ Datasets", id="tab_dataset_mgmt"):
         from app.interfaces.gradio.utils.components import page_header
 
         page_header(
-            "📁",
-            "Gestão de Datasets",
-            "Visualize, baixe, pré-processe e analise a compatibilidade dos "
-            "datasets de áudio.",
+            "🗂️",
+            "Datasets",
+            "Veja o que está disponível, baixe, prepare e confira a compatibilidade "
+            "com cada arquitetura.",
         )
 
         with gr.Tabs():
             # ===========================================================
             # SUB-TAB 1: VISÃO GERAL
             # ===========================================================
-            with gr.Tab("Visão Geral", id="tab_ds_overview"):
+            with gr.Tab("Visão geral", id="tab_ds_overview"):
 
-                with gr.Row():
-                    kpi_md = gr.Markdown("*Clique em Atualizar para carregar...*")
+                # A ação vem antes do conteúdo: o botão ficava depois de quatro
+                # gráficos vazios, no fim da página.
+                refresh_btn = gr.Button("Atualizar dados", variant="primary")
+                kpi_md = gr.Markdown(
+                    "*Clique em **Atualizar dados** para contar os arquivos. "
+                    "Em datasets grandes, isso pode levar alguns minutos.*"
+                )
 
-                with gr.Row(elem_classes="responsive-grid plot-grid"):
-                    with gr.Column(scale=1):
-                        plot_class = gr.Plot(label="Distribuição por Classe")
-                    with gr.Column(scale=1):
-                        plot_source = gr.Plot(label="Fontes de Dados")
+                with gr.Column(visible=False) as overview_results:
+                    with gr.Row(elem_classes="responsive-grid plot-grid"):
+                        with gr.Column(scale=1):
+                            plot_class = gr.Plot(label="Distribuição por classe")
+                        with gr.Column(scale=1):
+                            plot_source = gr.Plot(label="Fontes de dados")
 
-                with gr.Row(elem_classes="responsive-grid plot-grid"):
-                    with gr.Column(scale=1):
-                        plot_duration = gr.Plot(label="Distribuição de Durações")
-                    with gr.Column(scale=1):
-                        splits_df = gr.Dataframe(
-                            headers=["Split", "Real", "Fake", "Total"],
-                            label="Resumo dos Splits",
-                            interactive=False,
-                        )
+                    with gr.Row(elem_classes="responsive-grid plot-grid"):
+                        with gr.Column(scale=1):
+                            plot_duration = gr.Plot(label="Distribuição de durações")
+                        with gr.Column(scale=1):
+                            splits_df = gr.Dataframe(
+                                headers=["Partição", "Real", "Fake", "Total"],
+                                label="Resumo das partições",
+                                interactive=False,
+                            )
 
-                with gr.Row(elem_classes="responsive-grid"):
-                    with gr.Column(scale=2):
-                        meta_json = gr.JSON(label="Metadata (splits_metadata.json)")
-                    with gr.Column(scale=1):
-                        refresh_btn = gr.Button("Atualizar Dashboard", variant="primary", size="lg")
+                    with gr.Accordion("Metadados (splits_metadata.json)", open=False):
+                        meta_json = gr.JSON(label="Metadados")
 
                 @ui_safe("Falha ao atualizar a lista")
                 def handle_refresh():
@@ -699,20 +702,20 @@ def create_dataset_management_tab():
                     ratio = real_c / max(fake_c, 1)
                     real_h = data["real_duration_h"]
                     fake_h = data["fake_duration_h"]
-                    splits_ok = "Sim" if data["splits_exist"] else "Nao"
+                    splits_ok = "Sim" if data["splits_exist"] else "Não"
 
                     kpi = (
-                        f"| Metrica | Valor |\n"
+                        f"| Métrica | Valor |\n"
                         f"|---------|-------|\n"
                         f"| Total de Arquivos | **{total:,}** |\n"
                         f"| Amostras Reais | **{real_c:,}** |\n"
                         f"| Amostras Fake | **{fake_c:,}** |\n"
-                        f"| Ratio Real/Fake | **{ratio:.2f}** |\n"
+                        f"| Proporção real/fake | **{ratio:.2f}** |\n"
                         f"| Duração Real | **{real_h:.1f}h** |\n"
                         f"| Duração Fake | **{fake_h:.1f}h** |\n"
                         f"| Duração Total | **{real_h + fake_h:.1f}h** |\n"
-                        f"| Splits Criados | **{splits_ok}** |\n"
-                        f"| Sample Rate | **16 kHz** |\n"
+                        f"| Partições criadas | **{splits_ok}** |\n"
+                        f"| Taxa de amostragem | **16 kHz** |\n"
                         f"| Formato | **WAV PCM 16-bit mono** |"
                     )
 
@@ -723,7 +726,7 @@ def create_dataset_management_tab():
                     strategy = meta_overview.get("split_strategy")
                     extra = ""
                     if strategy:
-                        extra += f"\n| Estratégia de Split | **{strategy}** |"
+                        extra += f"\n| Estratégia de partição | **{strategy}** |"
                     if spk:
                         extra += (
                             f"\n| Falantes (total) | **{spk.get('total', '—')}** |"
@@ -753,6 +756,10 @@ def create_dataset_management_tab():
                 refresh_btn.click(
                     fn=handle_refresh,
                     outputs=[kpi_md, plot_class, plot_source, plot_duration, splits_df, meta_json],
+                ).success(
+                    fn=lambda: gr.update(visible=True),
+                    outputs=[overview_results],
+                    show_progress="hidden",
                 )
 
             # ===========================================================
@@ -774,7 +781,7 @@ def create_dataset_management_tab():
                     with gr.Column(scale=1):
 
                         with gr.Group():
-                            gr.Markdown("**1. Escolher Tier**")
+                            gr.Markdown("#### 1. Escolha o tamanho (tier)")
                             dl_tier = gr.Radio(
                                 choices=[
                                     ("Test — smoke (100/classe)", "test"),
@@ -792,7 +799,7 @@ def create_dataset_management_tab():
                             )
 
                         with gr.Group():
-                            gr.Markdown("**2. Selecionar Fontes**")
+                            gr.Markdown("#### 2. Selecione as fontes")
                             dl_preset = gr.Dropdown(
                                 choices=["— preset —"] + list(_PRESET_SELECTIONS.keys()),
                                 value="— preset —",
@@ -806,7 +813,7 @@ def create_dataset_management_tab():
                             )
 
                         with gr.Group():
-                            gr.Markdown("**3. Configurar Alvo de Balanceamento**")
+                            gr.Markdown("#### 3. Defina o alvo de balanceamento")
                             dl_target = gr.Slider(
                                 minimum=100,
                                 maximum=10_000,
@@ -827,14 +834,13 @@ def create_dataset_management_tab():
                                 visible=True,
                             )
 
-                        gr.Markdown("---")
-                        dl_plan_btn = gr.Button("📋 Calcular Plano", variant="secondary", size="sm")
-                        dl_btn      = gr.Button("⬇️ Iniciar Download Balanceado", variant="primary")
+                        dl_plan_btn = gr.Button("Calcular plano", variant="secondary")
+                        dl_btn      = gr.Button("Iniciar download balanceado", variant="primary")
 
                     # ── Plano + readiness + log (direita) ──────────────
                     with gr.Column(scale=2):
                         dl_plan_md = gr.Markdown(
-                            "*Selecione as fontes e clique em **Calcular Plano** para ver a "
+                            "*Selecione as fontes e clique em **Calcular plano** para ver a "
                             "distribuição balanceada antes de baixar.*"
                         )
                         dl_readiness_md = gr.Markdown(
@@ -1255,33 +1261,40 @@ def create_dataset_management_tab():
             with gr.Tab("Pré-processamento", id="tab_ds_preprocess"):
 
                 gr.Markdown(
-                    "### Pipeline de Pré-processamento\n"
-                    "Valide, normalize, remova duplicatas e crie splits train/val/test."
+                    "Prepare o dataset nesta ordem: limpe os arquivos e depois crie as "
+                    "partições de treino, validação e teste."
                 )
 
                 with gr.Row(elem_classes="responsive-grid"):
-                    with gr.Column(scale=1):
-                        pp_validate_btn = gr.Button("Validar Dataset", variant="secondary")
-                        pp_normalize_btn = gr.Button("Normalizar Áudio", variant="secondary")
-                        pp_dedup_btn = gr.Button("Remover Duplicatas", variant="secondary")
-                        gr.Markdown("---")
-                        pp_train_ratio = gr.Slider(0.6, 0.9, value=0.8, step=0.05, label="Train ratio")
-                        pp_val_ratio = gr.Slider(0.05, 0.2, value=0.1, step=0.05, label="Val ratio")
-                        pp_speaker_disjoint = gr.Checkbox(
-                            value=True,
-                            label="Disjunção por falante",
-                            info=(
-                                "Cada locutor fica INTEIRAMENTE em um só split. "
-                                "Sem isso, a mesma voz aparece em treino e teste, "
-                                "e a métrica passa a medir memorização de timbre "
-                                "em vez de detecção de síntese — é o protocolo "
-                                "que o benchmark usa."
-                            ),
-                        )
-                        pp_splits_btn = gr.Button("Criar partições", variant="primary")
-                        gr.Markdown("---")
-                        pp_full_btn = gr.Button("Fluxo completo", variant="primary")
-                        pp_zip_btn = gr.Button("Criar ZIP para Upload", variant="secondary")
+                    with gr.Column(scale=1, min_width=300):
+                        with gr.Group():
+                            gr.Markdown("#### 1. Limpeza")
+                            pp_validate_btn = gr.Button("Validar dataset", variant="secondary")
+                            pp_normalize_btn = gr.Button("Normalizar áudio", variant="secondary")
+                            pp_dedup_btn = gr.Button("Remover duplicatas", variant="secondary")
+                        with gr.Group():
+                            gr.Markdown("#### 2. Partições")
+                            pp_train_ratio = gr.Slider(
+                                0.6, 0.9, value=0.8, step=0.05, label="Proporção de treino"
+                            )
+                            pp_val_ratio = gr.Slider(
+                                0.05, 0.2, value=0.1, step=0.05, label="Proporção de validação"
+                            )
+                            pp_speaker_disjoint = gr.Checkbox(
+                                value=True,
+                                label="Separar por falante",
+                                info=(
+                                    "Cada locutor fica inteiro em uma só partição. Sem "
+                                    "isso, a mesma voz aparece em treino e teste, e a "
+                                    "métrica passa a medir memorização de timbre em vez "
+                                    "de detecção de síntese. É o protocolo do benchmark."
+                                ),
+                            )
+                            pp_splits_btn = gr.Button("Criar partições", variant="primary")
+                        with gr.Group():
+                            gr.Markdown("#### Atalhos")
+                            pp_full_btn = gr.Button("Executar o fluxo completo", variant="secondary")
+                            pp_zip_btn = gr.Button("Criar ZIP para envio", variant="secondary")
 
                     with gr.Column(scale=2):
                         pp_log = gr.Textbox(
@@ -1293,7 +1306,7 @@ def create_dataset_management_tab():
                         pp_summary = gr.Markdown("*Aguardando...*")
                         pp_issues_df = gr.Dataframe(
                             headers=["Tipo", "Quantidade", "Detalhes"],
-                            label="Problemas Encontrados",
+                            label="Problemas encontrados",
                             interactive=False,
                         )
 
@@ -1509,20 +1522,19 @@ def create_dataset_management_tab():
             with gr.Tab("Compatibilidade", id="tab_ds_compat"):
 
                 gr.Markdown(
-                    "### Analise de Compatibilidade\n"
-                    "Verifica se o dataset atual e compativel com cada uma das 14 arquiteturas de deteccao."
+                    "Verifica se o dataset atual é compatível com cada uma das 14 arquiteturas de deteccao."
                 )
 
-                compat_btn = gr.Button("Analisar Compatibilidade", variant="primary")
+                compat_btn = gr.Button("Analisar compatibilidade", variant="primary")
 
                 compat_df = gr.Dataframe(
-                    headers=["Arquitetura", "Tipo", "Status", "Recomendacoes"],
-                    label="Compatibilidade por Arquitetura",
+                    headers=["Arquitetura", "Tipo", "Status", "Recomendações"],
+                    label="Compatibilidade por arquitetura",
                     interactive=False,
                     wrap=True,
                 )
 
-                with gr.Accordion("Recomendacoes Detalhadas", open=False):
+                with gr.Accordion("Recomendações detalhadas", open=False):
                     compat_details = gr.Markdown("*Execute a análise para ver recomendações...*")
 
                 # Resumo geral

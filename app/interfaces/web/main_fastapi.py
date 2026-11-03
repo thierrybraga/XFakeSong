@@ -129,6 +129,9 @@ if not _running_under_pytest() and not _api_only_mode():
         "path": "/gradio",
         "allowed_paths": [str(gradio_exports_dir)],
         "auth": get_gradio_auth(),
+        # A tela de login do Gradio não recebe o CSS nem o título da aplicação: esta
+        # mensagem é o único lugar para dizer onde a pessoa está entrando.
+        "auth_message": "SpeechChecker: detecção de áudio sintético",
         **gradio_appearance,
     }
     if "blocked_paths" in mount_parameters:

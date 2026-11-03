@@ -1,3 +1,4 @@
+import html
 import logging
 import os
 from pathlib import Path
@@ -40,7 +41,8 @@ configure_logging(
 )
 logger = logging.getLogger("gradio_app")
 
-# SEO e Metadados
+# SEO e Metadados. O ícone embutido evita o `GET /favicon.ico -> 404` a cada
+# abertura e mantém a aplicação sem dependência externa.
 _HEAD_HTML = """
 <meta name="description"
  content="SpeechChecker Platform - Plataforma avançada para detecção, análise e
@@ -59,6 +61,8 @@ _HEAD_HTML = """
 <meta property="og:type" content="website">
 <meta property="og:locale" content="pt_BR">
 <meta name="theme-color" content="#0f172a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'
+ viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🛡️%3C/text%3E%3C/svg%3E">
 """
 # noqa: E501
 
@@ -105,7 +109,8 @@ from app.interfaces.gradio.tabs import (  # noqa: E402
     create_voice_profiles_tab,
 )
 
-# Configuração do Tema — Dark Mode Profissional
+# Tema com os dois modos declarados. Antes os valores "claros" repetiam os escuros e
+# o modo claro era remendado por CSS, o que deixava componentes nativos de fora.
 theme = gr.themes.Base(
     primary_hue="blue",
     secondary_hue="slate",
@@ -114,62 +119,71 @@ theme = gr.themes.Base(
     font_mono=["JetBrains Mono", "ui-monospace", "monospace"],
 ).set(
     # Backgrounds
-    body_background_fill="#0f172a",
+    body_background_fill="#f8fafc",
     body_background_fill_dark="#0f172a",
-    background_fill_primary="#1e293b",
+    background_fill_primary="#ffffff",
     background_fill_primary_dark="#1e293b",
-    background_fill_secondary="#0f172a",
+    background_fill_secondary="#f1f5f9",
     background_fill_secondary_dark="#0f172a",
     # Borders
-    border_color_primary="#334155",
+    border_color_primary="#e2e8f0",
     border_color_primary_dark="#334155",
-    block_border_color="#334155",
+    block_border_color="#e2e8f0",
     block_border_color_dark="#334155",
     # Text
-    body_text_color="#f1f5f9",
+    body_text_color="#0f172a",
     body_text_color_dark="#f1f5f9",
-    body_text_color_subdued="#94a3b8",
-    body_text_color_subdued_dark="#94a3b8",
+    body_text_color_subdued="#475569",
+    body_text_color_subdued_dark="#a3b1c6",
     # Buttons
     # Gradiente levemente mais escuro que a marca para manter contraste AA
     # do texto branco sobre a extremidade ciano (espelha --xf-gradient no CSS).
-    button_primary_background_fill="linear-gradient(135deg, #2563eb, #0891b2)",
+    button_primary_background_fill="linear-gradient(135deg, #2563eb, #0e7490)",
+    button_primary_background_fill_dark="linear-gradient(135deg, #2563eb, #0891b2)",
     button_primary_background_fill_hover="linear-gradient(135deg, #1d4ed8, #0e7490)",
+    button_primary_background_fill_hover_dark=(
+        "linear-gradient(135deg, #1d4ed8, #0e7490)"
+    ),
     button_primary_text_color="#ffffff",
-    button_secondary_background_fill="#1e293b",
-    button_secondary_text_color="#f1f5f9",
+    button_primary_text_color_dark="#ffffff",
+    button_secondary_background_fill="#ffffff",
+    button_secondary_background_fill_dark="#1e293b",
+    button_secondary_text_color="#0f172a",
+    button_secondary_text_color_dark="#f1f5f9",
     # Blocks
-    block_background_fill="#1e293b",
+    block_background_fill="#ffffff",
     block_background_fill_dark="#1e293b",
     block_title_text_weight="600",
-    block_title_text_color="#f1f5f9",
+    block_title_text_color="#0f172a",
     block_title_text_color_dark="#f1f5f9",
-    block_label_text_color="#94a3b8",
-    block_label_text_color_dark="#94a3b8",
+    block_label_text_color="#475569",
+    block_label_text_color_dark="#a3b1c6",
     block_label_text_weight="500",
-    block_shadow="0 4px 24px rgba(0, 0, 0, 0.25)",
-    block_shadow_dark="0 4px 24px rgba(0, 0, 0, 0.25)",
-    # Inputs
-    input_background_fill="#0f172a",
+    block_shadow="0 1px 3px rgba(15, 23, 42, 0.08)",
+    block_shadow_dark="0 1px 3px rgba(0, 0, 0, 0.3)",
+    # Inputs: a borda precisa de contraste 3:1 com o cartão para o campo ser visível.
+    input_background_fill="#ffffff",
     input_background_fill_dark="#0f172a",
-    input_border_color="#334155",
-    input_border_color_dark="#334155",
-    input_border_color_focus="#3b82f6",
-    input_border_color_focus_dark="#3b82f6",
+    input_border_color="#94a3b8",
+    input_border_color_dark="#64748b",
+    input_border_color_focus="#2563eb",
+    input_border_color_focus_dark="#60a5fa",
     # Shadow
-    shadow_spread="8px",
+    shadow_spread="4px",
 )
 
 
 # =====================================================================
-# UI Fase 1: Status bar global (sempre visível no topo)
+# Barra superior (sempre visível)
 # =====================================================================
 
 
 def _render_status_bar() -> str:
-    """HTML do status bar global com counts e versão.
+    """HTML da barra superior: marca, estado real e contagens.
 
     Lê dados ao vivo a cada render via dashboard collectors (fallback seguro).
+    O estado vem dos modelos: "Operacional" fixo não dizia nada, inclusive sem nenhum
+    modelo para analisar. O texto completo da GPU fica no `title` e no Painel.
     """
     try:
         from app.interfaces.gradio.tabs.dashboard import (
@@ -184,50 +198,42 @@ def _render_status_bar() -> str:
     except Exception:
         models, profiles, gpu = 0, 0, "?"
 
-    try:
-        from app.core.feedback import get_feedback_summary
-
-        feedback = get_feedback_summary()
-        unread = int(feedback.get("unread", 0))
-        counts = feedback.get("counts", {})
-        warning_count = int(counts.get("warning", 0))
-        error_count = int(counts.get("error", 0)) + int(counts.get("critical", 0))
-    except Exception:
-        unread, warning_count, error_count = 0, 0, 0
-
-    gpu_ok = gpu.startswith("✓")
-    gpu_short = "GPU ✓" if gpu_ok else ("GPU ✗" if gpu.startswith("✗") else "GPU ?")
-    gpu_class = "status-ok" if gpu_ok else "status-muted"
-    feedback_class = (
-        "status-danger"
-        if error_count
-        else ("status-warning" if warning_count else "status-muted")
-    )
-    unread_html = f'<span class="notif-badge">{unread}</span>' if unread else ""
+    pronto = models > 0
+    estado_classe = "status-ok" if pronto else "status-warning"
+    estado_texto = "Pronto" if pronto else "Sem modelos"
+    hardware = "GPU" if gpu.startswith("✓") else "CPU"
     return f"""
     <div id="status_bar_inner">
-      <span class="brand">
-        🛡️ SpeechChecker <span class="brand-version">v{__version__}</span>
+      <h1 class="brand">
+        <span aria-hidden="true">🛡️</span> SpeechChecker
+        <span class="brand-version">v{__version__}</span>
+      </h1>
+      <span class="status-pill {estado_classe}">
+        <span class="dot" aria-hidden="true"></span>{estado_texto}
       </span>
-      <span class="status-pill status-online">
-        <span class="dot"></span>
-        <span class="label">Operacional</span>
-      </span>
-      <span class="status-pill {gpu_class}">
-        {gpu_short}
-      </span>
-      <span class="status-pill status-muted">
+      <span class="status-pill" title="{html.escape(gpu, quote=True)}">{hardware}</span>
+      <span class="status-pill">
         <span class="status-value">{models}</span> modelos
       </span>
-      <span class="status-pill status-muted">
+      <span class="status-pill">
         <span class="status-value">{profiles}</span> perfis
-      </span>
-      <span class="status-pill {feedback_class}">
-        Notificações {unread_html}
-        <span class="status-detail">warn:{warning_count} err:{error_count}</span>
       </span>
     </div>
     """
+
+
+def _refresh_model_choices():
+    from app.interfaces.gradio.tabs.detection import refresh_model_choices
+
+    return gr.update(choices=refresh_model_choices())
+
+
+def _notif_label() -> str:
+    """Sino com a contagem do que pede atenção; sem número quando não há nada."""
+    from app.interfaces.gradio.utils.notifications import attention_count
+
+    pendentes = attention_count()
+    return f"🔔 {pendentes}" if pendentes else "🔔"
 
 
 def _render_feedback_panel() -> str:
@@ -239,22 +245,22 @@ def _render_feedback_panel() -> str:
 
 
 def _refresh_global_feedback():
-    return _render_status_bar(), _render_feedback_panel()
+    return _render_status_bar(), _render_feedback_panel(), _notif_label()
 
 
 def _mark_feedback_read_ui():
     from app.interfaces.gradio.utils.notifications import mark_all_read
 
     mark_all_read()
-    return _render_status_bar(), _render_feedback_panel()
+    return _render_status_bar(), _render_feedback_panel(), _notif_label()
 
 
 def _clear_feedback_ui():
     from app.interfaces.gradio.utils.notifications import clear_history, notify_info
 
     removed = clear_history()
-    notify_info(f"Historico de feedback limpo ({removed} eventos removidos)")
-    return _render_status_bar(), _render_feedback_panel()
+    notify_info(f"Histórico de notificações limpo ({removed} removidas)")
+    return _render_status_bar(), _render_feedback_panel(), _notif_label()
 
 
 # Desde o Gradio 6 a aparência vai para `launch`/`mount_gradio_app`, não para
@@ -262,9 +268,48 @@ def _clear_feedback_ui():
 # funciona, mas sem o tema e o CSS. Nenhum teste de lógica percebe.
 APPEARANCE = {"theme": theme, "css": _CUSTOM_CSS, "head": _HEAD_HTML}
 
+# O tema e o painel mudam só no navegador: resposta imediata e nenhuma ida ao servidor.
+# A preferência é a classe `.dark` do próprio Gradio. O padrão continua escuro porque
+# as figuras são geradas com fundo escuro.
+_THEME_LABELS = """
+    const rotularTema = (escuro) => {
+        const botao = document.querySelector('#theme_toggle');
+        if (!botao) return;
+        const alvo = escuro ? 'Mudar para o tema claro' : 'Mudar para o tema escuro';
+        botao.textContent = escuro ? '🌙' : '☀️';
+        botao.setAttribute('aria-label', alvo);
+        botao.setAttribute('title', alvo);
+    };
+"""
+_THEME_TOGGLE_JS = "() => {" + _THEME_LABELS + """
+    const escuro = !document.body.classList.contains('dark');
+    document.body.classList.toggle('dark', escuro);
+    try { localStorage.setItem('xf_theme', escuro ? 'dark' : 'light'); } catch (e) {}
+    rotularTema(escuro);
+}"""
+_ON_LOAD_JS = "() => {" + _THEME_LABELS + """
+    let salvo = 'dark';
+    try { salvo = localStorage.getItem('xf_theme') || 'dark'; } catch (e) {}
+    const escuro = salvo !== 'light';
+    document.body.classList.toggle('dark', escuro);
+    rotularTema(escuro);
+    const sino = document.querySelector('#notif_toggle');
+    if (sino) {
+        sino.setAttribute('aria-label', 'Abrir ou fechar as notificações');
+        sino.setAttribute('title', 'Notificações');
+        sino.setAttribute('aria-expanded', 'false');
+    }
+}"""
+_NOTIF_TOGGLE_JS = """() => {
+    const painel = document.querySelector('#notif_panel');
+    if (!painel) return;
+    const aberto = painel.classList.toggle('open');
+    document.querySelector('#notif_toggle')?.setAttribute('aria-expanded', String(aberto));
+}"""
+
 
 # =====================================================================
-# Interface principal (cinco seções funcionais)
+# Interface principal
 # =====================================================================
 
 def create_interface() -> "gr.Blocks":
@@ -289,49 +334,63 @@ def create_interface() -> "gr.Blocks":
 
         # --- Container da Aplicação ---
         with gr.Column(visible=True):
-            # Status bar global + toolbar (sempre visível)
             with gr.Row(elem_id="topbar_row"):
-                with gr.Column(scale=8, min_width=0):
-                    status_bar_html = gr.HTML(_render_status_bar(), elem_id="status_bar")
-                with gr.Column(scale=1, min_width=120):
-                    # Preferência visual do tema, persistida no navegador.
-                    with gr.Row():
-                        theme_toggle_btn = gr.Button(
-                            "🌙",
-                            elem_classes="toolbar-toggle",
-                            size="sm",
-                            min_width=44,
-                            scale=0,
-                        )
+                status_bar_html = gr.HTML(
+                    _render_status_bar(), elem_id="status_bar", scale=1
+                )
+                notif_toggle_btn = gr.Button(
+                    _notif_label(),
+                    elem_id="notif_toggle",
+                    elem_classes="toolbar-toggle",
+                    scale=0,
+                    min_width=44,
+                )
+                theme_toggle_btn = gr.Button(
+                    "🌙",
+                    elem_id="theme_toggle",
+                    elem_classes="toolbar-toggle",
+                    scale=0,
+                    min_width=44,
+                )
 
-            with gr.Accordion("🔔 Notificações pendentes", open=False):
+            # Fechado por padrão: uma faixa fixa "Notificações pendentes" ocupava
+            # espaço em todas as telas, mesmo sem nada para mostrar.
+            with gr.Group(elem_id="notif_panel"):
+                gr.Markdown("#### Notificações")
                 feedback_html = gr.HTML(
                     _render_feedback_panel(),
                     elem_id="global_feedback_center",
                 )
-                with gr.Row():
-                    feedback_refresh_btn = gr.Button("🔄 Atualizar", size="sm", scale=0)
-                    feedback_read_btn = gr.Button("Marcar lidas", size="sm", scale=0)
-                    feedback_clear_btn = gr.Button("Limpar histórico", size="sm", scale=0)
+                with gr.Row(elem_classes="action-row"):
+                    feedback_refresh_btn = gr.Button("Atualizar", size="sm")
+                    feedback_read_btn = gr.Button("Marcar como lidas", size="sm")
+                    feedback_clear_btn = gr.Button("Limpar histórico", size="sm")
 
-            # Navegação visual única (cinco seções):
-            # 🏠 Painel · 🎯 Detectar · 🔬 Investigar · 🎓 Treinar · 🗂️ Gerenciar
-            with gr.Tabs():
-                # 🏠 Painel — landing page com KPIs, status e atividade recente
-                # (a aba define seu próprio rótulo top-level "🏠 Painel")
-                create_dashboard_tab()
+            # Navegação: no máximo dois níveis até a tela de trabalho, agrupando pelo
+            # que a pessoa quer fazer. Em ordem de uso: ver o estado, analisar,
+            # aprofundar, comparar com uma voz conhecida, treinar e cuidar dos dados.
+            with gr.Tabs(elem_id="main_tabs") as main_tabs:
+                create_dashboard_tab(main_tabs)
 
-                # 🎯 Detectar — análise de áudio (single + lote) e perfis de voz
-                with gr.Tab("🎯 Detectar", id="tab_detect"):
+                with gr.Tab("🎯 Detectar", id="tab_detect") as detect_tab:
                     with gr.Tabs():
-                        create_detection_tab()
-                        create_voice_profiles_tab()
+                        model_select = create_detection_tab()
+                        create_history_tab()
+                # Um modelo salvo pelo assistente aparece sem recarregar a página.
+                if model_select is not None:
+                    detect_tab.select(
+                        fn=_refresh_model_choices,
+                        outputs=[model_select],
+                        show_progress="hidden",
+                    )
 
-                # 🔬 Investigar — análise forense + explicabilidade (a aba define
-                # seu próprio rótulo top-level "🔬 Investigar")
-                create_forensic_analysis_tab()
+                with gr.Tab("🔬 Investigar", id="tab_investigate"):
+                    with gr.Tabs():
+                        create_forensic_analysis_tab()
+                        create_features_tab()
 
-                # 🎓 Treinar — assistente linear + otimização
+                create_voice_profiles_tab()
+
                 with gr.Tab("🎓 Treinar", id="tab_train"):
                     training_enabled = os.getenv(
                         "ENABLE_TRAINING", "true"
@@ -348,12 +407,7 @@ def create_interface() -> "gr.Blocks":
                             "já treinados."
                         )
 
-                # 🗂️ Gerenciar — datasets, features e histórico
-                with gr.Tab("🗂️ Gerenciar", id="tab_admin"):
-                    with gr.Tabs():
-                        create_dataset_management_tab()
-                        create_features_tab()
-                        create_history_tab()
+                create_dataset_management_tab()
 
             # Auto-refresh da barra de status.
             #
@@ -364,6 +418,7 @@ def create_interface() -> "gr.Blocks":
             # atualizar ao lado cobre quem precisa do estado imediato — e
             # XFAKE_STATUS_REFRESH_S permite ajustar sem editar codigo.
             # 0 (ou negativo) desliga o timer e deixa so o botao.
+            feedback_outputs = [status_bar_html, feedback_html, notif_toggle_btn]
             try:
                 _sb_interval = float(os.getenv("XFAKE_STATUS_REFRESH_S", "60"))
             except (TypeError, ValueError):
@@ -374,7 +429,8 @@ def create_interface() -> "gr.Blocks":
                     _sb_timer.tick(
                         fn=_refresh_global_feedback,
                         inputs=[],
-                        outputs=[status_bar_html, feedback_html],
+                        outputs=feedback_outputs,
+                        show_progress="hidden",
                     )
                 except Exception:
                     # gr.Timer ausente em versões antigas — degradação graciosa
@@ -383,27 +439,20 @@ def create_interface() -> "gr.Blocks":
             feedback_refresh_btn.click(
                 fn=_refresh_global_feedback,
                 inputs=[],
-                outputs=[status_bar_html, feedback_html],
+                outputs=feedback_outputs,
             )
             feedback_read_btn.click(
                 fn=_mark_feedback_read_ui,
                 inputs=[],
-                outputs=[status_bar_html, feedback_html],
+                outputs=feedback_outputs,
             )
             feedback_clear_btn.click(
                 fn=_clear_feedback_ui,
                 inputs=[],
-                outputs=[status_bar_html, feedback_html],
+                outputs=feedback_outputs,
             )
-
-            # ───── Preferência de tema ─────
-            # Estados em memória do servidor (resetam ao recarregar página)
-            theme_state = gr.State("dark")
-
-            # NOTE: o toggle de tema usa um lambda inline com `js=` no .click()
-            # abaixo (aplica data-theme no DOM + persiste em localStorage). Não há
-            # função Python dedicada — a antiga `_toggle_theme` foi removida por ser
-            # código morto (nunca era chamada).
+            notif_toggle_btn.click(fn=None, js=_NOTIF_TOGGLE_JS)
+            theme_toggle_btn.click(fn=None, js=_THEME_TOGGLE_JS)
 
             # SELETOR DE IDIOMA REMOVIDO (2026-07-28).
             #
@@ -421,62 +470,7 @@ def create_interface() -> "gr.Blocks":
             #
             # `utils/i18n.py` permanece, com o dicionario de traducoes intacto.
 
-            # JS injection helper: usa o atributo `js=` do click handler
-            try:
-                theme_toggle_btn.click(
-                    fn=lambda t: (
-                        "light" if t == "dark" else "dark",
-                        gr.update(value="☀" if t == "dark" else "🌙"),
-                    ),
-                    inputs=[theme_state],
-                    outputs=[theme_state, theme_toggle_btn],
-                    js="""(theme) => {
-                        const next = theme === 'dark' ? 'light' : 'dark';
-                        document.body.setAttribute('data-theme', next);
-                        try { localStorage.setItem('xf_theme', next); } catch(e) {}
-                        return [theme];
-                    }""",
-                )
-            except TypeError:
-                # Versões mais antigas de Gradio não aceitam js= em click
-                theme_toggle_btn.click(
-                    fn=lambda t: (
-                        "light" if t == "dark" else "dark",
-                        gr.update(value="☀" if t == "dark" else "🌙"),
-                    ),
-                    inputs=[theme_state],
-                    outputs=[theme_state, theme_toggle_btn],
-                )
-
-
-            # Restaura tema do localStorage no load (se disponível)
-            try:
-                demo.load(
-                    fn=None,
-                    inputs=[],
-                    outputs=[theme_state, theme_toggle_btn],
-                    js="""() => {
-                        let saved = 'dark';
-                        try {
-                            saved = localStorage.getItem('xf_theme') || 'dark';
-                            document.body.setAttribute('data-theme', saved);
-                        } catch(e) {}
-                        // A11y: os toggles da toolbar são botões só-com-emoji;
-                        // adiciona rótulos acessíveis para leitores de tela.
-                        try {
-                            const sel = 'button.toolbar-toggle';
-                            document.querySelectorAll(sel).forEach((btn) => {
-                                const label = 'Alternar tema claro/escuro';
-                                btn.setAttribute('aria-label', label);
-                                btn.setAttribute('title', label);
-                            });
-                        } catch(e) {}
-                        return [saved, saved === 'light' ? '☀' : '🌙'];
-                    }""",
-                )
-            except Exception:
-                pass
-
+            demo.load(fn=None, js=_ON_LOAD_JS)
 
     # PROD.5: Queue com limites para evitar DoS via flood de requests:
     # - default_concurrency_limit=20: workers paralelos (matches detection.py expectation)

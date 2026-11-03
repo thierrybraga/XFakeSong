@@ -14,6 +14,10 @@ import numpy as np
 import pandas as pd
 
 from app.core.contracts.audio import AudioData
+from app.domain.services.detection.operating_point import (
+    PONTO_DE_DECISAO,
+    fake_score,
+)
 from app.domain.services.forensic_measures import (
     RADAR_AXES,
     batch_report,
@@ -57,19 +61,18 @@ def _limiar_de(result, padrao: float = 0.5) -> float:
 
 
 def _pontuacao_por_segmento(service, y, sr, segment_duration: float = 1.0):
-    """``(tempos, p_fake, limiar)`` por trecho, com 50% de sobreposição.
+    """``(tempos, pontuações, limite)`` por trecho, com 50% de sobreposição.
 
-    ``result.data.confidence`` é a confiança do VEREDITO: ``p_real`` quando ele é
-    real. Plotada como probabilidade de fake, invertia a leitura: num áudio real
-    com ``p_fake`` 0,02, a linha marcava 0,98 e pintava o trecho como fake.
+    A mesma escala do veredito: P(fake) centrada no limiar do modelo, com o limite em
+    0,5 (``operating_point.py``). ``result.data.confidence`` não serve aqui: é a
+    confiança no VEREDITO, que num trecho real sobe enquanto a pontuação desce.
 
     Trecho em que a detecção falha fica de fora. Antes entrava como 0,5, um número
-    que ninguém mediu e que cai de um lado ou do outro do limiar do modelo.
+    que ninguém mediu e que cai em cima do limite.
     """
     segment_samples = int(sr * segment_duration)
     hop_samples = segment_samples // 2  # 50% overlap
     tempos, pontos = [], []
-    limiar = 0.5
     for start in range(0, len(y) - segment_samples, hop_samples):
         segment = y[start:start + segment_samples]
         seg_audio = AudioData(
@@ -78,15 +81,16 @@ def _pontuacao_por_segmento(service, y, sr, segment_duration: float = 1.0):
         try:
             result = service.detect_single(seg_audio)
             if result.status.name == "SUCCESS":
-                pontos.append(float(result.data.probabilities["fake"]))
+                pontos.append(
+                    fake_score(result.data.probabilities["fake"], _limiar_de(result))
+                )
                 tempos.append((start + segment_samples / 2) / sr)
-                limiar = _limiar_de(result, limiar)
         except Exception as e:
             # FE.7: log do segmento que falhou (útil em loops grandes)
             logger.debug(
                 f"Segmento [{start}:{start+segment_samples}] falhou: {e}"
             )
-    return np.array(tempos), np.array(pontos), limiar
+    return np.array(tempos), np.array(pontos), PONTO_DE_DECISAO
 
 
 def run_forensic_analysis(audio_path):
@@ -122,7 +126,7 @@ def run_forensic_analysis(audio_path):
         service = _get_detection_service()
         if service:
             try:
-                # Analise segmentada: P(fake) e o limiar que decide
+                # Analise segmentada: pontuação e o limite que decide
                 seg_times, seg_scores, limiar = _pontuacao_por_segmento(
                     service, y, sr
                 )
@@ -182,7 +186,6 @@ def run_batch_analysis(files):
         service = _get_detection_service()
 
         results = []
-        limiar = 0.5
         for file_obj in files:
             file_path = file_obj.name if hasattr(file_obj, 'name') else str(file_obj)
             filename = Path(file_path).name
@@ -197,12 +200,13 @@ def run_batch_analysis(files):
                 if service:
                     result = service.detect_single(audio_data)
                     if result.status.name == "SUCCESS":
-                        limiar = _limiar_de(result, limiar)
                         results.append({
                             'filename': filename,
                             'is_fake': result.data.is_fake,
                             'confidence': float(result.data.confidence),
-                            'p_fake': float(result.data.probabilities["fake"]),
+                            'pontuacao': fake_score(
+                                result.data.probabilities["fake"], _limiar_de(result)
+                            ),
                             'model_name': result.data.model_name,
                             'duration': float(len(y) / sr)
                         })
@@ -241,10 +245,10 @@ def run_batch_analysis(files):
         confidences = np.array([r['confidence'] for r in results])
 
         fig_pie = batch_viz.plot_batch_summary_pie(n_real, n_fake)
-        # A tabela mostra a confiança do veredito; o histograma, P(fake) e só do
-        # que foi medido: arquivo que falhou tem confiança 0, mas nenhum P(fake).
-        p_fakes = np.array([r['p_fake'] for r in results if 'p_fake' in r])
-        fig_conf = batch_viz.plot_fake_score_distribution(p_fakes, limiar)
+        # A tabela mostra a confiança do veredito; o histograma, a pontuação e só do
+        # que foi medido: arquivo que falhou tem confiança 0, mas nenhuma pontuação.
+        pontuacoes = np.array([r['pontuacao'] for r in results if 'pontuacao' in r])
+        fig_conf = batch_viz.plot_fake_score_distribution(pontuacoes, PONTO_DE_DECISAO)
 
         # Build results table
         table_data = []
@@ -356,116 +360,108 @@ def export_batch_report(files):
 def create_forensic_analysis_tab():
     """Cria a aba de Analise Forense no Gradio."""
 
-    with gr.Tab("🔬 Investigar", id="tab_forensic"):
+    with gr.Tab("🔬 Análise forense", id="tab_forensic"):
         page_header(
             "🔬",
-            "Investigar",
-            "Análise forense completa para perícia em áudios digitais: "
-            "espectrogramas, fase, formantes, jitter/shimmer, HNR e "
-            "explicabilidade do modelo.",
+            "Análise forense",
+            "Examine um áudio em detalhe: espectrogramas, fase, formantes, "
+            "jitter/shimmer, HNR e explicabilidade do modelo.",
         )
 
         # ===== Input Section =====
         with gr.Row(elem_classes="responsive-grid"):
-            with gr.Column(scale=1):
+            with gr.Column(scale=1, min_width=320):
                 audio_input = gr.Audio(
                     type="filepath",
-                    label="Arquivo de Áudio para Análise",
+                    label="Arquivo de áudio para análise",
                     sources=["upload"]
                 )
                 analyze_btn = gr.Button(
-                    "▶ Executar Análise Forense",
+                    "Executar análise forense",
                     variant="primary", size="lg"
                 )
-            with gr.Column(scale=2):
+            with gr.Column(scale=1, min_width=320):
                 info_output = gr.Markdown(
                     label="Informações do Áudio",
-                    value="*Faça upload de um arquivo de áudio para iniciar.*"
+                    value=(
+                        "#### Informações do áudio\n"
+                        "*Envie um arquivo para ver duração, taxa de amostragem "
+                        "e as figuras da análise.*"
+                    ),
                 )
-
-        gr.Markdown("---")
 
         # ===== Forensic Visualizations (Sub-tabs) =====
-        with gr.Tabs():
+        # Só depois da análise: 13 figuras vazias parecem erro.
+        with gr.Column(visible=False) as forensic_results:
+            with gr.Tabs():
 
-            # --- Tab: Espectrogramas ---
-            with gr.Tab("📊 Espectrogramas"):
-                gr.Markdown("#### Comparação Multi-Espectrograma")
-                plot_multi_spec = gr.Plot(
-                    label="Mel / STFT / CQT / LFCC")
-                with gr.Row(elem_classes="responsive-grid plot-grid"):
-                    with gr.Column():
-                        gr.Markdown("#### Espectro de Fase")
-                        plot_phase = gr.Plot(
-                            label="Fase STFT (revela artefatos de sintese)")
-                    with gr.Column():
-                        gr.Markdown("#### Cromograma")
-                        plot_chroma = gr.Plot(
-                            label="Características cromáticas (12 classes de pitch)")
+                # --- Tab: Espectrogramas ---
+                with gr.Tab("Espectrogramas"):
+                    plot_multi_spec = gr.Plot(
+                        label="Comparação: Mel, STFT, CQT e LFCC")
+                    with gr.Row(elem_classes="responsive-grid plot-grid"):
+                        with gr.Column():
+                            plot_phase = gr.Plot(
+                                label="Espectro de fase (revela artefatos de síntese)")
+                        with gr.Column():
+                            plot_chroma = gr.Plot(
+                                label="Cromograma (12 classes de pitch)")
 
-            # --- Tab: Análise Espectral ---
-            with gr.Tab("🌈 Análise Espectral"):
-                gr.Markdown("#### Envelope espectral e formantes")
-                plot_formants = gr.Plot(
-                    label="Espectrograma com trilhas de formantes F1-F4")
-                with gr.Row(elem_classes="responsive-grid plot-grid"):
-                    with gr.Column():
-                        gr.Markdown("#### Taxa de cruzamento por zero")
-                        plot_zcr = gr.Plot(
-                            label="Taxa de cruzamento por zero temporal")
-                    with gr.Column():
-                        gr.Markdown("#### Características espectrais e temporais")
-                        plot_spectral = gr.Plot(
-                            label="Centroide / Rolloff / Bandwidth")
+                # --- Tab: Análise Espectral ---
+                with gr.Tab("Espectro"):
+                    plot_formants = gr.Plot(
+                        label="Espectrograma com trilhas de formantes F1-F4")
+                    with gr.Row(elem_classes="responsive-grid plot-grid"):
+                        with gr.Column():
+                            plot_zcr = gr.Plot(
+                                label="Taxa de cruzamento por zero")
+                        with gr.Column():
+                            plot_spectral = gr.Plot(
+                                label="Centroide, rolloff e largura de banda")
 
-            # --- Tab: Análise Temporal ---
-            with gr.Tab("⏱️ Análise Temporal"):
-                gr.Markdown("#### Contorno de Energia")
-                plot_energy = gr.Plot(
-                    label="Energia RMS com detecção de silêncio")
-                with gr.Row(elem_classes="responsive-grid plot-grid"):
-                    with gr.Column():
-                        gr.Markdown("#### HNR Temporal")
-                        plot_hnr = gr.Plot(
-                            label="Relação harmônico-ruído por quadro")
-                    with gr.Column():
-                        gr.Markdown("#### Jitter / Shimmer")
-                        plot_jitter = gr.Plot(
-                            label="Microperturbações vocais")
+                # --- Tab: Análise Temporal ---
+                with gr.Tab("Tempo"):
+                    plot_energy = gr.Plot(
+                        label="Energia RMS com detecção de silêncio")
+                    with gr.Row(elem_classes="responsive-grid plot-grid"):
+                        with gr.Column():
+                            plot_hnr = gr.Plot(
+                                label="Relação harmônico-ruído (HNR) por quadro")
+                        with gr.Column():
+                            plot_jitter = gr.Plot(
+                                label="Jitter e shimmer (microperturbações vocais)")
 
-            # --- Tab: Análise de Pitch ---
-            with gr.Tab("🎵 Análise de Pitch"):
-                gr.Markdown("#### Análise Detalhada de F0")
-                plot_f0 = gr.Plot(
-                    label=(
-                        "Contorno de frequência fundamental com confiança "
-                        "e vibrato"
-                    )
-                )
-
-            # --- Tab: Explicabilidade (XAI) ---
-            # (renomeada de "Análise de Detecção" — são visualizações de
-            # explicabilidade do modelo, não um detector duplicado)
-            with gr.Tab("🧠 Explicabilidade (XAI)"):
-                gr.Markdown(
-                    "#### Visualizações baseadas no modelo de detecção\n"
-                    "*Requer modelo treinado carregado.*"
-                )
-                with gr.Row(elem_classes="responsive-grid plot-grid"):
-                    with gr.Column():
-                        plot_radar = gr.Plot(
-                            label="Importância relativa das características")
-                    with gr.Column():
-                        plot_anomaly = gr.Plot(
-                            label="Mapa de calor de anomalias sobre o espectrograma"
+                # --- Tab: Análise de Pitch ---
+                with gr.Tab("Pitch"):
+                    plot_f0 = gr.Plot(
+                        label=(
+                            "Frequência fundamental (F0) com confiança "
+                            "e vibrato"
                         )
-                gr.Markdown("#### Probabilidade de fake por segmento")
-                plot_confidence = gr.Plot(
-                    label="P(fake) ao longo do áudio, com o limiar do modelo")
+                    )
+
+                # --- Tab: Explicabilidade (XAI) ---
+                # (renomeada de "Análise de Detecção" — são visualizações de
+                # explicabilidade do modelo, não um detector duplicado)
+                with gr.Tab("Explicabilidade do modelo"):
+                    gr.Markdown(
+                        "*Figuras baseadas no modelo de detecção. "
+                        "Requerem um modelo treinado.*"
+                    )
+                    plot_confidence = gr.Plot(
+                        label="Pontuação de voz sintética ao longo do áudio")
+                    with gr.Row(elem_classes="responsive-grid plot-grid"):
+                        with gr.Column():
+                            plot_radar = gr.Plot(
+                                label="Importância relativa das características")
+                        with gr.Column():
+                            plot_anomaly = gr.Plot(
+                                label="Mapa de anomalias sobre o espectrograma"
+                            )
 
         # ===== Event Handlers =====
         # NOTA: a análise em lote foi movida para a aba 🎯 Detectar →
-        # 📦 Análise em Lote. As funções run_batch_analysis/export_batch_report
+        # 📦 Em lote. As funções run_batch_analysis/export_batch_report
         # permanecem neste módulo e são importadas lá.
 
         # Single file analysis
@@ -479,4 +475,9 @@ def create_forensic_analysis_tab():
                 plot_radar, plot_anomaly, plot_confidence,
                 info_output
             ]
+        ).then(
+            fn=lambda audio: gr.update(visible=bool(audio)),
+            inputs=[audio_input],
+            outputs=[forensic_results],
+            show_progress="hidden",
         )

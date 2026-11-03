@@ -1,290 +1,479 @@
-/* Fontes locais do sistema: preserva o funcionamento 100% offline e evita
-   bloquear a primeira pintura aguardando Google Fonts. */
+/* Tema do SpeechChecker sobre o Gradio 6.
+
+   O DOM do Gradio não é contrato: aqui só entram classes que existem nele hoje
+   (.block, .gr-group, .tab-wrapper, label.float, button.center) e as classes
+   próprias aplicadas por elem_classes. O modo escuro é o do próprio Gradio, a classe
+   .dark no body, para que tokens e componentes nativos mudem juntos.
+
+   Fontes locais do sistema: preserva o funcionamento 100% offline e evita bloquear a
+   primeira pintura aguardando Google Fonts. */
 
 :root {
+    color-scheme: light;
+    --xf-bg:            #f8fafc;
+    --xf-bg-elev:       rgba(15, 23, 42, 0.04);
+    --xf-track:         rgba(15, 23, 42, 0.12);
+    --xf-surface:       #ffffff;
+    --xf-surface-hover: #f1f5f9;
+    --xf-border:        #e2e8f0;
+    --xf-border-light:  #cbd5e1;
+    --xf-text:          #0f172a;
+    --xf-text-muted:    #475569;
+    --xf-primary:       #2563eb;
+    --xf-primary-hover: #1d4ed8;
+    --xf-primary-glow:  rgba(37, 99, 235, 0.18);
+    /* Tons escurecidos p/ manter contraste AA sobre superfícies claras */
+    --xf-accent:        #0e7490;
+    --xf-success:       #047857;
+    --xf-warning:       #b45309;
+    --xf-danger:        #dc2626;
+    --xf-danger-text:   #b91c1c;
+    --xf-gradient:      linear-gradient(135deg, #2563eb 0%, #0e7490 100%);
+    --xf-radius:        10px;
+    --xf-radius-lg:     14px;
+    --xf-shadow:        0 1px 3px rgba(15, 23, 42, 0.08);
+    --xf-shadow-lg:     0 4px 24px rgba(15, 23, 42, 0.08);
+    --xf-transition:    all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    --xf-font:          'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --xf-mono:          'JetBrains Mono', ui-monospace, monospace;
+    --xf-gap:           12px;
+    --xf-target:        40px;
+}
+
+.dark {
     color-scheme: dark;
     --xf-bg:            #0f172a;
     --xf-bg-elev:       rgba(15, 23, 42, 0.4);
-    --xf-track:         rgba(15, 23, 42, 0.7);
+    --xf-track:         rgba(148, 163, 184, 0.22);
     --xf-surface:       #1e293b;
     --xf-surface-hover: #334155;
     --xf-border:        #334155;
-    --xf-border-light:  #475569;
+    --xf-border-light:  #64748b;
     --xf-text:          #f1f5f9;
-    --xf-text-muted:    #94a3b8;
-    --xf-primary:       #3b82f6;
-    --xf-primary-hover: #2563eb;
+    --xf-text-muted:    #a3b1c6;
+    --xf-primary:       #60a5fa;
+    --xf-primary-hover: #3b82f6;
     --xf-primary-glow:  rgba(59, 130, 246, 0.25);
-    --xf-accent:        #06b6d4;
-    --xf-success:       #10b981;
-    --xf-warning:       #f59e0b;
+    --xf-accent:        #22d3ee;
+    --xf-success:       #34d399;
+    --xf-warning:       #fbbf24;
     --xf-danger:        #ef4444;
-    /* Gradiente ligeiramente mais escuro que a marca (#3b82f6→#06b6d4) para
-       manter contraste AA do texto branco sobre a extremidade ciano. */
+    --xf-danger-text:   #fca5a5;
+    /* Gradiente ligeiramente mais escuro que a marca para manter contraste AA do
+       texto branco sobre a extremidade ciano. */
     --xf-gradient:      linear-gradient(135deg, #2563eb 0%, #0891b2 100%);
-    --xf-radius:        10px;
-    --xf-radius-lg:     16px;
-    --xf-shadow:        0 4px 24px rgba(0, 0, 0, 0.25);
-    --xf-shadow-lg:     0 8px 40px rgba(0, 0, 0, 0.35);
-    --xf-transition:    all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    --xf-font:          'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
-    --xf-mono:          'JetBrains Mono', ui-monospace, monospace;
+    --xf-shadow:        0 1px 3px rgba(0, 0, 0, 0.3);
+    --xf-shadow-lg:     0 8px 32px rgba(0, 0, 0, 0.35);
 }
 
+/* ===== Base e largura da página =====
+   A largura vem daqui, e não do conteúdo: `margin: auto` em filho de contêiner flex
+   desliga o esticamento, e a página encolhia para o conteúdo de cada aba. */
 .gradio-container {
     font-family: var(--xf-font) !important;
     min-height: 100vh !important;
     background: var(--xf-bg) !important;
     color: var(--xf-text) !important;
+    line-height: 1.5 !important;
+    /* `overflow: hidden` do Gradio impede a navegação fixa no topo. */
+    overflow: visible !important;
 }
-
+.gradio-container > .main {
+    width: 100% !important;
+    max-width: 1400px !important;
+    margin-inline: auto !important;
+    padding-inline: clamp(12px, 2.5vw, 32px) !important;
+}
+.gradio-container > .main > .wrap,
+.gradio-container main.contain {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding-inline: 0 !important;
+}
+.gradio-container .row,
+.gradio-container .column {
+    min-width: 0;
+}
 ::selection {
     background: var(--xf-primary-glow);
-    color: var(--xf-text);
 }
-
-h1, h2, h3, h4, h5 {
-    font-weight: 700 !important;
-    color: var(--xf-text) !important;
-    letter-spacing: 0 !important;
-}
-h1 { font-size: 1.75rem !important; }
-h2 { font-size: 1.5rem !important; }
-h3 { font-size: 1.25rem !important; }
-h4 { font-size: 1.1rem !important; }
-
 footer {
     visibility: hidden !important;
     height: 0 !important;
     overflow: hidden !important;
 }
-
-#app_header {
-    background: var(--xf-gradient) !important;
-    padding: 16px 24px !important;
-    border-radius: var(--xf-radius-lg) !important;
-    margin-bottom: 12px !important;
-    box-shadow: var(--xf-shadow) !important;
-}
-#app_header h2 {
-    color: #fff !important;
-    font-size: 1.6rem !important;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.2);
-}
-
-.gr-group, .gr-box, .gr-panel {
-    background: var(--xf-surface) !important;
-    border: 1px solid var(--xf-border) !important;
-    border-radius: var(--xf-radius) !important;
-    box-shadow: var(--xf-shadow) !important;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
-}
-.gr-group:hover, .gr-box:hover {
-    border-color: var(--xf-border-light) !important;
-}
-
-.tabs > .tab-nav {
-    background: var(--xf-surface) !important;
-    border-bottom: 2px solid var(--xf-border) !important;
-    border-radius: var(--xf-radius) var(--xf-radius) 0 0 !important;
-    gap: 2px !important;
-    padding: 4px 8px 0 8px !important;
-}
-.tabs > .tab-nav > button {
-    font-family: var(--xf-font) !important;
-    font-weight: 500 !important;
-    font-size: 0.9rem !important;
-    color: var(--xf-text-muted) !important;
-    border: none !important;
-    border-radius: var(--xf-radius) var(--xf-radius) 0 0 !important;
-    padding: 10px 20px !important;
-    transition: var(--xf-transition) !important;
-    background: transparent !important;
-}
-.tabs > .tab-nav > button:hover {
-    color: var(--xf-text) !important;
-    background: var(--xf-surface-hover) !important;
-}
-.tabs > .tab-nav > button.selected {
-    color: var(--xf-primary) !important;
-    font-weight: 600 !important;
-    background: var(--xf-bg) !important;
-    border-bottom: 3px solid var(--xf-primary) !important;
-}
-
-button.primary, button[variant="primary"] {
-    background: var(--xf-gradient) !important;
-    color: #fff !important;
-    font-weight: 600 !important;
-    font-family: var(--xf-font) !important;
-    border: none !important;
-    border-radius: var(--xf-radius) !important;
-    padding: 10px 24px !important;
-    transition: var(--xf-transition) !important;
-    box-shadow: 0 2px 8px var(--xf-primary-glow) !important;
-}
-button.primary:hover, button[variant="primary"]:hover {
-    transform: translateY(-2px) !important;
-    box-shadow: 0 6px 20px var(--xf-primary-glow) !important;
-    filter: brightness(1.1) !important;
-}
-button.primary:active, button[variant="primary"]:active {
-    transform: translateY(0px) !important;
-}
-button.secondary, button[variant="secondary"] {
-    background: var(--xf-surface) !important;
-    color: var(--xf-text) !important;
-    border: 1px solid var(--xf-border) !important;
-    border-radius: var(--xf-radius) !important;
-    transition: var(--xf-transition) !important;
-}
-button.secondary:hover, button[variant="secondary"]:hover {
-    background: var(--xf-surface-hover) !important;
-    border-color: var(--xf-primary) !important;
-}
-button.stop, button[variant="stop"] {
-    background: rgba(239, 68, 68, 0.15) !important;
-    color: var(--xf-danger) !important;
-    border: 1px solid var(--xf-danger) !important;
-    border-radius: var(--xf-radius) !important;
-    transition: var(--xf-transition) !important;
-}
-button.stop:hover, button[variant="stop"]:hover {
-    background: rgba(239, 68, 68, 0.3) !important;
-    transform: translateY(-1px) !important;
-}
-
-input, textarea, select, .gr-input, .gr-textbox textarea {
-    background: var(--xf-bg) !important;
-    color: var(--xf-text) !important;
-    border: 1px solid var(--xf-border) !important;
-    border-radius: var(--xf-radius) !important;
-    font-family: var(--xf-font) !important;
-    transition: var(--xf-transition) !important;
-    padding: 8px 12px !important;
-}
-input:focus, textarea:focus, select:focus {
-    border-color: var(--xf-primary) !important;
-    box-shadow: 0 0 0 3px var(--xf-primary-glow) !important;
-    outline: none !important;
-}
-input::placeholder, textarea::placeholder {
-    color: var(--xf-text-muted) !important;
-    opacity: 0.6 !important;
-}
-
-input[type="range"] { accent-color: var(--xf-primary) !important; }
-
-.gr-dataframe { border-radius: var(--xf-radius) !important; overflow: hidden !important; }
-table thead th {
-    background: var(--xf-surface) !important;
-    color: var(--xf-text) !important;
-    font-weight: 600 !important;
-    font-size: 0.85rem !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.05em !important;
-    padding: 12px 16px !important;
-    border-bottom: 2px solid var(--xf-primary) !important;
-}
-table tbody td {
-    padding: 10px 16px !important;
-    border-bottom: 1px solid var(--xf-border) !important;
-}
-table tbody tr:hover { background: var(--xf-surface-hover) !important; }
-
-.gr-accordion {
-    border: 1px solid var(--xf-border) !important;
-    border-radius: var(--xf-radius) !important;
-    background: var(--xf-surface) !important;
-}
-
-.json-holder, pre, code {
-    font-family: var(--xf-mono) !important;
-    font-size: 0.85rem !important;
-    background: var(--xf-bg) !important;
-    border-radius: var(--xf-radius) !important;
-}
-
-.gr-file, .upload-container {
-    border: 2px dashed var(--xf-border) !important;
-    border-radius: var(--xf-radius) !important;
-    transition: var(--xf-transition) !important;
-    background: var(--xf-surface) !important;
-}
-.gr-file:hover, .upload-container:hover {
-    border-color: var(--xf-primary) !important;
-    background: rgba(59, 130, 246, 0.05) !important;
-}
-
-.gr-markdown { line-height: 1.7 !important; }
-.gr-markdown hr { border-color: var(--xf-border) !important; margin: 16px 0 !important; }
-.gr-markdown strong { color: var(--xf-text) !important; }
-
-@keyframes fadeInUp {
-    from { opacity: 0; transform: translateY(12px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes pulseGlow {
-    0%, 100% { box-shadow: 0 0 8px var(--xf-primary-glow); }
-    50%      { box-shadow: 0 0 20px var(--xf-primary-glow); }
-}
-@keyframes shimmer {
-    0%   { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
-}
-
-.gr-group, .gr-box { animation: none !important; }
-button.primary:focus-visible {
-    animation: none !important;
-    box-shadow: 0 0 0 3px var(--xf-primary-glow) !important;
-}
-
 ::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: var(--xf-bg); }
-::-webkit-scrollbar-thumb { background: var(--xf-border); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: var(--xf-border-light); }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--xf-border-light); border-radius: 4px; }
 
-.progress-bar { background: var(--xf-gradient) !important; border-radius: 4px !important; }
-.gr-number input { font-variant-numeric: tabular-nums !important; }
+.gradio-container :focus-visible {
+    outline: 2px solid var(--xf-accent) !important;
+    outline-offset: 2px !important;
+}
 
-/* ===== UI Fase 1 — Status Bar + Dashboard + cores semânticas ===== */
-
-/* Status bar global (sempre visível no topo) */
-#status_bar {
-    display: block !important;
-    padding: 0 !important;
-    background: transparent !important;
-    border: 0 !important;
-    border-radius: 0 !important;
-    margin: 0 !important;
+/* ===== Tipografia ===== */
+.gradio-container .prose { max-width: 100%; }
+.gradio-container .prose p,
+.gradio-container .prose li { max-width: 78ch; overflow-wrap: anywhere; }
+.gradio-container .prose h2 {
+    font-size: 1.15rem !important;
+    font-weight: 700 !important;
+    margin: 0 0 6px !important;
+}
+.gradio-container .prose h3 {
+    font-size: 1.05rem !important;
+    font-weight: 600 !important;
+    margin: 0 0 6px !important;
+}
+.gradio-container .prose h4 {
+    font-size: 0.95rem !important;
+    font-weight: 600 !important;
+    margin: 0 0 4px !important;
+}
+.gradio-container code,
+.gradio-container pre {
     font-family: var(--xf-mono) !important;
-    font-size: 0.82rem !important;
+    font-size: 0.85em !important;
 }
-#status_bar .status-pill {
-    display: inline-flex !important;
+
+/* ===== Barra superior ===== */
+#topbar_row {
     align-items: center !important;
-    gap: 6px !important;
-    color: var(--xf-text-muted) !important;
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+    padding-bottom: 8px !important;
 }
-#status_bar .status-pill .dot {
+#status_bar {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+#status_bar_inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 14px;
+    font-size: 0.82rem;
+}
+#status_bar_inner .brand {
+    margin: 0 !important;
+    color: var(--xf-text) !important;
+    font-size: 1.05rem !important;
+    font-weight: 700 !important;
+    line-height: 1.3 !important;
+    letter-spacing: 0 !important;
+}
+#status_bar_inner .brand-version {
+    color: var(--xf-text-muted);
+    font-size: 0.78rem;
+    font-weight: 400;
+}
+#status_bar_inner .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--xf-text-muted);
+    white-space: nowrap;
+}
+#status_bar_inner .status-value { color: var(--xf-text); font-weight: 600; }
+#status_bar_inner .status-ok { color: var(--xf-success); font-weight: 600; }
+#status_bar_inner .status-warning { color: var(--xf-warning); font-weight: 600; }
+#status_bar_inner .dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--xf-success);
-    box-shadow: 0 0 6px var(--xf-success);
+    background: currentColor;
 }
-#status_bar .status-pill .label {
-    color: var(--xf-text);
-    font-weight: 500;
+.toolbar-toggle {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: var(--xf-target) !important;
+    min-height: var(--xf-target) !important;
+    padding: 0 10px !important;
+    white-space: nowrap !important;
 }
-#status_bar .brand {
-    color: var(--xf-text) !important;
-    font-weight: 700 !important;
-    font-family: var(--xf-font) !important;
-    font-size: 0.95rem !important;
-    letter-spacing: 0;
+/* O Gradio repete o elem_id no grupo externo e no interno. */
+#notif_panel { display: none !important; margin-bottom: 8px !important; }
+#notif_panel.open,
+#notif_panel.open #notif_panel { display: block !important; margin-bottom: 0 !important; }
+#notif_panel.open { margin-bottom: 8px !important; }
+#global_feedback_center {
+    max-height: min(60vh, 520px) !important;
+    overflow-y: auto !important;
 }
 
+/* ===== Navegação: dois níveis visualmente distintos ===== */
+#main_tabs > .tab-wrapper {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: var(--xf-bg);
+}
+#main_tabs > .tab-wrapper,
+#main_tabs > .tab-wrapper .tab-container {
+    height: 46px !important;
+}
+#main_tabs > .tab-wrapper button[role="tab"] {
+    height: 46px !important;
+    padding: 0 14px !important;
+    font-size: 0.95rem !important;
+    font-weight: 500 !important;
+}
+#main_tabs > .tab-wrapper button[role="tab"].selected {
+    font-weight: 700 !important;
+}
+.gradio-container .tabs .tabs > .tab-wrapper button[role="tab"] {
+    color: var(--xf-text-muted);
+    font-size: 0.875rem !important;
+}
+.gradio-container .tabs .tabs > .tab-wrapper button[role="tab"].selected {
+    color: var(--xf-primary) !important;
+    font-weight: 600 !important;
+}
+.gradio-container .tabitem {
+    padding: 12px 0 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+}
+.gradio-container .overflow-dropdown button {
+    min-height: var(--xf-target) !important;
+}
+
+/* ===== Cartões e blocos =====
+   Dentro de um grupo os blocos do Gradio ficam com borda `medium` (3 px, cor do
+   texto), que aparecia como moldura branca: o grupo é o único contorno. */
+.gradio-container .gr-group {
+    background: var(--xf-surface) !important;
+    border: 1px solid var(--xf-border) !important;
+    border-radius: var(--xf-radius) !important;
+    box-shadow: var(--xf-shadow) !important;
+    overflow: visible !important;
+}
+/* Cada gr.Group gera dois .gr-group aninhados: só o externo é o cartão. */
+.gradio-container .gr-group .gr-group {
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+.gradio-container .gr-group > .styler {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: var(--xf-gap) !important;
+    padding: 16px !important;
+    background: transparent !important;
+    border-radius: inherit !important;
+}
+.gradio-container .gr-group .block {
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+.gradio-container .gr-group .block.padded,
+.gradio-container .gr-group .form .block {
+    padding: 0 !important;
+}
+.gradio-container .gr-group .form {
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    gap: var(--xf-gap) !important;
+}
+.gradio-container .gr-group .tabitem { padding-top: 8px !important; }
+
+/* Rótulo flutuante do Gradio: cobria o título das figuras e o topo das imagens. */
+.gradio-container label.float {
+    position: static !important;
+    display: inline-flex !important;
+    max-width: 100%;
+    margin: 0 !important;
+    padding: 8px 10px 4px !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: var(--xf-text-muted) !important;
+    font-size: 0.8rem !important;
+    white-space: normal !important;
+}
+.gradio-container .gr-group label.float { padding: 0 0 4px !important; }
+
+/* Área de envio de arquivo */
+.gradio-container button.center.boundedheight {
+    border: 1.5px dashed var(--xf-border-light) !important;
+    border-radius: var(--xf-radius) !important;
+    transition: border-color 0.15s ease, background 0.15s ease !important;
+}
+.gradio-container button.center.boundedheight:hover {
+    border-color: var(--xf-primary) !important;
+    background: var(--xf-primary-glow) !important;
+}
+
+.gradio-container .block button.label-wrap {
+    min-height: var(--xf-target) !important;
+    font-weight: 600 !important;
+}
+
+/* ===== Botões ===== */
+.gradio-container button.primary {
+    background: var(--xf-gradient) !important;
+    color: #fff !important;
+    font-weight: 600 !important;
+    border: 0 !important;
+    border-radius: var(--xf-radius) !important;
+    min-height: var(--xf-target);
+    transition: filter 0.15s ease !important;
+}
+.gradio-container button.primary:hover { filter: brightness(1.08) !important; }
+.gradio-container button.primary:disabled,
+.gradio-container button.secondary:disabled {
+    filter: none !important;
+    opacity: 0.45 !important;
+    cursor: not-allowed !important;
+}
+.gradio-container button.secondary {
+    background: var(--xf-surface) !important;
+    color: var(--xf-text) !important;
+    border: 1px solid var(--xf-border-light) !important;
+    border-radius: var(--xf-radius) !important;
+    min-height: var(--xf-target);
+    transition: background 0.15s ease, border-color 0.15s ease !important;
+}
+.gradio-container button.secondary:hover {
+    background: var(--xf-surface-hover) !important;
+    border-color: var(--xf-primary) !important;
+}
+.gradio-container button.stop {
+    background: transparent !important;
+    color: var(--xf-danger-text) !important;
+    border: 1px solid var(--xf-danger) !important;
+    border-radius: var(--xf-radius) !important;
+    min-height: var(--xf-target);
+}
+.gradio-container button.stop:hover {
+    background: rgba(239, 68, 68, 0.14) !important;
+}
+
+/* ===== Cabeçalho de página: compacto, sem competir com as abas ===== */
+.page-header-wrap { padding: 0 !important; border: 0 !important; background: transparent !important; }
+.page-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 0 0 4px;
+}
+.page-header .ph-icon { font-size: 1.3rem; line-height: 1.4; flex: 0 0 auto; }
+.page-header .ph-text { min-width: 0; }
+.page-header .ph-title {
+    margin: 0 !important;
+    font-size: 1.15rem !important;
+    font-weight: 700 !important;
+    color: var(--xf-text) !important;
+    line-height: 1.35 !important;
+    letter-spacing: 0 !important;
+}
+.page-header .ph-subtitle {
+    margin: 2px 0 0;
+    max-width: 90ch;
+    color: var(--xf-text-muted);
+    font-size: 0.875rem;
+    line-height: 1.45;
+}
+
+/* ===== Veredito da detecção =====
+   O resultado é a informação principal da tela, e não só cor: título em texto,
+   medidor com o limiar do modelo e o que foi usado para chegar nele. */
+.verdict { display: grid; gap: 14px; }
+.verdict-title {
+    margin: 0 !important;
+    font-size: 1.5rem !important;
+    font-weight: 700 !important;
+    line-height: 1.25 !important;
+    letter-spacing: 0 !important;
+}
+.verdict-fake .verdict-title { color: var(--xf-danger-text) !important; }
+.verdict-real .verdict-title { color: var(--xf-success) !important; }
+.verdict-conf { margin: 2px 0 0; color: var(--xf-text-muted); font-size: 0.92rem; }
+.verdict-conf strong { color: var(--xf-text); font-variant-numeric: tabular-nums; }
+.verdict-meter-label {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 2px 10px;
+    margin-bottom: 8px;
+    color: var(--xf-text-muted);
+    font-size: 0.8rem;
+}
+.verdict-meter {
+    position: relative;
+    height: 10px;
+    border-radius: 999px;
+    background: var(--xf-track);
+}
+.verdict-meter-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: inherit;
+    background: var(--xf-success);
+}
+.verdict-fake .verdict-meter-fill { background: var(--xf-danger); }
+.verdict-meter-mark {
+    position: absolute;
+    top: -4px;
+    bottom: -4px;
+    width: 2px;
+    background: var(--xf-text);
+}
+.verdict-meta {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 8px 12px;
+    margin: 0;
+}
+.verdict-meta dt { color: var(--xf-text-muted); font-size: 0.75rem; }
+.verdict-meta dd { margin: 0; font-size: 0.9rem; font-weight: 600; overflow-wrap: anywhere; }
+.verdict-note { margin: 0; color: var(--xf-text-muted); font-size: 0.8rem; }
+.verdict-warn { margin: 0; color: var(--xf-warning); font-size: 0.88rem; font-weight: 600; }
+.verdict-idle { color: var(--xf-text-muted); font-size: 0.95rem; }
+.verdict-idle strong { display: block; color: var(--xf-text); font-size: 1.05rem; margin-bottom: 2px; }
+.verdict-error .verdict-title { color: var(--xf-danger-text) !important; font-size: 1.1rem !important; }
+.verdict-error p { margin: 4px 0 0; color: var(--xf-text-muted); font-size: 0.9rem; }
+
+/* ===== Confirmação de ação destrutiva ===== */
+.confirm-row {
+    align-items: center !important;
+    padding: 10px 12px !important;
+    border: 1px solid var(--xf-danger) !important;
+    border-radius: var(--xf-radius) !important;
+    background: rgba(239, 68, 68, 0.08) !important;
+}
+.confirm-row > .block { flex: 1 1 260px !important; border: 0 !important; background: transparent !important; padding: 0 !important; }
+.confirm-row > button { flex: 0 1 auto !important; width: auto !important; }
+
+/* ===== Painel ===== */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.recent-table { width: 100%; min-width: 520px; }
+.recent-table td.mono { overflow-wrap: anywhere; }
+.kpi-row {
+    grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)) !important;
+    gap: var(--xf-gap) !important;
+    margin: 4px 0 var(--xf-gap) !important;
+}
+.kpi-card { padding: 14px 16px !important; border-radius: var(--xf-radius) !important; }
+.kpi-card .kpi-icon { font-size: 1.1rem !important; margin-bottom: 4px !important; }
+.kpi-card .kpi-value { font-size: 1.6rem !important; }
+.quick-actions { margin-bottom: var(--xf-gap) !important; }
+
+/* ===== Estimativa e passos do assistente ===== */
+.wizard-actions { justify-content: space-between !important; }
+.wizard-actions > button { flex: 0 1 200px !important; }
+
+/* ===== Componentes próprios ===== */
 /* KPI cards no Dashboard */
 .kpi-row {
     display: grid;
@@ -429,7 +618,7 @@ button.primary:focus-visible {
 .result-fake     { color: var(--xf-danger)  !important; font-weight: 600 !important; }
 .result-ood      { color: var(--xf-warning) !important; font-weight: 600 !important; }
 .result-uncertain { color: #8b5cf6           !important; font-weight: 600 !important; }
-body[data-theme="light"] .result-uncertain { color: #7c3aed !important; }
+body:not(.dark) .result-uncertain { color: #7c3aed !important; }
 
 /* ===== UI Fase 2 — Training Wizard ===== */
 
@@ -498,101 +687,6 @@ body[data-theme="light"] .result-uncertain { color: #7c3aed !important; }
     margin: 0 8px;
     margin-bottom: 28px;  /* alinha com o círculo (não com o label) */
     max-width: 80px;
-}
-
-/* ===== UI Fase 3 — Modo claro ===== */
-/* Tema claro ativado via body[data-theme='light']. CSS abaixo sobrescreve
-   as variáveis :root quando o atributo está presente.
-   Default permanece dark (sem o atributo) — compatibilidade total. */
-body[data-theme="light"] {
-    color-scheme: light;
-    --xf-bg:            #f8fafc;
-    --xf-bg-elev:       rgba(15, 23, 42, 0.04);
-    --xf-track:         rgba(15, 23, 42, 0.12);
-    --xf-surface:       #ffffff;
-    --xf-surface-hover: #f1f5f9;
-    --xf-border:        #e2e8f0;
-    --xf-border-light:  #cbd5e1;
-    --xf-text:          #0f172a;
-    --xf-text-muted:    #475569;
-    --xf-primary:       #2563eb;
-    --xf-primary-hover: #1d4ed8;
-    --xf-primary-glow:  rgba(37, 99, 235, 0.18);
-    /* Tons escurecidos p/ manter contraste AA sobre superfícies claras */
-    --xf-accent:        #0e7490;
-    --xf-success:       #059669;
-    --xf-warning:       #b45309;
-    --xf-danger:        #dc2626;
-    --xf-gradient:      linear-gradient(135deg, #2563eb 0%, #0e7490 100%);
-    --xf-shadow:        0 2px 12px rgba(0, 0, 0, 0.06);
-    --xf-shadow-lg:     0 4px 24px rgba(0, 0, 0, 0.08);
-
-    /* Sobrescreve as variáveis internas do Gradio (o tema Python fixa valores
-       escuros para light e dark) — sem isto dropdowns, sliders, checkboxes,
-       áudio e outros componentes nativos permanecem escuros no modo claro. */
-    --body-background-fill:            #f8fafc;
-    --background-fill-primary:         #ffffff;
-    --background-fill-secondary:       #f1f5f9;
-    --block-background-fill:           #ffffff;
-    --panel-background-fill:           #ffffff;
-    --border-color-primary:            #e2e8f0;
-    --block-border-color:              #e2e8f0;
-    --body-text-color:                 #0f172a;
-    --body-text-color-subdued:         #475569;
-    --block-title-text-color:          #0f172a;
-    --block-label-text-color:          #475569;
-    --input-background-fill:           #ffffff;
-    --input-border-color:              #cbd5e1;
-    --input-border-color-focus:        #2563eb;
-    --input-placeholder-color:         #94a3b8;
-    --button-secondary-background-fill: #ffffff;
-    --button-secondary-text-color:     #0f172a;
-    --button-secondary-border-color:   #cbd5e1;
-    --checkbox-background-color:       #ffffff;
-    --checkbox-border-color:           #cbd5e1;
-    --table-even-background-fill:      #ffffff;
-    --table-odd-background-fill:       #f8fafc;
-    --block-shadow:                    0 2px 12px rgba(0, 0, 0, 0.06);
-    --color-accent:                    #2563eb;
-    --color-accent-soft:               rgba(37, 99, 235, 0.12);
-    --link-text-color:                 #1d4ed8;
-    --link-text-color-hover:           #1e40af;
-}
-body[data-theme="light"] .gradio-container {
-    background: var(--xf-bg) !important;
-    color: var(--xf-text) !important;
-}
-body[data-theme="light"] .gr-group,
-body[data-theme="light"] .gr-box,
-body[data-theme="light"] .gr-panel {
-    background: var(--xf-surface) !important;
-    border-color: var(--xf-border) !important;
-}
-body[data-theme="light"] .recent-table thead th {
-    background: rgba(37, 99, 235, 0.06) !important;
-}
-body[data-theme="light"] .status-pill .dot {
-    box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
-}
-
-/* Botão de alternância de tema no status bar */
-.toolbar-toggle {
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 4px !important;
-    padding: 4px 10px !important;
-    background: transparent !important;
-    border: 1px solid var(--xf-border) !important;
-    border-radius: var(--xf-radius) !important;
-    color: var(--xf-text) !important;
-    font-family: var(--xf-mono) !important;
-    font-size: 0.82rem !important;
-    cursor: pointer !important;
-    transition: var(--xf-transition) !important;
-}
-.toolbar-toggle:hover {
-    background: var(--xf-surface-hover) !important;
-    border-color: var(--xf-primary) !important;
 }
 
 /* ===== Notification Center ===== */
@@ -882,41 +976,6 @@ body[data-theme="light"] .status-pill .dot {
     line-height: 1.45;
 }
 
-/* ===== Cabeçalho de página padronizado (page_header component) ===== */
-.page-header {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 14px 18px;
-    margin: 4px 0 18px 0;
-    background: var(--xf-surface);
-    border: 1px solid var(--xf-border);
-    border-left: 4px solid var(--xf-primary);
-    border-radius: var(--xf-radius);
-    box-shadow: var(--xf-shadow);
-}
-.page-header .ph-icon {
-    font-size: 1.9rem;
-    line-height: 1;
-    flex: 0 0 auto;
-    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.25));
-}
-.page-header .ph-text { min-width: 0; }
-.page-header .ph-title {
-    margin: 0 !important;
-    font-size: 1.3rem !important;
-    font-weight: 700 !important;
-    color: var(--xf-text) !important;
-    letter-spacing: 0 !important;
-    line-height: 1.2 !important;
-}
-.page-header .ph-subtitle {
-    margin: 4px 0 0 0;
-    color: var(--xf-text-muted);
-    font-size: 0.9rem;
-    line-height: 1.45;
-}
-
 /* Divisor de seção sutil (section_divider component) */
 .xf-divider {
     height: 1px;
@@ -943,615 +1002,10 @@ body[data-theme="light"] .status-pill .dot {
 .xf-callout-accent  { border-left-color: var(--xf-primary); background: rgba(59, 130, 246, 0.08); }
 .xf-callout a { color: var(--xf-primary); font-weight: 600; text-decoration: none; }
 .xf-callout a:hover { text-decoration: underline; }
-
-/* ===== Responsividade global ===== */
-.gradio-container {
-    width: min(100%, 1440px) !important;
-    margin: 0 auto !important;
-    padding: 16px !important;
-}
-.gradio-container * {
-    box-sizing: border-box !important;
-}
-.gradio-container img,
-.gradio-container canvas,
-.gradio-container video {
-    max-width: 100% !important;
-    height: auto !important;
-}
-.gradio-container p,
-.gradio-container li,
-.gradio-container label,
-.gradio-container code,
-.gradio-container pre,
-.gradio-container textarea {
-    overflow-wrap: anywhere !important;
-}
-.ph-icon,
-.kpi-icon,
-.status-icon,
-.notif-icon,
-.model-icon,
-.empty-icon {
-    flex-shrink: 0 !important;
-    line-height: 1 !important;
-}
-.gr-row,
-.gr-column,
-.gr-form,
-.gr-group,
-.gr-box,
-.gr-panel,
-.svelte-vt1mxs,
-.svelte-sa48pu {
-    min-width: 0 !important;
-}
-.gr-plot,
-.plot-container,
-.js-plotly-plot,
-.gr-image,
-.gr-video,
-.gr-audio,
-.gr-dataframe,
-.gr-json,
-.gr-markdown {
-    max-width: 100% !important;
-    min-width: 0 !important;
-}
-.gr-dataframe,
-.gr-dataframe > div,
-.table-wrap,
-.recent-table {
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-}
-.gr-dataframe table,
-.recent-table {
-    min-width: 680px;
-}
-.tabs > .tab-nav {
-    display: flex !important;
-    flex-wrap: nowrap !important;
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
-    scrollbar-width: thin !important;
-    -webkit-overflow-scrolling: touch !important;
-}
-.tabs > .tab-nav > button {
-    flex: 0 0 auto !important;
-    white-space: nowrap !important;
-}
-#topbar_row {
-    align-items: stretch !important;
-    gap: 10px !important;
-    max-width: 100% !important;
-    overflow: visible !important;
-}
-#topbar_row > .gr-column:last-child {
-    flex: 0 0 auto !important;
-}
-#topbar_row .svelte-vt1mxs,
-#topbar_row .svelte-sa48pu,
-#topbar_row .stretch {
-    max-width: 100% !important;
-    min-width: 0 !important;
-}
-#status_bar,
-#status_bar > *,
-#status_bar_inner {
-    max-width: 100% !important;
-    min-width: 0 !important;
-}
-#status_bar_inner {
-    display: flex !important;
-    align-items: center !important;
-    gap: 10px 16px !important;
-    flex-wrap: wrap !important;
-    width: 100% !important;
-    padding: 8px 16px !important;
-    background: var(--xf-surface) !important;
-    border: 1px solid var(--xf-border) !important;
-    border-radius: var(--xf-radius) !important;
-    margin: 0 !important;
-    font-family: var(--xf-mono) !important;
-    font-size: 0.82rem !important;
-}
-#status_bar_inner .status-pill {
-    min-width: 0 !important;
-}
-#status_bar_inner .brand {
-    color: var(--xf-text) !important;
-    font-family: var(--xf-font) !important;
-    font-size: 0.95rem !important;
-    font-weight: 700 !important;
-    letter-spacing: 0 !important;
-}
-#status_bar_inner .brand-version,
-#status_bar_inner .status-detail {
-    color: var(--xf-text-muted) !important;
-    font-weight: 400 !important;
-}
-#status_bar_inner .status-value,
-#status_bar_inner .label {
-    color: var(--xf-text) !important;
-    font-weight: 600 !important;
-}
-#status_bar_inner .status-ok {
-    color: var(--xf-success) !important;
-}
-#status_bar_inner .status-warning {
-    color: var(--xf-warning) !important;
-}
-#status_bar_inner .status-danger {
-    color: var(--xf-danger) !important;
-}
-#status_bar_inner .status-muted {
-    color: var(--xf-text-muted) !important;
-}
-#global_feedback_center {
-    max-height: min(70vh, 620px) !important;
-    overflow-y: auto !important;
-}
-
-@media (max-width: 1100px) {
-    .gradio-container {
-        padding: 12px !important;
-    }
-    .gr-row {
-        gap: 12px !important;
-    }
-    .kpi-row {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .model-grid {
-        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    }
-    .wizard-stepper {
-        justify-content: flex-start;
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-    }
-    .wizard-stepper .step {
-        min-width: 96px;
-    }
-    .wizard-stepper .step-connector {
-        min-width: 36px;
-        max-width: 48px;
-    }
-}
-
-@media (max-width: 768px) {
-    .gradio-container {
-        padding: 8px !important;
-    }
-    h1 { font-size: 1.45rem !important; }
-    h2 { font-size: 1.28rem !important; }
-    h3 { font-size: 1.12rem !important; }
-
-    #app_header {
-        padding: 12px 14px !important;
-        border-radius: var(--xf-radius) !important;
-    }
-    #app_header h2 {
-        font-size: 1.25rem !important;
-        line-height: 1.25 !important;
-    }
-    #topbar_row,
-    .gradio-container .gr-row,
-    .gradio-container .row,
-    .svelte-vt1mxs.gap,
-    .svelte-sa48pu.stretch {
-        flex-direction: column !important;
-    }
-    #topbar_row,
-    #topbar_row > *,
-    #topbar_row .svelte-vt1mxs,
-    #topbar_row .svelte-sa48pu,
-    #topbar_row .stretch {
-        width: 100% !important;
-        max-width: 100% !important;
-        min-width: 0 !important;
-    }
-    #topbar_row > .gr-column,
-    .gradio-container .gr-row > .gr-column,
-    .gradio-container .row > .column {
-        width: 100% !important;
-        flex: 1 1 auto !important;
-    }
-    #topbar_row > .gr-column:last-child > .gr-row {
-        flex-direction: row !important;
-        justify-content: flex-start !important;
-        flex-wrap: wrap !important;
-    }
-    #topbar_row > .gr-column:last-child .svelte-vt1mxs.gap {
-        flex-direction: row !important;
-        justify-content: flex-start !important;
-        flex-wrap: wrap !important;
-    }
-    #topbar_row .svelte-sa48pu.stretch {
-        flex-direction: row !important;
-        flex-wrap: wrap !important;
-    }
-    #status_bar_inner {
-        display: grid !important;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px 10px !important;
-        padding: 10px 12px !important;
-        font-size: 0.76rem !important;
-    }
-    #status_bar .brand {
-        grid-column: 1 / -1;
-        width: 100%;
-        font-size: 0.9rem !important;
-    }
-    #status_bar .status-pill {
-        width: 100%;
-        min-width: 0 !important;
-        white-space: normal !important;
-    }
-    .toolbar-toggle {
-        min-height: 36px !important;
-        padding: 6px 10px !important;
-    }
-    .tabs > .tab-nav {
-        border-radius: var(--xf-radius) !important;
-        padding: 4px !important;
-    }
-    .tabs > .tab-nav > button {
-        padding: 9px 12px !important;
-        font-size: 0.82rem !important;
-    }
-    button {
-        min-height: 40px !important;
-        white-space: normal !important;
-    }
-    button.primary,
-    button[variant="primary"],
-    button.secondary,
-    button[variant="secondary"],
-    button.stop,
-    button[variant="stop"] {
-        padding: 9px 14px !important;
-    }
-    input,
-    textarea,
-    select,
-    .gr-input,
-    .gr-textbox textarea {
-        min-height: 40px !important;
-        font-size: 16px !important;
-    }
-    .page-header {
-        align-items: flex-start;
-        padding: 12px 14px;
-        gap: 10px;
-    }
-    .page-header .ph-icon {
-        font-size: 1.45rem;
-    }
-    .page-header .ph-title {
-        font-size: 1.12rem !important;
-    }
-    .page-header .ph-subtitle,
-    .xf-callout,
-    .notif-msg {
-        font-size: 0.84rem;
-    }
-    .kpi-row {
-        grid-template-columns: 1fr;
-        gap: 10px;
-    }
-    .kpi-card {
-        padding: 14px 16px;
-    }
-    .kpi-card .kpi-value {
-        font-size: 1.55rem;
-    }
-    .status-item {
-        display: grid;
-        grid-template-columns: 24px minmax(0, 1fr);
-        align-items: flex-start;
-        gap: 8px;
-    }
-    .status-item .status-icon {
-        grid-row: 1 / span 2;
-        width: 24px;
-    }
-    .status-item .status-label {
-        grid-column: 2;
-        flex-basis: auto;
-        width: auto;
-        font-size: 0.78rem;
-    }
-    .status-item .status-value {
-        grid-column: 2;
-        min-width: 0;
-        width: 100%;
-        white-space: normal;
-        overflow-wrap: anywhere;
-        word-break: normal;
-        font-size: 0.78rem;
-        line-height: 1.35;
-    }
-    .notif-item {
-        padding: 10px 12px;
-    }
-    .notif-ago {
-        margin-left: 0;
-        width: 100%;
-    }
-    .model-grid {
-        grid-template-columns: 1fr;
-        max-height: none;
-        padding-right: 0;
-    }
-    .train-live .tl-card-value {
-        font-size: 1.08rem;
-    }
-}
-
-@media (max-width: 520px) {
-    .gradio-container {
-        padding: 6px !important;
-    }
-    #status_bar .status-pill {
-        display: flex !important;
-        width: 100%;
-        justify-content: flex-start;
-    }
-    #status_bar_inner {
-        grid-template-columns: 1fr;
-    }
-    #topbar_row > .gr-column:last-child button {
-        flex: 1 1 44px !important;
-    }
-    .tabs > .tab-nav > button {
-        max-width: none !important;
-        overflow: visible !important;
-        text-overflow: clip !important;
-    }
-    .wizard-stepper {
-        padding: 10px;
-        margin: 10px 0 18px 0;
-    }
-    .wizard-stepper .step {
-        min-width: 72px;
-    }
-    .wizard-stepper .step-circle {
-        width: 32px;
-        height: 32px;
-        font-size: 0.92rem;
-    }
-    .wizard-stepper .step-label {
-        font-size: 0.72rem;
-        text-align: center;
-    }
-    .wizard-stepper .step-connector {
-        min-width: 20px;
-        margin-bottom: 22px;
-    }
-    .gr-dataframe table,
-    .recent-table {
-        min-width: 560px;
-    }
-}
-
-/* ===== Ajustes finos de abas, ícones, mídia e espaçamento ===== */
-.tabs > .tab-nav {
-    gap: 6px !important;
-    padding-bottom: 3px !important;
-}
-.tabs > .tab-nav::-webkit-scrollbar {
-    height: 5px !important;
-}
-.tabs > .tab-nav::-webkit-scrollbar-track {
-    background: transparent !important;
-}
-.tabs > .tab-nav::-webkit-scrollbar-thumb {
-    background: var(--xf-border-light) !important;
-    border-radius: 999px !important;
-}
-.tabs > .tab-nav > button {
-    min-height: 38px !important;
-    line-height: 1.2 !important;
-}
-.label-wrap,
-.gr-accordion .label-wrap,
-.gr-accordion button {
-    min-height: 36px !important;
-    align-items: center !important;
-}
-.gr-accordion .label-wrap > span {
-    line-height: 1.25 !important;
-}
-.toolbar-toggle {
-    min-height: 34px !important;
-}
-.gradio-container button svg,
-.gradio-container .icon,
-.gradio-container [class*="icon"] {
-    flex: 0 0 auto !important;
-}
-
-/* Aba Detectar */
-.detect-main-grid {
-    align-items: flex-start !important;
-    gap: 16px !important;
-}
-.detect-column {
-    min-width: min(420px, 100%) !important;
-}
-.detect-card {
-    overflow: hidden !important;
-}
-.detect-card .gr-markdown h4,
-.detect-card h4 {
-    margin-top: 0 !important;
-    margin-bottom: 10px !important;
-    line-height: 1.25 !important;
-}
-.detect-audio-input {
-    min-height: 232px !important;
-}
-.detect-audio-input audio {
-    width: 100% !important;
-}
-.detect-audio-input svg,
-.detect-audio-input .icon,
-.detect-audio-input [class*="icon"] {
-    max-width: 44px !important;
-    max-height: 44px !important;
-}
-.detect-advanced-settings {
-    margin-top: 12px !important;
-}
-.detect-primary-action {
-    min-height: 48px !important;
-    width: 100% !important;
-    justify-content: center !important;
-}
-.detect-output-grid {
-    align-items: stretch !important;
-    gap: 12px !important;
-}
-.detect-label-output {
-    min-height: 138px !important;
-}
-.detect-confidence-output {
-    min-height: 138px !important;
-    min-width: 150px !important;
-}
-.detect-label-output .output-class,
-.detect-label-output .output-label {
-    min-width: 0 !important;
-}
-.detect-label-output svg,
-.detect-label-output .icon,
-.detect-label-output [class*="icon"] {
-    max-width: 48px !important;
-    max-height: 48px !important;
-    opacity: 0.65 !important;
-}
-.detect-result-card input,
-.detect-result-card textarea {
-    font-variant-numeric: tabular-nums !important;
-}
-
-@media (max-width: 768px) {
-    .tabs > .tab-nav {
-        scrollbar-width: none !important;
-        padding-bottom: 4px !important;
-    }
-    .tabs > .tab-nav::-webkit-scrollbar {
-        display: none !important;
-    }
-    .detect-main-grid,
-    .detect-output-grid {
-        gap: 12px !important;
-    }
-    .detect-column,
-    .detect-confidence-output {
-        min-width: 0 !important;
-    }
-    .detect-audio-input {
-        min-height: 190px !important;
-    }
-    .detect-output-grid {
-        flex-direction: column !important;
-    }
-    .detect-label-output,
-    .detect-confidence-output {
-        width: 100% !important;
-        min-height: auto !important;
-    }
-}
-
-/* =====================================================================
-   SpeechChecker UI hardening: responsive grids, figures, typed states
-   ===================================================================== */
-
-*,
-*::before,
-*::after {
-    box-sizing: border-box !important;
-}
-
-.gradio-container {
-    line-height: 1.55 !important;
-    text-rendering: optimizeLegibility !important;
-}
-
-.gradio-container main,
-.gradio-container .main,
-.gradio-container .contain,
-.gradio-container .wrap {
-    max-width: 1480px !important;
-    margin-inline: auto !important;
-}
-
-.gradio-container img,
-.gradio-container canvas,
-.gradio-container svg,
-.gradio-container video {
-    max-width: 100% !important;
-}
-
-.gradio-container button,
-.gradio-container input,
-.gradio-container textarea,
-.gradio-container select {
-    font: inherit !important;
-}
-
-.gradio-container :focus-visible {
-    outline: 2px solid var(--xf-accent) !important;
-    outline-offset: 2px !important;
-}
-
-.gradio-container .prose,
-.gradio-container .markdown,
-.gradio-container .md {
-    max-width: 100% !important;
-}
-
-.gradio-container .prose > p,
-.gradio-container .markdown > p,
-.gradio-container .md > p {
-    max-width: 78ch;
-}
-
-.gradio-container .gr-row,
-.gradio-container .row {
-    min-width: 0 !important;
-}
-
-.gradio-container .gr-column,
-.gradio-container .column {
-    min-width: 0 !important;
-}
-
-.gradio-container table {
-    border-collapse: collapse !important;
-    width: 100% !important;
-}
-
-.gradio-container th,
-.gradio-container td {
-    vertical-align: top !important;
-}
-
-.gradio-container .table-wrap,
-.gradio-container .dataframe,
-.gradio-container .dataset,
-.gradio-container .wrap.svelte-1ipelgc {
-    overflow-x: auto !important;
-}
-
 .xf-spacer {
     flex: 1 1 auto;
     min-width: 1rem;
 }
-
 /* Notification center */
 .notif-empty {
     display: grid;
@@ -1841,57 +1295,83 @@ body[data-theme="light"] .status-pill .dot {
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
 }
 
-.tabs > .tab-nav {
-    overscroll-behavior-x: contain !important;
-    scroll-snap-type: x proximity !important;
-}
-
-.tabs > .tab-nav > button {
-    scroll-snap-align: start !important;
-}
-
+/* ===== Telas estreitas ===== */
 @media (max-width: 1024px) {
     .tl-cards {
         grid-template-columns: repeat(2, minmax(120px, 1fr));
     }
+    .model-grid {
+        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    }
+    .wizard-stepper {
+        justify-content: flex-start;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    .wizard-stepper .step { min-width: 96px; }
+    .wizard-stepper .step-connector { min-width: 36px; max-width: 48px; }
+}
+
+@media (max-width: 768px) {
+    /* O Gradio prefixa os seletores, e `:root` dentro de @media deixaria de valer. */
+    .gradio-container main.contain { --xf-target: 44px; }
+    /* Sem isso o iOS amplia a página ao focar um campo. */
+    .gradio-container input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    .gradio-container textarea { font-size: 16px !important; }
+    #main_tabs > .tab-wrapper button[role="tab"] { padding: 0 10px !important; font-size: 0.9rem !important; }
+    .gradio-container .gr-group > .styler { padding: 12px !important; }
+    .verdict-title { font-size: 1.3rem !important; }
+    .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+    .kpi-card .kpi-value { font-size: 1.35rem !important; }
+    .kpi-card .kpi-label { font-size: 0.72rem !important; }
+    .status-item {
+        display: grid;
+        grid-template-columns: 24px minmax(0, 1fr);
+        align-items: flex-start;
+        gap: 2px 8px;
+    }
+    .status-item .status-icon { grid-row: 1 / span 2; width: 24px; }
+    .status-item .status-label { grid-column: 2; flex-basis: auto; width: auto; font-size: 0.78rem; }
+    .status-item .status-value {
+        grid-column: 2;
+        min-width: 0;
+        width: 100%;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        font-size: 0.8rem;
+    }
+    .notif-item { padding: 10px 12px; }
+    .notif-ago { margin-left: 0; width: 100%; }
+    .model-grid { grid-template-columns: 1fr; }
+    .train-live .tl-card-value { font-size: 1.08rem; }
 }
 
 @media (max-width: 640px) {
-    .gradio-container main,
-    .gradio-container .main,
-    .gradio-container .contain {
-        padding-inline: 10px !important;
-    }
-
     .tl-cards,
     .dataset-balance-meters {
         grid-template-columns: 1fr;
     }
-
     .tl-head,
     .dataset-balance-head,
     .dataset-balance-kpis {
         align-items: flex-start;
         flex-direction: column;
     }
-
     .responsive-grid {
         flex-direction: column !important;
-        gap: 12px !important;
     }
-
     .responsive-grid > * {
         flex-basis: auto !important;
         width: 100% !important;
     }
-
-    .action-row {
-        flex-direction: row !important;
-    }
-
     .action-row > * {
         flex-basis: min(100%, 180px) !important;
     }
+    .wizard-stepper { padding: 10px; margin: 8px 0 12px; }
+    .wizard-stepper .step { min-width: 72px; }
+    .wizard-stepper .step-circle { width: 32px; height: 32px; font-size: 0.92rem; }
+    .wizard-stepper .step-label { font-size: 0.72rem; text-align: center; }
+    .wizard-stepper .step-connector { min-width: 20px; margin-bottom: 22px; }
 }
 
 @media (max-width: 420px) {
@@ -1899,10 +1379,7 @@ body[data-theme="light"] .status-pill .dot {
         flex-basis: 100% !important;
         width: 100% !important;
     }
-
-    #status_bar_inner .status-detail {
-        display: none !important;
-    }
+    #status_bar_inner { gap: 2px 10px; font-size: 0.78rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1915,3 +1392,54 @@ body[data-theme="light"] .status-pill .dot {
         transition-duration: 0.01ms !important;
     }
 }
+
+/* A ação principal da aba Detectar precisa caber na primeira tela. */
+.detect-audio-input button.center.boundedheight,
+.detect-audio-input .audio-container {
+    min-height: 150px !important;
+}
+.gradio-container .block button.center.boundedheight { padding: 16px !important; }
+.detect-card .tabs { margin: -4px 0 0; }
+
+/* O Gradio põe `overflow: auto` inline nos blocos, e dentro de um grupo isso virava
+   barra de rolagem à toa sob acordeões e listas. */
+.gradio-container .gr-group .block { overflow: visible !important; }
+.wizard-actions > button:last-child { margin-left: auto !important; }
+.params-grid .form {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)) !important;
+    gap: var(--xf-gap) !important;
+}
+
+/* Alvos de toque nas abas de segundo nível e no menu "…". */
+.gradio-container .tabs .tabs > .tab-wrapper,
+.gradio-container .tabs .tabs > .tab-wrapper .tab-container {
+    height: var(--xf-target) !important;
+}
+.gradio-container .tabs .tabs > .tab-wrapper button[role="tab"] {
+    height: var(--xf-target) !important;
+    padding: 0 12px !important;
+}
+.gradio-container .overflow-menu > button {
+    min-width: var(--xf-target) !important;
+    min-height: var(--xf-target) !important;
+}
+.detect-audio-input button.center.boundedheight {
+    height: auto !important;
+}
+.detect-audio-input button.center.boundedheight .wrap {
+    min-height: 0 !important;
+}
+
+@media (max-width: 768px) {
+    #main_tabs > .tab-wrapper button[role="tab"] {
+        padding: 0 8px !important;
+        font-size: 0.85rem !important;
+    }
+    /* As quatro etapas cabem na largura, sem rolagem lateral. */
+    .wizard-stepper { justify-content: space-between; overflow-x: visible; }
+    .wizard-stepper .step { flex: 0 1 auto; min-width: 0 !important; }
+    .wizard-stepper .step-connector { flex: 1 1 8px; min-width: 6px !important; max-width: none !important; }
+    .wizard-stepper .step-label { font-size: 0.72rem; text-align: center; white-space: nowrap; }
+}
+.gradio-container .block:has(> button.label-wrap) { overflow: visible !important; }
