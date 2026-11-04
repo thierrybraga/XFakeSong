@@ -52,6 +52,20 @@ no Git, e `app/__init__.py` declara a versão `1.1.0`.
   float32`. Com GPU, `setup_gpu` liga `mixed_float16` na thread principal, e as sub-camadas herdavam
   essa política ao carregar o modelo. A carga agora usa uma política neutra, e o resultado na GPU
   bate com a CPU, onde a temperatura e o limiar foram medidos.
+- **Uma porta para cada uso:** Docker NVIDIA na 7860, Docker CPU na 7861 e aplicação local na 7862.
+  Antes, as três usavam a 7860. **`GRADIO_PORT` deixa de ser lida: use `GRADIO_PORT_NVIDIA` e
+  `GRADIO_PORT_CPU`.** `DEEPFAKE_API_PORT` e `DEEPFAKE_DB_PORT` também saíram. O mapa fica em
+  `app/core/config/ports.py`.
+- **Uma instância por vez sobre o mesmo `data/`:** `main.py`, `make up`, `start.bat` e `start.sh`
+  recusam subir com outro perfil em execução. `up` direto do Compose e o botão Start do Docker
+  Desktop continuam sem essa verificação.
+- **Credenciais:** o `.env` da raiz é a única fonte de login e chave da API nos dois perfis, sem
+  senha de reserva. O login sobrevive a um rebuild.
+- **Cache do Gradio na pasta temporária:** em `data/`, ele ficava em outro disco, e o upload só
+  terminava de copiar depois da resposta. O cache agora some ao recriar o container.
+- **`build_smoke_test.sh` removido:** o script não passava da partida, e nem a CI nem o Makefile o
+  chamavam. A porta 7868 foi liberada. Para as imagens de inferência, use
+  `tools/ops/docker_release.py check`.
 
 ### Testes
 
@@ -117,6 +131,12 @@ no Git, e `app/__init__.py` declara a versão `1.1.0`.
 - **Confirmação** antes de apagar todo o histórico e antes de excluir um perfil.
 - **Notificações:** o sino mostra avisos e erros para a pessoa usuária. Logs de
   requisição, como `GET /favicon.ico -> 404`, saíram do painel.
+- **Gravação pelo microfone:** a análise agora usa a gravação inteira, entregue ao clicar
+  em Parar. O modo streaming falhava com o aviso de `process_stream` e, mesmo sem erro,
+  analisava só o último pedaço (1,75 s de uma gravação de cerca de 14 s). **Durante a
+  gravação, a tela mostra só a forma de onda:** saíram o veredito e os gráficos ao vivo.
+- **Aviso em gravações de microfone:** o cartão diz, com qualquer veredito, que os modelos
+  não foram validados com esse tipo de áudio.
 
 ### Alterado na detecção
 
@@ -168,3 +188,6 @@ no Git, e `app/__init__.py` declara a versão `1.1.0`.
   `transformers` fixado exige `<1.0`.
 - **GPU e Linux:** a CI não tem GPU. A aprovação dos perfis NVIDIA só significa que a
   configuração é válida.
+- **Gravações de microfone:** os modelos podem errar para os dois lados. Uma voz real
+  dividiu os 9 modelos, e o AASIST, modelo padrão, a chamou de sintética. As medições estão
+  em [o guia da interface](docs/interfaces/gradio.md).
