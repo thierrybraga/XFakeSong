@@ -24,8 +24,7 @@ DOCKER_CPU_PORT = 7861
 #: Aplicação local, sem Docker.
 LOCAL_PORT = 7862
 
-#: Instâncias descartáveis das ferramentas de verificação.
-SMOKE_TEST_PORT = 7868
+#: Instâncias descartáveis de ``docker_release.py check``.
 RELEASE_CHECK_PORTS = {"nvidia": 17860, "cpu": 17861}
 
 #: ``mkdocs serve``.

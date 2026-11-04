@@ -23,7 +23,6 @@ HOST_PORTS = (
     ports.DOCKER_NVIDIA_PORT,
     ports.DOCKER_CPU_PORT,
     ports.LOCAL_PORT,
-    ports.SMOKE_TEST_PORT,
     ports.DOCS_PORT,
     *ports.RELEASE_CHECK_PORTS.values(),
 )
@@ -71,11 +70,8 @@ def test_doctor_nao_abre_o_banco_que_um_container_esta_usando():
     )
 
 
-def test_ferramentas_usam_a_porta_do_mapa():
+def test_docker_release_usa_as_portas_do_mapa():
     assert docker_release.PORTAS_CHECK == ports.RELEASE_CHECK_PORTS
-    assert f'PORT="${{PORT:-{ports.SMOKE_TEST_PORT}}}"' in _texto(
-        "tools/ops/build_smoke_test.sh"
-    )
 
 
 def test_main_usa_a_porta_local_e_verifica_antes_de_carregar_a_gpu():

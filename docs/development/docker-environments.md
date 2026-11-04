@@ -35,7 +35,6 @@ continuam iguais a eles.
 | 7861 | Inferência Docker CPU (`inference.cpu.yml`) | `GRADIO_PORT_CPU` no `.env` |
 | 7862 | Aplicação local, sem Docker: `python main.py --gradio`, `make dev` e `start.* test` | `--port` ou `PORT` |
 | 7863 em diante | Livres, para uma instância manual | Escolha ao subir |
-| 7868 | `tools/ops/build_smoke_test.sh` | `--port=` ou `PORT` |
 | 8000 | `mkdocs serve` | `mkdocs serve -a 127.0.0.1:<porta>` |
 | 17860 | `docker_release.py check nvidia` | `--porta` |
 | 17861 | `docker_release.py check cpu` | `--porta` |
