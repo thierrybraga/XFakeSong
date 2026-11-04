@@ -4,5 +4,5 @@
 # poder servir os modelos em PyTorch, como WavLM/HuBERT originais, quando
 # promovidos). Pin conservador: versões mais novas causaram segfault
 # torch.dynamo/triton no container GPU (ver requirements.txt na raiz).
-torch==2.5.1
-transformers==4.45.2
+torch==2.15.0
+transformers==5.22.1
