@@ -11,15 +11,15 @@
 # reprovaria código que `make format` acabou de formatar.
 black==26.10.1
 isort==9.0.2
-ruff==0.17.1
-bandit>=1.7
-pip-audit>=2.7
+ruff==0.17.3
+bandit>=1.9.4
+pip-audit>=2.10.1
 
 # --- Testes ---
-pytest>=7.4
-pytest-cov>=4.1
-pytest-asyncio>=0.23
-pytest-mock>=3.12
+pytest>=9.2.0
+pytest-cov>=7.1.0
+pytest-asyncio>=1.4.1
+pytest-mock>=3.17.0
 
 # Documentação, notebooks e recursos opcionais são perfis separados;
 # consulte requirements-docs.txt, requirements-notebooks.txt,

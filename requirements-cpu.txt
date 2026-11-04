@@ -11,4 +11,4 @@
 
 -r requirements-base.txt
 
-tensorflow-cpu>=2.16,<2.22
+tensorflow-cpu>=2.21.0,<2.22
