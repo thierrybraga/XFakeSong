@@ -7,9 +7,11 @@
 -r requirements.txt
 
 # --- Qualidade de código ---
-black>=24.0
-isort>=5.13
-ruff>=0.3
+# Versões exatas: o job de lint da CI lê estas três linhas, e outra versão do Black
+# reprovaria código que `make format` acabou de formatar.
+black==26.10.1
+isort==9.0.2
+ruff==0.17.1
 bandit>=1.7
 pip-audit>=2.7
 

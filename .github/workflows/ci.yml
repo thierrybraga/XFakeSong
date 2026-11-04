@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   lint:
-    name: Lint (ruff) — advisório
+    name: Lint e formatação (ruff, black, isort)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -25,11 +25,13 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - run: pip install ruff
-      # Advisório: a base ainda não está 100% lint-clean. `--exit-zero` mantém
-      # o job verde e publica os achados como anotações no PR (sem bloquear).
-      # O workflow release-gate.yml executa o lint sem --exit-zero.
-      - run: ruff check app tests benchmarks tools --output-format=github --exit-zero
+      # As versões vêm de requirements-dev.txt: outra versão do Black reprovaria
+      # código que `make format` acabou de formatar.
+      - name: Instalar as ferramentas fixadas
+        run: pip install $(grep -E '^(black|isort|ruff)==' requirements-dev.txt)
+      - run: ruff check app tests benchmarks tools --output-format=github
+      - run: black --check app benchmarks tools tests
+      - run: isort --check-only app benchmarks tools tests
 
   test:
     name: Testes + cobertura

@@ -371,7 +371,7 @@ Workflows ativos:
 
 | Workflow | Quando roda | Papel |
 |---|---|---|
-| `.github/workflows/ci.yml` | push, PR, manual | ruff advisório, testes+cobertura, segurança, docs, Docker CPU em PR — **não** roda notebooks |
+| `.github/workflows/ci.yml` | push, PR, manual | lint e formatação, testes+cobertura, segurança, docs, Docker CPU em PR — **não** roda notebooks |
 | `.github/workflows/release-gate.yml` | tag `v*` ou manual | gates estritos de release; detalhes em [Dependências e Gates](release-gates.md) |
 | `.github/workflows/static.yml` | push na `main`, manual | build e deploy da documentação no GitHub Pages |
 | `.github/workflows/notebooks-execute.yml` | manual (`workflow_dispatch`) | execução best-effort de notebooks self-contained |

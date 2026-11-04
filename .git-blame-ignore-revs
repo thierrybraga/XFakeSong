@@ -1,0 +1,5 @@
+# Commits só de formatação, ignorados no blame. O GitHub lê este arquivo sozinho; no
+# Git local: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: aplica black e isort em app, benchmarks, tools e tests
+aa47f982312f383ec4de34b0e0742e9c4c1c5de1

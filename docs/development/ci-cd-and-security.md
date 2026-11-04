@@ -16,7 +16,7 @@ Princípio do menor privilégio: `permissions: contents: read`.
 | **Docs** | ✅ sim | Build limpo `mkdocs build --strict --clean` + verificação de páginas, links e fragmentos |
 | **Segurança** | ✅ parcial | `bandit -lll` bloqueia achados HIGH; `pip-audit -r requirements.txt` audita o runtime, mas é advisório no CI normal |
 | **Docker build** | ✅ (só em PR) | `docker build --build-arg TF_VARIANT=cpu` + `docker compose config` dos perfis segmentados |
-| **Lint (ruff)** | ⚠️ advisório | publica achados como anotações (`--exit-zero`) sem bloquear |
+| **Lint e formatação** | ✅ sim | `ruff check`, `black --check` e `isort --check-only`, nas versões fixadas em `requirements-dev.txt` |
 
 O workflow de release `.github/workflows/release-gate.yml` é estrito e roda em
 tags `v*` ou manualmente: bloqueia a promoção se falharem compatibilidade de

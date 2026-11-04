@@ -99,7 +99,11 @@ Adicione com **versão mínima** (e upper bound quando houver major arriscado) a
 
 ## Estilo e commits
 
-- Formatação: `black` + `isort`; lint: `ruff` (config em `pyproject.toml`).
+- Formatação: `black` + `isort`; lint: `ruff` (config em `pyproject.toml`). A CI bloqueia os
+  três: rode `make format` e `make lint` antes de commitar.
+- O commit que formatou o repositório está em `.git-blame-ignore-revs`. O GitHub já o ignora no
+  blame; para o `git blame` local, rode uma vez
+  `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
 - Alvo Python 3.11 (ambiente de referência). Prefira funções puras e testáveis; logue erros com
   `logger.exception`.
 - Commits pequenos e escopados; PRs passam pelos gates de CI (abaixo).

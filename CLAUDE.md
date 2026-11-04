@@ -36,7 +36,7 @@ make install-dev                        # cria .venv + instala deps + dev tools
 pytest tests/                           # suite completa
 make test                               # suite rapida (tudo exceto smoke) — run da CI
 make test-unit | test-api | test-integration | test-smoke
-make lint                               # ruff
+make lint                               # ruff + black/isort --check (bloqueia na CI)
 make format                             # black + isort
 ruff check app/ benchmarks/ tools/ tests/ ; bandit -r app/ benchmarks/ tools/
 

@@ -196,13 +196,17 @@ bootstrap:  ## Cria estrutura de diretórios padrão
 # =====================================================================
 
 .PHONY: lint
-lint:  ## Roda ruff lint
+lint:  ## Roda ruff e confere black + isort, como a CI
 	"$(VENV_PYTHON)" -m ruff check app/ benchmarks/ tools/ tests/
+	"$(VENV_PYTHON)" -m black --check app/ benchmarks/ tools/ tests/
+	PYTHONUTF8=1 "$(VENV_PYTHON)" -m isort --check-only app/ benchmarks/ tools/ tests/
 
+# PYTHONUTF8: no Windows, sem isso o isort pula em silêncio os arquivos com caracteres
+# fora do cp1252.
 .PHONY: format
 format:  ## Formata com black + isort
 	"$(VENV_PYTHON)" -m black app/ benchmarks/ tools/ tests/
-	"$(VENV_PYTHON)" -m isort app/ benchmarks/ tools/ tests/
+	PYTHONUTF8=1 "$(VENV_PYTHON)" -m isort app/ benchmarks/ tools/ tests/
 
 # Runner padronizado. Veja docs/development/quality-and-testing.md.
 RUN_TESTS := bash tools/ops/run_tests.sh
