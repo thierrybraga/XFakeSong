@@ -1,47 +1,43 @@
 # 15 — Sistema de Benchmark, Modelos Treinados e Resultados
 
-> ## ⚠️ O dataset canônico mudou em 26/07/2026
+> ## Referência canônica do TCC
 >
-> O artefato vigente é **`data/datasets/benchmark_dataset.npz`** — CETUC
-> pareado com clones XTTS-v2, disjunção dupla locutor × frase, janela de 3 s.
-> Ver [Protocolo de Dataset](../data/dataset-protocol.md) e
+> O artigo `data/results/paper/main.tex` define o estudo: o experimento usa
+> **`data/datasets/benchmark_dataset_15k.npz`**, com 15.000 amostras CETUC–
+> XTTS-v2, split disjunto em locutor × frase e janela central de 3 s. O corpus
+> pareado de 40.980 amostras é o conjunto pai, não o NPZ avaliado no artigo.
+> Ver [Estudo Canônico e Inventário de Legado](canonical-study-and-legacy-inventory.md),
+> [Protocolo de Dataset](../data/dataset-protocol.md) e
 > [Dataset do Benchmark](../data/benchmark-dataset.md).
 >
-> Todos os NPZ `benchmark_audio_raw_balanced_15k*` foram **apagados do disco**.
-> Os resultados consolidados reportados nesta página foram obtidos sobre o
-> artefato anterior, que tinha atalho de fonte de 87,6% e disjunção de falante vácua:
-> eles medem desempenho *in-domain com atalho disponível* e **não** devem ser
-> comparados com a literatura nem com execuções sobre o dataset atual. **Requerem
-> retreino.** Os comandos abaixo já apontam para o dataset atual.
->
-> O modo `--academic-protocol` recusa artefatos sem `cluster_ids`/`source_ids` ou
-> com atalho fonte-rótulo acima do limite.
+> O NPZ de 15k e o test lock existem neste checkout local e têm hash compatível
+> com o artigo. As métricas locais e as tabelas consolidadas divergem, e as
+> pastas de origem indicadas nos manifestos não estão presentes. Portanto os
+> valores do artigo ainda não estão reconciliados; não os trate como
+> confirmatórios até fechar a proveniência descrita no inventário canônico.
 
 
-O pacote `benchmarks/` gera, de forma **reprodutível** e usando
-o **pipeline real** (`TrainingService → ModelLoader → Predictor →
-MetricsCalculator`) e a **API** (FastAPI `TestClient`), os dados empíricos do
-projeto: desempenho por arquitetura, eficiência computacional, robustez a ruído
-e teste de sistema da API.
+O pacote `benchmarks/` contém harnesses para medir desempenho por arquitetura,
+eficiência, robustez a ruído e integração da API. O protocolo do artigo é
+executado por `run_models_sequential.py`; outros entry points descritos neste
+guia incluem fluxos históricos/genéricos e não são equivalentes ao estudo
+CETUC–XTTS-v2. A situação dos resultados locais e seus limites de proveniência
+estão no inventário canônico.
 
-> Importante: este harness usa o pipeline **já corrigido** (treino→salvar→
-> carregar→prever funcional). Os números aqui substituem com fidelidade os
-> medidos manualmente, incluindo os modelos `raw-audio` e os baselines
-> clássicos (SVM/RF) que faltavam.
+> A existência do harness não prova que cada tabela deste documento foi gerada
+> pelo mesmo run ou pela versão atual do código. Preserve as métricas históricas
+> até reconciliar logs, checkpoints, predições e origem das tabelas.
 
-## Estado consolidado atual
+## Estado consolidado e proveniência
 
-!!! danger "Artefatos apagados em 2026-07-28 — esta seção é histórica"
-    `data/models/` e `data/results/benchmark_academic_v2/` foram **removidos do
-    disco e do índice do git** antes da nova bateria. Os números, caminhos e
-    contagens desta seção e da de [Resultados numéricos](#resultados-numericos-usados-no-artigo)
-    descrevem execuções sobre `benchmark_audio_raw_balanced_15k_academic_v2` —
-    o dataset anterior, que tinha atalho de fonte de 87,6% e disjunção de
-    falante vácua, e que também já não existe.
-
-    Ficam como registro do que foi feito, **não** como estado atual nem como
-    referência comparável. O material do artigo em `data/results/paper/`
-    continua versionado e será regenerado pela nova bateria.
+!!! warning "Métricas ainda sem reconciliação de origem"
+    `data/results/benchmark_15k_2026-08-20/` contém resultados para o hash do
+    dataset do artigo, mas seu `run_summary.json` declara `running`, embora os
+    11 registros de modelo estejam `ok`. Os caminhos de saída no run e os
+    caminhos registrados na consolidação do artigo apontam para diretórios
+    ausentes. As métricas limpas também divergem. Preserve os artefatos e use
+    o [inventário canônico](canonical-study-and-legacy-inventory.md) para
+    reconciliar a origem antes de substituir tabelas ou declarar resultados.
 
 O material acadêmico foi consolidado em uma única fonte LaTeX em
 `data/results/paper/`:
@@ -49,29 +45,25 @@ O material acadêmico foi consolidado em uma única fonte LaTeX em
 | Artefato | Caminho | Estado |
 |---|---|---|
 | Fonte principal do artigo | `data/results/paper/main.tex` | versionado |
-| Instruções de regeneração | `data/results/paper/README.md` | versionado |
-| Tabelas de benchmark | `data/results/paper/tabelas_benchmark.tex` | **placeholder** — apagado em 2026-07-31 |
-| Figuras usadas no artigo | `data/results/paper/figures/*.png` | **apagado em 2026-07-31** |
-| Matrizes de confusão por arquitetura | `data/results/paper/figures/confusion_matrices/*.png` | **apagado em 2026-07-31** |
-| Consolidação (`benchmark_summary.json`) | `data/results/paper/consolidated/` | **apagado em 2026-07-31** |
+| Instruções de regeneração | este guia e [Protocolo de Dataset](../data/dataset-protocol.md) | documentação pública versionável |
+| Tabelas de benchmark | `data/results/paper/tabelas_benchmark.tex` | presente e incluído pela fonte; valores requerem reconciliação |
+| Figuras usadas no artigo | `data/results/paper/figures/*.png` | presentes no checkout; resultados históricos, precisam ser regeneradas |
+| Matrizes de confusão por arquitetura | `data/results/paper/figures/confusion_matrices/*.png` | presentes no checkout; resultados históricos, precisam ser regeneradas |
+| Consolidação (`benchmark_summary.json`) | `data/results/paper/consolidated/` | presente localmente; referências de origem apontam para pastas ausentes |
 | Manifesto de geração e hashes | `data/results/paper/paper_build_manifest.json` | gerado por `build_paper_from_benchmark.py` |
-| Dataset do benchmark atual | `data/datasets/benchmark_dataset.npz` | canônico |
+| Dataset avaliado no artigo | `data/datasets/benchmark_dataset_15k.npz` | canônico para o estudo do TCC; run ainda não reconciliado |
 | Modelos default da Gradio/API | `data/models/bench_*` | recriado pela promoção |
 | Modelos completos por arquitetura | `data/models/benchmark_final/<arquitetura>/` | recriado pela promoção |
 | Manifesto dos modelos consolidados | `data/models/registry.json` | recriado pela promoção |
 | Resultados e relatórios de benchmark | `data/results/<run>/` | recriado pela nova bateria |
 
-!!! warning "Artefatos gerados do artigo removidos em 2026-07-31"
-    Tabelas, figuras, `consolidated/` e `main.pdf` vinham de execuções sobre
-    `benchmark_audio_raw_balanced_15k*` — atalho de fonte de 87,6% e disjunção
-    de falante vácua, dataset já apagado. Versionados, um `pdflatex main.tex`
-    os reintroduziria no artigo em silêncio. **`main.tex` não compila até a
-    nova bateria rodar** — as figuras referenciadas não existem mais, e isso é
-    deliberado. Passo a passo em `data/results/paper/README.md`.
-
-    O histórico persistido em `data/app.db` (483 execuções, 61.857 métricas)
-    é a última cópia sobrevivente desses números; limpe com
-    `python scripts/ops/purge_previous_runs.py --all`.
+!!! warning "Resultados não reconciliados"
+    O artigo define o protocolo do TCC, mas a execução local e os artefatos
+    consolidados apresentam hashes de teste, caminhos de origem e métricas que
+    ainda precisam ser reconciliados. Preserve os históricos e não rode comandos
+    de limpeza do banco para preparar a publicação. Consulte o [inventário
+    canônico](canonical-study-and-legacy-inventory.md) antes de regenerar os
+    resultados.
 
 Não há PDFs versionados como fonte de verdade. O PDF deve ser gerado a partir de
 `data/results/paper/main.tex` com `pdflatex` (qualquer instalação TeX Live completa).
@@ -87,7 +79,7 @@ completo de cada modelo promovido, incluindo backbones SSL quando aplicável.
 No checkout atual `data/models/` está **vazio**: os artefatos anteriores foram
 removidos em 2026-07-28. O `registry.json` e os diretórios por arquitetura são
 recriados pela promoção, ao fim da nova bateria
-(`scripts/reporting/sync_completed_benchmark_artifacts.py`).
+(`tools/reporting/sync_completed_benchmark_artifacts.py`).
 
 ### Incerteza e repetições (protocolo desde 2026-07-27)
 
@@ -115,7 +107,7 @@ Regras do protocolo de repetição:
 | Auditoria | cada execução fica em `seed_runs` no JSON de resultados |
 
 ```bash
-python scripts/benchmark/run_benchmark.py --full --dataset <npz>   # n_seeds=1
+python benchmarks/run_benchmark.py --full --dataset <npz>   # n_seeds=1
 # 3 repetições (3x o tempo de GPU):
 python -c "from benchmarks.config import BenchmarkConfig; ..."     # n_seeds=3
 ```
@@ -185,7 +177,7 @@ próprias classes).
 
 ```bash
 # gerado por padrão junto da consolidação
-python scripts/reporting/consolidate_results.py data/results/<run> \
+python tools/reporting/consolidate_results.py data/results/<run> \
   --prefer-last --copy-to data/results/paper/figures
 # -> <out>/benchmark_significance.json  (raiz = frase, by_speaker = locutor)
 ```
@@ -253,7 +245,7 @@ escopos** (`benchmarks/config.py`):
 | Escopo | Modelos | Como roda |
 |---|---|---|
 | `official` (default) | SVM, RandomForest, RawNet2, AASIST, RawGAT-ST, Conformer, Hybrid CNN-Transformer, SpectrogramTransformer, MultiscaleCNN | hiperparâmetros de `planning.py::NEURAL_BENCHMARK_HPARAMS` |
-| `official` (SSL real) | WavLM Original, HuBERT Original | runner PyTorch separado (`scripts/benchmark/run_wavlm_original_benchmark.py`) — backbones SSL reais, não o fallback TF |
+| `official` (SSL real) | WavLM Original, HuBERT Original | runner PyTorch separado (`benchmarks/run_wavlm_original_benchmark.py`) — backbones SSL reais, não o fallback TF |
 | `extended` | Sonic Sleuth, EfficientNet-LSTM, Ensemble | `--experiment-scope extended`, que força `optimize_hyperparameters=False` |
 | `extended` (SSL Keras) | WavLM, HuBERT | mesmos checkpoints dos "Original", mas com o backbone **portado para Keras** (`ssl_backbone.py`) e congelado; treinam só a soma ponderada de camadas e a cabeça |
 
@@ -373,7 +365,7 @@ Pedir um modelo do escopo estendido dentro do escopo oficial é erro de
 configuração (o preflight recusa antes de treinar), não uma limitação do
 harness. Dentre os modelos executados, apenas os que completam um run entram no
 diretório final via
-`scripts/reporting/sync_completed_benchmark_artifacts.py`.
+`tools/reporting/sync_completed_benchmark_artifacts.py`.
 
 No topo de `data/models/`, ficam os arquivos carregáveis diretamente pela
 interface e pela API (`.keras`/`.pkl`) e seus respectivos
@@ -410,16 +402,16 @@ A fonte oficial para publicação é `data/models/`, pois é a mesma pasta usada
 pela Gradio/API como default. Antes de enviar, verifique o plano de upload:
 
 ```bash
-python scripts/ops/upload_models_to_hf.py \
-    --repo-id SEU_USUARIO/xfakesong-models \
+python tools/ops/upload_models_to_hf.py \
+    --repo-id SEU_USUARIO/speechchecker-models \
     --dry-run
 ```
 
 Depois envie para um repositório do tipo **Model**:
 
 ```bash
-python scripts/ops/upload_models_to_hf.py \
-    --repo-id SEU_USUARIO/xfakesong-models \
+python tools/ops/upload_models_to_hf.py \
+    --repo-id SEU_USUARIO/speechchecker-models \
     --private
 ```
 
@@ -428,14 +420,16 @@ necessário e sobe os arquivos para `models/` no Hub. Use
 `--include-paper` e `--include-results` apenas quando quiser anexar o pacote
 do artigo e relatórios consolidados junto ao repositório de modelos.
 
-### Resultados numéricos usados no artigo
+### Resultados numéricos históricos (run de 2026-07-15)
 
-> Os números desta seção vêm do **artefato anterior, já apagado do disco**
-> (`benchmark_audio_raw_balanced_15k_confirmatory_v2.npz`): 15.000 amostras do
-> tier `medium`, split estratificado 70/15/15, 2.250 de teste, 2.769,01 MiB. Eles
-> são preservados como registro do run consolidado de 2026-07-15 e **serão
-> substituídos** quando o retreino sobre o `benchmark_dataset.npz` for
-> executado.
+!!! warning "Histórico, não métricas reconciliadas do artigo atual"
+    Esta seção descreve um run de 2026-07-15 sobre o artefato antigo
+    `benchmark_audio_raw_balanced_15k_confirmatory_v2.npz`, tier `medium`, split
+    estratificado 70/15/15 e 2.250 amostras de teste. O arquivo já não está no
+    checkout. Os valores ficam preservados como histórico e não serão
+    substituídos automaticamente: o artigo atual usa o NPZ pareado
+    `benchmark_dataset_15k.npz`, cujos resultados locais ainda precisam ser
+    reconciliados conforme o inventário canônico.
 
 O run consolidado usou 15.000 amostras em PCM linear, 16 bits, mono e
 16 kHz. Os resultados consolidados anteriores usaram orçamentos e parada
@@ -456,28 +450,27 @@ mesma frase —, então uma dobra aleatória deixa metade do par no treino e a o
 metade na validação. O grid vive em `svm.py::SVM_PARAM_GRID` e
 `random_forest.py::RANDOM_FOREST_PARAM_GRID`, fonte única desde a mesma data.
 
-> **Fonte única dos números**: a tabela de resultados usada no artigo é
-> gerada automaticamente em `data/results/paper/tabelas_benchmark.tex`
-> (`Tabela~\ref{tab:resultados_consolidados}` de `main.tex`) a partir de
-> `data/results/<run>/benchmark_summary.json`, via
-> `python scripts/reporting/consolidate_results.py <runs...> --prefer-last --copy-to data/results/paper/figures`
-> seguido de `python scripts/reporting/update_tcc_latex.py`. Não duplique esses valores
+> **Fluxo futuro de geração:** após reconciliar um run com o protocolo do artigo,
+> gere a consolidação em `data/results/paper/tabelas_benchmark.tex` a partir dos
+> JSON/CSV daquele run e registre hashes/fontes no manifesto. O arquivo atual é
+> incluído por `main.tex`, mas sua proveniência ainda não foi reconciliada.
+> seguido de `python tools/reporting/update_tcc_latex.py`. Não duplique esses valores
 > aqui à mão — copie o retrato mais recente do artigo quando precisar de
 > referência rápida, mas trate `tabelas_benchmark.tex` como a fonte de
 > verdade.
 
-### Run vigente — `clean_benchmark_15k`
+### Run histórico — `clean_benchmark_15k` (`waveform-awgn-v2`)
 
 `data/results/clean_benchmark_15k/`, sobre `benchmark_dataset_15k.npz`
 (15.000 amostras, splits 12.162/1.456/1.382), protocolo `waveform-awgn-v2`,
 test-lock v2 validado, 100 épocas fixas, limiar comum 0,5.
 
-**Substitui `final_consolidated_20260715`**, cujos números foram medidos no
-corpus anterior e não são comparáveis com estes (conjuntos de teste diferentes).
-Aquele diretório não existe mais em `data/results/`; o que resta dele está em
-`data/results/paper/` e nas tabelas históricas de
-[Protocolo Final de ML](final-ml-protocol.md) e
-[Estudo Experimental](experimental-study.md).
+Na época, substituiu `final_consolidated_20260715`, medido em um corpus anterior.
+Este run também antecede o dataset canônico atual com disjunção por locutor e
+frase: conforme [Dataset do Benchmark](../data/benchmark-dataset.md), nenhum
+modelo foi treinado sob o protocolo vigente. Portanto, a tabela abaixo é
+histórica e não é resultado confirmatório do TCC. Os diretórios dos runs não
+existem mais em `data/results/`; mantenha estas métricas apenas como registro.
 
 | Modelo | Accuracy | AUC ROC | EER | Acc.\ @10dB | Acc.\ @5dB | Estabilidade |
 |---|---:|---:|---:|---:|---:|---|
@@ -517,7 +510,7 @@ backbones *base* deste projeto.
 Sonic Sleuth, Ensemble e EfficientNet-LSTM são suportados pelo harness (14
 arquiteturas ao todo, ver seções abaixo) mas **não** integram o recorte
 oficial do artigo — Sonic Sleuth por suspeita de vazamento de
-dados não auditada (`scripts/dataset/audit_dataset_leakage.py`), e Ensemble/
+dados não auditada (`tools/dataset/audit_dataset_leakage.py`), e Ensemble/
 EfficientNet-LSTM por estarem fora do escopo consolidado
 (`docs/evaluation/retraining-adjustments.md`).
 
@@ -525,11 +518,11 @@ EfficientNet-LSTM por estarem fora do escopo consolidado
 
 ```bash
 # 1) Verificação do harness (sintético, 1 época) — segundos:
-python scripts/benchmark/run_benchmark.py --quick
+python benchmarks/run_benchmark.py --quick
 
 # 2) Pipeline completo do TCC: download, processamento, split, treino,
 #    inferência, gráficos PNG e relatórios Markdown:
-python scripts/benchmark/run_tcc_pipeline.py \
+python benchmarks/run_tcc_pipeline.py \
     --download \
     --target-per-class 7500 \
     --full-benchmark \
@@ -539,14 +532,14 @@ python scripts/benchmark/run_tcc_pipeline.py \
     --npz data/datasets/benchmark_dataset.npz
 
 # 3) Execução do TCC direto no benchmark, usando dataset real .npz já exportado:
-python scripts/benchmark/run_benchmark.py \
+python benchmarks/run_benchmark.py \
     --full \
     --dataset data/datasets/benchmark_dataset.npz \
     --epochs 100 \
     --device-profile gpu
 
 # 4) Benchmark neural completo, sem SVM/RF:
-python scripts/benchmark/run_benchmark.py \
+python benchmarks/run_benchmark.py \
     --neural \
     --dataset data/datasets/benchmark_dataset.npz \
     --epochs 100 \
@@ -554,7 +547,7 @@ python scripts/benchmark/run_benchmark.py \
     --out data/results/bench_neural_tcc
 
 # 5) Sob medida:
-python scripts/benchmark/run_benchmark.py \
+python benchmarks/run_benchmark.py \
     --archs WavLM HuBERT RawNet2 "Sonic Sleuth" AASIST RawGAT-ST Conformer \
     "Hybrid CNN-Transformer" SpectrogramTransformer EfficientNet-LSTM \
     MultiscaleCNN Ensemble SVM RandomForest \
@@ -562,7 +555,7 @@ python scripts/benchmark/run_benchmark.py \
     --epochs 100 --snr 30 20 10 5 --api --out data/results/bench_tcc
 
 # 6) Modelo individual:
-python scripts/benchmark/run_benchmark.py \
+python benchmarks/run_benchmark.py \
     --model AASIST \
     --dataset data/datasets/benchmark_dataset.npz \
     --epochs 100 \
@@ -596,23 +589,23 @@ e aproveitar GPU/CPU de forma controlada.
 | Exploratório | `extended.yaml` | `--family extended` |
 ```bash
 # Revisão sem iniciar treino
-python scripts/training/train_by_family.py --family spectral-attention --plan-only
+python tools/training/train_by_family.py --family spectral-attention --plan-only
 
 # Modelo individual dentro da família TensorFlow/Keras
-python scripts/training/train_by_family.py --family spectral-attention \
+python tools/training/train_by_family.py --family spectral-attention \
     --models SpectrogramTransformer \
     --epochs 100 \
     --device-profile gpu \
     --out data/results/spectrogram_transformer_retrain
 
 # Execução Docker com GPU para SSL
-docker compose -f docker/compose/train.nvidia.yml run --rm ssl-transformers
+docker compose --env-file .env -f infrastructure/docker/compose/train.nvidia.yml run --rm ssl-transformers
 
 # Benchmark completo em container NVIDIA
-docker compose -f docker/compose/benchmark.nvidia.yml run --rm benchmark
+docker compose --env-file .env -f infrastructure/docker/compose/benchmark.nvidia.yml run --rm benchmark
 ```
 
-Cada wrapper delega para `scripts/benchmark/run_models_sequential.py`; por isso o padrão
+Cada wrapper delega para `benchmarks/run_models_sequential.py`; por isso o padrão
 de saída continua o mesmo: `run_summary.json`, `run_summary.md`,
 `<modelo>/run.log`, `<modelo>/results.json` e
 `<modelo>/architectures/<modelo>/*.png`.
@@ -668,7 +661,7 @@ Revisão local: **28/06/2026**.
 
 O catálogo único de datasets fica em `app/domain/dataset_metadata/dataset_catalog.py` e é usado
 pela aba Gradio **Datasets/Download**, pela documentação e pelo exportador
-`scripts/benchmark/run_tcc_pipeline.py`. Ele registra, para cada fonte: tipo (`real`,
+`benchmarks/run_tcc_pipeline.py`. Ele registra, para cada fonte: tipo (`real`,
 `fake` ou `both`), flag de download, prefixos de arquivo, licença, idioma,
 quantidade/duração conhecida, falantes e uso recomendado no benchmark.
 
@@ -703,7 +696,7 @@ protocolos correspondentes:
 | Tier | `build_dataset` | Protocolo de avaliação no benchmark |
 |------|-----------------|-------------------------------------|
 | test / small | `--tier test\|small` | split estratificado para smoke/iteração |
-| medium | `--tier medium` | benchmark canônico 15k, split estratificado |
+| medium | `--tier medium` | fluxo genérico de 15k, split estratificado; não é o artigo |
 | large | `--tier large` | auditoria 20k com `--speaker-split` ou `--unseen-speaker <id>` |
 
 Protocolos anti-vazamento disponíveis no `run_benchmark.py` / `run_tcc_pipeline.py`:
@@ -715,21 +708,21 @@ Protocolos anti-vazamento disponíveis no `run_benchmark.py` / `run_tcc_pipeline
   recomendado no tier `large`.
 
 ```bash
-# tier medium ponta a ponta: benchmark canônico 15k
-python scripts/benchmark/run_tcc_pipeline.py --download --tier medium \
+# Fluxo genérico legado por tier (não reproduz o artigo)
+python benchmarks/run_tcc_pipeline.py --download --tier medium \
     --full-benchmark --epochs 100 --device-profile gpu \
     --out data/results/tcc_medium_15k \
-    --npz data/datasets/benchmark_dataset.npz
+    --npz data/datasets/legacy_medium_15k.npz
 ```
 
-O script `scripts/dataset/build_dataset.py` arquiva excedentes em
+O script `tools/dataset/build_dataset.py` arquiva excedentes em
 `data/datasets/overflow/` por padrão, em vez de apagar os WAVs brutos. Use
 `--delete-excess` apenas quando o descarte destrutivo for intencional.
 
 Comando completo recomendado:
 
 ```bash
-python scripts/benchmark/run_tcc_pipeline.py \
+python benchmarks/run_tcc_pipeline.py \
     --download \
     --target-per-class 7500 \
     --full-benchmark \
@@ -742,7 +735,7 @@ python scripts/benchmark/run_tcc_pipeline.py \
 Para um ensaio rápido do roteiro sem downloads:
 
 ```bash
-python scripts/benchmark/run_tcc_pipeline.py \
+python benchmarks/run_tcc_pipeline.py \
     --smoke \
     --epochs 1 \
     --batch-size 4 \
@@ -753,7 +746,7 @@ python scripts/benchmark/run_tcc_pipeline.py \
 Para revisar tudo antes de iniciar o treinamento longo:
 
 ```bash
-python scripts/benchmark/run_benchmark.py \
+python benchmarks/run_benchmark.py \
     --full \
     --dataset data/datasets/benchmark_dataset.npz \
     --epochs 100 \
@@ -764,7 +757,7 @@ python scripts/benchmark/run_benchmark.py \
 Para revisar um modelo individual:
 
 ```bash
-python scripts/benchmark/run_benchmark.py \
+python benchmarks/run_benchmark.py \
     --model RawNet2 \
     --dataset data/datasets/benchmark_dataset.npz \
     --out data/results/bench_rawnet2 \
@@ -874,7 +867,7 @@ continua gerando os mesmos artefatos (`results.json`, `tcc_report.md`,
 selecionado.
 
 ```bash
-python scripts/benchmark/run_tcc_pipeline.py \
+python benchmarks/run_tcc_pipeline.py \
     --skip-download \
     --skip-preprocess \
     --model SpectrogramTransformer \
@@ -896,12 +889,12 @@ selo SHA-256 criado **antes** do primeiro treino. O teste legado não deve ser
 selado: regenere um novo NPZ intocado e então execute:
 
 ```bash
-python scripts/dataset/freeze_benchmark_test.py \
+python tools/dataset/freeze_benchmark_test.py \
     --dataset data/datasets/benchmark_dataset.npz \
     --declare-untouched
 ```
 ```bash
-python scripts/benchmark/run_models_sequential.py \
+python benchmarks/run_models_sequential.py \
     --dataset data/datasets/benchmark_dataset.npz \
     --test-lock data/datasets/benchmark_dataset.npz.test-lock.json \
     --out data/results/sequential_15k \
@@ -912,7 +905,7 @@ python scripts/benchmark/run_models_sequential.py \
 Rodar somente os modelos neurais:
 
 ```bash
-python scripts/benchmark/run_models_sequential.py \
+python benchmarks/run_models_sequential.py \
     --neural-only \
     --dataset data/datasets/benchmark_dataset.npz \
     --test-lock data/datasets/benchmark_dataset.npz.test-lock.json \
@@ -924,7 +917,7 @@ python scripts/benchmark/run_models_sequential.py \
 Revisar planos neurais antes do treino:
 
 ```bash
-python scripts/benchmark/run_models_sequential.py \
+python benchmarks/run_models_sequential.py \
     --neural-only \
     --plan-only \
     --dataset data/datasets/benchmark_dataset.npz \
@@ -940,7 +933,7 @@ segundos por modelo mesmo sem iniciar treino.
 Retomar somente modelos pendentes:
 
 ```bash
-python scripts/benchmark/run_models_sequential.py \
+python benchmarks/run_models_sequential.py \
     --dataset data/datasets/benchmark_dataset.npz \
     --test-lock data/datasets/benchmark_dataset.npz.test-lock.json \
     --out data/results/sequential_15k \
@@ -952,7 +945,7 @@ python scripts/benchmark/run_models_sequential.py \
 Executar um subconjunto:
 
 ```bash
-python scripts/benchmark/run_models_sequential.py \
+python benchmarks/run_models_sequential.py \
     --models AASIST RawNet2 Conformer \
     --dataset data/datasets/benchmark_dataset.npz \
     --test-lock data/datasets/benchmark_dataset.npz.test-lock.json \
@@ -1106,7 +1099,7 @@ O pacote ativo do artigo fica separado dos modelos:
 
 Após o retreino, gere todo o material com um único comando:
 
-    python scripts/reporting/build_paper_from_benchmark.py data/results/retrain_waveform_awgn
+    python tools/reporting/build_paper_from_benchmark.py data/results/retrain_waveform_awgn
 
 O comando rejeita modelos ausentes, histórico neural diferente de 100 épocas,
 SNRs incompletos, AWGN fora da forma de onda, scores desalinhados ao teste ou
@@ -1167,7 +1160,16 @@ frontend e do `metrics.json`. Campos que so o runner conhece — `band_correctio
 eram APAGADOS ao rodar o reparo. Agora sao preservados do sidecar anterior, e o
 log diz quais foram resgatados. (O script tambem declarava
 `benchmark_tabular_v1` para SVM/RandomForest, cujos artefatos sao **v2** de 183
-colunas: rodar o reparo quebrava a inferencia dos dois.)
+colunas: rodar o reparo quebrava a inferencia dos dois.) Quando o sidecar
+anterior nao tem `band_correction`, ela e DERIVADA do `results.json` do run
+(`input_preparation.band_correction`). Para os sidecars que o app carrega de
+`data/models/`, `--stamp-band-correction <slug>...` faz so esse carimbo, sem
+recalcular o limiar (a regeneracao completa o tiraria de `predictions_clean.csv`,
+a particao de teste) e so se o sha256 do artefato conferir com o do run. Desde
+2026-11-01 o run ja grava o campo nos classicos; o carimbo serve aos artefatos
+anteriores.
+Ressalva: a regeneracao completa ainda le `data/models/benchmark_final/`, que nao
+existe na arvore atual (os promovidos ficam na raiz de `data/models/`).
 
 ## Reprodutibilidade
 

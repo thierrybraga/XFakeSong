@@ -6,16 +6,16 @@
 > [../architecture/overview.md](../architecture/overview.md).
 
 Este documento define o plano de acao para separar ambientes de treinamento,
-inferencia, benchmark e publicacao do XFakeSong por familia computacional. O
+inferencia, benchmark e publicacao do SpeechChecker por familia computacional. O
 objetivo e reduzir conflitos de dependencias, melhorar reprodutibilidade
 cientifica e manter a aplicacao Gradio/FastAPI estavel para demonstracao e
 inferencia com modelos ja treinados.
 
 !!! note "Estado de implementacao"
     A estrutura por familia ja e o unico caminho de build:
-    `docker/environments/*/Dockerfile.{cpu,nvidia}`, `docker/compose/*.yml`,
+    `infrastructure/docker/environments/*/Dockerfile.{cpu,nvidia}`, `infrastructure/docker/compose/*.yml`,
     `configs/training/`, `configs/dataset.yaml`, `configs/inference.yaml`,
-    `Makefile` e `scripts/train_*.py`. O `Dockerfile` da raiz nao e legado —
+    `Makefile` e `tools/training/train_by_family.py`. O `Dockerfile` da raiz nao e legado —
     existe so para o deploy no Hugging Face Spaces (SDK Docker exige esse
     nome/caminho especifico), nao e usado por dev/treino/benchmark local.
 
@@ -44,7 +44,7 @@ excessivamente grandes para tarefas que nao precisam de todas as dependencias.
 
 ## Diagnostico tecnico
 
-O projeto XFakeSong possui escopo amplo:
+O projeto SpeechChecker possui escopo amplo:
 
 - treinamento de modelos classicos e neurais;
 - inferencia local via Gradio e API;
@@ -75,22 +75,22 @@ Hoje o projeto ainda parte de um runtime centralizado:
 | Area | Estado atual |
 | --- | --- |
 | Dependencias | `requirements.txt`, `requirements-base.txt`, `requirements-cpu.txt`, `requirements-dev.txt` |
-| Docker | `docker/compose/*.yml` (perfis segmentados) + `docker/environments/*/Dockerfile.{cpu,nvidia}` |
-| Benchmark | `scripts/benchmark/run_tcc_pipeline.py`, `scripts/benchmark/run_benchmark.py`, `benchmarks/` |
+| Docker | `infrastructure/docker/compose/*.yml` (perfis segmentados) + `infrastructure/docker/environments/*/Dockerfile.{cpu,nvidia}` |
+| Benchmark | `benchmarks/run_tcc_pipeline.py`, `benchmarks/run_benchmark.py`, `benchmarks/` |
 | Dataset principal | `data/datasets/benchmark_audio_raw_balanced_15k.npz` |
 | Modelos default | `data/models/bench_*` e `data/models/benchmark_final/` |
 | Resultados | `data/results/`, `data/results/tcc_consolidated/`, `reports/` |
 | Documentacao | `docs/` via MkDocs Material |
 
-A pasta `docker/environments/` e a camada de consolidacao. Cada ambiente
+A pasta `infrastructure/docker/environments/` e a camada de consolidacao. Cada ambiente
 possui requirements, Dockerfile(s) e README. Os arquivos `docker-compose*.yml`
-da raiz foram removidos (redundantes com `docker/compose/*.yml`); o `Dockerfile`
+da raiz foram removidos (redundantes com `infrastructure/docker/compose/*.yml`); o `Dockerfile`
 da raiz permanece so pelo requisito de deploy do Hugging Face Spaces.
 
 ## Arquitetura-alvo
 
 ```text
-XFakeSong/
+SpeechChecker/
 ├── app/
 │   ├── domain/
 │   ├── application/
@@ -124,7 +124,7 @@ XFakeSong/
 │       ├── requirements.txt
 │       └── README.md
 │
-├── scripts/
+├── tools/
 │   ├── training/
 │   │   └── train_by_family.py   # --family {classical-ml,tensorflow-keras,pytorch-audio,ssl-transformers}
 │   └── reporting/
@@ -165,17 +165,19 @@ XFakeSong/
 │   ├── torch/
 │   └── tensorflow/
 │
-├── docker/
-│   ├── README.md
-│   ├── build.env.example
-│   └── compose/
-│       ├── inference.cpu.yml
-│       ├── inference.nvidia.yml
-│       ├── train.cpu.yml
-│       ├── train.nvidia.yml
-│       └── benchmark.nvidia.yml
+├── infrastructure/
+│   ├── docker/
+│   │   ├── README.md
+│   │   ├── build.env.example
+│   │   └── compose/
+│   │       ├── inference.cpu.yml
+│   │       ├── inference.nvidia.yml
+│   │       ├── train.cpu.yml
+│   │       ├── train.nvidia.yml
+│   │       └── benchmark.nvidia.yml
+│   └── site/                    # Site estático gerado pelo MkDocs
 │
-├── Makefile                        # atalhos para docker/compose/*.yml
+├── Makefile                        # atalhos para infrastructure/docker/compose/*.yml
 ├── README.md
 └── docs/
 ```
@@ -199,20 +201,20 @@ incompativeis.
 
 | Perfil | Compose | Dockerfiles | Hardware |
 | --- | --- | --- | --- |
-| Inferencia CPU/onboard | `docker/compose/inference.cpu.yml` | `docker/environments/inference-api/Dockerfile.cpu` | CPU, Intel/AMD integrado, sem CUDA |
-| Inferencia NVIDIA | `docker/compose/inference.nvidia.yml` | `docker/environments/inference-api/Dockerfile.nvidia` | NVIDIA CUDA via Linux/WSL2 |
-| Treino CPU/onboard | `docker/compose/train.cpu.yml` | `Dockerfile.cpu` por familia | CPU, smoke tests, SVM/RF |
-| Treino NVIDIA | `docker/compose/train.nvidia.yml` | `Dockerfile.nvidia` por familia | NVIDIA CUDA via Linux/WSL2 |
-| Benchmark NVIDIA | `docker/compose/benchmark.nvidia.yml` | `docker/environments/inference-api/Dockerfile.nvidia` | benchmark sequencial completo |
+| Inferencia CPU/onboard | `infrastructure/docker/compose/inference.cpu.yml` | `infrastructure/docker/environments/inference-api/Dockerfile.cpu` | CPU, Intel/AMD integrado, sem CUDA |
+| Inferencia NVIDIA | `infrastructure/docker/compose/inference.nvidia.yml` | `infrastructure/docker/environments/inference-api/Dockerfile.nvidia` | NVIDIA CUDA via Linux/WSL2 |
+| Treino CPU/onboard | `infrastructure/docker/compose/train.cpu.yml` | `Dockerfile.cpu` por familia | CPU, smoke tests, SVM/RF |
+| Treino NVIDIA | `infrastructure/docker/compose/train.nvidia.yml` | `Dockerfile.nvidia` por familia | NVIDIA CUDA via Linux/WSL2 |
+| Benchmark NVIDIA | `infrastructure/docker/compose/benchmark.nvidia.yml` | `infrastructure/docker/environments/inference-api/Dockerfile.nvidia` | benchmark sequencial completo |
 
-Use `scripts/ops/docker_build.py` como entrada padronizada para validar ou executar
+Use `tools/ops/docker_build.py` como entrada padronizada para validar ou executar
 os perfis:
 
 ```bash
-python scripts/ops/docker_build.py inference-cpu config
-python scripts/ops/docker_build.py train-cpu config
-python scripts/ops/docker_build.py train-nvidia config
-python scripts/ops/docker_build.py benchmark-nvidia run
+python tools/ops/docker_build.py inference-cpu config
+python tools/ops/docker_build.py train-cpu config
+python tools/ops/docker_build.py train-nvidia config
+python tools/ops/docker_build.py benchmark-nvidia run
 ```
 
 ## Fases de migracao
@@ -244,7 +246,7 @@ os testes da familia passam.
 - Criar Dockerfiles CPU/GPU para TensorFlow, PyTorch e SSL. **Implementado como base.**
 - Criar Dockerfile leve para `inference-api`. **Implementado como base.**
 - Criar composes segmentados por perfil de hardware. **Implementado em
-  `docker/compose/`.**
+  `infrastructure/docker/compose/`.**
 - Padronizar volumes para `datasets/`, `data/models/`, `data/results/` e `cache/`.
 - Configurar cache Hugging Face, Torch e TensorFlow fora da imagem.
 
@@ -253,15 +255,15 @@ inferencia sem baixar dependencias em tempo de execucao.
 
 ### P3 - Entrypoints de treinamento
 
-- Entrypoint unico por familia: `scripts/training/train_by_family.py
+- Entrypoint unico por familia: `tools/training/train_by_family.py
   --family {classical-ml,tensorflow-keras,pytorch-audio,ssl-transformers}`.
   **Implementado como camada fina sobre
-  `scripts/benchmark/run_models_sequential.py`** (os antigos wrappers
+  `benchmarks/run_models_sequential.py`** (os antigos wrappers
   `train_classical/tensorflow/pytorch/ssl.py` foram consolidados nesse CLI).
 - Criar utilitarios de consolidacao: `validate_artifacts.py` e
-  `export_model_card.py` (em `scripts/reporting/`). **Implementado como camada
+  `export_model_card.py` (em `tools/reporting/`). **Implementado como camada
   leve sobre o pipeline atual**; a execucao de todas as arquiteturas em lote e
-  papel de `scripts/benchmark/run_models_sequential.py`.
+  papel de `benchmarks/run_models_sequential.py`.
 - Permitir treino por arquitetura individual e por preset.
 - Padronizar logs de progresso, checkpoints, early stopping e exportacao de
   artefatos.
@@ -308,30 +310,30 @@ e independente das dependencias de treinamento.
 docker compose up --build app
 
 # Inferencia usando o ambiente dedicado
-docker compose -f docker/compose/inference.cpu.yml up --build inference-api
-docker compose -f docker/compose/inference.nvidia.yml up --build inference-api
+docker compose -f infrastructure/docker/compose/inference.cpu.yml up --build inference-api
+docker compose -f infrastructure/docker/compose/inference.nvidia.yml up --build inference-api
 
 # Treino classico
-docker compose -f docker/compose/train.cpu.yml run --rm classical-ml \
-  python scripts/training/train_by_family.py --family classical-ml --models SVM --config configs/training/classical.yaml
+docker compose -f infrastructure/docker/compose/train.cpu.yml run --rm classical-ml \
+  python tools/training/train_by_family.py --family classical-ml --models SVM --config configs/training/classical.yaml
 
 # Treino TensorFlow/Keras com GPU
-docker compose -f docker/compose/train.nvidia.yml run --rm tensorflow-keras \
-  python scripts/training/train_by_family.py --family tensorflow-keras --models MultiscaleCNN --epochs 100
+docker compose -f infrastructure/docker/compose/train.nvidia.yml run --rm tensorflow-keras \
+  python tools/training/train_by_family.py --family tensorflow-keras --models MultiscaleCNN --epochs 100
 
 # Treino PyTorch audio com GPU
-docker compose -f docker/compose/train.nvidia.yml run --rm pytorch-audio \
-  python scripts/training/train_by_family.py --family pytorch-audio --models RawNet2 --epochs 100
+docker compose -f infrastructure/docker/compose/train.nvidia.yml run --rm pytorch-audio \
+  python tools/training/train_by_family.py --family pytorch-audio --models RawNet2 --epochs 100
 
 # Treino SSL/Transformers com GPU
-docker compose -f docker/compose/train.nvidia.yml run --rm ssl-transformers \
-  python scripts/training/train_by_family.py --family ssl-transformers --models WavLM --epochs 100
+docker compose -f infrastructure/docker/compose/train.nvidia.yml run --rm ssl-transformers \
+  python tools/training/train_by_family.py --family ssl-transformers --models WavLM --epochs 100
 
 # Benchmark NVIDIA completo
-docker compose -f docker/compose/benchmark.nvidia.yml run --rm benchmark
+docker compose -f infrastructure/docker/compose/benchmark.nvidia.yml run --rm benchmark
 
 # Validacao de artefatos
-python scripts/reporting/validate_artifacts.py --models-dir data/models --results-dir results
+python tools/reporting/validate_artifacts.py --models-dir data/models --results-dir results
 ```
 
 ## Regras de compatibilidade
@@ -359,9 +361,9 @@ python scripts/reporting/validate_artifacts.py --models-dir data/models --result
 
 ## Checklist de aceite final
 
-- [x] `docker/environments/` criado com cinco familias documentadas.
+- [x] `infrastructure/docker/environments/` criado com cinco familias documentadas.
 - [x] Cada familia possui requirements e Dockerfile CPU/NVIDIA nomeado por perfil.
-- [x] Perfis Compose segmentados em `docker/compose/`.
+- [x] Perfis Compose segmentados em `infrastructure/docker/compose/`.
 - [ ] Cada familia possui Dockerfile validado por build completo.
 - [ ] Benchmark sintetico passa para todas as 14 arquiteturas.
 - [ ] Benchmark real gera `results.json`, graficos e relatorio por arquitetura.

@@ -1,36 +1,8 @@
-"""Módulo de Características de Áudio"""
+"""Extração de características de áudio.
 
-from .extractors import (
-    CepstralFeatureExtractor,
-    ComplexityFeatureExtractor,
-    FormantFeatureExtractor,
-    PerceptualFeatureExtractor,
-    PredictiveFeatureExtractor,
-    ProsodicFeatureExtractor,
-    SpectralFeatureExtractor,
-    SpeechFeatureExtractor,
-    TemporalFeatureExtractor,
-    TimeFrequencyFeatureExtractor,
-    TransformFeatureExtractor,
-    VoiceQualityFeatureExtractor,
-)
-
-__all__ = [
-    # Spectral
-    "SpectralFeatureExtractor",
-    "CepstralFeatureExtractor",
-    # Temporal
-    "TemporalFeatureExtractor",
-    # Prosodic
-    "ProsodicFeatureExtractor",
-    "FormantFeatureExtractor",
-    "VoiceQualityFeatureExtractor",
-    # Perceptual
-    "PerceptualFeatureExtractor",
-    # Advanced
-    "ComplexityFeatureExtractor",
-    "TransformFeatureExtractor",
-    "TimeFrequencyFeatureExtractor",
-    "PredictiveFeatureExtractor",
-    "SpeechFeatureExtractor"
-]
+Os extratores são carregados sob demanda pelo
+``app.domain.services.feature_extraction.extractor_loader`` (caminhos de
+módulo explícitos). Sem re-exports aqui: ``import
+app.domain.features.benchmark_frontend`` não deve carregar os doze
+extratores.
+"""

@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1.7
 # =====================================================================
-# XFakeSong — Dockerfile de deploy no Hugging Face Spaces
+# SpeechChecker — Dockerfile de deploy no Hugging Face Spaces
 # =====================================================================
 # Existe SÓ neste caminho (raiz) porque HF Spaces (SDK Docker) exige um
 # arquivo chamado literalmente `Dockerfile` na raiz do repo — não é o
 # Dockerfile usado por dev/treino/benchmark local, que vivem em
-# docker/environments/*/Dockerfile.{cpu,nvidia} + docker/compose/*.yml
+# infrastructure/docker/environments/*/Dockerfile.{cpu,nvidia} + infrastructure/docker/compose/*.yml
 # (ver docs/getting-started/installation.md). Também validado no CI
 # (.github/workflows/ci.yml, job "docker") por PR.
 #
@@ -86,7 +86,7 @@ RUN pip install --upgrade pip setuptools wheel && \
 FROM python:${PYTHON_VERSION}-slim AS runtime
 
 # Metadata OCI — útil para registries (GHCR, Docker Hub, etc.)
-LABEL org.opencontainers.image.title="XFakeSong" \
+LABEL org.opencontainers.image.title="SpeechChecker" \
       org.opencontainers.image.description="Deepfake audio detection platform" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.source="https://github.com/thierrybraga/XFakeSong" \
@@ -111,7 +111,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     # Numba/librosa cache em diretório writable
     NUMBA_CACHE_DIR=/tmp/numba_cache \
     MPLCONFIGDIR=/tmp/matplotlib \
-    HF_HOME=/tmp/huggingface \
+    HF_HOME=/app/data/cache/huggingface \
+    TRANSFORMERS_CACHE=/app/data/cache/huggingface \
+    TORCH_HOME=/app/data/cache/torch \
+    KERAS_HOME=/app/data/cache/keras \
+    TFHUB_CACHE_DIR=/app/data/cache/tensorflow \
+    XDG_CACHE_HOME=/app/data/cache \
     # Backend matplotlib não-interativo (Docker headless)
     MPLBACKEND=Agg \
     # TensorFlow GPU via tensorflow[and-cuda] instala CUDA/cuDNN no venv.
@@ -157,16 +162,17 @@ RUN mkdir -p \
         /app/data/models \
         /app/data/datasets/fake \
         /app/data/datasets/real \
+        /app/data/cache/huggingface /app/data/cache/torch \
+        /app/data/cache/keras /app/data/cache/tensorflow \
         /tmp/numba_cache \
         /tmp/matplotlib \
-        /tmp/huggingface \
         /tmp/gradio \
     && chown -R appuser:appuser \
         /app \
-        /tmp/numba_cache /tmp/matplotlib /tmp/huggingface /tmp/gradio
+        /tmp/numba_cache /tmp/matplotlib /tmp/gradio
 
-# Entrypoint (fonte única, compartilhada com docker/environments/inference-api/)
-COPY --chown=appuser:appuser docker/environments/inference-api/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+# Entrypoint (fonte única, compartilhada com infrastructure/docker/environments/inference-api/)
+COPY --chown=appuser:appuser infrastructure/docker/environments/inference-api/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Código da aplicação (em layer separada do venv para cache eficiente)

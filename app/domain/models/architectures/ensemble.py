@@ -83,20 +83,23 @@ class SharedSTFTLayer(layers.Layer):
     def call(self, inputs):
         inputs = _flatten_audio_tensor(inputs)
         stft = tf.signal.stft(
-            inputs, frame_length=self.n_fft,
-            frame_step=self.hop_length, fft_length=self.n_fft
+            inputs,
+            frame_length=self.n_fft,
+            frame_step=self.hop_length,
+            fft_length=self.n_fft,
         )
         magnitude = tf.abs(stft)
         power = tf.square(magnitude)
-        return {'magnitude': magnitude, 'power': power}
+        return {"magnitude": magnitude, "power": power}
 
     def get_config(self):
         config = super().get_config()
-        config.update({'n_fft': self.n_fft, 'hop_length': self.hop_length})
+        config.update({"n_fft": self.n_fft, "hop_length": self.hop_length})
         return config
 
 
 # ============================ FEATURE EXTRACTION LAYERS ============================
+
 
 @tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class MelSpectrogramBranch(layers.Layer):
@@ -109,8 +112,9 @@ class MelSpectrogramBranch(layers.Layer):
     (compatibilidade retroativa com uso standalone).
     """
 
-    def __init__(self, sample_rate=16000, n_fft=512, hop_length=160,
-                 n_mels=128, **kwargs):
+    def __init__(
+        self, sample_rate=16000, n_fft=512, hop_length=160, n_mels=128, **kwargs
+    ):
         super().__init__(**kwargs)
         self.sample_rate = sample_rate
         self.n_fft = n_fft
@@ -134,12 +138,14 @@ class MelSpectrogramBranch(layers.Layer):
     def call(self, inputs, stft_cache=None):
         inputs = _flatten_audio_tensor(inputs)
         # Reuso de STFT compartilhado quando disponível
-        if stft_cache is not None and 'power' in stft_cache:
-            power = stft_cache['power']
+        if stft_cache is not None and "power" in stft_cache:
+            power = stft_cache["power"]
         else:
             stft = tf.signal.stft(
-                inputs, frame_length=self.n_fft,
-                frame_step=self.hop_length, fft_length=self.n_fft
+                inputs,
+                frame_length=self.n_fft,
+                frame_step=self.hop_length,
+                fft_length=self.n_fft,
             )
             power = tf.square(tf.abs(stft))
         mel_spec = tf.matmul(power, self.mel_weight)
@@ -148,12 +154,14 @@ class MelSpectrogramBranch(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'sample_rate': self.sample_rate,
-            'n_fft': self.n_fft,
-            'hop_length': self.hop_length,
-            'n_mels': self.n_mels,
-        })
+        config.update(
+            {
+                "sample_rate": self.sample_rate,
+                "n_fft": self.n_fft,
+                "hop_length": self.hop_length,
+                "n_mels": self.n_mels,
+            }
+        )
         return config
 
 
@@ -166,8 +174,15 @@ class LFCCBranch(layers.Layer):
     20 linearly-spaced filters, 20 LFCC coefficients.
     """
 
-    def __init__(self, sample_rate=16000, n_fft=512, hop_length=160,
-                 n_filters=20, n_lfcc=20, **kwargs):
+    def __init__(
+        self,
+        sample_rate=16000,
+        n_fft=512,
+        hop_length=160,
+        n_filters=20,
+        n_lfcc=20,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.sample_rate = sample_rate
         self.n_fft = n_fft
@@ -180,9 +195,7 @@ class LFCCBranch(layers.Layer):
         # Filterbank/DCT vêm dos helpers compartilhados em layers.py (fonte
         # única — a mesma construção existia duplicada em sonic_sleuth.py).
         self.filter_bank = tf.constant(
-            linear_triangular_filterbank(
-                self.n_fft, self.sample_rate, self.n_filters
-            ),
+            linear_triangular_filterbank(self.n_fft, self.sample_rate, self.n_filters),
             dtype=tf.float32,
         )
         self.dct_matrix = tf.constant(
@@ -192,12 +205,14 @@ class LFCCBranch(layers.Layer):
     def call(self, inputs, stft_cache=None):
         inputs = _flatten_audio_tensor(inputs)
         # Sprint 2.1: reusa STFT compartilhado quando disponível
-        if stft_cache is not None and 'power' in stft_cache:
-            power = stft_cache['power']
+        if stft_cache is not None and "power" in stft_cache:
+            power = stft_cache["power"]
         else:
             stft = tf.signal.stft(
-                inputs, frame_length=self.n_fft,
-                frame_step=self.hop_length, fft_length=self.n_fft
+                inputs,
+                frame_length=self.n_fft,
+                frame_step=self.hop_length,
+                fft_length=self.n_fft,
             )
             power = tf.square(tf.abs(stft))
         filtered = tf.matmul(power, self.filter_bank)
@@ -207,13 +222,15 @@ class LFCCBranch(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'sample_rate': self.sample_rate,
-            'n_fft': self.n_fft,
-            'hop_length': self.hop_length,
-            'n_filters': self.n_filters,
-            'n_lfcc': self.n_lfcc,
-        })
+        config.update(
+            {
+                "sample_rate": self.sample_rate,
+                "n_fft": self.n_fft,
+                "hop_length": self.hop_length,
+                "n_filters": self.n_filters,
+                "n_lfcc": self.n_lfcc,
+            }
+        )
         return config
 
 
@@ -226,8 +243,15 @@ class CQTBranch(layers.Layer):
     Approximated via STFT with log-spaced frequency binning.
     """
 
-    def __init__(self, sample_rate=16000, n_fft=512, hop_length=160,
-                 n_bins=84, bins_per_octave=12, **kwargs):
+    def __init__(
+        self,
+        sample_rate=16000,
+        n_fft=512,
+        hop_length=160,
+        n_bins=84,
+        bins_per_octave=12,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.sample_rate = sample_rate
         self.n_fft = n_fft
@@ -247,12 +271,14 @@ class CQTBranch(layers.Layer):
     def call(self, inputs, stft_cache=None):
         inputs = _flatten_audio_tensor(inputs)
         # Sprint 2.1: reusa STFT compartilhado (magnitude) quando disponível
-        if stft_cache is not None and 'magnitude' in stft_cache:
-            magnitude = stft_cache['magnitude']
+        if stft_cache is not None and "magnitude" in stft_cache:
+            magnitude = stft_cache["magnitude"]
         else:
             stft = tf.signal.stft(
-                inputs, frame_length=self.n_fft,
-                frame_step=self.hop_length, fft_length=self.n_fft
+                inputs,
+                frame_length=self.n_fft,
+                frame_step=self.hop_length,
+                fft_length=self.n_fft,
             )
             magnitude = tf.abs(stft)
         cqt = tf.matmul(magnitude, self.cqt_filter_bank)
@@ -261,13 +287,15 @@ class CQTBranch(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'sample_rate': self.sample_rate,
-            'n_fft': self.n_fft,
-            'hop_length': self.hop_length,
-            'n_bins': self.n_bins,
-            'bins_per_octave': self.bins_per_octave,
-        })
+        config.update(
+            {
+                "sample_rate": self.sample_rate,
+                "n_fft": self.n_fft,
+                "hop_length": self.hop_length,
+                "n_bins": self.n_bins,
+                "bins_per_octave": self.bins_per_octave,
+            }
+        )
         return config
 
 
@@ -279,8 +307,15 @@ class MFCCBranch(layers.Layer):
     information to LFCC's linearly-spaced filters. 40 mel bins, 20 coefficients.
     """
 
-    def __init__(self, sample_rate=16000, n_fft=512, hop_length=160,
-                 n_mels=40, n_mfcc=20, **kwargs):
+    def __init__(
+        self,
+        sample_rate=16000,
+        n_fft=512,
+        hop_length=160,
+        n_mels=40,
+        n_mfcc=20,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.sample_rate = sample_rate
         self.n_fft = n_fft
@@ -309,12 +344,14 @@ class MFCCBranch(layers.Layer):
     def call(self, inputs, stft_cache=None):
         inputs = _flatten_audio_tensor(inputs)
         # Sprint 2.1: reusa STFT compartilhado quando disponível
-        if stft_cache is not None and 'power' in stft_cache:
-            power = stft_cache['power']
+        if stft_cache is not None and "power" in stft_cache:
+            power = stft_cache["power"]
         else:
             stft = tf.signal.stft(
-                inputs, frame_length=self.n_fft,
-                frame_step=self.hop_length, fft_length=self.n_fft
+                inputs,
+                frame_length=self.n_fft,
+                frame_step=self.hop_length,
+                fft_length=self.n_fft,
             )
             power = tf.square(tf.abs(stft))
         mel_spec = tf.matmul(power, self.mel_weight)
@@ -324,17 +361,20 @@ class MFCCBranch(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'sample_rate': self.sample_rate,
-            'n_fft': self.n_fft,
-            'hop_length': self.hop_length,
-            'n_mels': self.n_mels,
-            'n_mfcc': self.n_mfcc,
-        })
+        config.update(
+            {
+                "sample_rate": self.sample_rate,
+                "n_fft": self.n_fft,
+                "hop_length": self.hop_length,
+                "n_mels": self.n_mels,
+                "n_mfcc": self.n_mfcc,
+            }
+        )
         return config
 
 
 # ============================ CNN CLASSIFIER BRANCH ============================
+
 
 def _create_cnn_branch(x, branch_name, filters=None, dropout_rate=0.3):
     """Create a CNN branch with SE-blocks for feature classification.
@@ -352,21 +392,21 @@ def _create_cnn_branch(x, branch_name, filters=None, dropout_rate=0.3):
 
     for i, f in enumerate(filters):
         x = layers.Conv2D(
-            f, (3, 3), padding='same', use_bias=False,
-            name=f'{branch_name}_conv_{i}'
+            f, (3, 3), padding="same", use_bias=False, name=f"{branch_name}_conv_{i}"
         )(x)
-        x = layers.BatchNormalization(name=f'{branch_name}_bn_{i}')(x)
-        x = layers.ReLU(name=f'{branch_name}_relu_{i}')(x)
-        x = SqueezeExcitationBlock2D(reduction=16, name=f'{branch_name}_se_{i}')(x)
-        x = layers.MaxPooling2D((2, 2), name=f'{branch_name}_pool_{i}')(x)
+        x = layers.BatchNormalization(name=f"{branch_name}_bn_{i}")(x)
+        x = layers.ReLU(name=f"{branch_name}_relu_{i}")(x)
+        x = SqueezeExcitationBlock2D(reduction=16, name=f"{branch_name}_se_{i}")(x)
+        x = layers.MaxPooling2D((2, 2), name=f"{branch_name}_pool_{i}")(x)
 
-    x = layers.GlobalAveragePooling2D(name=f'{branch_name}_gap')(x)
-    x = layers.Dense(256, activation='relu', name=f'{branch_name}_embed')(x)
-    x = layers.Dropout(dropout_rate, name=f'{branch_name}_dropout')(x)
+    x = layers.GlobalAveragePooling2D(name=f"{branch_name}_gap")(x)
+    x = layers.Dense(256, activation="relu", name=f"{branch_name}_embed")(x)
+    x = layers.Dropout(dropout_rate, name=f"{branch_name}_dropout")(x)
     return x
 
 
 # ============================ ENSEMBLE FUSION LAYERS ============================
+
 
 @tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class ScoreFusionLayer(layers.Layer):
@@ -383,10 +423,10 @@ class ScoreFusionLayer(layers.Layer):
     def build(self, input_shape):
         super().build(input_shape)
         self.branch_weights = self.add_weight(
-            name='branch_weights',
+            name="branch_weights",
             shape=(self.num_branches,),
-            initializer='ones',
-            trainable=True
+            initializer="ones",
+            trainable=True,
         )
 
     def call(self, inputs):
@@ -398,17 +438,18 @@ class ScoreFusionLayer(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({'num_branches': self.num_branches})
+        config.update({"num_branches": self.num_branches})
         return config
 
 
 # ============================ MODEL BUILDERS ============================
 
+
 def _create_ensemble_feature_fusion(
     input_shape: Tuple[int, ...],
     num_classes: int = 1,
     dropout_rate: float = 0.3,
-    architecture: str = 'ensemble',
+    architecture: str = "ensemble",
     learning_rate: float = 5e-5,
     weight_decay: float = 1e-5,
 ) -> models.Model:
@@ -421,7 +462,7 @@ def _create_ensemble_feature_fusion(
 
     This is the "feature-level fusion" approach from the literature.
     """
-    inputs = layers.Input(shape=input_shape, name='audio_input')
+    inputs = layers.Input(shape=input_shape, name="audio_input")
 
     # Flatten to 1D audio if needed
     if is_raw_audio(input_shape):
@@ -430,9 +471,9 @@ def _create_ensemble_feature_fusion(
         # For pre-extracted features, use single-branch CNN
         x = inputs
         if len(input_shape) == 2:
-            x = layers.Reshape((*input_shape, 1), name='add_channel')(x)
+            x = layers.Reshape((*input_shape, 1), name="add_channel")(x)
         x = _create_cnn_branch(
-            x, 'single', filters=[32, 64, 128, 256], dropout_rate=dropout_rate
+            x, "single", filters=[32, 64, 128, 256], dropout_rate=dropout_rate
         )
         outputs, loss = create_classification_head(
             x, num_classes, dropout_rate=dropout_rate, hidden_dims=[256, 128]
@@ -442,49 +483,61 @@ def _create_ensemble_feature_fusion(
             optimizer=tf.keras.optimizers.AdamW(
                 learning_rate=learning_rate, weight_decay=weight_decay
             ),
-            loss=loss, metrics=['accuracy']
+            loss=loss,
+            metrics=["accuracy"],
         )
         return model
 
     # ---------- Sprint 2.1: STFT compartilhado (computado 1× para 4 branches) ----------
     # Antes: cada branch chamava tf.signal.stft (4× compute).
     # Agora: SharedSTFTLayer fornece magnitude/power a todas as branches.
-    stft_cache = SharedSTFTLayer(n_fft=512, hop_length=160, name='shared_stft')(audio)
+    stft_cache = SharedSTFTLayer(n_fft=512, hop_length=160, name="shared_stft")(audio)
 
     # ---------- Branch 1: Mel Spectrogram (128 mels) ----------
     mel_features = MelSpectrogramBranch(
-        sample_rate=16000, n_fft=512, hop_length=160, n_mels=128,
-        name='mel_extraction'
+        sample_rate=16000, n_fft=512, hop_length=160, n_mels=128, name="mel_extraction"
     )(audio, stft_cache=stft_cache)
     mel_embedding = _create_cnn_branch(
-        mel_features, 'mel', filters=[32, 64, 128, 256], dropout_rate=dropout_rate
+        mel_features, "mel", filters=[32, 64, 128, 256], dropout_rate=dropout_rate
     )
 
     # ---------- Branch 2: LFCC (20 coefficients) ----------
     lfcc_features = LFCCBranch(
-        sample_rate=16000, n_fft=512, hop_length=160,
-        n_filters=20, n_lfcc=20, name='lfcc_extraction'
+        sample_rate=16000,
+        n_fft=512,
+        hop_length=160,
+        n_filters=20,
+        n_lfcc=20,
+        name="lfcc_extraction",
     )(audio, stft_cache=stft_cache)
     lfcc_embedding = _create_cnn_branch(
-        lfcc_features, 'lfcc', filters=[32, 64, 128, 256], dropout_rate=dropout_rate
+        lfcc_features, "lfcc", filters=[32, 64, 128, 256], dropout_rate=dropout_rate
     )
 
     # ---------- Branch 3: CQT (84 bins) ----------
     cqt_features = CQTBranch(
-        sample_rate=16000, n_fft=512, hop_length=160,
-        n_bins=84, bins_per_octave=12, name='cqt_extraction'
+        sample_rate=16000,
+        n_fft=512,
+        hop_length=160,
+        n_bins=84,
+        bins_per_octave=12,
+        name="cqt_extraction",
     )(audio, stft_cache=stft_cache)
     cqt_embedding = _create_cnn_branch(
-        cqt_features, 'cqt', filters=[32, 64, 128, 256], dropout_rate=dropout_rate
+        cqt_features, "cqt", filters=[32, 64, 128, 256], dropout_rate=dropout_rate
     )
 
     # ---------- Branch 4: MFCC (20 coefficients) ----------
     mfcc_features = MFCCBranch(
-        sample_rate=16000, n_fft=512, hop_length=160,
-        n_mels=40, n_mfcc=20, name='mfcc_extraction'
+        sample_rate=16000,
+        n_fft=512,
+        hop_length=160,
+        n_mels=40,
+        n_mfcc=20,
+        name="mfcc_extraction",
     )(audio, stft_cache=stft_cache)
     mfcc_embedding = _create_cnn_branch(
-        mfcc_features, 'mfcc', filters=[32, 64, 128, 256], dropout_rate=dropout_rate
+        mfcc_features, "mfcc", filters=[32, 64, 128, 256], dropout_rate=dropout_rate
     )
 
     # ---------- Cross-Attention + Gated Fusion ----------
@@ -492,53 +545,54 @@ def _create_ensemble_feature_fusion(
 
     # Cross-attention fusion
     fused = CrossAttentionFusionLayer(
-        embed_dim=128, num_heads=4, name='cross_attn_fusion'
+        embed_dim=128, num_heads=4, name="cross_attn_fusion"
     )(branch_outputs)
 
     # Gated fusion
-    gated = GatedFusionLayer(name='gated_fusion')(branch_outputs)
-    fused = layers.Concatenate(name='fusion_concat')([fused, gated])
+    gated = GatedFusionLayer(name="gated_fusion")(branch_outputs)
+    fused = layers.Concatenate(name="fusion_concat")([fused, gated])
 
     # MLP fusion head
-    fused = layers.Dense(512, activation='relu', name='fusion_dense_1')(fused)
-    fused = layers.BatchNormalization(name='fusion_bn_1')(fused)
-    fused = layers.Dropout(dropout_rate, name='fusion_dropout_1')(fused)
-    fused = layers.Dense(256, activation='relu', name='fusion_dense_2')(fused)
-    fused = layers.BatchNormalization(name='fusion_bn_2')(fused)
-    fused = layers.Dropout(dropout_rate * 0.67, name='fusion_dropout_2')(fused)
-    fused = layers.Dense(128, activation='relu', name='fusion_dense_3')(fused)
-    fused = layers.Dropout(dropout_rate * 0.5, name='fusion_dropout_3')(fused)
+    fused = layers.Dense(512, activation="relu", name="fusion_dense_1")(fused)
+    fused = layers.BatchNormalization(name="fusion_bn_1")(fused)
+    fused = layers.Dropout(dropout_rate, name="fusion_dropout_1")(fused)
+    fused = layers.Dense(256, activation="relu", name="fusion_dense_2")(fused)
+    fused = layers.BatchNormalization(name="fusion_bn_2")(fused)
+    fused = layers.Dropout(dropout_rate * 0.67, name="fusion_dropout_2")(fused)
+    fused = layers.Dense(128, activation="relu", name="fusion_dense_3")(fused)
+    fused = layers.Dropout(dropout_rate * 0.5, name="fusion_dropout_3")(fused)
 
     # Classification
     # dtype='float32': sob mixed_float16 o par softmax+crossentropy em float16
     # satura e pode colapsar o treino. O Ensemble era a ÚNICA arquitetura sem
     # esse cast — mesma correção já aplicada em AASIST/RawGAT-ST/AST/Res2Net.
     if num_classes == 1:  # PADRONIZADO: num_classes>=2 usa softmax N-unidades
-        outputs = layers.Dense(
-            1, activation='sigmoid', name='output', dtype='float32'
-        )(fused)
-        loss = 'binary_crossentropy'
+        outputs = layers.Dense(1, activation="sigmoid", name="output", dtype="float32")(
+            fused
+        )
+        loss = "binary_crossentropy"
     else:
         outputs = layers.Dense(
-            num_classes, activation='softmax', name='output', dtype='float32'
+            num_classes, activation="softmax", name="output", dtype="float32"
         )(fused)
-        loss = 'sparse_categorical_crossentropy'
+        loss = "sparse_categorical_crossentropy"
 
     model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
 
     model.compile(
         optimizer=tf.keras.optimizers.AdamW(
-            learning_rate=learning_rate,
-            weight_decay=weight_decay
+            learning_rate=learning_rate, weight_decay=weight_decay
         ),
         loss=loss,
-        metrics=['accuracy']
+        metrics=["accuracy"],
     )
 
     logger.info(
         "Ensemble (feature fusion) created: 4 branches (Mel+LFCC+CQT+MFCC), "
         "dropout=%s, lr=%s, params=%d",
-        dropout_rate, learning_rate, model.count_params(),
+        dropout_rate,
+        learning_rate,
+        model.count_params(),
     )
     return model
 
@@ -547,7 +601,7 @@ def _create_ensemble_score_fusion(
     input_shape: Tuple[int, ...],
     num_classes: int = 1,
     dropout_rate: float = 0.3,
-    architecture: str = 'ensemble_score',
+    architecture: str = "ensemble_score",
     learning_rate: float = 5e-5,
     weight_decay: float = 1e-5,
 ) -> models.Model:
@@ -559,7 +613,7 @@ def _create_ensemble_score_fusion(
 
     Score-level fusion is simpler and often competitive with feature-level.
     """
-    inputs = layers.Input(shape=input_shape, name='audio_input')
+    inputs = layers.Input(shape=input_shape, name="audio_input")
 
     if is_raw_audio(input_shape):
         audio = ensure_flat_input(inputs)
@@ -572,92 +626,100 @@ def _create_ensemble_score_fusion(
     # Determine output activation and loss
     if num_classes == 1:  # PADRONIZADO: num_classes>=2 usa softmax N-unidades
         out_units = 1
-        out_activation = 'sigmoid'
-        loss = 'binary_crossentropy'
+        out_activation = "sigmoid"
+        loss = "binary_crossentropy"
     else:
         out_units = num_classes
-        out_activation = 'softmax'
-        loss = 'sparse_categorical_crossentropy'
+        out_activation = "softmax"
+        loss = "sparse_categorical_crossentropy"
     # dtype float32 na saída de cada ramo: a fusão de scores acontece em cima
     # delas, então em mixed_float16 o softmax por ramo satura antes da fusão.
 
     # ---------- Sprint 2.1: STFT compartilhado (3 branches) ----------
-    stft_cache = SharedSTFTLayer(n_fft=512, hop_length=160, name='shared_stft')(audio)
+    stft_cache = SharedSTFTLayer(n_fft=512, hop_length=160, name="shared_stft")(audio)
 
     # ---------- Branch 1: Mel ----------
     mel_features = MelSpectrogramBranch(
-        sample_rate=16000, n_fft=512, hop_length=160, n_mels=128,
-        name='mel_extraction'
+        sample_rate=16000, n_fft=512, hop_length=160, n_mels=128, name="mel_extraction"
     )(audio, stft_cache=stft_cache)
     mel_emb = _create_cnn_branch(
-        mel_features, 'mel', filters=[32, 64, 128], dropout_rate=dropout_rate
+        mel_features, "mel", filters=[32, 64, 128], dropout_rate=dropout_rate
     )
     mel_pred = layers.Dense(
-        out_units, activation=out_activation, name='mel_output', dtype='float32'
+        out_units, activation=out_activation, name="mel_output", dtype="float32"
     )(mel_emb)
 
     # ---------- Branch 2: LFCC ----------
     lfcc_features = LFCCBranch(
-        sample_rate=16000, n_fft=512, hop_length=160,
-        n_filters=20, n_lfcc=20, name='lfcc_extraction'
+        sample_rate=16000,
+        n_fft=512,
+        hop_length=160,
+        n_filters=20,
+        n_lfcc=20,
+        name="lfcc_extraction",
     )(audio, stft_cache=stft_cache)
     lfcc_emb = _create_cnn_branch(
-        lfcc_features, 'lfcc', filters=[32, 64, 128], dropout_rate=dropout_rate
+        lfcc_features, "lfcc", filters=[32, 64, 128], dropout_rate=dropout_rate
     )
     lfcc_pred = layers.Dense(
-        out_units, activation=out_activation, name='lfcc_output', dtype='float32'
+        out_units, activation=out_activation, name="lfcc_output", dtype="float32"
     )(lfcc_emb)
 
     # ---------- Branch 3: CQT ----------
     cqt_features = CQTBranch(
-        sample_rate=16000, n_fft=512, hop_length=160,
-        n_bins=84, bins_per_octave=12, name='cqt_extraction'
+        sample_rate=16000,
+        n_fft=512,
+        hop_length=160,
+        n_bins=84,
+        bins_per_octave=12,
+        name="cqt_extraction",
     )(audio, stft_cache=stft_cache)
     cqt_emb = _create_cnn_branch(
-        cqt_features, 'cqt', filters=[32, 64, 128], dropout_rate=dropout_rate
+        cqt_features, "cqt", filters=[32, 64, 128], dropout_rate=dropout_rate
     )
     cqt_pred = layers.Dense(
-        out_units, activation=out_activation, name='cqt_output', dtype='float32'
+        out_units, activation=out_activation, name="cqt_output", dtype="float32"
     )(cqt_emb)
 
     # ---------- Score-level fusion ----------
-    outputs = ScoreFusionLayer(
-        num_branches=3, name='score_fusion', dtype='float32'
-    )([mel_pred, lfcc_pred, cqt_pred])
+    outputs = ScoreFusionLayer(num_branches=3, name="score_fusion", dtype="float32")(
+        [mel_pred, lfcc_pred, cqt_pred]
+    )
 
     model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
 
     model.compile(
         optimizer=tf.keras.optimizers.AdamW(
-            learning_rate=learning_rate,
-            weight_decay=weight_decay
+            learning_rate=learning_rate, weight_decay=weight_decay
         ),
         loss=loss,
-        metrics=['accuracy']
+        metrics=["accuracy"],
     )
 
-    logger.info(f"Ensemble (score fusion) created: 3 branches (Mel+LFCC+CQT), params={model.count_params()}")
+    logger.info(
+        f"Ensemble (score fusion) created: 3 branches (Mel+LFCC+CQT), params={model.count_params()}"
+    )
     return model
 
 
 def _create_ensemble_lite(
     input_shape: Tuple[int, ...],
     num_classes: int = 1,
-    architecture: str = 'ensemble_lite',
+    architecture: str = "ensemble_lite",
     dropout_rate: float = 0.2,
     learning_rate: float = 1e-4,
 ) -> models.Model:
     """Lightweight ensemble with 2 branches (Mel + LFCC) and smaller CNNs."""
-    inputs = layers.Input(shape=input_shape, name='audio_input')
+    inputs = layers.Input(shape=input_shape, name="audio_input")
 
     if is_raw_audio(input_shape):
         audio = ensure_flat_input(inputs)
     else:
         x = inputs
         if len(input_shape) == 2:
-            x = layers.Reshape((*input_shape, 1), name='add_channel')(x)
+            x = layers.Reshape((*input_shape, 1), name="add_channel")(x)
         x = _create_cnn_branch(
-            x, 'single', filters=[16, 32, 64], dropout_rate=dropout_rate
+            x, "single", filters=[16, 32, 64], dropout_rate=dropout_rate
         )
         outputs, loss = create_classification_head(
             x, num_classes, dropout_rate=dropout_rate, hidden_dims=[128]
@@ -665,56 +727,64 @@ def _create_ensemble_lite(
         model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
         model.compile(
             optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
-            loss=loss, metrics=['accuracy']
+            loss=loss,
+            metrics=["accuracy"],
         )
         return model
 
     # Sprint 2.1: STFT compartilhado também na variante lite (2 branches)
-    stft_cache = SharedSTFTLayer(n_fft=512, hop_length=160, name='shared_stft')(audio)
+    stft_cache = SharedSTFTLayer(n_fft=512, hop_length=160, name="shared_stft")(audio)
 
     # 2 branches only (lighter)
     mel_features = MelSpectrogramBranch(
-        sample_rate=16000, n_fft=512, hop_length=160, n_mels=64,
-        name='mel_extraction'
+        sample_rate=16000, n_fft=512, hop_length=160, n_mels=64, name="mel_extraction"
     )(audio, stft_cache=stft_cache)
     mel_emb = _create_cnn_branch(
-        mel_features, 'mel', filters=[16, 32, 64], dropout_rate=dropout_rate
+        mel_features, "mel", filters=[16, 32, 64], dropout_rate=dropout_rate
     )
 
     lfcc_features = LFCCBranch(
-        sample_rate=16000, n_fft=512, hop_length=160,
-        n_filters=20, n_lfcc=20, name='lfcc_extraction'
+        sample_rate=16000,
+        n_fft=512,
+        hop_length=160,
+        n_filters=20,
+        n_lfcc=20,
+        name="lfcc_extraction",
     )(audio, stft_cache=stft_cache)
     lfcc_emb = _create_cnn_branch(
-        lfcc_features, 'lfcc', filters=[16, 32, 64], dropout_rate=dropout_rate
+        lfcc_features, "lfcc", filters=[16, 32, 64], dropout_rate=dropout_rate
     )
 
-    fused = layers.Concatenate(name='feature_concat')([mel_emb, lfcc_emb])
-    fused = layers.Dense(128, activation='relu', name='fusion_dense')(fused)
-    fused = layers.Dropout(dropout_rate, name='fusion_dropout')(fused)
+    fused = layers.Concatenate(name="feature_concat")([mel_emb, lfcc_emb])
+    fused = layers.Dense(128, activation="relu", name="fusion_dense")(fused)
+    fused = layers.Dropout(dropout_rate, name="fusion_dropout")(fused)
 
     if num_classes == 1:  # PADRONIZADO: num_classes>=2 usa softmax N-unidades
-        outputs = layers.Dense(
-            1, activation='sigmoid', name='output', dtype='float32'
-        )(fused)
-        loss = 'binary_crossentropy'
+        outputs = layers.Dense(1, activation="sigmoid", name="output", dtype="float32")(
+            fused
+        )
+        loss = "binary_crossentropy"
     else:
         outputs = layers.Dense(
-            num_classes, activation='softmax', name='output', dtype='float32'
+            num_classes, activation="softmax", name="output", dtype="float32"
         )(fused)
-        loss = 'sparse_categorical_crossentropy'
+        loss = "sparse_categorical_crossentropy"
 
     model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
-        loss=loss, metrics=['accuracy']
+        loss=loss,
+        metrics=["accuracy"],
     )
 
-    logger.info(f"Ensemble Lite created: 2 branches (Mel+LFCC), params={model.count_params()}")
+    logger.info(
+        f"Ensemble Lite created: 2 branches (Mel+LFCC), params={model.count_params()}"
+    )
     return model
 
 
 # ============================ ENSEMBLE ADAPTATIVO (TCC Eq. 27-28) ============================
+
 
 @tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class AdaptiveWeightLayer(layers.Layer):
@@ -735,19 +805,19 @@ class AdaptiveWeightLayer(layers.Layer):
     def build(self, input_shape):
         super().build(input_shape)
         self.weight_dense = layers.Dense(
-            self.num_models, use_bias=True, name='adaptive_weight_dense'
+            self.num_models, use_bias=True, name="adaptive_weight_dense"
         )
 
     def call(self, embeddings):
         # embeddings: list of (batch, embed_dim) tensors
-        concat = tf.concat(embeddings, axis=-1)      # (batch, N*embed_dim)
-        logits = self.weight_dense(concat)            # (batch, N)
-        weights = tf.nn.softmax(logits, axis=-1)      # (batch, N) — soma 1
-        return weights                                 # (batch, N)
+        concat = tf.concat(embeddings, axis=-1)  # (batch, N*embed_dim)
+        logits = self.weight_dense(concat)  # (batch, N)
+        weights = tf.nn.softmax(logits, axis=-1)  # (batch, N) — soma 1
+        return weights  # (batch, N)
 
     def get_config(self):
         config = super().get_config()
-        config.update({'num_models': self.num_models, 'embed_dim': self.embed_dim})
+        config.update({"num_models": self.num_models, "embed_dim": self.embed_dim})
         return config
 
 
@@ -755,7 +825,7 @@ def _create_ensemble_adaptive(
     input_shape: Tuple[int, ...],
     num_classes: int = 1,
     dropout_rate: float = 0.3,
-    architecture: str = 'ensemble_adaptive',
+    architecture: str = "ensemble_adaptive",
     learning_rate: float = 1e-3,
 ) -> models.Model:
     """Ensemble Adaptativo com fusao ponderada por confianca (TCC Eq. 27-28).
@@ -774,9 +844,9 @@ def _create_ensemble_adaptive(
     block_diagonal) -- o mesmo dataset com atalho de fonte de 87,6% ja
     invalidado e apagado do disco (ver docs/data/benchmark-dataset.md). Nao
     cite esse numero; regenere-o rodando o benchmark sob o dataset vigente
-    (data/datasets/benchmark_dataset.npz).
+    (data/datasets/benchmark_dataset_15k.npz).
     """
-    inputs = layers.Input(shape=input_shape, name='audio_input')
+    inputs = layers.Input(shape=input_shape, name="audio_input")
 
     if is_raw_audio(input_shape):
         audio = ensure_flat_input(inputs)
@@ -794,21 +864,50 @@ def _create_ensemble_adaptive(
     # A fusão continua válida: combinação convexa (pesos somam 1 via softmax)
     # de distribuições é uma distribuição.
     out_units = 1 if num_classes == 1 else num_classes
-    out_activation = 'sigmoid' if out_units == 1 else 'softmax'
-    loss = 'binary_crossentropy' if out_units == 1 else 'sparse_categorical_crossentropy'
+    out_activation = "sigmoid" if out_units == 1 else "softmax"
+    loss = (
+        "binary_crossentropy" if out_units == 1 else "sparse_categorical_crossentropy"
+    )
 
     # ---------- Sprint 2.1: STFT compartilhado para os 4 branches de n_fft=512 ----------
     # O branch 'mel2' usa n_fft=1024 (resolução temporal diferente) e mantém seu STFT próprio.
-    stft_cache_512 = SharedSTFTLayer(n_fft=512, hop_length=160, name='shared_stft_512')(audio)
+    stft_cache_512 = SharedSTFTLayer(n_fft=512, hop_length=160, name="shared_stft_512")(
+        audio
+    )
 
     # ---------- 5 Ramos espectrais (simulando 5 arquiteturas do TCC) ----------
     # Tupla: (nome, layer, filters, usa_stft_cache_512)
     branch_defs = [
-        ('mel',   MelSpectrogramBranch(16000, 512, 160, n_mels=128, name='mel_ext'),   [32, 64, 128, 256], True),
-        ('lfcc',  LFCCBranch(16000, 512, 160, n_filters=20, n_lfcc=20, name='lfcc_ext'), [32, 64, 128, 256], True),
-        ('cqt',   CQTBranch(16000, 512, 160, n_bins=84, bins_per_octave=12, name='cqt_ext'), [32, 64, 128, 256], True),
-        ('mfcc',  MFCCBranch(16000, 512, 160, n_mels=40, n_mfcc=20, name='mfcc_ext'), [32, 64, 128, 256], True),
-        ('mel2',  MelSpectrogramBranch(16000, 1024, 256, n_mels=80, name='mel2_ext'),  [32, 64, 128, 256], False),
+        (
+            "mel",
+            MelSpectrogramBranch(16000, 512, 160, n_mels=128, name="mel_ext"),
+            [32, 64, 128, 256],
+            True,
+        ),
+        (
+            "lfcc",
+            LFCCBranch(16000, 512, 160, n_filters=20, n_lfcc=20, name="lfcc_ext"),
+            [32, 64, 128, 256],
+            True,
+        ),
+        (
+            "cqt",
+            CQTBranch(16000, 512, 160, n_bins=84, bins_per_octave=12, name="cqt_ext"),
+            [32, 64, 128, 256],
+            True,
+        ),
+        (
+            "mfcc",
+            MFCCBranch(16000, 512, 160, n_mels=40, n_mfcc=20, name="mfcc_ext"),
+            [32, 64, 128, 256],
+            True,
+        ),
+        (
+            "mel2",
+            MelSpectrogramBranch(16000, 1024, 256, n_mels=80, name="mel2_ext"),
+            [32, 64, 128, 256],
+            False,
+        ),
     ]
 
     embeddings = []
@@ -821,31 +920,40 @@ def _create_ensemble_adaptive(
             feat = feature_layer(audio)
         emb = _create_cnn_branch(
             feat, name, filters=filters, dropout_rate=dropout_rate
-        )                                                              # (batch, 256)
-        score = layers.Dense(out_units, activation=out_activation,
-                             name=f'{name}_score', dtype='float32')(emb)  # (batch, 1)
+        )  # (batch, 256)
+        score = layers.Dense(
+            out_units, activation=out_activation, name=f"{name}_score", dtype="float32"
+        )(
+            emb
+        )  # (batch, 1)
         embeddings.append(emb)
         scores.append(score)
 
     # ---------- Pesos adaptativos (Eq. 27) ----------
     adaptive_weights = AdaptiveWeightLayer(
-        num_models=len(embeddings), embed_dim=256, name='adaptive_weights'
-    )(embeddings)  # (batch, 5)
+        num_models=len(embeddings), embed_dim=256, name="adaptive_weights"
+    )(
+        embeddings
+    )  # (batch, 5)
 
     # ---------- Fusao ponderada (Eq. 28): sum_i w_i * score_i ----------
     # Reshape scores to (batch, 1, U) each, concat -> (batch, N, U)
-    scores_reshaped = [layers.Reshape((1, out_units), name=f'score_reshape_{i}')(s)
-                       for i, s in enumerate(scores)]
-    scores_stacked = layers.Concatenate(axis=1, name='scores_stacked')(scores_reshaped)
+    scores_reshaped = [
+        layers.Reshape((1, out_units), name=f"score_reshape_{i}")(s)
+        for i, s in enumerate(scores)
+    ]
+    scores_stacked = layers.Concatenate(axis=1, name="scores_stacked")(scores_reshaped)
 
     # adaptive_weights: (batch, N) -> (batch, N, 1)
-    weights_expanded = layers.Reshape((len(embeddings), 1), name='weights_expanded')(adaptive_weights)
+    weights_expanded = layers.Reshape((len(embeddings), 1), name="weights_expanded")(
+        adaptive_weights
+    )
 
     # WeightedScoreFusionLayer (camada registrada) no lugar do `layers.Lambda`:
     # Lambda com lambda Python não é recarregável em safe_mode (Keras 3).
-    fused_score = WeightedScoreFusionLayer(
-        name='weighted_fusion', dtype='float32'
-    )([scores_stacked, weights_expanded])  # (batch, U)
+    fused_score = WeightedScoreFusionLayer(name="weighted_fusion", dtype="float32")(
+        [scores_stacked, weights_expanded]
+    )  # (batch, U)
 
     model = models.Model(inputs=inputs, outputs=fused_score, name=architecture)
     model.compile(
@@ -856,7 +964,7 @@ def _create_ensemble_adaptive(
             epsilon=1e-7,
         ),
         loss=loss,
-        metrics=['accuracy'],
+        metrics=["accuracy"],
     )
 
     logger.info(
@@ -868,8 +976,13 @@ def _create_ensemble_adaptive(
 
 # ============================ FACTORY ============================
 
-def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
-                 architecture: str = 'ensemble', **kwargs) -> models.Model:
+
+def create_model(
+    input_shape: Tuple[int, ...],
+    num_classes: int = 1,
+    architecture: str = "ensemble",
+    **kwargs,
+) -> models.Model:
     """Factory function for ensemble model variants.
 
     Variants:
@@ -881,39 +994,40 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
     # kwargs (dropout_rate, learning_rate, weight_decay) agora são repassados a
     # TODAS as variantes — antes só a de feature fusion os recebia e as demais
     # ignoravam silenciosamente o que vinha do registry.
-    if architecture == 'ensemble_score':
+    if architecture == "ensemble_score":
         return _create_ensemble_score_fusion(
             input_shape, num_classes, architecture=architecture, **kwargs
         )
-    elif architecture == 'ensemble_lite':
+    elif architecture == "ensemble_lite":
         return _create_ensemble_lite(
             input_shape, num_classes, architecture=architecture, **kwargs
         )
-    elif architecture == 'ensemble_adaptive':
+    elif architecture == "ensemble_adaptive":
         return _create_ensemble_adaptive(
             input_shape, num_classes, architecture=architecture, **kwargs
         )
     else:
         return _create_ensemble_feature_fusion(
-            input_shape, num_classes, architecture=architecture,
-            **kwargs
+            input_shape, num_classes, architecture=architecture, **kwargs
         )
 
 
 # Register custom layers
-tf.keras.utils.get_custom_objects().update({
-    'SharedSTFTLayer': SharedSTFTLayer,
-    'XFakeSong>SharedSTFTLayer': SharedSTFTLayer,
-    'MelSpectrogramBranch': MelSpectrogramBranch,
-    'XFakeSong>MelSpectrogramBranch': MelSpectrogramBranch,
-    'LFCCBranch': LFCCBranch,
-    'XFakeSong>LFCCBranch': LFCCBranch,
-    'CQTBranch': CQTBranch,
-    'XFakeSong>CQTBranch': CQTBranch,
-    'MFCCBranch': MFCCBranch,
-    'XFakeSong>MFCCBranch': MFCCBranch,
-    'ScoreFusionLayer': ScoreFusionLayer,
-    'XFakeSong>ScoreFusionLayer': ScoreFusionLayer,
-    'AdaptiveWeightLayer': AdaptiveWeightLayer,
-    'XFakeSong>AdaptiveWeightLayer': AdaptiveWeightLayer,
-})
+tf.keras.utils.get_custom_objects().update(
+    {
+        "SharedSTFTLayer": SharedSTFTLayer,
+        "XFakeSong>SharedSTFTLayer": SharedSTFTLayer,
+        "MelSpectrogramBranch": MelSpectrogramBranch,
+        "XFakeSong>MelSpectrogramBranch": MelSpectrogramBranch,
+        "LFCCBranch": LFCCBranch,
+        "XFakeSong>LFCCBranch": LFCCBranch,
+        "CQTBranch": CQTBranch,
+        "XFakeSong>CQTBranch": CQTBranch,
+        "MFCCBranch": MFCCBranch,
+        "XFakeSong>MFCCBranch": MFCCBranch,
+        "ScoreFusionLayer": ScoreFusionLayer,
+        "XFakeSong>ScoreFusionLayer": ScoreFusionLayer,
+        "AdaptiveWeightLayer": AdaptiveWeightLayer,
+        "XFakeSong>AdaptiveWeightLayer": AdaptiveWeightLayer,
+    }
+)

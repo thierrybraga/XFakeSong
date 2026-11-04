@@ -14,6 +14,7 @@ Uso standalone:
 Uso via pytest:
     pytest -m smoke tests/smoke/test_inference_pipeline.py
 """
+
 from __future__ import annotations
 
 import argparse
@@ -27,14 +28,21 @@ os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 import numpy as np  # noqa: E402
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(os.path.dirname(THIS_DIR))  # tests/smoke/ → tests/ → raiz
+PROJECT_ROOT = os.path.dirname(
+    os.path.dirname(THIS_DIR)
+)  # tests/smoke/ → tests/ → raiz
 sys.path.insert(0, PROJECT_ROOT)
 
 # Fake packages para evitar app/__init__ chain (sqlalchemy)
 for _fake_pkg in [
-    "app", "app.core", "app.core.contracts",
-    "app.domain", "app.domain.models", "app.domain.models.architectures",
-    "app.domain.services", "app.domain.services.detection",
+    "app",
+    "app.core",
+    "app.core.contracts",
+    "app.domain",
+    "app.domain.models",
+    "app.domain.models.architectures",
+    "app.domain.services",
+    "app.domain.services.detection",
 ]:
     if _fake_pkg not in sys.modules:
         _m = types.ModuleType(_fake_pkg)
@@ -48,9 +56,18 @@ HOP = 128
 N_MELS = 80
 
 ALL_MODELS = [
-    "AASIST", "RawGAT-ST", "RawNet2", "WavLM", "HuBERT",
-    "Sonic Sleuth", "EfficientNet-LSTM", "MultiscaleCNN",
-    "SpectrogramTransformer", "Conformer", "Hybrid CNN-Transformer", "Ensemble",
+    "AASIST",
+    "RawGAT-ST",
+    "RawNet2",
+    "WavLM",
+    "HuBERT",
+    "Sonic Sleuth",
+    "EfficientNet-LSTM",
+    "MultiscaleCNN",
+    "SpectrogramTransformer",
+    "Conformer",
+    "Hybrid CNN-Transformer",
+    "Ensemble",
 ]
 
 
@@ -62,17 +79,19 @@ def make_real_audio() -> np.ndarray:
 def make_fake_audio() -> np.ndarray:
     rng = np.random.default_rng(123)
     t = np.linspace(0, DURATION, SAMPLE_RATE * DURATION, dtype=np.float32)
-    return (
-        0.1 * np.sin(2 * np.pi * 880 * t)
-        + 0.4 * rng.standard_normal(t.shape).astype(np.float32)
-    )
+    return 0.1 * np.sin(2 * np.pi * 880 * t) + 0.4 * rng.standard_normal(
+        t.shape
+    ).astype(np.float32)
 
 
 def _run_inference_for_arch(arch: str) -> dict:
     """Testa o pipeline de inferência direto para uma arquitetura."""
     import importlib
+
     factory_mod = importlib.import_module("app.domain.models.architectures.factory")
-    audio_pre_mod = importlib.import_module("app.domain.services.detection.audio_preprocessing")
+    audio_pre_mod = importlib.import_module(
+        "app.domain.services.detection.audio_preprocessing"
+    )
 
     spec = factory_mod.architecture_factory_registry.get_architecture_info(arch)
     input_type = spec.input_requirements.get("input_type", "spectrogram")
@@ -82,19 +101,28 @@ def _run_inference_for_arch(arch: str) -> dict:
         # Contrato DECLARADO pela arquitetura tem prioridade: o AST exige
         # 300x128 (hop de 10 ms, 128 bandas mel), diferente do default global.
         req = spec.input_requirements
-        t_frames = int(req.get("min_sequence_length")
-                       or np.ceil((SAMPLE_RATE * DURATION) / HOP))
+        t_frames = int(
+            req.get("min_sequence_length") or np.ceil((SAMPLE_RATE * DURATION) / HOP)
+        )
         n_mels = int(req.get("feature_dim") or N_MELS)
         input_shape = (t_frames, n_mels, 1)
 
-    model = factory_mod.create_model_by_name(arch, input_shape=input_shape, num_classes=2)
+    model = factory_mod.create_model_by_name(
+        arch, input_shape=input_shape, num_classes=2
+    )
     out_units = model.output_shape[-1]
 
     results = []
-    for label, audio in [("real_audio", make_real_audio()), ("fake_audio", make_fake_audio())]:
+    for label, audio in [
+        ("real_audio", make_real_audio()),
+        ("fake_audio", make_fake_audio()),
+    ]:
         x = audio_pre_mod.prepare_audio_for_model(
-            audio, input_type=input_type, input_shape=input_shape,
-            sample_rate=SAMPLE_RATE, normalize=True,
+            audio,
+            input_type=input_type,
+            input_shape=input_shape,
+            sample_rate=SAMPLE_RATE,
+            normalize=True,
         )
         y = model(x[np.newaxis, ...], training=False).numpy()
         pred = y[0]
@@ -114,17 +142,30 @@ def _run_inference_for_arch(arch: str) -> dict:
             and 0.0 <= p_real <= 1.0 + 1e-3
             and abs(p_fake + p_real - 1.0) < 1e-2
         )
-        results.append({"audio": label, "ok": ok, "p_fake": p_fake, "p_real": p_real, "is_fake": is_fake})
+        results.append(
+            {
+                "audio": label,
+                "ok": ok,
+                "p_fake": p_fake,
+                "p_real": p_real,
+                "is_fake": is_fake,
+            }
+        )
 
     return {
-        "arch": arch, "ok": all(r["ok"] for r in results),
-        "input_type": input_type, "input_shape": input_shape,
-        "out_units": int(out_units), "results": results,
+        "arch": arch,
+        "ok": all(r["ok"] for r in results),
+        "input_type": input_type,
+        "input_shape": input_shape,
+        "out_units": int(out_units),
+        "results": results,
     }
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--models", default="", help="CSV de modelos (vazio = todos)")
     args = parser.parse_args(argv)
 
@@ -143,10 +184,14 @@ def main(argv: list[str] | None = None) -> int:
             r["elapsed"] = time.time() - t0
             results.append(r)
             status = "[OK]" if r["ok"] else "[FAIL]"
-            print(f"  {status} input_type={r['input_type']} shape={r['input_shape']} out={r['out_units']} ({r['elapsed']:.1f}s)")
+            print(
+                f"  {status} input_type={r['input_type']} shape={r['input_shape']} out={r['out_units']} ({r['elapsed']:.1f}s)"
+            )
             for res in r["results"]:
                 s = "OK" if res["ok"] else "BAD"
-                print(f"    [{s}] {res['audio']:12s} p_fake={res['p_fake']:.4f} p_real={res['p_real']:.4f} is_fake={res['is_fake']}")
+                print(
+                    f"    [{s}] {res['audio']:12s} p_fake={res['p_fake']:.4f} p_real={res['p_real']:.4f} is_fake={res['is_fake']}"
+                )
         except Exception as e:
             print(f"  [FAIL] {type(e).__name__}: {str(e)[:200]}")
             results.append({"arch": arch, "ok": False, "error": str(e)})

@@ -1,12 +1,12 @@
 """Selo do conjunto de teste: prova de que o teste não foi tocado no treino.
 
-Extraído de `scripts/benchmark/run_models_sequential.py` em 2026-07-27. Estava
+Extraído de `benchmarks/run_models_sequential.py` em 2026-07-27. Estava
 implementado dentro de UM orquestrador, então o entrypoint direto
-(`scripts/benchmark/run_benchmark.py` — o documentado para `--full` e para
+(`benchmarks/run_benchmark.py` — o documentado para `--full` e para
 modelo isolado) gravava o SHA-256 da partição de teste nos resultados mas nunca
 o conferia contra o selo. Um selo que só um dos caminhos verifica não é um selo.
 
-O selo é gerado por `scripts/dataset/freeze_benchmark_test.py` ANTES de qualquer
+O selo é gerado por `tools/dataset/freeze_benchmark_test.py` ANTES de qualquer
 treino e amarra três coisas: o SHA-256 do arquivo inteiro, uma identidade leve
 da partição de teste (nomes + CRC32 + tamanho dos membros do ZIP, sem
 descompactar tensores) e as declarações explícitas de que o teste estava
@@ -123,7 +123,7 @@ def validate_test_lock(
     if not lock_path.exists():
         raise TestLockError(
             f"selo do teste não encontrado: {lock_path}. Gere um novo teste intocado "
-            "e execute scripts/dataset/freeze_benchmark_test.py antes do treino."
+            "e execute tools/dataset/freeze_benchmark_test.py antes do treino."
         )
     payload = json.loads(lock_path.read_text(encoding="utf-8"))
     required_true = (

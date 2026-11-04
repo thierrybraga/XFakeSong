@@ -1,13 +1,13 @@
 """
 Funções utilitárias para conversão de escalas perceptuais.
 """
+
 import numpy as np
 
 
 def hz_to_bark(freq_hz: np.ndarray) -> np.ndarray:
     """Converte frequência em Hz para escala Bark."""
-    return 13 * np.arctan(0.00076 * freq_hz) + 3.5 * \
-        np.arctan((freq_hz / 7500) ** 2)
+    return 13 * np.arctan(0.00076 * freq_hz) + 3.5 * np.arctan((freq_hz / 7500) ** 2)
 
 
 def bark_to_hz(bark: np.ndarray) -> np.ndarray:

@@ -1,20 +1,8 @@
-"""Serviços de Domínio
+"""Serviços de domínio.
 
-NÃO importe DetectionService aqui de forma eager: seu carregamento traz
-model_loader.py, que importa `tensorflow` no topo do arquivo. Qualquer import
-de app.domain.* (incl. features tabulares para SVM/RandomForest, sem uso de
-TF) executaria este __init__.py e herdaria TensorFlow como dependência
-obrigatória — quebra o ambiente Docker "classical-ml". Todo consumidor real
-já importa direto de `app.domain.services.detection_service`.
+Sem imports eager: ``detection_service`` puxa TensorFlow e
+``feature_extraction_service`` puxa librosa e todos os extratores. Importar
+qualquer um deles aqui tornava essas bibliotecas obrigatórias para todo
+consumidor de ``app.domain.services.*`` — inclusive o ambiente Docker
+"classical-ml". Importe direto do módulo do serviço.
 """
-
-from .feature_extraction_service import (
-    AudioFeatureExtractionService,
-    ExtractionConfig,
-)
-from .upload_service import AudioUploadService, UploadResult
-
-__all__ = [
-    "AudioUploadService", "UploadResult",
-    "AudioFeatureExtractionService", "ExtractionConfig",
-]

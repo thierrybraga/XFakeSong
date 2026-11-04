@@ -18,13 +18,13 @@ def preemphasis(signal: np.ndarray, alpha: float = 0.97) -> np.ndarray:
 def levinson_durbin_autocorr(signal: np.ndarray, order: int) -> np.ndarray:
     """Calcula coeficientes LPC usando Levinson-Durbin."""
     # Calcular autocorrelação
-    autocorr = np.correlate(signal, signal, mode='full')
-    autocorr = autocorr[len(autocorr) // 2:]
+    autocorr = np.correlate(signal, signal, mode="full")
+    autocorr = autocorr[len(autocorr) // 2 :]
 
     if len(autocorr) < order + 1:
         autocorr = np.pad(autocorr, (0, order + 1 - len(autocorr)))
     else:
-        autocorr = autocorr[:order + 1]
+        autocorr = autocorr[: order + 1]
 
     if autocorr[0] == 0:
         return np.zeros(order)
@@ -49,7 +49,7 @@ def levinson_durbin_autocorr(signal: np.ndarray, order: int) -> np.ndarray:
             lpc[j] = lpc[j] + reflection * lpc[i - 1 - j]
 
         # Atualizar erro
-        error *= (1 - reflection ** 2)
+        error *= 1 - reflection**2
 
         if error <= 0:
             break

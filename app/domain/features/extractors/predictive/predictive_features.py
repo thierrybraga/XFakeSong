@@ -22,8 +22,13 @@ class PredictiveFeatureExtractor:
     Extrator de características de modelagem preditiva.
     """
 
-    def __init__(self, sr: int = 22050, frame_length: int = 2048,
-                 hop_length: int = 512, lpc_order: int = 12):
+    def __init__(
+        self,
+        sr: int = 22050,
+        frame_length: int = 2048,
+        hop_length: int = 512,
+        lpc_order: int = 12,
+    ):
         """
         Inicializa o extrator de características preditivas.
 
@@ -112,9 +117,13 @@ def test_predictive_features():
     features_ar = extractor.extract_features(y_ar)
 
     print("\n📊 Sinal Autoregressivo (alta predibilidade):")
-    key_features = ['prediction_efficiency', 'prediction_snr',
-                    'stability_ratio', 'lpc_gain_mean',
-                    'reflection_stability_ratio']
+    key_features = [
+        "prediction_efficiency",
+        "prediction_snr",
+        "stability_ratio",
+        "lpc_gain_mean",
+        "reflection_stability_ratio",
+    ]
 
     for feature in key_features:
         if feature in features_ar:
@@ -122,9 +131,11 @@ def test_predictive_features():
 
     # === SINAL HARMÔNICO (estrutura preditiva) ===
     f0 = 220  # Hz
-    y_harmonic = (np.sin(2 * np.pi * f0 * t) +
-                  0.5 * np.sin(2 * np.pi * 2 * f0 * t) +
-                  0.3 * np.sin(2 * np.pi * 3 * f0 * t))
+    y_harmonic = (
+        np.sin(2 * np.pi * f0 * t)
+        + 0.5 * np.sin(2 * np.pi * 2 * f0 * t)
+        + 0.3 * np.sin(2 * np.pi * 3 * f0 * t)
+    )
 
     # Adicionar pouco ruído
     y_harmonic += 0.05 * np.random.randn(len(t))
@@ -150,15 +161,12 @@ def test_predictive_features():
     print("\n📈 Comparação de Predibilidade:")
 
     signals = {
-        'Autoregressivo': features_ar,
-        'Harmônico': features_harmonic,
-        'Ruído': features_noise
+        "Autoregressivo": features_ar,
+        "Harmônico": features_harmonic,
+        "Ruído": features_noise,
     }
 
-    comparison_features = [
-        'prediction_efficiency',
-        'prediction_snr',
-        'stability_ratio']
+    comparison_features = ["prediction_efficiency", "prediction_snr", "stability_ratio"]
 
     for feature in comparison_features:
         print(f"\n  {feature}:")
@@ -171,7 +179,7 @@ def test_predictive_features():
     for signal_name, features in signals.items():
         print(f"  {signal_name}:")
         for i in range(1, 5):
-            coeff_name = f'lpc_coeff_{i}_mean'
+            coeff_name = f"lpc_coeff_{i}_mean"
             if coeff_name in features:
                 print(f"    a{i}: {features[coeff_name]:.3f}")
 

@@ -58,7 +58,7 @@ def test_keras_port_matches_pytorch(family, checkpoint, audio):
 
     keras_out = backbone(tf.constant(audio), training=False).numpy()
 
-    reference = (WavLMModel if family == "wavlm" else HubertModel)
+    reference = WavLMModel if family == "wavlm" else HubertModel
     torch_model = reference.from_pretrained(checkpoint).eval()
     with torch.no_grad():
         hidden = torch_model(
@@ -81,9 +81,7 @@ def test_backbone_is_frozen_and_only_head_trains(family):
 
     from app.domain.models.architectures.ssl_backbone import SSLBackboneUnavailable
 
-    module = pytest.importorskip(
-        f"app.domain.models.architectures.{family}"
-    )
+    module = pytest.importorskip(f"app.domain.models.architectures.{family}")
     try:
         model = module.create_model((48000, 1), num_classes=2)
     except SSLBackboneUnavailable as exc:
@@ -105,11 +103,9 @@ def test_backbone_is_frozen_and_only_head_trains(family):
 def test_relative_position_buckets_match_reference():
     """Bucketização das posições relativas do WavLM (bidirecional, 320 buckets)."""
     _require("torch")
-    import torch
-
-    from transformers.models.wavlm.modeling_wavlm import WavLMAttention
-
     import tensorflow as tf
+    import torch
+    from transformers.models.wavlm.modeling_wavlm import WavLMAttention
 
     from app.domain.models.architectures.ssl_backbone import PretrainedSSLBackbone
 

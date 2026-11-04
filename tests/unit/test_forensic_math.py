@@ -28,6 +28,7 @@ def _tom(freq: float, dur: float = 1.0, sr: int = SR) -> np.ndarray:
 
 # ───────────── jitter: contiguidade dos trechos vozeados ─────────────
 
+
 def test_jitter_nao_inventa_perturbacao_entre_trechos_vozeados():
     """F0 constante nos dois lados de uma pausa: jitter real é ZERO."""
     from app.domain.features.extractors.voice_quality.components.perturbation import (
@@ -37,9 +38,9 @@ def test_jitter_nao_inventa_perturbacao_entre_trechos_vozeados():
 
     f0 = np.concatenate([np.full(20, 200.0), np.zeros(20), np.full(20, 120.0)])
 
-    assert compute_rap(None, f0, SR) == pytest.approx(0.0, abs=1e-9), (
-        "a juncao entre trechos vozeados voltou a virar perturbacao"
-    )
+    assert compute_rap(None, f0, SR) == pytest.approx(
+        0.0, abs=1e-9
+    ), "a juncao entre trechos vozeados voltou a virar perturbacao"
     assert compute_ppq(None, f0, SR) == pytest.approx(0.0, abs=1e-9)
 
 
@@ -73,6 +74,7 @@ def test_trechos_vozeados_preservam_a_contiguidade():
 
 # ───────────── fase: unwrap antes de diferenciar ─────────────
 
+
 def test_fase_desdobrada_separa_sinal_limpo_de_ruido():
     """Sem `unwrap`, tom puro e ruído davam valores próximos."""
     tom = _tom(440.0)
@@ -84,29 +86,28 @@ def test_fase_desdobrada_separa_sinal_limpo_de_ruido():
             fase = np.unwrap(fase, axis=1)
         return float(np.mean(np.abs(np.diff(fase, axis=1))))
 
-    assert descontinuidade(tom, True) < descontinuidade(ruido, True), (
-        "a medida precisa separar sinal harmonico de ruido"
-    )
+    assert descontinuidade(tom, True) < descontinuidade(
+        ruido, True
+    ), "a medida precisa separar sinal harmonico de ruido"
     # e desdobrar tem de reduzir o valor do sinal limpo
     assert descontinuidade(tom, True) < descontinuidade(tom, False)
 
 
-def test_aba_forense_desdobra_a_fase():
+def test_radar_forense_desdobra_a_fase():
     import inspect
 
-    from app.interfaces.gradio.tabs import forensic_analysis
+    from app.domain.services import forensic_measures
 
-    fonte = inspect.getsource(forensic_analysis)
+    fonte = inspect.getsource(forensic_measures.radar_axes)
     assert "np.unwrap(np.angle(D), axis=1)" in fonte
 
 
 # ───────────── radar: nenhum eixo constante ─────────────
 
+
 def test_estabilidade_de_formante_varia_com_o_audio():
     """Era a constante 0.5."""
-    from app.interfaces.gradio.tabs.forensic_analysis import (
-        _estabilidade_de_formante,
-    )
+    from app.domain.services.forensic_measures import formant_stability
 
     t = np.arange(2 * SR) / SR
     fixo = _tom(300.0, dur=2.0)
@@ -114,40 +115,40 @@ def test_estabilidade_de_formante_varia_com_o_audio():
         0.4 * np.sin(2 * np.pi * np.cumsum(np.linspace(300, 1200, len(t))) / SR)
     ).astype("float32")
 
-    v_fixo = _estabilidade_de_formante(fixo, SR)
-    v_varredura = _estabilidade_de_formante(varredura, SR)
+    v_fixo = formant_stability(fixo, SR)
+    v_varredura = formant_stability(varredura, SR)
 
     assert v_fixo != v_varredura, "o eixo voltou a ser constante"
-    assert v_varredura > v_fixo, (
-        "uma varredura de formante tem de ser MENOS estavel que um tom fixo"
-    )
+    assert (
+        v_varredura > v_fixo
+    ), "uma varredura de formante tem de ser MENOS estavel que um tom fixo"
 
 
 def test_radar_nao_tem_mais_valores_fabricados():
     import inspect
 
+    from app.domain.services import forensic_measures
     from app.interfaces.gradio.tabs import forensic_analysis
 
-    fonte = inspect.getsource(forensic_analysis)
-    assert "# placeholder" not in fonte, (
-        "voltou a existir eixo fabricado no grafico forense"
-    )
-    for medida in ("compute_nhr", "compute_rap", "_estabilidade_de_formante"):
+    for modulo in (forensic_measures, forensic_analysis):
+        assert "# placeholder" not in inspect.getsource(
+            modulo
+        ), "voltou a existir eixo fabricado no grafico forense"
+    fonte = inspect.getsource(forensic_measures.radar_axes)
+    for medida in ("compute_nhr", "compute_rap", "formant_stability"):
         assert medida in fonte, f"{medida} nao esta sendo medido"
 
 
 def test_radar_normaliza_por_eixo_e_nao_pelo_maximo_global():
     """Grandezas de unidades diferentes no mesmo gráfico."""
-    from app.domain.services.forensic_visualization import (
+    from app.interfaces.gradio.presenters.forensic_plots import (
         AudioForensicVisualizer,
     )
 
     visualizador = AudioForensicVisualizer()
     # ja normalizado por eixo pelo chamador: nao pode ser reescalado
     valores = np.array([0.2, 0.5, 0.1, 0.3])
-    figura = visualizador.plot_feature_importance_radar(
-        ["a", "b", "c", "d"], valores
-    )
+    figura = visualizador.plot_feature_importance_radar(["a", "b", "c", "d"], valores)
     linha = figura.axes[0].lines[0]
     plotados = np.asarray(linha.get_ydata())[:4]
     np.testing.assert_allclose(plotados, valores, atol=1e-9)

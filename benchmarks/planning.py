@@ -234,7 +234,7 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         "gru_units": 1024,
         "gru_layers": 3,
         "dense_units": 1024,
-        "notes": "Raw waveform + Sinc/GRU: recorte central 1s, mixed precision desligado; LR segue o compile da arquitetura. 2026-07-14: topologia corrigida p/ paridade com o paper — MaxPool(3) após cada bloco residual (GRU passa a ver ~7 passos, não ~590) e FMS mul+add. 2026-08-20: escopo oficial passou ao baseline ANTI-SPOOFING de Tak et al. (sinc 20, canais 20/128, 3×GRU), no lugar do Improved RawNet de verificação de locutor.",
+        "notes": "Raw waveform + Sinc/GRU: janela de 3 s (recorte aleatório no treino, 3 recortes na avaliação), mixed precision desligado; LR segue o compile da arquitetura. 2026-07-14: topologia corrigida p/ paridade com o paper — MaxPool(3) após cada bloco residual (GRU passa a ver ~7 passos, não ~590) e FMS mul+add. 2026-08-20: escopo oficial passou ao baseline ANTI-SPOOFING de Tak et al. (sinc 20, canais 20/128, 3×GRU), no lugar do Improved RawNet de verificação de locutor.",
     },
     "aasist": {
         "model_family": "neural",
@@ -300,7 +300,7 @@ NEURAL_BENCHMARK_HPARAMS: Dict[str, Dict[str, Any]] = {
         #
         # ─── REVERSÃO PARCIAL 2026-08-17, medida ───────────────────────────
         # O ajuste acima mudou DOIS fatores de uma vez e nunca foi executado.
-        # O fatorial de `scripts/benchmark/run_rawgat_retune.py` rodou os dois
+        # O fatorial de `benchmarks/run_rawgat_retune.py` rodou os dois
         # braços isolados, ambos já com `decay_steps` = 152.100:
         #
         #   publicado  dropout 0,35 + L2 1e-3 -> pico val_acc 0,8997 (ép. 88)

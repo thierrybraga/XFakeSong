@@ -1,61 +1,59 @@
 import logging
 import tempfile
-
-import pandas as pd
-from sqlalchemy import desc
+from datetime import datetime, timezone
 
 import gradio as gr
-from app.core.db.session import SessionLocal
-from app.domain.models.analysis import AnalysisResult
+import pandas as pd
+
+from app.dependencies import get_analysis_result_repository
 from app.interfaces.gradio.utils.components import ui_safe
 from app.utils.file_utils import get_gradio_exports_directory
 
 logger = logging.getLogger(__name__)
 
 
+def _data_local(momento: datetime) -> str:
+    """Data na hora local: o banco grava em UTC, e a tabela mostrava a hora errada."""
+    if momento.tzinfo is None:
+        momento = momento.replace(tzinfo=timezone.utc)
+    return momento.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+
+
 def get_unique_models():
     """
     Busca os nomes únicos dos modelos salvos no banco de dados.
     """
-    db = SessionLocal()
     try:
-        models = db.query(
-            AnalysisResult.model_name
-        ).distinct().all()
-        # models é uma lista de tuplas [('model1',), ('model2',)]
-        model_list = [m[0] for m in models if m[0]]
+        model_list = get_analysis_result_repository().distinct_model_names()
         return ["Todos"] + sorted(model_list)
     except Exception as e:
         logger.error(f"Erro ao buscar modelos: {e}")
         return ["Todos"]
-    finally:
-        db.close()
 
 
 def export_history_csv():
     """
     Exporta o histórico completo para um arquivo CSV temporário.
     """
-    db = SessionLocal()
     try:
         # Busca todos os registros para exportação
-        results = db.query(AnalysisResult).order_by(
-            desc(AnalysisResult.created_at)
-        ).all()
+        results = get_analysis_result_repository().list_recent()
 
         data = []
         for r in results:
-            data.append({
-                "ID": r.id,
-                "Data": r.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-                "Arquivo": r.filename,
-                "Resultado": "FAKE" if r.is_fake else "REAL",
-                "Confiança": r.confidence,
-                "Modelo": r.model_name,
-                "Duração (s)": r.duration_seconds,
-                "Taxa de Amostragem": r.sample_rate,
-                "Detalhes": r.details
-            })
+            data.append(
+                {
+                    "ID": r.id,
+                    "Data": _data_local(r.created_at),
+                    "Arquivo": r.filename,
+                    "Resultado": "FAKE" if r.is_fake else "REAL",
+                    "Confiança": r.confidence,
+                    "Modelo": r.model_name,
+                    "Duração (s)": r.duration_seconds,
+                    "Taxa de Amostragem": r.sample_rate,
+                    "Detalhes": r.details,
+                }
+            )
 
         if not data:
             return None
@@ -65,8 +63,8 @@ def export_history_csv():
         # Cria arquivo temporário
         tmp = tempfile.NamedTemporaryFile(
             delete=False,
-            suffix='.csv',
-            prefix='historico_analises_',
+            suffix=".csv",
+            prefix="historico_analises_",
             dir=get_gradio_exports_directory(),
         )
         tmp.close()
@@ -75,46 +73,39 @@ def export_history_csv():
     except Exception as e:
         logger.error(f"Erro ao exportar CSV: {e}")
         return None
-    finally:
-        db.close()
 
 
+@ui_safe("Falha ao carregar o histórico")
 def load_history(filter_model=None, filter_result=None, search_query=None):
     """
     Carrega o histórico de análises do banco de dados com filtros e busca.
     """
-    db = SessionLocal()
-    try:
-        query = db.query(AnalysisResult).order_by(desc(AnalysisResult.created_at))
+    model_name = filter_model if filter_model and filter_model != "Todos" else None
+    is_fake = None
+    if filter_result and filter_result != "Todos":
+        is_fake = filter_result == "Fake"
 
-        if filter_model and filter_model != "Todos":
-            query = query.filter(AnalysisResult.model_name == filter_model)
+    results = get_analysis_result_repository().search(
+        model_name=model_name,
+        is_fake=is_fake,
+        filename_contains=search_query or None,
+        limit=500,
+    )
 
-        if filter_result and filter_result != "Todos":
-            is_fake_val = True if filter_result == "Fake" else False
-            query = query.filter(AnalysisResult.is_fake == is_fake_val)
-
-        if search_query:
-            query = query.filter(
-                AnalysisResult.filename.ilike(f"%{search_query}%")
-            )
-
-        results = query.limit(500).all()  # Aumentado para 500
-
-        data = []
-        for r in results:
-            data.append([
+    data = []
+    for r in results:
+        data.append(
+            [
                 r.id,
-                r.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                _data_local(r.created_at),
                 r.filename or "N/A",
                 "FAKE" if r.is_fake else "REAL",
                 f"{r.confidence * 100:.2f}%",
                 r.model_name or "N/A",
-                f"{r.duration_seconds:.2f}s" if r.duration_seconds else "N/A"
-            ])
-        return data
-    finally:
-        db.close()
+                f"{r.duration_seconds:.2f}s" if r.duration_seconds else "N/A",
+            ]
+        )
+    return data
 
 
 def get_details_and_id(evt: gr.SelectData, history_data):
@@ -125,10 +116,9 @@ def get_details_and_id(evt: gr.SelectData, history_data):
         return (
             "Selecione uma linha para ver detalhes.",
             None,
-            gr.update(interactive=False)
+            gr.update(interactive=False),
         )
 
-    db = SessionLocal()
     try:
         row_index = evt.index[0]
         # O ID está na primeira coluna (índice 0)
@@ -136,17 +126,13 @@ def get_details_and_id(evt: gr.SelectData, history_data):
         # Dataframe do Gradio em eventos
         analysis_id = int(history_data.iloc[row_index, 0])
 
-        result = db.query(AnalysisResult).get(analysis_id)
+        result = get_analysis_result_repository().get(analysis_id)
         if not result:
-            return (
-                "Análise não encontrada.",
-                None,
-                gr.update(interactive=False)
-            )
+            return ("Análise não encontrada.", None, gr.update(interactive=False))
 
         details_str = f"""### Detalhes da Análise #{result.id}
 
-**Data:** {result.created_at.strftime("%Y-%m-%d %H:%M:%S")}
+**Data:** {_data_local(result.created_at)}
 **Arquivo:** {result.filename}
 **Modelo:** {result.model_name}
 **Resultado:** {"FAKE" if result.is_fake else "REAL"}
@@ -165,108 +151,105 @@ def get_details_and_id(evt: gr.SelectData, history_data):
         return (
             f"Erro ao carregar detalhes: {str(e)}",
             None,
-            gr.update(interactive=False)
+            gr.update(interactive=False),
         )
-    finally:
-        db.close()
 
 
 def delete_analysis(analysis_id):
     if not analysis_id:
         return "Nenhuma análise selecionada."
 
-    db = SessionLocal()
     try:
-        result = db.query(AnalysisResult).get(analysis_id)
-        if result:
-            db.delete(result)
-            db.commit()
+        if get_analysis_result_repository().delete(analysis_id):
             return "Análise excluída com sucesso."
         return "Análise não encontrada."
     except Exception as e:
         return f"Erro ao excluir: {e}"
-    finally:
-        db.close()
 
 
 def clear_all_history():
-    db = SessionLocal()
     try:
-        db.query(AnalysisResult).delete()
-        db.commit()
+        get_analysis_result_repository().delete_all()
         return "Histórico limpo com sucesso."
     except Exception as e:
         return f"Erro ao limpar histórico: {e}"
-    finally:
-        db.close()
 
 
 def create_history_tab():
-    with gr.Tab("📜 Histórico", id="tab_history"):
+    with gr.Tab("📜 Histórico", id="tab_history") as history_tab:
         from app.interfaces.gradio.utils.components import page_header
 
         page_header(
             "📜",
-            "Histórico de Detecções",
-            "Consulte, filtre e exporte os resultados de todas as análises "
-            "realizadas.",
+            "Histórico de análises",
+            "Consulte, filtre e exporte os resultados das análises feitas.",
         )
 
         with gr.Row(elem_classes="responsive-grid responsive-grid-3"):
-            with gr.Column(scale=2):
+            with gr.Column(scale=2, min_width=220):
                 search_box = gr.Textbox(
-                    label="Buscar por Nome do Arquivo",
+                    label="Buscar por nome do arquivo",
                     placeholder="Digite para filtrar...",
                     show_label=True,
                 )
 
-            with gr.Column(scale=1):
+            with gr.Column(scale=1, min_width=160):
                 filter_model = gr.Dropdown(
-                    label="Filtrar por Modelo",
+                    label="Modelo",
                     choices=["Todos"],
                     value="Todos",
                 )
 
-            with gr.Column(scale=1):
+            with gr.Column(scale=1, min_width=160):
                 filter_result = gr.Dropdown(
-                    label="Filtrar por Resultado",
+                    label="Resultado",
                     choices=["Todos", "Fake", "Real"],
                     value="Todos",
                 )
 
-        with gr.Row(elem_classes="action-row"):
-            refresh_btn = gr.Button("Atualizar Lista", variant="primary")
-            export_btn = gr.Button("Exportar CSV", variant="secondary")
-
-        download_file = gr.File(label="Download CSV", visible=False)
-
         history_table = gr.Dataframe(
             headers=[
-                "ID", "Data", "Arquivo", "Resultado",
-                "Confiança", "Modelo", "Duração"
+                "ID",
+                "Data",
+                "Arquivo",
+                "Resultado",
+                "Confiança",
+                "Modelo",
+                "Duração",
             ],
             datatype=["number", "str", "str", "str", "str", "str", "str"],
             interactive=False,
-            label="Registros de Análise"
+            label="Análises",
         )
 
         details_view = gr.Markdown(
-            "ℹ️ Selecione uma linha na tabela acima para ver os detalhes "
-            "completos da análise."
+            "*Selecione uma linha para ver os detalhes da análise.*"
         )
 
         # Estado para guardar o ID selecionado
         selected_id = gr.State(None)
 
         with gr.Row(elem_classes="action-row"):
+            refresh_btn = gr.Button("Atualizar lista", variant="secondary")
+            export_btn = gr.Button("Exportar CSV", variant="secondary")
             delete_btn = gr.Button(
-                "🗑️ Excluir Análise", variant="stop", interactive=False
+                "Excluir análise selecionada", variant="stop", interactive=False
             )
-            clear_all_btn = gr.Button("⚠️ Limpar Tudo", variant="secondary")
+            clear_all_btn = gr.Button("Apagar todo o histórico", variant="stop")
+
+        # Apagar o histórico inteiro não tem volta: pede confirmação na própria tela.
+        with gr.Row(visible=False, elem_classes="confirm-row") as confirm_clear_row:
+            gr.Markdown(
+                "**Apagar todas as análises?** Esta ação não pode ser desfeita."
+            )
+            confirm_clear_btn = gr.Button("Sim, apagar tudo", variant="stop")
+            cancel_clear_btn = gr.Button("Cancelar", variant="secondary")
+
+        download_file = gr.File(label="Arquivo CSV", visible=False)
 
         # --- Event Handlers ---
 
-        @ui_safe("Falha ao recarregar o historico")
+        @ui_safe("Falha ao recarregar o histórico")
         def refresh_data(model, result, search):
             # Atualiza lista de modelos e carrega dados
             models = get_unique_models()
@@ -277,33 +260,40 @@ def create_history_tab():
         refresh_btn.click(
             fn=refresh_data,
             inputs=[filter_model, filter_result, search_box],
-            outputs=[history_table, filter_model]
+            outputs=[history_table, filter_model],
+        )
+        # Ao abrir a aba a tabela já vem preenchida, sem exigir um clique.
+        history_tab.select(
+            fn=refresh_data,
+            inputs=[filter_model, filter_result, search_box],
+            outputs=[history_table, filter_model],
+            show_progress="hidden",
         )
 
         # Filtros Automáticos (Mudança nos inputs)
         search_box.change(
             fn=load_history,
             inputs=[filter_model, filter_result, search_box],
-            outputs=[history_table]
+            outputs=[history_table],
         )
 
         filter_model.change(
             fn=load_history,
             inputs=[filter_model, filter_result, search_box],
-            outputs=[history_table]
+            outputs=[history_table],
         )
 
         filter_result.change(
             fn=load_history,
             inputs=[filter_model, filter_result, search_box],
-            outputs=[history_table]
+            outputs=[history_table],
         )
 
         # Seleção na Tabela (Detalhes + ID para exclusão)
         history_table.select(
             fn=get_details_and_id,
             inputs=[history_table],
-            outputs=[details_view, selected_id, delete_btn]
+            outputs=[details_view, selected_id, delete_btn],
         )
 
         # Exportação CSV
@@ -314,31 +304,37 @@ def create_history_tab():
                 return gr.update(value=path, visible=True)
             return gr.update(visible=False)
 
-        export_btn.click(
-            fn=on_export,
-            outputs=[download_file]
-        )
+        export_btn.click(fn=on_export, outputs=[download_file])
 
         # Exclusão Única
         delete_btn.click(
-            fn=delete_analysis,
-            inputs=[selected_id],
-            outputs=[details_view]
+            fn=delete_analysis, inputs=[selected_id], outputs=[details_view]
         ).then(
             fn=load_history,
             inputs=[filter_model, filter_result, search_box],
-            outputs=[history_table]
+            outputs=[history_table],
         ).then(
             fn=lambda: (None, gr.update(interactive=False)),
-            outputs=[selected_id, delete_btn]
+            outputs=[selected_id, delete_btn],
         )
 
-        # Limpar Tudo
+        # Limpar Tudo, em dois passos
         clear_all_btn.click(
-            fn=clear_all_history,
-            outputs=[details_view]
-        ).then(
+            fn=lambda: gr.update(visible=True),
+            outputs=[confirm_clear_row],
+            show_progress="hidden",
+        )
+        cancel_clear_btn.click(
+            fn=lambda: gr.update(visible=False),
+            outputs=[confirm_clear_row],
+            show_progress="hidden",
+        )
+        confirm_clear_btn.click(fn=clear_all_history, outputs=[details_view]).then(
             fn=load_history,
             inputs=[filter_model, filter_result, search_box],
-            outputs=[history_table]
+            outputs=[history_table],
+        ).then(
+            fn=lambda: gr.update(visible=False),
+            outputs=[confirm_clear_row],
+            show_progress="hidden",
         )

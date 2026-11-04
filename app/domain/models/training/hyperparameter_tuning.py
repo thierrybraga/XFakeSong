@@ -44,6 +44,7 @@ def is_optuna_available() -> bool:
     """Verifica se optuna está instalado."""
     try:
         import optuna  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -54,16 +55,20 @@ def _suggest_from_spec(trial, name: str, spec):
     ('categorical', [...]) ou ('int', a, b) em trial.suggest_*.
     """
     kind = spec[0]
-    if kind == 'uniform':
+    if kind == "uniform":
         return trial.suggest_float(name, spec[1], spec[2], log=False)
-    elif kind == 'loguniform':
+    elif kind == "loguniform":
         return trial.suggest_float(name, spec[1], spec[2], log=True)
-    elif kind == 'int':
-        return trial.suggest_int(name, spec[1], spec[2], log=spec[3] if len(spec) > 3 else False)
-    elif kind == 'categorical':
+    elif kind == "int":
+        return trial.suggest_int(
+            name, spec[1], spec[2], log=spec[3] if len(spec) > 3 else False
+        )
+    elif kind == "categorical":
         return trial.suggest_categorical(name, spec[1])
     else:
-        raise ValueError(f"Spec inválido: {spec}. Use 'uniform'/'loguniform'/'int'/'categorical'")
+        raise ValueError(
+            f"Spec inválido: {spec}. Use 'uniform'/'loguniform'/'int'/'categorical'"
+        )
 
 
 def tune_hyperparameters(
@@ -72,8 +77,8 @@ def tune_hyperparameters(
     base_config: Dict[str, Any],
     search_space: Dict[str, tuple],
     n_trials: int = 30,
-    metric: str = 'val_accuracy',
-    direction: str = 'maximize',
+    metric: str = "val_accuracy",
+    direction: str = "maximize",
     timeout_seconds: Optional[int] = None,
     use_pruning: bool = True,
     study_name: Optional[str] = None,
@@ -109,14 +114,14 @@ def tune_hyperparameters(
             - errors: list (se status != success)
     """
     if not is_optuna_available():
-        msg = ("optuna não instalado. Instale com: pip install optuna")
+        msg = "optuna não instalado. Instale com: pip install optuna"
         logger.warning(msg)
         return {
-            'status': 'unavailable',
-            'errors': [msg],
-            'best_params': {},
-            'best_score': None,
-            'n_trials': 0,
+            "status": "unavailable",
+            "errors": [msg],
+            "best_params": {},
+            "best_score": None,
+            "n_trials": 0,
         }
 
     try:
@@ -141,7 +146,7 @@ def tune_hyperparameters(
         if custom_train_fn is None:
             custom_train_fn = _default_train_fn
 
-        def objective(trial: 'optuna.Trial') -> float:
+        def objective(trial: "optuna.Trial") -> float:
             # Sample hyperparameters
             params = {
                 name: _suggest_from_spec(trial, name, spec)
@@ -149,23 +154,26 @@ def tune_hyperparameters(
             }
             # Merge com base_config; params vão em 'parameters' do TrainingConfig
             fold_config = dict(base_config)
-            arch_params = fold_config.get('parameters', {}).copy()
+            arch_params = fold_config.get("parameters", {}).copy()
 
             # Distribui params entre top-level e parameters
             for k, v in params.items():
                 if k in (
-                    'learning_rate', 'batch_size', 'epochs', 'optimizer',
-                    'loss_function', 'early_stopping_patience',
-                    'reduce_lr_patience', 'validation_split',
+                    "learning_rate",
+                    "batch_size",
+                    "epochs",
+                    "optimizer",
+                    "loss_function",
+                    "early_stopping_patience",
+                    "reduce_lr_patience",
+                    "validation_split",
                 ):
                     fold_config[k] = v
                 else:
                     arch_params[k] = v
-            fold_config['parameters'] = arch_params
+            fold_config["parameters"] = arch_params
             # Nome único para evitar colisão
-            fold_config['model_name'] = (
-                f"{architecture}_trial{trial.number}"
-            )
+            fold_config["model_name"] = f"{architecture}_trial{trial.number}"
 
             try:
                 score = custom_train_fn(
@@ -181,11 +189,13 @@ def tune_hyperparameters(
             except Exception as e:
                 logger.warning(f"Trial {trial.number} falhou: {e}")
                 # Trial falho retorna pior valor possível
-                return float('-inf') if direction == 'maximize' else float('inf')
+                return float("-inf") if direction == "maximize" else float("inf")
 
         # Run optimization
         study.optimize(
-            objective, n_trials=n_trials, timeout=timeout_seconds,
+            objective,
+            n_trials=n_trials,
+            timeout=timeout_seconds,
             show_progress_bar=False,
         )
 
@@ -200,22 +210,22 @@ def tune_hyperparameters(
         logger.info(f"Best params: {best_params}")
 
         return {
-            'status': 'success',
-            'best_params': best_params,
-            'best_score': best_score,
-            'n_trials': n_completed,
-            'study': study,
-            'errors': [],
+            "status": "success",
+            "best_params": best_params,
+            "best_score": best_score,
+            "n_trials": n_completed,
+            "study": study,
+            "errors": [],
         }
 
     except Exception as e:
         logger.error(f"Erro em tune_hyperparameters: {e}", exc_info=True)
         return {
-            'status': 'error',
-            'errors': [str(e)],
-            'best_params': {},
-            'best_score': None,
-            'n_trials': 0,
+            "status": "error",
+            "errors": [str(e)],
+            "best_params": {},
+            "best_score": None,
+            "n_trials": 0,
         }
 
 
@@ -251,23 +261,23 @@ def _default_train_fn(
     # Cleanup modelo do trial (Optuna pode rodar 30+ trials)
     try:
         Path(md.file_path).unlink(missing_ok=True)
-        cfg_p = Path(str(md.file_path).replace('.keras', '_config.json'))
+        cfg_p = Path(str(md.file_path).replace(".keras", "_config.json"))
         cfg_p.unlink(missing_ok=True)
     except Exception:
         pass
 
     # Extrai métrica
-    if metric in ('accuracy', 'val_accuracy'):
+    if metric in ("accuracy", "val_accuracy"):
         return float(md.accuracy)
-    elif metric in ('precision', 'val_precision'):
+    elif metric in ("precision", "val_precision"):
         return float(md.precision)
-    elif metric in ('recall', 'val_recall'):
+    elif metric in ("recall", "val_recall"):
         return float(md.recall)
-    elif metric in ('f1_score', 'val_f1_score', 'f1'):
+    elif metric in ("f1_score", "val_f1_score", "f1"):
         return float(md.f1_score)
-    elif metric == 'val_loss':
+    elif metric == "val_loss":
         # Lower is better — Optuna direction='minimize'
-        return float(md.metrics.get('val_loss', md.metrics.get('loss', 1.0)))
+        return float(md.metrics.get("val_loss", md.metrics.get("loss", 1.0)))
     else:
         # Fallback: tenta no dict de métricas
         return float(md.metrics.get(metric, md.accuracy))
@@ -280,21 +290,21 @@ def suggest_search_space(architecture: str) -> Dict[str, tuple]:
         Dict {param_name: spec} pronto para passar a `tune_hyperparameters`.
     """
     base = {
-        'learning_rate': ('loguniform', 1e-5, 1e-2),
-        'batch_size': ('categorical', [16, 32, 64]),
-        'dropout_rate': ('uniform', 0.1, 0.5),
+        "learning_rate": ("loguniform", 1e-5, 1e-2),
+        "batch_size": ("categorical", [16, 32, 64]),
+        "dropout_rate": ("uniform", 0.1, 0.5),
     }
 
     arch_lower = architecture.lower()
-    if 'aasist' in arch_lower or 'rawgat' in arch_lower:
-        base['l2_reg_strength'] = ('loguniform', 1e-6, 1e-3)
-        base['hidden_dim'] = ('categorical', [256, 512])
-    elif 'conformer' in arch_lower or 'transformer' in arch_lower:
-        base['learning_rate'] = ('loguniform', 1e-5, 5e-3)  # menor para Trans.
-        base['dropout_rate'] = ('uniform', 0.1, 0.3)
-    elif 'efficientnet' in arch_lower:
-        base['lstm_units'] = ('categorical', [128, 256, 512])
-    elif 'rawnet' in arch_lower:
-        base['gru_units'] = ('categorical', [128, 256, 512])
+    if "aasist" in arch_lower or "rawgat" in arch_lower:
+        base["l2_reg_strength"] = ("loguniform", 1e-6, 1e-3)
+        base["hidden_dim"] = ("categorical", [256, 512])
+    elif "conformer" in arch_lower or "transformer" in arch_lower:
+        base["learning_rate"] = ("loguniform", 1e-5, 5e-3)  # menor para Trans.
+        base["dropout_rate"] = ("uniform", 0.1, 0.3)
+    elif "efficientnet" in arch_lower:
+        base["lstm_units"] = ("categorical", [128, 256, 512])
+    elif "rawnet" in arch_lower:
+        base["gru_units"] = ("categorical", [128, 256, 512])
 
     return base

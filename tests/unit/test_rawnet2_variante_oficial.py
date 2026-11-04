@@ -115,16 +115,18 @@ def test_manifesto_declara_a_variante_que_e_construida():
     from benchmarks.config import OFFICIAL_TCC_MODEL_MANIFEST
 
     entrada = next(
-        item for item in OFFICIAL_TCC_MODEL_MANIFEST
+        item
+        for item in OFFICIAL_TCC_MODEL_MANIFEST
         if item.get("benchmark_name") == "RawNet2"
     )
     variante = str(entrada.get("variant", "")).lower()
-    assert "antispoofing" in variante or "anti_spoofing" in variante, (
-        f"o rótulo {variante!r} não declara a variante anti-spoofing"
-    )
-    assert "speakerverification" not in variante, (
-        f"o rótulo {variante!r} ainda anuncia a variante de verificação de locutor"
-    )
+    assert (
+        "antispoofing" in variante or "anti_spoofing" in variante
+    ), f"o rótulo {variante!r} não declara a variante anti-spoofing"
+    assert (
+        "speakerverification" not in variante
+    ), f"o rótulo {variante!r} ainda anuncia a variante de verificação de locutor"
+
 
 def test_o_runner_tem_UM_SO_ramo_para_rawnet2():
     """A cadeia if/elif de `_run_neural` não pode ter dois ramos para o mesmo valor.

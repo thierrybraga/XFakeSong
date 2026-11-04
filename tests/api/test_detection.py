@@ -31,7 +31,7 @@ def test_analyze_audio_no_file(client):
 
 
 def test_analyze_audio_invalid_format(client):
-    files = {'file': ('test.txt', b'text data', 'text/plain')}
+    files = {"file": ("test.txt", b"text data", "text/plain")}
     response = client.post("/api/v1/detection/analyze", files=files)
     assert response.status_code == 415
     assert response.json()["error_code"] == "UNSUPPORTED_FORMAT"
@@ -44,7 +44,7 @@ def test_analyze_audio_success(client, mock_detection_service):
     mock_result.data = MagicMock()
     mock_result.data.is_fake = True
     mock_result.data.confidence = 0.95
-    mock_result.data.probabilities = {'fake': 0.95, 'real': 0.05}
+    mock_result.data.probabilities = {"fake": 0.95, "real": 0.05}
     mock_result.data.model_name = "test_model"
     mock_result.data.features_used = ["raw"]
     mock_result.data.metadata = {}
@@ -52,7 +52,7 @@ def test_analyze_audio_success(client, mock_detection_service):
     mock_detection_service.detect_from_file.return_value = mock_result
 
     # Create dummy file
-    files = {'file': ('test.wav', b'fake audio data', 'audio/wav')}
+    files = {"file": ("test.wav", b"fake audio data", "audio/wav")}
 
     response = client.post("/api/v1/detection/analyze", files=files)
 

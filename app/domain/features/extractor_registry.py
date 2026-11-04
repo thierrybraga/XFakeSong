@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 class ExtractorComplexity(Enum):
     """Níveis de complexidade computacional."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -34,6 +35,7 @@ class ExtractorComplexity(Enum):
 @dataclass
 class ExtractorSpec:
     """Especificação de um extrator de features."""
+
     name: str
     feature_type: FeatureType
     complexity: ExtractorComplexity
@@ -49,10 +51,6 @@ class ExtractorSpec:
     def __post_init__(self):
         if self.dependencies is None:
             self.dependencies = []
-
-
-# Interface IFeatureExtractor agora importada de
-# app.domain.features.interfaces
 
 
 class FeatureExtractorRegistry:
@@ -71,9 +69,7 @@ class FeatureExtractorRegistry:
             spec: Especificação do extrator
         """
         if spec.name in self._extractors:
-            logger.warning(
-                f"Extrator '{spec.name}' já registrado. Sobrescrevendo."
-            )
+            logger.warning(f"Extrator '{spec.name}' já registrado. Sobrescrevendo.")
 
         self._extractors[spec.name] = spec
 
@@ -117,7 +113,7 @@ class FeatureExtractorRegistry:
     def list_extractors(
         self,
         feature_type: Optional[FeatureType] = None,
-        complexity: Optional[ExtractorComplexity] = None
+        complexity: Optional[ExtractorComplexity] = None,
     ) -> List[str]:
         """Lista extratores disponíveis.
 
@@ -132,13 +128,15 @@ class FeatureExtractorRegistry:
 
         if feature_type:
             extractors = [
-                name for name in extractors
+                name
+                for name in extractors
                 if name in self._type_index.get(feature_type, [])
             ]
 
         if complexity:
             extractors = [
-                name for name in extractors
+                name
+                for name in extractors
                 if name in self._complexity_index.get(complexity, [])
             ]
 
@@ -157,30 +155,6 @@ class FeatureExtractorRegistry:
             raise ValueError(f"Extrator '{name}' não encontrado")
         return self._extractors[name]
 
-    def get_extractors_by_type(self, feature_type: FeatureType) -> List[str]:
-        """Obtém extratores por tipo de feature.
-
-        Args:
-            feature_type: Tipo de feature
-
-        Returns:
-            Lista de nomes de extratores
-        """
-        return self._type_index.get(feature_type, [])
-
-    def get_extractors_by_complexity(
-        self, complexity: ExtractorComplexity
-    ) -> List[str]:
-        """Obtém extratores por complexidade.
-
-        Args:
-            complexity: Nível de complexidade
-
-        Returns:
-            Lista de nomes de extratores
-        """
-        return self._complexity_index.get(complexity, [])
-
     def is_registered(self, name: str) -> bool:
         """Verifica se um extrator está registrado.
 
@@ -192,60 +166,9 @@ class FeatureExtractorRegistry:
         """
         return name in self._extractors
 
-    def unregister(self, name: str) -> bool:
-        """Remove um extrator do registry.
-
-        Args:
-            name: Nome do extrator
-
-        Returns:
-            True se removido com sucesso
-        """
-        if name not in self._extractors:
-            return False
-
-        spec = self._extractors[name]
-
-        # Remover dos índices
-        if spec.feature_type in self._type_index:
-            if name in self._type_index[spec.feature_type]:
-                self._type_index[spec.feature_type].remove(name)
-
-        if spec.complexity in self._complexity_index:
-            if name in self._complexity_index[spec.complexity]:
-                self._complexity_index[spec.complexity].remove(name)
-
-        del self._extractors[name]
-        logger.info(f"Extrator '{name}' removido do registry")
-        return True
-
-    def get_stats(self) -> Dict[str, Any]:
-        """Obtém estatísticas do registry.
-
-        Returns:
-            Dicionário com estatísticas
-        """
-        return {
-            "total_extractors": len(self._extractors),
-            "by_type": {
-                ft.value: len(extractors)
-                for ft, extractors in self._type_index.items()
-            },
-            "by_complexity": {
-                comp.value: len(extractors)
-                for comp, extractors in self._complexity_index.items()
-            },
-            "registered_extractors": list(self._extractors.keys())
-        }
-
 
 # Instância global do registry
 extractor_registry = FeatureExtractorRegistry()
-
-
-def get_extractor_registry() -> FeatureExtractorRegistry:
-    """Retorna a instância global do registry."""
-    return extractor_registry
 
 
 def register_default_extractors():
@@ -378,38 +301,44 @@ def register_default_extractors():
     # ))
 
     # Novos extratores implementados
-    extractor_registry.register(ExtractorSpec(
-        name="spectral_advanced",
-        feature_type=FeatureType.SPECTRAL,
-        complexity=ExtractorComplexity.HIGH,
-        description="Advanced Spectral Features (flux, decrease, crest, "
-                    "irregularity, roughness, inharmonicity)",
-        extractor_class=SpectralFeatureExtractor,
-        default_params={"sr": 22050, "frame_length": 2048, "hop_length": 512},
-        input_requirements={"sample_rate": 22050}
-    ))
+    extractor_registry.register(
+        ExtractorSpec(
+            name="spectral_advanced",
+            feature_type=FeatureType.SPECTRAL,
+            complexity=ExtractorComplexity.HIGH,
+            description="Advanced Spectral Features (flux, decrease, crest, "
+            "irregularity, roughness, inharmonicity)",
+            extractor_class=SpectralFeatureExtractor,
+            default_params={"sr": 22050, "frame_length": 2048, "hop_length": 512},
+            input_requirements={"sample_rate": 22050},
+        )
+    )
 
-    extractor_registry.register(ExtractorSpec(
-        name="cepstral_advanced",
-        feature_type=FeatureType.CEPSTRAL,
-        complexity=ExtractorComplexity.HIGH,
-        description="Advanced Cepstral Features (MFCC, Delta-MFCC, "
-                    "Delta-Delta-MFCC, PLP, LPCC)",
-        extractor_class=CepstralFeatureExtractor,
-        default_params={"sr": 22050, "n_mfcc": 13, "n_mels": 128},
-        input_requirements={"sample_rate": 22050}
-    ))
+    extractor_registry.register(
+        ExtractorSpec(
+            name="cepstral_advanced",
+            feature_type=FeatureType.CEPSTRAL,
+            complexity=ExtractorComplexity.HIGH,
+            description="Advanced Cepstral Features (MFCC, Delta-MFCC, "
+            "Delta-Delta-MFCC, PLP, LPCC)",
+            extractor_class=CepstralFeatureExtractor,
+            default_params={"sr": 22050, "n_mfcc": 13, "n_mels": 128},
+            input_requirements={"sample_rate": 22050},
+        )
+    )
 
-    extractor_registry.register(ExtractorSpec(
-        name="prosodic_advanced",
-        feature_type=FeatureType.PROSODIC,
-        complexity=ExtractorComplexity.HIGH,
-        description="Advanced Prosodic Features (F0, jitter, shimmer, "
-                    "HNR, voicing)",
-        extractor_class=ProsodicFeatureExtractor,
-        default_params={"sr": 22050, "f0_min": 80.0, "f0_max": 400.0},
-        input_requirements={"sample_rate": 22050}
-    ))
+    extractor_registry.register(
+        ExtractorSpec(
+            name="prosodic_advanced",
+            feature_type=FeatureType.PROSODIC,
+            complexity=ExtractorComplexity.HIGH,
+            description="Advanced Prosodic Features (F0, jitter, shimmer, "
+            "HNR, voicing)",
+            extractor_class=ProsodicFeatureExtractor,
+            default_params={"sr": 22050, "f0_min": 80.0, "f0_max": 400.0},
+            input_requirements={"sample_rate": 22050},
+        )
+    )
 
     # extractor_registry.register(ExtractorSpec(
     #     name="formant_advanced",
@@ -433,9 +362,7 @@ def register_default_extractors():
     #     input_requirements={"sample_rate": 22050}
     # ))
 
-    logger.info(
-        f"Registrados {len(extractor_registry._extractors)} extratores padrão"
-    )
+    logger.info(f"Registrados {len(extractor_registry._extractors)} extratores padrão")
 
 
 # Funções de conveniência
@@ -454,7 +381,7 @@ def get_extractor(name: str, **params) -> IFeatureExtractor:
 
 def list_extractors(
     feature_type: Optional[FeatureType] = None,
-    complexity: Optional[ExtractorComplexity] = None
+    complexity: Optional[ExtractorComplexity] = None,
 ) -> List[str]:
     """Função de conveniência para listar extratores.
 
@@ -488,7 +415,7 @@ def get_extractor_info(name: str) -> Dict[str, Any]:
         "output_shape": spec.output_shape,
         "dependencies": spec.dependencies,
         "version": spec.version,
-        "author": spec.author
+        "author": spec.author,
     }
 
 

@@ -62,7 +62,7 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
         self.validator = FeatureExtractionValidator(
             self.loader.modular_enabled,
             self.loader.extractor_cache,
-            self.loader.extractor_specs
+            self.loader.extractor_specs,
         )
 
         # Validar pipeline
@@ -85,52 +85,11 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
     def plugin_manager(self):
         return self.loader.plugin_manager
 
-    def extract_features(self, audio_data: AudioData,
-                         config: ExtractionConfig) -> ProcessingResult:
+    def extract_features(
+        self, audio_data: AudioData, config: ExtractionConfig
+    ) -> ProcessingResult:
         """Extrair características de um arquivo de áudio"""
         return self.core.extract_features(audio_data, config)
-
-    def extract_batch_with_config(
-        self, audio_files: List[AudioData], config: ExtractionConfig
-    ) -> ProcessingResult:
-        """Extrair características de múltiplos arquivos (com config)"""
-        results = []
-        errors = []
-
-        progress = ProgressTracker(
-            len(audio_files),
-            "Extração de características")
-
-        for i, audio_data in enumerate(audio_files):
-            result = self.extract_features(audio_data, config)
-
-            if result.status == ProcessingStatus.SUCCESS:
-                if result.data:
-                    results.append(result.data)
-            else:
-                msg = (
-                    result.errors[0] if result.errors
-                    else 'Erro desconhecido'
-                )
-                errors.append(f"audio_data: {msg}")
-
-            progress.update(i + 1)
-
-        if errors:
-            status = (
-                ProcessingStatus.PARTIAL_SUCCESS if results
-                else ProcessingStatus.ERROR
-            )
-            return ProcessingResult(
-                status=status,
-                data=results,
-                errors=errors
-            )
-
-        return ProcessingResult(
-            status=ProcessingStatus.SUCCESS,
-            data=results
-        )
 
     def extract_single(
         self, audio_data: AudioData, feature_types: List[str]
@@ -161,27 +120,21 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
 
             warnings = (
                 [f"Tipos ignorados (não reconhecidos): {', '.join(invalid_types)}"]
-                if invalid_types else []
+                if invalid_types
+                else []
             )
 
             if result.status == ProcessingStatus.SUCCESS:
                 return ProcessingResult(
                     status=ProcessingStatus.SUCCESS,
-                    data={
-                        "features": (
-                            result.data.features if result.data else None
-                        )
-                    },
+                    data={"features": (result.data.features if result.data else None)},
                     warnings=warnings,
                 )
             else:
                 return result
 
         except Exception as e:
-            return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=[str(e)]
-            )
+            return ProcessingResult(status=ProcessingStatus.ERROR, errors=[str(e)])
 
     def extract_batch(
         self, audio_list: List[AudioData], feature_types: List[str]
@@ -196,31 +149,16 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
                 else:
                     return result
 
-            return ProcessingResult(
-                status=ProcessingStatus.SUCCESS,
-                data=results
-            )
+            return ProcessingResult(status=ProcessingStatus.SUCCESS, data=results)
 
         except Exception as e:
-            return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=[str(e)]
-            )
-
-    def extract_from_dataset(self, dataset_name: str,
-                             feature_types: List[str]) -> ProcessingResult[str]:
-        """Extrai características de dataset completo."""
-        return ProcessingResult(
-            status=ProcessingStatus.SUCCESS,
-            data=f"Dataset {dataset_name} processado"
-        )
+            return ProcessingResult(status=ProcessingStatus.ERROR, errors=[str(e)])
 
     def get_available_extractors(self) -> List[str]:
         """Retorna extratores disponíveis."""
         return self.loader.get_available_extractors()
 
-    def get_extractor_info(
-            self, extractor_name: str) -> Optional[Dict[str, Any]]:
+    def get_extractor_info(self, extractor_name: str) -> Optional[Dict[str, Any]]:
         """Retorna informações detalhadas sobre um extrator."""
         return self.loader.get_extractor_info(extractor_name)
 
@@ -231,7 +169,7 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
         self.validator = FeatureExtractionValidator(
             self.loader.modular_enabled,
             self.loader.extractor_cache,
-            self.loader.extractor_specs
+            self.loader.extractor_specs,
         )
         self.validator.validate()
 
@@ -239,8 +177,9 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
         """Retornar tipos de características disponíveis"""
         return self.loader.get_available_features()
 
-    def register_extractor(self, feature_type: FeatureType,
-                           extractor: IFeatureExtractor) -> None:
+    def register_extractor(
+        self, feature_type: FeatureType, extractor: IFeatureExtractor
+    ) -> None:
         """Registrar um novo extrator de características"""
         self.loader.register_extractor(feature_type, extractor)
 

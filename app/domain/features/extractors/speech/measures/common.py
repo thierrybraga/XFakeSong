@@ -5,13 +5,12 @@ import scipy.signal
 import scipy.stats
 
 
-def frame_signal(y: np.ndarray, frame_length: int,
-                 hop_length: int) -> List[np.ndarray]:
+def frame_signal(y: np.ndarray, frame_length: int, hop_length: int) -> List[np.ndarray]:
     """Divide o sinal em frames."""
     frames = []
 
     for i in range(0, len(y) - frame_length + 1, hop_length):
-        frame = y[i:i + frame_length]
+        frame = y[i : i + frame_length]
 
         # Aplicar janela
         window = scipy.signal.windows.hann(len(frame))
@@ -23,20 +22,22 @@ def frame_signal(y: np.ndarray, frame_length: int,
 
 
 def compute_energy_envelope(
-        y: np.ndarray, frame_length: int, hop_length: int) -> np.ndarray:
+    y: np.ndarray, frame_length: int, hop_length: int
+) -> np.ndarray:
     """Calcula envelope de energia."""
     energy_envelope = []
 
     for i in range(0, len(y) - frame_length + 1, hop_length):
-        frame = y[i:i + frame_length]
-        energy = np.sum(frame ** 2)
+        frame = y[i : i + frame_length]
+        energy = np.sum(frame**2)
         energy_envelope.append(energy)
 
     return np.array(energy_envelope)
 
 
 def frames_to_segments(
-        frame_indices: List[int], hop_length: int) -> List[Tuple[int, int]]:
+    frame_indices: List[int], hop_length: int
+) -> List[Tuple[int, int]]:
     """Converte índices de frames para segmentos temporais."""
     if not frame_indices:
         return []
@@ -62,16 +63,16 @@ def frames_to_segments(
     return segments
 
 
-def detect_speech_segments(y: np.ndarray, sr: int, frame_length: int,
-                           hop_length: int,
-                           threshold: float = 0.01) -> List[Tuple[int, int]]:
+def detect_speech_segments(
+    y: np.ndarray, sr: int, frame_length: int, hop_length: int, threshold: float = 0.01
+) -> List[Tuple[int, int]]:
     """Detecta segmentos de fala baseado em energia."""
     # Calcular energia por frame
     frame_energy = []
 
     for i in range(0, len(y) - frame_length + 1, hop_length):
-        frame = y[i:i + frame_length]
-        energy = np.sum(frame ** 2) / len(frame)
+        frame = y[i : i + frame_length]
+        energy = np.sum(frame**2) / len(frame)
         frame_energy.append(energy)
 
     # Detectar segmentos acima do threshold
@@ -98,8 +99,9 @@ def detect_speech_segments(y: np.ndarray, sr: int, frame_length: int,
     return segments
 
 
-def detect_vowel_segments(y: np.ndarray, sr: int, frame_length: int,
-                          hop_length: int) -> List[Tuple[int, int]]:
+def detect_vowel_segments(
+    y: np.ndarray, sr: int, frame_length: int, hop_length: int
+) -> List[Tuple[int, int]]:
     """Detecta segmentos vocálicos baseado em características espectrais."""
     frames = frame_signal(y, frame_length, hop_length)
 
@@ -111,12 +113,12 @@ def detect_vowel_segments(y: np.ndarray, sr: int, frame_length: int,
         # 2. Estrutura harmônica clara
         # 3. Formantes bem definidos
 
-        energy = np.sum(frame ** 2)
+        energy = np.sum(frame**2)
 
         if energy > 0.001:  # Threshold mínimo de energia
             # Calcular autocorrelação para detectar periodicidade
-            autocorr = np.correlate(frame, frame, mode='full')
-            autocorr = autocorr[len(autocorr) // 2:]
+            autocorr = np.correlate(frame, frame, mode="full")
+            autocorr = autocorr[len(autocorr) // 2 :]
 
             # Procurar pico de autocorrelação (indicativo de periodicidade)
             if len(autocorr) > 1:
@@ -132,7 +134,8 @@ def detect_vowel_segments(y: np.ndarray, sr: int, frame_length: int,
 
 
 def detect_consonant_segments(
-        y: np.ndarray, sr: int, frame_length: int, hop_length: int) -> List[Tuple[int, int]]:
+    y: np.ndarray, sr: int, frame_length: int, hop_length: int
+) -> List[Tuple[int, int]]:
     """Detecta segmentos consonantais."""
     # Detectar todos os segmentos de fala
     speech_segments = detect_speech_segments(y, sr, frame_length, hop_length)
@@ -159,8 +162,9 @@ def detect_consonant_segments(
     return consonant_segments
 
 
-def estimate_syllable_count(y: np.ndarray, sr: int,
-                            frame_length: int, hop_length: int) -> int:
+def estimate_syllable_count(
+    y: np.ndarray, sr: int, frame_length: int, hop_length: int
+) -> int:
     """Estima número de sílabas baseado em picos de energia."""
     # Calcular envelope de energia
     energy_envelope = compute_energy_envelope(y, frame_length, hop_length)
@@ -181,14 +185,16 @@ def estimate_syllable_count(y: np.ndarray, sr: int,
     polyorder = min(3, window_length - 1)
 
     # Suavizar envelope
-    smoothed_envelope = scipy.signal.savgol_filter(energy_envelope,
-                                                   window_length=window_length,
-                                                   polyorder=polyorder)
+    smoothed_envelope = scipy.signal.savgol_filter(
+        energy_envelope, window_length=window_length, polyorder=polyorder
+    )
 
     # Detectar picos
-    peaks, _ = scipy.signal.find_peaks(smoothed_envelope,
-                                       height=np.mean(smoothed_envelope),
-                                       distance=int(0.1 * sr / hop_length))
+    peaks, _ = scipy.signal.find_peaks(
+        smoothed_envelope,
+        height=np.mean(smoothed_envelope),
+        distance=int(0.1 * sr / hop_length),
+    )
 
     return max(1, len(peaks))  # Retorna pelo menos 1 sílaba
 
@@ -201,8 +207,12 @@ def estimate_vot(segment: np.ndarray, sr: int) -> Optional[float]:
     if len(segment) < window:
         return None
 
-    energy = np.array([np.sum(segment[i:i + window]**2)
-                      for i in range(0, len(segment) - window, step)])
+    energy = np.array(
+        [
+            np.sum(segment[i : i + window] ** 2)
+            for i in range(0, len(segment) - window, step)
+        ]
+    )
 
     if len(energy) < 2:
         return None
@@ -217,7 +227,8 @@ def estimate_vot(segment: np.ndarray, sr: int) -> Optional[float]:
 
 
 def extract_formant_frequencies(
-        y: np.ndarray, sr: int, frame_length: int, hop_length: int) -> List[float]:
+    y: np.ndarray, sr: int, frame_length: int, hop_length: int
+) -> List[float]:
     """Extrai frequências dos formantes (implementação simplificada)."""
     # Esta é uma implementação muito simplificada
     # Uma implementação real usaria LPC ou outros métodos mais sofisticados
@@ -232,13 +243,13 @@ def extract_formant_frequencies(
     avg_spectrum = np.zeros(frame_length // 2)
 
     for frame in frames:
-        spectrum = np.abs(np.fft.fft(frame))[:frame_length // 2]
+        spectrum = np.abs(np.fft.fft(frame))[: frame_length // 2]
         avg_spectrum += spectrum
 
     avg_spectrum /= len(frames)
 
     # Encontrar picos (formantes aproximados)
-    freqs = np.fft.fftfreq(frame_length, 1 / sr)[:frame_length // 2]
+    freqs = np.fft.fftfreq(frame_length, 1 / sr)[: frame_length // 2]
 
     # Procurar picos na faixa de formantes (200-3000 Hz)
     formant_mask = (freqs >= 200) & (freqs <= 3000)
@@ -246,9 +257,11 @@ def extract_formant_frequencies(
     formant_spectrum = avg_spectrum[formant_mask]
 
     # Encontrar picos
-    peaks, _ = scipy.signal.find_peaks(formant_spectrum,
-                                       height=np.mean(formant_spectrum),
-                                       distance=int(200 / (sr / frame_length)))
+    peaks, _ = scipy.signal.find_peaks(
+        formant_spectrum,
+        height=np.mean(formant_spectrum),
+        distance=int(200 / (sr / frame_length)),
+    )
 
     formant_frequencies = formant_freqs[peaks][:4]  # Primeiros 4 formantes
 
@@ -269,7 +282,7 @@ def estimate_glottal_signal(y: np.ndarray, sr: int) -> Optional[np.ndarray]:
 
     try:
         # Filtro passa-baixas para simular remoção de formantes
-        sos = scipy.signal.butter(4, 1000, btype='low', fs=sr, output='sos')
+        sos = scipy.signal.butter(4, 1000, btype="low", fs=sr, output="sos")
         glottal_estimate = scipy.signal.sosfilt(sos, y)
 
         return glottal_estimate
@@ -278,8 +291,9 @@ def estimate_glottal_signal(y: np.ndarray, sr: int) -> Optional[np.ndarray]:
         return None
 
 
-def detect_pause_segments(y: np.ndarray, sr: int, frame_length: int,
-                          hop_length: int) -> List[Tuple[int, int]]:
+def detect_pause_segments(
+    y: np.ndarray, sr: int, frame_length: int, hop_length: int
+) -> List[Tuple[int, int]]:
     """Detecta segmentos de pausa."""
     speech_segments = detect_speech_segments(y, sr, frame_length, hop_length)
 
@@ -344,34 +358,41 @@ def detect_false_starts(y: np.ndarray) -> List[Tuple[int, int]]:
 
 
 def detect_continuous_speech_segments(
-        y: np.ndarray, sr: int, frame_length: int, hop_length: int) -> List[Tuple[int, int]]:
+    y: np.ndarray, sr: int, frame_length: int, hop_length: int
+) -> List[Tuple[int, int]]:
     """Detecta segmentos de fala contínua."""
     # Usar segmentos de fala existentes e filtrar por duração mínima
     speech_segments = detect_speech_segments(y, sr, frame_length, hop_length)
 
     # Filtrar segmentos muito curtos
     min_duration = 0.5 * sr  # 0.5 segundos
-    continuous_segments = [(start, end) for start, end in speech_segments
-                           if end - start >= min_duration]
+    continuous_segments = [
+        (start, end) for start, end in speech_segments if end - start >= min_duration
+    ]
 
     return continuous_segments
 
 
 def detect_breathing_pauses(
-        y: np.ndarray, sr: int, frame_length: int, hop_length: int) -> List[Tuple[int, int]]:
+    y: np.ndarray, sr: int, frame_length: int, hop_length: int
+) -> List[Tuple[int, int]]:
     """Detecta pausas respiratórias."""
     pause_segments = detect_pause_segments(y, sr, frame_length, hop_length)
 
     # Filtrar pausas por duração (pausas respiratórias são tipicamente
     # 0.2-2.0s)
-    breathing_pauses = [(start, end) for start, end in pause_segments
-                        if 0.2 <= (end - start) / sr <= 2.0]
+    breathing_pauses = [
+        (start, end)
+        for start, end in pause_segments
+        if 0.2 <= (end - start) / sr <= 2.0
+    ]
 
     return breathing_pauses
 
 
 def estimate_speech_duration(
-        y: np.ndarray, sr: int, frame_length: int, hop_length: int) -> float:
+    y: np.ndarray, sr: int, frame_length: int, hop_length: int
+) -> float:
     """Estima duração total de fala."""
     speech_segments = detect_speech_segments(y, sr, frame_length, hop_length)
 

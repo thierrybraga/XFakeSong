@@ -46,19 +46,15 @@ class ProsodicExtractorWrapper(IFeatureExtractor):
             audio_features = AudioFeatures(
                 features=normalized_features,
                 feature_type=FeatureType.PROSODIC,
-                extraction_params={'sample_rate': audio_data.sample_rate},
-                audio_metadata={'sample_rate': audio_data.sample_rate}
+                extraction_params={"sample_rate": audio_data.sample_rate},
+                audio_metadata={"sample_rate": audio_data.sample_rate},
             )
 
             return ProcessingResult(
-                status=ProcessingStatus.SUCCESS,
-                data=audio_features
+                status=ProcessingStatus.SUCCESS, data=audio_features
             )
         except Exception as e:
-            return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=[str(e)]
-            )
+            return ProcessingResult(status=ProcessingStatus.ERROR, errors=[str(e)])
 
     def extract_features(self, audio_data: AudioData) -> ProcessingResult:
         return self.extract(audio_data)
@@ -68,17 +64,25 @@ class ProsodicExtractorWrapper(IFeatureExtractor):
 
     def get_feature_names(self) -> List[str]:
         return [
-            'pitch_mean', 'pitch_std', 'pitch_range', 'pitch_slope',
-            'intensity_mean', 'intensity_std', 'intensity_range',
-            'speaking_rate', 'pause_rate', 'rhythm_score',
-            'stress_pattern', 'intonation_contour'
+            "pitch_mean",
+            "pitch_std",
+            "pitch_range",
+            "pitch_slope",
+            "intensity_mean",
+            "intensity_std",
+            "intensity_range",
+            "speaking_rate",
+            "pause_rate",
+            "rhythm_score",
+            "stress_pattern",
+            "intonation_contour",
         ]
 
     def get_extraction_params(self) -> Dict[str, Any]:
         return {
-            'f0_min': self.extractor.f0_min,
-            'f0_max': self.extractor.f0_max,
-            'frame_length': self.extractor.frame_length,
-            'hop_length': self.extractor.hop_length,
-            'sr': self.extractor.sr
+            "f0_min": self.extractor.f0_min,
+            "f0_max": self.extractor.f0_max,
+            "frame_length": self.extractor.frame_length,
+            "hop_length": self.extractor.hop_length,
+            "sr": self.extractor.sr,
         }

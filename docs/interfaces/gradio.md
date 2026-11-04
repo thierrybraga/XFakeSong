@@ -1,6 +1,6 @@
 # 23 — Frontend Gradio e Fluxos de Análise
 
-A interface Gradio é a superfície principal de demonstração do XFakeSong. Ela é
+A interface Gradio é a superfície principal de demonstração do SpeechChecker. Ela é
 montada no mesmo processo FastAPI que expõe a API REST, permitindo usar UI e
 HTTP lado a lado.
 
@@ -36,20 +36,26 @@ python main.py --gradio
 ou via Docker:
 
 ```bash
-docker compose up --build -d
+docker compose --env-file .env -f infrastructure/docker/compose/inference.cpu.yml up --build -d
 ```
+
+A porta depende de como a aplicação subiu: 7862 no modo local, 7861 no Docker CPU e
+7860 no Docker NVIDIA. Veja o
+[mapa de portas](../development/docker-environments.md#portas). Os exemplos usam a local:
 
 | Recurso | URL |
 |---|---|
-| Interface Gradio | `http://localhost:7860/gradio` |
-| Página inicial | `http://localhost:7860/` |
-| Healthcheck | `http://localhost:7860/api/v1/system/health` |
-| OpenAPI | `http://localhost:7860/api/docs` |
+| Interface Gradio | `http://localhost:7862/gradio` |
+| Entrada principal | `http://localhost:7862/` (redireciona para `/gradio/`) |
+| Compatibilidade de inicialização | `/loading` (redireciona para a entrada principal) |
+| Healthcheck | `http://localhost:7862/api/v1/system/health` |
+| OpenAPI | `http://localhost:7862/api/docs` |
 
-`app/interfaces/gradio/app.py` monta o app unificado usado pelo comando
-principal. O módulo `app/interfaces/web/main_fastapi.py` também monta
-FastAPI, templates, assets estáticos e, fora de pytest/modo API-only, a UI
-Gradio em `/gradio`.
+`app/interfaces/gradio/app.py` monta a única interface visual e carrega seu
+tema de `app/interfaces/gradio/static/css/theme.css`. O módulo
+`app/interfaces/web/main_fastapi.py` monta FastAPI, a API REST e a UI Gradio em
+`/gradio`; a raiz redireciona para essa UI. Em modo API-only, a raiz leva à
+documentação Swagger em `/api/docs`.
 
 ## Configurações Necessárias
 
@@ -59,7 +65,7 @@ Antes de abrir a interface, confirme:
 |---|---|
 | Modelos default | `data/models/benchmark_final/` e manifesto consolidado |
 | Diretório de modelos | `DEEPFAKE_MODELS_DIR=data/models` |
-| Porta | `GRADIO_SERVER_PORT=7860` |
+| Porta | [Mapa de portas](../development/docker-environments.md#portas) |
 | Host Docker/HF | `GRADIO_SERVER_NAME=0.0.0.0` |
 | Ambiente demo | `DEEPFAKE_ENV=production` |
 | Treino em demo pública | `ENABLE_TRAINING=false` |
@@ -90,19 +96,36 @@ integração.
 
 ## Estrutura da UI
 
-O arquivo `app/interfaces/gradio/app.py` organiza a experiência em cinco seções:
+O arquivo `app/interfaces/gradio/app.py` organiza a experiência em seis seções,
+agrupadas pelo que a pessoa quer fazer e em ordem de uso:
 
 | Seção | Arquivos principais | Papel |
 |---|---|---|
-| Painel | `tabs/dashboard.py` | KPIs, status, atividade recente |
-| Detectar | `tabs/detection.py`, `tabs/voice_profiles.py` | análise de áudio, lote e perfis de voz |
-| Investigar | `tabs/forensic_analysis.py` | inspeção forense e explicabilidade |
-| Treinar | `tabs/training_wizard.py`, `tabs/optimization.py` | treino guiado e tuning |
-| Gerenciar | `tabs/dataset_management.py`, `tabs/features.py`, `tabs/history.py` | datasets, features e histórico |
+| Painel | `tabs/dashboard.py` | estado do sistema, atividade recente e atalhos |
+| Detectar | `tabs/detection.py`, `tabs/history.py` | um áudio, em lote e histórico |
+| Investigar | `tabs/forensic_analysis.py`, `tabs/features.py` | análise forense, explicabilidade e características |
+| Perfis de voz | `tabs/voice_profiles.py` | perfil, amostras, treino e verificação, nessa ordem |
+| Treinar | `tabs/training_wizard.py`, `tabs/optimization.py` | assistente e otimização |
+| Datasets | `tabs/dataset_management.py` | visão geral, download, preparo e compatibilidade |
 
-A barra superior mostra estado online, GPU, número de modelos, perfis,
-notificações e o alternador de tema. O painel de notificações consome o mesmo
-buffer de feedback disponível em `/api/v1/system/feedback`.
+A barra superior mostra o estado real (`Pronto` ou `Sem modelos`), o hardware em
+uso, o número de modelos e perfis, o sino de notificações e o alternador de tema.
+O sino abre um painel com avisos e erros destinados à pessoa usuária. O buffer
+completo, com o espelho dos logs do processo, continua em
+`/api/v1/system/feedback`.
+
+Convenções da interface, para manter ao mudar uma tela:
+
+- **Toda opção visível tem efeito.** Um controle sem ligação com o treino ou a
+  inferência sai da tela, em vez de ficar "para depois".
+- **Resultado só depois de haver resultado.** Gráficos e botões de exportar ficam
+  ocultos até a análise terminar: figura vazia parece erro.
+- **Ação destrutiva pede confirmação na própria tela** (`.confirm-row`).
+- **Tema pela classe `.dark` do próprio Gradio.** Os tokens `--xf-*` e os componentes
+  nativos mudam juntos. O padrão é escuro porque as figuras têm fundo escuro.
+- **CSS só com classes estáveis** (`.block`, `.gr-group`, `.tab-wrapper`, `elem_classes`),
+  nunca `svelte-*`, que muda a cada versão.
+- **A tela de login é do Gradio:** ela não recebe o CSS nem o `head` da aplicação.
 
 !!! note "Idioma"
     O alternador PT/EN foi **removido em 2026-07-28**: ele chamava
@@ -119,41 +142,67 @@ Objetivo: visão rápida do estado do sistema.
 | Bloco | Uso |
 |---|---|
 | KPIs | análises recentes, modelos carregados, perfis e datasets |
+| Atalhos | ir direto para analisar, investigar ou treinar |
 | Últimas análises | histórico resumido das predições |
-| Status do sistema | ambiente, GPU, banco e armazenamento |
-| Modelos disponíveis | cards resumindo arquiteturas carregáveis |
+| Estado do sistema | banco, modelos, GPU e Python |
 
 Use esta aba para confirmar se o app subiu corretamente e se os modelos default
 foram encontrados antes de executar uma análise.
 
 ## Aba Detectar
 
-Objetivo: executar inferência em áudio individual, streaming curto ou lote.
+Objetivo: executar inferência em áudio individual, enviado ou gravado, ou em lote, e
+consultar o histórico.
 
 Fluxo recomendado:
 
-1. Abra **Detectar → Análise de Áudio**.
-2. Envie um arquivo `.wav`, `.mp3`, `.flac`, `.m4a`, `.ogg` ou grave pelo
-   microfone.
-3. Opcionalmente abra **Configurações Avançadas**.
-4. Escolha arquitetura/modelo quando quiser forçar um artefato específico.
-5. Use **Inferência Segmentada** para áudios longos.
-6. Execute a análise.
+1. Abra **Detectar → Um áudio**.
+2. Envie um arquivo ou, na aba **Gravar**, grave e clique em **Parar**. Uma origem
+   substitui a outra.
+3. Escolha o modelo. A lista traz só os modelos instalados, e **Automático** usa o
+   padrão do sistema.
+4. Use **Analisar em janelas** para áudios longos.
+5. Execute a análise.
+
+A gravação é analisada inteira, depois de parar. Enquanto ela acontece, a tela mostra só
+a forma de onda desenhada pelo navegador; o veredito e os gráficos vêm com a análise.
+
+!!! warning "Gravações de microfone"
+    Os modelos só viram voz do CETUC e clones do XTTS-v2, e o estudo não avaliou gravações
+    de campo. Por isso, o cartão sempre avisa quando o áudio veio do microfone.
+
+    Em 2026-11-03, uma voz real gravada no navegador dividiu os 9 modelos, com 5 votos em
+    sintética e 4 em real. Em uma simulação com 100 vozes reais e 100 sintéticas da
+    validação, a compressão Opus quase não mudou o resultado, mas aplicar o perfil de
+    frequências dessa gravação baixou a detecção de voz sintética do AASIST de 98% para 48%
+    e a do RawGAT-ST de 95% para 34%. Esses números vêm de uma gravação e de uma simulação,
+    não de uma avaliação de campo.
 
 Saídas:
 
 | Saída | Descrição |
 |---|---|
-| Classificação | classe predita (`REAL`, `DEEPFAKE` ou erro operacional) |
-| Confiança | probabilidade calibrada da classe predita |
-| Forma de onda | visualização temporal do sinal |
-| Espectrograma Mel | visualização tempo-frequência |
-| Prosódia | energia RMS e pitch quando aplicável |
-| JSON técnico | modelo usado, probabilidades, metadados e features |
+| Veredito | conclusão em texto, pontuação de voz sintética, modelo usado e avisos (gravação de microfone, fora do padrão de treino, pouca margem) |
+| Pontuação de voz sintética | P(fake) reescalada para que 50% seja sempre o ponto de decisão do modelo: acima, sintética; abaixo, real |
+| Confiança no veredito | distância da pontuação até o limite, de 50% a 100% |
+| Gráficos do áudio | forma de onda, espectrograma Mel, energia RMS e pitch quando aplicável |
+| Dados técnicos | modelo usado, P(fake) bruta, limiar calibrado, metadados e features |
 
-Para lote, envie múltiplos arquivos e revise distribuição, tabela por arquivo e
-relatório exportável. Para benchmark científico, prefira
-`scripts/benchmark/run_tcc_pipeline.py` ou `scripts/benchmark/run_benchmark.py`.
+!!! info "Por que a tela não mostra P(fake) direto"
+    Cada modelo decide em `p_fake >= limiar`, e o limiar calibrado vai de 0,05 a 0,99. O
+    mesmo número tinha significados opostos: P(fake) de 0,80 é "real" no AASIST (corte em
+    0,94) e "sintética" no Conformer (corte em 0,48). A pontuação de
+    `detection/operating_point.py` leva o limiar a 50% sem mudar nenhum veredito, e vale
+    também para a análise forense, o lote, o histórico e a API.
+
+    A pontuação não é uma probabilidade calibrada. Nas 200 amostras de validação de cada
+    um dos 9 modelos, o acerto real ficou acima da confiança declarada em todas as faixas,
+    salvo a mais alta (97,9% contra 98,7%). Perto do limite ele é baixo: nos 37 casos em que
+    P(fake) e o veredito discordam, foi de 59,5%, e o cartão avisa quando a margem é pequena.
+
+Para lote, envie múltiplos arquivos em **Em lote** e revise distribuição, tabela
+por arquivo e relatório exportável, que aparecem depois da análise. Para benchmark científico, prefira
+`benchmarks/run_tcc_pipeline.py` ou `benchmarks/run_benchmark.py`.
 
 ## Serving de Inferência
 
@@ -217,16 +266,27 @@ Objetivo: análise forense e explicabilidade além da classificação binária.
 Use esta aba para explicar por que uma amostra foi classificada como suspeita e
 para gerar material visual de apoio à apresentação.
 
+## Aba Perfis de voz
+
+Objetivo: comparar um áudio com a voz de uma pessoa conhecida. As abas seguem a
+ordem do fluxo: **1. Perfis**, **2. Amostras**, **3. Treinar** e **4. Verificar**.
+Dados de contato são opcionais e ficam recolhidos. Excluir um perfil apaga amostras
+e modelo, e por isso pede confirmação.
+
 ## Aba Treinar
 
 Objetivo: criar ou atualizar modelos a partir de datasets organizados.
 
 | Etapa | Descrição |
 |---|---|
-| Dataset | seleção de dados reais/fake ou `.npz` consolidado |
-| Modelo | arquitetura, variante e hiperparâmetros |
-| Validação | split, balanceamento e checagens de compatibilidade |
-| Execução | treino, progresso, métricas e salvamento |
+| Dados | pasta com uma subpasta por classe, validada antes de avançar |
+| Modelo | arquitetura, com a comparação entre elas recolhida |
+| Ajustes | épocas, lote, taxa de aprendizado e compensação de classes |
+| Treinar | progresso, métricas e, ao terminar, avaliação e salvamento |
+
+O treino interativo não calibra temperatura nem limiar EER, e não aplica SWA nem
+mixup: esses recursos são do pipeline de benchmark, e as caixas que os prometiam nesta
+tela saíram em 2026-11-02.
 
 !!! tip "Feedback do treino (2026-07-29)"
     O painel ao vivo já trazia fase, época, ETA e cartões de métrica — o
@@ -277,21 +337,19 @@ Em deploy público ou apresentação, mantenha `ENABLE_TRAINING=false`. Para
 treinamento real, prefira WSL2/Linux com GPU, Docker GPU ou Hugging Face GPU
 Space com Storage.
 
-## Aba Gerenciar
+## Aba Datasets
 
-Objetivo: administrar datasets, histórico, modelos e artefatos.
+Objetivo: ver, baixar e preparar os dados.
 
 | Área | Uso |
 |---|---|
-| Datasets | baixar, validar, balancear e preparar dados |
-| Modelos | listar artefatos disponíveis e configs |
-| Histórico | consultar análises e exportar registros |
-| Perfis de voz | gerenciar amostras de referência quando habilitado |
-| Sistema | ações de refresh, diagnóstico e limpeza controlada |
+| Visão geral | contagens, distribuição, fontes e partições |
+| Download | escolher tamanho e fontes, calcular o plano e baixar |
+| Pré-processamento | limpar os arquivos e criar as partições, nessa ordem |
+| Compatibilidade | conferir o dataset contra cada arquitetura |
 
 Para o benchmark oficial, a preparação robusta do dataset deve ser feita via
-scripts. A aba Gerenciar serve para verificar se dados e modelos estão visíveis
-para a aplicação.
+scripts. Esta aba serve para verificar se os dados estão visíveis para a aplicação.
 
 !!! danger "Disjunção por falante nos splits (2026-07-28)"
     `tabs/dataset_management.py` chamava `create_splits(train, val, test)`
@@ -301,42 +359,43 @@ para a aplicação.
     vez de detecção de síntese. É o mesmo vazamento que levou ao descarte do
     dataset anterior.
 
-    O controle **Disjunção por falante** (`pp_speaker_disjoint`) agora existe
+    O controle **Separar por falante** (`pp_speaker_disjoint`) agora existe
     e vem **marcado**: cada locutor fica inteiramente em um só split, via
     `StratifiedGroupKFold` sobre o manifesto de falantes — o mesmo protocolo
     do benchmark.
 
-    Depois de criar, a aba roda `preprocess_dataset.audit_splits()` e mostra a
+    Depois de criar, a aba roda `audit_splits()`
+    (`app/domain/services/dataset/preprocessing.py`) e mostra a
     tabela de sobreposição em três dimensões: **conteúdo (SHA-256 do PCM
     canônico)**, **falante** e **texto/enunciado**. Amostras sem falante no
     manifesto são contadas à parte — para elas a disjunção não pode ser
     afirmada, e o relatório diz isso em vez de silenciar.
 
-    Nota: o script `scripts/dataset/preprocess_dataset.py` (uso via CLI,
-    fora desta aba) mantém `--speaker-disjoint` desligado por padrão — só o
+    Nota: a CLI `tools/dataset/preprocess_dataset.py` (fora desta aba, sobre
+    a mesma lógica) mantém `--speaker-disjoint` desligado por padrão — só o
     checkbox da UI foi alterado.
 
 ## Relação com Benchmark e Notebooks
 
 | Objetivo | Interface | Script equivalente |
 |---|---|---|
-| Testar um áudio | Detectar | `scripts/benchmark/robustness_test.py` |
-| Treinar um modelo | Treinar | `scripts/training/train_by_family.py` |
-| Rodar benchmark completo | Não recomendado pela UI | `scripts/benchmark/run_models_sequential.py` |
-| Auditar todos os modelos | Painel/Gerenciar | `scripts/reporting/validate_artifacts.py` |
+| Testar um áudio | Detectar | `benchmarks/robustness_test.py` |
+| Treinar um modelo | Treinar | `tools/training/train_by_family.py` |
+| Rodar benchmark completo | Não recomendado pela UI | `benchmarks/run_models_sequential.py` |
+| Auditar todos os modelos | Painel | `tools/reporting/validate_artifacts.py` |
 | Gerar resultados do TCC | Scripts | [Benchmark e Resultados](../evaluation/benchmark.md) |
 
 ## Checklist de Validação da UI
 
-- `http://localhost:7860/gradio` abre sem erro.
-- `/api/v1/system/health` retorna `healthy` ou um `degraded` explicável.
+- `/gradio`, na porta da instância, abre sem erro.
+- `/api/v1/system/health` retorna `healthy` (200) ou um `degraded` explicável (503).
 - A barra superior mostra GPU quando aplicável.
-- A aba **Detectar** lista modelos treinados.
-- Um áudio curto gera classificação, confiança, gráficos e JSON técnico.
+- A aba **Detectar** lista os modelos instalados.
+- Um áudio curto gera veredito, limiar do modelo, gráficos e dados técnicos.
 - A aba **Investigar** renderiza forma de onda e espectrograma.
 - A aba **Treinar** está desativada em demo pública ou habilitada apenas em
   ambiente controlado.
-- A aba **Gerenciar** mostra datasets/modelos esperados.
+- A aba **Datasets** mostra os dados esperados.
 - Logs do container não exibem stack trace após startup.
 
 ## Problemas Comuns
@@ -345,17 +404,18 @@ para a aplicação.
 |---|---|---|
 | Nenhum modelo aparece | `data/models` vazio ou `DEEPFAKE_MODELS_DIR` errado | sincronizar Model Hub ou restaurar `data/models/benchmark_final/` |
 | Upload falha silenciosamente | `allowed_paths`/temp dir incorreto | usar build atual e `GRADIO_TEMP_DIR=/tmp/gradio` |
+| Erro de `process_stream` ao gravar | imagem anterior à gravação inteira | reconstruir a imagem |
 | Treino bloqueado | `ENABLE_TRAINING=false` | habilitar somente em ambiente de treino |
 | GPU não aparece | Windows nativo/sem passthrough | usar WSL2, Docker GPU ou GPU Space |
 | Space perde arquivos | disco efêmero | montar Storage em `/data` |
-| Notificações acumulam | eventos do backend não lidos | abrir notificações e marcar como lidas |
+| Sino com número | avisos e erros não lidos | abrir o sino e marcar como lidas |
 
 ## Testes Relacionados
 
 ```bash
-./scripts/ops/run_tests.sh functional
-./scripts/ops/run_tests.sh api
-./scripts/ops/run_tests.sh smoke
+./tools/ops/run_tests.sh functional
+./tools/ops/run_tests.sh api
+./tools/ops/run_tests.sh smoke
 ```
 
 Use smoke quando tocar em startup, wizard, `DetectionService`, `ModelLoader`,

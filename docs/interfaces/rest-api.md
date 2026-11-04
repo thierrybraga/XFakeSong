@@ -1,6 +1,6 @@
 # 07 — API REST e Comunicação
 
-Esta é a referência canônica para integrar o XFakeSong via HTTP e entender como
+Esta é a referência canônica para integrar o SpeechChecker via HTTP e entender como
 a interface Gradio conversa com o backend. A API é servida por FastAPI no mesmo
 processo que monta a UI.
 
@@ -14,17 +14,20 @@ python main.py --gradio
 
 | Recurso | URL |
 |---|---|
-| Página inicial | `http://localhost:7860/` |
-| Interface Gradio | `http://localhost:7860/gradio` |
-| API REST | `http://localhost:7860/api/v1` |
-| Swagger UI | `http://localhost:7860/api/docs` |
-| ReDoc | `http://localhost:7860/api/redoc` |
-| OpenAPI Schema | `http://localhost:7860/api/openapi.json` |
+| Interface visual | `http://localhost:7862/` (redireciona para `/gradio/`) |
+| Interface Gradio | `http://localhost:7862/gradio` |
+| API REST | `http://localhost:7862/api/v1` |
+| Swagger UI | `http://localhost:7862/api/docs` |
+| ReDoc | `http://localhost:7862/api/redoc` |
+| OpenAPI Schema | `http://localhost:7862/api/openapi.json` |
 
-`app/interfaces/gradio/app.py` é o entry point unificado usado por
-`python main.py --gradio`. `app/interfaces/web/main_fastapi.py` também monta
-FastAPI, `StaticFiles`, templates Jinja2 e, fora de pytest/modo API-only, a UI
-Gradio em `/gradio`.
+No Docker, troque a porta: 7860 no perfil NVIDIA e 7861 no CPU. Veja o
+[mapa de portas](../development/docker-environments.md#portas).
+
+`app/interfaces/gradio/app.py` é a única interface visual, montada em
+`/gradio` pelo entry point unificado `python main.py --gradio`.
+`app/interfaces/web/main_fastapi.py` expõe a API REST e redireciona a raiz para
+a UI. Em modo API-only, a raiz redireciona para `/api/docs`.
 
 Para subir só a API sem montar Gradio, use `XFAKE_API_ONLY=true` ou
 `XFAKE_SKIP_GRADIO=true`.
@@ -72,8 +75,9 @@ somente-leitura) também exigem a chave, não só as de escrita:
 X-API-Key: <sua_chave>
 ```
 
-Configure com `XFAKESONG_API_KEY`. Em desenvolvimento, se a variável estiver
-ausente, o acesso pode ser permitido com aviso em log.
+Configure com `SPEECHCHECKER_API_KEY`. `XFAKESONG_API_KEY` continua aceita como
+alias legado. Em desenvolvimento, se a variável estiver ausente, o acesso pode
+ser permitido com aviso em log.
 
 ### Rate limiting
 
@@ -107,7 +111,7 @@ Erros seguem RFC 7807 Problem Details:
 | Método | Path | Descrição |
 |---|---|---|
 | GET | `/status` | Status operacional e serviços ativos |
-| GET | `/health` | DB, modelos carregados, storage e uptime |
+| GET | `/health` | DB, modelos carregados, storage e uptime. Responde 503 com o mesmo corpo se o banco falhar, se o diretório de modelos não existir ou se nenhum modelo estiver disponível |
 | GET | `/bootstrap` | Endpoint mínimo de bootstrap |
 | GET | `/feedback` | Eventos recentes usados por terminal, API e UI |
 | POST | `/feedback/read` | Marca feedback em memória como lido |
@@ -141,7 +145,8 @@ Resposta 200 (`PredictionResult`):
 {
   "is_fake": true,
   "confidence": 0.92,
-  "probabilities": {"real": 0.08, "fake": 0.92},
+  "fake_score": 0.92,
+  "probabilities": {"real": 0.04, "fake": 0.96},
   "model_name": "AASIST_v1",
   "features_used": ["mel_spectrogram"],
   "metadata": {},
@@ -166,6 +171,10 @@ Form-data:
 | `fusion` | string | não | `weighted_avg`, `soft_voting`, `majority_vote` ou `max_conf` |
 | `weights` | JSON string | não | pesos como `[0.4, 0.6]` |
 | `use_tta` | bool | não | ativa TTA por modelo |
+
+A fusão combina `fake_score`, a pontuação centrada no limiar de cada modelo, e decide em
+0,5. Por isso `probabilities` da resposta traz a pontuação fundida, que não é uma
+probabilidade calibrada; a P(fake) de cada modelo fica em `per_model[].fake_prob`.
 
 ### `POST /uncertainty`
 
@@ -277,8 +286,8 @@ Autenticação acima, aqui a chave é exigida em todas as 9 rotas.
 ## Validação Local
 
 ```bash
-./scripts/ops/run_tests.sh api
-./scripts/ops/run_tests.sh functional
+./tools/ops/run_tests.sh api
+./tools/ops/run_tests.sh functional
 ```
 
 Cobertura relevante:

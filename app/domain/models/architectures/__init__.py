@@ -13,6 +13,7 @@ carregam esses módulos sob demanda via `__import__`/import local. Precisa de
 `SafeInstanceNormalization`, `ArchitecturePatcher` etc.? Importe direto do
 submódulo: `from app.domain.models.architectures.safe_normalization import ...`.
 """
+
 from . import random_forest, registry, svm
 
 __all__ = [

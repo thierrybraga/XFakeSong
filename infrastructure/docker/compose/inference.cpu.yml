@@ -1,0 +1,68 @@
+name: speechchecker-inference-cpu
+
+services:
+  inference-api:
+    build:
+      context: ../../..
+      dockerfile: infrastructure/docker/environments/inference-api/Dockerfile.cpu
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
+    image: speechchecker/inference-api:cpu
+    container_name: speechchecker_inference_cpu
+    working_dir: /app
+    restart: unless-stopped
+    stop_grace_period: 30s
+    stop_signal: SIGTERM
+    ports:
+      # Só nesta máquina por padrão: o serviço fala HTTP sem TLS. Para abrir na
+      # rede, defina GRADIO_BIND_HOST e coloque um proxy HTTPS na frente.
+      # Cada perfil tem a sua porta no host: ver docs/development/docker-environments.md.
+      - "${GRADIO_BIND_HOST:-127.0.0.1}:${GRADIO_PORT_CPU:-7861}:7860"
+    volumes:
+      - ../../../data:/app/data
+    environment:
+      # Fixo: o `.env` serve também ao `python main.py` local e costuma trazer
+      # `development`, o que desligaria as checagens de produção aqui dentro.
+      DEEPFAKE_ENV: production
+      # A tela converte as datas do banco, em UTC, para o fuso do processo. Sem
+      # isto o container fica em UTC e o Histórico mostra a hora adiantada.
+      TZ: ${TZ:-America/Sao_Paulo}
+      DEEPFAKE_LOG_LEVEL: ${DEEPFAKE_LOG_LEVEL:-INFO}
+      SPEECHCHECKER_API_KEY: "${SPEECHCHECKER_API_KEY:-${XFAKESONG_API_KEY:?Defina SPEECHCHECKER_API_KEY}}"
+      XFAKE_GRADIO_USERNAME: "${XFAKE_GRADIO_USERNAME:?Defina XFAKE_GRADIO_USERNAME}"
+      XFAKE_GRADIO_PASSWORD: "${XFAKE_GRADIO_PASSWORD:?Defina XFAKE_GRADIO_PASSWORD}"
+      ALLOWED_HOSTS: "${ALLOWED_HOSTS:?Defina ALLOWED_HOSTS}"
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:?Defina ALLOWED_ORIGINS}"
+      GRADIO_SERVER_NAME: 0.0.0.0
+      GRADIO_SERVER_PORT: "7860"
+      GRADIO_ANALYTICS_ENABLED: "False"
+      TF_CPP_MIN_LOG_LEVEL: "2"
+      DATABASE_URL: sqlite:////app/data/app.db
+      DEEPFAKE_UPLOADS_DIR: /app/data/uploads
+      DEEPFAKE_MODELS_DIR: /app/data/models
+      # Produção serve só os modelos que já estão em data/models. Sem isto o boot
+      # fabrica um SVM default destreinado na raiz de data/models (visto em
+      # 2026-07-19), que pode sombrear o SVM promovido.
+      XFAKE_CREATE_DEFAULT_MODELS: "false"
+      # Sem MODEL_REPO_ID o boot usa só o que está em data/models. O token só é
+      # necessário para repositório privado.
+      MODEL_REPO_ID: ${MODEL_REPO_ID:-}
+      HF_TOKEN: ${HF_TOKEN:-${HUGGINGFACE_HUB_TOKEN:-}}
+      XFAKE_SYNC_MODELS_ON_BOOT: ${XFAKE_SYNC_MODELS_ON_BOOT:-true}
+      HF_HOME: /app/data/cache/huggingface
+      TORCH_HOME: /app/data/cache/torch
+      TRANSFORMERS_CACHE: /app/data/cache/huggingface
+      KERAS_HOME: /app/data/cache/keras
+      TFHUB_CACHE_DIR: /app/data/cache/tensorflow
+      XDG_CACHE_HOME: /app/data/cache
+    deploy:
+      resources:
+        limits:
+          cpus: "${DOCKER_CPU_LIMIT:-4.0}"
+          memory: ${DOCKER_MEMORY_LIMIT:-8G}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    command: ["python", "main.py", "--gradio", "--gradio-port", "7860"]

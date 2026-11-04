@@ -74,10 +74,8 @@ class DatasetMenu(BaseMenu):
         """Carrega um novo dataset."""
         print("\n📁 Carregamento de Dataset")
         print("Coloque seus arquivos de áudio nas seguintes pastas:")
-        print(
-            f"- Áudios reais: {self.context.datasets_dir / 'samples' / 'real'}")
-        print(
-            f"- Áudios falsos: {self.context.datasets_dir / 'samples' / 'fake'}")
+        print(f"- Áudios reais: {self.context.datasets_dir / 'samples' / 'real'}")
+        print(f"- Áudios falsos: {self.context.datasets_dir / 'samples' / 'fake'}")
         print("\nFormatos suportados: .wav, .mp3, .flac")
 
         input("\nPressione Enter após adicionar os arquivos...")
@@ -121,7 +119,7 @@ class DatasetMenu(BaseMenu):
             csv_config = CSVExportConfig(
                 output_base_dir="datasets/features",
                 include_metadata=True,
-                decimal_places=4
+                decimal_places=4,
             )
 
             config = SegmentedExtractionConfig(
@@ -138,39 +136,48 @@ class DatasetMenu(BaseMenu):
                 normalize_segments=True,
                 remove_silence=False,
                 export_csv=True,
-                csv_config=csv_config
+                csv_config=csv_config,
             )
 
             segmented_extractor = SegmentedFeatureExtractor(config)
 
             self._process_directory_segmented(
-                real_dir, 0, segmented_extractor, features_data, labels)
+                real_dir, 0, segmented_extractor, features_data, labels
+            )
             self._process_directory_segmented(
-                fake_dir, 1, segmented_extractor, features_data, labels)
+                fake_dir, 1, segmented_extractor, features_data, labels
+            )
 
             features_file = features_dir / "extracted_features.json"
-            with open(features_file, 'w') as f:
-                json.dump({
-                    'features': features_data,
-                    'labels': labels,
-                    'timestamp': datetime.now().isoformat(),
-                    'total_samples': len(features_data),
-                    'extraction_method': 'segmented',
-                    'segment_duration': config.segment_duration,
-                    'feature_dimension': len(features_data[0]) if features_data else 0,
-                    'segmentation_config': {
-                        'segment_duration': config.segment_duration,
-                        'overlap_ratio': config.overlap_ratio,
-                        'target_sample_rate': config.target_sample_rate,
-                        'normalize_segments': config.normalize_segments,
-                        'remove_silence': config.remove_silence
-                    }
-                }, f, indent=2)
+            with open(features_file, "w") as f:
+                json.dump(
+                    {
+                        "features": features_data,
+                        "labels": labels,
+                        "timestamp": datetime.now().isoformat(),
+                        "total_samples": len(features_data),
+                        "extraction_method": "segmented",
+                        "segment_duration": config.segment_duration,
+                        "feature_dimension": (
+                            len(features_data[0]) if features_data else 0
+                        ),
+                        "segmentation_config": {
+                            "segment_duration": config.segment_duration,
+                            "overlap_ratio": config.overlap_ratio,
+                            "target_sample_rate": config.target_sample_rate,
+                            "normalize_segments": config.normalize_segments,
+                            "remove_silence": config.remove_silence,
+                        },
+                    },
+                    f,
+                    indent=2,
+                )
 
             print("✅ Extração segmentada concluída!")
             print(f"   Total de segmentos: {len(features_data)}")
             print(
-                f"   Dimensões das features: {len(features_data[0]) if features_data else 0}")
+                f"   Dimensões das features: {len(features_data[0]) if features_data else 0}"
+            )
             print(f"   Duração dos segmentos: {config.segment_duration}s")
             print(f"   Arquivos salvos em: {features_file}")
 
@@ -178,31 +185,38 @@ class DatasetMenu(BaseMenu):
             print(f"❌ Erro ao extrair features: {e}")
             self.context.logger.error(f"Erro na extração de features: {e}")
 
-    def _process_directory_segmented(self, directory: Path, label: int,
-                                     extractor: SegmentedFeatureExtractor, features_data: list, labels: list):
+    def _process_directory_segmented(
+        self,
+        directory: Path,
+        label: int,
+        extractor: SegmentedFeatureExtractor,
+        features_data: list,
+        labels: list,
+    ):
         if directory.exists():
             files = list(directory.glob("*.wav"))
             print(
-                f"📁 Processando {len(files)} arquivos {'reais' if label == 0 else 'falsos'}...")
+                f"📁 Processando {len(files)} arquivos {'reais' if label == 0 else 'falsos'}..."
+            )
 
             for audio_file in files:
                 print(f"Processando: {audio_file.name}")
-                result = extractor.extract_from_file(
-                    str(audio_file), label=label)
+                result = extractor.extract_from_file(str(audio_file), label=label)
 
                 if result.status.name in ["SUCCESS", "PARTIAL_SUCCESS"]:
                     segments_features = result.data
-                    print(
-                        f"   🔍 Segmentos processados: {len(segments_features)}")
+                    print(f"   🔍 Segmentos processados: {len(segments_features)}")
 
                     for segment_feature in segments_features:
                         if len(segment_feature.combined_features) > 0:
                             features_data.append(
-                                segment_feature.combined_features.tolist())
+                                segment_feature.combined_features.tolist()
+                            )
                             labels.append(label)
                 else:
                     print(
-                        f"⚠️ Erro ao extrair features de {audio_file.name}: {result.errors}")
+                        f"⚠️ Erro ao extrair features de {audio_file.name}: {result.errors}"
+                    )
 
     def _extract_features_complete(self):
         """Extrai features do áudio completo sem segmentação."""
@@ -226,28 +240,37 @@ class DatasetMenu(BaseMenu):
             csv_config = CSVExportConfig(
                 output_base_dir="datasets/features",
                 include_metadata=False,
-                decimal_places=6
+                decimal_places=6,
             )
 
             csv_exporter = CSVFeatureExporter(csv_config)
             total_processed = 0
 
             total_processed += self._process_directory_complete(
-                real_dir, "real", spectral_extractor, temporal_extractor, csv_exporter)
+                real_dir, "real", spectral_extractor, temporal_extractor, csv_exporter
+            )
             total_processed += self._process_directory_complete(
-                fake_dir, "fake", spectral_extractor, temporal_extractor, csv_exporter)
+                fake_dir, "fake", spectral_extractor, temporal_extractor, csv_exporter
+            )
 
             print("\n✅ Extração completa por categoria concluída!")
             print(f"   Total de arquivos processados: {total_processed}")
             print(
-                "   Arquivos CSV organizados por categoria em: datasets/features/original/")
+                "   Arquivos CSV organizados por categoria em: datasets/features/original/"
+            )
 
         except Exception as e:
             print(f"❌ Erro ao extrair features: {e}")
             self.context.logger.error(f"Erro na extração de features: {e}")
 
     def _process_directory_complete(
-            self, directory: Path, label: str, spectral_extractor, temporal_extractor, csv_exporter):
+        self,
+        directory: Path,
+        label: str,
+        spectral_extractor,
+        temporal_extractor,
+        csv_exporter,
+    ):
         processed_count = 0
         if directory.exists():
             files = list(directory.glob("*.wav"))
@@ -261,33 +284,35 @@ class DatasetMenu(BaseMenu):
                     temporal_dict = temporal_extractor.extract_features(audio_data)
 
                     spectral_features = self._normalize_dict(
-                        spectral_dict, 'spectral_feature')
+                        spectral_dict, "spectral_feature"
+                    )
                     temporal_features = self._normalize_dict(
-                        temporal_dict, 'temporal_feature')
+                        temporal_dict, "temporal_feature"
+                    )
 
                     result = csv_exporter.export_original_features_by_category(
                         spectral_features=spectral_features,
                         temporal_features=temporal_features,
                         filename=audio_file.stem,
-                        label=label
+                        label=label,
                     )
 
                     if result.status.name == "SUCCESS":
                         processed_count += 1
                         print(f"✅ {audio_file.name}: Exportado")
                     else:
-                        print(
-                            f"⚠️ Erro ao exportar {audio_file.name}: {result.errors}")
+                        print(f"⚠️ Erro ao exportar {audio_file.name}: {result.errors}")
 
                 except Exception as e:
                     print(f"⚠️ Erro ao processar {audio_file.name}: {e}")
                     self.context.logger.error(
-                        f"Erro ao processar {audio_file.name}: {e}")
+                        f"Erro ao processar {audio_file.name}: {e}"
+                    )
         return processed_count
 
     def _normalize_dict(self, data, prefix):
         if isinstance(data, dict):
             return data
-        elif hasattr(data, '__iter__'):
-            return {f'{prefix}_{i}': val for i, val in enumerate(data)}
+        elif hasattr(data, "__iter__"):
+            return {f"{prefix}_{i}": val for i, val in enumerate(data)}
         return {}

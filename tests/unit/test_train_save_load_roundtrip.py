@@ -61,9 +61,7 @@ def test_artifacts_written(trained_dir):
 def test_config_has_input_contract_with_calibration(trained_dir):
     """Bug A: o input_contract (com calibração) deve estar no config salvo."""
     models_dir, _ = trained_dir
-    cfg = json.loads(
-        (models_dir / "rt_probe_config.json").read_text(encoding="utf-8")
-    )
+    cfg = json.loads((models_dir / "rt_probe_config.json").read_text(encoding="utf-8"))
     assert "input_contract" in cfg and isinstance(cfg["input_contract"], dict)
     ic = cfg["input_contract"]
     # Campos de calibração presentes (Sprints 1.4/2.5/4.5)
@@ -75,9 +73,7 @@ def test_config_has_input_contract_with_calibration(trained_dir):
 def test_loader_preserves_contract_on_reload(trained_dir):
     """Bug A: a calibração salva deve sobreviver ao reload (não resetar p/ 1.0)."""
     models_dir, _ = trained_dir
-    cfg = json.loads(
-        (models_dir / "rt_probe_config.json").read_text(encoding="utf-8")
-    )
+    cfg = json.loads((models_dir / "rt_probe_config.json").read_text(encoding="utf-8"))
     saved_temp = float(cfg["input_contract"]["temperature"])
     saved_eer = float(cfg["input_contract"]["eer_threshold"])
 
@@ -111,8 +107,14 @@ def test_predictor_recognizes_and_predicts(trained_dir):
     assert pr.status == ProcessingStatus.SUCCESS, pr.errors
     d = pr.data
     # Campos essenciais do resultado + a calibração aplicada veio do contract
-    for k in ("is_deepfake", "p_fake", "p_real", "confidence",
-              "temperature_applied", "classification_threshold"):
+    for k in (
+        "is_deepfake",
+        "p_fake",
+        "p_real",
+        "confidence",
+        "temperature_applied",
+        "classification_threshold",
+    ):
         assert k in d
     assert 0.0 <= d["p_fake"] <= 1.0
     assert d["temperature_applied"] == pytest.approx(mi.temperature)
@@ -160,10 +162,8 @@ def test_efficientnet_lstm_save_load_roundtrip_uses_serializable_layers(tmp_path
     assert loaded.input_shape == (None, 100, 80)
     assert loaded.output_shape == (None, 2)
     assert any(
-        layer.__class__.__name__ == "TemporalPoolingLayer"
-        for layer in loaded.layers
+        layer.__class__.__name__ == "TemporalPoolingLayer" for layer in loaded.layers
     )
     assert any(
-        layer.__class__.__name__ == "DeltaFeatureLayer"
-        for layer in loaded.layers
+        layer.__class__.__name__ == "DeltaFeatureLayer" for layer in loaded.layers
     )

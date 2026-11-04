@@ -21,7 +21,7 @@ def compute_lyapunov_exponent(y: np.ndarray) -> float:
     span = (embedding_dim - 1) * delay + 1
     embedded = np.zeros((N - span + 1, embedding_dim))
     for i in range(N - span + 1):
-        embedded[i] = y[i:i + span:delay]
+        embedded[i] = y[i : i + span : delay]
 
     # Calcular expoente
     lyap_sum = 0
@@ -41,7 +41,8 @@ def compute_lyapunov_exponent(y: np.ndarray) -> float:
             if steps > 1:
                 initial_dist = distances[nearest_idx]
                 final_dist = np.linalg.norm(
-                    embedded[i + steps] - embedded[nearest_idx + steps])
+                    embedded[i + steps] - embedded[nearest_idx + steps]
+                )
 
                 if final_dist > 0 and initial_dist > 0:
                     lyap_sum += np.log(final_dist / initial_dist) / steps
@@ -54,7 +55,8 @@ def compute_lyapunov_exponent(y: np.ndarray) -> float:
 
 
 def compute_lyapunov_exponent_optimized(
-        y: np.ndarray, cache: Optional[Dict] = None) -> float:
+    y: np.ndarray, cache: Optional[Dict] = None
+) -> float:
     """Versão otimizada do expoente de Lyapunov com menos pontos."""
     N = len(y)
 
@@ -83,7 +85,7 @@ def compute_lyapunov_exponent_optimized(
     span = (embedding_dim - 1) * delay + 1
     embedded = np.zeros((N - span + 1, embedding_dim))
     for i in range(N - span + 1):
-        embedded[i] = y[i:i + span:delay]
+        embedded[i] = y[i : i + span : delay]
 
     # Amostragem de pontos
     max_points = 200
@@ -109,7 +111,8 @@ def compute_lyapunov_exponent_optimized(
             if steps > 1:
                 initial_dist = distances[nearest_idx]
                 final_dist = np.linalg.norm(
-                    embedded[i + steps] - embedded[nearest_idx + steps])
+                    embedded[i + steps] - embedded[nearest_idx + steps]
+                )
 
                 if final_dist > 0 and initial_dist > 0:
                     lyap_sum += np.log(final_dist / initial_dist) / steps

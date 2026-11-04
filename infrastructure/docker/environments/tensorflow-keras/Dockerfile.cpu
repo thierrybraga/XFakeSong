@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1.7
+# =====================================================================
+# SpeechChecker — ambiente de treino: tensorflow-keras (modelos neurais Keras)
+# Mapa completo dos 5 ambientes: infrastructure/docker/environments/README.md
+# =====================================================================
+ARG PYTHON_VERSION=3.11
+
+FROM python:${PYTHON_VERSION}-slim
+
+LABEL org.opencontainers.image.title="speechchecker-tensorflow-keras" \
+      org.opencontainers.image.description="SpeechChecker — treino TensorFlow/Keras (CPU)" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.source="https://github.com/thierrybraga/XFakeSong"
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONIOENCODING=utf-8 \
+    TF_CPP_MIN_LOG_LEVEL=2 \
+    TF_FORCE_GPU_ALLOW_GROWTH=true \
+    MPLBACKEND=Agg
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        libsndfile1 \
+        libgomp1 \
+        tini \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY requirements-base.txt requirements-cpu.txt constraints.txt ./
+COPY infrastructure/docker/environments/tensorflow-keras/requirements.txt infrastructure/docker/environments/tensorflow-keras/
+ENV PIP_CONSTRAINT=/app/constraints.txt
+RUN pip install --upgrade pip setuptools wheel \
+    && pip install -r requirements-cpu.txt \
+    && pip install -r infrastructure/docker/environments/tensorflow-keras/requirements.txt \
+    && pip install --index-url https://download.pytorch.org/whl/cpu 'torch==2.5.1' \
+    && pip cache purge
+# torch do indice CPU: aqui ele so LE o state_dict dos checkpoints pre-treinados
+# (AST/AudioSet, WavLM, HuBERT) — nunca treina.
+
+COPY . .
+
+ENTRYPOINT ["tini", "--"]
+CMD ["python", "tools/training/train_by_family.py", "--family", "tensorflow-keras", "--help"]
+

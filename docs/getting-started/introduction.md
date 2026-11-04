@@ -1,8 +1,8 @@
-# Visão Geral do Sistema XFakeSong
+# Visão Geral do Sistema SpeechChecker
 
 ## Introdução
 
-O **XFakeSong** é uma plataforma open source para **detecção de deepfakes de
+O **SpeechChecker** é uma plataforma open source para **detecção de deepfakes de
 áudio** (anti-spoofing). Ele combina processamento digital de sinais (DSP) e
 aprendizado profundo para analisar um sinal de voz, extrair representações e
 classificá-lo como **real** (bonafide) ou **fake** (spoof).
@@ -59,10 +59,11 @@ em [Features de Áudio](../architecture/audio-features.md).
 
 ### 5. Benchmark do TCC
 
-`scripts/benchmark/run_tcc_pipeline.py` automatiza dataset → split → treino → inferência →
-**métricas, tabelas LaTeX e figuras PNG** (`tcc_report.md`, `dataset.md`).
-Métricas padrão da área: acurácia, AUC-ROC, **EER** e **min-tDCF**. Ver
-[Benchmark e Resultados](../evaluation/benchmark.md).
+`benchmarks/run_models_sequential.py` executa a bateria oficial sobre o dataset
+de 15 mil amostras do artigo. O `run_tcc_pipeline.py` mantém um pipeline genérico
+legado por tiers e não representa esse protocolo. Métricas do estudo e sua
+proveniência estão em [Benchmark e Resultados](../evaluation/benchmark.md) e no
+[inventário canônico](../evaluation/canonical-study-and-legacy-inventory.md).
 
 ## Tecnologias
 

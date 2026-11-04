@@ -1,6 +1,6 @@
 # Conceitos e Fundamentos
 
-Esta página dá o **contexto teórico** mínimo para entender o que o XFakeSong
+Esta página dá o **contexto teórico** mínimo para entender o que o SpeechChecker
 faz e por quê. É leitura recomendada antes da [Introdução](introduction.md)
 para quem não conhece a área de *anti-spoofing* de áudio. Termos pontuais estão
 no [Glossário](../reference/glossary.md).
@@ -16,7 +16,7 @@ desinformação e burla de sistemas de **verificação automática de locutor**
 A contramedida é o **anti-spoofing** (também chamado de *spoofing
 countermeasure*, CM): um classificador que decide se um áudio é **bonafide**
 (voz humana genuína) ou **spoof** (falsificado). É exatamente a tarefa que o
-XFakeSong implementa e compara entre arquiteturas.
+SpeechChecker implementa e compara entre arquiteturas.
 
 !!! info "Bonafide × Spoof"
     A convenção da área (e do projeto) é binária: a classe positiva de interesse
@@ -57,11 +57,11 @@ flowchart LR
     - **espectrograma**: log-mel ou **LFCC** calculados com a STFT.
 2. **Modelo** — extrai padrões discriminativos e produz um *score*.
 3. **Limiar** — converte o *score* contínuo em decisão. O limiar é **calibrado**
-   (no XFakeSong, pelo **EER** no conjunto de validação), não fixado em 0,5.
+   (no SpeechChecker, pelo **EER** no conjunto de validação), não fixado em 0,5.
 
 !!! tip "Paridade treino↔inferência"
     O detalhe que mais quebra detectores na prática é usar um front-end no treino
-    e outro na inferência. O XFakeSong grava um **`input_contract`** (front-end,
+    e outro na inferência. O SpeechChecker grava um **`input_contract`** (front-end,
     `n_fft`/`hop`/`n_mels`, *sample rate*, temperatura, EER) junto do modelo e o
     reaplica na inferência. Veja [Inferência](../models/inference.md).
 

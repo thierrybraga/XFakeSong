@@ -237,10 +237,14 @@ def apply_band_correction(
         cutoff_hz,
         BAND_CORRECTION_TAPS,
         ", DC removido" if remove_dc else "",
-        f", RMS renormalizado a {renormalize_rms_dbfs:.0f} dBFS"
-        if renormalize_rms_dbfs is not None else "",
+        (
+            f", RMS renormalizado a {renormalize_rms_dbfs:.0f} dBFS"
+            if renormalize_rms_dbfs is not None
+            else ""
+        ),
     )
     return saida.reshape(forma)
+
 
 #: Coeficientes LFCC por quadro (convenção do baseline CM do ASVspoof2019).
 N_LFCC = 20
@@ -289,11 +293,12 @@ def resolve_n_fft(hop_length: int, declared: Optional[int] = None) -> int:
     n_fft = 1 << max(9, int(np.ceil(np.log2(minimo))))  # piso de 512
     return int(n_fft)
 
+
 #: Mapa `input_type` do benchmark → identificador de front-end.
 #:
 #: FONTE ÚNICA (2026-07-28). Antes, quem precisava dessa correspondência a
 #: reimplementava: o `registry` declarava `feature_frontend` em apenas 2 das 12
-#: arquiteturas, e `scripts/reporting/rebuild_inference_contracts.py` mantinha um
+#: arquiteturas, e `tools/reporting/rebuild_inference_contracts.py` mantinha um
 #: mapa manual por nome de modelo que cobria 9 e esquecia Sonic Sleuth,
 #: EfficientNet-LSTM, Ensemble, WavLM e HuBERT.
 #:
@@ -573,9 +578,7 @@ def _rasta_plp_stats(flat: np.ndarray, n_plp: int = 13) -> np.ndarray:
     return arr.T
 
 
-def _linear_filterbank(
-    n_filters: int, n_fft: int, sample_rate: int
-) -> np.ndarray:
+def _linear_filterbank(n_filters: int, n_fft: int, sample_rate: int) -> np.ndarray:
     """Banco de filtros triangulares igualmente espaçados em Hz → ``(n_filters, 1+n_fft//2)``.
 
     O análogo linear de ``librosa.filters.mel``: mesmos triângulos sobrepostos

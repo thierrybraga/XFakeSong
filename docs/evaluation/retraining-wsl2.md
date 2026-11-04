@@ -1,5 +1,12 @@
 # 22 — Retreino em WSL2 (GPU)
 
+> **Runbook histórico, não canônico para a reprodução do artigo.** Este
+> documento descreve uma campanha anterior baseada no corpus de 40.980 amostras.
+> O NPZ integral citado abaixo não existe neste checkout. Para o artigo, siga
+> [`canonical-study-and-legacy-inventory.md`](canonical-study-and-legacy-inventory.md)
+> e use `benchmark_dataset_15k.npz` com seu test lock. Não execute os comandos
+> deste runbook como se fossem a campanha canônica.
+
 > Runbook para executar o retreino + benchmark com os ajustes de robustez
 > (ver [docs/21](../archive/retraining-plan.md)) numa GPU NVIDIA via **WSL2**.
 > O TensorFlow ≥2.11 **não usa GPU no Windows nativo** — daí o WSL2.
@@ -9,9 +16,9 @@
 
 - `tf.config.list_physical_devices("GPU")` retorna **vazio** no Windows nativo
   (TF ≥2.11). Sob WSL2 + `tensorflow[and-cuda]`, a RTX 3060 é exposta.
-- O **dataset já existe** no repo (`data/datasets/benchmark_dataset.npz`,
-  7,99 GB). São 40.980 amostras (20.490 reais / 20.490 falsas) em janelas de
-  3 s, PCM linear 16 bits, mono, 16 kHz — **não há download**. Ver
+- O runbook original pressupunha `data/datasets/benchmark_dataset.npz`,
+  7,99 GB, com 40.980 amostras. Esse arquivo não está presente neste checkout;
+  não afirmar que o corpus integral está disponível localmente. Ver
   [Protocolo de Dataset](../data/dataset-protocol.md).
 - Os ajustes de código (P0–P3) já estão aplicados; aqui só se **executa**.
 
@@ -27,8 +34,8 @@ wsl --install -d Ubuntu
 ## Caminho A — venv nativo no WSL2 (recomendado, mais simples)
 
 ```bash
-# Dentro do Ubuntu/WSL2, na raiz do repo (ex.: /mnt/d/Github/XFakeSong):
-cd /mnt/d/Github/XFakeSong
+# Dentro do Ubuntu/WSL2, na raiz do repo (ex.: /mnt/d/Github/SpeechChecker):
+cd /mnt/d/Github/SpeechChecker
 python3 -m venv .venv-wsl
 source .venv-wsl/bin/activate
 pip install --upgrade pip
@@ -36,7 +43,7 @@ pip install -r requirements.txt
 pip install 'tensorflow[and-cuda]'      # habilita CUDA/cuDNN p/ a GPU
 
 # Validar GPU + ambiente (não treina):
-bash scripts/training/retrain_wsl2.sh --check
+bash tools/training/retrain_wsl2.sh --check
 ```
 
 > Observação de E/S: treinar lendo o `.npz` de 2.769,01 MiB via `/mnt/d` (disco
@@ -48,36 +55,36 @@ bash scripts/training/retrain_wsl2.sh --check
 
 ```bash
 # Requer NVIDIA Container Toolkit / GPU habilitada no Docker Desktop.
-docker compose -f docker/compose/train.nvidia.yml build
+docker compose -f infrastructure/docker/compose/train.nvidia.yml build
 # Validar GPU dentro do container:
-docker compose -f docker/compose/train.nvidia.yml run --rm tensorflow-keras \
+docker compose -f infrastructure/docker/compose/train.nvidia.yml run --rm tensorflow-keras \
   python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
 # Rodar o benchmark sequencial dentro do container:
-docker compose -f docker/compose/benchmark.nvidia.yml run --rm benchmark
+docker compose -f infrastructure/docker/compose/benchmark.nvidia.yml run --rm benchmark
 ```
 
 ## Executar o retreino + benchmark
 
-O driver [scripts/training/retrain_wsl2.sh](https://github.com/thierrybraga/XFakeSong/blob/main/scripts/training/retrain_wsl2.sh) encapsula tudo:
+O driver [tools/training/retrain_wsl2.sh](https://github.com/thierrybraga/XFakeSong/blob/main/tools/training/retrain_wsl2.sh) encapsula tudo:
 
 ```bash
 # Retreino in-distribution dos modelos do artigo + HuBERT Original SSL:
-bash scripts/training/retrain_wsl2.sh --indist
+bash tools/training/retrain_wsl2.sh --indist
 
 # Reteste cross-generator (segura o XTTS/fkvoice fora do treino) — P0.4:
-bash scripts/training/retrain_wsl2.sh --xgen fkvoice
+bash tools/training/retrain_wsl2.sh --xgen fkvoice
 
 # Ambos em sequência:
-bash scripts/training/retrain_wsl2.sh --indist --xgen fkvoice
+bash tools/training/retrain_wsl2.sh --indist --xgen fkvoice
 
 # Uma única arquitetura (ex.: o P1 obrigatório):
-bash scripts/training/retrain_wsl2.sh --model SpectrogramTransformer --indist
+bash tools/training/retrain_wsl2.sh --model SpectrogramTransformer --indist
 ```
 
 Equivalente "cru" (sem o driver), via orquestrador:
 
 ```bash
-python scripts/benchmark/run_clean_benchmark_pipeline.py \
+python benchmarks/run_clean_benchmark_pipeline.py \
   --phase full \
   --dataset data/datasets/benchmark_dataset.npz \
   --epochs 100 \
@@ -90,12 +97,12 @@ python scripts/benchmark/run_clean_benchmark_pipeline.py \
 ### HuBERT Original em WSL/Docker
 
 O HuBERT real não deve passar pelo fallback Keras. No fluxo Docker, ele é
-roteado para `scripts/benchmark/run_wavlm_original_benchmark.py`, baixa
+roteado para `benchmarks/run_wavlm_original_benchmark.py`, baixa
 `facebook/hubert-base-ls960`, congela o backbone (`--freeze-backbone`) e treina
 somente a cabeça classificadora PyTorch sobre embeddings SSL.
 
 ```bash
-python scripts/benchmark/run_clean_benchmark_pipeline.py \
+python benchmarks/run_clean_benchmark_pipeline.py \
   --models "HuBERT Original" \
   --dataset data/datasets/benchmark_dataset.npz \
   --epochs 100 \
@@ -109,7 +116,7 @@ python scripts/benchmark/run_clean_benchmark_pipeline.py \
 Para revisar sem iniciar treino nem baixar pesos:
 
 ```bash
-python scripts/benchmark/run_models_sequential.py \
+python benchmarks/run_models_sequential.py \
   --models "HuBERT Original" \
   --plan-only \
   --no-academic-protocol \
@@ -119,7 +126,7 @@ python scripts/benchmark/run_models_sequential.py \
 ### Ablação do WavLM (opcional, P2)
 
 ```bash
-python scripts/training/ablate_wavlm_finetune.py \
+python tools/training/ablate_wavlm_finetune.py \
   --dataset data/datasets/benchmark_dataset.npz \
   --lrs 1e-5 3e-5 1e-4 --epochs 30 --out data/results/ablation_wavlm
 ```
@@ -150,11 +157,11 @@ e escreve o fragmento de tabelas. Manualmente, o fluxo é:
 ```bash
 # 1) Consolidar os resultados → benchmark_summary.json + figuras nomeadas do TCC
 #    (sobrescreve as antigas). Aceita um run completo OU vários runs por arquitetura.
-python scripts/reporting/consolidate_results.py data/results/retrain_wsl2_indist \
+python tools/reporting/consolidate_results.py data/results/retrain_wsl2_indist \
     --out data/results/paper/consolidated --copy-to data/results/paper/figures
 
 # 2) Gerar as TABELAS data-driven (fragmento .tex, NÃO mexe na prosa da tese)
-python scripts/reporting/update_tcc_latex.py \
+python tools/reporting/update_tcc_latex.py \
     --summary data/results/paper/consolidated/benchmark_summary.json \
     --output data/results/paper/tabelas_benchmark.tex --figures-dir figures
 
@@ -162,7 +169,7 @@ python scripts/reporting/update_tcc_latex.py \
 #    e recompilar.
 ```
 
-[scripts/reporting/consolidate_results.py](https://github.com/thierrybraga/XFakeSong/blob/main/scripts/reporting/consolidate_results.py) deriva tudo
+[tools/reporting/consolidate_results.py](https://github.com/thierrybraga/XFakeSong/blob/main/tools/reporting/consolidate_results.py) deriva tudo
 de `data/results/<run>/results.json` (acurácia/AUC/EER/robustez, latência/tamanho,
 matrizes de confusão a partir de `scores_clean`+`y_test`, e a estabilidade a
 partir do `history`). Gera exatamente os nomes que o TCC usa:

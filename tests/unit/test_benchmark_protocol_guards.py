@@ -6,17 +6,45 @@ import numpy as np
 import pytest
 
 from benchmarks.data import BenchmarkData
-from benchmarks.runner import (
-    _audit_split_overlap,
-    _audit_split_provenance,
-    _split_fingerprint,
-)
-from scripts.benchmark.run_models_sequential import (
+from benchmarks.run_models_sequential import (
     _inspect_npz,
     _sha256_file,
     _validate_test_lock,
 )
-from scripts.reporting.consolidate_results import _confusion_matrix_for_row
+from benchmarks.split_audit import (
+    _audit_split_overlap,
+    _audit_split_provenance,
+    _split_fingerprint,
+)
+from tools.reporting.consolidate_results import _confusion_matrix_for_row
+
+
+def test_fingerprint_do_resume_cobre_o_motor_que_era_o_runner() -> None:
+    """Sem isto, mudar o treino em `fit_neural.py` não invalidaria o `--resume`.
+
+    O `run_models_sequential` pula o modelo cujo fingerprint confere, e esse
+    fingerprint é o hash destes arquivos. Quando `runner.py` foi dividido, cada
+    módulo novo teve de entrar na lista: de fora, uma mudança de protocolo
+    reaproveitaria em silêncio o artefato treinado com o código antigo.
+    """
+    from pathlib import Path
+
+    from benchmarks.run_models_sequential import _code_identity
+
+    arquivos = {Path(caminho).name for caminho in _code_identity()}
+    assert {
+        "config.py",
+        "planning.py",
+        "runner.py",
+        "common.py",
+        "fit_classical.py",
+        "fit_neural.py",
+        "protocol.py",
+        "provenance.py",
+        "seed_aggregation.py",
+        "split_audit.py",
+        "run_models_sequential.py",
+    } <= arquivos
 
 
 def _write_predefined_npz(path) -> None:
@@ -82,7 +110,7 @@ def test_academic_lock_validates_dataset_and_test_identity(tmp_path) -> None:
     lock.write_text(
         json.dumps(
             {
-                "protocol_version": "xfakesong-test-lock-v1",
+                "protocol_version": "speechchecker-test-lock-v1",
                 "dataset_size_bytes": dataset.stat().st_size,
                 "dataset_sha256": _sha256_file(dataset),
                 "test_archive_identity_sha256": inspection[
@@ -110,6 +138,7 @@ def test_academic_lock_is_mandatory(tmp_path) -> None:
             _inspect_npz(dataset),
             tmp_path / "missing.test-lock.json",
         )
+
 
 def test_confusion_matrix_uses_official_decision_threshold() -> None:
     row = {

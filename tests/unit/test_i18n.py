@@ -77,6 +77,6 @@ def test_supported_languages():
 def test_translation_dicts_have_parity():
     pt_keys = set(TRANSLATIONS["pt"])
     en_keys = set(TRANSLATIONS["en"])
-    assert pt_keys == en_keys, (
-        f"Chaves só em PT: {pt_keys - en_keys}; só em EN: {en_keys - pt_keys}"
-    )
+    assert (
+        pt_keys == en_keys
+    ), f"Chaves só em PT: {pt_keys - en_keys}; só em EN: {en_keys - pt_keys}"

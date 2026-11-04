@@ -61,8 +61,8 @@ class RawNet2MultiScaleConv1D(layers.Layer):
             conv = layers.Conv1D(
                 filters=self.filters,
                 kernel_size=kernel_size,
-                padding='same',
-                activation=None
+                padding="same",
+                activation=None,
             )
             bn = layers.BatchNormalization()
 
@@ -74,10 +74,7 @@ class RawNet2MultiScaleConv1D(layers.Layer):
 
         # Camada de redução dimensional
         self.reduction_conv = layers.Conv1D(
-            filters=self.filters,
-            kernel_size=1,
-            padding='same',
-            activation='relu'
+            filters=self.filters, kernel_size=1, padding="same", activation="relu"
         )
 
         self.final_bn = layers.BatchNormalization()
@@ -103,10 +100,7 @@ class RawNet2MultiScaleConv1D(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'filters': self.filters,
-            'kernel_sizes': self.kernel_sizes
-        })
+        config.update({"filters": self.filters, "kernel_sizes": self.kernel_sizes})
         return config
 
 
@@ -127,9 +121,9 @@ class RawNet2FeatureMapScaling(layers.Layer):
                     RawNet2 passam 'mul_add'.
     """
 
-    def __init__(self, scale_mode: str = 'mul2', **kwargs):
+    def __init__(self, scale_mode: str = "mul2", **kwargs):
         super().__init__(**kwargs)
-        if scale_mode not in ('mul2', 'mul_add'):
+        if scale_mode not in ("mul2", "mul_add"):
             raise ValueError(f"scale_mode inválido: {scale_mode!r}")
         self.scale_mode = scale_mode
 
@@ -137,12 +131,12 @@ class RawNet2FeatureMapScaling(layers.Layer):
         self.channels = input_shape[-1]
         # 'mul2' zera o kernel para o gate nascer em 1.0 (2*sigmoid(0)).
         # 'mul_add' usa a inicialização padrão, como na implementação oficial.
-        initializer = 'zeros' if self.scale_mode == 'mul2' else 'glorot_uniform'
+        initializer = "zeros" if self.scale_mode == "mul2" else "glorot_uniform"
         self.dense = layers.Dense(
             self.channels,
-            activation='sigmoid',
+            activation="sigmoid",
             kernel_initializer=initializer,
-            bias_initializer='zeros',
+            bias_initializer="zeros",
         )
         super().build(input_shape)
 
@@ -153,7 +147,7 @@ class RawNet2FeatureMapScaling(layers.Layer):
         y = self.dense(y)
         # Reshape for broadcasting
         y = tf.expand_dims(y, axis=1)
-        if self.scale_mode == 'mul_add':
+        if self.scale_mode == "mul_add":
             # Paper: escala multiplicativa + deslocamento aditivo.
             return inputs * y + y
         # Legado: multiplicativo puro com gate centrado em 1.0 na inicialização.
@@ -161,7 +155,7 @@ class RawNet2FeatureMapScaling(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({'scale_mode': self.scale_mode})
+        config.update({"scale_mode": self.scale_mode})
         return config
 
 
@@ -222,16 +216,16 @@ class RawNet2SincConv(layers.Layer):
 
         # Learnable parameters: low and high frequencies
         self.low_hz_ = self.add_weight(
-            name='low_hz',
+            name="low_hz",
             shape=(self.filters,),
             initializer=tf.constant_initializer(hz[:-1]),
-            trainable=self.trainable_filters
+            trainable=self.trainable_filters,
         )
         self.band_hz_ = self.add_weight(
-            name='band_hz',
+            name="band_hz",
             shape=(self.filters,),
             initializer=tf.constant_initializer(np.diff(hz)),
-            trainable=self.trainable_filters
+            trainable=self.trainable_filters,
         )
 
         # Time axis for sinc function
@@ -240,7 +234,9 @@ class RawNet2SincConv(layers.Layer):
         self.n_ = tf.constant(n, dtype=tf.float32)
 
         # Window function (Hamming)
-        window = 0.54 - 0.46 * tf.cos(2 * np.pi * tf.range(self.kernel_size, dtype=tf.float32) / self.kernel_size)
+        window = 0.54 - 0.46 * tf.cos(
+            2 * np.pi * tf.range(self.kernel_size, dtype=tf.float32) / self.kernel_size
+        )
         self.window_ = tf.constant(window, dtype=tf.float32)
 
         super().build(input_shape)
@@ -249,7 +245,7 @@ class RawNet2SincConv(layers.Layer):
         return 2595 * np.log10(1 + hz / 700)
 
     def _to_hz(self, mel):
-        return 700 * (10**(mel / 2595) - 1)
+        return 700 * (10 ** (mel / 2595) - 1)
 
     def call(self, inputs):
         # Sinc filters are numerically sensitive and their trainable
@@ -292,24 +288,26 @@ class RawNet2SincConv(layers.Layer):
         # automatically, while all residual blocks and the GRU remain on GPU.
         if self.memory_efficient_gpu:
             with tf.device("/CPU:0"):
-                output = tf.nn.conv1d(inputs, filters, stride=1, padding='SAME')
+                output = tf.nn.conv1d(inputs, filters, stride=1, padding="SAME")
         else:
-            output = tf.nn.conv1d(inputs, filters, stride=1, padding='SAME')
+            output = tf.nn.conv1d(inputs, filters, stride=1, padding="SAME")
         return tf.cast(output, target_dtype)
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'filters': self.filters,
-            'kernel_size': self.kernel_size,
-            'sample_rate': self.sample_rate,
-            'min_low_hz': self.min_low_hz,
-            'min_band_hz': self.min_band_hz,
-            'memory_efficient_gpu': self.memory_efficient_gpu,
-            # Sem isto, um artefato salvo com banco treinavel recarregaria com
-            # banco fixo (ou vice-versa) em silencio.
-            'trainable_filters': self.trainable_filters,
-        })
+        config.update(
+            {
+                "filters": self.filters,
+                "kernel_size": self.kernel_size,
+                "sample_rate": self.sample_rate,
+                "min_low_hz": self.min_low_hz,
+                "min_band_hz": self.min_band_hz,
+                "memory_efficient_gpu": self.memory_efficient_gpu,
+                # Sem isto, um artefato salvo com banco treinavel recarregaria com
+                # banco fixo (ou vice-versa) em silencio.
+                "trainable_filters": self.trainable_filters,
+            }
+        )
         return config
 
 
@@ -333,18 +331,24 @@ class RawNet2ResidualBlock1D(layers.Layer):
 
         self.bn1 = layers.BatchNormalization(name=self.name + "_bn1")
         self.conv1 = layers.Conv1D(
-            self.out_channels, self.kernel_size, padding='same',
-            name=self.name + "_conv1")
+            self.out_channels,
+            self.kernel_size,
+            padding="same",
+            name=self.name + "_conv1",
+        )
         self.bn2 = layers.BatchNormalization(name=self.name + "_bn2")
         self.conv2 = layers.Conv1D(
-            self.out_channels, self.kernel_size, padding='same',
-            name=self.name + "_conv2")
+            self.out_channels,
+            self.kernel_size,
+            padding="same",
+            name=self.name + "_conv2",
+        )
 
         self.skip_conv = None
         if in_channels != self.out_channels:
             self.skip_conv = layers.Conv1D(
-                self.out_channels, 1, padding='same',
-                name=self.name + "_skip")
+                self.out_channels, 1, padding="same", name=self.name + "_skip"
+            )
 
         super().build(input_shape)
 
@@ -370,8 +374,7 @@ class RawNet2ResidualBlock1D(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'out_channels': self.out_channels,
-            'kernel_size': self.kernel_size
-        })
+        config.update(
+            {"out_channels": self.out_channels, "kernel_size": self.kernel_size}
+        )
         return config

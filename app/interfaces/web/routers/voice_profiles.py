@@ -4,7 +4,6 @@ Usa schemas centralizados de app.interfaces.web.schemas.api_models e exceções 
 """
 
 import tempfile
-from functools import lru_cache
 from pathlib import Path
 from typing import List
 
@@ -27,6 +26,7 @@ from app.core.exceptions import (
     ValidationError,
 )
 from app.core.security import limiter
+from app.dependencies import get_voice_profile_service
 from app.domain.services.voice_profile_service import VoiceProfileService
 from app.interfaces.web.schemas.api_models import (
     ProfileCreate,
@@ -41,16 +41,6 @@ router = APIRouter(
     tags=["Voice Profiles"],
     dependencies=[Depends(get_api_key)],
 )
-
-
-# ── Singleton (API.2) ───────────────────────────────────────────────────
-# Antes: get_voice_profile_service() criava nova instância A CADA request,
-# abrindo nova sessão DB. @lru_cache garante singleton thread-safe.
-
-
-@lru_cache()
-def get_voice_profile_service() -> VoiceProfileService:
-    return VoiceProfileService()
 
 
 def _profile_to_response(p) -> ProfileResponse:

@@ -1,6 +1,7 @@
 """
 Extração de características de loudness e sharpness.
 """
+
 from typing import Dict
 
 import librosa
@@ -10,14 +11,15 @@ from .utils import hz_to_bark
 
 
 def extract_loudness_features(
-        y: np.ndarray, sr: int, frame_length: int, hop_length: int) -> Dict:
+    y: np.ndarray, sr: int, frame_length: int, hop_length: int
+) -> Dict:
     """Extrai características de loudness (Stevens/Zwicker)."""
     features = {}
 
     # Calcular espectrograma
     stft = librosa.stft(y, n_fft=frame_length, hop_length=hop_length)
     magnitude = np.abs(stft)
-    power = magnitude ** 2
+    power = magnitude**2
 
     # Frequências dos bins
     freqs = librosa.fft_frequencies(sr=sr, n_fft=frame_length)
@@ -32,7 +34,7 @@ def extract_loudness_features(
         intensity = frame_power / np.max(frame_power + 1e-10)
 
         # Aplicar função de loudness de Stevens
-        loudness = intensity ** 0.3
+        loudness = intensity**0.3
 
         # Integrar sobre frequências (ponderado por frequência)
         total_loudness = np.sum(loudness * freqs) / np.sum(freqs + 1e-10)
@@ -41,24 +43,24 @@ def extract_loudness_features(
     loudness_frames = np.array(loudness_frames)
 
     # Características de loudness
-    features['loudness_mean'] = np.mean(loudness_frames)
-    features['loudness_std'] = np.std(loudness_frames)
-    features['loudness_max'] = np.max(loudness_frames)
-    features['loudness_range'] = np.max(
-        loudness_frames) - np.min(loudness_frames)
+    features["loudness_mean"] = np.mean(loudness_frames)
+    features["loudness_std"] = np.std(loudness_frames)
+    features["loudness_max"] = np.max(loudness_frames)
+    features["loudness_range"] = np.max(loudness_frames) - np.min(loudness_frames)
 
     # Variação temporal de loudness
     if len(loudness_frames) > 1:
         loudness_variation = np.diff(loudness_frames)
-        features['loudness_variation'] = np.std(loudness_variation)
+        features["loudness_variation"] = np.std(loudness_variation)
     else:
-        features['loudness_variation'] = 0
+        features["loudness_variation"] = 0
 
     return features
 
 
 def extract_sharpness_features(
-        y: np.ndarray, sr: int, frame_length: int, hop_length: int) -> Dict:
+    y: np.ndarray, sr: int, frame_length: int, hop_length: int
+) -> Dict:
     """Extrai características de sharpness (agudeza)."""
     features = {}
 
@@ -76,7 +78,7 @@ def extract_sharpness_features(
 
     for frame in magnitude.T:
         # Calcular loudness específica por banda Bark
-        specific_loudness = frame ** 2
+        specific_loudness = frame**2
 
         # Função de ponderação para sharpness (Zwicker & Fastl)
         # Sharpness aumenta com frequência
@@ -103,10 +105,9 @@ def extract_sharpness_features(
     sharpness_frames = np.array(sharpness_frames)
 
     # Características de sharpness
-    features['sharpness_mean'] = np.mean(sharpness_frames)
-    features['sharpness_std'] = np.std(sharpness_frames)
-    features['sharpness_max'] = np.max(sharpness_frames)
-    features['sharpness_range'] = np.max(
-        sharpness_frames) - np.min(sharpness_frames)
+    features["sharpness_mean"] = np.mean(sharpness_frames)
+    features["sharpness_std"] = np.std(sharpness_frames)
+    features["sharpness_max"] = np.max(sharpness_frames)
+    features["sharpness_range"] = np.max(sharpness_frames) - np.min(sharpness_frames)
 
     return features

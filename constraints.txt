@@ -1,5 +1,5 @@
 # =====================================================================
-# XFakeSong — versões travadas das bibliotecas compartilhadas
+# SpeechChecker — versões travadas das bibliotecas compartilhadas
 # =====================================================================
 # Por que este arquivo existe (2026-07-28): todos os requirements do projeto
 # declaram FAIXAS (`>=2.16,<2.22`, `>=0.10`, ...). Duas builds em datas
@@ -55,7 +55,12 @@ transformers==4.45.2
 tokenizers==0.20.3
 safetensors==0.8.0
 huggingface-hub==0.36.2
-datasets==3.6.0
+datasets==5.0.1
+fsspec==2026.6.0
+dill==0.4.1
+multiprocess==0.70.19
+xxhash==4.0.2
+cloudpickle==3.1.2
 
 # ── Áudio e ML clássico ──────────────────────────────────────────────
 librosa==0.11.0
@@ -67,18 +72,28 @@ joblib==1.5.3
 
 # ── Relatórios ───────────────────────────────────────────────────────
 matplotlib==3.11.1
-seaborn==0.13.2
 
 # ── Web/config (só entram nas imagens que servem a API) ──────────────
-# Alinhado às faixas de requirements-base.txt (fastapi>=0.116.1,<0.117 e
-# starlette>=0.47.2,<0.48). Os pinos antigos (0.115.14/0.41.3) ficavam FORA
-# dessas faixas e o `PIP_CONSTRAINT` das imagens quebrava o build inteiro com
-# ResolutionImpossible. gradio 4.44.1 resolve com este par.
-gradio==4.44.1
-fastapi==0.116.2
-starlette==0.47.3
-python-multipart==0.0.32
-pydantic==2.13.4
+# Alinhado às faixas de requirements-base.txt. Pinos fora delas fazem o
+# `PIP_CONSTRAINT` das imagens quebrar o build inteiro com ResolutionImpossible.
+# Conjunto testado junto na migração para o Gradio 6 (ver release-gates.md).
+gradio==6.17.3
+gradio-client==2.5.0
+groovy==0.1.2
+hf-gradio==0.4.1
+safehttpx==0.1.7
+fastapi==0.162.0
+starlette==1.10.0
+uvicorn==0.54.0
+websockets==17.4
+anyio==4.16.0
+brotli==1.2.1
+markupsafe==3.0.4
+tomlkit==0.14.0
+opentelemetry-api==1.45.2
+pillow==12.3.0
+python-multipart==0.0.33
+pydantic==2.14.2
+pydantic-core==2.50.2
 sqlalchemy==2.0.51
 pyyaml==6.0.3
-jsonschema==4.26.0

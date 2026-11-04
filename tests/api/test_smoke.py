@@ -15,7 +15,10 @@ Cobertura:
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
+from pydantic import ValidationError
 
 # ────────────────────────────────────────────────────────────────────────
 # Registro de rotas
@@ -71,23 +74,22 @@ EXPECTED_ROUTES = [
 
 def test_all_expected_routes_registered(client):
     """Todas as rotas esperadas devem estar registradas no app."""
-    registered = set()
-    for route in client.app.routes:
-        # APIRoute tem path + methods
-        path = getattr(route, "path", None)
-        methods = getattr(route, "methods", set()) or set()
-        if path:
-            for m in methods:
-                registered.add((m, path))
+    # Pelo schema, não por `app.routes`: o FastAPI novo mantém os routers incluídos
+    # aninhados, e a lista de topo só tem as rotas do próprio app.
+    registered = {
+        (metodo.upper(), path)
+        for path, operacoes in client.app.openapi()["paths"].items()
+        for metodo in operacoes
+    }
 
     missing = []
     for method, path in EXPECTED_ROUTES:
         if (method, path) not in registered:
             missing.append(f"{method} {path}")
 
-    assert not missing, (
-        f"Rotas faltando: {missing}\nRegistradas: {sorted(registered)[:10]}..."
-    )
+    assert (
+        not missing
+    ), f"Rotas faltando: {missing}\nRegistradas: {sorted(registered)[:10]}..."
 
 
 def test_openapi_schema_is_valid(client):
@@ -120,15 +122,37 @@ def test_system_status_ok(client):
     assert isinstance(body["active_services"], list)
 
 
-def test_system_health_ok(client):
+def _health_com(monkeypatch, banco: bool, modelos: list[str]) -> None:
+    servico = SimpleNamespace(get_available_models=lambda: modelos)
+    monkeypatch.setattr("app.dependencies.get_detection_service", lambda: servico)
+    monkeypatch.setattr(
+        "app.interfaces.web.routers.system.check_database_health", lambda: banco
+    )
+
+
+def test_system_health_ok(client, monkeypatch):
+    _health_com(monkeypatch, banco=True, modelos=["bench_svm"])
     resp = client.get("/api/v1/system/health")
     assert resp.status_code == 200
     body = resp.json()
-    # Status é "healthy" ou "degraded" (depende do DB no test env)
-    assert body["status"] in {"healthy", "degraded"}
-    assert "database" in body
+    assert body["status"] == "healthy"
+    assert body["database"] == "ok"
+    assert body["models_loaded"] == 1
     assert "uptime_seconds" in body
     assert isinstance(body["uptime_seconds"], (int, float))
+
+
+@pytest.mark.parametrize(
+    ("banco", "modelos"),
+    [(True, []), (False, ["bench_svm"])],
+    ids=["sem_modelos", "sem_banco"],
+)
+def test_system_health_falha_com_503(client, monkeypatch, banco, modelos):
+    """O HEALTHCHECK usa `curl -f`: com 200, o container pareceria saudável."""
+    _health_com(monkeypatch, banco=banco, modelos=modelos)
+    resp = client.get("/api/v1/system/health")
+    assert resp.status_code == 503
+    assert resp.json()["status"] == "degraded"
 
 
 def test_system_version_ok(client):
@@ -282,7 +306,7 @@ def test_multi_model_request_validates_fusion():
     """MultiModelDetectionRequest deve rejeitar fusion inválido."""
     from app.interfaces.web.schemas.api_models import MultiModelDetectionRequest
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         MultiModelDetectionRequest(model_names=["a", "b"], fusion="unknown_strategy")
 
     # Caso válido
@@ -294,7 +318,7 @@ def test_multi_model_request_min_2_models():
     """multi-model exige ≥2 modelos."""
     from app.interfaces.web.schemas.api_models import MultiModelDetectionRequest
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         MultiModelDetectionRequest(model_names=["only_one"])
 
 
@@ -305,9 +329,9 @@ def test_uncertainty_request_n_samples_bounds():
     req = UncertaintyRequest(n_samples=20)
     assert req.n_samples == 20
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         UncertaintyRequest(n_samples=1)  # < 5
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         UncertaintyRequest(n_samples=500)  # > 200
 
 
@@ -323,10 +347,10 @@ def test_cross_validation_request_validates_n_folds():
     assert req.n_folds == 5
     assert req.architecture == "aasist"
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         CrossValidationRequest(architecture="aasist", dataset_path="x.npz", n_folds=1)
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         CrossValidationRequest(
             architecture="invalid_arch_xyz",
             dataset_path="x.npz",
@@ -341,9 +365,9 @@ def test_onnx_export_request_validates_opset():
     assert req.opset == 13  # default
     assert req.dynamic_batch is True
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         OnnxExportRequest(model_name="m", opset=99)  # > 20
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         OnnxExportRequest(model_name="")  # vazio
 
 

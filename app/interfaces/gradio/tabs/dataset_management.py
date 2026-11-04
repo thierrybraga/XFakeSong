@@ -1,5 +1,5 @@
 """
-Aba de Gestão de Dataset — XFakeSong
+Aba de Gestão de Dataset — SpeechChecker
 
 Centraliza visualização, download, preprocessamento e análise de
 compatibilidade dos datasets de áudio para detecção de deepfake.
@@ -8,18 +8,14 @@ compatibilidade dos datasets de áudio para detecção de deepfake.
 import json
 import logging
 import math
-import sys
-from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+import gradio as gr
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
-import gradio as gr
-
-from app.interfaces.gradio.utils.plotting import new_figure
-from app.interfaces.gradio.utils.components import ui_safe
+from app.core.bootstrap import OperationalPaths
 from app.domain.dataset_metadata.dataset_catalog import (
     MODEL_READINESS_TIERS,
     PRESET_SELECTIONS,
@@ -29,6 +25,8 @@ from app.domain.dataset_metadata.dataset_catalog import (
     source_type_map,
     tier_reference_markdown,
 )
+from app.interfaces.gradio.utils.components import ui_safe
+from app.interfaces.gradio.utils.plotting import new_figure
 
 matplotlib.use("Agg")
 
@@ -37,15 +35,13 @@ logger = logging.getLogger("gradio_dataset_management")
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent
-DATASETS_DIR = BASE_DIR / "data" / "datasets"
-REAL_DIR = DATASETS_DIR / "real"
-FAKE_DIR = DATASETS_DIR / "fake"
+# Mesmos diretórios do bootstrap (honra XFAKE_STORAGE_DIR), não um caminho
+# recalculado a partir deste arquivo.
+_PATHS = OperationalPaths.resolve()
+DATASETS_DIR = _PATHS.datasets
+REAL_DIR = _PATHS.dataset_real
+FAKE_DIR = _PATHS.dataset_fake
 SPLITS_DIR = DATASETS_DIR / "splits"
-
-# Adiciona raiz ao path para importar scripts/
-if str(BASE_DIR) not in sys.path:
-    sys.path.insert(0, str(BASE_DIR))
 
 # ---------------------------------------------------------------------------
 # Dark theme tokens (idênticos a voice_profiles.py)
@@ -61,21 +57,21 @@ _SUCCESS = "#22c55e"
 _WARNING = "#f59e0b"
 
 _SOURCE_COLORS = {
-    "BRSpeech-DF":   "#3b82f6",
-    "Fake Voices":   "#8b5cf6",
-    "FLEURS":        "#06b6d4",
+    "BRSpeech-DF": "#3b82f6",
+    "Fake Voices": "#8b5cf6",
+    "FLEURS": "#06b6d4",
     "Common Voice PT": "#f59e0b",
-    "CETUC":         "#10b981",
+    "CETUC": "#10b981",
     "MLS Portuguese": "#0ea5e9",
     "TTS-Portuguese Corpus": "#22c55e",
-    "CORAA ASR":     "#64748b",
-    "MLAAD-PT":      "#e879f9",
+    "CORAA ASR": "#64748b",
+    "MLAAD-PT": "#e879f9",
     "ASVspoof 2019": "#f97316",
-    "ASVspoof 5":    "#fb923c",
-    "WaveFake":      "#a855f7",
-    "In-the-Wild":   "#14b8a6",
-    "Synthetic":     "#6b7280",
-    "Outros":        "#94a3b8",
+    "ASVspoof 5": "#fb923c",
+    "WaveFake": "#a855f7",
+    "In-the-Wild": "#14b8a6",
+    "Synthetic": "#6b7280",
+    "Outros": "#94a3b8",
 }
 
 # ---------------------------------------------------------------------------
@@ -86,7 +82,7 @@ _SOURCE_COLORS = {
 _SOURCE_TYPE: Dict[str, str] = source_type_map()
 
 # Estimativa de amostras por falante para Fake Voices (max_per_speaker=100 padrão)
-_FAKE_VOICES_SAMPLES_PER_SPEAKER = 80   # conservador para evitar overcount
+_FAKE_VOICES_SAMPLES_PER_SPEAKER = 80  # conservador para evitar overcount
 
 # Combinações pré-definidas para facilitar o uso
 _PRESET_SELECTIONS: Dict[str, List[str]] = PRESET_SELECTIONS
@@ -142,9 +138,9 @@ def _compute_download_plan(
 
         plan[source] = {
             "max_samples": max_s,
-            "real_alloc":  real_alloc,
-            "fake_alloc":  fake_alloc,
-            "type":        src_type,
+            "real_alloc": real_alloc,
+            "fake_alloc": fake_alloc,
+            "type": src_type,
         }
 
     return plan, real_needed, fake_needed
@@ -184,8 +180,8 @@ def _format_plan_md(
                 f"| **{source}** | `{info['type']}` | +{r:,} | +{f:,} | {info['max_samples']:,} |"
             )
 
-    exp_real  = current_real  + total_r
-    exp_fake  = current_fake  + total_f
+    exp_real = current_real + total_r
+    exp_fake = current_fake + total_f
     exp_ratio = exp_real / max(exp_fake, 1)
 
     if 0.8 <= exp_ratio <= 1.25:
@@ -227,19 +223,19 @@ def _balance_bar_html(real_count: int, fake_count: int) -> str:
         f'<div class="dataset-balance-head">'
         f'<span class="dataset-balance-title">Estado do Dataset</span>'
         f'<span class="dataset-balance-badge">{badge}</span>'
-        f'</div>'
+        f"</div>"
         f'<div class="dataset-balance-meters">'
         f'<progress class="dataset-balance-progress dataset-balance-real" '
         f'value="{real_pct:.1f}" max="100"></progress>'
         f'<progress class="dataset-balance-progress dataset-balance-fake" '
         f'value="{fake_pct:.1f}" max="100"></progress>'
-        f'</div>'
+        f"</div>"
         f'<div class="dataset-balance-kpis">'
-        f'<span>🟢 Real: <b>{real_count:,}</b> ({real_pct:.0f}%)</span>'
+        f"<span>🟢 Real: <b>{real_count:,}</b> ({real_pct:.0f}%)</span>"
         f'<span class="dataset-balance-ratio">Ratio: <b>{ratio:.2f}</b></span>'
-        f'<span>🔴 Fake: <b>{fake_count:,}</b> ({fake_pct:.0f}%)</span>'
-        f'</div>'
-        f'</div>'
+        f"<span>🔴 Fake: <b>{fake_count:,}</b> ({fake_pct:.0f}%)</span>"
+        f"</div>"
+        f"</div>"
     )
 
 
@@ -254,15 +250,18 @@ def _assess_training_readiness(real_count: int, fake_count: int) -> str:
     - Ensemble:    6 000+ por classe (4 branches)
     """
     per_class = min(real_count, fake_count)
-    total     = real_count + fake_count
-    ratio     = real_count / max(fake_count, 1)
+    total = real_count + fake_count
+    ratio = real_count / max(fake_count, 1)
 
     lines: List[str] = ["#### Prontidão para Treinamento", ""]
 
     if per_class == 0:
-        return "\n".join(lines + [
-            "❌ **Dataset vazio.** Inicie um download para continuar.",
-        ])
+        return "\n".join(
+            lines
+            + [
+                "❌ **Dataset vazio.** Inicie um download para continuar.",
+            ]
+        )
 
     # ── Diagnóstico de balanceamento ──────────────────────────────────
     if real_count == 0 or fake_count == 0:
@@ -275,7 +274,9 @@ def _assess_training_readiness(real_count: int, fake_count: int) -> str:
             f"amostras `{deficit_cls}`. Corrija antes de usar modelos DL."
         )
     elif 0.8 <= ratio <= 1.25:
-        lines.append(f"✅ **Balanceamento ideal** (ratio={ratio:.2f}) — pronto para qualquer modelo.")
+        lines.append(
+            f"✅ **Balanceamento ideal** (ratio={ratio:.2f}) — pronto para qualquer modelo."
+        )
     else:
         lines.append(
             f"⚠️ **Balanceamento aceitável** (ratio={ratio:.2f}) — "
@@ -313,7 +314,9 @@ def _assess_training_readiness(real_count: int, fake_count: int) -> str:
     elif per_class < 2_000:
         rec = "📈 CNNs leves estão prontas. +1 000/classe desbloqueia WavLM/HuBERT."
     elif per_class < 4_000:
-        rec = "📈 CNN/RNN prontos. +2 000/classe para performance máxima em Transformers."
+        rec = (
+            "📈 CNN/RNN prontos. +2 000/classe para performance máxima em Transformers."
+        )
     elif per_class < 6_000:
         rec = "📈 Transformers habilitados. +2 000/classe para Ensemble completo."
     else:
@@ -461,7 +464,9 @@ def _build_source_pie(data: Dict) -> plt.Figure:
 
     sources = data["sources"]
     if not sources:
-        ax.text(0.5, 0.5, "Sem dados", ha="center", va="center", color=_TEXT, fontsize=14)
+        ax.text(
+            0.5, 0.5, "Sem dados", ha="center", va="center", color=_TEXT, fontsize=14
+        )
         return fig
 
     labels = list(sources.keys())
@@ -500,12 +505,28 @@ def _build_duration_histogram(data: Dict) -> plt.Figure:
     df = data["durations_fake"]
 
     if dr:
-        ax.hist(dr, bins=30, alpha=0.6, color=_SUCCESS, label=f"Real (n={len(dr)})", edgecolor=_GRID, linewidth=0.3)
+        ax.hist(
+            dr,
+            bins=30,
+            alpha=0.6,
+            color=_SUCCESS,
+            label=f"Real (n={len(dr)})",
+            edgecolor=_GRID,
+            linewidth=0.3,
+        )
     if df:
-        ax.hist(df, bins=30, alpha=0.6, color=_DANGER, label=f"Fake (n={len(df)})", edgecolor=_GRID, linewidth=0.3)
+        ax.hist(
+            df,
+            bins=30,
+            alpha=0.6,
+            color=_DANGER,
+            label=f"Fake (n={len(df)})",
+            edgecolor=_GRID,
+            linewidth=0.3,
+        )
 
     ax.set_xlabel("Duração (s)")
-    ax.set_ylabel("Frequencia")
+    ax.set_ylabel("Frequência")
     ax.set_title("Distribuição de Durações")
     ax.legend(facecolor=_FACE, edgecolor=_GRID, labelcolor=_TEXT, fontsize=8)
     fig.tight_layout()
@@ -521,7 +542,11 @@ class _LogCapture(logging.Handler):
     def __init__(self):
         super().__init__()
         self.records: List[str] = []
-        self.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"))
+        self.setFormatter(
+            logging.Formatter(
+                "%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"
+            )
+        )
 
     def emit(self, record):
         self.records.append(self.format(record))
@@ -537,6 +562,7 @@ def _analyze_compatibility(data: Dict) -> Tuple[List[List], str]:
     """Analisa compatibilidade do dataset com cada arquitetura."""
     try:
         from app.domain.models.architectures.registry import ArchitectureRegistry
+
         registry = ArchitectureRegistry()
     except Exception as e:
         # FE.7: log do motivo da falha (útil para debug)
@@ -573,17 +599,25 @@ def _analyze_compatibility(data: Dict) -> Tuple[List[List], str]:
         # Quantidade mínima
         if total < 200:
             issues.append("Poucos dados")
-            recs.append(f"Recomendado >500 amostras por classe. Atual: {data['real_count']} real + {data['fake_count']} fake")
+            recs.append(
+                f"Recomendado >500 amostras por classe. Atual: {data['real_count']} real + {data['fake_count']} fake"
+            )
         elif total < 1000:
-            recs.append("Dataset pequeno — considere data augmentation ou mais downloads")
+            recs.append(
+                "Dataset pequeno — considere data augmentation ou mais downloads"
+            )
 
         # Balanceamento
         if ratio < 0.5:
             issues.append("Desbalanceado")
-            recs.append(f"Ratio real/fake = {ratio:.2f}. Baixe mais amostras reais (BRSpeech-DF bonafide ou FLEURS)")
+            recs.append(
+                f"Ratio real/fake = {ratio:.2f}. Baixe mais amostras reais (BRSpeech-DF bonafide ou FLEURS)"
+            )
         elif ratio > 2.0:
             issues.append("Desbalanceado")
-            recs.append(f"Ratio real/fake = {ratio:.2f}. Baixe mais amostras fake (Fake Voices)")
+            recs.append(
+                f"Ratio real/fake = {ratio:.2f}. Baixe mais amostras fake (Fake Voices)"
+            )
 
         # Splits
         if not has_splits:
@@ -596,7 +630,9 @@ def _analyze_compatibility(data: Dict) -> Tuple[List[List], str]:
         if all_durs:
             short = sum(1 for d in all_durs if d < 2.0)
             if short > len(all_durs) * 0.1:
-                recs.append(f"{short}/{len(all_durs)} amostras <2s — podem reduzir performance de modelos recorrentes")
+                recs.append(
+                    f"{short}/{len(all_durs)} amostras <2s — podem reduzir performance de modelos recorrentes"
+                )
 
         # Input requirements do registry
         if registry:
@@ -606,19 +642,26 @@ def _analyze_compatibility(data: Dict) -> Tuple[List[List], str]:
                     req = arch_info.input_requirements
                     if "sample_rate" in req and req["sample_rate"] != 16000:
                         issues.append(f"SR esperado: {req['sample_rate']}")
-                        recs.append(f"Arquitetura espera {req['sample_rate']}Hz, dataset esta em 16kHz")
+                        recs.append(
+                            f"Arquitetura espera {req['sample_rate']}Hz, dataset esta em 16kHz"
+                        )
             except Exception as e:
                 # FE.7: log do nome da arquitetura para facilitar debug
                 logger.debug(f"Falha ao ler input_requirements de {display_name}: {e}")
 
         status = "OK" if not issues else " | ".join(issues)
-        status_icon = "✅" if not issues else ("⚠️" if "Desbalanceado" in status else "❌")
+        status_icon = (
+            "✅" if not issues else ("⚠️" if "Desbalanceado" in status else "❌")
+        )
         rec_text = "; ".join(recs) if recs else "Pronto para treinamento"
 
         rows.append([f"{status_icon} {display_name}", arch_type, status, rec_text])
 
         if recs:
-            details_parts.append(f"### {display_name} ({arch_type})\n" + "\n".join(f"- {r}" for r in recs))
+            details_parts.append(
+                f"### {display_name} ({arch_type})\n"
+                + "\n".join(f"- {r}" for r in recs)
+            )
 
     # Classical ML
     for name, ml_type in [("SVM", "RBF Kernel"), ("Random Forest", "Ensemble Trees")]:
@@ -629,7 +672,9 @@ def _analyze_compatibility(data: Dict) -> Tuple[List[List], str]:
             recs.append("ML classico precisa de pelo menos 50 amostras por classe")
         if ratio < 0.5 or ratio > 2.0:
             issues.append("Desbalanceado")
-            recs.append(f"Ratio {ratio:.2f}. class_weight='balanced' sera aplicado automaticamente")
+            recs.append(
+                f"Ratio {ratio:.2f}. class_weight='balanced' sera aplicado automaticamente"
+            )
         if not has_splits:
             issues.append("Sem splits")
             recs.append("Execute 'Criar Splits'")
@@ -637,12 +682,20 @@ def _analyze_compatibility(data: Dict) -> Tuple[List[List], str]:
         status = "OK" if not issues else " | ".join(issues)
         status_icon = "✅" if not issues else "⚠️"
         rec_text = "; ".join(recs) if recs else "Pronto para treinamento"
-        rows.append([f"{status_icon} {name}", f"Classical ML ({ml_type})", status, rec_text])
+        rows.append(
+            [f"{status_icon} {name}", f"Classical ML ({ml_type})", status, rec_text]
+        )
 
         if recs:
-            details_parts.append(f"### {name} ({ml_type})\n" + "\n".join(f"- {r}" for r in recs))
+            details_parts.append(
+                f"### {name} ({ml_type})\n" + "\n".join(f"- {r}" for r in recs)
+            )
 
-    details_md = "\n\n".join(details_parts) if details_parts else "Todas as arquiteturas estao compativeis com o dataset atual."
+    details_md = (
+        "\n\n".join(details_parts)
+        if details_parts
+        else "Todas as arquiteturas estao compativeis com o dataset atual."
+    )
     return rows, details_md
 
 
@@ -652,46 +705,49 @@ def _analyze_compatibility(data: Dict) -> Tuple[List[List], str]:
 def create_dataset_management_tab():
     """Cria a aba de Gestao de Dataset."""
 
-    with gr.Tab("📁 Datasets", id="tab_dataset_mgmt"):
+    with gr.Tab("🗂️ Datasets", id="tab_dataset_mgmt"):
         from app.interfaces.gradio.utils.components import page_header
 
         page_header(
-            "📁",
-            "Gestão de Datasets",
-            "Visualize, baixe, pré-processe e analise a compatibilidade dos "
-            "datasets de áudio.",
+            "🗂️",
+            "Datasets",
+            "Veja o que está disponível, baixe, prepare e confira a compatibilidade "
+            "com cada arquitetura.",
         )
 
         with gr.Tabs():
             # ===========================================================
             # SUB-TAB 1: VISÃO GERAL
             # ===========================================================
-            with gr.Tab("Visão Geral", id="tab_ds_overview"):
+            with gr.Tab("Visão geral", id="tab_ds_overview"):
 
-                with gr.Row():
-                    kpi_md = gr.Markdown("*Clique em Atualizar para carregar...*")
+                # A ação vem antes do conteúdo: o botão ficava depois de quatro
+                # gráficos vazios, no fim da página.
+                refresh_btn = gr.Button("Atualizar dados", variant="primary")
+                kpi_md = gr.Markdown(
+                    "*Clique em **Atualizar dados** para contar os arquivos. "
+                    "Em datasets grandes, isso pode levar alguns minutos.*"
+                )
 
-                with gr.Row(elem_classes="responsive-grid plot-grid"):
-                    with gr.Column(scale=1):
-                        plot_class = gr.Plot(label="Distribuição por Classe")
-                    with gr.Column(scale=1):
-                        plot_source = gr.Plot(label="Fontes de Dados")
+                with gr.Column(visible=False) as overview_results:
+                    with gr.Row(elem_classes="responsive-grid plot-grid"):
+                        with gr.Column(scale=1):
+                            plot_class = gr.Plot(label="Distribuição por classe")
+                        with gr.Column(scale=1):
+                            plot_source = gr.Plot(label="Fontes de dados")
 
-                with gr.Row(elem_classes="responsive-grid plot-grid"):
-                    with gr.Column(scale=1):
-                        plot_duration = gr.Plot(label="Distribuição de Durações")
-                    with gr.Column(scale=1):
-                        splits_df = gr.Dataframe(
-                            headers=["Split", "Real", "Fake", "Total"],
-                            label="Resumo dos Splits",
-                            interactive=False,
-                        )
+                    with gr.Row(elem_classes="responsive-grid plot-grid"):
+                        with gr.Column(scale=1):
+                            plot_duration = gr.Plot(label="Distribuição de durações")
+                        with gr.Column(scale=1):
+                            splits_df = gr.Dataframe(
+                                headers=["Partição", "Real", "Fake", "Total"],
+                                label="Resumo das partições",
+                                interactive=False,
+                            )
 
-                with gr.Row(elem_classes="responsive-grid"):
-                    with gr.Column(scale=2):
-                        meta_json = gr.JSON(label="Metadata (splits_metadata.json)")
-                    with gr.Column(scale=1):
-                        refresh_btn = gr.Button("Atualizar Dashboard", variant="primary", size="lg")
+                    with gr.Accordion("Metadados (splits_metadata.json)", open=False):
+                        meta_json = gr.JSON(label="Metadados")
 
                 @ui_safe("Falha ao atualizar a lista")
                 def handle_refresh():
@@ -703,20 +759,20 @@ def create_dataset_management_tab():
                     ratio = real_c / max(fake_c, 1)
                     real_h = data["real_duration_h"]
                     fake_h = data["fake_duration_h"]
-                    splits_ok = "Sim" if data["splits_exist"] else "Nao"
+                    splits_ok = "Sim" if data["splits_exist"] else "Não"
 
                     kpi = (
-                        f"| Metrica | Valor |\n"
+                        f"| Métrica | Valor |\n"
                         f"|---------|-------|\n"
                         f"| Total de Arquivos | **{total:,}** |\n"
                         f"| Amostras Reais | **{real_c:,}** |\n"
                         f"| Amostras Fake | **{fake_c:,}** |\n"
-                        f"| Ratio Real/Fake | **{ratio:.2f}** |\n"
+                        f"| Proporção real/fake | **{ratio:.2f}** |\n"
                         f"| Duração Real | **{real_h:.1f}h** |\n"
                         f"| Duração Fake | **{fake_h:.1f}h** |\n"
                         f"| Duração Total | **{real_h + fake_h:.1f}h** |\n"
-                        f"| Splits Criados | **{splits_ok}** |\n"
-                        f"| Sample Rate | **16 kHz** |\n"
+                        f"| Partições criadas | **{splits_ok}** |\n"
+                        f"| Taxa de amostragem | **16 kHz** |\n"
                         f"| Formato | **WAV PCM 16-bit mono** |"
                     )
 
@@ -727,7 +783,7 @@ def create_dataset_management_tab():
                     strategy = meta_overview.get("split_strategy")
                     extra = ""
                     if strategy:
-                        extra += f"\n| Estratégia de Split | **{strategy}** |"
+                        extra += f"\n| Estratégia de partição | **{strategy}** |"
                     if spk:
                         extra += (
                             f"\n| Falantes (total) | **{spk.get('total', '—')}** |"
@@ -746,9 +802,24 @@ def create_dataset_management_tab():
                     if meta:
                         for split_name in ["train", "val", "test"]:
                             split_dir = SPLITS_DIR / split_name
-                            r_count = len(list((split_dir / "real").glob("*.wav"))) if (split_dir / "real").exists() else 0
-                            f_count = len(list((split_dir / "fake").glob("*.wav"))) if (split_dir / "fake").exists() else 0
-                            splits_rows.append([split_name.capitalize(), r_count, f_count, r_count + f_count])
+                            r_count = (
+                                len(list((split_dir / "real").glob("*.wav")))
+                                if (split_dir / "real").exists()
+                                else 0
+                            )
+                            f_count = (
+                                len(list((split_dir / "fake").glob("*.wav")))
+                                if (split_dir / "fake").exists()
+                                else 0
+                            )
+                            splits_rows.append(
+                                [
+                                    split_name.capitalize(),
+                                    r_count,
+                                    f_count,
+                                    r_count + f_count,
+                                ]
+                            )
                     else:
                         splits_rows = [["Nenhum split criado", 0, 0, 0]]
 
@@ -756,7 +827,18 @@ def create_dataset_management_tab():
 
                 refresh_btn.click(
                     fn=handle_refresh,
-                    outputs=[kpi_md, plot_class, plot_source, plot_duration, splits_df, meta_json],
+                    outputs=[
+                        kpi_md,
+                        plot_class,
+                        plot_source,
+                        plot_duration,
+                        splits_df,
+                        meta_json,
+                    ],
+                ).success(
+                    fn=lambda: gr.update(visible=True),
+                    outputs=[overview_results],
+                    show_progress="hidden",
                 )
 
             # ===========================================================
@@ -778,13 +860,16 @@ def create_dataset_management_tab():
                     with gr.Column(scale=1):
 
                         with gr.Group():
-                            gr.Markdown("**1. Escolher Tier**")
+                            gr.Markdown("#### 1. Escolha o tamanho (tier)")
                             dl_tier = gr.Radio(
                                 choices=[
                                     ("Test — smoke (100/classe)", "test"),
                                     ("Small — 10k rápido (5.000/classe)", "small"),
                                     ("Medium — benchmark 15k (7.500/classe)", "medium"),
-                                    ("Large — falantes não vistos (10.000/classe)", "large"),
+                                    (
+                                        "Large — falantes não vistos (10.000/classe)",
+                                        "large",
+                                    ),
                                 ],
                                 value=None,
                                 label="Tier de dataset",
@@ -796,9 +881,10 @@ def create_dataset_management_tab():
                             )
 
                         with gr.Group():
-                            gr.Markdown("**2. Selecionar Fontes**")
+                            gr.Markdown("#### 2. Selecione as fontes")
                             dl_preset = gr.Dropdown(
-                                choices=["— preset —"] + list(_PRESET_SELECTIONS.keys()),
+                                choices=["— preset —"]
+                                + list(_PRESET_SELECTIONS.keys()),
                                 value="— preset —",
                                 label="Preset",
                                 container=False,
@@ -810,7 +896,7 @@ def create_dataset_management_tab():
                             )
 
                         with gr.Group():
-                            gr.Markdown("**3. Configurar Alvo de Balanceamento**")
+                            gr.Markdown("#### 3. Defina o alvo de balanceamento")
                             dl_target = gr.Slider(
                                 minimum=100,
                                 maximum=10_000,
@@ -824,18 +910,22 @@ def create_dataset_management_tab():
                                 maximum=50,
                                 value=0,
                                 step=5,
-                                label="Max falantes Fake Voices (0 = auto calculado pelo alvo)",
+                                label=(
+                                    "Máximo de falantes do Fake Voices "
+                                    "(0 = automático)"
+                                ),
                                 visible=True,
                             )
 
-                        gr.Markdown("---")
-                        dl_plan_btn = gr.Button("📋 Calcular Plano", variant="secondary", size="sm")
-                        dl_btn      = gr.Button("⬇️ Iniciar Download Balanceado", variant="primary")
+                        dl_plan_btn = gr.Button("Calcular plano", variant="secondary")
+                        dl_btn = gr.Button(
+                            "Iniciar download balanceado", variant="primary"
+                        )
 
                     # ── Plano + readiness + log (direita) ──────────────
                     with gr.Column(scale=2):
                         dl_plan_md = gr.Markdown(
-                            "*Selecione as fontes e clique em **Calcular Plano** para ver a "
+                            "*Selecione as fontes e clique em **Calcular plano** para ver a "
                             "distribuição balanceada antes de baixar.*"
                         )
                         dl_readiness_md = gr.Markdown(
@@ -850,20 +940,20 @@ def create_dataset_management_tab():
                         )
                         dl_status = gr.Markdown("*Aguardando...*")
 
-                with gr.Accordion("Tiers de Dataset (test/small/medium/large)", open=False):
+                with gr.Accordion(
+                    "Tiers de Dataset (test/small/medium/large)", open=False
+                ):
                     gr.Markdown(
-                        tier_reference_markdown()
-                        + "\n\n"
+                        tier_reference_markdown() + "\n\n"
                         "> Os tiers são a fonte única de verdade do tamanho/finalidade "
                         "do dataset (`app/domain/dataset_metadata/dataset_catalog.py`), compartilhada com "
-                        "`scripts/dataset/build_dataset.py --tier ...`, o benchmark e a "
+                        "`tools/dataset/build_dataset.py --tier ...`, o benchmark e a "
                         "documentação. Detalhes em `docs/data/public-datasets.md`."
                     )
 
                 with gr.Accordion("Referência de Datasets", open=False):
                     gr.Markdown(
-                        dataset_reference_markdown()
-                        + "\n\n"
+                        dataset_reference_markdown() + "\n\n"
                         "> **Dica de balanceamento:** combine sempre pelo menos 1 fonte `both` "
                         "(BRSpeech-DF, ASVspoof 2019) com fontes especializadas "
                         "(Fake Voices para fakes, CETUC para reais) para máxima diversidade."
@@ -876,7 +966,9 @@ def create_dataset_management_tab():
                     data = _scan_dataset()
                     return (
                         _balance_bar_html(data["real_count"], data["fake_count"]),
-                        _assess_training_readiness(data["real_count"], data["fake_count"]),
+                        _assess_training_readiness(
+                            data["real_count"], data["fake_count"]
+                        ),
                     )
 
                 @ui_safe("Falha ao aplicar o preset")
@@ -949,15 +1041,24 @@ def create_dataset_management_tab():
 
                     plan, rn, fn = _compute_download_plan(
                         selected_sources,
-                        data["real_count"], data["fake_count"],
+                        data["real_count"],
+                        data["fake_count"],
                         int(target),
                     )
                     plan_text = _format_plan_md(
-                        plan, rn, fn,
-                        data["real_count"], data["fake_count"], int(target),
+                        plan,
+                        rn,
+                        fn,
+                        data["real_count"],
+                        data["fake_count"],
+                        int(target),
                     )
-                    exp_real = data["real_count"] + sum(v["real_alloc"] for v in plan.values())
-                    exp_fake = data["fake_count"] + sum(v["fake_alloc"] for v in plan.values())
+                    exp_real = data["real_count"] + sum(
+                        v["real_alloc"] for v in plan.values()
+                    )
+                    exp_fake = data["fake_count"] + sum(
+                        v["fake_alloc"] for v in plan.values()
+                    )
                     readiness = (
                         "**Após este download (estimado):**\n\n"
                         + _assess_training_readiness(exp_real, exp_fake)
@@ -986,8 +1087,11 @@ def create_dataset_management_tab():
                         int(target),
                     )
                     plan_text = _format_plan_md(
-                        plan, rn, fn,
-                        data["real_count"], data["fake_count"],
+                        plan,
+                        rn,
+                        fn,
+                        data["real_count"],
+                        data["fake_count"],
                         int(target),
                     )
                     # Readiness pós-download estimado
@@ -999,8 +1103,10 @@ def create_dataset_management_tab():
                     )
                     readiness_after = _assess_training_readiness(exp_real, exp_fake)
                     combined_readiness = (
-                        "**Atual:**\n\n" + readiness +
-                        "\n\n---\n\n**Após este download:**\n\n" + readiness_after
+                        "**Atual:**\n\n"
+                        + readiness
+                        + "\n\n---\n\n**Após este download:**\n\n"
+                        + readiness_after
                     )
                     return bar, plan_text, combined_readiness
 
@@ -1012,21 +1118,26 @@ def create_dataset_management_tab():
                         yield (
                             _balance_bar_html(data["real_count"], data["fake_count"]),
                             "*⚠️ Selecione pelo menos uma fonte.*",
-                            _assess_training_readiness(data["real_count"], data["fake_count"]),
+                            _assess_training_readiness(
+                                data["real_count"], data["fake_count"]
+                            ),
                             "",
                             "❌ Nenhuma fonte selecionada",
                         )
                         return
 
                     try:
-                        import scripts.dataset.download_datasets as dl_mod
+                        from app.domain.services.dataset import download as dl_mod
                     except ImportError as exc:
                         yield (
                             _balance_bar_html(data["real_count"], data["fake_count"]),
                             "",
-                            _assess_training_readiness(data["real_count"], data["fake_count"]),
+                            _assess_training_readiness(
+                                data["real_count"], data["fake_count"]
+                            ),
                             f"Erro de importação:\n{exc}",
-                            "❌ Não foi possível importar scripts/dataset/download_datasets.py",
+                            "❌ Não foi possível importar "
+                            "app/domain/services/dataset/download.py",
                         )
                         return
 
@@ -1043,23 +1154,28 @@ def create_dataset_management_tab():
                             int(target),
                         )
                         plan_text = _format_plan_md(
-                            plan, real_needed, fake_needed,
-                            data["real_count"], data["fake_count"],
+                            plan,
+                            real_needed,
+                            fake_needed,
+                            data["real_count"],
+                            data["fake_count"],
                             int(target),
                         )
 
                         yield (
                             _balance_bar_html(data["real_count"], data["fake_count"]),
                             plan_text,
-                            _assess_training_readiness(data["real_count"], data["fake_count"]),
+                            _assess_training_readiness(
+                                data["real_count"], data["fake_count"]
+                            ),
                             "Iniciando download balanceado...",
                             "⏳ Preparando...",
                         )
 
                         # ── Executar cada fonte com alocação calculada ──
                         for i, source in enumerate(selected_sources):
-                            info    = plan.get(source, {})
-                            max_s   = info.get("max_samples", 0)
+                            info = plan.get(source, {})
+                            max_s = info.get("max_samples", 0)
                             f_alloc = info.get("fake_alloc", 0)
 
                             if max_s <= 0:
@@ -1067,9 +1183,13 @@ def create_dataset_management_tab():
                                     f"[INFO] {source}: alvo já atingido — pulando."
                                 )
                                 yield (
-                                    _balance_bar_html(data["real_count"], data["fake_count"]),
+                                    _balance_bar_html(
+                                        data["real_count"], data["fake_count"]
+                                    ),
                                     plan_text,
-                                    _assess_training_readiness(data["real_count"], data["fake_count"]),
+                                    _assess_training_readiness(
+                                        data["real_count"], data["fake_count"]
+                                    ),
                                     capture.text(),
                                     f"⏳ [{i+1}/{len(selected_sources)}] {source}: já OK",
                                 )
@@ -1080,9 +1200,13 @@ def create_dataset_management_tab():
                                 f"(max_samples={max_s}) ──"
                             )
                             yield (
-                                _balance_bar_html(data["real_count"], data["fake_count"]),
+                                _balance_bar_html(
+                                    data["real_count"], data["fake_count"]
+                                ),
                                 plan_text,
-                                _assess_training_readiness(data["real_count"], data["fake_count"]),
+                                _assess_training_readiness(
+                                    data["real_count"], data["fake_count"]
+                                ),
                                 capture.text(),
                                 f"⏳ [{i+1}/{len(selected_sources)}] Baixando {source}...",
                             )
@@ -1096,9 +1220,16 @@ def create_dataset_management_tab():
                                 if spk_override > 0:
                                     max_spk = spk_override
                                 else:
-                                    max_spk = max(5, min(50, math.ceil(
-                                        f_alloc / _FAKE_VOICES_SAMPLES_PER_SPEAKER
-                                    )))
+                                    max_spk = max(
+                                        5,
+                                        min(
+                                            50,
+                                            math.ceil(
+                                                f_alloc
+                                                / _FAKE_VOICES_SAMPLES_PER_SPEAKER
+                                            ),
+                                        ),
+                                    )
                                 capture.records.append(
                                     f"[INFO]   Fake Voices: {max_spk} falantes "
                                     f"(~{max_spk * _FAKE_VOICES_SAMPLES_PER_SPEAKER} amostras)"
@@ -1145,17 +1276,21 @@ def create_dataset_management_tab():
                             # light=True: só contadores (evita 300 sf.info/scan)
                             data = _scan_dataset(light=True)
                             yield (
-                                _balance_bar_html(data["real_count"], data["fake_count"]),
+                                _balance_bar_html(
+                                    data["real_count"], data["fake_count"]
+                                ),
                                 plan_text,
-                                _assess_training_readiness(data["real_count"], data["fake_count"]),
+                                _assess_training_readiness(
+                                    data["real_count"], data["fake_count"]
+                                ),
                                 capture.text(),
                                 f"⏳ [{i+1}/{len(selected_sources)}] {source} concluído.",
                             )
 
                         # ── Relatório final (scan completo p/ durações) ─
-                        data   = _scan_dataset()
+                        data = _scan_dataset()
                         rc, fc = data["real_count"], data["fake_count"]
-                        ratio  = rc / max(fc, 1)
+                        ratio = rc / max(fc, 1)
                         rh, fh = data["real_duration_h"], data["fake_duration_h"]
 
                         if 0.8 <= ratio <= 1.25:
@@ -1167,7 +1302,7 @@ def create_dataset_management_tab():
                             )
                         else:
                             menor = "real" if rc < fc else "fake"
-                            diff  = abs(rc - fc)
+                            diff = abs(rc - fc)
                             bal_line = (
                                 f"❌ Desbalanceado (ratio={ratio:.2f}) — "
                                 f"faltam ~{diff:,} amostras `{menor}`. "
@@ -1198,7 +1333,9 @@ def create_dataset_management_tab():
                         yield (
                             _balance_bar_html(data["real_count"], data["fake_count"]),
                             "",
-                            _assess_training_readiness(data["real_count"], data["fake_count"]),
+                            _assess_training_readiness(
+                                data["real_count"], data["fake_count"]
+                            ),
                             capture.text() + f"\n\nERRO: {e}",
                             f"❌ Erro: {e}",
                         )
@@ -1228,15 +1365,23 @@ def create_dataset_management_tab():
                 dl_sources.change(
                     fn=_dl_on_sources_change,
                     inputs=[dl_sources, dl_target],
-                    outputs=[dl_speakers_override, dl_balance_html,
-                             dl_plan_md, dl_readiness_md],
+                    outputs=[
+                        dl_speakers_override,
+                        dl_balance_html,
+                        dl_plan_md,
+                        dl_readiness_md,
+                    ],
                 )
                 # Mudar o alvo também recalcula o plano.
                 dl_target.release(
                     fn=_dl_on_sources_change,
                     inputs=[dl_sources, dl_target],
-                    outputs=[dl_speakers_override, dl_balance_html,
-                             dl_plan_md, dl_readiness_md],
+                    outputs=[
+                        dl_speakers_override,
+                        dl_balance_html,
+                        dl_plan_md,
+                        dl_readiness_md,
+                    ],
                 )
                 dl_plan_btn.click(
                     fn=_dl_compute_plan,
@@ -1246,7 +1391,13 @@ def create_dataset_management_tab():
                 dl_btn.click(
                     fn=handle_download,
                     inputs=[dl_sources, dl_target, dl_speakers_override],
-                    outputs=[dl_balance_html, dl_plan_md, dl_readiness_md, dl_log, dl_status],
+                    outputs=[
+                        dl_balance_html,
+                        dl_plan_md,
+                        dl_readiness_md,
+                        dl_log,
+                        dl_status,
+                    ],
                 )
 
             # ===========================================================
@@ -1255,45 +1406,78 @@ def create_dataset_management_tab():
             with gr.Tab("Pré-processamento", id="tab_ds_preprocess"):
 
                 gr.Markdown(
-                    "### Pipeline de Pré-processamento\n"
-                    "Valide, normalize, remova duplicatas e crie splits train/val/test."
+                    "Prepare o dataset nesta ordem: limpe os arquivos e depois crie as "
+                    "partições de treino, validação e teste."
                 )
 
                 with gr.Row(elem_classes="responsive-grid"):
-                    with gr.Column(scale=1):
-                        pp_validate_btn = gr.Button("Validar Dataset", variant="secondary")
-                        pp_normalize_btn = gr.Button("Normalizar Áudio", variant="secondary")
-                        pp_dedup_btn = gr.Button("Remover Duplicatas", variant="secondary")
-                        gr.Markdown("---")
-                        pp_train_ratio = gr.Slider(0.6, 0.9, value=0.8, step=0.05, label="Train ratio")
-                        pp_val_ratio = gr.Slider(0.05, 0.2, value=0.1, step=0.05, label="Val ratio")
-                        pp_speaker_disjoint = gr.Checkbox(
-                            value=True,
-                            label="Disjunção por falante",
-                            info=(
-                                "Cada locutor fica INTEIRAMENTE em um só split. "
-                                "Sem isso, a mesma voz aparece em treino e teste, "
-                                "e a métrica passa a medir memorização de timbre "
-                                "em vez de detecção de síntese — é o protocolo "
-                                "que o benchmark usa."
-                            ),
-                        )
-                        pp_splits_btn = gr.Button("Criar Splits", variant="primary")
-                        gr.Markdown("---")
-                        pp_full_btn = gr.Button("Pipeline Completo", variant="primary")
-                        pp_zip_btn = gr.Button("Criar ZIP para Upload", variant="secondary")
+                    with gr.Column(scale=1, min_width=300):
+                        with gr.Group():
+                            gr.Markdown("#### 1. Limpeza")
+                            pp_validate_btn = gr.Button(
+                                "Validar dataset", variant="secondary"
+                            )
+                            pp_normalize_btn = gr.Button(
+                                "Normalizar áudio", variant="secondary"
+                            )
+                            pp_dedup_btn = gr.Button(
+                                "Remover duplicatas", variant="secondary"
+                            )
+                        with gr.Group():
+                            gr.Markdown("#### 2. Partições")
+                            pp_train_ratio = gr.Slider(
+                                0.6,
+                                0.9,
+                                value=0.8,
+                                step=0.05,
+                                label="Proporção de treino",
+                            )
+                            pp_val_ratio = gr.Slider(
+                                0.05,
+                                0.2,
+                                value=0.1,
+                                step=0.05,
+                                label="Proporção de validação",
+                            )
+                            pp_speaker_disjoint = gr.Checkbox(
+                                value=True,
+                                label="Separar por falante",
+                                info=(
+                                    "Cada locutor fica inteiro em uma só partição. Sem "
+                                    "isso, a mesma voz aparece em treino e teste, e a "
+                                    "métrica passa a medir memorização de timbre em vez "
+                                    "de detecção de síntese. É o protocolo do benchmark."
+                                ),
+                            )
+                            pp_splits_btn = gr.Button(
+                                "Criar partições", variant="primary"
+                            )
+                        with gr.Group():
+                            gr.Markdown("#### Atalhos")
+                            pp_full_btn = gr.Button(
+                                "Executar o fluxo completo", variant="secondary"
+                            )
+                            pp_zip_btn = gr.Button(
+                                "Criar ZIP para envio", variant="secondary"
+                            )
 
                     with gr.Column(scale=2):
-                        pp_log = gr.Textbox(label="Log", lines=16, max_lines=25, interactive=False)
+                        pp_log = gr.Textbox(
+                            label="Registro de execução",
+                            lines=16,
+                            max_lines=25,
+                            interactive=False,
+                        )
                         pp_summary = gr.Markdown("*Aguardando...*")
                         pp_issues_df = gr.Dataframe(
                             headers=["Tipo", "Quantidade", "Detalhes"],
-                            label="Problemas Encontrados",
+                            label="Problemas encontrados",
                             interactive=False,
                         )
 
                 def _get_pp_module():
-                    import scripts.dataset.preprocess_dataset as pp
+                    from app.domain.services.dataset import preprocessing as pp
+
                     return pp
 
                 def _render_auditoria(relatorio: dict) -> str:
@@ -1315,7 +1499,9 @@ def create_dataset_management_tab():
                         else "❌ **SOBREPOSIÇÃO DETECTADA** — o split não é válido."
                     )
                     linhas.append("")
-                    linhas.append("| Dimensão | treino∩val | treino∩teste | val∩teste |")
+                    linhas.append(
+                        "| Dimensão | treino∩val | treino∩teste | val∩teste |"
+                    )
                     linhas.append("|---|---:|---:|---:|")
                     for rotulo, chave in (
                         ("Conteúdo (PCM)", "content_sha256"),
@@ -1361,13 +1547,17 @@ def create_dataset_management_tab():
                                     f"media {np.mean(s['durations']):.1f}s"
                                 )
                             else:
-                                parts.append(f"**{label.upper()}**: Nenhum arquivo valido")
+                                parts.append(
+                                    f"**{label.upper()}**: Nenhum arquivo valido"
+                                )
 
                         total_issues = sum(len(v) for v in issues.values())
                         if total_issues == 0:
                             parts.append("\n✅ **Nenhum problema encontrado!**")
                         else:
-                            parts.append(f"\n⚠️ **{total_issues} problemas encontrados**")
+                            parts.append(
+                                f"\n⚠️ **{total_issues} problemas encontrados**"
+                            )
 
                         summary = "\n\n".join(parts)
 
@@ -1391,7 +1581,11 @@ def create_dataset_management_tab():
                     pp.logger.addHandler(capture)
                     try:
                         pp.normalize_all()
-                        return capture.text(), "✅ Normalizacao concluida", [["OK", 0, "Todos normalizados"]]
+                        return (
+                            capture.text(),
+                            "✅ Normalizacao concluida",
+                            [["OK", 0, "Todos normalizados"]],
+                        )
                     except Exception as e:
                         return capture.text(), f"❌ Erro: {e}", []
                     finally:
@@ -1416,13 +1610,20 @@ def create_dataset_management_tab():
                     try:
                         test_r = round(1.0 - train_r - val_r, 2)
                         if test_r <= 0:
-                            return capture.text(), "❌ Ratios invalidos (train + val >= 1.0)", []
+                            return (
+                                capture.text(),
+                                "❌ Ratios invalidos (train + val >= 1.0)",
+                                [],
+                            )
                         pp.create_splits(
-                            train_r, val_r, test_r,
+                            train_r,
+                            val_r,
+                            test_r,
                             speaker_disjoint=bool(speaker_disjoint),
                         )
                         modo = (
-                            "disjunto por falante" if speaker_disjoint
+                            "disjunto por falante"
+                            if speaker_disjoint
                             else "estratificado por classe"
                         )
                         resumo = (
@@ -1452,13 +1653,16 @@ def create_dataset_management_tab():
 
                         test_r = round(1.0 - train_r - val_r, 2)
                         pp.create_splits(
-                            train_r, val_r, test_r,
+                            train_r,
+                            val_r,
+                            test_r,
                             speaker_disjoint=bool(speaker_disjoint),
                         )
 
                         total_issues = sum(len(v) for v in issues.values())
                         modo = (
-                            "disjunto por falante" if speaker_disjoint
+                            "disjunto por falante"
+                            if speaker_disjoint
                             else "estratificado por classe"
                         )
                         summary = (
@@ -1472,7 +1676,9 @@ def create_dataset_management_tab():
                             if items:
                                 issue_rows.append([it, len(items), str(items[:2])[:80]])
 
-                        yield capture.text(), summary, issue_rows or [["OK", 0, "Tudo limpo"]]
+                        yield capture.text(), summary, issue_rows or [
+                            ["OK", 0, "Tudo limpo"]
+                        ]
                     except Exception as e:
                         yield capture.text(), f"❌ Erro: {e}", []
                     finally:
@@ -1485,18 +1691,38 @@ def create_dataset_management_tab():
                     try:
                         path = pp.create_training_zip()
                         size_mb = path.stat().st_size / (1024 * 1024) if path else 0
-                        return capture.text(), f"✅ ZIP criado: {path} ({size_mb:.1f} MB)", []
+                        return (
+                            capture.text(),
+                            f"✅ ZIP criado: {path} ({size_mb:.1f} MB)",
+                            [],
+                        )
                     except Exception as e:
                         return capture.text(), f"❌ Erro: {e}", []
                     finally:
                         pp.logger.removeHandler(capture)
 
-                pp_validate_btn.click(fn=handle_validate, outputs=[pp_log, pp_summary, pp_issues_df])
-                pp_normalize_btn.click(fn=handle_normalize, outputs=[pp_log, pp_summary, pp_issues_df])
-                pp_dedup_btn.click(fn=handle_dedup, outputs=[pp_log, pp_summary, pp_issues_df])
-                pp_splits_btn.click(fn=handle_splits, inputs=[pp_train_ratio, pp_val_ratio, pp_speaker_disjoint], outputs=[pp_log, pp_summary, pp_issues_df])
-                pp_full_btn.click(fn=handle_full_pipeline, inputs=[pp_train_ratio, pp_val_ratio, pp_speaker_disjoint], outputs=[pp_log, pp_summary, pp_issues_df])
-                pp_zip_btn.click(fn=handle_zip, outputs=[pp_log, pp_summary, pp_issues_df])
+                pp_validate_btn.click(
+                    fn=handle_validate, outputs=[pp_log, pp_summary, pp_issues_df]
+                )
+                pp_normalize_btn.click(
+                    fn=handle_normalize, outputs=[pp_log, pp_summary, pp_issues_df]
+                )
+                pp_dedup_btn.click(
+                    fn=handle_dedup, outputs=[pp_log, pp_summary, pp_issues_df]
+                )
+                pp_splits_btn.click(
+                    fn=handle_splits,
+                    inputs=[pp_train_ratio, pp_val_ratio, pp_speaker_disjoint],
+                    outputs=[pp_log, pp_summary, pp_issues_df],
+                )
+                pp_full_btn.click(
+                    fn=handle_full_pipeline,
+                    inputs=[pp_train_ratio, pp_val_ratio, pp_speaker_disjoint],
+                    outputs=[pp_log, pp_summary, pp_issues_df],
+                )
+                pp_zip_btn.click(
+                    fn=handle_zip, outputs=[pp_log, pp_summary, pp_issues_df]
+                )
 
             # ===========================================================
             # SUB-TAB 4: COMPATIBILIDADE
@@ -1504,21 +1730,22 @@ def create_dataset_management_tab():
             with gr.Tab("Compatibilidade", id="tab_ds_compat"):
 
                 gr.Markdown(
-                    "### Analise de Compatibilidade\n"
-                    "Verifica se o dataset atual e compativel com cada uma das 14 arquiteturas de deteccao."
+                    "Verifica se o dataset atual é compatível com cada uma das 14 arquiteturas de deteccao."
                 )
 
-                compat_btn = gr.Button("Analisar Compatibilidade", variant="primary")
+                compat_btn = gr.Button("Analisar compatibilidade", variant="primary")
 
                 compat_df = gr.Dataframe(
-                    headers=["Arquitetura", "Tipo", "Status", "Recomendacoes"],
-                    label="Compatibilidade por Arquitetura",
+                    headers=["Arquitetura", "Tipo", "Status", "Recomendações"],
+                    label="Compatibilidade por arquitetura",
                     interactive=False,
                     wrap=True,
                 )
 
-                with gr.Accordion("Recomendacoes Detalhadas", open=False):
-                    compat_details = gr.Markdown("*Execute a análise para ver recomendações...*")
+                with gr.Accordion("Recomendações detalhadas", open=False):
+                    compat_details = gr.Markdown(
+                        "*Execute a análise para ver recomendações...*"
+                    )
 
                 # Resumo geral
                 compat_summary = gr.Markdown("")
@@ -1531,9 +1758,7 @@ def create_dataset_management_tab():
                     ok_count = sum(1 for r in rows if r[2] == "OK")
                     warn_count = len(rows) - ok_count
 
-                    summary = (
-                        f"**Resultado:** {ok_count}/14 arquiteturas totalmente compativeis"
-                    )
+                    summary = f"**Resultado:** {ok_count}/14 arquiteturas totalmente compativeis"
                     if warn_count:
                         summary += f", {warn_count} com recomendacoes"
 

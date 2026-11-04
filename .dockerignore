@@ -1,6 +1,13 @@
 # ============================================================
-# Docker build context exclusions (XFakeSong)
+# Docker build context exclusions (SpeechChecker)
 # Reduz tamanho do build context em ~95% e evita layer cache miss
+#
+# Vale para o Dockerfile da raiz e para os dois de inference-api, que não têm
+# `<dockerfile>.dockerignore`. Um arquivo desses SUBSTITUI este, não soma: foi
+# assim que `.env`, `data/app.db` e áudios de usuário entravam na imagem CPU.
+#
+# Sem `**/`, um padrão só casa na raiz do contexto. Os segredos ficam no fim
+# porque vence o último padrão que casa, inclusive sobre os `!` abaixo.
 # ============================================================
 
 # --- VCS ---
@@ -11,8 +18,8 @@
 .gitlab-ci.yml
 
 # --- Python ---
-__pycache__/
-*.py[cod]
+**/__pycache__/
+**/*.py[cod]
 *$py.class
 *.so
 .Python
@@ -55,18 +62,28 @@ Thumbs.db
 
 # --- Logs / Temp ---
 data/logs/
-*.log
+**/*.log
 tmp/
 temp/
 data/results/
 
 # --- Data e modelos pesados (volumes montados em runtime) ---
-# cache/ (HF Hub/Torch/TF) usa symlinks internos que o build context do
+# data/cache/ (HF Hub/Torch/TF) usa symlinks internos que o build context do
 # Docker não consegue transferir de forma confiável ("invalid file request") —
-# sempre montado via volume (../../cache/*:/app/cache/*), nunca baked-in.
-cache/
+# persistido em data/cache/ pelo bind da raiz (treino) ou pelo volume data/ -> /app/data (inferência); nao e baked-in.
+data/cache/
 data/
+!data/
+data/*
+!tools/
+!tools/**
+tools/**/__pycache__/
+!benchmarks/
+!benchmarks/**
+benchmarks/**/__pycache__/
 datasets/
+!data/models/
+data/models/*
 data/models/*.keras
 data/models/*.h5
 data/models/*.pkl
@@ -88,12 +105,11 @@ models/
 # --- Dev / docs (não necessários em produção) ---
 docs/
 mkdocs.yml
-site/
+infrastructure/site/
 notebooks/
 *.ipynb
 .ipynb_checkpoints/
 tests/
-benchmarks/
 
 # --- Claude / IA assist (memory local) ---
 .claude/
@@ -105,11 +121,11 @@ docker-compose*.yml
 .dockerignore
 
 # --- Env / secrets ---
-.env
-.env.local
-.env.*.local
-*.pem
-*.key
+**/.env
+**/.env.*
+!.env.example
+**/*.pem
+**/*.key
 
 # --- OS ---
 .AppleDouble
@@ -117,8 +133,8 @@ docker-compose*.yml
 Icon?
 
 # --- Misc ---
-*.bak
-*.tmp
+**/*.bak
+**/*.tmp
 *.zip
 *.tar.gz
 *.7z

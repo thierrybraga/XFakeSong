@@ -144,8 +144,8 @@ def test_history_confusion_figure_has_confusion_matrix_axis():
 
 
 def test_prediction_labels_support_sigmoid_outputs():
-    from app.interfaces.gradio.tabs.training_wizard import (
-        _prediction_labels_and_scores,
+    from app.domain.services.interactive_training import (
+        prediction_labels_and_scores as _prediction_labels_and_scores,
     )
 
     labels, scores = _prediction_labels_and_scores([[0.1], [0.7], [0.49], [0.5]])
@@ -154,8 +154,8 @@ def test_prediction_labels_support_sigmoid_outputs():
 
 
 def test_prediction_labels_support_binary_logits():
-    from app.interfaces.gradio.tabs.training_wizard import (
-        _prediction_labels_and_scores,
+    from app.domain.services.interactive_training import (
+        prediction_labels_and_scores as _prediction_labels_and_scores,
     )
 
     labels, scores = _prediction_labels_and_scores([[-2.0], [2.0]])
@@ -192,7 +192,7 @@ def test_training_eval_figures_single_class_do_not_crash():
     )
     assert figs["roc"].axes[0].get_title() == "Curva ROC"
     assert figs["det"].axes[0].get_title() == "Curva DET / EER"
-    assert figs["threshold"].axes[0].get_title() == "Otimização de Threshold"
+    assert figs["threshold"].axes[0].get_title() == "Otimização do limiar de decisão"
     for fig in figs.values():
         assert fig.axes
         _close(fig)

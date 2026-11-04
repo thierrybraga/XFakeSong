@@ -2,7 +2,7 @@
   --md-primary-fg-color: #2563eb;
   --md-primary-fg-color--light: #3b82f6;
   --md-primary-fg-color--dark: #1d4ed8;
-  --md-accent-fg-color: #0891b2;
+  --md-accent-fg-color: #0e7490;
   --xf-doc-border: rgba(148, 163, 184, 0.32);
   --xf-doc-card: rgba(255, 255, 255, 0.72);
 }
@@ -62,6 +62,8 @@
 .md-typeset .md-typeset__table {
   display: block;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 
 .md-typeset table:not([class]) th {
@@ -77,7 +79,7 @@
 
 .md-typeset pre > code {
   border-radius: 8px;
-  font-family: "Fira Code", "Roboto Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 0.82rem;
 }
 
@@ -107,6 +109,14 @@
   color: var(--md-accent-fg-color);
 }
 
+.md-typeset a:focus-visible,
+.md-nav__link:focus-visible,
+.md-header__button:focus-visible,
+.md-search__input:focus-visible {
+  outline: 2px solid var(--md-accent-fg-color);
+  outline-offset: 3px;
+}
+
 .md-footer {
   border-top: 1px solid var(--md-default-fg-color--lightest);
 }
@@ -119,7 +129,11 @@
 
 @media screen and (max-width: 44.9375em) {
   .md-typeset {
-    font-size: 0.78rem;
+    font-size: 0.92rem;
+  }
+
+  .md-typeset table:not([class]) {
+    min-width: 480px;
   }
 
   .md-typeset h1 {

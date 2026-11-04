@@ -41,15 +41,17 @@ __all__ = [
 _SSL_BACKBONE_STATUS: dict = {}
 
 
-def record_ssl_backbone_status(model_name: str, *, pretrained: bool,
-                               checkpoint: Optional[str] = None,
-                               detail: Optional[dict] = None) -> None:
+def record_ssl_backbone_status(
+    model_name: str,
+    *,
+    pretrained: bool,
+    checkpoint: Optional[str] = None,
+    detail: Optional[dict] = None,
+) -> None:
     """Registra qual backbone o modelo `model_name` acabou de montar."""
     status = {"pretrained": bool(pretrained), "checkpoint": checkpoint}
     if detail:
-        status.update(
-            {k: v for k, v in detail.items() if k not in ("checkpoint",)}
-        )
+        status.update({k: v for k, v in detail.items() if k not in ("checkpoint",)})
     _SSL_BACKBONE_STATUS[str(model_name)] = status
 
 
@@ -64,8 +66,9 @@ def reset_ssl_backbone_status() -> None:
     _SSL_BACKBONE_STATUS.clear()
 
 
-def build_pretrained_ssl_features(inputs, family: str, checkpoint: str = None,
-                                  name: str = "ssl"):
+def build_pretrained_ssl_features(
+    inputs, family: str, checkpoint: str = None, name: str = "ssl"
+):
     """Backbone SSL pré-treinado e CONGELADO → sequência de características.
 
     Aplica a receita padrão de downstream com SSL (SUPERB): backbone congelado
@@ -93,7 +96,9 @@ def build_pretrained_ssl_features(inputs, family: str, checkpoint: str = None,
 
     checkpoint = checkpoint or DEFAULT_CHECKPOINTS[family.lower()]
     backbone = PretrainedSSLBackbone(
-        family=family, checkpoint=checkpoint, output_hidden_states=True,
+        family=family,
+        checkpoint=checkpoint,
+        output_hidden_states=True,
         name=f"{name}_backbone",
     )
     hidden = backbone(inputs)
@@ -107,7 +112,10 @@ def build_pretrained_ssl_features(inputs, family: str, checkpoint: str = None,
     logger.info(
         "SSL %s: backbone pré-treinado CONGELADO carregado de '%s' "
         "(%d camadas, hidden=%d) + soma ponderada aprendível.",
-        family, checkpoint, backbone.num_layers, backbone.hidden_size,
+        family,
+        checkpoint,
+        backbone.num_layers,
+        backbone.hidden_size,
     )
     return features, info
 
@@ -131,11 +139,14 @@ def strict_ssl_guard(model_name: str) -> None:
             "benchmark. Remova o modelo do preset, use o caminho PyTorch "
             "(*_original.pt) ou desligue XFAKE_STRICT_SSL para permitir o fallback."
         )
-    logger.warning(msg + " (fallback permitido; ligue XFAKE_STRICT_SSL p/ exigir SSL real)")
+    logger.warning(
+        msg + " (fallback permitido; ligue XFAKE_STRICT_SSL p/ exigir SSL real)"
+    )
 
 
-def build_ssl_aasist_backend(x, dropout_rate: float = 0.3, proj_dim: int = 128,
-                             name: str = "ssl"):
+def build_ssl_aasist_backend(
+    x, dropout_rate: float = 0.3, proj_dim: int = 128, name: str = "ssl"
+):
     """Back-end de grafo estilo AASIST sobre features SSL.
 
     Receita SOTA atual (wav2vec2/WavLM → grafo AASIST): em vez do back-end raso
@@ -190,16 +201,25 @@ def build_ssl_aasist_backend(x, dropout_rate: float = 0.3, proj_dim: int = 128,
     # seja, "estilo AASIST" só no nome, o mesmo desvio já corrigido em
     # aasist.py/rawgat_st.py.
     spectral = AasistGraphAttention(
-        out_features=32, temperature=2.0, dropout_rate=dropout_rate,
-        name=f"{name}_gat_spec")(spectral)
+        out_features=32,
+        temperature=2.0,
+        dropout_rate=dropout_rate,
+        name=f"{name}_gat_spec",
+    )(spectral)
     temporal = AasistGraphAttention(
-        out_features=32, temperature=2.0, dropout_rate=dropout_rate,
-        name=f"{name}_gat_temp")(temporal)
+        out_features=32,
+        temperature=2.0,
+        dropout_rate=dropout_rate,
+        name=f"{name}_gat_temp",
+    )(temporal)
 
     # HS-GAL: atenção heterogênea cruzada (contribuição do AASIST)
     spectral, temporal, _master = AasistHtrgGraphAttention(
-        out_features=32, temperature=100.0, dropout_rate=dropout_rate,
-        name=f"{name}_hsgal")([spectral, temporal])
+        out_features=32,
+        temperature=100.0,
+        dropout_rate=dropout_rate,
+        name=f"{name}_hsgal",
+    )([spectral, temporal])
 
     spectral = AasistGraphPool(ratio=0.5, name=f"{name}_pool_spec")(spectral)
     temporal = AasistGraphPool(ratio=0.5, name=f"{name}_pool_temp")(temporal)
@@ -280,7 +300,8 @@ def set_ssl_backbone_trainability(
         else:
             logger.warning(
                 "Camadas do encoder SSL não localizadas; aplicando trainable=%s "
-                "global.", (not freeze_weights)
+                "global.",
+                (not freeze_weights),
             )
             try:
                 backbone.trainable = bool(not freeze_weights)

@@ -6,8 +6,8 @@ import numpy as np
 
 
 def extract_spectral_features(
-        y: np.ndarray, sr: int, frame_length: int,
-        hop_length: int) -> Dict[str, np.ndarray]:
+    y: np.ndarray, sr: int, frame_length: int, hop_length: int
+) -> Dict[str, np.ndarray]:
     """Extrai características espectrais básicas."""
     try:
         # Centroide espectral
@@ -31,16 +31,16 @@ def extract_spectral_features(
         )
 
         return {
-            'spectral_centroids': spectral_centroids,
-            'spectral_rolloff': spectral_rolloff,
-            'zero_crossing_rate': zcr,
-            'chroma': chroma
+            "spectral_centroids": spectral_centroids,
+            "spectral_rolloff": spectral_rolloff,
+            "zero_crossing_rate": zcr,
+            "chroma": chroma,
         }
 
     except Exception as e:
         warnings.warn(f"Erro na extração espectral: {str(e)}")
         return {
-            'spectral_centroids': np.zeros((1, 1)),
-            'spectral_rolloff': np.zeros((1, 1)),
-            'zero_crossing_rate': np.zeros((1, 1))
+            "spectral_centroids": np.zeros((1, 1)),
+            "spectral_rolloff": np.zeros((1, 1)),
+            "zero_crossing_rate": np.zeros((1, 1)),
         }

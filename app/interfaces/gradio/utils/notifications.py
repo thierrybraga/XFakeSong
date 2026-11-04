@@ -37,6 +37,7 @@ from dataclasses import dataclass, field
 from html import escape
 from typing import List, Literal, Optional
 
+from app.core.config.ports import LOCAL_PORT
 from app.core.feedback import (
     clear_feedback_events,
     get_feedback_events,
@@ -126,73 +127,15 @@ class CommonErrors:
     """
 
     @staticmethod
-    def model_not_found(model_name: str = "") -> ActionableError:
-        return ActionableError(
-            title="Modelo não encontrado",
-            message=(
-                f"O modelo '{model_name}' não está carregado."
-                if model_name
-                else "Nenhum modelo treinado disponível."
-            ),
-            hint=(
-                "Treine um modelo na aba 🎓 Treinar (Wizard) ou importe um "
-                "modelo existente em ⚙ Admin → Datasets."
-            ),
-            error_code="MODEL_NOT_FOUND",
-        )
-
-    @staticmethod
-    def no_audio_provided() -> ActionableError:
-        return ActionableError(
-            title="Nenhum áudio fornecido",
-            message="Não foi possível analisar — nenhum arquivo enviado.",
-            hint="Arraste e solte um arquivo .wav/.mp3/.flac no campo de upload.",
-            error_code="NO_AUDIO",
-        )
-
-    @staticmethod
-    def unsupported_format(ext: str, supported: List[str]) -> ActionableError:
-        return ActionableError(
-            title="Formato não suportado",
-            message=f"O arquivo '{ext}' não é aceito.",
-            hint=f"Use um dos formatos suportados: {', '.join(supported)}",
-            error_code="UNSUPPORTED_FORMAT",
-        )
-
-    @staticmethod
-    def dataset_invalid(path: str, reason: str) -> ActionableError:
-        return ActionableError(
-            title="Dataset inválido",
-            message=f"`{path}`: {reason}",
-            hint=(
-                "Verifique se a pasta contém subdiretórios para cada classe "
-                "(ex: real/, fake/) e arquivos .wav dentro de cada um."
-            ),
-            error_code="DATASET_INVALID",
-        )
-
-    @staticmethod
-    def port_in_use(port: int = 7860) -> ActionableError:
+    def port_in_use(port: int = LOCAL_PORT) -> ActionableError:
         return ActionableError(
             title=f"Porta {port} já em uso",
-            message="Outra instância do XFakeSong (ou outro app) está usando essa porta.",
+            message="Outra instância do SpeechChecker (ou outro app) está usando essa porta.",
             hint=(
                 f"Encerre o processo (Windows: `netstat -ano | findstr :{port}` "
                 f"+ `taskkill /F /PID <pid>`) ou rode em outra porta."
             ),
             error_code="PORT_IN_USE",
-        )
-
-    @staticmethod
-    def db_unavailable(detail: str = "") -> ActionableError:
-        return ActionableError(
-            title="Banco de dados indisponível",
-            message=detail or "Não foi possível conectar ao SQLite.",
-            hint=(
-                "Verifique se `data/` é writable e se o disco não está cheio. "
-                "Em Docker, garanta que o volume `./data:/app/data` está mapeado."
-            ),
-            error_code="DB_UNAVAILABLE",
         )
 
     @staticmethod
@@ -363,6 +306,41 @@ def get_history(limit: int = 10) -> List[Notification]:
     return get_feedback_events(limit=limit)
 
 
+# Janela de eventos lida para filtrar: o hub guarda todo log do processo, então as N
+# últimas entradas podem ser só ruído.
+_JANELA_DE_EVENTOS = 500
+_NIVEIS_DE_ATENCAO = {"warning", "error", "critical"}
+_SIMBOLOS = {"success": "✓", "info": "ℹ", "warning": "⚠", "error": "✕", "critical": "✕"}
+_lido_ate = 0.0
+
+
+def _para_o_usuario(evento: Notification) -> bool:
+    """O painel é para quem usa a aplicação; o espelho do terminal fica no log.
+
+    O hub recebe todo log do processo, e `GET /favicon.ico -> 404` e avisos de boot do
+    TensorFlow apareciam como "notificações pendentes". Do log só passam os erros, e o
+    registro de requisição nunca passa.
+    """
+    if evento.category != "log":
+        return True
+    return evento.title != "request_completed" and evento.level in {"error", "critical"}
+
+
+def get_user_history(limit: int = 10) -> List[Notification]:
+    """Últimas N notificações destinadas à pessoa usuária (mais recentes primeiro)."""
+    eventos = get_feedback_events(limit=_JANELA_DE_EVENTOS)
+    return [evento for evento in eventos if _para_o_usuario(evento)][:limit]
+
+
+def attention_count() -> int:
+    """Quantos avisos e erros para a pessoa usuária chegaram desde a última leitura."""
+    return sum(
+        1
+        for evento in get_user_history(limit=_JANELA_DE_EVENTOS)
+        if evento.level in _NIVEIS_DE_ATENCAO and evento.timestamp > _lido_ate
+    )
+
+
 def clear_history() -> int:
     """Limpa o histórico e retorna quantas notificações foram removidas."""
     return clear_feedback_events()
@@ -375,6 +353,8 @@ def get_unread_count() -> int:
 
 def mark_all_read() -> None:
     """Marca todas como lidas (zera o counter, mantém histórico)."""
+    global _lido_ate
+    _lido_ate = time.time()
     mark_feedback_read()
 
 
@@ -383,12 +363,12 @@ def mark_all_read() -> None:
 
 def render_notification_center_html(limit: int = 10) -> str:
     """HTML do painel de notificações (para gr.HTML no Dashboard / dropdown)."""
-    notes = get_history(limit=limit)
+    notes = get_user_history(limit=limit)
     if not notes:
         return (
             '<div class="notif-empty">'
-            '<div class="notif-empty-icon">📭</div>'
-            "<div>Nenhuma notificação ainda</div>"
+            '<div class="notif-empty-icon" aria-hidden="true">📭</div>'
+            "<div>Nenhuma notificação por enquanto</div>"
             "</div>"
         )
 
@@ -406,7 +386,7 @@ def render_notification_center_html(limit: int = 10) -> str:
         source_html = f'<span class="notif-code">{source}</span>' if source else ""
         items_html += f"""
         <div class="notif-item notif-{n.level}">
-            <div class="notif-icon">{n.icon}</div>
+            <div class="notif-icon" aria-hidden="true">{_SIMBOLOS.get(n.level, "ℹ")}</div>
             <div class="notif-body">
                 <div class="notif-header">
                     <span class="notif-title">{title}</span>
@@ -436,6 +416,8 @@ __all__ = [
     "notify_critical",
     "notify_from_actionable",
     "get_history",
+    "get_user_history",
+    "attention_count",
     "clear_history",
     "get_unread_count",
     "mark_all_read",

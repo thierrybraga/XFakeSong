@@ -3,6 +3,7 @@
 Verifica que get_available_devices() sempre lista CPU e que
 DetectionService aceita chamadas a set_device() sem falhar.
 """
+
 import pytest
 
 from app.domain.services.detection.utils import get_available_devices

@@ -40,5 +40,5 @@ __all__ = [
     "PredictiveFeatureExtractor",
     "SpeechFeatureExtractor",
     "TransformFeatureExtractor",
-    "TimeFrequencyFeatureExtractor"
+    "TimeFrequencyFeatureExtractor",
 ]

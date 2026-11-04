@@ -13,6 +13,7 @@ Uso standalone:
 Uso via pytest:
     pytest -m smoke tests/smoke/test_wizard_pipeline.py
 """
+
 from __future__ import annotations
 
 import argparse
@@ -27,12 +28,17 @@ os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 import numpy as np  # noqa: E402
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(os.path.dirname(THIS_DIR))  # tests/smoke/ → tests/ → raiz
+PROJECT_ROOT = os.path.dirname(
+    os.path.dirname(THIS_DIR)
+)  # tests/smoke/ → tests/ → raiz
 sys.path.insert(0, PROJECT_ROOT)
 
 # Fake packages para evitar app/__init__ chain (sqlalchemy)
 for _fake_pkg in [
-    "app", "app.domain", "app.domain.models", "app.domain.models.architectures",
+    "app",
+    "app.domain",
+    "app.domain.models",
+    "app.domain.models.architectures",
 ]:
     if _fake_pkg not in sys.modules:
         _m = types.ModuleType(_fake_pkg)
@@ -46,9 +52,18 @@ HOP = 128
 N_MELS = 80
 
 ALL_MODELS = [
-    "AASIST", "RawGAT-ST", "RawNet2", "WavLM", "HuBERT",
-    "Sonic Sleuth", "EfficientNet-LSTM", "MultiscaleCNN",
-    "SpectrogramTransformer", "Conformer", "Hybrid CNN-Transformer", "Ensemble",
+    "AASIST",
+    "RawGAT-ST",
+    "RawNet2",
+    "WavLM",
+    "HuBERT",
+    "Sonic Sleuth",
+    "EfficientNet-LSTM",
+    "MultiscaleCNN",
+    "SpectrogramTransformer",
+    "Conformer",
+    "Hybrid CNN-Transformer",
+    "Ensemble",
 ]
 
 
@@ -74,8 +89,9 @@ def _train_one_epoch(arch: str, dataset_path: str) -> tuple[bool, str]:
     Helper (NÃO é um teste pytest — prefixo ``_`` evita coleta; o teste real é
     ``test_smoke_wizard_pipeline`` abaixo).
     """
-    import tensorflow as tf
     import importlib
+
+    import tensorflow as tf
 
     factory_mod = importlib.import_module("app.domain.models.architectures.factory")
 
@@ -84,14 +100,22 @@ def _train_one_epoch(arch: str, dataset_path: str) -> tuple[bool, str]:
         input_type = spec.input_requirements.get("input_type", "spectrogram")
 
         train_ds = tf.keras.utils.audio_dataset_from_directory(
-            directory=dataset_path, batch_size=2,
-            validation_split=0.5, subset="training", seed=42,
-            output_sequence_length=SAMPLE_RATE * DURATION, label_mode="int",
+            directory=dataset_path,
+            batch_size=2,
+            validation_split=0.5,
+            subset="training",
+            seed=42,
+            output_sequence_length=SAMPLE_RATE * DURATION,
+            label_mode="int",
         )
 
         class_names = list(train_ds.class_names)
-        binary_map = {i: 0 if "real" in n.lower() else 1 for i, n in enumerate(class_names)}
-        _table = tf.constant([binary_map[i] for i in range(len(class_names))], dtype=tf.int32)
+        binary_map = {
+            i: 0 if "real" in n.lower() else 1 for i, n in enumerate(class_names)
+        }
+        _table = tf.constant(
+            [binary_map[i] for i in range(len(class_names))], dtype=tf.int32
+        )
 
         # O CONTRATO da arquitetura manda nas bandas mel e no nº de quadros:
         # o AST exige 128 bandas e 300 quadros (hop de 10 ms), enquanto as
@@ -101,62 +125,87 @@ def _train_one_epoch(arch: str, dataset_path: str) -> tuple[bool, str]:
         target_frames = int(spec.input_requirements.get("min_sequence_length") or 0)
         hop = (
             max(1, int(np.ceil((SAMPLE_RATE * DURATION) / target_frames)))
-            if target_frames else HOP
+            if target_frames
+            else HOP
         )
 
         n_freq = N_FFT // 2 + 1
         mel_w = tf.signal.linear_to_mel_weight_matrix(
-            num_mel_bins=n_mels, num_spectrogram_bins=n_freq,
-            sample_rate=SAMPLE_RATE, lower_edge_hertz=0.0, upper_edge_hertz=SAMPLE_RATE / 2,
+            num_mel_bins=n_mels,
+            num_spectrogram_bins=n_freq,
+            sample_rate=SAMPLE_RATE,
+            lower_edge_hertz=0.0,
+            upper_edge_hertz=SAMPLE_RATE / 2,
         )
 
         def _to_log_mel(audio):
             if audio.shape.rank == 3:
                 audio = tf.squeeze(audio, axis=-1)
-            stft = tf.signal.stft(audio, frame_length=N_FFT, frame_step=hop, fft_length=N_FFT,
-                                  window_fn=tf.signal.hann_window, pad_end=True)
-            mel = tf.math.log(
-                tf.abs(tf.tensordot(tf.abs(stft), mel_w, axes=1)) + 1e-6
+            stft = tf.signal.stft(
+                audio,
+                frame_length=N_FFT,
+                frame_step=hop,
+                fft_length=N_FFT,
+                window_fn=tf.signal.hann_window,
+                pad_end=True,
             )
+            mel = tf.math.log(tf.abs(tf.tensordot(tf.abs(stft), mel_w, axes=1)) + 1e-6)
             if target_frames:
                 mel = mel[:, :target_frames, :]
             return tf.expand_dims(mel, axis=-1)
 
         def _prep_raw(x, y):
-            return (tf.expand_dims(x, -1) if x.shape.rank == 2 else x), tf.gather(_table, y)
+            return (tf.expand_dims(x, -1) if x.shape.rank == 2 else x), tf.gather(
+                _table, y
+            )
 
         def _prep_spec(x, y):
             return _to_log_mel(x), tf.gather(_table, y)
 
-        train_ds = train_ds.map(_prep_raw if input_type == "raw_audio" else _prep_spec,
-                                num_parallel_calls=tf.data.AUTOTUNE)
+        train_ds = train_ds.map(
+            _prep_raw if input_type == "raw_audio" else _prep_spec,
+            num_parallel_calls=tf.data.AUTOTUNE,
+        )
         train_ds = train_ds.cache().prefetch(tf.data.AUTOTUNE)
 
         for sample_x, _ in train_ds.take(1):
             input_shape = tuple(sample_x.shape[1:])
 
-        model = factory_mod.create_model_by_name(arch, input_shape=input_shape, num_classes=2)
+        model = factory_mod.create_model_by_name(
+            arch, input_shape=input_shape, num_classes=2
+        )
         out_units = model.output_shape[-1]
 
         if out_units == 1:
             chosen_loss, chosen_metric = "binary_crossentropy", "binary_accuracy"
-            train_ds = train_ds.map(lambda x, y: (x, tf.cast(y, tf.float32)),
-                                    num_parallel_calls=tf.data.AUTOTUNE)
+            train_ds = train_ds.map(
+                lambda x, y: (x, tf.cast(y, tf.float32)),
+                num_parallel_calls=tf.data.AUTOTUNE,
+            )
         else:
             chosen_loss, chosen_metric = "sparse_categorical_crossentropy", "accuracy"
 
-        model.compile(optimizer=tf.keras.optimizers.Adam(1e-3), loss=chosen_loss, metrics=[chosen_metric])
+        model.compile(
+            optimizer=tf.keras.optimizers.Adam(1e-3),
+            loss=chosen_loss,
+            metrics=[chosen_metric],
+        )
         hist = model.fit(train_ds, epochs=1, verbose=0)
         loss = hist.history["loss"][-1]
         acc = hist.history.get(chosen_metric, [0])[-1]
-        return True, f"OK input_type={input_type} shape={input_shape} out={out_units} loss={loss:.3f} acc={acc:.3f}"
+        return (
+            True,
+            f"OK input_type={input_type} shape={input_shape} out={out_units} loss={loss:.3f} acc={acc:.3f}",
+        )
 
     except Exception as e:
         return False, f"FAIL: {type(e).__name__}: {str(e)[:200]}"
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--models", default="", help="CSV de modelos (vazio = todos)")
     args = parser.parse_args(argv)
 

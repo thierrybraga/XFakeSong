@@ -46,9 +46,15 @@ class ComplexityFeatureExtractor(IFeatureExtractor):
     para caracterização de sinais de áudio.
     """
 
-    def __init__(self, sr: int = 22050, frame_length: int = 2048,
-                 hop_length: int = 512, max_signal_length: int = 44100,
-                 enable_caching: bool = True, **kwargs):
+    def __init__(
+        self,
+        sr: int = 22050,
+        frame_length: int = 2048,
+        hop_length: int = 512,
+        max_signal_length: int = 44100,
+        enable_caching: bool = True,
+        **kwargs,
+    ):
         """Inicializa o extrator de características de complexidade.
 
         Args:
@@ -79,8 +85,7 @@ class ComplexityFeatureExtractor(IFeatureExtractor):
         # Cache para cálculos intermediários
         self._cache = {} if enable_caching else None
 
-    def extract(
-            self, audio_data: AudioData) -> ProcessingResult[AudioFeatures]:
+    def extract(self, audio_data: AudioData) -> ProcessingResult[AudioFeatures]:
         """Extrai características de complexidade do áudio.
 
         Args:
@@ -117,24 +122,25 @@ class ComplexityFeatureExtractor(IFeatureExtractor):
                 features=features_arrays,
                 feature_type=FeatureType.COMPLEXITY,
                 extraction_params=self.get_extraction_params(),
-                audio_metadata={'sample_rate': audio_data.sample_rate}
+                audio_metadata={"sample_rate": audio_data.sample_rate},
             )
 
             return ProcessingResult.success(data=audio_features)
 
         except Exception as e:
-            return ProcessingResult.error(
-                f"Erro na extração de complexidade: {str(e)}")
+            return ProcessingResult.error(f"Erro na extração de complexidade: {str(e)}")
 
     def extract_features(
-            self, audio_data: AudioData) -> ProcessingResult[AudioFeatures]:
+        self, audio_data: AudioData
+    ) -> ProcessingResult[AudioFeatures]:
         """Implementação da interface IFeatureExtractor."""
         return self.extract(audio_data)
 
     def _compute_features_internal(
-            self, y: np.ndarray, features: Optional[List[str]] = None) -> Dict[str, Any]:
+        self, y: np.ndarray, features: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
         """Extrai características de complexidade do sinal (método interno)."""
-        if hasattr(y, 'numpy'):
+        if hasattr(y, "numpy"):
             y = y.numpy()
         if y.ndim > 1:
             y = y.flatten()
@@ -155,43 +161,52 @@ class ComplexityFeatureExtractor(IFeatureExtractor):
         for feature_name in features:
             start_time = time.time()
             try:
-                if feature_name == 'approximate_entropy':
-                    extracted_features[feature_name] = compute_approximate_entropy_optimized(
-                        y, cache=self._cache)
-                elif feature_name == 'sample_entropy':
+                if feature_name == "approximate_entropy":
+                    extracted_features[feature_name] = (
+                        compute_approximate_entropy_optimized(y, cache=self._cache)
+                    )
+                elif feature_name == "sample_entropy":
                     extracted_features[feature_name] = compute_sample_entropy_optimized(
-                        y, cache=self._cache)
-                elif feature_name == 'permutation_entropy':
-                    extracted_features[feature_name] = compute_permutation_entropy_optimized(
-                        y, cache=self._cache)
-                elif feature_name == 'multiscale_entropy':
-                    extracted_features[feature_name] = compute_multiscale_entropy_optimized(
-                        y, cache=self._cache)
-                elif feature_name == 'correlation_dimension':
-                    extracted_features[feature_name] = compute_correlation_dimension_optimized(
-                        y, cache=self._cache)
-                elif feature_name == 'lyapunov_exponent':
-                    extracted_features[feature_name] = compute_lyapunov_exponent_optimized(
-                        y, cache=self._cache)
-                elif feature_name == 'fractal_dimension':
-                    extracted_features[feature_name] = compute_fractal_dimension_optimized(
-                        y, cache=self._cache)
-                elif feature_name == 'hurst_exponent':
+                        y, cache=self._cache
+                    )
+                elif feature_name == "permutation_entropy":
+                    extracted_features[feature_name] = (
+                        compute_permutation_entropy_optimized(y, cache=self._cache)
+                    )
+                elif feature_name == "multiscale_entropy":
+                    extracted_features[feature_name] = (
+                        compute_multiscale_entropy_optimized(y, cache=self._cache)
+                    )
+                elif feature_name == "correlation_dimension":
+                    extracted_features[feature_name] = (
+                        compute_correlation_dimension_optimized(y, cache=self._cache)
+                    )
+                elif feature_name == "lyapunov_exponent":
+                    extracted_features[feature_name] = (
+                        compute_lyapunov_exponent_optimized(y, cache=self._cache)
+                    )
+                elif feature_name == "fractal_dimension":
+                    extracted_features[feature_name] = (
+                        compute_fractal_dimension_optimized(y, cache=self._cache)
+                    )
+                elif feature_name == "hurst_exponent":
                     extracted_features[feature_name] = compute_hurst_exponent_optimized(
-                        y, cache=self._cache)
-                elif feature_name == 'higuchi_fractal':
-                    extracted_features[feature_name] = compute_higuchi_fractal_optimized(
-                        y, cache=self._cache)
-                elif feature_name == 'rqa_features':
+                        y, cache=self._cache
+                    )
+                elif feature_name == "higuchi_fractal":
+                    extracted_features[feature_name] = (
+                        compute_higuchi_fractal_optimized(y, cache=self._cache)
+                    )
+                elif feature_name == "rqa_features":
                     extracted_features.update(
-                        compute_rqa_features_optimized(
-                            y, cache=self._cache))
-                elif feature_name == 'dfa_exponent':
+                        compute_rqa_features_optimized(y, cache=self._cache)
+                    )
+                elif feature_name == "dfa_exponent":
                     extracted_features[feature_name] = compute_dfa_exponent_optimized(
-                        y, cache=self._cache)
+                        y, cache=self._cache
+                    )
                 else:
-                    warnings.warn(
-                        f"Característica desconhecida: {feature_name}")
+                    warnings.warn(f"Característica desconhecida: {feature_name}")
 
                 # Verificar timeout (máximo 5 segundos por característica)
                 if time.time() - start_time > 5.0:
@@ -212,10 +227,10 @@ class ComplexityFeatureExtractor(IFeatureExtractor):
 
     def get_extraction_params(self) -> Dict[str, Any]:
         return {
-            'sr': self.sr,
-            'frame_length': self.frame_length,
-            'hop_length': self.hop_length,
-            'max_signal_length': self.max_signal_length
+            "sr": self.sr,
+            "frame_length": self.frame_length,
+            "hop_length": self.hop_length,
+            "max_signal_length": self.max_signal_length,
         }
 
     def _preprocess_signal(self, y: np.ndarray) -> np.ndarray:
@@ -224,7 +239,7 @@ class ComplexityFeatureExtractor(IFeatureExtractor):
         if len(y) > self.max_signal_length:
             # Usar decimação inteligente para preservar características
             step = len(y) // self.max_signal_length
-            y = y[::step][:self.max_signal_length]
+            y = y[::step][: self.max_signal_length]
 
         # Normalizar sinal
         y_max = np.max(np.abs(y))
@@ -236,17 +251,17 @@ class ComplexityFeatureExtractor(IFeatureExtractor):
     def _get_default_features(self) -> List[str]:
         """Retorna lista de características padrão."""
         return [
-            'approximate_entropy',
-            'sample_entropy',
-            'permutation_entropy',
-            'multiscale_entropy',
-            'correlation_dimension',
-            'lyapunov_exponent',
-            'fractal_dimension',
-            'hurst_exponent',
-            'higuchi_fractal',
-            'rqa_features',
-            'dfa_exponent'
+            "approximate_entropy",
+            "sample_entropy",
+            "permutation_entropy",
+            "multiscale_entropy",
+            "correlation_dimension",
+            "lyapunov_exponent",
+            "fractal_dimension",
+            "hurst_exponent",
+            "higuchi_fractal",
+            "rqa_features",
+            "dfa_exponent",
         ]
 
 
@@ -279,8 +294,7 @@ def test_complexity_features():
     for name, feature in features.items():
         if isinstance(feature, np.ndarray):
             if feature.ndim == 1:
-                print(
-                    f"  {name}: shape {feature.shape}, mean {np.mean(feature):.4f}")
+                print(f"  {name}: shape {feature.shape}, mean {np.mean(feature):.4f}")
             else:
                 print(f"  {name}: shape {feature.shape}")
         elif isinstance(feature, (int, float)) and not np.isnan(feature):

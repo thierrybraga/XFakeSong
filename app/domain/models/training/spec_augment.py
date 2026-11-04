@@ -40,19 +40,17 @@ def _mask_axis(y, axis: int, max_pct: float):
     width = tf.cast(tf.random.uniform([b], 0.0, max_pct) * length_f, tf.int32)
     # Início válido por exemplo: U(0, L - width)
     max_start = tf.maximum(length - width, 1)
-    start = tf.cast(
-        tf.random.uniform([b]) * tf.cast(max_start, tf.float32), tf.int32
-    )
+    start = tf.cast(tf.random.uniform([b]) * tf.cast(max_start, tf.float32), tf.int32)
 
     idx = tf.range(length)[tf.newaxis, :]  # (1, L)
-    lo = start[:, tf.newaxis]              # (B, 1)
-    hi = (start + width)[:, tf.newaxis]    # (B, 1)
+    lo = start[:, tf.newaxis]  # (B, 1)
+    hi = (start + width)[:, tf.newaxis]  # (B, 1)
     keep = tf.logical_or(idx < lo, idx >= hi)  # (B, L) — True = mantém
     keep = tf.cast(keep, y.dtype)
 
-    if axis == 1:                 # tempo → (B, T, 1)
+    if axis == 1:  # tempo → (B, T, 1)
         keep = keep[:, :, tf.newaxis]
-    else:                         # frequência → (B, 1, F)
+    else:  # frequência → (B, 1, F)
         keep = keep[:, tf.newaxis, :]
     return y * keep
 

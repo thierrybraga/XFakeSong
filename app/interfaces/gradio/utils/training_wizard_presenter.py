@@ -153,12 +153,14 @@ def step_visibility(current: int):
 def stepper_html(current: int) -> str:
     """Indicador visual de progresso para os passos 1-4."""
     steps = [
-        ("1", "Dataset"),
+        ("1", "Dados"),
         ("2", "Modelo"),
-        ("3", "Hiperparâmetros"),
+        ("3", "Ajustes"),
         ("4", "Treinar"),
     ]
-    html = '<div class="wizard-stepper">'
+    html = (
+        f'<div class="wizard-stepper" role="group" aria-label="Etapa {current} de 4">'
+    )
     for index, (number, label) in enumerate(steps, start=1):
         if index < current:
             state = "done"
@@ -170,7 +172,7 @@ def stepper_html(current: int) -> str:
             state = "pending"
             icon = number
         html += f"""
-        <div class="step step-{state}">
+        <div class="step step-{state}"{' aria-current="step"' if index == current else ''}>
             <div class="step-circle">{icon}</div>
             <div class="step-label">{label}</div>
         </div>

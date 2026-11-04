@@ -53,9 +53,9 @@ def test_aba_nao_e_placeholder_de_erro(nome_do_builder):
     """
     builder = getattr(tabs_pkg, nome_do_builder)
     qualificado = getattr(builder, "__qualname__", "")
-    assert "_create_error_tab" not in qualificado, (
-        f"{nome_do_builder} caiu no placeholder de erro — a aba nao importa"
-    )
+    assert (
+        "_create_error_tab" not in qualificado
+    ), f"{nome_do_builder} caiu no placeholder de erro — a aba nao importa"
 
 
 def test_interface_completa_monta_sem_modelos():
@@ -74,18 +74,25 @@ def test_interface_completa_monta_sem_modelos():
     assert "(erro)" not in config, "alguma aba caiu no placeholder de erro"
 
 
+def test_tema_visual_carregado_do_pacote_gradio():
+    from app.interfaces.gradio.app import _CUSTOM_CSS
+
+    assert ".gradio-container" in _CUSTOM_CSS
+    assert "--xf-bg:" in _CUSTOM_CSS
+
+
 def test_analise_sem_audio_devolve_a_aridade_esperada():
     """`_empty_analysis_result` protege o contrato de saída do handler.
 
-    A aba Detectar tem 6 saídas e vários caminhos de retorno. Se um deles
+    A aba Detectar tem 5 saídas e vários caminhos de retorno. Se um deles
     devolver aridade diferente, o Gradio falha em tempo de execução — foi o
     bug FE.1 que originou a função centralizada.
     """
     from app.interfaces.gradio.tabs.detection import _empty_analysis_result
 
     resultado = _empty_analysis_result("teste")
-    assert len(resultado) == 6, (
-        f"o handler de análise devolve 6 saídas; o caminho vazio devolveu "
+    assert len(resultado) == 5, (
+        f"o handler de análise devolve 5 saídas; o caminho vazio devolveu "
         f"{len(resultado)}"
     )
 
@@ -113,6 +120,7 @@ def test_graficos_nao_entram_no_registro_global_do_pyplot():
     handlers que devolvem a figura para `gr.Plot` nunca chamam.
     """
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
@@ -125,9 +133,9 @@ def test_graficos_nao_entram_no_registro_global_do_pyplot():
     with make_figure(figsize=(3, 2)) as (_figura_ctx, eixo_ctx):
         eixo_ctx.plot([1, 2, 3])
 
-    assert plt.get_fignums() == [], (
-        f"{len(plt.get_fignums())} figuras ficaram no registro do pyplot"
-    )
+    assert (
+        plt.get_fignums() == []
+    ), f"{len(plt.get_fignums())} figuras ficaram no registro do pyplot"
 
 
 def test_new_figure_aceita_a_assinatura_do_plt_subplots():
@@ -141,6 +149,7 @@ def test_new_figure_aceita_a_assinatura_do_plt_subplots():
 
 
 # ──────── protecao de handlers: erro legivel, nao rastro de pilha ────────
+
 
 def _handlers_desprotegidos(caminho) -> list[str]:
     """Funções ligadas a eventos Gradio sem `try` nem `@ui_safe`."""
@@ -157,8 +166,8 @@ def _handlers_desprotegidos(caminho) -> list[str]:
                 ligados.add(palavra.value.id)
         if (
             isinstance(no.func, ast.Attribute)
-            and no.func.attr in {"click", "change", "upload", "submit",
-                                 "select", "tick"}
+            and no.func.attr
+            in {"click", "change", "upload", "submit", "select", "tick"}
             and no.args
             and isinstance(no.args[0], ast.Name)
         ):
@@ -174,9 +183,7 @@ def _handlers_desprotegidos(caminho) -> list[str]:
     return [
         no.name
         for no in ast.walk(arvore)
-        if isinstance(no, ast.FunctionDef)
-        and no.name in ligados
-        and not protegida(no)
+        if isinstance(no, ast.FunctionDef) and no.name in ligados and not protegida(no)
     ]
 
 
@@ -201,9 +208,7 @@ def test_todo_handler_de_evento_trata_excecao():
         if arquivo.name != "__init__.py"
     }
     desprotegidos = {k: v for k, v in achados.items() if v}
-    assert not desprotegidos, (
-        f"handlers sem try/except nem @ui_safe: {desprotegidos}"
-    )
+    assert not desprotegidos, f"handlers sem try/except nem @ui_safe: {desprotegidos}"
 
 
 def test_ui_safe_converte_excecao_em_erro_do_gradio():
@@ -236,6 +241,62 @@ def test_ui_safe_nao_reembrulha_erro_ja_destinado_ao_usuario():
     with pytest.raises(gr.Error) as excecao:
         recusa()
     assert "prefixo generico" not in str(excecao.value)
+
+
+def test_ui_safe_mantem_handler_gerador_como_gerador():
+    """O Gradio só faz streaming se o handler FOR função geradora.
+
+    Com o invólucro comum, `on_scan`, `start_training` e `on_save_model` do
+    assistente de treino devolviam o objeto gerador como valor único e o
+    Gradio recusava a saída ("didn't receive enough output values") — o
+    assistente não passava da etapa 1.
+    """
+    import inspect
+
+    from app.interfaces.gradio.utils.components import ui_safe
+
+    @ui_safe("Falha ao varrer")
+    def em_etapas(n):
+        yield "validando"
+        yield n
+
+    assert inspect.isgeneratorfunction(em_etapas)
+    assert list(em_etapas(3)) == ["validando", 3]
+
+    @ui_safe("Falha ao treinar")
+    def quebra_no_meio():
+        yield "época 1"
+        raise RuntimeError("sem memória")
+
+    passos = quebra_no_meio()
+    assert next(passos) == "época 1"
+    with pytest.raises(gr.Error) as excecao:
+        next(passos)
+    assert "Falha ao treinar: sem memória" in str(excecao.value)
+
+
+def test_aparencia_chega_a_interface_na_montagem():
+    """No Gradio 6, tema e CSS passados ao `Blocks` são ignorados com um aviso.
+
+    A interface sobe e funciona, só que sem aparência: nenhum outro teste percebe.
+    """
+    import inspect
+
+    from fastapi import FastAPI
+
+    from app.interfaces.gradio import app as modulo
+
+    fonte = inspect.getsource(modulo.create_interface)
+    assert "theme=" not in fonte and "css=" not in fonte
+    assert "responsive-grid" in modulo.APPEARANCE["css"]
+
+    with gr.Blocks() as interface:
+        gr.Markdown("teste")
+    gr.mount_gradio_app(FastAPI(), interface, path="/g", **modulo.APPEARANCE)
+
+    assert interface.css == modulo.APPEARANCE["css"]
+    assert interface.head == modulo.APPEARANCE["head"]
+    assert interface.theme is modulo.APPEARANCE["theme"]
 
 
 def test_intervalo_do_status_bar_e_configuravel():

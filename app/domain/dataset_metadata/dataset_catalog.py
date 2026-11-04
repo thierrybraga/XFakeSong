@@ -1,4 +1,4 @@
-"""Catalogo central dos datasets de audio usados pelo XFakeSong.
+"""Catalogo central dos datasets de audio usados pelo SpeechChecker.
 
 Este modulo evita divergencia entre interface Gradio, scripts de download,
 documentacao e manifesto do benchmark. Os valores de duracao/falantes sao
@@ -38,7 +38,7 @@ DATASET_CATALOG: Dict[str, DatasetInfo] = {
     "CETUC-XTTS Pareado": DatasetInfo(
         name="CETUC-XTTS Pareado",
         source_type="both",
-        cli_flag="(scripts/dataset/build_paired_pt_corpus.py)",
+        cli_flag="(tools/dataset/build_paired_pt_corpus.py)",
         prefixes=("ptpair",),
         description=(
             "Corpus pareado do protocolo: bonafide do CETUC e o clone XTTS-v2 "
@@ -362,7 +362,7 @@ PRESET_SELECTIONS: Dict[str, List[str]] = {
 # Tiers de dataset (test / small / medium / large)
 # ---------------------------------------------------------------------------
 # Fonte unica de verdade para o TAMANHO/FINALIDADE de um dataset, consumida pela
-# UI Gradio, por scripts/dataset/build_dataset.py, pelo benchmark e pela documentacao.
+# UI Gradio, por tools/dataset/build_dataset.py, pelo benchmark e pela documentacao.
 # Os limiares de prontidao por familia de modelo ficam em MODEL_READINESS_TIERS
 # (mais abaixo) — Classico >=300, CNN leve >=1000, CNN/RNN >=2000,
 # Transformer >=4000, Ensemble >=6000 por classe.
@@ -436,12 +436,14 @@ DATASET_TIERS: Dict[str, DatasetTier] = {
     "medium": DatasetTier(
         name="medium",
         per_class=7_500,
-        purpose="Benchmark canonico 15k do XFakeSong.",
+        purpose="Dataset genérico de 15k para o fluxo por tiers.",
         description=(
-            "Dataset canonico de benchmark com 15k total (7.500 por classe). "
+            "Dataset auxiliar do fluxo genérico por tiers, com 15k total "
+            "(7.500 por classe); não corresponde ao recorte CETUC–XTTS-v2 "
+            "nem aos splits do artigo. "
             "Quando Common Voice/FLEURS estiverem indisponiveis, completa a "
             "classe real com MLS Portuguese/TTS-Portuguese, registrando a "
-            "composicao efetiva. E o padrao para "
+            "composicao efetiva. O arquivo exportado e "
             "`benchmark_audio_raw_balanced_15k.npz`."
         ),
         sources=(
@@ -453,7 +455,7 @@ DATASET_TIERS: Dict[str, DatasetTier] = {
         split=_STD_SPLIT,
         split_strategy="stratified",
         speaker_aware=False,
-        models_enabled="Todas as 14 arquiteturas no benchmark canonico.",
+        models_enabled="Todas as 14 arquiteturas do fluxo genérico por tiers.",
     ),
     "large": DatasetTier(
         name="large",
@@ -489,11 +491,6 @@ def get_tier(name: str) -> Optional[DatasetTier]:
 
 def tier_choices() -> List[str]:
     return list(DATASET_TIERS.keys())
-
-
-def tier_sources(name: str) -> List[str]:
-    tier = get_tier(name)
-    return list(tier.sources) if tier else []
 
 
 def tier_reference_markdown() -> str:
@@ -539,11 +536,6 @@ MODEL_READINESS_TIERS: tuple[ModelReadinessTier, ...] = (
     ),
     ModelReadinessTier("Ensemble", "Ensemble, Hybrid CNN-Transformer", 6_000),
 )
-
-
-def model_readiness_tiers() -> tuple["ModelReadinessTier", ...]:
-    """Lista (ordenada) de limiares de prontidao por familia de modelo."""
-    return MODEL_READINESS_TIERS
 
 
 def source_type_map() -> Dict[str, str]:
@@ -629,21 +621,3 @@ def dataset_reference_markdown() -> str:
             f"{info.license} | {info.benchmark_use} |"
         )
     return "\n".join(lines)
-
-
-def benchmark_dataset_markdown() -> str:
-    lines = [
-        "# Catalogo de datasets de audio para benchmark",
-        "",
-        "Esta tabela e gerada a partir de `app/domain/dataset_metadata/dataset_catalog.py`, a mesma fonte usada pela interface Gradio.",
-        "",
-        dataset_reference_markdown(),
-        "",
-        "## Presets de download",
-        "",
-        "| Preset | Fontes |",
-        "|---|---|",
-    ]
-    for name, sources in PRESET_SELECTIONS.items():
-        lines.append(f"| {name} | {', '.join(sources)} |")
-    return "\n".join(lines) + "\n"

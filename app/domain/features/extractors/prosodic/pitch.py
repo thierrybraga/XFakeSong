@@ -26,10 +26,10 @@ def compute_pitch_contour_features(f0: np.ndarray) -> Dict:
 
     if np.sum(valid_mask) < 2:
         return {
-            'pitch_contour_rises': 0,
-            'pitch_contour_falls': 0,
-            'pitch_contour_peaks': 0,
-            'pitch_contour_valleys': 0
+            "pitch_contour_rises": 0,
+            "pitch_contour_falls": 0,
+            "pitch_contour_peaks": 0,
+            "pitch_contour_valleys": 0,
         }
 
     valid_f0 = f0[valid_mask]
@@ -45,10 +45,10 @@ def compute_pitch_contour_features(f0: np.ndarray) -> Dict:
     peaks = find_peaks(valid_f0)
     valleys = find_peaks(-valid_f0)
 
-    features['pitch_contour_rises'] = rises
-    features['pitch_contour_falls'] = falls
-    features['pitch_contour_peaks'] = len(peaks)
-    features['pitch_contour_valleys'] = len(valleys)
+    features["pitch_contour_rises"] = rises
+    features["pitch_contour_falls"] = falls
+    features["pitch_contour_peaks"] = len(peaks)
+    features["pitch_contour_valleys"] = len(valleys)
 
     return features
 
@@ -60,20 +60,20 @@ def compute_voicing_probability(f0: np.ndarray) -> float:
     return voicing_prob
 
 
-def compute_pitch_strength(y: np.ndarray, f0: np.ndarray,
-                           sr: int, frame_length: int, hop_length: int) -> np.ndarray:
+def compute_pitch_strength(
+    y: np.ndarray, f0: np.ndarray, sr: int, frame_length: int, hop_length: int
+) -> np.ndarray:
     """Computa força/confiança do pitch."""
     # Usar autocorrelação como medida de confiança
     strengths = []
 
-    frames = librosa.util.frame(y, frame_length=frame_length,
-                                hop_length=hop_length)
+    frames = librosa.util.frame(y, frame_length=frame_length, hop_length=hop_length)
 
     for i, frame in enumerate(frames.T):
         if i < len(f0) and not np.isnan(f0[i]) and f0[i] > 0:
             # Calcular autocorrelação
-            autocorr = np.correlate(frame, frame, mode='full')
-            autocorr = autocorr[len(autocorr) // 2:]
+            autocorr = np.correlate(frame, frame, mode="full")
+            autocorr = autocorr[len(autocorr) // 2 :]
 
             if len(autocorr) > 1:
                 # Normalizar

@@ -1,6 +1,6 @@
 # Documentação de Inferência das Arquiteturas
 
-Este documento descreve o fluxo real de inferência do XFakeSong: descoberta do
+Este documento descreve o fluxo real de inferência do SpeechChecker: descoberta do
 artefato, resolução do contrato de entrada, preparação do tensor e
 pós-processamento da predição. A fonte de verdade para a entrada de um modelo
 treinado é sempre o `input_contract` salvo no `_config.json`; quando ele não
@@ -52,12 +52,40 @@ palavra: produção rodava **1 crop** enquanto o benchmark media com **3 e médi
 dos scores**. O carimbo agora acontece depois da avaliação, nas duas cópias do
 sidecar — a global e a preservada no run, que é a promovida.
 
+**Janela antes de banda e nível (2026-10-31).** O export
+(`build_paired_pt_corpus.extract_window`) recorta os 3 s centrais e só então
+filtra e nivela: o −26 dBFS do treino é o RMS da **janela**. O `FeaturePreparer`
+fazia o inverso — filtrava e nivelava o arquivo inteiro e o front-end recortava
+depois. Em gravações com silêncio nas pontas (o CETUC), o miolo chegava mais alto
+do que no treino. Agora a janela canônica (`source_samples`, mesmo recorte central
+do export) é cortada primeiro. Para o raw, isso também faz o multicrop medir o que
+o benchmark mediu: nas janelas de 3 s do NPZ os três recortes coincidem com a
+própria janela, e a produção tirava início/centro/fim do arquivo inteiro. Em 200
+WAVs de validação (`splits/val`), mesma versão dos sidecars, só a ordem mudando:
+SVM 80,5% → 91,0%, RawGAT-ST 90,0% → 93,5%; RawNet2 96,0% → 94,5% e Random Forest
+90,0% → 89,0% (2–3 amostras, dentro do ruído); os demais iguais.
+
+**Sidecars clássicos sem a política de banda (2026-10-31).** SVM e Random Forest
+foram treinados com a correção de banda (`results.json →
+architectures.<arch>.input_preparation.band_correction`), mas seus sidecars
+promovidos não a declaravam, e a inferência pulava o passa-baixas: o SVM acertava
+4% do áudio real. `rebuild_inference_contracts.py --stamp-band-correction svm
+randomforest` acrescenta só esse campo — limiar e temperatura ficam intactos —
+e só quando o sha256 do artefato bate com o do run. Desde 2026-11-01
+`benchmarks/fit_classical.py` grava o campo no próprio run; o carimbo só serve a
+artefatos anteriores.
+
 **Probabilidades.** `detection_service` lia `confidence` como se fosse `p_fake`,
 mas o `Predictor` grava `confidence = p_fake if is_deepfake else p_real` — a
 confiança **na classe decidida**. Toda amostra classificada como REAL saía com
 as duas probabilidades **invertidas** na aba Detectar, na API e no CLI: uma
 bonafide com `p_real` 0,95 era reportada como `fake: 0,95`. O `Predictor` já
 expõe `p_fake`/`p_real` separados; o serviço passou a lê-los.
+
+A aba Investigar cometia o mesmo engano até 2026-11-01: a linha por segmento,
+o mapa de anomalias e o histograma do lote mostravam `confidence` como P(fake),
+com um limiar fixo de 0,5. Hoje usam `probabilities["fake"]` e
+`metadata["classification_threshold"]`, o limiar que decidiu o veredito.
 
 ## Resolução do Contrato de Entrada
 

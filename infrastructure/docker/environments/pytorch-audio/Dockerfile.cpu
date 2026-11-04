@@ -1,0 +1,40 @@
+# syntax=docker/dockerfile:1.7
+# =====================================================================
+# SpeechChecker — ambiente de treino: pytorch-audio (Conformer, Hybrid CNN-
+# Transformer, RawNet2, AASIST, RawGAT-ST — implementações Keras/TF; torch é
+# reservado para portes nativos futuros)
+# Mapa completo dos 5 ambientes: infrastructure/docker/environments/README.md
+# =====================================================================
+ARG PYTHON_VERSION=3.11
+
+FROM python:${PYTHON_VERSION}-slim
+
+LABEL org.opencontainers.image.title="speechchecker-pytorch-audio" \
+      org.opencontainers.image.description="SpeechChecker — treino audio (CPU)" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.source="https://github.com/thierrybraga/XFakeSong"
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONIOENCODING=utf-8 \
+    MPLBACKEND=Agg
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        libsndfile1 \
+        libgomp1 \
+        tini \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY requirements-base.txt constraints.txt ./
+COPY infrastructure/docker/environments/pytorch-audio/requirements.txt infrastructure/docker/environments/pytorch-audio/
+ENV PIP_CONSTRAINT=/app/constraints.txt
+RUN pip install --upgrade pip setuptools wheel \
+    && pip install -r infrastructure/docker/environments/pytorch-audio/requirements.txt \
+    && pip cache purge
+
+COPY . .
+
+ENTRYPOINT ["tini", "--"]
+CMD ["python", "tools/training/train_by_family.py", "--family", "pytorch-audio", "--help"]

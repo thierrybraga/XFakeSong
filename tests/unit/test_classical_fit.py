@@ -63,14 +63,14 @@ def test_get_params_does_not_poison_kwargs(arch):
     Esta é exatamente a sequência da célula de inspeção dos notebooks 13/14.
     """
     model = _make(arch)
-    snapshot = dict(model.kwargs)            # estado interno limpo
-    _ = model.get_params()                   # antes: envenenava self.kwargs
+    snapshot = dict(model.kwargs)  # estado interno limpo
+    _ = model.get_params()  # antes: envenenava self.kwargs
     assert model.kwargs == snapshot, "get_params() mutou self.kwargs"
 
-    pipe = model._create_pipeline()          # antes: levantava TypeError aqui
+    pipe = model._create_pipeline()  # antes: levantava TypeError aqui
     assert pipe.steps[0][0] == "scaler"
 
     X = np.random.RandomState(0).standard_normal((30, 120)).astype("float32")
     y = np.r_[np.zeros(15), np.ones(15)].astype(int)
-    model.fit(X, y)                          # treino completo após get_params()
+    model.fit(X, y)  # treino completo após get_params()
     assert model.predict_proba(X[:2]).shape == (2, 2)

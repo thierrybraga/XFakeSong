@@ -1,0 +1,57 @@
+name: Imagens de inferência
+
+# As imagens têm vários GB e levam dezenas de minutos: não rodam a cada push, só
+# quando algo que entra nelas muda, em tags de release ou manualmente.
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "infrastructure/docker/environments/inference-api/**"
+      - "infrastructure/docker/compose/inference.*.yml"
+      - "requirements-base.txt"
+      - ".dockerignore"
+      - "tools/ops/docker_release.py"
+      - ".github/workflows/docker-inference.yml"
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-inference-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  imagem:
+    name: Imagem de inferência (${{ matrix.perfil }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        perfil: ["cpu", "nvidia"]
+    # O compose recusa até o build sem estes nomes. São fictícios e só existem aqui.
+    env:
+      XFAKESONG_API_KEY: ci-validacao-sem-segredo
+      XFAKE_GRADIO_USERNAME: ci-validacao
+      XFAKE_GRADIO_PASSWORD: ci-validacao-sem-segredo
+      ALLOWED_HOSTS: localhost
+      ALLOWED_ORIGINS: http://localhost
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Liberar disco do runner
+        # O espaço livre padrão não comporta o pip install destas imagens.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - name: Build
+        run: python tools/ops/docker_build.py inference-${{ matrix.perfil }} build
+      - name: Conferir conteúdo e subir sem GPU
+        # O runner não tem GPU, então a imagem NVIDIA roda em CPU aqui. Também não há
+        # modelos no repositório: o health check precisa responder 503, sem modelos.
+        run: python tools/ops/docker_release.py check ${{ matrix.perfil }}

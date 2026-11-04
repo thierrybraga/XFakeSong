@@ -1,4 +1,5 @@
 import gradio as gr
+
 from app.domain.models.architectures.registry import architecture_registry
 from app.domain.services.detection.utils import get_available_devices
 from app.interfaces.gradio.utils.hyperparameters import (
@@ -13,6 +14,7 @@ def update_device_settings(device_name):
     try:
         # Importação tardia para evitar ciclo
         from app.interfaces.gradio.tabs.detection import get_detection_service
+
         ds = get_detection_service()
         if ds:
             ds.set_device(device_name)
@@ -26,7 +28,7 @@ def run_auto_tuning(arch, dataset_path, n_trials, metric, epochs):
     """Roda a busca de hiperparâmetros (Optuna) e devolve (resumo, best, figura).
 
     Degrada graciosamente: se `optuna` não estiver instalado, ou o dataset não
-    existir, retorna uma mensagem clara sem levantar exceção. Cada trial treina
+        existir, retorna uma mensagem clara sem levantar exceção. Cada tentativa treina
     um modelo de verdade via TrainingService — logo pode levar minutos.
     """
     from pathlib import Path
@@ -57,7 +59,7 @@ def run_auto_tuning(arch, dataset_path, n_trials, metric, epochs):
         n_trials = max(2, int(n_trials))
         epochs = max(1, int(epochs))
     except (TypeError, ValueError):
-        return ("❌ N trials e épocas devem ser inteiros.", {}, None)
+        return ("❌ Número de tentativas e épocas devem ser inteiros.", {}, None)
 
     # val_loss → minimizar; accuracy/f1 → maximizar
     direction = "minimize" if "loss" in str(metric).lower() else "maximize"
@@ -82,7 +84,7 @@ def run_auto_tuning(arch, dataset_path, n_trials, metric, epochs):
     best_score = result.get("best_score")
     if best_score is not None:
         summary = (
-            f"✅ **Busca concluída** — {result.get('n_trials', 0)} trials. "
+            f"✅ **Busca concluída** — {result.get('n_trials', 0)} tentativas. "
             f"Melhor **{metric}** = `{best_score:.4f}`."
         )
     else:
@@ -97,39 +99,11 @@ def create_optimization_tab():
         page_header(
             "⚡",
             "Otimização",
-            "Configure hardware, arquiteturas e parâmetros de treinamento "
-            "para otimizar a detecção.",
+            "Ajuste os hiperparâmetros de cada arquitetura, busque os melhores "
+            "automaticamente e escolha o hardware.",
         )
 
-        # --- Seção de Hardware ---
-        with gr.Row(elem_classes="responsive-grid"):
-            with gr.Column():
-                gr.Markdown("#### 🖥️ Configuração de Hardware")
-                devices = get_available_devices()
-                default_dev = devices[0] if devices else "CPU"
-
-                with gr.Row(elem_classes="action-row"):
-                    device_dropdown = gr.Dropdown(
-                        choices=devices,
-                        label="Dispositivo de Processamento",
-                        value=default_dev,
-                        interactive=True
-                    )
-                    apply_dev_btn = gr.Button(
-                        "Aplicar Configuração", variant="primary"
-                    )
-
-                dev_status = gr.Textbox(
-                    label="Status", value="", interactive=False
-                )
-
-                apply_dev_btn.click(
-                    update_device_settings,
-                    inputs=[device_dropdown],
-                    outputs=[dev_status]
-                )
-
-        gr.Markdown("---")  # Separator
+        gr.Markdown("#### Hiperparâmetros padrão por arquitetura")
 
         with gr.Row(elem_classes="responsive-grid"):
             with gr.Column(scale=1):
@@ -142,131 +116,141 @@ def create_optimization_tab():
                     value=default_arch,
                 )
 
-                with gr.Group():
-                    gr.Markdown("#### Parâmetros Gerais")
+                with gr.Group(elem_classes="params-grid"):
+                    gr.Markdown("#### Parâmetros gerais")
                     opt_batch = gr.Number(
-                        label="Batch Size", value=int(initial_hp["batch_size"])
+                        label="Tamanho do lote", value=int(initial_hp["batch_size"])
                     )
                     opt_epochs = gr.Number(
-                        label="Epochs", value=int(initial_hp["epochs"])
+                        label="Épocas", value=int(initial_hp["epochs"])
                     )
                     opt_lr = gr.Number(
-                        label="Learning Rate",
+                        label="Taxa de aprendizado",
                         value=float(initial_hp["learning_rate"]),
                         precision=7,
                     )
                     opt_dropout = gr.Number(
-                        label="Dropout Rate",
+                        label="Taxa de dropout",
                         value=float(initial_hp["dropout_rate"]),
                     )
                     opt_l2 = gr.Number(
-                        label="L2 Regularization",
+                        label="Regularização L2",
                         value=float(initial_hp["l2_reg_strength"]),
                         precision=7,
                     )
                     opt_val = gr.Number(
-                        label="Validation Split",
+                        label="Proporção de validação",
                         value=float(initial_hp["validation_split"]),
                     )
 
                 # Specific params
-                with gr.Group():
-                    gr.Markdown("#### Parâmetros Específicos")
+                with gr.Group(elem_classes="params-grid"):
+                    gr.Markdown("#### Parâmetros da arquitetura")
 
                     # Transformer / Spectrogram
-                    opt_d_model = gr.Number(label="D-Model", visible=False)
-                    opt_num_heads = gr.Number(label="Num Heads", visible=False)
-                    opt_num_blocks = gr.Number(
-                        label="Num Blocks", visible=False)
+                    opt_d_model = gr.Number(label="Dimensão do modelo", visible=False)
+                    opt_num_heads = gr.Number(label="Número de cabeças", visible=False)
+                    opt_num_blocks = gr.Number(label="Número de blocos", visible=False)
                     opt_patch = gr.Textbox(
-                        label="Patch Size (HxW)", visible=False)
-                    opt_ff_dim = gr.Number(
-                        label="Feed Forward Dim", visible=False)
+                        label="Tamanho do patch (altura × largura)", visible=False
+                    )
+                    opt_ff_dim = gr.Number(label="Dimensão feed-forward", visible=False)
 
                     # Multiscale
                     opt_filters = gr.Textbox(
-                        label="Filters (comma sep)", visible=False)
+                        label="Filtros (separados por vírgula)", visible=False
+                    )
                     opt_kernel_sizes = gr.Textbox(
-                        label="Kernel Sizes (comma sep)", visible=False)
+                        label="Tamanhos de kernel (separados por vírgula)",
+                        visible=False,
+                    )
 
                     # Conformer
-                    opt_att_heads = gr.Number(
-                        label="Attention Heads", visible=False)
-                    opt_hid_dim = gr.Number(label="Hidden Dim", visible=False)
-                    opt_n_layers = gr.Number(label="Num Layers", visible=False)
+                    opt_att_heads = gr.Number(label="Cabeças de atenção", visible=False)
+                    opt_hid_dim = gr.Number(label="Dimensão oculta", visible=False)
+                    opt_n_layers = gr.Number(label="Número de camadas", visible=False)
                     opt_conv_kernel = gr.Textbox(
-                        label="Conv Kernel Size", visible=False)
+                        label="Tamanho do kernel convolucional", visible=False
+                    )
 
                     # AASIST / RawGAT
                     opt_hid_base = gr.Number(
-                        label="Hidden Dim (Base)", visible=False)
+                        label="Dimensão oculta (base)", visible=False
+                    )
                     opt_n_layers_base = gr.Number(
-                        label="Num Layers (Base)", visible=False)
+                        label="Número de camadas (base)", visible=False
+                    )
 
                     # Hybrid
-                    opt_base_filters = gr.Number(
-                        label="Base Filters", visible=False)
-                    opt_res_blocks = gr.Number(
-                        label="Res Blocks", visible=False)
+                    opt_base_filters = gr.Number(label="Filtros base", visible=False)
+                    opt_res_blocks = gr.Number(label="Blocos residuais", visible=False)
                     opt_trans_layers = gr.Number(
-                        label="Transformer Layers", visible=False)
+                        label="Camadas Transformer", visible=False
+                    )
                     opt_att_heads_h = gr.Number(
-                        label="Attention Heads (Hybrid)", visible=False)
+                        label="Cabeças de atenção (híbrido)", visible=False
+                    )
 
                     # RawNet2
                     opt_conv_filters_raw = gr.Textbox(
-                        label="Conv Filters (Raw)", visible=False)
-                    opt_gru_units = gr.Number(label="GRU Units", visible=False)
-                    opt_dense_units = gr.Number(
-                        label="Dense Units", visible=False)
+                        label="Filtros convolucionais (áudio bruto)", visible=False
+                    )
+                    opt_gru_units = gr.Number(label="Unidades GRU", visible=False)
+                    opt_dense_units = gr.Number(label="Unidades densas", visible=False)
 
-                opt_save_btn = gr.Button(
-                    "💾 Salvar Hiperparâmetros Padrão", variant="primary")
+                opt_save_btn = gr.Button("Salvar como padrão", variant="primary")
 
             with gr.Column(scale=1):
-                opt_json = gr.JSON(label="Configuração Atual (JSON)")
+                opt_json = gr.JSON(label="Configuração atual (JSON)")
 
         # Inputs list for optimize_default
         inputs_list = [
-            opt_arch, opt_batch, opt_epochs, opt_lr, opt_dropout, opt_l2,
-            opt_val, opt_d_model, opt_num_heads, opt_num_blocks, opt_patch,
-            opt_ff_dim, opt_filters, opt_kernel_sizes,
-            opt_att_heads, opt_hid_dim, opt_n_layers, opt_conv_kernel,
-            opt_hid_base, opt_n_layers_base,
-            opt_base_filters, opt_res_blocks, opt_trans_layers,
-            opt_att_heads_h, opt_conv_filters_raw, opt_gru_units,
-            opt_dense_units
+            opt_arch,
+            opt_batch,
+            opt_epochs,
+            opt_lr,
+            opt_dropout,
+            opt_l2,
+            opt_val,
+            opt_d_model,
+            opt_num_heads,
+            opt_num_blocks,
+            opt_patch,
+            opt_ff_dim,
+            opt_filters,
+            opt_kernel_sizes,
+            opt_att_heads,
+            opt_hid_dim,
+            opt_n_layers,
+            opt_conv_kernel,
+            opt_hid_base,
+            opt_n_layers_base,
+            opt_base_filters,
+            opt_res_blocks,
+            opt_trans_layers,
+            opt_att_heads_h,
+            opt_conv_filters_raw,
+            opt_gru_units,
+            opt_dense_units,
         ]
 
         # Outputs list (JSON + updates for all inputs)
         outputs_list = [opt_json] + inputs_list[1:]
 
         # Event: Save/Update
-        opt_save_btn.click(
-            optimize_default,
-            inputs=inputs_list,
-            outputs=outputs_list
-        )
+        opt_save_btn.click(optimize_default, inputs=inputs_list, outputs=outputs_list)
 
         # Event: Change Architecture (load defaults)
-        opt_arch.change(
-            load_defaults,
-            inputs=[opt_arch],
-            outputs=outputs_list
-        )
-
-        gr.Markdown("---")  # Separator
+        opt_arch.change(load_defaults, inputs=[opt_arch], outputs=outputs_list)
 
         # --- Busca Automática de Hiperparâmetros (Optuna) ---
-        with gr.Accordion(
-            "🔍 Busca Automática de Hiperparâmetros (Optuna)", open=False
-        ):
+        with gr.Accordion("Busca automática de hiperparâmetros (Optuna)", open=False):
             gr.Markdown(
                 "Busca Bayesiana (Optuna/TPE) que **treina vários modelos** e "
-                "mostra a **convergência** dos trials e a **importância** de cada "
+                "mostra a **convergência** das tentativas e a **importância** de cada "
                 "hiperparâmetro. Requer um dataset `.npz` (`X_train`/`y_train`) e "
-                "`optuna` instalado. ⚠️ Pode levar **vários minutos** — treina um "
-                "modelo por trial."
+                "`optuna` instalado. Pode levar **vários minutos**: treina um "
+                "modelo por tentativa."
             )
             with gr.Row(elem_classes="responsive-grid"):
                 with gr.Column(scale=1):
@@ -276,15 +260,15 @@ def create_optimization_tab():
                         value=arch_choices[0] if arch_choices else "MultiscaleCNN",
                     )
                     tune_dataset = gr.Textbox(
-                        label="Dataset (.npz com X_train/y_train)",
+                        label="Conjunto de dados (.npz com X_train/y_train)",
                         placeholder="ex.: data/datasets/features/train.npz",
                     )
                     with gr.Row(elem_classes="responsive-grid"):
                         tune_trials = gr.Number(
-                            label="Nº de trials", value=10, precision=0
+                            label="Número de tentativas", value=10, precision=0
                         )
                         tune_epochs = gr.Number(
-                            label="Épocas por trial", value=5, precision=0
+                            label="Épocas por tentativa", value=5, precision=0
                         )
                     tune_metric = gr.Dropdown(
                         choices=[
@@ -297,12 +281,12 @@ def create_optimization_tab():
                         value="val_accuracy",
                     )
                     tune_btn = gr.Button(
-                        "🔍 Buscar melhores hiperparâmetros", variant="primary"
+                        "Buscar melhores hiperparâmetros", variant="primary"
                     )
                 with gr.Column(scale=1):
                     tune_status = gr.Markdown("")
                     tune_best = gr.JSON(label="Melhores hiperparâmetros")
-            tune_plot = gr.Plot(label="Convergência & Importância dos parâmetros")
+            tune_plot = gr.Plot(label="Convergência e importância dos parâmetros")
 
             tune_btn.click(
                 run_auto_tuning,
@@ -315,3 +299,29 @@ def create_optimization_tab():
                 ],
                 outputs=[tune_status, tune_best, tune_plot],
             )
+
+        # Configuração pouco frequente: fica por último.
+        with gr.Accordion("Hardware de processamento", open=False):
+            # --- Seção de Hardware ---
+            with gr.Row(elem_classes="responsive-grid"):
+                with gr.Column():
+                    gr.Markdown("Dispositivo usado no processamento.")
+                    devices = get_available_devices()
+                    default_dev = devices[0] if devices else "CPU"
+
+                    with gr.Row(elem_classes="action-row"):
+                        device_dropdown = gr.Dropdown(
+                            choices=devices,
+                            label="Dispositivo",
+                            value=default_dev,
+                            interactive=True,
+                        )
+                        apply_dev_btn = gr.Button("Aplicar", variant="secondary")
+
+                    dev_status = gr.Textbox(label="Status", value="", interactive=False)
+
+                    apply_dev_btn.click(
+                        update_device_settings,
+                        inputs=[device_dropdown],
+                        outputs=[dev_status],
+                    )

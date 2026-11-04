@@ -10,8 +10,8 @@ from .utils import check_stability, compute_lpc, frame_signal
 
 
 def extract_stability_features(
-        y: np.ndarray, frame_length: int, hop_length: int,
-        lpc_order: int) -> Dict:
+    y: np.ndarray, frame_length: int, hop_length: int, lpc_order: int
+) -> Dict:
     """Extrai características de estabilidade do modelo."""
     features = {}
 
@@ -42,25 +42,24 @@ def extract_stability_features(
     # === CARACTERÍSTICAS DE ESTABILIDADE ===
 
     if total_frames > 0:
-        features['stability_ratio'] = stable_frames / total_frames
+        features["stability_ratio"] = stable_frames / total_frames
     else:
-        features['stability_ratio'] = 0
+        features["stability_ratio"] = 0
 
     if all_pole_magnitudes:
         all_pole_magnitudes = np.array(all_pole_magnitudes)
 
         # Estatísticas das magnitudes dos polos
-        features['pole_magnitude_mean'] = np.mean(all_pole_magnitudes)
-        features['pole_magnitude_std'] = np.std(all_pole_magnitudes)
-        features['pole_magnitude_max'] = np.max(all_pole_magnitudes)
+        features["pole_magnitude_mean"] = np.mean(all_pole_magnitudes)
+        features["pole_magnitude_std"] = np.std(all_pole_magnitudes)
+        features["pole_magnitude_max"] = np.max(all_pole_magnitudes)
 
         # Margem de estabilidade (distância do círculo unitário)
         stability_margin = 1 - np.max(all_pole_magnitudes)
-        features['stability_margin'] = stability_margin
+        features["stability_margin"] = stability_margin
 
         # Número de polos próximos ao círculo unitário
         near_unstable = np.sum(all_pole_magnitudes > 0.95)
-        features['near_unstable_poles'] = near_unstable / \
-            len(all_pole_magnitudes)
+        features["near_unstable_poles"] = near_unstable / len(all_pole_magnitudes)
 
     return features

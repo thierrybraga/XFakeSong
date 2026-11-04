@@ -1,4 +1,4 @@
-"""Interface Gradio do XFakeSong.
+"""Interface Gradio do SpeechChecker.
 
 Este pacote expõe as funções create_*_tab() de cada aba e os utilitários
 compartilhados de UI (plotting helpers, locks, paleta de cores).

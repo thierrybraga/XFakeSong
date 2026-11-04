@@ -18,7 +18,7 @@ Para o passo a passo completo de instalação e os erros detalhados, veja
     a variante certa de requirements: `requirements.txt` (padrão),
     `requirements-cpu.txt` (CPU, ~250 MB menor) ou GPU via
     `tensorflow[and-cuda]`. As três compartilham `requirements-base.txt`.
-    Rode `python scripts/ops/doctor.py` para um diagnóstico completo.
+    Rode `python tools/ops/doctor.py` para um diagnóstico completo.
 
 ??? question "Preciso de GPU?"
     Não. SVM, Random Forest e a inspeção dos modelos rodam em CPU. Para treinar
@@ -28,10 +28,20 @@ Para o passo a passo completo de instalação e os erros detalhados, veja
 
 ## Execução
 
-??? question "Erro: porta 7860 já está em uso"
-    Há uma instância antiga rodando. Finalize-a ou use outra porta:
-    `python main.py --gradio --gradio-port 7861`. No Docker, `docker compose down`
-    antes de subir de novo.
+??? question "Erro: a porta já está em uso"
+    Cada instância tem a sua porta: 7860 no Docker NVIDIA, 7861 no Docker CPU e
+    7862 na aplicação local. Veja o
+    [mapa de portas](../development/docker-environments.md#portas). Se outro
+    programa ocupa a porta, use `python main.py --gradio --gradio-port 7863` ou
+    defina `GRADIO_PORT_NVIDIA` ou `GRADIO_PORT_CPU` no `.env`. Se for uma instância
+    antiga, use `make down` (ou `start.bat stop`) antes de subir de novo.
+
+??? question "A aplicação recusa subir porque outra instância usa o mesmo `data/`"
+    Todas as instâncias usam o mesmo `data/app.db`, e duas ao mesmo tempo podem
+    danificar o banco. Pare a outra com o `docker stop` indicado na mensagem. Para
+    rodar a aplicação local ao lado do Docker, aponte `DATABASE_URL` para outro
+    arquivo. Detalhes no
+    [guia de portas](../development/docker-environments.md#uma-instancia-por-vez-sobre-o-mesmo-data).
 
 ??? question "A UI demora a abrir / o healthcheck falha no boot"
     O TensorFlow tem *boot* lento. O healthcheck usa `/api/v1/system/health`
@@ -39,14 +49,14 @@ Para o passo a passo completo de instalação e os erros detalhados, veja
     primeiro carregamento; predições seguintes são rápidas (há *warm-up*).
 
 ??? question "`TypeError: unhashable type: 'dict'` ao abrir a página"
-    Incompatibilidade entre `gradio` e `starlette`. Use as versões pinadas
-    (`gradio>=4.31,<5.0`, `starlette>=0.36,<0.42`); o `app/core/version_check.py`
-    detecta e loga isso no *startup*. Detalhes em
+    Incompatibilidade entre `gradio` e `starlette` em um ambiente desatualizado.
+    Reinstale com `pip install -r requirements.txt -c constraints.txt`; o
+    `app/core/version_check.py` detecta e loga isso no *startup*. Detalhes em
     [Instalação e Configuração](../getting-started/installation.md).
 
 ??? question "Como rodo os notebooks no Google Colab?"
     Eles são auto-suficientes: abra por
-    `colab.research.google.com/github/thierrybraga/XFakeSong/blob/main/docs/notebooks/<caminho>`,
+    `colab.research.google.com/github/thierrybraga/SpeechChecker/blob/main/docs/notebooks/<caminho>`,
     selecione **GPU** (Ambiente de execução → Alterar o tipo de hardware) e rode
     a **primeira célula** — ela clona o repo e instala as dependências. Os
     notebooks de modelo treinam por padrão. Guia completo:
@@ -94,7 +104,7 @@ Para o passo a passo completo de instalação e os erros detalhados, veja
     ambiente e os cuidados de boot em ambiente sem internet de saída.
 
 ??? question "Docker ou execução local?"
-    Docker (`docker compose up --build -d`) isola dependências e é o modo de
+    Docker (`make up` ou `start.bat prod`) isola dependências e é o modo de
     produção recomendado. Execução local (`.venv`) é melhor para desenvolvimento.
     Ambos cobertos em [Instalação e Configuração](../getting-started/installation.md).
 

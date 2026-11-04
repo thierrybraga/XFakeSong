@@ -11,7 +11,7 @@ def _phi_sampen_njit(y: np.ndarray, m: int, r_std: float) -> int:
     count = 0
 
     for i in range(n_patterns - 1):
-        pattern_i = y[i:i + m]
+        pattern_i = y[i : i + m]
         for j in range(i + 1, n_patterns):
             max_dist = 0.0
             for k in range(m):
@@ -34,7 +34,7 @@ def _phi_sampen_parallel_njit(y: np.ndarray, m: int, r_std: float) -> int:
     counts = np.zeros(n_patterns - 1, dtype=np.int64)
 
     for i in prange(n_patterns - 1):
-        pattern_i = y[i:i + m]
+        pattern_i = y[i : i + m]
         c = 0
         for j in range(i + 1, n_patterns):
             max_dist = 0.0
@@ -71,8 +71,8 @@ def compute_sample_entropy(y: np.ndarray, m: int = 2, r: float = 0.2) -> float:
 
 
 def compute_sample_entropy_optimized(
-        y: np.ndarray, m: int = 2, r: float = 0.2,
-        cache: Optional[Dict] = None) -> float:
+    y: np.ndarray, m: int = 2, r: float = 0.2, cache: Optional[Dict] = None
+) -> float:
     """Versão otimizada da entropia de amostra."""
     N = len(y)
 
@@ -93,12 +93,12 @@ def compute_sample_entropy_optimized(
     r_threshold = r * np.std(y)
 
     def _phi_optimized(m_val):
-        patterns = np.array([y[i:i + m_val] for i in range(N - m_val + 1)])
+        patterns = np.array([y[i : i + m_val] for i in range(N - m_val + 1)])
         count = 0
 
         # Usar apenas metade das comparações (matriz triangular superior)
         for i in range(len(patterns) - 1):
-            distances = np.max(np.abs(patterns[i + 1:] - patterns[i]), axis=1)
+            distances = np.max(np.abs(patterns[i + 1 :] - patterns[i]), axis=1)
             count += np.sum(distances <= r_threshold)
 
         return count

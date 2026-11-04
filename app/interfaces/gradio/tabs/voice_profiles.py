@@ -12,46 +12,36 @@ Melhorias v2:
 import logging
 from pathlib import Path
 
+import gradio as gr  # noqa: E402
+import numpy as np  # noqa: E402
+from matplotlib.figure import Figure  # noqa: E402
+
+from app.interfaces.gradio.utils.components import ui_safe
+
 # FE.8: helpers compartilhados (força backend Agg para matplotlib)
 from app.interfaces.gradio.utils.plotting import (
     PLOT_BG,
     PLOT_FACE,
     PLOT_GRID,
     PLOT_TEXT,
-    get_service_lock,
     style_ax,
 )
 
-import numpy as np  # noqa: E402
-from matplotlib.figure import Figure  # noqa: E402
-
-import gradio as gr  # noqa: E402
-from app.interfaces.gradio.utils.components import ui_safe
-
 logger = logging.getLogger("gradio_voice_profiles_tab")
-
-# FE.3: Singleton do serviço com lock thread-safe
-_service_instance = None
-_service_lock = get_service_lock("voice_profiles_service")
 
 
 def _get_service():
-    """Retorna singleton VoiceProfileService — FE.3: thread-safe."""
-    global _service_instance
-    if _service_instance is not None:
-        return _service_instance
-    with _service_lock:
-        # Double-checked locking
-        if _service_instance is None:
-            from app.domain.services.voice_profile_service import VoiceProfileService
-            _service_instance = VoiceProfileService()
-    return _service_instance
+    """Mesma instância de VoiceProfileService usada pela API."""
+    from app.dependencies import get_voice_profile_service
+
+    return get_voice_profile_service()
 
 
 def _get_architecture_choices():
     """Carrega arquiteturas dinamicamente do registry + ML clássico."""
     try:
         from app.domain.models.architectures.registry import get_architecture_choices
+
         choices = get_architecture_choices()
         # Adicionar ML clássico
         choices.append(("SVM (classical ML)", "svm"))
@@ -90,39 +80,27 @@ def _profiles_to_table(profiles) -> list:
     """Converte lista de perfis para dados de tabela."""
     rows = []
     status_icons = {
-        "created": "🆕", "collecting": "📥", "training": "⏳",
-        "ready": "✅", "error": "❌",
+        "created": "🆕",
+        "collecting": "📥",
+        "training": "⏳",
+        "ready": "✅",
+        "error": "❌",
     }
     for p in profiles:
         icon = status_icons.get(p.status, "❓")
-        rows.append([
-            p.id,
-            p.name,
-            f"{icon} {p.status}",
-            p.num_samples,
-            _format_duration(p.total_duration_seconds),
-            p.architecture or "—",
-            p.telegram_id or "—",
-            p.email or "—",
-        ])
+        rows.append(
+            [
+                p.id,
+                p.name,
+                f"{icon} {p.status}",
+                p.num_samples,
+                _format_duration(p.total_duration_seconds),
+                p.architecture or "—",
+                p.telegram_id or "—",
+                p.email or "—",
+            ]
+        )
     return rows
-
-
-def _get_profile_choices():
-    """Retorna choices para dropdown de perfis."""
-    svc = _get_service()
-    profiles = svc.list_profiles()
-    choices = [(f"{p.name} (ID: {p.id}) [{p.status}]", p.id) for p in profiles]
-    return choices
-
-
-def _refresh_profiles_table():
-    """Atualiza tabela e dropdowns."""
-    svc = _get_service()
-    profiles = svc.list_profiles()
-    table_data = _profiles_to_table(profiles)
-    choices = [(f"{p.name} (ID: {p.id}) [{p.status}]", p.id) for p in profiles]
-    return table_data, gr.update(choices=choices), gr.update(choices=choices), gr.update(choices=choices)
 
 
 # Estilo dos plots vem do módulo compartilhado utils.plotting (style_ax),
@@ -135,130 +113,146 @@ def create_voice_profiles_tab():
 
     arch_choices = _get_architecture_choices()
 
-    with gr.Tab("🎤 Perfis de Voz", id="tab_voice_profiles"):
+    with gr.Tab("🎤 Perfis de voz", id="tab_voice_profiles") as voice_tab:
         from app.interfaces.gradio.utils.components import page_header
 
         page_header(
             "🎤",
-            "Perfis de Voz Personalizados",
-            "Crie perfis biométricos vocais, envie amostras, treine modelos "
-            "com 14 arquiteturas (12 DL + SVM + Random Forest) e verifique "
-            "autenticidade com precisão individualizada.",
+            "Perfis de voz",
+            "Compare um áudio com a voz de uma pessoa conhecida: crie o perfil, envie "
+            "amostras, treine um modelo individual e verifique.",
         )
 
+        # As abas seguem a ordem do fluxo.
         with gr.Tabs():
             # ============================================================ #
             #  Sub-tab 1: Gerenciar Perfis                                  #
             # ============================================================ #
-            with gr.Tab("📋 Gerenciar Perfis"):
+            with gr.Tab("1. Perfis"):
                 with gr.Row(elem_classes="responsive-grid"):
-                    with gr.Column(scale=1):
-                        gr.Markdown("#### Criar Novo Perfil")
-                        profile_name = gr.Textbox(
-                            label="Nome", placeholder="Ex: João Silva"
-                        )
-                        profile_telegram = gr.Textbox(
-                            label="Telegram ID", placeholder="@usuario"
-                        )
-                        profile_phone = gr.Textbox(
-                            label="Telefone", placeholder="+55 11 99999-9999"
-                        )
-                        profile_email = gr.Textbox(
-                            label="Email", placeholder="joao@email.com"
-                        )
-                        profile_desc = gr.Textbox(
-                            label="Descrição",
-                            placeholder="Notas sobre o perfil...",
-                            lines=2,
-                        )
-                        profile_arch = gr.Dropdown(
-                            label="Arquitetura Padrão",
-                            choices=arch_choices,
-                            value="sonic_sleuth",
-                        )
-                        create_btn = gr.Button(
-                            "➕ Criar Perfil", variant="primary"
-                        )
-                        create_status = gr.Textbox(
-                            label="Status", interactive=False
-                        )
+                    with gr.Column(scale=1, min_width=300):
+                        with gr.Group():
+                            gr.Markdown("#### Novo perfil")
+                            profile_name = gr.Textbox(
+                                label="Nome", placeholder="Ex: João Silva"
+                            )
+                            profile_arch = gr.Dropdown(
+                                label="Arquitetura padrão",
+                                choices=arch_choices,
+                                value="sonic_sleuth",
+                            )
+                            with gr.Accordion("Contato e notas (opcional)", open=False):
+                                profile_telegram = gr.Textbox(
+                                    label="Telegram", placeholder="@usuario"
+                                )
+                                profile_phone = gr.Textbox(
+                                    label="Telefone", placeholder="+55 11 99999-9999"
+                                )
+                                profile_email = gr.Textbox(
+                                    label="E-mail", placeholder="joao@email.com"
+                                )
+                                profile_desc = gr.Textbox(
+                                    label="Descrição",
+                                    placeholder="Notas sobre o perfil...",
+                                    lines=2,
+                                )
+                            create_btn = gr.Button("Criar perfil", variant="primary")
+                            create_status = gr.Markdown("")
 
-                    with gr.Column(scale=2):
-                        gr.Markdown("#### Perfis Existentes")
+                    with gr.Column(scale=2, min_width=320):
                         profiles_table = gr.Dataframe(
                             headers=[
-                                "ID", "Nome", "Status", "Amostras",
-                                "Duração", "Arquitetura", "Telegram", "Email",
+                                "ID",
+                                "Nome",
+                                "Status",
+                                "Amostras",
+                                "Duração",
+                                "Arquitetura",
+                                "Telegram",
+                                "E-mail",
                             ],
                             datatype=[
-                                "number", "str", "str", "number",
-                                "str", "str", "str", "str",
+                                "number",
+                                "str",
+                                "str",
+                                "number",
+                                "str",
+                                "str",
+                                "str",
+                                "str",
                             ],
                             interactive=False,
-                            label="Perfis",
+                            label="Perfis cadastrados",
                         )
                         with gr.Row(elem_classes="action-row"):
-                            refresh_btn = gr.Button("🔄 Atualizar Lista")
+                            refresh_btn = gr.Button("Atualizar lista")
                             delete_id = gr.Number(
-                                label="ID para excluir", precision=0
+                                label="ID do perfil a excluir", precision=0
                             )
-                            delete_btn = gr.Button(
-                                "🗑️ Excluir Perfil", variant="stop"
+                            delete_btn = gr.Button("Excluir perfil", variant="stop")
+                        # Excluir apaga amostras e modelo: pede confirmação na tela.
+                        with gr.Row(
+                            visible=False, elem_classes="confirm-row"
+                        ) as confirm_delete_row:
+                            gr.Markdown(
+                                "**Excluir este perfil?** As amostras e o modelo dele "
+                                "também serão apagados, sem como desfazer."
                             )
-                        delete_status = gr.Textbox(
-                            label="Status", interactive=False
-                        )
+                            confirm_delete_btn = gr.Button(
+                                "Sim, excluir", variant="stop"
+                            )
+                            cancel_delete_btn = gr.Button(
+                                "Cancelar", variant="secondary"
+                            )
+                        delete_status = gr.Markdown("")
 
             # ============================================================ #
             #  Sub-tab 2: Dataset de Voz                                    #
             # ============================================================ #
-            with gr.Tab("🎵 Dataset de Voz"):
+            with gr.Tab("2. Amostras"):
                 with gr.Row(elem_classes="responsive-grid"):
-                    with gr.Column(scale=1):
-                        dataset_profile_dd = gr.Dropdown(
-                            label="Selecionar Perfil",
-                            choices=[],
-                            interactive=True,
-                        )
-                        audio_upload = gr.File(
-                            label="Upload de Amostras de Áudio",
-                            file_count="multiple",
-                            file_types=["audio"],
-                            type="filepath",
-                        )
-                        upload_btn = gr.Button(
-                            "📤 Adicionar Amostras", variant="primary"
-                        )
-                        upload_status = gr.Textbox(
-                            label="Status do Upload", interactive=False
-                        )
+                    with gr.Column(scale=1, min_width=300):
+                        with gr.Group():
+                            dataset_profile_dd = gr.Dropdown(
+                                label="Perfil",
+                                choices=[],
+                                interactive=True,
+                            )
+                            audio_upload = gr.File(
+                                label="Amostras de áudio",
+                                file_count="multiple",
+                                file_types=["audio"],
+                                type="filepath",
+                            )
+                            upload_btn = gr.Button(
+                                "Adicionar amostras", variant="primary"
+                            )
+                            upload_status = gr.Markdown("")
 
-                    with gr.Column(scale=2):
-                        dataset_info = gr.Markdown("Selecione um perfil para ver o dataset.")
+                    with gr.Column(scale=2, min_width=320):
+                        dataset_info = gr.Markdown(
+                            "*Selecione um perfil para ver as amostras.*"
+                        )
                         dataset_validation = gr.Markdown("")
                         samples_table = gr.Dataframe(
                             headers=["Arquivo", "Duração (s)", "Taxa (Hz)", "Tamanho"],
                             datatype=["str", "number", "number", "str"],
                             interactive=False,
-                            label="Amostras no Dataset",
+                            label="Amostras do perfil",
                         )
                         with gr.Row(elem_classes="action-row"):
-                            sample_to_remove = gr.Textbox(
-                                label="Nome do arquivo para remover"
-                            )
-                            remove_sample_btn = gr.Button("❌ Remover Amostra")
-                        remove_status = gr.Textbox(
-                            label="Status", interactive=False
-                        )
+                            sample_to_remove = gr.Textbox(label="Arquivo a remover")
+                            remove_sample_btn = gr.Button("Remover amostra")
+                        remove_status = gr.Markdown("")
 
             # ============================================================ #
             #  Sub-tab 3: Treinar Modelo                                    #
             # ============================================================ #
-            with gr.Tab("🧠 Treinar Modelo"):
+            with gr.Tab("3. Treinar"):
                 with gr.Row(elem_classes="responsive-grid"):
-                    with gr.Column(scale=1):
+                    with gr.Column(scale=1, min_width=300):
                         train_profile_dd = gr.Dropdown(
-                            label="Selecionar Perfil",
+                            label="Perfil",
                             choices=[],
                             interactive=True,
                         )
@@ -266,69 +260,71 @@ def create_voice_profiles_tab():
                             label="Arquitetura",
                             choices=arch_choices,
                             value="sonic_sleuth",
-                            info="14 arquiteturas: 12 DL + SVM + Random Forest",
                         )
                         train_epochs = gr.Slider(
-                            label="Épocas (DL)", minimum=5, maximum=200,
-                            value=30, step=5,
-                            info="Ignorado para SVM/Random Forest",
+                            label="Épocas",
+                            minimum=5,
+                            maximum=200,
+                            value=30,
+                            step=5,
+                            info="Não se aplica a SVM e Random Forest.",
                         )
                         train_batch = gr.Slider(
-                            label="Batch Size (DL)", minimum=4, maximum=64,
-                            value=16, step=4,
+                            label="Tamanho do lote",
+                            minimum=4,
+                            maximum=64,
+                            value=16,
+                            step=4,
                         )
                         train_lr = gr.Slider(
-                            label="Learning Rate (DL)", minimum=0.0001, maximum=0.01,
-                            value=0.001, step=0.0001,
+                            label="Taxa de aprendizado",
+                            minimum=0.0001,
+                            maximum=0.01,
+                            value=0.001,
+                            step=0.0001,
                         )
                         train_validation_info = gr.Markdown("")
-                        train_btn = gr.Button(
-                            "🚀 Iniciar Treinamento", variant="primary"
-                        )
+                        train_btn = gr.Button("Iniciar treinamento", variant="primary")
 
-                    with gr.Column(scale=2):
+                    with gr.Column(scale=2, min_width=320):
                         train_log = gr.Textbox(
-                            label="Log de Treinamento",
+                            label="Log de treinamento",
                             lines=15,
                             interactive=False,
                             autoscroll=True,
                         )
                         with gr.Row(elem_classes="responsive-grid plot-grid"):
-                            train_loss_plot = gr.Plot(label="Loss")
-                            train_acc_plot = gr.Plot(label="Accuracy")
+                            train_loss_plot = gr.Plot(label="Perda")
+                            train_acc_plot = gr.Plot(label="Acurácia")
                         with gr.Row(elem_classes="responsive-grid plot-grid"):
-                            train_cm_plot = gr.Plot(label="Confusion Matrix")
-                            train_metrics_json = gr.JSON(
-                                label="Métricas Finais"
-                            )
+                            train_cm_plot = gr.Plot(label="Matriz de confusão")
+                            train_metrics_json = gr.JSON(label="Métricas finais")
 
             # ============================================================ #
             #  Sub-tab 4: Verificar Voz                                     #
             # ============================================================ #
-            with gr.Tab("🔍 Verificar Voz"):
+            with gr.Tab("4. Verificar"):
                 with gr.Row(elem_classes="responsive-grid"):
-                    with gr.Column(scale=1):
+                    with gr.Column(scale=1, min_width=300):
                         verify_profile_dd = gr.Dropdown(
-                            label="Selecionar Perfil (com modelo treinado)",
+                            label="Perfil com modelo treinado",
                             choices=[],
                             interactive=True,
                         )
                         verify_audio = gr.Audio(
-                            label="Áudio para Verificação",
+                            label="Áudio para verificação",
                             type="filepath",
                         )
-                        verify_btn = gr.Button(
-                            "🔎 Verificar", variant="primary"
-                        )
+                        verify_btn = gr.Button("Verificar voz", variant="primary")
 
-                    with gr.Column(scale=2):
+                    with gr.Column(scale=2, min_width=320):
                         verify_result = gr.Markdown(
-                            "Selecione um perfil e faça upload de um áudio."
+                            "*Selecione um perfil e envie um áudio.*"
                         )
                         verify_confidence = gr.Number(
                             label="Confiança (%)", interactive=False
                         )
-                        verify_details = gr.JSON(label="Detalhes Técnicos")
+                        verify_details = gr.JSON(label="Detalhes técnicos")
 
         # ================================================================ #
         #  Event Handlers                                                    #
@@ -336,7 +332,13 @@ def create_voice_profiles_tab():
 
         def handle_create_profile(name, telegram, phone, email, desc, arch):
             if not name or not name.strip():
-                return "❌ Nome é obrigatório.", gr.update(), gr.update(), gr.update(), gr.update()
+                return (
+                    "❌ Nome é obrigatório.",
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                )
             try:
                 svc = _get_service()
                 profile = svc.create_profile(
@@ -349,7 +351,9 @@ def create_voice_profiles_tab():
                 )
                 profiles = svc.list_profiles()
                 table_data = _profiles_to_table(profiles)
-                choices = [(f"{p.name} (ID: {p.id}) [{p.status}]", p.id) for p in profiles]
+                choices = [
+                    (f"{p.name} (ID: {p.id}) [{p.status}]", p.id) for p in profiles
+                ]
                 return (
                     f"✅ Perfil '{profile.name}' criado (ID: {profile.id})",
                     table_data,
@@ -358,14 +362,31 @@ def create_voice_profiles_tab():
                     gr.update(choices=choices),
                 )
             except Exception as e:
-                return f"❌ Erro: {e}", gr.update(), gr.update(), gr.update(), gr.update()
+                return (
+                    f"❌ Erro: {e}",
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                )
 
         create_btn.click(
             fn=handle_create_profile,
-            inputs=[profile_name, profile_telegram, profile_phone,
-                    profile_email, profile_desc, profile_arch],
-            outputs=[create_status, profiles_table, dataset_profile_dd,
-                     train_profile_dd, verify_profile_dd],
+            inputs=[
+                profile_name,
+                profile_telegram,
+                profile_phone,
+                profile_email,
+                profile_desc,
+                profile_arch,
+            ],
+            outputs=[
+                create_status,
+                profiles_table,
+                dataset_profile_dd,
+                train_profile_dd,
+                verify_profile_dd,
+            ],
         )
 
         @ui_safe("Falha ao atualizar a lista")
@@ -383,20 +404,43 @@ def create_voice_profiles_tab():
 
         refresh_btn.click(
             fn=handle_refresh,
-            outputs=[profiles_table, dataset_profile_dd,
-                     train_profile_dd, verify_profile_dd],
+            outputs=[
+                profiles_table,
+                dataset_profile_dd,
+                train_profile_dd,
+                verify_profile_dd,
+            ],
+        )
+        # Ao abrir a aba, a lista e os seletores de perfil já vêm preenchidos.
+        voice_tab.select(
+            fn=handle_refresh,
+            outputs=[
+                profiles_table,
+                dataset_profile_dd,
+                train_profile_dd,
+                verify_profile_dd,
+            ],
+            show_progress="hidden",
         )
 
         @ui_safe("Falha ao remover")
         def handle_delete(pid):
             if not pid:
-                return "❌ Informe o ID do perfil.", gr.update(), gr.update(), gr.update(), gr.update()
+                return (
+                    "❌ Informe o ID do perfil.",
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                )
             svc = _get_service()
             ok = svc.delete_profile(int(pid))
             if ok:
                 profiles = svc.list_profiles()
                 table_data = _profiles_to_table(profiles)
-                choices = [(f"{p.name} (ID: {p.id}) [{p.status}]", p.id) for p in profiles]
+                choices = [
+                    (f"{p.name} (ID: {p.id}) [{p.status}]", p.id) for p in profiles
+                ]
                 return (
                     f"✅ Perfil {int(pid)} removido.",
                     table_data,
@@ -404,13 +448,38 @@ def create_voice_profiles_tab():
                     gr.update(choices=choices),
                     gr.update(choices=choices),
                 )
-            return "❌ Perfil não encontrado.", gr.update(), gr.update(), gr.update(), gr.update()
+            return (
+                "❌ Perfil não encontrado.",
+                gr.update(),
+                gr.update(),
+                gr.update(),
+                gr.update(),
+            )
 
         delete_btn.click(
+            fn=lambda: gr.update(visible=True),
+            outputs=[confirm_delete_row],
+            show_progress="hidden",
+        )
+        cancel_delete_btn.click(
+            fn=lambda: gr.update(visible=False),
+            outputs=[confirm_delete_row],
+            show_progress="hidden",
+        )
+        confirm_delete_btn.click(
             fn=handle_delete,
             inputs=[delete_id],
-            outputs=[delete_status, profiles_table, dataset_profile_dd,
-                     train_profile_dd, verify_profile_dd],
+            outputs=[
+                delete_status,
+                profiles_table,
+                dataset_profile_dd,
+                train_profile_dd,
+                verify_profile_dd,
+            ],
+        ).then(
+            fn=lambda: gr.update(visible=False),
+            outputs=[confirm_delete_row],
+            show_progress="hidden",
         )
 
         # ── Dataset handlers ──
@@ -424,7 +493,11 @@ def create_voice_profiles_tab():
             rows = []
             for f in info["files"]:
                 size_kb = f["size_bytes"] / 1024
-                size_str = f"{size_kb:.1f} KB" if size_kb < 1024 else f"{size_kb / 1024:.2f} MB"
+                size_str = (
+                    f"{size_kb:.1f} KB"
+                    if size_kb < 1024
+                    else f"{size_kb / 1024:.2f} MB"
+                )
                 rows.append([f["filename"], f["duration"], f["sample_rate"], size_str])
 
             md = (
@@ -456,9 +529,19 @@ def create_voice_profiles_tab():
         @ui_safe("Falha ao enviar as amostras")
         def handle_upload_samples(profile_id, files):
             if not profile_id:
-                return "❌ Selecione um perfil primeiro.", gr.update(), gr.update(), gr.update()
+                return (
+                    "❌ Selecione um perfil primeiro.",
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                )
             if not files:
-                return "❌ Nenhum arquivo selecionado.", gr.update(), gr.update(), gr.update()
+                return (
+                    "❌ Nenhum arquivo selecionado.",
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                )
 
             svc = _get_service()
             audio_data = []
@@ -478,7 +561,12 @@ def create_voice_profiles_tab():
                 # Recarregar dataset
                 md, val_md, rows = handle_load_dataset(profile_id)
                 return status, md, val_md, rows
-            return f"❌ {result.get('error', 'Erro')}", gr.update(), gr.update(), gr.update()
+            return (
+                f"❌ {result.get('error', 'Erro')}",
+                gr.update(),
+                gr.update(),
+                gr.update(),
+            )
 
         upload_btn.click(
             fn=handle_upload_samples,
@@ -564,9 +652,9 @@ def create_voice_profiles_tab():
                 # Resumo de métricas avançadas
                 log_lines.append(
                     f"\n✅ Treinamento concluído!\n"
-                    f"  Val Accuracy: {metrics.get('val_accuracy', 0):.4f}\n"
-                    f"  Precision:    {metrics.get('precision', 0):.4f}\n"
-                    f"  Recall:       {metrics.get('recall', 0):.4f}\n"
+                    f"  Acurácia val.: {metrics.get('val_accuracy', 0):.4f}\n"
+                    f"  Precisão:      {metrics.get('precision', 0):.4f}\n"
+                    f"  Revocação:     {metrics.get('recall', 0):.4f}\n"
                     f"  F1-Score:     {metrics.get('f1_score', 0):.4f}\n"
                     f"  EER:          {metrics.get('eer', 0):.4f}"
                 )
@@ -582,29 +670,55 @@ def create_voice_profiles_tab():
                     if history and history.get("loss"):
                         loss_fig = Figure(figsize=(6, 4))
                         ax = loss_fig.add_subplot(111)
-                        _style_ax(ax, loss_fig, "Loss por Época")
-                        ax.plot(history.get('loss', []), label='Train Loss',
-                                color='#3b82f6', linewidth=2)
-                        ax.plot(history.get('val_loss', []), label='Val Loss',
-                                color='#ef4444', linewidth=2, linestyle='--')
-                        ax.set_xlabel('Época')
-                        ax.set_ylabel('Loss')
-                        ax.legend(facecolor=PLOT_FACE, edgecolor=PLOT_GRID,
-                                  labelcolor=PLOT_TEXT, fontsize=9)
+                        _style_ax(ax, loss_fig, "Perda por época")
+                        ax.plot(
+                            history.get("loss", []),
+                            label="Treino: perda",
+                            color="#3b82f6",
+                            linewidth=2,
+                        )
+                        ax.plot(
+                            history.get("val_loss", []),
+                            label="Validação: perda",
+                            color="#ef4444",
+                            linewidth=2,
+                            linestyle="--",
+                        )
+                        ax.set_xlabel("Época")
+                        ax.set_ylabel("Perda")
+                        ax.legend(
+                            facecolor=PLOT_FACE,
+                            edgecolor=PLOT_GRID,
+                            labelcolor=PLOT_TEXT,
+                            fontsize=9,
+                        )
                         loss_fig.tight_layout()
 
                         # Accuracy plot
                         acc_fig = Figure(figsize=(6, 4))
                         ax2 = acc_fig.add_subplot(111)
-                        _style_ax(ax2, acc_fig, "Accuracy por Época")
-                        ax2.plot(history.get('accuracy', []), label='Train Acc',
-                                 color='#10b981', linewidth=2)
-                        ax2.plot(history.get('val_accuracy', []), label='Val Acc',
-                                 color='#f59e0b', linewidth=2, linestyle='--')
-                        ax2.set_xlabel('Época')
-                        ax2.set_ylabel('Accuracy')
-                        ax2.legend(facecolor=PLOT_FACE, edgecolor=PLOT_GRID,
-                                   labelcolor=PLOT_TEXT, fontsize=9)
+                        _style_ax(ax2, acc_fig, "Acurácia por época")
+                        ax2.plot(
+                            history.get("accuracy", []),
+                            label="Treino: acurácia",
+                            color="#10b981",
+                            linewidth=2,
+                        )
+                        ax2.plot(
+                            history.get("val_accuracy", []),
+                            label="Validação: acurácia",
+                            color="#f59e0b",
+                            linewidth=2,
+                            linestyle="--",
+                        )
+                        ax2.set_xlabel("Época")
+                        ax2.set_ylabel("Acurácia")
+                        ax2.legend(
+                            facecolor=PLOT_FACE,
+                            edgecolor=PLOT_GRID,
+                            labelcolor=PLOT_TEXT,
+                            fontsize=9,
+                        )
                         acc_fig.tight_layout()
 
                     # Confusion Matrix plot
@@ -615,10 +729,15 @@ def create_voice_profiles_tab():
                         cm_fig.patch.set_facecolor(PLOT_BG)
                         ax3.set_facecolor(PLOT_FACE)
                         cm_arr = np.array(cm)
-                        ax3.imshow(cm_arr, cmap='magma', interpolation='nearest')
-                        ax3.set_title("Confusion Matrix", color=PLOT_TEXT,
-                                      fontweight="600", fontsize=12, pad=10)
-                        labels = ["Real", "Fake"]
+                        ax3.imshow(cm_arr, cmap="magma", interpolation="nearest")
+                        ax3.set_title(
+                            "Matriz de confusão",
+                            color=PLOT_TEXT,
+                            fontweight="600",
+                            fontsize=12,
+                            pad=10,
+                        )
+                        labels = ["Real", "Sintético"]
                         ax3.set_xticks([0, 1])
                         ax3.set_yticks([0, 1])
                         ax3.set_xticklabels(labels, color=PLOT_TEXT, fontsize=10)
@@ -628,10 +747,21 @@ def create_voice_profiles_tab():
                         # Anotar valores
                         for i in range(2):
                             for j in range(2):
-                                color = PLOT_TEXT if cm_arr[i, j] < cm_arr.max() * 0.6 else PLOT_BG
-                                ax3.text(j, i, str(cm_arr[i, j]),
-                                         ha='center', va='center',
-                                         color=color, fontsize=16, fontweight='bold')
+                                color = (
+                                    PLOT_TEXT
+                                    if cm_arr[i, j] < cm_arr.max() * 0.6
+                                    else PLOT_BG
+                                )
+                                ax3.text(
+                                    j,
+                                    i,
+                                    str(cm_arr[i, j]),
+                                    ha="center",
+                                    va="center",
+                                    color=color,
+                                    fontsize=16,
+                                    fontweight="bold",
+                                )
                         for sp in ax3.spines.values():
                             sp.set_color(PLOT_GRID)
                         cm_fig.tight_layout()
@@ -641,13 +771,16 @@ def create_voice_profiles_tab():
 
                 # Métricas sem history (muito grande para JSON view)
                 display_metrics = {
-                    k: v for k, v in metrics.items()
+                    k: v
+                    for k, v in metrics.items()
                     if k not in ("history", "confusion_matrix")
                 }
 
                 yield "\n".join(log_lines), loss_fig, acc_fig, cm_fig, display_metrics
             else:
-                log_lines.append(f"\n❌ Erro: {result.get('error', 'Falha desconhecida')}")
+                log_lines.append(
+                    f"\n❌ Erro: {result.get('error', 'Falha desconhecida')}"
+                )
                 warnings = result.get("warnings", [])
                 for w in warnings:
                     log_lines.append(f"⚠️ {w}")
@@ -655,10 +788,14 @@ def create_voice_profiles_tab():
 
         train_btn.click(
             fn=handle_train,
-            inputs=[train_profile_dd, train_arch, train_epochs,
-                    train_batch, train_lr],
-            outputs=[train_log, train_loss_plot, train_acc_plot,
-                     train_cm_plot, train_metrics_json],
+            inputs=[train_profile_dd, train_arch, train_epochs, train_batch, train_lr],
+            outputs=[
+                train_log,
+                train_loss_plot,
+                train_acc_plot,
+                train_cm_plot,
+                train_metrics_json,
+            ],
         )
 
         # ── Verify handlers ──

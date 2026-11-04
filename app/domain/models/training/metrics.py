@@ -4,13 +4,12 @@ Este módulo implementa calculadoras de métricas para avaliação de modelos.
 """
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 from sklearn.metrics import (
     accuracy_score,
     auc,
-    classification_report,
     confusion_matrix,
     f1_score,
     precision_recall_curve,
@@ -31,27 +30,21 @@ class MetricsCalculator:
         self,
         y_true: np.ndarray,
         y_pred_classes: np.ndarray,
-        y_pred_proba: Optional[np.ndarray] = None
+        y_pred_proba: Optional[np.ndarray] = None,
     ) -> Dict[str, float]:
         """Calcula todas as métricas disponíveis."""
         metrics = {}
 
         try:
             # Métricas básicas
-            metrics.update(
-                self.calculate_basic_metrics(
-                    y_true, y_pred_classes))
+            metrics.update(self.calculate_basic_metrics(y_true, y_pred_classes))
 
             # Métricas baseadas em probabilidade
             if y_pred_proba is not None:
-                metrics.update(
-                    self.calculate_probability_metrics(
-                        y_true, y_pred_proba))
+                metrics.update(self.calculate_probability_metrics(y_true, y_pred_proba))
 
             # Métricas de matriz de confusão
-            metrics.update(
-                self.calculate_confusion_metrics(
-                    y_true, y_pred_classes))
+            metrics.update(self.calculate_confusion_metrics(y_true, y_pred_classes))
 
         except Exception as e:
             self.logger.error(f"Erro ao calcular métricas: {str(e)}")
@@ -59,25 +52,39 @@ class MetricsCalculator:
         return metrics
 
     def calculate_basic_metrics(
-        self,
-        y_true: np.ndarray,
-        y_pred_classes: np.ndarray
+        self, y_true: np.ndarray, y_pred_classes: np.ndarray
     ) -> Dict[str, float]:
         """Calcula métricas básicas de classificação."""
         return {
             "accuracy": float(accuracy_score(y_true, y_pred_classes)),
-            "precision": float(precision_score(y_true, y_pred_classes, average='weighted', zero_division=0)),
-            "recall": float(recall_score(y_true, y_pred_classes, average='weighted', zero_division=0)),
-            "f1_score": float(f1_score(y_true, y_pred_classes, average='weighted', zero_division=0)),
-            "precision_macro": float(precision_score(y_true, y_pred_classes, average='macro', zero_division=0)),
-            "recall_macro": float(recall_score(y_true, y_pred_classes, average='macro', zero_division=0)),
-            "f1_score_macro": float(f1_score(y_true, y_pred_classes, average='macro', zero_division=0))
+            "precision": float(
+                precision_score(
+                    y_true, y_pred_classes, average="weighted", zero_division=0
+                )
+            ),
+            "recall": float(
+                recall_score(
+                    y_true, y_pred_classes, average="weighted", zero_division=0
+                )
+            ),
+            "f1_score": float(
+                f1_score(y_true, y_pred_classes, average="weighted", zero_division=0)
+            ),
+            "precision_macro": float(
+                precision_score(
+                    y_true, y_pred_classes, average="macro", zero_division=0
+                )
+            ),
+            "recall_macro": float(
+                recall_score(y_true, y_pred_classes, average="macro", zero_division=0)
+            ),
+            "f1_score_macro": float(
+                f1_score(y_true, y_pred_classes, average="macro", zero_division=0)
+            ),
         }
 
     def calculate_probability_metrics(
-        self,
-        y_true: np.ndarray,
-        y_pred_proba: np.ndarray
+        self, y_true: np.ndarray, y_pred_proba: np.ndarray
     ) -> Dict[str, float]:
         """Calcula métricas baseadas em probabilidades."""
         metrics = {}
@@ -85,13 +92,15 @@ class MetricsCalculator:
         try:
             # Para classificação binária
             # Suporta saídas: (N,) sigmoid 1D, (N,1) sigmoid binário, (N,2) softmax
-            if y_pred_proba.ndim == 1 or (y_pred_proba.ndim > 1 and y_pred_proba.shape[1] <= 2):
+            if y_pred_proba.ndim == 1 or (
+                y_pred_proba.ndim > 1 and y_pred_proba.shape[1] <= 2
+            ):
                 if y_pred_proba.ndim == 1:
-                    y_proba = y_pred_proba                      # já é P(classe=1)
+                    y_proba = y_pred_proba  # já é P(classe=1)
                 elif y_pred_proba.shape[1] == 2:
-                    y_proba = y_pred_proba[:, 1]                # softmax: coluna 1
+                    y_proba = y_pred_proba[:, 1]  # softmax: coluna 1
                 else:
-                    y_proba = y_pred_proba[:, 0]                # sigmoid (N,1): coluna 0
+                    y_proba = y_pred_proba[:, 0]  # sigmoid (N,1): coluna 0
 
                 # ROC AUC
                 metrics["roc_auc"] = float(roc_auc_score(y_true, y_proba))
@@ -115,26 +124,27 @@ class MetricsCalculator:
             else:
                 # ROC AUC multiclasse
                 try:
-                    metrics["roc_auc_ovr"] = float(roc_auc_score(
-                        y_true, y_pred_proba, multi_class='ovr', average='weighted'
-                    ))
-                    metrics["roc_auc_ovo"] = float(roc_auc_score(
-                        y_true, y_pred_proba, multi_class='ovo', average='weighted'
-                    ))
+                    metrics["roc_auc_ovr"] = float(
+                        roc_auc_score(
+                            y_true, y_pred_proba, multi_class="ovr", average="weighted"
+                        )
+                    )
+                    metrics["roc_auc_ovo"] = float(
+                        roc_auc_score(
+                            y_true, y_pred_proba, multi_class="ovo", average="weighted"
+                        )
+                    )
                 except ValueError:
                     # Pode falhar se houver apenas uma classe
                     pass
 
         except Exception as e:
-            self.logger.warning(
-                f"Erro ao calcular métricas de probabilidade: {str(e)}")
+            self.logger.warning(f"Erro ao calcular métricas de probabilidade: {str(e)}")
 
         return metrics
 
     def calculate_confusion_metrics(
-        self,
-        y_true: np.ndarray,
-        y_pred_classes: np.ndarray
+        self, y_true: np.ndarray, y_pred_classes: np.ndarray
     ) -> Dict[str, float]:
         """Calcula métricas derivadas da matriz de confusão."""
         metrics = {}
@@ -146,136 +156,48 @@ class MetricsCalculator:
             if cm.shape == (2, 2):
                 tn, fp, fn, tp = cm.ravel()
 
-                metrics.update({
-                    "true_positives": float(tp),
-                    "true_negatives": float(tn),
-                    "false_positives": float(fp),
-                    "false_negatives": float(fn),
-                    "specificity": float(tn / (tn + fp)) if (tn + fp) > 0 else 0.0,
-                    "sensitivity": float(tp / (tp + fn)) if (tp + fn) > 0 else 0.0,
-                    "false_positive_rate": float(fp / (fp + tn)) if (fp + tn) > 0 else 0.0,
-                    "false_negative_rate": float(fn / (fn + tp)) if (fn + tp) > 0 else 0.0,
-                    "positive_predictive_value": float(tp / (tp + fp)) if (tp + fp) > 0 else 0.0,
-                    "negative_predictive_value": float(tn / (tn + fn)) if (tn + fn) > 0 else 0.0
-                })
+                metrics.update(
+                    {
+                        "true_positives": float(tp),
+                        "true_negatives": float(tn),
+                        "false_positives": float(fp),
+                        "false_negatives": float(fn),
+                        "specificity": float(tn / (tn + fp)) if (tn + fp) > 0 else 0.0,
+                        "sensitivity": float(tp / (tp + fn)) if (tp + fn) > 0 else 0.0,
+                        "false_positive_rate": (
+                            float(fp / (fp + tn)) if (fp + tn) > 0 else 0.0
+                        ),
+                        "false_negative_rate": (
+                            float(fn / (fn + tp)) if (fn + tp) > 0 else 0.0
+                        ),
+                        "positive_predictive_value": (
+                            float(tp / (tp + fp)) if (tp + fp) > 0 else 0.0
+                        ),
+                        "negative_predictive_value": (
+                            float(tn / (tn + fn)) if (tn + fn) > 0 else 0.0
+                        ),
+                    }
+                )
 
             # Métricas gerais da matriz de confusão
             total_samples = np.sum(cm)
             correct_predictions = np.trace(cm)
 
-            metrics.update({
-                "total_samples": float(total_samples),
-                "correct_predictions": float(correct_predictions),
-                "incorrect_predictions": float(total_samples - correct_predictions)
-            })
+            metrics.update(
+                {
+                    "total_samples": float(total_samples),
+                    "correct_predictions": float(correct_predictions),
+                    "incorrect_predictions": float(total_samples - correct_predictions),
+                }
+            )
 
         except Exception as e:
-            self.logger.warning(
-                f"Erro ao calcular métricas de confusão: {str(e)}")
+            self.logger.warning(f"Erro ao calcular métricas de confusão: {str(e)}")
 
         return metrics
 
-    def get_classification_report(
-        self,
-        y_true: np.ndarray,
-        y_pred_classes: np.ndarray,
-        target_names: Optional[List[str]] = None
-    ) -> str:
-        """Retorna relatório de classificação detalhado."""
-        try:
-            return classification_report(
-                y_true, y_pred_classes,
-                target_names=target_names,
-                zero_division=0
-            )
-        except Exception as e:
-            self.logger.error(
-                f"Erro ao gerar relatório de classificação: {str(e)}")
-            return ""
-
-    def get_confusion_matrix(
-        self,
-        y_true: np.ndarray,
-        y_pred_classes: np.ndarray
-    ) -> np.ndarray:
-        """Retorna matriz de confusão."""
-        try:
-            return confusion_matrix(y_true, y_pred_classes)
-        except Exception as e:
-            self.logger.error(f"Erro ao calcular matriz de confusão: {str(e)}")
-            return np.array([])
-
-    def calculate_per_class_metrics(
-        self,
-        y_true: np.ndarray,
-        y_pred_classes: np.ndarray,
-        class_names: Optional[List[str]] = None
-    ) -> Dict[str, Dict[str, float]]:
-        """Calcula métricas por classe."""
-        metrics_per_class = {}
-
-        try:
-            # Obter classes únicas
-            unique_classes = np.unique(y_true)
-
-            for i, class_label in enumerate(unique_classes):
-                class_name = class_names[i] if class_names and i < len(
-                    class_names) else f"class_{class_label}"
-
-                # Criar máscaras binárias para a classe atual
-                y_true_binary = (y_true == class_label).astype(int)
-                y_pred_binary = (y_pred_classes == class_label).astype(int)
-
-                # Calcular métricas para esta classe
-                metrics_per_class[class_name] = {
-                    "precision": float(precision_score(y_true_binary, y_pred_binary, zero_division=0)),
-                    "recall": float(recall_score(y_true_binary, y_pred_binary, zero_division=0)),
-                    "f1_score": float(f1_score(y_true_binary, y_pred_binary, zero_division=0)),
-                    "support": float(np.sum(y_true_binary))
-                }
-
-        except Exception as e:
-            self.logger.error(
-                f"Erro ao calcular métricas por classe: {str(e)}")
-
-        return metrics_per_class
-
-    def calculate_threshold_metrics(
-        self,
-        y_true: np.ndarray,
-        y_pred_proba: np.ndarray,
-        thresholds: Optional[List[float]] = None
-    ) -> Dict[float, Dict[str, float]]:
-        """Calcula métricas para diferentes thresholds."""
-        if thresholds is None:
-            thresholds = [0.3, 0.4, 0.5, 0.6, 0.7]
-
-        threshold_metrics = {}
-
-        try:
-            # Para classificação binária
-            if len(y_pred_proba.shape) > 1 and y_pred_proba.shape[1] == 2:
-                y_proba = y_pred_proba[:, 1]
-            else:
-                y_proba = y_pred_proba
-
-            for threshold in thresholds:
-                y_pred_threshold = (y_proba >= threshold).astype(int)
-
-                threshold_metrics[threshold] = self.calculate_basic_metrics(
-                    y_true, y_pred_threshold
-                )
-
-        except Exception as e:
-            self.logger.error(
-                f"Erro ao calcular métricas por threshold: {str(e)}")
-
-        return threshold_metrics
-
     def calculate_eer(
-        self,
-        y_true: np.ndarray,
-        y_scores: np.ndarray
+        self, y_true: np.ndarray, y_scores: np.ndarray
     ) -> Tuple[float, float]:
         """Calcula Equal Error Rate (EER).
 
@@ -306,17 +228,20 @@ class MetricsCalculator:
 
                 # roc_curve devolve thresholds DECRESCENTES; interp1d exige x
                 # crescente, daí o [::-1].
-                fpr_interp = interp1d(thr_f[::-1], fpr_f[::-1],
-                                      bounds_error=False, fill_value=(1, 0))
-                fnr_interp = interp1d(thr_f[::-1], fnr_f[::-1],
-                                      bounds_error=False, fill_value=(0, 1))
+                fpr_interp = interp1d(
+                    thr_f[::-1], fpr_f[::-1], bounds_error=False, fill_value=(1, 0)
+                )
+                fnr_interp = interp1d(
+                    thr_f[::-1], fnr_f[::-1], bounds_error=False, fill_value=(0, 1)
+                )
 
                 # Encontrar threshold onde FPR(t) == FNR(t). No menor threshold
                 # FPR=1 e FNR=0 (diferença > 0); no maior, o oposto — então há
                 # troca de sinal e o brentq tem raiz garantida no intervalo.
                 eer_threshold = brentq(
                     lambda t: float(fpr_interp(t)) - float(fnr_interp(t)),
-                    float(thr_f.min()), float(thr_f.max())
+                    float(thr_f.min()),
+                    float(thr_f.max()),
                 )
                 eer = float(fpr_interp(eer_threshold))
             except Exception as exc:
@@ -325,7 +250,8 @@ class MetricsCalculator:
                 # (como a do `inf` acima) não volte a passar despercebida.
                 self.logger.debug(
                     "EER por interpolação falhou (%s); usando o ponto de "
-                    "|FPR-FNR| mínimo", exc
+                    "|FPR-FNR| mínimo",
+                    exc,
                 )
                 diff = np.abs(fpr - fnr)
                 eer_idx = np.argmin(diff)
@@ -412,29 +338,98 @@ class MetricsCalculator:
         min_idx = int(np.argmin(tdcf_norm))
         return float(tdcf_norm[min_idx]), float(thr[min_idx])
 
-    def get_det_curve_data(
-        self,
-        y_true: np.ndarray,
-        y_scores: np.ndarray
-    ) -> Dict[str, np.ndarray]:
-        """Retorna dados para plotagem da curva DET.
 
-        Returns:
-            Dict com 'fpr', 'fnr', 'thresholds' como np.ndarray.
-        """
-        try:
-            fpr, tpr, thresholds = roc_curve(y_true, y_scores)
-            fnr = 1 - tpr
+# Pontuação e EER de validação (saíram de trainer.py, P2-15): puro
+# numpy/sklearn, sem TensorFlow — o callback ValidationEER e o
+# TrainingService chamam ``validation_eer`` com o modelo já treinado.
 
-            return {
-                'fpr': fpr,
-                'fnr': fnr,
-                'thresholds': thresholds
-            }
-        except Exception as e:
-            self.logger.error(f"Erro ao gerar dados DET: {str(e)}")
-            return {
-                'fpr': np.array([0, 1]),
-                'fnr': np.array([1, 0]),
-                'thresholds': np.array([1, 0])
-            }
+
+def scores_from_predictions(bruto) -> "np.ndarray":
+    """Converte a saída BRUTA do modelo na pontuação que ordena spoof>bonafide.
+
+    SAÍDA DE 2 COLUNAS é o caso NORMAL no escopo, não a exceção: as
+    arquiteturas emitem softmax/logits sobre {bonafide, spoof}. A coluna 1 é a
+    do FAKE, a mesma convenção de `benchmarks/fit_neural.py` (`pred[:, 1]`).
+
+    LOG-ODDS, nao a coluna 1 sozinha. Medido em 2026-08-19 no AASIST promovido:
+    ele emite LOGITS CRUS (faixa -37,8 a +41,1; a soma das colunas tem media
+    1,91 e desvio 4,51, ou seja NAO e softmax), e as duas colunas variam de
+    forma independente. Ordenar so por `logit[1]` deu EER 0,0025 contra 0,0050
+    pelo criterio correto -- OTIMISTA por um fator de 2.
+
+    A diferenca serve aos DOIS casos e dispensa detectar o tipo de saida: com
+    softmax as colunas somam 1, entao `col1 - col0 = 2*col1 - 1` e
+    transformacao monotonica de col1 e o EER nao muda; com logits ela e a
+    log-odds, que e o que ordena corretamente.
+    """
+    bruto = np.asarray(bruto)
+    if bruto.ndim == 2 and bruto.shape[1] == 2:
+        return (bruto[:, 1] - bruto[:, 0]).ravel()
+    return bruto.ravel()
+
+
+def eer_from_scores(y_true, scores) -> float:
+    """EER a partir de rótulos e pontuações, com INTERPOLAÇÃO do cruzamento.
+
+    Espelha `MetricsCalculator.calculate_eer` (que usa brentq). Usar só o ponto
+    mais próximo (`argmin|fpr-fnr|`) fazia as duas implementações discordarem
+    na terceira casa — num regime de EER de 0,1% é essa a casa que separa os
+    modelos, e é esta métrica que SELECIONA o checkpoint. A interpolação linear
+    entre os dois pontos que cercam a troca de sinal dá o mesmo resultado do
+    brentq sem depender de scipy dentro de um callback de época.
+
+    Levanta ValueError quando o EER não é definível (uma classe só, tamanhos
+    incompatíveis, pontuações não-finitas) — quem chama decide se isso é aviso
+    ou falha.
+    """
+    from sklearn.metrics import roc_curve
+
+    y_true = np.asarray(y_true).ravel()
+    scores = np.asarray(scores).ravel()
+    if scores.size != y_true.size:
+        raise ValueError(
+            f"predição com {scores.size} scores para {y_true.size} rótulos"
+        )
+    if not np.isfinite(scores).all():
+        raise ValueError("pontuações não-finitas (NaN/inf) na validação")
+    if len(np.unique(y_true)) < 2:
+        raise ValueError("validação tem uma classe só; EER indefinível")
+
+    fpr, tpr, thr = roc_curve(y_true, scores)
+    fnr = 1.0 - tpr
+    finito = np.isfinite(thr)
+    fpr, fnr = fpr[finito], fnr[finito]
+    if fpr.size == 0:
+        raise ValueError("curva ROC vazia após descartar limiares não-finitos")
+
+    d = fpr - fnr
+    troca = np.nonzero(np.sign(d[:-1]) * np.sign(d[1:]) < 0)[0]
+    if troca.size:
+        i = int(troca[0])
+        passo = d[i] - d[i + 1]
+        peso = float(d[i] / passo) if passo != 0 else 0.0
+        eer = (
+            float(
+                (fpr[i] + peso * (fpr[i + 1] - fpr[i]))
+                + (fnr[i] + peso * (fnr[i + 1] - fnr[i]))
+            )
+            / 2.0
+        )
+    else:
+        i = int(np.nanargmin(np.abs(d)))
+        eer = float((fpr[i] + fnr[i]) / 2.0)
+    return float(min(max(eer, 0.0), 1.0))
+
+
+def validation_eer(model, validation_data, batch_size: int = 32) -> float:
+    """EER do modelo no conjunto de validação, na convenção do projeto.
+
+    Fonte ÚNICA do `val_eer`: o callback `ValidationEER` (que publica a métrica
+    por época) e a restauração guardada de checkpoint (que decide se o
+    checkpoint selecionado por ela fica) chamam esta função. Duas
+    implementações do mesmo EER divergindo na terceira casa selecionariam
+    épocas diferentes das que o log declara.
+    """
+    x, y = validation_data
+    bruto = model.predict(x, verbose=0, batch_size=max(1, int(batch_size)))
+    return eer_from_scores(np.asarray(y).ravel(), scores_from_predictions(bruto))

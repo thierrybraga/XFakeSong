@@ -17,6 +17,7 @@ entrada do modelo (via `input_contract` + registry) — é isso que validamos.
 
 Pula sem TensorFlow (mesmo padrão dos outros testes de integração).
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -40,23 +41,25 @@ def _seed():
 def _synthetic_audio() -> AudioData:
     """1 s de áudio sintético (16 kHz) — entrada do pipeline real."""
     t = np.linspace(0, 1.0, SR, endpoint=False)
-    y = (0.6 * np.sin(2 * np.pi * 220 * t)
-         + 0.05 * np.random.default_rng(3).standard_normal(SR)).astype("float32")
+    y = (
+        0.6 * np.sin(2 * np.pi * 220 * t)
+        + 0.05 * np.random.default_rng(3).standard_normal(SR)
+    ).astype("float32")
     return AudioData(samples=y, sample_rate=SR, duration=1.0)
 
 
 @pytest.mark.parametrize(
     "architecture, shape, name",
     [
-        ("MultiscaleCNN", (32, 16), "nb_ms"),   # forma exata do pipeline/02
-        ("RawNet2", (16000,), "nb_raw"),        # raw-audio
+        ("MultiscaleCNN", (32, 16), "nb_ms"),  # forma exata do pipeline/02
+        ("RawNet2", (16000,), "nb_raw"),  # raw-audio
     ],
 )
 def test_notebook_trained_model_runs_in_detection_pipeline(
     tmp_path, architecture, shape, name
 ):
-    from app.domain.services.training_service import TrainingService
     from app.domain.services.detection_service import DetectionService
+    from app.domain.services.training_service import TrainingService
 
     # 1. Treina como o notebook: TrainingService sobre um .npz sintético.
     rng = np.random.default_rng(0)
@@ -83,7 +86,9 @@ def test_notebook_trained_model_runs_in_detection_pipeline(
         # deste teste é validar compatibilidade notebook→pipeline de
         # detecção, não precisão mista, então fixamos float32 aqui.
         config={
-            "epochs": 1, "batch_size": 32, "model_name": name,
+            "epochs": 1,
+            "batch_size": 32,
+            "model_name": name,
             "use_mixed_precision": False,
         },
     )
@@ -93,9 +98,9 @@ def test_notebook_trained_model_runs_in_detection_pipeline(
     ds = DetectionService(models_dir=str(models_dir), create_default_models=False)
     out = ds.detect_single(_synthetic_audio(), model_name=name)
 
-    assert out.status == ProcessingStatus.SUCCESS, (
-        f"{architecture}: detect_single falhou — {out.errors}"
-    )
+    assert (
+        out.status == ProcessingStatus.SUCCESS
+    ), f"{architecture}: detect_single falhou — {out.errors}"
     result = out.data
     assert isinstance(result.is_fake, (bool, np.bool_))
     assert 0.0 <= float(result.confidence) <= 1.0, "confiança fora de [0,1]"

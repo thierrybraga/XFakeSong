@@ -1,5 +1,0 @@
-ffmpeg
-libsndfile1
-cmake
-gcc
-g++

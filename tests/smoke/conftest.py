@@ -9,6 +9,7 @@ Para rodar apenas os smoke tests:
 Para rodar tudo EXCETO smoke (padrão):
     pytest tests/
 """
+
 import pytest
 
 

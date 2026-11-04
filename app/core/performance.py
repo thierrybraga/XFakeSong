@@ -8,6 +8,8 @@ import os
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, Optional
 
+from app.core.config.env import env_flag, env_int, env_positive_int
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,31 +27,6 @@ class RuntimePerformanceConfig:
     enable_tf32: bool
 
 
-def _env_bool(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _env_int(name: str, default: int) -> int:
-    try:
-        return int(os.getenv(name, str(default)))
-    except (TypeError, ValueError):
-        return default
-
-
-def _env_optional_int(name: str) -> Optional[int]:
-    raw = os.getenv(name)
-    if raw in (None, ""):
-        return None
-    try:
-        value = int(raw)
-        return value if value > 0 else None
-    except ValueError:
-        return None
-
-
 def get_runtime_performance_config() -> RuntimePerformanceConfig:
     cpu_count = max(1, os.cpu_count() or 1)
     default_intra = max(
@@ -58,19 +35,19 @@ def get_runtime_performance_config() -> RuntimePerformanceConfig:
     default_inter = max(1, min(4, cpu_count // 2 or 1))
     return RuntimePerformanceConfig(
         cpu_count=cpu_count,
-        intra_op_threads=_env_int("XFAKE_TF_INTRA_OP_THREADS", default_intra),
-        inter_op_threads=_env_int("XFAKE_TF_INTER_OP_THREADS", default_inter),
-        max_parallel_workers=_env_int("XFAKE_NUM_WORKERS", default_intra),
-        enable_onednn=_env_bool("XFAKE_ENABLE_ONEDNN", True),
-        enable_xla=_env_bool("XFAKE_ENABLE_XLA", True),
-        gpu_memory_growth=_env_bool("XFAKE_GPU_MEMORY_GROWTH", True),
-        gpu_memory_limit_mb=_env_optional_int("XFAKE_GPU_MEMORY_LIMIT_MB"),
-        cuda_malloc_async=_env_bool("XFAKE_CUDA_MALLOC_ASYNC", True),
+        intra_op_threads=env_int("XFAKE_TF_INTRA_OP_THREADS", default_intra),
+        inter_op_threads=env_int("XFAKE_TF_INTER_OP_THREADS", default_inter),
+        max_parallel_workers=env_int("XFAKE_NUM_WORKERS", default_intra),
+        enable_onednn=env_flag("XFAKE_ENABLE_ONEDNN", True),
+        enable_xla=env_flag("XFAKE_ENABLE_XLA", True),
+        gpu_memory_growth=env_flag("XFAKE_GPU_MEMORY_GROWTH", True),
+        gpu_memory_limit_mb=env_positive_int("XFAKE_GPU_MEMORY_LIMIT_MB"),
+        cuda_malloc_async=env_flag("XFAKE_CUDA_MALLOC_ASYNC", True),
         # TF32 (Ampere+, CC>=8.0): acelera matmul/conv em float32 com leve perda
         # de precisão. Default OFF p/ reprodutibilidade do benchmark; ligue via
         # XFAKE_ENABLE_TF32=true para ganho nos modelos que rodam em float32
         # (WavLM/HuBERT/RawNet2/Ensemble, que optam por não usar mixed_float16).
-        enable_tf32=_env_bool("XFAKE_ENABLE_TF32", False),
+        enable_tf32=env_flag("XFAKE_ENABLE_TF32", False),
     )
 
 

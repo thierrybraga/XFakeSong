@@ -7,7 +7,7 @@ models:
 output_dir: data/results/families/extended
 batch_size: 16
 device_profile: gpu
-dataset: data/datasets/benchmark_dataset.npz
+dataset: data/datasets/benchmark_dataset_15k.npz
 models_dir: data/models
 epochs: 100
 latency_runs: 30

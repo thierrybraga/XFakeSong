@@ -17,14 +17,14 @@ from .components.rqa import (
 
 # Re-exporting functions for backward compatibility
 __all__ = [
-    'compute_correlation_dimension',
-    'compute_correlation_dimension_optimized',
-    'compute_lyapunov_exponent',
-    'compute_lyapunov_exponent_optimized',
-    'compute_rqa_features',
-    'compute_rqa_features_optimized',
-    '_find_diagonal_lines',
-    '_find_diagonal_lines_optimized',
-    '_find_vertical_lines',
-    '_find_vertical_lines_optimized'
+    "compute_correlation_dimension",
+    "compute_correlation_dimension_optimized",
+    "compute_lyapunov_exponent",
+    "compute_lyapunov_exponent_optimized",
+    "compute_rqa_features",
+    "compute_rqa_features_optimized",
+    "_find_diagonal_lines",
+    "_find_diagonal_lines_optimized",
+    "_find_vertical_lines",
+    "_find_vertical_lines_optimized",
 ]

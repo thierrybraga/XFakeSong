@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# XFakeSong Launcher v4.0
+# SpeechChecker Launcher v4.0
 # Plataforma operacional unificada
 # Compatível: Ubuntu/Debian • Linux • macOS • WSL2
 # ==============================================================================
@@ -43,15 +43,16 @@ IFS=$'\n\t'
 # ==============================================================================
 
 readonly VERSION="4.0.0"
-readonly APP_NAME="XFakeSong"
-readonly DEFAULT_PORT="7860"
+readonly APP_NAME="SpeechChecker"
+# Só da aplicação local. Cada perfil Docker publica a sua: 7860 (NVIDIA) e 7861 (CPU).
+readonly LOCAL_PORT="7862"
 readonly HEALTH_TIMEOUT="300"
 readonly HEALTH_INTERVAL="5"
 # CONTAINER_NAME e COMPOSE_FILE não são readonly: dependem do perfil
 # (cpu/nvidia) ativo, resolvido em tempo de execução por
 # detect_active_profile() — mesma lógica de start.bat (:DETECT_ACTIVE_PROFILE).
-CONTAINER_NAME="xfakesong_inference_cpu"
-COMPOSE_FILE="docker/compose/inference.cpu.yml"
+CONTAINER_NAME="speechchecker_inference_cpu"
+COMPOSE_FILE="infrastructure/docker/compose/inference.cpu.yml"
 readonly PY_MIN_MINOR="11"   # Python 3.11 é a referência (compatível 3.11–3.12)
 readonly PY_MAX_MINOR="12"   # teto: torch==2.5.1 não tem wheels p/ Python 3.13
 
@@ -352,6 +353,10 @@ get_docker_status() {
 
 ensure_docker() {
     require_command docker
+    docker info >/dev/null 2>&1 && return 0
+    # Só existe no Docker Desktop; no Linux o comando falha e a mensagem abaixo orienta.
+    info "Docker parado. Tentando iniciar o Docker Desktop..."
+    docker desktop start --timeout 180 >/dev/null 2>&1 || true
     docker info >/dev/null 2>&1 || fatal "Docker daemon não está rodando. Inicie o Docker."
 }
 
@@ -360,13 +365,17 @@ get_compose() {
 
     if docker compose version >/dev/null 2>&1; then
         COMPOSE_CMD=(docker compose)
-        return 0
-    fi
-    if command -v docker-compose >/dev/null 2>&1; then
+    elif command -v docker-compose >/dev/null 2>&1; then
         COMPOSE_CMD=(docker-compose)
-        return 0
+    else
+        fatal "Docker Compose não encontrado. Instale Docker >= 20.10 ou docker-compose."
     fi
-    fatal "Docker Compose não encontrado. Instale Docker >= 20.10 ou docker-compose."
+    # Sem --env-file, o Compose procura o .env na pasta do arquivo compose, e não
+    # na raiz: a inferência recusa subir, inclusive em stop e logs.
+    if [[ -f .env ]]; then
+        COMPOSE_CMD+=(--env-file .env)
+    fi
+    return 0
 }
 
 # Descobre qual perfil (cpu/gpu) está ativo checando qual container foi
@@ -374,12 +383,22 @@ get_compose() {
 # invocações separadas do script (ex.: "start.sh gpu" numa janela e depois
 # "start.sh stop" noutra). Mesma lógica de start.bat (:DETECT_ACTIVE_PROFILE).
 detect_active_profile() {
-    if docker inspect xfakesong_inference_nvidia >/dev/null 2>&1; then
-        COMPOSE_FILE="docker/compose/inference.nvidia.yml"
-        CONTAINER_NAME="xfakesong_inference_nvidia"
+    if docker inspect speechchecker_inference_nvidia >/dev/null 2>&1; then
+        COMPOSE_FILE="infrastructure/docker/compose/inference.nvidia.yml"
+        CONTAINER_NAME="speechchecker_inference_nvidia"
     else
-        COMPOSE_FILE="docker/compose/inference.cpu.yml"
-        CONTAINER_NAME="xfakesong_inference_cpu"
+        COMPOSE_FILE="infrastructure/docker/compose/inference.cpu.yml"
+        CONTAINER_NAME="speechchecker_inference_cpu"
+    fi
+}
+
+# Os dois perfis montam o mesmo data/ e gravariam no mesmo SQLite. Chame depois de
+# definir CONTAINER_NAME. Mesma lógica de start.bat (:CHECK_OTHER_INSTANCE).
+refuse_other_instance() {
+    local other="speechchecker_inference_cpu"
+    [[ "$CONTAINER_NAME" == "$other" ]] && other="speechchecker_inference_nvidia"
+    if [[ "$(docker inspect -f '{{.State.Running}}' "$other" 2>/dev/null || true)" == "true" ]]; then
+        fatal "${other} está rodando com o mesmo data/. Pare-o antes: docker stop ${other}"
     fi
 }
 
@@ -421,7 +440,7 @@ wait_for_healthy() {
 # ==============================================================================
 
 check_port() {
-    local port="${1:-$DEFAULT_PORT}"
+    local port="${1:-$LOCAL_PORT}"
     local pid=""
 
     if command -v lsof >/dev/null 2>&1; then
@@ -459,7 +478,7 @@ check_port() {
 # UBUNTU SETUP (privilegiado)
 # ==============================================================================
 
-# Pacotes de sistema necessários ao XFakeSong no Ubuntu/Debian:
+# Pacotes de sistema necessários ao SpeechChecker no Ubuntu/Debian:
 #  - build-essential/python3-dev: compilar wheels nativos (numba, soundfile…)
 #  - ffmpeg: decodificação de áudio (librosa/datasets)
 #  - libsndfile1: backend do soundfile
@@ -553,7 +572,7 @@ setup_nvidia_driver() {
 }
 
 setup_cuda() {
-    # No XFakeSong, o caminho SUPORTADO de GPU é o pacote pip
+    # No SpeechChecker, o caminho SUPORTADO de GPU é o pacote pip
     # tensorflow[and-cuda], que já EMBUTE as libs CUDA/cuDNN. No host só é
     # preciso o DRIVER NVIDIA — não é necessário instalar o CUDA Toolkit
     # de sistema. Esta função instala o TF-GPU no .venv.
@@ -588,7 +607,7 @@ gpu_config() {
     detect_os
     if check_nvidia_gpu; then
         if [[ -d ".venv" ]] && check_cuda_tensorflow; then
-            success "GPU pronta para uso pelo XFakeSong."
+            success "GPU pronta para uso pelo SpeechChecker."
         else
             warn "Driver OK, mas o TensorFlow ainda não usa a GPU."
             info "Próximo passo: ./start.sh cuda"
@@ -598,7 +617,7 @@ gpu_config() {
     elif check_nvidia_pci && is_debian_like; then
         info "Próximo passo: ./start.sh nvidia-driver  (depois reinicie)"
     else
-        info "Nenhuma GPU NVIDIA encontrada — o XFakeSong usará CPU (funcional, mais lento)."
+        info "Nenhuma GPU NVIDIA encontrada — o SpeechChecker usará CPU (funcional, mais lento)."
     fi
 }
 
@@ -606,7 +625,7 @@ gpu_config() {
 full_setup() {
     show_header
     detect_os
-    info "Setup completo do XFakeSong para ${OS_PRETTY}"
+    info "Setup completo do SpeechChecker para ${OS_PRETTY}"
     echo
 
     if ! is_debian_like; then
@@ -646,7 +665,7 @@ full_setup() {
 
     success "Setup completo!"
     echo
-    if confirm "Iniciar a aplicação agora (local, http://localhost:${DEFAULT_PORT})?"; then
+    if confirm "Iniciar a aplicação agora (local, http://localhost:${LOCAL_PORT})?"; then
         run_local
     else
         info "Para iniciar depois: ./start.sh test"
@@ -732,10 +751,10 @@ run_local() {
     fi
 
     apply_runtime_optimizations
-    check_port "$DEFAULT_PORT"
+    check_port "$LOCAL_PORT"
     show_gpu_status
 
-    exec "$PYTHON_BIN" main.py --gradio --gradio-port "$DEFAULT_PORT"
+    exec "$PYTHON_BIN" main.py --gradio --gradio-port "$LOCAL_PORT"
 }
 
 run_gpu_local() {
@@ -758,10 +777,10 @@ run_gpu_local() {
     fi
 
     apply_runtime_optimizations
-    check_port "$DEFAULT_PORT"
+    check_port "$LOCAL_PORT"
     show_gpu_status
 
-    exec "$PYTHON_BIN" main.py --gradio --gradio-port "$DEFAULT_PORT"
+    exec "$PYTHON_BIN" main.py --gradio --gradio-port "$LOCAL_PORT"
 }
 
 run_docker() {
@@ -772,8 +791,8 @@ run_docker() {
     get_compose
 
     if [[ "$gpu_mode" == "1" ]]; then
-        COMPOSE_FILE="docker/compose/inference.nvidia.yml"
-        CONTAINER_NAME="xfakesong_inference_nvidia"
+        COMPOSE_FILE="infrastructure/docker/compose/inference.nvidia.yml"
+        CONTAINER_NAME="speechchecker_inference_nvidia"
         [[ -f "$COMPOSE_FILE" ]] || fatal "$COMPOSE_FILE não encontrado"
         info "Modo GPU ativo — validando pré-requisitos..."
 
@@ -798,15 +817,20 @@ run_docker() {
             success "NVIDIA Container Toolkit detectado"
         fi
     else
-        COMPOSE_FILE="docker/compose/inference.cpu.yml"
-        CONTAINER_NAME="xfakesong_inference_cpu"
+        COMPOSE_FILE="infrastructure/docker/compose/inference.cpu.yml"
+        CONTAINER_NAME="speechchecker_inference_cpu"
     fi
+
+    refuse_other_instance
+    [[ -f .env ]] || fatal "Arquivo .env não encontrado. Copie .env.example para .env e defina SPEECHCHECKER_API_KEY, XFAKE_GRADIO_USERNAME e XFAKE_GRADIO_PASSWORD."
+    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" config --quiet \
+        || fatal "Configuração inválida: revise o .env, conforme a mensagem acima."
 
     info "Buildando e iniciando containers..."
     "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up --build -d
 
     wait_for_healthy
-    success "Aplicação disponível em http://localhost:${DEFAULT_PORT}"
+    success "Aplicação disponível em http://$("${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" port inference-api 7860)"
 }
 
 stop_containers() {
@@ -830,6 +854,7 @@ rebuild() {
     ensure_docker
     get_compose
     detect_active_profile
+    refuse_other_instance
 
     info "Rebuild completo sem cache (perfil: ${COMPOSE_FILE})..."
     "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" down
@@ -846,9 +871,9 @@ show_status() {
 
     echo
     echo "--- Compose status (CPU) ---"
-    "${COMPOSE_CMD[@]}" -f docker/compose/inference.cpu.yml ps
+    "${COMPOSE_CMD[@]}" -f infrastructure/docker/compose/inference.cpu.yml ps
     echo "--- Compose status (GPU) ---"
-    "${COMPOSE_CMD[@]}" -f docker/compose/inference.nvidia.yml ps
+    "${COMPOSE_CMD[@]}" -f infrastructure/docker/compose/inference.nvidia.yml ps
     echo
 
     timeout 5 docker stats \
@@ -874,10 +899,10 @@ clean_environment() {
 
     # Desce os dois perfis (CPU/GPU) — não sabemos qual estava ativo, e down
     # num compose file cujo container já não existe é um no-op inofensivo.
-    "${COMPOSE_CMD[@]}" -f docker/compose/inference.cpu.yml down -v --remove-orphans
-    "${COMPOSE_CMD[@]}" -f docker/compose/inference.nvidia.yml down -v --remove-orphans 2>/dev/null || true
-    docker image prune -f
-    docker builder prune -f
+    "${COMPOSE_CMD[@]}" -f infrastructure/docker/compose/inference.cpu.yml down -v --remove-orphans
+    "${COMPOSE_CMD[@]}" -f infrastructure/docker/compose/inference.nvidia.yml down -v --remove-orphans 2>/dev/null || true
+    # Só o que é do projeto: sem filtro, o prune alcança outros projetos da máquina.
+    docker image prune -f --filter label=org.opencontainers.image.title=speechchecker-inference-api
 
     success 'Limpeza concluída'
 }
@@ -913,9 +938,9 @@ run_doctor() {
     check_item 'main.py'                    '[ -f main.py ]'
     check_item ".env"                       '[ -f .env ]'
     check_item 'curl'                       'command -v curl'
-    check_item "Porta ${DEFAULT_PORT} livre" \
-        "! ( lsof -ti :${DEFAULT_PORT} 2>/dev/null || \
-             ss -tlnp 2>/dev/null | grep -q ':${DEFAULT_PORT} ' ) >/dev/null 2>&1"
+    check_item "Porta ${LOCAL_PORT} livre" \
+        "! ( lsof -ti :${LOCAL_PORT} 2>/dev/null || \
+             ss -tlnp 2>/dev/null | grep -q ':${LOCAL_PORT} ' ) >/dev/null 2>&1"
 
     if is_debian_like; then
         check_item 'ffmpeg'                 'command -v ffmpeg'
@@ -925,7 +950,7 @@ run_doctor() {
 
     check_item 'Docker daemon'              'docker info'
     check_item 'Docker Compose'             'docker compose version || docker-compose version'
-    check_item 'docker/compose/inference.cpu.yml' '[ -f docker/compose/inference.cpu.yml ]'
+    check_item 'infrastructure/docker/compose/inference.cpu.yml' '[ -f infrastructure/docker/compose/inference.cpu.yml ]'
 
     if is_wsl; then
         check_item 'WSL2'                   'is_wsl'

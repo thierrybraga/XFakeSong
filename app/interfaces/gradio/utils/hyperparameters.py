@@ -2,10 +2,6 @@ import logging
 from typing import Any, Dict, Tuple
 
 import gradio as gr
-from sqlalchemy.orm.attributes import flag_modified
-
-from app.core.db.session import SessionLocal
-from app.domain.models.architecture_config import ArchitectureConfig
 
 # Global state for hyperparameters (cache local da sessão)
 hp_state: Dict[str, Dict[str, Any]] = {}
@@ -60,11 +56,7 @@ def get_interface_hyperparameters(
 
     if saved_parameters:
         merged.update(
-            {
-                key: value
-                for key, value in saved_parameters.items()
-                if value is not None
-            }
+            {key: value for key, value in saved_parameters.items() if value is not None}
         )
 
     try:
@@ -115,19 +107,18 @@ def optimize_default(
     att_heads_h_v: float,
     conv_filters_raw_v: str,
     gru_units_v: float,
-    dense_units_v: float
+    dense_units_v: float,
 ) -> Tuple:
     """
     Otimiza e salva os hiperparâmetros padrão para uma arquitetura no BANCO.
     Retorna atualizações para os componentes da interface Gradio.
     """
-    db = SessionLocal()
     try:
+        from app.dependencies import get_architecture_config_repository
+
+        repository = get_architecture_config_repository()
         # 1. Carregar configuração atual do Banco
-        arch_config = db.query(ArchitectureConfig).filter_by(
-            architecture_name=architecture,
-            variant_name="default"
-        ).first()
+        arch_config = repository.find_default(architecture)
 
         current_hp = arch_config.parameters if arch_config else {}
 
@@ -150,9 +141,11 @@ def optimize_default(
         arch_l = (architecture or "").lower()
 
         # Parâmetros específicos por arquitetura
-        if "spectrogramtransformer" in arch_l or \
-            "spectrogram" in arch_l or \
-            "transformer" in arch_l:
+        if (
+            "spectrogramtransformer" in arch_l
+            or "spectrogram" in arch_l
+            or "transformer" in arch_l
+        ):
             if isinstance(d_model_v, (int, float)):
                 merged["d_model"] = int(d_model_v)
             if isinstance(num_heads_v, (int, float)):
@@ -171,16 +164,12 @@ def optimize_default(
         if "multiscalecnn" in arch_l or "multiscale" in arch_l:
             if isinstance(filters_v, str) and filters_v:
                 try:
-                    merged["filters"] = [
-                        int(x) for x in filters_v.split(",")
-                    ]
+                    merged["filters"] = [int(x) for x in filters_v.split(",")]
                 except Exception:
                     pass
             if isinstance(kernel_sizes_v, str) and kernel_sizes_v:
                 try:
-                    merged["kernel_sizes"] = [
-                        int(x) for x in kernel_sizes_v.split(",")
-                    ]
+                    merged["kernel_sizes"] = [int(x) for x in kernel_sizes_v.split(",")]
                 except Exception:
                     pass
 
@@ -227,23 +216,12 @@ def optimize_default(
                 merged["dense_units"] = int(dense_units_v)
 
         # 3. Salvar configurações atualizadas no BANCO
-        if not arch_config:
-            arch_config = ArchitectureConfig(
-                architecture_name=architecture,
-                variant_name="default",
-                parameters=merged,
-                description=f"Configuração padrão para {architecture}"
-            )
-            db.add(arch_config)
-        else:
-            arch_config.parameters = merged
-            # Forçar atualização de flag de modificação se necessário
-            flag_modified(arch_config, "parameters")
-
-        db.commit()
-        logger.info(
-            f"Hiperparâmetros para {architecture} salvos no banco."
+        repository.save_default_parameters(
+            architecture,
+            merged,
+            description=f"Configuração padrão para {architecture}",
         )
+        logger.info(f"Hiperparâmetros para {architecture} salvos no banco.")
         hp_state[architecture] = merged
 
         is_trans = "spectrogram" in arch_l or "transformer" in arch_l
@@ -264,7 +242,8 @@ def optimize_default(
             ",".join(str(x) for x in merged.get("kernel_sizes", [])) or kernel_sizes_v
         )
         conv_filters_str = (
-            ",".join(str(x) for x in merged.get("conv_filters", [])) or conv_filters_raw_v
+            ",".join(str(x) for x in merged.get("conv_filters", []))
+            or conv_filters_raw_v
         )
 
         return (
@@ -276,7 +255,9 @@ def optimize_default(
             gr.update(value=float(merged.get("l2_reg_strength", l2_v))),
             gr.update(value=float(merged.get("validation_split", val_v))),
             gr.update(value=int(merged.get("d_model", d_model_v)), visible=is_trans),
-            gr.update(value=int(merged.get("num_heads", num_heads_v)), visible=is_trans),
+            gr.update(
+                value=int(merged.get("num_heads", num_heads_v)), visible=is_trans
+            ),
             gr.update(
                 value=int(merged.get("num_blocks", num_blocks_v)), visible=is_trans
             ),
@@ -284,18 +265,24 @@ def optimize_default(
             gr.update(value=int(merged.get("ff_dim", ff_dim_v)), visible=is_trans),
             gr.update(value=filters_str, visible=is_multi),
             gr.update(value=kernel_str, visible=is_multi),
-            gr.update(value=int(merged.get("attention_heads", att_heads_v)), visible=is_conf),
+            gr.update(
+                value=int(merged.get("attention_heads", att_heads_v)), visible=is_conf
+            ),
             gr.update(value=int(merged.get("hidden_dim", hid_dim_v)), visible=is_conf),
             gr.update(value=int(merged.get("num_layers", n_layers_v)), visible=is_conf),
             gr.update(
                 value=str(merged.get("conv_kernel_size", conv_kernel_v)),
                 visible=is_conf,
             ),
-            gr.update(value=int(merged.get("hidden_dim", hid_base_v)), visible=is_aasist),
+            gr.update(
+                value=int(merged.get("hidden_dim", hid_base_v)), visible=is_aasist
+            ),
             gr.update(
                 value=int(merged.get("num_layers", n_layers_base_v)), visible=is_aasist
             ),
-            gr.update(value=int(merged.get("base_filters", base_filters_v)), visible=is_hybrid),
+            gr.update(
+                value=int(merged.get("base_filters", base_filters_v)), visible=is_hybrid
+            ),
             gr.update(
                 value=int(merged.get("num_residual_blocks", res_blocks_v)),
                 visible=is_hybrid,
@@ -309,7 +296,9 @@ def optimize_default(
                 visible=is_hybrid,
             ),
             gr.update(value=conv_filters_str, visible=is_rawnet),
-            gr.update(value=int(merged.get("gru_units", gru_units_v)), visible=is_rawnet),
+            gr.update(
+                value=int(merged.get("gru_units", gru_units_v)), visible=is_rawnet
+            ),
             gr.update(
                 value=int(merged.get("dense_units", dense_units_v)), visible=is_rawnet
             ),
@@ -318,8 +307,6 @@ def optimize_default(
         logger.error(f"Erro ao salvar hiperparâmetros: {e}")
         # Retorna erro e updates vazios (sem alteração)
         return ({"error": str(e)},) + (gr.update(),) * _NUM_HP_UPDATE_FIELDS
-    finally:
-        db.close()
 
 
 def load_defaults(architecture: str) -> Tuple:
@@ -329,13 +316,10 @@ def load_defaults(architecture: str) -> Tuple:
     Parâmetros salvos no banco pelo usuário são tratados como overrides. A
     função apenas lê; não persiste nem sobrescreve configuração alguma.
     """
-    db = SessionLocal()
     try:
-        arch_config = (
-            db.query(ArchitectureConfig)
-            .filter_by(architecture_name=architecture, variant_name="default")
-            .first()
-        )
+        from app.dependencies import get_architecture_config_repository
+
+        arch_config = get_architecture_config_repository().find_default(architecture)
         hp = arch_config.parameters if arch_config else {}
         merged = get_interface_hyperparameters(architecture, hp)
         hp_state[architecture] = merged
@@ -354,23 +338,17 @@ def load_defaults(architecture: str) -> Tuple:
         is_aasist = arch_l == "aasist" or "rawgat" in arch_l
         is_rawnet = "rawnet2" in arch_l
 
-        patch_val = get_val('patch_size', (4, 4))
+        patch_val = get_val("patch_size", (4, 4))
         if isinstance(patch_val, (tuple, list)) and len(patch_val) >= 2:
             patch_str = f"{patch_val[0]}x{patch_val[1]}"
         else:
-            patch_str = str(get_val('patch_size', "4x4"))
+            patch_str = str(get_val("patch_size", "4x4"))
 
-        filters_str = ",".join(
-            str(x) for x in get_val("filters", [32, 64, 128])
-        )
+        filters_str = ",".join(str(x) for x in get_val("filters", [32, 64, 128]))
 
-        kernel_str = ",".join(
-            str(x) for x in get_val("kernel_sizes", [3, 3, 3])
-        )
+        kernel_str = ",".join(str(x) for x in get_val("kernel_sizes", [3, 3, 3]))
 
-        conv_filters_str = ",".join(
-            str(x) for x in get_val("conv_filters", [128, 128])
-        )
+        conv_filters_str = ",".join(str(x) for x in get_val("conv_filters", [128, 128]))
 
         return (
             merged,
@@ -380,77 +358,29 @@ def load_defaults(architecture: str) -> Tuple:
             gr.update(value=float(get_val("dropout_rate", 0.3))),
             gr.update(value=float(get_val("l2_reg_strength", 0.0001))),
             gr.update(value=float(get_val("validation_split", 0.2))),
-            gr.update(
-                value=int(get_val("d_model", 64)),
-                visible=is_trans
-            ),
-            gr.update(
-                value=int(get_val("num_heads", 4)),
-                visible=is_trans
-            ),
-            gr.update(
-                value=int(get_val("num_blocks", 2)),
-                visible=is_trans
-            ),
+            gr.update(value=int(get_val("d_model", 64)), visible=is_trans),
+            gr.update(value=int(get_val("num_heads", 4)), visible=is_trans),
+            gr.update(value=int(get_val("num_blocks", 2)), visible=is_trans),
             gr.update(value=patch_str, visible=is_trans),
-            gr.update(
-                value=int(get_val("ff_dim", 128)),
-                visible=is_trans
-            ),
+            gr.update(value=int(get_val("ff_dim", 128)), visible=is_trans),
             gr.update(value=filters_str, visible=is_multi),
             gr.update(value=kernel_str, visible=is_multi),
+            gr.update(value=int(get_val("attention_heads", 4)), visible=is_conf),
+            gr.update(value=int(get_val("hidden_dim", 144)), visible=is_conf),
+            gr.update(value=int(get_val("num_layers", 4)), visible=is_conf),
+            gr.update(value=str(get_val("conv_kernel_size", 31)), visible=is_conf),
+            gr.update(value=int(get_val("hidden_dim", 64)), visible=is_aasist),
+            gr.update(value=int(get_val("num_layers", 2)), visible=is_aasist),
+            gr.update(value=int(get_val("base_filters", 32)), visible=is_hybrid),
+            gr.update(value=int(get_val("num_residual_blocks", 2)), visible=is_hybrid),
             gr.update(
-                value=int(get_val("attention_heads", 4)),
-                visible=is_conf
+                value=int(get_val("num_transformer_layers", 2)), visible=is_hybrid
             ),
-            gr.update(
-                value=int(get_val("hidden_dim", 144)),
-                visible=is_conf
-            ),
-            gr.update(
-                value=int(get_val("num_layers", 4)),
-                visible=is_conf
-            ),
-            gr.update(
-                value=str(get_val("conv_kernel_size", 31)),
-                visible=is_conf
-            ),
-            gr.update(
-                value=int(get_val("hidden_dim", 64)),
-                visible=is_aasist
-            ),
-            gr.update(
-                value=int(get_val("num_layers", 2)),
-                visible=is_aasist
-            ),
-            gr.update(
-                value=int(get_val("base_filters", 32)),
-                visible=is_hybrid
-            ),
-            gr.update(
-                value=int(get_val("num_residual_blocks", 2)),
-                visible=is_hybrid
-            ),
-            gr.update(
-                value=int(get_val("num_transformer_layers", 2)),
-                visible=is_hybrid
-            ),
-            gr.update(
-                value=int(get_val("attention_heads", 4)),
-                visible=is_hybrid
-            ),
+            gr.update(value=int(get_val("attention_heads", 4)), visible=is_hybrid),
             gr.update(value=conv_filters_str, visible=is_rawnet),
-            gr.update(
-                value=int(get_val("gru_units", 1024)),
-                visible=is_rawnet
-            ),
-            gr.update(
-                value=int(get_val("dense_units", 1024)),
-                visible=is_rawnet
-            )
+            gr.update(value=int(get_val("gru_units", 1024)), visible=is_rawnet),
+            gr.update(value=int(get_val("dense_units", 1024)), visible=is_rawnet),
         )
     except Exception as e:
         logger.error(f"Erro ao carregar defaults: {e}")
         return ({"error": str(e)},) + (gr.update(),) * _NUM_HP_UPDATE_FIELDS
-    finally:
-        db.close()

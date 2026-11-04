@@ -25,7 +25,7 @@ def compute_dfa_exponent(y: np.ndarray) -> float:
         segment_fluctuations = []
 
         for i in range(n_segments):
-            segment = y_integrated[i * scale:(i + 1) * scale]
+            segment = y_integrated[i * scale : (i + 1) * scale]
 
             # Ajustar tendência linear
             x = np.arange(len(segment))
@@ -34,7 +34,7 @@ def compute_dfa_exponent(y: np.ndarray) -> float:
 
             # Calcular flutuação
             detrended = segment - trend
-            fluctuation = np.sqrt(np.mean(detrended ** 2))
+            fluctuation = np.sqrt(np.mean(detrended**2))
             segment_fluctuations.append(fluctuation)
 
         if segment_fluctuations:
@@ -48,7 +48,7 @@ def compute_dfa_exponent(y: np.ndarray) -> float:
     if np.sum(valid_indices) < 3:
         return np.nan
 
-    valid_scales = scales[:len(fluctuations)][valid_indices]
+    valid_scales = scales[: len(fluctuations)][valid_indices]
     valid_fluctuations = np.array(fluctuations)[valid_indices]
 
     # Ajuste linear em escala log-log
@@ -61,7 +61,8 @@ def compute_dfa_exponent(y: np.ndarray) -> float:
 
 
 def compute_dfa_exponent_optimized(
-        y: np.ndarray, cache: Optional[Dict] = None) -> float:
+    y: np.ndarray, cache: Optional[Dict] = None
+) -> float:
     """Versão otimizada do expoente DFA com menos escalas."""
     N = len(y)
 
@@ -121,7 +122,7 @@ def compute_dfa_exponent_optimized(
 
             # Calcular flutuação
             detrended = segment - trend
-            fluctuation = np.sqrt(np.mean(detrended ** 2))
+            fluctuation = np.sqrt(np.mean(detrended**2))
             segment_fluctuations.append(fluctuation)
 
         if segment_fluctuations:
@@ -133,7 +134,7 @@ def compute_dfa_exponent_optimized(
     if np.sum(valid_indices) < 3:
         result = np.nan
     else:
-        valid_scales = scales[:len(fluctuations)][valid_indices]
+        valid_scales = scales[: len(fluctuations)][valid_indices]
         valid_fluctuations = np.array(fluctuations)[valid_indices]
 
         # Ajuste linear em escala log-log

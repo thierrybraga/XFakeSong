@@ -1,5 +1,6 @@
-import logging
 import importlib
+import logging
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Union
@@ -9,16 +10,13 @@ import numpy as np
 import tensorflow as tf
 from sklearn.preprocessing import StandardScaler
 
+# Importar custom layers para carregar modelos
 from app.domain.models.architectures.layers import (
     AttentionLayer,
     AudioFeatureNormalization,
     GraphAttentionLayer,
-    SliceLayer,
-)
-
-# Importar custom layers para carregar modelos
-from app.domain.models.architectures.layers import (
     MultiScaleConv1DBlock as _LegacyMultiScaleConv1DBlock,
+    SliceLayer,
 )
 from app.domain.models.architectures.rawnet2 import (
     AudioNormalizationLayer,
@@ -32,7 +30,30 @@ from app.domain.models.architectures.registry import (
 )
 from app.domain.models.architectures.safe_normalization import SafeInstanceNormalization
 
+from .temperature_scaling import logit_output_model
+
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _neutral_keras_policy():
+    """Desserializa o artefato sem herdar a política global do processo.
+
+    Com GPU, `setup_gpu` liga `mixed_float16` na thread principal, e as sub-camadas
+    criadas no `__init__` das camadas próprias herdam a política de quem carrega.
+    No AASIST, treinado em float32, isso misturava float16 e float32 e a predição
+    falhava (`Input 'y' of 'Mul' Op has type float32`). Sem GPU o erro não aparece,
+    e a temperatura e o limiar dos sidecars foram medidos nesta mesma condição.
+    A política salva camada a camada no artefato continua valendo.
+
+    O Keras guarda a política por thread: restaurar aqui não afeta as demais.
+    """
+    anterior = tf.keras.mixed_precision.global_policy()
+    tf.keras.mixed_precision.set_global_policy("float32")
+    try:
+        yield
+    finally:
+        tf.keras.mixed_precision.set_global_policy(anterior)
 
 
 def _load_custom_architecture_modules() -> None:
@@ -91,6 +112,10 @@ class ModelInfo:
     # usa para inferência (FP32, mais rápida em CPU; mesmos pesos → mesma saída),
     # com fallback automático para o modelo Keras.
     onnx_session: Optional[Any] = None
+    # Mesmo modelo devolvendo o logit, para a temperatura não passar pela
+    # probabilidade cortada (ver temperature_scaling.py). None = não há acesso.
+    logit_model: Optional[Any] = None
+    jit_logit_fn: Optional[Any] = None
 
 
 class TorchSSLOriginalModel:
@@ -396,20 +421,21 @@ class ModelLoader:
                     )
                 custom_objects.update(tf.keras.utils.get_custom_objects())
 
-                try:
-                    model = tf.keras.models.load_model(
-                        str(model_path),
-                        custom_objects=custom_objects,
-                        safe_mode=True,
-                        compile=False,
-                    )
-                except TypeError:
-                    # Fallback sem custom objects se não forem necessários
-                    model = tf.keras.models.load_model(
-                        str(model_path),
-                        safe_mode=True,
-                        compile=False,
-                    )
+                with _neutral_keras_policy():
+                    try:
+                        model = tf.keras.models.load_model(
+                            str(model_path),
+                            custom_objects=custom_objects,
+                            safe_mode=True,
+                            compile=False,
+                        )
+                    except TypeError:
+                        # Fallback sem custom objects se não forem necessários
+                        model = tf.keras.models.load_model(
+                            str(model_path),
+                            safe_mode=True,
+                            compile=False,
+                        )
 
                 model_type = "tensorflow"
 
@@ -507,6 +533,12 @@ class ModelLoader:
             # mesmos pesos → mesma saída, porém mais rápida em CPU). Degrada
             # graciosamente: sem .onnx ou sem onnxruntime → segue com Keras/TF.
             if model_type == "tensorflow":
+                # Só quando o contrato declara: artefato anterior foi avaliado na
+                # escala cortada, e assim continua reproduzindo o seu run.
+                if isinstance(input_contract, dict) and input_contract.get(
+                    "temperature_on_logits"
+                ):
+                    model_info.logit_model = logit_output_model(model)
                 onnx_path = model_path.parent / f"{model_name}.onnx"
                 if onnx_path.exists():
                     try:

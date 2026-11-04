@@ -1,58 +1,13 @@
-"""Interfaces do sistema"""
+"""Contratos SOLID do sistema (inversão de dependência).
 
-from .audio import (
-    AudioData,
-    AudioFeatures,
-    AudioFormat,
-    DeepfakeDetectionResult,
-    FeatureType,
-    IAudioLoader,
-    IDeepfakeDetector,
-    IFeatureExtractor,
-    IModelArchitecture,
-)
-from .base import (
-    IConfigurable,
-    IExtractor,
-    ILoggable,
-    IMonitorable,
-    IProcessor,
-    IRepository,
-    IValidator,
-    ProcessingResult,
-    ProcessingStatus,
-)
-from .services import (
-    DatasetMetadata,
-    DatasetType,
-    IAudioRepository,
-    IDatasetRepository,
-    IDetectionService,
-    IFeatureExtractionService,
-    IFeatureRepository,
-    IModelRepository,
-    IMonitoringService,
-    INotificationService,
-    ITrainingService,
-    IUploadService,
-    ModelMetadata,
-    StorageType,
-)
+Cada interface aqui tem ao menos uma implementação no domínio:
 
-__all__ = [
-    # Base
-    "ProcessingStatus", "ProcessingResult", "IProcessor", "IValidator",
-    "IExtractor", "IRepository", "IConfigurable", "ILoggable", "IMonitorable",
+- ``IFeatureExtractor`` — extratores em ``app/domain/features/``;
+- ``IModelTrainer`` — ``app.domain.models.training.trainer.ModelTrainer``;
+- ``IDetectionService``, ``ITrainingService``, ``IUploadService``,
+  ``IFeatureExtractionService`` — serviços em ``app/domain/services/``.
 
-    # Audio
-    "AudioFormat", "FeatureType", "AudioData", "AudioFeatures",
-    "DeepfakeDetectionResult", "IAudioLoader", "IFeatureExtractor",
-    "IModelArchitecture", "IDeepfakeDetector",
-
-    # Services
-    "DatasetType", "StorageType", "DatasetMetadata", "ModelMetadata",
-    "IAudioRepository", "IFeatureRepository", "IModelRepository",
-    "IDatasetRepository", "IUploadService", "IFeatureExtractionService",
-    "ITrainingService", "IDetectionService", "INotificationService",
-    "IMonitoringService"
-]
+Contratos sem implementação foram removidos em 2026-10-18 (YAGNI); crie o
+contrato junto com a primeira implementação. Importe do submódulo
+(``from app.core.contracts.base import ProcessingResult``).
+"""

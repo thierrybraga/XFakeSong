@@ -1,6 +1,6 @@
 # Guia do Desenvolvedor
 
-Para quem mantém ou estende o **XFakeSong**. Veja também
+Para quem mantém ou estende o **SpeechChecker**. Veja também
 [`AGENTS.md`](https://github.com/thierrybraga/XFakeSong/blob/main/AGENTS.md) e
 [`CONTRIBUTING.md`](https://github.com/thierrybraga/XFakeSong/blob/main/CONTRIBUTING.md).
 
@@ -43,7 +43,7 @@ Variáveis de ambiente úteis (ver `settings.py` e `app/core/middleware.py`):
 | `DEEPFAKE_DEVICE` | dispositivo preferido (CPU/GPU) |
 | `XFAKE_LOG_EVERY_REQUEST` | loga toda request (default só erros/lentas) |
 | `XFAKE_MAX_UPLOAD_MB` | limite de upload (default 100) |
-| `XFAKESONG_API_KEY` | chave da API |
+| `SPEECHCHECKER_API_KEY` | chave da API |
 | `ALLOWED_ORIGINS` / `ALLOWED_HOSTS` | CORS e TrustedHost |
 
 ## Artefatos gerados
@@ -61,16 +61,16 @@ Variáveis de ambiente úteis (ver `settings.py` e `app/core/middleware.py`):
   `data/results/<descrição_curta>_<AAAAMMDD>/`, com `run_summary.json`/`.md` na
   raiz do run e uma subpasta por arquitetura (`<run>/<arquitetura>/results.json`,
   `predictions_clean.csv`, `figures/`, etc. — o formato que
-  `scripts/benchmark/run_models_sequential.py` já produz). A promoção para
+  `benchmarks/run_models_sequential.py` já produz). A promoção para
   `data/models/benchmark_final/` acontece **só** via
-  `scripts/reporting/sync_completed_benchmark_artifacts.py --summary
+  `tools/reporting/sync_completed_benchmark_artifacts.py --summary
   data/results/<run>/run_summary.json` (o script exige `--summary` explícito, sem
   adivinhar qual é o "run atual").
 - **Material acadêmico**: `data/results/paper/` concentra a fonte LaTeX
   (`main.tex`, fonte única), as tabelas geradas do benchmark
-  (`tabelas_benchmark.tex`, via `scripts/reporting/update_tcc_latex.py`) e as
-  figuras (`figures/`, via `scripts/reporting/consolidate_results.py`).
-- **Notebooks**: `notebooks/` — gerados por `scripts/ops/build_notebooks.py`
+  (`tabelas_benchmark.tex`, via `tools/reporting/update_tcc_latex.py`) e as
+  figuras (`figures/`, via `tools/reporting/consolidate_results.py`).
+- **Notebooks**: `notebooks/` — gerados por `tools/ops/build_notebooks.py`
   (fonte de verdade; não edite o `.ipynb` à mão).
 
 ## Como adicionar uma arquitetura
@@ -81,7 +81,7 @@ Variáveis de ambiente úteis (ver `settings.py` e `app/core/middleware.py`):
    `input_requirements` correto (`input_type`: `raw_audio` ou `spectrogram`).
 3. Garanta que o **wizard** e o **benchmark** reconhecem o nome (o smoke
    `tests/smoke/test_all_architectures.py` valida a criação de todas).
-4. Adicione um notebook em `MODELS` de `scripts/ops/build_notebooks.py` e regenere.
+4. Adicione um notebook em `MODELS` de `tools/ops/build_notebooks.py` e regenere.
 
 ## Como adicionar um extrator de features
 
@@ -99,7 +99,11 @@ Adicione com **versão mínima** (e upper bound quando houver major arriscado) a
 
 ## Estilo e commits
 
-- Formatação: `black` + `isort`; lint: `ruff` (config em `pyproject.toml`).
+- Formatação: `black` + `isort`; lint: `ruff` (config em `pyproject.toml`). A CI bloqueia os
+  três: rode `make format` e `make lint` antes de commitar.
+- O commit que formatou o repositório está em `.git-blame-ignore-revs`. O GitHub já o ignora no
+  blame; para o `git blame` local, rode uma vez
+  `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
 - Alvo Python 3.11 (ambiente de referência). Prefira funções puras e testáveis; logue erros com
   `logger.exception`.
 - Commits pequenos e escopados; PRs passam pelos gates de CI (abaixo).
@@ -109,11 +113,12 @@ Adicione com **versão mínima** (e upper bound quando houver major arriscado) a
 Espelhe a estrutura de `app/` em `tests/` (ver [Qualidade e Testes](quality-and-testing.md)):
 
 ```bash
-./scripts/ops/run_tests.sh fast        # suíte rápida (sem smoke)
-./scripts/ops/run_tests.sh cov         # + cobertura
-mkdocs build --strict              # docs
-bandit -r app benchmarks scripts -lll   # SAST (bloqueia HIGH)
-python scripts/ops/build_notebooks.py  # regenera notebooks
+./tools/ops/run_tests.sh fast        # suíte rápida (sem smoke)
+./tools/ops/run_tests.sh cov         # + cobertura
+mkdocs build --strict --clean      # docs
+python tools/ops/check_docs_site.py infrastructure/site
+bandit -r app benchmarks tools -lll   # SAST (bloqueia HIGH)
+python tools/ops/build_notebooks.py  # regenera notebooks
 ```
 
 A CI (`.github/workflows/ci.yml`) roda testes+cobertura, docs, segurança

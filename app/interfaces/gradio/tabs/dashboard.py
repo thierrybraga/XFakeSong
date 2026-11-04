@@ -1,4 +1,4 @@
-"""Dashboard — landing page do XFakeSong (UI Fase 1).
+"""Dashboard — landing page do SpeechChecker (UI Fase 1).
 
 Mostra KPIs do sistema, atividade recente, status e notificações.
 Todos os service calls têm fallback gracioso para não quebrar a UI quando
@@ -7,14 +7,17 @@ algum subsistema (DB, modelos, etc.) está indisponível.
 
 from __future__ import annotations
 
+import html
 import logging
 import platform
 import sys
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import gradio as gr
+
+from app import __version__
 from app.interfaces.gradio.utils.components import ui_safe
 
 logger = logging.getLogger("gradio_dashboard")
@@ -34,6 +37,29 @@ _dataset_size_lock = threading.Lock()
 # =====================================================================
 
 
+def _agora_utc() -> datetime:
+    """Agora em UTC sem fuso: é como o SQLite grava `created_at` (`func.now()`)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _tempo_relativo(momento: datetime, agora: datetime | None = None) -> str:
+    """Tempo decorrido em texto, comparando sempre em UTC.
+
+    `created_at` vem em UTC, e comparar com a hora local dava `-9545s atrás` em quem
+    não está em UTC. Um valor com fuso (PostgreSQL) é convertido antes.
+    """
+    if momento.tzinfo is not None:
+        momento = momento.astimezone(timezone.utc).replace(tzinfo=None)
+    segundos = ((agora or _agora_utc()) - momento).total_seconds()
+    if segundos < 60:
+        return "agora"
+    if segundos < 3600:
+        return f"há {int(segundos / 60)} min"
+    if segundos < 86400:
+        return f"há {int(segundos / 3600)} h"
+    return f"há {int(segundos / 86400)} d"
+
+
 def _count_models() -> int:
     """Conta modelos carregados pelo DetectionService."""
     try:
@@ -49,9 +75,9 @@ def _count_models() -> int:
 def _count_profiles() -> int:
     """Conta perfis de voz cadastrados."""
     try:
-        from app.domain.services.voice_profile_service import VoiceProfileService
+        from app.dependencies import get_voice_profile_service
 
-        return len(VoiceProfileService().list_profiles() or [])
+        return len(get_voice_profile_service().list_profiles() or [])
     except Exception as e:
         logger.debug(f"count_profiles fallback: {e}")
         return 0
@@ -60,19 +86,10 @@ def _count_profiles() -> int:
 def _count_analyses_24h() -> int:
     """Conta análises das últimas 24h no histórico."""
     try:
-        from sqlalchemy import func
+        from app.dependencies import get_analysis_result_repository
 
-        from app.core.db.session import SessionLocal
-        from app.domain.models.analysis import AnalysisResult
-
-        with SessionLocal() as db:
-            cutoff = datetime.now() - timedelta(hours=24)
-            count = (
-                db.query(func.count(AnalysisResult.id))
-                .filter(AnalysisResult.created_at >= cutoff)
-                .scalar()
-            )
-            return int(count or 0)
+        cutoff = _agora_utc() - timedelta(hours=24)
+        return get_analysis_result_repository().count_since(cutoff)
     except Exception as e:
         logger.debug(f"count_analyses_24h fallback: {e}")
         return 0
@@ -114,47 +131,52 @@ def _refresh_datasets_size_gb() -> None:
         _dataset_size_cache["computing"] = False
 
 
+def _nome_do_modelo(nome: str | None) -> str | None:
+    """Arquitetura em vez do nome do artefato (`bench_aasist` vira `AASIST`)."""
+    if not nome:
+        return nome
+    try:
+        from app.interfaces.gradio.tabs.detection import (
+            _nome_do_modelo as nome_da_detecao,
+            get_detection_service,
+        )
+
+        return nome_da_detecao(get_detection_service(), nome)
+    except Exception as e:
+        logger.debug(f"nome_do_modelo fallback: {e}")
+    return nome
+
+
 def _recent_analyses(limit: int = 5) -> list:
     """Últimas N análises do histórico."""
     try:
-        from app.core.db.session import SessionLocal
-        from app.domain.models.analysis import AnalysisResult
+        from app.dependencies import get_analysis_result_repository
 
-        with SessionLocal() as db:
-            rows = (
-                db.query(AnalysisResult)
-                .order_by(AnalysisResult.created_at.desc())
-                .limit(limit)
-                .all()
+        rows = get_analysis_result_repository().list_recent(limit)
+        out = []
+        for r in rows:
+            ago = "?"
+            try:
+                if r.created_at:
+                    ago = _tempo_relativo(r.created_at)
+            except Exception:
+                pass
+            label = "FAKE" if r.is_fake else "REAL"
+            icon = "⚠" if r.is_fake else "✓"
+            out.append(
+                [
+                    f"{icon} {label}",
+                    r.filename or "unknown",
+                    (
+                        f"{r.confidence * 100:.1f}%".replace(".", ",")
+                        if r.confidence is not None
+                        else "—"
+                    ),
+                    _nome_do_modelo(r.model_name) or "—",
+                    ago,
+                ]
             )
-            out = []
-            for r in rows:
-                ago = "?"
-                try:
-                    if r.created_at:
-                        delta = datetime.now() - r.created_at.replace(tzinfo=None)
-                        if delta.total_seconds() < 60:
-                            ago = f"{int(delta.total_seconds())}s atrás"
-                        elif delta.total_seconds() < 3600:
-                            ago = f"{int(delta.total_seconds() / 60)}min atrás"
-                        elif delta.total_seconds() < 86400:
-                            ago = f"{int(delta.total_seconds() / 3600)}h atrás"
-                        else:
-                            ago = f"{int(delta.total_seconds() / 86400)}d atrás"
-                except Exception:
-                    pass
-                label = "FAKE" if r.is_fake else "REAL"
-                icon = "⚠" if r.is_fake else "✓"
-                out.append(
-                    [
-                        f"{icon} {label}",
-                        r.filename or "unknown",
-                        f"{r.confidence:.2f}" if r.confidence is not None else "—",
-                        r.model_name or "—",
-                        ago,
-                    ]
-                )
-            return out
+        return out
     except Exception as e:
         logger.debug(f"recent_analyses fallback: {e}")
         return []
@@ -186,7 +208,7 @@ def _gpu_status() -> str:
 def _system_status() -> dict:
     """Snapshot consolidado do estado do sistema."""
     status = {
-        "version": "1.1.0",
+        "version": __version__,
         "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
         "platform": platform.system(),
         "gpu": _gpu_status(),
@@ -228,10 +250,10 @@ def _render_kpi_row() -> str:
     s = _system_status()
     return f"""
     <div class="kpi-row">
-        {_kpi_card("📊", str(s["analyses_24h"]), "Análises últimas 24h", "kpi-primary")}
+        {_kpi_card("📊", str(s["analyses_24h"]), "Análises em 24 h", "kpi-primary")}
         {_kpi_card("🎯", str(s["models"]), "Modelos carregados", "kpi-success")}
         {_kpi_card("🎤", str(s["profiles"]), "Perfis de voz", "kpi-info")}
-        {_kpi_card("💾", f"{s['datasets_gb']} GB", "Datasets totais", "kpi-neutral")}
+        {_kpi_card("💾", f"{s['datasets_gb']} GB", "Datasets", "kpi-neutral")}
     </div>
     """
 
@@ -249,18 +271,18 @@ def _render_system_status() -> str:
     <div class="status-panel">
         <div class="status-item {db_class}">
             <span class="status-icon">{db_icon}</span>
-            <span class="status-label">Database</span>
+            <span class="status-label">Banco de dados</span>
             <span class="status-value">{"OK" if s["db_ok"] else "Indisponível"}</span>
         </div>
         <div class="status-item {models_class}">
             <span class="status-icon">{models_icon}</span>
             <span class="status-label">Modelos</span>
-            <span class="status-value">{s["models"]} carregado(s)</span>
+            <span class="status-value">{s["models"]} carregados</span>
         </div>
         <div class="status-item {gpu_class}">
             <span class="status-icon">{"✓" if gpu_class == "ok" else "⚠"}</span>
             <span class="status-label">GPU</span>
-            <span class="status-value">{s["gpu"]}</span>
+            <span class="status-value">{html.escape(s["gpu"])}</span>
         </div>
         <div class="status-item info">
             <span class="status-icon">🐍</span>
@@ -280,8 +302,7 @@ def _render_recent_table() -> str:
             <div class="empty-icon">📭</div>
             <div class="empty-title">Nenhuma análise ainda</div>
             <div class="empty-desc">
-                Faça sua primeira análise na aba <strong>🎯 Detectar</strong>
-                ou treine um modelo em <strong>🎓 Treinar</strong>.
+                Faça sua primeira análise na aba <strong>🎯 Detectar</strong>.
             </div>
         </div>
         """
@@ -293,28 +314,30 @@ def _render_recent_table() -> str:
         tbody += (
             f"<tr>"
             f"<td><span class='{result_class}'>{result}</span></td>"
-            f"<td class='mono'>{filename}</td>"
+            f"<td class='mono'>{html.escape(filename)}</td>"
             f"<td>{conf}</td>"
-            f"<td>{model}</td>"
+            f"<td>{html.escape(model)}</td>"
             f"<td class='dim'>{when}</td>"
             f"</tr>"
         )
 
     return f"""
+    <div class="table-scroll" tabindex="0" role="region" aria-label="Últimas análises">
     <table class="recent-table">
         <thead>
             <tr>
-                <th>Resultado</th>
-                <th>Arquivo</th>
-                <th>Confidence</th>
-                <th>Modelo</th>
-                <th>Quando</th>
+                <th scope="col">Resultado</th>
+                <th scope="col">Arquivo</th>
+                <th scope="col">Confiança</th>
+                <th scope="col">Modelo</th>
+                <th scope="col">Quando</th>
             </tr>
         </thead>
         <tbody>
             {tbody}
         </tbody>
     </table>
+    </div>
     """
 
 
@@ -323,30 +346,51 @@ def _render_recent_table() -> str:
 # =====================================================================
 
 
-def create_dashboard_tab():
-    """Constrói a aba 🏠 Dashboard."""
+def _ir_para(destino: str):
+    """Handler que seleciona uma aba principal."""
+
+    def selecionar():
+        return gr.Tabs(selected=destino)
+
+    return selecionar
+
+
+def create_dashboard_tab(abas_principais=None):
+    """Constrói a aba 🏠 Painel; os atalhos só existem se houver abas para onde ir."""
     with gr.Tab("🏠 Painel", id="tab_dashboard"):
         from app.interfaces.gradio.utils.components import page_header
 
         page_header(
             "🏠",
             "Painel",
-            "Visão geral do sistema — modelos, perfis, hardware e "
-            "atividade recente.",
+            "Estado do sistema e o que foi analisado por último.",
         )
         # KPI cards no topo
         kpi_html = gr.HTML(_render_kpi_row(), elem_id="dashboard_kpis")
 
+        if abas_principais is not None:
+            with gr.Row(elem_classes="action-row quick-actions"):
+                for rotulo, destino, estilo in (
+                    ("Analisar um áudio", "tab_detect", "primary"),
+                    ("Investigar um áudio", "tab_investigate", "secondary"),
+                    ("Treinar um modelo", "tab_train", "secondary"),
+                ):
+                    gr.Button(rotulo, variant=estilo).click(
+                        fn=_ir_para(destino),
+                        outputs=[abas_principais],
+                        show_progress="hidden",
+                    )
+
         # 2 colunas: histórico recente + status do sistema
         with gr.Row(elem_classes="responsive-grid"):
-            with gr.Column(scale=2):
-                gr.Markdown("### Últimas Análises")
+            with gr.Column(scale=2, min_width=320):
+                gr.Markdown("#### Últimas análises")
                 recent_html = gr.HTML(
                     _render_recent_table(), elem_id="dashboard_recent"
                 )
 
-            with gr.Column(scale=1):
-                gr.Markdown("### Status do Sistema")
+            with gr.Column(scale=1, min_width=280):
+                gr.Markdown("#### Estado do sistema")
                 status_html = gr.HTML(
                     _render_system_status(), elem_id="dashboard_status"
                 )
@@ -354,16 +398,15 @@ def create_dashboard_tab():
         # ─────────────── GPU Diagnóstico (acionável) ───────────────
         # Abre automaticamente quando há mismatch (hardware NVIDIA presente
         # mas TF não está vendo). Caso happy path (TF OK) fica fechado.
-        from app.core.gpu import get_diagnosis_html
-        from app.core.gpu import get_setup_result as _gpu_get
+        from app.core.gpu import get_diagnosis_html, get_setup_result as _gpu_get
 
         try:
             _gpu_diag = (_gpu_get() or {}).get("diagnosis") or {}
-            _open_gpu = _gpu_diag.get("severity") in ("warning", "error")
+            _open_gpu = _gpu_diag.get("severity") == "error"
         except Exception:
             _open_gpu = False
         with gr.Accordion(
-            "🎮 Diagnóstico de GPU",
+            "Diagnóstico de GPU",
             open=_open_gpu,
         ):
             gpu_diag_html = gr.HTML(
@@ -371,14 +414,14 @@ def create_dashboard_tab():
                 elem_id="dashboard_gpu_diag",
             )
             refresh_gpu_btn = gr.Button(
-                "🔄 Re-detectar GPU",
+                "Detectar GPU novamente",
                 size="sm",
                 scale=0,
             )
 
         # ────────────────────────── Handlers ──────────────────────────
 
-        @ui_safe("Nao foi possivel atualizar o painel")
+        @ui_safe("Não foi possível atualizar o painel")
         def refresh_dashboard():
             """Re-renderiza os componentes do Dashboard."""
             return (
@@ -417,6 +460,7 @@ def create_dashboard_tab():
                 fn=refresh_dashboard,
                 inputs=[],
                 outputs=[kpi_html, recent_html, status_html, gpu_diag_html],
+                show_progress="hidden",
             )
         except Exception as e:
             # gr.Timer só existe em versões recentes — degradação graciosa

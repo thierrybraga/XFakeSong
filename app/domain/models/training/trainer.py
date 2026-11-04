@@ -3,11 +3,7 @@
 Este módulo implementa o treinador principal para modelos de detecção de deepfake.
 """
 
-import json
 import logging
-import os
-import time
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -17,7 +13,6 @@ from tensorflow.keras.callbacks import (
     BackupAndRestore,
     CSVLogger,
     EarlyStopping,
-    ModelCheckpoint,
     ReduceLROnPlateau,
     TensorBoard,
 )
@@ -27,694 +22,25 @@ from app.core.contracts.audio import IModelTrainer
 from app.core.contracts.base import ProcessingResult, ProcessingStatus
 from app.core.performance import optimize_tf_dataset
 
+from .artifacts import build_input_contract, save_inference_keras
 from .augmentation import AudioAugmenter
+from .calibration import (
+    build_calibration_set,
+    calibrate_temperature,
+    compute_eer_threshold,
+    compute_ood_threshold,
+    final_metrics,
+)
+from .callbacks import (
+    CollapseAbort,
+    EpochProgressLogger,
+    PersistentEpochHistory,
+    ResumableModelCheckpoint,
+    ValidationEER,
+)
 from .metrics import MetricsCalculator
 from .optimization import OptimizerFactory
 from .secure_training_pipeline import SecureTrainingConfig, SecureTrainingPipeline
-
-_save_logger = logging.getLogger(__name__)
-_progress_logger = logging.getLogger("training.progress")
-
-
-def _process_rss_mb() -> Optional[float]:
-    """RSS atual do processo em MB, via ``/proc/self/status`` (Linux/container).
-
-    Diagnostico leve para o crescimento de RAM observado durante o treino em
-    si (nao so no preparo dos dados, ja corrigido em `log_mel_batch` e
-    `_prepare_protocol_splits`) — ver investigacao do SpectrogramTransformer
-    2026-07-31. `None` fora de Linux (Windows/mac dev local): sem custo, so
-    nao loga a linha.
-    """
-    try:
-        with open("/proc/self/status", encoding="utf-8") as fh:
-            for line in fh:
-                if line.startswith("VmRSS:"):
-                    return int(line.split()[1]) / 1024.0
-    except (OSError, ValueError, IndexError):
-        return None
-    return None
-
-
-class ResumableModelCheckpoint(ModelCheckpoint):
-    """``ModelCheckpoint`` cujo melhor valor sobrevive a reinícios do treino.
-
-    AJUSTE 2026-08-04 (queda de energia): o ``BackupAndRestore`` restaura
-    pesos, otimizador e contador de épocas, mas NÃO o estado dos demais
-    callbacks. Ao retomar, ``self.best`` volta a ``None`` e
-    ``MonitorCallback._is_improvement(x, None)`` retorna ``True``
-    incondicionalmente — a primeira época pós-retomada grava por cima do
-    melhor checkpoint mesmo sendo pior. Com reinícios recorrentes isso
-    degrada em silêncio o artefato que o protocolo declara em
-    ``checkpoint_selection`` (``minimum_clean_validation_loss`` ou
-    ``..._eer``, conforme ``config.checkpoint_monitor``).
-
-    Persiste o melhor valor num arquivo ao lado do checkpoint (escrita
-    atômica, para que uma queda no meio da gravação não corrompa o estado) e
-    o devolve em ``on_train_begin``.
-    """
-
-    def __init__(self, filepath, **kwargs):
-        super().__init__(filepath, **kwargs)
-        self._best_state_path = Path(f"{filepath}.best.json")
-
-    def on_train_begin(self, logs=None):
-        super().on_train_begin(logs)
-        # `best` já definido (ex.: initial_value_threshold explícito) manda.
-        if self.best is not None or not self._best_state_path.exists():
-            return
-        try:
-            state = json.loads(self._best_state_path.read_text(encoding="utf-8"))
-            monitor = state["monitor"]
-            best = float(state["best"])
-        except (OSError, ValueError, KeyError, TypeError):
-            _save_logger.warning(
-                "[CKPT] estado de melhor valor ilegível em %s — retomando sem "
-                "ele (a próxima época pode sobrescrever o melhor checkpoint)",
-                self._best_state_path,
-            )
-            return
-        if monitor != self.monitor:
-            return
-        # NaN como baseline TRAVA o checkpoint para sempre: `_is_improvement`
-        # compara com `ops.less(x, nan)`, que é False para qualquer x, então
-        # nenhuma época voltaria a gravar. Um treino que divergiu não deve
-        # ditar o baseline do treino seguinte.
-        if not np.isfinite(best):
-            _save_logger.warning(
-                "[CKPT] melhor %s persistido é %s (treino anterior divergiu) — "
-                "ignorado; a seleção recomeça do zero",
-                self.monitor,
-                best,
-            )
-            return
-        self.best = best
-        _save_logger.warning(
-            "[CKPT] melhor %s restaurado como %.6f — checkpoint só será "
-            "substituído por um resultado efetivamente melhor",
-            self.monitor,
-            best,
-        )
-
-    def _save_model(self, epoch, batch, logs):
-        # Uma época que divergiu não é "o melhor checkpoint": sem esta guarda,
-        # `_is_improvement(nan, None)` retorna True na primeira época e o
-        # artefato promovido nasce com pesos não-finitos.
-        current = (logs or {}).get(self.monitor)
-        if current is not None and not np.isfinite(current):
-            _save_logger.warning(
-                "[CKPT] época com %s=%s descartada para seleção de checkpoint",
-                self.monitor,
-                current,
-            )
-            return
-        previous = self.best
-        super()._save_model(epoch=epoch, batch=batch, logs=logs)
-        if self.best is None or self.best == previous:
-            return
-        self._persist_best()
-
-    def _persist_best(self) -> None:
-        if not np.isfinite(self.best):
-            return
-        payload = json.dumps({"monitor": self.monitor, "best": float(self.best)})
-        tmp_path = self._best_state_path.with_suffix(".json.tmp")
-        try:
-            tmp_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp_path.write_text(payload, encoding="utf-8")
-            tmp_path.replace(self._best_state_path)
-        except OSError as exc:
-            _save_logger.warning(
-                "[CKPT] falha ao persistir melhor %s: %s", self.monitor, exc
-            )
-
-
-class PersistentEpochHistory(tf.keras.callbacks.Callback):
-    """Preserva o histórico COMPLETO de épocas através de retomadas.
-
-    ``model.fit()`` devolve em ``history.history`` apenas as épocas DESTA
-    execução. Com ``BackupAndRestore``, uma retomada na época 84 produz um
-    histórico de 17 entradas para um treino de 100 — exatamente o que
-    aconteceu no ``clean_benchmark_15k`` com RawNet2 (17/100) e RawGAT-ST
-    (91/100): os dois treinaram as 100 épocas (está nos ``run.log``), mas o
-    ``metrics.json`` só guardou o trecho pós-retomada, então as figuras de
-    convergência mostram um fragmento e qualquer "melhor época" lida do
-    artefato sai errada.
-
-    Grava uma linha JSON por época, indexada pela época ABSOLUTA, e
-    reconstrói a série inteira em :meth:`merged`.
-
-    O arquivo fica FORA do ``backup_dir``: aquele diretório é apagado ao fim
-    do treino (``delete_checkpoint=True``) e levaria o histórico junto.
-    """
-
-    def __init__(self, path, label: str = ""):
-        super().__init__()
-        self.path = Path(path)
-        self.label = label or "training"
-        self._records: dict[int, dict[str, float]] = {}
-
-    def on_train_begin(self, logs=None):
-        if not self.path.exists():
-            return
-        try:
-            for line in self.path.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                record = json.loads(line)
-                self._records[int(record["epoch"])] = {
-                    k: float(v) for k, v in record.items() if k != "epoch"
-                }
-        except (OSError, ValueError, KeyError, TypeError):
-            _save_logger.warning(
-                "[HIST] histórico persistido ilegível em %s — a série desta "
-                "execução começa do zero", self.path
-            )
-            self._records = {}
-            return
-        if self._records:
-            _save_logger.warning(
-                "[HIST] %s: %d épocas anteriores recuperadas de %s",
-                self.label, len(self._records), self.path.name,
-            )
-
-    def on_epoch_end(self, epoch, logs=None):
-        values: dict[str, float] = {}
-        for key, value in (logs or {}).items():
-            try:
-                values[key] = float(value)
-            except (TypeError, ValueError):
-                continue
-        # Índice absoluto: numa retomada o Keras devolve a época real (84), e
-        # regravar a mesma chave torna a operação idempotente.
-        self._records[int(epoch)] = values
-        self._flush()
-
-    def _flush(self) -> None:
-        lines = [
-            json.dumps({"epoch": epoch, **values}, ensure_ascii=False)
-            for epoch, values in sorted(self._records.items())
-        ]
-        payload = "\n".join(lines) + "\n"
-        tmp_path = self.path.with_suffix(f"{self.path.suffix}.tmp")
-        try:
-            tmp_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp_path.write_text(payload, encoding="utf-8")
-            tmp_path.replace(self.path)
-        except OSError as exc:
-            _save_logger.warning("[HIST] falha ao persistir histórico: %s", exc)
-
-    def merged(self) -> dict[str, list[float]]:
-        """Série completa no formato de ``History.history`` (listas por métrica)."""
-        if not self._records:
-            return {}
-        ordered = [self._records[e] for e in sorted(self._records)]
-        metrics: dict[str, list[float]] = {}
-        for record in ordered:
-            for key in record:
-                metrics.setdefault(key, [])
-        for record in ordered:
-            for key, series in metrics.items():
-                # Uma métrica ausente numa época (ex.: val_* numa época sem
-                # validação) não pode deslocar as demais séries.
-                series.append(record.get(key, float("nan")))
-        return metrics
-
-
-class CollapseAbort(tf.keras.callbacks.Callback):
-    """Aborta um treino que degenerou para o palpite constante.
-
-    MOTIVAÇÃO 2026-08-06: no run `clean_benchmark_15k` o Conformer divergiu na
-    época ~14 e ficou em ``loss = ln 2 = 0.693`` / ``val_accuracy = 0.500`` da
-    época 22 à 100 — 85 épocas (~50 min de GPU) produzindo nada, em duas
-    sessões independentes. O melhor checkpoint era da época 10 e nunca mais
-    seria superado.
-
-    NÃO é early stopping, e não conflita com ``fixed_epoch_budget``: o early
-    stopping interrompe um modelo que ainda melhora devagar. Esta guarda tem
-    dois gatilhos, ambos exigindo evidência positiva de falha:
-
-    1. **colapso** — o modelo JÁ ESTEVE bom (``arm_threshold``), caiu para o
-       nível do acaso e ficou lá por ``patience`` épocas seguidas;
-    2. **nunca generalizou** — passou ``arm_deadline`` sem cruzar
-       ``arm_threshold`` *enquanto o treino abria* ``generalization_gap``
-       de vantagem sobre a validação.
-
-    O que nenhum dos dois faz é matar um modelo que ainda não começou: com
-    treino e validação no acaso juntos, a guarda se cala e o orçamento fixo de
-    épocas é quem limita. O melhor checkpoint é preservado — quem restaura é o
-    ``ResumableModelCheckpoint``.
-
-    O aborto fica registrado em ``self.triggered``/``self.reason`` para que o
-    artefato diga o que aconteceu, em vez de parecer um treino curto qualquer.
-    """
-
-    def __init__(
-        self,
-        patience: int = 15,
-        nan_patience: int = 3,
-        chance_accuracy: float = 0.5,
-        tolerance: float = 0.01,
-        arm_threshold: float = 0.6,
-        # Prazo para o modelo CRUZAR `arm_threshold` pela primeira vez. Sem
-        # isto o guarda tinha um ponto cego: ele só arma DEPOIS de o modelo
-        # ficar bom, então um treino que nunca aprende não é abortado nunca.
-        #
-        # Observado em 2026-08-16 no retune do RawGAT-ST (dropout 0,35->0,50):
-        # `val_accuracy` ficou em 0,5000 exato da época 1 à 25 enquanto o
-        # treino subia a 95,4% — 7,6 h de GPU sem nenhum aborto, porque o
-        # guarda nunca chegou a armar.
-        #
-        # 15 é conservador por medida: no run `clean_benchmark_15k`, TODAS as
-        # nove arquiteturas neurais cruzaram 0,6 até a época 3 (a mais lenta
-        # foi justamente o RawGAT-ST). O prazo dá 5x essa folga.
-        arm_deadline: int = 15,
-        # Folga mínima treino-validação para o prazo acima poder abortar.
-        #
-        # SEM ESTA CONDIÇÃO O PRAZO É AMBÍGUO (corrigido em 2026-08-17). Olhando
-        # só `val_accuracy`, "nunca aprendeu" e "warmup longo" produzem a MESMA
-        # curva — acaso sustentado — e o prazo sozinho mataria os dois. O
-        # segundo caso é justamente o que a guarda existe para NÃO fazer
-        # (`test_collapse_abort_ignora_inicio_lento`): um modelo que fica no
-        # acaso por 30 épocas e depois sobe a 0,97 é treino legítimo.
-        #
-        # O que separa os dois é o TREINO. No braço (d) do RawGAT-ST ele estava
-        # em 0,9048 na época 15 com a validação em 0,5000 — folga de 40 pontos:
-        # o modelo aprendeu o conjunto de ajuste e não generalizou nada. Num
-        # warmup genuíno treino e validação estão no acaso JUNTOS, e aí a
-        # guarda se cala: quem limita esse caso é o orçamento fixo de épocas.
-        #
-        # 0,20 fica bem acima da folga de qualquer run saudável do escopo
-        # oficial na época 15 e bem abaixo dos 0,40 medidos no braço (d).
-        generalization_gap: float = 0.20,
-        monitor: str = "val_accuracy",
-        loss_monitor: str = "val_loss",
-        train_monitor: str | None = None,
-        label: str = "",
-    ):
-        super().__init__()
-        self.patience = max(1, int(patience))
-        self.nan_patience = max(1, int(nan_patience))
-        self.chance_accuracy = float(chance_accuracy)
-        self.tolerance = float(tolerance)
-        self.arm_threshold = float(arm_threshold)
-        self.arm_deadline = max(1, int(arm_deadline))
-        self.generalization_gap = float(generalization_gap)
-        self.monitor = monitor
-        self.loss_monitor = loss_monitor
-        # Métrica de treino correspondente ao monitor: `val_accuracy` ->
-        # `accuracy`. Derivar em vez de fixar mantém o par coerente se o
-        # chamador monitorar outra métrica.
-        self.train_monitor = train_monitor or (
-            monitor[4:] if monitor.startswith("val_") else monitor
-        )
-        self.label = label or "training"
-        self.triggered = False
-        self.reason = ""
-        self._armed = False
-        self._best_acc = float("-inf")
-        self._dead_streak = 0
-        self._nan_streak = 0
-
-    def on_epoch_end(self, epoch, logs=None):
-        logs = logs or {}
-        human_epoch = int(epoch) + 1
-
-        loss = logs.get(self.loss_monitor)
-        if loss is not None and not np.isfinite(loss):
-            self._nan_streak += 1
-            if self._nan_streak >= self.nan_patience:
-                self._abort(
-                    human_epoch,
-                    f"{self.loss_monitor} não-finito por {self._nan_streak} "
-                    "épocas seguidas",
-                )
-                return
-        else:
-            self._nan_streak = 0
-
-        acc = logs.get(self.monitor)
-        if acc is None:
-            return
-        acc = float(acc)
-        self._best_acc = max(self._best_acc, acc)
-        # Só arma depois que o modelo demonstrou aprender de fato — assim um
-        # início lento (ou um warmup longo) nunca é confundido com colapso.
-        if acc >= self.arm_threshold:
-            self._armed = True
-
-        # Nunca aprendeu: passou o prazo sem cruzar `arm_threshold` uma vez E
-        # o treino já disparou na frente. É falha distinta do colapso (que
-        # pressupõe ter estado bom antes) e precisa de aborto próprio — ver a
-        # justificativa e o porquê da folga em __init__.
-        if not self._armed and human_epoch >= self.arm_deadline:
-            train_acc = logs.get(self.train_monitor)
-            # Sem a métrica de treino não dá para distinguir memorização de
-            # warmup longo. Na dúvida a guarda se cala: matar um treino bom
-            # custa mais do que deixar um ruim correr até o fim do orçamento.
-            if train_acc is not None and np.isfinite(train_acc):
-                folga = float(train_acc) - acc
-                if folga >= self.generalization_gap:
-                    self._abort(
-                        human_epoch,
-                        f"{self.monitor} nunca alcançou "
-                        f"{self.arm_threshold:.2f} em {human_epoch} épocas "
-                        f"(melhor: {self._best_acc:.4f}) enquanto "
-                        f"{self.train_monitor} chegou a {float(train_acc):.4f} "
-                        f"— folga de {folga:.4f}: o modelo memoriza o treino e "
-                        "não generaliza",
-                    )
-                    return
-
-        if self._armed and acc <= self.chance_accuracy + self.tolerance:
-            self._dead_streak += 1
-            if self._dead_streak >= self.patience:
-                self._abort(
-                    human_epoch,
-                    f"{self.monitor}={acc:.4f} (nível do acaso) por "
-                    f"{self._dead_streak} épocas seguidas, depois de ter "
-                    f"chegado a {self._best_acc:.4f}",
-                )
-        else:
-            self._dead_streak = 0
-
-    def _abort(self, epoch: int, reason: str) -> None:
-        self.triggered = True
-        self.reason = reason
-        self.model.stop_training = True
-        _progress_logger.warning(
-            "[COLAPSO] %s: treino ABORTADO na época %d — %s. O melhor "
-            "checkpoint anterior ao colapso foi preservado; revise o LR de "
-            "pico/warmup antes de retreinar.",
-            self.label,
-            epoch,
-            reason,
-        )
-
-
-def scores_from_predictions(bruto) -> "np.ndarray":
-    """Converte a saída BRUTA do modelo na pontuação que ordena spoof>bonafide.
-
-    SAÍDA DE 2 COLUNAS é o caso NORMAL no escopo, não a exceção: as
-    arquiteturas emitem softmax/logits sobre {bonafide, spoof}. A coluna 1 é a
-    do FAKE, a mesma convenção de `benchmarks/runner.py` (`pred[:, 1]`).
-
-    LOG-ODDS, nao a coluna 1 sozinha. Medido em 2026-08-19 no AASIST promovido:
-    ele emite LOGITS CRUS (faixa -37,8 a +41,1; a soma das colunas tem media
-    1,91 e desvio 4,51, ou seja NAO e softmax), e as duas colunas variam de
-    forma independente. Ordenar so por `logit[1]` deu EER 0,0025 contra 0,0050
-    pelo criterio correto -- OTIMISTA por um fator de 2.
-
-    A diferenca serve aos DOIS casos e dispensa detectar o tipo de saida: com
-    softmax as colunas somam 1, entao `col1 - col0 = 2*col1 - 1` e
-    transformacao monotonica de col1 e o EER nao muda; com logits ela e a
-    log-odds, que e o que ordena corretamente.
-    """
-    bruto = np.asarray(bruto)
-    if bruto.ndim == 2 and bruto.shape[1] == 2:
-        return (bruto[:, 1] - bruto[:, 0]).ravel()
-    return bruto.ravel()
-
-
-def eer_from_scores(y_true, scores) -> float:
-    """EER a partir de rótulos e pontuações, com INTERPOLAÇÃO do cruzamento.
-
-    Espelha `MetricsCalculator.calculate_eer` (que usa brentq). Usar só o ponto
-    mais próximo (`argmin|fpr-fnr|`) fazia as duas implementações discordarem
-    na terceira casa — num regime de EER de 0,1% é essa a casa que separa os
-    modelos, e é esta métrica que SELECIONA o checkpoint. A interpolação linear
-    entre os dois pontos que cercam a troca de sinal dá o mesmo resultado do
-    brentq sem depender de scipy dentro de um callback de época.
-
-    Levanta ValueError quando o EER não é definível (uma classe só, tamanhos
-    incompatíveis, pontuações não-finitas) — quem chama decide se isso é aviso
-    ou falha.
-    """
-    from sklearn.metrics import roc_curve
-
-    y_true = np.asarray(y_true).ravel()
-    scores = np.asarray(scores).ravel()
-    if scores.size != y_true.size:
-        raise ValueError(
-            f"predição com {scores.size} scores para {y_true.size} rótulos"
-        )
-    if not np.isfinite(scores).all():
-        raise ValueError("pontuações não-finitas (NaN/inf) na validação")
-    if len(np.unique(y_true)) < 2:
-        raise ValueError("validação tem uma classe só; EER indefinível")
-
-    fpr, tpr, thr = roc_curve(y_true, scores)
-    fnr = 1.0 - tpr
-    finito = np.isfinite(thr)
-    fpr, fnr = fpr[finito], fnr[finito]
-    if fpr.size == 0:
-        raise ValueError("curva ROC vazia após descartar limiares não-finitos")
-
-    d = fpr - fnr
-    troca = np.nonzero(np.sign(d[:-1]) * np.sign(d[1:]) < 0)[0]
-    if troca.size:
-        i = int(troca[0])
-        passo = d[i] - d[i + 1]
-        peso = float(d[i] / passo) if passo != 0 else 0.0
-        eer = float(
-            (fpr[i] + peso * (fpr[i + 1] - fpr[i]))
-            + (fnr[i] + peso * (fnr[i + 1] - fnr[i]))
-        ) / 2.0
-    else:
-        i = int(np.nanargmin(np.abs(d)))
-        eer = float((fpr[i] + fnr[i]) / 2.0)
-    return float(min(max(eer, 0.0), 1.0))
-
-
-def validation_eer(model, validation_data, batch_size: int = 32) -> float:
-    """EER do modelo no conjunto de validação, na convenção do projeto.
-
-    Fonte ÚNICA do `val_eer`: o callback `ValidationEER` (que publica a métrica
-    por época) e a restauração guardada de checkpoint (que decide se o
-    checkpoint selecionado por ela fica) chamam esta função. Duas
-    implementações do mesmo EER divergindo na terceira casa selecionariam
-    épocas diferentes das que o log declara.
-    """
-    x, y = validation_data
-    bruto = model.predict(x, verbose=0, batch_size=max(1, int(batch_size)))
-    return eer_from_scores(np.asarray(y).ravel(), scores_from_predictions(bruto))
-
-
-class ValidationEER(tf.keras.callbacks.Callback):
-    """Publica ``val_eer`` nos logs de época, para seleção de checkpoint.
-
-    MOTIVO
-    ------
-    A seleção por ``val_loss`` (entropia cruzada) e a avaliação por EER medem
-    coisas diferentes: a entropia é sensível à CALIBRAÇÃO, o EER mede apenas a
-    ORDENAÇÃO das pontuações. Um detector pode piorar a entropia e melhorar o
-    EER simplesmente ficando mais confiante nos acertos e nos erros.
-
-    Esse descompasso não é hipotético neste projeto. No run publicado, o
-    critério de menor ``val_loss`` escolhe para o RawGAT-ST a época 17
-    (val_acc 84,7%) quando o pico foi 90,0% -- 5,3 pontos abaixo. E no retune
-    com L2=3e-3 o mínimo de ``val_loss`` cai na ÉPOCA 1, onde o modelo ainda é
-    desinformativo: perda desinformativa vale ln(2)=0,693, e um modelo que
-    aprende mas erra com confiança nunca bate esse valor.
-
-    O EER é a métrica primária das campanhas ASVspoof, que é o referencial do
-    protocolo deste trabalho -- selecionar por ele alinha o critério de parada
-    ao critério de avaliação.
-    """
-
-    def __init__(self, validation_data, label: str = "", batch_size: int = 32):
-        super().__init__()
-        self.validation_data = validation_data
-        self.label = label or "model"
-        # `predict` de LOTE INTEIRO estoura a VRAM nas arquiteturas de forma de
-        # onda: a validação do benchmark são 1.456 janelas de 48.000 amostras
-        # (266 MB) atravessando o grafo do RawGAT-ST numa RTX 3060 de 12 GB,
-        # com a memória do treino já alocada. O smoke `_smoke_eer3` falhou
-        # assim — e em silêncio, porque a exceção caía no `except` abaixo.
-        self.batch_size = max(1, int(batch_size))
-        self.falhas = 0
-
-    def on_epoch_end(self, epoch, logs=None):
-        if logs is None or self.validation_data is None:
-            return
-        try:
-            # Fonte ÚNICA do EER: `validation_eer` é a mesma função que a
-            # restauração guardada de checkpoint chama. Enquanto o cálculo
-            # vivia só aqui, o guard comparava OUTRA métrica (val_loss) e podia
-            # descartar a época que este callback tinha eleito.
-            logs["val_eer"] = validation_eer(
-                self.model, self.validation_data, self.batch_size
-            )
-        except Exception as exc:  # noqa: BLE001
-            # NÃO derruba um treino de horas — mas também NÃO cala.
-            #
-            # Este callback é auxiliar só quando o monitor é outro. Quando o
-            # ModelCheckpoint está apontado para `val_eer`, uma falha aqui
-            # significa que NENHUM checkpoint será salvo, e o log em DEBUG
-            # escondia isso: o smoke `_smoke_eer3` treinou até o fim com o
-            # aviso "Can save best model only with val_eer available" e
-            # terminou sem `best.json`. WARNING, com contagem, para que a
-            # próxima vez apareça no log do run.
-            self.falhas += 1
-            _save_logger.warning(
-                "[%s] val_eer NÃO publicado na época %d (%d falha(s) "
-                "seguidas): %s — se o checkpoint monitora val_eer, nenhuma "
-                "época será salva",
-                self.label,
-                int(epoch) + 1,
-                self.falhas,
-                exc,
-            )
-
-
-class EpochProgressLogger(tf.keras.callbacks.Callback):
-    """Loga progresso de treino em linha única por época ou intervalo."""
-
-    def __init__(self, interval: int = 1, label: str = ""):
-        super().__init__()
-        self.interval = max(1, int(interval or 1))
-        self.label = label or "model"
-        self._started_at = 0.0
-        self._epoch_started_at = 0.0
-        self._epoch_index = 0
-        self._last_batch_log_at = 0.0
-        # Épocas concluídas NESTE processo. Após uma retomada via
-        # `BackupAndRestore`, `epoch` volta com o índice absoluto (ex.: 84)
-        # enquanto `_started_at` marca o restart — dividir o tempo decorrido
-        # pelo índice absoluto subestimava o custo por época na mesma
-        # proporção (84×), e o ETA saía perto de zero.
-        self._epochs_this_run = 0
-        self.batch_log_interval_s = max(
-            0,
-            int(os.getenv("XFAKE_TRAIN_BATCH_LOG_INTERVAL_S", "60") or "0"),
-        )
-
-    def on_train_begin(self, logs=None):
-        self._started_at = time.time()
-        total = self.params.get("epochs", "?")
-        steps = self.params.get("steps", "?")
-        rss = _process_rss_mb()
-        _progress_logger.warning(
-            "[TRAIN] %s iniciado: epochs=%s steps_per_epoch=%s%s",
-            self.label,
-            total,
-            steps,
-            f" rss_mb={rss:.0f}" if rss is not None else "",
-        )
-
-    def on_epoch_begin(self, epoch, logs=None):
-        self._epoch_index = int(epoch) + 1
-        self._epoch_started_at = time.time()
-        self._last_batch_log_at = self._epoch_started_at
-
-    def on_train_batch_end(self, batch, logs=None):
-        if self.batch_log_interval_s <= 0:
-            return
-        steps = self.params.get("steps")
-        if not isinstance(steps, int) or steps <= 0:
-            return
-        now = time.time()
-        current_batch = int(batch) + 1
-        if current_batch < steps and now - self._last_batch_log_at < self.batch_log_interval_s:
-            return
-        self._last_batch_log_at = now
-        elapsed = now - self._started_at
-        epoch_elapsed = now - self._epoch_started_at
-        pct = min(100.0, 100.0 * current_batch / max(1, steps))
-        rss = _process_rss_mb()
-        _progress_logger.warning(
-            "[TRAIN] %s epoch=%s batch=%d/%d %.1f%% epoch_elapsed_min=%.1f elapsed_min=%.1f%s",
-            self.label,
-            self._epoch_index or "?",
-            current_batch,
-            steps,
-            pct,
-            epoch_elapsed / 60.0,
-            elapsed / 60.0,
-            f" rss_mb={rss:.0f}" if rss is not None else "",
-        )
-
-    def on_epoch_end(self, epoch, logs=None):
-        logs = logs or {}
-        total = int(self.params.get("epochs") or 0)
-        current = int(epoch) + 1
-        self._epochs_this_run += 1
-        should_log = (
-            current == 1
-            or (total and current == total)
-            or current % self.interval == 0
-        )
-        if not should_log:
-            return
-
-        elapsed = time.time() - self._started_at
-        epoch_s = time.time() - self._epoch_started_at
-        eta_min = None
-        if total and current < total and self._epochs_this_run > 0:
-            seconds_per_epoch = elapsed / self._epochs_this_run
-            eta_min = seconds_per_epoch * (total - current) / 60.0
-        metric_bits = []
-        # `val_eer` entra aqui porque e a metrica que SELECIONA o
-        # checkpoint quando `--checkpoint-monitor val_eer` esta ativo. Sem
-        # ela na linha de log, uma bateria de dezenas de horas nao permite
-        # verificar pelo log se a selecao esta funcionando: o
-        # `ValidationEER` so escreve em `logs`, e so fala quando FALHA.
-        for key in (
-            "loss",
-            "accuracy",
-            "val_loss",
-            "val_accuracy",
-            "val_eer",
-            "learning_rate",
-        ):
-            if key in logs:
-                try:
-                    metric_bits.append(f"{key}={float(logs[key]):.6g}")
-                except Exception:
-                    metric_bits.append(f"{key}={logs[key]}")
-        _progress_logger.warning(
-            "[TRAIN] %s epoch=%d/%s epoch_s=%.1f elapsed_min=%.1f eta_min=%s %s",
-            self.label,
-            current,
-            total or "?",
-            epoch_s,
-            elapsed / 60.0,
-            f"{eta_min:.1f}" if eta_min is not None else "-",
-            " ".join(metric_bits),
-        )
-
-
-def save_inference_keras(model: "tf.keras.Model", path) -> None:
-    """Salva um artefato de INFERÊNCIA (.keras) SEM o estado do otimizador.
-
-    No Keras 3, `include_optimizer=False` é IGNORADO para o formato `.keras`: o
-    estado do Adam (2 momentos por peso, ~2× os pesos) é sempre serializado,
-    deixando o arquivo ~3× maior que o necessário para inferência.
-
-    Removemos o otimizador ANTES de salvar e o restauramos DEPOIS. O grafo e os
-    pesos ficam idênticos — a saída do modelo NÃO muda (neutro em acurácia) —,
-    apenas o estado de treino deixa de ser gravado. Ganho típico: 561 MB → 188 MB
-    (MultiscaleCNN), com load proporcionalmente mais rápido.
-
-    Obs.: reconstruir via from_config+set_weights foi descartado por alterar a
-    saída (NaN em modelos com BatchNormalization/camadas custom).
-    """
-    path = str(path)
-    saved_opt = getattr(model, "optimizer", None)
-    try:
-        try:
-            model.optimizer = None
-        except Exception as e:
-            _save_logger.debug(f"Não foi possível remover o otimizador: {e}")
-        model.save(path)
-    finally:
-        # Restaura o otimizador para não afetar usos posteriores (ex.: continuar
-        # o treino, avaliar com o mesmo objeto de modelo).
-        if saved_opt is not None:
-            try:
-                model.optimizer = saved_opt
-            except Exception:
-                pass
 
 
 class ModelTrainer(IModelTrainer):
@@ -824,7 +150,7 @@ class ModelTrainer(IModelTrainer):
             # persiste no closure entre reinvocações do generator (repeat()).
             order = rng.permutation(n) if shuffle else np.arange(n)
             for start in range(0, n, batch_size):
-                idx = order[start:start + batch_size]
+                idx = order[start : start + batch_size]
                 yield X[idx], y[idx]
 
         n_batches = int(np.ceil(len(y) / max(1, batch_size)))
@@ -993,9 +319,7 @@ class ModelTrainer(IModelTrainer):
                 # ~2ª época e o Keras interrompia o treino ("ran out of data").
                 # repeat() + steps_per_epoch garante épocas completas sempre.
                 train_dataset = train_dataset.repeat()
-                steps_per_epoch = max(
-                    1, len(X_train) // self.config.batch_size
-                )
+                steps_per_epoch = max(1, len(X_train) // self.config.batch_size)
             else:
                 train_dataset, train_streaming = self._array_dataset(
                     X_train,
@@ -1144,73 +468,6 @@ class ModelTrainer(IModelTrainer):
             self.logger.warning("Pipeline seguro não inicializado")
             return None
 
-    def predict_with_scaler(self, model: tf.keras.Model, X: np.ndarray) -> np.ndarray:
-        """Faz predição aplicando o mesmo scaler usado no treinamento."""
-        scaler = self.get_scaler()
-        if scaler is None or scaler.scaler is None:
-            self.logger.warning("Scaler não disponível - usando dados sem normalização")
-            return model.predict(X, verbose=0)
-
-        # Aplicar mesma normalização usada no treinamento
-        X_scaled = scaler.transform_test(X)
-        return model.predict(X_scaled, verbose=0)
-
-    def save_training_artifacts(
-        self, model: tf.keras.Model, save_dir: Union[str, Path]
-    ) -> ProcessingResult[Dict[str, str]]:
-        """Salva modelo e artefatos de treinamento (incluindo scaler)."""
-        try:
-            save_dir = Path(save_dir)
-            save_dir.mkdir(parents=True, exist_ok=True)
-
-            # Salvar modelo no formato nativo Keras 3 (.keras) como artefato de
-            # INFERÊNCIA — sem o estado do otimizador (~3× menor, load mais
-            # rápido, saída idêntica). Ver save_inference_keras().
-            model_path = save_dir / "model.keras"
-            save_inference_keras(model, model_path)
-
-            # Salvar scaler se disponível
-            scaler_path = None
-            scaler = self.get_scaler()
-            if scaler is not None and scaler.scaler is not None:
-                scaler_path = save_dir / "scaler.pkl"
-                scaler.save_scaler(scaler_path)
-
-            # Salvar configuração com input_contract para consistência train/inference
-            config_path = save_dir / "training_config.json"
-            import json
-
-            # Construir input_contract a partir do modelo treinado
-            input_contract = self._build_input_contract(model)
-
-            config_dict = {
-                "model_config": self.config.__dict__,
-                "secure_pipeline_config": self.secure_pipeline.config.__dict__
-                if hasattr(self, "secure_pipeline")
-                else None,
-                "training_timestamp": datetime.now().isoformat(),
-                "input_contract": input_contract,
-            }
-            with open(config_path, "w") as f:
-                json.dump(config_dict, f, indent=2, default=str)
-
-            artifacts = {"model_path": str(model_path), "config_path": str(config_path)}
-
-            if scaler_path:
-                artifacts["scaler_path"] = str(scaler_path)
-
-            # Sprint 3.4: ONNX export opcional
-            if getattr(self.config, "export_onnx", False):
-                onnx_paths = self._export_onnx_artifacts(model, save_dir)
-                artifacts.update(onnx_paths)
-
-            self.logger.info(f"Artefatos de treinamento salvos em: {save_dir}")
-            return ProcessingResult(status=ProcessingStatus.SUCCESS, data=artifacts)
-
-        except Exception as e:
-            self.logger.error(f"Erro ao salvar artefatos: {str(e)}")
-            return ProcessingResult(status=ProcessingStatus.ERROR, errors=[str(e)])
-
     def evaluate(
         self,
         model: tf.keras.Model,
@@ -1238,12 +495,11 @@ class ModelTrainer(IModelTrainer):
             )
 
             # Predições para métricas detalhadas
-            y_pred = model.predict(
-                X_test, batch_size=self.config.batch_size, verbose=0
-            )
+            y_pred = model.predict(X_test, batch_size=self.config.batch_size, verbose=0)
             from app.domain.services.detection.predictor import (
                 normalize_logits_to_probs,
             )
+
             y_pred = normalize_logits_to_probs(y_pred)
             # Suporta saídas (N,1) sigmoid e (N,K) softmax
             y_pred_classes = (
@@ -1294,8 +550,12 @@ class ModelTrainer(IModelTrainer):
                 **self.config.__dict__,
                 "input_contract": self._build_input_contract(model),
             }
-            with open(config_path, "w") as f:
-                json.dump(config_data, f, indent=2, default=str)
+            from app.utils.file_storage import atomic_write_text
+
+            atomic_write_text(
+                config_path,
+                json.dumps(config_data, indent=2, ensure_ascii=False, default=str),
+            )
 
             self.logger.info(f"Modelo salvo em: {save_path}")
             return ProcessingResult(
@@ -1417,6 +677,9 @@ class ModelTrainer(IModelTrainer):
             # época no AST) e dependia da desserialização de camadas custom.
             # A restauração já usa load_weights, que aceita ambos os formatos.
             ckpt_path = str(kwargs["checkpoint_path"])
+            from app.utils.file_storage import break_hardlink
+
+            break_hardlink(Path(ckpt_path))
             # Monitor CONFIGURÁVEL, com `val_loss` como padrão.
             #
             # O padrão preserva a reprodutibilidade dos artefatos publicados,
@@ -1425,8 +688,7 @@ class ModelTrainer(IModelTrainer):
             # seleciona por calibração, avalia por ordenação. Para runs novos
             # de anti-spoofing, `val_eer` alinha os dois — e exige que o
             # callback `ValidationEER` esteja ativo para publicar a métrica.
-            monitor = str(getattr(self.config, "checkpoint_monitor", "")
-                          or "val_loss")
+            monitor = str(getattr(self.config, "checkpoint_monitor", "") or "val_loss")
             modo = "min" if monitor in ("val_loss", "val_eer") else "max"
             callbacks.append(
                 ResumableModelCheckpoint(
@@ -1451,6 +713,9 @@ class ModelTrainer(IModelTrainer):
         # mantem o estado anterior em `.bkp` e cai nele quando o atual falha
         # ao carregar. Custa o dobro de disco no diretorio de backup.
         if "backup_dir" in kwargs:
+            from app.utils.file_storage import break_hardlinks_in_tree
+
+            break_hardlinks_in_tree(Path(kwargs["backup_dir"]))
             callbacks.append(
                 BackupAndRestore(
                     backup_dir=str(kwargs["backup_dir"]),
@@ -1462,6 +727,9 @@ class ModelTrainer(IModelTrainer):
 
         # TensorBoard
         if "tensorboard_dir" in kwargs:
+            from app.utils.file_storage import break_hardlinks_in_tree
+
+            break_hardlinks_in_tree(Path(kwargs["tensorboard_dir"]))
             callbacks.append(
                 TensorBoard(
                     log_dir=kwargs["tensorboard_dir"],
@@ -1473,6 +741,9 @@ class ModelTrainer(IModelTrainer):
 
         # CSV Logger
         if "csv_log_path" in kwargs:
+            from app.utils.file_storage import break_hardlink
+
+            break_hardlink(Path(kwargs["csv_log_path"]))
             callbacks.append(CSVLogger(filename=kwargs["csv_log_path"], append=True))
 
         return callbacks
@@ -1566,9 +837,7 @@ class ModelTrainer(IModelTrainer):
             elif labels_one_hot:
                 chosen = tf.keras.losses.CategoricalCrossentropy(from_logits=True)
             else:
-                chosen = tf.keras.losses.SparseCategoricalCrossentropy(
-                    from_logits=True
-                )
+                chosen = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
             self.logger.info(
                 "Saída linear detectada (logits crus) — loss com from_logits=True."
             )
@@ -1585,11 +854,14 @@ class ModelTrainer(IModelTrainer):
         # escolhas legítimas como focal loss customizada via string).
         compatible = {
             1: {"binary_crossentropy", "bce", "mse", "mae"},
-        }.get(out_units, (
-            {"categorical_crossentropy", "kl_divergence"}
-            if labels_one_hot
-            else {"sparse_categorical_crossentropy"}
-        ))
+        }.get(
+            out_units,
+            (
+                {"categorical_crossentropy", "kl_divergence"}
+                if labels_one_hot
+                else {"sparse_categorical_crossentropy"}
+            ),
+        )
         if configured in compatible:
             return configured
 
@@ -1656,131 +928,15 @@ class ModelTrainer(IModelTrainer):
             self.logger.warning(f"Erro ao calcular class weights: {e}")
             return None
 
-    @staticmethod
-    def _add_awgn(X: np.ndarray, snr_db: float, seed: int = 0) -> np.ndarray:
-        """AWGN a um SNR alvo (por amostra). Paridade EXATA com
-        benchmarks/data.add_awgn: a potência REALIZADA do ruído é normalizada
-        por amostra (antes só a potência esperada era calibrada — SNR
-        realizado desviava ~0,4% em janelas de 80k amostras; agora o SNR
-        realizado é idêntico ao alvo, como no protocolo do benchmark)."""
-        rng = np.random.default_rng(seed)
-        X = np.asarray(X, dtype="float32")
-        flat = X.reshape(len(X), -1)
-        sig_power = np.mean(flat ** 2, axis=1, keepdims=True)
-        snr_lin = 10.0 ** (float(snr_db) / 10.0)
-
-        unit_noise = rng.standard_normal(flat.shape).astype("float32")
-        unit_power = np.mean(unit_noise ** 2, axis=1, keepdims=True)
-        target_power = sig_power / max(snr_lin, 1e-12)
-        scale = np.sqrt(target_power / np.maximum(unit_power, 1e-12))
-        noise = unit_noise * scale
-        return (flat + noise).reshape(X.shape).astype("float32")
-
-    @staticmethod
-    def _looks_like_waveform(X: np.ndarray) -> bool:
-        """Heurística de forma de onda (paridade com benchmarks.data).
-
-        (N, T) ou (N, T, 1) com T >= 1000 amostras. Espectrogramas do projeto
-        têm (T~100, F~80) e nunca batem esse critério.
-        """
-        arr = np.asarray(X)
-        if arr.ndim == 2:
-            return arr.shape[1] >= 1000
-        if arr.ndim == 3 and arr.shape[-1] == 1:
-            return arr.shape[1] >= 1000
-        return False
-
     def _build_calibration_set(self, validation_data):
-        """Val limpo + cópias com AWGN para calibrar sob ruído.
-
-        Gated por `calibrate_under_noise` (default True) nos SNRs de
-        `calibration_snr_db`. Retorna `(X, y)`; em falha, devolve o val original.
-
-        Protocolo AWGN (2026-07-14): o ruído só é fisicamente válido na FORMA
-        DE ONDA. Para modelos espectrais/tabulares (val já em log-mel ou
-        features), adicionar AWGN aqui perturbaria o domínio errado — nesses
-        casos a calibração usa apenas o val limpo (mesma regra que o benchmark
-        aplica ao desativar calibrate_under_noise).
-        """
-        if validation_data is None:
-            return validation_data
-        if not getattr(self.config, "calibrate_under_noise", True):
-            return validation_data
-        snrs = list(getattr(self.config, "calibration_snr_db", []) or [])
-        if not snrs:
-            return validation_data
-        if not self._looks_like_waveform(validation_data[0]):
-            self.logger.info(
-                "Calibração sob ruído pulada: entrada de validação não é forma "
-                "de onda (AWGN só é aplicado no domínio do waveform; ver "
-                "protocolo 2026-07-12). Calibrando com val limpo."
-            )
-            return validation_data
-        try:
-            X_val, y_val = validation_data
-            X_val = np.asarray(X_val, dtype="float32")
-            y_val = np.asarray(y_val)
-            extra = [self._add_awgn(X_val, snr, seed=1234 + i)
-                     for i, snr in enumerate(snrs)]
-            X_cal = np.concatenate([X_val, *extra], axis=0)
-            y_cal = np.concatenate([y_val] * (1 + len(snrs)), axis=0)
-            self.logger.info(
-                "Calibração sob ruído: val %d → %d amostras (SNRs=%s)",
-                len(y_val), len(y_cal), snrs,
-            )
-            return (X_cal, y_cal)
-        except Exception as e:  # noqa: BLE001
-            self.logger.warning("Falha ao montar calibração com ruído: %s", e)
-            return validation_data
+        """Val limpo + cópias com AWGN; ver ``calibration.build_calibration_set``."""
+        return build_calibration_set(validation_data, self.config)
 
     def _auto_calibrate_temperature(
         self, model: tf.keras.Model, validation_data: Tuple[np.ndarray, np.ndarray]
     ) -> float:
-        """Calibração post-hoc de temperatura via grid search no conjunto de validação.
-
-        Implementa Temperature Scaling (Guo et al., ICML 2017): busca o T que
-        minimiza NLL nas predições do val set. O valor é salvo no input_contract
-        e aplicado automaticamente pelo Predictor na inferência.
-
-        Returns:
-            Temperatura calibrada (1.0 se desabilitado/falhar).
-        """
-        default_t = 1.0
-        if not getattr(self.config, "auto_calibrate_temperature", True):
-            return default_t
-
-        try:
-            X_val, y_val = validation_data
-            min_samples = getattr(self.config, "calibration_min_samples", 50)
-            if len(X_val) < min_samples:
-                self.logger.info(
-                    f"Calibração de temperatura pulada: val set tem "
-                    f"{len(X_val)} amostras (mínimo {min_samples})"
-                )
-                return default_t
-
-            # Converte y para índices de classe (compatível com calibrate())
-            y_for_calib = np.asarray(y_val)
-            if y_for_calib.ndim > 1 and y_for_calib.shape[-1] > 1:
-                y_for_calib = np.argmax(y_for_calib, axis=-1)
-            else:
-                y_for_calib = y_for_calib.ravel().astype(int)
-
-            # Importação tardia para evitar ciclo (predictor importa do trainer)
-            from app.domain.services.detection.predictor import TemperatureScaler
-
-            scaler = TemperatureScaler()
-            scaler.calibrate(model, X_val, y_for_calib)
-            temperature = float(scaler.temperature)
-            self.logger.info(
-                f"Temperatura calibrada: T={temperature:.3f} "
-                f"({len(X_val)} amostras de val)"
-            )
-            return temperature
-
-        except Exception as e:
-            self.logger.warning(f"Erro na calibração de temperatura: {e}")
-            return default_t
+        """Temperature scaling no val; ver ``calibration.calibrate_temperature``."""
+        return calibrate_temperature(model, validation_data, self.config)
 
     def _compute_ood_threshold(
         self,
@@ -1788,77 +944,15 @@ class ModelTrainer(IModelTrainer):
         validation_data: Tuple[np.ndarray, np.ndarray],
         temperature: float = 1.0,
     ) -> Optional[float]:
-        """Sprint 2.5: Calibra threshold de OOD detection no val set.
-
-        Computa energy scores para todas as amostras de validação (que são
-        consideradas in-distribution por construção) e usa o quantil
-        (1 - ood_quantile) como threshold. Amostras com energy score abaixo
-        desse threshold serão flagged como OOD na inferência.
-
-        Args:
-            model: modelo treinado
-            validation_data: (X_val, y_val)
-            temperature: T calibrado (para consistência com energia)
-
-        Returns:
-            Threshold (float) ou None se desabilitado/falhar.
-        """
-        if not getattr(self.config, "compute_ood_threshold", True):
-            return None
-
-        try:
-            from app.domain.services.detection.predictor import (
-                apply_temperature_scaling,
-                compute_energy_score,
-                normalize_logits_to_probs,
-            )
-
-            X_val, _ = validation_data
-            predictions = model.predict(
-                X_val, batch_size=self.config.batch_size, verbose=0
-            )
-            # Aplica mesma temperatura que será usada em inferência
-            predictions = normalize_logits_to_probs(predictions)
-            predictions = apply_temperature_scaling(predictions, temperature)
-            energy_scores = compute_energy_score(predictions, temperature=temperature)
-
-            # Threshold = quantil inferior. ood_quantile=0.95 → 5% das amostras
-            # in-distribution com menores energy scores serão falsos positivos OOD.
-            q = 1.0 - float(getattr(self.config, "ood_quantile", 0.95))
-            threshold = float(np.quantile(energy_scores, q))
-            self.logger.info(
-                f"OOD threshold calibrado: {threshold:.4f} "
-                f"(quantile {q:.2f} de {len(energy_scores)} amostras val | "
-                f"range=[{energy_scores.min():.3f}, {energy_scores.max():.3f}])"
-            )
-            return threshold
-
-        except Exception as e:
-            self.logger.warning(f"Erro ao calibrar OOD threshold: {e}")
-            return None
+        """Limiar de OOD por energia; ver ``calibration.compute_ood_threshold``."""
+        return compute_ood_threshold(model, validation_data, self.config, temperature)
 
     def _calculate_final_metrics(
         self, model: tf.keras.Model, validation_data: Tuple[np.ndarray, np.ndarray]
     ) -> Dict[str, float]:
-        """Calcula métricas finais do modelo."""
-        X_val, y_val = validation_data
-
-        # Predições
-        y_pred = model.predict(X_val, batch_size=self.config.batch_size, verbose=0)
-        from app.domain.services.detection.predictor import (
-            normalize_logits_to_probs,
-        )
-        y_pred = normalize_logits_to_probs(y_pred)
-        # Suporta saídas (N,1) sigmoid e (N,K) softmax
-        y_pred_classes = (
-            np.argmax(y_pred, axis=1)
-            if (y_pred.ndim > 1 and y_pred.shape[-1] > 1)
-            else (y_pred.ravel() > 0.5).astype(int)
-        )
-
-        # Calcular métricas
-        return self.metrics_calculator.calculate_all_metrics(
-            y_val, y_pred_classes, y_pred
+        """Métricas finais no val; ver ``calibration.final_metrics``."""
+        return final_metrics(
+            model, validation_data, self.config, self.metrics_calculator
         )
 
     def _compute_eer_threshold(
@@ -1867,285 +961,26 @@ class ModelTrainer(IModelTrainer):
         validation_data: Tuple[np.ndarray, np.ndarray],
         temperature: float = 1.0,
     ) -> Tuple[Optional[float], Optional[float]]:
-        """Sprint 4.5: Calibra Equal Error Rate threshold no val set.
-
-        EER é o ponto onde FPR == FNR — métrica padrão em anti-spoofing
-        (ASVspoof). O threshold associado é frequentemente mais informativo
-        que o 0.5 fixo, pois balanceia falsos positivos e falsos negativos.
-
-        Args:
-            model: modelo treinado
-            validation_data: (X_val, y_val)
-            temperature: T calibrado (Sprint 1.4) para consistência
-
-        Returns:
-            (eer_threshold, eer_value), ambos float ou None se falhar.
-            - eer_threshold: score acima do qual classificar como fake
-            - eer_value: valor de EER (taxa de erro no ponto FPR=FNR)
-        """
-        try:
-            from app.domain.services.detection.predictor import (
-                apply_temperature_scaling,
-                normalize_logits_to_probs,
-            )
-
-            X_val, y_val = validation_data
-            predictions = model.predict(
-                X_val, batch_size=self.config.batch_size, verbose=0
-            )
-            predictions = normalize_logits_to_probs(predictions)
-            predictions = apply_temperature_scaling(predictions, temperature)
-
-            # Extrai score de probabilidade da classe "fake" (índice 1)
-            if predictions.ndim > 1 and predictions.shape[-1] > 1:
-                scores = predictions[:, 1]
-            elif predictions.ndim > 1 and predictions.shape[-1] == 1:
-                scores = predictions[:, 0]
-            else:
-                scores = predictions.ravel()
-
-            # y_val pode ser sparse ou one-hot
-            y_arr = np.asarray(y_val)
-            if y_arr.ndim > 1 and y_arr.shape[-1] > 1:
-                y_true = np.argmax(y_arr, axis=-1)
-            else:
-                y_true = y_arr.ravel().astype(int)
-
-            # Usa MetricsCalculator.calculate_eer (já existente)
-            eer_value, eer_threshold = self.metrics_calculator.calculate_eer(
-                y_true, scores
-            )
-            self.logger.info(
-                f"EER threshold calibrado: T={eer_threshold:.4f}, EER={eer_value:.4f} "
-                f"({len(scores)} amostras val) — alternativa ao threshold 0.5"
-            )
-            return float(eer_threshold), float(eer_value)
-
-        except Exception as e:
-            self.logger.warning(f"Erro ao calibrar EER threshold: {e}")
-            return None, None
-
-    def _export_onnx_artifacts(
-        self,
-        model: tf.keras.Model,
-        save_dir: Path,
-    ) -> Dict[str, str]:
-        """Sprint 3.4: Export ONNX FP32 e INT8 (opcional).
-
-        Degrada graciosamente se tf2onnx/onnxruntime não estão instalados —
-        retorna dict vazio sem levantar exceção (NÃO bloqueia save do .keras).
-        """
-        artifacts: Dict[str, str] = {}
-        try:
-            from app.domain.models.inference.onnx_export import (
-                export_to_onnx,
-                is_onnx_available,
-                quantize_int8,
-            )
-
-            if not is_onnx_available():
-                self.logger.info(
-                    "ONNX export pulado: tf2onnx/onnxruntime não instalados. "
-                    "Instale com: pip install tf2onnx onnxruntime"
-                )
-                return artifacts
-
-            onnx_path = save_dir / "model.onnx"
-            result = export_to_onnx(model, onnx_path)
-            if result is not None:
-                artifacts["onnx_path"] = str(result)
-
-                # INT8 quantization opcional
-                if getattr(self.config, "export_onnx_int8", False):
-                    int8_path = save_dir / "model_int8.onnx"
-                    # Usa val set como calibração se disponível
-                    calib_data = None
-                    if hasattr(self, "_test_data"):
-                        X_test, _ = self._test_data
-                        # Pega até 100 amostras para calibração estática
-                        calib_data = X_test[:100].astype(np.float32)
-                    int8_result = quantize_int8(result, int8_path, calib_data)
-                    if int8_result is not None:
-                        artifacts["onnx_int8_path"] = str(int8_result)
-        except Exception as e:
-            self.logger.warning(f"ONNX export falhou (não-crítico): {e}")
-        return artifacts
+        """(limiar, valor) do EER no val; ver ``calibration.compute_eer_threshold``."""
+        return compute_eer_threshold(
+            model, validation_data, self.config, self.metrics_calculator, temperature
+        )
 
     def _build_input_contract(
         self, model: tf.keras.Model, metadata: Optional[Dict] = None
     ) -> Dict[str, Any]:
-        """Constrói contrato de entrada para garantir consistência train/inference.
-
-        O input_contract é salvo junto ao modelo e lido pelo FeaturePreparer
-        na inferência para garantir que as mesmas features/formato sejam usados.
-        """
-        metadata = metadata or {}
-        model_input_shape = list(model.input_shape[1:]) if model.input_shape else None
-
-        # Determinar tipo de input a partir da arquitetura ou shape
-        architecture = metadata.get("architecture", "")
-        input_type = metadata.get("input_type", "features")
-        input_format = metadata.get("input_format", "tabular")
-
-        # Heurística: modelos com input (N, 1) provavelmente recebem áudio raw
-        if (
-            model_input_shape
-            and len(model_input_shape) == 2
-            and model_input_shape[-1] == 1
-        ):
-            input_type = "audio"
-            input_format = "raw"
-        # Modelos com input (H, W) ou (H, W, C) provavelmente usam spectrogram
-        elif (
-            model_input_shape
-            and len(model_input_shape) in (2, 3)
-            and (model_input_shape[-1] != 1 if len(model_input_shape) == 2 else True)
-        ):
-            if any(dim and dim > 10 for dim in model_input_shape[:2]):
-                input_type = "features"
-                input_format = "spectrogram"
-
-        # Feature types se disponíveis
-        feature_types = metadata.get("feature_types", None)
-        if feature_types is None:
-            feature_types_attr = getattr(model, "feature_types_used", None)
-            if feature_types_attr:
-                feature_types = list(feature_types_attr)
-
-        contract = {
-            "type": input_type,
-            "format": input_format,
-            "input_shape": model_input_shape,
-            "architecture": architecture,
-            "feature_types": feature_types,
-            "sample_rate": metadata.get("sample_rate", 16000),
-            "scaler_applied": self.get_scaler() is not None
+        """Contrato de entrada com a calibração deste treino; ver
+        ``artifacts.build_input_contract``."""
+        return build_input_contract(
+            model,
+            metadata,
+            scaler_applied=self.get_scaler() is not None
             and self.get_scaler().scaler is not None,
-            # Temperatura calibrada (Sprint 1.4) — aplicada na inferência pelo Predictor
-            "temperature": float(getattr(self, "_calibrated_temperature", 1.0)),
-        }
-
-        # Persiste o contrato canônico da arquitetura (frontend, crop e janela).
-        # Sem esta fusão, AASIST/RawGAT-ST perdiam a política multicrop ao salvar.
-        if architecture:
-            try:
-                from app.domain.models.architectures.registry import (
-                    get_architecture_info,
-                )
-
-                architecture_info = get_architecture_info(architecture)
-                requirements = (
-                    dict(architecture_info.input_requirements)
-                    if architecture_info is not None
-                    else {}
-                )
-                for key in (
-                    "input_type",
-                    "feature_frontend",
-                    "target_sequence_length",
-                    "source_samples",
-                    "crop_strategy",
-                    "sample_rate",
-                    "preprocessing",
-                ):
-                    if key in requirements:
-                        contract[key] = requirements[key]
-            except Exception as exc:
-                self.logger.debug(
-                    "Contrato do registry não pôde ser incorporado: %s", exc
-                )
-
-        # Sprint 2.5: OOD threshold (energy-based). None se desabilitado/falhou.
-        ood_t = getattr(self, "_ood_threshold", None)
-        if ood_t is not None:
-            contract["ood_threshold"] = float(ood_t)
-
-        # A inferencia precisa saber se a ULTIMA camada emite logits crus
-        # (AASIST/AM-Softmax) ou ja probabilidades. Sem este campo, o Predictor
-        # adivinhava pela faixa de valores enquanto o benchmark decidia pela
-        # ativacao da camada — criterios diferentes, que divergem quando logits
-        # caem por acaso em [0, 1] e somam ~1.
-        try:
-            from app.domain.services.detection.predictor import model_emits_logits
-
-            is_logits = model_emits_logits(model)
-            if is_logits is not None:
-                contract["output_is_logits"] = bool(is_logits)
-        except Exception as exc:  # noqa: BLE001 — contrato sem o campo ainda serve
-            self.logger.debug("output_is_logits indisponivel: %s", exc)
-
-        # Sprint 4.5: EER threshold (Equal Error Rate) — alternativa adaptativa
-        # ao threshold 0.5 fixo. Predictor pode usar via flag use_eer_threshold.
-        eer_t = getattr(self, "_eer_threshold", None)
-        eer_v = getattr(self, "_eer_value", None)
-        if eer_t is not None:
-            contract["eer_threshold"] = float(eer_t)
-        if eer_v is not None:
-            contract["eer_value"] = float(eer_v)
-        return contract
-
-    def predict_with_tta(
-        self,
-        model: tf.keras.Model,
-        X: np.ndarray,
-        n_augmentations: int = 5,
-        noise_std: float = 0.005,
-        shift_factor: float = 0.02,
-        volume_range: Tuple = (0.95, 1.05),
-    ) -> np.ndarray:
-        """Test-Time Augmentation: run multiple augmented copies and average predictions.
-
-        Typically improves accuracy by 1-3% without retraining.
-        Uses 5 versions: original + noise + neg_noise + time_shift + volume_change.
-        """
-        predictions = []
-
-        # Original prediction
-        predictions.append(
-            model.predict(X, batch_size=self.config.batch_size, verbose=0)
+            temperature=getattr(self, "_calibrated_temperature", 1.0),
+            ood_threshold=getattr(self, "_ood_threshold", None),
+            eer_threshold=getattr(self, "_eer_threshold", None),
+            eer_value=getattr(self, "_eer_value", None),
         )
-
-        if n_augmentations >= 2:
-            # Positive noise
-            X_noise = X + np.random.normal(0, noise_std, X.shape).astype(np.float32)
-            predictions.append(
-                model.predict(X_noise, batch_size=self.config.batch_size, verbose=0)
-            )
-
-        if n_augmentations >= 3:
-            # Negative noise
-            X_noise_neg = X - np.random.normal(0, noise_std, X.shape).astype(np.float32)
-            predictions.append(
-                model.predict(
-                    X_noise_neg, batch_size=self.config.batch_size, verbose=0
-                )
-            )
-
-        if n_augmentations >= 4:
-            # Time shift (small circular shift along first feature axis)
-            shift_amount = (
-                max(1, int(X.shape[1] * shift_factor)) if len(X.shape) > 1 else 0
-            )
-            if shift_amount > 0:
-                X_shifted = np.roll(X, shift_amount, axis=1)
-                predictions.append(
-                    model.predict(
-                        X_shifted, batch_size=self.config.batch_size, verbose=0
-                    )
-                )
-
-        if n_augmentations >= 5:
-            # Volume change
-            vol_factor = np.random.uniform(volume_range[0], volume_range[1])
-            X_vol = X * vol_factor
-            predictions.append(
-                model.predict(X_vol, batch_size=self.config.batch_size, verbose=0)
-            )
-
-        # Average all predictions
-        avg_prediction = np.mean(predictions, axis=0)
-        self.logger.info(f"TTA applied with {len(predictions)} augmentations")
-        return avg_prediction
 
     def _get_model_summary(self, model: tf.keras.Model) -> Dict[str, Any]:
         """Retorna resumo do modelo."""

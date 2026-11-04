@@ -1,11 +1,11 @@
-# XFakeSong — Guia para Codex
+# SpeechChecker — Guia para Codex
 
 ## Visão Geral
 
-XFakeSong é uma plataforma open source de detecção de áudio deepfake. Combina análise espectral clássica com modelos Transformer modernos (WavLM, HuBERT), com foco em Explainable AI (XAI) e processamento 100% local.
+SpeechChecker é uma plataforma open source de detecção de áudio deepfake. Combina análise espectral clássica com modelos Transformer modernos (WavLM, HuBERT), com foco em Explainable AI (XAI) e processamento 100% local.
 
-**Interface**: Gradio (`python main.py --gradio`, porta 7860)
-**Python**: 3.11+ | **Licença**: MIT
+**Interface**: Gradio (`python main.py --gradio`, porta 7862; Docker: 7860 NVIDIA, 7861 CPU)
+**Python**: 3.11 (referência testada), compatível com 3.11–3.12 | **Licença**: MIT
 
 ---
 
@@ -25,19 +25,23 @@ start.bat          # Windows
 # Testes
 pytest tests/                   # todos os testes
 pytest tests/unit/              # somente unitários
-pytest --cov=app tests/         # com relatório de cobertura
+pytest --cov=app --cov=benchmarks tests/  # com relatório de cobertura
 
 # Formatação e lint
-black app/ tests/
-isort app/ tests/
-flake8 app/ tests/
-bandit -r app/
+black app/ benchmarks/ tools/ tests/
+isort app/ benchmarks/ tools/ tests/
+ruff check app/ benchmarks/ tools/ tests/
+bandit -r app/ benchmarks/ tools/
 
-# Docker (produção) — perfis segmentados em docker/compose/*.yml
-make build && make up      # ou: docker compose -f docker/compose/inference.cpu.yml up --build -d
+# Docker (produção) — perfis segmentados em infrastructure/docker/compose/*.yml
+make build && make up      # ou: docker compose --env-file .env -f infrastructure/docker/compose/inference.cpu.yml up --build -d
 make logs
 make down
 ```
+
+O Makefile requer GNU Make e Bash. No Windows, execute `make` pelo Git Bash ou
+WSL; no PowerShell, use os comandos Python com `.venv\Scripts\python.exe`
+ou `start.bat`.
 
 ---
 
@@ -54,14 +58,14 @@ app/
 │   ├── services/    # DetectionService, TrainingService, UploadService, etc.
 │   ├── dataset_metadata/  # Catálogo de datasets e manifesto de falantes
 │   └── xai/         # Explicabilidade dos modelos (Grad-CAM, SHAP, contrato tabular)
-├── core/            # Infraestrutura transversal (config, db, auth, contracts)
+├── core/            # Infraestrutura transversal (config, db + db/models ORM, auth, contracts)
 │   └── contracts/   # Contratos abstratos SOLID (IFeatureExtractor, IDetectionService, ...)
 └── interfaces/      # As 3 interfaces de entrada do projeto
-    ├── gradio/      # app.py (montagem unificada), schema_patch.py, 5 seções role-based
-    │                # (Painel, Detectar, Investigar, Treinar, Gerenciar) em tabs/, utils/
+    ├── gradio/      # app.py (montagem unificada), schema_patch.py, 5 seções visuais
+    │                # (Painel, Detectar, Investigar, Perfis de voz, Treinar, Datasets) em tabs/, utils/
     ├── cli/         # CLI com menus interativos (context.py, menus/)
     └── web/         # FastAPI: main_fastapi.py, routers/ (endpoints), schemas/
-                      # (Pydantic request/response), static/, templates/ (Jinja2)
+                      # (Pydantic request/response); raiz encaminha para Gradio
 ```
 
 Fora dessas camadas, `app/` também tem: `utils/` (utilitários centrais de
@@ -74,6 +78,12 @@ interfaces, por isso ficam em `app/` e não dentro de uma interface específica)
 HTTP/Gradio → interfaces/web/routers/ ou interfaces/gradio/ → domain/services/ → domain/models/ → resultado
 ```
 
+Na raiz, `tools/` contém CLIs operacionais e `benchmarks/` contém o harness
+experimental importável pelo pacote `benchmarks`. `data/` guarda exclusivamente
+datasets, cache, modelos, resultados e outros artefatos locais; Docker e o site
+gerado ficam sob `infrastructure/`. Perfis de voz e os caminhos persistidos no
+SQLite usam `data/voice_profiles/`, junto aos demais dados operacionais.
+
 **Regra de ouro**: código em `app/domain/` nunca importa de `app/interfaces/` (gradio, cli ou web) nem de frameworks externos diretamente. Novas bibliotecas externas entram via wrapper em `app/core/` ou `app/domain/features/adapters/`. `app/core/contracts/` (contratos abstratos) e `app/interfaces/` (adaptadores de entrada: Gradio/CLI/Web) têm nomes deliberadamente distintos para não confundir as duas camadas.
 
 ---
@@ -84,10 +94,10 @@ HTTP/Gradio → interfaces/web/routers/ ou interfaces/gradio/ → domain/service
 |-----------|------------|
 | ML / DL | Keras 3, TensorFlow, scikit-learn |
 | Áudio | librosa, soundfile, scipy, numpy |
-| Interface | Gradio 4.x |
+| Interface | Gradio 6.17 |
 | API | FastAPI (implementada: routers, middleware de segurança, rate limiting) |
 | Deploy | Docker, Hugging Face Spaces |
-| Qualidade | black, isort, flake8, bandit, pytest, pytest-cov |
+| Qualidade | black, isort, ruff, bandit, pytest, pytest-cov |
 
 ---
 
@@ -137,10 +147,10 @@ Use `from app.domain.models.architectures.factory import create_model` para inst
 
 ```env
 DEEPFAKE_ENV=development           # development | production
-GRADIO_SERVER_PORT=7860
+GRADIO_PORT_NVIDIA=7860            # porta publicada pelo perfil Docker NVIDIA
+GRADIO_PORT_CPU=7861               # porta publicada pelo perfil Docker CPU
 DEEPFAKE_MODELS_DIR=./data/models
 DEEPFAKE_LOG_LEVEL=INFO            # DEBUG | INFO | WARNING | ERROR
-DEEPFAKE_PARALLEL_EXTRACTION=false
 ```
 
 Copie `.env.example` para `.env` antes de executar.

@@ -1,6 +1,6 @@
 # Glossário
 
-Termos usados no XFakeSong e na literatura de detecção de deepfakes de áudio
+Termos usados no SpeechChecker e na literatura de detecção de deepfakes de áudio
 (anti-spoofing). Para o pipeline em si, veja [Inferência](../models/inference.md),
 [Treinamento](../models/training.md) e [Benchmark](../evaluation/benchmark.md).
 

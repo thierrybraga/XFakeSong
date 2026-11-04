@@ -35,7 +35,7 @@ dos backbones SSL originais.
 | Fine-tuning SSL parcial | Implementado quando backbone TF existe | `app/domain/models/architectures/ssl_utils.py` |
 | SSL→AASIST | Implementado em variantes `wavlm_aasist`/`hubert_aasist` | `wavlm.py`, `hubert.py`, `ssl_utils.py` |
 | RawGAT-ST fiel ao paper | Implementado: raw audio + grafo espectral/temporal | `rawgat_st.py` |
-| OC-Softmax | Implementado como camada/loss opcional | `layers.py` |
+| OC-Softmax | Implementado como camada/loss opcional | `head_layers.py` |
 | EER/min-tDCF | Métricas implementadas no pipeline de avaliação | `training/metrics.py` |
 | SVM/RF calibrados | Opt-in por `CalibratedClassifierCV` | `classical_ml_helpers.py`, `svm.py`, `random_forest.py` |
 
@@ -47,7 +47,7 @@ dos backbones SSL originais.
 | 2 | RawNet2 | Jung et al., 2020 | Alta | SincNet + FMS + GRU 1024; RawBoost fica no treino, não no grafo do modelo |
 | 3 | RawGAT-ST | Tak et al., 2021 | Alta | Reescrito para raw audio, grafo espectral/temporal e fusão element-wise |
 | 4 | WavLM | Chen et al., 2022; Tak et al., 2022 | Média | WavLM real é PyTorch-only; caminho TF usa fallback simplificado, artefatos `.pt` preservam backbone original |
-| 5 | HuBERT | Hsu et al., 2021 | Média/Alta | Tenta `TFHubertModel`/conversão quando disponível; fallback Keras mantém compatibilidade |
+| 5 | HuBERT | Hsu et al., 2021 | Média/Alta | Lê o checkpoint PyTorch e reimplementa o forward em Keras (`ssl_backbone.py`); fallback CNN-1D só sem o checkpoint |
 | 6 | Conformer | Gulati et al., 2020 | Alta | Subsampling 4×, atenção relativa, blocos macaron FF + conv |
 | 7 | Sonic Sleuth | Alshehri et al., 2024 | Alta com extensão | LFCC/MFCC/CQT in-model; backbone atual amplia a CNN do paper com SE/residuais |
 | 8 | Spectrogram Transformer | Gong et al., 2021 | Média | AST/ViT treinado do zero; `pretrained=True` é metadado reservado, sem pesos AudioSet |

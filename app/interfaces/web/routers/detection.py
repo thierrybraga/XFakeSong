@@ -14,15 +14,15 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 
+from app.core.contracts.audio import AudioData
+from app.core.contracts.base import ProcessingStatus
 from app.core.exceptions import (
     AudioProcessingError,
     ModelNotFoundError,
     UnsupportedFormatError,
     ValidationError,
 )
-from app.core.contracts.audio import AudioData
-from app.core.contracts.base import ProcessingStatus
-from app.core.security import limiter, sanitize_filename
+from app.core.security import limiter
 from app.dependencies import get_detection_service
 from app.domain.services.detection_service import DetectionService
 from app.domain.services.upload_service import AudioUploadService
@@ -32,6 +32,7 @@ from app.interfaces.web.schemas.api_models import (
     PredictionResult,
     UncertaintyResult,
 )
+from app.utils.file_utils import sanitize_filename
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/detection", tags=["Detection"])
@@ -39,7 +40,9 @@ router = APIRouter(prefix="/api/v1/detection", tags=["Detection"])
 SUPPORTED_FORMATS = list(AudioUploadService.SUPPORTED_FORMATS)
 
 
-def _build_prediction_result(data, model_name_fallback: str = "unknown") -> PredictionResult:
+def _build_prediction_result(
+    data, model_name_fallback: str = "unknown"
+) -> PredictionResult:
     """Mapeia DeepfakeDetectionResult → PredictionResult preenchendo campos novos.
 
     Os campos extras (temperature/ood/eer) vêm do metadata['per_window_metadata']
@@ -59,6 +62,7 @@ def _build_prediction_result(data, model_name_fallback: str = "unknown") -> Pred
         ood_score=meta.get("ood_score"),
         is_ood=meta.get("is_ood"),
         ood_threshold=meta.get("ood_threshold"),
+        fake_score=meta.get("fake_score"),
         classification_threshold=meta.get("classification_threshold"),
     )
 
@@ -127,8 +131,7 @@ async def analyze_audio(
             )
         else:
             detail = (
-                result.errors[0] if result.errors
-                else "Erro desconhecido na detecção"
+                result.errors[0] if result.errors else "Erro desconhecido na detecção"
             )
             raise AudioProcessingError(detail)
 
@@ -138,6 +141,7 @@ async def analyze_audio(
 
 
 # ── API.5: Multi-Model Fusion (Sprint 4.4) ──────────────────────────────
+
 
 @router.post(
     "/multi-model",
@@ -152,16 +156,19 @@ async def analyze_audio(
 async def detect_multi_model(
     request: Request,
     file: UploadFile = File(...),
-    model_names: str = Form(...,
-        description='JSON-encoded lista: \'["AASIST_v1","Conformer_v1"]\''),
+    model_names: str = Form(
+        ..., description='JSON-encoded lista: \'["AASIST_v1","Conformer_v1"]\''
+    ),
     fusion: str = Form("weighted_avg"),
-    weights: Optional[str] = Form(None,
-        description='Lista JSON de pesos: \'[0.4, 0.6]\''),
+    weights: Optional[str] = Form(
+        None, description="Lista JSON de pesos: '[0.4, 0.6]'"
+    ),
     use_tta: bool = Form(False),
     service: DetectionService = Depends(get_detection_service),
 ):
     # Parse JSON inputs (FastAPI Form não suporta List[str] direto)
     import json as _json
+
     try:
         names = _json.loads(model_names)
         if not isinstance(names, list) or len(names) < 2:
@@ -180,8 +187,10 @@ async def detect_multi_model(
 
     # Validar via schema (reaproveita validações)
     req_schema = MultiModelDetectionRequest(
-        model_names=names, fusion=fusion,
-        weights=weights_list, use_tta=use_tta,
+        model_names=names,
+        fusion=fusion,
+        weights=weights_list,
+        use_tta=use_tta,
     )
 
     # Validar extensão
@@ -211,8 +220,7 @@ async def detect_multi_model(
 
         if result.status != ProcessingStatus.SUCCESS:
             raise AudioProcessingError(
-                result.errors[0] if result.errors
-                else "Erro na fusão multi-model"
+                result.errors[0] if result.errors else "Erro na fusão multi-model"
             )
 
         data = result.data
@@ -227,9 +235,16 @@ async def detect_multi_model(
             model_agreement=meta.get("model_agreement", 0.0),
             per_model=meta.get("per_model", []),
             metadata={
-                k: v for k, v in meta.items()
-                if k not in {"fusion", "n_models", "fake_votes",
-                             "model_agreement", "per_model"}
+                k: v
+                for k, v in meta.items()
+                if k
+                not in {
+                    "fusion",
+                    "n_models",
+                    "fake_votes",
+                    "model_agreement",
+                    "per_model",
+                }
             },
         )
     finally:
@@ -237,6 +252,7 @@ async def detect_multi_model(
 
 
 # ── API.6: MC Dropout Uncertainty (Sprint 5.4) ──────────────────────────
+
 
 @router.post(
     "/uncertainty",
@@ -283,6 +299,7 @@ async def detect_with_uncertainty(
 
         # Usa o FeaturePreparer para preparar input no formato esperado
         from app.domain.models.architectures.registry import get_architecture_info
+
         try:
             arch_info = get_architecture_info(model_info.architecture)
         except Exception:
@@ -291,9 +308,7 @@ async def detect_with_uncertainty(
             audio_data, model_info, arch_info
         )
         if prepared.get("status") != "ok":
-            raise AudioProcessingError(
-                prepared.get("error", "Falha ao preparar input")
-            )
+            raise AudioProcessingError(prepared.get("error", "Falha ao preparar input"))
 
         result = service.predictor.predict_with_uncertainty(
             model_info, prepared["features"], n_samples=int(n_samples)
@@ -301,8 +316,7 @@ async def detect_with_uncertainty(
 
         if result.status != ProcessingStatus.SUCCESS:
             raise AudioProcessingError(
-                result.errors[0] if result.errors
-                else "MC Dropout falhou"
+                result.errors[0] if result.errors else "MC Dropout falhou"
             )
 
         data = result.data

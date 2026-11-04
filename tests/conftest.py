@@ -1,6 +1,29 @@
+import atexit
 import os
 import pathlib
+import shutil
+import tempfile
 from unittest.mock import MagicMock
+
+# A suíte não pode depender do `.env` local. O app o carrega no import
+# (`load_environment`, sem sobrescrever o que já está no ambiente), e o
+# `.env.example` — que o CLAUDE.md manda copiar — traz `ALLOWED_HOSTS` ativo:
+# com ele, o `TrustedHostMiddleware` recusava o host `testserver` do
+# `TestClient` com 400 e ~30 testes de API falhavam só fora do CI. A chave
+# canônica `SPEECHCHECKER_API_KEY` do `.env` também vencia a de teste, que
+# era definida só pelo alias legado e só DEPOIS do import do app.
+# Estes valores são os que o CI vê (sem `.env`): hosts/origens liberados em
+# desenvolvimento e uma chave conhecida.
+os.environ["SPEECHCHECKER_API_KEY"] = "test-api-key"
+os.environ["XFAKESONG_API_KEY"] = "test-api-key"
+os.environ["ALLOWED_HOSTS"] = "*"
+os.environ["ALLOWED_ORIGINS"] = "*"
+
+# Nem o banco real: `app.core.db.session` abre `DATABASE_URL` no import e, sem esta
+# linha, cada execução gravava em `data/app.db` (runs, métricas, jobs de treino).
+_BANCO_DE_TESTE = pathlib.Path(tempfile.mkdtemp(prefix="speechchecker_tests_"))
+atexit.register(shutil.rmtree, _BANCO_DE_TESTE, ignore_errors=True)
+os.environ["DATABASE_URL"] = f"sqlite:///{(_BANCO_DE_TESTE / 'app.db').as_posix()}"
 
 import pytest
 from fastapi.testclient import TestClient
@@ -29,8 +52,6 @@ def pytest_collection_modifyitems(config, items):
                 item.add_marker(getattr(pytest.mark, cat))
                 break
 
-# Configurar API Key para testes
-os.environ["XFAKESONG_API_KEY"] = "test-api-key"
 
 # SEGFAULT INTERMITENTE NA SUÍTE (2026-08-17): uma execução em três terminava
 # com `Segmentation fault (core dumped)` e ZERO testes falhando — o crash
@@ -53,7 +74,7 @@ os.environ.setdefault("JOBLIB_MULTIPROCESSING", "0")
 def _isolate_models_dir(tmp_path_factory):
     """Nenhum teste escreve em ``data/models`` — o diretório é de PRODUÇÃO.
 
-    `benchmarks/runner.py::_models_dir` cai em `cfg.models_dir`, cujo default é
+    `benchmarks/common.py::_models_dir` cai em `cfg.models_dir`, cujo default é
     `data/models`: um diretório GLOBAL chaveado só pela arquitetura. Onze
     `BenchmarkConfig` da suíte não passam `models_dir`, então cada execução de
     `run_benchmark` com SVM gravava por cima de `data/models/bench_svm.pkl`.
@@ -167,16 +188,16 @@ def mock_upload_service(tmp_path):
                 total_size=0,
                 total_duration=0.0,
                 created_at=None,
-                file_paths=[]
+                file_paths=[],
             ),
             metadata={"message": f"Dataset {name} criado com sucesso"},
         )
+
     mock.create_dataset.side_effect = side_effect_create
 
     # Mock delete_dataset return
     mock.delete_dataset.return_value = ProcessingResult(
-        status=ProcessingStatus.SUCCESS,
-        metadata={"message": "Dataset deleted"}
+        status=ProcessingStatus.SUCCESS, metadata={"message": "Dataset deleted"}
     )
 
     return mock
@@ -196,18 +217,11 @@ def mock_training_service():
 
 
 @pytest.fixture
-def client(
-    mock_detection_service,
-    mock_upload_service,
-    mock_training_service
-):
+def client(mock_detection_service, mock_upload_service, mock_training_service):
     # Override dependencies
-    app.dependency_overrides[get_detection_service] = \
-        lambda: mock_detection_service
-    app.dependency_overrides[get_upload_service] = \
-        lambda: mock_upload_service
-    app.dependency_overrides[get_training_service] = \
-        lambda: mock_training_service
+    app.dependency_overrides[get_detection_service] = lambda: mock_detection_service
+    app.dependency_overrides[get_upload_service] = lambda: mock_upload_service
+    app.dependency_overrides[get_training_service] = lambda: mock_training_service
 
     with TestClient(app) as c:
         yield c

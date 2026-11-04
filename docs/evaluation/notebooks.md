@@ -1,19 +1,49 @@
 # 16 — Guia de Notebooks
 
-Os notebooks foram reorganizados para separar estudo, execução do benchmark,
-treinamento, inferência, análise de features e execução completa de todas as
-arquiteturas. A estrutura facilita revisar cada arquitetura isoladamente e
-também oferece um caderno único para o experimento final. A partir desta
-organização, a documentação e os notebooks passaram a compartilhar a mesma
-estrutura de navegação e referência.
+> **Estado de alinhamento:** notebooks de pipeline por tier e janela de 5 s
+> são históricos/genéricos e não reproduzem o artigo. Para a bateria canônica,
+> siga `benchmarks/run_models_sequential.py` e o
+> [inventário do estudo](canonical-study-and-legacy-inventory.md). Use os
+> notebooks como material didático ou de análise auxiliar; confira a célula e
+> o dataset configurado antes de executar.
+
+Os notebooks cobrem estudo, treinamento, inferência, análise de features e
+fluxos históricos de benchmark. A organização é útil para consulta e estudo por
+arquitetura; as células de execução precisam ser revisadas contra o protocolo
+canônico antes de serem usadas para gerar resultados do TCC.
 
 !!! tip "Rodar no Google Colab (com GPU)"
     Todos os notebooks são **auto-suficientes no Colab**: a primeira célula
     detecta o ambiente, clona o repositório e instala as dependências. Abra por
-    `colab.research.google.com/github/thierrybraga/XFakeSong/blob/main/docs/notebooks/<caminho>`,
+    `colab.research.google.com/github/thierrybraga/SpeechChecker/blob/main/docs/notebooks/<caminho>`,
     selecione um runtime com **GPU** e rode a 1ª célula. Os notebooks de modelo
     **treinam por padrão** (defina `XFAKE_RUN_EVAL=0` para pular). Passo a passo
     no [Guia Google Colab](../getting-started/google-colab.md).
+
+## Catálogo, requisitos e resultados esperados
+
+Use os cadernos como material didático. Resultados de dados sintéticos e
+pipelines históricos **não são resultados confirmatórios do artigo**.
+
+| Caderno | Estado e entrada | Requisitos principais | Resultado esperado |
+|---|---|---|---|
+| `00_index.ipynb` | Índice; não consome dataset | Jupyter/IPython | Links e orientação para os demais cadernos |
+| `features/01_feature_extraction_study.ipynb` | Didático; sinal sintético de 1 s | TensorFlow, NumPy e bibliotecas de áudio; GPU não necessária | Visualizações e vetores LFCC, log-mel, raw-audio e features clássicas |
+| `pipeline/01_benchmark_tcc_full_pipeline.ipynb` | Histórico/genérico; sintético para smoke ou dataset por tier no fluxo completo | Stack de benchmark; GPU, armazenamento e downloads para execução completa | Relatório, métricas, tabelas e figuras do runner; não reproduz o artigo |
+| `pipeline/02_training_model.ipynb` | Tutorial ativo; NPZ sintético por padrão; dataset real é opcional | TensorFlow/Keras; GPU opcional | Modelo de demonstração e configuração de inferência em diretório temporário |
+| `pipeline/03_inference.ipynb` | Tutorial ativo; treina modelo de demonstração com NPZ sintético | TensorFlow/Keras; GPU opcional | Predição via `Predictor` e `DetectionService` sobre amostra de áudio |
+| `pipeline/04_all_architectures_full_benchmark.ipynb` | Histórico/genérico; dataset por tier, não o NPZ canônico | GPU, storage persistente, espaço em disco e acesso aos datasets | Métricas, predições, gráficos e modelos; execução pesada desativada por padrão |
+| `models/*.ipynb` (14 cadernos) | Didáticos; dados sintéticos para inspeção/smoke | Dependências da família do modelo; GPU recomendada para redes neurais; WavLM/HuBERT podem baixar backbones | Construção/avaliação de demonstração e métricas sintéticas, sem validade científica |
+
+Os cadernos de modelos treinam a demonstração por padrão. Defina
+`XFAKE_RUN_EVAL=0` para abrir e inspecionar sem iniciar esse fluxo. Os cadernos
+01 e 04 de pipeline ficam identificados como **históricos** porque usam o
+runner genérico e tiers; a reprodução do artigo usa somente o runner e os
+artefatos definidos no [inventário canônico](canonical-study-and-legacy-inventory.md).
+
+Os arquivos `.ipynb` permanecem disponíveis para download. O `README.md` da
+pasta de notebooks orienta quem navega pelo repositório; esta página é o guia
+completo publicado no site.
 
 ## Estrutura
 
@@ -50,8 +80,8 @@ notebooks/
 1. `notebooks/00_index.ipynb`: mapa executável dos notebooks.
 2. `notebooks/features/01_feature_extraction_study.ipynb`: estudo visual e
    numérico das features.
-3. `notebooks/pipeline/01_benchmark_tcc_full_pipeline.ipynb`: pipeline oficial
-   de download, processamento, treino, inferência e relatório.
+3. `notebooks/pipeline/01_benchmark_tcc_full_pipeline.ipynb`: pipeline histórico
+   genérico por tiers; não é a execução oficial do artigo.
 4. `notebooks/pipeline/02_training_model.ipynb`: treino prático de um modelo.
 5. `notebooks/pipeline/03_inference.ipynb`: leitura de predições e inferência.
 6. `notebooks/pipeline/04_all_architectures_full_benchmark.ipynb`: execução
@@ -59,13 +89,13 @@ notebooks/
    auditoria de gráficos/relatórios e modelos salvos.
 7. `notebooks/models/*.ipynb`: estudo individual por arquitetura.
 
-## Notebook de Benchmark
+## Notebook histórico de Benchmark
 
-`pipeline/01_benchmark_tcc_full_pipeline.ipynb` documenta o comando oficial,
-agora parametrizado por **tier** (ver [docs/data/public-datasets.md](../data/public-datasets.md)):
+`pipeline/01_benchmark_tcc_full_pipeline.ipynb` documenta o fluxo genérico
+legado parametrizado por **tier** (ver [docs/data/public-datasets.md](../data/public-datasets.md)):
 
 ```bash
-python scripts/benchmark/run_tcc_pipeline.py \
+python benchmarks/run_tcc_pipeline.py \
   --download \
   --tier medium \
   --full-benchmark \
@@ -75,26 +105,20 @@ python scripts/benchmark/run_tcc_pipeline.py \
   --npz data/datasets/benchmark_dataset.npz
 ```
 
-Esse roteiro reproduz o benchmark consolidado do TCC: o tier `medium` monta
-`7.500` reais + `7.500` fake, 100 épocas para modelos neurais e benchmark
-completo. Use `large` apenas quando o objetivo for auditoria 20k com protocolo
-de **usuários não vistos** (`--speaker-split`). Troque `--tier` por `test` ou
-`small` para ensaios mais leves. O notebook mantém a execução
-completa desativada por padrão para evitar download e treino longos sem revisão
-do ambiente.
+Esse roteiro não deve ser citado como reprodução do benchmark do artigo. O
+notebook mantém a execução completa desativada por padrão; para a receita
+canônica, use a configuração e o comando descritos no inventário do estudo.
 
 ## Notebook Completo de Todas as Arquiteturas
 
-`pipeline/04_all_architectures_full_benchmark.ipynb` é o caderno recomendado
-para Colab Pro ou máquina com GPU quando o objetivo é rodar o experimento de
-ponta a ponta. Ele:
+`pipeline/04_all_architectures_full_benchmark.ipynb` é um caderno operacional
+histórico. Ele:
 
 - configura `XFAKE_STORAGE_DIR`, `XFAKE_DATASETS_DIR`, `XFAKE_MODELS_DIR` e
   `XFAKE_LOGS_DIR` para storage persistente;
 - executa um smoke test antes do treino pesado;
-- usa um **tier** de dataset (`--tier medium` no benchmark canônico: `7.500`
-  reais + `7.500` fake);
-- chama `scripts/benchmark/run_tcc_pipeline.py --download --tier <tier> --archs`
+- usa um **tier** de dataset, diferente do NPZ e dos splits do artigo;
+- chama `benchmarks/run_tcc_pipeline.py --download --tier <tier> --archs`
   com as 14 arquiteturas;
 - audita `dataset.md`, `dataset_manifest.json`, `results.json`, `results.csv`,
   `predictions_clean.csv`, figuras PNG agregadas e artefatos por arquitetura;
@@ -144,7 +168,7 @@ Os notebooks ativos (`00_index`, `features/`, `models/`, `pipeline/`) são
 **gerados programaticamente** por:
 
 ```bash
-python scripts/ops/build_notebooks.py
+python tools/ops/build_notebooks.py
 ```
 
 O gerador valida com `compile()` **todas** as células de código antes de gravar

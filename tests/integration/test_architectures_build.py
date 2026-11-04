@@ -1,8 +1,8 @@
 """Cobertura de construção das arquiteturas pelo MESMO caminho dos notebooks.
 
-Os notebooks de modelo (`notebooks/models/*.ipynb`) preparam dados sintéticos com
-`BenchmarkData.synthetic(...).prepare_for_architecture(arch)` e instanciam o
-modelo via `create_model_by_name(arch, input_shape=prepared.X.shape[1:])`. Antes,
+Os notebooks de modelo (`docs/notebooks/models/*.ipynb`) preparam dados
+sintéticos com `BenchmarkData.synthetic(...).prepare_for_architecture(arch)` e
+instanciam o modelo via `create_model_by_name(arch, input_shape=prepared.X.shape[1:])`. Antes,
 no gate bloqueante do CI (suíte `not smoke`), só DUAS arquiteturas eram
 realmente construídas — `MultiscaleCNN` (espectrograma) e `RawNet2` (raw-audio),
 ambas via execução de notebook (nbclient, lento). Este teste constrói as **10
@@ -10,8 +10,8 @@ arquiteturas neurais não-SSL** de forma rápida (build + 1 forward pass, sem
 treino), pegando drift de construção que o `compile()` dos notebooks não detecta.
 
 Exclusões deliberadas:
-- **WavLM / HuBERT**: usam `TFWavLMModel/TFHubertModel.from_pretrained(...)`, que
-  baixam checkpoints SSL do HuggingFace (rede + `transformers`). Continuam
+- **WavLM / HuBERT**: `ssl_backbone.py` lê os checkpoints SSL do HuggingFace
+  (rede + `transformers`). Continuam
   cobertos só no smoke (`tests/smoke/test_all_architectures.py`, TF real, manual).
 - **SVM / RandomForest**: clássicos (sklearn), não passam pelo factory Keras;
   cobertos pelos notebooks `models/13_svm` e `models/14_random_forest` (nbclient).
@@ -19,6 +19,7 @@ Exclusões deliberadas:
 Pula automaticamente quando o TensorFlow não está instalado (mesmo padrão dos
 testes de execução de notebook).
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -60,7 +61,7 @@ def _seed():
 def test_architecture_builds_and_forwards(architecture):
     """Constrói a arquitetura pelo caminho do notebook e faz 1 forward pass.
 
-    Replica `notebooks/models/*`: dados sintéticos -> contrato da arquitetura ->
+    Replica `docs/notebooks/models/*`: dados sintéticos -> contrato da arquitetura ->
     `create_model_by_name(..., input_shape=prepared.X.shape[1:])`. Como o
     input_shape vem da PRÓPRIA forma preparada, build e forward são sempre
     consistentes; a única falha possível é a arquitetura não construir/rodar —
@@ -72,9 +73,7 @@ def test_architecture_builds_and_forwards(architecture):
 
     # num_classes=1 -> sigmoid de 1 unidade = p(fake) (convenção do projeto,
     # idêntica à célula de inspeção dos notebooks de modelo).
-    model = create_model_by_name(
-        architecture, input_shape=input_shape, num_classes=1
-    )
+    model = create_model_by_name(architecture, input_shape=input_shape, num_classes=1)
 
     y = model(prepared.X[:1], training=False)
     out = tuple(int(d) for d in y.shape)
@@ -93,8 +92,12 @@ def test_architecture_builds_and_forwards(architecture):
 # (SharedSTFTLayer et al. em app/domain/models/architectures/ensemble.py),
 # então prepare_for_architecture roteia por _to_raw_audio, não _to_spectrogram.
 SPECTROGRAM_ARCHS = [
-    "Sonic Sleuth", "Conformer", "Hybrid CNN-Transformer",
-    "SpectrogramTransformer", "EfficientNet-LSTM", "MultiscaleCNN",
+    "Sonic Sleuth",
+    "Conformer",
+    "Hybrid CNN-Transformer",
+    "SpectrogramTransformer",
+    "EfficientNet-LSTM",
+    "MultiscaleCNN",
 ]
 
 
@@ -219,17 +222,19 @@ def test_default_variant_does_not_warn(architecture, caplog):
 
     info = get_architecture_info(architecture)
     # Pré-condição: estas arquiteturas realmente não listam "default".
-    assert "default" not in info.supported_variants, (
-        f"{architecture}: teste obsoleto — 'default' agora está nos variants"
-    )
+    assert (
+        "default" not in info.supported_variants
+    ), f"{architecture}: teste obsoleto — 'default' agora está nos variants"
 
     data = BenchmarkData.synthetic(n=8, shape=(64, 40), seed=7)
     prepared = data.prepare_for_architecture(architecture)
-    with caplog.at_level(logging.WARNING,
-                         logger="app.domain.models.architectures.factory"):
+    with caplog.at_level(
+        logging.WARNING, logger="app.domain.models.architectures.factory"
+    ):
         create_model_by_name(
             architecture, input_shape=tuple(prepared.X.shape[1:]), num_classes=1
         )
-    offending = [r.getMessage() for r in caplog.records
-                 if "not supported" in r.getMessage()]
+    offending = [
+        r.getMessage() for r in caplog.records if "not supported" in r.getMessage()
+    ]
     assert not offending, f"{architecture}: avisos espúrios de variant: {offending}"

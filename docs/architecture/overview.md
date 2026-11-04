@@ -1,6 +1,6 @@
 # Arquitetura do Sistema
 
-O sistema XFakeSong segue os princípios da **Clean Architecture** (Arquitetura Limpa), separando responsabilidades em camadas concêntricas para garantir independência de frameworks, testabilidade e manutenibilidade.
+O sistema SpeechChecker segue os princípios da **Clean Architecture** (Arquitetura Limpa), separando responsabilidades em camadas concêntricas para garantir independência de frameworks, testabilidade e manutenibilidade.
 
 ## Visão Geral das Camadas
 
@@ -37,15 +37,17 @@ Utilitários de áudio, arquivos, sistema e VAD ficam em `app/utils/`
 ### 3. Interfaces (Adaptadores de Entrada)
 *Caminho: `app/interfaces/`*
 
-Adapta entradas externas (usuário, HTTP, CLI) para o domínio. Três interfaces:
+Adapta entradas externas (usuário, HTTP, CLI) para o domínio. Há uma interface
+visual canônica, uma CLI e a API HTTP:
 
-- **`gradio/`**: Interface web com 5 seções role-based (Painel, Detectar, Investigar, Treinar, Gerenciar).
+- **`gradio/`**: interface visual com 5 seções (Painel, Detectar, Investigar,
+  Treinar, Gerenciar); entrada em `/gradio/` e redirecionamento da raiz.
 - **`cli/`**: Interface de linha de comando com menus interativos.
 - **`web/`**: API REST FastAPI (`main_fastapi.py` + `routers/` organizados por
   domínio — `detection.py`, `training.py`, `features.py`, `datasets.py`,
   `history.py`, `voice_profiles.py`, `system.py` — e `schemas/` com os
-  modelos Pydantic de request/response), além de `static/`/`templates/` para
-  a página HTML de entrada.
+  modelos Pydantic de request/response); a raiz encaminha à UI Gradio ou à
+  documentação Swagger quando o processo está em modo API-only.
 
 ---
 
@@ -128,7 +130,7 @@ Esse fluxo é implementado por serviços reais do projeto:
 ## Estrutura de Diretórios
 
 ```
-XFakeSong/
+SpeechChecker/
 ├── app/                            # Código-fonte principal
 │   ├── core/                       # Infraestrutura transversal (genérica, sem regras de negócio)
 │   │   ├── auth/                   # API-Key (X-API-Key) + credenciais básicas do Gradio — sem JWT
@@ -139,7 +141,9 @@ XFakeSong/
 │   │   │   ├── audio.py            # AudioData, AudioFeatures, FeatureType
 │   │   │   ├── base.py             # ProcessingResult, ProcessingStatus
 │   │   │   └── services.py         # IDetectionService, ITrainingService, etc.
-│   │   ├── db/                     # session.py, setup.py (create_all/seed) e experiment_store.py
+│   │   ├── db/                     # session.py, setup.py (create_all), experiment_store.py
+│   │   │   ├── models/             # entidades ORM (AnalysisResult, TrainingJob, VoiceProfile, ExperimentRun…)
+│   │   │   └── repositories/       # consultas das tabelas operacionais (routers e abas não montam SQL)
 │   │   ├── feedback.py             # Hub de notificações/histórico (usado pela UI Gradio)
 │   │   ├── gpu.py                  # Setup de GPU (memory growth, mixed precision)
 │   │   ├── hf_compat.py            # Compatibilidade com versões da lib Hugging Face
@@ -150,7 +154,7 @@ XFakeSong/
 │   │
 │   ├── voice_profiles/             # Perfis de voz salvos (profile_1/, ...)
 │   │
-│   ├── dependencies.py             # Injeção de dependência (lru_cache singletons)
+│   ├── dependencies.py             # Composição: singletons (lru_cache) + bootstrap com semeadura do banco
 │   │
 │   ├── domain/                     # Regras de negócio puras
 │   │   ├── features/               # Sistema de extração de features
@@ -178,20 +182,25 @@ XFakeSong/
 │   │   │   ├── feature_extraction_service.py
 │   │   │   ├── upload_service.py
 │   │   │   ├── voice_profile_service.py
-│   │   │   └── forensic_visualization.py
+│   │   │   ├── voice_profile/      # Etapas do treino de perfis (features, modelos, treino)
+│   │   │   ├── interactive_training.py  # Treino do assistente (eventos de progresso)
+│   │   │   ├── training_jobs.py    # Jobs de treino/K-fold da API (estado, cache TTL)
+│   │   │   ├── dataset/            # Aquisição e pré-processamento (lógica de tools/dataset/)
+│   │   │   └── forensic_measures.py  # Medidas forenses (sem matplotlib; os gráficos estão em gradio/presenters/)
 │   │   │
 │   │   ├── dataset_metadata/       # dataset_catalog.py, speaker_manifest.py
 │   │   └── xai/                    # gradcam.py, shap_explainer.py, tabular.py
 │   │
 │   ├── interfaces/                 # As 3 interfaces de entrada do projeto
-│   │   ├── gradio/                 # Interface web (5 seções role-based)
+│   │   ├── gradio/                 # Interface visual canônica (6 seções)
 │   │   │   ├── app.py              # Monta `demo` (gr.Blocks) — a app unificada é montada 1x em web/main_fastapi.py
-│   │   │   ├── schema_patch.py     # Monkey-patch de compatibilidade Pydantic v2 + Gradio v4
+│   │   │   ├── schema_patch.py     # Monkey-patch de schemas, criado para Pydantic v2 + Gradio v4
+│   │   │   ├── presenters/         # Figuras a partir de medidas do domínio (forensic_plots.py)
 │   │   │   └── tabs/               # dashboard, detection, forensic_analysis, training_wizard, ...
 │   │   ├── cli/                    # Interface CLI com menus
 │   │   │   └── menus/
 │   │   └── web/                    # API REST FastAPI
-│   │       ├── main_fastapi.py     # App unificada: FastAPI + StaticFiles/Jinja2 + routers + demo Gradio montado em /gradio
+│   │       ├── main_fastapi.py     # App unificada: FastAPI + routers + demo Gradio montado em /gradio
 │   │       ├── routers/            # Endpoints por domínio
 │   │       │   ├── detection.py    # POST /api/v1/detection/analyze
 │   │       │   ├── training.py     # POST /api/v1/training/start
@@ -202,24 +211,30 @@ XFakeSong/
 │   │       │   └── system.py
 │   │       ├── schemas/            # Modelos Pydantic (request/response)
 │   │       │   └── api_models.py
-│   │       ├── static/             # Assets estáticos (CSS do tema) servidos via FastAPI StaticFiles
-│   │       └── templates/          # Templates Jinja2 (index.html, páginas de loading)
 │   │
 │   ├── utils/                      # Utilitários centrais (áudio, arquivos, sistema, VAD) +
 │   │                               #   colab.py (helper isolado só para execução via Google Colab)
 │   └── deploy_hf.py                # Script de deploy para Hugging Face Spaces
 │
-├── docs/                           # Documentação
-├── docker/compose/                 # Perfis Docker segmentados por uso/dispositivo
-├── docker/environments/             # Dockerfiles/requirements por família computacional
-├── configs/                        # Configs YAML de dataset, treino e inferência
-├── data/                           # Runtime local persistente
-│   ├── app.db                      # SQLite local padrão
-│   └── uploads/                    # Uploads da Gradio/API
-├── data/results/                        # Resultados regeneráveis de benchmark/treino
-├── data/models/benchmark_final/     # Modelos finais consolidados por arquitetura
-├── tests/                          # Testes (unit/, integration/, api/, functional/)
-├── scripts/                        # Scripts utilitários
+├── benchmarks/                     # Harness experimental, runners e relatórios
+├── configs/                         # Configs YAML de dataset, treino e inferência
+├── data/                            # Dados e artefatos locais; não contém código-fonte
+│   ├── cache/                       # Cache compartilhado de modelos/frameworks
+│   ├── datasets/                    # Áudios, splits e datasets derivados
+│   ├── logs/                        # Logs de runtime
+│   ├── models/                      # Modelos e registry local
+│   ├── results/                     # Resultados regeneráveis de benchmarks/treinos
+│   ├── temp/                        # Temporários de runtime
+│   ├── uploads/                     # Uploads da Gradio/API
+│   └── app.db                       # SQLite local padrão
+├── docs/                            # Documentação
+├── infrastructure/                 # Infraestrutura e saída gerada
+│   ├── docker/
+│   │   ├── compose/                 # Perfis Docker por uso/dispositivo
+│   │   └── environments/            # Dockerfiles/requirements por família
+│   └── site/                        # Site gerado pelo MkDocs
+├── tests/                           # Testes (unit/, integration/, api/, functional/)
+├── tools/                           # CLIs operacionais por domínio (dataset/, training/, reporting/, ops/)
 ├── main.py                         # Entry point (CLI ou --gradio)
 ├── app.py                          # Entry point para Hugging Face Spaces
 └── requirements.txt
@@ -228,15 +243,19 @@ XFakeSong/
 ### Pontos-chave
 
 - **`app/domain/`** — nunca importa de `app/interfaces/` (gradio, cli ou web) nem de frameworks externos diretamente.
+- **`app/core/`** — infraestrutura: nunca importa `app/domain/`, `app/interfaces/` nem `app/dependencies.py`. Dados que dependem do domínio (a semeadura de `architecture_configs`) entram pela composição. Nada em `app/` importa `tools/`. As três regras são verificadas por `tests/unit/test_layer_boundaries.py`.
 - **`app/core/contracts/`** — define os contratos SOLID que garantem desacoplamento; consulte aqui para entender o "contrato" de cada componente. Nome deliberadamente distinto de `app/interfaces/` (adaptadores de entrada) para evitar ambiguidade.
-- **`app/dependencies.py`** — singletons via `lru_cache`; ponto único para obter instâncias dos serviços.
+- **`app/dependencies.py`** — singletons via `lru_cache`; ponto único para obter instâncias dos serviços e repositórios, e o `bootstrap_application()` usado por `main.py` e pela API (o de `app/core/bootstrap.py` + semeadura do banco).
 - **`data/datasets/`** — espera subpastas `real/` e `fake/` para treinamento supervisionado.
-- **`data/`** — runtime local persistente (`data/app.db`, `data/uploads/`); não deve receber código-fonte.
+- **`data/`** — somente dados e artefatos locais (`cache/`, `datasets/`, `logs/`, `models/`, `results/`, `temp/`, `uploads/` e `app.db`); não deve receber código-fonte.
+- **`data/voice_profiles/`** — armazenamento persistido dos perfis de voz; o serviço deriva o caminho do diretório de dados configurado.
+- **`tools/`** — scripts operacionais e de manutenção; comandos são executados a partir da raiz.
+- **`benchmarks/`** — harness experimental importável por `benchmarks.*`, consumido por ferramentas e testes.
 - **`data/results/`** — artefatos regeneráveis de benchmark, gráficos e relatórios.
 - **`data/models/`** — raiz técnica usada por treino/inferência; `benchmark_final/` guarda os modelos finais consolidados.
-- **`docker/compose/`** — perfis Docker segmentados por família/uso (inferência, treino CPU/NVIDIA, benchmark); único caminho de build do projeto.
+- **`infrastructure/docker/compose/`** — perfis Docker segmentados por família/uso (inferência, treino CPU/NVIDIA, benchmark); único caminho de build do projeto.
 - **`tests/`** — espelha a estrutura de `app/` com camadas `unit/`, `integration/`, `api/` e `functional/`.
 - **`app/utils/`** — pacote único de utilitários: audio_utils/file_utils/helpers/
-  silero_vad/system_utils (centrais) + colab.py (helper isolado, só para
+  silero_vad/file_storage (centrais) + colab.py (helper isolado, só para
   execução via Google Colab). Antes dividido entre `app/utils/` e
   `app/core/utils/` — consolidado num único lugar.

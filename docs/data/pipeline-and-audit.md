@@ -1,6 +1,12 @@
 # Dataset: pipeline, consolidacao e auditoria
 
-Referencia unica do ciclo de vida do dataset no XFakeSong — da aquisicao ao
+> **Duas saídas com papéis distintos:** o artigo avalia
+> `data/datasets/benchmark_dataset_15k.npz`. O comando de exportação de 40.980
+> amostras abaixo reconstrói uma exportação histórica do corpus pareado, não o
+> arquivo avaliado no artigo. Reexportar ou selar um teste existente não torna
+> a campanha confirmatória; siga o inventário canônico antes de treinar.
+
+Referencia unica do ciclo de vida do dataset no SpeechChecker — da aquisicao ao
 `.npz`, passando pela particao, pela auditoria, pelo benchmark e pelo treino.
 
 A metodologia (por que cada decisao foi tomada, o que foi medido) esta no
@@ -38,13 +44,13 @@ audit_paired_corpus.py
 export_paired_npz.py
    │   le assignment.jsonl (nao os diretorios), recorta a janela, nivela,
    │   e barra a exportacao se qualquer garantia for violada
-   └─> data/datasets/benchmark_dataset.npz
+   └─> data/datasets/benchmark_dataset.npz  (exportação histórica de 40.980)
 
 freeze_benchmark_test.py --declare-untouched
    │   sela a particao de teste (tamanho, SHA-256, identidade dos membros do
    │   arquivo) ANTES do treino comecar; benchmarks/test_lock.py valida esse
    │   lacre em toda execucao com --academic-protocol (default True)
-   └─> data/datasets/benchmark_dataset.npz.test-lock.json
+   └─> data/datasets/benchmark_dataset.npz.test-lock.json  (somente split novo)
 ```
 
 `run_models_sequential.py` recusa treinar (`parser.error`) se o test-lock nao
@@ -54,23 +60,23 @@ configuracao, nao um aviso.
 Comandos:
 
 ```bash
-python scripts/dataset/build_paired_pt_corpus.py --plan
+python tools/dataset/build_paired_pt_corpus.py --plan
 ```
 
 ```bash
-python scripts/dataset/build_paired_pt_corpus.py --build
+python tools/dataset/build_paired_pt_corpus.py --build
 ```
 
 ```bash
-python scripts/dataset/build_paired_splits.py --build --min-duration-sec 3.0
+python tools/dataset/build_paired_splits.py --build --min-duration-sec 3.0
 ```
 
 ```bash
-python scripts/dataset/audit_paired_corpus.py
+python tools/dataset/audit_paired_corpus.py
 ```
 
 ```bash
-python scripts/dataset/export_paired_npz.py --out data/datasets/benchmark_dataset.npz --no-compress
+python tools/dataset/export_paired_npz.py --out data/datasets/benchmark_dataset.npz --target-samples 40980 --no-compress
 ```
 
 ### Propriedades de operacao
@@ -136,7 +142,7 @@ repositorio.
 
 ## 4. Auditoria — os seis blocos
 
-`scripts/dataset/audit_paired_corpus.py` roda sobre o artefato, nao sobre o
+`tools/dataset/audit_paired_corpus.py` roda sobre o artefato, nao sobre o
 plano, e **falha com codigo != 0** — pode ir para CI antes de qualquer treino.
 
 | Bloco | Verifica | Reprova quando |
@@ -197,7 +203,7 @@ nao contam como RAM anonima e podem ser descartadas sob pressao em vez de
 matar o processo. O pico real acontece depois, na montagem do tensor de
 treino (limpo + copia AWGN) — ainda soma varios GB para as 40.980 amostras de
 3s (ver o historico de ajuste do limite de memoria dos containers em
-`docker/compose/{benchmark,train}.nvidia.yml`). Para hardware menor, exporte
+`infrastructure/docker/compose/{benchmark,train}.nvidia.yml`). Para hardware menor, exporte
 com `--max-pairs-train`, que corta **pares** (nunca amostras isoladas) em
 rodizio entre locutores, preservando o balanceamento.
 

@@ -1,6 +1,6 @@
 # Deploy no Hugging Face Spaces
 
-Este guia descreve o deploy do XFakeSong no Hugging Face usando **Docker
+Este guia descreve o deploy do SpeechChecker no Hugging Face usando **Docker
 Spaces**, **GPU Spaces** e **Storage Bucket**. O fluxo recomendado para
 apresentação é executar a aplicação em modo demonstração, usando os modelos já
 treinados e publicados em um repositório do tipo **Model** no Hugging Face Hub.
@@ -29,7 +29,7 @@ o sistema completo.
 - Space criado como **Docker**.
 - Modelos finais consolidados em `data/models/`.
 - Repositório do tipo **Model**, por exemplo
-  `SEU_USUARIO/xfakesong-models`.
+  `SEU_USUARIO/speechchecker-models`.
 - `HF_TOKEN` se o model repo for privado.
 - GPU paga apenas se quiser acelerar modelos pesados ou treinar no Space.
 - Storage Bucket apenas se quiser persistir uploads, datasets, logs, resultados
@@ -49,7 +49,7 @@ O `README.md` do Space deve conter o bloco YAML:
 
 ```yaml
 ---
-title: XFakeSong
+title: SpeechChecker
 emoji: 🛡️
 colorFrom: blue
 colorTo: slate
@@ -65,32 +65,34 @@ Arquivos usados no deploy:
 | Arquivo | Função |
 | --- | --- |
 | `Dockerfile` (raiz) | build multi-stage — existe só aqui porque HF Spaces exige esse nome/caminho |
-| `docker/environments/inference-api/docker-entrypoint.sh` | prepara diretórios e sincroniza modelos (copiado para a imagem pelo `Dockerfile` acima) |
+| `infrastructure/docker/environments/inference-api/docker-entrypoint.sh` | prepara diretórios e sincroniza modelos (copiado para a imagem pelo `Dockerfile` acima) |
 | `main.py` | inicia Gradio/FastAPI com `python main.py --gradio` |
-| `scripts/ops/sync_hf_models.py` | baixa artefatos do Model Hub para `data/models` |
+| `tools/ops/sync_hf_models.py` | baixa artefatos do Model Hub para `data/models` |
 | `requirements.txt` | dependências TensorFlow, PyTorch e runtime |
 
 ## 2. Publicar os Modelos no Model Hub
 
 Os pesos devem ficar em um repositório separado do tipo **Model** para evitar
 rebuilds pesados do Space e permitir atualização independente dos modelos.
-O conteúdo publicado deve corresponder aos modelos treinados no dataset do
-benchmark (`data/datasets/benchmark_dataset.npz`) e aos artefatos
-consolidados em `data/models/`.
+O conteúdo publicado deve corresponder aos modelos escolhidos para inferência
+e aos artefatos consolidados em `data/models/`. Se for afirmar que os pesos
+vieram do estudo do TCC, registre a proveniência reconciliada do run; o dataset
+de referência do artigo é `benchmark_dataset_15k.npz`, não a exportação
+histórica `benchmark_dataset.npz`.
 
 Faça uma simulação:
 
 ```bash
-python scripts/ops/upload_models_to_hf.py \
-  --repo-id SEU_USUARIO/xfakesong-models \
+python tools/ops/upload_models_to_hf.py \
+  --repo-id SEU_USUARIO/speechchecker-models \
   --dry-run
 ```
 
 Envie os modelos:
 
 ```bash
-python scripts/ops/upload_models_to_hf.py \
-  --repo-id SEU_USUARIO/xfakesong-models \
+python tools/ops/upload_models_to_hf.py \
+  --repo-id SEU_USUARIO/speechchecker-models \
   --private
 ```
 
@@ -123,8 +125,8 @@ data/models/
 Faça o plano de upload sem enviar arquivos:
 
 ```bash
-python scripts/ops/upload_models_to_hf.py \
-  --repo-id SEU_USUARIO/xfakesong-benchmark-models \
+python tools/ops/upload_models_to_hf.py \
+  --repo-id SEU_USUARIO/speechchecker-benchmark-models \
   --dry-run
 ```
 
@@ -133,8 +135,8 @@ Envie os modelos pré-treinados:
 ```bash
 export HF_TOKEN=hf_xxx
 
-python scripts/ops/upload_models_to_hf.py \
-  --repo-id SEU_USUARIO/xfakesong-benchmark-models \
+python tools/ops/upload_models_to_hf.py \
+  --repo-id SEU_USUARIO/speechchecker-benchmark-models \
   --private \
   --commit-message "Upload benchmark 15k pretrained models"
 ```
@@ -145,8 +147,8 @@ Remova a flag para publicar abertamente.
 Para anexar resultados e pacote acadêmico ao mesmo Model Hub:
 
 ```bash
-python scripts/ops/upload_models_to_hf.py \
-  --repo-id SEU_USUARIO/xfakesong-benchmark-models \
+python tools/ops/upload_models_to_hf.py \
+  --repo-id SEU_USUARIO/speechchecker-benchmark-models \
   --private \
   --include-results \
   --include-paper
@@ -159,10 +161,10 @@ O script ignora arquivos temporários, PDF, `.aux`, `.log`, `.toc` e caches.
 Para baixar os modelos em uma máquina local, Docker ou Space:
 
 ```bash
-export MODEL_REPO_ID=SEU_USUARIO/xfakesong-benchmark-models
+export MODEL_REPO_ID=SEU_USUARIO/speechchecker-benchmark-models
 export HF_TOKEN=hf_xxx        # apenas se o repo for privado
 
-python scripts/ops/sync_hf_models.py \
+python tools/ops/sync_hf_models.py \
   --repo-id "$MODEL_REPO_ID" \
   --models-dir data/models \
   --force
@@ -171,10 +173,10 @@ python scripts/ops/sync_hf_models.py \
 No Windows PowerShell:
 
 ```powershell
-$env:MODEL_REPO_ID="SEU_USUARIO/xfakesong-benchmark-models"
+$env:MODEL_REPO_ID="SEU_USUARIO/speechchecker-benchmark-models"
 $env:HF_TOKEN="hf_xxx"
 
-python scripts/ops/sync_hf_models.py `
+python tools/ops/sync_hf_models.py `
   --repo-id $env:MODEL_REPO_ID `
   --models-dir data/models `
   --force
@@ -183,8 +185,8 @@ python scripts/ops/sync_hf_models.py `
 Após o download, valide:
 
 ```bash
-python scripts/ops/sync_hf_models.py \
-  --repo-id SEU_USUARIO/xfakesong-benchmark-models \
+python tools/ops/sync_hf_models.py \
+  --repo-id SEU_USUARIO/speechchecker-benchmark-models \
   --models-dir data/models
 
 python main.py --gradio
@@ -207,7 +209,7 @@ No Space, abra **Settings → Variables and secrets**.
 
 | Tipo | Nome | Valor recomendado |
 | --- | --- | --- |
-| Variable | `MODEL_REPO_ID` | `SEU_USUARIO/xfakesong-models` |
+| Variable | `MODEL_REPO_ID` | `SEU_USUARIO/speechchecker-models` |
 | Variable | `ENABLE_TRAINING` | `false` |
 | Variable | `XFAKE_SYNC_MODELS_ON_BOOT` | `true` |
 | Variable | `DEEPFAKE_MODELS_DIR` | `data/models` |
@@ -218,7 +220,7 @@ No Space, abra **Settings → Variables and secrets**.
 | Variable | `XFAKE_CREATE_DEFAULT_MODELS` | `false` |
 | Secret | `HF_TOKEN` | token com leitura do model repo, se privado |
 
-No boot, `docker-entrypoint.sh` executa `scripts/ops/sync_hf_models.py`. Se
+No boot, `docker-entrypoint.sh` executa `tools/ops/sync_hf_models.py`. Se
 `MODEL_REPO_ID` estiver definido, os modelos são sincronizados para
 `data/models`. Se não estiver definido, o app usa os modelos já presentes no
 projeto.
@@ -274,7 +276,7 @@ TensorFlow GPU: [PhysicalDevice(..., device_type='GPU')]
 torch.cuda.is_available(): True
 ```
 
-O XFakeSong usa TensorFlow/Keras na maioria dos modelos e PyTorch/Transformers
+O SpeechChecker usa TensorFlow/Keras na maioria dos modelos e PyTorch/Transformers
 para WavLM/HuBERT originais. Em GPU Spaces, o Docker deve ser reconstruído com
 as dependências CUDA disponíveis no runtime.
 
@@ -338,7 +340,7 @@ DEEPFAKE_MODELS_DIR=/data/models
 ### 6.1 Demonstração com Modelos Já Treinados
 
 1. Criar Docker Space.
-2. Subir modelos para `SEU_USUARIO/xfakesong-models`.
+2. Subir modelos para `SEU_USUARIO/speechchecker-models`.
 3. Configurar `MODEL_REPO_ID`.
 4. Configurar `ENABLE_TRAINING=false`.
 5. Selecionar CPU Upgrade, T4 ou L4.
@@ -376,7 +378,7 @@ ou GPU Space temporário com Storage Bucket:
 export XFAKE_STORAGE_DIR=/data
 export XFAKE_CREATE_DEFAULT_MODELS=false
 
-python scripts/benchmark/run_tcc_pipeline.py \
+python benchmarks/run_tcc_pipeline.py \
   --download \
   --target-per-class 7500 \
   --full-benchmark \
@@ -394,12 +396,12 @@ python scripts/benchmark/run_tcc_pipeline.py \
   --npz /data/datasets/legacy_medium_15k.npz
 ```
 
-> Esse é o fluxo **legado** (`run_tcc_pipeline.py`, tier + janela de 5 s). Com o
-> dataset canônico atual, o `.npz` já vem pronto do pipeline pareado e a janela é
-> de 3 s — treine direto sobre ele:
+> Esse é o fluxo **legado** (`run_tcc_pipeline.py`, tier + janela de 5 s). Para
+> reproduzir o artigo, use o NPZ e o lock de 15 mil amostras e os controles
+> registrados no inventário canônico:
 >
 > ```bash
-> python scripts/benchmark/run_models_sequential.py --dataset /data/datasets/benchmark_dataset.npz --epochs 100 --snr 30 20 10 --device-profile gpu --out /data/results/tcc_all_architectures --resume
+> python benchmarks/run_models_sequential.py --dataset /data/datasets/benchmark_dataset_15k.npz --test-lock /data/datasets/benchmark_dataset_15k.npz.test-lock.json --scope official --epochs 100 --seed 42 --snr 30 20 10 5 --train-aug-snr 30 20 10 --train-noise-copies 1 --band-correction-hz 7500 --device-profile gpu --latency-runs 30 --out /data/results/tcc_article_reproduction --resume
 > ```
 
 Artefatos esperados:
@@ -408,7 +410,7 @@ Artefatos esperados:
 /data/models/
 /data/models/benchmark_final/
 /data/results/tcc_all_architectures/
-/data/datasets/benchmark_dataset.npz
+/data/datasets/benchmark_dataset_15k.npz
 ```
 
 ## 7. Checklist Pós-Deploy
@@ -416,7 +418,7 @@ Artefatos esperados:
 ### Build
 
 - O build terminou sem erro.
-- Os logs mostram `Starting XFakeSong`.
+- Os logs mostram `Starting SpeechChecker`.
 - O healthcheck responde em `/api/v1/system/health` ou `/`.
 
 ### Modelos

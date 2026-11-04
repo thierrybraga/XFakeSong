@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
@@ -24,6 +25,7 @@ from typing import Iterator, Optional
 # falha com "main thread is not in main loop". Agg renderiza para buffer
 # de bytes — exatamente o que precisamos para gr.Plot().
 import matplotlib
+
 if not os.environ.get("MPLBACKEND"):
     matplotlib.use("Agg", force=True)
 
@@ -62,7 +64,10 @@ _PLOT_DANGER = PLOT_DANGER
 # Estilização de plots
 # =====================================================================
 
-def style_ax(ax, fig: Figure, title: str = "", xlabel: str = "", ylabel: str = "") -> None:
+
+def style_ax(
+    ax, fig: Figure, title: str = "", xlabel: str = "", ylabel: str = ""
+) -> None:
     """Aplica estilo dark consistente a um par (ax, fig).
 
     Args:
@@ -98,6 +103,7 @@ _style_ax = style_ax
 # =====================================================================
 # Gestão de memória (FE.2: leak fix)
 # =====================================================================
+
 
 def new_figure(nrows: int = 1, ncols: int = 1, *, figsize: tuple = (10, 4)):
     """Cria ``(fig, ax)`` FORA do registro global do pyplot.
@@ -174,8 +180,6 @@ def safe_tight_layout(fig: Figure) -> None:
 # =====================================================================
 # Helpers de serviços (singletons thread-safe — FE.3)
 # =====================================================================
-
-import threading
 
 _service_locks: dict = {}
 _service_locks_lock = threading.Lock()

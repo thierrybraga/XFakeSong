@@ -17,10 +17,9 @@ def compute_amplitude_modulation(y: np.ndarray) -> float:
     # Suavizar envelope
     window_size = max(1, len(envelope) // 100)
     if window_size > 1:
-        envelope_smooth = scipy.signal.convolve(envelope,
-                                                np.ones(window_size) /
-                                                window_size,
-                                                mode='same')
+        envelope_smooth = scipy.signal.convolve(
+            envelope, np.ones(window_size) / window_size, mode="same"
+        )
     else:
         envelope_smooth = envelope
 
@@ -71,21 +70,21 @@ def extract_envelope_statistics(y: np.ndarray, sr: int) -> Dict[str, float]:
     envelope = np.abs(scipy.signal.hilbert(y))
 
     # Características do envelope
-    features['envelope_mean'] = float(np.mean(envelope))
-    features['envelope_std'] = float(np.std(envelope))
-    features['envelope_max'] = float(np.max(envelope))
+    features["envelope_mean"] = float(np.mean(envelope))
+    features["envelope_std"] = float(np.std(envelope))
+    features["envelope_max"] = float(np.max(envelope))
 
     # Variação temporal do envelope
     if len(envelope) > 1:
         envelope_diff = np.diff(envelope)
-        features['envelope_variation'] = float(np.std(envelope_diff))
-        features['envelope_slope'] = float(np.mean(envelope_diff))
+        features["envelope_variation"] = float(np.std(envelope_diff))
+        features["envelope_slope"] = float(np.mean(envelope_diff))
     else:
-        features['envelope_variation'] = 0.0
-        features['envelope_slope'] = 0.0
+        features["envelope_variation"] = 0.0
+        features["envelope_slope"] = 0.0
 
     # Características de modulação
-    features['amplitude_modulation'] = compute_amplitude_modulation(y)
-    features['tremolo_rate'] = compute_tremolo_rate(envelope, sr)
+    features["amplitude_modulation"] = compute_amplitude_modulation(y)
+    features["tremolo_rate"] = compute_tremolo_rate(envelope, sr)
 
     return features

@@ -61,7 +61,7 @@ def test_runner_predict_normalizes_linear_logits(tmp_path):
     """Modelos com saída LINEAR (AASIST/AMSoftmax) devem virar probabilidade
     ANTES do clip de _finite_scores — senão o score quantiza em {0, 1}."""
     tf = pytest.importorskip("tensorflow")
-    from benchmarks.runner import _finite_scores
+    from benchmarks.common import _finite_scores
 
     # Modelo mínimo com saída linear de 2 unidades (logits crus).
     tf.keras.utils.set_random_seed(0)

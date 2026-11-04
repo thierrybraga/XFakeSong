@@ -17,7 +17,7 @@ from benchmarks.config import (
 )
 from benchmarks.efficiency import measure_latency_profile
 from benchmarks.evaluate import evaluate_scores
-from scripts.training.train_by_family import build_command, build_parser
+from tools.training.train_by_family import build_command, build_parser
 
 
 def _family_args(family: str) -> Namespace:
@@ -31,8 +31,16 @@ def _family_args(family: str) -> Namespace:
     teste ja com o default real.
     """
     args = build_parser().parse_args(
-        ["--family", family, "--seeds", "42", "43",
-         "--test-lock", "sealed.json", "--plan-only"]
+        [
+            "--family",
+            family,
+            "--seeds",
+            "42",
+            "43",
+            "--test-lock",
+            "sealed.json",
+            "--plan-only",
+        ]
     )
     return args
 
@@ -48,21 +56,21 @@ def test_official_and_extended_scopes_are_disjoint_and_complete():
     # XLS-R, nao WavLM/HuBERT base. As entradas `Original` ja sao a
     # configuracao documentada. Ver benchmarks/config.py.
     assert set(MODEL_FAMILIES["ssl-pretrained"]) == {
-        "WavLM Original", "HuBERT Original"
+        "WavLM Original",
+        "HuBERT Original",
     }
 
 
 def test_family_wrapper_uses_canonical_dataset_and_protocol_controls():
-    # O dataset canonico passou a ser o do Protocolo de Dataset (CETUC pareado com clones
-    # XTTS-v2, disjuncao dupla locutor x frase) em 26/07/2026; os NPZ v2 foram
-    # apagados. Ver docs/data/dataset-protocol.md.
+    # O default das familias precisa seguir o recorte do artigo (15k CETUC-XTTS,
+    # disjuncao dupla); a exportacao integral e apenas corpus pai.
     cmd = build_command(_family_args("ssl-pretrained"))
     joined = " ".join(str(value) for value in cmd)
-    assert "benchmark_dataset.npz" in joined
+    assert "benchmark_dataset_15k.npz" in joined
     assert "WavLM Original" in joined and "HuBERT Original" in joined
     assert "--academic-protocol" in cmd
     assert cmd[cmd.index("--scope") + 1] == "official"
-    assert cmd[cmd.index("--seeds") + 1:cmd.index("--test-lock")] == ["42", "43"]
+    assert cmd[cmd.index("--seeds") + 1 : cmd.index("--test-lock")] == ["42", "43"]
 
 
 def test_todas_as_familias_treinam_com_o_protocolo_corrigido():
@@ -83,8 +91,14 @@ def test_todas_as_familias_treinam_com_o_protocolo_corrigido():
 def test_ablacao_pode_desligar_o_protocolo_corrigido():
     """O default e o corrigido, mas uma ablacao precisa conseguir desligar."""
     args = build_parser().parse_args(
-        ["--family", "ssl-pretrained", "--band-correction-hz", "0",
-         "--checkpoint-monitor", "val_loss"]
+        [
+            "--family",
+            "ssl-pretrained",
+            "--band-correction-hz",
+            "0",
+            "--checkpoint-monitor",
+            "val_loss",
+        ]
     )
     cmd = [str(v) for v in build_command(args)]
     assert float(cmd[cmd.index("--band-correction-hz") + 1]) == 0.0

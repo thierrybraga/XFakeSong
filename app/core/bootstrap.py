@@ -1,4 +1,4 @@
-"""Bootstrap canônico e idempotente do XFakeSong.
+"""Bootstrap canônico e idempotente do SpeechChecker.
 
 Recursos científicos ausentes são estados válidos. Somente falhas estruturais
 (permissão, banco corrompido ou configuração obrigatória inválida) interrompem
@@ -13,6 +13,7 @@ import sqlite3
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
+from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,10 @@ class OperationalPaths:
             ("RESULTS_DIR", "DEEPFAKE_RESULTS_DIR", "XFAKE_RESULTS_DIR"),
             data / "results",
         )
+        uploads = configured_path(
+            ("UPLOAD_DIR", "DEEPFAKE_UPLOADS_DIR", "XFAKE_UPLOADS_DIR"),
+            data / "uploads",
+        )
         return cls(
             root=project_root,
             data=data,
@@ -105,7 +110,7 @@ class OperationalPaths:
             logs=logs,
             cache=data / "cache",
             temp=data / "temp",
-            uploads=data / "uploads",
+            uploads=uploads,
             database=data / "app.db",
         )
 
@@ -224,7 +229,15 @@ def bootstrap_application(
     root: str | Path | None = None,
     *,
     initialize_database: bool = True,
+    seed_database: Callable[[], object] | None = None,
 ) -> BootstrapReport:
+    """Diretórios, schema do banco e inventário de recursos.
+
+    ``seed_database`` roda logo após o schema, quando ``initialize_database``.
+    Dados que dependem do domínio (``architecture_configs``) entram por ele,
+    vindos da composição: use ``app.dependencies.bootstrap_application``, que
+    já o preenche.
+    """
     paths = OperationalPaths.resolve(root)
     configured_url = os.getenv("DATABASE_URL")
     if configured_url and configured_url.startswith("sqlite:///"):
@@ -252,6 +265,8 @@ def bootstrap_application(
         from app.core.db.setup import init_db
 
         init_db(raise_on_error=True)
+        if seed_database is not None:
+            seed_database()
         after = inspect_database(paths.database)
         if after != DatabaseState.COMPATIBLE:
             raise BootstrapError(

@@ -24,6 +24,7 @@ def _safe_version(pkg: str) -> Optional[str]:
     """Retorna versão instalada de um pacote ou None."""
     try:
         from importlib.metadata import PackageNotFoundError, version
+
         try:
             return version(pkg)
         except PackageNotFoundError:
@@ -84,12 +85,12 @@ def check_versions(strict: bool = False) -> List[str]:
                     f"antiga de TemplateResponse, mas starlette=={starlette_v} "
                     f"requer API nova. A renderização do Gradio em '/' irá "
                     f"falhar com TypeError: unhashable type: 'dict'. "
-                    f"FIX: pip install 'gradio>=4.31,<5.0'"
+                    f"FIX: pip install -r requirements.txt -c constraints.txt"
                 )
 
-        # Gradio 4.x importa `HfFolder`, removido no huggingface_hub 1.0.
-        # Resultado: `ImportError: cannot import name 'HfFolder'` no import do
-        # gradio — derruba TODA a UI no boot, antes de qualquer request.
+        # Só afeta um ambiente desatualizado: Gradio 4.x importa `HfFolder`,
+        # removido no huggingface_hub 1.0. Resultado: `ImportError: cannot import
+        # name 'HfFolder'` no import do gradio — derruba TODA a UI no boot.
         if g < (5, 0, 0) and hub_v and _parse_version(hub_v) >= (1, 0, 0):
             issues.append(
                 f"INCOMPATIBILIDADE CRÍTICA: gradio=={gradio_v} importa "
@@ -109,7 +110,10 @@ def check_versions(strict: bool = False) -> List[str]:
     logger.info(
         "Version check: gradio=%s, starlette=%s, fastapi=%s, jinja2=%s, "
         "huggingface_hub=%s",
-        gradio_v or "?", starlette_v or "?", fastapi_v or "?", jinja_v or "?",
+        gradio_v or "?",
+        starlette_v or "?",
+        fastapi_v or "?",
+        jinja_v or "?",
         hub_v or "?",
     )
 
@@ -118,8 +122,7 @@ def check_versions(strict: bool = False) -> List[str]:
             logger.error(msg)
         if strict:
             raise RuntimeError(
-                "Versões incompatíveis detectadas:\n  - "
-                + "\n  - ".join(issues)
+                "Versões incompatíveis detectadas:\n  - " + "\n  - ".join(issues)
             )
 
     return issues

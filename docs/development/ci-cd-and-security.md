@@ -1,7 +1,7 @@
 # CI/CD e Segurança
 
 Este documento descreve o pipeline de integração contínua e o modelo de
-segurança do XFakeSong. As políticas de reporte e governança estão em
+segurança do SpeechChecker. As políticas de reporte e governança estão em
 [`SECURITY.md`](https://github.com/thierrybraga/XFakeSong/blob/main/SECURITY.md)
 e [`CONTRIBUTING.md`](https://github.com/thierrybraga/XFakeSong/blob/main/CONTRIBUTING.md).
 
@@ -13,29 +13,55 @@ Princípio do menor privilégio: `permissions: contents: read`.
 | Job | Bloqueia? | O que faz |
 | --- | --- | --- |
 | **Testes + cobertura** | ✅ sim | `run_tests.sh cov` (suíte rápida, exclui smoke) em Python 3.11 |
-| **Docs** | ✅ sim | `mkdocs build --strict` — pega links/refs quebrados |
-| **Segurança** | ✅ HIGH | `bandit -lll` (SAST, falha em severidade alta); `pip-audit -r requirements.txt` **bloqueante** (sem `continue-on-error`/`--exit-zero` — CVE encontrada falha o job) |
+| **Docs** | ✅ sim | Build limpo `mkdocs build --strict --clean` + verificação de páginas, links e fragmentos |
+| **Segurança** | ✅ parcial | `bandit -lll` bloqueia achados HIGH; `pip-audit -r requirements.txt` audita o runtime, mas é advisório no CI normal |
 | **Docker build** | ✅ (só em PR) | `docker build --build-arg TF_VARIANT=cpu` + `docker compose config` dos perfis segmentados |
-| **Lint (ruff)** | ⚠️ advisório | publica achados como anotações (`--exit-zero`) sem bloquear |
+| **Lint e formatação** | ✅ sim | `ruff check`, `black --check` e `isort --check-only`, nas versões fixadas em `requirements-dev.txt` |
+
+O workflow de release `.github/workflows/release-gate.yml` é estrito e roda em
+tags `v*` ou manualmente: bloqueia a promoção se falharem compatibilidade de
+dependências (Python 3.11/3.12), Ruff, testes, Bandit HIGH, avisos do pip-audit
+fora da lista de exceções, MkDocs, build Docker CPU ou validação dos perfis
+Compose. A política e seus limites estão em
+[Dependências e Gates de Release](release-gates.md).
 
 Workflows auxiliares:
 
+- **`docker-inference.yml`** — constrói as imagens de inferência CPU e NVIDIA e as
+  confere com `tools/ops/docker_release.py check`: conteúdo sem segredos e sem
+  cache do pip, usuário não-root, health check e autenticação. Roda em PR que muda
+  algo que entra nelas, em tags `v*` ou manualmente. O runner não tem GPU nem
+  modelos, então não valida inferência em GPU nem os vereditos.
 - **`static.yml`** — publica a documentação (MkDocs) no GitHub Pages a cada push
   na `main`.
 - **`dependabot.yml`** — PRs semanais de atualização de dependências `pip` e
   `github-actions`.
 
-Para reproduzir os gates localmente:
+Para reproduzir todos os gates localmente (instalação maior, com todos os extras):
 
 ```bash
-./scripts/ops/run_tests.sh cov                 # testes + cobertura
-mkdocs build --strict                      # docs
-bandit -r app benchmarks scripts -lll      # SAST (HIGH)
-docker build --build-arg TF_VARIANT=cpu .  # valida o Dockerfile (deploy HF Spaces)
-python scripts/ops/docker_build.py inference-cpu config
-python scripts/ops/docker_build.py train-cpu config
-python scripts/ops/docker_build.py train-nvidia config
+python -m pip install --upgrade pip setuptools
+python -m pip install -c constraints.txt \
+  -r requirements-notebooks.txt \
+  -r requirements-docs.txt \
+  -r requirements-xai.txt \
+  -r requirements-experiments.txt
+bash tools/ops/run_tests.sh cov            # testes + cobertura
+ruff check app tests benchmarks tools  # lint estrito
+bandit -r app benchmarks tools -lll    # SAST (HIGH)
+python tools/ops/check_pip_audit.py    # avisos fora da lista de exceções
+mkdocs build --strict --clean                # docs
+python tools/ops/check_docs_site.py infrastructure/site   # páginas, links e fragmentos
+docker build --build-arg TF_VARIANT=cpu .    # imagem CPU
+python tools/ops/docker_build.py inference-cpu config
+python tools/ops/docker_build.py inference-nvidia config
+python tools/ops/docker_build.py train-cpu config
+python tools/ops/docker_build.py train-nvidia config
+python tools/ops/docker_build.py benchmark-nvidia config
 ```
+
+Para auditar ou reproduzir os grupos de dependências, veja
+[requirements e perfis](release-gates.md#perfis-de-dependencias).
 
 ## Modelo de segurança da aplicação
 
@@ -54,7 +80,8 @@ python scripts/ops/docker_build.py train-nvidia config
 | --- | --- |
 | `ALLOWED_ORIGINS` | lista explícita (não `*`) |
 | `ALLOWED_HOSTS` | hosts públicos do serviço |
-| `XFAKESONG_API_KEY` | chave forte e secreta |
+| `GRADIO_BIND_HOST` | `127.0.0.1` (padrão dos perfis de inferência); abra para a rede só atrás de um proxy HTTPS |
+| `SPEECHCHECKER_API_KEY` | chave forte e secreta |
 | `XFAKE_ENABLE_HSTS` | `1` quando atrás de HTTPS |
 | `XFAKE_CSP` | política CSP adequada ao deploy |
 | `XFAKE_MAX_UPLOAD_MB` | limite de upload (default 100) |

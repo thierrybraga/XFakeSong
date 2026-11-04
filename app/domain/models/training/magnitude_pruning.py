@@ -42,6 +42,7 @@ def is_tfmot_available() -> bool:
     """Verifica se tensorflow_model_optimization está instalado."""
     try:
         import tensorflow_model_optimization  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -90,7 +91,9 @@ def apply_pruning(
         pruned = prune_low_magnitude(model, pruning_schedule=schedule)
         logger.info(
             "Pruning aplicado: sparsity alvo=%.0f%%, ramp steps=[%d, %d]",
-            target_sparsity * 100, begin_step, end_step,
+            target_sparsity * 100,
+            begin_step,
+            end_step,
         )
         return pruned
     except Exception as e:
@@ -110,9 +113,7 @@ def pruning_callbacks(log_dir: Optional[Union[str, Path]] = None) -> list:
 
     cbs = [tfmot.sparsity.keras.UpdatePruningStep()]
     if log_dir is not None:
-        cbs.append(
-            tfmot.sparsity.keras.PruningSummaries(log_dir=str(log_dir))
-        )
+        cbs.append(tfmot.sparsity.keras.PruningSummaries(log_dir=str(log_dir)))
     return cbs
 
 
@@ -186,7 +187,8 @@ def prune_and_finetune(
             metrics=["accuracy"],
         )
         pruned.fit(
-            X_train, y_train,
+            X_train,
+            y_train,
             validation_data=validation_data,
             epochs=epochs,
             batch_size=batch_size,

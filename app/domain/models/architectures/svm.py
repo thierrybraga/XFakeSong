@@ -9,9 +9,8 @@ Agora integrado com features extraídas da pasta segmented.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Tuple
 
-import numpy as np
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
@@ -19,8 +18,6 @@ from sklearn.svm import SVC
 # Project imports
 from app.domain.models.architectures.classical_ml_helpers import (
     BaseClassicalModel,
-    evaluate_model,
-    optimize_hyperparameters,
     wrap_calibration,
 )
 
@@ -73,15 +70,17 @@ class SVMModel(BaseClassicalModel):
     Encapsula o modelo sklearn SVM para compatibilidade com o pipeline.
     """
 
-    def __init__(self,
-                 kernel: str = 'rbf',
-                 C: float = 1.0,
-                 gamma: str = 'scale',
-                 probability: bool = True,
-                 random_state: int = 42,
-                 calibrate: bool = False,
-                 calibration_cv=None,
-                 **kwargs):
+    def __init__(
+        self,
+        kernel: str = "rbf",
+        C: float = 1.0,
+        gamma: str = "scale",
+        probability: bool = True,
+        random_state: int = 42,
+        calibrate: bool = False,
+        calibration_cv=None,
+        **kwargs,
+    ):
         """
         Inicializa o modelo SVM.
         """
@@ -109,8 +108,7 @@ class SVMModel(BaseClassicalModel):
         # Initialize pipeline immediately
         self.pipeline = self._create_pipeline()
 
-        logger.info(
-            f"SVM model initialized with kernel={kernel}, C={C}, gamma={gamma}")
+        logger.info(f"SVM model initialized with kernel={kernel}, C={C}, gamma={gamma}")
 
     def _create_pipeline(self) -> Pipeline:
         # Com calibração externa (CalibratedClassifierCV), desliga o Platt
@@ -123,41 +121,43 @@ class SVMModel(BaseClassicalModel):
             gamma=self.gamma,
             probability=self.probability and not self.calibrate,
             random_state=self.random_state,
-            **self.kwargs
+            **self.kwargs,
         )
-        clf = wrap_calibration(
-            clf, self.calibrate, cv=self.calibration_cv or 3
+        clf = wrap_calibration(clf, self.calibrate, cv=self.calibration_cv or 3)
+        return Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                ("svm", clf),
+            ]
         )
-        return Pipeline([
-            ('scaler', StandardScaler()),
-            ('svm', clf),
-        ])
 
     def get_params(self) -> Dict[str, Any]:
         """
         Retorna os parâmetros do modelo.
         """
         params = super().get_params()
-        params.update({
-            'kernel': self.kernel,
-            'C': self.C,
-            'gamma': self.gamma,
-            'probability': self.probability,
-            'random_state': self.random_state
-        })
+        params.update(
+            {
+                "kernel": self.kernel,
+                "C": self.C,
+                "gamma": self.gamma,
+                "probability": self.probability,
+                "random_state": self.random_state,
+            }
+        )
         return params
 
 
 def create_svm_model(
     input_shape: Tuple[int, ...],
     num_classes: int = 2,
-    kernel: str = 'rbf',
+    kernel: str = "rbf",
     C: float = 1.0,
-    gamma: str = 'scale',
+    gamma: str = "scale",
     probability: bool = True,
     random_state: int = 42,
-    architecture: str = 'svm',
-    **kwargs
+    architecture: str = "svm",
+    **kwargs,
 ) -> SVMModel:
     """
     Cria um modelo SVM para detecção de deepfakes.
@@ -177,93 +177,48 @@ def create_svm_model(
         gamma=gamma,
         probability=probability,
         random_state=random_state,
-        **kwargs
+        **kwargs,
     )
 
     return model
 
 
-def optimize_svm_hyperparameters(
-    X_train: np.ndarray,
-    y_train: np.ndarray,
-    param_grid: Optional[Dict[str, List]] = None,
-    cv: int = 5,
-    scoring: str = 'accuracy',
-    n_jobs: int = -1
-) -> Tuple[SVMModel, Dict[str, Any]]:
-    """
-    Otimiza hiperparâmetros do SVM usando Grid Search.
-    """
-    if param_grid is None:
-        param_grid = [dict(bloco) for bloco in SVM_PARAM_GRID]
-
-    return optimize_hyperparameters(
-        model_class=SVMModel,
-        X_train=X_train,
-        y_train=y_train,
-        param_grid=param_grid,
-        base_estimator=SVC(probability=True, random_state=42),
-        step_name='svm',
-        cv=cv,
-        scoring=scoring,
-        n_jobs=n_jobs
-    )
-
-
-def evaluate_svm_model(
-    model: SVMModel,
-    X_test: np.ndarray,
-    y_test: np.ndarray,
-    verbose: bool = True
-) -> Dict[str, Any]:
-    """
-    Avalia o desempenho do modelo SVM.
-    """
-    return evaluate_model(model, X_test, y_test, None, verbose)
-
-
 # Função de compatibilidade com o sistema
 def create_model(
-    input_shape: Tuple[int, ...],
-    num_classes: int = 2,
-    **kwargs
+    input_shape: Tuple[int, ...], num_classes: int = 2, **kwargs
 ) -> SVMModel:
     """
     Função de compatibilidade para criação do modelo SVM.
     Segue a interface padrão das outras arquiteturas.
     """
-    return create_svm_model(
-        input_shape=input_shape,
-        num_classes=num_classes,
-        **kwargs
-    )
+    return create_svm_model(input_shape=input_shape, num_classes=num_classes, **kwargs)
 
 
 # Metadados da arquitetura
 ARCHITECTURE_INFO = {
-    'name': 'SVM',
-    'description': 'Support Vector Machine para classificação de deepfakes',
-    'type': 'classical_ml',
-    'input_requirements': {
-        'min_features': 1,
-        'max_features': None,
-        'feature_type': 'numerical'
+    "name": "SVM",
+    "description": "Support Vector Machine para classificação de deepfakes",
+    "type": "classical_ml",
+    "input_requirements": {
+        "min_features": 1,
+        "max_features": None,
+        "feature_type": "numerical",
     },
-    'hyperparameters': {
-        'kernel': ['linear', 'poly', 'rbf', 'sigmoid'],
-        'C': 'float > 0',
-        'gamma': ['scale', 'auto', 'float > 0'],
-        'probability': 'bool'
+    "hyperparameters": {
+        "kernel": ["linear", "poly", "rbf", "sigmoid"],
+        "C": "float > 0",
+        "gamma": ["scale", "auto", "float > 0"],
+        "probability": "bool",
     },
-    'advantages': [
-        'Efetivo em espaços de alta dimensionalidade',
-        'Memória eficiente',
-        'Versátil (diferentes kernels)',
-        'Funciona bem com poucos dados'
+    "advantages": [
+        "Efetivo em espaços de alta dimensionalidade",
+        "Memória eficiente",
+        "Versátil (diferentes kernels)",
+        "Funciona bem com poucos dados",
     ],
-    'disadvantages': [
-        'Não fornece estimativas de probabilidade diretamente',
-        'Sensível à escala das features',
-        'Pode ser lento em datasets grandes'
-    ]
+    "disadvantages": [
+        "Não fornece estimativas de probabilidade diretamente",
+        "Sensível à escala das features",
+        "Pode ser lento em datasets grandes",
+    ],
 }

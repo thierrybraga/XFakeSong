@@ -3,8 +3,9 @@ from typing import List, Tuple
 import numpy as np
 
 
-def find_formants_from_lpc(lpc_coeffs: np.ndarray,
-                           sr: int) -> List[Tuple[float, float, float]]:
+def find_formants_from_lpc(
+    lpc_coeffs: np.ndarray, sr: int
+) -> List[Tuple[float, float, float]]:
     """Encontra formantes a partir dos coeficientes LPC."""
     if len(lpc_coeffs) == 0:
         return []

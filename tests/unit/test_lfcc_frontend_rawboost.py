@@ -7,6 +7,7 @@ RawBoost (forma preservada, saída finita, identidade em algo=0).
 Renomeado em 2026-08-17 (era `test_frontend_rawboost.py`, docstring "melhorias
 P0"): o rótulo de fase saiu, o sujeito ficou.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -31,11 +32,20 @@ def test_lfcc_train_inference_parity():
 
     y = _tone()
     train = lfcc_from_waveform(
-        tf.constant(y[None, :]), sample_rate=SR, n_fft=512, hop_length=128,
-        n_filters=80, n_lfcc=80,
+        tf.constant(y[None, :]),
+        sample_rate=SR,
+        n_fft=512,
+        hop_length=128,
+        n_filters=80,
+        n_lfcc=80,
     ).numpy()[0]
     infer = audio_to_lfcc(
-        y, sample_rate=SR, n_fft=512, hop_length=128, n_filters=80, n_lfcc=80,
+        y,
+        sample_rate=SR,
+        n_fft=512,
+        hop_length=128,
+        n_filters=80,
+        n_lfcc=80,
         add_channel_dim=False,
     )
     assert train.shape == (375, 80)
@@ -50,12 +60,19 @@ def test_prepare_audio_lfcc_shape_and_switch():
 
     y = _tone()
     lfcc = prepare_audio_for_model(
-        y, input_type="spectrogram", input_shape=(375, 80, 1),
-        sample_rate=SR, feature_frontend="lfcc", n_lfcc=80,
+        y,
+        input_type="spectrogram",
+        input_shape=(375, 80, 1),
+        sample_rate=SR,
+        feature_frontend="lfcc",
+        n_lfcc=80,
     )
     logmel = prepare_audio_for_model(
-        y, input_type="spectrogram", input_shape=(375, 80, 1),
-        sample_rate=SR, feature_frontend="logmel",
+        y,
+        input_type="spectrogram",
+        input_shape=(375, 80, 1),
+        sample_rate=SR,
+        feature_frontend="logmel",
     )
     assert lfcc.shape == (375, 80, 1)
     assert logmel.shape == (375, 80, 1)
@@ -76,15 +93,25 @@ def test_prepare_audio_default_frontend_is_logmel():
 
     y = _tone()
     default = prepare_audio_for_model(
-        y, input_type="spectrogram", input_shape=(375, 80, 1), sample_rate=SR,
+        y,
+        input_type="spectrogram",
+        input_shape=(375, 80, 1),
+        sample_rate=SR,
     )
     explicit_logmel = prepare_audio_for_model(
-        y, input_type="spectrogram", input_shape=(375, 80, 1), sample_rate=SR,
+        y,
+        input_type="spectrogram",
+        input_shape=(375, 80, 1),
+        sample_rate=SR,
         feature_frontend="logmel",
     )
     explicit_lfcc = prepare_audio_for_model(
-        y, input_type="spectrogram", input_shape=(375, 80, 1), sample_rate=SR,
-        feature_frontend="lfcc", n_lfcc=80,
+        y,
+        input_type="spectrogram",
+        input_shape=(375, 80, 1),
+        sample_rate=SR,
+        feature_frontend="lfcc",
+        n_lfcc=80,
     )
     assert default.shape == (375, 80, 1)
     # default == logmel explícito (default É log-mel)

@@ -1,18 +1,6 @@
 # Node
 node_modules/
 
-# Trained model weights (too large for git)
-data/results/models/
-*.h5
-
-# Saídas geradas (benchmark, pipeline TCC, notebooks, smoke): JSON/CSV, .tex,
-# .png, modelos. Tudo em data/results/ é artefato regenerável — não versionar.
-!/data/results/paper/
-!/data/results/paper/**
-
-# Cache/artefatos auxiliares de modelos fora do app.
-/models/
-
 # Claude Code internal
 .claude/
 
@@ -150,18 +138,7 @@ venv.bak/
 .ropeproject
 
 # mkdocs documentation
-/site
-
-# LaTeX/Overleaf build artifacts. Keep .tex, tables and figures versioned;
-# regenerate PDF/auxiliary files from data/data/results/paper/main.tex when needed.
-/data/results/paper/*.aux
-/data/results/paper/*.lof
-/data/results/paper/*.lot
-/data/results/paper/*.out
-/data/results/paper/*.toc
-/data/results/paper/*.log
-/data/results/paper/*.synctex.gz
-/data/results/paper/*.pdf
+/infrastructure/site
 
 # mypy
 .mypy_cache/
@@ -181,85 +158,55 @@ cython_debug/
 .vscode/
 .idea/
 
-# Project specific
-data/
-!data/
-data/*
-!data/results/
-# Artefatos de benchmark sao regeneraveis e NAO sao versionados; a excecao e o
-# material do artigo. A linha abaixo estava corrompida ("data!data/results/
-# paper/", concatenacao de duas regras), o que anulava o ignore e deixava toda
-# a arvore data/results/ rastreavel — contrariando o CLAUDE.md.
-data/results/*
-!data/results/paper/
-!data/results/paper/**
-# ...mas o material do artigo tambem nao versiona backup manual nem binario
-# regeneravel (2026-08-17). `main.tex.pre-*.bak` e `.antes` duplicam o que o
-# proprio historico ja guarda — duas fontes de verdade para o mesmo texto — e
-# o `main.pdf` (2,2 MB) sai do `.tex`, gerando diff binario a cada
-# recompilacao. Os que existiam estao no commit 0814732 e seguem recuperaveis.
+# Artefatos locais do SpeechChecker. O diretório de dados é ignorado por padrão;
+# código de `tools/` e `benchmarks/`, catálogos pequenos e fontes do artigo entram no Git.
+/data/
+!/data/
+/data/*
+!/data/.gitkeep
+!/benchmarks/
+!/benchmarks/**
+/benchmarks/**/__pycache__/
+!/tools/
+!/tools/**
+/tools/**/__pycache__/
+
+# Só o marcador da pasta de modelos é versionado. O registry.json é gerado pela
+# promoção dos artefatos e guarda caminhos absolutos da máquina que o gerou.
+!/data/models/
+/data/models/*
+!/data/models/.gitkeep
+
+# Resultados de execução são locais; a fonte do artigo é versionada.
+!/data/results/
+/data/results/*
+!/data/results/paper/
+!/data/results/paper/**
+
+# Saídas e cópias de trabalho regeneráveis do artigo.
+/data/results/paper/*.pdf
+/data/results/paper/*.aux
+/data/results/paper/*.lof
+/data/results/paper/*.lot
+/data/results/paper/*.out
+/data/results/paper/*.toc
+/data/results/paper/*.log
+/data/results/paper/*.synctex.gz
 data/results/paper/**/*.bak
 data/results/paper/**/*.antes
-data/results/paper/*.bak
-data/results/paper/*.antes
-data/results/paper/*.pdf
-# Diretório runtime padrão do TrainingService/DetectionService/benchmark.
-data/models/*.h5
-data/models/*.pkl
-data/models/*.keras
-data/models/*.onnx
-data/models/*.json
-!data/models/registry.json
-# Scalers regenerados a cada treino (nao sao "modelo final" promovido, ao contrario de benchmark_final/)
-data/models/scalers/*.pkl
-datasets/
-temp/
-# Artefatos de dataset na raiz (para builds; regeneraveis, nao versionados)
+/data/results/paper/*.zip
+/data/results/paper/final/
+
+# Outros dados, caches e artefatos locais.
+/data/cache/
 /dataset_pt_deepfake*.zip
 /*.npz
-!data/.gitkeep
-!data/models/.gitkeep
-!logs/.gitkeep
-
-# Cache de bind-mount do Docker (huggingface/torch/tensorflow) — regeneravel.
-/cache/
-
-# Backups de reparo pontual de artefatos (nao versionar).
+*.h5
 *.stale-*.bak
+*.stale.bak
 
 # Runtime artifacts
-# Saída gerada por `mkdocs build`; a fonte canônica permanece em docs/.
-site/
 app.db
 app.db-shm
 app.db-wal
-*.log
-system.log
 test_output.txt
-
-# SQLAlchemy / Flask instance DB
-instance/
-
-# Logs de runtime (launcher.log, diagnósticos pytest, etc.)
-.logs/
-
-# Pacote Overleaf regeneravel (copia de main.tex + figuras para upload)
-/data/results/paper/final/
-/data/results/paper/*.zip
-
-# Backups locais de sidecars regenerados (rebuild_inference_contracts.py)
-*.stale.bak
-# Residuo de compilacao do LaTeX. As MESMAS regras ja existem por volta da
-# linha 157, mas sao ANULADAS pela negacao `!data/results/paper/**` acima: no
-# gitignore vence a ULTIMA regra que casa, entao precisam ser repetidas DEPOIS
-# dela. Sem isto, `pdflatex main.tex` deixa seis arquivos nao rastreados
-# (2026-08-17).
-data/results/paper/*.aux
-data/results/paper/*.log
-data/results/paper/*.lof
-data/results/paper/*.lot
-data/results/paper/*.out
-data/results/paper/*.toc
-data/results/paper/*.synctex.gz
-
-data/

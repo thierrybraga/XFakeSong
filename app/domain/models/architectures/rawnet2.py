@@ -20,6 +20,21 @@ from typing import Tuple
 import tensorflow as tf
 from tensorflow.keras import layers, models
 
+# APENAS para desserializar artefatos gravados antes da separação de
+# 2026-08-20. Não use em código novo: o RawNet2 constrói com as classes de
+# `rawnet2_layers`. Ficam aqui porque os `.keras` antigos referenciam estes
+# nomes e, com o banco sinc agora fixo, as classes novas não aceitam os pesos
+# treináveis que aqueles artefatos gravaram.
+# Pré-processamento de sinal genérico: continua compartilhado.
+from app.domain.models.architectures.layers import (
+    AudioNormalizationLayer,
+    FeatureMapScalingLayer as _LegacyFeatureMapScalingLayer,
+    MultiScaleConv1DBlock as _LegacyMultiScaleConv1DBlock,
+    PreEmphasisLayer,
+    ResidualBlock1D as _LegacyResidualBlock1D,
+    SincNetLayer as _LegacySincNetLayer,
+)
+
 # CAMADAS PRÓPRIAS DO RawNet2 (separadas de layers.py em 2026-08-20).
 #
 # O RawNet2 tem front-end sinc PRÓPRIO (`RawNet2SincConv`), diferente do que
@@ -30,24 +45,6 @@ from app.domain.models.architectures.rawnet2_layers import (
     RawNet2MultiScaleConv1D,
     RawNet2ResidualBlock1D,
     RawNet2SincConv,
-)
-
-# Pré-processamento de sinal genérico: continua compartilhado.
-from app.domain.models.architectures.layers import (
-    AudioNormalizationLayer,
-    PreEmphasisLayer,
-)
-
-# APENAS para desserializar artefatos gravados antes da separação de
-# 2026-08-20. Não use em código novo: o RawNet2 constrói com as classes de
-# `rawnet2_layers`. Ficam aqui porque os `.keras` antigos referenciam estes
-# nomes e, com o banco sinc agora fixo, as classes novas não aceitam os pesos
-# treináveis que aqueles artefatos gravaram.
-from app.domain.models.architectures.layers import (
-    FeatureMapScalingLayer as _LegacyFeatureMapScalingLayer,
-    MultiScaleConv1DBlock as _LegacyMultiScaleConv1DBlock,
-    ResidualBlock1D as _LegacyResidualBlock1D,
-    SincNetLayer as _LegacySincNetLayer,
 )
 from app.utils.audio_utils import preprocess_legacy as preprocess
 
@@ -92,7 +89,9 @@ class AudioResamplingLayer(layers.Layer):
             ratio = tf.cast(self.target_sample_rate, tf.float32) / tf.cast(
                 self.source_sample_rate, tf.float32
             )
-            target_len = tf.cast(tf.round(tf.cast(in_len, tf.float32) * ratio), tf.int32)
+            target_len = tf.cast(
+                tf.round(tf.cast(in_len, tf.float32) * ratio), tf.int32
+            )
             img = tf.expand_dims(tf.expand_dims(x, axis=-1), axis=-1)  # (B,T,1,1)
             img = tf.image.resize(img, [target_len, 1], method="bilinear")
             y = tf.squeeze(img, axis=[-1, -2])
@@ -125,7 +124,7 @@ def _create_rawnet2_model(
     learning_rate: float = 1e-4,
     weight_decay: float = 1e-4,
     clipnorm: float = 1.0,
-    architecture: str = 'rawnet2'
+    architecture: str = "rawnet2",
 ) -> models.Model:
     """Criar modelo RawNet2 fiel ao paper 'Improved RawNet'.
 
@@ -152,16 +151,18 @@ def _create_rawnet2_model(
         res_filters = [128, 128, 256, 256, 256, 256]
 
     # Input layer
-    inputs = layers.Input(shape=input_shape, name='audio_input')
+    inputs = layers.Input(shape=input_shape, name="audio_input")
 
     # 1. Pré-processamento
-    x = PreEmphasisLayer(name='pre_emphasis')(inputs)
-    x = AudioNormalizationLayer(name='audio_normalization')(x)
+    x = PreEmphasisLayer(name="pre_emphasis")(inputs)
+    x = AudioNormalizationLayer(name="audio_normalization")(x)
     if len(x.shape) == 2:
         x = layers.Reshape((-1, 1))(x)
 
     # 2. SincNet Front-end
-    x = RawNet2SincConv(filters=sinc_filters, kernel_size=sinc_kernel_size, name='sincnet')(x)
+    x = RawNet2SincConv(
+        filters=sinc_filters, kernel_size=sinc_kernel_size, name="sincnet"
+    )(x)
     x = layers.BatchNormalization()(x)
     x = layers.LeakyReLU(negative_slope=0.3)(x)
     x = layers.MaxPooling1D(pool_size=3)(x)
@@ -175,10 +176,9 @@ def _create_rawnet2_model(
     # quanto o EER de 32,7% limpo vs baseline 2,89%: GRU(1024) não aprende
     # dependências sobre sequências tão longas de features quase-cruas.
     for i, filters in enumerate(res_filters):
-        x = RawNet2ResidualBlock1D(out_channels=filters, name=f'res_block_{i + 1}')(x)
-        x = RawNet2FeatureMapScaling(
-            scale_mode='mul_add', name=f'fms_{i + 1}')(x)
-        x = layers.MaxPooling1D(pool_size=3, name=f'res_pool_{i + 1}')(x)
+        x = RawNet2ResidualBlock1D(out_channels=filters, name=f"res_block_{i + 1}")(x)
+        x = RawNet2FeatureMapScaling(scale_mode="mul_add", name=f"fms_{i + 1}")(x)
+        x = layers.MaxPooling1D(pool_size=3, name=f"res_pool_{i + 1}")(x)
 
     # 4. Temporal Modeling (GRU)
     # `gru_layers` segue o paper de cada variante: 1 camada GRU(1024) no
@@ -192,20 +192,26 @@ def _create_rawnet2_model(
     for layer_index in range(int(gru_layers)):
         is_last = layer_index == int(gru_layers) - 1
         x = layers.GRU(
-            units=gru_units, return_sequences=not is_last,
-            dropout=dropout_rate, recurrent_dropout=0.0,
-            name=f'gru_{layer_index + 1}'
+            units=gru_units,
+            return_sequences=not is_last,
+            dropout=dropout_rate,
+            recurrent_dropout=0.0,
+            name=f"gru_{layer_index + 1}",
         )(x)
 
     # 5. Classification Head
     # Dense head with explicit float32 output to be safe under mixed precision.
-    x = layers.Dense(dense_units, activation='relu', name='fc1')(x)
-    x = layers.Dropout(dropout_rate, name='fc1_drop')(x)
+    x = layers.Dense(dense_units, activation="relu", name="fc1")(x)
+    x = layers.Dropout(dropout_rate, name="fc1_drop")(x)
     if num_classes == 1:
-        outputs = layers.Dense(1, activation='sigmoid', dtype='float32', name='output')(x)
+        outputs = layers.Dense(1, activation="sigmoid", dtype="float32", name="output")(
+            x
+        )
         loss = tf.keras.losses.BinaryCrossentropy()
     else:
-        outputs = layers.Dense(num_classes, activation='softmax', dtype='float32', name='output')(x)
+        outputs = layers.Dense(
+            num_classes, activation="softmax", dtype="float32", name="output"
+        )(x)
         loss = tf.keras.losses.SparseCategoricalCrossentropy()
 
     # Criar modelo
@@ -222,7 +228,7 @@ def _create_rawnet2_model(
         weight_decay=float(weight_decay),
         global_clipnorm=float(clipnorm) if clipnorm else None,
     )
-    model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
+    model.compile(optimizer=optimizer, loss=loss, metrics=["accuracy"])
 
     logger.info(
         f"Modelo {architecture} criado: gru_units={gru_units}, "
@@ -235,7 +241,7 @@ def _create_rawnet2_model(
 def create_lightweight_rawnet2(
     input_shape: Tuple[int, ...],
     num_classes: int = 1,
-    architecture: str = 'rawnet2_lite'
+    architecture: str = "rawnet2_lite",
 ) -> models.Model:
     """Criar versão leve do RawNet2."""
     return _create_rawnet2_model(
@@ -247,7 +253,7 @@ def create_lightweight_rawnet2(
         gru_units=64,
         dense_units=32,
         dropout_rate=0.3,
-        architecture=architecture
+        architecture=architecture,
     )
 
 
@@ -267,8 +273,12 @@ _RAWNET2_ANTISPOOFING_PARAMS = {
 }
 
 
-def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
-                 architecture: str = 'rawnet2', **kwargs) -> models.Model:
+def create_model(
+    input_shape: Tuple[int, ...],
+    num_classes: int = 1,
+    architecture: str = "rawnet2",
+    **kwargs,
+) -> models.Model:
     """Função principal para criar modelos RawNet2.
 
     Variantes:
@@ -287,25 +297,25 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
     Returns:
         Modelo Keras compilado
     """
-    if architecture == 'default':
-        architecture = 'rawnet2'
+    if architecture == "default":
+        architecture = "rawnet2"
 
-    if architecture == 'rawnet2_lite':
+    if architecture == "rawnet2_lite":
         return create_lightweight_rawnet2(input_shape, num_classes, architecture)
-    if architecture == 'rawnet2_antispoofing':
+    if architecture == "rawnet2_antispoofing":
         # A CONFIGURAÇÃO DA VARIANTE PREVALECE sobre kwargs: eles chegam tanto
         # de um override explícito quanto do `registry.default_params`, que
         # descrevem a variante de VERIFICAÇÃO DE LOCUTOR (Sinc 128, 1×GRU). Sem
         # esta regra, pedir 'rawnet2_antispoofing' pelo registry/factory
         # devolvia silenciosamente o RawNet2 de SV com o nome do baseline.
         params = dict(_RAWNET2_ANTISPOOFING_PARAMS)
-        params.update({
-            k: v for k, v in kwargs.items() if k not in params
-        })
+        params.update({k: v for k, v in kwargs.items() if k not in params})
         return _create_rawnet2_model(
-            input_shape, num_classes, architecture=architecture, **params)
+            input_shape, num_classes, architecture=architecture, **params
+        )
     return _create_rawnet2_model(
-        input_shape, num_classes, architecture=architecture, **kwargs)
+        input_shape, num_classes, architecture=architecture, **kwargs
+    )
 
 
 # Registrar objetos personalizados no Keras.
@@ -317,28 +327,30 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
 # .keras gravado antes da separação de 2026-08-20 referencia `SincNetLayer` pelo
 # nome, e sem a entrada ele não desserializa. As chaves próprias entram ao lado,
 # para os artefatos gerados a partir de agora.
-tf.keras.utils.get_custom_objects().update({
-    'AudioResamplingLayer': AudioResamplingLayer,
-    'AudioNormalizationLayer': AudioNormalizationLayer,
-    'PreEmphasisLayer': PreEmphasisLayer,
-    'XFakeSong>preprocess_legacy': preprocess,
-    # CHAVES LEGADAS -> CLASSES LEGADAS, não às novas.
-    #
-    # Mapear a chave antiga para a classe nova parecia natural, e QUEBRA: o
-    # `RawNet2SincConv` nasce com banco FIXO (`trainable_filters=False`) desde
-    # 2026-08-20, enquanto o artefato antigo gravou as frequências de corte
-    # como pesos TREINÁVEIS. Keras separa os dois grupos (`trainable_variables`
-    # x `non_trainable_variables`), então a restauração não encontra onde pôr
-    # os pesos salvos — medido em `bench_rawnet2.keras`: "A total of 32 objects
-    # could not be loaded". Cada nome carrega a semântica da época em que o
-    # artefato foi gravado.
-    'MultiScaleConv1DBlock': _LegacyMultiScaleConv1DBlock,
-    'SincNetLayer': _LegacySincNetLayer,
-    'ResidualBlock1D': _LegacyResidualBlock1D,
-    'FeatureMapScalingLayer': _LegacyFeatureMapScalingLayer,
-    # nomes próprios do RawNet2
-    'RawNet2MultiScaleConv1D': RawNet2MultiScaleConv1D,
-    'RawNet2SincConv': RawNet2SincConv,
-    'RawNet2ResidualBlock1D': RawNet2ResidualBlock1D,
-    'RawNet2FeatureMapScaling': RawNet2FeatureMapScaling,
-})
+tf.keras.utils.get_custom_objects().update(
+    {
+        "AudioResamplingLayer": AudioResamplingLayer,
+        "AudioNormalizationLayer": AudioNormalizationLayer,
+        "PreEmphasisLayer": PreEmphasisLayer,
+        "XFakeSong>preprocess_legacy": preprocess,
+        # CHAVES LEGADAS -> CLASSES LEGADAS, não às novas.
+        #
+        # Mapear a chave antiga para a classe nova parecia natural, e QUEBRA: o
+        # `RawNet2SincConv` nasce com banco FIXO (`trainable_filters=False`) desde
+        # 2026-08-20, enquanto o artefato antigo gravou as frequências de corte
+        # como pesos TREINÁVEIS. Keras separa os dois grupos (`trainable_variables`
+        # x `non_trainable_variables`), então a restauração não encontra onde pôr
+        # os pesos salvos — medido em `bench_rawnet2.keras`: "A total of 32 objects
+        # could not be loaded". Cada nome carrega a semântica da época em que o
+        # artefato foi gravado.
+        "MultiScaleConv1DBlock": _LegacyMultiScaleConv1DBlock,
+        "SincNetLayer": _LegacySincNetLayer,
+        "ResidualBlock1D": _LegacyResidualBlock1D,
+        "FeatureMapScalingLayer": _LegacyFeatureMapScalingLayer,
+        # nomes próprios do RawNet2
+        "RawNet2MultiScaleConv1D": RawNet2MultiScaleConv1D,
+        "RawNet2SincConv": RawNet2SincConv,
+        "RawNet2ResidualBlock1D": RawNet2ResidualBlock1D,
+        "RawNet2FeatureMapScaling": RawNet2FeatureMapScaling,
+    }
+)

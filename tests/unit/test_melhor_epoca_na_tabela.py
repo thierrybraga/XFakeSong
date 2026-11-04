@@ -1,6 +1,6 @@
 """A época reportada é a do critério que REALMENTE selecionou o checkpoint.
 
-SUJEITO: ``scripts/reporting/consolidate_results.py::_best_epoch`` e a coluna
+SUJEITO: ``tools/reporting/consolidate_results.py::_best_epoch`` e a coluna
 ``Treino`` de ``update_tcc_latex.py::build_results_table``.
 
 Por que este teste existe
@@ -41,7 +41,8 @@ if str(ROOT) not in sys.path:
 
 @pytest.fixture(scope="module")
 def cons():
-    import scripts.reporting.consolidate_results as m
+    import tools.reporting.consolidate_results as m
+
     return m
 
 
@@ -90,15 +91,34 @@ def test_a_coluna_treino_mostra_melhor_sobre_orcamento():
     de 100 (o caso do HuBERT no run corrigido) diz que o modelo parou de
     melhorar quase imediatamente — informação que a coluna antiga escondia.
     """
-    from scripts.reporting.update_tcc_latex import build_results_table
+    from tools.reporting.update_tcc_latex import build_results_table
 
-    linhas = build_results_table([
-        {"key": "CCT", "accuracy": 0.9928, "eer": 0.0058, "min_tdcf": 0.0135,
-         "auc": 0.9997, "f1": 0.9928, "latency": 33.24, "epochs": 100,
-         "best_epoch": 47, "converged": True},
-        {"key": "SVM", "accuracy": 0.9175, "eer": 0.0709, "min_tdcf": 0.1454,
-         "auc": 0.9773, "f1": 0.9108, "latency": 0.75, "converged": True},
-    ]).split("\n")
+    linhas = build_results_table(
+        [
+            {
+                "key": "CCT",
+                "accuracy": 0.9928,
+                "eer": 0.0058,
+                "min_tdcf": 0.0135,
+                "auc": 0.9997,
+                "f1": 0.9928,
+                "latency": 33.24,
+                "epochs": 100,
+                "best_epoch": 47,
+                "converged": True,
+            },
+            {
+                "key": "SVM",
+                "accuracy": 0.9175,
+                "eer": 0.0709,
+                "min_tdcf": 0.1454,
+                "auc": 0.9773,
+                "f1": 0.9108,
+                "latency": 0.75,
+                "converged": True,
+            },
+        ]
+    ).split("\n")
 
     assert "47/100" in linhas[0], f"esperado '47/100' na linha do CCT: {linhas[0]}"
     assert "& 100 &" not in linhas[0], "coluna ainda anuncia só o orçamento"
@@ -107,13 +127,23 @@ def test_a_coluna_treino_mostra_melhor_sobre_orcamento():
 
 def test_sem_melhor_epoca_a_coluna_degrada_para_o_orcamento():
     """Artefato antigo, sem `best_epoch`: mostra o orçamento, não quebra."""
-    from scripts.reporting.update_tcc_latex import build_results_table
+    from tools.reporting.update_tcc_latex import build_results_table
 
-    linha = build_results_table([
-        {"key": "AASIST", "accuracy": 0.9, "eer": 0.05, "min_tdcf": 0.1,
-         "auc": 0.98, "f1": 0.9, "latency": 10.0, "epochs": 100,
-         "converged": True},
-    ])
+    linha = build_results_table(
+        [
+            {
+                "key": "AASIST",
+                "accuracy": 0.9,
+                "eer": 0.05,
+                "min_tdcf": 0.1,
+                "auc": 0.98,
+                "f1": 0.9,
+                "latency": 10.0,
+                "epochs": 100,
+                "converged": True,
+            },
+        ]
+    )
     assert "& 100 &" in linha
 
 
@@ -123,7 +153,7 @@ def test_o_criterio_de_selecao_e_declarado_no_rodape():
     Sem a nota, a coluna compara épocas escolhidas por `val_eer` com épocas
     escolhidas por perda de validação como se fossem a mesma medida.
     """
-    fonte = (ROOT / "scripts" / "reporting" / "update_tcc_latex.py").read_text(
+    fonte = (ROOT / "tools" / "reporting" / "update_tcc_latex.py").read_text(
         encoding="utf-8"
     )
     assert "val\\_eer" in fonte, "o rodapé não nomeia o monitor do caminho Keras"

@@ -184,6 +184,7 @@ class FeaturePreparer:
                 FRONTEND_RAW,
                 FRONTEND_TABULAR,
                 FRONTEND_TABULAR_V2,
+                fit_length_tile,
                 prepare_single,
             )
 
@@ -195,6 +196,23 @@ class FeaturePreparer:
                         if samples.shape[-1] > 1
                         else samples.reshape(-1)
                     )
+
+                # JANELA ANTES DE BANDA E NÍVEL. O export
+                # (`build_paired_pt_corpus.extract_window`) recorta os 3 s
+                # centrais e SÓ ENTÃO filtra e nivela: o −26 dBFS do treino é o
+                # RMS da JANELA. A inferência fazia o inverso — filtrava e
+                # nivelava o arquivo inteiro e o front-end recortava depois.
+                # Num CETUC de 4–8 s, com silêncio nas pontas, o miolo saía
+                # mais alto que no treino; o vetor tabular é linear em
+                # amplitude, e o SVM caía de 91% para 80,5% em validação.
+                # Mesmo recorte do export: centro em `(n - janela) // 2` e
+                # clipes curtos repetidos. Log-Mel e tabular já recortavam essa
+                # janela no front-end (só a ordem muda). O raw com multicrop
+                # tirava início/centro/fim do ARQUIVO; no benchmark as janelas
+                # do NPZ já têm 3 s e os três recortes são a própria janela —
+                # agora a produção mede o mesmo.
+                _source_samples = int(_contract_bm.get("source_samples") or 48000)
+                samples = fit_length_tile(samples[np.newaxis, :], _source_samples)[0]
 
                 # PARIDADE DE FORMATO E NÍVEL (Limitação (viii) do TCC).
                 #
@@ -241,9 +259,7 @@ class FeaturePreparer:
                     )
                     from app.utils.silero_vad import apply_agc
 
-                    samples = apply_agc(
-                        samples, target_lufs=BAND_CORRECTION_RMS_DBFS
-                    )
+                    samples = apply_agc(samples, target_lufs=BAND_CORRECTION_RMS_DBFS)
 
                 shape = tuple(model_info.input_shape or ())
                 features = prepare_single(
@@ -261,7 +277,7 @@ class FeaturePreparer:
                         _contract_bm.get("target_sequence_length")
                         or (shape[0] if shape else 16000)
                     ),
-                    source_samples=int(_contract_bm.get("source_samples") or 48000),
+                    source_samples=_source_samples,
                     # PARIDADE: a janela de análise do TREINO. Sem repassar,
                     # o AST — treinado com os 25 ms que o artigo especifica
                     # (400 amostras) — inferia com a janela derivada, e o
@@ -625,12 +641,20 @@ class FeaturePreparer:
                             # erro (foi assim que um artefato de 64 features
                             # passou despercebido). Dimensão divergente agora é
                             # ERRO; o escape explícito via
-                            # XFAKESONG_ALLOW_FEATURE_ADJUST=1 preserva o
-                            # comportamento antigo para emergências.
+                            # SPEECHCHECKER_ALLOW_FEATURE_ADJUST=1 preserva o
+                            # comportamento antigo para emergências. A variável
+                            # XFAKESONG_ALLOW_FEATURE_ADJUST continua aceita por
+                            # compatibilidade.
                             import os
 
                             expected_dim = int(expected_dim)
-                            if os.environ.get("XFAKESONG_ALLOW_FEATURE_ADJUST") == "1":
+                            allow_feature_adjustment = (
+                                os.environ.get("SPEECHCHECKER_ALLOW_FEATURE_ADJUST")
+                                == "1"
+                                or os.environ.get("XFAKESONG_ALLOW_FEATURE_ADJUST")
+                                == "1"
+                            )
+                            if allow_feature_adjustment:
                                 if features.size > expected_dim:
                                     features = features[:expected_dim]
                                     feature_names = list(feature_names)[:expected_dim]
@@ -659,7 +683,7 @@ class FeaturePreparer:
                                         f"{expected_dim}. Front-end de "
                                         "inferência não corresponde ao do "
                                         "treino — regenere o input_contract "
-                                        "(scripts/reporting/"
+                                        "(tools/reporting/"
                                         "rebuild_inference_contracts.py) ou "
                                         "retreine o modelo."
                                     ),

@@ -5,17 +5,12 @@ import secrets
 from fastapi import HTTPException, Security, status
 from fastapi.security import APIKeyHeader
 
+from app.core.config.env import env_flag
+
 logger = logging.getLogger(__name__)
 
 API_KEY_NAME = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
-
-
-def _env_flag(name: str, default: bool = False) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def is_production() -> bool:
@@ -25,7 +20,7 @@ def is_production() -> bool:
 
 def insecure_development_allowed() -> bool:
     """Mantém o bypass local somente quando habilitado explicitamente."""
-    return not is_production() and _env_flag("XFAKE_ALLOW_INSECURE_DEV", False)
+    return not is_production() and env_flag("XFAKE_ALLOW_INSECURE_DEV", False)
 
 
 def get_gradio_auth() -> tuple[str, str] | None:
@@ -48,7 +43,9 @@ async def get_api_key(
     api_key_header: str | None = Security(api_key_header),
 ) -> str:
     """Valida a API Key para proteger endpoints sensíveis."""
-    server_api_key = os.getenv("XFAKESONG_API_KEY", "")
+    server_api_key = os.getenv("SPEECHCHECKER_API_KEY") or os.getenv(
+        "XFAKESONG_API_KEY", ""
+    )
 
     if not server_api_key:
         if insecure_development_allowed():
@@ -56,7 +53,9 @@ async def get_api_key(
                 "API sem autenticação por opção explícita de desenvolvimento."
             )
             return "insecure-development"
-        logger.warning("XFAKESONG_API_KEY não configurada; acesso protegido recusado.")
+        logger.warning(
+            "SPEECHCHECKER_API_KEY não configurada; acesso protegido recusado."
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Autenticação do servidor não configurada.",

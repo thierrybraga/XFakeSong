@@ -18,8 +18,7 @@ class CepstralExtractorWrapper(IFeatureExtractor):
     def __init__(self):
         self.extractor = CepstralFeatureExtractor(sr=22050)
 
-    def extract(
-            self, audio_data: AudioData) -> ProcessingResult[AudioFeatures]:
+    def extract(self, audio_data: AudioData) -> ProcessingResult[AudioFeatures]:
         try:
             # CepstralFeatureExtractor já retorna ProcessingResult, mas precisamos adaptar
             # para o formato esperado pelo pipeline se necessário, ou retornar direto se compatível.
@@ -44,17 +43,16 @@ class CepstralExtractorWrapper(IFeatureExtractor):
                 features=normalized_features,
                 feature_type=FeatureType.CEPSTRAL,
                 extraction_params=self.get_extraction_params(),
-                audio_metadata={"extractor": "cepstral"}
+                audio_metadata={"extractor": "cepstral"},
             )
 
             return ProcessingResult(
-                status=ProcessingStatus.SUCCESS,
-                data=audio_features
+                status=ProcessingStatus.SUCCESS, data=audio_features
             )
         except Exception as e:
             return ProcessingResult(
                 status=ProcessingStatus.ERROR,
-                errors=[f"Erro na extração cepstral: {str(e)}"]
+                errors=[f"Erro na extração cepstral: {str(e)}"],
             )
 
     def extract_features(
@@ -68,13 +66,11 @@ class CepstralExtractorWrapper(IFeatureExtractor):
     def get_feature_names(self) -> List[str]:
         # Retorna lista genérica ou específica se disponível
         return getattr(
-            self.extractor,
-            'get_feature_names',
-            lambda: ["mfcc", "delta", "delta2"]
+            self.extractor, "get_feature_names", lambda: ["mfcc", "delta", "delta2"]
         )()
 
     def get_extraction_params(self) -> Dict[str, Any]:
         return {
-            "sr": getattr(self.extractor, 'sr', 22050),
-            "n_mfcc": getattr(self.extractor, 'n_mfcc', 13)
+            "sr": getattr(self.extractor, "sr", 22050),
+            "n_mfcc": getattr(self.extractor, "n_mfcc", 13),
         }

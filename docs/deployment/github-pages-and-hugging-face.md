@@ -12,11 +12,19 @@ A documentação é publicada com MkDocs Material a partir de `docs/`.
 | Config principal | `mkdocs.yml` |
 | URL pública | `https://thierrybraga.github.io/XFakeSong/` |
 | Workflow | `.github/workflows/static.yml` |
-| Build local | `mkdocs build --strict` |
+| Build local | `mkdocs build --strict --clean` |
 | Tema | `material`, idioma `pt-BR` |
 | Extensões críticas | `pymdownx.superfences`, `pymdownx.arithmatex`, `attr_list` |
-| Matemática | `docs/javascripts/mathjax.js` + MathJax CDN |
+| Matemática | configuração local + MathJax 3.2.2 no CDN |
 | CSS extra | `docs/stylesheets/extra.css` |
+
+O tema usa as fontes instaladas no dispositivo, sem chamadas ao Google Fonts.
+O único recurso visual carregado por CDN é o MathJax com versão fixada; fórmulas
+dependem de conexão com esse serviço.
+
+O nome público do produto é **SpeechChecker**. O caminho `XFakeSong` continua
+no endereço do GitHub Pages e no repositório por compatibilidade com o slug
+histórico; não use esse nome como marca em novos textos, imagens ou metadados.
 
 ### Checklist do GitHub Pages
 
@@ -25,14 +33,16 @@ A documentação é publicada com MkDocs Material a partir de `docs/`.
 - Links relativos usam caminhos dentro de `docs/`.
 - Diagramas Mermaid estão em blocos ` ```mermaid `.
 - Equações usam MathJax via `pymdownx.arithmatex`.
-- `mkdocs build --strict` passa localmente ou no CI.
+- `mkdocs build --strict --clean` passa localmente ou no CI.
+- O verificador `python tools/ops/check_docs_site.py infrastructure/site` passa depois do build.
 - O workflow `static.yml` tem permissão `pages: write` e `id-token: write`.
 
 ### Build Local
 
 ```bash
-pip install "mkdocs>=1.6,<2.0" "mkdocs-material>=9.5,<10.0"
-mkdocs build --strict
+pip install -r requirements-docs.txt
+mkdocs build --strict --clean
+python tools/ops/check_docs_site.py infrastructure/site
 mkdocs serve
 ```
 
@@ -47,8 +57,8 @@ O deploy recomendado é **Docker Space**, não Gradio SDK simples.
 | SDK | `docker` |
 | Porta | `app_port: 7860` |
 | Startup | `python main.py --gradio` via `docker-entrypoint.sh` |
-| Modelos | Model Hub separado, sincronizado por `scripts/ops/sync_hf_models.py` |
-| Variável de modelos | `MODEL_REPO_ID=SEU_USUARIO/xfakesong-models` |
+| Modelos | Model Hub separado, sincronizado por `tools/ops/sync_hf_models.py` |
+| Variável de modelos | `MODEL_REPO_ID=SEU_USUARIO/speechchecker-models` |
 | Storage opcional | `/data` com `XFAKE_STORAGE_DIR=/data` |
 | Demo pública | `ENABLE_TRAINING=false` |
 
@@ -58,7 +68,7 @@ O `README.md` deve manter o front matter:
 
 ```yaml
 ---
-title: XFakeSong
+title: SpeechChecker
 emoji: 🛡️
 colorFrom: blue
 colorTo: slate
@@ -73,7 +83,7 @@ license: mit
 
 | Tipo | Nome | Valor |
 | --- | --- | --- |
-| Variable | `MODEL_REPO_ID` | `SEU_USUARIO/xfakesong-models` |
+| Variable | `MODEL_REPO_ID` | `SEU_USUARIO/speechchecker-models` |
 | Variable | `XFAKE_SYNC_MODELS_ON_BOOT` | `true` |
 | Variable | `DEEPFAKE_MODELS_DIR` | `data/models` |
 | Variable | `ENABLE_TRAINING` | `false` para demo |
@@ -101,12 +111,12 @@ Esse diretório deve conter os modelos pré-treinados com o dataset do benchmark
 (`benchmark_dataset.npz`) antes do upload.
 
 ```bash
-python scripts/ops/upload_models_to_hf.py \
-  --repo-id SEU_USUARIO/xfakesong-models \
+python tools/ops/upload_models_to_hf.py \
+  --repo-id SEU_USUARIO/speechchecker-models \
   --dry-run
 
-python scripts/ops/upload_models_to_hf.py \
-  --repo-id SEU_USUARIO/xfakesong-models \
+python tools/ops/upload_models_to_hf.py \
+  --repo-id SEU_USUARIO/speechchecker-models \
   --private
 ```
 
@@ -121,8 +131,8 @@ models/registry.json
 Para baixar novamente os modelos do Hub:
 
 ```bash
-MODEL_REPO_ID=SEU_USUARIO/xfakesong-models \
-python scripts/ops/sync_hf_models.py \
+MODEL_REPO_ID=SEU_USUARIO/speechchecker-models \
+python tools/ops/sync_hf_models.py \
   --models-dir data/models \
   --force
 ```

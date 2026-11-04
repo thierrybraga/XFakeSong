@@ -43,7 +43,7 @@ def test_convergence_best_is_monotonic_maximize():
     best_ys = list(lines[-1].get_ydata())  # 'melhor acumulado'
     assert best_ys == sorted(best_ys), "melhor acumulado deve ser monotônico ↑"
     assert best_ys[-1] == 0.8
-    assert conv_ax.get_xlabel() == "Trial"
+    assert conv_ax.get_xlabel() == "Tentativa"
     _close(fig)
 
 

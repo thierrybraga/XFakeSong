@@ -1,7 +1,7 @@
 """Cabeça classificadora compartilhada dos modelos SSL originais (WavLM/HuBERT).
 
 Fonte ÚNICA da topologia da cabeça usada (1) pelo runner de treino
-(`scripts/benchmark/run_wavlm_original_benchmark.py`) e (2) pelo wrapper de
+(`benchmarks/run_wavlm_original_benchmark.py`) e (2) pelo wrapper de
 inferência (`TorchSSLOriginalModel` em model_loader.py) — evita drift de
 paridade treino↔inferência quando o contrato de embedding muda.
 
@@ -57,8 +57,13 @@ def _weighted_head_cls():
         o MLP puro, útil em smoke tests).
         """
 
-        def __init__(self, num_layers: int, feature_dim: int,
-                     dropout: float = 0.2, hidden: int = 256):
+        def __init__(
+            self,
+            num_layers: int,
+            feature_dim: int,
+            dropout: float = 0.2,
+            hidden: int = 256,
+        ):
             super().__init__()
             self.layer_logits = nn.Parameter(torch.zeros(int(num_layers)))
             self.mlp = nn.Sequential(

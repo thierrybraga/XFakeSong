@@ -12,20 +12,20 @@ from collections import Counter, defaultdict
 import numpy as np
 import pytest
 
-from scripts.dataset.audit_paired_corpus import (
+from tools.dataset.audit_paired_corpus import (
     auc,
     audit_balance,
     audit_disjointness,
     majority_oracle,
 )
-from scripts.dataset.build_paired_pt_corpus import (
+from tools.dataset.build_paired_pt_corpus import (
     TARGET_RMS_DB,
     _normalize_loudness,
     extract_window,
     normalize_text,
     text_id_for,
 )
-from scripts.dataset.build_paired_splits import (
+from tools.dataset.build_paired_splits import (
     assign,
     content_groups,
     duplicate_audio_utterances,
@@ -33,7 +33,7 @@ from scripts.dataset.build_paired_splits import (
     short_utterances,
     speaker_partition,
 )
-from scripts.dataset.export_paired_npz import (
+from tools.dataset.export_paired_npz import (
     _enforce,
     derive_max_pairs,
     select_pairs,
@@ -473,7 +473,9 @@ def test_cap_cuts_pairs_never_single_samples() -> None:
 
 
 def test_cap_spreads_across_speakers_instead_of_dropping_them() -> None:
-    records = _corpus({f"M{i:03d}": "train" for i in range(4)}, [f"{i:04d}" for i in range(10)])
+    records = _corpus(
+        {f"M{i:03d}": "train" for i in range(4)}, [f"{i:04d}" for i in range(10)]
+    )
 
     kept = select_pairs(records, max_pairs=8, seed=42)
 

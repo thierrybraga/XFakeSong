@@ -118,7 +118,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         # diferente do que foi realmente treinado — exatamente o que o
         # comentario no topo deste arquivo proibe.
         "variant": "microsoft/wavlm-base-plus:pytorch_runner_frozen_backbone",
-        "runner": "scripts.benchmark.run_wavlm_original_benchmark:ssl_original",
+        "runner": "benchmarks.run_wavlm_original_benchmark:ssl_original",
         "input_type": "raw_audio_16khz_16000",
         "family": "ssl-pretrained",
         "scope": "official",
@@ -128,7 +128,7 @@ OFFICIAL_TCC_MODEL_MANIFEST: List[Dict[str, Any]] = [
         "result_key": "HuBERT Original",
         "display_name": "HuBERT Original",
         "variant": "facebook/hubert-base-ls960:pytorch_runner_frozen_backbone",
-        "runner": "scripts.benchmark.run_wavlm_original_benchmark:ssl_original",
+        "runner": "benchmarks.run_wavlm_original_benchmark:ssl_original",
         "input_type": "raw_audio_16khz_16000",
         "family": "ssl-pretrained",
         "scope": "official",
@@ -263,7 +263,7 @@ OFFICIAL_TCC_DISPLAY_NAMES = {
 #: com `endswith(":ssl_original")` as variantes `:ssl_finetuned` caíam em
 #: `ALL_TCC_ARCHITECTURES` — a lista dos modelos que `benchmarks.runner` sabe
 #: treinar — e o orquestrador tentaria rodá-las pelo caminho Keras.
-_SSL_RUNNER_MODULE = "scripts.benchmark.run_wavlm_original_benchmark"
+_SSL_RUNNER_MODULE = "benchmarks.run_wavlm_original_benchmark"
 
 
 def _is_ssl_runner(item: Dict[str, Any]) -> bool:
@@ -477,31 +477,31 @@ class BenchmarkConfig:
     @classmethod
     def quick(cls, **overrides) -> "BenchmarkConfig":
         """Preset rápido (sintético, 1 época) — para verificação do harness."""
-        base = dict(
-            architectures=["SVM"],
-            dataset_path=None,
-            epochs=1,
-            snr_levels_db=[20],
-            latency_runs=5,
-            synthetic_n=200,
-            synthetic_shape=(8, 8),
-            preset_name="quick",
-            optimize_hyperparameters=False,
-        )
+        base = {
+            "architectures": ["SVM"],
+            "dataset_path": None,
+            "epochs": 1,
+            "snr_levels_db": [20],
+            "latency_runs": 5,
+            "synthetic_n": 200,
+            "synthetic_shape": (8, 8),
+            "preset_name": "quick",
+            "optimize_hyperparameters": False,
+        }
         base.update(overrides)
         return cls(**base)
 
     @classmethod
     def full_tcc(cls, **overrides) -> "BenchmarkConfig":
         """Preset TCC para o runner direto: nove modelos não SSL."""
-        base = dict(
-            architectures=list(ALL_TCC_ARCHITECTURES),
-            epochs=100,
-            snr_levels_db=[30, 20, 10, 5],
-            run_api_probe=True,
-            preset_name="full_tcc",
-            optimize_hyperparameters=True,
-        )
+        base = {
+            "architectures": list(ALL_TCC_ARCHITECTURES),
+            "epochs": 100,
+            "snr_levels_db": [30, 20, 10, 5],
+            "run_api_probe": True,
+            "preset_name": "full_tcc",
+            "optimize_hyperparameters": True,
+        }
         base.update(overrides)
         return cls(**base)
 
@@ -520,15 +520,15 @@ class BenchmarkConfig:
         como teste. Mede generalização a gerador inédito — o reteste
         metodológico mais importante antes da defesa.
         """
-        base = dict(
-            architectures=list(ALL_TCC_ARCHITECTURES),
-            epochs=100,
-            snr_levels_db=[30, 20, 10, 5],
-            run_api_probe=False,
-            preset_name=f"cross_generator:{holdout_generator}",
-            optimize_hyperparameters=True,
-            holdout_generator=holdout_generator,
-        )
+        base = {
+            "architectures": list(ALL_TCC_ARCHITECTURES),
+            "epochs": 100,
+            "snr_levels_db": [30, 20, 10, 5],
+            "run_api_probe": False,
+            "preset_name": f"cross_generator:{holdout_generator}",
+            "optimize_hyperparameters": True,
+            "holdout_generator": holdout_generator,
+        }
         base.update(overrides)
         return cls(**base)
 
@@ -543,21 +543,21 @@ class BenchmarkConfig:
         usa split disjunto por falante (`speaker_split=True`). Requer um `.npz`
         com `speaker_ids` (exportado a partir de um dataset tier `large`).
         """
-        base = dict(
-            architectures=list(ALL_TCC_ARCHITECTURES),
-            epochs=100,
-            snr_levels_db=[30, 20, 10, 5],
-            run_api_probe=False,
-            preset_name=(
+        base = {
+            "architectures": list(ALL_TCC_ARCHITECTURES),
+            "epochs": 100,
+            "snr_levels_db": [30, 20, 10, 5],
+            "run_api_probe": False,
+            "preset_name": (
                 f"unseen_speaker:{holdout_speaker}"
                 if holdout_speaker
                 else "unseen_speaker"
             ),
-            optimize_hyperparameters=True,
-            tier="large",
-            speaker_split=holdout_speaker is None,
-            holdout_speaker=holdout_speaker,
-        )
+            "optimize_hyperparameters": True,
+            "tier": "large",
+            "speaker_split": holdout_speaker is None,
+            "holdout_speaker": holdout_speaker,
+        }
         base.update(overrides)
         return cls(**base)
 
@@ -569,45 +569,45 @@ class BenchmarkConfig:
         grupos), o teste pode ficar de classe única — nesse caso prefira
         `cross_generator_tcc`.
         """
-        base = dict(
-            architectures=list(ALL_TCC_ARCHITECTURES),
-            epochs=100,
-            snr_levels_db=[30, 20, 10, 5],
-            run_api_probe=False,
-            preset_name="group_tcc",
-            optimize_hyperparameters=True,
-            group_split=True,
-        )
+        base = {
+            "architectures": list(ALL_TCC_ARCHITECTURES),
+            "epochs": 100,
+            "snr_levels_db": [30, 20, 10, 5],
+            "run_api_probe": False,
+            "preset_name": "group_tcc",
+            "optimize_hyperparameters": True,
+            "group_split": True,
+        }
         base.update(overrides)
         return cls(**base)
 
     @classmethod
     def neural_tcc(cls, **overrides) -> "BenchmarkConfig":
         """Preset neural do TCC: sete arquiteturas neurais do artigo, sem SVM/RF."""
-        base = dict(
-            architectures=list(NEURAL_TCC_ARCHITECTURES),
-            epochs=100,
-            snr_levels_db=[30, 20, 10, 5],
-            run_api_probe=False,
-            preset_name="neural_tcc",
-            optimize_hyperparameters=True,
-        )
+        base = {
+            "architectures": list(NEURAL_TCC_ARCHITECTURES),
+            "epochs": 100,
+            "snr_levels_db": [30, 20, 10, 5],
+            "run_api_probe": False,
+            "preset_name": "neural_tcc",
+            "optimize_hyperparameters": True,
+        }
         base.update(overrides)
         return cls(**base)
 
     @classmethod
     def rawnet2_100e(cls, **overrides) -> "BenchmarkConfig":
         """Preset individual do RawNet2 para benchmark real em 100 epocas."""
-        base = dict(
-            architectures=["RawNet2"],
-            epochs=100,
-            batch_size=16,
-            snr_levels_db=[30, 20, 10, 5],
-            run_api_probe=False,
-            preset_name="single:RawNet2",
-            device_profile="gpu",
-            optimize_hyperparameters=True,
-        )
+        base = {
+            "architectures": ["RawNet2"],
+            "epochs": 100,
+            "batch_size": 16,
+            "snr_levels_db": [30, 20, 10, 5],
+            "run_api_probe": False,
+            "preset_name": "single:RawNet2",
+            "device_profile": "gpu",
+            "optimize_hyperparameters": True,
+        }
         base.update(overrides)
         return cls(**base)
 

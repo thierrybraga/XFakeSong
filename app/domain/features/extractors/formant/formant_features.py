@@ -11,10 +11,13 @@ from typing import Any, Dict
 import librosa
 import numpy as np
 
-from app.core.contracts.audio import AudioData, AudioFeatures
+from app.core.contracts.audio import (
+    AudioData,
+    AudioFeatures,
+    FeatureType,
+    IFeatureExtractor,
+)
 from app.core.contracts.base import ProcessingResult, ProcessingStatus
-from app.domain.features.interfaces import IFeatureExtractor
-from app.domain.features.types import FeatureType
 
 from .components.formants import find_formants_from_lpc
 from .components.lpc import levinson_durbin_autocorr, preemphasis
@@ -30,9 +33,17 @@ from .components.metrics import (
 class FormantFeatureExtractor(IFeatureExtractor):
     """Extrator de características de formantes."""
 
-    def __init__(self, sr: int = 22050, frame_length: int = 2048, hop_length: int = 512,
-                 n_formants: int = 4, max_freq: float = 8000.0, window: str = 'hamming',
-                 preemphasis: float = 0.97, fmin: float = 80.0):
+    def __init__(
+        self,
+        sr: int = 22050,
+        frame_length: int = 2048,
+        hop_length: int = 512,
+        n_formants: int = 4,
+        max_freq: float = 8000.0,
+        window: str = "hamming",
+        preemphasis: float = 0.97,
+        fmin: float = 80.0,
+    ):
         """
         Inicializa o extrator de formantes.
 
@@ -56,15 +67,14 @@ class FormantFeatureExtractor(IFeatureExtractor):
         if n_formants <= 0:
             raise ValueError("Número de formantes deve ser positivo")
         if max_freq <= 0 or max_freq > sr / 2:
-            raise ValueError(
-                "Frequência máxima deve ser positiva e menor que Nyquist")
+            raise ValueError("Frequência máxima deve ser positiva e menor que Nyquist")
         if not 0 <= preemphasis <= 1:
-            raise ValueError(
-                "Coeficiente de pré-ênfase deve estar entre 0 e 1")
+            raise ValueError("Coeficiente de pré-ênfase deve estar entre 0 e 1")
 
         if hop_length > frame_length:
             warnings.warn(
-                "hop_length maior que frame_length pode causar perda de informação")
+                "hop_length maior que frame_length pode causar perda de informação"
+            )
 
         self.sr = sr
         self.frame_length = frame_length
@@ -78,8 +88,7 @@ class FormantFeatureExtractor(IFeatureExtractor):
         # Parâmetros para análise LPC
         self.lpc_order = min(12, sr // 1000)  # Ordem típica para formantes
 
-    def extract(
-            self, audio_data: AudioData) -> ProcessingResult[AudioFeatures]:
+    def extract(self, audio_data: AudioData) -> ProcessingResult[AudioFeatures]:
         """
         Extrai características de formantes do áudio.
 
@@ -92,15 +101,15 @@ class FormantFeatureExtractor(IFeatureExtractor):
         try:
             if audio_data.samples is None or len(audio_data.samples) == 0:
                 return ProcessingResult(
-                    status=ProcessingStatus.ERROR,
-                    errors=["Dados de áudio vazios"]
+                    status=ProcessingStatus.ERROR, errors=["Dados de áudio vazios"]
                 )
 
             samples = audio_data.samples
             if audio_data.sample_rate != self.sr:
                 # Reamostrar se necessário
                 samples = librosa.resample(
-                    samples, orig_sr=audio_data.sample_rate, target_sr=self.sr)
+                    samples, orig_sr=audio_data.sample_rate, target_sr=self.sr
+                )
 
             features_dict = self.extract_features(samples)
 
@@ -119,18 +128,13 @@ class FormantFeatureExtractor(IFeatureExtractor):
                 features=features_arrays,
                 feature_type=FeatureType.FORMANT,
                 extraction_params=self.get_extraction_params(),
-                audio_metadata={'sample_rate': audio_data.sample_rate}
+                audio_metadata={"sample_rate": audio_data.sample_rate},
             )
 
-            return ProcessingResult.success(
-                data=audio_features
-            )
+            return ProcessingResult.success(data=audio_features)
 
         except Exception as e:
-            return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=[str(e)]
-            )
+            return ProcessingResult(status=ProcessingStatus.ERROR, errors=[str(e)])
 
     def get_feature_type(self) -> FeatureType:
         """Retorna o tipo de características extraídas."""
@@ -141,35 +145,43 @@ class FormantFeatureExtractor(IFeatureExtractor):
         names = []
         # Características básicas dos formantes
         for i in range(self.n_formants):
-            formant_name = f'F{i + 1}'
-            names.extend([
-                f'formant_{formant_name}_freq',
-                f'formant_{formant_name}_bandwidth',
-                f'formant_{formant_name}_amplitude',
-                f'{formant_name}_trajectory_mean',
-                f'{formant_name}_trajectory_std'
-            ])
+            formant_name = f"F{i + 1}"
+            names.extend(
+                [
+                    f"formant_{formant_name}_freq",
+                    f"formant_{formant_name}_bandwidth",
+                    f"formant_{formant_name}_amplitude",
+                    f"{formant_name}_trajectory_mean",
+                    f"{formant_name}_trajectory_std",
+                ]
+            )
 
         # Características derivadas
-        names.extend([
-            'vowel_space_area', 'formant_dispersion', 'effective_f2',
-            'F2_F1_ratio', 'F3_F2_ratio', 'F4_F3_ratio'
-        ])
+        names.extend(
+            [
+                "vowel_space_area",
+                "formant_dispersion",
+                "effective_f2",
+                "F2_F1_ratio",
+                "F3_F2_ratio",
+                "F4_F3_ratio",
+            ]
+        )
 
         return names
 
     def get_extraction_params(self) -> Dict[str, Any]:
         """Retorna os parâmetros de extração."""
         return {
-            'sr': self.sr,
-            'frame_length': self.frame_length,
-            'hop_length': self.hop_length,
-            'n_formants': self.n_formants,
-            'max_freq': self.max_freq,
-            'window': self.window,
-            'preemphasis': self.preemphasis,
-            'fmin': self.fmin,
-            'lpc_order': self.lpc_order
+            "sr": self.sr,
+            "frame_length": self.frame_length,
+            "hop_length": self.hop_length,
+            "n_formants": self.n_formants,
+            "max_freq": self.max_freq,
+            "window": self.window,
+            "preemphasis": self.preemphasis,
+            "fmin": self.fmin,
+            "lpc_order": self.lpc_order,
         }
 
     def extract_features(self, y: np.ndarray) -> Dict:
@@ -194,8 +206,9 @@ class FormantFeatureExtractor(IFeatureExtractor):
         min_length = self.frame_length
         if len(y) < min_length:
             warnings.warn(
-                f"Sinal muito curto ({len(y)} samples), fazendo padding para {min_length}")
-            y = np.pad(y, (0, min_length - len(y)), mode='constant')
+                f"Sinal muito curto ({len(y)} samples), fazendo padding para {min_length}"
+            )
+            y = np.pad(y, (0, min_length - len(y)), mode="constant")
 
         # Normalizar sinal
         y_max = np.max(np.abs(y))
@@ -212,29 +225,39 @@ class FormantFeatureExtractor(IFeatureExtractor):
 
             # Frequências dos formantes
             for i in range(self.n_formants):
-                formant_name = f'F{i + 1}'
-                features[f'formant_{formant_name}_freq'] = formants_data[f'{formant_name}_freq']
-                features[f'formant_{formant_name}_bandwidth'] = formants_data[f'{formant_name}_bw']
-                features[f'formant_{formant_name}_amplitude'] = formants_data[f'{formant_name}_amp']
+                formant_name = f"F{i + 1}"
+                features[f"formant_{formant_name}_freq"] = formants_data[
+                    f"{formant_name}_freq"
+                ]
+                features[f"formant_{formant_name}_bandwidth"] = formants_data[
+                    f"{formant_name}_bw"
+                ]
+                features[f"formant_{formant_name}_amplitude"] = formants_data[
+                    f"{formant_name}_amp"
+                ]
 
             # === CARACTERÍSTICAS DERIVADAS ===
 
             # Trajetórias dos formantes (velocidade de mudança)
-            trajectories = compute_formant_trajectories(
-                formants_data, self.n_formants)
+            trajectories = compute_formant_trajectories(formants_data, self.n_formants)
             features.update(trajectories)
 
             # Área do espaço vocálico
-            features['vowel_space_area'] = compute_vowel_space_area(
-                formants_data['F1_freq'], formants_data['F2_freq'])
+            features["vowel_space_area"] = compute_vowel_space_area(
+                formants_data["F1_freq"], formants_data["F2_freq"]
+            )
 
             # Dispersão dos formantes
-            features['formant_dispersion'] = compute_formant_dispersion(
-                formants_data, self.n_formants)
+            features["formant_dispersion"] = compute_formant_dispersion(
+                formants_data, self.n_formants
+            )
 
             # F2' efetivo (formante ajustado)
-            features['effective_F2'] = compute_effective_f2(
-                formants_data['F1_freq'], formants_data['F2_freq'], formants_data['F3_freq'])
+            features["effective_F2"] = compute_effective_f2(
+                formants_data["F1_freq"],
+                formants_data["F2_freq"],
+                formants_data["F3_freq"],
+            )
 
             # Razões entre formantes
             formant_ratios = compute_formant_ratios(formants_data)
@@ -242,36 +265,51 @@ class FormantFeatureExtractor(IFeatureExtractor):
 
             # === MAPEAMENTO PARA NOMES ESPERADOS ===
             # Mapear características de formantes para os nomes esperados
-            features['f1_mean'] = np.nanmean(
-                formants_data['F1_freq']) if len(
-                formants_data['F1_freq']) > 0 else 0
-            features['f2_mean'] = np.nanmean(
-                formants_data['F2_freq']) if len(
-                formants_data['F2_freq']) > 0 else 0
-            features['f3_mean'] = np.nanmean(
-                formants_data['F3_freq']) if len(
-                formants_data['F3_freq']) > 0 else 0
-            features['f4_mean'] = np.nanmean(
-                formants_data['F4_freq']) if len(
-                formants_data['F4_freq']) > 0 else 0
-            features['f1_bandwidth'] = np.nanmean(
-                formants_data['F1_bw']) if len(
-                formants_data['F1_bw']) > 0 else 0
-            features['f2_bandwidth'] = np.nanmean(
-                formants_data['F2_bw']) if len(
-                formants_data['F2_bw']) > 0 else 0
-            features['f3_bandwidth'] = np.nanmean(
-                formants_data['F3_bw']) if len(
-                formants_data['F3_bw']) > 0 else 0
-            features['f4_bandwidth'] = np.nanmean(
-                formants_data['F4_bw']) if len(
-                formants_data['F4_bw']) > 0 else 0
+            features["f1_mean"] = (
+                np.nanmean(formants_data["F1_freq"])
+                if len(formants_data["F1_freq"]) > 0
+                else 0
+            )
+            features["f2_mean"] = (
+                np.nanmean(formants_data["F2_freq"])
+                if len(formants_data["F2_freq"]) > 0
+                else 0
+            )
+            features["f3_mean"] = (
+                np.nanmean(formants_data["F3_freq"])
+                if len(formants_data["F3_freq"]) > 0
+                else 0
+            )
+            features["f4_mean"] = (
+                np.nanmean(formants_data["F4_freq"])
+                if len(formants_data["F4_freq"]) > 0
+                else 0
+            )
+            features["f1_bandwidth"] = (
+                np.nanmean(formants_data["F1_bw"])
+                if len(formants_data["F1_bw"]) > 0
+                else 0
+            )
+            features["f2_bandwidth"] = (
+                np.nanmean(formants_data["F2_bw"])
+                if len(formants_data["F2_bw"]) > 0
+                else 0
+            )
+            features["f3_bandwidth"] = (
+                np.nanmean(formants_data["F3_bw"])
+                if len(formants_data["F3_bw"]) > 0
+                else 0
+            )
+            features["f4_bandwidth"] = (
+                np.nanmean(formants_data["F4_bw"])
+                if len(formants_data["F4_bw"]) > 0
+                else 0
+            )
 
             return features
 
         except Exception as e:
-            warnings.warn(
-                f"Erro na extração de características de formantes: {e}")
+            warnings.warn(f"Erro na extração de características de formantes: {e}")
             return self._get_default_formant_features()
 
     def _get_default_formant_features(self) -> Dict:
@@ -280,21 +318,21 @@ class FormantFeatureExtractor(IFeatureExtractor):
 
         # Características básicas dos formantes
         for i in range(self.n_formants):
-            formant_name = f'F{i + 1}'
-            features[f'formant_{formant_name}_freq'] = np.array([0.0])
-            features[f'formant_{formant_name}_bandwidth'] = np.array([0.0])
-            features[f'formant_{formant_name}_amplitude'] = np.array([0.0])
-            features[f'{formant_name}_trajectory_mean'] = 0.0
-            features[f'{formant_name}_trajectory_std'] = 0.0
+            formant_name = f"F{i + 1}"
+            features[f"formant_{formant_name}_freq"] = np.array([0.0])
+            features[f"formant_{formant_name}_bandwidth"] = np.array([0.0])
+            features[f"formant_{formant_name}_amplitude"] = np.array([0.0])
+            features[f"{formant_name}_trajectory_mean"] = 0.0
+            features[f"{formant_name}_trajectory_std"] = 0.0
 
         # Características derivadas
-        features['vowel_space_area'] = 0.0
-        features['formant_dispersion'] = 0.0
-        features['effective_F2'] = np.array([0.0])
-        features['F2_F1_ratio_mean'] = 0.0
-        features['F2_F1_ratio_std'] = 0.0
-        features['F3_F2_ratio_mean'] = 0.0
-        features['F3_F2_ratio_std'] = 0.0
+        features["vowel_space_area"] = 0.0
+        features["formant_dispersion"] = 0.0
+        features["effective_F2"] = np.array([0.0])
+        features["F2_F1_ratio_mean"] = 0.0
+        features["F2_F1_ratio_std"] = 0.0
+        features["F3_F2_ratio_mean"] = 0.0
+        features["F3_F2_ratio_std"] = 0.0
 
         return features
 
@@ -304,14 +342,23 @@ class FormantFeatureExtractor(IFeatureExtractor):
         lpc_order = min(2 + self.sr // 1000, 16)  # Regra empírica
 
         # Dividir em frames
-        frames = librosa.util.frame(y, frame_length=self.frame_length,
-                                    hop_length=self.hop_length)
+        frames = librosa.util.frame(
+            y, frame_length=self.frame_length, hop_length=self.hop_length
+        )
 
         formants_data = {
-            'F1_freq': [], 'F1_bw': [], 'F1_amp': [],
-            'F2_freq': [], 'F2_bw': [], 'F2_amp': [],
-            'F3_freq': [], 'F3_bw': [], 'F3_amp': [],
-            'F4_freq': [], 'F4_bw': [], 'F4_amp': []
+            "F1_freq": [],
+            "F1_bw": [],
+            "F1_amp": [],
+            "F2_freq": [],
+            "F2_bw": [],
+            "F2_amp": [],
+            "F3_freq": [],
+            "F3_bw": [],
+            "F3_amp": [],
+            "F4_freq": [],
+            "F4_bw": [],
+            "F4_amp": [],
         }
 
         for frame in frames.T:
@@ -329,16 +376,16 @@ class FormantFeatureExtractor(IFeatureExtractor):
 
             # Armazenar resultados (preencher com NaN se não encontrados)
             for i in range(self.n_formants):
-                formant_key = f'F{i + 1}'
+                formant_key = f"F{i + 1}"
                 if i < len(formants):
                     freq, bw, amp = formants[i]
-                    formants_data[f'{formant_key}_freq'].append(freq)
-                    formants_data[f'{formant_key}_bw'].append(bw)
-                    formants_data[f'{formant_key}_amp'].append(amp)
+                    formants_data[f"{formant_key}_freq"].append(freq)
+                    formants_data[f"{formant_key}_bw"].append(bw)
+                    formants_data[f"{formant_key}_amp"].append(amp)
                 else:
-                    formants_data[f'{formant_key}_freq'].append(np.nan)
-                    formants_data[f'{formant_key}_bw'].append(np.nan)
-                    formants_data[f'{formant_key}_amp'].append(np.nan)
+                    formants_data[f"{formant_key}_freq"].append(np.nan)
+                    formants_data[f"{formant_key}_bw"].append(np.nan)
+                    formants_data[f"{formant_key}_amp"].append(np.nan)
 
         # Converter para arrays numpy
         for key in formants_data:
@@ -349,6 +396,7 @@ class FormantFeatureExtractor(IFeatureExtractor):
 
 # Para manter compatibilidade se o arquivo for executado diretamente
 if __name__ == "__main__":
+
     def test_formant_features():
         """Testa as características de formantes."""
         # Gerar sinal de teste simulando vogal
@@ -405,8 +453,10 @@ if __name__ == "__main__":
                 if values.ndim == 1:
                     valid_values = values[~np.isnan(values)]
                     if len(valid_values) > 0:
-                        print(f"  {name}: média={np.mean(valid_values):.1f}, "
-                              f"std={np.std(valid_values):.1f}")
+                        print(
+                            f"  {name}: média={np.mean(valid_values):.1f}, "
+                            f"std={np.std(valid_values):.1f}"
+                        )
                     else:
                         print(f"  {name}: sem valores válidos")
                 else:

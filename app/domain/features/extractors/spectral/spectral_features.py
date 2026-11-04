@@ -11,7 +11,7 @@ from typing import Any, Dict, List
 import librosa
 import numpy as np
 
-from app.domain.features.interfaces import IFeatureExtractor
+from app.core.contracts.audio import IFeatureExtractor
 
 from .....core.contracts.audio import AudioData, AudioFeatures, FeatureType
 from .....core.contracts.base import ProcessingResult, ProcessingStatus
@@ -40,10 +40,16 @@ from .components.utils import apply_preemphasis, get_default_spectral_features
 class SpectralFeatureExtractorCore:
     """Implementação core do extrator espectral."""
 
-    def __init__(self, sr: int = 22050, frame_length: int = 2048,
-                 hop_length: int = 512, window: str = 'hamming',
-                 fmin: float = 80.0, fmax: float = 8000.0,
-                 preemphasis: float = 0.97):
+    def __init__(
+        self,
+        sr: int = 22050,
+        frame_length: int = 2048,
+        hop_length: int = 512,
+        window: str = "hamming",
+        fmin: float = 80.0,
+        fmax: float = 8000.0,
+        preemphasis: float = 0.97,
+    ):
         """Inicializa o extrator core."""
         self.sr = sr
         self.frame_length = frame_length
@@ -58,16 +64,22 @@ class SpectralFeatureExtractorCore:
         if frame_length <= 0 or hop_length <= 0:
             raise ValueError("Comprimentos de janela devem ser positivos")
         if hop_length > frame_length:
-            warnings.warn(
-                "hop_length maior que frame_length pode causar aliasing")
+            warnings.warn("hop_length maior que frame_length pode causar aliasing")
 
 
 class SpectralFeatureExtractor(IFeatureExtractor):
     """Extrator de características espectrais."""
 
-    def __init__(self, sr: int = 22050, frame_length: int = 2048,
-                 hop_length: int = 512, window: str = 'hamming',
-                 fmin: float = 80.0, fmax: float = 8000.0, preemphasis: float = 0.97):
+    def __init__(
+        self,
+        sr: int = 22050,
+        frame_length: int = 2048,
+        hop_length: int = 512,
+        window: str = "hamming",
+        fmin: float = 80.0,
+        fmax: float = 8000.0,
+        preemphasis: float = 0.97,
+    ):
         """
         Inicializa o extrator de características espectrais.
 
@@ -94,23 +106,25 @@ class SpectralFeatureExtractor(IFeatureExtractor):
         if frame_length <= 0 or hop_length <= 0:
             raise ValueError("Comprimentos de janela devem ser positivos")
         if hop_length > frame_length:
-            warnings.warn(
-                "hop_length maior que frame_length pode causar aliasing")
+            warnings.warn("hop_length maior que frame_length pode causar aliasing")
 
         # Inicializar extrator core
         self.core = SpectralFeatureExtractorCore(
-            sr=sr, frame_length=frame_length, hop_length=hop_length,
-            window=window, fmin=fmin, fmax=fmax, preemphasis=preemphasis
+            sr=sr,
+            frame_length=frame_length,
+            hop_length=hop_length,
+            window=window,
+            fmin=fmin,
+            fmax=fmax,
+            preemphasis=preemphasis,
         )
 
-    def extract(
-            self, audio_data: AudioData) -> ProcessingResult[AudioFeatures]:
+    def extract(self, audio_data: AudioData) -> ProcessingResult[AudioFeatures]:
         """Extrai características espectrais do áudio."""
         try:
             if audio_data.samples is None or len(audio_data.samples) == 0:
                 return ProcessingResult(
-                    status=ProcessingStatus.ERROR,
-                    errors=["Dados de áudio vazios"]
+                    status=ProcessingStatus.ERROR, errors=["Dados de áudio vazios"]
                 )
 
             # Extrair características usando o método original
@@ -131,19 +145,15 @@ class SpectralFeatureExtractor(IFeatureExtractor):
                 features=features_arrays,
                 feature_type=FeatureType.SPECTRAL,
                 extraction_params=self.get_extraction_params(),
-                audio_metadata={'sample_rate': audio_data.sample_rate}
+                audio_metadata={"sample_rate": audio_data.sample_rate},
             )
 
             return ProcessingResult(
-                status=ProcessingStatus.SUCCESS,
-                data=audio_features
+                status=ProcessingStatus.SUCCESS, data=audio_features
             )
 
         except Exception as e:
-            return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=[str(e)]
-            )
+            return ProcessingResult(status=ProcessingStatus.ERROR, errors=[str(e)])
 
     def get_feature_type(self) -> FeatureType:
         """Retorna tipo de característica extraída."""
@@ -152,22 +162,29 @@ class SpectralFeatureExtractor(IFeatureExtractor):
     def get_feature_names(self) -> List[str]:
         """Retorna nomes das características."""
         return [
-            'spectral_centroid', 'spectral_rolloff', 'spectral_bandwidth',
-            'spectral_contrast', 'zero_crossing_rate', 'spectral_flatness',
-            'spectral_slope', 'spectral_kurtosis', 'spectral_skewness',
-            'spectral_spread', 'spectral_entropy'
+            "spectral_centroid",
+            "spectral_rolloff",
+            "spectral_bandwidth",
+            "spectral_contrast",
+            "zero_crossing_rate",
+            "spectral_flatness",
+            "spectral_slope",
+            "spectral_kurtosis",
+            "spectral_skewness",
+            "spectral_spread",
+            "spectral_entropy",
         ]
 
     def get_extraction_params(self) -> Dict[str, Any]:
         """Retorna parâmetros de extração."""
         return {
-            'sr': self.sr,
-            'frame_length': self.frame_length,
-            'hop_length': self.hop_length,
-            'window': self.window,
-            'fmin': self.fmin,
-            'fmax': self.fmax,
-            'preemphasis': self.preemphasis
+            "sr": self.sr,
+            "frame_length": self.frame_length,
+            "hop_length": self.hop_length,
+            "window": self.window,
+            "fmin": self.fmin,
+            "fmax": self.fmax,
+            "preemphasis": self.preemphasis,
         }
 
     def extract_features(self, y: np.ndarray, context: Any = None) -> Dict:
@@ -192,7 +209,8 @@ class SpectralFeatureExtractor(IFeatureExtractor):
 
         if len(y) < self.frame_length:
             warnings.warn(
-                f"Sinal muito curto ({len(y)} samples), padding será aplicado")
+                f"Sinal muito curto ({len(y)} samples), padding será aplicado"
+            )
 
         # Normalizar sinal para evitar overflow
         y_norm = y / (np.max(np.abs(y)) + 1e-10)
@@ -201,91 +219,96 @@ class SpectralFeatureExtractor(IFeatureExtractor):
 
         try:
             # Calcular espectrograma
-            S = np.abs(librosa.stft(y_norm, n_fft=self.frame_length,
-                                    hop_length=self.hop_length))
+            S = np.abs(
+                librosa.stft(
+                    y_norm, n_fft=self.frame_length, hop_length=self.hop_length
+                )
+            )
 
             # Frequências correspondentes
-            freqs = librosa.fft_frequencies(
-                sr=self.sr, n_fft=self.frame_length)
+            freqs = librosa.fft_frequencies(sr=self.sr, n_fft=self.frame_length)
 
             # === CARACTERÍSTICAS DO ESPECTRO DE MAGNITUDE ===
 
             # Spectral Centroid
-            features['spectral_centroid'] = librosa.feature.spectral_centroid(
-                S=S, sr=self.sr, hop_length=self.hop_length)[0]
+            features["spectral_centroid"] = librosa.feature.spectral_centroid(
+                S=S, sr=self.sr, hop_length=self.hop_length
+            )[0]
 
             # Spectral Rolloff (85%, 95%)
-            features['spectral_rolloff_85'] = librosa.feature.spectral_rolloff(
-                S=S, sr=self.sr, roll_percent=0.85, hop_length=self.hop_length)[0]
-            features['spectral_rolloff_95'] = librosa.feature.spectral_rolloff(
-                S=S, sr=self.sr, roll_percent=0.95, hop_length=self.hop_length)[0]
+            features["spectral_rolloff_85"] = librosa.feature.spectral_rolloff(
+                S=S, sr=self.sr, roll_percent=0.85, hop_length=self.hop_length
+            )[0]
+            features["spectral_rolloff_95"] = librosa.feature.spectral_rolloff(
+                S=S, sr=self.sr, roll_percent=0.95, hop_length=self.hop_length
+            )[0]
 
             # Spectral Bandwidth
-            features['spectral_bandwidth'] = librosa.feature.spectral_bandwidth(
-                S=S, sr=self.sr, hop_length=self.hop_length)[0]
+            features["spectral_bandwidth"] = librosa.feature.spectral_bandwidth(
+                S=S, sr=self.sr, hop_length=self.hop_length
+            )[0]
 
             # Spectral Flatness
-            features['spectral_flatness'] = librosa.feature.spectral_flatness(
-                S=S, hop_length=self.hop_length)[0]
+            features["spectral_flatness"] = librosa.feature.spectral_flatness(
+                S=S, hop_length=self.hop_length
+            )[0]
 
             # Spectral Slope
-            features['spectral_slope'] = compute_spectral_slope(S, freqs)
+            features["spectral_slope"] = compute_spectral_slope(S, freqs)
 
             # Spectral Kurtosis
-            features['spectral_kurtosis'] = compute_spectral_kurtosis(S, freqs)
+            features["spectral_kurtosis"] = compute_spectral_kurtosis(S, freqs)
 
             # Spectral Skewness
-            features['spectral_skewness'] = compute_spectral_skewness(S, freqs)
+            features["spectral_skewness"] = compute_spectral_skewness(S, freqs)
 
             # Spectral Spread (Variance)
-            centroid = features['spectral_centroid']
-            features['spectral_spread'] = compute_spectral_spread(
-                S, freqs, centroid)
+            centroid = features["spectral_centroid"]
+            features["spectral_spread"] = compute_spectral_spread(S, freqs, centroid)
 
             # Spectral Entropy
-            features['spectral_entropy'] = compute_spectral_entropy(S)
+            features["spectral_entropy"] = compute_spectral_entropy(S)
 
             # === CARACTERÍSTICAS DE CONTRASTE ===
 
             # Spectral Contrast
-            features['spectral_contrast'] = librosa.feature.spectral_contrast(
-                S=S, sr=self.sr, hop_length=self.hop_length)
+            features["spectral_contrast"] = librosa.feature.spectral_contrast(
+                S=S, sr=self.sr, hop_length=self.hop_length
+            )
 
             # Sub-band Energy Ratios
             subbands = compute_subband_energy_ratios(S, freqs)
             features.update(subbands)
 
             # High-Frequency Content
-            features['high_freq_content'] = compute_high_freq_content(S, freqs)
+            features["high_freq_content"] = compute_high_freq_content(S, freqs)
 
             # === CARACTERÍSTICAS ESPECTRAIS AVANÇADAS ===
 
             # Spectral Flux
-            features['spectral_flux'] = compute_spectral_flux(S)
+            features["spectral_flux"] = compute_spectral_flux(S)
 
             # Spectral Decrease
-            features['spectral_decrease'] = compute_spectral_decrease(S, freqs)
+            features["spectral_decrease"] = compute_spectral_decrease(S, freqs)
 
             # Spectral Crest Factor
-            features['spectral_crest'] = compute_spectral_crest(S)
+            features["spectral_crest"] = compute_spectral_crest(S)
 
             # Spectral Irregularity
-            features['spectral_irregularity'] = compute_spectral_irregularity(
-                S)
+            features["spectral_irregularity"] = compute_spectral_irregularity(S)
 
             # Spectral Roughness
-            features['spectral_roughness'] = compute_spectral_roughness(
-                S, freqs)
+            features["spectral_roughness"] = compute_spectral_roughness(S, freqs)
 
             # Spectral Inharmonicity
-            features['spectral_inharmonicity'] = (
-                compute_spectral_inharmonicity(S, freqs)
+            features["spectral_inharmonicity"] = compute_spectral_inharmonicity(
+                S, freqs
             )
 
             # === MAPEAMENTO PARA NOMES ESPERADOS ===
             # Mapear spectral_rolloff_85 para spectral_rolloff (nome esperado)
-            if 'spectral_rolloff_85' in features:
-                features['spectral_rolloff'] = features['spectral_rolloff_85']
+            if "spectral_rolloff_85" in features:
+                features["spectral_rolloff"] = features["spectral_rolloff_85"]
 
         except Exception as e:
             warnings.warn(f"Erro na extração de características: {str(e)}")

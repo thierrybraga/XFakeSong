@@ -52,7 +52,7 @@ class _ModeloFalso:
 
 
 def _guarda(**kwargs):
-    from app.domain.models.training.trainer import CollapseAbort
+    from app.domain.models.training.callbacks import CollapseAbort
 
     cb = CollapseAbort(label="teste", **kwargs)
     cb.set_model(_ModeloFalso())
@@ -68,9 +68,7 @@ def _roda(curva, **kwargs):
     cb = _guarda(**kwargs)
     for i, ponto in enumerate(curva):
         treino, val = ponto if isinstance(ponto, tuple) else (ponto, ponto)
-        cb.on_epoch_end(
-            i, {"accuracy": treino, "val_accuracy": val, "val_loss": 0.5}
-        )
+        cb.on_epoch_end(i, {"accuracy": treino, "val_accuracy": val, "val_loss": 0.5})
         if cb.triggered:
             break
     return cb
@@ -222,7 +220,7 @@ def test_nao_aborta_quando_a_metrica_de_treino_falta():
 
 
 def _historico(path):
-    from app.domain.models.training.trainer import PersistentEpochHistory
+    from app.domain.models.training.callbacks import PersistentEpochHistory
 
     return PersistentEpochHistory(path)
 
@@ -274,9 +272,7 @@ def test_historico_regrava_mesma_epoca_sem_duplicar(tmp_path):
     cb.on_epoch_end(5, {"loss": 1.0})
     cb.on_epoch_end(5, {"loss": 0.5})
 
-    linhas = [
-        ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()
-    ]
+    linhas = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
     assert len(linhas) == 1
     assert json.loads(linhas[0])["loss"] == pytest.approx(0.5)
 
@@ -288,10 +284,8 @@ def test_historico_fica_fora_do_backup_dir(tmp_path):
     terminam bem — que são os que viram artefato.
     """
     from app.core.config.settings import TrainingConfig
-    from app.domain.models.training.trainer import (
-        ModelTrainer,
-        PersistentEpochHistory,
-    )
+    from app.domain.models.training.callbacks import PersistentEpochHistory
+    from app.domain.models.training.trainer import ModelTrainer
 
     checkpoint = tmp_path / "models" / "best_checkpoint.weights.h5"
     checkpoint.parent.mkdir(parents=True)

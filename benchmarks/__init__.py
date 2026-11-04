@@ -1,4 +1,4 @@
-"""Sistema de benchmark e teste do XFakeSong (para o TCC).
+"""Sistema de benchmark e teste do SpeechChecker (para o TCC).
 
 Gera, de forma reprodutível e usando o PIPELINE REAL (TrainingService →
 ModelLoader → Predictor → MetricsCalculator) e a API (FastAPI TestClient),
@@ -19,8 +19,8 @@ Uso programático:
     results = run_benchmark(cfg)
 
 Uso por CLI:
-    python scripts/benchmark/run_benchmark.py --quick
-    python scripts/benchmark/run_benchmark.py --dataset data.npz --archs MultiscaleCNN SVM RandomForest
+    python benchmarks/run_benchmark.py --quick
+    python benchmarks/run_benchmark.py --dataset data.npz --archs MultiscaleCNN SVM RandomForest
 """
 
 from __future__ import annotations
@@ -31,8 +31,8 @@ from benchmarks.config import (
     DOCKER_TRAINING_ARCHITECTURES,
     EXTENDED_MODEL_MANIFEST,
     MODEL_FAMILIES,
-    NEURAL_TCC_ARCHITECTURES,
     NEURAL_DOCKER_ARCHITECTURES,
+    NEURAL_TCC_ARCHITECTURES,
     OFFICIAL_TCC_DISPLAY_NAMES,
     OFFICIAL_TCC_MODEL_MANIFEST,
     OFFICIAL_TCC_RESULT_ORDER,

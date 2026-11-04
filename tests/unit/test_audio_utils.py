@@ -14,7 +14,7 @@ from app.utils.audio_utils import (
 def test_normalize_audio_scales_to_target_db():
     sig = np.sin(np.linspace(0, 10, 1000)).astype(np.float32)
     out = normalize_audio(sig, target_db=-20.0)
-    rms = float(np.sqrt(np.mean(out ** 2)))
+    rms = float(np.sqrt(np.mean(out**2)))
     expected = 10 ** (-20.0 / 20)  # 0.1
     assert np.isclose(rms, expected, rtol=0.05)
 

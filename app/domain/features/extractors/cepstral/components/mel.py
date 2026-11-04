@@ -9,8 +9,13 @@ from .mfcc import FeatureExtractor
 class MelSpectrogramExtractor(FeatureExtractor):
     """Extrator de espectrograma Mel otimizado para preservar características."""
 
-    def __init__(self, sr: int = 22050, n_fft: int = 2048,
-                 hop_length: int = 512, n_mels: int = 128):
+    def __init__(
+        self,
+        sr: int = 22050,
+        n_fft: int = 2048,
+        hop_length: int = 512,
+        n_mels: int = 128,
+    ):
         self.sr = sr
         self.n_fft = n_fft
         self.hop_length = hop_length
@@ -25,9 +30,13 @@ class MelSpectrogramExtractor(FeatureExtractor):
         try:
             # Espectrograma Mel
             mel_spec = librosa.feature.melspectrogram(
-                y=y, sr=self.sr, n_fft=self.n_fft,
-                hop_length=self.hop_length, n_mels=self.n_mels,
-                fmin=self.fmin, fmax=self.fmax
+                y=y,
+                sr=self.sr,
+                n_fft=self.n_fft,
+                hop_length=self.hop_length,
+                n_mels=self.n_mels,
+                fmin=self.fmin,
+                fmax=self.fmax,
             )
 
             # Conversão para escala logarítmica
@@ -43,7 +52,8 @@ class MelSpectrogramExtractor(FeatureExtractor):
             return np.zeros((self.n_mels, 1))
 
     def _apply_conservative_smoothing(
-            self, spec: np.ndarray, sigma: float = 0.5) -> np.ndarray:
+        self, spec: np.ndarray, sigma: float = 0.5
+    ) -> np.ndarray:
         """Aplica suavização temporal conservadora."""
         from scipy.ndimage import gaussian_filter1d
 

@@ -1,24 +1,24 @@
 import logging
 
+import gradio as gr  # noqa: E402
+import librosa  # noqa: E402
+import librosa.display  # noqa: E402
+import numpy as np  # noqa: E402
+
+from app.core.contracts.audio import AudioData, FeatureType  # noqa: E402
+from app.domain.services.feature_extraction_service import (  # noqa: E402
+    AudioFeatureExtractionService,
+    ExtractionConfig,
+)
+
 # FE.8: helpers compartilhados (configura matplotlib Agg + paleta dark)
 from app.interfaces.gradio.utils.plotting import (
     PLOT_BG,
     PLOT_FACE,
     PLOT_GRID,
     PLOT_TEXT,
+    new_figure,
     style_ax,
-)
-
-import librosa  # noqa: E402
-import librosa.display  # noqa: E402
-import numpy as np  # noqa: E402
-
-import gradio as gr  # noqa: E402
-from app.core.contracts.audio import AudioData, FeatureType  # noqa: E402
-from app.interfaces.gradio.utils.plotting import new_figure
-from app.domain.services.feature_extraction_service import (  # noqa: E402
-    AudioFeatureExtractionService,
-    ExtractionConfig,
 )
 
 logger = logging.getLogger("gradio_features_tab")
@@ -40,51 +40,55 @@ def _style_feat_ax(ax, fig, title=""):
 
 
 def create_features_tab():
-    with gr.Tab("🎼 Features"):
+    with gr.Tab("🎼 Características"):
         from app.interfaces.gradio.utils.components import page_header
 
         page_header(
             "🎼",
-            "Extração de Features",
-            "Visualize features espectrais, cepstrais, prosódicas e temporais "
-            "extraídas de um arquivo de áudio.",
+            "Extração de características",
+            "Veja as características espectrais, cepstrais, prosódicas e temporais "
+            "de um áudio.",
         )
 
         with gr.Row(elem_classes="responsive-grid"):
-            with gr.Column(scale=1):
-                audio_input = gr.Audio(
-                    type="filepath", label="Arquivo de Áudio")
-                feature_type_dropdown = gr.Dropdown(
-                    choices=[ft.value for ft in FeatureType],
-                    value=FeatureType.SPECTRAL.value,
-                    label="Tipo de Feature"
-                )
-                normalize_chk = gr.Checkbox(value=True, label="Normalizar")
+            with gr.Column(scale=1, min_width=320):
+                with gr.Group():
+                    audio_input = gr.Audio(
+                        type="filepath",
+                        label="Arquivo de áudio",
+                        sources=["upload"],
+                    )
+                    feature_type_dropdown = gr.Dropdown(
+                        choices=[ft.value for ft in FeatureType],
+                        value=FeatureType.SPECTRAL.value,
+                        label="Tipo de característica",
+                    )
+                    normalize_chk = gr.Checkbox(value=True, label="Normalizar")
                 extract_btn = gr.Button(
-                    "Extrair e Visualizar", variant="primary")
+                    "Extrair e visualizar", variant="primary", size="lg"
+                )
 
-            with gr.Column(scale=2):
-                with gr.Tabs():
-                    with gr.Tab("Visualização Gráfica"):
-                        gr.Markdown("#### Forma de Onda")
-                        wave_output = gr.Plot(label="Waveform")
-                        with gr.Row(elem_classes="responsive-grid plot-grid"):
-                            with gr.Column():
-                                gr.Markdown("#### Feature Heatmap")
-                                plot_output = gr.Plot(
-                                    label="Visualização da Feature")
-                            with gr.Column():
-                                gr.Markdown("#### Distribuição de Valores")
-                                hist_output = gr.Plot(label="Histograma")
+            with gr.Column(scale=2, min_width=320):
+                wave_output = gr.Plot(label="Forma de onda")
+                with gr.Row(elem_classes="responsive-grid plot-grid"):
+                    with gr.Column():
+                        plot_output = gr.Plot(label="Mapa de calor da característica")
+                    with gr.Column():
+                        hist_output = gr.Plot(label="Distribuição de valores")
 
-                    with gr.Tab("Informações Detalhadas"):
-                        stats_output = gr.Markdown("### Estatísticas")
-                        json_output = gr.JSON(label="Dados Brutos")
+                with gr.Accordion("Estatísticas e dados brutos", open=False):
+                    stats_output = gr.Markdown("*Extraia uma característica para ver.*")
+                    json_output = gr.JSON(label="Dados brutos")
 
         def extract_and_plot(audio_path, feature_type_str, normalize):
             if not audio_path:
-                return None, None, None, "Selecione um arquivo de áudio.", {
-                    "error": "Nenhum arquivo selecionado"}
+                return (
+                    None,
+                    None,
+                    None,
+                    "Selecione um arquivo de áudio.",
+                    {"error": "Nenhum arquivo selecionado"},
+                )
 
             try:
                 # 1. Carregar Áudio
@@ -99,15 +103,10 @@ def create_features_tab():
                     # (compatibilidade)
                     ft_enum = feature_type_str
 
-                config = ExtractionConfig(
-                    feature_types=[ft_enum],
-                    normalize=normalize
-                )
+                config = ExtractionConfig(feature_types=[ft_enum], normalize=normalize)
 
                 # 3. Extrair
-                result = service.extract_features(
-                    audio_data, config
-                )
+                result = service.extract_features(audio_data, config)
 
                 if result.status.name != "SUCCESS":
                     return (
@@ -115,7 +114,7 @@ def create_features_tab():
                         None,
                         None,
                         f"Erro na extração: {result.errors}",
-                        {"error": result.errors}
+                        {"error": result.errors},
                     )
 
                 features = result.data.features
@@ -125,52 +124,63 @@ def create_features_tab():
 
                 # 1. Plot Waveform
                 fig_wave, ax_wave = new_figure(figsize=(10, 3))
-                _style_feat_ax(ax_wave, fig_wave, "Waveform (Time Domain)")
+                _style_feat_ax(ax_wave, fig_wave, "Forma de onda (domínio temporal)")
                 librosa.display.waveshow(
-                    audio_data.samples, sr=audio_data.sample_rate,
-                    ax=ax_wave, color="#3b82f6", alpha=0.85)
+                    audio_data.samples,
+                    sr=audio_data.sample_rate,
+                    ax=ax_wave,
+                    color="#3b82f6",
+                    alpha=0.85,
+                )
                 fig_wave.tight_layout()
 
                 # 2. Plot Feature Heatmap
                 fig_feat, ax_feat = new_figure(figsize=(10, 6))
-                _style_feat_ax(ax_feat, fig_feat, "Feature Heatmap")
+                _style_feat_ax(ax_feat, fig_feat, "Mapa de calor de características")
                 plotted = False
-                first_key = list(feature_data.keys())[
-                    0] if feature_data else None
+                first_key = list(feature_data.keys())[0] if feature_data else None
                 main_feature_array = None
 
-                if feature_type_str == "spectral" and (
-                        "spectrogram" in feature_data):
+                if feature_type_str == "spectral" and ("spectrogram" in feature_data):
                     S_db = feature_data["spectrogram"]
                     main_feature_array = S_db
                     if S_db.ndim == 1:
                         ax_feat.plot(S_db, color="#3b82f6")
-                        ax_feat.set_title("Spectral Feature (Mean)",
-                                          color=_PLOT_TEXT, fontweight="600")
+                        ax_feat.set_title(
+                            "Característica espectral (média)",
+                            color=_PLOT_TEXT,
+                            fontweight="600",
+                        )
                     else:
                         img = librosa.display.specshow(
-                            S_db, sr=audio_data.sample_rate,
-                            x_axis='time', y_axis='hz', ax=ax_feat,
-                            cmap='magma')
-                        cb = fig_feat.colorbar(img, ax=ax_feat,
-                                               format='%+2.0f dB', pad=0.02)
+                            S_db,
+                            sr=audio_data.sample_rate,
+                            x_axis="time",
+                            y_axis="hz",
+                            ax=ax_feat,
+                            cmap="magma",
+                        )
+                        cb = fig_feat.colorbar(
+                            img, ax=ax_feat, format="%+2.0f dB", pad=0.02
+                        )
                         cb.ax.tick_params(colors=_PLOT_TEXT, labelsize=8)
                         cb.outline.set_edgecolor(_PLOT_GRID)
-                        ax_feat.set_title("Espectrograma",
-                                          color=_PLOT_TEXT, fontweight="600")
+                        ax_feat.set_title(
+                            "Espectrograma", color=_PLOT_TEXT, fontweight="600"
+                        )
                     plotted = True
 
                 elif feature_type_str == "cepstral" and "mfcc" in feature_data:
                     mfcc = feature_data["mfcc"]
                     main_feature_array = mfcc
                     if mfcc.ndim == 2:
-                        img = librosa.display.specshow(mfcc, x_axis='time',
-                                                       ax=ax_feat, cmap='viridis')
+                        img = librosa.display.specshow(
+                            mfcc, x_axis="time", ax=ax_feat, cmap="viridis"
+                        )
                         cb = fig_feat.colorbar(img, ax=ax_feat, pad=0.02)
                         cb.ax.tick_params(colors=_PLOT_TEXT, labelsize=8)
                         cb.outline.set_edgecolor(_PLOT_GRID)
-                        ax_feat.set_title("MFCC",
-                                          color=_PLOT_TEXT, fontweight="600")
+                        ax_feat.set_title("MFCC", color=_PLOT_TEXT, fontweight="600")
                         plotted = True
 
                 elif not plotted and first_key:
@@ -178,50 +188,87 @@ def create_features_tab():
                     if isinstance(arr, np.ndarray):
                         main_feature_array = arr
                         if arr.ndim == 2:
-                            im = ax_feat.imshow(arr, aspect='auto',
-                                                origin='lower', cmap='viridis')
+                            im = ax_feat.imshow(
+                                arr, aspect="auto", origin="lower", cmap="viridis"
+                            )
                             cb = fig_feat.colorbar(im, ax=ax_feat, pad=0.02)
                             cb.ax.tick_params(colors=_PLOT_TEXT, labelsize=8)
                         else:
                             ax_feat.plot(arr, color="#06b6d4")
-                        ax_feat.set_title(f"Feature: {first_key}",
-                                          color=_PLOT_TEXT, fontweight="600")
+                        ax_feat.set_title(
+                            f"Feature: {first_key}", color=_PLOT_TEXT, fontweight="600"
+                        )
                         plotted = True
 
                 if not plotted:
-                    ax_feat.text(0.5, 0.5, "Visualização não disponível",
-                                 ha='center', va='center', color=_PLOT_TEXT)
+                    ax_feat.text(
+                        0.5,
+                        0.5,
+                        "Visualização não disponível",
+                        ha="center",
+                        va="center",
+                        color=_PLOT_TEXT,
+                    )
                 fig_feat.tight_layout()
 
                 # 3. Plot Histogram
                 fig_hist, ax_hist = new_figure(figsize=(6, 4))
                 _style_feat_ax(ax_hist, fig_hist, "Distribuição de Valores")
                 if main_feature_array is not None and isinstance(
-                        main_feature_array, np.ndarray):
+                    main_feature_array, np.ndarray
+                ):
                     flat_data = main_feature_array.flatten()
-                    ax_hist.hist(flat_data, bins=50, color='#3b82f6',
-                                 edgecolor='#1e293b', alpha=0.8)
+                    ax_hist.hist(
+                        flat_data,
+                        bins=50,
+                        color="#3b82f6",
+                        edgecolor="#1e293b",
+                        alpha=0.8,
+                    )
                     ax_hist.set_xlabel("Valor")
                     ax_hist.set_ylabel("Frequência")
                     mean_val = np.mean(flat_data)
                     std_val = np.std(flat_data)
-                    ax_hist.axvline(mean_val, color='#ef4444', linestyle='dashed',
-                                    linewidth=1.5, label=f'Média: {mean_val:.2f}')
-                    ax_hist.axvline(mean_val + std_val, color='#10b981',
-                                    linestyle='dashed', linewidth=1,
-                                    label=f'+1σ: {mean_val + std_val:.2f}')
-                    ax_hist.axvline(mean_val - std_val, color='#10b981',
-                                    linestyle='dashed', linewidth=1,
-                                    label=f'-1σ: {mean_val - std_val:.2f}')
-                    ax_hist.legend(facecolor=_PLOT_FACE, edgecolor=_PLOT_GRID,
-                                   labelcolor=_PLOT_TEXT, fontsize=9)
+                    ax_hist.axvline(
+                        mean_val,
+                        color="#ef4444",
+                        linestyle="dashed",
+                        linewidth=1.5,
+                        label=f"Média: {mean_val:.2f}",
+                    )
+                    ax_hist.axvline(
+                        mean_val + std_val,
+                        color="#10b981",
+                        linestyle="dashed",
+                        linewidth=1,
+                        label=f"+1σ: {mean_val + std_val:.2f}",
+                    )
+                    ax_hist.axvline(
+                        mean_val - std_val,
+                        color="#10b981",
+                        linestyle="dashed",
+                        linewidth=1,
+                        label=f"-1σ: {mean_val - std_val:.2f}",
+                    )
+                    ax_hist.legend(
+                        facecolor=_PLOT_FACE,
+                        edgecolor=_PLOT_GRID,
+                        labelcolor=_PLOT_TEXT,
+                        fontsize=9,
+                    )
                 else:
-                    ax_hist.text(0.5, 0.5, "Dados não numéricos",
-                                 ha='center', va='center', color=_PLOT_TEXT)
+                    ax_hist.text(
+                        0.5,
+                        0.5,
+                        "Dados não numéricos",
+                        ha="center",
+                        va="center",
+                        color=_PLOT_TEXT,
+                    )
                 fig_hist.tight_layout()
 
                 # --- Estatísticas Detalhadas ---
-                stats_md = "### 📊 Estatísticas das Features\n\n"
+                stats_md = "### 📊 Estatísticas das características\n\n"
                 stats_md += f"**Duração do Áudio:** {audio_data.duration:.2f}s\n"
                 stats_md += f"**Sample Rate:** {audio_data.sample_rate} Hz\n\n"
 
@@ -250,16 +297,14 @@ def create_features_tab():
                                 "mean": float(np.mean(v)),
                                 "std": float(np.std(v)),
                                 # Amostra pequena
-                                "sample_values": v.flatten()[:20].tolist()
+                                "sample_values": v.flatten()[:20].tolist(),
                             }
                         except Exception as e:
                             # FE.7: log do feature que falhou para debug
                             logger.debug(
                                 f"Stats falhou para feature '{k}' shape={v.shape}: {e}"
                             )
-                            stats_md += (
-                                f"| `{k}` | `{v.shape}` | - | - | - | - |\n"
-                            )
+                            stats_md += f"| `{k}` | `{v.shape}` | - | - | - | - |\n"
                             json_data[k] = str(v)
                     else:
                         json_data[k] = str(v)
@@ -268,17 +313,12 @@ def create_features_tab():
 
             except Exception as e:
                 import traceback
+
                 traceback.print_exc()
-                return None, None, None, f"Erro Fatal: {str(e)}", {
-                    "error": str(e)}
+                return None, None, None, f"Erro Fatal: {str(e)}", {"error": str(e)}
 
         extract_btn.click(
             extract_and_plot,
             inputs=[audio_input, feature_type_dropdown, normalize_chk],
-            outputs=[
-                wave_output,
-                plot_output,
-                hist_output,
-                stats_output,
-                json_output]
+            outputs=[wave_output, plot_output, hist_output, stats_output, json_output],
         )

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Ponto de entrada principal do sistema XfakeSong.
+Ponto de entrada principal do sistema SpeechChecker.
 Fornece acesso à interface de linha de comando (CLI) e interface gráfica (Gradio).
 """
 
@@ -8,16 +8,17 @@ import argparse
 import logging
 import os
 import sys
-from pathlib import Path
 
+from app.core.config.env import load_environment
+from app.core.config.ports import LOCAL_PORT, conflicting_docker_instances
 from app.core.hf_compat import ensure_hf_folder_shim
 from app.core.performance import configure_runtime_environment
 
+# O .env vem antes de tudo: configure_runtime_environment() fixa variáveis
+# de TF/BLAS com setdefault, e um .env carregado depois seria ignorado.
+load_environment()
 configure_runtime_environment()
 ensure_hf_folder_shim()
-
-# Adicionar diretório raiz ao PYTHONPATH
-sys.path.insert(0, str(Path(__file__).parent))
 
 
 def setup_logging():
@@ -34,14 +35,14 @@ def setup_logging():
 
 def main():
     """Função principal."""
-    parser = argparse.ArgumentParser(description="XfakeSong System")
+    parser = argparse.ArgumentParser(description="SpeechChecker System")
     parser.add_argument(
         "--gui", action="store_true", help="Iniciar interface gráfica (Gradio)"
     )
     parser.add_argument(
         "--gradio", action="store_true", dest="gui", help="Alias para --gui"
     )
-    _default_port = int(os.environ.get("PORT", 7860))
+    _default_port = int(os.environ.get("PORT", LOCAL_PORT))
     parser.add_argument(
         "--port",
         type=int,
@@ -65,6 +66,17 @@ def main():
 
     setup_logging()
     logger = logging.getLogger("Main")
+
+    if args.gui:
+        conflitos = conflicting_docker_instances(args.port)
+        for nome, porta in conflitos.items():
+            logger.error(
+                f"{nome} está no ar na porta {porta} e usa o mesmo data/app.db. "
+                f"Pare-o com `docker stop {nome}` ou aponte DATABASE_URL para "
+                "outro arquivo."
+            )
+        if conflitos:
+            sys.exit(1)
 
     # GPU.9: Setup TF/GPU ANTES de qualquer import de tabs Gradio ou serviços
     # de domínio. `memory_growth` + `mixed_precision` precisam ser aplicados
@@ -95,7 +107,7 @@ def main():
     if args.bootstrap_dirs:
         logger.info("Criando estrutura de diretórios...")
         try:
-            from app.core.bootstrap import bootstrap_application
+            from app.dependencies import bootstrap_application
 
             report = bootstrap_application()
             logger.info(
@@ -143,7 +155,7 @@ def main():
     else:
         logger.info("Iniciando interface CLI...")
         try:
-            from app.core.bootstrap import bootstrap_application
+            from app.dependencies import bootstrap_application
             from app.interfaces.cli.context import AppContext
             from app.interfaces.cli.menus.main_menu import MainMenu
 

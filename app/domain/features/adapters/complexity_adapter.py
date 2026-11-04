@@ -18,8 +18,7 @@ class ComplexityExtractorWrapper(IFeatureExtractor):
     def __init__(self):
         self.extractor = ComplexityFeatureExtractor(sr=22050)
 
-    def extract(
-            self, audio_data: AudioData) -> ProcessingResult[AudioFeatures]:
+    def extract(self, audio_data: AudioData) -> ProcessingResult[AudioFeatures]:
         try:
             features_dict = self.extractor.extract_features(audio_data.samples)
 
@@ -37,17 +36,16 @@ class ComplexityExtractorWrapper(IFeatureExtractor):
                 features=normalized_features,
                 feature_type=FeatureType.ADVANCED,
                 extraction_params=self.get_extraction_params(),
-                audio_metadata={"extractor": "complexity"}
+                audio_metadata={"extractor": "complexity"},
             )
 
             return ProcessingResult(
-                status=ProcessingStatus.SUCCESS,
-                data=audio_features
+                status=ProcessingStatus.SUCCESS, data=audio_features
             )
         except Exception as e:
             return ProcessingResult(
                 status=ProcessingStatus.ERROR,
-                errors=[f"Erro na extração de complexidade: {str(e)}"]
+                errors=[f"Erro na extração de complexidade: {str(e)}"],
             )
 
     def extract_features(
@@ -64,6 +62,6 @@ class ComplexityExtractorWrapper(IFeatureExtractor):
     def get_extraction_params(self) -> Dict[str, Any]:
         return {
             "sr": self.extractor.sr,
-            "frame_length": getattr(self.extractor, 'frame_length', 2048),
-            "hop_length": getattr(self.extractor, 'hop_length', 512)
+            "frame_length": getattr(self.extractor, "frame_length", 2048),
+            "hop_length": getattr(self.extractor, "hop_length", 512),
         }

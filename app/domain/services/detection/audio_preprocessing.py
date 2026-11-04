@@ -42,9 +42,9 @@ DEFAULT_DURATION_SEC = 3  # janela típica usada no treino do wizard
 # vocoder). Modelos legados sem `feature_frontend` no contrato continuam usando
 # "logmel" para preservar a paridade train↔inference original.
 DEFAULT_FRONTEND = "lfcc"
-DEFAULT_N_LFCC = 80          # nº de coeficientes mantidos (preserva shape (T,80,1))
-DEFAULT_N_LIN_FILTERS = 80   # nº de filtros triangulares lineares
-LFCC_CLIP = 50.0             # bound numérico (NaN-safety)
+DEFAULT_N_LFCC = 80  # nº de coeficientes mantidos (preserva shape (T,80,1))
+DEFAULT_N_LIN_FILTERS = 80  # nº de filtros triangulares lineares
+LFCC_CLIP = 50.0  # bound numérico (NaN-safety)
 
 
 def linear_filterbank_matrix(
@@ -204,7 +204,7 @@ def pad_or_truncate_audio(
         # Center crop
         mid = n // 2
         start = max(0, mid - target_length // 2)
-        return samples[start:start + target_length]
+        return samples[start : start + target_length]
     # Pad
     pad = target_length - n
     return np.pad(samples, (0, pad), mode=pad_mode)
@@ -244,9 +244,7 @@ def audio_to_log_mel(
         # (T, 1) ou (T, C) → 1D
         audio = audio.squeeze(-1) if audio.shape[-1] == 1 else audio.mean(axis=-1)
     if audio.ndim != 1:
-        raise ValueError(
-            f"audio deve ser 1D ou 2D, recebido shape={audio.shape}"
-        )
+        raise ValueError(f"audio deve ser 1D ou 2D, recebido shape={audio.shape}")
 
     if fmax is None:
         fmax = sample_rate / 2.0
@@ -313,7 +311,9 @@ def prepare_audio_for_model(
     """
     samples = np.asarray(samples, dtype=np.float32)
     if samples.ndim > 1:
-        samples = samples.mean(axis=-1) if samples.shape[-1] > 1 else samples.squeeze(-1)
+        samples = (
+            samples.mean(axis=-1) if samples.shape[-1] > 1 else samples.squeeze(-1)
+        )
 
     if normalize:
         samples = normalize_audio(samples)
@@ -329,9 +329,7 @@ def prepare_audio_for_model(
 
     if input_type == "spectrogram":
         # Decide se modelo aceita (T, F) ou (T, F, 1)
-        add_channel = bool(
-            len(input_shape) == 3 and input_shape[-1] == 1
-        )
+        add_channel = bool(len(input_shape) == 3 and input_shape[-1] == 1)
 
         # O `input_shape` do MODELO é a fonte de verdade para a dimensão de
         # features: `n_mels`/`n_lfcc` chegam aqui do `input_contract` gravado
@@ -347,14 +345,18 @@ def prepare_audio_for_model(
             if feature_frontend == "lfcc" and int(n_lfcc) != expected_feature_dim:
                 logger.warning(
                     "prepare_audio_for_model: n_lfcc=%s difere do input_shape do "
-                    "modelo (%s); usando %s.", n_lfcc, expected_feature_dim,
+                    "modelo (%s); usando %s.",
+                    n_lfcc,
+                    expected_feature_dim,
                     expected_feature_dim,
                 )
                 n_lfcc = expected_feature_dim
             elif feature_frontend != "lfcc" and int(n_mels) != expected_feature_dim:
                 logger.warning(
                     "prepare_audio_for_model: n_mels=%s difere do input_shape do "
-                    "modelo (%s); usando %s.", n_mels, expected_feature_dim,
+                    "modelo (%s); usando %s.",
+                    n_mels,
+                    expected_feature_dim,
                     expected_feature_dim,
                 )
                 n_mels = expected_feature_dim

@@ -1,18 +1,18 @@
 # 06 — Qualidade e Testes
 
-Esta é a fonte canônica da estratégia de testes do XFakeSong. A suíte é
+Esta é a fonte canônica da estratégia de testes do SpeechChecker. A suíte é
 organizada por categoria, usa marcadores automáticos por pasta e separa o que é
 rápido do que é pesado com TensorFlow real.
 
 ## TL;DR
 
 ```bash
-./scripts/ops/run_tests.sh fast          # suíte rápida: tudo exceto smoke
-./scripts/ops/run_tests.sh unit          # só unitários
-./scripts/ops/run_tests.sh api           # contrato HTTP
-./scripts/ops/run_tests.sh integration   # integração entre serviços
-./scripts/ops/run_tests.sh smoke         # opt-in: TensorFlow real, minutos
-./scripts/ops/run_tests.sh cov           # rápida + cobertura app/benchmarks
+bash tools/ops/run_tests.sh fast          # suíte rápida: tudo exceto smoke
+bash tools/ops/run_tests.sh unit          # só unitários
+bash tools/ops/run_tests.sh api           # contrato HTTP
+bash tools/ops/run_tests.sh integration   # integração entre serviços
+bash tools/ops/run_tests.sh smoke         # opt-in: TensorFlow real, minutos
+bash tools/ops/run_tests.sh cov           # rápida + cobertura app/benchmarks
 ```
 
 Equivalentes principais:
@@ -31,21 +31,21 @@ make test-cov
 ```text
 tests/
 ├── conftest.py          # fixtures globais + marcação automática por pasta
-├── unit/                # 69 arquivos
+├── unit/                # 88 arquivos
 ├── api/                 # 5 arquivos
 ├── functional/          # 2 arquivos
-├── integration/         # 7 arquivos
-└── smoke/               # 5 arquivos, opt-in
+├── integration/         # 10 arquivos
+└── smoke/               # 6 arquivos, opt-in
 ```
 
-Total atual: **94 arquivos de teste**.
+Total atual: **111 arquivos de teste**.
 
 | Categoria | Marcador | Arquivos | Objetivo | Run padrão |
 |---|---:|---:|---|---|
-| Unit | `unit` | 74 | Componentes isolados, utilitários, treinamento, benchmark, notebooks, segurança local | Sim |
+| Unit | `unit` | 88 | Componentes isolados, utilitários, treinamento, benchmark, notebooks, segurança local | Sim |
 | API | `api` | 5 | Contratos FastAPI com `TestClient` e serviços mockados | Sim |
 | Functional | `functional` | 2 | Fluxos de usuário e rotas/frontend | Sim |
-| Integration | `integration` | 7 | Cooperação real entre serviços, podendo treinar modelos pequenos | Sim |
+| Integration | `integration` | 10 | Cooperação real entre serviços, podendo treinar modelos pequenos | Sim |
 | Smoke | `smoke` | 6 | Sanidade ponta a ponta com TensorFlow real, modelos e app | Não |
 
 `pyproject.toml` define `addopts = "-ra -q --ignore=data --ignore=logs -m 'not smoke'"`.
@@ -63,7 +63,10 @@ A suíte cobre três fronteiras do sistema:
 
 O domínio continua sendo a linha mais protegida: `tests/integration/test_domain_imports_without_web_layer.py`
 garante que `app/domain/` carrega sem depender de FastAPI, Gradio ou adapters de
-interface.
+interface, e `tests/unit/test_layer_boundaries.py` lê o grafo de imports do
+fonte (AST, inclusive imports tardios e relativos) para garantir que
+`app.core` não importa `app.domain`/`app.interfaces`, que `app.domain` não
+importa `app.interfaces` e que nada em `app/` importa `tools`.
 
 ## Marcadores
 
@@ -80,7 +83,7 @@ uma nova categoria, atualize em conjunto:
 1. subpasta em `tests/`;
 2. `_TEST_CATEGORIES` em `tests/conftest.py`;
 3. `markers` em `pyproject.toml`;
-4. `scripts/ops/run_tests.sh`;
+4. `tools/ops/run_tests.sh`;
 5. esta página.
 
 ## Mapa de Cobertura
@@ -97,6 +100,7 @@ diz qual módulo está sob contrato, não em que semana o teste foi escrito.
 | `test_architectures.py` | registry, factory, e a sincronia das TRÊS fontes de hiperparâmetro |
 | `test_rawgat_aasist_ssl_backends.py` | RawGAT-ST/AASIST fiéis ao paper + back-ends SSL |
 | `test_sinc_layers_mixed_precision.py` | `SincConvLayer` sob `mixed_float16` |
+| `test_layers_deserialization.py` | `layers.py` como porta e registro: configs gravadas continuam abrindo |
 | `test_ssl_backbone.py` | backbone SSL portado do PyTorch para Keras |
 | `test_ssl_head_contract.py` | contrato de embedding SSL + augmentation dinâmico |
 | `test_torch_ssl_aasist.py` | back-end AASIST em PyTorch (ablação fora do escopo) |
@@ -107,8 +111,12 @@ diz qual módulo está sob contrato, não em que semana o teste foi escrito.
 | Arquivo | Sujeito |
 |---|---|
 | `test_trainer.py` | contratos básicos do `ModelTrainer` |
+| `test_training_calibration.py` | calibração pós-treino e `input_contract`, sem montar um `ModelTrainer` |
 | `test_trainer_compile_respect.py` | compile-respect, `from_logits`, augmentation |
 | `test_training_guards.py` | `CollapseAbort` e `PersistentEpochHistory` |
+| `test_operating_point.py` | pontuação centrada no limiar: mesma decisão, mesma ordem e confiança de 0,5 a 1 |
+| `test_gradio_ui_organization.py` | navegação, opções sem efeito, veredito, tempos e notificações da interface |
+| `test_check_pip_audit.py` | gate de release: avisos fora da lista, exceção vencida e versão diferente da registrada |
 | `test_checkpoint_monitor.py` | `checkpoint_monitor`, `ValidationEER` e o encanamento |
 | `test_resumable_checkpoint.py` | melhor valor sobrevive a retomadas |
 | `test_guarded_checkpoint_restore.py` | restauração validada contra os pesos em memória |
@@ -156,9 +164,14 @@ diz qual módulo está sob contrato, não em que semana o teste foi escrito.
 | `test_detection_utils.py` | utilitários do serviço de detecção |
 | `test_audio_resample_safety.py` | rede de segurança de reamostragem |
 | `test_device_support.py` | seleção de dispositivo CPU/GPU |
+| `test_docker_deploy.py` | contexto de build sem segredos, `.env` lido pelos scripts, modo produção, porta local e limpeza restrita ao projeto |
+| `test_docker_release.py` | guardar e voltar a imagem de inferência, versões fixadas e workflow de build |
+| `test_sync_hf_models.py` | sincronização do Hub no boot sem sobrescrever arquivos locais |
 | `test_gpu_diagnosis.py` | matriz de diagnóstico + probe read-only |
 | `test_upload_service.py` | criação de dataset e recepção de arquivos |
 | `test_experiment_store.py` | persistência científica consolidada |
+| `test_db_repositories.py` | repositórios de `core/db` (histórico, jobs, hiperparâmetros salvos, estatísticas) |
+| `test_training_job_service.py` | ciclo de vida dos jobs de treino/K-fold da API |
 | `test_results_paths.py` | raiz canônica de resultados |
 | `test_clean_bootstrap.py` | primeira execução sem artefatos, idempotente |
 
@@ -172,6 +185,7 @@ diz qual módulo está sob contrato, não em que semana o teste foi escrito.
 | `test_tuning_charts.py` | gráficos de busca de hiperparâmetros |
 | `test_interface_uses_pipeline_hparams.py` | a interface propõe o que o benchmark treina |
 | `test_forensic_math.py` | correção das medidas da análise forense |
+| `test_forensic_measures.py` | medidas forenses do domínio, contra sinais de valor conhecido |
 | `test_i18n.py` | i18n da UI |
 | `test_schemas.py` | schemas Pydantic da API |
 | `test_middleware.py` | cadeia de middleware HTTP |
@@ -187,9 +201,10 @@ diz qual módulo está sob contrato, não em que semana o teste foi escrito.
 | Arquivo | Sujeito |
 |---|---|
 | `test_security_boundaries.py` | autenticação/autorização no ponto de entrada |
+| `test_layer_boundaries.py` | fronteiras de camada no grafo de imports de `app/` |
 | `test_security_headers.py` | headers de segurança em todas as respostas |
 | `test_exceptions.py` | hierarquia de exceções |
-| `test_file_utils.py`, `test_audio_utils.py`, `test_system_utils.py`, `test_helpers.py`, `test_core_utils.py` | utilitários |
+| `test_file_utils.py`, `test_audio_utils.py`, `test_helpers.py`, `test_core_utils.py` | utilitários |
 | `test_version_check.py` | guard de compatibilidade no startup |
 | `test_colab_utils.py` | helper isolado do Google Colab |
 | `test_notebooks_compile.py` | notebooks ativos seguem compilando |
@@ -259,9 +274,12 @@ test_architectures_build.py
 test_calibration_matches_saved_weights.py
 test_detection_integration.py
 test_domain_imports_without_web_layer.py
+test_forensic_analysis.py
+test_interactive_training.py
 test_models_dir_unification.py
 test_notebook_train_system_inference.py
 test_training_integration.py
+test_voice_profile_service.py
 ```
 
 ### `tests/smoke/`
@@ -291,7 +309,7 @@ inferência.
 | `api_key_headers` | header `X-API-Key` válido para endpoints protegidos |
 | `_isolate_models_dir` | **autouse, escopo de sessão**: aponta `XFAKE_MODELS_DIR` para um diretório temporário |
 
-`_isolate_models_dir` não é conveniência, é proteção. `benchmarks/runner.py::
+`_isolate_models_dir` não é conveniência, é proteção. `benchmarks/common.py::
 _models_dir` cai em `cfg.models_dir`, cujo default é `data/models` — o
 diretório de PRODUÇÃO —, e onze `BenchmarkConfig` da suíte não passam
 `models_dir`. Foi assim que o `bench_svm.pkl` do `clean_benchmark_15k` (63
@@ -312,19 +330,19 @@ Convenções:
 
 ### Runner
 
-`scripts/ops/run_tests.sh` escolhe automaticamente `.venv/bin/python`,
+`tools/ops/run_tests.sh` escolhe automaticamente `.venv/bin/python`,
 `.venv/Scripts/python.exe` ou `python`.
 
 ```bash
-./scripts/ops/run_tests.sh fast
-./scripts/ops/run_tests.sh unit -v -k benchmark
-./scripts/ops/run_tests.sh api
-./scripts/ops/run_tests.sh functional
-./scripts/ops/run_tests.sh integration
-./scripts/ops/run_tests.sh smoke
-./scripts/ops/run_tests.sh all
-./scripts/ops/run_tests.sh cov
-./scripts/ops/run_tests.sh list
+./tools/ops/run_tests.sh fast
+./tools/ops/run_tests.sh unit -v -k benchmark
+./tools/ops/run_tests.sh api
+./tools/ops/run_tests.sh functional
+./tools/ops/run_tests.sh integration
+./tools/ops/run_tests.sh smoke
+./tools/ops/run_tests.sh all
+./tools/ops/run_tests.sh cov
+./tools/ops/run_tests.sh list
 ```
 
 ### Pytest direto
@@ -340,7 +358,7 @@ pytest -m "" tests/              # inclui smoke, anulando addopts
 ### Cobertura
 
 ```bash
-./scripts/ops/run_tests.sh cov
+./tools/ops/run_tests.sh cov
 pytest --cov=app --cov=benchmarks --cov-report=term-missing tests/
 pytest --cov=app --cov=benchmarks --cov-report=html tests/
 ```
@@ -353,7 +371,8 @@ Workflows ativos:
 
 | Workflow | Quando roda | Papel |
 |---|---|---|
-| `.github/workflows/ci.yml` | push, PR, manual | ruff advisório, testes+cobertura, segurança, docs, Docker CPU em PR — **não** roda notebooks |
+| `.github/workflows/ci.yml` | push, PR, manual | lint e formatação, testes+cobertura, segurança, docs, Docker CPU em PR — **não** roda notebooks |
+| `.github/workflows/release-gate.yml` | tag `v*` ou manual | gates estritos de release; detalhes em [Dependências e Gates](release-gates.md) |
 | `.github/workflows/static.yml` | push na `main`, manual | build e deploy da documentação no GitHub Pages |
 | `.github/workflows/notebooks-execute.yml` | manual (`workflow_dispatch`) | execução best-effort de notebooks self-contained |
 
@@ -364,10 +383,14 @@ manualmente antes de abrir PR se tocou em notebooks.
 Gates locais equivalentes:
 
 ```bash
-./scripts/ops/run_tests.sh cov
-mkdocs build --strict
-bandit -r app benchmarks scripts -lll
-python scripts/ops/build_notebooks.py
+python -m pip install -r requirements-dev.txt -r requirements-docs.txt
+ruff check app tests benchmarks tools
+bash tools/ops/run_tests.sh cov
+python tools/ops/check_pip_audit.py
+mkdocs build --strict --clean
+python tools/ops/check_docs_site.py infrastructure/site
+bandit -r app benchmarks tools -lll
+python tools/ops/build_notebooks.py
 git diff --exit-code -- notebooks/
 ```
 
@@ -389,22 +412,23 @@ comprovem o caminho entre adapter e domínio sem exigir pesos reais.
 
 ```bash
 python -m py_compile tests/conftest.py
-./scripts/ops/run_tests.sh unit
-./scripts/ops/run_tests.sh fast
-mkdocs build --strict
+./tools/ops/run_tests.sh unit
+./tools/ops/run_tests.sh fast
+mkdocs build --strict --clean
+python tools/ops/check_docs_site.py infrastructure/site
 ```
 
 Quando tocar em notebooks:
 
 ```bash
-python scripts/ops/build_notebooks.py
+python tools/ops/build_notebooks.py
 pytest tests/unit/test_notebooks_compile.py -q
 ```
 
 Quando tocar em modelos, treino ou inferência:
 
 ```bash
-./scripts/ops/run_tests.sh smoke
+./tools/ops/run_tests.sh smoke
 ```
 
 ## Armadilhas Conhecidas
@@ -416,5 +440,5 @@ Quando tocar em modelos, treino ou inferência:
   `input_contract` quando o predictor puder acessá-los.
 - TensorFlow no Windows nativo não usa GPU com versões modernas; smoke pesado
   deve preferir WSL2/Linux quando GPU for necessária.
-- Notebooks ativos são gerados por `scripts/ops/build_notebooks.py`; edite o
+- Notebooks ativos são gerados por `tools/ops/build_notebooks.py`; edite o
   gerador, não só o `.ipynb`.

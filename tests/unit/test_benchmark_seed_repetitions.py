@@ -16,7 +16,7 @@ import pytest
 
 from benchmarks.config import BenchmarkConfig
 from benchmarks.report import _pct_with_uncertainty, _uncertainty_note
-from benchmarks.runner import _aggregate_seed_runs
+from benchmarks.seed_aggregation import _aggregate_seed_runs
 
 
 def test_training_seeds_derive_from_base_seed():
@@ -44,7 +44,9 @@ def test_aggregation_reports_mean_and_sample_std():
     assert agg["training_seeds"] == [42, 43, 44]
     assert agg["clean"]["eer"] == pytest.approx(0.20)
     # desvio AMOSTRAL (ddof=1), não populacional
-    assert agg["clean"]["eer_seed_std"] == pytest.approx(np.std([0.1, 0.2, 0.3], ddof=1))
+    assert agg["clean"]["eer_seed_std"] == pytest.approx(
+        np.std([0.1, 0.2, 0.3], ddof=1)
+    )
     assert agg["clean"]["eer_seed_values"] == [0.10, 0.20, 0.30]
     # a robustez por SNR também agrega
     assert agg["robustness"]["20"]["eer"] == pytest.approx(0.21)
@@ -116,7 +118,7 @@ def test_seed_runs_preserva_o_motivo_da_falha():
     estouro de memoria de um colapso de treino ou de um bug -- e a media entre
     sementes fica silenciosamente apoiada em menos repeticoes do que se pediu.
     """
-    from benchmarks.runner import _aggregate_seed_runs
+    from benchmarks.seed_aggregation import _aggregate_seed_runs
 
     bloco_ok = {
         "accuracy": 0.98,
@@ -124,12 +126,26 @@ def test_seed_runs_preserva_o_motivo_da_falha():
         "auc_roc": 0.99,
     }
     runs = [
-        {"training_seed": 42, "status": "ok", "clean": dict(bloco_ok),
-         "robustness": {}, "wall_time_s": 100.0},
-        {"training_seed": 43, "status": "ok", "clean": dict(bloco_ok),
-         "robustness": {}, "wall_time_s": 101.0},
-        {"training_seed": 44, "status": "error", "wall_time_s": 50.8,
-         "error": "CUDA out of memory"},
+        {
+            "training_seed": 42,
+            "status": "ok",
+            "clean": dict(bloco_ok),
+            "robustness": {},
+            "wall_time_s": 100.0,
+        },
+        {
+            "training_seed": 43,
+            "status": "ok",
+            "clean": dict(bloco_ok),
+            "robustness": {},
+            "wall_time_s": 101.0,
+        },
+        {
+            "training_seed": 44,
+            "status": "error",
+            "wall_time_s": 50.8,
+            "error": "CUDA out of memory",
+        },
     ]
 
     agregado = _aggregate_seed_runs(runs)
@@ -139,9 +155,9 @@ def test_seed_runs_preserva_o_motivo_da_falha():
 
     falhou = [r for r in agregado["seed_runs"] if r["status"] != "ok"]
     assert len(falhou) == 1, "a repeticao que falhou tem de continuar listada"
-    assert falhou[0]["error"] == "CUDA out of memory", (
-        "o motivo da falha foi descartado na projecao de seed_runs"
-    )
+    assert (
+        falhou[0]["error"] == "CUDA out of memory"
+    ), "o motivo da falha foi descartado na projecao de seed_runs"
 
     # As bem-sucedidas mantem a chave, com None -- schema estavel.
     ok = [r for r in agregado["seed_runs"] if r["status"] == "ok"]

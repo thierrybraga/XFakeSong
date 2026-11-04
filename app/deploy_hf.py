@@ -7,15 +7,23 @@ from huggingface_hub import HfApi, create_repo, login
 try:
     from huggingface_hub import HfFolder  # noqa: F401
 except ImportError:
+
     class HfFolder:
         """Shim para HfFolder removido em versoes recentes de huggingface_hub."""
+
         pass
 
 
 def deploy_interface():
-    print("===============================================================================")
-    print("                        DEPLOY PARA HUGGING FACE SPACES                        ")
-    print("===============================================================================")
+    print(
+        "==============================================================================="
+    )
+    print(
+        "                        DEPLOY PARA HUGGING FACE SPACES                        "
+    )
+    print(
+        "==============================================================================="
+    )
     print("\nNota: A autenticacao requer um token de acesso (Write/Escrita).")
     print("Obtenha em: https://huggingface.co/settings/tokens\n")
 
@@ -38,13 +46,13 @@ def deploy_interface():
     api = HfApi()
     try:
         user_info = api.whoami()
-        user = user_info['name']
+        user = user_info["name"]
         print(f"\nUsuario autenticado: {user}")
     except Exception as e:
         print(f"Erro ao obter informacoes do usuario: {e}")
         return
 
-    default_name = f"{user}/xfakesong"
+    default_name = f"{user}/speechchecker"
     repo_name = input(f"Nome do Space para deploy [{default_name}]: ").strip()
     if not repo_name:
         repo_name = default_name
@@ -57,14 +65,16 @@ def deploy_interface():
     print("- SDK: Docker (baseado no Dockerfile existente)")
 
     confirm = input("\nConfirmar deploy? [S/n]: ").lower()
-    if confirm and confirm != 's':
+    if confirm and confirm != "s":
         print("Cancelado.")
         return
 
     # Criar repo se não existir
     print("\n1. Verificando repositorio...")
     try:
-        create_repo(repo_id=repo_name, repo_type="space", space_sdk="docker", exist_ok=True)
+        create_repo(
+            repo_id=repo_name, repo_type="space", space_sdk="docker", exist_ok=True
+        )
         print("   Repositorio pronto.")
     except Exception as e:
         print(f"   Erro ao criar/verificar repositorio: {e}")
@@ -88,17 +98,24 @@ def deploy_interface():
                 "system.log",
                 ".env",
                 "tests*",
-                "start.bat"
-            ]
+                "start.bat",
+            ],
         )
-        print("\n===============================================================================")
-        print("                           DEPLOY CONCLUIDO!                                   ")
-        print("===============================================================================")
+        print(
+            "\n==============================================================================="
+        )
+        print(
+            "                           DEPLOY CONCLUIDO!                                   "
+        )
+        print(
+            "==============================================================================="
+        )
         print(f"Acesse seu Space em: https://huggingface.co/spaces/{repo_name}")
         print("Nota: O Space pode levar alguns minutos para construir o container.")
         print("      Verifique a aba 'Logs' no Hugging Face se houver erros.")
     except Exception as e:
         print(f"Erro no upload: {e}")
+
 
 if __name__ == "__main__":
     deploy_interface()

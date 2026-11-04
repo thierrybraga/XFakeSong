@@ -1,6 +1,7 @@
 """
 Extração de características de contraste espectral.
 """
+
 from typing import Dict
 
 import numpy as np
@@ -10,11 +11,11 @@ def compute_subband_energy_ratios(S: np.ndarray, freqs: np.ndarray) -> Dict:
     """Computa razões de energia entre sub-bandas."""
     # Definir bandas de frequência
     bands = {
-        'low': (0, 500),
-        'mid_low': (500, 1000),
-        'mid': (1000, 2000),
-        'mid_high': (2000, 4000),
-        'high': (4000, 8000)
+        "low": (0, 500),
+        "mid_low": (500, 1000),
+        "mid": (1000, 2000),
+        "mid_high": (2000, 4000),
+        "high": (4000, 8000),
     }
 
     ratios = {}
@@ -28,17 +29,18 @@ def compute_subband_energy_ratios(S: np.ndarray, freqs: np.ndarray) -> Dict:
             band_energies[band_name] = band_energy
 
     # Calcular razões
-    if 'low' in band_energies and 'high' in band_energies:
-        ratios['low_high_ratio'] = (band_energies['low'] /
-                                    (band_energies['high'] + 1e-10))
+    if "low" in band_energies and "high" in band_energies:
+        ratios["low_high_ratio"] = band_energies["low"] / (
+            band_energies["high"] + 1e-10
+        )
 
-    if 'mid' in band_energies and 'high' in band_energies:
-        ratios['mid_high_ratio'] = (band_energies['mid'] /
-                                    (band_energies['high'] + 1e-10))
+    if "mid" in band_energies and "high" in band_energies:
+        ratios["mid_high_ratio"] = band_energies["mid"] / (
+            band_energies["high"] + 1e-10
+        )
 
-    if 'low' in band_energies and 'mid' in band_energies:
-        ratios['low_mid_ratio'] = (band_energies['low'] /
-                                   (band_energies['mid'] + 1e-10))
+    if "low" in band_energies and "mid" in band_energies:
+        ratios["low_mid_ratio"] = band_energies["low"] / (band_energies["mid"] + 1e-10)
 
     return ratios
 

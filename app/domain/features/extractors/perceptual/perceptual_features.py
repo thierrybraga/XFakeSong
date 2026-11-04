@@ -12,8 +12,6 @@ from typing import Dict
 import numpy as np
 
 from .components import (
-    bark_to_hz,
-    erb_to_hz,
     extract_bark_features,
     extract_erb_features,
     extract_fluctuation_features,
@@ -22,8 +20,6 @@ from .components import (
     extract_roughness_features,
     extract_sharpness_features,
     extract_tonality_features,
-    hz_to_bark,
-    hz_to_erb,
 )
 
 
@@ -32,8 +28,9 @@ class PerceptualFeatureExtractor:
     Extrator de características perceptuais de áudio.
     """
 
-    def __init__(self, sr: int = 22050, frame_length: int = 2048,
-                 hop_length: int = 512):
+    def __init__(
+        self, sr: int = 22050, frame_length: int = 2048, hop_length: int = 512
+    ):
         """
         Inicializa o extrator de características perceptuais.
 
@@ -111,54 +108,37 @@ class PerceptualFeatureExtractor:
             print(f"Erro na extração perceptual: {str(e)}")
             # Retornar características básicas em caso de erro
             features = {
-                'bark_energy_mean': 0.0,
-                'erb_energy_mean': 0.0,
-                'loudness_mean': 0.0,
-                'sharpness_mean': 0.0
+                "bark_energy_mean": 0.0,
+                "erb_energy_mean": 0.0,
+                "loudness_mean": 0.0,
+                "sharpness_mean": 0.0,
             }
 
         return features
 
-    def _hz_to_bark(self, freq_hz: np.ndarray) -> np.ndarray:
-        """Converte frequência em Hz para escala Bark."""
-        return hz_to_bark(freq_hz)
-
-    def _bark_to_hz(self, bark: np.ndarray) -> np.ndarray:
-        """Converte escala Bark para frequência em Hz (aproximação)."""
-        return bark_to_hz(bark)
-
-    def _hz_to_erb(self, freq_hz: np.ndarray) -> np.ndarray:
-        """Converte frequência em Hz para escala ERB."""
-        return hz_to_erb(freq_hz)
-
-    def _erb_to_hz(self, erb: np.ndarray) -> np.ndarray:
-        """Converte escala ERB para frequência em Hz."""
-        return erb_to_hz(erb)
-
     def _extract_bark_features(self, y: np.ndarray) -> Dict:
         """Extrai características baseadas na escala Bark."""
-        return extract_bark_features(
-            y, self.sr, self.frame_length, self.hop_length)
+        return extract_bark_features(y, self.sr, self.frame_length, self.hop_length)
 
     def _extract_erb_features(self, y: np.ndarray) -> Dict:
         """Extrai características baseadas na escala ERB."""
-        return extract_erb_features(
-            y, self.sr, self.frame_length, self.hop_length)
+        return extract_erb_features(y, self.sr, self.frame_length, self.hop_length)
 
     def _extract_loudness_features(self, y: np.ndarray) -> Dict:
         """Extrai características de loudness (Stevens/Zwicker)."""
-        return extract_loudness_features(
-            y, self.sr, self.frame_length, self.hop_length)
+        return extract_loudness_features(y, self.sr, self.frame_length, self.hop_length)
 
     def _extract_sharpness_features(self, y: np.ndarray) -> Dict:
         """Extrai características de sharpness (agudeza)."""
         return extract_sharpness_features(
-            y, self.sr, self.frame_length, self.hop_length)
+            y, self.sr, self.frame_length, self.hop_length
+        )
 
     def _extract_roughness_features(self, y: np.ndarray) -> Dict:
         """Extrai características de roughness (rugosidade)."""
         return extract_roughness_features(
-            y, self.sr, self.frame_length, self.hop_length)
+            y, self.sr, self.frame_length, self.hop_length
+        )
 
     def _extract_fluctuation_features(self, y: np.ndarray) -> Dict:
         """Extrai características de fluctuation strength."""
@@ -166,13 +146,11 @@ class PerceptualFeatureExtractor:
 
     def _extract_tonality_features(self, y: np.ndarray) -> Dict:
         """Extrai características de tonality."""
-        return extract_tonality_features(
-            y, self.sr, self.frame_length, self.hop_length)
+        return extract_tonality_features(y, self.sr, self.frame_length, self.hop_length)
 
     def _extract_masking_features(self, y: np.ndarray) -> Dict:
         """Extrai características de mascaramento auditivo (versão otimizada)."""
-        return extract_masking_features(
-            y, self.sr, self.frame_length, self.hop_length)
+        return extract_masking_features(y, self.sr, self.frame_length, self.hop_length)
 
 
 def test_perceptual_features():
@@ -184,9 +162,11 @@ def test_perceptual_features():
 
     # Componentes tonais em diferentes bandas críticas
     f1, f2, f3 = 440, 880, 1760  # Harmônicos
-    y = (np.sin(2 * np.pi * f1 * t) +
-         0.7 * np.sin(2 * np.pi * f2 * t) +
-         0.5 * np.sin(2 * np.pi * f3 * t))
+    y = (
+        np.sin(2 * np.pi * f1 * t)
+        + 0.7 * np.sin(2 * np.pi * f2 * t)
+        + 0.5 * np.sin(2 * np.pi * f3 * t)
+    )
 
     # Adicionar componente de alta frequência (sharpness)
     f_high = 4000
@@ -198,8 +178,7 @@ def test_perceptual_features():
 
     # Adicionar rugosidade (batimentos)
     f_beat1, f_beat2 = 1000, 1070  # Diferença de 70 Hz
-    y += 0.4 * (np.sin(2 * np.pi * f_beat1 * t) +
-                np.sin(2 * np.pi * f_beat2 * t))
+    y += 0.4 * (np.sin(2 * np.pi * f_beat1 * t) + np.sin(2 * np.pi * f_beat2 * t))
 
     # Adicionar ruído para reduzir tonality
     noise_level = 0.1

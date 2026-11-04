@@ -32,8 +32,7 @@ def _tiny_model(seed: int = 0) -> "tf.keras.Model":
             tf.keras.layers.Dense(1, activation="sigmoid"),
         ]
     )
-    model.compile(optimizer="adam", loss="binary_crossentropy",
-                  metrics=["accuracy"])
+    model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
     return model
 
 

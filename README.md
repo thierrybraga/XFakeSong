@@ -1,5 +1,5 @@
 ---
-title: XFakeSong
+title: SpeechChecker
 emoji: 🛡️
 colorFrom: blue
 colorTo: slate
@@ -9,16 +9,17 @@ pinned: false
 license: mit
 ---
 
-# XFakeSong
+# SpeechChecker
 
-XFakeSong é uma plataforma open source para detecção de deepfakes de áudio.
+SpeechChecker é uma plataforma open source para detecção de deepfakes de áudio.
 O projeto combina extração de features acústicas, modelos neurais modernos,
-baselines clássicos e um pipeline de benchmark reprodutível para gerar os
-resultados numéricos e gráficos do TCC.
+baselines clássicos e um harness de benchmark para avaliação e geração de
+relatórios. A rastreabilidade dos números do artigo ainda está em reconciliação;
+consulte o inventário antes de apresentar resultados como reproduzidos.
 
-![Python Version](https://img.shields.io/badge/python-3.11%2B-blue?style=for-the-badge&logo=python)
+![Python Version](https://img.shields.io/badge/python-3.11--3.12-blue?style=for-the-badge&logo=python)
 ![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
-![Benchmark](https://img.shields.io/badge/benchmark-40980_amostras-informational?style=for-the-badge)
+![Benchmark](https://img.shields.io/badge/benchmark-15000_amostras-informational?style=for-the-badge)
 [![CI](https://github.com/thierrybraga/XFakeSong/actions/workflows/ci.yml/badge.svg)](https://github.com/thierrybraga/XFakeSong/actions/workflows/ci.yml)
 
 ## Foco do Projeto
@@ -27,53 +28,85 @@ O objetivo central é comparar arquiteturas de detecção de áudio deepfake em 
 fluxo local, auditável e repetível:
 
 1. baixar e organizar datasets reais e sintéticos;
-2. normalizar áudio bruto e criar splits estratificados;
+2. normalizar áudio bruto e manter os splits disjuntos por locutor × frase do artigo;
 3. treinar cada arquitetura com hiperparâmetros rastreáveis;
 4. executar inferência no conjunto de teste;
 5. gerar métricas, matrizes de confusão, curvas ROC, robustez, latência e
    relatórios Markdown com imagens PNG.
 
-O benchmark consolidado do TCC usa o dataset canônico
-`data/datasets/benchmark_dataset.npz` — CETUC pareado com clones XTTS-v2, com
-disjunção dupla de locutor e frase entre treino, validação e teste: `40.980`
-amostras (`20.490` reais + `20.490` falsas), áudio bruto `(48000, 1)` mono a
-16 kHz (3 s). O protocolo completo está em
-[docs/data/dataset-protocol.md](docs/data/dataset-protocol.md).
+O estudo do TCC segue o artigo em `data/results/paper/main.tex` e usa
+`data/datasets/benchmark_dataset_15k.npz`: 15.000 amostras pareadas CETUC–
+XTTS-v2 (7.500 reais + 7.500 clones), split disjunto por locutor e frase,
+janela central de 3 s a 16 kHz. O hash esperado é
+`3775b35f…3400f`; o dataset não é versionado no Git. O projeto também descreve
+o corpus pareado de origem e uma exportação histórica de 40.980 amostras no
+[Protocolo de Dataset](docs/data/dataset-protocol.md); nenhum deles substitui o
+recorte de 15 mil amostras avaliado pelo artigo.
 
 | Métrica | Valor |
 | --- | ---: |
-| Amostras no NPZ | 40.980 (20.490 reais + 20.490 falsas) |
+| Amostras do estudo | 15.000 (7.500 reais + 7.500 falsas) |
 | Entrada | áudio bruto `(48000, 1)` — 3 s, mono, 16 kHz |
-| Tamanho do NPZ canônico | 7,99 GB |
+| SHA-256 do NPZ | `3775b35f…3400f` |
 | Formato dos WAVs | PCM linear, 16 bits, mono, 16 kHz |
 | Locutores | 56, todos nas duas classes |
-| Splits | 33.226 treino / 3.976 validação / 3.778 teste |
+| Splits | 12.162 treino / 1.456 validação / 1.382 teste |
 
-A partição é disjunta por locutor **e** por frase (semente 42), e o conjunto de
-teste é selado antes de qualquer treino por
-`benchmark_dataset.npz.test-lock.json`:
+A partição do artigo é disjunta por locutor **e** por frase. O lock registra a
+partição e a declaração de que o teste foi selado antes do treino; essa
+declaração não constitui, por si só, auditoria independente do histórico de
+acesso:
 
-| Split | Amostras | Locutores | Frases | Horas |
-| --- | ---: | ---: | ---: | ---: |
-| treino | 33.226 | 34 (23F/11M) | 602 | 45,47 |
-| validação | 3.976 | 11 (7F/4M) | 201 | 5,49 |
-| teste | 3.778 | 11 (7F/4M) | 197 | 5,17 |
+| Split do estudo | Amostras | Pares |
+| --- | ---: | ---: |
+| treino | 12.162 | 6.081 |
+| validação | 1.456 | 728 |
+| teste | 1.382 | 691 |
+
+Os resultados publicados ainda precisam ser reconciliados com os artefatos
+locais; consulte o [inventário de auditoria](docs/evaluation/canonical-study-and-legacy-inventory.md)
+antes de tratar as métricas do artigo como reproduzidas.
 
 ## Início Rápido
+
+### Windows (PowerShell)
+
+```powershell
+git clone https://github.com/thierrybraga/XFakeSong.git
+cd XFakeSong
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe main.py --bootstrap-dirs
+.\.venv\Scripts\python.exe main.py --gradio
+```
+
+### Linux / macOS
 
 ```bash
 git clone https://github.com/thierrybraga/XFakeSong.git
 cd XFakeSong
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 python main.py --bootstrap-dirs
 python main.py --gradio
 ```
 
-A interface Gradio fica disponível em `http://localhost:7860/gradio/`.
+No Windows, os alvos `make` exigem GNU Make e Bash; execute-os no Git Bash ou
+WSL. No PowerShell, use os comandos acima ou `start.bat`.
+
+A interface visual canônica fica disponível em `http://localhost:7862/` e em
+`http://localhost:7862/gradio/`. No Docker, a porta é 7860 no perfil NVIDIA e 7861
+no CPU; o mapa completo está em
+[docs/development/docker-environments.md](docs/development/docker-environments.md#portas).
 O uso das abas, análises e notificações está documentado em
 [docs/interfaces/gradio.md](docs/interfaces/gradio.md).
+Os perfis de instalação opcionais e gates para releases estão em
+[docs/development/release-gates.md](docs/development/release-gates.md).
+Para desenvolver, use `requirements-dev.txt`; documentação, notebooks, SHAP e
+ferramentas experimentais têm perfis separados nesse guia.
 
 ## Runtime Local
 
@@ -82,6 +115,10 @@ Os caminhos padrão são mantidos separados para evitar artefatos soltos na raiz
 | Uso | Caminho padrão |
 | --- | --- |
 | Banco SQLite local | `data/app.db` |
+| Cache compartilhado de modelos e frameworks | `data/cache/` |
+| Perfis de voz persistidos | `data/voice_profiles/` |
+| Scripts operacionais e de manutenção | `tools/` |
+| Código do motor de benchmark | `benchmarks/` |
 | Uploads da API/Gradio | `data/uploads/` |
 | Resultados regeneráveis | `data/results/` |
 | Raiz de modelos usada pela inferência | `data/models/` |
@@ -101,7 +138,7 @@ start.bat
 ## Ambientes de Treinamento
 
 O projeto possui uma estrutura consolidada por família computacional em
-`docker/environments/`, com requirements, Dockerfiles e READMEs dedicados.
+`infrastructure/docker/environments/`, com requirements, Dockerfiles e READMEs dedicados.
 
 No Windows nativo, TensorFlow roda em CPU. Treino/benchmark com GPU NVIDIA deve
 ser executado via WSL2/Docker Desktop GPU usando os perfis `*-nvidia`.
@@ -114,45 +151,45 @@ ser executado via WSL2/Docker Desktop GPU usando os perfis `*-nvidia`.
 | `waveform-end-to-end` | RawNet2, AASIST, RawGAT-ST |
 | `ssl-pretrained` | WavLM Original, HuBERT Original |
 | `extended` | Sonic Sleuth, EfficientNet-LSTM, Ensemble, WavLM (porte Keras), HuBERT (porte Keras) — fora do artigo |
-Todos os wrappers usam `scripts/benchmark/run_models_sequential.py`, preservando pasta
+Todos os wrappers usam `benchmarks/run_models_sequential.py`, preservando pasta
 própria por modelo, logs, retomada, `results.json`, figuras e artefatos.
 
 ```bash
-python scripts/training/train_by_family.py --family classical-tabular --plan-only
-python scripts/training/train_by_family.py --family spectral-convolutional --models MultiscaleCNN --epochs 100 --device-profile gpu
-python scripts/training/train_by_family.py --family waveform-end-to-end --models RawNet2 AASIST --epochs 100 --device-profile gpu
-python scripts/training/train_by_family.py --family ssl-pretrained --models "WavLM Original" "HuBERT Original" --epochs 100 --device-profile gpu
+python tools/training/train_by_family.py --family classical-tabular --plan-only
+python tools/training/train_by_family.py --family spectral-convolutional --models MultiscaleCNN --epochs 100 --device-profile gpu
+python tools/training/train_by_family.py --family waveform-end-to-end --models RawNet2 AASIST --epochs 100 --device-profile gpu
+python tools/training/train_by_family.py --family ssl-pretrained --models "WavLM Original" "HuBERT Original" --epochs 100 --device-profile gpu
 ```
 
 Execução via Docker por perfil:
 
 ```bash
 # CPU/onboard, sem CUDA
-docker compose -f docker/compose/train.cpu.yml run --rm classical-ml
-docker compose -f docker/compose/train.cpu.yml run --rm tensorflow-keras
+docker compose --env-file .env -f infrastructure/docker/compose/train.cpu.yml run --rm classical-ml
+docker compose --env-file .env -f infrastructure/docker/compose/train.cpu.yml run --rm tensorflow-keras
 
 # NVIDIA CUDA via Linux/WSL2/Docker Desktop GPU
-docker compose -f docker/compose/train.nvidia.yml run --rm tensorflow-keras
-docker compose -f docker/compose/train.nvidia.yml run --rm pytorch-audio
-docker compose -f docker/compose/train.nvidia.yml run --rm ssl-transformers
+docker compose --env-file .env -f infrastructure/docker/compose/train.nvidia.yml run --rm tensorflow-keras
+docker compose --env-file .env -f infrastructure/docker/compose/train.nvidia.yml run --rm pytorch-audio
+docker compose --env-file .env -f infrastructure/docker/compose/train.nvidia.yml run --rm ssl-transformers
 
 # Inferência
-docker compose -f docker/compose/inference.cpu.yml up --build inference-api
-docker compose -f docker/compose/inference.nvidia.yml up --build inference-api
+docker compose --env-file .env -f infrastructure/docker/compose/inference.cpu.yml up --build inference-api
+docker compose --env-file .env -f infrastructure/docker/compose/inference.nvidia.yml up --build inference-api
 ```
 
 Também há um helper único:
 
 ```bash
-python scripts/ops/docker_build.py train-nvidia config
-python scripts/ops/docker_build.py inference-cpu up
-python scripts/ops/docker_build.py benchmark-nvidia run
+python tools/ops/docker_build.py train-nvidia config
+python tools/ops/docker_build.py inference-cpu up
+python tools/ops/docker_build.py benchmark-nvidia run
 ```
 
 Via `make`, os targets de Docker usam os mesmos perfis segmentados:
 
 ```bash
-make build              # docker/compose/inference.cpu.yml
+make build              # infrastructure/docker/compose/inference.cpu.yml
 make up                 # inferência CPU/onboard
 make up GPU=1           # inferência NVIDIA
 make train-cpu          # treino clássico/CPU
@@ -166,39 +203,41 @@ O plano técnico e os critérios de aceite estão em
 
 ## Benchmark do TCC
 
-Validação rápida do harness, sem download de dataset:
+Smoke test do pipeline genérico legado, sem equivalência com o estudo do artigo:
 
 ```bash
-python scripts/benchmark/run_tcc_pipeline.py --smoke --epochs 1 --batch-size 4
+python benchmarks/run_tcc_pipeline.py --smoke --epochs 1 --batch-size 4
 ```
 
-Execução completa planejada para o TCC:
+Reprodução operacional do protocolo do artigo (saída separada; o teste local já foi
+observado e esta execução não conta como confirmação independente):
 
 ```bash
-python scripts/benchmark/run_tcc_pipeline.py ^
-  --download ^
-  --tier medium ^
-  --full-benchmark ^
-  --epochs 100 ^
-  --device-profile gpu ^
-  --out data/results/benchmark_confirmatory ^
-  --npz data/datasets/benchmark_dataset.npz
+python benchmarks/run_models_sequential.py ^
+  --dataset data/datasets/benchmark_dataset_15k.npz ^
+  --test-lock data/datasets/benchmark_dataset_15k.npz.test-lock.json ^
+  --scope official --epochs 100 --batch-size 32 --seed 42 ^
+  --device-profile gpu --latency-runs 30 ^
+  --snr 30 20 10 5 --train-aug-snr 30 20 10 ^
+  --train-noise-copies 1 --band-correction-hz 7500 ^
+  --checkpoint-monitor val_eer ^
+  --out data/results/tcc_article_reproduction
 ```
 
 No Windows com GPU, use o perfil Docker/WSL2:
 
 ```powershell
 $env:DOCKER_TRAIN_CPU_LIMIT='8'
-docker compose -f docker\compose\benchmark.nvidia.yml --env-file .env run --rm benchmark `
-  python scripts/benchmark/run_tcc_pipeline.py `
-    --download `
-    --tier medium `
-    --full-benchmark `
-    --epochs 100 `
-    --batch-size 32 `
-    --device-profile gpu `
-    --npz data/datasets/benchmark_dataset.npz `
-    --out data/results/benchmark_confirmatory
+docker compose -f infrastructure\docker\compose\benchmark.nvidia.yml --env-file .env run --rm benchmark `
+  python benchmarks/run_models_sequential.py `
+    --dataset data/datasets/benchmark_dataset_15k.npz `
+    --test-lock data/datasets/benchmark_dataset_15k.npz.test-lock.json `
+    --scope official --epochs 100 --batch-size 32 --seed 42 `
+    --device-profile gpu --latency-runs 30 `
+    --snr 30 20 10 5 --train-aug-snr 30 20 10 `
+    --train-noise-copies 1 --band-correction-hz 7500 `
+    --checkpoint-monitor val_eer `
+    --out data/results/tcc_article_reproduction
 ```
 
 Saídas principais:
@@ -233,8 +272,8 @@ são ancorados na raiz do projeto.
 Para revisar o plano sem iniciar treinamento:
 
 ```bash
-python scripts/benchmark/run_benchmark.py --full ^
-  --dataset data/datasets/benchmark_dataset.npz ^
+python benchmarks/run_benchmark.py --full ^
+  --dataset data/datasets/benchmark_dataset_15k.npz ^
   --epochs 100 ^
   --out data/results/benchmark_confirmatory ^
   --plan-only
@@ -243,8 +282,8 @@ python scripts/benchmark/run_benchmark.py --full ^
 Benchmark de um modelo individual:
 
 ```bash
-python scripts/benchmark/run_benchmark.py --model AASIST ^
-  --dataset data/datasets/benchmark_dataset.npz ^
+python benchmarks/run_benchmark.py --model AASIST ^
+  --dataset data/datasets/benchmark_dataset_15k.npz ^
   --epochs 100 ^
   --out data/results/bench_aasist
 ```
@@ -255,9 +294,9 @@ Para detalhes do desenho experimental, consulte
 Para auditar falantes depois de montar o dataset:
 
 ```bash
-python scripts/dataset/rebuild_speaker_manifest.py --dataset-dir data/datasets
-python scripts/dataset/export_speaker_table.py --dataset-dir data/datasets --scope all
-python scripts/dataset/audit_speaker_manifest.py --dataset-dir data/datasets --scope splits
+python tools/dataset/rebuild_speaker_manifest.py --dataset-dir data/datasets
+python tools/dataset/export_speaker_table.py --dataset-dir data/datasets --scope all
+python tools/dataset/audit_speaker_manifest.py --dataset-dir data/datasets --scope splits
 ```
 
 ## Publicar Modelos no Hugging Face
@@ -266,12 +305,12 @@ Depois de consolidar os artefatos em `data/models/`, envie os modelos finais
 para um repositório do tipo **Model** no Hugging Face Hub:
 
 ```bash
-python scripts/ops/upload_models_to_hf.py \
-  --repo-id SEU_USUARIO/xfakesong-models \
+python tools/ops/upload_models_to_hf.py \
+  --repo-id SEU_USUARIO/speechchecker-models \
   --dry-run
 
-python scripts/ops/upload_models_to_hf.py \
-  --repo-id SEU_USUARIO/xfakesong-models \
+python tools/ops/upload_models_to_hf.py \
+  --repo-id SEU_USUARIO/speechchecker-models \
   --private
 ```
 
@@ -284,8 +323,8 @@ consolidados. O passo a passo completo está em
 Para baixar modelos pré-treinados do benchmark em outra máquina ou no Space:
 
 ```bash
-MODEL_REPO_ID=SEU_USUARIO/xfakesong-models \
-python scripts/ops/sync_hf_models.py --models-dir data/models --force
+MODEL_REPO_ID=SEU_USUARIO/speechchecker-models \
+python tools/ops/sync_hf_models.py --models-dir data/models --force
 ```
 
 Use `HF_TOKEN` se o repositório de modelos for privado.
@@ -298,13 +337,13 @@ Space:
 
 | Tipo | Nome | Valor recomendado |
 | --- | --- | --- |
-| Variable | `MODEL_REPO_ID` | `SEU_USUARIO/xfakesong-models` |
+| Variable | `MODEL_REPO_ID` | `SEU_USUARIO/speechchecker-models` |
 | Variable | `ENABLE_TRAINING` | `false` |
 | Variable | `XFAKE_SYNC_MODELS_ON_BOOT` | `true` |
 | Variable | `DEEPFAKE_MODELS_DIR` | `data/models` |
 | Secret | `HF_TOKEN` | token com leitura do model repo, se privado |
 
-No boot, `scripts/ops/sync_hf_models.py` sincroniza os artefatos do Model Hub para
+No boot, `tools/ops/sync_hf_models.py` sincroniza os artefatos do Model Hub para
 `data/models`. Se `MODEL_REPO_ID` não estiver definido, a aplicação usa os
 modelos já empacotados/localmente disponíveis. O frontend lista os modelos sem
 carregar todos os pesos no startup; cada modelo é carregado sob demanda ao ser
@@ -326,8 +365,11 @@ Elas rendem **11 entradas** no escopo oficial e 5 no estendido
 backbone congelado com cabeça treinada, que é a configuração usada pelos
 sistemas de topo do ASVspoof 5 — e no estendido em porte Keras.
 
-Resultados do run vigente (`data/results/clean_benchmark_15k/`) em
-[docs/evaluation/benchmark.md](docs/evaluation/benchmark.md#run-vigente--clean_benchmark_15k).
+**Resultados do TCC:** use a tabela do artigo como referência de métricas,
+conforme o [inventário canônico](docs/evaluation/canonical-study-and-legacy-inventory.md).
+O run local usa o hash correto do NPZ, mas suas métricas e identificadores do
+teste divergem da consolidação. Preserve esses artefatos como não reconciliados;
+não os publique como se fossem os valores do artigo.
 
 ## Notebooks
 
@@ -386,11 +428,11 @@ A documentação técnica está em `docs/` e é publicada via MkDocs:
 ```bash
 python main.py --bootstrap-dirs
 python main.py --gradio
-./scripts/ops/run_tests.sh fast
-./scripts/ops/run_tests.sh cov
-docker compose up --build -d
-docker compose logs -f
-docker compose down
+./tools/ops/run_tests.sh fast
+./tools/ops/run_tests.sh cov
+docker compose --env-file .env -f infrastructure/docker/compose/inference.cpu.yml up --build -d
+docker compose --env-file .env -f infrastructure/docker/compose/inference.cpu.yml logs -f
+docker compose --env-file .env -f infrastructure/docker/compose/inference.cpu.yml down
 ```
 
 ## Contribuição e Segurança

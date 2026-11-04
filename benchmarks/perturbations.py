@@ -103,12 +103,19 @@ def codec_roundtrip(
         for i, row in enumerate(flat):
             _write_wav(src, row, sample_rate)
             _run_ffmpeg(
-                ["-i", str(src), "-c:a", spec["codec"], "-b:a",
-                 spec["bitrate"], "-ar", str(sample_rate), str(enc)]
+                [
+                    "-i",
+                    str(src),
+                    "-c:a",
+                    spec["codec"],
+                    "-b:a",
+                    spec["bitrate"],
+                    "-ar",
+                    str(sample_rate),
+                    str(enc),
+                ]
             )
-            _run_ffmpeg(
-                ["-i", str(enc), "-ar", str(sample_rate), "-ac", "1", str(dec)]
-            )
+            _run_ffmpeg(["-i", str(enc), "-ar", str(sample_rate), "-ac", "1", str(dec)])
             y = _read_wav(dec)
             # Alinha comprimento: codecs adicionam delay/padding de frame.
             if len(y) >= flat.shape[1]:

@@ -45,7 +45,8 @@ def test_weighted_head_forward_and_state_dict_roundtrip():
     # o state_dict (é o que o TorchSSLOriginalModel faz com o .pt).
     clone = build_ssl_classifier(WEIGHTED_CFG, dropout=0.2)
     clone.load_state_dict(head.state_dict())
-    head.eval(); clone.eval()
+    head.eval()
+    clone.eval()
     with torch.no_grad():
         torch.testing.assert_close(head(x), clone(x))
 
@@ -92,14 +93,21 @@ def test_protocol_swaps_static_copy_for_dynamic_augmenter():
     arquiteturas e o regime dinâmico deve ser reportado como ablação."""
     pytest.importorskip("tensorflow")
     from benchmarks.config import BenchmarkConfig
-    from benchmarks.runner import _prepare_protocol_splits
+    from benchmarks.protocol import _prepare_protocol_splits
 
     rng = np.random.default_rng(0)
+
     def _split(n):
         return (rng.standard_normal((n, 16000)) * 0.1).astype("float32")
 
-    raw = (_split(8), np.array([0, 1] * 4), _split(4),
-           np.array([0, 1] * 2), _split(4), np.array([0, 1] * 2))
+    raw = (
+        _split(8),
+        np.array([0, 1] * 4),
+        _split(4),
+        np.array([0, 1] * 2),
+        _split(4),
+        np.array([0, 1] * 2),
+    )
     cfg = BenchmarkConfig(
         bootstrap_ci_samples=0, architecture_specific_augmentation=True
     )

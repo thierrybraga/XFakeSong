@@ -1,9 +1,9 @@
 # 28 — Protocolo Final de ML (versão consolidada)
 
-Este documento é a **referência canônica da metodologia**: pré-processamento,
-splits, treinamento, ruído, calibração, hiperparâmetros e métricas. Consolida o
-que está implementado no código (caminhos citados em cada seção) e ancora cada
-decisão na literatura da área.
+Este documento é um guia técnico complementar sobre a implementação. Para o
+estudo do TCC, a referência metodológica canônica é o artigo
+`data/results/paper/main.tex`; a especificação e as divergências de
+proveniência estão no [Estudo Canônico e Inventário de Legado](canonical-study-and-legacy-inventory.md).
 
 !!! warning "Os NÚMEROS da §8 foram supersedidos (2026-08)"
 
@@ -12,12 +12,12 @@ decisão na literatura da área.
     `data/results/`** — os números da §8 sobrevivem apenas aqui e em
     `data/results/paper/`, sem artefato reverificável por trás.
 
-    O run vigente é `data/results/clean_benchmark_15k/` —
-    `benchmark_dataset_15k.npz`, 15.000 amostras, janela de 3 s, protocolo
-    `waveform-awgn-v2`, test-lock v2 validado — e seus resultados estão em
-    [Benchmark e Resultados](benchmark.md#run-vigente--clean_benchmark_15k).
-    **Conjuntos de teste diferentes: as duas tabelas não são comparáveis entre
-    si.**
+    O artigo do TCC usa `benchmark_dataset_15k.npz` (15.000 amostras), cujo
+    arquivo e test lock existem no checkout local. A execução local de
+    2026-08-20 e as tabelas do artigo apontam para resultados divergentes; não
+    há rastreabilidade fechada entre os números consolidados e seus artefatos.
+    Veja o [registro do benchmark](benchmark.md) e o inventário canônico antes
+    de tratar qualquer métrica como confirmatória.
 
     A metodologia descrita nas demais seções continua valendo, com três
     atualizações posteriores marcadas no texto: janela do corpus 5 s → 3 s,
@@ -45,17 +45,18 @@ paridade por construção.
 
 ## 2. Dataset e splits
 
-Dataset canônico: `data/datasets/benchmark_dataset.npz` — 40.980 amostras
-(20.490 reais / 20.490 falsas), CETUC pareado com clones XTTS-v2, splits
-congelados 33.226/3.976/3.778 com **test-lock** (o teste nunca participa de
-treino, validação, calibração ou HPO). Detalhes e auditoria:
+Corpus pai: `data/datasets/benchmark_dataset.npz` — 40.980 amostras
+(20.490 reais / 20.490 falsas), CETUC pareado com clones XTTS-v2. O estudo do
+artigo avalia a subamostra `data/datasets/benchmark_dataset_15k.npz`, com
+15.000 amostras e splits congelados 12.162/1.456/1.382; seu test lock declara
+que o teste foi selado antes do treino. Detalhes e auditoria:
 [Protocolo de Dataset](../data/dataset-protocol.md),
 [Dataset do Benchmark](../data/benchmark-dataset.md) e
 [Pipeline e Auditoria](../data/pipeline-and-audit.md).
 
-> Os resultados desta página foram obtidos sobre o **dataset anterior** — 15.000
-> amostras de quatro fontes PT-BR, splits 10.500/2.250/2.250 —, já apagado do
-> disco. A ressalva abaixo se refere a ele.
+> Os resultados históricos descritos nesta página incluem execuções de
+> protocolos anteriores. Não atribua seus valores ao estudo CETUC–XTTS-v2 sem
+> conferir dataset, configuração e proveniência no inventário canônico.
 
 **Ressalva de validade (obrigatória ao citar resultados):** o conjunto é
 balanceado por classe mas **confundido por fonte** (MLS/TTS-Portuguese só
@@ -64,12 +65,12 @@ mesmo locutor). Todos os resultados são portanto **in-domain**. A validação
 anti-atalho (teste isolado em BRSpeech, única fonte sem atalho possível:
 EER dos SSL permanece < 0,5%) mitiga, mas não elimina, essa limitação.
 
-O dataset canônico atual elimina esse confundimento por construção — as duas
-classes compartilham locutor e frase, e o oráculo de fonte fica em 50%. As
-garantias exigidas para reivindicar generalização (proveniência hierárquica,
-oráculo de atalho, bootstrap por cluster, disjunção dupla) estão no
-[Protocolo de Dataset](../data/dataset-protocol.md). **Os resultados desta
-página precedem esse dataset e requerem retreino.**
+No recorte CETUC–XTTS-v2, as classes compartilham locutor e frase e o oráculo
+de fonte fica em 50%; isso reduz atalhos de metadados, mas não demonstra
+generalização para outros corpora, geradores ou canais. As garantias e limites
+estão no [Protocolo de Dataset](../data/dataset-protocol.md). Os números desta
+página só podem ser associados ao artigo após a reconciliação descrita no
+[inventário canônico](canonical-study-and-legacy-inventory.md).
 
 ## 3. Treinamento
 
@@ -81,8 +82,10 @@ Orquestração: `benchmarks/runner.py` + `app/domain/services/training_service.p
   stopping (comparabilidade entre arquiteturas).
 - **Compile-respect**: LR/otimizador/scheduler pertencem ao `create_model`
   de cada arquitetura; o benchmark não os sobrescreve.
-- **Checkpoint guardado**: o "melhor por val_loss" só é restaurado se não
-  degradar o val re-avaliado (`TrainingService._guarded_checkpoint_restore`)
+- **Seleção do checkpoint no estudo**: mínimo EER limpo de validação nos
+  runners Keras; mínima loss limpa nos runners SSL PyTorch originais; baselines
+  clássicos não selecionam época. Isso deve ser confirmado nos manifestos do
+  run antes de regenerar tabelas.
   — proteção contra épocas instáveis/NaN observadas empiricamente.
 - **Shuffle real por época** no `ModelTrainer` (o Keras ignora `shuffle`
   com `tf.data`; o embaralhamento é explícito).
@@ -95,7 +98,7 @@ Orquestração: `benchmarks/runner.py` + `app/domain/services/training_service.p
 ## 4. Ruído e robustez
 
 Protocolo AWGN **no domínio da forma de onda, antes de qualquer frontend**
-(`benchmarks/runner.py::_prepare_protocol_splits`):
+(`benchmarks/protocol.py::_prepare_protocol_splits`):
 
 - **Avaliação**: SNR 30/20/10 dB com semente determinística
   `seed+20000+snr` — a mesma realização de ruído para todas as
@@ -121,8 +124,13 @@ Protocolo AWGN **no domínio da forma de onda, antes de qualquer frontend**
   persiste no `input_contract`; quando avaliado, aparece separadamente como
   `accuracy_at_calibrated_threshold`.
 - `accuracy_at_eer_oracle` usa o EER do próprio conjunto avaliado e é apenas teto
-  diagnóstico; não é uma métrica operacional nem substitui a tabela principal.- **Temperature scaling** (Guo et al., ICML 2017): grid search de T por
-  NLL na validação (`TemperatureScaler`), aplicado pelo `Predictor`.
+  diagnóstico; não é uma métrica operacional nem substitui a tabela principal.
+- **Temperature scaling** (Guo et al., ICML 2017): T minimiza a NLL na validação, por
+  busca contínua sobre o logit real do modelo (`temperature_scaling.py`), e é aplicada
+  pelo `Predictor`. O contrato declara essa escala em `temperature_on_logits`; um artefato
+  sem o campo segue na escala antiga (grade de 0,5 a 4,9, probabilidade cortada em 1e-7),
+  que é a dos seus números. `tools/reporting/recalibrate_temperature.py` migra sem treinar
+  e transporta o limiar, então nenhum veredito da validação muda.
 - **Calibração Platt** adicional quando o modelo permanece miscalibrado
   (bloco `calibration` no `input_contract`, aplicado por
   `apply_posthoc_calibration` em
@@ -191,8 +199,8 @@ validação de artefatos e então seeds 42–46 para candidatos finais.
 Exemplo:
 
 ```bash
-python scripts/training/train_by_family.py --family classical-tabular --plan-only
-python scripts/training/train_by_family.py --family ssl-pretrained --seeds 42 43 44 45 46 --resume
+python tools/training/train_by_family.py --family classical-tabular --plan-only
+python tools/training/train_by_family.py --family ssl-pretrained --seeds 42 43 44 45 46 --resume
 ```
 
 O `--resume` só reutiliza um modelo quando `run_fingerprint.json` corresponde ao

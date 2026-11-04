@@ -1,36 +1,29 @@
 # Estudo Experimental de Detecção de Áudio Sintético
 
 Esta página organiza, em formato de documentação navegável, a fundamentação
-técnica e a análise experimental do XFakeSong. A fonte LaTeX em
+técnica e a análise experimental do SpeechChecker. A fonte LaTeX em
 `data/results/paper/main.tex` continua sendo um artefato acadêmico separado; esta
 versão existe para consulta técnica no GitHub Pages.
 
 ## Resumo técnico
 
-O XFakeSong é um pipeline modular e de código aberto para detecção de áudio
+O SpeechChecker é um pipeline modular e de código aberto para detecção de áudio
 sintético. A metodologia integra pré-processamento, extração de características
 acústicas, treinamento supervisionado, inferência e geração automática de
 relatórios de benchmark.
 
-O harness de benchmark suporta **14 arquiteturas**; o recorte oficial
-consolidado no artigo (`data/results/paper/main.tex`) usa **11** delas, sobre o
-tier `medium` canônico de 15k, com **15.000 amostras alvo** de áudio,
-divididas em 70/15/15 para treino, validação e teste. As janelas foram
-padronizadas em **16 kHz**, mono e **5 s**. A base ativa consolidada contém
-15.000 WAVs PCM lineares, 16 bits, mono, 16 kHz, somando **2.045,61 min** de
-áudio validado; o `.npz` canônico tem **2.769,01 MiB** e representa
-**1.250,00 min** após o corte/padding de 5 s por amostra. Modelos neurais
-foram treinados em GPU NVIDIA RTX 3060 via WSL2/CUDA; SVM e Random Forest
-foram otimizados por validação cruzada em CPU.
+O harness suporta **14 arquiteturas**; o estudo descrito pelo artigo usa **11
+entradas** e o dataset pareado CETUC–XTTS-v2 de 15.000 amostras, com splits
+12.162/1.456/1.382 e recortes centrais de **3 s** a 16 kHz. A descrição e os
+resultados legados desta página usam outros datasets, janelas e rodadas; não
+misture essas métricas com as tabelas do artigo.
 
-!!! warning "Tabelas supersedidas (2026-08)"
-    As tabelas desta página vêm do run `final_consolidated_20260715`, medido
-    sobre o corpus anterior (5 s por amostra) e **cujo diretório não existe
-    mais em `data/results/`**. O run vigente é
-    `data/results/clean_benchmark_15k/` (3 s, protocolo `waveform-awgn-v2`) —
-    números em
-    [Benchmark e Resultados](benchmark.md#run-vigente--clean_benchmark_15k).
-    Os conjuntos de teste são diferentes, então as duas não são comparáveis.
+!!! warning "Resultados desta página são históricos"
+    As tabelas desta página vêm de rodadas anteriores com outros datasets e
+    janelas. O NPZ e o test lock do artigo estão presentes localmente, mas os
+    resultados do artigo e do run local ainda não foram reconciliados. Não use
+    as métricas históricas abaixo como resultados do estudo canônico; consulte
+    o [inventário canônico](canonical-study-and-legacy-inventory.md).
 
 Principais resultados no conjunto de teste limpo (recorte oficial dos 11
 modelos, run final consolidado de 2026-07-15,
@@ -315,11 +308,12 @@ $$
 
 ## Dataset consolidado
 
-> ⚠️ **A tabela abaixo descreve o artefato anterior, apagado
-> do disco.** Ela é preservada porque os resultados desta página foram obtidos
-> sobre ele. O dataset canônico atual é `data/datasets/benchmark_dataset.npz`
-> — 40.980 amostras (20.490 + 20.490), CETUC pareado com clones XTTS-v2,
-> disjunção dupla locutor × frase, janela de 3 s. Ver
+> ⚠️ **A tabela abaixo descreve um artefato anterior e seus resultados são
+> históricos.** A referência do estudo do TCC é
+> `data/datasets/benchmark_dataset_15k.npz` — 15.000 amostras CETUC–XTTS-v2,
+> disjunção dupla locutor × frase e janela de 3 s. A proveniência dos números
+> deste estudo antigo não deve ser misturada com as tabelas do artigo. Ver
+> [Estudo Canônico e Inventário de Legado](canonical-study-and-legacy-inventory.md),
 > [Protocolo de Dataset](../data/dataset-protocol.md) e
 > [Dataset do Benchmark](../data/benchmark-dataset.md).
 >
@@ -536,7 +530,7 @@ arquivos de entrada.
 | Fonte do artigo | `data/results/paper/main.tex` | Fonte LaTeX única do artigo |
 | Figuras finais | `data/results/paper/figures/*.png` | Gráficos usados no artigo |
 | Dataset deste estudo | `benchmark_audio_raw_balanced_15k_confirmatory_v2.npz` | Artefato v2, **retirado e apagado** |
-| Dataset canônico atual | `data/datasets/benchmark_dataset.npz` | Entrada do benchmark a partir de 26/07/2026 |
+| Dataset do artigo | `data/datasets/benchmark_dataset_15k.npz` | 15.000 amostras; métricas ainda não reconciliadas com o run local |
 | Modelos padrão | `data/models/bench_*` | Inferência na Gradio/API |
 | Modelos completos | `data/models/benchmark_final/<modelo>/` | Artefatos finais por arquitetura |
 | Métricas | `data/results/<run>/architectures/<modelo>/metrics.json` | Auditoria por modelo |
@@ -552,17 +546,18 @@ python main.py --gradio
 Reprodução deste estudo (fluxo legado, artefato anterior — já não existe em disco):
 
 ```bash
-python scripts/benchmark/run_tcc_pipeline.py --download --target-per-class 7500 --full-benchmark --epochs 100 --device-profile gpu --npz data/datasets/legacy_confirmatory_15k.npz
+python benchmarks/run_tcc_pipeline.py --download --target-per-class 7500 --full-benchmark --epochs 100 --device-profile gpu --npz data/datasets/legacy_confirmatory_15k.npz
 ```
 
-Execução sobre o dataset canônico atual:
+Execução para reproduzir o protocolo descrito no artigo (a proveniência dos
+resultados existentes deve ser reconciliada antes de uma nova campanha):
 
 ```bash
-python scripts/benchmark/run_models_sequential.py --dataset data/datasets/benchmark_dataset.npz --test-lock data/datasets/benchmark_dataset.npz.test-lock.json --epochs 100 --snr 30 20 10 --device-profile gpu --out data/results/<run> --resume
+python benchmarks/run_models_sequential.py --dataset data/datasets/benchmark_dataset_15k.npz --test-lock data/datasets/benchmark_dataset_15k.npz.test-lock.json --epochs 100 --seed 42 --snr 30 20 10 5 --train-aug-snr 30 20 10 --device-profile gpu --out data/results/<run> --resume
 ```
 
 ```bash
-python scripts/benchmark/run_benchmark.py \
+python benchmarks/run_benchmark.py \
   --full \
   --epochs 100 \
   --device-profile gpu \
@@ -570,7 +565,7 @@ python scripts/benchmark/run_benchmark.py \
 ```
 
 ```bash
-python scripts/benchmark/run_benchmark.py \
+python benchmarks/run_benchmark.py \
   --model Conformer \
   --epochs 100 \
   --device-profile gpu \

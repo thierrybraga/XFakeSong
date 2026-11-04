@@ -1,6 +1,6 @@
 # domain
 
-Camada de dominio do XFakeSong.
+Camada de dominio do SpeechChecker.
 
 ## Responsabilidade
 

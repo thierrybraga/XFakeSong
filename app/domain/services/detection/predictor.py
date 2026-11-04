@@ -7,6 +7,13 @@ import tensorflow as tf
 from app.core.contracts.base import ProcessingResult, ProcessingStatus
 
 from .model_loader import ModelInfo
+from .operating_point import fake_score, verdict_confidence
+from .temperature_scaling import (
+    calibrated_probabilities,
+    fit_temperature,
+    logit_output_model,
+    logits_from_probabilities,
+)
 from .utils import prepare_batch_for_model
 
 logger = logging.getLogger(__name__)
@@ -26,53 +33,15 @@ class TemperatureScaler:
     def calibrate(self, model, val_features: np.ndarray, val_labels: np.ndarray):
         """Learn optimal temperature on validation set using NLL minimization."""
         try:
-            predictions = model.predict(val_features, verbose=0)
-
-            # CORREÇÃO: `model.predict` retorna PROBABILIDADES (pós
-            # softmax/sigmoid) na maioria dos modelos; dividi-las por T e
-            # reaplicar softmax/sigmoid não é temperature scaling. Recupera
-            # logits primeiro (log p para softmax; logit p para sigmoid) —
-            # `normalize_logits_to_probs` cobre os modelos que já emitem
-            # logits crus (ex.: AASIST/AM-Softmax).
-            probs = normalize_logits_to_probs(predictions)
-            eps = 1e-7
-            probs = np.clip(probs, eps, 1.0 - eps)
-            if probs.shape[-1] > 1:
-                logits = np.log(probs)
+            logit_model = logit_output_model(model)
+            if logit_model is not None:
+                logits = logit_model.predict(val_features, verbose=0)
             else:
-                logits = np.log(probs / (1.0 - probs))
-
-            # Grid search for optimal temperature (simple but effective)
-            best_temp = 1.0
-            best_nll = float('inf')
-
-            for temp in np.arange(0.5, 5.0, 0.1):
-                # Apply temperature scaling
-                scaled = logits / temp
-                if scaled.shape[-1] > 1:
-                    scaled_probs = tf.nn.softmax(scaled).numpy()
-                else:
-                    scaled_probs = tf.nn.sigmoid(scaled).numpy()
-
-                # Compute NLL
-                eps = 1e-7
-                scaled_probs = np.clip(scaled_probs, eps, 1.0 - eps)
-
-                if scaled_probs.shape[-1] > 1:
-                    nll = -np.mean(np.log(scaled_probs[np.arange(len(val_labels)),
-                                                        val_labels.astype(int).flatten()]))
-                else:
-                    nll = -np.mean(
-                        val_labels * np.log(scaled_probs) +
-                        (1 - val_labels) * np.log(1 - scaled_probs)
-                    )
-
-                if nll < best_nll:
-                    best_nll = nll
-                    best_temp = temp
-
-            self.temperature = best_temp
-            logger.info(f"Temperature calibrated to {self.temperature:.2f} (NLL: {best_nll:.4f})")
+                logits = logits_from_probabilities(
+                    normalize_logits_to_probs(model.predict(val_features, verbose=0))
+                )
+            self.temperature = fit_temperature(logits, val_labels)
+            logger.info(f"Temperature calibrated to {self.temperature:.3f}")
         except Exception as e:
             logger.warning(f"Temperature calibration failed: {e}. Using T=1.0")
             self.temperature = 1.0
@@ -180,13 +149,13 @@ def predict_with_mc_dropout(
         logger.warning(f"MC Dropout falhou, retornando predict padrão: {e}")
         single = keras_model.predict(features, batch_size=batch_size, verbose=0)
         return {
-            'mean_prediction': single,
-            'epistemic_uncertainty': np.zeros(len(single), dtype=np.float32),
-            'predictive_entropy': np.zeros(len(single), dtype=np.float32),
-            'confidence': np.max(single, axis=-1) if single.ndim > 1 else single,
-            'is_uncertain': np.zeros(len(single), dtype=bool),
-            'n_mc_samples': 0,
-            'fallback': True,
+            "mean_prediction": single,
+            "epistemic_uncertainty": np.zeros(len(single), dtype=np.float32),
+            "predictive_entropy": np.zeros(len(single), dtype=np.float32),
+            "confidence": np.max(single, axis=-1) if single.ndim > 1 else single,
+            "is_uncertain": np.zeros(len(single), dtype=bool),
+            "n_mc_samples": 0,
+            "fallback": True,
         }
 
     # Stack: (n_samples, batch, K)
@@ -197,15 +166,16 @@ def predict_with_mc_dropout(
         stack = stack[:, :, np.newaxis]
 
     mean_pred = stack.mean(axis=0)  # (N, K)
-    var_pred = stack.var(axis=0)    # (N, K)
+    var_pred = stack.var(axis=0)  # (N, K)
 
     # Epistemic uncertainty: variância da classe predita (argmax da média)
     if mean_pred.shape[-1] > 1:
         pred_class = np.argmax(mean_pred, axis=-1)
         # Variance ao longo da classe predita
-        epistemic = np.array([
-            var_pred[i, pred_class[i]] for i in range(len(pred_class))
-        ], dtype=np.float32)
+        epistemic = np.array(
+            [var_pred[i, pred_class[i]] for i in range(len(pred_class))],
+            dtype=np.float32,
+        )
         confidence = np.max(mean_pred, axis=-1)
     else:
         # Sigmoid (N, 1): variância da única dim
@@ -230,13 +200,13 @@ def predict_with_mc_dropout(
     is_uncertain = (epistemic > 0.05) | (entropy > entropy_threshold)
 
     return {
-        'mean_prediction': mean_pred,
-        'epistemic_uncertainty': epistemic,
-        'predictive_entropy': entropy,
-        'confidence': confidence.astype(np.float32),
-        'is_uncertain': is_uncertain,
-        'n_mc_samples': n_samples,
-        'fallback': False,
+        "mean_prediction": mean_pred,
+        "epistemic_uncertainty": epistemic,
+        "predictive_entropy": entropy,
+        "confidence": confidence.astype(np.float32),
+        "is_uncertain": is_uncertain,
+        "n_mc_samples": n_samples,
+        "fallback": False,
     }
 
 
@@ -272,8 +242,7 @@ def get_jit_predict_fn(model_info: ModelInfo, use_xla: bool = True):
     except Exception:
         pass
     logger.debug(
-        f"JIT predict function compiled for {model_info.name} "
-        f"(use_xla={use_xla})"
+        f"JIT predict function compiled for {model_info.name} " f"(use_xla={use_xla})"
     )
     return _jit_predict
 
@@ -302,6 +271,51 @@ def _predict_with_jit(
             f"JIT predict falhou para {model_info.name}, usando model.predict: {e}"
         )
         return model_info.model.predict(batch_features, verbose=0)
+
+
+def _predict_logits_with_jit(
+    model_info: ModelInfo,
+    batch_features: np.ndarray,
+    use_xla: bool = True,
+) -> np.ndarray:
+    """Como `_predict_with_jit`, mas pela cópia do modelo que devolve o logit."""
+    logit_model = model_info.logit_model
+    try:
+        if model_info.jit_logit_fn is None:
+
+            @tf.function(jit_compile=use_xla, reduce_retracing=True)
+            def _jit_logits(x):
+                return logit_model(x, training=False)
+
+            model_info.jit_logit_fn = _jit_logits
+        x = tf.convert_to_tensor(batch_features, dtype=tf.float32)
+        return model_info.jit_logit_fn(x).numpy()
+    except Exception as e:
+        logger.debug(
+            f"JIT de logits falhou para {model_info.name}, usando predict: {e}"
+        )
+        return logit_model.predict(batch_features, verbose=0)
+
+
+def predict_calibrated(
+    model: Any,
+    features: np.ndarray,
+    temperature: float = 1.0,
+    batch_size: Optional[int] = None,
+) -> np.ndarray:
+    """Probabilidades com temperatura, a partir do logit real quando há acesso a ele.
+
+    Para calibração e avaliação, em lotes. A inferência online usa o modelo de logits
+    que o `ModelLoader` já construiu, em vez de refazê-lo a cada chamada.
+    """
+    logit_model = logit_output_model(model)
+    if logit_model is not None:
+        logits = logit_model.predict(features, batch_size=batch_size, verbose=0)
+        return calibrated_probabilities(logits, temperature)
+    predictions = model.predict(features, batch_size=batch_size, verbose=0)
+    return apply_temperature_scaling(
+        normalize_logits_to_probs(predictions), temperature
+    )
 
 
 def compute_energy_score(
@@ -447,9 +461,7 @@ def normalize_logits_to_probs(
             # Heurística: qualquer valor fora [0, 1] ou soma != 1 em qualquer linha
             out_of_range = (p < -1e-3).any() or (p > 1.0 + 1e-3).any()
             sums = p.sum(axis=-1)
-            precisa_normalizar = out_of_range or (
-                (sums < 0.9) | (sums > 1.1)
-            ).any()
+            precisa_normalizar = out_of_range or ((sums < 0.9) | (sums > 1.1)).any()
         if precisa_normalizar:
             # Aplica softmax linha-a-linha
             max_z = np.max(p, axis=-1, keepdims=True)
@@ -520,12 +532,12 @@ class Predictor:
     # Sprint 3.1: lista de arquiteturas com ops in-graph não-XLA (tf.signal.stft,
     # graph attention dinâmico, etc.) — pulam JIT compile e usam predict padrão.
     _XLA_UNFRIENDLY_ARCHITECTURES = {
-        'Sonic Sleuth',           # LFCC/MFCC/CQT in-model via tf.signal
-        'Ensemble',               # SharedSTFTLayer + 4 branches
-        'WavLM',                  # transformers backbone
-        'HuBERT',                 # transformers backbone
-        'AASIST',                 # graph attention dinâmico (HSGALLayer)
-        'RawGAT-ST',              # graph attention dinâmico
+        "Sonic Sleuth",  # LFCC/MFCC/CQT in-model via tf.signal
+        "Ensemble",  # SharedSTFTLayer + 4 branches
+        "WavLM",  # transformers backbone
+        "HuBERT",  # transformers backbone
+        "AASIST",  # graph attention dinâmico (HSGALLayer)
+        "RawGAT-ST",  # graph attention dinâmico
     }
 
     def __init__(self):
@@ -541,7 +553,7 @@ class Predictor:
         (tf.signal.stft em algumas versões, GraphAttention dinâmico, etc.).
         Esses modelos usam predict padrão (sem JIT).
         """
-        arch = (model_info.architecture or '').strip()
+        arch = (model_info.architecture or "").strip()
         return arch in cls._XLA_UNFRIENDLY_ARCHITECTURES
 
     def predict_with_uncertainty(
@@ -571,15 +583,20 @@ class Predictor:
                 - n_mc_samples (int)
         """
         try:
-            if model_info.model_type != 'tensorflow':
+            if model_info.model_type != "tensorflow":
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
                     errors=["MC Dropout requer modelo tensorflow"],
                 )
 
             from .utils import prepare_batch_for_model
+
             features_batch = prepare_batch_for_model(
-                [features] if features.ndim == len(model_info.input_shape or ()) else features,
+                (
+                    [features]
+                    if features.ndim == len(model_info.input_shape or ())
+                    else features
+                ),
                 model_info.input_shape,
             )
 
@@ -588,14 +605,14 @@ class Predictor:
             )
 
             # Garante probabilidades antes de temp scaling
-            mean_pred_norm = normalize_logits_to_probs(mc_result['mean_prediction'])
+            mean_pred_norm = normalize_logits_to_probs(mc_result["mean_prediction"])
 
             # Aplica temperatura calibrada à média (Sprint 1.4)
-            model_temp = float(getattr(model_info, 'temperature', 1.0))
+            model_temp = float(getattr(model_info, "temperature", 1.0))
             calibrated_mean = apply_temperature_scaling(mean_pred_norm, model_temp)
 
             # Determina is_deepfake usando classification threshold (EER ou 0.5)
-            fake_threshold = _get_numeric_attr(model_info, 'eer_threshold', 0.5)
+            fake_threshold = _get_numeric_attr(model_info, "eer_threshold", 0.5)
 
             results = []
             for i in range(len(calibrated_mean)):
@@ -608,26 +625,31 @@ class Predictor:
                     p_fake = float(pred[1])
                     p_real = float(pred[0])
                 is_fake = bool(p_fake >= fake_threshold)
-                confidence = p_fake if is_fake else p_real
 
-                results.append({
-                    'is_deepfake': bool(is_fake),
-                    'confidence': float(confidence),
-                    'p_fake': float(p_fake),
-                    'p_real': float(p_real),
-                    'epistemic_uncertainty': float(mc_result['epistemic_uncertainty'][i]),
-                    'predictive_entropy': float(mc_result['predictive_entropy'][i]),
-                    'is_uncertain': bool(mc_result['is_uncertain'][i]),
-                    'n_mc_samples': int(mc_result['n_mc_samples']),
-                    'temperature_applied': model_temp,
-                    'classification_threshold': fake_threshold,
-                    'mc_fallback': bool(mc_result.get('fallback', False)),
-                })
+                results.append(
+                    {
+                        "is_deepfake": bool(is_fake),
+                        "confidence": verdict_confidence(p_fake, fake_threshold),
+                        "fake_score": fake_score(p_fake, fake_threshold),
+                        "p_fake": float(p_fake),
+                        "p_real": float(p_real),
+                        "epistemic_uncertainty": float(
+                            mc_result["epistemic_uncertainty"][i]
+                        ),
+                        "predictive_entropy": float(mc_result["predictive_entropy"][i]),
+                        "is_uncertain": bool(mc_result["is_uncertain"][i]),
+                        "n_mc_samples": int(mc_result["n_mc_samples"]),
+                        "temperature_applied": model_temp,
+                        "classification_threshold": fake_threshold,
+                        "mc_fallback": bool(mc_result.get("fallback", False)),
+                    }
+                )
 
             # Se single sample, retorna dict direto; senão, list
             data = results[0] if len(results) == 1 else results
             return ProcessingResult(
-                status=ProcessingStatus.SUCCESS, data=data,
+                status=ProcessingStatus.SUCCESS,
+                data=data,
             )
 
         except Exception as e:
@@ -637,22 +659,25 @@ class Predictor:
                 errors=[f"MC Dropout falhou: {str(e)}"],
             )
 
-    def predict(self, model_info: ModelInfo,
-                features: np.ndarray,
-                device: str = None,
-                use_tta: bool = False) -> ProcessingResult[Dict[str, Any]]:
+    def predict(
+        self,
+        model_info: ModelInfo,
+        features: np.ndarray,
+        device: str = None,
+        use_tta: bool = False,
+    ) -> ProcessingResult[Dict[str, Any]]:
         """Faz predição com um modelo específico (wrapper para single input)."""
-        batch_result = self.predict_batch(model_info, [features], device, use_tta=use_tta)
+        batch_result = self.predict_batch(
+            model_info, [features], device, use_tta=use_tta
+        )
 
         if batch_result.status != ProcessingStatus.SUCCESS:
             return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=batch_result.errors
+                status=ProcessingStatus.ERROR, errors=batch_result.errors
             )
 
         return ProcessingResult(
-            status=ProcessingStatus.SUCCESS,
-            data=batch_result.data[0]
+            status=ProcessingStatus.SUCCESS, data=batch_result.data[0]
         )
 
     def _predict_declared_multicrop(
@@ -668,8 +693,7 @@ class Predictor:
 
         arrays = [np.asarray(features, dtype=np.float32) for features in features_list]
         has_multicrop = any(
-            array.ndim == len(expected) + 1
-            and tuple(array.shape[1:]) == expected
+            array.ndim == len(expected) + 1 and tuple(array.shape[1:]) == expected
             for array in arrays
         )
         if not has_multicrop:
@@ -698,46 +722,50 @@ class Predictor:
         aggregated = []
         cursor = 0
         for size in group_sizes:
-            crop_rows = crop_result.data[cursor:cursor + size]
+            crop_rows = crop_result.data[cursor : cursor + size]
             cursor += size
             p_fake = float(np.mean([row["p_fake"] for row in crop_rows]))
             p_real = 1.0 - p_fake
             first = crop_rows[0]
             threshold = float(first.get("classification_threshold", 0.5))
             is_deepfake = bool(p_fake >= threshold)
-            confidence = p_fake if is_deepfake else p_real
             ood_threshold = first.get("ood_threshold")
             ood_score = float(np.mean([row["ood_score"] for row in crop_rows]))
-            aggregated.append({
-                "is_deepfake": is_deepfake,
-                "confidence": float(confidence),
-                "p_fake": p_fake,
-                "p_real": p_real,
-                "temperature_applied": first.get("temperature_applied", 1.0),
-                "ood_score": ood_score,
-                "is_ood": bool(
-                    ood_threshold is not None
-                    and ood_score < float(ood_threshold)
-                ),
-                "ood_threshold": ood_threshold,
-                "classification_threshold": threshold,
-                "tta_crops": size,
-            })
+            aggregated.append(
+                {
+                    "is_deepfake": is_deepfake,
+                    "confidence": verdict_confidence(p_fake, threshold),
+                    "fake_score": fake_score(p_fake, threshold),
+                    "p_fake": p_fake,
+                    "p_real": p_real,
+                    "temperature_applied": first.get("temperature_applied", 1.0),
+                    "ood_score": ood_score,
+                    "is_ood": bool(
+                        ood_threshold is not None and ood_score < float(ood_threshold)
+                    ),
+                    "ood_threshold": ood_threshold,
+                    "classification_threshold": threshold,
+                    "tta_crops": size,
+                }
+            )
         return ProcessingResult(
             status=ProcessingStatus.SUCCESS,
             data=aggregated,
         )
 
-    def predict_batch(self, model_info: ModelInfo,
-                      features_list: List[np.ndarray],
-                      device: str = None,
-                      use_tta: bool = False) -> ProcessingResult[List[Dict[str, Any]]]:
+    def predict_batch(
+        self,
+        model_info: ModelInfo,
+        features_list: List[np.ndarray],
+        device: str = None,
+        use_tta: bool = False,
+    ) -> ProcessingResult[List[Dict[str, Any]]]:
         """Faz predição em lote, opcionalmente com Test-Time Augmentation."""
         try:
             if not features_list:
                 return ProcessingResult(status=ProcessingStatus.SUCCESS, data=[])
 
-            if model_info.model_type == 'tensorflow':
+            if model_info.model_type == "tensorflow":
                 multicrop_result = self._predict_declared_multicrop(
                     model_info,
                     features_list,
@@ -747,30 +775,30 @@ class Predictor:
                     return multicrop_result
                 if use_tta:
                     return self._predict_tensorflow_batch_with_tta(
-                        model_info, features_list, device)
+                        model_info, features_list, device
+                    )
                 return self._predict_tensorflow_batch(model_info, features_list, device)
-            elif model_info.model_type == 'pytorch_transformers':
+            elif model_info.model_type == "pytorch_transformers":
                 return self._predict_pytorch_transformers_batch(
                     model_info, features_list
                 )
-            elif model_info.model_type == 'sklearn':
+            elif model_info.model_type == "sklearn":
                 return self._predict_sklearn_batch(model_info, features_list)
             else:
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
-                    errors=[f"Tipo de modelo não suportado: {model_info.model_type}"]
+                    errors=[f"Tipo de modelo não suportado: {model_info.model_type}"],
                 )
 
         except Exception as e:
             logger.error(f"Erro na predição em lote com modelo {model_info.name}: {e}")
             return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=[f"Erro na predição: {str(e)}"]
+                status=ProcessingStatus.ERROR, errors=[f"Erro na predição: {str(e)}"]
             )
 
-    def _predict_tensorflow_batch(self, model_info: ModelInfo,
-                                  features_list: List[np.ndarray],
-                                  device: str = None) -> ProcessingResult[List[Dict[str, Any]]]:
+    def _predict_tensorflow_batch(
+        self, model_info: ModelInfo, features_list: List[np.ndarray], device: str = None
+    ) -> ProcessingResult[List[Dict[str, Any]]]:
         """Predição em lote com modelo TensorFlow."""
         try:
             # Prepara o lote usando o utilitário
@@ -789,14 +817,21 @@ class Predictor:
                 except Exception as e:
                     logger.debug(
                         f"ONNX inferência falhou ({model_info.name}); "
-                        f"usando TF: {e}")
+                        f"usando TF: {e}"
+                    )
                     predictions = None
 
+            # Com o logit real, a temperatura não passa pela probabilidade cortada
+            # em 1e-7 (ver temperature_scaling.py). O ONNX só entrega a probabilidade.
+            usa_logits = predictions is None and isinstance(
+                getattr(model_info, "logit_model", None), tf.keras.Model
+            )
             if predictions is None:
                 # Sprint 3.1: usa JIT (XLA) com fallback automático. Pula XLA p/
                 # modelos com ops in-graph não-XLA (Sonic Sleuth, Ensemble usam
                 # tf.signal.stft que pode falhar em XLA dependendo da versão TF).
                 use_xla = not self._is_xla_unfriendly(model_info)
+                prever = _predict_logits_with_jit if usa_logits else _predict_with_jit
 
                 if device:
                     # Formatar device string para TensorFlow (ex: /CPU:0, /GPU:0)
@@ -809,40 +844,44 @@ class Predictor:
                         device_name = f"/{device}"
 
                     with tf.device(device_name):
-                        predictions = _predict_with_jit(
-                            model_info, batch_features, use_xla=use_xla)
+                        predictions = prever(
+                            model_info, batch_features, use_xla=use_xla
+                        )
                 else:
-                    predictions = _predict_with_jit(
-                        model_info, batch_features, use_xla=use_xla)
-
-            # Garante que predictions estejam em forma de probabilidades
-            # (alguns modelos como AASIST com AMSoftmax + activation='linear'
-            # retornam logits brutos). `output_is_logits` vem do contrato
-            # gravado no treino: e a resposta exata, e substitui a heuristica
-            # por faixa de valores — que podia divergir do criterio do
-            # benchmark num caso de fronteira (logits que caem em [0,1]).
-            predictions = normalize_logits_to_probs(
-                predictions, _contract_is_logits(model_info)
-            )
+                    predictions = prever(model_info, batch_features, use_xla=use_xla)
 
             # Sprint 1.4: Aplica temperatura calibrada per-model (post-hoc).
             # Não altera a classe predita, mas re-calibra a confiança para
             # corresponder à acurácia real (Guo et al., ICML 2017).
-            model_temp = float(getattr(model_info, 'temperature', 1.0))
-            predictions = apply_temperature_scaling(predictions, model_temp)
+            model_temp = float(getattr(model_info, "temperature", 1.0))
+            if usa_logits:
+                predictions = calibrated_probabilities(predictions, model_temp)
+            else:
+                # Garante que predictions estejam em forma de probabilidades
+                # (alguns modelos como AASIST com AMSoftmax + activation='linear'
+                # retornam logits brutos). `output_is_logits` vem do contrato
+                # gravado no treino: e a resposta exata, e substitui a heuristica
+                # por faixa de valores — que podia divergir do criterio do
+                # benchmark num caso de fronteira (logits que caem em [0,1]).
+                predictions = normalize_logits_to_probs(
+                    predictions, _contract_is_logits(model_info)
+                )
+                predictions = apply_temperature_scaling(predictions, model_temp)
 
             # Sprint 2.5: OOD detection via energy score.
             # Computa energy para todas as predições; se threshold disponível
             # no input_contract (calibrado no val set), marca is_ood.
             ood_scores = compute_energy_score(predictions, temperature=model_temp)
             ood_threshold = None
-            if model_info.input_contract and isinstance(model_info.input_contract, dict):
-                ood_threshold = model_info.input_contract.get('ood_threshold')
+            if model_info.input_contract and isinstance(
+                model_info.input_contract, dict
+            ):
+                ood_threshold = model_info.input_contract.get("ood_threshold")
 
             # Sprint 4.5: Threshold de classificação adaptativo per-model.
             # Se model_info.eer_threshold disponível → usa EER threshold,
             # caso contrário → 0.5 fixo (comportamento legado).
-            fake_threshold = _get_numeric_attr(model_info, 'eer_threshold', 0.5)
+            fake_threshold = _get_numeric_attr(model_info, "eer_threshold", 0.5)
 
             results = []
             for i in range(len(predictions)):
@@ -855,9 +894,7 @@ class Predictor:
                 # (Convenção: índice 0 = real, índice 1 = fake.)
                 if np.ndim(pred) == 0 or pred.shape[-1] == 1:
                     # Sigmoid binário: pred[0] já é p(fake)
-                    p_fake = _as_probability(
-                        pred[0] if np.ndim(pred) > 0 else pred
-                    )
+                    p_fake = _as_probability(pred[0] if np.ndim(pred) > 0 else pred)
                     p_real = _as_probability(1.0 - p_fake)
                 else:
                     # Softmax: pred[1] = p(fake), pred[0] = p(real)
@@ -869,38 +906,37 @@ class Predictor:
 
                 # Decisão usa threshold adaptativo (EER se disponível, senão 0.5)
                 is_deepfake = bool(p_fake >= fake_threshold)
-                # confidence reportada é a probabilidade da CLASSE PREDITA
-                # (mais intuitivo para o usuário: "estou 87% confiante de FAKE"
-                # ou "estou 87% confiante de REAL", em vez de sempre reportar
-                # p_fake mesmo quando a decisão foi "real").
-                confidence = _as_probability(p_fake if is_deepfake else p_real)
+                # A confiança é no VEREDITO, na escala centrada no limiar. A
+                # probabilidade da classe predita dava 0,20 num "real" de P(fake)
+                # 0,80 com corte em 0,94 (ver operating_point.py).
+                confidence = verdict_confidence(p_fake, fake_threshold)
 
                 # OOD flag: True se energy score abaixo do threshold (= não in-distribution)
-                is_ood = (
-                    ood_threshold is not None and ood_score < float(ood_threshold)
+                is_ood = ood_threshold is not None and ood_score < float(ood_threshold)
+
+                results.append(
+                    {
+                        "is_deepfake": is_deepfake,
+                        "confidence": float(confidence),
+                        "fake_score": fake_score(p_fake, fake_threshold),
+                        "p_fake": float(p_fake),
+                        "p_real": float(p_real),
+                        "temperature_applied": model_temp,
+                        "ood_score": ood_score,
+                        "is_ood": bool(is_ood),
+                        "ood_threshold": (
+                            float(ood_threshold) if ood_threshold is not None else None
+                        ),
+                        "classification_threshold": fake_threshold,
+                    }
                 )
 
-                results.append({
-                    'is_deepfake': is_deepfake,
-                    'confidence': float(confidence),
-                    'p_fake': float(p_fake),
-                    'p_real': float(p_real),
-                    'temperature_applied': model_temp,
-                    'ood_score': ood_score,
-                    'is_ood': bool(is_ood),
-                    'ood_threshold': float(ood_threshold) if ood_threshold is not None else None,
-                    'classification_threshold': fake_threshold,
-                })
-
-            return ProcessingResult(
-                status=ProcessingStatus.SUCCESS,
-                data=results
-            )
+            return ProcessingResult(status=ProcessingStatus.SUCCESS, data=results)
 
         except Exception as e:
             return ProcessingResult(
                 status=ProcessingStatus.ERROR,
-                errors=[f"Erro na predição TensorFlow: {str(e)}"]
+                errors=[f"Erro na predição TensorFlow: {str(e)}"],
             )
 
     def _predict_pytorch_transformers_batch(
@@ -918,45 +954,46 @@ class Predictor:
                 predictions, _contract_is_logits(model_info)
             )
 
-            model_temp = float(getattr(model_info, 'temperature', 1.0))
+            model_temp = float(getattr(model_info, "temperature", 1.0))
             predictions = apply_temperature_scaling(predictions, model_temp)
             ood_scores = compute_energy_score(predictions, temperature=model_temp)
             ood_threshold = None
-            if model_info.input_contract and isinstance(model_info.input_contract, dict):
-                ood_threshold = model_info.input_contract.get('ood_threshold')
-            fake_threshold = _get_numeric_attr(model_info, 'eer_threshold', 0.5)
+            if model_info.input_contract and isinstance(
+                model_info.input_contract, dict
+            ):
+                ood_threshold = model_info.input_contract.get("ood_threshold")
+            fake_threshold = _get_numeric_attr(model_info, "eer_threshold", 0.5)
 
             results = []
             for i in range(len(predictions)):
                 pred = predictions[i]
                 if np.ndim(pred) == 0 or pred.shape[-1] == 1:
-                    p_fake = _as_probability(
-                        pred[0] if np.ndim(pred) > 0 else pred
-                    )
+                    p_fake = _as_probability(pred[0] if np.ndim(pred) > 0 else pred)
                     p_real = _as_probability(1.0 - p_fake)
                 else:
                     p_fake = _as_probability(pred[1])
                     p_real = _as_probability(pred[0])
 
                 is_deepfake = bool(p_fake >= fake_threshold)
-                confidence = _as_probability(p_fake if is_deepfake else p_real)
+                confidence = verdict_confidence(p_fake, fake_threshold)
                 ood_score = float(ood_scores[i])
-                is_ood = (
-                    ood_threshold is not None and ood_score < float(ood_threshold)
+                is_ood = ood_threshold is not None and ood_score < float(ood_threshold)
+                results.append(
+                    {
+                        "is_deepfake": is_deepfake,
+                        "confidence": float(confidence),
+                        "fake_score": fake_score(p_fake, fake_threshold),
+                        "p_fake": float(p_fake),
+                        "p_real": float(p_real),
+                        "temperature_applied": model_temp,
+                        "ood_score": ood_score,
+                        "is_ood": bool(is_ood),
+                        "ood_threshold": (
+                            float(ood_threshold) if ood_threshold is not None else None
+                        ),
+                        "classification_threshold": fake_threshold,
+                    }
                 )
-                results.append({
-                    'is_deepfake': is_deepfake,
-                    'confidence': float(confidence),
-                    'p_fake': float(p_fake),
-                    'p_real': float(p_real),
-                    'temperature_applied': model_temp,
-                    'ood_score': ood_score,
-                    'is_ood': bool(is_ood),
-                    'ood_threshold': (
-                        float(ood_threshold) if ood_threshold is not None else None
-                    ),
-                    'classification_threshold': fake_threshold,
-                })
 
             return ProcessingResult(status=ProcessingStatus.SUCCESS, data=results)
         except Exception as e:
@@ -966,9 +1003,7 @@ class Predictor:
             )
 
     def _predict_sklearn_batch(
-        self,
-        model_info: ModelInfo,
-        features_list: List[np.ndarray]
+        self, model_info: ModelInfo, features_list: List[np.ndarray]
     ) -> ProcessingResult[List[Dict[str, Any]]]:
         """Predição em lote com modelo sklearn."""
         try:
@@ -979,12 +1014,12 @@ class Predictor:
             flattened_features = []
             for f in features_list:
                 if model_info.scaler:
-                     # Scaler espera 2D array (1, n_features) para transform
-                     f_reshaped = f.reshape(1, -1)
-                     f_scaled = model_info.scaler.transform(f_reshaped)
-                     flattened_features.append(f_scaled.flatten())
+                    # Scaler espera 2D array (1, n_features) para transform
+                    f_reshaped = f.reshape(1, -1)
+                    f_scaled = model_info.scaler.transform(f_reshaped)
+                    flattened_features.append(f_scaled.flatten())
                 else:
-                     flattened_features.append(f.flatten())
+                    flattened_features.append(f.flatten())
 
             X = np.array(flattened_features)
 
@@ -992,51 +1027,56 @@ class Predictor:
             predictions = model_info.model.predict(X)
 
             # Probabilidade (convenção: índice 0 = real, índice 1 = fake)
-            if hasattr(model_info.model, 'predict_proba'):
+            if hasattr(model_info.model, "predict_proba"):
                 probas = model_info.model.predict_proba(X)
-                fake_threshold = _get_numeric_attr(model_info, 'eer_threshold', 0.5)
+                fake_threshold = _get_numeric_attr(model_info, "eer_threshold", 0.5)
                 for i in range(len(probas)):
                     p_real = float(probas[i][0])
                     p_fake = float(probas[i][1]) if len(probas[i]) > 1 else 1.0 - p_real
-                    p_fake = apply_posthoc_calibration(p_fake, model_info.input_contract)
+                    p_fake = apply_posthoc_calibration(
+                        p_fake, model_info.input_contract
+                    )
                     p_real = 1.0 - p_fake
                     is_deepfake = bool(p_fake >= fake_threshold)
-                    confidence = p_fake if is_deepfake else p_real
-                    results.append({
-                        'is_deepfake': is_deepfake,
-                        'confidence': float(confidence),
-                        'p_fake': p_fake,
-                        'p_real': p_real,
-                        'classification_threshold': fake_threshold,
-                    })
+                    results.append(
+                        {
+                            "is_deepfake": is_deepfake,
+                            "confidence": verdict_confidence(p_fake, fake_threshold),
+                            "fake_score": fake_score(p_fake, fake_threshold),
+                            "p_fake": p_fake,
+                            "p_real": p_real,
+                            "classification_threshold": fake_threshold,
+                        }
+                    )
             else:
                 for i in range(len(predictions)):
                     pred_int = int(predictions[i])
                     is_deepfake = pred_int == 1
-                    results.append({
-                        'is_deepfake': is_deepfake,
-                        'confidence': 1.0,
-                        'p_fake': 1.0 if is_deepfake else 0.0,
-                        'p_real': 0.0 if is_deepfake else 1.0,
-                        'classification_threshold': 0.5,
-                    })
+                    results.append(
+                        {
+                            "is_deepfake": is_deepfake,
+                            "confidence": 1.0,
+                            "fake_score": 1.0 if is_deepfake else 0.0,
+                            "p_fake": 1.0 if is_deepfake else 0.0,
+                            "p_real": 0.0 if is_deepfake else 1.0,
+                            "classification_threshold": 0.5,
+                        }
+                    )
 
-            return ProcessingResult(
-                status=ProcessingStatus.SUCCESS,
-                data=results
-            )
+            return ProcessingResult(status=ProcessingStatus.SUCCESS, data=results)
 
         except Exception as e:
             return ProcessingResult(
                 status=ProcessingStatus.ERROR,
-                errors=[f"Erro na predição sklearn: {str(e)}"]
+                errors=[f"Erro na predição sklearn: {str(e)}"],
             )
 
     def _predict_tensorflow_batch_with_tta(
-        self, model_info: ModelInfo,
+        self,
+        model_info: ModelInfo,
         features_list: List[np.ndarray],
         device: str = None,
-        n_augmentations: int = 5
+        n_augmentations: int = 5,
     ) -> ProcessingResult[List[Dict[str, Any]]]:
         """Test-Time Augmentation: run multiple augmented copies and average predictions.
 
@@ -1068,7 +1108,8 @@ class Predictor:
             # 2. Small Gaussian noise
             if n_augmentations >= 2:
                 noisy = batch_features + np.random.normal(
-                    0, 0.005, batch_features.shape).astype(np.float32)
+                    0, 0.005, batch_features.shape
+                ).astype(np.float32)
                 all_predictions.append(_run_prediction(noisy))
 
             # 3. Time shift para trás (a versão anterior usava "ruído
@@ -1102,43 +1143,40 @@ class Predictor:
 
             # Sprint 1.4: Calibração per-model (preferida) com fallback ao
             # temperature_scaler global (compatibilidade com código antigo).
-            model_temp = float(getattr(model_info, 'temperature', 1.0))
+            model_temp = float(getattr(model_info, "temperature", 1.0))
             if model_temp == 1.0 and self.temperature_scaler.temperature != 1.0:
                 model_temp = float(self.temperature_scaler.temperature)
             avg_predictions = apply_temperature_scaling(avg_predictions, model_temp)
 
-            fake_threshold = _get_numeric_attr(model_info, 'eer_threshold', 0.5)
+            fake_threshold = _get_numeric_attr(model_info, "eer_threshold", 0.5)
 
             results = []
             for i in range(len(avg_predictions)):
                 pred = avg_predictions[i]
                 if np.ndim(pred) == 0 or pred.shape[-1] == 1:
-                    p_fake = _as_probability(
-                        pred[0] if np.ndim(pred) > 0 else pred
-                    )
+                    p_fake = _as_probability(pred[0] if np.ndim(pred) > 0 else pred)
                     p_real = _as_probability(1.0 - p_fake)
                 else:
                     p_fake = _as_probability(pred[1])
                     p_real = _as_probability(pred[0])
 
                 is_deepfake = bool(p_fake >= fake_threshold)
-                confidence = _as_probability(p_fake if is_deepfake else p_real)
 
-                results.append({
-                    'is_deepfake': is_deepfake,
-                    'confidence': float(confidence),
-                    'p_fake': float(p_fake),
-                    'p_real': float(p_real),
-                    'classification_threshold': fake_threshold,
-                    'tta_applied': True,
-                    'n_augmentations': len(all_predictions),
-                    'temperature_applied': model_temp,
-                })
+                results.append(
+                    {
+                        "is_deepfake": is_deepfake,
+                        "confidence": verdict_confidence(p_fake, fake_threshold),
+                        "fake_score": fake_score(p_fake, fake_threshold),
+                        "p_fake": float(p_fake),
+                        "p_real": float(p_real),
+                        "classification_threshold": fake_threshold,
+                        "tta_applied": True,
+                        "n_augmentations": len(all_predictions),
+                        "temperature_applied": model_temp,
+                    }
+                )
 
-            return ProcessingResult(
-                status=ProcessingStatus.SUCCESS,
-                data=results
-            )
+            return ProcessingResult(status=ProcessingStatus.SUCCESS, data=results)
 
         except Exception as e:
             logger.warning(f"TTA failed, falling back to standard prediction: {e}")

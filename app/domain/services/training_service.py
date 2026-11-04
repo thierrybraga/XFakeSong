@@ -20,7 +20,8 @@ from app.core.contracts.services import (
 from app.domain.models.architectures.registry import (
     get_architecture_by_any_name as get_architecture_info,
 )
-from app.domain.models.training.trainer import ModelTrainer, validation_eer
+from app.domain.models.training.metrics import validation_eer
+from app.domain.models.training.trainer import ModelTrainer
 
 logger = logging.getLogger(__name__)
 importlib = types.SimpleNamespace(import_module=_stdlib_importlib.import_module)
@@ -586,8 +587,7 @@ class TrainingService(ITrainingService):
                                 "restored": bool(restored),
                                 "monitor": checkpoint_monitor,
                                 "weights_evaluated": (
-                                    "best_checkpoint" if restored
-                                    else "last_epoch"
+                                    "best_checkpoint" if restored else "last_epoch"
                                 ),
                                 "checkpoint_path": str(checkpoint_file),
                             }
@@ -681,8 +681,12 @@ class TrainingService(ITrainingService):
                 "metrics": train_result.data,
                 "input_contract": input_contract,
             }
-            with open(config_path, "w") as f:
-                json.dump(model_metadata, f, indent=4, default=str)
+            from app.utils.file_storage import atomic_write_text
+
+            atomic_write_text(
+                config_path,
+                json.dumps(model_metadata, indent=4, ensure_ascii=False, default=str),
+            )
 
             try:
                 from app.core.db.experiment_store import experiment_store
@@ -944,27 +948,3 @@ class TrainingService(ITrainingService):
                 status=ProcessingStatus.ERROR,
                 errors=[f"Erro inesperado: {str(e)}"],
             )
-
-    def evaluate_model(
-        self, model_name: str, test_dataset: str
-    ) -> ProcessingResult[Dict[str, float]]:
-        # Implementação futura
-        return ProcessingResult(
-            status=ProcessingStatus.ERROR, errors=["Not implemented"]
-        )
-
-    def fine_tune_model(
-        self, base_model: str, dataset_name: str, config: Dict[str, Any]
-    ) -> ProcessingResult[ModelMetadata]:
-        # Implementação futura
-        return ProcessingResult(
-            status=ProcessingStatus.ERROR, errors=["Not implemented"]
-        )
-
-    def get_training_progress(
-        self, training_id: str
-    ) -> ProcessingResult[Dict[str, Any]]:
-        # Implementação futura
-        return ProcessingResult(
-            status=ProcessingStatus.ERROR, errors=["Not implemented"]
-        )

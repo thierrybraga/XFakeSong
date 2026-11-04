@@ -1,12 +1,25 @@
 # Dataset do benchmark
 
-Descrição operacional do artefato que alimenta treino e benchmark. A metodologia
-completa — por que cada decisão foi tomada e o que foi medido — está no
-[Protocolo de Dataset](dataset-protocol.md).
+Descrição do corpus pareado CETUC–XTTS-v2 e dos artefatos de benchmark. A
+referência metodológica do estudo do TCC é o [artigo canônico e inventário de
+legado](../evaluation/canonical-study-and-legacy-inventory.md); o método de
+construção está no [Protocolo de Dataset](dataset-protocol.md).
 
 ## Resumo executivo
 
-`data/datasets/benchmark_dataset.npz` — **CETUC pareado com clones XTTS-v2**.
+!!! warning "Não confundir corpus pai e dataset avaliado no artigo"
+    O artigo usa `data/datasets/benchmark_dataset_15k.npz` (15.000 amostras),
+    cujo arquivo e test lock existem neste checkout local, mas não são
+    distribuídos pelo Git. As seções abaixo descrevem o corpus pai de 40.980
+    amostras e seus splits completos. A disponibilidade pública das fontes não
+    confirma autorização para redistribuir o corpus derivado: valide os termos
+    do CETUC, Fake Voices e XTTS, além da base ética para publicar áudios e
+    identificadores, antes de hospedar WAVs ou NPZ.
+
+O corpus pai CETUC pareado com clones XTTS-v2 tem 40.980 amostras após as
+disjunções descritas. O arquivo integral `data/datasets/benchmark_dataset.npz`
+é uma especificação/exportação histórica e **não está presente neste checkout**;
+ele não é o recorte de 15 mil amostras avaliado no artigo.
 Cada amostra falsa é o clone sintético do **mesmo locutor lendo a mesma frase**
 que a amostra real correspondente.
 
@@ -31,7 +44,7 @@ entra numa partição quando o **locutor e a frase** pertencem àquela partiçã
 bloco diagonal do grid. As combinações fora da diagonal são descartadas, e é
 isso que faz o aproveitamento ser de 41,6% do corpus.
 
-## Contrato técnico do NPZ
+## Contrato histórico da exportação integral do corpus pai
 
 | Item | Valor |
 | --- | --- |
@@ -64,7 +77,7 @@ duas fontes publicam locutor e texto.
 ## Evidências de integridade
 
 Auditoria de 26/07/2026 (`data/datasets/splits/audit_report.json`),
-reproduzível com `python scripts/dataset/audit_paired_corpus.py`:
+reproduzível com `python tools/dataset/audit_paired_corpus.py`:
 
 | Verificação | Resultado |
 | --- | ---: |
@@ -101,34 +114,36 @@ Um detector trivial de descritor único chega a **AUC 0,67** neste corpus (fator
 de crista, artefato genuíno de vocoder). Esse é o piso de leitura: um modelo
 próximo disso não aprendeu mais do que uma estatística escalar.
 
-## Uso
+## Reconstrução
 
-```bash
-python scripts/benchmark/run_models_sequential.py --dataset data/datasets/benchmark_dataset.npz --models AASIST Ensemble --epochs 100 --snr 30 20 10 --device-profile gpu --out data/results/<run> --resume
-```
-
-O corpus completo (49.264 pares, 98.528 amostras, 133,1 h) fica em
-`data/datasets/corpus/` e a partição em `data/datasets/splits/`. O `.npz`
-acima já contém a partição inteira; para reduzi-lo ao que couber na memória de
-treino use `--max-pairs-train` no exportador, que corta **pares** e preserva o
-balanceamento (ver [Protocolo de Dataset, §9.1](dataset-protocol.md)).
+O corpus de origem (49.264 pares, 98.528 amostras, 133,1 h) fica em
+`data/datasets/corpus/` e as partições completas em `data/datasets/splits/`.
+Os comandos para reconstruir o corpus pai e suas exportações estão no
+[Protocolo de Dataset](dataset-protocol.md). Para o benchmark do TCC, siga o
+NPZ de 15 mil amostras e a receita descrita no [inventário canônico](../evaluation/canonical-study-and-legacy-inventory.md).
 
 A janela caiu de 5 s para 3 s e o contrato de inferência (`source_samples`) já
-está em 48.000 em todo o código — ver [Protocolo de Dataset, §9.2](dataset-protocol.md#92-janela-fonte-migração-concluída).
+está em 48.000 em todo o código — ver [Protocolo de Dataset, §9.2](dataset-protocol.md#92-janela-fonte-migracao-concluida).
 
-## Estado atual: nenhum modelo treinado sob este protocolo
+## Relação com o estudo do artigo
 
-`data/models/` está **vazio**. Os artefatos `.npz` de protocolos anteriores
-foram apagados — um deles tinha composição que permitia acertar 87,6% dos
-rótulos apenas identificando o corpus de origem, sem detectar síntese alguma —
-e o último resíduo de modelo (`bench_svm.pkl`, incompatível com o front-end
-tabular atual) foi removido de `data/models/`. `data/results/benchmark/` e
-`data/results/reporting/` também estão vazios.
+O artefato do artigo é `data/datasets/benchmark_dataset_15k.npz` (15.000
+amostras), SHA-256
+`3775b35fb05155011b21a30ff60632aaa7c9f67f031bd6f7874a5f313363400f`, com splits
+12.162/1.456/1.382 e test lock correspondente. Portanto, a afirmação anterior
+de que o NPZ e o lock estavam ausentes era incorreta.
 
-Isso significa que **nenhuma das 14 arquiteturas foi treinada ou avaliada sob
-o protocolo `speaker_x_sentence_double_disjoint_block_diagonal` atual**. As
-métricas em `data/results/paper/tabelas_benchmark.tex` (acurácia, EER, params,
-etc.) são de uma rodada anterior ao protocolo vigente e **não devem ser
-citadas como resultado deste dataset** — precisam ser regeneradas por um novo
-run do benchmark (`scripts/benchmark/run_benchmark.py` /
-`run_models_sequential.py`).
+A execução local `data/results/benchmark_15k_2026-08-20/` referencia o mesmo
+dataset e contém 11 registros de modelo marcados `ok`, mas o resumo geral ainda
+declara `running`, seus caminhos de saída apontam para uma pasta ausente, e as
+métricas diferem das tabelas do artigo. As fontes dos valores consolidados
+também apontam para diretórios ausentes. Assim, a existência do NPZ/lock não
+fecha a rastreabilidade: **não apresentar as métricas do artigo como
+confirmadas até reconciliar run, configuração, versão do código, logs,
+checkpoints, predições e tabelas**. O [inventário canônico](../evaluation/canonical-study-and-legacy-inventory.md)
+traz a comparação por modelo e os candidatos a legado.
+
+O protocolo do artigo define 11 entradas oficiais, seed 42, até 100 épocas,
+AWGN na forma de onda (treino 30/20/10 dB; teste 30/20/10/5 dB), seleção no
+split de validação e 30 medidas de latência. Preserve os resultados históricos;
+uma nova campanha deve gerar um diretório próprio e manifesto completo.

@@ -1,4 +1,4 @@
-"""Tabs Gradio do XFakeSong.
+"""Tabs Gradio do SpeechChecker.
 
 Cada tab é uma função `create_<nome>_tab()` que constrói o layout e
 event handlers da aba. Os imports são "lazy" — se uma tab falhar ao
@@ -12,21 +12,11 @@ from __future__ import annotations
 import logging
 from typing import Callable
 
-# === Compatibilidade huggingface_hub ===
-# Gradio v4 ainda importa HfFolder, removido em huggingface_hub recente.
-try:
-    from huggingface_hub import HfFolder  # noqa: F401
-except ImportError:
-    import huggingface_hub
+from app.core.hf_compat import ensure_hf_folder_shim
 
-    class _HfFolder:
-        """Shim para HfFolder removido em huggingface_hub >= 0.16."""
+ensure_hf_folder_shim()
 
-        pass
-
-    huggingface_hub.HfFolder = _HfFolder
-
-import gradio as gr
+import gradio as gr  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +27,7 @@ def _create_error_tab(name: str, error_msg: str) -> Callable[[], None]:
     O placeholder renderiza um aviso amigável para o usuário sem
     quebrar a aplicação inteira.
     """
+
     def _tab() -> None:
         with gr.Tab(f"⚠️ {name} (erro)"):
             gr.Markdown(
@@ -45,6 +36,7 @@ def _create_error_tab(name: str, error_msg: str) -> Callable[[], None]:
                 f"Esta aba foi desabilitada para preservar o resto da interface. "
                 f"Verifique os logs do servidor para mais detalhes."
             )
+
     return _tab
 
 
@@ -67,7 +59,7 @@ try:
     from .features import create_features_tab
 except Exception as e:
     logger.error(f"Falha ao carregar tab Features: {e}", exc_info=True)
-    create_features_tab = _create_error_tab("Features", str(e))
+    create_features_tab = _create_error_tab("Características", str(e))
 
 # UI Fase 2: wizard de treino linear (substitui training.py na UI principal)
 try:

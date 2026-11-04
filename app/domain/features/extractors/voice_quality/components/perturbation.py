@@ -1,6 +1,7 @@
 """
 Extração de características de perturbação (Jitter, Shimmer, etc).
 """
+
 from typing import Dict
 
 import numpy as np
@@ -26,8 +27,7 @@ def compute_rap(y: np.ndarray, f0: np.ndarray, sr: int = 22050) -> float:
         diffs = []
         for trecho in trechos:
             for i in range(1, len(trecho) - 1):
-                avg_neighbors = (trecho[i - 1] +
-                                 trecho[i] + trecho[i + 1]) / 3.0
+                avg_neighbors = (trecho[i - 1] + trecho[i] + trecho[i + 1]) / 3.0
                 diffs.append(abs(trecho[i] - avg_neighbors))
 
         if not diffs:
@@ -60,7 +60,7 @@ def compute_ppq(y: np.ndarray, f0: np.ndarray, sr: int = 22050) -> float:
         for trecho in trechos:
             for i in range(2, len(trecho) - 2):
                 # Média de 5 pontos
-                avg_5 = np.mean(trecho[i - 2:i + 3])
+                avg_5 = np.mean(trecho[i - 2 : i + 3])
                 diffs.append(abs(trecho[i] - avg_5))
 
         if not diffs:
@@ -76,20 +76,21 @@ def compute_ppq(y: np.ndarray, f0: np.ndarray, sr: int = 22050) -> float:
         return 0.0
 
 
-def compute_apq(y: np.ndarray, f0: np.ndarray,
-                frame_length: int = 2048, hop_length: int = 512) -> float:
+def compute_apq(
+    y: np.ndarray, f0: np.ndarray, frame_length: int = 2048, hop_length: int = 512
+) -> float:
     """
     Calcula Amplitude Perturbation Quotient (APQ).
     Variação de amplitude suavizada (Shimmer local).
     """
     try:
         import librosa
+
         # Calcular amplitude pico a pico ou RMS por frame
         # Usando RMS como proxy para amplitude
         rms = librosa.feature.rms(
-            y=y,
-            frame_length=frame_length,
-            hop_length=hop_length)[0]
+            y=y, frame_length=frame_length, hop_length=hop_length
+        )[0]
 
         # Filtrar frames silenciosos (opcional, mas recomendado)
         rms = rms[rms > 1e-4]
@@ -100,7 +101,7 @@ def compute_apq(y: np.ndarray, f0: np.ndarray,
         diffs = []
         for i in range(5, len(rms) - 5):
             # Média de 11 pontos
-            avg_11 = np.mean(rms[i - 5:i + 6])
+            avg_11 = np.mean(rms[i - 5 : i + 6])
             diffs.append(abs(rms[i] - avg_11))
 
         if not diffs:
@@ -122,22 +123,22 @@ def compute_vf0(f0: np.ndarray) -> float:
         voiced = f0[f0 > 0]
         if len(voiced) < 2:
             return 0.0
-        return float(np.std(voiced) / np.mean(voiced)
-                     ) if np.mean(voiced) > 0 else 0.0
+        return float(np.std(voiced) / np.mean(voiced)) if np.mean(voiced) > 0 else 0.0
     except BaseException:
         return 0.0
 
 
-def compute_shimmer_db(y: np.ndarray, f0: np.ndarray,
-                       frame_length: int = 2048, hop_length: int = 512) -> float:
+def compute_shimmer_db(
+    y: np.ndarray, f0: np.ndarray, frame_length: int = 2048, hop_length: int = 512
+) -> float:
     """Calcula Shimmer em dB."""
     try:
         import librosa
+
         # Amplitude por frame
         rms = librosa.feature.rms(
-            y=y,
-            frame_length=frame_length,
-            hop_length=hop_length)[0]
+            y=y, frame_length=frame_length, hop_length=hop_length
+        )[0]
         # Apenas frames vozeados (aproximado pela presença de F0 correspondente)
         # Precisamos alinhar f0 e rms temporalmente
         target_len = min(len(rms), len(f0))
@@ -167,18 +168,18 @@ def compute_shimmer_db(y: np.ndarray, f0: np.ndarray,
         return 0.0
 
 
-def extract_perturbation_features(y: np.ndarray, f0: np.ndarray, sr: int,
-                                  frame_length: int, hop_length: int) -> Dict[str, float]:
+def extract_perturbation_features(
+    y: np.ndarray, f0: np.ndarray, sr: int, frame_length: int, hop_length: int
+) -> Dict[str, float]:
     """Extrai todas as características de perturbação."""
     features = {}
-    features['rap'] = compute_rap(y, f0, sr)
-    features['ppq'] = compute_ppq(y, f0, sr)
-    features['apq'] = compute_apq(y, f0, frame_length, hop_length)
-    features['vf0'] = compute_vf0(f0)
-    features['shimmer_db'] = compute_shimmer_db(
-        y, f0, frame_length, hop_length)
+    features["rap"] = compute_rap(y, f0, sr)
+    features["ppq"] = compute_ppq(y, f0, sr)
+    features["apq"] = compute_apq(y, f0, frame_length, hop_length)
+    features["vf0"] = compute_vf0(f0)
+    features["shimmer_db"] = compute_shimmer_db(y, f0, frame_length, hop_length)
 
     # Alias mapeado
-    features['shdb'] = features['shimmer_db']
+    features["shdb"] = features["shimmer_db"]
 
     return features

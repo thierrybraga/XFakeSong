@@ -17,6 +17,7 @@ Este teste roda num SUBPROCESSO que BLOQUEIA `fastapi`/`starlette`/`multipart`
 importa e constrói um modelo. Subprocesso → isolamento total do `conftest` (que
 usa o `TestClient` do FastAPI).
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -28,8 +29,7 @@ import pytest
 pytest.importorskip("tensorflow")
 
 # Script executado num interpretador limpo, com FastAPI/Starlette "ausentes".
-_COLAB_SIM = textwrap.dedent(
-    """
+_COLAB_SIM = textwrap.dedent("""
     import os, sys, importlib.abc
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
     # Um Colab limpo NÃO tem TF_USE_LEGACY_KERAS. Se algum teste anterior do
@@ -71,8 +71,7 @@ _COLAB_SIM = textwrap.dedent(
     m = create_model_by_name('Ensemble', input_shape=(16000, 1), num_classes=1)
     assert m.count_params() > 0
     print('CERT_OK', m.count_params())
-    """
-)
+    """)
 
 
 def test_domain_path_imports_and_builds_without_fastapi():

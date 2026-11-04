@@ -1,12 +1,12 @@
 """Configuração centralizada do banco de dados.
 
-Pool de conexões configurável via variáveis de ambiente.
-Session management com context managers seguros.
+Pool de conexões configurável via variáveis de ambiente. Sessões são abertas
+pelos repositórios (``app.core.db.repositories``) e pelo ``ExperimentStore``
+com ``with SessionLocal() as db:``.
 """
 
 import logging
 import os
-from contextlib import contextmanager
 from pathlib import Path
 
 from sqlalchemy import create_engine, event, text
@@ -59,48 +59,6 @@ if "sqlite" in DB_PATH:
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
-
-
-# ── Dependencies ───────────────────────────────────────────────────────
-
-
-def get_db():
-    """Dependency para FastAPI (request lifecycle) — auto-close."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-@contextmanager
-def get_background_db():
-    """Context manager para sessões fora do request lifecycle.
-
-    Commit automático ao sair sem exceção; rollback em caso de erro.
-    Uso:
-        with get_background_db() as db:
-            db.query(Model).filter_by(...).first()
-    """
-    db = SessionLocal()
-    try:
-        yield db
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
-
-
-@contextmanager
-def get_readonly_db():
-    """Session somente-leitura (sem commit). Útil para consultas."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 def check_database_health() -> bool:

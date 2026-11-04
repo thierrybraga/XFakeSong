@@ -1,16 +1,16 @@
 @echo off
 REM ====================================================================
-REM XFakeSong Launcher (Windows)
+REM SpeechChecker Launcher (Windows)
 REM Uso: start.bat [auto|test|prod|gpu|stop|logs|rebuild|clean|status|install|bootstrap]
 REM Sem argumento: abre menu interativo.
 REM "auto" (recomendado) detecta GPU NVIDIA (nvidia-smi) e usa
-REM docker/compose/inference.nvidia.yml, com fallback automatico para
-REM docker/compose/inference.cpu.yml se o build/up da GPU falhar (driver ou
+REM infrastructure/docker/compose/inference.nvidia.yml, com fallback automatico para
+REM infrastructure/docker/compose/inference.cpu.yml se o build/up da GPU falhar (driver ou
 REM NVIDIA Container Toolkit ausente no host/WSL2).
 REM ====================================================================
 chcp 65001 >nul 2>&1
 SETLOCAL EnableDelayedExpansion EnableExtensions
-TITLE XFakeSong Launcher
+TITLE SpeechChecker Launcher
 
 REM Cores ANSI (Windows 10+ com cmd.exe / Terminal moderno)
 SET "ESC="
@@ -31,6 +31,9 @@ IF "%DC%"=="" (
 ) ELSE (
     SET "COMPOSE_OK=1"
 )
+REM Sem --env-file, o Compose procura o .env na pasta do arquivo compose, e nao na
+REM raiz: a inferencia recusa subir, inclusive em stop e logs.
+IF DEFINED DC IF EXIST .env SET "DC=%DC% --env-file .env"
 
 REM Dispatcher de argumentos
 IF /I "%~1"=="test"      GOTO MODE_TEST
@@ -53,7 +56,7 @@ REM ====================================================================
 :MENU
 CLS
 ECHO ===============================================================================
-ECHO                              XFAKESONG LAUNCHER
+ECHO                              SPEECHCHECKER LAUNCHER
 ECHO ===============================================================================
 ECHO.
 ECHO  [1]  Modo TESTE (Python local)
@@ -64,7 +67,7 @@ ECHO  [5]  Stop containers
 ECHO  [6]  Ver logs (follow)
 ECHO  [7]  Rebuild SEM cache
 ECHO  [8]  Status / health
-ECHO  [9]  Limpeza profunda (down -v + prune)
+ECHO  [9]  Limpeza do projeto (down -v + imagens orfas)
 ECHO  [10] Instalar dependencias locais
 ECHO  [11] Bootstrap diretorios
 ECHO  [12] Deploy Hugging Face Spaces
@@ -116,23 +119,24 @@ IF ERRORLEVEL 1 (
     GOTO MENU_RETURN
 )
 
-REM BUG.Startup.3: verifica porta 7860 antes de iniciar
+REM BUG.Startup.3: verifica a porta local antes de iniciar. Cada perfil Docker
+REM publica a sua: 7860 (NVIDIA) e 7861 (CPU).
 ECHO.
-ECHO Verificando porta 7860...
+ECHO Verificando porta 7862...
 SET "PORT_BUSY=0"
-FOR /F "tokens=5" %%P IN ('netstat -ano 2^>nul ^| findstr ":7860 " ^| findstr "LISTENING"') DO (
+FOR /F "tokens=5" %%P IN ('netstat -ano 2^>nul ^| findstr ":7862 " ^| findstr "LISTENING"') DO (
     SET "PORT_BUSY=1"
     SET "OLD_PID=%%P"
 )
 IF "%PORT_BUSY%"=="1" (
     ECHO.
     ECHO ===============================================================
-    ECHO  Porta 7860 ja em uso pelo PID %OLD_PID%.
+    ECHO  Porta 7862 ja em uso pelo PID %OLD_PID%.
     ECHO ===============================================================
     ECHO Encerre a instancia anterior antes de continuar:
     ECHO   taskkill /F /PID %OLD_PID%
     ECHO Ou rode em outra porta:
-    ECHO   python main.py --gradio --gradio-port 7861
+    ECHO   python main.py --gradio --gradio-port 7863
     ECHO.
     SET /P "KILL=Encerrar PID %OLD_PID% automaticamente? [y/N] "
     IF /I "!KILL!"=="y" (
@@ -149,15 +153,15 @@ IF "%PORT_BUSY%"=="1" (
 )
 
 ECHO.
-ECHO Aplicacao em http://localhost:7860
+ECHO Aplicacao em http://localhost:7862
 ECHO Pressione Ctrl+C para parar.
 ECHO.
-python main.py --gradio --gradio-port 7860
+python main.py --gradio --gradio-port 7862
 GOTO MENU_RETURN
 
 REM ====================================================================
 REM MODO PRODUCAO: detecta GPU NVIDIA automaticamente (nvidia-smi + WSL2/
-REM NVIDIA Container Toolkit) e usa docker/compose/inference.{cpu,nvidia}.yml.
+REM NVIDIA Container Toolkit) e usa infrastructure/docker/compose/inference.{cpu,nvidia}.yml.
 REM "gpu"/"prod" forcam um perfil especifico; sem argumento, auto-detecta com
 REM fallback automatico para CPU se o perfil GPU falhar (driver/toolkit ausente).
 :MODE_PROD
@@ -193,16 +197,31 @@ IF "%FORCE_PROFILE%"=="" (
 )
 
 IF "%PROFILE%"=="gpu" (
-    ECHO GPU NVIDIA detectada — perfil GPU ^(docker/compose/inference.nvidia.yml^)
-    SET "COMPOSE_FILE=docker\compose\inference.nvidia.yml"
-    SET "CONTAINER=xfakesong_inference_nvidia"
+    ECHO GPU NVIDIA detectada — perfil GPU ^(infrastructure/docker/compose/inference.nvidia.yml^)
+    SET "COMPOSE_FILE=infrastructure\docker\compose\inference.nvidia.yml"
+    SET "CONTAINER=speechchecker_inference_nvidia"
 ) ELSE (
-    ECHO Perfil CPU — docker/compose/inference.cpu.yml
-    SET "COMPOSE_FILE=docker\compose\inference.cpu.yml"
-    SET "CONTAINER=xfakesong_inference_cpu"
+    ECHO Perfil CPU — infrastructure/docker/compose/inference.cpu.yml
+    SET "COMPOSE_FILE=infrastructure\docker\compose\inference.cpu.yml"
+    SET "CONTAINER=speechchecker_inference_cpu"
 )
+CALL :CHECK_OTHER_INSTANCE
+IF ERRORLEVEL 1 GOTO MENU_RETURN
 ECHO Compose detectado: %DC%
 ECHO.
+REM Antes do build: um .env incompleto nao pode cair no fallback de CPU abaixo,
+REM que culparia o driver da GPU por um erro de configuracao.
+IF NOT EXIST .env (
+    ECHO Arquivo .env nao encontrado.
+    ECHO Copie .env.example para .env e defina SPEECHCHECKER_API_KEY,
+    ECHO XFAKE_GRADIO_USERNAME e XFAKE_GRADIO_PASSWORD.
+    GOTO MENU_RETURN
+)
+%DC% -f %COMPOSE_FILE% config --quiet
+IF ERRORLEVEL 1 (
+    ECHO Configuracao invalida: revise o .env, conforme a mensagem acima.
+    GOTO MENU_RETURN
+)
 ECHO Build + Up...
 %DC% -f %COMPOSE_FILE% up --build -d
 IF ERRORLEVEL 1 (
@@ -210,8 +229,8 @@ IF ERRORLEVEL 1 (
         ECHO.
         ECHO Falha no perfil GPU ^(driver/NVIDIA Container Toolkit ausente no host?^).
         ECHO Aplicando fallback automatico para CPU...
-        SET "COMPOSE_FILE=docker\compose\inference.cpu.yml"
-        SET "CONTAINER=xfakesong_inference_cpu"
+        SET "COMPOSE_FILE=infrastructure\docker\compose\inference.cpu.yml"
+        SET "CONTAINER=speechchecker_inference_cpu"
         SET "PROFILE=cpu"
         %DC% -f !COMPOSE_FILE! up --build -d
         IF ERRORLEVEL 1 (
@@ -232,9 +251,11 @@ IF ERRORLEVEL 1 (
     GOTO MENU_RETURN
 )
 
+SET "APP_ADDRESS="
+FOR /F "delims=" %%A IN ('%DC% -f %COMPOSE_FILE% port inference-api 7860 2^>nul') DO SET "APP_ADDRESS=%%A"
 ECHO.
 ECHO ===============================================================
-ECHO   Aplicacao rodando em http://localhost:7860  ^(perfil: %PROFILE%^)
+ECHO   Aplicacao rodando em http://%APP_ADDRESS%  ^(perfil: %PROFILE%^)
 ECHO ===============================================================
 ECHO.
 ECHO Comandos uteis:
@@ -246,7 +267,7 @@ GOTO MENU_RETURN
 
 REM ====================================================================
 REM Stop/logs/rebuild re-detectam GPU (mesma logica do MODE_PROD_RUN) para
-REM saber qual dos dois perfis (docker/compose/inference.{cpu,nvidia}.yml)
+REM saber qual dos dois perfis (infrastructure/docker/compose/inference.{cpu,nvidia}.yml)
 REM esta ativo — sem precisar persistir estado entre invocacoes do .bat.
 :MODE_STOP
 CLS
@@ -277,6 +298,8 @@ ECHO Forcando rebuild SEM cache...
 CALL :CHECK_DOCKER_RUNNING
 IF ERRORLEVEL 1 GOTO MENU_RETURN
 CALL :DETECT_ACTIVE_PROFILE
+CALL :CHECK_OTHER_INSTANCE
+IF ERRORLEVEL 1 GOTO MENU_RETURN
 
 %DC% -f %COMPOSE_FILE% down
 %DC% -f %COMPOSE_FILE% build --no-cache --pull
@@ -300,10 +323,10 @@ IF ERRORLEVEL 1 GOTO MENU_RETURN
 
 REM Desce os dois perfis (CPU/GPU) — nao sabemos qual estava ativo, e down
 REM num compose file cujo container ja nao existe e um no-op inofensivo.
-%DC% -f docker\compose\inference.cpu.yml down -v --remove-orphans
-%DC% -f docker\compose\inference.nvidia.yml down -v --remove-orphans 2>nul
-docker image prune -f
-docker builder prune -f
+%DC% -f infrastructure\docker\compose\inference.cpu.yml down -v --remove-orphans
+%DC% -f infrastructure\docker\compose\inference.nvidia.yml down -v --remove-orphans 2>nul
+REM So o que e do projeto: sem filtro, o prune alcanca outros projetos da maquina.
+docker image prune -f --filter "label=org.opencontainers.image.title=speechchecker-inference-api"
 ECHO Limpeza concluida.
 GOTO MENU_RETURN
 
@@ -313,9 +336,9 @@ CLS
 CALL :CHECK_DOCKER_RUNNING
 IF ERRORLEVEL 1 GOTO MENU_RETURN
 ECHO --- Compose status (CPU) ---
-%DC% -f docker\compose\inference.cpu.yml ps
+%DC% -f infrastructure\docker\compose\inference.cpu.yml ps
 ECHO --- Compose status (GPU) ---
-%DC% -f docker\compose\inference.nvidia.yml ps
+%DC% -f infrastructure\docker\compose\inference.nvidia.yml ps
 ECHO.
 ECHO --- docker stats (snapshot) ---
 docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}" 2>nul
@@ -377,7 +400,7 @@ ECHO   gpu        Sobe Docker forcando perfil GPU (NVIDIA)
 ECHO   stop       Para containers
 ECHO   logs       Tail dos logs do container
 ECHO   rebuild    Force rebuild sem cache
-ECHO   clean      Limpeza profunda (down -v + prune)
+ECHO   clean      Limpeza do projeto (down -v + imagens orfas)
 ECHO   status     Status do compose + docker stats
 ECHO   install    Instala dependencias em .venv
 ECHO   bootstrap  Cria diretorios padrao
@@ -408,6 +431,10 @@ IF ERRORLEVEL 1 (
     ECHO   https://www.docker.com/products/docker-desktop/
     EXIT /B 1
 )
+docker info >nul 2>&1
+IF NOT ERRORLEVEL 1 EXIT /B 0
+ECHO Docker parado. Tentando iniciar o Docker Desktop...
+docker desktop start --timeout 180 >nul 2>&1
 docker info >nul 2>&1
 IF ERRORLEVEL 1 (
     ECHO Docker daemon nao esta rodando.
@@ -450,20 +477,32 @@ REM Descobre qual perfil (cpu/gpu) esta ativo checando qual container foi
 REM criado por um MODE_PROD_RUN anterior — evita persistir estado em disco
 REM entre invocacoes separadas do .bat (ex.: "start.bat gpu" e depois
 REM "start.bat stop" em outra janela).
-docker inspect xfakesong_inference_nvidia >nul 2>&1
+docker inspect speechchecker_inference_nvidia >nul 2>&1
 IF NOT ERRORLEVEL 1 (
-    SET "COMPOSE_FILE=docker\compose\inference.nvidia.yml"
-    SET "CONTAINER=xfakesong_inference_nvidia"
+    SET "COMPOSE_FILE=infrastructure\docker\compose\inference.nvidia.yml"
+    SET "CONTAINER=speechchecker_inference_nvidia"
     EXIT /B 0
 )
-SET "COMPOSE_FILE=docker\compose\inference.cpu.yml"
-SET "CONTAINER=xfakesong_inference_cpu"
+SET "COMPOSE_FILE=infrastructure\docker\compose\inference.cpu.yml"
+SET "CONTAINER=speechchecker_inference_cpu"
 EXIT /B 0
 
+:CHECK_OTHER_INSTANCE
+REM Os dois perfis montam o mesmo data/ e gravariam no mesmo SQLite. Chame depois
+REM de definir CONTAINER. Mesma logica de start.sh (refuse_other_instance).
+SET "OTHER=speechchecker_inference_cpu"
+IF "%CONTAINER%"=="speechchecker_inference_cpu" SET "OTHER=speechchecker_inference_nvidia"
+SET "OTHER_RUNNING="
+FOR /F "delims=" %%R IN ('docker inspect -f "{{.State.Running}}" %OTHER% 2^>nul') DO SET "OTHER_RUNNING=%%R"
+IF NOT "%OTHER_RUNNING%"=="true" EXIT /B 0
+ECHO %OTHER% esta rodando com o mesmo data/.
+ECHO Pare-o antes: docker stop %OTHER%
+EXIT /B 1
+
 :WAIT_HEALTHY
-REM %1 = nome do container a monitorar (default xfakesong_inference_cpu)
+REM %1 = nome do container a monitorar (default speechchecker_inference_cpu)
 SET "HEALTH_CONTAINER=%~1"
-IF "%HEALTH_CONTAINER%"=="" SET "HEALTH_CONTAINER=xfakesong_inference_cpu"
+IF "%HEALTH_CONTAINER%"=="" SET "HEALTH_CONTAINER=speechchecker_inference_cpu"
 REM Aguarda container ficar healthy com timeout de 300s
 SET "MAX_WAIT=300"
 SET "ELAPSED=0"

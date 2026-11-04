@@ -1,6 +1,7 @@
 """
 Extração de características adicionais de qualidade (Spectral Tilt, Breathiness, etc).
 """
+
 from typing import Dict
 
 import librosa
@@ -51,7 +52,7 @@ def compute_breathiness_index(y: np.ndarray, f0: np.ndarray) -> float:
         split_idx = np.searchsorted(freqs, 2000)
 
         energy_high = np.sum(S[split_idx:, :] ** 2)
-        energy_total = np.sum(S ** 2)
+        energy_total = np.sum(S**2)
 
         if energy_total == 0:
             return 0.0
@@ -113,17 +114,18 @@ def compute_voice_breaks(f0: np.ndarray) -> float:
 
 
 def extract_additional_quality_features(
-        y: np.ndarray, f0: np.ndarray, sr: int) -> Dict[str, float]:
+    y: np.ndarray, f0: np.ndarray, sr: int
+) -> Dict[str, float]:
     """Extrai características adicionais de qualidade."""
     features = {}
-    features['spectral_tilt'] = compute_spectral_tilt(y, sr)
-    features['breathiness_index'] = compute_breathiness_index(y, f0)
-    features['roughness_index'] = compute_roughness_index(y, f0)
-    features['voice_breaks'] = compute_voice_breaks(f0)
+    features["spectral_tilt"] = compute_spectral_tilt(y, sr)
+    features["breathiness_index"] = compute_breathiness_index(y, f0)
+    features["roughness_index"] = compute_roughness_index(y, f0)
+    features["voice_breaks"] = compute_voice_breaks(f0)
 
     # Aliases mapeados
-    features['breathiness'] = features['breathiness_index']
-    features['roughness'] = features['roughness_index']
-    features['hoarseness'] = features['voice_breaks']
+    features["breathiness"] = features["breathiness_index"]
+    features["roughness"] = features["roughness_index"]
+    features["hoarseness"] = features["voice_breaks"]
 
     return features

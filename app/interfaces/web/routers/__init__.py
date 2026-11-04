@@ -1,4 +1,4 @@
-"""Routers da API REST do XFakeSong.
+"""Routers da API REST do SpeechChecker.
 
 Expõe os módulos para uso via:
     from app.interfaces.web.routers import detection, system, ...

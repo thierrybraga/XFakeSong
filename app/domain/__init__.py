@@ -1,18 +1,7 @@
-"""Camada de Domínio - Lógica de negócio e entidades"""
+"""Camada de domínio: regras de negócio, ML, features e XAI.
 
-# Importar serviços de domínio
-from .services.feature_extraction_service import (
-    AudioFeatureExtractionService,
-    ExtractionConfig,
-)
-from .services.upload_service import AudioUploadService, UploadResult
-
-__version__ = "1.0.0"
-
-__all__ = [
-    # Upload Services
-    "AudioUploadService", "UploadResult",
-
-    # Feature Extraction Services
-    "AudioFeatureExtractionService", "ExtractionConfig"
-]
+Sem re-exports: importe do submódulo (``from
+app.domain.services.detection_service import DetectionService``). Um
+``__init__`` com imports eager fazia qualquer ``import app.domain.<x>``
+carregar librosa e os doze extratores de features.
+"""

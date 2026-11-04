@@ -1,11 +1,11 @@
 """Construção do dataset a partir do corpus bruto.
 
-SUJEITO: `scripts/dataset/build_dataset.py` — o caminho que transforma
+SUJEITO: `tools/dataset/build_dataset.py` — o caminho que transforma
 arquivos de áudio em `.npz`. O PROTOCOLO de partição (locutor x frase) é
 assunto de `test_dataset_protocol.py`.
 """
 
-from scripts.dataset import build_dataset
+from tools.dataset import build_dataset
 
 
 def _touch_wavs(directory, prefix, count):

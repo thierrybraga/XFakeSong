@@ -16,6 +16,12 @@ from ...core.contracts.services import IDetectionService
 from ..models.architectures.registry import get_architecture_info
 from .detection.feature_preparer import FeaturePreparer
 from .detection.model_loader import ModelInfo, ModelLoader
+from .detection.operating_point import (
+    PONTO_DE_DECISAO,
+    fake_score,
+    fuse_scores,
+    verdict_confidence,
+)
 from .detection.predictor import Predictor
 from .detection.utils import get_available_devices
 from .feature_extraction_service import AudioFeatureExtractionService
@@ -32,7 +38,7 @@ logger = logging.getLogger(__name__)
 # ponderados (0.82/0.50) apesar de serem o 3º e o 2º modelos mais robustos
 # do conjunto. Atualizados = acurácia @10dB / 100 da tabela "Robustez a
 # ruído AWGN" em data/results/paper/tabelas_benchmark.tex (fonte:
-# scripts/reporting/consolidate_results.py); regenerar junto do TCC a cada
+# tools/reporting/consolidate_results.py); regenerar junto do TCC a cada
 # retreino. Sonic Sleuth/EfficientNet-LSTM/Ensemble ficam fora da tabela
 # oficial de 11 modelos (retreino pendente / suspeita de vazamento não
 # auditada) — mantidos com a estimativa anterior, não medida nesta rodada.
@@ -54,6 +60,27 @@ ROBUSTNESS_PRIORS: Dict[str, float] = {
     "spectrogram": 0.97,
 }
 _ROBUSTNESS_DEFAULT = 0.6
+
+
+def _metadados_de_calibracao(prediction: dict) -> dict:
+    """Metadados de calibração/OOD/threshold da predição, quando presentes."""
+    return {
+        k: v
+        for k, v in prediction.items()
+        if k
+        in (
+            "temperature_applied",
+            "ood_score",
+            "is_ood",
+            "ood_threshold",
+            "classification_threshold",
+            "fake_score",
+            "epistemic_uncertainty",
+            "predictive_entropy",
+            "is_uncertain",
+            "n_mc_samples",
+        )
+    }
 
 
 def robustness_fusion_weights(model_names: List[str]) -> List[float]:
@@ -145,6 +172,11 @@ class DetectionService(IDetectionService):
         """Retorna lista de modelos disponíveis."""
         return self.model_loader.get_available_models()
 
+    def reload_models(self) -> List[str]:
+        """Relê o diretório de modelos (ex.: após um treino) e lista os disponíveis."""
+        self.model_loader.load_available_models()
+        return self.get_available_models()
+
     def get_available_architectures(self) -> List[str]:
         """Retorna lista de arquiteturas disponíveis."""
         return self.model_loader.get_available_architectures()
@@ -217,25 +249,8 @@ class DetectionService(IDetectionService):
                 else:
                     p_real, p_fake = conf, 1.0 - conf
 
-            # Propaga metadados de calibração/OOD/threshold quando presentes
-            extra_meta = {
-                k: v
-                for k, v in prediction.items()
-                if k
-                in (
-                    "temperature_applied",
-                    "ood_score",
-                    "is_ood",
-                    "ood_threshold",
-                    "classification_threshold",
-                    "epistemic_uncertainty",
-                    "predictive_entropy",
-                    "is_uncertain",
-                    "n_mc_samples",
-                )
-            }
             metadata_combined = dict(extraction_info)
-            metadata_combined.update(extra_meta)
+            metadata_combined.update(_metadados_de_calibracao(prediction))
 
             result = DeepfakeDetectionResult(
                 is_fake=prediction["is_deepfake"],
@@ -351,8 +366,8 @@ class DetectionService(IDetectionService):
                             is_fake=pred["is_deepfake"],
                             confidence=pred["confidence"],
                             probabilities={
-                                "fake": pred["confidence"],
-                                "real": 1.0 - pred["confidence"],
+                                "fake": float(pred["p_fake"]),
+                                "real": float(pred["p_real"]),
                             },
                             model_name=model_name,
                             features_used=meta.get("config_feature_types", []),
@@ -480,23 +495,32 @@ class DetectionService(IDetectionService):
                     "fake": float(
                         prediction_result.data.get(
                             "p_fake",
-                            prediction_result.data["confidence"]
-                            if prediction_result.data["is_deepfake"]
-                            else 1.0 - prediction_result.data["confidence"],
+                            (
+                                prediction_result.data["confidence"]
+                                if prediction_result.data["is_deepfake"]
+                                else 1.0 - prediction_result.data["confidence"]
+                            ),
                         )
                     ),
                     "real": float(
                         prediction_result.data.get(
                             "p_real",
-                            1.0 - prediction_result.data["confidence"]
-                            if prediction_result.data["is_deepfake"]
-                            else prediction_result.data["confidence"],
+                            (
+                                1.0 - prediction_result.data["confidence"]
+                                if prediction_result.data["is_deepfake"]
+                                else prediction_result.data["confidence"]
+                            ),
                         )
                     ),
                 },
                 model_name=model_name,
                 features_used=["raw"],
-                metadata=prepared["metadata"],
+                # Sem isto a análise por arquivo perdia o limiar e o OOD: a aba
+                # Detectar anunciava "limiar fixo 0,5" para um modelo cujo corte é 0,94.
+                metadata={
+                    **prepared["metadata"],
+                    **_metadados_de_calibracao(prediction_result.data),
+                },
             )
             return ProcessingResult(status=ProcessingStatus.SUCCESS, data=result)
 
@@ -620,7 +644,7 @@ class DetectionService(IDetectionService):
             avg_p_fake = float(np.mean(window_p_fake))
             avg_p_real = 1.0 - avg_p_fake
             is_fake = avg_p_fake >= window_threshold
-            confidence = avg_p_fake if is_fake else avg_p_real
+            confidence = verdict_confidence(avg_p_fake, window_threshold)
 
             extraction_info = {
                 "feature_type": "segmented_windowed",
@@ -631,6 +655,7 @@ class DetectionService(IDetectionService):
                 "window_seconds": round(window_samples / sr, 2) if sr else None,
                 "duration_s": audio_data.duration,
                 "classification_threshold": window_threshold,
+                "fake_score": fake_score(avg_p_fake, window_threshold),
             }
 
             result = DeepfakeDetectionResult(
@@ -662,14 +687,19 @@ class DetectionService(IDetectionService):
         Executa cada modelo no áudio e combina as predições. Útil para
         aumentar accuracy via ensemble heterogêneo (ex: AASIST + Conformer + RawNet2).
 
+        Funde a pontuação centrada no limiar de cada modelo, e não P(fake): com limiares
+        de 0,05 a 0,99, somar P(fake) e cortar em 0,5 trocava o veredito dos próprios
+        modelos (ver operating_point.py). Por isso, 0,5 é o limiar também da fusão, e
+        `probabilities` traz a pontuação fundida, não uma probabilidade calibrada.
+
         Args:
             audio_data: AudioData a ser analisada
             model_names: lista de nomes de modelos a usar
             fusion: estratégia de fusão:
-                - 'weighted_avg' (default): média ponderada das confidences
-                - 'majority_vote': voto majoritário (>=ceil(N/2) modelos)
+                - 'weighted_avg' (default): média ponderada das pontuações
+                - 'majority_vote': voto majoritário; a média desempata
                 - 'max_conf': pega resultado do modelo mais confiante
-                - 'soft_voting': média simples das probabilidades fake
+                - 'soft_voting': média simples das pontuações
             weights: pesos por modelo (default: uniforme). Aplicável só em 'weighted_avg'.
             use_tta: se True, aplica TTA em cada modelo individual
 
@@ -732,23 +762,32 @@ class DetectionService(IDetectionService):
 
             # Executa cada modelo
             per_model_results: List[Dict] = []
-            for name in model_names:
+            pesos_validos: List[float] = []
+            for name, peso in zip(model_names, weights):
                 single_result = self.detect_single(
                     audio_data, model_name=name, use_tta=use_tta
                 )
                 if single_result.status == ProcessingStatus.SUCCESS:
                     r = single_result.data
+                    fake_prob = float(r.probabilities.get("fake", r.confidence))
+                    meta = r.metadata or {}
                     per_model_results.append(
                         {
                             "model": name,
                             "is_fake": bool(r.is_fake),
                             "confidence": float(r.confidence),
-                            "fake_prob": float(
-                                r.probabilities.get("fake", r.confidence)
+                            "fake_prob": fake_prob,
+                            "fake_score": float(
+                                meta.get("fake_score")
+                                if meta.get("fake_score") is not None
+                                else fake_score(
+                                    fake_prob, meta.get("classification_threshold")
+                                )
                             ),
                             "metadata": r.metadata,
                         }
                     )
+                    pesos_validos.append(peso)
                 else:
                     logger.warning(f"Modelo '{name}' falhou: {single_result.errors}")
 
@@ -759,29 +798,11 @@ class DetectionService(IDetectionService):
                 )
 
             # Aplica estratégia de fusão
-            fake_probs = np.array([r["fake_prob"] for r in per_model_results])
-            valid_weights = np.array(weights[: len(per_model_results)])
+            scores = np.array([r["fake_score"] for r in per_model_results])
+            valid_weights = np.array(pesos_validos)
             valid_weights = valid_weights / valid_weights.sum()  # re-normaliza
-
-            if fusion == "weighted_avg":
-                fused_prob = float(np.sum(fake_probs * valid_weights))
-            elif fusion == "soft_voting":
-                fused_prob = float(np.mean(fake_probs))
-            elif fusion == "majority_vote":
-                votes_fake = sum(1 for r in per_model_results if r["is_fake"])
-                fused_prob = votes_fake / len(per_model_results)
-                # Confidence = max distância de 0.5
-                fused_prob = 1.0 if votes_fake > len(per_model_results) / 2 else 0.0
-                # Use mean fake_prob como confidence interno
-                if 0.4 < np.mean(fake_probs) < 0.6:
-                    fused_prob = float(np.mean(fake_probs))
-            elif fusion == "max_conf":
-                # Pega resultado do modelo mais "confiante" (distância de 0.5)
-                distances = np.abs(fake_probs - 0.5)
-                max_idx = int(np.argmax(distances))
-                fused_prob = float(fake_probs[max_idx])
-
-            fused_is_fake = fused_prob >= 0.5
+            fused_score = fuse_scores(scores, fusion, valid_weights)
+            fused_is_fake = fused_score >= PONTO_DE_DECISAO
 
             # Métricas auxiliares
             fake_votes = sum(1 for r in per_model_results if r["is_fake"])
@@ -791,15 +812,17 @@ class DetectionService(IDetectionService):
 
             fused_result = DeepfakeDetectionResult(
                 is_fake=fused_is_fake,
-                confidence=float(fused_prob),
+                confidence=verdict_confidence(fused_score),
                 probabilities={
-                    "fake": float(fused_prob),
-                    "real": float(1.0 - fused_prob),
+                    "fake": float(fused_score),
+                    "real": float(1.0 - fused_score),
                 },
                 model_name=f"multi[{','.join(model_names)}]",
                 features_used=["multi_model"],
                 metadata={
                     "fusion": fusion,
+                    "fake_score": float(fused_score),
+                    "classification_threshold": PONTO_DE_DECISAO,
                     "weights": list(map(float, valid_weights.tolist())),
                     "per_model": per_model_results,
                     "model_agreement": float(agreement),
@@ -823,7 +846,7 @@ class DetectionService(IDetectionService):
         try:
             from app.core.db.session import SessionLocal
 
-            from ...domain.models.analysis import AnalysisResult
+            from ...core.db.models.analysis import AnalysisResult
 
             metadata = result.metadata or {}
             analysis = AnalysisResult(

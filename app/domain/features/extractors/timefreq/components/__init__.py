@@ -1,6 +1,7 @@
 """
 Componentes de extração de características tempo-frequência.
 """
+
 # Componentes de extração tempo-frequência
 
 from .emd import extract_emd_features, simple_emd
@@ -12,12 +13,12 @@ from .synchrosqueeze import extract_synchrosqueezing_features
 from .vmd import extract_vmd_features
 
 __all__ = [
-    'extract_spectrogram_features',
-    'extract_phase_features',
-    'extract_reassigned_features',
-    'extract_synchrosqueezing_features',
-    'simple_emd',
-    'extract_emd_features',
-    'extract_vmd_features',
-    'extract_instantaneous_features'
+    "extract_spectrogram_features",
+    "extract_phase_features",
+    "extract_reassigned_features",
+    "extract_synchrosqueezing_features",
+    "simple_emd",
+    "extract_emd_features",
+    "extract_vmd_features",
+    "extract_instantaneous_features",
 ]

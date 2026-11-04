@@ -15,8 +15,15 @@ from typing import Any, Dict, List
 logger = logging.getLogger("benchmark")
 
 # Endpoints informativos têm prioridade na amostragem.
-_PRIORITY_HINTS = ("health", "version", "info", "status", "metrics",
-                   "architectures", "models")
+_PRIORITY_HINTS = (
+    "health",
+    "version",
+    "info",
+    "status",
+    "metrics",
+    "architectures",
+    "models",
+)
 
 
 def _has_required_non_path_params(operation: Dict[str, Any]) -> bool:
@@ -78,18 +85,24 @@ def run_api_probe(max_endpoints: int = 8) -> Dict[str, Any]:
                 t0 = time.perf_counter()
                 try:
                     resp = client.get(path)
-                    endpoints.append({
-                        "method": "GET",
-                        "path": path,
-                        "status_code": int(resp.status_code),
-                        "latency_ms": round((time.perf_counter() - t0) * 1000, 2),
-                        "ok": 200 <= resp.status_code < 300,
-                    })
+                    endpoints.append(
+                        {
+                            "method": "GET",
+                            "path": path,
+                            "status_code": int(resp.status_code),
+                            "latency_ms": round((time.perf_counter() - t0) * 1000, 2),
+                            "ok": 200 <= resp.status_code < 300,
+                        }
+                    )
                 except Exception as e:  # noqa: BLE001
-                    endpoints.append({
-                        "method": "GET", "path": path, "error": str(e)[:160],
-                        "ok": False,
-                    })
+                    endpoints.append(
+                        {
+                            "method": "GET",
+                            "path": path,
+                            "error": str(e)[:160],
+                            "ok": False,
+                        }
+                    )
     except Exception as e:  # noqa: BLE001
         return {"status": "error", "error": str(e), "n_routes": n_routes}
 
@@ -100,8 +113,9 @@ def run_api_probe(max_endpoints: int = 8) -> Dict[str, Any]:
         "n_routes": n_routes,
         "n_probed": len(endpoints),
         "n_2xx": n_ok,
-        "latency_ms_median": round(float(sorted(lat)[len(lat) // 2]), 2) if lat
-        else None,
+        "latency_ms_median": (
+            round(float(sorted(lat)[len(lat) // 2]), 2) if lat else None
+        ),
         "endpoints": endpoints,
     }
 

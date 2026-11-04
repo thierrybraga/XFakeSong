@@ -1,31 +1,6 @@
-# Arquivo de inicialização para modelos de domínio
+"""Modelos de ML do domínio: ``architectures/``, ``training/`` e ``inference/``.
 
-from .analysis import AnalysisResult
-from .architecture_config import ArchitectureConfig
-from .base_model import BaseModel
-from .experiment import (
-    ArtifactRecord,
-    ConfigurationEntry,
-    ExperimentRun,
-    MetricRecord,
-    ModelRun,
-    SystemSnapshot,
-)
-from .training_job import TrainingJob
-from .user import User
-from .voice_profile import VoiceProfile
-
-__all__ = [
-    "BaseModel",
-    "AnalysisResult",
-    "ArchitectureConfig",
-    "User",
-    "TrainingJob",
-    "VoiceProfile",
-    "ExperimentRun",
-    "ModelRun",
-    "MetricRecord",
-    "ConfigurationEntry",
-    "SystemSnapshot",
-    "ArtifactRecord",
-]
+As entidades persistidas (ORM) ficam em ``app.core.db.models``. Sem
+re-exports aqui: importar ``app.domain.models.architectures.svm`` não deve
+carregar SQLAlchemy nem abrir o banco.
+"""

@@ -121,6 +121,7 @@ def measure_latency_profile(
     except Exception as exc:
         return {"status": "error", "error": str(exc), "runtime": runtime}
 
+
 def measure_latency_ms(
     predict_fn: Callable[[np.ndarray], object],
     x_sample: np.ndarray,

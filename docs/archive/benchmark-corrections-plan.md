@@ -24,7 +24,7 @@ teste. As acurácias ~100% medem desempenho **in-domain**, não generalização.
 
 ### P0.0 — Auditoria forense do dataset ✅ *(concluída — sem GPU)*
 
-Script: `scripts/dataset/audit_dataset_leakage.py`.
+Script: `tools/dataset/audit_dataset_leakage.py`.
 Relatório: `data/results/audit_dataset_leakage/leakage_report.{json,md}`.
 
 **Evidências obtidas na corrida anterior (`20260626`, antes da reconstrução do
@@ -67,21 +67,21 @@ atalho de fonte só some com o protocolo cross-generator (P0.1).
 ### P0.1 — Re-rodar no protocolo cross-generator ⏳ *(o teste mais importante)*
 
 ```bash
-python scripts/benchmark/run_benchmark.py --full \
+python benchmarks/run_benchmark.py --full \
   --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
   --cross-generator fkvoice \
   --out data/results/xgen_fkvoice_20260626 --verbose
 ```
 
 Treina sem o XTTS e testa nele → generalização a gerador inédito. Infra pronta
-(`scripts/benchmark/run_benchmark.py:101`, `benchmarks/data.py:290`). **GPU/WSL2.**
+(`benchmarks/run_benchmark.py:101`, `benchmarks/data.py:290`). **GPU/WSL2.**
 **Aceite:** `results.json` com `holdout_generator="fkvoice"`; EER do Sonic Sleuth
 deixa de ser 0,00% (degradar é o resultado *honesto*).
 
 ### P0.2 — Re-rodar no split disjunto por grupo ⏳
 
 ```bash
-python scripts/benchmark/run_benchmark.py --full \
+python benchmarks/run_benchmark.py --full \
   --dataset data/datasets/benchmark_audio_raw_balanced_15k.npz \
   --group-split \
   --out data/results/group_split_20260626 --verbose
@@ -186,7 +186,7 @@ robustez — caminho alternativo a um Ensemble treinado frágil.
   [../evaluation/experimental-study.md](../evaluation/experimental-study.md) (estratificado vs grupo
   vs cross-generator) + registrar esta auditoria.
 - **P3.3** Consolidar figuras/tabelas a partir da corrida honesta:
-  `python scripts/reporting/consolidate_results.py --input data/results/xgen_fkvoice_20260626 …`.
+  `python tools/reporting/consolidate_results.py --input data/results/xgen_fkvoice_20260626 …`.
 
 ---
 

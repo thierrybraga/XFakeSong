@@ -42,7 +42,7 @@ class TestValidacaoCruzadaAgrupada:
         partição aleatória, o modelo acerta a dobra de validação reconhecendo
         o enunciado que acabou de ver no treino dela — sem detectar síntese.
         """
-        from benchmarks.runner import _classical_cv_splitter
+        from benchmarks.fit_classical import _classical_cv_splitter
 
         X, y, groups = dados_agrupados
         splitter, cv, kind, note = _classical_cv_splitter(y, groups, seed=42)
@@ -55,7 +55,7 @@ class TestValidacaoCruzadaAgrupada:
 
     def test_sem_cluster_ids_degrada_declarando(self, dados_agrupados):
         """Degradar é aceitável; degradar em silêncio, não."""
-        from benchmarks.runner import _classical_cv_splitter
+        from benchmarks.fit_classical import _classical_cv_splitter
 
         _X, y, _groups = dados_agrupados
         _splitter, cv, kind, note = _classical_cv_splitter(y, None, seed=42)
@@ -65,25 +65,23 @@ class TestValidacaoCruzadaAgrupada:
         assert "SEM agrupamento" in note
 
     def test_grupos_desalinhados_falham_alto(self, dados_agrupados):
-        from benchmarks.runner import _classical_cv_splitter
+        from benchmarks.fit_classical import _classical_cv_splitter
 
         _X, y, groups = dados_agrupados
         with pytest.raises(RuntimeError, match="desalinhados"):
             _classical_cv_splitter(y, groups[:-5], seed=42)
 
     def test_poucas_amostras_por_classe_nao_quebra(self):
-        from benchmarks.runner import _classical_cv_splitter
+        from benchmarks.fit_classical import _classical_cv_splitter
 
         splitter, cv, kind, _note = _classical_cv_splitter(
             np.array([0, 1]), None, seed=42
         )
         assert splitter is None and cv < 2 and kind == "none"
 
-    def test_tuning_registra_o_agrupamento_no_artefato(
-        self, dados_agrupados, tmp_path
-    ):
+    def test_tuning_registra_o_agrupamento_no_artefato(self, dados_agrupados, tmp_path):
         """Quem lê o `hyperparameter_tuning.json` precisa saber qual CV rodou."""
-        from benchmarks.runner import _run_classical_tuning
+        from benchmarks.fit_classical import _run_classical_tuning
 
         X, y, groups = dados_agrupados
         plano = _run_classical_tuning(
@@ -102,19 +100,18 @@ class TestGridUnico:
         O CLAUDE.md lista TRÊS (registry, create_model, planning). O
         `_classical_search_space` era uma quarta, não documentada, e era ela
         que rodava: os grids regularizados de `svm.py`/`random_forest.py` não
-        tinham nenhum chamador em `app/`, `benchmarks/`, `scripts/` ou
+        tinham nenhum chamador em `app/`, `benchmarks/`, `tools/` ou
         `tests/`.
         """
         from app.domain.models.architectures.random_forest import (
             RANDOM_FOREST_PARAM_GRID,
         )
         from app.domain.models.architectures.svm import SVM_PARAM_GRID
-        from benchmarks.runner import _classical_search_space
+        from benchmarks.fit_classical import _classical_search_space
 
         assert _classical_search_space("SVM", 42)[0] == SVM_PARAM_GRID
         assert (
-            _classical_search_space("RandomForest", 42)[0]
-            == RANDOM_FOREST_PARAM_GRID
+            _classical_search_space("RandomForest", 42)[0] == RANDOM_FOREST_PARAM_GRID
         )
 
     def test_grid_do_rf_regulariza_de_fato(self):
@@ -169,7 +166,7 @@ class TestGridUnico:
         monotônica: a AUC é idêntica com ou sem. Quem dá probabilidade ao
         modelo final é a calibração isotônica.
         """
-        from benchmarks.runner import _classical_search_space
+        from benchmarks.fit_classical import _classical_search_space
 
         _grid, estimador, _step = _classical_search_space("SVM", 42)
         assert estimador.probability is False
@@ -197,9 +194,7 @@ class TestCalibracao:
 
             esperado = "RandomForestClassifier"
         else:
-            from app.domain.models.architectures.svm import (
-                create_svm_model as factory,
-            )
+            from app.domain.models.architectures.svm import create_svm_model as factory
 
             esperado = "SVC"
 
@@ -213,9 +208,7 @@ class TestCalibracao:
         )
         modelo.fit(X, y)
 
-        assert type(modelo.pipeline.steps[-1][1]).__name__ == (
-            "CalibratedClassifierCV"
-        )
+        assert type(modelo.pipeline.steps[-1][1]).__name__ == ("CalibratedClassifierCV")
         assert type(extract_sklearn_estimator(modelo.pipeline)).__name__ == esperado
         _transform, estimador = split_sklearn_pipeline(modelo.pipeline)
         assert type(estimador).__name__ == esperado
@@ -254,7 +247,7 @@ class TestRegimeDoAjuste:
         from pathlib import Path
 
         fonte = (
-            Path(__file__).resolve().parents[2] / "benchmarks" / "runner.py"
+            Path(__file__).resolve().parents[2] / "benchmarks" / "fit_classical.py"
         ).read_text(encoding="utf-8")
 
         assert "X=X_train_2d[:clean_train_count]" not in fonte
@@ -297,9 +290,9 @@ class TestIsolamentoDoModelsDir:
         for nome in ("MODELS_DIR", "DEEPFAKE_MODELS_DIR", "XFAKE_MODELS_DIR"):
             valor = os.environ.get(nome)
             assert valor, f"{nome} não foi isolada pela fixture de sessão"
-            assert "models_dir_sandbox" in valor, (
-                f"{nome} aponta para {valor}, fora do sandbox da sessão"
-            )
+            assert (
+                "models_dir_sandbox" in valor
+            ), f"{nome} aponta para {valor}, fora do sandbox da sessão"
 
     def test_config_sem_models_dir_nao_escreve_em_data_models(self, tmp_path):
         """O caminho REAL é exercitado — não basta o md5 sobreviver.
@@ -311,13 +304,11 @@ class TestIsolamentoDoModelsDir:
         from pathlib import Path
 
         from benchmarks import BenchmarkConfig
-        from benchmarks.runner import _models_dir
+        from benchmarks.common import _models_dir
 
         projeto = Path(__file__).resolve().parents[2]
         producao = projeto / "data" / "models"
-        antes = (
-            {p.name for p in producao.iterdir()} if producao.is_dir() else set()
-        )
+        antes = {p.name for p in producao.iterdir()} if producao.is_dir() else set()
 
         cfg = BenchmarkConfig(architectures=["SVM"], output_dir=str(tmp_path))
         resolvido = _models_dir(cfg, "SVM")
@@ -325,9 +316,7 @@ class TestIsolamentoDoModelsDir:
         assert producao not in resolvido.parents and resolvido != producao
         assert "models_dir_sandbox" in str(resolvido)
 
-        depois = (
-            {p.name for p in producao.iterdir()} if producao.is_dir() else set()
-        )
+        depois = {p.name for p in producao.iterdir()} if producao.is_dir() else set()
         assert depois == antes
 
 
@@ -393,7 +382,9 @@ class TestScoreDeOrdenacaoSeparado:
         from benchmarks.evaluate import evaluate_scores
 
         y = np.tile([0, 1], 100)
-        bruto = np.linspace(-4.0, 4.0, 200)[np.argsort(np.argsort(y + 1e-9 * np.arange(200)))]
+        bruto = np.linspace(-4.0, 4.0, 200)[
+            np.argsort(np.argsort(y + 1e-9 * np.arange(200)))
+        ]
         p = 1.0 / (1.0 + np.exp(-bruto))
         out = evaluate_scores(y, p, ranking_scores=bruto)
         assert out["auc_roc"] == pytest.approx(roc_auc_score(y, bruto))
@@ -434,7 +425,9 @@ class TestScoreDeOrdenacaoSeparado:
         # sem calibração a coluna existe mas fica VAZIA — não zero, que seria
         # um score legítimo e enganaria quem recalcular.
         destino2 = tmp_path / "sem_ranking.csv"
-        _write_arch_predictions_csv("Conformer", {"scores_clean": [0.2, 0.8, 0.3, 0.7]}, y, destino2)
+        _write_arch_predictions_csv(
+            "Conformer", {"scores_clean": [0.2, 0.8, 0.3, 0.7]}, y, destino2
+        )
         linhas2 = list(_csv.DictReader(destino2.open(encoding="utf-8")))
         assert {ln["ranking_score"] for ln in linhas2} == {""}
 

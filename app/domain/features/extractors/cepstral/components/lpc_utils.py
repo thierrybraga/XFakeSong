@@ -13,7 +13,7 @@ def solve_yule_walker(r: np.ndarray, order: int) -> np.ndarray:
         # completa
 
         # Vetor de correlação (lado direito)
-        p = r[1:order + 1]
+        p = r[1 : order + 1]
 
         # Primeira coluna da matriz de Toeplitz (autocorrelação R(0)...R(p-1))
         c = r[:order]
@@ -77,8 +77,8 @@ def compute_lpc(frame: np.ndarray, order: int) -> np.ndarray:
     """Computa coeficientes LPC para um frame."""
     try:
         # Calcular autocorrelação
-        autocorr = np.correlate(frame, frame, mode='full')
-        autocorr = autocorr[len(autocorr) // 2:]
+        autocorr = np.correlate(frame, frame, mode="full")
+        autocorr = autocorr[len(autocorr) // 2 :]
 
         # Normalizar
         if autocorr[0] > 0:

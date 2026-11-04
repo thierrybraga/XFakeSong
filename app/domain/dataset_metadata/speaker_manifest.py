@@ -1,6 +1,6 @@
 """Manifesto de falantes do dataset (identificacao de falante, aditiva).
 
-Os nomes de arquivo do XFakeSong seguem `<fonte>_NNNNN.wav` e NAO embutem o
+Os nomes de arquivo do SpeechChecker seguem `<fonte>_NNNNN.wav` e NAO embutem o
 falante. Este modulo mantem um sidecar `data/datasets/speaker_manifest.json` que
 mapeia o nome do arquivo -> falante, quando a fonte expoe esse identificador
 (Fake Voices por ZIP, Common Voice por `client_id`, In-the-Wild por celebridade,
@@ -24,7 +24,7 @@ import json
 import logging
 import threading
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, Optional
 
 logger = logging.getLogger("speaker_manifest")
 
@@ -36,6 +36,7 @@ BASE_DIR = Path(__file__).resolve().parents[3]
 
 DATASETS_DIR = BASE_DIR / "data" / "datasets"
 SPEAKER_MANIFEST_PATH = DATASETS_DIR / "metadata" / "speaker_manifest.json"
+
 
 class MissingSampleMetadataError(ValueError):
     """Raised when a strict scientific protocol lacks required provenance."""
@@ -69,7 +70,6 @@ def _manifest_key(path: str | Path) -> str:
 def _entry_for_path(path: str | Path) -> Dict[str, Any]:
     manifest = load_manifest()
     return manifest.get(_manifest_key(path)) or manifest.get(_basename(path)) or {}
-
 
 
 def _infer_prefix(path: str | Path) -> str:
@@ -118,32 +118,6 @@ def flush() -> None:
             _PENDING = 0
         except Exception as exc:
             logger.warning("Falha ao gravar %s: %s", SPEAKER_MANIFEST_PATH, exc)
-
-
-def record_speaker(
-    path: str | Path, speaker_id: Optional[str], source: Optional[str] = None
-) -> None:
-    """Registra o falante de um arquivo (best-effort, no-op se `speaker_id` vazio).
-
-    Chave = nome do arquivo (robusto a mover entre `datasets/` e `splits/`).
-    `source` default = prefixo inferido do nome.
-    """
-    global _DIRTY, _PENDING, _ATEXIT_REGISTERED
-    sid = (str(speaker_id).strip() if speaker_id is not None else "")
-    if not sid:
-        return  # sem falante -> usa fallback por fonte na leitura
-    key = _manifest_key(path)
-    src = (source or _infer_prefix(path)).strip().lower()
-    with _LOCK:
-        manifest = load_manifest()
-        manifest.setdefault(key, {}).update({"speaker_id": sid, "source": src})
-        _DIRTY = True
-        _PENDING += 1
-        if not _ATEXIT_REGISTERED:
-            atexit.register(flush)
-            _ATEXIT_REGISTERED = True
-        if _PENDING >= _FLUSH_EVERY:
-            flush()
 
 
 def record_sample_metadata(
@@ -212,8 +186,12 @@ def metadata_id_for_path(
 ) -> str:
     """Return a namespaced identity and fail when strict metadata is absent."""
     allowed = {
-        "speaker_id", "utterance_id", "text_id", "generator_id",
-        "vocoder_id", "source",
+        "speaker_id",
+        "utterance_id",
+        "text_id",
+        "generator_id",
+        "vocoder_id",
+        "source",
     }
     if field not in allowed:
         raise ValueError(f"Unsupported sample metadata field: {field}")
@@ -244,11 +222,6 @@ def speaker_for_path(path: str | Path, *, strict: bool = False) -> str:
         return metadata_id_for_path(path, "speaker_id", strict=True)
     # Compatibility only. Scientific protocols must call strict=True.
     return _infer_prefix(path)
-
-
-def speaker_ids_for_paths(paths: Iterable[str | Path]) -> List[str]:
-    """Lista de chaves de falante alinhada a `paths` (para o array `speaker_ids`)."""
-    return [speaker_for_path(p) for p in paths]
 
 
 def summarize_speakers(paths: Iterable[str | Path]) -> dict:

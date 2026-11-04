@@ -1,7 +1,7 @@
 """Back-end de grafo AASIST em PyTorch, sobre a sequência de um front-end SSL.
 
 MOTIVAÇÃO (2026-08-09). O runner SSL oficial
-(`scripts/benchmark/run_wavlm_original_benchmark.py`) usava a receita de
+(`benchmarks/run_wavlm_original_benchmark.py`) usava a receita de
 *probing* do SUPERB: backbone congelado, pooling global (média⊕desvio sobre
 ~150 frames) e um MLP de duas camadas. Isso mede quanta informação existe na
 representação congelada — não é a receita que produz números de campeonato.

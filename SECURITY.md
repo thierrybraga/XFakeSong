@@ -2,12 +2,15 @@
 
 ## Versões suportadas
 
-Apenas a versão mais recente do XFakeSong recebe correções de segurança.
+Apenas a versão mais recente do SpeechChecker recebe correções de segurança.
 
 | Versão | Suportada          |
 | ------ | ------------------ |
 | 1.1.x  | :white_check_mark: |
 | < 1.1  | :x:                |
+
+A versão atual do aplicativo é definida em `app/__init__.py`; os endpoints,
+configurações e interfaces importam esse valor para evitar divergências.
 
 ## Reportando uma vulnerabilidade
 
@@ -44,6 +47,8 @@ divulgação pública.
 | ------------------- | ----------------------------------------- |
 | `ALLOWED_ORIGINS`   | lista explícita de origens (não use `*`)  |
 | `ALLOWED_HOSTS`     | hosts públicos do serviço                 |
-| `XFAKESONG_API_KEY` | chave forte e secreta                     |
+| `SPEECHCHECKER_API_KEY` | chave forte e secreta                 |
 | `XFAKE_ENABLE_HSTS` | `1` quando atrás de HTTPS/TLS             |
 | `XFAKE_CSP`         | política CSP adequada ao seu deploy       |
+
+`XFAKESONG_API_KEY` continua aceita como alias legado para instalações existentes.

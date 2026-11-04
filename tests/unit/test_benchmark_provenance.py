@@ -15,7 +15,7 @@ from __future__ import annotations
 import pytest
 
 from benchmarks.config import EXTENDED_MODEL_MANIFEST, OFFICIAL_TCC_MODEL_MANIFEST
-from benchmarks.runner import (
+from benchmarks.provenance import (
     _architecture_provenance,
     _env_snapshot,
     _git_provenance,
@@ -91,7 +91,9 @@ def test_fallback_backbone_is_not_published_as_pretrained():
     reset_ssl_backbone_status()
     try:
         record_ssl_backbone_status(
-            "WavLM", pretrained=False, checkpoint="microsoft/wavlm-base",
+            "WavLM",
+            pretrained=False,
+            checkpoint="microsoft/wavlm-base",
             detail={"fallback": "cnn1d_scratch"},
         )
         prov = _architecture_provenance("WavLM")
@@ -102,7 +104,9 @@ def test_fallback_backbone_is_not_published_as_pretrained():
 
         reset_ssl_backbone_status()
         record_ssl_backbone_status(
-            "WavLM", pretrained=True, checkpoint="microsoft/wavlm-base",
+            "WavLM",
+            pretrained=True,
+            checkpoint="microsoft/wavlm-base",
             detail={"hidden_size": 768, "num_layers": 12},
         )
         prov = _architecture_provenance("WavLM")

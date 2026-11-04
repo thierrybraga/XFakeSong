@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Iterable
+
+from app.core.config.env import first_env
 
 RESULTS_DIR_ENV_VARS = (
     "RESULTS_DIR",
@@ -15,11 +16,8 @@ RESULTS_DIR_ENV_VARS = (
 
 def _first_env_path(names: Iterable[str]) -> Path | None:
     """Retorna o primeiro caminho não vazio definido no ambiente."""
-    for name in names:
-        value = os.getenv(name)
-        if value and value.strip():
-            return Path(value.strip()).expanduser()
-    return None
+    value = first_env(*names)
+    return Path(value).expanduser() if value else None
 
 
 def resolve_results_dir(base_dir: str | Path | None = None) -> Path:
