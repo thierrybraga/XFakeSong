@@ -13,9 +13,9 @@
 # repositório são modelos KERAS. O TensorFlow fica aqui até existirem ports
 # PyTorch nativos, senão o registry nem importa as arquiteturas. No .nvidia o
 # Dockerfile instala `tensorflow[and-cuda]` por cima desta faixa.
-tensorflow>=2.16,<2.22
+tensorflow>=2.21.0,<2.22
 
 # Diferente das imagens Keras (onde o torch só LÊ state_dict e vem do índice
 # CPU), aqui o wheel padrão — CUDA no Linux — é o correto.
-torch==2.5.1
-torchaudio==2.5.1
+torch==2.15.0
+torchaudio==2.11.1
