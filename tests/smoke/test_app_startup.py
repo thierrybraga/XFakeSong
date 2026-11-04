@@ -11,6 +11,7 @@ Uso standalone:
 Uso via pytest:
     pytest -m smoke tests/smoke/test_app_startup.py
 """
+
 from __future__ import annotations
 
 import logging
@@ -39,7 +40,9 @@ def main() -> int:
             logger.info("OK: objeto 'demo' encontrado")
             print("READY: Gradio app pronto para iniciar")
         else:
-            logger.warning("WARN: objeto 'demo' não encontrado — verifique gradio_app.py")
+            logger.warning(
+                "WARN: objeto 'demo' não encontrado — verifique gradio_app.py"
+            )
             return 1
 
     except Exception as e:

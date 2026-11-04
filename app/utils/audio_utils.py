@@ -4,6 +4,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+
 def normalize_audio(audio: np.ndarray, target_db: float = -20.0) -> np.ndarray:
     """
     Normalize audio to a target dB level.
@@ -22,6 +23,7 @@ def normalize_audio(audio: np.ndarray, target_db: float = -20.0) -> np.ndarray:
     scalar = 10 ** (target_db / 20) / (rms + 1e-9)
     return audio * scalar
 
+
 def pad_or_truncate(audio: np.ndarray, max_len: int) -> np.ndarray:
     """
     Pad or truncate audio to a specific length.
@@ -36,7 +38,8 @@ def pad_or_truncate(audio: np.ndarray, max_len: int) -> np.ndarray:
     if len(audio) > max_len:
         return audio[:max_len]
     else:
-        return np.pad(audio, (0, max_len - len(audio)), mode='constant')
+        return np.pad(audio, (0, max_len - len(audio)), mode="constant")
+
 
 def preprocess_legacy(x):
     """DEPRECATED: Use secure preprocessing pipeline instead."""

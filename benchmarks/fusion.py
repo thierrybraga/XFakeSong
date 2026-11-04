@@ -131,7 +131,9 @@ def compare_fusions(
         regras += [
             (
                 f"top-{k}",
-                top_k_chooser({n: calibration[n] for n in disponiveis}, y, k, disponiveis),
+                top_k_chooser(
+                    {n: calibration[n] for n in disponiveis}, y, k, disponiveis
+                ),
             )
             for k in top_ks
             if k <= len(disponiveis)
@@ -142,7 +144,9 @@ def compare_fusions(
             if set(s) <= set(disponiveis)
         ]
         for rotulo, escolher in regras:
-            fundida, escolhas = held_out_scores(calibration, target, y, speakers, escolher)
+            fundida, escolhas = held_out_scores(
+                calibration, target, y, speakers, escolher
+            )
             linhas.append(
                 {
                     "condition": condicao,

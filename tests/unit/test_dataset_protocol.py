@@ -473,7 +473,9 @@ def test_cap_cuts_pairs_never_single_samples() -> None:
 
 
 def test_cap_spreads_across_speakers_instead_of_dropping_them() -> None:
-    records = _corpus({f"M{i:03d}": "train" for i in range(4)}, [f"{i:04d}" for i in range(10)])
+    records = _corpus(
+        {f"M{i:03d}": "train" for i in range(4)}, [f"{i:04d}" for i in range(10)]
+    )
 
     kept = select_pairs(records, max_pairs=8, seed=42)
 

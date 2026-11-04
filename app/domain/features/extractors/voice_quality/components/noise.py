@@ -1,6 +1,7 @@
 """
 Extração de características de ruído (NHR, VTI, SPI, DFA).
 """
+
 from typing import Dict
 
 import librosa
@@ -21,8 +22,8 @@ def compute_nhr(y: np.ndarray, f0: np.ndarray, sr: int = 22050) -> float:
         harmonicity = librosa.effects.harmonic(y)
         noise = y - harmonicity
 
-        e_harmonic = np.sum(harmonicity ** 2)
-        e_noise = np.sum(noise ** 2)
+        e_harmonic = np.sum(harmonicity**2)
+        e_noise = np.sum(noise**2)
 
         if e_harmonic == 0:
             return 1.0  # Puro ruído
@@ -43,7 +44,7 @@ def compute_vti(y: np.ndarray, f0: np.ndarray) -> float:
         # vozeados vs total
         # (a mascara de vozeamento por f0 era calculada aqui e descartada: a
         # implementacao abaixo mudou para separacao harmonico/percussivo)
-        total_energy = np.sum(y ** 2)
+        total_energy = np.sum(y**2)
 
         if total_energy == 0:
             return 0.0
@@ -59,7 +60,7 @@ def compute_vti(y: np.ndarray, f0: np.ndarray) -> float:
 
         # VTI é frequentemente associado a turbulência (ar), que aparece mais
         # em y_perc
-        e_perc = np.sum(y_perc ** 2)
+        e_perc = np.sum(y_perc**2)
         return float(e_perc / total_energy)
     except BaseException:
         return 0.0
@@ -114,13 +115,13 @@ def compute_dfa(y: np.ndarray) -> float:
             # Dividir em segmentos
             n_segments = len(y_int) // scale
             for i in range(n_segments):
-                segment = y_int[i * scale: (i + 1) * scale]
+                segment = y_int[i * scale : (i + 1) * scale]
                 # Detrend (remover tendência linear)
                 x = np.arange(scale)
                 coeffs = np.polyfit(x, segment, 1)
                 trend = np.polyval(coeffs, x)
                 # RMS da flutuação
-                rms.append(np.sqrt(np.mean((segment - trend)**2)))
+                rms.append(np.sqrt(np.mean((segment - trend) ** 2)))
 
             fluctuations.append(np.mean(rms))
 
@@ -137,13 +138,12 @@ def compute_dfa(y: np.ndarray) -> float:
         return 0.5
 
 
-def extract_noise_features(
-        y: np.ndarray, f0: np.ndarray, sr: int) -> Dict[str, float]:
+def extract_noise_features(y: np.ndarray, f0: np.ndarray, sr: int) -> Dict[str, float]:
     """Extrai todas as características de ruído."""
     features = {}
-    features['nhr'] = compute_nhr(y, f0, sr)
-    features['vti'] = compute_vti(y, f0)
+    features["nhr"] = compute_nhr(y, f0, sr)
+    features["vti"] = compute_vti(y, f0)
     # Nota: spi usa sr padrão 22050 internamente se não ajustado
-    features['spi'] = compute_spi(y, f0)
-    features['dfa_alpha'] = compute_dfa(y)
+    features["spi"] = compute_spi(y, f0)
+    features["dfa_alpha"] = compute_dfa(y)
     return features

@@ -278,11 +278,7 @@ def test_runner_recusa_destravar_backbone_no_caminho_de_cache():
     proc = subprocess.run(
         [
             sys.executable,
-            str(
-                _PROJECT_ROOT
-                / "benchmarks"
-                / "run_wavlm_original_benchmark.py"
-            ),
+            str(_PROJECT_ROOT / "benchmarks" / "run_wavlm_original_benchmark.py"),
             "--architecture",
             "wavlm",
             "--dataset",
@@ -316,11 +312,7 @@ def test_runner_recusa_grafo_aasist_com_backbone_congelado():
     proc = subprocess.run(
         [
             sys.executable,
-            str(
-                _PROJECT_ROOT
-                / "benchmarks"
-                / "run_wavlm_original_benchmark.py"
-            ),
+            str(_PROJECT_ROOT / "benchmarks" / "run_wavlm_original_benchmark.py"),
             "--architecture",
             "wavlm",
             "--dataset",

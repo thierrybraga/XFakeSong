@@ -86,7 +86,9 @@ def transported_threshold(
     return float(expit(log_odds * old_temperature / new_temperature))
 
 
-def calibrated_probabilities(logits: np.ndarray, temperature: float = 1.0) -> np.ndarray:
+def calibrated_probabilities(
+    logits: np.ndarray, temperature: float = 1.0
+) -> np.ndarray:
     """Probabilidades de `logits / T`, em float64. Mantém a forma da entrada."""
     z = np.asarray(logits, dtype=np.float64)
     t = float(temperature) if temperature and temperature > 0 else 1.0

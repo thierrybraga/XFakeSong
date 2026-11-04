@@ -118,12 +118,14 @@ def _score_graph(model: tf.keras.Model) -> tuple[tf.Tensor, bool]:
     act_name = getattr(act, "__name__", None)
 
     if isinstance(last, tf.keras.layers.Activation) and act_name in (
-        "sigmoid", "softmax",
+        "sigmoid",
+        "softmax",
     ):
         return last.input, True
 
     if isinstance(last, tf.keras.layers.Dense) and act_name in (
-        "sigmoid", "softmax",
+        "sigmoid",
+        "softmax",
     ):
         clone = tf.keras.layers.Dense(
             last.units,
@@ -219,7 +221,9 @@ def compute_gradcam(
     cam = (flat / maxima).reshape(cam.shape)
     logger.debug(
         "Grad-CAM: camada=%s, lote=%d, mapa=%s",
-        target_name, cam.shape[0], cam.shape[1:],
+        target_name,
+        cam.shape[0],
+        cam.shape[1:],
     )
     return cam
 
@@ -256,8 +260,7 @@ def compute_gradcam_auto(
                 return cam, label
             errors.append(f"{name}[{mode}]: CAM degenerado (constante)")
     raise RuntimeError(
-        "Nenhuma camada produziu Grad-CAM válido. Tentativas: "
-        + "; ".join(errors[:6])
+        "Nenhuma camada produziu Grad-CAM válido. Tentativas: " + "; ".join(errors[:6])
     )
 
 

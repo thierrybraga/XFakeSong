@@ -184,9 +184,9 @@ def test_numero_de_hidden_states_bate(referencia_torch, saida_keras):
     """
     esperado = len(referencia_torch["hidden_states"])
     assert esperado == referencia_torch["num_layers"] + 1
-    assert saida_keras.shape[1] == esperado, (
-        f"Keras expõe {saida_keras.shape[1]} hidden states, PyTorch {esperado}"
-    )
+    assert (
+        saida_keras.shape[1] == esperado
+    ), f"Keras expõe {saida_keras.shape[1]} hidden states, PyTorch {esperado}"
 
 
 def test_last_hidden_state_bate_numericamente(referencia_torch, saida_keras):
@@ -211,9 +211,7 @@ def test_todas_as_camadas_batem(referencia_torch, saida_keras):
     for i, esperado in enumerate(referencia_torch["hidden_states"]):
         mediana, cauda = _erros(esperado, saida_keras[:, i])
         if mediana >= TOL_MEDIANA or cauda >= TOL_CAUDA:
-            problemas.append(
-                f"camada {i}: mediana={mediana:.2e} cauda={cauda:.2e}"
-            )
+            problemas.append(f"camada {i}: mediana={mediana:.2e} cauda={cauda:.2e}")
     assert not problemas, (
         "divergência a partir da primeira camada listada (as seguintes "
         "herdam o erro):\n  " + "\n  ".join(problemas)
@@ -238,7 +236,6 @@ def test_backbone_esta_congelado():
         raise
     assert backbone.trainable is False
     assert not backbone.trainable_weights, (
-        f"{len(backbone.trainable_weights)} pesos treináveis no backbone "
-        "congelado"
+        f"{len(backbone.trainable_weights)} pesos treináveis no backbone " "congelado"
     )
     assert backbone.weights, "backbone sem pesos: a carga do state_dict falhou"

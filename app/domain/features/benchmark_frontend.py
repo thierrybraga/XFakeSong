@@ -237,10 +237,14 @@ def apply_band_correction(
         cutoff_hz,
         BAND_CORRECTION_TAPS,
         ", DC removido" if remove_dc else "",
-        f", RMS renormalizado a {renormalize_rms_dbfs:.0f} dBFS"
-        if renormalize_rms_dbfs is not None else "",
+        (
+            f", RMS renormalizado a {renormalize_rms_dbfs:.0f} dBFS"
+            if renormalize_rms_dbfs is not None
+            else ""
+        ),
     )
     return saida.reshape(forma)
+
 
 #: Coeficientes LFCC por quadro (convenção do baseline CM do ASVspoof2019).
 N_LFCC = 20
@@ -288,6 +292,7 @@ def resolve_n_fft(hop_length: int, declared: Optional[int] = None) -> int:
     minimo = hop_length / max(1e-6, 1.0 - MIN_STFT_OVERLAP)
     n_fft = 1 << max(9, int(np.ceil(np.log2(minimo))))  # piso de 512
     return int(n_fft)
+
 
 #: Mapa `input_type` do benchmark → identificador de front-end.
 #:
@@ -573,9 +578,7 @@ def _rasta_plp_stats(flat: np.ndarray, n_plp: int = 13) -> np.ndarray:
     return arr.T
 
 
-def _linear_filterbank(
-    n_filters: int, n_fft: int, sample_rate: int
-) -> np.ndarray:
+def _linear_filterbank(n_filters: int, n_fft: int, sample_rate: int) -> np.ndarray:
     """Banco de filtros triangulares igualmente espaçados em Hz → ``(n_filters, 1+n_fft//2)``.
 
     O análogo linear de ``librosa.filters.mel``: mesmos triângulos sobrepostos

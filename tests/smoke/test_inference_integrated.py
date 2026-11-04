@@ -15,6 +15,7 @@ Uso standalone:
 Uso via pytest:
     pytest -m smoke tests/smoke/test_inference_integrated.py
 """
+
 from __future__ import annotations
 
 import argparse
@@ -28,14 +29,21 @@ os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 import numpy as np  # noqa: E402
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(os.path.dirname(THIS_DIR))  # tests/smoke/ → tests/ → raiz
+PROJECT_ROOT = os.path.dirname(
+    os.path.dirname(THIS_DIR)
+)  # tests/smoke/ → tests/ → raiz
 sys.path.insert(0, PROJECT_ROOT)
 
 # Fake packages para evitar app/__init__ chain (sqlalchemy/etc)
 for _fake_pkg in [
-    "app", "app.core", "app.core.contracts",
-    "app.domain", "app.domain.models", "app.domain.models.architectures",
-    "app.domain.services", "app.domain.services.detection",
+    "app",
+    "app.core",
+    "app.core.contracts",
+    "app.domain",
+    "app.domain.models",
+    "app.domain.models.architectures",
+    "app.domain.services",
+    "app.domain.services.detection",
 ]:
     if _fake_pkg not in sys.modules:
         _m = types.ModuleType(_fake_pkg)
@@ -46,9 +54,18 @@ SAMPLE_RATE = 16000
 DURATION = 3
 
 ALL_MODELS = [
-    "AASIST", "RawGAT-ST", "RawNet2", "WavLM", "HuBERT",
-    "Sonic Sleuth", "EfficientNet-LSTM", "MultiscaleCNN",
-    "SpectrogramTransformer", "Conformer", "Hybrid CNN-Transformer", "Ensemble",
+    "AASIST",
+    "RawGAT-ST",
+    "RawNet2",
+    "WavLM",
+    "HuBERT",
+    "Sonic Sleuth",
+    "EfficientNet-LSTM",
+    "MultiscaleCNN",
+    "SpectrogramTransformer",
+    "Conformer",
+    "Hybrid CNN-Transformer",
+    "Ensemble",
 ]
 
 
@@ -57,10 +74,9 @@ def make_audio(kind: str = "real") -> np.ndarray:
     if kind == "real":
         return 0.5 * np.sin(2 * np.pi * 440 * t)
     rng = np.random.default_rng(7)
-    return (
-        0.1 * np.sin(2 * np.pi * 880 * t)
-        + 0.4 * rng.standard_normal(t.shape).astype(np.float32)
-    )
+    return 0.1 * np.sin(2 * np.pi * 880 * t) + 0.4 * rng.standard_normal(
+        t.shape
+    ).astype(np.float32)
 
 
 def _run_arch_integrated(arch: str) -> dict:
@@ -72,15 +88,20 @@ def _run_arch_integrated(arch: str) -> dict:
     # Libera stubs falsos para carregar os módulos reais de core/services
     for k in list(sys.modules.keys()):
         if (
-            k.startswith("app.core")
-            or k.startswith("app.domain.services.detection")
-            or k == "app.domain.services"
-            or k.startswith("app.domain.models")
-        ) and isinstance(sys.modules[k], types.ModuleType) \
-                and not hasattr(sys.modules[k], "__file__"):
+            (
+                k.startswith("app.core")
+                or k.startswith("app.domain.services.detection")
+                or k == "app.domain.services"
+                or k.startswith("app.domain.models")
+            )
+            and isinstance(sys.modules[k], types.ModuleType)
+            and not hasattr(sys.modules[k], "__file__")
+        ):
             del sys.modules[k]
 
-    audio_pre_mod = importlib.import_module("app.domain.services.detection.audio_preprocessing")
+    audio_pre_mod = importlib.import_module(
+        "app.domain.services.detection.audio_preprocessing"
+    )
 
     try:
         from app.core.contracts.audio import AudioData  # type: ignore
@@ -98,6 +119,7 @@ def _run_arch_integrated(arch: str) -> dict:
     try:
         from app.domain.services.detection.model_loader import ModelInfo
     except Exception:
+
         class ModelInfo:  # type: ignore
             def __init__(self, **kw):
                 for k, v in kw.items():
@@ -114,24 +136,36 @@ def _run_arch_integrated(arch: str) -> dict:
         # Contrato DECLARADO pela arquitetura tem prioridade: o AST exige
         # 300x128 (hop de 10 ms, 128 bandas mel), diferente do default global.
         req = spec.input_requirements
-        t_frames = int(req.get("min_sequence_length")
-                       or np.ceil((SAMPLE_RATE * DURATION) / audio_pre_mod.DEFAULT_HOP))
+        t_frames = int(
+            req.get("min_sequence_length")
+            or np.ceil((SAMPLE_RATE * DURATION) / audio_pre_mod.DEFAULT_HOP)
+        )
         n_mels = int(req.get("feature_dim") or audio_pre_mod.DEFAULT_N_MELS)
         input_shape = (t_frames, n_mels, 1)
 
-    model = factory_mod.create_model_by_name(arch, input_shape=input_shape, num_classes=2)
+    model = factory_mod.create_model_by_name(
+        arch, input_shape=input_shape, num_classes=2
+    )
 
     model_info = ModelInfo(
         name=f"test_{arch.lower().replace(' ', '_').replace('-', '_')}",
-        architecture=arch, model=model, scaler=None,
-        input_shape=input_shape, model_type="tensorflow",
-        input_contract=None, temperature=1.0,
-        jit_predict_fn=None, eer_threshold=None,
+        architecture=arch,
+        model=model,
+        scaler=None,
+        input_shape=input_shape,
+        model_type="tensorflow",
+        input_contract=None,
+        temperature=1.0,
+        jit_predict_fn=None,
+        eer_threshold=None,
     )
 
     class _MockFS:
-        def extract_features(self, *a, **kw): return None
-        def extract_segmented_features(self, *a, **kw): return None
+        def extract_features(self, *a, **kw):
+            return None
+
+        def extract_segmented_features(self, *a, **kw):
+            return None
 
     fp = fp_mod.FeaturePreparer(_MockFS())
     predictor = pred_mod.Predictor()
@@ -140,29 +174,55 @@ def _run_arch_integrated(arch: str) -> dict:
     for kind in ["real", "fake"]:
         audio_samples = make_audio(kind)
         try:
-            ad = AudioData(samples=audio_samples, sample_rate=SAMPLE_RATE, duration=float(DURATION))
+            ad = AudioData(
+                samples=audio_samples, sample_rate=SAMPLE_RATE, duration=float(DURATION)
+            )
         except Exception as e:
-            return {"arch": arch, "ok": False, "error": f"AudioData ctor: {e}\n{traceback.format_exc()[-500:]}"}
+            return {
+                "arch": arch,
+                "ok": False,
+                "error": f"AudioData ctor: {e}\n{traceback.format_exc()[-500:]}",
+            }
 
         try:
             prep = fp.prepare_input(ad, model_info, spec)
         except Exception as e:
-            return {"arch": arch, "ok": False, "error": f"prep raised: {e}\n{traceback.format_exc()[-500:]}"}
+            return {
+                "arch": arch,
+                "ok": False,
+                "error": f"prep raised: {e}\n{traceback.format_exc()[-500:]}",
+            }
 
         if prep["status"] != "ok":
-            return {"arch": arch, "ok": False, "error": f"prep failed [{kind}]: {prep.get('error')}"}
+            return {
+                "arch": arch,
+                "ok": False,
+                "error": f"prep failed [{kind}]: {prep.get('error')}",
+            }
 
         features = prep["features"]
         if features.ndim != len(input_shape):
-            return {"arch": arch, "ok": False, "error": f"Shape mismatch: {features.shape} vs dims={len(input_shape)}"}
+            return {
+                "arch": arch,
+                "ok": False,
+                "error": f"Shape mismatch: {features.shape} vs dims={len(input_shape)}",
+            }
 
         try:
             pred_res = predictor.predict(model_info, features)
         except Exception as e:
-            return {"arch": arch, "ok": False, "error": f"predict raised: {e}\n{traceback.format_exc()[-500:]}"}
+            return {
+                "arch": arch,
+                "ok": False,
+                "error": f"predict raised: {e}\n{traceback.format_exc()[-500:]}",
+            }
 
         if pred_res.status.value != "success":
-            return {"arch": arch, "ok": False, "error": f"predict failed [{kind}]: {pred_res.errors}"}
+            return {
+                "arch": arch,
+                "ok": False,
+                "error": f"predict failed [{kind}]: {pred_res.errors}",
+            }
 
         d = pred_res.data
         ok = (
@@ -173,16 +233,26 @@ def _run_arch_integrated(arch: str) -> dict:
             and abs(d["p_fake"] + d["p_real"] - 1.0) < 1e-2
         )
         out[kind] = {
-            "ok": ok, "is_deepfake": d.get("is_deepfake"),
-            "p_fake": d.get("p_fake"), "p_real": d.get("p_real"),
-            "confidence": d.get("confidence"), "features_shape": tuple(features.shape),
+            "ok": ok,
+            "is_deepfake": d.get("is_deepfake"),
+            "p_fake": d.get("p_fake"),
+            "p_real": d.get("p_real"),
+            "confidence": d.get("confidence"),
+            "features_shape": tuple(features.shape),
         }
 
-    return {"arch": arch, "ok": all(v["ok"] for v in out.values()), "input_type": input_type, "results": out}
+    return {
+        "arch": arch,
+        "ok": all(v["ok"] for v in out.values()),
+        "input_type": input_type,
+        "results": out,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--models", default="", help="CSV de modelos (vazio = todos)")
     args = parser.parse_args(argv)
 
@@ -203,11 +273,14 @@ def main(argv: list[str] | None = None) -> int:
             if r["ok"]:
                 print(f"  [OK] input_type={r['input_type']} ({r['elapsed']:.1f}s)")
                 for kind, v in r["results"].items():
-                    print(f"    [{kind:5s}] is_fake={v['is_deepfake']} p_fake={v['p_fake']:.4f} p_real={v['p_real']:.4f} feats={v['features_shape']}")
+                    print(
+                        f"    [{kind:5s}] is_fake={v['is_deepfake']} p_fake={v['p_fake']:.4f} p_real={v['p_real']:.4f} feats={v['features_shape']}"
+                    )
             else:
                 print(f"  [FAIL] {r.get('error', 'unknown')}")
         except Exception as e:
             import traceback as _tb
+
             print(f"  [FAIL] {type(e).__name__}: {str(e)[:200]}")
             _tb.print_exc()
             results.append({"arch": arch, "ok": False, "error": str(e)})

@@ -18,6 +18,7 @@ para 0,5432.
 O atalho vivia em 100 Hz de espectro, e nenhum modelo precisava aprender nada
 sobre vocoders para explorá-lo.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -61,9 +62,9 @@ def test_atenua_acima_do_corte():
     depois = _energia_em(filtrado[0], 7600, 8000)
 
     atenuacao_db = 10 * np.log10(max(depois, 1e-30) / max(antes, 1e-30))
-    assert atenuacao_db < -40, (
-        f"atenuacao insuficiente acima do corte: {atenuacao_db:.1f} dB"
-    )
+    assert (
+        atenuacao_db < -40
+    ), f"atenuacao insuficiente acima do corte: {atenuacao_db:.1f} dB"
 
 
 def test_preserva_a_banda_de_fala():
@@ -74,9 +75,9 @@ def test_preserva_a_banda_de_fala():
         apply_band_correction(x, renormalize_rms_dbfs=None)[0], 900, 1100
     )
 
-    assert depois > 0.95 * antes, (
-        f"o passa-baixas atenuou 1 kHz: {antes:.4e} -> {depois:.4e}"
-    )
+    assert (
+        depois > 0.95 * antes
+    ), f"o passa-baixas atenuou 1 kHz: {antes:.4e} -> {depois:.4e}"
 
 
 def test_preserva_forma_e_finitude():
@@ -103,9 +104,9 @@ def test_e_uniforme_entre_as_classes():
 
     for i in range(len(lote)):
         individual = apply_band_correction(lote[i][None, :])[0]
-        assert np.allclose(saida[i], individual, atol=1e-5), (
-            "o resultado depende do lote — a correção precisa ser por amostra"
-        )
+        assert np.allclose(
+            saida[i], individual, atol=1e-5
+        ), "o resultado depende do lote — a correção precisa ser por amostra"
 
 
 def test_corte_padrao_e_o_medido():
@@ -141,9 +142,7 @@ def test_runner_aplica_antes_da_auditoria():
     i_corr = fonte.find("band_correction_hz")
     i_aud = fonte.find("_audit_split_overlap")
     assert i_corr > 0, "a correção de banda não é aplicada em run_benchmark"
-    assert i_corr < i_aud, (
-        "a correção precisa vir ANTES da auditoria de sobreposição"
-    )
+    assert i_corr < i_aud, "a correção precisa vir ANTES da auditoria de sobreposição"
 
 
 # ─── DC e nível ────────────────────────────────────────────────────────────
@@ -195,12 +194,12 @@ def test_preserva_o_fator_de_crista():
     x[:, ::500] *= 8.0  # picos esparsos -> fator de crista alto
 
     def crista(a):
-        return np.max(np.abs(a), axis=1) / (np.sqrt(np.mean(a ** 2, axis=1)) + 1e-12)
+        return np.max(np.abs(a), axis=1) / (np.sqrt(np.mean(a**2, axis=1)) + 1e-12)
 
     antes, depois = crista(x), crista(apply_band_correction(x))
-    assert np.allclose(antes, depois, rtol=0.15), (
-        f"o fator de crista foi alterado: {antes} -> {depois}"
-    )
+    assert np.allclose(
+        antes, depois, rtol=0.15
+    ), f"o fator de crista foi alterado: {antes} -> {depois}"
 
 
 # ─── repasse pelo runner sequencial ────────────────────────────────────────
@@ -218,16 +217,15 @@ def test_runner_sequencial_repassa_as_flags():
     from pathlib import Path
 
     fonte = (
-        Path(__file__).resolve().parents[2]
-        / "benchmarks/run_models_sequential.py"
+        Path(__file__).resolve().parents[2] / "benchmarks/run_models_sequential.py"
     ).read_text(encoding="utf-8")
 
     for flag in ("--band-correction-hz", "--checkpoint-monitor"):
         assert flag in fonte, f"{flag} não é declarada no runner sequencial"
     for chave in ("band_correction_hz", "checkpoint_monitor"):
-        assert f'getattr(args, "{chave}"' in fonte, (
-            f"{chave} declarada mas não repassada ao comando"
-        )
+        assert (
+            f'getattr(args, "{chave}"' in fonte
+        ), f"{chave} declarada mas não repassada ao comando"
 
 
 def test_ramo_ssl_tambem_recebe_a_correcao():
@@ -253,23 +251,35 @@ def test_ramo_ssl_tambem_recebe_a_correcao():
     )
     base = dict.fromkeys(attrs, "")
     base.update(
-        dataset="data/datasets/benchmark_dataset_15k.npz", epochs=2,
-        snr=[20], train_aug_snr=[20], seed=42, batch_size=8,
-        device_profile="cpu", latency_runs=1, train_noise_copies=1,
-        waveform_noise_batch_size=8, ssl_train_batch_size=4,
-        ssl_feature_batch_size=4, waveform_train_augmentation=True,
-        band_correction_hz=7500.0, checkpoint_monitor="val_eer",
-        codec_eval=None, cross_generator=None, group_split=False,
-        academic_protocol=False, source_shortcut_limit=None,
+        dataset="data/datasets/benchmark_dataset_15k.npz",
+        epochs=2,
+        snr=[20],
+        train_aug_snr=[20],
+        seed=42,
+        batch_size=8,
+        device_profile="cpu",
+        latency_runs=1,
+        train_noise_copies=1,
+        waveform_noise_batch_size=8,
+        ssl_train_batch_size=4,
+        ssl_feature_batch_size=4,
+        waveform_train_augmentation=True,
+        band_correction_hz=7500.0,
+        checkpoint_monitor="val_eer",
+        codec_eval=None,
+        cross_generator=None,
+        group_split=False,
+        academic_protocol=False,
+        source_shortcut_limit=None,
     )
     args = argparse.Namespace(**base)
 
     for modelo in ("WavLM Original", "HuBERT Original"):
         cmd = [str(c) for c in _build_command(args, modelo, _P("/tmp/x"))]
         assert "wavlm_original" in " ".join(cmd), f"{modelo} não foi ao runner SSL"
-        assert "--band-correction-hz" in cmd, (
-            f"{modelo} treinaria COM o atalho enquanto os outros nove não"
-        )
+        assert (
+            "--band-correction-hz" in cmd
+        ), f"{modelo} treinaria COM o atalho enquanto os outros nove não"
         assert "--checkpoint-monitor" not in cmd, (
             "o runner SSL não tem ModelCheckpoint do Keras — a flag seria "
             "config morto"
@@ -310,8 +320,12 @@ def test_corte_zero_desliga_a_correcao_em_vez_de_zerar_o_sinal():
     """
     from benchmarks.config import BenchmarkConfig
 
-    for valor, esperado_ativo in ((0, False), (0.0, False), (None, False),
-                                  (7500.0, True)):
+    for valor, esperado_ativo in (
+        (0, False),
+        (0.0, False),
+        (None, False),
+        (7500.0, True),
+    ):
         cfg = BenchmarkConfig(band_correction_hz=valor)
         assert bool(getattr(cfg, "band_correction_hz", None)) is esperado_ativo, (
             f"band_correction_hz={valor!r} deveria "

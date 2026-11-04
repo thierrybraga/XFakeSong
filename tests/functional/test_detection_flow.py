@@ -42,9 +42,7 @@ def mock_detection_service(tmp_path):
     fake_model_info.input_contract = None
     fake_model_info.jit_predict_fn = None
 
-    service.model_loader.loaded_models = {
-        "test_model": fake_model_info
-    }
+    service.model_loader.loaded_models = {"test_model": fake_model_info}
     service.model_loader.default_model = "test_model"
 
     # Mock FeaturePreparer to avoid complex feature extraction if needed
@@ -60,7 +58,7 @@ def test_detect_single_flow(mock_detection_service):
         samples=np.random.rand(64600).astype(np.float32),
         sample_rate=16000,
         metadata={"source": "dummy.wav"},
-        duration=4.0
+        duration=4.0,
     )
 
     # We need to ensure FeaturePreparer can handle "AASIST" which usually
@@ -69,12 +67,12 @@ def test_detect_single_flow(mock_detection_service):
     # Let's mock FeaturePreparer.prepare_input to skip actual extraction
 
     with patch.object(
-        mock_detection_service.feature_preparer, 'prepare_input'
+        mock_detection_service.feature_preparer, "prepare_input"
     ) as mock_prep:
         mock_prep.return_value = {
-            'status': 'ok',
-            'features': np.random.rand(1, 100, 80),  # Batch, Time, Feats
-            'metadata': {}
+            "status": "ok",
+            "features": np.random.rand(1, 100, 80),  # Batch, Time, Feats
+            "metadata": {},
         }
 
         result = mock_detection_service.detect_single(audio_data, "test_model")
@@ -130,20 +128,32 @@ def test_analise_por_arquivo_mantem_limiar_e_ood(mock_detection_service):
         "temperature_applied": 4.2,
         "is_ood": True,
     }
-    with patch.object(
-        mock_detection_service.feature_preparer,
-        "prepare_input",
-        return_value={"status": "ok", "features": np.zeros((1, 10)), "metadata": {"x": 1}},
-    ), patch.object(
-        mock_detection_service.predictor,
-        "predict",
-        return_value=MagicMock(status=ProcessingStatus.SUCCESS, data=predicao),
-    ), patch.object(
-        mock_detection_service.model_loader,
-        "get_model",
-        return_value=mock_detection_service.model_loader.loaded_models["test_model"],
+    with (
+        patch.object(
+            mock_detection_service.feature_preparer,
+            "prepare_input",
+            return_value={
+                "status": "ok",
+                "features": np.zeros((1, 10)),
+                "metadata": {"x": 1},
+            },
+        ),
+        patch.object(
+            mock_detection_service.predictor,
+            "predict",
+            return_value=MagicMock(status=ProcessingStatus.SUCCESS, data=predicao),
+        ),
+        patch.object(
+            mock_detection_service.model_loader,
+            "get_model",
+            return_value=mock_detection_service.model_loader.loaded_models[
+                "test_model"
+            ],
+        ),
     ):
-        result = mock_detection_service._detect_with_config(audio_data, "test_model", [])
+        result = mock_detection_service._detect_with_config(
+            audio_data, "test_model", []
+        )
 
     assert result.status == ProcessingStatus.SUCCESS
     assert result.data.metadata["classification_threshold"] == 0.94
@@ -158,9 +168,7 @@ def test_detect_model_not_found(mock_detection_service):
         samples=np.zeros(100),
         sample_rate=16000,
         metadata={"source": "dummy.wav"},
-        duration=0.01
+        duration=0.01,
     )
-    result = mock_detection_service.detect_single(
-        audio_data, "non_existent_model"
-    )
+    result = mock_detection_service.detect_single(audio_data, "non_existent_model")
     assert result.status == ProcessingStatus.ERROR

@@ -321,18 +321,24 @@ class TestFeaturePreparerBenchmarkPath:
         fala = (rng.normal(size=48000) * 0.2).astype("float32")
         silencio = (rng.normal(size=24000) * 0.002).astype("float32")
         arquivo = np.concatenate([silencio, fala, silencio])  # 6 s, miolo central
-        politica = {"cutoff_hz": 7500.0, "remove_dc": True,
-                    "renormalize_rms_dbfs": -26.0}
+        politica = {
+            "cutoff_hz": 7500.0,
+            "remove_dc": True,
+            "renormalize_rms_dbfs": -26.0,
+        }
 
         def corrigir(sinal):
             return bf.apply_band_correction(
-                sinal[np.newaxis, :], 7500.0, sample_rate=16000,
-                remove_dc=True, renormalize_rms_dbfs=-26.0,
+                sinal[np.newaxis, :],
+                7500.0,
+                sample_rate=16000,
+                remove_dc=True,
+                renormalize_rms_dbfs=-26.0,
             )[0]
 
         inicio = (len(arquivo) - 48000) // 2  # mesmo recorte do export
         esperado = bf.tabular_features_v2_single(
-            corrigir(arquivo[inicio:inicio + 48000]), source_samples=48000
+            corrigir(arquivo[inicio : inicio + 48000]), source_samples=48000
         )
 
         model_info = MagicMock()
@@ -352,4 +358,3 @@ class TestFeaturePreparerBenchmarkPath:
         # A ordem antiga dá outro vetor: o teste enxerga a regressão.
         antigo = bf.tabular_features_v2_single(corrigir(arquivo), source_samples=48000)
         assert not np.allclose(antigo, esperado, rtol=1e-3)
-

@@ -275,40 +275,206 @@ def test_criterio_pos_hoc_usa_os_mesmos_defaults_do_callback():
 # limiares livres para derivar sem ninguém notar.
 
 _RAWGAT_ST_VAL_ACC = [
-    0.8187, 0.8111, 0.7589, 0.7727, 0.8166, 0.7734, 0.8372, 0.8468, 0.8400,
-    0.6168, 0.8523, 0.6889, 0.8043, 0.7328, 0.8640, 0.7205, 0.8242, 0.8729,
-    0.7788, 0.8558, 0.8880, 0.8929, 0.8647, 0.7747, 0.8551, 0.8887, 0.8544,
-    0.8743, 0.7720, 0.7850, 0.8427, 0.8551, 0.7630, 0.8633, 0.8152, 0.7424,
-    0.8860, 0.8743, 0.8922, 0.8585, 0.8544, 0.8242, 0.8640, 0.8771, 0.8255,
-    0.8640, 0.7864, 0.8805, 0.8434, 0.8111, 0.8963, 0.8166, 0.8681, 0.8681,
-    0.8723, 0.8448, 0.8901, 0.8276, 0.8324, 0.8908, 0.8599, 0.8839, 0.8606,
-    0.8441, 0.8915, 0.8716, 0.8530, 0.8771, 0.8819, 0.8661, 0.8379, 0.8201,
-    0.8805, 0.8551, 0.8743, 0.8640, 0.8496, 0.8592, 0.8997, 0.8496, 0.8777,
-    0.8571, 0.7658, 0.8448, 0.8880, 0.8578, 0.8551, 0.8764, 0.8826, 0.8489,
+    0.8187,
+    0.8111,
+    0.7589,
+    0.7727,
+    0.8166,
+    0.7734,
+    0.8372,
+    0.8468,
+    0.8400,
+    0.6168,
+    0.8523,
+    0.6889,
+    0.8043,
+    0.7328,
+    0.8640,
+    0.7205,
+    0.8242,
+    0.8729,
+    0.7788,
+    0.8558,
+    0.8880,
+    0.8929,
+    0.8647,
+    0.7747,
+    0.8551,
+    0.8887,
+    0.8544,
+    0.8743,
+    0.7720,
+    0.7850,
+    0.8427,
+    0.8551,
+    0.7630,
+    0.8633,
+    0.8152,
+    0.7424,
+    0.8860,
+    0.8743,
+    0.8922,
+    0.8585,
+    0.8544,
+    0.8242,
+    0.8640,
+    0.8771,
+    0.8255,
+    0.8640,
+    0.7864,
+    0.8805,
+    0.8434,
+    0.8111,
+    0.8963,
+    0.8166,
+    0.8681,
+    0.8681,
+    0.8723,
+    0.8448,
+    0.8901,
+    0.8276,
+    0.8324,
+    0.8908,
+    0.8599,
+    0.8839,
+    0.8606,
+    0.8441,
+    0.8915,
+    0.8716,
+    0.8530,
+    0.8771,
+    0.8819,
+    0.8661,
+    0.8379,
+    0.8201,
+    0.8805,
+    0.8551,
+    0.8743,
+    0.8640,
+    0.8496,
+    0.8592,
+    0.8997,
+    0.8496,
+    0.8777,
+    0.8571,
+    0.7658,
+    0.8448,
+    0.8880,
+    0.8578,
+    0.8551,
+    0.8764,
+    0.8826,
+    0.8489,
     0.8812,
 ]
 
 _AASIST_VAL_ACC = [
-    0.6978, 0.5316, 0.7953, 0.7232, 0.8620, 0.9114, 0.7493, 0.8736, 0.9052,
-    0.9018, 0.8640, 0.9066, 0.9087, 0.9272, 0.9306, 0.9141, 0.9265, 0.9059,
-    0.9533, 0.9464, 0.9354, 0.9444, 0.9217, 0.9327, 0.9320, 0.9251, 0.8963,
-    0.9183, 0.8984, 0.8935, 0.8558, 0.8777, 0.8757, 0.8970, 0.9512, 0.9423,
-    0.9354, 0.9299, 0.9492, 0.8269, 0.9087, 0.9334, 0.9402, 0.8262, 0.9547,
-    0.9052, 0.9190, 0.9334, 0.9100, 0.9100, 0.9093, 0.9663, 0.9320, 0.9245,
-    0.9492, 0.9258, 0.9588, 0.9293, 0.9389, 0.9245, 0.9368, 0.9588, 0.9375,
-    0.9554, 0.9602, 0.9519, 0.9451, 0.9560, 0.9567, 0.9402, 0.9375, 0.9389,
-    0.9183, 0.9299, 0.9348, 0.9416, 0.9389, 0.9499, 0.9492, 0.9389, 0.9423,
-    0.9430, 0.9368, 0.9293, 0.9437, 0.9382, 0.9423, 0.9457, 0.9437, 0.9464,
-    0.9512, 0.9464, 0.9485, 0.9457, 0.9471, 0.9457, 0.9478, 0.9464, 0.9451,
+    0.6978,
+    0.5316,
+    0.7953,
+    0.7232,
+    0.8620,
+    0.9114,
+    0.7493,
+    0.8736,
+    0.9052,
+    0.9018,
+    0.8640,
+    0.9066,
+    0.9087,
+    0.9272,
+    0.9306,
+    0.9141,
+    0.9265,
+    0.9059,
+    0.9533,
+    0.9464,
+    0.9354,
+    0.9444,
+    0.9217,
+    0.9327,
+    0.9320,
+    0.9251,
+    0.8963,
+    0.9183,
+    0.8984,
+    0.8935,
+    0.8558,
+    0.8777,
+    0.8757,
+    0.8970,
+    0.9512,
+    0.9423,
+    0.9354,
+    0.9299,
+    0.9492,
+    0.8269,
+    0.9087,
+    0.9334,
+    0.9402,
+    0.8262,
+    0.9547,
+    0.9052,
+    0.9190,
+    0.9334,
+    0.9100,
+    0.9100,
+    0.9093,
+    0.9663,
+    0.9320,
+    0.9245,
+    0.9492,
+    0.9258,
+    0.9588,
+    0.9293,
+    0.9389,
+    0.9245,
+    0.9368,
+    0.9588,
+    0.9375,
+    0.9554,
+    0.9602,
+    0.9519,
+    0.9451,
+    0.9560,
+    0.9567,
+    0.9402,
+    0.9375,
+    0.9389,
+    0.9183,
+    0.9299,
+    0.9348,
+    0.9416,
+    0.9389,
+    0.9499,
+    0.9492,
+    0.9389,
+    0.9423,
+    0.9430,
+    0.9368,
+    0.9293,
+    0.9437,
+    0.9382,
+    0.9423,
+    0.9457,
+    0.9437,
+    0.9464,
+    0.9512,
+    0.9464,
+    0.9485,
+    0.9457,
+    0.9471,
+    0.9457,
+    0.9478,
+    0.9464,
+    0.9451,
     0.9464,
 ]
 
 
 def test_serie_real_do_rawgat_st_dispara_oscilacao():
     """Nunca cai ao acaso, então `collapsed` não pega — e saía como `stable`."""
-    report = analyze_training_stability(
-        _history(_RAWGAT_ST_VAL_ACC), epochs_budget=100
-    )
+    report = analyze_training_stability(_history(_RAWGAT_ST_VAL_ACC), epochs_budget=100)
 
     assert report["status"] == "unstable_oscillation"
     # Continua utilizável: o que muda é o artefato deixar de omitir o problema.
@@ -567,7 +733,9 @@ def test_compare_models_avisa_quando_holm_nao_consegue_resolver():
     rng = np.random.default_rng(19)
     y = np.repeat([0, 1], 50)
     modelos = {
-        f"m{i}": {"scores": np.clip(y * (0.9 - 0.2 * i) + rng.normal(0.1, 0.1, 100), 0, 1)}
+        f"m{i}": {
+            "scores": np.clip(y * (0.9 - 0.2 * i) + rng.normal(0.1, 0.1, 100), 0, 1)
+        }
         for i in range(5)  # C(5,2) = 10 pares
     }
 
@@ -597,7 +765,9 @@ def test_os_dois_testes_recebem_a_mesma_resolucao():
     y = np.repeat([0, 1], 60)
     clusters = np.repeat([f"f{i}" for i in range(30)], 4)
     modelos = {
-        f"m{i}": {"scores": np.clip(y * (0.9 - 0.3 * i) + rng.normal(0.1, 0.1, 120), 0, 1)}
+        f"m{i}": {
+            "scores": np.clip(y * (0.9 - 0.3 * i) + rng.normal(0.1, 0.1, 120), 0, 1)
+        }
         for i in range(3)
     }
 
@@ -642,7 +812,9 @@ def test_comparacao_par_a_par_cobre_todos_os_pares_e_ajusta():
     rng = np.random.default_rng(5)
     y = np.repeat([0, 1], 60)
     modelos = {
-        f"m{i}": {"scores": np.clip(y * (0.9 - 0.25 * i) + rng.normal(0.1, 0.1, 120), 0, 1)}
+        f"m{i}": {
+            "scores": np.clip(y * (0.9 - 0.25 * i) + rng.normal(0.1, 0.1, 120), 0, 1)
+        }
         for i in range(3)
     }
 
@@ -878,9 +1050,7 @@ def _backfill():
     return _load_script("backfill_artifact_metadata")
 
 
-_SPLITS_META = {
-    "splits": {"train": {"samples": 12162}, "val": {"samples": 1456}}
-}
+_SPLITS_META = {"splits": {"train": {"samples": 12162}, "val": {"samples": 1456}}}
 
 
 def test_backfill_nao_carimba_keras_em_runner_pytorch():
@@ -1029,16 +1199,21 @@ def test_backfill_recomputa_estabilidade_de_criterio_antigo():
     """Bloco sem os limiares de oscilacao e de uma versao anterior."""
     mod = _backfill()
     antigo = {"status": "stable", "criteria": {"collapse_patience": 15}}
-    novo = {"status": "stable", "criteria": {"collapse_patience": 15,
-                                             "max_epoch_drop": 0.2}}
+    novo = {
+        "status": "stable",
+        "criteria": {"collapse_patience": 15, "max_epoch_drop": 0.2},
+    }
 
     assert mod._needs_stability_refresh({"training_stability": antigo}) is True
     assert mod._needs_stability_refresh({"training_stability": novo}) is False
     # Classico (`unknown`, sem `criteria`) nao tem o que recomputar — se
     # entrasse aqui, o backfill deixaria de ser idempotente para SVM/RF.
-    assert mod._needs_stability_refresh(
-        {"training_stability": {"status": "unknown", "stable": None}}
-    ) is False
+    assert (
+        mod._needs_stability_refresh(
+            {"training_stability": {"status": "unknown", "stable": None}}
+        )
+        is False
+    )
 
 
 def test_backfill_detecta_artefato_substituido(tmp_path):
@@ -1105,8 +1280,16 @@ def _sync():
     return _load_script("sync_completed_benchmark_artifacts")
 
 
-def _fake_run(tmp_path, *, model="M", clean=None, stability=None,
-              fingerprint=None, sha="abc123", artifact_bytes=b"peso"):
+def _fake_run(
+    tmp_path,
+    *,
+    model="M",
+    clean=None,
+    stability=None,
+    fingerprint=None,
+    sha="abc123",
+    artifact_bytes=b"peso",
+):
     """Run mínimo com um modelo: run_summary.json + <slug>/results.json."""
     run = tmp_path / "run"
     arch_dir = run / "m" / "architectures" / "m" / "models"
@@ -1311,9 +1494,9 @@ def test_runner_ssl_tambem_grava_o_fingerprint_do_pt():
     Sem o sha256 gravado na hora, o `.pt` de WavLM/HuBERT fica em
     `not_verifiable` para sempre e a promoção não consegue detectar troca.
     """
-    ssl = (
-        _PROJECT_ROOT / "benchmarks" / "run_wavlm_original_benchmark.py"
-    ).read_text(encoding="utf-8")
+    ssl = (_PROJECT_ROOT / "benchmarks" / "run_wavlm_original_benchmark.py").read_text(
+        encoding="utf-8"
+    )
 
     assert '"model_artifact_fingerprint": _file_fingerprint(artifact)' in ssl
     # A função canônica, a mesma dos caminhos Keras e clássico.
@@ -1325,9 +1508,9 @@ def test_runner_ssl_tambem_grava_o_fingerprint_do_pt():
 
 def test_os_dois_runners_persistem_test_speaker_ids():
     keras = (_PROJECT_ROOT / "benchmarks" / "runner.py").read_text(encoding="utf-8")
-    ssl = (
-        _PROJECT_ROOT / "benchmarks" / "run_wavlm_original_benchmark.py"
-    ).read_text(encoding="utf-8")
+    ssl = (_PROJECT_ROOT / "benchmarks" / "run_wavlm_original_benchmark.py").read_text(
+        encoding="utf-8"
+    )
 
     assert '"test_speaker_ids"' in keras
     assert '"test_speaker_ids"' in ssl
@@ -1378,7 +1561,8 @@ def test_oscilacao_registra_quedas_curtas_ao_acaso():
         [0.70, 0.90, 0.96, 0.98, 0.99]
         + [0.96, 0.91, 0.59]
         + [0.50] * 4
-        + [0.93, 0.99] + [0.9924] * 33
+        + [0.93, 0.99]
+        + [0.9924] * 33
     )
     hist = {"val_accuracy": val_acc, "val_loss": [0.3] * len(val_acc)}
     out = analyze_training_stability(hist, epochs_budget=len(val_acc))
@@ -1496,7 +1680,10 @@ def test_rerun_move_o_artefato_anterior_para_fora_do_caminho(tmp_path):
     # Movido, NÃO apagado: o artefato substituído é a evidência do defeito.
     assert (destino / "results.json").is_file()
     assert (
-        destino / "architectures" / "conformer" / "models"
+        destino
+        / "architectures"
+        / "conformer"
+        / "models"
         / "best_checkpoint.weights.h5.best.json"
     ).is_file()
     assert (destino / "architectures" / "conformer" / "training_backup").is_dir()

@@ -18,8 +18,12 @@ import logging
 import os
 import tarfile
 import zipfile
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from concurrent.futures import TimeoutError as FuturesTimeout
+from concurrent.futures import (
+    FIRST_COMPLETED,
+    ThreadPoolExecutor,
+    TimeoutError as FuturesTimeout,
+    wait,
+)
 from pathlib import Path
 
 import librosa
@@ -70,6 +74,7 @@ def warn_if_datasets_incompatible() -> None:
 # Diagnóstico de erros acionável (BUG.Datasets.2)
 # ---------------------------------------------------------------------------
 
+
 def check_dependencies(required: list[str]) -> list[str]:
     """Verifica pacotes e retorna os que faltam (com nome pip).
 
@@ -79,6 +84,7 @@ def check_dependencies(required: list[str]) -> list[str]:
         Lista de comandos pip para instalar o que falta (vazia se tudo OK).
     """
     import importlib.util
+
     _pip_names = {
         "datasets": "datasets>=5.0.1,<6.0",
         "huggingface_hub": "huggingface_hub",
@@ -116,8 +122,17 @@ def diagnose_hf_error(exc: Exception, dataset_name: str, repo: str = "") -> str:
     repo_hint = f" ({repo})" if repo else ""
 
     # Autenticação / token ausente
-    if any(k in msg for k in ("401", "unauthorized", "authentication", "token",
-                              "must be authenticated", "login")):
+    if any(
+        k in msg
+        for k in (
+            "401",
+            "unauthorized",
+            "authentication",
+            "token",
+            "must be authenticated",
+            "login",
+        )
+    ):
         return (
             f"[{dataset_name}]{repo_hint} requer AUTENTICAÇÃO no HuggingFace.\n"
             "  1. Crie um token: https://huggingface.co/settings/tokens\n"
@@ -125,9 +140,21 @@ def diagnose_hf_error(exc: Exception, dataset_name: str, repo: str = "") -> str:
             "  3. Tente novamente."
         )
     # Dataset gated (precisa aceitar termos)
-    if any(k in msg for k in ("403", "forbidden", "gated", "access to model",
-                              "accept", "agree", "terms")):
-        url = f"https://huggingface.co/datasets/{repo}" if repo else "a página do dataset"
+    if any(
+        k in msg
+        for k in (
+            "403",
+            "forbidden",
+            "gated",
+            "access to model",
+            "accept",
+            "agree",
+            "terms",
+        )
+    ):
+        url = (
+            f"https://huggingface.co/datasets/{repo}" if repo else "a página do dataset"
+        )
         return (
             f"[{dataset_name}]{repo_hint} é GATED — você precisa aceitar os termos.\n"
             f"  1. Acesse: {url}\n"
@@ -136,8 +163,19 @@ def diagnose_hf_error(exc: Exception, dataset_name: str, repo: str = "") -> str:
             "  4. Tente novamente."
         )
     # Rede / timeout
-    if any(k in msg for k in ("connection", "timeout", "timed out", "max retries",
-                              "network", "temporarily unavailable", "503", "502")):
+    if any(
+        k in msg
+        for k in (
+            "connection",
+            "timeout",
+            "timed out",
+            "max retries",
+            "network",
+            "temporarily unavailable",
+            "503",
+            "502",
+        )
+    ):
         return (
             f"[{dataset_name}]{repo_hint}: falha de REDE.\n"
             "  • Verifique sua conexão com a internet.\n"
@@ -145,8 +183,16 @@ def diagnose_hf_error(exc: Exception, dataset_name: str, repo: str = "") -> str:
             "  • Atrás de proxy? Configure HF_ENDPOINT ou HTTPS_PROXY."
         )
     # Repo inexistente
-    if any(k in msg for k in ("404", "not found", "doesn't exist", "repository not found",
-                              "couldn't find")):
+    if any(
+        k in msg
+        for k in (
+            "404",
+            "not found",
+            "doesn't exist",
+            "repository not found",
+            "couldn't find",
+        )
+    ):
         return (
             f"[{dataset_name}]{repo_hint}: repositório NÃO encontrado.\n"
             "  • O nome do dataset pode ter mudado no HuggingFace.\n"
@@ -159,6 +205,7 @@ def diagnose_hf_error(exc: Exception, dataset_name: str, repo: str = "") -> str:
 # ---------------------------------------------------------------------------
 # Utilidades
 # ---------------------------------------------------------------------------
+
 
 def setup_dirs() -> None:
     for d in [REAL_DIR, FAKE_DIR, RAW_DIR]:
@@ -202,6 +249,8 @@ def record_sample_metadata_safe(target_path: Path, **metadata) -> None:
         record_sample_metadata(target_path, **metadata)
     except Exception as exc:
         logger.warning("Falha ao registrar proveniencia de %s: %s", target_path, exc)
+
+
 _HF_REVISIONS: dict[str, str | None] = {}
 
 
@@ -218,7 +267,6 @@ def hf_source_revision(repo_id: str) -> str | None:
         revision = None
     _HF_REVISIONS[repo_id] = revision
     return revision
-
 
 
 def record_speaker_safe(target_path: Path, speaker_id) -> None:
@@ -286,9 +334,10 @@ def _download_file(url: str, dest: Path, label: str) -> bool:
         with requests.get(url, stream=True, timeout=timeout_s) as resp:
             resp.raise_for_status()
             total = int(resp.headers.get("content-length", 0))
-            with open(tmp, "wb") as f, tqdm(
-                total=total, unit="iB", unit_scale=True
-            ) as bar:
+            with (
+                open(tmp, "wb") as f,
+                tqdm(total=total, unit="iB", unit_scale=True) as bar,
+            ):
                 for chunk in resp.iter_content(1024 * 1024):
                     if chunk:
                         f.write(chunk)
@@ -327,6 +376,7 @@ def safe_write_wav(target_path: Path, audio: np.ndarray, sr: int = TARGET_SR) ->
 # ---------------------------------------------------------------------------
 # Processamento PARALELO de áudio (multi-thread) para fontes baseadas em arquivo
 # ---------------------------------------------------------------------------
+
 
 def download_workers() -> int:
     """Nº de threads para decodificar+reamostrar+gravar áudio em paralelo.
@@ -415,8 +465,9 @@ def parallel_decode_write(jobs, limit: int, workers: int | None = None) -> list:
     return written
 
 
-def hf_download_retry(repo, filename, *, repo_type, cache_dir,
-                      attempts=4, timeout_s=None):
+def hf_download_retry(
+    repo, filename, *, repo_type, cache_dir, attempts=4, timeout_s=None
+):
     """hf_hub_download com timeout por tentativa + retries (resume via cache).
 
     Um stall de rede no hf_hub_download pode travar indefinidamente (o corpo da
@@ -435,8 +486,11 @@ def hf_download_retry(repo, filename, *, repo_type, cache_dir,
     for k in range(1, attempts + 1):
         ex = ThreadPoolExecutor(max_workers=1)
         fut = ex.submit(
-            hf_hub_download, repo, filename,
-            repo_type=repo_type, cache_dir=cache_dir,
+            hf_hub_download,
+            repo,
+            filename,
+            repo_type=repo_type,
+            cache_dir=cache_dir,
         )
         try:
             path = fut.result(timeout=timeout_s)
@@ -469,6 +523,7 @@ def cast_no_decode(ds):
     """
     try:
         from datasets import Audio
+
         return ds.cast_column("audio", Audio(decode=False))
     except Exception as e:
         logger.debug(f"  cast decode=False indisponível ({e}); usando decode padrão")
@@ -619,14 +674,19 @@ def print_report() -> None:
     if real_count == 0 or fake_count == 0:
         logger.warning("ATENÇÃO: uma das classes está vazia!")
     elif abs(real_count - fake_count) / max(real_count, fake_count) > 0.5:
-        logger.warning("ATENÇÃO: desbalanceamento significativo — use class_weight='balanced' no treino.")
+        logger.warning(
+            "ATENÇÃO: desbalanceamento significativo — use class_weight='balanced' no treino."
+        )
     else:
-        logger.info("Dataset pronto. Próximo passo: python tools/dataset/preprocess_dataset.py --full")
+        logger.info(
+            "Dataset pronto. Próximo passo: python tools/dataset/preprocess_dataset.py --full"
+        )
 
 
 # ---------------------------------------------------------------------------
 # 1. BRSpeech-DF — bonafide (real) + spoof (fake) via parquet streaming
 # ---------------------------------------------------------------------------
+
 
 def download_brspeech(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     """BRSpeech-DF (AKCIT-Deepfake/BRSpeech-DF): bonafide→real, spoof→fake."""
@@ -646,14 +706,16 @@ def download_brspeech(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     fake_count = count_wavs(FAKE_DIR, "brspeech")
 
     if real_count >= samples_per_class and fake_count >= samples_per_class:
-        logger.info(f"Já existem {real_count} real + {fake_count} fake BRSpeech. Pulando.")
+        logger.info(
+            f"Já existem {real_count} real + {fake_count} fake BRSpeech. Pulando."
+        )
         return
 
     logger.info(f"Iniciando (já tem {real_count} real + {fake_count} fake)...")
 
     for data_dir, target_dir, prefix, is_real in [
         ("bonafide", REAL_DIR, "brspeech", True),
-        ("spoof",    FAKE_DIR, "brspeech", False),
+        ("spoof", FAKE_DIR, "brspeech", False),
     ]:
         current = real_count if is_real else fake_count
         if current >= samples_per_class:
@@ -691,9 +753,7 @@ def download_brspeech(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
                         speaker_id=speaker_from_record(item),
                         utterance_id=item.get("id") or item.get("utterance_id"),
                         text_id=item.get("text") or item.get("sentence"),
-                        generator_id=(
-                            item.get("model") if not is_real else "bonafide"
-                        ),
+                        generator_id=(item.get("model") if not is_real else "bonafide"),
                         source_revision=source_revision,
                         label=0 if is_real else 1,
                     )
@@ -722,8 +782,11 @@ def download_brspeech(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
 
 
 def _download_brspeech_parquet(
-    data_dir: str, target_dir: Path, prefix: str,
-    current_count: int, max_count: int,
+    data_dir: str,
+    target_dir: Path,
+    prefix: str,
+    current_count: int,
+    max_count: int,
     *,
     source_revision: str | None = None,
 ) -> int:
@@ -737,7 +800,11 @@ def _download_brspeech_parquet(
 
     api = HfApi()
     all_files = api.list_repo_files("AKCIT-Deepfake/BRSpeech-DF", repo_type="dataset")
-    parquet_files = [f for f in all_files if f.startswith(f"{data_dir}/train") and f.endswith(".parquet")]
+    parquet_files = [
+        f
+        for f in all_files
+        if f.startswith(f"{data_dir}/train") and f.endswith(".parquet")
+    ]
     logger.info(f"    {len(parquet_files)} parquet files para {data_dir}")
 
     count = current_count
@@ -747,8 +814,12 @@ def _download_brspeech_parquet(
         if count >= max_count:
             break
         try:
-            local_path = hf_hub_download("AKCIT-Deepfake/BRSpeech-DF", pf,
-                                          repo_type="dataset", cache_dir=cache_dir)
+            local_path = hf_hub_download(
+                "AKCIT-Deepfake/BRSpeech-DF",
+                pf,
+                repo_type="dataset",
+                cache_dir=cache_dir,
+            )
             df = pd.read_parquet(local_path)
             metadata_by_name = {}
             idx_box = [idx]
@@ -765,7 +836,9 @@ def _download_brspeech_parquet(
                         "speaker_id": speaker_from_record(row),
                         "utterance_id": row.get("id") or row.get("utterance_id"),
                         "text_id": row.get("text") or row.get("sentence"),
-                        "generator_id": row.get("model") if data_dir == "spoof" else "bonafide",
+                        "generator_id": (
+                            row.get("model") if data_dir == "spoof" else "bonafide"
+                        ),
                         "source_revision": source_revision,
                         "label": 1 if data_dir == "spoof" else 0,
                     }
@@ -784,6 +857,7 @@ def _download_brspeech_parquet(
 # ---------------------------------------------------------------------------
 # 2. CETUC / CommonVoice / FLEURS — fala real PT-BR
 # ---------------------------------------------------------------------------
+
 
 def download_cetuc(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     """CETUC Corpus / CommonVoice v17 PT / FLEURS (fallback em cascata → OpenSLR)."""
@@ -860,7 +934,10 @@ def _download_cetuc_openslr(max_samples: int) -> None:
             resp = requests.get(url, stream=True, timeout=60)
             resp.raise_for_status()
             total = int(resp.headers.get("content-length", 0))
-            with open(dest, "wb") as f, tqdm(total=total, unit="iB", unit_scale=True) as bar:
+            with (
+                open(dest, "wb") as f,
+                tqdm(total=total, unit="iB", unit_scale=True) as bar,
+            ):
                 for chunk in resp.iter_content(8192):
                     f.write(chunk)
                     bar.update(len(chunk))
@@ -870,6 +947,7 @@ def _download_cetuc_openslr(max_samples: int) -> None:
 
     logger.info("Extraindo CETUC...")
     from app.utils.file_utils import safe_extract_tar
+
     with tarfile.open(str(dest), "r:gz") as tar:
         safe_extract_tar(tar, cetuc_raw)
 
@@ -897,6 +975,7 @@ def _download_cetuc_openslr(max_samples: int) -> None:
 # 2b. MLS / TTS-Portuguese — reforços reais fora do Hugging Face
 # ---------------------------------------------------------------------------
 
+
 def _speaker_from_audio_path(path: Path, prefix: str) -> str:
     parts = [p for p in path.parts if p and p not in (".", "..")]
     if len(parts) >= 3:
@@ -922,7 +1001,8 @@ def _ingest_audio_tree(
     idx = next_index(REAL_DIR, prefix)
     count = existing
     audio_files = sorted(
-        p for p in raw_dir.rglob("*")
+        p
+        for p in raw_dir.rglob("*")
         if p.is_file() and p.suffix.lower() in AUDIO_EXTENSIONS
     )
     logger.info(f"{prefix}: encontrados {len(audio_files)} arquivos de audio")
@@ -1034,6 +1114,7 @@ def download_tts_portuguese(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
 # 3. Fake Voices XTTS — ZIPs por falante (mais robusto que streaming)
 # ---------------------------------------------------------------------------
 
+
 def download_fake_voices(max_speakers: int = 20, max_per_speaker: int = 100) -> None:
     """Fake Voices (unfake/fake_voices) — ZIPs por falante."""
     logger.info("=" * 60)
@@ -1083,7 +1164,9 @@ def download_fake_voices(max_speakers: int = 20, max_per_speaker: int = 100) -> 
         logger.info(f"  Falante {len(done) + 1}/{max_speakers}: {speaker}")
         try:
             local_path = hf_download_retry(
-                "unfake/fake_voices", zip_name, repo_type="dataset",
+                "unfake/fake_voices",
+                zip_name,
+                repo_type="dataset",
                 cache_dir=str(RAW_DIR / "fake_voices_cache"),
             )
         except Exception as e:  # noqa: BLE001
@@ -1126,7 +1209,9 @@ def download_fake_voices(max_speakers: int = 20, max_per_speaker: int = 100) -> 
                     fk_path,
                     source="fkvoice",
                     speaker_id=spk,
-                    utterance_id=metadata_by_name.get(fk_path.name, {}).get("utterance_id"),
+                    utterance_id=metadata_by_name.get(fk_path.name, {}).get(
+                        "utterance_id"
+                    ),
                     generator_id="xtts_v2",
                     source_revision=source_revision,
                     label=1,
@@ -1145,6 +1230,7 @@ def download_fake_voices(max_speakers: int = 20, max_per_speaker: int = 100) -> 
 # ---------------------------------------------------------------------------
 # 4. FLEURS PT-BR — fala real do Google
 # ---------------------------------------------------------------------------
+
 
 def download_fleurs(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     """FLEURS PT-BR (google/fleurs, pt_br) — fala real."""
@@ -1198,6 +1284,7 @@ def download_fleurs(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
 # 5. MLAAD v9 — subconjunto PT (fake only, CC-BY-NC 4.0)
 # ---------------------------------------------------------------------------
 
+
 def download_mlaad_pt(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     """MLAAD v9 (OU-CSAIL/MLAAD) — subconjunto PT-BR, apenas fakes."""
     logger.info("=" * 60)
@@ -1247,10 +1334,16 @@ def download_mlaad_pt(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
         lang = item.get("language", item.get("lang", ""))
         if isinstance(lang, str):
             lang_lower = lang.lower()
-            if "pt" not in lang_lower and "portuguese" not in lang_lower and "brasil" not in lang_lower:
+            if (
+                "pt" not in lang_lower
+                and "portuguese" not in lang_lower
+                and "brasil" not in lang_lower
+            ):
                 skipped += 1
                 if skipped % 5000 == 0:
-                    logger.info(f"  Pulando amostras não-PT ({skipped} de {seen} vistas)...")
+                    logger.info(
+                        f"  Pulando amostras não-PT ({skipped} de {seen} vistas)..."
+                    )
                 continue
         if "audio" not in item:
             continue
@@ -1273,6 +1366,7 @@ def download_mlaad_pt(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
 # 6. ASVspoof 2019 LA — benchmark padrão anti-spoofing (real + fake, ODC-BY)
 # ---------------------------------------------------------------------------
 
+
 def download_asvspoof2019(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     """ASVspoof 2019 LA (LanceaKing/asvspoof2019) — bonafide→real, spoof→fake.
 
@@ -1294,7 +1388,9 @@ def download_asvspoof2019(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     fake_count = count_wavs(FAKE_DIR, "asv2019")
 
     if real_count >= samples_per_class and fake_count >= samples_per_class:
-        logger.info(f"Já existem {real_count} real + {fake_count} fake ASVspoof2019. Pulando.")
+        logger.info(
+            f"Já existem {real_count} real + {fake_count} fake ASVspoof2019. Pulando."
+        )
         return
 
     logger.info(f"Iniciando (já tem {real_count} real + {fake_count} fake)...")
@@ -1315,9 +1411,13 @@ def download_asvspoof2019(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
             logger.info(f"  Tentativa falhou ({e}), tentando próxima configuração...")
 
     if ds is None:
-        logger.error(diagnose_hf_error(
-            last_exc or Exception("indisponível"),
-            "ASVspoof2019", "LanceaKing/asvspoof2019"))
+        logger.error(
+            diagnose_hf_error(
+                last_exc or Exception("indisponível"),
+                "ASVspoof2019",
+                "LanceaKing/asvspoof2019",
+            )
+        )
         return
 
     ds = cast_no_decode(ds)  # evita exigir torchcodec
@@ -1327,7 +1427,7 @@ def download_asvspoof2019(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     seen = 0
     _MAX_SEEN = max(50_000, max_samples * 30)  # cap anti-spin
     _BONAFIDE_VALUES = {0, "0", "bonafide", "genuine", "real"}
-    _SPOOF_VALUES    = {1, "1", "spoof", "fake", "synthetic", "attack"}
+    _SPOOF_VALUES = {1, "1", "spoof", "fake", "synthetic", "attack"}
 
     for item in ds:
         if real_c >= samples_per_class and fake_c >= samples_per_class:
@@ -1345,7 +1445,7 @@ def download_asvspoof2019(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
 
         label_str = str(raw_label).lower()
         is_real = raw_label in _BONAFIDE_VALUES or label_str in _BONAFIDE_VALUES
-        is_fake = raw_label in _SPOOF_VALUES    or label_str in _SPOOF_VALUES
+        is_fake = raw_label in _SPOOF_VALUES or label_str in _SPOOF_VALUES
 
         if not is_real and not is_fake:
             continue
@@ -1386,6 +1486,7 @@ def download_asvspoof2019(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
 # 7. WaveFake — 6 vocoders TTS (fake only, MIT License)
 # ---------------------------------------------------------------------------
 
+
 def download_wavefake(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     """WaveFake (Zenodo 5642694 / HF espelho) — 6 vocoders, fake only.
 
@@ -1406,9 +1507,9 @@ def download_wavefake(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
 
     # Tentar HuggingFace primeiro (vários espelhos conhecidos)
     _hf_repos = [
-        ("speech-detection/WaveFake",      {"split": "train", "streaming": True}),
-        ("halflingknight/wavefake",         {"split": "train", "streaming": True}),
-        ("SantiagoCalderon/WaveFake",       {"split": "train", "streaming": True}),
+        ("speech-detection/WaveFake", {"split": "train", "streaming": True}),
+        ("halflingknight/wavefake", {"split": "train", "streaming": True}),
+        ("SantiagoCalderon/WaveFake", {"split": "train", "streaming": True}),
     ]
     count = existing
     idx = next_index(FAKE_DIR, "wavefake")
@@ -1416,6 +1517,7 @@ def download_wavefake(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
 
     try:
         from datasets import load_dataset
+
         for repo, kwargs in _hf_repos:
             try:
                 ds = load_dataset(repo, **kwargs)
@@ -1473,8 +1575,7 @@ def _download_wavefake_zenodo(current_count: int, max_samples: int) -> int:
     files = record.get("files", [])
     # Filtrar apenas ZIPs de arquiteturas fake (excluir LJSpeech real)
     fake_zips = [
-        f for f in files
-        if f["key"].endswith(".zip") and "LJSpeech-1.1" not in f["key"]
+        f for f in files if f["key"].endswith(".zip") and "LJSpeech-1.1" not in f["key"]
     ]
     logger.info(f"  {len(fake_zips)} ZIPs de vocoders encontrados no Zenodo")
 
@@ -1491,13 +1592,22 @@ def _download_wavefake_zenodo(current_count: int, max_samples: int) -> int:
         local_zip = wavefake_raw / Path(zip_name).name
 
         if not local_zip.exists():
-            logger.info(f"  Baixando {zip_name} ({file_info['size'] // 1_000_000} MB)...")
+            logger.info(
+                f"  Baixando {zip_name} ({file_info['size'] // 1_000_000} MB)..."
+            )
             try:
                 r = requests.get(url, stream=True, timeout=120)
                 r.raise_for_status()
                 total = int(r.headers.get("content-length", 0))
-                with open(local_zip, "wb") as f, tqdm(total=total, unit="iB", unit_scale=True,
-                                                       desc=Path(zip_name).name) as bar:
+                with (
+                    open(local_zip, "wb") as f,
+                    tqdm(
+                        total=total,
+                        unit="iB",
+                        unit_scale=True,
+                        desc=Path(zip_name).name,
+                    ) as bar,
+                ):
                     for chunk in r.iter_content(65536):
                         f.write(chunk)
                         bar.update(len(chunk))
@@ -1540,6 +1650,7 @@ def _download_wavefake_zenodo(current_count: int, max_samples: int) -> int:
 # 8. In-the-Wild — 58 celebridades (real + deepfake, CC 4.0)
 # ---------------------------------------------------------------------------
 
+
 def download_in_the_wild(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     """In-the-Wild (mueller91/In-The-Wild) — celebridades reais + deepfakes.
 
@@ -1561,7 +1672,9 @@ def download_in_the_wild(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     fake_count = count_wavs(FAKE_DIR, "itw")
 
     if real_count >= samples_per_class and fake_count >= samples_per_class:
-        logger.info(f"Já existem {real_count} real + {fake_count} fake In-the-Wild. Pulando.")
+        logger.info(
+            f"Já existem {real_count} real + {fake_count} fake In-the-Wild. Pulando."
+        )
         return
 
     logger.info(f"Iniciando (já tem {real_count} real + {fake_count} fake)...")
@@ -1578,8 +1691,11 @@ def download_in_the_wild(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
             logger.info(f"  {repo} indisponível: {e}")
 
     if ds is None:
-        logger.error(diagnose_hf_error(
-            last_exc or Exception("indisponível"), "In-the-Wild", last_repo))
+        logger.error(
+            diagnose_hf_error(
+                last_exc or Exception("indisponível"), "In-the-Wild", last_repo
+            )
+        )
         return
 
     ds = cast_no_decode(ds)  # evita exigir torchcodec
@@ -1648,6 +1764,7 @@ def download_in_the_wild(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
 # 9. Mozilla Common Voice PT — fala real PT-BR (CC0, standalone)
 # ---------------------------------------------------------------------------
 
+
 def download_common_voice_pt(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     """Mozilla Common Voice v17 PT (mozilla-foundation/common_voice_17_0) — real PT-BR.
 
@@ -1693,9 +1810,13 @@ def download_common_voice_pt(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
             logger.info(f"  {repo} ({config}) indisponível: {e}")
 
     if ds is None:
-        logger.error(diagnose_hf_error(
-            last_exc or Exception("indisponível"),
-            "Common Voice PT", last_repo or "mozilla-foundation/common_voice_17_0"))
+        logger.error(
+            diagnose_hf_error(
+                last_exc or Exception("indisponível"),
+                "Common Voice PT",
+                last_repo or "mozilla-foundation/common_voice_17_0",
+            )
+        )
         return
 
     ds = cast_no_decode(ds)  # evita exigir torchcodec
@@ -1727,6 +1848,7 @@ def download_common_voice_pt(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
 # 10. ASVspoof 5 (2024) — 20+ tipos de ataque (real + fake)
 # ---------------------------------------------------------------------------
 
+
 def download_asvspoof5(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     """ASVspoof 5 (jungjee/asvspoof5) — challenge 2024, 20+ ataques TTS/VC.
 
@@ -1749,7 +1871,9 @@ def download_asvspoof5(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     fake_count = count_wavs(FAKE_DIR, "asv5")
 
     if real_count >= samples_per_class and fake_count >= samples_per_class:
-        logger.info(f"Já existem {real_count} real + {fake_count} fake ASVspoof5. Pulando.")
+        logger.info(
+            f"Já existem {real_count} real + {fake_count} fake ASVspoof5. Pulando."
+        )
         return
 
     logger.info(f"Iniciando (já tem {real_count} real + {fake_count} fake)...")
@@ -1757,9 +1881,9 @@ def download_asvspoof5(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     ds = None
     last_exc, last_repo = None, ""
     for repo, kwargs in [
-        ("jungjee/asvspoof5",    {"split": "train", "streaming": True}),
+        ("jungjee/asvspoof5", {"split": "train", "streaming": True}),
         ("LanceaKing/asvspoof5", {"split": "train", "streaming": True}),
-        ("ASVspoof/asvspoof5",   {"split": "train", "streaming": True}),
+        ("ASVspoof/asvspoof5", {"split": "train", "streaming": True}),
     ]:
         try:
             ds = load_dataset(repo, **kwargs)
@@ -1770,9 +1894,13 @@ def download_asvspoof5(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
             logger.info(f"  {repo} indisponível: {e}")
 
     if ds is None:
-        logger.error(diagnose_hf_error(
-            last_exc or Exception("indisponível"),
-            "ASVspoof5", last_repo or "jungjee/asvspoof5"))
+        logger.error(
+            diagnose_hf_error(
+                last_exc or Exception("indisponível"),
+                "ASVspoof5",
+                last_repo or "jungjee/asvspoof5",
+            )
+        )
         return
 
     ds = cast_no_decode(ds)  # evita exigir torchcodec
@@ -1782,7 +1910,7 @@ def download_asvspoof5(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
     seen = 0
     _MAX_SEEN = max(50_000, max_samples * 30)
     _BONAFIDE_VALUES = {0, "0", "bonafide", "genuine", "real"}
-    _SPOOF_VALUES    = {1, "1", "spoof", "fake", "synthetic", "attack"}
+    _SPOOF_VALUES = {1, "1", "spoof", "fake", "synthetic", "attack"}
 
     for item in ds:
         if real_c >= samples_per_class and fake_c >= samples_per_class:
@@ -1800,7 +1928,7 @@ def download_asvspoof5(max_samples: int = DEFAULT_MAX_SAMPLES) -> None:
 
         label_str = str(raw_label).lower()
         is_real = raw_label in _BONAFIDE_VALUES or label_str in _BONAFIDE_VALUES
-        is_fake = raw_label in _SPOOF_VALUES    or label_str in _SPOOF_VALUES
+        is_fake = raw_label in _SPOOF_VALUES or label_str in _SPOOF_VALUES
 
         if not is_real and not is_fake:
             continue

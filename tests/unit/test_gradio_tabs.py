@@ -53,9 +53,9 @@ def test_aba_nao_e_placeholder_de_erro(nome_do_builder):
     """
     builder = getattr(tabs_pkg, nome_do_builder)
     qualificado = getattr(builder, "__qualname__", "")
-    assert "_create_error_tab" not in qualificado, (
-        f"{nome_do_builder} caiu no placeholder de erro — a aba nao importa"
-    )
+    assert (
+        "_create_error_tab" not in qualificado
+    ), f"{nome_do_builder} caiu no placeholder de erro — a aba nao importa"
 
 
 def test_interface_completa_monta_sem_modelos():
@@ -120,6 +120,7 @@ def test_graficos_nao_entram_no_registro_global_do_pyplot():
     handlers que devolvem a figura para `gr.Plot` nunca chamam.
     """
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
@@ -132,9 +133,9 @@ def test_graficos_nao_entram_no_registro_global_do_pyplot():
     with make_figure(figsize=(3, 2)) as (_figura_ctx, eixo_ctx):
         eixo_ctx.plot([1, 2, 3])
 
-    assert plt.get_fignums() == [], (
-        f"{len(plt.get_fignums())} figuras ficaram no registro do pyplot"
-    )
+    assert (
+        plt.get_fignums() == []
+    ), f"{len(plt.get_fignums())} figuras ficaram no registro do pyplot"
 
 
 def test_new_figure_aceita_a_assinatura_do_plt_subplots():
@@ -148,6 +149,7 @@ def test_new_figure_aceita_a_assinatura_do_plt_subplots():
 
 
 # ──────── protecao de handlers: erro legivel, nao rastro de pilha ────────
+
 
 def _handlers_desprotegidos(caminho) -> list[str]:
     """Funções ligadas a eventos Gradio sem `try` nem `@ui_safe`."""
@@ -164,8 +166,8 @@ def _handlers_desprotegidos(caminho) -> list[str]:
                 ligados.add(palavra.value.id)
         if (
             isinstance(no.func, ast.Attribute)
-            and no.func.attr in {"click", "change", "upload", "submit",
-                                 "select", "tick"}
+            and no.func.attr
+            in {"click", "change", "upload", "submit", "select", "tick"}
             and no.args
             and isinstance(no.args[0], ast.Name)
         ):
@@ -181,9 +183,7 @@ def _handlers_desprotegidos(caminho) -> list[str]:
     return [
         no.name
         for no in ast.walk(arvore)
-        if isinstance(no, ast.FunctionDef)
-        and no.name in ligados
-        and not protegida(no)
+        if isinstance(no, ast.FunctionDef) and no.name in ligados and not protegida(no)
     ]
 
 
@@ -208,9 +208,7 @@ def test_todo_handler_de_evento_trata_excecao():
         if arquivo.name != "__init__.py"
     }
     desprotegidos = {k: v for k, v in achados.items() if v}
-    assert not desprotegidos, (
-        f"handlers sem try/except nem @ui_safe: {desprotegidos}"
-    )
+    assert not desprotegidos, f"handlers sem try/except nem @ui_safe: {desprotegidos}"
 
 
 def test_ui_safe_converte_excecao_em_erro_do_gradio():

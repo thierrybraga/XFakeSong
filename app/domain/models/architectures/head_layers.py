@@ -14,21 +14,25 @@ def create_classification_head(x, num_classes, dropout_rate=0.3, hidden_dims=Non
     if hidden_dims is None:
         hidden_dims = [512, 256, 128]
     for i, dim in enumerate(hidden_dims):
-        x = layers.Dense(dim, activation='relu', name=f'classifier_dense{i+1}')(x)
-        x = layers.BatchNormalization(name=f'classifier_bn{i+1}')(x)
+        x = layers.Dense(dim, activation="relu", name=f"classifier_dense{i+1}")(x)
+        x = layers.BatchNormalization(name=f"classifier_bn{i+1}")(x)
         # Reduce dropout for deeper layers
-        current_dropout = dropout_rate * (0.5 ** (i > 0)) # 0.3, 0.15, 0.15...
-        x = layers.Dropout(current_dropout, name=f'classifier_dropout{i+1}')(x)
+        current_dropout = dropout_rate * (0.5 ** (i > 0))  # 0.3, 0.15, 0.15...
+        x = layers.Dropout(current_dropout, name=f"classifier_dropout{i+1}")(x)
 
     # dtype='float32': sob mixed_float16, softmax+crossentropy em float16
     # satura/perde precisão e pode colapsar o treino (rede "morta" após a
     # 1a epoca). Mesma correção já aplicada em AASIST/RawGAT-ST.
     if num_classes == 1:
-        outputs = layers.Dense(1, activation='sigmoid', name='output', dtype='float32')(x)
-        loss = 'binary_crossentropy'
+        outputs = layers.Dense(1, activation="sigmoid", name="output", dtype="float32")(
+            x
+        )
+        loss = "binary_crossentropy"
     else:
-        outputs = layers.Dense(num_classes, activation='softmax', name='output', dtype='float32')(x)
-        loss = 'sparse_categorical_crossentropy'
+        outputs = layers.Dense(
+            num_classes, activation="softmax", name="output", dtype="float32"
+        )(x)
+        loss = "sparse_categorical_crossentropy"
 
     return outputs, loss
 
@@ -61,10 +65,10 @@ class AMSoftmaxLayer(layers.Layer):
 
     def build(self, input_shape):
         self.W = self.add_weight(
-            name='am_softmax_weights',
+            name="am_softmax_weights",
             shape=(input_shape[-1], self.num_classes),
-            initializer='glorot_uniform',
-            trainable=True
+            initializer="glorot_uniform",
+            trainable=True,
         )
         super(AMSoftmaxLayer, self).build(input_shape)
 
@@ -96,11 +100,13 @@ class AMSoftmaxLayer(layers.Layer):
 
     def get_config(self):
         config = super(AMSoftmaxLayer, self).get_config()
-        config.update({
-            'num_classes': self.num_classes,
-            'scale': self.scale,
-            'margin': self.margin,
-        })
+        config.update(
+            {
+                "num_classes": self.num_classes,
+                "scale": self.scale,
+                "margin": self.margin,
+            }
+        )
         return config
 
 
@@ -123,9 +129,14 @@ class AMSoftmaxCrossEntropy(tf.keras.losses.Loss):
         label_smoothing: suavização de rótulo aplicada depois da margem.
     """
 
-    def __init__(self, scale: float = 15.0, margin: float = 0.35,
-                 label_smoothing: float = 0.1, name: str = "am_softmax_ce",
-                 **kwargs):
+    def __init__(
+        self,
+        scale: float = 15.0,
+        margin: float = 0.35,
+        label_smoothing: float = 0.1,
+        name: str = "am_softmax_ce",
+        **kwargs,
+    ):
         super().__init__(name=name, **kwargs)
         self.scale = float(scale)
         self.margin = float(margin)
@@ -136,9 +147,7 @@ class AMSoftmaxCrossEntropy(tf.keras.losses.Loss):
         y_true_int = tf.cast(tf.reshape(y_true, [-1]), tf.int32)
         one_hot = tf.cast(tf.one_hot(y_true_int, num_classes), y_pred.dtype)
         # CosFace: subtrai s·m do logit da classe-alvo.
-        y_pred = y_pred - one_hot * tf.cast(
-            self.scale * self.margin, y_pred.dtype
-        )
+        y_pred = y_pred - one_hot * tf.cast(self.scale * self.margin, y_pred.dtype)
         k = tf.cast(num_classes, y_pred.dtype)
         ls = tf.cast(self.label_smoothing, y_pred.dtype)
         smoothed = one_hot * (1.0 - ls) + ls / k
@@ -148,11 +157,13 @@ class AMSoftmaxCrossEntropy(tf.keras.losses.Loss):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            "scale": self.scale,
-            "margin": self.margin,
-            "label_smoothing": self.label_smoothing,
-        })
+        config.update(
+            {
+                "scale": self.scale,
+                "margin": self.margin,
+                "label_smoothing": self.label_smoothing,
+            }
+        )
         return config
 
 
@@ -170,8 +181,13 @@ class SparseLabelSmoothingCrossEntropy(tf.keras.losses.Loss):
         from_logits: True se `y_pred` são logits; False para saída softmax.
     """
 
-    def __init__(self, label_smoothing: float = 0.05, from_logits: bool = False,
-                 name: str = "sparse_label_smoothing_ce", **kwargs):
+    def __init__(
+        self,
+        label_smoothing: float = 0.05,
+        from_logits: bool = False,
+        name: str = "sparse_label_smoothing_ce",
+        **kwargs,
+    ):
         super().__init__(name=name, **kwargs)
         self.label_smoothing = float(label_smoothing)
         self.from_logits = bool(from_logits)
@@ -190,10 +206,12 @@ class SparseLabelSmoothingCrossEntropy(tf.keras.losses.Loss):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            "label_smoothing": self.label_smoothing,
-            "from_logits": self.from_logits,
-        })
+        config.update(
+            {
+                "label_smoothing": self.label_smoothing,
+                "from_logits": self.from_logits,
+            }
+        )
         return config
 
 
@@ -247,11 +265,13 @@ def oc_softmax_loss(m0: float = 0.9, m1: float = 0.2, alpha: float = 20.0):
     `y_pred`: score escalar (batch, 1) da `OCSoftmaxLayer`.
     Forma numericamente estável via `softplus` = log(1 + exp(z)).
     """
+
     def _loss(y_true, y_pred):
         y = tf.cast(tf.reshape(y_true, (-1,)), tf.float32)
         s = tf.reshape(tf.cast(y_pred, tf.float32), (-1,))
-        margin = tf.where(tf.equal(y, 0.0), m0, m1)          # margem por classe
-        sign = tf.where(tf.equal(y, 0.0), 1.0, -1.0)         # (-1)^y
+        margin = tf.where(tf.equal(y, 0.0), m0, m1)  # margem por classe
+        sign = tf.where(tf.equal(y, 0.0), 1.0, -1.0)  # (-1)^y
         z = alpha * (margin - s) * sign
         return tf.reduce_mean(tf.math.softplus(z))
+
     return _loss

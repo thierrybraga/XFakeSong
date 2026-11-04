@@ -24,8 +24,9 @@ def compute_jitter(y: np.ndarray, f0: np.ndarray, sr: int) -> float:
     return jitter
 
 
-def compute_shimmer(y: np.ndarray, f0: np.ndarray,
-                    frame_length: int, hop_length: int) -> float:
+def compute_shimmer(
+    y: np.ndarray, f0: np.ndarray, frame_length: int, hop_length: int
+) -> float:
     """Computa shimmer (variabilidade da amplitude)."""
     # Extrair amplitudes de picos
     amplitudes = extract_peak_amplitudes(y, f0, frame_length, hop_length)
@@ -45,15 +46,15 @@ def compute_shimmer(y: np.ndarray, f0: np.ndarray,
     return shimmer
 
 
-def compute_hnr(y: np.ndarray, f0: np.ndarray, sr: int,
-                frame_length: int, hop_length: int) -> float:
+def compute_hnr(
+    y: np.ndarray, f0: np.ndarray, sr: int, frame_length: int, hop_length: int
+) -> float:
     """Computa Harmonic-to-Noise Ratio."""
     # Esta é uma implementação simplificada
     # HNR real requer análise mais sofisticada
 
     # Calcular espectrograma
-    S = np.abs(librosa.stft(y, n_fft=frame_length,
-                            hop_length=hop_length))
+    S = np.abs(librosa.stft(y, n_fft=frame_length, hop_length=hop_length))
     # freqs = librosa.fft_frequencies(sr=sr, n_fft=frame_length) # Not used in
     # simplified calculation logic below but kept for reference
 
@@ -63,7 +64,7 @@ def compute_hnr(y: np.ndarray, f0: np.ndarray, sr: int,
     for i, f0_val in enumerate(f0):
         if not np.isnan(f0_val) and f0_val > 0 and i < S.shape[1]:
             frame_spectrum = S[:, i]
-            total_energy += np.sum(frame_spectrum ** 2)
+            total_energy += np.sum(frame_spectrum**2)
 
             # Somar energia dos primeiros 5 harmônicos
             for harmonic in range(1, 6):
@@ -76,10 +77,10 @@ def compute_hnr(y: np.ndarray, f0: np.ndarray, sr: int,
                         # harmônico
                         window = 2
                         start_bin = max(0, bin_idx - window)
-                        end_bin = min(
-                            len(frame_spectrum), bin_idx + window + 1)
+                        end_bin = min(len(frame_spectrum), bin_idx + window + 1)
                         harmonic_energy += np.sum(
-                            frame_spectrum[start_bin:end_bin] ** 2)
+                            frame_spectrum[start_bin:end_bin] ** 2
+                        )
 
     # Calcular HNR
     if total_energy > harmonic_energy and harmonic_energy > 0:
@@ -95,11 +96,10 @@ def compute_snr(y: np.ndarray, frame_length: int, hop_length: int) -> float:
     """Computa Signal-to-Noise Ratio aproximado."""
     # Estimar ruído usando partes de baixa energia
     frame_energy = []
-    frames = librosa.util.frame(y, frame_length=frame_length,
-                                hop_length=hop_length)
+    frames = librosa.util.frame(y, frame_length=frame_length, hop_length=hop_length)
 
     for frame in frames.T:
-        energy = np.sum(frame ** 2)
+        energy = np.sum(frame**2)
         frame_energy.append(energy)
 
     frame_energy = np.array(frame_energy)
@@ -119,12 +119,10 @@ def compute_snr(y: np.ndarray, frame_length: int, hop_length: int) -> float:
     return snr if not np.isinf(snr) else 100
 
 
-def compute_cpp(y: np.ndarray, sr: int, frame_length: int,
-                hop_length: int) -> float:
+def compute_cpp(y: np.ndarray, sr: int, frame_length: int, hop_length: int) -> float:
     """Computa Cepstral Peak Prominence."""
     # Calcular cepstrum
-    frames = librosa.util.frame(y, frame_length=frame_length,
-                                hop_length=hop_length)
+    frames = librosa.util.frame(y, frame_length=frame_length, hop_length=hop_length)
 
     cpp_values = []
 
@@ -142,7 +140,7 @@ def compute_cpp(y: np.ndarray, sr: int, frame_length: int,
         # Encontrar pico cepstral (quefrency correspondente a pitch)
         # Região de interesse para pitch humano (80-400 Hz)
         min_quefrency = int(sr / 400)  # 400 Hz
-        max_quefrency = int(sr / 80)   # 80 Hz
+        max_quefrency = int(sr / 80)  # 80 Hz
 
         if max_quefrency < len(cepstrum):
             search_region = cepstrum[min_quefrency:max_quefrency]

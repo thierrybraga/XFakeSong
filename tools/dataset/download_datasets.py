@@ -79,46 +79,89 @@ logger = logging.getLogger("DownloadDatasets")
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     # ── PT-BR ──────────────────────────────────────────────────────────────
-    parser.add_argument("--all", action="store_true",
-                        help="brspeech + cetuc + fake-voices (recomendado PT-BR)")
-    parser.add_argument("--brspeech", action="store_true",
-                        help="BRSpeech-DF (real + fake PT-BR)")
-    parser.add_argument("--cetuc", action="store_true",
-                        help="CETUC/CommonVoice PT-BR (real)")
-    parser.add_argument("--fake-voices", action="store_true",
-                        help="Fake Voices XTTS via ZIPs (fake)")
-    parser.add_argument("--fleurs", action="store_true",
-                        help="FLEURS PT-BR do Google (real)")
-    parser.add_argument("--mls-portuguese", action="store_true",
-                        help="MLS Portuguese/LibriVox via download direto (real, CC BY 4.0)")
-    parser.add_argument("--tts-portuguese", action="store_true",
-                        help="TTS-Portuguese Corpus via download direto (real, CC BY 4.0)")
-    parser.add_argument("--mlaad-pt", action="store_true",
-                        help="MLAAD v9 subconjunto PT (fake, CC-BY-NC 4.0)")
-    parser.add_argument("--common-voice-pt", action="store_true",
-                        help="Mozilla Common Voice v17 PT (real, CC0)")
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="brspeech + cetuc + fake-voices (recomendado PT-BR)",
+    )
+    parser.add_argument(
+        "--brspeech", action="store_true", help="BRSpeech-DF (real + fake PT-BR)"
+    )
+    parser.add_argument(
+        "--cetuc", action="store_true", help="CETUC/CommonVoice PT-BR (real)"
+    )
+    parser.add_argument(
+        "--fake-voices", action="store_true", help="Fake Voices XTTS via ZIPs (fake)"
+    )
+    parser.add_argument(
+        "--fleurs", action="store_true", help="FLEURS PT-BR do Google (real)"
+    )
+    parser.add_argument(
+        "--mls-portuguese",
+        action="store_true",
+        help="MLS Portuguese/LibriVox via download direto (real, CC BY 4.0)",
+    )
+    parser.add_argument(
+        "--tts-portuguese",
+        action="store_true",
+        help="TTS-Portuguese Corpus via download direto (real, CC BY 4.0)",
+    )
+    parser.add_argument(
+        "--mlaad-pt",
+        action="store_true",
+        help="MLAAD v9 subconjunto PT (fake, CC-BY-NC 4.0)",
+    )
+    parser.add_argument(
+        "--common-voice-pt",
+        action="store_true",
+        help="Mozilla Common Voice v17 PT (real, CC0)",
+    )
     # ── Internacional ──────────────────────────────────────────────────────
-    parser.add_argument("--all-intl", action="store_true",
-                        help="asvspoof2019 + wavefake + in-the-wild (referência anti-spoofing)")
-    parser.add_argument("--asvspoof2019", action="store_true",
-                        help="ASVspoof 2019 LA — benchmark padrão (real + fake, ODC-BY)")
-    parser.add_argument("--wavefake", action="store_true",
-                        help="WaveFake — 6 vocoders TTS (fake only, MIT)")
-    parser.add_argument("--in-the-wild", action="store_true",
-                        help="In-the-Wild — 58 celebridades (real + deepfake, CC 4.0)")
-    parser.add_argument("--asvspoof5", action="store_true",
-                        help="ASVspoof 5 (2024) — 20+ tipos de ataque (real + fake)")
+    parser.add_argument(
+        "--all-intl",
+        action="store_true",
+        help="asvspoof2019 + wavefake + in-the-wild (referência anti-spoofing)",
+    )
+    parser.add_argument(
+        "--asvspoof2019",
+        action="store_true",
+        help="ASVspoof 2019 LA — benchmark padrão (real + fake, ODC-BY)",
+    )
+    parser.add_argument(
+        "--wavefake",
+        action="store_true",
+        help="WaveFake — 6 vocoders TTS (fake only, MIT)",
+    )
+    parser.add_argument(
+        "--in-the-wild",
+        action="store_true",
+        help="In-the-Wild — 58 celebridades (real + deepfake, CC 4.0)",
+    )
+    parser.add_argument(
+        "--asvspoof5",
+        action="store_true",
+        help="ASVspoof 5 (2024) — 20+ tipos de ataque (real + fake)",
+    )
     # ── Parâmetros ─────────────────────────────────────────────────────────
-    parser.add_argument("--max-samples", type=int, default=DEFAULT_MAX_SAMPLES,
-                        help=f"Máximo de amostras por classe (padrão: {DEFAULT_MAX_SAMPLES})")
-    parser.add_argument("--max-speakers", type=int, default=20,
-                        help="Máximo de falantes do Fake Voices (padrão: 20)")
+    parser.add_argument(
+        "--max-samples",
+        type=int,
+        default=DEFAULT_MAX_SAMPLES,
+        help=f"Máximo de amostras por classe (padrão: {DEFAULT_MAX_SAMPLES})",
+    )
+    parser.add_argument(
+        "--max-speakers",
+        type=int,
+        default=20,
+        help="Máximo de falantes do Fake Voices (padrão: 20)",
+    )
 
     args = parser.parse_args()
     logging.basicConfig(
@@ -128,19 +171,34 @@ def main() -> None:
     )
     warn_if_datasets_incompatible()
 
-    _any = any([
-        args.all, args.all_intl,
-        args.brspeech, args.cetuc, args.fake_voices, args.fleurs,
-        args.mls_portuguese, args.tts_portuguese,
-        args.mlaad_pt, args.common_voice_pt,
-        args.asvspoof2019, args.wavefake, args.in_the_wild, args.asvspoof5,
-    ])
+    _any = any(
+        [
+            args.all,
+            args.all_intl,
+            args.brspeech,
+            args.cetuc,
+            args.fake_voices,
+            args.fleurs,
+            args.mls_portuguese,
+            args.tts_portuguese,
+            args.mlaad_pt,
+            args.common_voice_pt,
+            args.asvspoof2019,
+            args.wavefake,
+            args.in_the_wild,
+            args.asvspoof5,
+        ]
+    )
     if not _any:
         parser.print_help()
         print("\nExemplos recomendados:")
         print("  python tools/dataset/download_datasets.py --all --max-samples 2000")
-        print("  python tools/dataset/download_datasets.py --all-intl --max-samples 2000")
-        print("  python tools/dataset/download_datasets.py --asvspoof2019 --wavefake --max-samples 1000")
+        print(
+            "  python tools/dataset/download_datasets.py --all-intl --max-samples 2000"
+        )
+        print(
+            "  python tools/dataset/download_datasets.py --asvspoof2019 --wavefake --max-samples 1000"
+        )
         return
 
     # Pré-check de dependências: avisa sobre TUDO que falta de uma vez,

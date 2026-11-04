@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CSVExportConfig:
     """Configuração para exportação CSV"""
+
     output_base_dir: str = "datasets/features"
     segmented_dir: str = "segmented"
     original_dir: str = "original"
@@ -45,7 +46,7 @@ class CSVFeatureExporter:
         spectral_features: Dict[str, np.ndarray],
         temporal_features: Dict[str, np.ndarray],
         filename: str,
-        label: str = "real"
+        label: str = "real",
     ) -> ProcessingResult[List[str]]:
         """
         Exporta features originais organizadas por categoria.
@@ -64,18 +65,19 @@ class CSVFeatureExporter:
             exported_files = []
 
             # Definir categorias e suas features
-            categories = {
-                'spectral': spectral_features,
-                'temporal': temporal_features
-            }
+            categories = {"spectral": spectral_features, "temporal": temporal_features}
 
             for category_name, category_features in categories.items():
                 if not category_features:
                     continue
 
                 # Criar diretório de saída para a categoria
-                output_dir = Path(self.config.output_base_dir) / \
-                    self.config.original_dir / label / category_name
+                output_dir = (
+                    Path(self.config.output_base_dir)
+                    / self.config.original_dir
+                    / label
+                    / category_name
+                )
                 output_dir.mkdir(parents=True, exist_ok=True)
 
                 # Caminho do arquivo CSV
@@ -91,20 +93,18 @@ class CSVFeatureExporter:
                             # Feature com múltiplos valores (ex: MFCC)
                             for i, value in enumerate(feature_array):
                                 feature_names.append(
-                                    f"{category_name}_{feature_name}_{i}")
+                                    f"{category_name}_{feature_name}_{i}"
+                                )
                                 feature_values.append(float(value))
                         else:
                             # Feature escalar (ndim == 0 ou array com 1
                             # elemento)
                             if feature_array.size == 1:
-                                feature_names.append(
-                                    f"{category_name}_{feature_name}")
-                                feature_values.append(
-                                    float(feature_array.item()))
+                                feature_names.append(f"{category_name}_{feature_name}")
+                                feature_values.append(float(feature_array.item()))
                             else:
                                 # Array vazio ou inválido
-                                feature_names.append(
-                                    f"{category_name}_{feature_name}")
+                                feature_names.append(f"{category_name}_{feature_name}")
                                 feature_values.append(0.0)
                     elif isinstance(feature_array, (int, float)):
                         # Feature escalar simples
@@ -112,9 +112,8 @@ class CSVFeatureExporter:
                         feature_values.append(float(feature_array))
 
                 # Escrever CSV
-                with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
-                    writer = csv.writer(
-                        csvfile, delimiter=self.config.delimiter)
+                with open(csv_path, "w", newline="", encoding="utf-8") as csvfile:
+                    writer = csv.writer(csvfile, delimiter=self.config.delimiter)
 
                     # Escrever cabeçalho
                     if self.config.include_headers:
@@ -122,36 +121,32 @@ class CSVFeatureExporter:
 
                     # Escrever features (uma linha por arquivo)
                     formatted_features = [
-                        round(f, self.config.decimal_places) for f in feature_values]
+                        round(f, self.config.decimal_places) for f in feature_values
+                    ]
                     writer.writerow(formatted_features)
 
                 exported_files.append(str(csv_path))
                 self.logger.info(
-                    f"Features {category_name} exportadas para: {csv_path}")
+                    f"Features {category_name} exportadas para: {csv_path}"
+                )
 
             return ProcessingResult(
                 status=ProcessingStatus.SUCCESS,
                 data=exported_files,
                 metadata={
-                    'categories_exported': len(exported_files),
-                    'total_files': len(exported_files)
-                }
+                    "categories_exported": len(exported_files),
+                    "total_files": len(exported_files),
+                },
             )
 
         except Exception as e:
-            self.logger.error(
-                f"Erro ao exportar features originais por categoria: {e}")
+            self.logger.error(f"Erro ao exportar features originais por categoria: {e}")
             return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                data=None,
-                errors=[str(e)]
+                status=ProcessingStatus.ERROR, data=None, errors=[str(e)]
             )
 
     def export_segmented_features_by_category(
-        self,
-        features_list: List[SegmentedFeatures],
-        filename: str,
-        label: str = "real"
+        self, features_list: List[SegmentedFeatures], filename: str, label: str = "real"
     ) -> ProcessingResult[List[str]]:
         """
         Exporta features segmentadas organizadas por categoria.
@@ -171,31 +166,66 @@ class CSVFeatureExporter:
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
                     data=None,
-                    errors=["Lista de features vazia"]
+                    errors=["Lista de features vazia"],
                 )
 
             exported_files = []
 
             # Definir categorias de features baseadas no organize_features.py
             feature_categories = {
-                'spectral': ['spectral_centroid', 'spectral_rolloff', 'spectral_bandwidth',
-                             'spectral_flatness', 'spectral_slope', 'spectral_kurtosis',
-                             'spectral_skewness', 'spectral_spread', 'spectral_entropy',
-                             'spectral_contrast', 'spectral_flux'],
-                'cepstral': ['mfcc', 'lpcc', 'delta_mfcc', 'delta2_mfcc'],
-                'temporal': ['zcr', 'energy', 'rms', 'tempo', 'onset_strength',
-                             'autocorr', 'envelope'],
-                'prosodic': ['f0', 'pitch', 'jitter', 'shimmer', 'hnr', 'intensity'],
-                'formant': ['formant_f1', 'formant_f2', 'formant_f3'],
-                'voice_quality': ['rap', 'ppq', 'apq', 'vf0', 'shimmer_db', 'nhr', 'vti',
-                                  'spi', 'dfa_alpha', 'spectral_tilt', 'breathiness_index',
-                                  'roughness_index', 'voice_breaks', 'shdb', 'breathiness',
-                                  'roughness', 'hoarseness'],
-                'perceptual': ['tonnetz', 'chroma', 'spectral_rolloff_perceptual'],
-                'speech': ['vot', 'vowel_duration', 'speech_rate', 'pause'],
-                'transform': ['stft', 'cqt', 'mel_spectrogram', 'wavelet', 'hilbert'],
-                'complexity': ['lempel_ziv', 'sample_entropy', 'permutation_entropy',
-                               'fractal_dimension']
+                "spectral": [
+                    "spectral_centroid",
+                    "spectral_rolloff",
+                    "spectral_bandwidth",
+                    "spectral_flatness",
+                    "spectral_slope",
+                    "spectral_kurtosis",
+                    "spectral_skewness",
+                    "spectral_spread",
+                    "spectral_entropy",
+                    "spectral_contrast",
+                    "spectral_flux",
+                ],
+                "cepstral": ["mfcc", "lpcc", "delta_mfcc", "delta2_mfcc"],
+                "temporal": [
+                    "zcr",
+                    "energy",
+                    "rms",
+                    "tempo",
+                    "onset_strength",
+                    "autocorr",
+                    "envelope",
+                ],
+                "prosodic": ["f0", "pitch", "jitter", "shimmer", "hnr", "intensity"],
+                "formant": ["formant_f1", "formant_f2", "formant_f3"],
+                "voice_quality": [
+                    "rap",
+                    "ppq",
+                    "apq",
+                    "vf0",
+                    "shimmer_db",
+                    "nhr",
+                    "vti",
+                    "spi",
+                    "dfa_alpha",
+                    "spectral_tilt",
+                    "breathiness_index",
+                    "roughness_index",
+                    "voice_breaks",
+                    "shdb",
+                    "breathiness",
+                    "roughness",
+                    "hoarseness",
+                ],
+                "perceptual": ["tonnetz", "chroma", "spectral_rolloff_perceptual"],
+                "speech": ["vot", "vowel_duration", "speech_rate", "pause"],
+                "transform": ["stft", "cqt", "mel_spectrogram", "wavelet", "hilbert"],
+                "complexity": [
+                    "lempel_ziv",
+                    "sample_entropy",
+                    "permutation_entropy",
+                    "fractal_dimension",
+                ],
             }
 
             # Organizar features por categoria
@@ -204,60 +234,65 @@ class CSVFeatureExporter:
                     features_list, category_name, category_keywords
                 )
 
-                if not category_features['feature_names']:
+                if not category_features["feature_names"]:
                     continue  # Pular categorias sem features
 
                 # Criar diretório de saída para a categoria
-                output_dir = Path(self.config.output_base_dir) / \
-                    self.config.segmented_dir / label / category_name
+                output_dir = (
+                    Path(self.config.output_base_dir)
+                    / self.config.segmented_dir
+                    / label
+                    / category_name
+                )
                 output_dir.mkdir(parents=True, exist_ok=True)
 
                 # Caminho do arquivo CSV
                 csv_path = output_dir / f"{filename}_{category_name}.csv"
 
                 # Escrever CSV
-                with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
-                    writer = csv.writer(
-                        csvfile, delimiter=self.config.delimiter)
+                with open(csv_path, "w", newline="", encoding="utf-8") as csvfile:
+                    writer = csv.writer(csvfile, delimiter=self.config.delimiter)
 
                     # Escrever cabeçalho
                     if self.config.include_headers:
-                        headers = self._generate_category_headers(
-                            category_features)
+                        headers = self._generate_category_headers(category_features)
                         writer.writerow(headers)
 
                     # Escrever dados (uma linha por segmento)
-                    for row_data in category_features['data']:
+                    for row_data in category_features["data"]:
                         formatted_row = [
-                            round(
-                                float(f),
-                                self.config.decimal_places) for f in row_data]
+                            round(float(f), self.config.decimal_places)
+                            for f in row_data
+                        ]
                         writer.writerow(formatted_row)
 
                 exported_files.append(str(csv_path))
                 self.logger.info(
-                    f"Features {category_name} exportadas para: {csv_path} ({len(category_features['data'])} segmentos)")
+                    f"Features {category_name} exportadas para: {csv_path} ({len(category_features['data'])} segmentos)"
+                )
 
             return ProcessingResult(
                 status=ProcessingStatus.SUCCESS,
                 data=exported_files,
                 metadata={
-                    'categories_exported': len(exported_files),
-                    'segments_count': len(features_list),
-                    'total_files': len(exported_files)
-                }
+                    "categories_exported": len(exported_files),
+                    "segments_count": len(features_list),
+                    "total_files": len(exported_files),
+                },
             )
 
         except Exception as e:
             self.logger.error(f"Erro ao exportar features por categoria: {e}")
             return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                data=None,
-                errors=[str(e)]
+                status=ProcessingStatus.ERROR, data=None, errors=[str(e)]
             )
 
-    def _extract_category_features(self, features_list: List[SegmentedFeatures],
-                                   category_name: str, category_keywords: List[str]) -> Dict[str, Any]:
+    def _extract_category_features(
+        self,
+        features_list: List[SegmentedFeatures],
+        category_name: str,
+        category_keywords: List[str],
+    ) -> Dict[str, Any]:
         """
         Extrai features de uma categoria específica dos segmentos.
 
@@ -269,10 +304,7 @@ class CSVFeatureExporter:
         Returns:
             Dicionário com feature_names e data organizados
         """
-        category_features = {
-            'feature_names': [],
-            'data': []
-        }
+        category_features = {"feature_names": [], "data": []}
 
         if not features_list:
             return category_features
@@ -293,7 +325,7 @@ class CSVFeatureExporter:
 
             if belongs_to_category:
                 feature_indices.append(i)
-                category_features['feature_names'].append(feature_name)
+                category_features["feature_names"].append(feature_name)
 
         # Extrair dados das features da categoria
         for segment_features in features_list:
@@ -301,15 +333,16 @@ class CSVFeatureExporter:
 
             # Adicionar metadados se configurado
             if self.config.include_metadata:
-                row_data.extend([
-                    segment_features.segment_index,
-                    round(segment_features.start_time, 3),
-                    round(segment_features.end_time, 3),
-                    round(
-                        segment_features.end_time -
-                        segment_features.start_time,
-                        3)  # duration
-                ])
+                row_data.extend(
+                    [
+                        segment_features.segment_index,
+                        round(segment_features.start_time, 3),
+                        round(segment_features.end_time, 3),
+                        round(
+                            segment_features.end_time - segment_features.start_time, 3
+                        ),  # duration
+                    ]
+                )
 
             # Adicionar features da categoria
             for idx in feature_indices:
@@ -318,12 +351,13 @@ class CSVFeatureExporter:
                 else:
                     row_data.append(0.0)  # valor padrão se índice inválido
 
-            category_features['data'].append(row_data)
+            category_features["data"].append(row_data)
 
         return category_features
 
     def _generate_category_headers(
-            self, category_features: Dict[str, Any]) -> List[str]:
+        self, category_features: Dict[str, Any]
+    ) -> List[str]:
         """
         Gera cabeçalhos para CSV de categoria específica.
 
@@ -337,11 +371,10 @@ class CSVFeatureExporter:
 
         # Adicionar cabeçalhos de metadados se configurado
         if self.config.include_metadata:
-            headers.extend(
-                ['segment_index', 'start_time', 'end_time', 'duration'])
+            headers.extend(["segment_index", "start_time", "end_time", "duration"])
 
         # Adicionar nomes das features
-        headers.extend(category_features['feature_names'])
+        headers.extend(category_features["feature_names"])
 
         return headers
 
@@ -351,7 +384,7 @@ def main():
     # Configurar logging
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
     print("🔧 Testando CSVFeatureExporter...")

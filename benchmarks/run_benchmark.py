@@ -42,29 +42,58 @@ except Exception:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--quick", action="store_true",
-                   help="preset rápido sintético (1 época) para verificar o harness")
-    p.add_argument("--full", action="store_true",
-                   help="preset do TCC (9 modelos documentados no artigo + API)")
-    p.add_argument("--neural", action="store_true",
-                   help="preset neural do TCC (7 arquiteturas neurais do artigo, sem SVM/RF)")
-    p.add_argument("--preset", choices=[
-        "custom", "quick", "full_tcc", "neural_tcc", "rawnet2_100e"
-    ],
-                   help="preset explícito; equivalente a --quick ou --full")
-    p.add_argument("--plan-only", action="store_true",
-                   help="valida dataset/configuração, grava benchmark_plan.* e para antes do treino")
-    p.add_argument("--archs", nargs="+", metavar="NOME",
-                   help="arquiteturas a avaliar (nomes do registry)")
-    p.add_argument("--model", metavar="NOME",
-                   help="atalho para avaliar uma única arquitetura/modelo")
-    p.add_argument("--dataset", metavar="NPZ",
-                   help=".npz com X_train/y_train (senão usa dataset sintético)")
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    p.add_argument(
+        "--quick",
+        action="store_true",
+        help="preset rápido sintético (1 época) para verificar o harness",
+    )
+    p.add_argument(
+        "--full",
+        action="store_true",
+        help="preset do TCC (9 modelos documentados no artigo + API)",
+    )
+    p.add_argument(
+        "--neural",
+        action="store_true",
+        help="preset neural do TCC (7 arquiteturas neurais do artigo, sem SVM/RF)",
+    )
+    p.add_argument(
+        "--preset",
+        choices=["custom", "quick", "full_tcc", "neural_tcc", "rawnet2_100e"],
+        help="preset explícito; equivalente a --quick ou --full",
+    )
+    p.add_argument(
+        "--plan-only",
+        action="store_true",
+        help="valida dataset/configuração, grava benchmark_plan.* e para antes do treino",
+    )
+    p.add_argument(
+        "--archs",
+        nargs="+",
+        metavar="NOME",
+        help="arquiteturas a avaliar (nomes do registry)",
+    )
+    p.add_argument(
+        "--model",
+        metavar="NOME",
+        help="atalho para avaliar uma única arquitetura/modelo",
+    )
+    p.add_argument(
+        "--dataset",
+        metavar="NPZ",
+        help=".npz com X_train/y_train (senão usa dataset sintético)",
+    )
     p.add_argument("--epochs", type=int, help="épocas de treino por arquitetura")
-    p.add_argument("--snr", nargs="+", type=int, metavar="DB",
-                   help="níveis de SNR (dB) do teste de robustez")
+    p.add_argument(
+        "--snr",
+        nargs="+",
+        type=int,
+        metavar="DB",
+        help="níveis de SNR (dB) do teste de robustez",
+    )
     p.add_argument(
         "--waveform-train-augmentation",
         action=argparse.BooleanOptionalAction,
@@ -72,19 +101,25 @@ def main() -> int:
         help="gera augmentation AWGN na forma de onda antes do frontend",
     )
     p.add_argument(
-        "--train-aug-snr", nargs="+", type=int, metavar="DB",
+        "--train-aug-snr",
+        nargs="+",
+        type=int,
+        metavar="DB",
         help="níveis de SNR distribuídos nas cópias ruidosas de treino",
     )
     p.add_argument(
-        "--train-noise-copies", type=int,
+        "--train-noise-copies",
+        type=int,
         help="número de cópias ruidosas balanceadas por amostra (default: 1)",
     )
     p.add_argument(
-        "--waveform-noise-batch-size", type=int,
+        "--waveform-noise-batch-size",
+        type=int,
         help="lote da geração AWGN em forma de onda (não altera hiperparâmetros do modelo)",
     )
     p.add_argument(
-        "--allow-feature-space-awgn", action="store_true",
+        "--allow-feature-space-awgn",
+        action="store_true",
         help="permite fallback legado para NPZ sem forma de onda (não usar no artigo)",
     )
     p.add_argument(
@@ -98,85 +133,156 @@ def main() -> int:
         metavar="DIR",
         help="pasta onde salvar modelos treinados (default: data/models)",
     )
-    p.add_argument("--api", action="store_true",
-                   help="também roda o teste de sistema da API (TestClient)")
-    p.add_argument("--no-api", action="store_true",
-                   help="desativa o teste da API mesmo em presets que o habilitam")
+    p.add_argument(
+        "--api",
+        action="store_true",
+        help="também roda o teste de sistema da API (TestClient)",
+    )
+    p.add_argument(
+        "--no-api",
+        action="store_true",
+        help="desativa o teste da API mesmo em presets que o habilitam",
+    )
     p.add_argument("--batch-size", type=int, help="batch size de treino")
-    p.add_argument("--latency-runs", type=int,
-                   help="número de medições de latência por arquitetura")
-    p.add_argument("--synthetic-n", type=int,
-                   help="número de amostras do dataset sintético")
-    p.add_argument("--synthetic-shape", nargs="+", type=int, metavar="DIM",
-                   help="shape por amostra do dataset sintético, ex: 128 80")
-    p.add_argument("--converge-auc", type=float,
-                   help="AUC mínima para marcar convergência")
-    p.add_argument("--converge-accuracy", type=float,
-                   help="acurácia mínima no threshold 0.5 para convergência")
+    p.add_argument(
+        "--latency-runs",
+        type=int,
+        help="número de medições de latência por arquitetura",
+    )
+    p.add_argument(
+        "--synthetic-n", type=int, help="número de amostras do dataset sintético"
+    )
+    p.add_argument(
+        "--synthetic-shape",
+        nargs="+",
+        type=int,
+        metavar="DIM",
+        help="shape por amostra do dataset sintético, ex: 128 80",
+    )
+    p.add_argument(
+        "--converge-auc", type=float, help="AUC mínima para marcar convergência"
+    )
+    p.add_argument(
+        "--converge-accuracy",
+        type=float,
+        help="acurácia mínima no threshold 0.5 para convergência",
+    )
     p.add_argument("--seed", type=int, default=42)
     p.add_argument(
         "--experiment-scope",
         choices=["official", "extended"],
         default="official",
     )
-    p.add_argument("--device-profile", choices=["auto", "cpu", "gpu"],
-                   default=None,
-                   help="perfil usado para cap de batch e mixed precision")
-    p.add_argument("--no-optimize-hparams", action="store_true",
-                   help="não aplica hiperparâmetros recomendados por arquitetura")
-    p.add_argument("--no-early-stopping", action="store_true",
-                   help="força o treino a executar todas as épocas solicitadas")
-    p.add_argument("--verbose", action="store_true",
-                   help="exibe logs INFO detalhados durante o benchmark")
-    p.add_argument("--group-split", action="store_true",
-                   help="P0: split disjunto por fonte/gerador (anti-vazamento)")
-    p.add_argument("--cross-generator", metavar="GERADOR", default=None,
-                   help="P0.4: segura este gerador fora do treino e o usa como "
-                        "teste (ex.: fkvoice). Reteste cross-generator.")
-    p.add_argument("--speaker-split", action="store_true",
-                   help="tier large: split disjunto por falante (usuários não vistos)")
-    p.add_argument("--unseen-speaker", metavar="FALANTE", default=None,
-                   help="tier large: segura este falante fora do treino e o usa "
-                        "como teste (protocolo de usuário não visto)")
     p.add_argument(
-        "--fail-on-source-shortcut", action="store_true",
+        "--device-profile",
+        choices=["auto", "cpu", "gpu"],
+        default=None,
+        help="perfil usado para cap de batch e mixed precision",
+    )
+    p.add_argument(
+        "--no-optimize-hparams",
+        action="store_true",
+        help="não aplica hiperparâmetros recomendados por arquitetura",
+    )
+    p.add_argument(
+        "--no-early-stopping",
+        action="store_true",
+        help="força o treino a executar todas as épocas solicitadas",
+    )
+    p.add_argument(
+        "--verbose",
+        action="store_true",
+        help="exibe logs INFO detalhados durante o benchmark",
+    )
+    p.add_argument(
+        "--group-split",
+        action="store_true",
+        help="P0: split disjunto por fonte/gerador (anti-vazamento)",
+    )
+    p.add_argument(
+        "--cross-generator",
+        metavar="GERADOR",
+        default=None,
+        help="P0.4: segura este gerador fora do treino e o usa como "
+        "teste (ex.: fkvoice). Reteste cross-generator.",
+    )
+    p.add_argument(
+        "--speaker-split",
+        action="store_true",
+        help="tier large: split disjunto por falante (usuários não vistos)",
+    )
+    p.add_argument(
+        "--unseen-speaker",
+        metavar="FALANTE",
+        default=None,
+        help="tier large: segura este falante fora do treino e o usa "
+        "como teste (protocolo de usuário não visto)",
+    )
+    p.add_argument(
+        "--fail-on-source-shortcut",
+        action="store_true",
         help="recusa dataset em que a fonte prediz o rotulo acima de 55%%",
     )
     p.add_argument(
-        "--source-shortcut-limit", type=float, default=None,
+        "--source-shortcut-limit",
+        type=float,
+        default=None,
         help="sobrepoe o limite do oraculo fonte-rotulo (default: 0.55; "
-             "use para datasets com confundimento fonte-classe documentado)",
+        "use para datasets com confundimento fonte-classe documentado)",
     )
     p.add_argument(
-        "--checkpoint-monitor", default=None, choices=["val_loss", "val_eer"],
+        "--checkpoint-monitor",
+        default=None,
+        choices=["val_loss", "val_eer"],
         help="metrica de selecao do checkpoint. `val_loss` e o padrao e o que "
-             "produziu os artefatos publicados; `val_eer` alinha a selecao a "
-             "metrica de avaliacao. So use val_eer se TODOS os modelos da "
-             "bateria receberem -- num subconjunto, quebra a comparabilidade.")
+        "produziu os artefatos publicados; `val_eer` alinha a selecao a "
+        "metrica de avaliacao. So use val_eer se TODOS os modelos da "
+        "bateria receberem -- num subconjunto, quebra a comparabilidade.",
+    )
     p.add_argument(
-        "--band-correction-hz", type=float, default=None,
+        "--band-correction-hz",
+        type=float,
+        default=None,
         help="passa-baixas (Hz) aplicado as DUAS classes antes de qualquer "
-             "frontend, para remover a assinatura de reamostragem que "
-             "distingue bonafide (16 kHz nativo) de spoof (24 kHz "
-             "reamostrado). Use 7500 nos runs corrigidos; omitir preserva o "
-             "comportamento dos artefatos anteriores.")
-    p.add_argument("--codec-eval", nargs="+", default=None,
-                   metavar="CODEC", choices=["mp3", "opus"],
-                   help="robustez a codec com perdas (round-trip ffmpeg na "
-                        "forma de onda, mesmo ponto do AWGN). Ex.: mp3 opus")
-    p.add_argument("--bootstrap-ci", type=int, default=None,
-                   help="nº de reamostragens do IC 95%% de bootstrap "
-                        "(default: 1000; 0 desliga)")
-    p.add_argument("--n-seeds", type=int, default=None,
-                   help="repetições por arquitetura com sementes de TREINO "
-                        "distintas; métricas viram média ± desvio (default: 1). "
-                        "O split e o ruído de avaliação NÃO mudam. Custo: "
-                        "multiplica o tempo de treino por N")
-    p.add_argument("--test-lock", metavar="JSON", default=None,
-                   help="selo do teste (tools/dataset/freeze_benchmark_test.py). "
-                        "Confere SHA-256 do dataset e identidade da partição de "
-                        "teste ANTES de treinar; aborta se divergir. Exigido em "
-                        "execuções acadêmicas")
+        "frontend, para remover a assinatura de reamostragem que "
+        "distingue bonafide (16 kHz nativo) de spoof (24 kHz "
+        "reamostrado). Use 7500 nos runs corrigidos; omitir preserva o "
+        "comportamento dos artefatos anteriores.",
+    )
+    p.add_argument(
+        "--codec-eval",
+        nargs="+",
+        default=None,
+        metavar="CODEC",
+        choices=["mp3", "opus"],
+        help="robustez a codec com perdas (round-trip ffmpeg na "
+        "forma de onda, mesmo ponto do AWGN). Ex.: mp3 opus",
+    )
+    p.add_argument(
+        "--bootstrap-ci",
+        type=int,
+        default=None,
+        help="nº de reamostragens do IC 95%% de bootstrap "
+        "(default: 1000; 0 desliga)",
+    )
+    p.add_argument(
+        "--n-seeds",
+        type=int,
+        default=None,
+        help="repetições por arquitetura com sementes de TREINO "
+        "distintas; métricas viram média ± desvio (default: 1). "
+        "O split e o ruído de avaliação NÃO mudam. Custo: "
+        "multiplica o tempo de treino por N",
+    )
+    p.add_argument(
+        "--test-lock",
+        metavar="JSON",
+        default=None,
+        help="selo do teste (tools/dataset/freeze_benchmark_test.py). "
+        "Confere SHA-256 do dataset e identidade da partição de "
+        "teste ANTES de treinar; aborta se divergir. Exigido em "
+        "execuções acadêmicas",
+    )
     args = p.parse_args()
 
     from benchmarks import (
@@ -319,9 +425,7 @@ def main() -> int:
     allowed = extended if cfg.experiment_scope == "extended" else official
     invalid = [arch for arch in cfg.architectures if arch not in allowed]
     if invalid:
-        p.error(
-            f"arquiteturas fora do escopo {cfg.experiment_scope}: {invalid}"
-        )
+        p.error(f"arquiteturas fora do escopo {cfg.experiment_scope}: {invalid}")
     if cfg.experiment_scope == "extended":
         cfg.optimize_hyperparameters = False
     if args.no_early_stopping:
@@ -352,19 +456,24 @@ def main() -> int:
     print("\n=== Benchmark SpeechChecker ===")
     print(f"Arquiteturas : {', '.join(cfg.architectures)}")
     print(f"Dataset      : {cfg.dataset_path or '(sintetico)'}")
-    print(f"Preset       : {cfg.preset_name} | HParams: "
-          f"{'otimizados' if cfg.optimize_hyperparameters else 'globais'} | "
-          f"Device: {cfg.device_profile}")
+    print(
+        f"Preset       : {cfg.preset_name} | HParams: "
+        f"{'otimizados' if cfg.optimize_hyperparameters else 'globais'} | "
+        f"Device: {cfg.device_profile}"
+    )
     classical = {
-        "".join(ch for ch in arch.lower() if ch.isalnum())
-        for arch in cfg.architectures
+        "".join(ch for ch in arch.lower() if ch.isalnum()) for arch in cfg.architectures
     } <= {"svm", "randomforest"}
     if classical:
-        print("Treino       : GridSearchCV + fit final | "
-              f"SNRs: {cfg.snr_levels_db} | API: {cfg.run_api_probe}")
+        print(
+            "Treino       : GridSearchCV + fit final | "
+            f"SNRs: {cfg.snr_levels_db} | API: {cfg.run_api_probe}"
+        )
     else:
-        print(f"Epocas       : {cfg.epochs} | SNRs: {cfg.snr_levels_db} | "
-              f"API: {cfg.run_api_probe}")
+        print(
+            f"Epocas       : {cfg.epochs} | SNRs: {cfg.snr_levels_db} | "
+            f"API: {cfg.run_api_probe}"
+        )
     print(f"Saida        : {cfg.output_dir}")
     print(f"Modelos      : {cfg.models_dir}\n")
 
@@ -381,8 +490,10 @@ def main() -> int:
 
     # Resumo no terminal
     print("\n" + "=" * 72)
-    print(f"{'Arquitetura':<24}{'Conv':<6}{'Acur':>8}{'EER':>8}"
-          f"{'AUC':>8}{'Lat(ms)':>10}")
+    print(
+        f"{'Arquitetura':<24}{'Conv':<6}{'Acur':>8}{'EER':>8}"
+        f"{'AUC':>8}{'Lat(ms)':>10}"
+    )
     print("-" * 72)
     for name, r in results["architectures"].items():
         if r.get("status") != "ok":
@@ -400,10 +511,12 @@ def main() -> int:
     print("=" * 72)
     if "api" in results:
         api = results["api"]
-        print(f"API: {api.get('status')} - {api.get('n_2xx')}/"
-              f"{api.get('n_probed')} endpoints 2xx, "
-              f"mediana {api.get('latency_ms_median')} ms "
-              f"({api.get('n_routes')} rotas registradas)")
+        print(
+            f"API: {api.get('status')} - {api.get('n_2xx')}/"
+            f"{api.get('n_probed')} endpoints 2xx, "
+            f"mediana {api.get('latency_ms_median')} ms "
+            f"({api.get('n_routes')} rotas registradas)"
+        )
     out = Path(cfg.output_dir).resolve()
     print(f"\nArtefatos: {out}")
     print("  - results.json / results.csv / summary.md")

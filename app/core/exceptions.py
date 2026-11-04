@@ -19,6 +19,7 @@ try:
     from fastapi import FastAPI, HTTPException, Request
     from fastapi.exceptions import RequestValidationError
     from fastapi.responses import JSONResponse
+
     _FASTAPI_AVAILABLE = True
 except ImportError:  # pragma: no cover - caminho Colab/treino sem web layer
     FastAPI = HTTPException = Request = RequestValidationError = JSONResponse = None
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 # ── Exceções de Domínio ────────────────────────────────────────────────
+
 
 class AppError(Exception):
     """Exceção base da aplicação com suporte a RFC 7807."""
@@ -50,6 +52,7 @@ class AppError(Exception):
 
 class NotFoundError(AppError):
     """Recurso não encontrado (404)."""
+
     def __init__(self, resource: str, identifier: Any = None):
         detail = f"{resource} não encontrado"
         if identifier is not None:
@@ -59,19 +62,24 @@ class NotFoundError(AppError):
 
 class ValidationError(AppError):
     """Erro de validação de dados (422)."""
+
     def __init__(self, detail: str, field: str = None):
         extra = {"field": field} if field else {}
-        super().__init__(detail, status_code=400, error_code="VALIDATION_ERROR", extra=extra)
+        super().__init__(
+            detail, status_code=400, error_code="VALIDATION_ERROR", extra=extra
+        )
 
 
 class ConflictError(AppError):
     """Conflito de recurso (409)."""
+
     def __init__(self, detail: str):
         super().__init__(detail, status_code=409, error_code="CONFLICT")
 
 
 class ServiceUnavailableError(AppError):
     """Serviço indisponível (503)."""
+
     def __init__(self, service: str):
         super().__init__(
             f"Serviço '{service}' indisponível",
@@ -82,12 +90,14 @@ class ServiceUnavailableError(AppError):
 
 class AudioProcessingError(AppError):
     """Erro no processamento de áudio (400)."""
+
     def __init__(self, detail: str):
         super().__init__(detail, status_code=400, error_code="AUDIO_PROCESSING_ERROR")
 
 
 class ModelNotFoundError(NotFoundError):
     """Modelo ML não encontrado."""
+
     def __init__(self, model_name: str):
         super().__init__("Modelo", model_name)
         self.error_code = "MODEL_NOT_FOUND"
@@ -95,6 +105,7 @@ class ModelNotFoundError(NotFoundError):
 
 class DatasetNotFoundError(NotFoundError):
     """Dataset não encontrado."""
+
     def __init__(self, dataset_name: str):
         super().__init__("Dataset", dataset_name)
         self.error_code = "DATASET_NOT_FOUND"
@@ -102,6 +113,7 @@ class DatasetNotFoundError(NotFoundError):
 
 class ProfileNotFoundError(NotFoundError):
     """Perfil de voz não encontrado."""
+
     def __init__(self, profile_id: int):
         super().__init__("Perfil de voz", profile_id)
         self.error_code = "PROFILE_NOT_FOUND"
@@ -109,12 +121,14 @@ class ProfileNotFoundError(NotFoundError):
 
 class TrainingError(AppError):
     """Erro durante treinamento (400)."""
+
     def __init__(self, detail: str):
         super().__init__(detail, status_code=400, error_code="TRAINING_ERROR")
 
 
 class FileTooLargeError(AppError):
     """Arquivo excede tamanho máximo (413)."""
+
     def __init__(self, max_size_mb: int):
         super().__init__(
             f"Arquivo excede o limite de {max_size_mb}MB",
@@ -125,6 +139,7 @@ class FileTooLargeError(AppError):
 
 class UnsupportedFormatError(AppError):
     """Formato de arquivo não suportado (415)."""
+
     def __init__(self, fmt: str, supported: list):
         super().__init__(
             f"Formato '{fmt}' não suportado. Use: {', '.join(supported)}",
@@ -134,6 +149,7 @@ class UnsupportedFormatError(AppError):
 
 
 # ── RFC 7807 Problem Details ──────────────────────────────────────────
+
 
 def _problem_detail(
     status: int,
@@ -160,6 +176,7 @@ def _problem_detail(
 
 
 # ── Handlers Globais ──────────────────────────────────────────────────
+
 
 def _handle_app_error(request: Request, exc: AppError) -> JSONResponse:
     """Handler para exceções de domínio."""
@@ -192,7 +209,9 @@ def _handle_http_exception(request: Request, exc: HTTPException) -> JSONResponse
     )
 
 
-def _handle_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+def _handle_validation_error(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
     """Handler para erros de validação do Pydantic."""
     errors = []
     for err in exc.errors():

@@ -44,9 +44,16 @@ class AasistSincConv(layers.Layer):
     Reference: Ravanelli & Bengio, "Speaker Recognition from Raw Waveform with SincNet", 2018
     """
 
-    def __init__(self, n_filters=70, kernel_size=129, sample_rate=16000,
-                 min_low_hz=50.0, min_band_hz=50.0, trainable_filters=False,
-                 **kwargs):
+    def __init__(
+        self,
+        n_filters=70,
+        kernel_size=129,
+        sample_rate=16000,
+        min_low_hz=50.0,
+        min_band_hz=50.0,
+        trainable_filters=False,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.n_filters = n_filters
         self.kernel_size = kernel_size
@@ -90,18 +97,20 @@ class AasistSincConv(layers.Layer):
             name="low_hz",
             shape=(self.n_filters,),
             initializer=tf.keras.initializers.Constant(init_low.numpy()),
-            trainable=self.trainable_filters
+            trainable=self.trainable_filters,
         )
         self.band_hz_ = self.add_weight(
             name="band_hz",
             shape=(self.n_filters,),
             initializer=tf.keras.initializers.Constant(init_band.numpy()),
-            trainable=self.trainable_filters
+            trainable=self.trainable_filters,
         )
 
         # Hamming window (not trainable)
         n = tf.cast(tf.range(0, self.kernel_size), tf.float32)
-        self.window_ = 0.54 - 0.46 * tf.cos(2.0 * 3.14159265 * n / (self.kernel_size - 1))
+        self.window_ = 0.54 - 0.46 * tf.cos(
+            2.0 * 3.14159265 * n / (self.kernel_size - 1)
+        )
 
         super().build(input_shape)
 
@@ -144,29 +153,31 @@ class AasistSincConv(layers.Layer):
             high=high,
             n_time=n,
             window=tf.cast(self.window_, tf.float32),
-            normalize="l1",   # energia unitária (convenção desta camada)
+            normalize="l1",  # energia unitária (convenção desta camada)
         )  # (kernel_size, n_filters)
 
         # Reshape for conv1d: (kernel_size, 1, n_filters)
         filters = tf.expand_dims(band_pass, 1)
 
         # Apply convolution
-        output = tf.nn.conv1d(inputs, filters, stride=1, padding='SAME')
+        output = tf.nn.conv1d(inputs, filters, stride=1, padding="SAME")
 
         return tf.cast(output, target_dtype)
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'n_filters': self.n_filters,
-            'kernel_size': self.kernel_size,
-            'sample_rate': self.sample_rate,
-            'min_low_hz': self.min_low_hz,
-            'min_band_hz': self.min_band_hz,
-            # Sem isto, um artefato salvo com banco treinavel recarregaria com
-            # banco fixo (ou vice-versa) em silencio.
-            'trainable_filters': self.trainable_filters,
-        })
+        config.update(
+            {
+                "n_filters": self.n_filters,
+                "kernel_size": self.kernel_size,
+                "sample_rate": self.sample_rate,
+                "min_low_hz": self.min_low_hz,
+                "min_band_hz": self.min_band_hz,
+                # Sem isto, um artefato salvo com banco treinavel recarregaria com
+                # banco fixo (ou vice-versa) em silencio.
+                "trainable_filters": self.trainable_filters,
+            }
+        )
         return config
 
 
@@ -190,18 +201,24 @@ class AasistResidualBlock1D(layers.Layer):
 
         self.bn1 = layers.BatchNormalization(name=self.name + "_bn1")
         self.conv1 = layers.Conv1D(
-            self.out_channels, self.kernel_size, padding='same',
-            name=self.name + "_conv1")
+            self.out_channels,
+            self.kernel_size,
+            padding="same",
+            name=self.name + "_conv1",
+        )
         self.bn2 = layers.BatchNormalization(name=self.name + "_bn2")
         self.conv2 = layers.Conv1D(
-            self.out_channels, self.kernel_size, padding='same',
-            name=self.name + "_conv2")
+            self.out_channels,
+            self.kernel_size,
+            padding="same",
+            name=self.name + "_conv2",
+        )
 
         self.skip_conv = None
         if in_channels != self.out_channels:
             self.skip_conv = layers.Conv1D(
-                self.out_channels, 1, padding='same',
-                name=self.name + "_skip")
+                self.out_channels, 1, padding="same", name=self.name + "_skip"
+            )
 
         super().build(input_shape)
 
@@ -227,10 +244,9 @@ class AasistResidualBlock1D(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'out_channels': self.out_channels,
-            'kernel_size': self.kernel_size
-        })
+        config.update(
+            {"out_channels": self.out_channels, "kernel_size": self.kernel_size}
+        )
         return config
 
 
@@ -238,8 +254,9 @@ class AasistResidualBlock1D(layers.Layer):
 class AasistResidualBlock2D(layers.Layer):
     """Bloco residual 2D para os encoders AASIST/RawGAT-ST fiéis."""
 
-    def __init__(self, out_channels, kernel_size=(2, 3), pool_size=(1, 3),
-                 first=False, **kwargs):
+    def __init__(
+        self, out_channels, kernel_size=(2, 3), pool_size=(1, 3), first=False, **kwargs
+    ):
         super().__init__(**kwargs)
         self.out_channels = int(out_channels)
         # KERNEL (2, 3), como o `Residual_block` da familia RawGAT-ST/AASIST.
@@ -257,27 +274,37 @@ class AasistResidualBlock2D(layers.Layer):
         # Com `first=True` a pre-ativacao nao roda, entao `bn1` seria um peso
         # orfao (sem gradiente, e o Keras avisa a cada passo).
         self.bn1 = (
-            None if self.first
-            else layers.BatchNormalization(name=f"{self.name}_bn1")
+            None if self.first else layers.BatchNormalization(name=f"{self.name}_bn1")
         )
         self.conv1 = layers.Conv2D(
-            self.out_channels, self.kernel_size, padding="same",
-            use_bias=False, name=f"{self.name}_conv1",
+            self.out_channels,
+            self.kernel_size,
+            padding="same",
+            use_bias=False,
+            name=f"{self.name}_conv1",
         )
         self.bn2 = layers.BatchNormalization(name=f"{self.name}_bn2")
         self.conv2 = layers.Conv2D(
-            self.out_channels, self.kernel_size, padding="same",
-            use_bias=False, name=f"{self.name}_conv2",
+            self.out_channels,
+            self.kernel_size,
+            padding="same",
+            use_bias=False,
+            name=f"{self.name}_conv2",
         )
         self.skip_conv = None
         if input_shape[-1] != self.out_channels:
             self.skip_conv = layers.Conv2D(
-                self.out_channels, 1, padding="same", use_bias=False,
+                self.out_channels,
+                1,
+                padding="same",
+                use_bias=False,
                 name=f"{self.name}_skip",
             )
         self.pool = layers.MaxPooling2D(
-            pool_size=self.pool_size, strides=self.pool_size,
-            padding="same", name=f"{self.name}_pool",
+            pool_size=self.pool_size,
+            strides=self.pool_size,
+            padding="same",
+            name=f"{self.name}_pool",
         )
         super().build(input_shape)
 
@@ -301,12 +328,14 @@ class AasistResidualBlock2D(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            "out_channels": self.out_channels,
-            "kernel_size": self.kernel_size,
-            "pool_size": self.pool_size,
-            "first": self.first,
-        })
+        config.update(
+            {
+                "out_channels": self.out_channels,
+                "kernel_size": self.kernel_size,
+                "pool_size": self.pool_size,
+                "first": self.first,
+            }
+        )
         return config
 
 
@@ -325,8 +354,15 @@ class AasistGATConv(layers.Layer):
     Reference: Velickovic et al., "Graph Attention Networks", ICLR 2018
     """
 
-    def __init__(self, out_features, num_heads=1, dropout_rate=0.1,
-                 concat_heads=True, negative_slope=0.2, **kwargs):
+    def __init__(
+        self,
+        out_features,
+        num_heads=1,
+        dropout_rate=0.1,
+        concat_heads=True,
+        negative_slope=0.2,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.out_features = out_features
         self.num_heads = num_heads
@@ -342,7 +378,7 @@ class AasistGATConv(layers.Layer):
             name="W",
             shape=(in_features, self.out_features * self.num_heads),
             initializer="glorot_uniform",
-            trainable=True
+            trainable=True,
         )
 
         # Attention vectors: one pair (a_src, a_dst) per head
@@ -350,20 +386,26 @@ class AasistGATConv(layers.Layer):
             name="a_src",
             shape=(self.num_heads, self.out_features, 1),
             initializer="glorot_uniform",
-            trainable=True
+            trainable=True,
         )
         self.a_dst = self.add_weight(
             name="a_dst",
             shape=(self.num_heads, self.out_features, 1),
             initializer="glorot_uniform",
-            trainable=True
+            trainable=True,
         )
 
         self.bias = self.add_weight(
             name="bias",
-            shape=(self.out_features * self.num_heads if self.concat_heads else self.out_features,),
+            shape=(
+                (
+                    self.out_features * self.num_heads
+                    if self.concat_heads
+                    else self.out_features
+                ),
+            ),
             initializer="zeros",
-            trainable=True
+            trainable=True,
         )
 
         super().build(input_shape)
@@ -384,9 +426,9 @@ class AasistGATConv(layers.Layer):
 
         # Compute attention scores using additive mechanism
         # e_src: (batch, heads, nodes, 1)
-        e_src = tf.einsum('bhni,hio->bhno', h, self.a_src)
+        e_src = tf.einsum("bhni,hio->bhno", h, self.a_src)
         # e_dst: (batch, heads, nodes, 1)
-        e_dst = tf.einsum('bhni,hio->bhno', h, self.a_dst)
+        e_dst = tf.einsum("bhni,hio->bhno", h, self.a_dst)
 
         # e_ij = LeakyReLU(e_src_i + e_dst_j)
         # Broadcasting: (batch, heads, nodes, 1) + (batch, heads, 1, nodes)
@@ -408,7 +450,9 @@ class AasistGATConv(layers.Layer):
 
         if self.concat_heads:
             # (batch, nodes, heads * out_features)
-            out = tf.reshape(out, (batch_size, num_nodes, self.num_heads * self.out_features))
+            out = tf.reshape(
+                out, (batch_size, num_nodes, self.num_heads * self.out_features)
+            )
         else:
             # Average heads: (batch, nodes, out_features)
             out = tf.reduce_mean(out, axis=2)
@@ -418,13 +462,15 @@ class AasistGATConv(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'out_features': self.out_features,
-            'num_heads': self.num_heads,
-            'dropout_rate': self.dropout_rate,
-            'concat_heads': self.concat_heads,
-            'negative_slope': self.negative_slope
-        })
+        config.update(
+            {
+                "out_features": self.out_features,
+                "num_heads": self.num_heads,
+                "dropout_rate": self.dropout_rate,
+                "concat_heads": self.concat_heads,
+                "negative_slope": self.negative_slope,
+            }
+        )
         return config
 
 
@@ -449,8 +495,7 @@ class AasistGraphAttention(layers.Layer):
     último eixo — exatamente como no código de referência dos autores.
     """
 
-    def __init__(self, out_features, temperature=1.0, dropout_rate=0.2,
-                 **kwargs):
+    def __init__(self, out_features, temperature=1.0, dropout_rate=0.2, **kwargs):
         super().__init__(**kwargs)
         self.out_features = int(out_features)
         self.temperature = float(temperature)
@@ -460,20 +505,20 @@ class AasistGraphAttention(layers.Layer):
         in_dim = int(input_shape[-1])
         self.att_proj = layers.Dense(self.out_features, name="att_proj")
         self.att_weight = self.add_weight(
-            name="att_weight", shape=(self.out_features, 1),
-            initializer="glorot_uniform", trainable=True,
+            name="att_weight",
+            shape=(self.out_features, 1),
+            initializer="glorot_uniform",
+            trainable=True,
         )
         self.proj_with_att = layers.Dense(self.out_features, name="proj_with_att")
-        self.proj_without_att = layers.Dense(
-            self.out_features, name="proj_without_att"
-        )
+        self.proj_without_att = layers.Dense(self.out_features, name="proj_without_att")
         self.bn = layers.BatchNormalization(name="bn")
         self.input_drop = layers.Dropout(self.dropout_rate)
 
         # Build EXPLÍCITO das sub-camadas: criadas aqui, elas ficariam com
         # `built=False` na reconstrução do modelo salvo e o Keras 3 aborta o
         # load ("objects could not be loaded ... Dense name=att_proj").
-        self.att_proj.build((None, None, None, in_dim))   # tensor par-a-par
+        self.att_proj.build((None, None, None, in_dim))  # tensor par-a-par
         self.proj_with_att.build((None, None, in_dim))
         self.proj_without_att.build((None, None, in_dim))
         self.bn.build((None, None, self.out_features))
@@ -482,7 +527,7 @@ class AasistGraphAttention(layers.Layer):
     def _derive_att_map(self, x):
         # Produto par-a-par: (B, N, 1, C) * (B, 1, N, C) -> (B, N, N, C)
         pairwise = tf.expand_dims(x, 2) * tf.expand_dims(x, 1)
-        att = tf.tanh(self.att_proj(pairwise))          # (B, N, N, out)
+        att = tf.tanh(self.att_proj(pairwise))  # (B, N, N, out)
         att = tf.matmul(att, tf.cast(self.att_weight, att.dtype))  # (B, N, N, 1)
         att = att / tf.cast(self.temperature, att.dtype)
         return tf.nn.softmax(att, axis=-2)
@@ -499,11 +544,13 @@ class AasistGraphAttention(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            "out_features": self.out_features,
-            "temperature": self.temperature,
-            "dropout_rate": self.dropout_rate,
-        })
+        config.update(
+            {
+                "out_features": self.out_features,
+                "temperature": self.temperature,
+                "dropout_rate": self.dropout_rate,
+            }
+        )
         return config
 
 
@@ -522,8 +569,10 @@ class AasistMasterNodeSeed(layers.Layer):
 
     def build(self, input_shape):
         self.seed = self.add_weight(
-            name="master_seed", shape=(1, 1, self.feature_dim),
-            initializer="random_normal", trainable=True,
+            name="master_seed",
+            shape=(1, 1, self.feature_dim),
+            initializer="random_normal",
+            trainable=True,
         )
         super().build(input_shape)
 
@@ -560,8 +609,7 @@ class AasistHtrgGraphAttention(layers.Layer):
     Saída:   ``(x1', x2', master')``.
     """
 
-    def __init__(self, out_features=32, temperature=100.0, dropout_rate=0.2,
-                 **kwargs):
+    def __init__(self, out_features=32, temperature=100.0, dropout_rate=0.2, **kwargs):
         super().__init__(**kwargs)
         self.out_features = int(out_features)
         self.temperature = float(temperature)
@@ -577,8 +625,10 @@ class AasistHtrgGraphAttention(layers.Layer):
 
         def _att_vec(name):
             return self.add_weight(
-                name=name, shape=(self.out_features, 1),
-                initializer="glorot_uniform", trainable=True,
+                name=name,
+                shape=(self.out_features, 1),
+                initializer="glorot_uniform",
+                trainable=True,
             )
 
         # Três conjuntos por tipo de aresta + o do master (paper §2.3).
@@ -588,12 +638,8 @@ class AasistHtrgGraphAttention(layers.Layer):
         self.att_weightM = _att_vec("att_weightM")
 
         self.proj_with_att = layers.Dense(self.out_features, name="proj_with_att")
-        self.proj_without_att = layers.Dense(
-            self.out_features, name="proj_without_att"
-        )
-        self.proj_with_attM = layers.Dense(
-            self.out_features, name="proj_with_attM"
-        )
+        self.proj_without_att = layers.Dense(self.out_features, name="proj_without_att")
+        self.proj_with_attM = layers.Dense(self.out_features, name="proj_with_attM")
         self.proj_without_attM = layers.Dense(
             self.out_features, name="proj_without_attM"
         )
@@ -613,8 +659,8 @@ class AasistHtrgGraphAttention(layers.Layer):
         super().build(input_shape)
 
     def _derive_att_map(self, x, n1):
-        pairwise = tf.expand_dims(x, 2) * tf.expand_dims(x, 1)   # (B,N,N,C)
-        att = tf.tanh(self.att_proj(pairwise))                    # (B,N,N,out)
+        pairwise = tf.expand_dims(x, 2) * tf.expand_dims(x, 1)  # (B,N,N,C)
+        att = tf.tanh(self.att_proj(pairwise))  # (B,N,N,out)
 
         # Blocos por tipo de aresta: 11 (tipo1↔tipo1), 22 (tipo2↔tipo2) e 12
         # (cruzado, compartilhado nas duas direções) — §2.3 do AASIST.
@@ -623,15 +669,15 @@ class AasistHtrgGraphAttention(layers.Layer):
         a21 = tf.matmul(att[:, n1:, :n1, :], tf.cast(self.att_weight12, att.dtype))
         a22 = tf.matmul(att[:, n1:, n1:, :], tf.cast(self.att_weight22, att.dtype))
 
-        top = tf.concat([a11, a12], axis=2)      # (B, n1, N, 1)
-        bottom = tf.concat([a21, a22], axis=2)   # (B, n2, N, 1)
+        top = tf.concat([a11, a12], axis=2)  # (B, n1, N, 1)
+        bottom = tf.concat([a21, a22], axis=2)  # (B, n2, N, 1)
         att_map = tf.concat([top, bottom], axis=1) / tf.cast(
             self.temperature, att.dtype
         )
         return tf.nn.softmax(att_map, axis=-2)
 
     def _update_master(self, x, master):
-        att = tf.tanh(self.att_projM(x * master))                 # (B,N,out)
+        att = tf.tanh(self.att_projM(x * master))  # (B,N,out)
         att = tf.matmul(att, tf.cast(self.att_weightM, att.dtype))  # (B,N,1)
         att = att / tf.cast(self.temperature, att.dtype)
         att = tf.nn.softmax(att, axis=-2)
@@ -675,11 +721,13 @@ class AasistHtrgGraphAttention(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            "out_features": self.out_features,
-            "temperature": self.temperature,
-            "dropout_rate": self.dropout_rate,
-        })
+        config.update(
+            {
+                "out_features": self.out_features,
+                "temperature": self.temperature,
+                "dropout_rate": self.dropout_rate,
+            }
+        )
         return config
 
 
@@ -711,40 +759,67 @@ class AasistHSGAL(layers.Layer):
 
         # Cross-attention: spectral queries attend to temporal keys/values
         self.W_q_s2t = self.add_weight(
-            name="W_q_s2t", shape=(spec_features, self.out_features * self.num_heads),
-            initializer="glorot_uniform", trainable=True)
+            name="W_q_s2t",
+            shape=(spec_features, self.out_features * self.num_heads),
+            initializer="glorot_uniform",
+            trainable=True,
+        )
         self.W_k_s2t = self.add_weight(
-            name="W_k_s2t", shape=(temp_features, self.out_features * self.num_heads),
-            initializer="glorot_uniform", trainable=True)
+            name="W_k_s2t",
+            shape=(temp_features, self.out_features * self.num_heads),
+            initializer="glorot_uniform",
+            trainable=True,
+        )
         self.W_v_s2t = self.add_weight(
-            name="W_v_s2t", shape=(temp_features, self.out_features * self.num_heads),
-            initializer="glorot_uniform", trainable=True)
+            name="W_v_s2t",
+            shape=(temp_features, self.out_features * self.num_heads),
+            initializer="glorot_uniform",
+            trainable=True,
+        )
 
         # Cross-attention: temporal queries attend to spectral keys/values
         self.W_q_t2s = self.add_weight(
-            name="W_q_t2s", shape=(temp_features, self.out_features * self.num_heads),
-            initializer="glorot_uniform", trainable=True)
+            name="W_q_t2s",
+            shape=(temp_features, self.out_features * self.num_heads),
+            initializer="glorot_uniform",
+            trainable=True,
+        )
         self.W_k_t2s = self.add_weight(
-            name="W_k_t2s", shape=(spec_features, self.out_features * self.num_heads),
-            initializer="glorot_uniform", trainable=True)
+            name="W_k_t2s",
+            shape=(spec_features, self.out_features * self.num_heads),
+            initializer="glorot_uniform",
+            trainable=True,
+        )
         self.W_v_t2s = self.add_weight(
-            name="W_v_t2s", shape=(spec_features, self.out_features * self.num_heads),
-            initializer="glorot_uniform", trainable=True)
+            name="W_v_t2s",
+            shape=(spec_features, self.out_features * self.num_heads),
+            initializer="glorot_uniform",
+            trainable=True,
+        )
 
         # Attention vectors for additive GAT (per cross-attention direction)
         self.a_s2t = self.add_weight(
-            name="a_s2t", shape=(self.num_heads, self.out_features, 1),
-            initializer="glorot_uniform", trainable=True)
+            name="a_s2t",
+            shape=(self.num_heads, self.out_features, 1),
+            initializer="glorot_uniform",
+            trainable=True,
+        )
         self.a_t2s = self.add_weight(
-            name="a_t2s", shape=(self.num_heads, self.out_features, 1),
-            initializer="glorot_uniform", trainable=True)
+            name="a_t2s",
+            shape=(self.num_heads, self.out_features, 1),
+            initializer="glorot_uniform",
+            trainable=True,
+        )
 
         # Self-attention GAT on combined graph
         combined_features = self.out_features * self.num_heads
         self.gat_self = AasistGATConv(
-            out_features=self.out_features, num_heads=self.num_heads,
-            dropout_rate=self.dropout_rate, concat_heads=True,
-            name=self.name + "_gat_self")
+            out_features=self.out_features,
+            num_heads=self.num_heads,
+            dropout_rate=self.dropout_rate,
+            concat_heads=True,
+            name=self.name + "_gat_self",
+        )
         self.gat_self.build(tf.TensorShape([None, None, combined_features]))
 
         # Layer norms
@@ -753,15 +828,17 @@ class AasistHSGAL(layers.Layer):
 
         super().build(input_shape)
 
-    def _cross_attention(self, queries, keys_values, W_q, W_k, W_v, a_vec, training=None):
+    def _cross_attention(
+        self, queries, keys_values, W_q, W_k, W_v, a_vec, training=None
+    ):
         """Additive cross-attention between two sets of nodes."""
         batch_size = tf.shape(queries)[0]
         n_q = tf.shape(queries)[1]
         n_kv = tf.shape(keys_values)[1]
 
-        Q = tf.matmul(queries, W_q)       # (batch, n_q, out*heads)
-        K = tf.matmul(keys_values, W_k)   # (batch, n_kv, out*heads)
-        V = tf.matmul(keys_values, W_v)   # (batch, n_kv, out*heads)
+        Q = tf.matmul(queries, W_q)  # (batch, n_q, out*heads)
+        K = tf.matmul(keys_values, W_k)  # (batch, n_kv, out*heads)
+        V = tf.matmul(keys_values, W_v)  # (batch, n_kv, out*heads)
 
         # Reshape to (batch, heads, nodes, out_features)
         Q = tf.reshape(Q, (batch_size, n_q, self.num_heads, self.out_features))
@@ -773,8 +850,8 @@ class AasistHSGAL(layers.Layer):
 
         # Additive attention: e_ij = LeakyReLU(a^T * (Q_i + K_j))
         # a_vec: (heads, out_features, 1)
-        e_q = tf.einsum('bhni,hio->bhno', Q, a_vec)   # (batch, heads, n_q, 1)
-        e_k = tf.einsum('bhni,hio->bhno', K, a_vec)   # (batch, heads, n_kv, 1)
+        e_q = tf.einsum("bhni,hio->bhno", Q, a_vec)  # (batch, heads, n_q, 1)
+        e_k = tf.einsum("bhni,hio->bhno", K, a_vec)  # (batch, heads, n_kv, 1)
 
         e = e_q + tf.transpose(e_k, [0, 1, 3, 2])  # (batch, heads, n_q, n_kv)
         e = tf.nn.leaky_relu(e, alpha=0.2)
@@ -798,22 +875,34 @@ class AasistHSGAL(layers.Layer):
 
         # Cross-attention: spectral attends to temporal
         spec_cross = self._cross_attention(
-            spectral_nodes, temporal_nodes,
-            self.W_q_s2t, self.W_k_s2t, self.W_v_s2t, self.a_s2t,
-            training=training)
+            spectral_nodes,
+            temporal_nodes,
+            self.W_q_s2t,
+            self.W_k_s2t,
+            self.W_v_s2t,
+            self.a_s2t,
+            training=training,
+        )
 
         # Cross-attention: temporal attends to spectral
         temp_cross = self._cross_attention(
-            temporal_nodes, spectral_nodes,
-            self.W_q_t2s, self.W_k_t2s, self.W_v_t2s, self.a_t2s,
-            training=training)
+            temporal_nodes,
+            spectral_nodes,
+            self.W_q_t2s,
+            self.W_k_t2s,
+            self.W_v_t2s,
+            self.a_t2s,
+            training=training,
+        )
 
         # Layer norm
         spec_cross = self.ln_spec(spec_cross)
         temp_cross = self.ln_temp(temp_cross)
 
         # Combine into heterogeneous graph for self-attention
-        combined = tf.concat([spec_cross, temp_cross], axis=1)  # (batch, n_spec+n_temp, features)
+        combined = tf.concat(
+            [spec_cross, temp_cross], axis=1
+        )  # (batch, n_spec+n_temp, features)
         combined = self.gat_self(combined, training=training)
 
         # Split back
@@ -825,11 +914,13 @@ class AasistHSGAL(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'out_features': self.out_features,
-            'num_heads': self.num_heads,
-            'dropout_rate': self.dropout_rate
-        })
+        config.update(
+            {
+                "out_features": self.out_features,
+                "num_heads": self.num_heads,
+                "dropout_rate": self.dropout_rate,
+            }
+        )
         return config
 
 
@@ -863,7 +954,7 @@ class AasistGraphPool(layers.Layer):
             name="score_proj",
             shape=(in_features, 1),
             initializer="glorot_uniform",
-            trainable=True
+            trainable=True,
         )
 
         super().build(input_shape)
@@ -911,11 +1002,11 @@ class AasistGraphPool(layers.Layer):
 
         indices = tf.stack([batch_indices, top_indices], axis=-1)  # (batch, k, 2)
         selected_features = tf.gather_nd(inputs, indices)  # (batch, k, features)
-        selected_scores = tf.gather_nd(scores, indices)    # (batch, k)
+        selected_scores = tf.gather_nd(scores, indices)  # (batch, k)
 
         # Gate by sigmoid of scores
         gate = tf.nn.sigmoid(selected_scores)  # (batch, k)
-        gate = tf.expand_dims(gate, -1)        # (batch, k, 1)
+        gate = tf.expand_dims(gate, -1)  # (batch, k, 1)
 
         return selected_features * gate
 
@@ -923,20 +1014,19 @@ class AasistGraphPool(layers.Layer):
         nodes = input_shape[1]
         if self.target_nodes is not None:
             pooled_nodes = (
-                min(self.target_nodes, int(nodes)) if nodes is not None
+                min(self.target_nodes, int(nodes))
+                if nodes is not None
                 else self.target_nodes
             )
         else:
             pooled_nodes = (
-                max(int(nodes * self.ratio), 1)
-                if nodes is not None
-                else None
+                max(int(nodes * self.ratio), 1) if nodes is not None else None
             )
         return tf.TensorShape((input_shape[0], pooled_nodes, input_shape[-1]))
 
     def get_config(self):
         config = super().get_config()
-        config.update({'ratio': self.ratio, 'target_nodes': self.target_nodes})
+        config.update({"ratio": self.ratio, "target_nodes": self.target_nodes})
         return config
 
 
@@ -983,8 +1073,8 @@ class AasistGraphReadout(layers.Layer):
     def call(self, inputs):
         # inputs: (batch, nodes, features)
         h_max = tf.reduce_max(tf.abs(inputs), axis=1)  # (batch, features)
-        h_avg = tf.reduce_mean(inputs, axis=1)         # (batch, features)
-        return tf.concat([h_max, h_avg], axis=-1)      # (batch, 2*features)
+        h_avg = tf.reduce_mean(inputs, axis=1)  # (batch, features)
+        return tf.concat([h_max, h_avg], axis=-1)  # (batch, 2*features)
 
     def get_config(self):
         return super().get_config()
@@ -996,7 +1086,9 @@ class AasistSpectralPositionEmbedding(layers.Layer):
 
     def build(self, input_shape):
         if input_shape[1] is None or input_shape[-1] is None:
-            raise ValueError("AasistSpectralPositionEmbedding exige dimensões estáticas")
+            raise ValueError(
+                "AasistSpectralPositionEmbedding exige dimensões estáticas"
+            )
         self.position = self.add_weight(
             name="position",
             shape=(1, int(input_shape[1]), int(input_shape[-1])),

@@ -75,6 +75,7 @@ def _analyze_training_stability(*args, **kwargs):
 
     return analyze_training_stability(*args, **kwargs)
 
+
 SCRIPT_ID = "tools/reporting/backfill_artifact_metadata.py"
 
 #: Runtime por tipo de modelo. O escopo oficial roda os neurais Keras em
@@ -790,9 +791,7 @@ def process_run(run_dir: Path, dataset: Optional[Path], write: bool) -> Dict[str
                 # Espelha no metrics.json da arquitetura: e o mesmo bloco,
                 # gravado duas vezes pelo runner.
                 for espelho in _sibling_metrics_files(results_path, name):
-                    payload_espelho = json.loads(
-                        espelho.read_text(encoding="utf-8")
-                    )
+                    payload_espelho = json.loads(espelho.read_text(encoding="utf-8"))
                     apply_architecture(payload_espelho, additions)
                     payload_espelho["backfill"] = _stamp(
                         fields, {"espelho_de": str(results_path)}

@@ -33,9 +33,7 @@ router = APIRouter(prefix="/api/v1/training", tags=["Training"])
 
 
 @router.post(
-    "/start",
-    response_model=TrainingResponse,
-    dependencies=[Depends(get_api_key)]
+    "/start", response_model=TrainingResponse, dependencies=[Depends(get_api_key)]
 )
 @limiter.limit("5/minute")
 async def start_training(
@@ -72,10 +70,7 @@ async def start_training(
     )
 
     return TrainingResponse(
-        job_id=job_id,
-        status="pending",
-        message="Training job initiated",
-        progress=0
+        job_id=job_id, status="pending", message="Training job initiated", progress=0
     )
 
 
@@ -103,7 +98,7 @@ async def check_training_status(
         status=status["status"],
         message=status["message"],
         progress=status.get("progress", 0),
-        metrics=status.get("metrics", {})
+        metrics=status.get("metrics", {}),
     )
 
 
@@ -114,9 +109,7 @@ async def list_architectures(
     service: DetectionService = Depends(get_detection_service),
 ):
     """Lista todas as arquiteturas suportadas para treinamento."""
-    return {
-        "architectures": service.get_available_architectures()
-    }
+    return {"architectures": service.get_available_architectures()}
 
 
 # ── API.7: Cross-Validation (Sprint 4.1) ────────────────────────────────

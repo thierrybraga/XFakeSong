@@ -57,8 +57,13 @@ def _weighted_head_cls():
         o MLP puro, útil em smoke tests).
         """
 
-        def __init__(self, num_layers: int, feature_dim: int,
-                     dropout: float = 0.2, hidden: int = 256):
+        def __init__(
+            self,
+            num_layers: int,
+            feature_dim: int,
+            dropout: float = 0.2,
+            hidden: int = 256,
+        ):
             super().__init__()
             self.layer_logits = nn.Parameter(torch.zeros(int(num_layers)))
             self.mlp = nn.Sequential(

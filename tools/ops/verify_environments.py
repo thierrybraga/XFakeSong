@@ -35,8 +35,18 @@ from typing import List, Optional
 ROOT = Path(__file__).resolve().parents[2]
 
 # Conjuntos de imports (NOMES DE IMPORT, não de pip) por camada.
-_AUDIO = ["numpy", "pandas", "sklearn", "scipy", "librosa", "soundfile", "soxr",
-          "joblib", "yaml", "tqdm"]
+_AUDIO = [
+    "numpy",
+    "pandas",
+    "sklearn",
+    "scipy",
+    "librosa",
+    "soundfile",
+    "soxr",
+    "joblib",
+    "yaml",
+    "tqdm",
+]
 _TF = ["tensorflow", "keras"]
 _TORCH = ["torch", "torchaudio"]
 _SSL = ["transformers", "datasets", "huggingface_hub"]
@@ -53,20 +63,55 @@ class Env:
 
 
 ENVIRONMENTS: List[Env] = [
-    Env("inference-cpu", "infrastructure/docker/compose/inference.cpu.yml", "inference-api",
-        False, _AUDIO + ["tensorflow", "torch", "transformers"] + _API),
-    Env("inference-nvidia", "infrastructure/docker/compose/inference.nvidia.yml", "inference-api",
-        True, _AUDIO + ["tensorflow", "torch", "transformers"] + _API),
-    Env("train-cpu-classical", "infrastructure/docker/compose/train.cpu.yml", "classical-ml",
-        False, _AUDIO),
-    Env("train-nvidia-tensorflow", "infrastructure/docker/compose/train.nvidia.yml", "tensorflow-keras",
-        True, _AUDIO + _TF),
-    Env("train-nvidia-pytorch", "infrastructure/docker/compose/train.nvidia.yml", "pytorch-audio",
-        True, _AUDIO + ["tensorflow"] + _TORCH),
-    Env("train-nvidia-ssl", "infrastructure/docker/compose/train.nvidia.yml", "ssl-transformers",
-        True, _AUDIO + ["tensorflow"] + _TORCH + _SSL),
-    Env("benchmark-nvidia", "infrastructure/docker/compose/benchmark.nvidia.yml", "benchmark",
-        True, _AUDIO + ["tensorflow", "keras", "torch", "transformers"] + _API),
+    Env(
+        "inference-cpu",
+        "infrastructure/docker/compose/inference.cpu.yml",
+        "inference-api",
+        False,
+        _AUDIO + ["tensorflow", "torch", "transformers"] + _API,
+    ),
+    Env(
+        "inference-nvidia",
+        "infrastructure/docker/compose/inference.nvidia.yml",
+        "inference-api",
+        True,
+        _AUDIO + ["tensorflow", "torch", "transformers"] + _API,
+    ),
+    Env(
+        "train-cpu-classical",
+        "infrastructure/docker/compose/train.cpu.yml",
+        "classical-ml",
+        False,
+        _AUDIO,
+    ),
+    Env(
+        "train-nvidia-tensorflow",
+        "infrastructure/docker/compose/train.nvidia.yml",
+        "tensorflow-keras",
+        True,
+        _AUDIO + _TF,
+    ),
+    Env(
+        "train-nvidia-pytorch",
+        "infrastructure/docker/compose/train.nvidia.yml",
+        "pytorch-audio",
+        True,
+        _AUDIO + ["tensorflow"] + _TORCH,
+    ),
+    Env(
+        "train-nvidia-ssl",
+        "infrastructure/docker/compose/train.nvidia.yml",
+        "ssl-transformers",
+        True,
+        _AUDIO + ["tensorflow"] + _TORCH + _SSL,
+    ),
+    Env(
+        "benchmark-nvidia",
+        "infrastructure/docker/compose/benchmark.nvidia.yml",
+        "benchmark",
+        True,
+        _AUDIO + ["tensorflow", "keras", "torch", "transformers"] + _API,
+    ),
 ]
 
 # Check executado DENTRO do container. argv[1] = lista de imports separada por
@@ -105,11 +150,13 @@ def _safe_limit_env() -> dict:
     try:
         out = subprocess.run(
             [_docker(), "info", "-f", "{{.NCPU}};{{.MemTotal}}"],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True,
+            text=True,
+            timeout=30,
         ).stdout.strip()
         ncpu_s, mem_s = out.split(";")
         ncpu = max(1, int(ncpu_s))
-        mem_g = max(2, int(int(mem_s) / (1024 ** 3)) - 2)  # deixa ~2 GiB de folga
+        mem_g = max(2, int(int(mem_s) / (1024**3)) - 2)  # deixa ~2 GiB de folga
     except Exception:  # noqa: BLE001
         ncpu, mem_g = 2, 4
     for var in ("DOCKER_CPU_LIMIT", "DOCKER_TRAIN_CPU_LIMIT"):
@@ -130,18 +177,26 @@ def _compose_base(compose_file: str) -> List[str]:
 def _build(env: Env, run_env: dict, timeout: int) -> Optional[str]:
     cmd = _compose_base(env.compose_file) + ["build", env.service]
     print(f"  [build] {' '.join(cmd[2:])}", flush=True)
-    p = subprocess.run(cmd, cwd=str(ROOT), env=run_env,
-                       capture_output=True, text=True, timeout=timeout)
+    p = subprocess.run(
+        cmd, cwd=str(ROOT), env=run_env, capture_output=True, text=True, timeout=timeout
+    )
     if p.returncode != 0:
         return (p.stderr or p.stdout or "build falhou").strip().splitlines()[-1][:200]
     return None
 
 
-def verify_one(env: Env, *, build: bool, gpu_check: bool,
-               build_timeout: int, run_timeout: int) -> dict:
+def verify_one(
+    env: Env, *, build: bool, gpu_check: bool, build_timeout: int, run_timeout: int
+) -> dict:
     run_env = _safe_limit_env()
-    result = {"key": env.key, "service": env.service, "ok": False,
-              "error": None, "mods": {}, "gpu": None}
+    result = {
+        "key": env.key,
+        "service": env.service,
+        "ok": False,
+        "error": None,
+        "mods": {},
+        "gpu": None,
+    }
 
     if build:
         err = _build(env, run_env, build_timeout)
@@ -152,23 +207,38 @@ def verify_one(env: Env, *, build: bool, gpu_check: bool,
     args = [env.expect and ",".join(env.expect) or "numpy"]
     if gpu_check and env.gpu:
         args.append("--gpu")
-    cmd = (_compose_base(env.compose_file)
-           + ["run", "--rm", "--no-deps", env.service,
-              "python", "-c", _IN_CONTAINER_CHECK, *args])
+    cmd = _compose_base(env.compose_file) + [
+        "run",
+        "--rm",
+        "--no-deps",
+        env.service,
+        "python",
+        "-c",
+        _IN_CONTAINER_CHECK,
+        *args,
+    ]
     try:
-        p = subprocess.run(cmd, cwd=str(ROOT), env=run_env,
-                           capture_output=True, text=True, timeout=run_timeout)
+        p = subprocess.run(
+            cmd,
+            cwd=str(ROOT),
+            env=run_env,
+            capture_output=True,
+            text=True,
+            timeout=run_timeout,
+        )
     except subprocess.TimeoutExpired:
         result["error"] = f"timeout ({run_timeout}s) ao subir o container"
         return result
 
-    marker = next((ln for ln in (p.stdout or "").splitlines()
-                   if ln.startswith("XFAKE_VERIFY=")), None)
+    marker = next(
+        (ln for ln in (p.stdout or "").splitlines() if ln.startswith("XFAKE_VERIFY=")),
+        None,
+    )
     if not marker:
         tail = (p.stderr or p.stdout or "sem saída").strip().splitlines()
-        result["error"] = (tail[-1][:200] if tail else "sem marcador de verificação")
+        result["error"] = tail[-1][:200] if tail else "sem marcador de verificação"
         return result
-    payload = json.loads(marker[len("XFAKE_VERIFY="):])
+    payload = json.loads(marker[len("XFAKE_VERIFY=") :])
     result["mods"] = payload.get("mods", {})
     result["gpu"] = payload.get("gpu")
     result["ok"] = bool(payload.get("ok"))
@@ -196,15 +266,28 @@ def _print_result(r: dict, require_gpu: bool) -> bool:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--only", nargs="+", metavar="KEY",
-                   help=f"verifica só estes (chaves: {', '.join(e.key for e in ENVIRONMENTS)})")
-    p.add_argument("--build", action="store_true", help="builda a imagem antes de verificar")
-    p.add_argument("--gpu-check", action="store_true",
-                   help="conta GPUs visíveis ao TF nos perfis NVIDIA")
-    p.add_argument("--require-gpu", action="store_true",
-                   help="trata GPU ausente (nos perfis NVIDIA) como falha")
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    p.add_argument(
+        "--only",
+        nargs="+",
+        metavar="KEY",
+        help=f"verifica só estes (chaves: {', '.join(e.key for e in ENVIRONMENTS)})",
+    )
+    p.add_argument(
+        "--build", action="store_true", help="builda a imagem antes de verificar"
+    )
+    p.add_argument(
+        "--gpu-check",
+        action="store_true",
+        help="conta GPUs visíveis ao TF nos perfis NVIDIA",
+    )
+    p.add_argument(
+        "--require-gpu",
+        action="store_true",
+        help="trata GPU ausente (nos perfis NVIDIA) como falha",
+    )
     p.add_argument("--build-timeout", type=int, default=3600)
     p.add_argument("--run-timeout", type=int, default=600)
     p.add_argument("--list", action="store_true", help="lista os ambientes e sai")
@@ -225,14 +308,21 @@ def main() -> int:
 
     print("=" * 64)
     print(f" Verificação de ambientes SpeechChecker ({len(selected)} alvo(s))")
-    print(f" build={args.build} · gpu_check={args.gpu_check} · require_gpu={args.require_gpu}")
+    print(
+        f" build={args.build} · gpu_check={args.gpu_check} · require_gpu={args.require_gpu}"
+    )
     print("=" * 64)
 
     passed_all = True
     summary = []
     for env in selected:
-        r = verify_one(env, build=args.build, gpu_check=args.gpu_check,
-                       build_timeout=args.build_timeout, run_timeout=args.run_timeout)
+        r = verify_one(
+            env,
+            build=args.build,
+            gpu_check=args.gpu_check,
+            build_timeout=args.build_timeout,
+            run_timeout=args.run_timeout,
+        )
         ok = _print_result(r, args.require_gpu)
         passed_all = passed_all and ok
         summary.append((env.key, ok))

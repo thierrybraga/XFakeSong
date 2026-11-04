@@ -15,6 +15,7 @@ from app.utils import file_utils as fu
 
 # ── básicos ───────────────────────────────────────────────────────────────
 
+
 def test_ensure_directory(tmp_path):
     d = fu.ensure_directory(tmp_path / "x" / "y")
     assert d.is_dir()
@@ -40,6 +41,7 @@ def test_get_file_hash_and_verify_integrity(tmp_path):
 
 # ── get_file_info ─────────────────────────────────────────────────────────
 
+
 def test_get_file_info_ok(tmp_path):
     f = tmp_path / "song.wav"
     f.write_bytes(b"RIFF1234")
@@ -57,6 +59,7 @@ def test_get_file_info_missing_raises(tmp_path):
 
 
 # ── busca por extensão ────────────────────────────────────────────────────
+
 
 def test_find_files_by_extension_recursive_and_flat(tmp_path):
     (tmp_path / "a.wav").write_bytes(b"x")
@@ -81,6 +84,7 @@ def test_find_audio_and_archive_helpers(tmp_path):
 
 
 # ── cópia / movimentação ──────────────────────────────────────────────────
+
 
 def test_copy_file_safe(tmp_path):
     src = tmp_path / "src.bin"
@@ -113,6 +117,7 @@ def test_move_file_safe(tmp_path):
 
 
 # ── extração de arquivos ──────────────────────────────────────────────────
+
 
 def test_extract_zip(tmp_path):
     archive = tmp_path / "pack.zip"
@@ -181,6 +186,7 @@ def test_extract_tar_rejects_path_traversal(tmp_path):
 
 # ── diretórios temporários ────────────────────────────────────────────────
 
+
 def test_temp_directory_lifecycle():
     d = fu.create_temp_directory(prefix="temp_xfake_")
     assert d.is_dir()
@@ -203,6 +209,7 @@ def test_cleanup_temp_directory_requires_force_for_non_temp(tmp_path):
 
 # ── validação de tipo ─────────────────────────────────────────────────────
 
+
 def test_validate_file_type_and_is_audio_archive(tmp_path):
     wav = tmp_path / "a.wav"
     wav.write_bytes(b"x")
@@ -215,6 +222,7 @@ def test_validate_file_type_and_is_audio_archive(tmp_path):
 
 
 # ── tamanho / manifesto ───────────────────────────────────────────────────
+
 
 def test_get_directory_size(tmp_path):
     (tmp_path / "a.bin").write_bytes(b"12345")
@@ -238,6 +246,7 @@ def test_create_file_manifest_with_output(tmp_path):
 
 
 # ── renomeação em lote ────────────────────────────────────────────────────
+
 
 def test_batch_rename_files(tmp_path):
     (tmp_path / "b.wav").write_bytes(b"x")

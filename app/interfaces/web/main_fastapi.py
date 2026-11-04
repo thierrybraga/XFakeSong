@@ -56,6 +56,7 @@ if not _running_under_pytest() and not _api_only_mode():
     _gpu_info = setup_gpu()
     _l.getLogger(__name__).info(f"GPU setup: {describe_gpu_setup()}")
 
+
 # API.8: lifespan moderno substitui on_event("startup") deprecado
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -120,10 +121,11 @@ if not _running_under_pytest() and not _api_only_mode():
     os.environ["GRADIO_TEMP_DIR"] = str(gradio_temp_dir)
 
     import gradio as gr  # noqa: E402,I001
+
     from app.interfaces.gradio.app import (  # noqa: E402
         APPEARANCE as gradio_appearance,
+        demo as gradio_demo,
     )
-    from app.interfaces.gradio.app import demo as gradio_demo  # noqa: E402
 
     mount_parameters = inspect.signature(gr.mount_gradio_app).parameters
     mount_kwargs = {
@@ -149,4 +151,3 @@ if not _running_under_pytest() and not _api_only_mode():
         mount_kwargs["max_file_size"] = f"{max_upload_mb}mb"
 
     app = gr.mount_gradio_app(app, gradio_demo, **mount_kwargs)
-

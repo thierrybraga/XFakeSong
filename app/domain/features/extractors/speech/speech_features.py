@@ -24,9 +24,14 @@ class SpeechFeatureExtractor:
     Extrator de características específicas para fala.
     """
 
-    def __init__(self, sr: int = 22050, frame_length: int = 2048,
-                 hop_length: int = 512, f0_min: float = 80,
-                 f0_max: float = 400):
+    def __init__(
+        self,
+        sr: int = 22050,
+        frame_length: int = 2048,
+        hop_length: int = 512,
+        f0_min: float = 80,
+        f0_max: float = 400,
+    ):
         """
         Inicializa o extrator de características de fala.
 
@@ -57,43 +62,34 @@ class SpeechFeatureExtractor:
 
         # === CARACTERÍSTICAS LINGUÍSTICAS ===
         features.update(
-            extract_linguistic_features(
-                y,
-                self.sr,
-                self.frame_length,
-                self.hop_length))
+            extract_linguistic_features(y, self.sr, self.frame_length, self.hop_length)
+        )
 
         # === CARACTERÍSTICAS ARTICULATÓRIAS ===
         features.update(
             extract_articulatory_features(
-                y,
-                self.sr,
-                self.frame_length,
-                self.hop_length))
+                y, self.sr, self.frame_length, self.hop_length
+            )
+        )
 
         # === CARACTERÍSTICAS TEMPORAIS DE FALA ===
         features.update(
             extract_temporal_speech_features(
-                y,
-                self.sr,
-                self.frame_length,
-                self.hop_length))
+                y, self.sr, self.frame_length, self.hop_length
+            )
+        )
 
         # === CARACTERÍSTICAS DE FLUÊNCIA ===
         features.update(
-            extract_fluency_features(
-                y,
-                self.sr,
-                self.frame_length,
-                self.hop_length))
+            extract_fluency_features(y, self.sr, self.frame_length, self.hop_length)
+        )
 
         # === CARACTERÍSTICAS DE QUALIDADE VOCAL ===
         features.update(
             extract_vocal_quality_features(
-                y,
-                self.sr,
-                self.frame_length,
-                self.hop_length))
+                y, self.sr, self.frame_length, self.hop_length
+            )
+        )
 
         return features
 
@@ -112,9 +108,11 @@ def test_speech_features():
 
     # Segmento vocálico (harmônico)
     f0 = 150  # Hz
-    vowel_segment = (np.sin(2 * np.pi * f0 * t[:len(t) // 3]) +
-                     0.5 * np.sin(2 * np.pi * 2 * f0 * t[:len(t) // 3]) +
-                     0.3 * np.sin(2 * np.pi * 3 * f0 * t[:len(t) // 3]))
+    vowel_segment = (
+        np.sin(2 * np.pi * f0 * t[: len(t) // 3])
+        + 0.5 * np.sin(2 * np.pi * 2 * f0 * t[: len(t) // 3])
+        + 0.3 * np.sin(2 * np.pi * 3 * f0 * t[: len(t) // 3])
+    )
 
     # Segmento consonantal (ruído filtrado)
     consonant_segment = np.random.randn(len(t) // 3) * 0.3
@@ -123,19 +121,24 @@ def test_speech_features():
     pause_segment = np.zeros(len(t) // 3)
 
     # Combinar segmentos
-    y_speech = np.concatenate(
-        [vowel_segment, consonant_segment, pause_segment])
+    y_speech = np.concatenate([vowel_segment, consonant_segment, pause_segment])
 
     # Adicionar envelope para simular articulação
-    envelope = np.exp(-0.5 * (t - duration / 2)**2 / (duration / 4)**2)
+    envelope = np.exp(-0.5 * (t - duration / 2) ** 2 / (duration / 4) ** 2)
     y_speech *= envelope
 
     extractor = SpeechFeatureExtractor(sr=sr)
     features_speech = extractor.extract_features(y_speech)
 
     print("\n📊 Sinal de Fala Sintética:")
-    key_features = ['speech_rate', 'vowel_count', 'consonant_segment_count',
-                    'pause_count', 'syllables_per_second', 'speech_continuity_ratio']
+    key_features = [
+        "speech_rate",
+        "vowel_count",
+        "consonant_segment_count",
+        "pause_count",
+        "syllables_per_second",
+        "speech_continuity_ratio",
+    ]
 
     for feature in key_features:
         if feature in features_speech:
@@ -165,7 +168,7 @@ def test_speech_features():
 
     # Ajustar comprimento
     if len(y_hesitant) > len(t):
-        y_hesitant = y_hesitant[:len(t)]
+        y_hesitant = y_hesitant[: len(t)]
     else:
         y_hesitant = np.pad(y_hesitant, (0, len(t) - len(y_hesitant)))
 
@@ -205,15 +208,12 @@ def test_speech_features():
     print("\n📈 Comparação entre Tipos de Fala:")
 
     signals = {
-        'Sintética': features_speech,
-        'Hesitante': features_hesitant,
-        'Fluente': features_fluent
+        "Sintética": features_speech,
+        "Hesitante": features_hesitant,
+        "Fluente": features_fluent,
     }
 
-    comparison_features = [
-        'speech_rate',
-        'pause_count',
-        'speech_continuity_ratio']
+    comparison_features = ["speech_rate", "pause_count", "speech_continuity_ratio"]
 
     for feature in comparison_features:
         print(f"\n  {feature}:")
@@ -223,8 +223,11 @@ def test_speech_features():
 
     # Mostrar características articulatórias estimadas
     print("\n🗣️ Características Articulatórias Estimadas:")
-    articulatory_features = ['vocal_tract_length_mean', 'jaw_openness_estimate',
-                             'tongue_position_estimate']
+    articulatory_features = [
+        "vocal_tract_length_mean",
+        "jaw_openness_estimate",
+        "tongue_position_estimate",
+    ]
 
     for signal_name, features in signals.items():
         print(f"  {signal_name}:")

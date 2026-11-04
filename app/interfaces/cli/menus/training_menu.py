@@ -38,9 +38,7 @@ class TrainingMenu(BaseMenu):
             print("\n📦 Datasets .npz encontrados:")
             for i, path in enumerate(candidates, 1):
                 print(f"{i:2d}. {path.relative_to(self.context.datasets_dir)}")
-        raw = input(
-            "\nNúmero do dataset ou caminho de um .npz: "
-        ).strip().strip('"')
+        raw = input("\nNúmero do dataset ou caminho de um .npz: ").strip().strip('"')
         if raw.isdigit() and 1 <= int(raw) <= len(candidates):
             return candidates[int(raw) - 1]
         path = Path(raw)

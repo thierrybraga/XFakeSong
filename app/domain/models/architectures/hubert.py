@@ -36,14 +36,16 @@ class HuBERTFeatureExtractor(layers.Layer):
     `model_name` não carrega pesos aqui: o backbone real é o de `ssl_backbone`.
     """
 
-    def __init__(self,
-                 model_name: str = "facebook/hubert-base-ls960",
-                 hidden_size: int = 768,
-                 num_attention_heads: int = 12,
-                 num_hidden_layers: int = 12,
-                 freeze_weights: bool = True,
-                 n_trainable_layers: int = 0,
-                 **kwargs):
+    def __init__(
+        self,
+        model_name: str = "facebook/hubert-base-ls960",
+        hidden_size: int = 768,
+        num_attention_heads: int = 12,
+        num_hidden_layers: int = 12,
+        freeze_weights: bool = True,
+        n_trainable_layers: int = 0,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.model_name = model_name
         self.hidden_size = hidden_size
@@ -56,6 +58,7 @@ class HuBERTFeatureExtractor(layers.Layer):
         # Fallback explícito: aborta em modo estrito (XFAKE_STRICT_SSL) para não
         # comprometer o benchmark com um backbone que não é o HuBERT real.
         from app.domain.models.architectures.ssl_utils import strict_ssl_guard
+
         strict_ssl_guard("HuBERT")
         # Implementação simplificada usando CNN 1D + Transformers (Keras nativo)
         self._build_simplified_extractor()
@@ -64,17 +67,38 @@ class HuBERTFeatureExtractor(layers.Layer):
         """Constrói um extrator simplificado usando CNN 1D + Transformers."""
         # Camadas convolucionais com strides para downsampling (simulando HuBERT original)
         self.conv_layers = [
-            layers.Conv1D(512, 10, strides=5, padding='same', activation='gelu', name="conv_0"),
-            layers.Conv1D(512, 3, strides=2, padding='same', activation='gelu', name="conv_1"),
-            layers.Conv1D(512, 3, strides=2, padding='same', activation='gelu', name="conv_2"),
-            layers.Conv1D(512, 3, strides=2, padding='same', activation='gelu', name="conv_3"),
-            layers.Conv1D(512, 3, strides=2, padding='same', activation='gelu', name="conv_4"),
-            layers.Conv1D(512, 2, strides=2, padding='same', activation='gelu', name="conv_5"),
-            layers.Conv1D(self.hidden_size, 2, strides=2, padding='same', activation='gelu', name="conv_6")
+            layers.Conv1D(
+                512, 10, strides=5, padding="same", activation="gelu", name="conv_0"
+            ),
+            layers.Conv1D(
+                512, 3, strides=2, padding="same", activation="gelu", name="conv_1"
+            ),
+            layers.Conv1D(
+                512, 3, strides=2, padding="same", activation="gelu", name="conv_2"
+            ),
+            layers.Conv1D(
+                512, 3, strides=2, padding="same", activation="gelu", name="conv_3"
+            ),
+            layers.Conv1D(
+                512, 3, strides=2, padding="same", activation="gelu", name="conv_4"
+            ),
+            layers.Conv1D(
+                512, 2, strides=2, padding="same", activation="gelu", name="conv_5"
+            ),
+            layers.Conv1D(
+                self.hidden_size,
+                2,
+                strides=2,
+                padding="same",
+                activation="gelu",
+                name="conv_6",
+            ),
         ]
 
         # Camadas de extração de características (projeção linear após convs)
-        self.feature_projection = layers.Dense(self.hidden_size, name="feature_projection")
+        self.feature_projection = layers.Dense(
+            self.hidden_size, name="feature_projection"
+        )
         self.layer_norm = layers.LayerNormalization(name="layer_norm")
 
         # Camadas de atenção multi-cabeça
@@ -88,17 +112,22 @@ class HuBERTFeatureExtractor(layers.Layer):
                 layers.MultiHeadAttention(
                     num_heads=self.num_attention_heads,
                     key_dim=self.hidden_size // self.num_attention_heads,
-                    name=f"attention_{i}"
+                    name=f"attention_{i}",
                 )
             )
-            self.attention_layer_norms.append(layers.LayerNormalization(name=f"attn_ln_{i}"))
+            self.attention_layer_norms.append(
+                layers.LayerNormalization(name=f"attn_ln_{i}")
+            )
 
             self.ff_layers.append(
-                keras.Sequential([
-                    layers.Dense(self.hidden_size * 4, activation='gelu'),
-                    layers.Dropout(0.1),
-                    layers.Dense(self.hidden_size)
-                ], name=f"ff_{i}")
+                keras.Sequential(
+                    [
+                        layers.Dense(self.hidden_size * 4, activation="gelu"),
+                        layers.Dropout(0.1),
+                        layers.Dense(self.hidden_size),
+                    ],
+                    name=f"ff_{i}",
+                )
             )
             self.ff_layer_norms.append(layers.LayerNormalization(name=f"ff_ln_{i}"))
 
@@ -128,23 +157,22 @@ class HuBERTFeatureExtractor(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'model_name': self.model_name,
-            'hidden_size': self.hidden_size,
-            'num_attention_heads': self.num_attention_heads,
-            'num_hidden_layers': self.num_hidden_layers,
-            'freeze_weights': self.freeze_weights,
-            'n_trainable_layers': self.n_trainable_layers
-        })
+        config.update(
+            {
+                "model_name": self.model_name,
+                "hidden_size": self.hidden_size,
+                "num_attention_heads": self.num_attention_heads,
+                "num_hidden_layers": self.num_hidden_layers,
+                "freeze_weights": self.freeze_weights,
+                "n_trainable_layers": self.n_trainable_layers,
+            }
+        )
         return config
 
 
-
-
-
-def preprocess_audio(audio_data: np.ndarray,
-                     target_sr: int = 16000,
-                     max_length: Optional[int] = None) -> np.ndarray:
+def preprocess_audio(
+    audio_data: np.ndarray, target_sr: int = 16000, max_length: Optional[int] = None
+) -> np.ndarray:
     """Pré-processamento de áudio para HuBERT.
 
     Args:
@@ -163,7 +191,8 @@ def preprocess_audio(audio_data: np.ndarray,
         logger.warning(
             "HuBERT.preprocess_audio: target_sr=%s ignorado — o backbone exige "
             "16 kHz e esta função não reamostra. Reamostre no pipeline de "
-            "features (app/domain/features/).", target_sr,
+            "features (app/domain/features/).",
+            target_sr,
         )
 
     # Normalização
@@ -176,16 +205,18 @@ def preprocess_audio(audio_data: np.ndarray,
     return audio_data
 
 
-def _create_hubert_model(input_shape: Tuple[int, ...],
-                         num_classes: int = 1,
-                         architecture: str = 'hubert',
-                         model_name: str = "facebook/hubert-base-ls960",
-                         freeze_hubert: bool = True,
-                         n_trainable_layers: int = 3,
-                         backend: str = "conv",
-                         classifier_hidden_dim: int = 256,
-                         dropout_rate: float = 0.3,
-                         **kwargs) -> keras.Model:
+def _create_hubert_model(
+    input_shape: Tuple[int, ...],
+    num_classes: int = 1,
+    architecture: str = "hubert",
+    model_name: str = "facebook/hubert-base-ls960",
+    freeze_hubert: bool = True,
+    n_trainable_layers: int = 3,
+    backend: str = "conv",
+    classifier_hidden_dim: int = 256,
+    dropout_rate: float = 0.3,
+    **kwargs,
+) -> keras.Model:
     """Cria modelo HuBERT completo fiel ao paper.
 
     Args:
@@ -202,10 +233,11 @@ def _create_hubert_model(input_shape: Tuple[int, ...],
         Modelo Keras compilado
     """
     logger.info(
-        f"Creating HuBERT model with input_shape={input_shape}, num_classes={num_classes}")
+        f"Creating HuBERT model with input_shape={input_shape}, num_classes={num_classes}"
+    )
 
     # 1. Entrada (Raw Audio)
-    inputs = layers.Input(shape=input_shape, name='audio_input')
+    inputs = layers.Input(shape=input_shape, name="audio_input")
 
     # 2. Extrator de características HuBERT (Self-Supervised).
     # BACKBONE PRÉ-TREINADO REAL (Hsu et al., 2021), congelado: os pesos vêm do
@@ -233,7 +265,9 @@ def _create_hubert_model(input_shape: Tuple[int, ...],
         # Proveniência: o benchmark grava qual backbone REALMENTE entrou no
         # grafo, e não o rótulo declarado no manifesto (ver ssl_utils).
         record_ssl_backbone_status(
-            "HuBERT", pretrained=True, checkpoint=backbone_info["checkpoint"],
+            "HuBERT",
+            pretrained=True,
+            checkpoint=backbone_info["checkpoint"],
             detail=backbone_info,
         )
     except Exception as exc:  # noqa: BLE001
@@ -241,10 +275,13 @@ def _create_hubert_model(input_shape: Tuple[int, ...],
 
         logger.warning(
             "HuBERT: backbone pré-treinado indisponível (%s). Caindo no "
-            "extrator simplificado.", exc,
+            "extrator simplificado.",
+            exc,
         )
         record_ssl_backbone_status(
-            "HuBERT", pretrained=False, checkpoint=model_name,
+            "HuBERT",
+            pretrained=False,
+            checkpoint=model_name,
             detail={"fallback": "cnn1d_scratch", "reason": str(exc)},
         )
         strict_ssl_guard("HuBERT")
@@ -252,10 +289,10 @@ def _create_hubert_model(input_shape: Tuple[int, ...],
             model_name=model_name,
             freeze_weights=freeze_hubert,
             n_trainable_layers=n_trainable_layers,
-            hidden_size=kwargs.get('hidden_size', 768),
-            num_attention_heads=kwargs.get('num_attention_heads', 12),
-            num_hidden_layers=kwargs.get('num_hidden_layers', 12),
-            name='hubert_feature_extractor'
+            hidden_size=kwargs.get("hidden_size", 768),
+            num_attention_heads=kwargs.get("num_attention_heads", 12),
+            num_hidden_layers=kwargs.get("num_hidden_layers", 12),
+            name="hubert_feature_extractor",
         )
         x = feature_extractor(inputs)
 
@@ -272,6 +309,7 @@ def _create_hubert_model(input_shape: Tuple[int, ...],
         from app.domain.models.architectures.ssl_utils import (
             build_ssl_aasist_backend,
         )
+
         pooled = build_ssl_aasist_backend(
             x, dropout_rate=dropout_rate, name="hubert_aasist"
         )
@@ -279,13 +317,11 @@ def _create_hubert_model(input_shape: Tuple[int, ...],
         # Back-end raso com projeção temporal. Mantém custo previsível em GPU e
         # evita workspaces CUDNN grandes quando o backbone real não está
         # disponível e o fallback CNN produz sequências densas.
-        projected = layers.Dense(
-            256, activation='relu', name='temporal_projection'
-        )(x)
-        projected = layers.LayerNormalization(name='temporal_projection_norm')(
+        projected = layers.Dense(256, activation="relu", name="temporal_projection")(x)
+        projected = layers.LayerNormalization(name="temporal_projection_norm")(
             projected
         )
-        pooled = AttentionPoolingLayer(name='attention_pool')(projected)
+        pooled = AttentionPoolingLayer(name="attention_pool")(projected)
 
     # Classification Head.
     # CORREÇÃO: `classifier_hidden_dim` era CONFIG MORTO — o registry passava
@@ -303,37 +339,36 @@ def _create_hubert_model(input_shape: Tuple[int, ...],
     )
 
     # Criar modelo
-    model = keras.Model(
-        inputs=inputs,
-        outputs=outputs,
-        name=f"hubert_{architecture}")
+    model = keras.Model(inputs=inputs, outputs=outputs, name=f"hubert_{architecture}")
 
     # Backbone CONGELADO (pré-treinado ou fallback) → só a cabeça treina, então
     # 1e-4 é o LR adequado. Não há fine-tuning parcial: o port mantém o
     # backbone inteiramente congelado por construção.
     lr = 1e-4
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
-    model.compile(
-        optimizer=optimizer,
-        loss=loss,
-        metrics=['accuracy']
-    )
+    model.compile(optimizer=optimizer, loss=loss, metrics=["accuracy"])
 
     trainable = int(sum(np.prod(w.shape) for w in model.trainable_weights))
     frozen = int(sum(np.prod(w.shape) for w in model.non_trainable_weights))
     logger.info(
         "HuBERT model %s criado (lr=%s, backbone=%s, classifier_dims=%s, "
-        "params treináveis=%d, congelados=%d)", architecture, lr,
+        "params treináveis=%d, congelados=%d)",
+        architecture,
+        lr,
         backbone_info["checkpoint"] if using_pretrained else "fallback CNN-1D",
-        classifier_dims, trainable, frozen,
+        classifier_dims,
+        trainable,
+        frozen,
     )
     return model
 
 
-def create_model(input_shape: Tuple[int, ...],
-                 num_classes: int = 1,
-                 architecture: str = 'hubert',
-                 **kwargs) -> keras.Model:
+def create_model(
+    input_shape: Tuple[int, ...],
+    num_classes: int = 1,
+    architecture: str = "hubert",
+    **kwargs,
+) -> keras.Model:
     """Função principal para criar modelos HuBERT.
 
     Args:
@@ -349,7 +384,7 @@ def create_model(input_shape: Tuple[int, ...],
     if "aasist" in architecture and "backend" not in kwargs:
         kwargs["backend"] = "aasist"
 
-    if architecture == 'hubert_lite':
+    if architecture == "hubert_lite":
         return _create_hubert_model(
             input_shape=input_shape,
             num_classes=num_classes,
@@ -357,14 +392,14 @@ def create_model(input_shape: Tuple[int, ...],
             num_hidden_layers=6,
             classifier_hidden_dim=128,
             dropout_rate=0.2,
-            **kwargs
+            **kwargs,
         )
     else:
         return _create_hubert_model(
             input_shape=input_shape,
             num_classes=num_classes,
             architecture=architecture,
-            **kwargs
+            **kwargs,
         )
 
 
@@ -382,9 +417,9 @@ def preprocess(audio_data: np.ndarray, target_sr: int = 16000) -> np.ndarray:
 
 
 # Registrar objetos personalizados para serialização
-keras.utils.get_custom_objects().update({
-    'HuBERTFeatureExtractor': HuBERTFeatureExtractor
-})
+keras.utils.get_custom_objects().update(
+    {"HuBERTFeatureExtractor": HuBERTFeatureExtractor}
+)
 
 # NOTA: o bloco `if __name__ == "__main__"` com prints de teste foi removido —
 # testes vivem em tests/ (ver tests/integration/test_architectures_build.py) e

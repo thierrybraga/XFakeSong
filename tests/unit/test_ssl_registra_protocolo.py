@@ -91,8 +91,8 @@ def test_o_bloco_config_do_ssl_declara_os_campos_de_protocolo():
     dicionário `config`, não os seus valores num run específico.
     """
     fonte = RUNNER_SSL.read_text(encoding="utf-8")
-    inicio = fonte.index('    results = {')
-    bloco = fonte[inicio:inicio + 3000]
+    inicio = fonte.index("    results = {")
+    bloco = fonte[inicio : inicio + 3000]
     for chave in ('"band_correction_hz"', '"band_correction"', '"checkpoint_monitor"'):
         assert chave in bloco, f"{chave} ausente do bloco config do runner SSL"
 

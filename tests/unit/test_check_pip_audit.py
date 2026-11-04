@@ -55,7 +55,9 @@ def _relatorio(*pacotes) -> dict:
 
 
 def _avaliar(tmp_path, relatorio, *entradas, hoje=HOJE):
-    return gate.evaluate(relatorio, gate.load_exceptions(_lista(tmp_path, *entradas)), hoje)
+    return gate.evaluate(
+        relatorio, gate.load_exceptions(_lista(tmp_path, *entradas)), hoje
+    )
 
 
 def test_ambiente_limpo_e_sem_excecoes_passa(tmp_path):
@@ -64,7 +66,9 @@ def test_ambiente_limpo_e_sem_excecoes_passa(tmp_path):
 
 
 def test_aviso_sem_excecao_reprova_e_nomeia_pacote_e_id(tmp_path):
-    falhas, _ = _avaliar(tmp_path, _relatorio(_pacote("gradio", "6.17.3", [("GHSA-X",)])))
+    falhas, _ = _avaliar(
+        tmp_path, _relatorio(_pacote("gradio", "6.17.3", [("GHSA-X",)]))
+    )
     assert len(falhas) == 1
     assert "gradio" in falhas[0] and "GHSA-X" in falhas[0]
 
@@ -169,12 +173,23 @@ def test_excecao_duplicada_invalida_a_lista(tmp_path):
 def test_main_devolve_1_ao_reprovar_e_0_ao_aprovar(tmp_path, capsys):
     excecoes = _lista(tmp_path, _excecao())
     relatorio = tmp_path / "relatorio.json"
-    args = ["--exceptions", str(excecoes), "--report", str(relatorio), "--today", "2026-11-02"]
+    args = [
+        "--exceptions",
+        str(excecoes),
+        "--report",
+        str(relatorio),
+        "--today",
+        "2026-11-02",
+    ]
 
-    relatorio.write_text(json.dumps(_relatorio(_pacote(avisos=[("PYSEC-1",)]))), "utf-8")
+    relatorio.write_text(
+        json.dumps(_relatorio(_pacote(avisos=[("PYSEC-1",)]))), "utf-8"
+    )
     assert gate.main(args) == 0
 
-    relatorio.write_text(json.dumps(_relatorio(_pacote(avisos=[("PYSEC-9",)]))), "utf-8")
+    relatorio.write_text(
+        json.dumps(_relatorio(_pacote(avisos=[("PYSEC-9",)]))), "utf-8"
+    )
     assert gate.main(args) == 1
     assert "PYSEC-9" in capsys.readouterr().out
 

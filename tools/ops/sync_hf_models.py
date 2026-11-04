@@ -143,8 +143,7 @@ def sync_models(repo_id: str | None, models_dir: Path, force: bool = False) -> i
     print(f"[sync_hf_models] Arquivos copiados: {copied}")
     if missing_after:
         raise RuntimeError(
-            "Sincronização incompleta; artefatos ausentes: "
-            + ", ".join(missing_after)
+            "Sincronização incompleta; artefatos ausentes: " + ", ".join(missing_after)
         )
     return copied
 

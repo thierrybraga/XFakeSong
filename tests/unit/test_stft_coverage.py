@@ -33,15 +33,15 @@ def _envelope_de_cobertura(n_fft: int, hop: int, total: int = JANELA_FONTE):
     janela = np.hanning(n_fft) ** 2
     envelope = np.zeros(total)
     for inicio in range(0, total - n_fft, hop):
-        envelope[inicio:inicio + n_fft] += janela
-    return envelope[n_fft:total - n_fft]  # descarta as bordas do sinal
+        envelope[inicio : inicio + n_fft] += janela
+    return envelope[n_fft : total - n_fft]  # descarta as bordas do sinal
 
 
 @pytest.mark.parametrize(
     "time_steps,declarado",
     [
-        (100, None),   # Conformer, CCT, Res2Net, Sonic Sleuth, EfficientNet
-        (300, 400),    # AST: janela de 25 ms vem do artigo
+        (100, None),  # Conformer, CCT, Res2Net, Sonic Sleuth, EfficientNet
+        (300, 400),  # AST: janela de 25 ms vem do artigo
         (150, None),
         (200, None),
     ],
@@ -88,7 +88,7 @@ def test_transiente_e_detectado_independentemente_da_posicao():
         base = 0.3 * np.sin(2 * np.pi * 220 * t)
         com_clique = base.copy()
         p = int(posicao_relativa * JANELA_FONTE)
-        com_clique[p:p + 16] += 0.9
+        com_clique[p : p + 16] += 0.9
         S = np.abs(librosa.stft(com_clique, n_fft=n_fft, hop_length=hop))
         S0 = np.abs(librosa.stft(base, n_fft=n_fft, hop_length=hop))
         return float(np.sum(np.abs(S - S0)) / (np.sum(S0) + 1e-9))

@@ -312,6 +312,7 @@ _NOTIF_TOGGLE_JS = """() => {
 # Interface principal
 # =====================================================================
 
+
 def create_interface() -> "gr.Blocks":
     """Constroi e devolve a interface Gradio.
 

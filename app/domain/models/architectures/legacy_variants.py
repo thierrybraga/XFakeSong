@@ -51,7 +51,8 @@ def _reshape_sequence_input(x, input_shape, variant_label: str, name: str):
         logger.warning(
             "Input shape %s para '%s' espera 3D/4D com última dim 1. "
             "Usando como está, assumindo que a última dim é feature.",
-            input_shape, variant_label,
+            input_shape,
+            variant_label,
         )
         return x
     raise ValueError(
@@ -59,8 +60,9 @@ def _reshape_sequence_input(x, input_shape, variant_label: str, name: str):
     )
 
 
-def build_legacy_backbone(x, input_shape: Tuple[int, ...], architecture: str,
-                          dropout_rate: float):
+def build_legacy_backbone(
+    x, input_shape: Tuple[int, ...], architecture: str, dropout_rate: float
+):
     """Constrói o backbone de uma variante legada e devolve o tensor achatado.
 
     Returns:
@@ -71,13 +73,15 @@ def build_legacy_backbone(x, input_shape: Tuple[int, ...], architecture: str,
     """
     if architecture == "cnn_gru_simple":
         x = apply_reshape_for_cnn(x, input_shape)
-        x = layers.Conv2D(32, (3, 3), activation='relu',
-                          padding='same', name="conv1")(x)
+        x = layers.Conv2D(32, (3, 3), activation="relu", padding="same", name="conv1")(
+            x
+        )
         x = layers.BatchNormalization(name="bn1")(x)
         x = layers.MaxPooling2D((2, 2), name="pool1")(x)
         x = layers.Dropout(dropout_rate, name="classifier_dropout1")(x)
-        x = layers.Conv2D(64, (3, 3), activation='relu',
-                          padding='same', name="conv2")(x)
+        x = layers.Conv2D(64, (3, 3), activation="relu", padding="same", name="conv2")(
+            x
+        )
         x = layers.BatchNormalization(name="bn2")(x)
         x = layers.MaxPooling2D((2, 2), name="pool2")(x)
         x = layers.Dropout(dropout_rate, name="classifier_dropout2")(x)
@@ -93,13 +97,15 @@ def build_legacy_backbone(x, input_shape: Tuple[int, ...], architecture: str,
 
     if architecture == "cnn_baseline":
         x = apply_reshape_for_cnn(x, input_shape)
-        x = layers.Conv2D(32, (5, 5), activation='relu',
-                          padding='same', name="conv_b1")(x)
+        x = layers.Conv2D(
+            32, (5, 5), activation="relu", padding="same", name="conv_b1"
+        )(x)
         x = layers.BatchNormalization(name="bn_b1")(x)
         x = layers.MaxPooling2D((2, 2), name="pool_b1")(x)
         x = layers.Dropout(dropout_rate, name="dropout_b1")(x)
-        x = layers.Conv2D(64, (5, 5), activation='relu',
-                          padding='same', name="conv_b2")(x)
+        x = layers.Conv2D(
+            64, (5, 5), activation="relu", padding="same", name="conv_b2"
+        )(x)
         x = layers.BatchNormalization(name="bn_b2")(x)
         x = layers.MaxPooling2D((2, 2), name="pool_b2")(x)
         x = layers.Dropout(dropout_rate, name="dropout_b2")(x)
@@ -110,28 +116,32 @@ def build_legacy_backbone(x, input_shape: Tuple[int, ...], architecture: str,
             x, input_shape, "bidirectional_gru", "flatten_channel_for_gru"
         )
         x = layers.Bidirectional(
-            layers.GRU(128, return_sequences=True, dropout=dropout_rate),
-            name="bi_gru1")(x)
+            layers.GRU(128, return_sequences=True, dropout=dropout_rate), name="bi_gru1"
+        )(x)
         x = layers.Bidirectional(
-            layers.GRU(64, return_sequences=True, dropout=dropout_rate),
-            name="bi_gru2")(x)
+            layers.GRU(64, return_sequences=True, dropout=dropout_rate), name="bi_gru2"
+        )(x)
         return AttentionLayer(name="attention_layer")(x)
 
     if architecture == "resnet_gru":
         x = apply_reshape_for_cnn(x, input_shape)
-        x = layers.Conv2D(32, (3, 3), activation='relu',
-                          padding='same', name="resnet_conv_init")(x)
+        x = layers.Conv2D(
+            32, (3, 3), activation="relu", padding="same", name="resnet_conv_init"
+        )(x)
         x = layers.BatchNormalization(name="resnet_bn_init")(x)
         x = layers.MaxPooling2D((2, 2), name="resnet_pool_init")(x)
-        x = residual_block(x, 64, (3, 3), stage='a')
+        x = residual_block(x, 64, (3, 3), stage="a")
         x = layers.MaxPooling2D((2, 2), name="resnet_pool_a")(x)
         x = layers.Dropout(dropout_rate, name="resnet_dropout_a")(x)
-        x = residual_block(x, 128, (3, 3), stage='b')
+        x = residual_block(x, 128, (3, 3), stage="b")
         x = layers.MaxPooling2D((2, 2), name="resnet_pool_b")(x)
         x = layers.Dropout(dropout_rate, name="resnet_dropout_b")(x)
         x = flatten_features_for_gru(x, name="resnet_reshape_for_gru")
         x = apply_gru_block(
-            x, 128, return_sequences=True, dropout_rate=dropout_rate,
+            x,
+            128,
+            return_sequences=True,
+            dropout_rate=dropout_rate,
             name="resnet_gru1",
         )
         return AttentionLayer(name="attention_layer_resnet")(x)
@@ -155,7 +165,8 @@ def build_legacy_backbone(x, input_shape: Tuple[int, ...], architecture: str,
         num_heads = 4
         ff_dim = 64
         attn_output = layers.MultiHeadAttention(
-            num_heads=num_heads, key_dim=feature_dim)(x, x)
+            num_heads=num_heads, key_dim=feature_dim
+        )(x, x)
         attn_output = layers.Dropout(dropout_rate)(attn_output)
         x = layers.LayerNormalization(epsilon=1e-6)(x + attn_output)
         ff_output = layers.Dense(ff_dim, activation="relu")(x)
@@ -170,48 +181,68 @@ def build_legacy_backbone(x, input_shape: Tuple[int, ...], architecture: str,
     )
 
 
-def build_legacy_head(x, num_classes: int, hidden_dim: int,
-                      dropout_rate: float, l2_reg_strength: float):
+def build_legacy_head(
+    x, num_classes: int, hidden_dim: int, dropout_rate: float, l2_reg_strength: float
+):
     """Cabeça densa das variantes legadas (Dense 3× + BN + Dropout → softmax)."""
-    x = layers.Dense(hidden_dim, activation='relu',
-                     kernel_regularizer=regularizers.l2(l2_reg_strength),
-                     bias_regularizer=regularizers.l2(l2_reg_strength / 2),
-                     name="dense1")(x)
+    x = layers.Dense(
+        hidden_dim,
+        activation="relu",
+        kernel_regularizer=regularizers.l2(l2_reg_strength),
+        bias_regularizer=regularizers.l2(l2_reg_strength / 2),
+        name="dense1",
+    )(x)
     x = layers.BatchNormalization(name="bn_dense1")(x)
     x = layers.Dropout(dropout_rate, name="final_dropout1")(x)
 
-    x = layers.Dense(hidden_dim // 2, activation='relu',
-                     kernel_regularizer=regularizers.l2(l2_reg_strength),
-                     bias_regularizer=regularizers.l2(l2_reg_strength / 2),
-                     name="dense2")(x)
+    x = layers.Dense(
+        hidden_dim // 2,
+        activation="relu",
+        kernel_regularizer=regularizers.l2(l2_reg_strength),
+        bias_regularizer=regularizers.l2(l2_reg_strength / 2),
+        name="dense2",
+    )(x)
     x = layers.BatchNormalization(name="bn_dense2")(x)
     x = layers.Dropout(min(dropout_rate * 1.5, 0.9), name="final_dropout2")(x)
 
-    x = layers.Dense(128, activation='relu',
-                     kernel_regularizer=regularizers.l2(l2_reg_strength),
-                     bias_regularizer=regularizers.l2(l2_reg_strength / 2),
-                     name="dense3")(x)
+    x = layers.Dense(
+        128,
+        activation="relu",
+        kernel_regularizer=regularizers.l2(l2_reg_strength),
+        bias_regularizer=regularizers.l2(l2_reg_strength / 2),
+        name="dense3",
+    )(x)
     x = layers.BatchNormalization(name="bn_dense3")(x)
     x = layers.Dropout(min(dropout_rate * 2, 0.9), name="dropout_final")(x)
 
     # dtype='float32' na saída: sob mixed_float16 softmax+crossentropy em fp16
     # satura/perde precisão (mesma correção aplicada nas variantes atuais).
-    return layers.Dense(num_classes, activation='softmax',
-                        kernel_regularizer=regularizers.l2(l2_reg_strength / 2),
-                        name="output_layer", dtype='float32')(x)
+    return layers.Dense(
+        num_classes,
+        activation="softmax",
+        kernel_regularizer=regularizers.l2(l2_reg_strength / 2),
+        name="output_layer",
+        dtype="float32",
+    )(x)
 
 
-def build_legacy_model(input_tensor, x, input_shape: Tuple[int, ...],
-                       architecture: str, num_classes: int, hidden_dim: int,
-                       dropout_rate: float, l2_reg_strength: float,
-                       model_name: str = None) -> models.Model:
+def build_legacy_model(
+    input_tensor,
+    x,
+    input_shape: Tuple[int, ...],
+    architecture: str,
+    num_classes: int,
+    hidden_dim: int,
+    dropout_rate: float,
+    l2_reg_strength: float,
+    model_name: str = None,
+) -> models.Model:
     """Monta e compila uma variante legada completa (backbone + cabeça)."""
     x = build_legacy_backbone(x, input_shape, architecture, dropout_rate)
     output_tensor = build_legacy_head(
         x, num_classes, hidden_dim, dropout_rate, l2_reg_strength
     )
-    model = models.Model(inputs=input_tensor, outputs=output_tensor,
-                         name=model_name)
+    model = models.Model(inputs=input_tensor, outputs=output_tensor, name=model_name)
     model.compile(
         optimizer=tf.keras.optimizers.AdamW(
             learning_rate=0.001,
@@ -220,11 +251,12 @@ def build_legacy_model(input_tensor, x, input_shape: Tuple[int, ...],
             beta_2=0.999,
             epsilon=1e-7,
         ),
-        loss='sparse_categorical_crossentropy',
-        metrics=['accuracy'],
+        loss="sparse_categorical_crossentropy",
+        metrics=["accuracy"],
     )
     logger.info(
         "Variante LEGADA '%s' criada (não corresponde a nenhum paper — use "
-        "'aasist'/'rawgat_st' para as implementações fiéis).", architecture,
+        "'aasist'/'rawgat_st' para as implementações fiéis).",
+        architecture,
     )
     return model

@@ -52,6 +52,7 @@ def pytest_collection_modifyitems(config, items):
                 item.add_marker(getattr(pytest.mark, cat))
                 break
 
+
 # SEGFAULT INTERMITENTE NA SUÍTE (2026-08-17): uma execução em três terminava
 # com `Segmentation fault (core dumped)` e ZERO testes falhando — o crash
 # acontecia na FINALIZAÇÃO do interpretador, com o traço apontando para o
@@ -187,16 +188,16 @@ def mock_upload_service(tmp_path):
                 total_size=0,
                 total_duration=0.0,
                 created_at=None,
-                file_paths=[]
+                file_paths=[],
             ),
             metadata={"message": f"Dataset {name} criado com sucesso"},
         )
+
     mock.create_dataset.side_effect = side_effect_create
 
     # Mock delete_dataset return
     mock.delete_dataset.return_value = ProcessingResult(
-        status=ProcessingStatus.SUCCESS,
-        metadata={"message": "Dataset deleted"}
+        status=ProcessingStatus.SUCCESS, metadata={"message": "Dataset deleted"}
     )
 
     return mock
@@ -216,18 +217,11 @@ def mock_training_service():
 
 
 @pytest.fixture
-def client(
-    mock_detection_service,
-    mock_upload_service,
-    mock_training_service
-):
+def client(mock_detection_service, mock_upload_service, mock_training_service):
     # Override dependencies
-    app.dependency_overrides[get_detection_service] = \
-        lambda: mock_detection_service
-    app.dependency_overrides[get_upload_service] = \
-        lambda: mock_upload_service
-    app.dependency_overrides[get_training_service] = \
-        lambda: mock_training_service
+    app.dependency_overrides[get_detection_service] = lambda: mock_detection_service
+    app.dependency_overrides[get_upload_service] = lambda: mock_upload_service
+    app.dependency_overrides[get_training_service] = lambda: mock_training_service
 
     with TestClient(app) as c:
         yield c

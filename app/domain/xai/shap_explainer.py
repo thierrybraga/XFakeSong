@@ -122,6 +122,8 @@ def explain_with_kernel_shap(
     matrix = _spoof_class_matrix(values, X_explain.shape[1])
     logger.info(
         "KernelExplainer: %d amostras × %d features (background=%d)",
-        matrix.shape[0], matrix.shape[1], clusters,
+        matrix.shape[0],
+        matrix.shape[1],
+        clusters,
     )
     return matrix

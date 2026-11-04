@@ -10,16 +10,13 @@ import numpy as np
 import tensorflow as tf
 from sklearn.preprocessing import StandardScaler
 
+# Importar custom layers para carregar modelos
 from app.domain.models.architectures.layers import (
     AttentionLayer,
     AudioFeatureNormalization,
     GraphAttentionLayer,
-    SliceLayer,
-)
-
-# Importar custom layers para carregar modelos
-from app.domain.models.architectures.layers import (
     MultiScaleConv1DBlock as _LegacyMultiScaleConv1DBlock,
+    SliceLayer,
 )
 from app.domain.models.architectures.rawnet2 import (
     AudioNormalizationLayer,

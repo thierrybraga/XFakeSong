@@ -17,8 +17,14 @@ class FeatureExtractor(ABC):
 class MFCCExtractor(FeatureExtractor):
     """Extrator de coeficientes MFCC otimizado para detecção de deepfakes."""
 
-    def __init__(self, sr: int = 22050, n_mfcc: int = 13, n_fft: int = 2048,
-                 hop_length: int = 512, n_mels: int = 40):
+    def __init__(
+        self,
+        sr: int = 22050,
+        n_mfcc: int = 13,
+        n_fft: int = 2048,
+        hop_length: int = 512,
+        n_mels: int = 40,
+    ):
         self.sr = sr
         self.n_mfcc = n_mfcc
         self.n_fft = n_fft
@@ -34,10 +40,15 @@ class MFCCExtractor(FeatureExtractor):
         try:
             # MFCC com parâmetros conservadores
             mfcc = librosa.feature.mfcc(
-                y=y, sr=self.sr, n_mfcc=self.n_mfcc,
-                n_fft=self.n_fft, hop_length=self.hop_length,
-                n_mels=self.n_mels, fmin=self.fmin, fmax=self.fmax,
-                window='hamming'
+                y=y,
+                sr=self.sr,
+                n_mfcc=self.n_mfcc,
+                n_fft=self.n_fft,
+                hop_length=self.hop_length,
+                n_mels=self.n_mels,
+                fmin=self.fmin,
+                fmax=self.fmax,
+                window="hamming",
             )
 
             # Aplicar liftering conservador
@@ -52,17 +63,14 @@ class MFCCExtractor(FeatureExtractor):
             warnings.warn(f"Erro na extração MFCC: {str(e)}")
             return np.zeros((self.n_mfcc, 1))
 
-    def _apply_liftering(self, mfcc: np.ndarray,
-                         lifter: int = 22) -> np.ndarray:
+    def _apply_liftering(self, mfcc: np.ndarray, lifter: int = 22) -> np.ndarray:
         """Aplica liftering aos coeficientes MFCC."""
         if lifter > 0:
             n_mfcc = mfcc.shape[0]
-            lift = 1 + (lifter / 2) * np.sin(np.pi *
-                                             np.arange(n_mfcc) / lifter)
+            lift = 1 + (lifter / 2) * np.sin(np.pi * np.arange(n_mfcc) / lifter)
             mfcc *= lift[:, np.newaxis]
         return mfcc
 
-    def _apply_cepstral_mean_normalization(
-            self, mfcc: np.ndarray) -> np.ndarray:
+    def _apply_cepstral_mean_normalization(self, mfcc: np.ndarray) -> np.ndarray:
         """Aplica normalização cepstral média."""
         return mfcc - np.mean(mfcc, axis=1, keepdims=True)

@@ -22,7 +22,9 @@ warnings.filterwarnings("ignore")
 
 import numpy as np  # noqa: E402 - depois das variaveis de ambiente do TF
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -49,6 +51,7 @@ MODELS_TO_TEST = {
 # Utilidades
 # ---------------------------------------------------------------------------
 
+
 def add_awgn(audio: np.ndarray, snr_db: float, seed: int = 42) -> np.ndarray:
     """AWGN canônico (delegado a benchmarks.data.BenchmarkData.add_awgn).
 
@@ -63,9 +66,7 @@ def add_awgn(audio: np.ndarray, snr_db: float, seed: int = 42) -> np.ndarray:
     from benchmarks.data import BenchmarkData
 
     audio = np.asarray(audio, dtype=np.float32)
-    return BenchmarkData.add_awgn(
-        audio[np.newaxis, :], snr_db, seed=seed
-    )[0]
+    return BenchmarkData.add_awgn(audio[np.newaxis, :], snr_db, seed=seed)[0]
 
 
 def load_split(split: str = "test") -> tuple:
@@ -113,8 +114,12 @@ def compute_metrics(model, X: np.ndarray, y: np.ndarray) -> dict:
         auc = float(roc_auc_score(y, preds))
         fpr, tpr, thresholds = roc_curve(y, preds)
         fnr = 1 - tpr
-        fpr_fn = interp1d(thresholds[::-1], fpr[::-1], bounds_error=False, fill_value=(0, 1))
-        fnr_fn = interp1d(thresholds[::-1], fnr[::-1], bounds_error=False, fill_value=(0, 1))
+        fpr_fn = interp1d(
+            thresholds[::-1], fpr[::-1], bounds_error=False, fill_value=(0, 1)
+        )
+        fnr_fn = interp1d(
+            thresholds[::-1], fnr[::-1], bounds_error=False, fill_value=(0, 1)
+        )
         t_min, t_max = float(thresholds.min()), float(thresholds.max())
         tau = brentq(lambda t: float(fpr_fn(t)) - float(fnr_fn(t)), t_min, t_max)
         eer = float(fpr_fn(tau))
@@ -123,8 +128,8 @@ def compute_metrics(model, X: np.ndarray, y: np.ndarray) -> dict:
 
     return {
         "accuracy_pct": round(accuracy * 100, 2),
-        "eer_pct":       round(eer * 100, 2),
-        "auc_roc":       round(auc, 3),
+        "eer_pct": round(eer * 100, 2),
+        "auc_roc": round(auc, 3),
     }
 
 
@@ -132,31 +137,43 @@ def compute_metrics(model, X: np.ndarray, y: np.ndarray) -> dict:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main():
     import tensorflow as tf
+
     tf.get_logger().setLevel("ERROR")
 
     # Habilitar deserializacao de Lambda/funcoes locais e registrar layers
     import keras
+
     keras.config.enable_unsafe_deserialization()
 
     logger.info("Registrando layers customizadas...")
     try:
+        import app.domain.models.architectures.ensemble as _ens  # noqa
         import app.domain.models.architectures.multiscale_cnn as _mcnn  # noqa
-        import app.domain.models.architectures.ensemble as _ens          # noqa
+
         logger.info("  Layers registradas com sucesso.")
     except Exception as e:
         logger.warning(f"  Falha ao registrar layers: {e}")
 
     logger.info("Carregando split de teste...")
     X_clean, y_test = load_split("test")
-    logger.info(f"  {len(X_clean)} amostras | real={int((y_test==0).sum())} fake={int((y_test==1).sum())}")
+    logger.info(
+        f"  {len(X_clean)} amostras | real={int((y_test==0).sum())} fake={int((y_test==1).sum())}"
+    )
 
     results = {}
 
     arch_factory = {
-        "multiscale_cnn": ("app.domain.models.architectures.multiscale_cnn", "multiscale_cnn"),
-        "ensemble_adaptive": ("app.domain.models.architectures.ensemble", "ensemble_adaptive"),
+        "multiscale_cnn": (
+            "app.domain.models.architectures.multiscale_cnn",
+            "multiscale_cnn",
+        ),
+        "ensemble_adaptive": (
+            "app.domain.models.architectures.ensemble",
+            "ensemble_adaptive",
+        ),
     }
 
     for arch_name, model_path in MODELS_TO_TEST.items():
@@ -167,9 +184,12 @@ def main():
         logger.info(f"\nRecriando arquitetura e carregando pesos: {arch_name}")
         try:
             import importlib
+
             mod_path, variant = arch_factory[arch_name]
             mod = importlib.import_module(mod_path)
-            model = mod.create_model(input_shape=(MAX_AUDIO_SAMPLES,), num_classes=1, architecture=variant)
+            model = mod.create_model(
+                input_shape=(MAX_AUDIO_SAMPLES,), num_classes=1, architecture=variant
+            )
             model.load_weights(str(model_path))
             logger.info("  Pesos carregados com sucesso.")
         except Exception as e:
@@ -181,7 +201,9 @@ def main():
         # Avaliacao limpa (referencia)
         clean_metrics = compute_metrics(model, X_clean, y_test)
         arch_results["clean"] = clean_metrics
-        logger.info(f"  [clean] Acuracia={clean_metrics['accuracy_pct']:.1f}%  EER={clean_metrics['eer_pct']:.1f}%  AUC={clean_metrics['auc_roc']:.3f}")
+        logger.info(
+            f"  [clean] Acuracia={clean_metrics['accuracy_pct']:.1f}%  EER={clean_metrics['eer_pct']:.1f}%  AUC={clean_metrics['auc_roc']:.3f}"
+        )
 
         # Avaliacao com ruido por SNR — chamada canônica em LOTE: uma
         # realização independente por amostra e a MESMA convenção de semente
@@ -194,7 +216,9 @@ def main():
             )
             metrics = compute_metrics(model, X_noisy, y_test)
             arch_results[f"snr_{snr}db"] = metrics
-            logger.info(f"  [SNR {snr:2d}dB] Acuracia={metrics['accuracy_pct']:.1f}%  EER={metrics['eer_pct']:.1f}%  AUC={metrics['auc_roc']:.3f}")
+            logger.info(
+                f"  [SNR {snr:2d}dB] Acuracia={metrics['accuracy_pct']:.1f}%  EER={metrics['eer_pct']:.1f}%  AUC={metrics['auc_roc']:.3f}"
+            )
 
         results[arch_name] = arch_results
 
@@ -248,8 +272,10 @@ def main():
 
     if UNSEEN_SNR_LEVELS:
         marcados = ", ".join(f"{snr} dB" for snr in sorted(UNSEEN_SNR_LEVELS))
-        print(f"\n* {marcados}: NÃO VISTO no augmentation de treino — mede "
-              "generalização a ruído, não condição casada.")
+        print(
+            f"\n* {marcados}: NÃO VISTO no augmentation de treino — mede "
+            "generalização a ruído, não condição casada."
+        )
 
 
 if __name__ == "__main__":

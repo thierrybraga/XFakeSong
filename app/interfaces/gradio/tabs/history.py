@@ -41,17 +41,19 @@ def export_history_csv():
 
         data = []
         for r in results:
-            data.append({
-                "ID": r.id,
-                "Data": _data_local(r.created_at),
-                "Arquivo": r.filename,
-                "Resultado": "FAKE" if r.is_fake else "REAL",
-                "Confiança": r.confidence,
-                "Modelo": r.model_name,
-                "Duração (s)": r.duration_seconds,
-                "Taxa de Amostragem": r.sample_rate,
-                "Detalhes": r.details
-            })
+            data.append(
+                {
+                    "ID": r.id,
+                    "Data": _data_local(r.created_at),
+                    "Arquivo": r.filename,
+                    "Resultado": "FAKE" if r.is_fake else "REAL",
+                    "Confiança": r.confidence,
+                    "Modelo": r.model_name,
+                    "Duração (s)": r.duration_seconds,
+                    "Taxa de Amostragem": r.sample_rate,
+                    "Detalhes": r.details,
+                }
+            )
 
         if not data:
             return None
@@ -61,8 +63,8 @@ def export_history_csv():
         # Cria arquivo temporário
         tmp = tempfile.NamedTemporaryFile(
             delete=False,
-            suffix='.csv',
-            prefix='historico_analises_',
+            suffix=".csv",
+            prefix="historico_analises_",
             dir=get_gradio_exports_directory(),
         )
         tmp.close()
@@ -92,15 +94,17 @@ def load_history(filter_model=None, filter_result=None, search_query=None):
 
     data = []
     for r in results:
-        data.append([
-            r.id,
-            _data_local(r.created_at),
-            r.filename or "N/A",
-            "FAKE" if r.is_fake else "REAL",
-            f"{r.confidence * 100:.2f}%",
-            r.model_name or "N/A",
-            f"{r.duration_seconds:.2f}s" if r.duration_seconds else "N/A"
-        ])
+        data.append(
+            [
+                r.id,
+                _data_local(r.created_at),
+                r.filename or "N/A",
+                "FAKE" if r.is_fake else "REAL",
+                f"{r.confidence * 100:.2f}%",
+                r.model_name or "N/A",
+                f"{r.duration_seconds:.2f}s" if r.duration_seconds else "N/A",
+            ]
+        )
     return data
 
 
@@ -112,7 +116,7 @@ def get_details_and_id(evt: gr.SelectData, history_data):
         return (
             "Selecione uma linha para ver detalhes.",
             None,
-            gr.update(interactive=False)
+            gr.update(interactive=False),
         )
 
     try:
@@ -124,11 +128,7 @@ def get_details_and_id(evt: gr.SelectData, history_data):
 
         result = get_analysis_result_repository().get(analysis_id)
         if not result:
-            return (
-                "Análise não encontrada.",
-                None,
-                gr.update(interactive=False)
-            )
+            return ("Análise não encontrada.", None, gr.update(interactive=False))
 
         details_str = f"""### Detalhes da Análise #{result.id}
 
@@ -151,7 +151,7 @@ def get_details_and_id(evt: gr.SelectData, history_data):
         return (
             f"Erro ao carregar detalhes: {str(e)}",
             None,
-            gr.update(interactive=False)
+            gr.update(interactive=False),
         )
 
 
@@ -209,12 +209,17 @@ def create_history_tab():
 
         history_table = gr.Dataframe(
             headers=[
-                "ID", "Data", "Arquivo", "Resultado",
-                "Confiança", "Modelo", "Duração"
+                "ID",
+                "Data",
+                "Arquivo",
+                "Resultado",
+                "Confiança",
+                "Modelo",
+                "Duração",
             ],
             datatype=["number", "str", "str", "str", "str", "str", "str"],
             interactive=False,
-            label="Análises"
+            label="Análises",
         )
 
         details_view = gr.Markdown(
@@ -234,7 +239,9 @@ def create_history_tab():
 
         # Apagar o histórico inteiro não tem volta: pede confirmação na própria tela.
         with gr.Row(visible=False, elem_classes="confirm-row") as confirm_clear_row:
-            gr.Markdown("**Apagar todas as análises?** Esta ação não pode ser desfeita.")
+            gr.Markdown(
+                "**Apagar todas as análises?** Esta ação não pode ser desfeita."
+            )
             confirm_clear_btn = gr.Button("Sim, apagar tudo", variant="stop")
             cancel_clear_btn = gr.Button("Cancelar", variant="secondary")
 
@@ -253,7 +260,7 @@ def create_history_tab():
         refresh_btn.click(
             fn=refresh_data,
             inputs=[filter_model, filter_result, search_box],
-            outputs=[history_table, filter_model]
+            outputs=[history_table, filter_model],
         )
         # Ao abrir a aba a tabela já vem preenchida, sem exigir um clique.
         history_tab.select(
@@ -267,26 +274,26 @@ def create_history_tab():
         search_box.change(
             fn=load_history,
             inputs=[filter_model, filter_result, search_box],
-            outputs=[history_table]
+            outputs=[history_table],
         )
 
         filter_model.change(
             fn=load_history,
             inputs=[filter_model, filter_result, search_box],
-            outputs=[history_table]
+            outputs=[history_table],
         )
 
         filter_result.change(
             fn=load_history,
             inputs=[filter_model, filter_result, search_box],
-            outputs=[history_table]
+            outputs=[history_table],
         )
 
         # Seleção na Tabela (Detalhes + ID para exclusão)
         history_table.select(
             fn=get_details_and_id,
             inputs=[history_table],
-            outputs=[details_view, selected_id, delete_btn]
+            outputs=[details_view, selected_id, delete_btn],
         )
 
         # Exportação CSV
@@ -297,23 +304,18 @@ def create_history_tab():
                 return gr.update(value=path, visible=True)
             return gr.update(visible=False)
 
-        export_btn.click(
-            fn=on_export,
-            outputs=[download_file]
-        )
+        export_btn.click(fn=on_export, outputs=[download_file])
 
         # Exclusão Única
         delete_btn.click(
-            fn=delete_analysis,
-            inputs=[selected_id],
-            outputs=[details_view]
+            fn=delete_analysis, inputs=[selected_id], outputs=[details_view]
         ).then(
             fn=load_history,
             inputs=[filter_model, filter_result, search_box],
-            outputs=[history_table]
+            outputs=[history_table],
         ).then(
             fn=lambda: (None, gr.update(interactive=False)),
-            outputs=[selected_id, delete_btn]
+            outputs=[selected_id, delete_btn],
         )
 
         # Limpar Tudo, em dois passos
@@ -327,13 +329,10 @@ def create_history_tab():
             outputs=[confirm_clear_row],
             show_progress="hidden",
         )
-        confirm_clear_btn.click(
-            fn=clear_all_history,
-            outputs=[details_view]
-        ).then(
+        confirm_clear_btn.click(fn=clear_all_history, outputs=[details_view]).then(
             fn=load_history,
             inputs=[filter_model, filter_result, search_box],
-            outputs=[history_table]
+            outputs=[history_table],
         ).then(
             fn=lambda: gr.update(visible=False),
             outputs=[confirm_clear_row],

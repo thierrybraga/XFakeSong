@@ -26,11 +26,11 @@ def add_awgn(X: np.ndarray, snr_db: float, seed: int = 0) -> np.ndarray:
     rng = np.random.default_rng(seed)
     X = np.asarray(X, dtype="float32")
     flat = X.reshape(len(X), -1)
-    sig_power = np.mean(flat ** 2, axis=1, keepdims=True)
+    sig_power = np.mean(flat**2, axis=1, keepdims=True)
     snr_lin = 10.0 ** (float(snr_db) / 10.0)
 
     unit_noise = rng.standard_normal(flat.shape).astype("float32")
-    unit_power = np.mean(unit_noise ** 2, axis=1, keepdims=True)
+    unit_power = np.mean(unit_noise**2, axis=1, keepdims=True)
     target_power = sig_power / max(snr_lin, 1e-12)
     scale = np.sqrt(target_power / np.maximum(unit_power, 1e-12))
     noise = unit_noise * scale
@@ -81,13 +81,14 @@ def build_calibration_set(validation_data, config):
         X_val, y_val = validation_data
         X_val = np.asarray(X_val, dtype="float32")
         y_val = np.asarray(y_val)
-        extra = [add_awgn(X_val, snr, seed=1234 + i)
-                 for i, snr in enumerate(snrs)]
+        extra = [add_awgn(X_val, snr, seed=1234 + i) for i, snr in enumerate(snrs)]
         X_cal = np.concatenate([X_val, *extra], axis=0)
         y_cal = np.concatenate([y_val] * (1 + len(snrs)), axis=0)
         logger.info(
             "Calibração sob ruído: val %d → %d amostras (SNRs=%s)",
-            len(y_val), len(y_cal), snrs,
+            len(y_val),
+            len(y_cal),
+            snrs,
         )
         return (X_cal, y_cal)
     except Exception as e:  # noqa: BLE001
@@ -215,6 +216,7 @@ def final_metrics(
     from app.domain.services.detection.predictor import (
         normalize_logits_to_probs,
     )
+
     y_pred = normalize_logits_to_probs(y_pred)
     # Suporta saídas (N,1) sigmoid e (N,K) softmax
     y_pred_classes = (
@@ -224,9 +226,7 @@ def final_metrics(
     )
 
     # Calcular métricas
-    return metrics_calculator.calculate_all_metrics(
-        y_val, y_pred_classes, y_pred
-    )
+    return metrics_calculator.calculate_all_metrics(y_val, y_pred_classes, y_pred)
 
 
 def compute_eer_threshold(
@@ -276,9 +276,7 @@ def compute_eer_threshold(
             y_true = y_arr.ravel().astype(int)
 
         # Usa MetricsCalculator.calculate_eer (já existente)
-        eer_value, eer_threshold = metrics_calculator.calculate_eer(
-            y_true, scores
-        )
+        eer_value, eer_threshold = metrics_calculator.calculate_eer(y_true, scores)
         logger.info(
             f"EER threshold calibrado: T={eer_threshold:.4f}, EER={eer_value:.4f} "
             f"({len(scores)} amostras val) — alternativa ao threshold 0.5"

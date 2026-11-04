@@ -47,14 +47,18 @@ def production_p_fake(
     """P(fake) como a inferência calcula, em lotes."""
     saida: List[float] = []
     for inicio in range(0, len(prepared), batch_size):
-        lote = predictor.predict_batch(info, list(prepared[inicio : inicio + batch_size]))
+        lote = predictor.predict_batch(
+            info, list(prepared[inicio : inicio + batch_size])
+        )
         if lote.status != ProcessingStatus.SUCCESS:
             raise RuntimeError(f"{info.name}: {lote.errors}")
         saida.extend(float(linha["p_fake"]) for linha in lote.data)
     return np.asarray(saida)
 
 
-def ssl_p_fake(artifact_dir: Path, backbone_dir: str, waveforms: np.ndarray) -> np.ndarray:
+def ssl_p_fake(
+    artifact_dir: Path, backbone_dir: str, waveforms: np.ndarray
+) -> np.ndarray:
     """P(fake) de um SSL original, pelo wrapper de inferência."""
     from app.domain.services.detection.model_loader import TorchSSLOriginalModel
 
@@ -88,7 +92,9 @@ def collect_scores(
     ruidoso: Dict[str, Dict[str, np.ndarray]] = {f"{s} dB": {} for s in snr_levels}
     for nome in names or servico.get_available_models():
         info = servico.model_loader.get_model(nome)
-        limpo[nome] = production_p_fake(predictor, info, prepared_input(validacao, info))
+        limpo[nome] = production_p_fake(
+            predictor, info, prepared_input(validacao, info)
+        )
         logger.info("%s: validação limpa medida", nome)
         for snr in snr_levels:
             ruidoso[f"{snr} dB"][nome] = production_p_fake(

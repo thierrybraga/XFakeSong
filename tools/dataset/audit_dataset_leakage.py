@@ -84,7 +84,7 @@ def _extract_features_chunk(x: np.ndarray) -> np.ndarray:
         x = x[..., 0]
     B, T = x.shape
 
-    rms = np.sqrt(np.mean(x ** 2, axis=1) + EPS)
+    rms = np.sqrt(np.mean(x**2, axis=1) + EPS)
     dc = np.mean(x, axis=1)
     abs_mean = np.mean(np.abs(x), axis=1)
     std = np.std(x, axis=1)
@@ -116,8 +116,20 @@ def _extract_features_chunk(x: np.ndarray) -> np.ndarray:
     hf_ratio = np.sum(mag[:, hf_mask], axis=1) / mag_sum
 
     feats = np.stack(
-        [rms, dc, abs_mean, std, max_abs, crest, zcr, lead, trail,
-         centroid, bandwidth, hf_ratio],
+        [
+            rms,
+            dc,
+            abs_mean,
+            std,
+            max_abs,
+            crest,
+            zcr,
+            lead,
+            trail,
+            centroid,
+            bandwidth,
+            hf_ratio,
+        ],
         axis=1,
     ).astype("float32")
     return np.nan_to_num(feats, nan=0.0, posinf=0.0, neginf=0.0)
@@ -128,7 +140,7 @@ def _extract_features(X: np.ndarray, idx: np.ndarray, chunk: int = 256) -> np.nd
     out: List[np.ndarray] = []
     idx = np.asarray(idx)
     for start in range(0, len(idx), chunk):
-        rows = idx[start:start + chunk]
+        rows = idx[start : start + chunk]
         # mmap fancy-index materializa só o chunk.
         batch = np.asarray(X[rows])
         out.append(_extract_features_chunk(batch))
@@ -166,23 +178,37 @@ def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--dataset", required=True, help=".npz com X_train/.../metadata_json")
+    ap.add_argument(
+        "--dataset", required=True, help=".npz com X_train/.../metadata_json"
+    )
     # Sem default fixo: "brspeech" era a fonte do corpus multi-fonte anterior e
     # não existe no Protocolo de Dataset atual (fonte única "ptpair"), então o
     # teste intra-fonte reportava "insufficient" com n_train=0/n_test=0 — parecia
     # falta de dados quando era só o nome errado. Omitir escolhe a fonte com mais
     # amostras que tenha as DUAS classes, que é exatamente o que o teste exige.
-    ap.add_argument("--source", default=None,
-                    help="fonte a auditar (precisa ter real+fake). "
-                         "Default: a maior fonte com as duas classes no dataset")
-    ap.add_argument("--max-per-class", type=int, default=1500,
-                    help="subamostra por classe (memória/velocidade). 0 = tudo")
+    ap.add_argument(
+        "--source",
+        default=None,
+        help="fonte a auditar (precisa ter real+fake). "
+        "Default: a maior fonte com as duas classes no dataset",
+    )
+    ap.add_argument(
+        "--max-per-class",
+        type=int,
+        default=1500,
+        help="subamostra por classe (memória/velocidade). 0 = tudo",
+    )
     ap.add_argument("--chunk", type=int, default=256)
     ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--out", default="data/results/audit_dataset_leakage",
-                    help="pasta de saída do relatório (json + md)")
     ap.add_argument(
-        "--fail-above", type=float, default=0.75,
+        "--out",
+        default="data/results/audit_dataset_leakage",
+        help="pasta de saída do relatório (json + md)",
+    )
+    ap.add_argument(
+        "--fail-above",
+        type=float,
+        default=0.75,
         help=(
             "reprova (exit 1) quando a acurácia do detector de atalho "
             "intra-fonte alcança este valor. 0.75 é o limiar de 'atalho "
@@ -191,7 +217,8 @@ def main() -> int:
         ),
     )
     ap.add_argument(
-        "--fail-on-warnings", action="store_true",
+        "--fail-on-warnings",
+        action="store_true",
         help="reprova também quando houver avisos de alinhamento",
     )
     args = ap.parse_args()
@@ -210,9 +237,11 @@ def main() -> int:
     splits_meta = _load_split_meta(meta)
 
     # Mapeia cada split -> (X, y, sources, labels_from_path)
-    split_keys = [("train", "X_train", "y_train"),
-                  ("val", "X_val", "y_val"),
-                  ("test", "X_test", "y_test")]
+    split_keys = [
+        ("train", "X_train", "y_train"),
+        ("val", "X_val", "y_val"),
+        ("test", "X_test", "y_test"),
+    ]
 
     # Proveniência: o exportador pareado (`export_paired_npz.py`, o canônico do
     # Protocolo de Dataset) grava um array PLANO `sample_paths` com uma entrada
@@ -224,7 +253,9 @@ def main() -> int:
     # atalho intra-fonte como "insufficient", sem nunca falhar. Corrigido em
     # 2026-08-02: fatia o array plano quando ele existe, e cai no formato antigo
     # por retrocompatibilidade.
-    flat_paths = [str(p) for p in d["sample_paths"]] if "sample_paths" in d.files else []
+    flat_paths = (
+        [str(p) for p in d["sample_paths"]] if "sample_paths" in d.files else []
+    )
     total_y = sum(
         len(np.asarray(d[yk]).ravel()) for _, xk, yk in split_keys if xk in d.files
     )
@@ -238,7 +269,7 @@ def main() -> int:
             continue
         y = np.asarray(d[yk]).ravel().astype("int64")
         if usa_plano:
-            paths = flat_paths[cursor:cursor + len(y)]
+            paths = flat_paths[cursor : cursor + len(y)]
             cursor += len(y)
         else:
             paths = (splits_meta.get(name, {}) or {}).get("paths", [])
@@ -276,10 +307,16 @@ def main() -> int:
         ts_src = test["src"].astype(str)
         ts_y = test["y"]
         n_test = len(ts_y)
-        pure_real_src = [s for s in all_sources
-                         if src_class.get((s, 1), 0) == 0 and src_class.get((s, 0), 0) > 0]
-        pure_fake_src = [s for s in all_sources
-                         if src_class.get((s, 0), 0) == 0 and src_class.get((s, 1), 0) > 0]
+        pure_real_src = [
+            s
+            for s in all_sources
+            if src_class.get((s, 1), 0) == 0 and src_class.get((s, 0), 0) > 0
+        ]
+        pure_fake_src = [
+            s
+            for s in all_sources
+            if src_class.get((s, 0), 0) == 0 and src_class.get((s, 1), 0) > 0
+        ]
         trivial = np.isin(ts_src, pure_real_src) | np.isin(ts_src, pure_fake_src)
         trivial_frac = float(np.mean(trivial)) if n_test else 0.0
         trivial_detail = {
@@ -316,16 +353,24 @@ def main() -> int:
         tr_idx = np.where(tr["src"].astype(str) == src)[0]
         te_idx = np.where(te["src"].astype(str) == src)[0]
         # precisa das duas classes em ambos
-        ok = (len(np.unique(tr["y"][tr_idx])) == 2
-              and len(np.unique(te["y"][te_idx])) == 2)
+        ok = (
+            len(np.unique(tr["y"][tr_idx])) == 2
+            and len(np.unique(te["y"][te_idx])) == 2
+        )
         if not ok or len(tr_idx) == 0 or len(te_idx) == 0:
-            intra = {"source": src, "status": "insufficient",
-                     "n_train": int(len(tr_idx)), "n_test": int(len(te_idx))}
+            intra = {
+                "source": src,
+                "status": "insufficient",
+                "n_train": int(len(tr_idx)),
+                "n_test": int(len(te_idx)),
+            }
         else:
             tr_sel = _balanced_subsample(tr_idx, tr["y"], args.max_per_class, args.seed)
             te_sel = _balanced_subsample(te_idx, te["y"], args.max_per_class, args.seed)
-            print(f"[audit] extraindo features — train={len(tr_sel)} test={len(te_sel)} "
-                  f"(fonte={src})…")
+            print(
+                f"[audit] extraindo features — train={len(tr_sel)} test={len(te_sel)} "
+                f"(fonte={src})…"
+            )
             Xtr = _extract_features(tr["X"], tr_sel, args.chunk)
             Xte = _extract_features(te["X"], te_sel, args.chunk)
             ytr, yte = tr["y"][tr_sel], te["y"][te_sel]
@@ -391,24 +436,38 @@ def main() -> int:
         tag = "  <- pura" if (r == 0) ^ (f == 0) else ""
         print(f"  {s:10s} real={r:6d} fake={f:6d}{tag}")
     if trivial_detail:
-        print(f"\nTESTE trivialmente separável por fonte: "
-              f"{trivial_detail['n_trivial']}/{trivial_detail['n_test']} "
-              f"({trivial_detail['trivial_fraction']*100:.1f}%)")
-        print(f"  fontes puras real={trivial_detail['pure_real_sources']} "
-              f"fake={trivial_detail['pure_fake_sources']}")
+        print(
+            f"\nTESTE trivialmente separável por fonte: "
+            f"{trivial_detail['n_trivial']}/{trivial_detail['n_test']} "
+            f"({trivial_detail['trivial_fraction']*100:.1f}%)"
+        )
+        print(
+            f"  fontes puras real={trivial_detail['pure_real_sources']} "
+            f"fake={trivial_detail['pure_fake_sources']}"
+        )
     if intra.get("status") == "ok":
         c = intra["combined"]
         print(f"\nATALHO INTRA-FONTE ({src}) — features globais triviais:")
-        print(f"  acurácia teste = {c['test_accuracy']*100:.2f}%  "
-              f"AUC = {c['test_auc']:.4f}  EER = {c['test_eer']*100:.2f}%")
-        verdict = ("ATALHO CONFIRMADO" if c["test_accuracy"] >= 0.90
-                   else "atalho parcial" if c["test_accuracy"] >= 0.75
-                   else "sem atalho global óbvio")
+        print(
+            f"  acurácia teste = {c['test_accuracy']*100:.2f}%  "
+            f"AUC = {c['test_auc']:.4f}  EER = {c['test_eer']*100:.2f}%"
+        )
+        verdict = (
+            "ATALHO CONFIRMADO"
+            if c["test_accuracy"] >= 0.90
+            else (
+                "atalho parcial"
+                if c["test_accuracy"] >= 0.75
+                else "sem atalho global óbvio"
+            )
+        )
         print(f"  veredito: {verdict}")
         print("  top features (AUC):")
         for r in intra["per_feature"][:5]:
-            print(f"    {r['feature']:22s} acc={r['test_accuracy']*100:5.1f}% "
-                  f"auc={r['test_auc']:.3f}")
+            print(
+                f"    {r['feature']:22s} acc={r['test_accuracy']*100:5.1f}% "
+                f"auc={r['test_auc']:.3f}"
+            )
     else:
         print(f"\nATALHO INTRA-FONTE: {intra.get('status')} ({intra})")
     if align_warnings:
@@ -455,24 +514,34 @@ def _write_markdown(path: Path, rep: dict) -> None:
     ts = rep.get("test_source_shortcut") or {}
     if ts:
         lines.append("\n## Atalho por fonte pura (teste)\n")
-        lines.append(f"- Trivialmente separável só pela fonte: "
-                     f"**{ts['n_trivial']}/{ts['n_test']} "
-                     f"({ts['trivial_fraction']*100:.1f}%)**")
-        lines.append(f"- Fontes puras real: `{ts['pure_real_sources']}` · "
-                     f"fake: `{ts['pure_fake_sources']}`")
+        lines.append(
+            f"- Trivialmente separável só pela fonte: "
+            f"**{ts['n_trivial']}/{ts['n_test']} "
+            f"({ts['trivial_fraction']*100:.1f}%)**"
+        )
+        lines.append(
+            f"- Fontes puras real: `{ts['pure_real_sources']}` · "
+            f"fake: `{ts['pure_fake_sources']}`"
+        )
     intra = rep.get("intra_source_shortcut") or {}
     if intra.get("status") == "ok":
         c = intra["combined"]
         lines.append(f"\n## Atalho intra-fonte ({intra['source']})\n")
-        lines.append(f"Regressão logística sobre features globais triviais "
-                     f"(n_train={intra['n_train']}, n_test={intra['n_test']}):\n")
-        lines.append(f"- **Acurácia teste: {c['test_accuracy']*100:.2f}%** · "
-                     f"AUC {c['test_auc']:.4f} · EER {c['test_eer']*100:.2f}%")
+        lines.append(
+            f"Regressão logística sobre features globais triviais "
+            f"(n_train={intra['n_train']}, n_test={intra['n_test']}):\n"
+        )
+        lines.append(
+            f"- **Acurácia teste: {c['test_accuracy']*100:.2f}%** · "
+            f"AUC {c['test_auc']:.4f} · EER {c['test_eer']*100:.2f}%"
+        )
         lines.append("\n| Feature | acc teste | AUC |")
         lines.append("|---|---:|---:|")
         for r in intra["per_feature"]:
-            lines.append(f"| {r['feature']} | {r['test_accuracy']*100:.1f}% | "
-                         f"{r['test_auc']:.3f} |")
+            lines.append(
+                f"| {r['feature']} | {r['test_accuracy']*100:.1f}% | "
+                f"{r['test_auc']:.3f} |"
+            )
     if rep.get("alignment_warnings"):
         lines.append("\n## Avisos\n")
         for w in rep["alignment_warnings"]:

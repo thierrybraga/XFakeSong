@@ -41,12 +41,14 @@ class TransformFeatureExtractor:
     sinal de áudio.
     """
 
-    def __init__(self,
-                 sr: int = 22050,
-                 frame_length: int = 2048,
-                 hop_length: int = 512,
-                 wavelet: str = 'db4',
-                 bins_per_octave: int = 12):
+    def __init__(
+        self,
+        sr: int = 22050,
+        frame_length: int = 2048,
+        hop_length: int = 512,
+        wavelet: str = "db4",
+        bins_per_octave: int = 12,
+    ):
         """
         Inicializa o extrator de características de transformadas.
 
@@ -84,7 +86,7 @@ class TransformFeatureExtractor:
             Dicionário com características extraídas como arrays numpy
         """
         # Extrair array numpy do AudioData se necessário
-        if hasattr(audio_data, 'samples'):
+        if hasattr(audio_data, "samples"):
             y = audio_data.samples
         else:
             y = audio_data
@@ -122,8 +124,7 @@ class TransformFeatureExtractor:
         try:
             # === CARACTERÍSTICAS WAVELET ===
             try:
-                wavelet_features = extract_wavelet_features(
-                    y, self.sr, self.wavelet)
+                wavelet_features = extract_wavelet_features(y, self.sr, self.wavelet)
                 features.update(wavelet_features)
             except Exception as e:
                 warnings.warn(f"Erro na extração wavelet: {str(e)}")
@@ -131,15 +132,15 @@ class TransformFeatureExtractor:
             # === CARACTERÍSTICAS CONSTANT-Q ===
             try:
                 cqt_features = extract_cqt_features(
-                    y, self.sr, self.hop_length, self.bins_per_octave)
+                    y, self.sr, self.hop_length, self.bins_per_octave
+                )
                 features.update(cqt_features)
             except Exception as e:
                 warnings.warn(f"Erro na extração CQT: {str(e)}")
 
             # === CARACTERÍSTICAS CHROMAGRAM ===
             try:
-                chroma_features = extract_chroma_features(
-                    y, self.sr, self.hop_length)
+                chroma_features = extract_chroma_features(y, self.sr, self.hop_length)
                 features.update(chroma_features)
             except Exception as e:
                 warnings.warn(f"Erro na extração chroma: {str(e)}")
@@ -154,7 +155,8 @@ class TransformFeatureExtractor:
             # === CARACTERÍSTICAS MDCT ===
             try:
                 mdct_features = extract_mdct_features(
-                    y, self.frame_length, self.hop_length)
+                    y, self.frame_length, self.hop_length
+                )
                 features.update(mdct_features)
             except Exception as e:
                 warnings.warn(f"Erro na extração MDCT: {str(e)}")
@@ -162,14 +164,16 @@ class TransformFeatureExtractor:
             # === CARACTERÍSTICAS AUDITIVAS ===
             try:
                 auditory_features = extract_auditory_features(
-                    y, self.sr, self.frame_length, self.hop_length)
+                    y, self.sr, self.frame_length, self.hop_length
+                )
                 features.update(auditory_features)
             except Exception as e:
                 warnings.warn(f"Erro na extração auditiva: {str(e)}")
 
         except Exception as e:
             warnings.warn(
-                f"Erro na extração de características de transformadas: {str(e)}")
+                f"Erro na extração de características de transformadas: {str(e)}"
+            )
             return self._get_default_features()
 
         return features
@@ -177,24 +181,24 @@ class TransformFeatureExtractor:
     def _get_default_features(self) -> Dict[str, Any]:
         """Retorna características padrão em caso de erro."""
         return {
-            'dwt_energy': [0],
-            'dwt_entropy': [0],
-            'cwt_energy': np.array([0]),
-            'cwt_centroid': np.array([0]),
-            'cqt_centroid': np.array([0]),
-            'cqt_rolloff': np.array([0]),
-            'cqt_octave_energy': np.array([0]),
-            'chroma_mean': np.zeros(12),
-            'chroma_std': np.zeros(12),
-            'chroma_centroid': np.array([0]),
-            'chroma_flux': np.array([0]),
-            'tonnetz_mean': np.zeros(6),
-            'tonnetz_std': np.zeros(6),
-            'tonnetz_centroid': np.array([0]),
-            'mdct_centroid': np.array([0]),
-            'mdct_rolloff': np.array([0]),
-            'mdct_energy': np.array([0]),
-            'auditory_centroid': np.array([0]),
-            'auditory_rolloff': np.array([0]),
-            'auditory_flux': np.array([0])
+            "dwt_energy": [0],
+            "dwt_entropy": [0],
+            "cwt_energy": np.array([0]),
+            "cwt_centroid": np.array([0]),
+            "cqt_centroid": np.array([0]),
+            "cqt_rolloff": np.array([0]),
+            "cqt_octave_energy": np.array([0]),
+            "chroma_mean": np.zeros(12),
+            "chroma_std": np.zeros(12),
+            "chroma_centroid": np.array([0]),
+            "chroma_flux": np.array([0]),
+            "tonnetz_mean": np.zeros(6),
+            "tonnetz_std": np.zeros(6),
+            "tonnetz_centroid": np.array([0]),
+            "mdct_centroid": np.array([0]),
+            "mdct_rolloff": np.array([0]),
+            "mdct_energy": np.array([0]),
+            "auditory_centroid": np.array([0]),
+            "auditory_rolloff": np.array([0]),
+            "auditory_flux": np.array([0]),
         }

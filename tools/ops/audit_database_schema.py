@@ -175,7 +175,11 @@ def main() -> int:
         print(f"\n[backup] {backup}")
 
     conn = sqlite3.connect(db_path)
-    doomed = orphans if args.force_drop_non_empty else [t for t in orphans if not populated[t]]
+    doomed = (
+        orphans
+        if args.force_drop_non_empty
+        else [t for t in orphans if not populated[t]]
+    )
     for table in doomed:
         conn.execute(f'drop table if exists "{table}"')
         print(f"  [drop] {table}")

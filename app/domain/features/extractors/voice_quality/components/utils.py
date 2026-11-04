@@ -1,6 +1,7 @@
 """
 Funções utilitárias para extração de características de qualidade vocal.
 """
+
 from typing import Dict
 
 import numpy as np
@@ -10,14 +11,26 @@ def get_default_voice_quality_features() -> Dict[str, float]:
     """Retorna dicionário com valores padrão (zeros) para todas as características."""
     return {
         # Perturbation
-        'rap': 0.0, 'ppq': 0.0, 'apq': 0.0, 'vf0': 0.0, 'shimmer_db': 0.0,
+        "rap": 0.0,
+        "ppq": 0.0,
+        "apq": 0.0,
+        "vf0": 0.0,
+        "shimmer_db": 0.0,
         # Noise
-        'nhr': 0.0, 'vti': 0.0, 'spi': 0.0, 'dfa_alpha': 0.0,
+        "nhr": 0.0,
+        "vti": 0.0,
+        "spi": 0.0,
+        "dfa_alpha": 0.0,
         # Quality
-        'spectral_tilt': 0.0, 'breathiness_index': 0.0,
-        'roughness_index': 0.0, 'voice_breaks': 0.0,
+        "spectral_tilt": 0.0,
+        "breathiness_index": 0.0,
+        "roughness_index": 0.0,
+        "voice_breaks": 0.0,
         # Mapped
-        'shdb': 0.0, 'breathiness': 0.0, 'roughness': 0.0, 'hoarseness': 0.0
+        "shdb": 0.0,
+        "breathiness": 0.0,
+        "roughness": 0.0,
+        "hoarseness": 0.0,
     }
 
 
@@ -76,5 +89,3 @@ def voiced_runs(f0: np.ndarray, sr: int) -> list[np.ndarray]:
     if inicio is not None:
         trechos.append(1.0 / f0[inicio:])
     return trechos
-
-

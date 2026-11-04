@@ -5,8 +5,7 @@ import numpy as np
 from .sample import compute_sample_entropy, compute_sample_entropy_optimized
 
 
-def compute_multiscale_entropy(
-        y: np.ndarray, max_scale: int = 10) -> np.ndarray:
+def compute_multiscale_entropy(y: np.ndarray, max_scale: int = 10) -> np.ndarray:
     """Calcula a entropia multiescala."""
     entropies = []
 
@@ -18,7 +17,7 @@ def compute_multiscale_entropy(
             coarse_length = len(y) // scale
             coarse_y = np.zeros(coarse_length)
             for i in range(coarse_length):
-                coarse_y[i] = np.mean(y[i * scale:(i + 1) * scale])
+                coarse_y[i] = np.mean(y[i * scale : (i + 1) * scale])
 
         # Calcular entropia de amostra
         if len(coarse_y) > 10:
@@ -31,8 +30,8 @@ def compute_multiscale_entropy(
 
 
 def compute_multiscale_entropy_optimized(
-        y: np.ndarray, max_scale: int = 8,
-        cache: Optional[Dict] = None) -> float:
+    y: np.ndarray, max_scale: int = 8, cache: Optional[Dict] = None
+) -> float:
     """Versão otimizada da entropia multiescala com menos escalas."""
     N = len(y)
 
@@ -64,12 +63,14 @@ def compute_multiscale_entropy_optimized(
 
             # Usar reshape quando possível para melhor performance
             if N % scale == 0:
-                coarse_y = y[:coarse_length *
-                             scale].reshape(-1, scale).mean(axis=1)
+                coarse_y = y[: coarse_length * scale].reshape(-1, scale).mean(axis=1)
             else:
                 coarse_y = np.array(
-                    [np.mean(y[i * scale:(i + 1) * scale])
-                     for i in range(coarse_length)])
+                    [
+                        np.mean(y[i * scale : (i + 1) * scale])
+                        for i in range(coarse_length)
+                    ]
+                )
 
         # Calcular entropia de amostra otimizada
         if len(coarse_y) > 10:

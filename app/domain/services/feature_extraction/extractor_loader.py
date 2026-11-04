@@ -50,17 +50,16 @@ class ExtractorLoader:
 
         return extractors
 
-    def get_extractor_info(
-            self, extractor_name: str) -> Optional[Dict[str, Any]]:
+    def get_extractor_info(self, extractor_name: str) -> Optional[Dict[str, Any]]:
         """Retorna informações detalhadas sobre um extrator."""
         if self._modular_enabled and extractor_name in self._extractor_specs:
             spec = self._extractor_specs[extractor_name]
             return {
-                'name': spec.name,
-                'description': spec.description,
-                'feature_type': spec.feature_type,
-                'dependencies': spec.dependencies,
-                'is_cached': extractor_name in self._extractor_cache
+                "name": spec.name,
+                "description": spec.description,
+                "feature_type": spec.feature_type,
+                "dependencies": spec.dependencies,
+                "is_cached": extractor_name in self._extractor_cache,
             }
         return None
 
@@ -77,8 +76,9 @@ class ExtractorLoader:
         """Retornar tipos de características disponíveis"""
         return list(self._extractors.keys())
 
-    def register_extractor(self, feature_type: FeatureType,
-                           extractor: IFeatureExtractor) -> None:
+    def register_extractor(
+        self, feature_type: FeatureType, extractor: IFeatureExtractor
+    ) -> None:
         """Registrar um novo extrator de características"""
         self._extractors[feature_type] = extractor
 
@@ -89,14 +89,12 @@ class ExtractorLoader:
 
         try:
             if self.plugin_manager:
-                extractor_plugins = self.plugin_manager.get_plugins_by_type(
-                    'extractor')
+                extractor_plugins = self.plugin_manager.get_plugins_by_type("extractor")
                 for plugin in extractor_plugins:
-                    logger.info(
-                        f"Plugin de extrator carregado: {plugin.metadata.name}")
+                    logger.info(f"Plugin de extrator carregado: {plugin.metadata.name}")
 
                 for plugin in extractor_plugins:
-                    if hasattr(plugin, 'get_extractors'):
+                    if hasattr(plugin, "get_extractors"):
                         extractors = plugin.get_extractors()
                         for name, extractor_class in extractors.items():
                             if not self.extractor_registry.is_registered(name):
@@ -104,53 +102,75 @@ class ExtractorLoader:
                                     name=name,
                                     description=f"Extrator de plugin: {plugin.metadata.name}",
                                     extractor_class=extractor_class,
-                                    feature_type=plugin.metadata.feature_types[
-                                        0] if plugin.metadata.feature_types else "unknown",
-                                    dependencies=plugin.metadata.dependencies
+                                    feature_type=(
+                                        plugin.metadata.feature_types[0]
+                                        if plugin.metadata.feature_types
+                                        else "unknown"
+                                    ),
+                                    dependencies=plugin.metadata.dependencies,
                                 )
-                                self.extractor_registry.register_extractor(
-                                    name, spec)
-                                logger.info(
-                                    f"Extrator de plugin registrado: {name}")
+                                self.extractor_registry.register_extractor(name, spec)
+                                logger.info(f"Extrator de plugin registrado: {name}")
         except Exception as e:
             logger.error(f"Erro ao carregar plugins: {e}")
 
     def _register_extractors(self) -> None:
         """Registrar extratores usando exclusivamente chaves FeatureType enum."""
         _pairs = [
-            (FeatureType.SPECTRAL,
-             "app.domain.features.extractors.spectral.spectral_features",
-             "SpectralFeatureExtractor"),
-            (FeatureType.MEL_SPECTROGRAM,
-             "app.domain.features.extractors.mel.mel_spectrogram",
-             "MelSpectrogramExtractor"),
-            (FeatureType.TEMPORAL,
-             "app.domain.features.adapters.temporal_adapter",
-             "TemporalExtractorWrapper"),
-            (FeatureType.PROSODIC,
-             "app.domain.features.adapters.prosodic_adapter",
-             "ProsodicExtractorWrapper"),
-            (FeatureType.CEPSTRAL,
-             "app.domain.features.adapters.cepstral_adapter",
-             "CepstralExtractorWrapper"),
-            (FeatureType.FORMANT,
-             "app.domain.features.adapters.formant_adapter",
-             "FormantExtractorWrapper"),
-            (FeatureType.VOICE_QUALITY,
-             "app.domain.features.adapters.voice_quality_adapter",
-             "VoiceQualityExtractorWrapper"),
-            (FeatureType.PERCEPTUAL,
-             "app.domain.features.adapters.perceptual_adapter",
-             "PerceptualExtractorWrapper"),
-            (FeatureType.COMPLEXITY,
-             "app.domain.features.adapters.complexity_adapter",
-             "ComplexityExtractorWrapper"),
-            (FeatureType.ADVANCED,
-             "app.domain.features.adapters.predictive_adapter",
-             "PredictiveExtractorWrapper"),
+            (
+                FeatureType.SPECTRAL,
+                "app.domain.features.extractors.spectral.spectral_features",
+                "SpectralFeatureExtractor",
+            ),
+            (
+                FeatureType.MEL_SPECTROGRAM,
+                "app.domain.features.extractors.mel.mel_spectrogram",
+                "MelSpectrogramExtractor",
+            ),
+            (
+                FeatureType.TEMPORAL,
+                "app.domain.features.adapters.temporal_adapter",
+                "TemporalExtractorWrapper",
+            ),
+            (
+                FeatureType.PROSODIC,
+                "app.domain.features.adapters.prosodic_adapter",
+                "ProsodicExtractorWrapper",
+            ),
+            (
+                FeatureType.CEPSTRAL,
+                "app.domain.features.adapters.cepstral_adapter",
+                "CepstralExtractorWrapper",
+            ),
+            (
+                FeatureType.FORMANT,
+                "app.domain.features.adapters.formant_adapter",
+                "FormantExtractorWrapper",
+            ),
+            (
+                FeatureType.VOICE_QUALITY,
+                "app.domain.features.adapters.voice_quality_adapter",
+                "VoiceQualityExtractorWrapper",
+            ),
+            (
+                FeatureType.PERCEPTUAL,
+                "app.domain.features.adapters.perceptual_adapter",
+                "PerceptualExtractorWrapper",
+            ),
+            (
+                FeatureType.COMPLEXITY,
+                "app.domain.features.adapters.complexity_adapter",
+                "ComplexityExtractorWrapper",
+            ),
+            (
+                FeatureType.ADVANCED,
+                "app.domain.features.adapters.predictive_adapter",
+                "PredictiveExtractorWrapper",
+            ),
         ]
 
         import importlib
+
         for feature_type, module_path, class_name in _pairs:
             try:
                 mod = importlib.import_module(module_path)
@@ -178,7 +198,7 @@ class ExtractorLoader:
                     complexity=ExtractorComplexity.MEDIUM,
                     default_params={},
                     input_requirements={"sample_rate": 16000},
-                    dependencies=[]
+                    dependencies=[],
                 )
                 if not self.extractor_registry.is_registered(name):
                     self.extractor_registry.register(spec)

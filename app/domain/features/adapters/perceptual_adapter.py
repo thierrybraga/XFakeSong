@@ -18,8 +18,7 @@ class PerceptualExtractorWrapper(IFeatureExtractor):
     def __init__(self):
         self.extractor = PerceptualFeatureExtractor(sr=22050)
 
-    def extract(
-            self, audio_data: AudioData) -> ProcessingResult[AudioFeatures]:
+    def extract(self, audio_data: AudioData) -> ProcessingResult[AudioFeatures]:
         try:
             features_dict = self.extractor.extract_features(audio_data.samples)
 
@@ -37,17 +36,16 @@ class PerceptualExtractorWrapper(IFeatureExtractor):
                 features=normalized_features,
                 feature_type=FeatureType.PERCEPTUAL,
                 extraction_params=self.get_extraction_params(),
-                audio_metadata={"extractor": "perceptual"}
+                audio_metadata={"extractor": "perceptual"},
             )
 
             return ProcessingResult(
-                status=ProcessingStatus.SUCCESS,
-                data=audio_features
+                status=ProcessingStatus.SUCCESS, data=audio_features
             )
         except Exception as e:
             return ProcessingResult(
                 status=ProcessingStatus.ERROR,
-                errors=[f"Erro na extração perceptual: {str(e)}"]
+                errors=[f"Erro na extração perceptual: {str(e)}"],
             )
 
     def extract_features(
@@ -65,5 +63,5 @@ class PerceptualExtractorWrapper(IFeatureExtractor):
         return {
             "sr": self.extractor.sr,
             "frame_length": self.extractor.frame_length,
-            "hop_length": self.extractor.hop_length
+            "hop_length": self.extractor.hop_length,
         }

@@ -7,11 +7,13 @@ Renomeado em 2026-08-17 (era `test_p1_specaug_ssl.py`): "P1" nomeava a FASE de
 um backlog de melhorias, não o que o arquivo cobre. Quem procura o teste do
 SpecAugment não adivinha "P1".
 """
+
 from __future__ import annotations
 
 import pytest
 
 # ───────────────────────── SpecAugment ─────────────────────────
+
 
 @pytest.mark.parametrize("shape", [(8, 375, 80), (8, 375, 80, 1)])
 def test_spec_augment_shape_and_finite(shape):
@@ -41,6 +43,7 @@ def test_spec_augment_identity_and_active():
 
 
 # ───────────────── SSL: helper de trainability ─────────────────
+
 
 class _FakeLayer:
     def __init__(self):
@@ -84,7 +87,7 @@ def test_ssl_partial_unfreeze_last_n():
     assert "3/12" in mode
     flags = [lyr.trainable for lyr in bb.wavlm.encoder.layers]
     assert flags[:9] == [False] * 9  # primeiras 9 congeladas
-    assert flags[9:] == [True] * 3   # últimas 3 treináveis
+    assert flags[9:] == [True] * 3  # últimas 3 treináveis
 
 
 def test_ssl_freeze_all_and_full_trainable():
@@ -120,6 +123,7 @@ def test_ssl_unrecognized_structure_is_safe():
 # ───────────── SSL: build + config (caminho CNN fallback) ─────────────
 # Sem `transformers` instalado, WavLM/HuBERT usam o extrator CNN; o objetivo
 # aqui é garantir que os novos parâmetros fluem e o modelo constrói/treina.
+
 
 def test_wavlm_build_with_finetune_param():
     from app.domain.models.architectures import wavlm

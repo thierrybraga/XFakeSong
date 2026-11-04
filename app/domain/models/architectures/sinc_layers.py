@@ -33,17 +33,18 @@ def build_sinc_bandpass_filters(low, high, n_time, window, normalize="l1"):
     ramo descartado e propagaria NaN pelo gradiente — armadilha clássica que já
     zerou o treino do RawNet2 no primeiro passo.
     """
+
     def _sinc(x):
         safe_x = tf.where(tf.abs(x) < 1e-7, tf.ones_like(x) * 1e-7, x)
         return tf.sin(np.pi * safe_x) / (np.pi * safe_x)
 
-    low = tf.expand_dims(low, 1)    # (n_filters, 1)
+    low = tf.expand_dims(low, 1)  # (n_filters, 1)
     high = tf.expand_dims(high, 1)
     n_row = tf.expand_dims(n_time, 0)  # (1, kernel_size)
 
-    band_pass = (
-        2 * high * _sinc(2 * high * n_row) - 2 * low * _sinc(2 * low * n_row)
-    )                                # (n_filters, kernel_size)
+    band_pass = 2 * high * _sinc(2 * high * n_row) - 2 * low * _sinc(
+        2 * low * n_row
+    )  # (n_filters, kernel_size)
     band_pass = band_pass * tf.expand_dims(window, 0)
 
     if normalize == "max":
@@ -101,16 +102,16 @@ class SincNetLayer(layers.Layer):
 
         # Learnable parameters: low and high frequencies
         self.low_hz_ = self.add_weight(
-            name='low_hz',
+            name="low_hz",
             shape=(self.filters,),
             initializer=tf.constant_initializer(hz[:-1]),
-            trainable=True
+            trainable=True,
         )
         self.band_hz_ = self.add_weight(
-            name='band_hz',
+            name="band_hz",
             shape=(self.filters,),
             initializer=tf.constant_initializer(np.diff(hz)),
-            trainable=True
+            trainable=True,
         )
 
         # Time axis for sinc function
@@ -119,7 +120,9 @@ class SincNetLayer(layers.Layer):
         self.n_ = tf.constant(n, dtype=tf.float32)
 
         # Window function (Hamming)
-        window = 0.54 - 0.46 * tf.cos(2 * np.pi * tf.range(self.kernel_size, dtype=tf.float32) / self.kernel_size)
+        window = 0.54 - 0.46 * tf.cos(
+            2 * np.pi * tf.range(self.kernel_size, dtype=tf.float32) / self.kernel_size
+        )
         self.window_ = tf.constant(window, dtype=tf.float32)
 
         super(SincNetLayer, self).build(input_shape)
@@ -128,7 +131,7 @@ class SincNetLayer(layers.Layer):
         return 2595 * np.log10(1 + hz / 700)
 
     def _to_hz(self, mel):
-        return 700 * (10**(mel / 2595) - 1)
+        return 700 * (10 ** (mel / 2595) - 1)
 
     def call(self, inputs):
         # Sinc filters are numerically sensitive and their trainable
@@ -171,21 +174,23 @@ class SincNetLayer(layers.Layer):
         # automatically, while all residual blocks and the GRU remain on GPU.
         if self.memory_efficient_gpu:
             with tf.device("/CPU:0"):
-                output = tf.nn.conv1d(inputs, filters, stride=1, padding='SAME')
+                output = tf.nn.conv1d(inputs, filters, stride=1, padding="SAME")
         else:
-            output = tf.nn.conv1d(inputs, filters, stride=1, padding='SAME')
+            output = tf.nn.conv1d(inputs, filters, stride=1, padding="SAME")
         return tf.cast(output, target_dtype)
 
     def get_config(self):
         config = super(SincNetLayer, self).get_config()
-        config.update({
-            'filters': self.filters,
-            'kernel_size': self.kernel_size,
-            'sample_rate': self.sample_rate,
-            'min_low_hz': self.min_low_hz,
-            'min_band_hz': self.min_band_hz,
-            'memory_efficient_gpu': self.memory_efficient_gpu,
-        })
+        config.update(
+            {
+                "filters": self.filters,
+                "kernel_size": self.kernel_size,
+                "sample_rate": self.sample_rate,
+                "min_low_hz": self.min_low_hz,
+                "min_band_hz": self.min_band_hz,
+                "memory_efficient_gpu": self.memory_efficient_gpu,
+            }
+        )
         return config
 
 
@@ -199,9 +204,16 @@ class SincConvLayer(layers.Layer):
     Reference: Ravanelli & Bengio, "Speaker Recognition from Raw Waveform with SincNet", 2018
     """
 
-    def __init__(self, n_filters=70, kernel_size=129, sample_rate=16000,
-                 min_low_hz=50.0, min_band_hz=50.0, trainable_filters=False,
-                 **kwargs):
+    def __init__(
+        self,
+        n_filters=70,
+        kernel_size=129,
+        sample_rate=16000,
+        min_low_hz=50.0,
+        min_band_hz=50.0,
+        trainable_filters=False,
+        **kwargs,
+    ):
         super(SincConvLayer, self).__init__(**kwargs)
         self.n_filters = n_filters
         self.kernel_size = kernel_size
@@ -245,18 +257,20 @@ class SincConvLayer(layers.Layer):
             name="low_hz",
             shape=(self.n_filters,),
             initializer=tf.keras.initializers.Constant(init_low.numpy()),
-            trainable=self.trainable_filters
+            trainable=self.trainable_filters,
         )
         self.band_hz_ = self.add_weight(
             name="band_hz",
             shape=(self.n_filters,),
             initializer=tf.keras.initializers.Constant(init_band.numpy()),
-            trainable=self.trainable_filters
+            trainable=self.trainable_filters,
         )
 
         # Hamming window (not trainable)
         n = tf.cast(tf.range(0, self.kernel_size), tf.float32)
-        self.window_ = 0.54 - 0.46 * tf.cos(2.0 * 3.14159265 * n / (self.kernel_size - 1))
+        self.window_ = 0.54 - 0.46 * tf.cos(
+            2.0 * 3.14159265 * n / (self.kernel_size - 1)
+        )
 
         super(SincConvLayer, self).build(input_shape)
 
@@ -299,27 +313,29 @@ class SincConvLayer(layers.Layer):
             high=high,
             n_time=n,
             window=tf.cast(self.window_, tf.float32),
-            normalize="l1",   # energia unitária (convenção desta camada)
+            normalize="l1",  # energia unitária (convenção desta camada)
         )  # (kernel_size, n_filters)
 
         # Reshape for conv1d: (kernel_size, 1, n_filters)
         filters = tf.expand_dims(band_pass, 1)
 
         # Apply convolution
-        output = tf.nn.conv1d(inputs, filters, stride=1, padding='SAME')
+        output = tf.nn.conv1d(inputs, filters, stride=1, padding="SAME")
 
         return tf.cast(output, target_dtype)
 
     def get_config(self):
         config = super(SincConvLayer, self).get_config()
-        config.update({
-            'n_filters': self.n_filters,
-            'kernel_size': self.kernel_size,
-            'sample_rate': self.sample_rate,
-            'min_low_hz': self.min_low_hz,
-            'min_band_hz': self.min_band_hz,
-            # Sem isto, um artefato salvo com banco treinavel recarregaria com
-            # banco fixo (ou vice-versa) em silencio.
-            'trainable_filters': self.trainable_filters,
-        })
+        config.update(
+            {
+                "n_filters": self.n_filters,
+                "kernel_size": self.kernel_size,
+                "sample_rate": self.sample_rate,
+                "min_low_hz": self.min_low_hz,
+                "min_band_hz": self.min_band_hz,
+                # Sem isto, um artefato salvo com banco treinavel recarregaria com
+                # banco fixo (ou vice-versa) em silencio.
+                "trainable_filters": self.trainable_filters,
+            }
+        )
         return config

@@ -37,6 +37,7 @@ BASE_DIR = Path(__file__).resolve().parents[3]
 DATASETS_DIR = BASE_DIR / "data" / "datasets"
 SPEAKER_MANIFEST_PATH = DATASETS_DIR / "metadata" / "speaker_manifest.json"
 
+
 class MissingSampleMetadataError(ValueError):
     """Raised when a strict scientific protocol lacks required provenance."""
 
@@ -185,8 +186,12 @@ def metadata_id_for_path(
 ) -> str:
     """Return a namespaced identity and fail when strict metadata is absent."""
     allowed = {
-        "speaker_id", "utterance_id", "text_id", "generator_id",
-        "vocoder_id", "source",
+        "speaker_id",
+        "utterance_id",
+        "text_id",
+        "generator_id",
+        "vocoder_id",
+        "source",
     }
     if field not in allowed:
         raise ValueError(f"Unsupported sample metadata field: {field}")

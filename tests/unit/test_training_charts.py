@@ -192,10 +192,7 @@ def test_training_eval_figures_single_class_do_not_crash():
     )
     assert figs["roc"].axes[0].get_title() == "Curva ROC"
     assert figs["det"].axes[0].get_title() == "Curva DET / EER"
-    assert (
-        figs["threshold"].axes[0].get_title()
-        == "Otimização do limiar de decisão"
-    )
+    assert figs["threshold"].axes[0].get_title() == "Otimização do limiar de decisão"
     for fig in figs.values():
         assert fig.axes
         _close(fig)

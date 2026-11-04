@@ -43,11 +43,13 @@ def test_tensorflow_predictor_averages_declared_multicrop():
         input_contract={"crop_strategy": "train_random_eval_multicrop"},
         eer_threshold=0.5,
     )
-    crops = np.stack([
-        np.full((4, 1), 0.2, dtype="float32"),
-        np.full((4, 1), 0.6, dtype="float32"),
-        np.full((4, 1), 0.8, dtype="float32"),
-    ])
+    crops = np.stack(
+        [
+            np.full((4, 1), 0.2, dtype="float32"),
+            np.full((4, 1), 0.6, dtype="float32"),
+            np.full((4, 1), 0.8, dtype="float32"),
+        ]
+    )
 
     result = Predictor().predict(info, crops)
 
@@ -94,7 +96,9 @@ def test_load_nao_herda_a_precisao_mista_global(tmp_path):
             return self.densa(entrada)
 
     entrada = keras.Input((4,))
-    keras.Model(entrada, ComSubcamada()(entrada)).save(tmp_path / "bench_politica.keras")
+    keras.Model(entrada, ComSubcamada()(entrada)).save(
+        tmp_path / "bench_politica.keras"
+    )
 
     loader = ModelLoader(tmp_path, create_default_models=False)
     keras.mixed_precision.set_global_policy("mixed_float16")

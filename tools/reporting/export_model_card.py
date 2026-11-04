@@ -144,7 +144,15 @@ def main() -> int:
 
     metric_rows = _metric_rows(results)
     if metric_rows:
-        lines.extend(["", "## Metrics", "", "| Model | Accuracy | AUC ROC | EER |", "|---|---:|---:|---:|"])
+        lines.extend(
+            [
+                "",
+                "## Metrics",
+                "",
+                "| Model | Accuracy | AUC ROC | EER |",
+                "|---|---:|---:|---:|",
+            ]
+        )
         for name, item in metric_rows:
             clean = item.get("clean") if isinstance(item, dict) else {}
             clean = clean or item
@@ -153,17 +161,19 @@ def main() -> int:
                 f"{clean.get('auc_roc', clean.get('auc', ''))} | {clean.get('eer', '')} |"
             )
 
-    lines.extend([
-        "",
-        "## Loading",
-        "",
-        "Use `tools/ops/sync_hf_models.py` to download these artifacts into `data/models`, then start the interface with `python main.py --gradio`.",
-        "",
-        "## Limitations",
-        "",
-        "Performance is tied to the benchmark dataset, preprocessing contract and library versions recorded with each training run. Validate on external audio before operational use.",
-        "",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Loading",
+            "",
+            "Use `tools/ops/sync_hf_models.py` to download these artifacts into `data/models`, then start the interface with `python main.py --gradio`.",
+            "",
+            "## Limitations",
+            "",
+            "Performance is tied to the benchmark dataset, preprocessing contract and library versions recorded with each training run. Validate on external audio before operational use.",
+            "",
+        ]
+    )
 
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(lines), encoding="utf-8")

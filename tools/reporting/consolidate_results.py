@@ -46,7 +46,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.utils.file_storage import break_hardlinks_in_tree, link_or_copy_file  # noqa: E402
+from app.utils.file_storage import (  # noqa: E402
+    break_hardlinks_in_tree,
+    link_or_copy_file,
+)
 from benchmarks.config import OFFICIAL_TCC_RESULT_ORDER  # noqa: E402
 
 # canonical_compact -> (key p/ summary, slug de figura, nome de exibição)
@@ -89,8 +92,13 @@ def _canon(name: str):
 #: Direção de otimização por métrica de validação. `min` para erro e perda,
 #: `max` para acerto — errar isto reporta a PIOR época como a melhor.
 _DIRECAO_MONITOR = {
-    "val_eer": min, "val_loss": min, "loss": min,
-    "val_accuracy": max, "val_acc": max, "val_auc": max, "accuracy": max,
+    "val_eer": min,
+    "val_loss": min,
+    "loss": min,
+    "val_accuracy": max,
+    "val_acc": max,
+    "val_auc": max,
+    "accuracy": max,
 }
 
 
@@ -206,8 +214,7 @@ def collect_rows(paths: List[str], prefer_last: bool = False):
                 continue
             canon = _canon(arch_name)
             if not canon:
-                print(f"  (arch não mapeada: {arch_name}) em {jf}",
-                      file=sys.stderr)
+                print(f"  (arch não mapeada: {arch_name}) em {jf}", file=sys.stderr)
                 continue
             key, slug, display = canon
             clean = a.get("clean", {}) or {}
@@ -265,12 +272,14 @@ def collect_rows(paths: List[str], prefer_last: bool = False):
                 # os 74,2% do RawNet2 em M026 dentro de 95,88% médios.
                 "grouped_clean": a.get("grouped_clean") or {},
                 "worst_speaker_accuracy": (
-                    ((a.get("grouped_clean") or {}).get("speaker") or {})
-                    .get("worst_group_accuracy")
+                    ((a.get("grouped_clean") or {}).get("speaker") or {}).get(
+                        "worst_group_accuracy"
+                    )
                 ),
                 "n_speakers": (
-                    ((a.get("grouped_clean") or {}).get("speaker") or {})
-                    .get("n_groups")
+                    ((a.get("grouped_clean") or {}).get("speaker") or {}).get(
+                        "n_groups"
+                    )
                 ),
                 "best_epoch": _best_epoch(
                     a.get("history"), run_config.get("checkpoint_monitor")
@@ -286,7 +295,9 @@ def collect_rows(paths: List[str], prefer_last: bool = False):
                 "best_val": _best_val(a.get("history")),
                 "final_val": _final_val(a.get("history")),
                 "epochs": a.get("epochs"),
-                "epochs_budget": training_config.get("epochs_budget", training_config.get("epochs")),
+                "epochs_budget": training_config.get(
+                    "epochs_budget", training_config.get("epochs")
+                ),
                 "training_config": training_config,
                 "noise_protocol": (
                     a.get("noise_protocol")
@@ -303,7 +314,9 @@ def collect_rows(paths: List[str], prefer_last: bool = False):
                     "n_test": dataset_info.get("n_test"),
                     "split_source": dataset_info.get("split_source"),
                     "split_overlap_audit": dataset_info.get("split_overlap_audit"),
-                    "provenance_overlap_audit": dataset_info.get("provenance_overlap_audit"),
+                    "provenance_overlap_audit": dataset_info.get(
+                        "provenance_overlap_audit"
+                    ),
                     # Identidade do conjunto de teste. A comparação pareada só
                     # é válida se for a MESMA em todos os modelos — as variantes
                     # de 15k e 40k têm fingerprints distintos e não podem cair
@@ -359,19 +372,24 @@ def collect_rows(paths: List[str], prefer_last: bool = False):
 
 _FIGURE_DPI = 300
 
+
 def _setup_mpl():
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    plt.rcParams.update({
-        "axes.spines.top": False,
-        "axes.spines.right": False,
-        "axes.titleweight": "bold",
-        "figure.dpi": 150,
-        "savefig.dpi": _FIGURE_DPI,
-        "savefig.bbox": "tight",
-        "font.size": 10,
-    })
+
+    plt.rcParams.update(
+        {
+            "axes.spines.top": False,
+            "axes.spines.right": False,
+            "axes.titleweight": "bold",
+            "figure.dpi": 150,
+            "savefig.dpi": _FIGURE_DPI,
+            "savefig.bbox": "tight",
+            "font.size": 10,
+        }
+    )
     return plt
 
 
@@ -381,9 +399,11 @@ def _labels(rows):
     # figuras; deixar a ressalva apenas no corpo do artigo transforma um
     # resultado exploratório em confirmatório quando a figura circula sozinha.
     return [
-        f"{r['model']} (expl.)"
-        if r.get("key") in {"RandomForest", "SVM"}
-        else r["model"]
+        (
+            f"{r['model']} (expl.)"
+            if r.get("key") in {"RandomForest", "SVM"}
+            else r["model"]
+        )
         for r in rows
     ]
 
@@ -423,8 +443,7 @@ def _add_family_legend(ax) -> None:
     from matplotlib.patches import Patch
 
     handles = [
-        Patch(facecolor=color, label=family)
-        for family, color in _FAMILY_COLORS.items()
+        Patch(facecolor=color, label=family) for family, color in _FAMILY_COLORS.items()
     ]
     ax.legend(handles=handles, title="Família", fontsize=8, title_fontsize=9)
 
@@ -459,8 +478,16 @@ def _annotate_hbars(ax, values, suffix="", fmt="{:.2f}", min_pad=0.4) -> None:
         y = patch.get_y() + patch.get_height() / 2
         pad = max(xmax * 0.01, min_pad)
         if not math.isfinite(value):
-            ax.text(pad, y, "n/d", va="center", ha="left",
-                    fontsize=8, style="italic", color="0.45")
+            ax.text(
+                pad,
+                y,
+                "n/d",
+                va="center",
+                ha="left",
+                fontsize=8,
+                style="italic",
+                color="0.45",
+            )
             continue
         ax.text(
             patch.get_width() + pad,
@@ -491,10 +518,7 @@ def _metric(row: dict, field: str, scale: float = 1.0) -> float:
 
 def _model_colors(rows: list[dict], plt) -> dict[str, Any]:
     cmap = plt.get_cmap("tab20")
-    return {
-        row["key"]: cmap(i % cmap.N)
-        for i, row in enumerate(rows)
-    }
+    return {row["key"]: cmap(i % cmap.N) for i, row in enumerate(rows)}
 
 
 def fig_accuracy_auc(rows, out: Path):
@@ -508,6 +532,7 @@ def fig_accuracy_auc(rows, out: Path):
     auc = [_metric(r, "auc", 100.0) for r in rows]
     y = np.arange(len(labels))
     h = 0.36
+
     # As figuras são inseridas aproximadamente na largura do texto (6,3 in).
     # Produzi-las já nessa escala evita que rótulos e legendas percam quase
     # metade do corpo tipográfico quando o LaTeX reduz imagens largas.
@@ -568,15 +593,25 @@ def fig_accuracy_auc(rows, out: Path):
     ax.grid(axis="x", alpha=0.25)
     for yi, value in zip(y, acc):
         ax.annotate(
-            f"{value:.2f}", (value, yi - h / 2), xytext=(-5, -1),
-            textcoords="offset points", ha="right", va="center",
-            fontsize=6.7, color="#294f80",
+            f"{value:.2f}",
+            (value, yi - h / 2),
+            xytext=(-5, -1),
+            textcoords="offset points",
+            ha="right",
+            va="center",
+            fontsize=6.7,
+            color="#294f80",
         )
     for yi, value in zip(y, auc):
         ax.annotate(
-            f"{value:.2f}", (value, yi + h / 2), xytext=(-5, 1),
-            textcoords="offset points", ha="right", va="center",
-            fontsize=6.7, color="#9a4f25",
+            f"{value:.2f}",
+            (value, yi + h / 2),
+            xytext=(-5, 1),
+            textcoords="offset points",
+            ha="right",
+            va="center",
+            fontsize=6.7,
+            color="#9a4f25",
         )
     ax.invert_yaxis()
     fig.legend(
@@ -672,11 +707,17 @@ def fig_model_size(rows, out: Path):
     values = [_metric(row, "size") for row in rows]
     y = np.arange(len(rows))
     fig, ax = plt.subplots(figsize=(6.6, 4.35))
-    ax.scatter(values, y, s=48, color=_row_colors(rows), edgecolor="white", linewidth=0.7)
+    ax.scatter(
+        values, y, s=48, color=_row_colors(rows), edgecolor="white", linewidth=0.7
+    )
     for yi, value in zip(y, values):
         ax.annotate(
-            f"{value:.2f} MB", (value, yi), xytext=(5, 0),
-            textcoords="offset points", va="center", fontsize=7.5,
+            f"{value:.2f} MB",
+            (value, yi),
+            xytext=(5, 0),
+            textcoords="offset points",
+            va="center",
+            fontsize=7.5,
         )
     ax.set_xscale("log")
     ax.set_yticks(y)
@@ -707,37 +748,49 @@ def fig_accuracy_latency_tradeoff(rows, out: Path):
     plt = _setup_mpl()
 
     runtimes = [
-        runtime for runtime in ("sklearn", "keras", "pytorch", "unknown")
+        runtime
+        for runtime in ("sklearn", "keras", "pytorch", "unknown")
         if any((row.get("latency_runtime") or "unknown") == runtime for row in rows)
     ]
     fig, axes = plt.subplots(
-        len(runtimes), 1, figsize=(6.8, 1.95 * len(runtimes) + 0.65),
-        sharey=True, squeeze=False,
+        len(runtimes),
+        1,
+        figsize=(6.8, 1.95 * len(runtimes) + 0.65),
+        sharey=True,
+        squeeze=False,
     )
     axes = axes[:, 0]
     for axis, runtime in zip(axes, runtimes):
         group = [
-            row for row in rows
-            if (row.get("latency_runtime") or "unknown") == runtime
+            row for row in rows if (row.get("latency_runtime") or "unknown") == runtime
         ]
         for row in group:
             x = _metric(row, "latency")
             y = _metric(row, "accuracy", 100.0)
             size = max(55, min(430, (_metric(row, "size") or 1) * 1.2))
             axis.scatter(
-                [x], [y], s=size,
+                [x],
+                [y],
+                s=size,
                 color=_FAMILY_COLORS.get(_row_family(row), "#777777"),
-                alpha=0.78, edgecolor="white", linewidth=0.8,
+                alpha=0.78,
+                edgecolor="white",
+                linewidth=0.8,
             )
             label = row["model"] + (
                 " (expl.)" if row.get("key") in {"RandomForest", "SVM"} else ""
             )
             axis.annotate(
-                label, (x, y), xytext=(5, 4), textcoords="offset points",
+                label,
+                (x, y),
+                xytext=(5, 4),
+                textcoords="offset points",
                 fontsize=7.4,
             )
         axis.set_title(_RUNTIME_MARKERS[runtime][1], fontsize=9.2, pad=3)
-        axis.set_xlabel("Latência do forward (ms; escala própria do painel)", fontsize=8.5)
+        axis.set_xlabel(
+            "Latência do forward (ms; escala própria do painel)", fontsize=8.5
+        )
         axis.grid(alpha=0.25)
         axis.set_ylim(84, 101)
     fig.supylabel("Acurácia limpa (%)", x=0.015)
@@ -783,12 +836,12 @@ def fig_robustness(rows, out: Path):
         ("Cinco maiores acurácias limpas", ordered[:5]),
         ("Demais arquiteturas", ordered[5:]),
     ]
-    fig, axes = plt.subplots(
-        2, 1, figsize=(6.5, 5.15), sharex=True, sharey=True
-    )
+    fig, axes = plt.subplots(2, 1, figsize=(6.5, 5.15), sharex=True, sharey=True)
     colors = _model_colors(rows, plt)
     markers = ["o", "s", "^", "D", "P", "X", "v", "<", ">", "h", "*"]
-    marker_by_key = {row["key"]: markers[index % len(markers)] for index, row in enumerate(rows)}
+    marker_by_key = {
+        row["key"]: markers[index % len(markers)] for index, row in enumerate(rows)
+    }
     for axis, (title, group) in zip(axes, groups):
         for row in group:
             robustness = row.get("robustness") or {}
@@ -858,8 +911,7 @@ def fig_robustness_threshold_free(rows, out: Path):
     colors = _model_colors(rows, plt)
     markers = ["o", "s", "^", "D", "P", "X", "v", "<", ">", "h", "*"]
     marker_by_key = {
-        row["key"]: markers[index % len(markers)]
-        for index, row in enumerate(rows)
+        row["key"]: markers[index % len(markers)] for index, row in enumerate(rows)
     }
 
     fig, axes = plt.subplots(2, 1, figsize=(6.5, 6.15), sharex=True)
@@ -871,8 +923,7 @@ def fig_robustness_threshold_free(rows, out: Path):
         for row in rows:
             robustness = row.get("robustness") or {}
             values = [row.get(clean_field)] + [
-                (robustness.get(str(snr), {}) or {}).get(noisy_field)
-                for snr in snrs
+                (robustness.get(str(snr), {}) or {}).get(noisy_field) for snr in snrs
             ]
             ys = [
                 float("nan") if value is None else float(value) * 100
@@ -1031,7 +1082,9 @@ def fig_score_distributions_gat(rows, extras, out: Path):
             color="#c0392b",
         )
         extremes = float(np.mean((scores < 0.05) | (scores > 0.95))) * 100.0
-        axis.set_title(f"{label}\n({extremes:.0f}% dos escores nos extremos)", fontsize=9)
+        axis.set_title(
+            f"{label}\n({extremes:.0f}% dos escores nos extremos)", fontsize=9
+        )
         axis.set_xlabel("Pontuação $p_{fake}$")
         axis.set_yscale("log")
         axis.grid(True, linewidth=0.4, alpha=0.5)
@@ -1067,8 +1120,11 @@ def fig_training_stability(rows, extras, out: Path):
         if selected is not None and 1 <= int(selected) <= len(values_pct):
             axis.axvline(int(selected), color="#C44E52", linestyle="--", linewidth=1.0)
             axis.scatter(
-                [int(selected)], [values_pct[int(selected) - 1]],
-                color="#C44E52", s=18, zorder=4,
+                [int(selected)],
+                [values_pct[int(selected) - 1]],
+                color="#C44E52",
+                s=18,
+                zorder=4,
             )
         status = (row.get("training_stability") or {}).get("status") or "unknown"
         status_label = {
@@ -1091,9 +1147,15 @@ def fig_training_stability(rows, extras, out: Path):
     fig.legend(
         handles=[
             Line2D([], [], color="#4C72B0", label="acurácia de validação"),
-            Line2D([], [], color="#C44E52", linestyle="--", marker="o",
-                   markersize=4,
-                   label="checkpoint selecionado (Keras: val_eer; SSL: val_loss)"),
+            Line2D(
+                [],
+                [],
+                color="#C44E52",
+                linestyle="--",
+                marker="o",
+                markersize=4,
+                label="checkpoint selecionado (Keras: val_eer; SSL: val_loss)",
+            ),
         ],
         fontsize=8,
         ncol=2,
@@ -1109,7 +1171,9 @@ def fig_training_stability(rows, extras, out: Path):
         ha="center",
         color="#444444",
     )
-    fig.subplots_adjust(left=0.085, right=0.985, top=0.97, bottom=0.105, hspace=0.43, wspace=0.25)
+    fig.subplots_adjust(
+        left=0.085, right=0.985, top=0.97, bottom=0.105, hspace=0.43, wspace=0.25
+    )
     fig.savefig(out / "training_stability.png", dpi=_FIGURE_DPI)
     plt.close(fig)
 
@@ -1342,15 +1406,25 @@ def build_significance_report(rows, extras, n_bootstrap: int = 1000):
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="Consolida resultados → resumo + figuras do TCC")
-    p.add_argument("inputs", nargs="+",
-                   help="diretórios de run ou results.json (aceita globs)")
-    p.add_argument("--out", default="data/results/paper/consolidated",
-                   help="pasta de saída (default: data/results/paper/consolidated)")
-    p.add_argument("--copy-to", default="data/results/paper/figures",
-                   help="copia as figuras para o artigo (default: data/results/paper/figures)")
-    p.add_argument("--no-figures", action="store_true",
-                   help="gera só o benchmark_summary.json")
+    p = argparse.ArgumentParser(
+        description="Consolida resultados → resumo + figuras do TCC"
+    )
+    p.add_argument(
+        "inputs", nargs="+", help="diretórios de run ou results.json (aceita globs)"
+    )
+    p.add_argument(
+        "--out",
+        default="data/results/paper/consolidated",
+        help="pasta de saída (default: data/results/paper/consolidated)",
+    )
+    p.add_argument(
+        "--copy-to",
+        default="data/results/paper/figures",
+        help="copia as figuras para o artigo (default: data/results/paper/figures)",
+    )
+    p.add_argument(
+        "--no-figures", action="store_true", help="gera só o benchmark_summary.json"
+    )
     p.add_argument(
         "--allow-mixed-test-sets",
         action="store_true",
@@ -1390,7 +1464,11 @@ def main() -> int:
     )
     args = p.parse_args()
 
-    out = (PROJECT_ROOT / args.out) if not Path(args.out).is_absolute() else Path(args.out)
+    out = (
+        (PROJECT_ROOT / args.out)
+        if not Path(args.out).is_absolute()
+        else Path(args.out)
+    )
     out.mkdir(parents=True, exist_ok=True)
     break_hardlinks_in_tree(out)
 
@@ -1432,10 +1510,11 @@ def main() -> int:
 
     summary_path = out / "benchmark_summary.json"
     summary = [{k: v for k, v in r.items() if k != "slug"} for r in rows]
-    summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False),
-                            encoding="utf-8")
+    summary_path.write_text(
+        json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
     print(f"-> {summary_path} ({len(rows)} arquiteturas)")
-    missing = [k for k in MODEL_ORDER if k not in {r['key'] for r in rows}]
+    missing = [k for k in MODEL_ORDER if k not in {r["key"] for r in rows}]
     if missing:
         print(f"   AVISO: faltando {missing} (o TCC espera 11 modelos).")
 
@@ -1450,9 +1529,11 @@ def main() -> int:
         or (r.get("training_stability") or {}).get("status") == "unstable_oscillation"
     ]
     if unstable:
-        print("   AVISO: treino instável em " + ", ".join(
-            f"{m} ({s})" for m, s in unstable
-        ) + " — ver training_stability no metrics.json.")
+        print(
+            "   AVISO: treino instável em "
+            + ", ".join(f"{m} ({s})" for m, s in unstable)
+            + " — ver training_stability no metrics.json."
+        )
 
     costly = [
         (r["model"], (r.get("training_stability") or {}).get("selection_gap"))
@@ -1463,16 +1544,22 @@ def main() -> int:
         and (r.get("training_stability") or {})["selection_gap"] <= -0.01
     ]
     if costly:
-        print("   AVISO: o checkpoint selecionado não é o de melhor "
-              "monitor em " + ", ".join(f"{m} ({g:+.4f})" for m, g in costly) +
-              " — seleção mantida por protocolo, ver selection_gap.")
+        print(
+            "   AVISO: o checkpoint selecionado não é o de melhor "
+            "monitor em "
+            + ", ".join(f"{m} ({g:+.4f})" for m, g in costly)
+            + " — seleção mantida por protocolo, ver selection_gap."
+        )
 
     no_speaker = [
         r["model"] for r in rows if not (r.get("grouped_clean") or {}).get("speaker")
     ]
     if no_speaker:
-        print("   AVISO: sem grouped_clean por locutor em " +
-              ", ".join(no_speaker) + " — a coluna de pior locutor fica vazia.")
+        print(
+            "   AVISO: sem grouped_clean por locutor em "
+            + ", ".join(no_speaker)
+            + " — a coluna de pior locutor fica vazia."
+        )
 
     if not args.no_significance:
         significance = build_significance_report(
@@ -1511,7 +1598,11 @@ def main() -> int:
         generate_figures(rows, extras, fig_dir)
         print(f"-> figuras em {fig_dir}")
         if args.copy_to:
-            dest = (PROJECT_ROOT / args.copy_to) if not Path(args.copy_to).is_absolute() else Path(args.copy_to)
+            dest = (
+                (PROJECT_ROOT / args.copy_to)
+                if not Path(args.copy_to).is_absolute()
+                else Path(args.copy_to)
+            )
             dest.mkdir(parents=True, exist_ok=True)
             for obsolete in ("benchmark_latency.png", "confusion_matrices_article.png"):
                 (dest / obsolete).unlink(missing_ok=True)

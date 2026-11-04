@@ -73,7 +73,9 @@ def test_valor_fora_da_faixa_e_limitado():
 # ───────────────────────── fusão entre modelos ─────────────────────────
 
 
-@pytest.mark.parametrize("fusao", ["weighted_avg", "soft_voting", "max_conf", "majority_vote"])
+@pytest.mark.parametrize(
+    "fusao", ["weighted_avg", "soft_voting", "max_conf", "majority_vote"]
+)
 def test_fusao_nao_inverte_modelos_unanimes(fusao):
     assert fuse_scores([0.1, 0.45, 0.3], fusao) < 0.5
     assert fuse_scores([0.9, 0.55, 0.7], fusao) >= 0.5
@@ -152,9 +154,7 @@ def test_dois_modelos_que_dizem_real_nao_viram_fake_na_fusao():
 
 def test_modelo_que_falha_nao_desalinha_os_pesos():
     """Os pesos eram cortados por posição, e o de um modelo ia para o seguinte."""
-    servico = _servico_com_vereditos(
-        {"a": None, "b": (0.9, 0.5), "c": (0.1, 0.5)}
-    )
+    servico = _servico_com_vereditos({"a": None, "b": (0.9, 0.5), "c": (0.1, 0.5)})
     resultado = servico.detect_multi_model(
         None, ["a", "b", "c"], fusion="weighted_avg", weights=[0.8, 0.1, 0.1]
     )

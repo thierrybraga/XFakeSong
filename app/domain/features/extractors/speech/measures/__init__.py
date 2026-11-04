@@ -5,9 +5,9 @@ from .temporal import extract_temporal_speech_features
 from .vocal_quality import extract_vocal_quality_features
 
 __all__ = [
-    'extract_linguistic_features',
-    'extract_articulatory_features',
-    'extract_temporal_speech_features',
-    'extract_fluency_features',
-    'extract_vocal_quality_features'
+    "extract_linguistic_features",
+    "extract_articulatory_features",
+    "extract_temporal_speech_features",
+    "extract_fluency_features",
+    "extract_vocal_quality_features",
 ]

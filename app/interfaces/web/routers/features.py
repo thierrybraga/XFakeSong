@@ -134,8 +134,7 @@ async def extract_features(
             )
         else:
             raise AudioProcessingError(
-                result.errors[0] if result.errors
-                else "Erro na extração de features"
+                result.errors[0] if result.errors else "Erro na extração de features"
             )
 
     finally:

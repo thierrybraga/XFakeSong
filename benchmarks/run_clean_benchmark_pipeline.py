@@ -30,7 +30,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.core.config.paths import resolve_results_dir, resolve_results_output  # noqa: E402
+from app.core.config.paths import (  # noqa: E402
+    resolve_results_dir,
+    resolve_results_output,
+)
 from benchmarks.config import (  # noqa: E402
     CLASSICAL_TCC_ARCHITECTURES,
     DOCKER_TRAINING_ARCHITECTURES,
@@ -145,9 +148,9 @@ def _write_manifest(
         "phase": phase,
         "dataset": str(args.dataset),
         "dataset_exists": Path(args.dataset).exists(),
-        "dataset_size_bytes": Path(args.dataset).stat().st_size
-        if Path(args.dataset).exists()
-        else None,
+        "dataset_size_bytes": (
+            Path(args.dataset).stat().st_size if Path(args.dataset).exists() else None
+        ),
         "models": models,
         "epochs": args.epochs,
         "batch_size": args.batch_size,
@@ -302,13 +305,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--models", nargs="+", default=None)
     parser.add_argument("--dataset", default=str(DEFAULT_DATASET.relative_to(ROOT)))
     parser.add_argument("--out", default=None)
-    parser.add_argument("--models-dir", default=str(DEFAULT_MODELS_DIR.relative_to(ROOT)))
+    parser.add_argument(
+        "--models-dir", default=str(DEFAULT_MODELS_DIR.relative_to(ROOT))
+    )
     # Sem default fixo: `--phase smoke` existe para validar o encanamento antes
     # de um run longo, e herdando 100 épocas ele deixava de ser smoke (SVM
     # ~8 h + MultiscaleCNN ~1,6 h de GPU). Ver SMOKE_EPOCHS.
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--device-profile", choices=["auto", "cpu", "gpu"], default="gpu")
+    parser.add_argument(
+        "--device-profile", choices=["auto", "cpu", "gpu"], default="gpu"
+    )
     # Omitido (default), o timeout é DERIVADO por arquitetura em
     # run_models_sequential (planning.EXPECTED_TRAINING_HOURS x 3). O valor fixo
     # anterior de 240 min matava 7 das 11 arquiteturas oficiais só no tempo de
@@ -369,15 +376,17 @@ def main() -> int:
     _write_manifest(out_dir, args=args, models=models, phase=phase)
 
     if args.build:
-        _run([
-            "docker",
-            "build",
-            "--build-arg",
-            "TF_VARIANT=gpu",
-            "-t",
-            args.image,
-            ".",
-        ])
+        _run(
+            [
+                "docker",
+                "build",
+                "--build-arg",
+                "TF_VARIANT=gpu",
+                "-t",
+                args.image,
+                ".",
+            ]
+        )
 
     started = time.time()
     _run(_docker_run_command(args, models))

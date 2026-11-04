@@ -58,6 +58,7 @@ def test_create_factory():
 # projeto: parâmetros declarados no registry que nunca chegavam ao modelo, e
 # listas de arquiteturas mantidas à mão em lugares diferentes.
 
+
 def _architecture_cases():
     registry = ArchitectureRegistry()
     return [(name, info) for name, info in registry.get_all_architectures().items()]
@@ -142,9 +143,10 @@ def test_registry_and_factory_agree_on_input_shapes():
     ]
     for name, shape, expected in cases:
         assert registry.validate_input_shape(name, shape) is expected, (name, shape)
-        assert (
-            factory_registry.validate_compatibility(name, shape) is expected
-        ), (name, shape)
+        assert factory_registry.validate_compatibility(name, shape) is expected, (
+            name,
+            shape,
+        )
 
 
 def test_conformer_has_single_paper_configuration():
@@ -162,7 +164,11 @@ def test_conformer_has_single_paper_configuration():
     assert params["d_ff"] == 4 * params["d_model"]
     assert params["conv_kernel_size"] == 31
     # 'conformer_lite' sobrevive apenas como alias da mesma configuração.
-    assert {"conformer", "conformer_lite", "conformer_m"} <= conformer._CONFORMER_ALIASES
+    assert {
+        "conformer",
+        "conformer_lite",
+        "conformer_m",
+    } <= conformer._CONFORMER_ALIASES
 
     registry = ArchitectureRegistry()
     variants = registry.get_architecture("Conformer").supported_variants
@@ -178,10 +184,10 @@ def test_sonic_sleuth_paper_variant_is_registered_and_faithful():
     assert "sonic_sleuth_paper" in variants
 
     cfg = sonic_sleuth._SONIC_SLEUTH_PAPER_CONFIG
-    assert cfg["num_conv_blocks"] == 3          # 32 → 64 → 128
+    assert cfg["num_conv_blocks"] == 3  # 32 → 64 → 128
     assert cfg["use_residual"] is False
     assert cfg["use_se_blocks"] is False
-    assert cfg["use_gap_gmp"] is False          # Flatten, como na figura
+    assert cfg["use_gap_gmp"] is False  # Flatten, como na figura
     assert cfg["classifier_dropout"] == 0.1
     assert cfg["learning_rate"] == 1e-3
 
@@ -200,8 +206,13 @@ def test_ast_pretrained_never_degrades_silently():
 
     with pytest.raises(ASTPretrainedUnavailable, match="ViT-Base"):
         spectrogram_transformer.create_model(
-            (64, 64), num_classes=2, pretrained=True,
-            embed_dim=32, num_blocks=1, num_heads=2, ff_dim=64,
+            (64, 64),
+            num_classes=2,
+            pretrained=True,
+            embed_dim=32,
+            num_blocks=1,
+            num_heads=2,
+            ff_dim=64,
         )
 
 
@@ -250,19 +261,23 @@ def test_factory_and_registry_share_num_classes_default():
     """As duas portas de entrada precisam do MESMO default de num_classes."""
     import inspect
 
-    from app.domain.models.architectures import factory
-    from app.domain.models.architectures import registry as registry_mod
+    from app.domain.models.architectures import factory, registry as registry_mod
 
-    factory_default = inspect.signature(
-        factory.create_model_by_name
-    ).parameters["num_classes"].default
-    registry_default = inspect.signature(
-        registry_mod.create_model_by_name
-    ).parameters["num_classes"].default
+    factory_default = (
+        inspect.signature(factory.create_model_by_name)
+        .parameters["num_classes"]
+        .default
+    )
+    registry_default = (
+        inspect.signature(registry_mod.create_model_by_name)
+        .parameters["num_classes"]
+        .default
+    )
     assert factory_default == registry_default == 2
 
 
 # ─── Conformidade com os artigos ──────────────────────────────────────────
+
 
 def test_graph_attention_follows_paper_formulation():
     """RawGAT-ST/AASIST usam produto par-a-par + tanh + TEMPERATURA.
@@ -382,7 +397,7 @@ def test_rawnet2_declares_both_paper_variants():
     assert "rawnet2_antispoofing" in variants
 
     asv = rawnet2._RAWNET2_ANTISPOOFING_PARAMS
-    assert asv["sinc_filters"] == 20          # o baseline usa 20, não 128
+    assert asv["sinc_filters"] == 20  # o baseline usa 20, não 128
     assert asv["res_filters"] == [20, 20, 128, 128, 128, 128]
     assert asv["gru_layers"] == 3
 
@@ -442,12 +457,12 @@ def test_hparams_batem_nas_tres_fontes(arch_name, module_name, plan_key):
         registry_v = info.default_params[chave]
         plano_v = plano[chave]
         builder_v = assinatura[chave].default
-        assert registry_v == pytest.approx(plano_v), (
-            f"{arch_name}.{chave}: registry={registry_v} != planning={plano_v}"
-        )
-        assert registry_v == pytest.approx(builder_v), (
-            f"{arch_name}.{chave}: registry={registry_v} != create_model={builder_v}"
-        )
+        assert registry_v == pytest.approx(
+            plano_v
+        ), f"{arch_name}.{chave}: registry={registry_v} != planning={plano_v}"
+        assert registry_v == pytest.approx(
+            builder_v
+        ), f"{arch_name}.{chave}: registry={registry_v} != create_model={builder_v}"
 
 
 def test_global_clipnorm_do_rawgat_chega_ao_construtor():
@@ -469,8 +484,8 @@ def test_global_clipnorm_do_rawgat_chega_ao_construtor():
     fonte = runner.read_text(encoding="utf-8")
     inicio = fonte.find('elif compact in {"aasist", "rawgatst"}')
     assert inicio > 0, "ramo de promoção do rawgatst não encontrado"
-    assert '"global_clipnorm"' in fonte[inicio : inicio + 1200], (
-        "global_clipnorm não está no whitelist de promoção do runner"
-    )
+    assert (
+        '"global_clipnorm"' in fonte[inicio : inicio + 1200]
+    ), "global_clipnorm não está no whitelist de promoção do runner"
     # Ler o AST garante que o arquivo segue parseável.
     ast.parse(fonte)

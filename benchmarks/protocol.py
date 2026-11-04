@@ -40,8 +40,7 @@ def _stamp_eval_crop_strategy(
     if not config_path or not estrategia or estrategia == "resolved_at_eval":
         return
     valor = (
-        f"train_{protocol.get('train_crop_strategy') or 'center'}"
-        f"_eval_{estrategia}"
+        f"train_{protocol.get('train_crop_strategy') or 'center'}" f"_eval_{estrategia}"
     )
     if isinstance(input_contract, dict):
         input_contract["crop_strategy"] = valor

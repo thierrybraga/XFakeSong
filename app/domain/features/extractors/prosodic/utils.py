@@ -16,12 +16,12 @@ def extract_periods(y: np.ndarray, f0: np.ndarray, sr: int) -> np.ndarray:
 
 
 def extract_peak_amplitudes(
-        y: np.ndarray, f0: np.ndarray, frame_length: int, hop_length: int) -> np.ndarray:
+    y: np.ndarray, f0: np.ndarray, frame_length: int, hop_length: int
+) -> np.ndarray:
     """Extrai amplitudes de picos baseado em F0."""
     amplitudes = []
 
-    frames = librosa.util.frame(y, frame_length=frame_length,
-                                hop_length=hop_length)
+    frames = librosa.util.frame(y, frame_length=frame_length, hop_length=hop_length)
 
     for i, frame in enumerate(frames.T):
         if i < len(f0) and not np.isnan(f0[i]) and f0[i] > 0:
@@ -39,7 +39,7 @@ def find_peaks(signal: np.ndarray, min_distance: int = 3) -> np.ndarray:
 
     peaks = []
     for i in range(1, len(signal) - 1):
-        if (signal[i] > signal[i - 1] and signal[i] > signal[i + 1]):
+        if signal[i] > signal[i - 1] and signal[i] > signal[i + 1]:
             # Verificar distância mínima
             if not peaks or (i - peaks[-1]) >= min_distance:
                 peaks.append(i)

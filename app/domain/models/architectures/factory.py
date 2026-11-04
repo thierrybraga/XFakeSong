@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ArchitectureSpec:
     """Especificação de uma arquitetura."""
+
     name: str
     module_path: str
     factory_function: str
@@ -38,11 +39,13 @@ class IArchitectureFactory(ABC):
     """Interface para factory de arquiteturas."""
 
     @abstractmethod
-    def create_model(self,
-                     input_shape: tuple,
-                     num_classes: int = 2,
-                     variant: str = "default",
-                     **kwargs) -> tf.keras.Model:
+    def create_model(
+        self,
+        input_shape: tuple,
+        num_classes: int = 2,
+        variant: str = "default",
+        **kwargs,
+    ) -> tf.keras.Model:
         """Cria modelo da arquitetura."""
         pass
 
@@ -79,28 +82,28 @@ class BaseArchitectureFactory(IArchitectureFactory):
         """Carrega função factory do módulo."""
         try:
             module = importlib.import_module(self.spec.module_path)
-            self._factory_function = getattr(
-                module, self.spec.factory_function)
+            self._factory_function = getattr(module, self.spec.factory_function)
             logger.info(f"Factory function loaded for {self.spec.name}")
         except (ImportError, AttributeError) as e:
             logger.error(f"Failed to load factory for {self.spec.name}: {e}")
             raise
 
-    def create_model(self,
-                     input_shape: tuple,
-                     # num_classes=2 alinha com ``ArchitectureRegistry.create_model``
-                     # e com a convenção do projeto (real/fake = 2 classes,
-                     # softmax de 2 unidades). O default 1 anterior fazia as
-                     # duas portas de entrada produzirem CABEÇAS DIFERENTES
-                     # para a mesma chamada — e cabeças de 1 unidade degeneram
-                     # em arquiteturas com loss categórica.
-                     num_classes: int = 2,
-                     variant: str = "default",
-                     **kwargs) -> tf.keras.Model:
+    def create_model(
+        self,
+        input_shape: tuple,
+        # num_classes=2 alinha com ``ArchitectureRegistry.create_model``
+        # e com a convenção do projeto (real/fake = 2 classes,
+        # softmax de 2 unidades). O default 1 anterior fazia as
+        # duas portas de entrada produzirem CABEÇAS DIFERENTES
+        # para a mesma chamada — e cabeças de 1 unidade degeneram
+        # em arquiteturas com loss categórica.
+        num_classes: int = 2,
+        variant: str = "default",
+        **kwargs,
+    ) -> tf.keras.Model:
         """Cria modelo da arquitetura."""
         if not self.validate_input_shape(input_shape):
-            raise ValueError(
-                f"Invalid input shape {input_shape} for {self.spec.name}")
+            raise ValueError(f"Invalid input shape {input_shape} for {self.spec.name}")
 
         # "default" é o sentinel universal de fallback (valor padrão do argumento)
         # e sempre é aceito, mesmo quando não está listado em supported_variants —
@@ -112,27 +115,28 @@ class BaseArchitectureFactory(IArchitectureFactory):
         # Combinar parâmetros padrão com os fornecidos
         params = self.spec.default_params.copy()
         params.update(kwargs)
-        params['input_shape'] = input_shape
-        params['num_classes'] = num_classes
+        params["input_shape"] = input_shape
+        params["num_classes"] = num_classes
 
         # Adicionar variant se suportado pela função
         sig = inspect.signature(self._factory_function)
-        if 'variant' in sig.parameters or 'architecture' in sig.parameters:
-            if 'variant' in sig.parameters:
-                params['variant'] = variant
-            elif 'architecture' in sig.parameters:
-                params['architecture'] = variant
+        if "variant" in sig.parameters or "architecture" in sig.parameters:
+            if "variant" in sig.parameters:
+                params["variant"] = variant
+            elif "architecture" in sig.parameters:
+                params["architecture"] = variant
 
         # Filtrar params para apenas os aceitos pela função (quando não há **kwargs)
         has_var_keyword = any(
-            p.kind == inspect.Parameter.VAR_KEYWORD
-            for p in sig.parameters.values()
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
         )
         if not has_var_keyword:
             accepted = set(sig.parameters.keys())
             filtered_out = [k for k in params if k not in accepted]
             if filtered_out:
-                logger.debug(f"{self.spec.name}: ignoring unsupported params: {filtered_out}")
+                logger.debug(
+                    f"{self.spec.name}: ignoring unsupported params: {filtered_out}"
+                )
             params = {k: v for k, v in params.items() if k in accepted}
 
         try:
@@ -204,10 +208,7 @@ class BaseArchitectureFactory(IArchitectureFactory):
             ):
                 return False
         if "feature_dim" in requirements:
-            if (
-                len(input_shape) >= 2
-                and input_shape[1] != requirements["feature_dim"]
-            ):
+            if len(input_shape) >= 2 and input_shape[1] != requirements["feature_dim"]:
                 return False
         return True
 
@@ -223,8 +224,9 @@ class ArchitectureFactoryRegistry:
         self._specs: Dict[str, ArchitectureSpec] = {}
         self._register_default_architectures()
 
-    def register_factory(self, spec: ArchitectureSpec,
-                         factory_class: Type[IArchitectureFactory] = None):
+    def register_factory(
+        self, spec: ArchitectureSpec, factory_class: Type[IArchitectureFactory] = None
+    ):
         """Registra uma nova factory."""
         if factory_class is None:
             factory_class = BaseArchitectureFactory
@@ -237,32 +239,32 @@ class ArchitectureFactoryRegistry:
         except Exception as e:
             logger.error(f"Failed to register factory for {spec.name}: {e}")
 
-    def get_factory(
-            self, architecture_name: str) -> Optional[IArchitectureFactory]:
+    def get_factory(self, architecture_name: str) -> Optional[IArchitectureFactory]:
         """Retorna factory para arquitetura."""
         return self._factories.get(architecture_name)
 
-    def create_model(self,
-                     architecture_name: str,
-                     input_shape: tuple,
-                     num_classes: int = 2,
-                     variant: str = "default",
-                     **kwargs) -> tf.keras.Model:
+    def create_model(
+        self,
+        architecture_name: str,
+        input_shape: tuple,
+        num_classes: int = 2,
+        variant: str = "default",
+        **kwargs,
+    ) -> tf.keras.Model:
         """Cria modelo usando factory registrada."""
         factory = self.get_factory(architecture_name)
         if factory is None:
-            raise ValueError(
-                f"Architecture {architecture_name} not registered")
+            raise ValueError(f"Architecture {architecture_name} not registered")
 
-        return factory.create_model(
-            input_shape, num_classes, variant, **kwargs)
+        return factory.create_model(input_shape, num_classes, variant, **kwargs)
 
     def list_architectures(self) -> List[str]:
         """Lista arquiteturas disponíveis."""
         return list(self._factories.keys())
 
     def get_architecture_info(
-            self, architecture_name: str) -> Optional[ArchitectureSpec]:
+        self, architecture_name: str
+    ) -> Optional[ArchitectureSpec]:
         """Retorna informações da arquitetura."""
         return self._specs.get(architecture_name)
 
@@ -271,9 +273,9 @@ class ArchitectureFactoryRegistry:
         factory = self.get_factory(architecture_name)
         return factory.get_supported_variants() if factory else []
 
-    def validate_compatibility(self,
-                               architecture_name: str,
-                               input_shape: tuple) -> bool:
+    def validate_compatibility(
+        self, architecture_name: str, input_shape: tuple
+    ) -> bool:
         """Valida compatibilidade entre arquitetura e entrada."""
         factory = self.get_factory(architecture_name)
         return factory.validate_input_shape(input_shape) if factory else False
@@ -292,25 +294,24 @@ class ArchitectureFactoryRegistry:
         "AASIST": {"type": "classification", "activation": "logits"},
         "RawGAT-ST": {"type": "classification", "activation": "logits"},
         "EfficientNet-LSTM": {
-            "type": "classification", "activation": "sigmoid_or_softmax"
+            "type": "classification",
+            "activation": "sigmoid_or_softmax",
         },
-        "MultiscaleCNN": {
-            "type": "classification", "activation": "sigmoid_or_softmax"
-        },
+        "MultiscaleCNN": {"type": "classification", "activation": "sigmoid_or_softmax"},
         "SpectrogramTransformer": {
-            "type": "classification", "activation": "sigmoid_or_softmax"
+            "type": "classification",
+            "activation": "sigmoid_or_softmax",
         },
         # Conformer promove num_classes<2 para 2 → sempre softmax.
         "Conformer": {"type": "classification", "activation": "softmax"},
         "Ensemble": {"type": "classification", "activation": "sigmoid_or_softmax"},
-        "Sonic Sleuth": {
-            "type": "classification", "activation": "sigmoid_or_softmax"
-        },
+        "Sonic Sleuth": {"type": "classification", "activation": "sigmoid_or_softmax"},
         "RawNet2": {"type": "classification", "activation": "sigmoid_or_softmax"},
         "WavLM": {"type": "classification", "activation": "sigmoid_or_softmax"},
         "HuBERT": {"type": "classification", "activation": "sigmoid_or_softmax"},
         "Hybrid CNN-Transformer": {
-            "type": "classification", "activation": "sigmoid_or_softmax"
+            "type": "classification",
+            "activation": "sigmoid_or_softmax",
         },
     }
 
@@ -333,8 +334,6 @@ class ArchitectureFactoryRegistry:
         """
         from app.domain.models.architectures.registry import (
             _TRAINING_ONLY_PARAM_KEYS as training_only_keys,
-        )
-        from app.domain.models.architectures.registry import (
             architecture_registry,
         )
 
@@ -344,19 +343,23 @@ class ArchitectureFactoryRegistry:
                 for key, value in info.default_params.items()
                 if key not in training_only_keys
             }
-            self.register_factory(ArchitectureSpec(
-                name=info.name,
-                module_path=info.module_path,
-                factory_function=info.function_name,
-                description=info.description,
-                supported_variants=list(info.supported_variants),
-                default_params=model_params,
-                input_requirements=dict(info.input_requirements),
-                output_requirements=dict(self._OUTPUT_REQUIREMENTS.get(
-                    info.name,
-                    {"type": "classification", "activation": "sigmoid"},
-                )),
-            ))
+            self.register_factory(
+                ArchitectureSpec(
+                    name=info.name,
+                    module_path=info.module_path,
+                    factory_function=info.function_name,
+                    description=info.description,
+                    supported_variants=list(info.supported_variants),
+                    default_params=model_params,
+                    input_requirements=dict(info.input_requirements),
+                    output_requirements=dict(
+                        self._OUTPUT_REQUIREMENTS.get(
+                            info.name,
+                            {"type": "classification", "activation": "sigmoid"},
+                        )
+                    ),
+                )
+            )
 
 
 # Instância global do registry
@@ -364,11 +367,13 @@ architecture_factory_registry = ArchitectureFactoryRegistry()
 
 
 # Funções de conveniência
-def create_model_by_name(architecture_name: str,
-                         input_shape: tuple,
-                         num_classes: int = 2,
-                         variant: str = "default",
-                         **kwargs) -> tf.keras.Model:
+def create_model_by_name(
+    architecture_name: str,
+    input_shape: tuple,
+    num_classes: int = 2,
+    variant: str = "default",
+    **kwargs,
+) -> tf.keras.Model:
     """Cria modelo usando o registry global."""
     return architecture_factory_registry.create_model(
         architecture_name, input_shape, num_classes, variant, **kwargs
@@ -380,10 +385,6 @@ def get_available_architectures() -> List[str]:
     return architecture_factory_registry.list_architectures()
 
 
-def get_architecture_info(
-        architecture_name: str) -> Optional[ArchitectureSpec]:
+def get_architecture_info(architecture_name: str) -> Optional[ArchitectureSpec]:
     """Retorna informações da arquitetura."""
-    return architecture_factory_registry.get_architecture_info(
-        architecture_name)
-
-
+    return architecture_factory_registry.get_architecture_info(architecture_name)

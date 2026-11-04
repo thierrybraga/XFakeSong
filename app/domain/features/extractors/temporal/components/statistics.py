@@ -33,15 +33,14 @@ def compute_mean_crossing_rate(y: np.ndarray) -> float:
     return float(crossings / (len(y) - 1))
 
 
-def compute_zcr(y: np.ndarray, frame_length: int,
-                hop_length: int) -> np.ndarray:
+def compute_zcr(y: np.ndarray, frame_length: int, hop_length: int) -> np.ndarray:
     """Computa taxa de cruzamento por zero."""
-    return librosa.feature.zero_crossing_rate(y, frame_length=frame_length,
-                                              hop_length=hop_length)[0]
+    return librosa.feature.zero_crossing_rate(
+        y, frame_length=frame_length, hop_length=hop_length
+    )[0]
 
 
-def compute_zcr_variance(y: np.ndarray, frame_length: int,
-                         hop_length: int) -> float:
+def compute_zcr_variance(y: np.ndarray, frame_length: int, hop_length: int) -> float:
     """Computa variância da taxa de cruzamento por zero."""
     zcr = compute_zcr(y, frame_length, hop_length)
     return float(np.var(zcr))
@@ -52,20 +51,21 @@ def extract_signal_statistics(y: np.ndarray) -> Dict[str, float]:
     features = {}
 
     # Estatísticas básicas
-    features['signal_mean'] = float(np.mean(y))
-    features['signal_std'] = float(np.std(y))
-    features['signal_variance'] = float(np.var(y))
-    features['signal_skewness'] = float(skew(y))
-    features['signal_kurtosis'] = float(kurtosis(y))
+    features["signal_mean"] = float(np.mean(y))
+    features["signal_std"] = float(np.std(y))
+    features["signal_variance"] = float(np.var(y))
+    features["signal_skewness"] = float(skew(y))
+    features["signal_kurtosis"] = float(kurtosis(y))
 
     # Características de amplitude
-    features['peak_amplitude'] = float(np.max(np.abs(y)))
-    features['rms_amplitude'] = float(np.sqrt(np.mean(y**2)))
-    features['crest_factor'] = float(
-        features['peak_amplitude'] / (features['rms_amplitude'] + 1e-10))
+    features["peak_amplitude"] = float(np.max(np.abs(y)))
+    features["rms_amplitude"] = float(np.sqrt(np.mean(y**2)))
+    features["crest_factor"] = float(
+        features["peak_amplitude"] / (features["rms_amplitude"] + 1e-10)
+    )
 
     # Características de distribuição
-    features['dynamic_range'] = float(np.max(y) - np.min(y))
-    features['signal_energy'] = float(np.sum(y**2))
+    features["dynamic_range"] = float(np.max(y) - np.min(y))
+    features["signal_energy"] = float(np.sum(y**2))
 
     return features

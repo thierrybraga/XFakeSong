@@ -16,23 +16,21 @@ def residual_block(x_in, filters, kernel_size, stage):
     x = layers.Conv2D(
         filters,
         kernel_size,
-        activation='relu',
-        padding='same',
-        name=f"res{stage}_conv1")(x_in)
+        activation="relu",
+        padding="same",
+        name=f"res{stage}_conv1",
+    )(x_in)
     x = layers.BatchNormalization(name=f"res{stage}_bn1")(x)
-    x = layers.Conv2D(
-        filters,
-        kernel_size,
-        padding='same',
-        name=f"res{stage}_conv2")(x)
+    x = layers.Conv2D(filters, kernel_size, padding="same", name=f"res{stage}_conv2")(x)
     x = layers.BatchNormalization(name=f"res{stage}_bn2")(x)
 
     if shortcut.shape[-1] != filters:
         shortcut = layers.Conv2D(
-            filters, (1, 1), padding='same', name=f"res{stage}_shortcut")(shortcut)
+            filters, (1, 1), padding="same", name=f"res{stage}_shortcut"
+        )(shortcut)
 
     x = layers.add([x, shortcut], name=f"res{stage}_add")
-    x = layers.Activation('relu', name=f"res{stage}_relu")(x)
+    x = layers.Activation("relu", name=f"res{stage}_relu")(x)
     return x
 
 
@@ -73,15 +71,25 @@ class AttentionLayer(layers.Layer):
     def build(self, input_shape: tf.TensorShape):
         if len(input_shape) != 3:
             raise ValueError(
-                f"AttentionLayer espera entrada 3D (batch, seq_len, features_dim), mas recebeu {input_shape}")
+                f"AttentionLayer espera entrada 3D (batch, seq_len, features_dim), mas recebeu {input_shape}"
+            )
 
         features_dim = input_shape[-1]
-        self.W = self.add_weight(name="att_weight", shape=(features_dim, features_dim),
-                                 initializer="glorot_uniform", trainable=True)
-        self.b = self.add_weight(name="att_bias", shape=(features_dim,),
-                                 initializer="zeros", trainable=True)
-        self.u = self.add_weight(name="att_context", shape=(features_dim,),
-                                 initializer="glorot_uniform", trainable=True)
+        self.W = self.add_weight(
+            name="att_weight",
+            shape=(features_dim, features_dim),
+            initializer="glorot_uniform",
+            trainable=True,
+        )
+        self.b = self.add_weight(
+            name="att_bias", shape=(features_dim,), initializer="zeros", trainable=True
+        )
+        self.u = self.add_weight(
+            name="att_context",
+            shape=(features_dim,),
+            initializer="glorot_uniform",
+            trainable=True,
+        )
         super(AttentionLayer, self).build(input_shape)
 
     def call(self, inputs: tf.Tensor) -> tf.Tensor:
@@ -101,8 +109,7 @@ class AttentionLayer(layers.Layer):
         config.update({"return_attention": self.return_attention})
         return config
 
-    def compute_output_shape(
-            self, input_shape: tf.TensorShape):
+    def compute_output_shape(self, input_shape: tf.TensorShape):
         output_shape = tf.TensorShape((input_shape[0], input_shape[-1]))
         if self.return_attention:
             # alphas shape: (batch, seq_len)
@@ -120,8 +127,8 @@ class SqueezeExciteBlock(layers.Layer):
         self.ratio = ratio
 
         self.global_avg_pool = layers.GlobalAveragePooling2D()
-        self.dense1 = layers.Dense(filters // ratio, activation='relu')
-        self.dense2 = layers.Dense(filters, activation='sigmoid')
+        self.dense1 = layers.Dense(filters // ratio, activation="relu")
+        self.dense2 = layers.Dense(filters, activation="sigmoid")
         self.reshape = layers.Reshape((1, 1, filters))
 
     def call(self, inputs):
@@ -138,10 +145,7 @@ class SqueezeExciteBlock(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'filters': self.filters,
-            'ratio': self.ratio
-        })
+        config.update({"filters": self.filters, "ratio": self.ratio})
         return config
 
 
@@ -166,8 +170,8 @@ class MultiScaleConv1DBlock(layers.Layer):
             conv = layers.Conv1D(
                 filters=self.filters,
                 kernel_size=kernel_size,
-                padding='same',
-                activation=None
+                padding="same",
+                activation=None,
             )
             bn = layers.BatchNormalization()
 
@@ -179,10 +183,7 @@ class MultiScaleConv1DBlock(layers.Layer):
 
         # Camada de redução dimensional
         self.reduction_conv = layers.Conv1D(
-            filters=self.filters,
-            kernel_size=1,
-            padding='same',
-            activation='relu'
+            filters=self.filters, kernel_size=1, padding="same", activation="relu"
         )
 
         self.final_bn = layers.BatchNormalization()
@@ -208,10 +209,7 @@ class MultiScaleConv1DBlock(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'filters': self.filters,
-            'kernel_sizes': self.kernel_sizes
-        })
+        config.update({"filters": self.filters, "kernel_sizes": self.kernel_sizes})
         return config
 
 
@@ -231,9 +229,9 @@ class FeatureMapScalingLayer(layers.Layer):
                     RawNet2 passam 'mul_add'.
     """
 
-    def __init__(self, scale_mode: str = 'mul2', **kwargs):
+    def __init__(self, scale_mode: str = "mul2", **kwargs):
         super(FeatureMapScalingLayer, self).__init__(**kwargs)
-        if scale_mode not in ('mul2', 'mul_add'):
+        if scale_mode not in ("mul2", "mul_add"):
             raise ValueError(f"scale_mode inválido: {scale_mode!r}")
         self.scale_mode = scale_mode
 
@@ -241,12 +239,12 @@ class FeatureMapScalingLayer(layers.Layer):
         self.channels = input_shape[-1]
         # 'mul2' zera o kernel para o gate nascer em 1.0 (2*sigmoid(0)).
         # 'mul_add' usa a inicialização padrão, como na implementação oficial.
-        initializer = 'zeros' if self.scale_mode == 'mul2' else 'glorot_uniform'
+        initializer = "zeros" if self.scale_mode == "mul2" else "glorot_uniform"
         self.dense = layers.Dense(
             self.channels,
-            activation='sigmoid',
+            activation="sigmoid",
             kernel_initializer=initializer,
-            bias_initializer='zeros',
+            bias_initializer="zeros",
         )
         super(FeatureMapScalingLayer, self).build(input_shape)
 
@@ -257,7 +255,7 @@ class FeatureMapScalingLayer(layers.Layer):
         y = self.dense(y)
         # Reshape for broadcasting
         y = tf.expand_dims(y, axis=1)
-        if self.scale_mode == 'mul_add':
+        if self.scale_mode == "mul_add":
             # Paper: escala multiplicativa + deslocamento aditivo.
             return inputs * y + y
         # Legado: multiplicativo puro com gate centrado em 1.0 na inicialização.
@@ -265,7 +263,7 @@ class FeatureMapScalingLayer(layers.Layer):
 
     def get_config(self):
         config = super(FeatureMapScalingLayer, self).get_config()
-        config.update({'scale_mode': self.scale_mode})
+        config.update({"scale_mode": self.scale_mode})
         return config
 
 
@@ -283,10 +281,10 @@ class WeightedSumLayer(layers.Layer):
         # input_shape should be a list of tensors [layer1, layer2, ..., layerN]
         # each with shape (batch, time, feature_dim)
         self._layer_weights = self.add_weight(
-            name='layer_weights',
+            name="layer_weights",
             shape=(self.num_layers,),
-            initializer='zeros',
-            trainable=True
+            initializer="zeros",
+            trainable=True,
         )
         super(WeightedSumLayer, self).build(input_shape)
 
@@ -307,7 +305,7 @@ class WeightedSumLayer(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({'num_layers': self.num_layers})
+        config.update({"num_layers": self.num_layers})
         return config
 
 
@@ -330,18 +328,24 @@ class ResidualBlock1D(layers.Layer):
 
         self.bn1 = layers.BatchNormalization(name=self.name + "_bn1")
         self.conv1 = layers.Conv1D(
-            self.out_channels, self.kernel_size, padding='same',
-            name=self.name + "_conv1")
+            self.out_channels,
+            self.kernel_size,
+            padding="same",
+            name=self.name + "_conv1",
+        )
         self.bn2 = layers.BatchNormalization(name=self.name + "_bn2")
         self.conv2 = layers.Conv1D(
-            self.out_channels, self.kernel_size, padding='same',
-            name=self.name + "_conv2")
+            self.out_channels,
+            self.kernel_size,
+            padding="same",
+            name=self.name + "_conv2",
+        )
 
         self.skip_conv = None
         if in_channels != self.out_channels:
             self.skip_conv = layers.Conv1D(
-                self.out_channels, 1, padding='same',
-                name=self.name + "_skip")
+                self.out_channels, 1, padding="same", name=self.name + "_skip"
+            )
 
         super(ResidualBlock1D, self).build(input_shape)
 
@@ -367,10 +371,9 @@ class ResidualBlock1D(layers.Layer):
 
     def get_config(self):
         config = super(ResidualBlock1D, self).get_config()
-        config.update({
-            'out_channels': self.out_channels,
-            'kernel_size': self.kernel_size
-        })
+        config.update(
+            {"out_channels": self.out_channels, "kernel_size": self.kernel_size}
+        )
         return config
 
 
@@ -420,12 +423,16 @@ class ConvolutionStemLayer(layers.Layer):
         self.bn_layers = []
         for i, f in enumerate(self.filters_list):
             self.conv_layers.append(
-                layers.Conv2D(f, self.kernel_size, strides=2, padding='same',
-                              use_bias=False, name=f'conv_stem_{i}')
+                layers.Conv2D(
+                    f,
+                    self.kernel_size,
+                    strides=2,
+                    padding="same",
+                    use_bias=False,
+                    name=f"conv_stem_{i}",
+                )
             )
-            self.bn_layers.append(
-                layers.BatchNormalization(name=f'bn_stem_{i}')
-            )
+            self.bn_layers.append(layers.BatchNormalization(name=f"bn_stem_{i}"))
         super(ConvolutionStemLayer, self).build(input_shape)
 
     def call(self, inputs, training=None):
@@ -438,10 +445,12 @@ class ConvolutionStemLayer(layers.Layer):
 
     def get_config(self):
         config = super(ConvolutionStemLayer, self).get_config()
-        config.update({
-            'filters': self.filters_list,
-            'kernel_size': self.kernel_size,
-        })
+        config.update(
+            {
+                "filters": self.filters_list,
+                "kernel_size": self.kernel_size,
+            }
+        )
         return config
 
 
@@ -460,8 +469,8 @@ class SqueezeExcitationBlock2D(layers.Layer):
     def build(self, input_shape):
         channels = input_shape[-1]
         reduced = max(channels // self.reduction, 4)
-        self.dense1 = layers.Dense(reduced, activation='relu', name='se2d_reduce')
-        self.dense2 = layers.Dense(channels, activation='sigmoid', name='se2d_expand')
+        self.dense1 = layers.Dense(reduced, activation="relu", name="se2d_reduce")
+        self.dense2 = layers.Dense(channels, activation="sigmoid", name="se2d_expand")
         super(SqueezeExcitationBlock2D, self).build(input_shape)
 
     def call(self, inputs):
@@ -477,7 +486,7 @@ class SqueezeExcitationBlock2D(layers.Layer):
 
     def get_config(self):
         config = super(SqueezeExcitationBlock2D, self).get_config()
-        config.update({'reduction': self.reduction})
+        config.update({"reduction": self.reduction})
         return config
 
 
@@ -498,13 +507,13 @@ class CrossAttentionFusionLayer(layers.Layer):
         # input_shape is a list of shapes from each branch
         self.projection_layers = []
         for i, shape in enumerate(input_shape):
-            projection = layers.Dense(self.embed_dim, name=f'proj_{i}')
+            projection = layers.Dense(self.embed_dim, name=f"proj_{i}")
             projection.build(shape)
             self.projection_layers.append(projection)
         self.mha = layers.MultiHeadAttention(
             num_heads=self.num_heads,
             key_dim=self.embed_dim // self.num_heads,
-            name='cross_attn'
+            name="cross_attn",
         )
         self.layer_norm = layers.LayerNormalization()
         sequence_shape = (input_shape[0][0], len(input_shape), self.embed_dim)
@@ -537,10 +546,12 @@ class CrossAttentionFusionLayer(layers.Layer):
 
     def get_config(self):
         config = super(CrossAttentionFusionLayer, self).get_config()
-        config.update({
-            'embed_dim': self.embed_dim,
-            'num_heads': self.num_heads,
-        })
+        config.update(
+            {
+                "embed_dim": self.embed_dim,
+                "num_heads": self.num_heads,
+            }
+        )
         return config
 
 
@@ -558,7 +569,7 @@ class GatedFusionLayer(layers.Layer):
         # input_shape is a list of shapes
         self.gate_layers = []
         for i, shape in enumerate(input_shape):
-            gate = layers.Dense(1, activation='sigmoid', name=f'gate_{i}')
+            gate = layers.Dense(1, activation="sigmoid", name=f"gate_{i}")
             gate.build(shape)
             self.gate_layers.append(gate)
         super(GatedFusionLayer, self).build(input_shape)
@@ -579,8 +590,9 @@ class GatedFusionLayer(layers.Layer):
 class ResidualBlock2D(layers.Layer):
     """Bloco residual 2D para os encoders AASIST/RawGAT-ST fiéis."""
 
-    def __init__(self, out_channels, kernel_size=(2, 3), pool_size=(1, 3),
-                 first=False, **kwargs):
+    def __init__(
+        self, out_channels, kernel_size=(2, 3), pool_size=(1, 3), first=False, **kwargs
+    ):
         super().__init__(**kwargs)
         self.out_channels = int(out_channels)
         # KERNEL (2, 3), como o `Residual_block` da familia RawGAT-ST/AASIST.
@@ -598,27 +610,37 @@ class ResidualBlock2D(layers.Layer):
         # Com `first=True` a pre-ativacao nao roda, entao `bn1` seria um peso
         # orfao (sem gradiente, e o Keras avisa a cada passo).
         self.bn1 = (
-            None if self.first
-            else layers.BatchNormalization(name=f"{self.name}_bn1")
+            None if self.first else layers.BatchNormalization(name=f"{self.name}_bn1")
         )
         self.conv1 = layers.Conv2D(
-            self.out_channels, self.kernel_size, padding="same",
-            use_bias=False, name=f"{self.name}_conv1",
+            self.out_channels,
+            self.kernel_size,
+            padding="same",
+            use_bias=False,
+            name=f"{self.name}_conv1",
         )
         self.bn2 = layers.BatchNormalization(name=f"{self.name}_bn2")
         self.conv2 = layers.Conv2D(
-            self.out_channels, self.kernel_size, padding="same",
-            use_bias=False, name=f"{self.name}_conv2",
+            self.out_channels,
+            self.kernel_size,
+            padding="same",
+            use_bias=False,
+            name=f"{self.name}_conv2",
         )
         self.skip_conv = None
         if input_shape[-1] != self.out_channels:
             self.skip_conv = layers.Conv2D(
-                self.out_channels, 1, padding="same", use_bias=False,
+                self.out_channels,
+                1,
+                padding="same",
+                use_bias=False,
                 name=f"{self.name}_skip",
             )
         self.pool = layers.MaxPooling2D(
-            pool_size=self.pool_size, strides=self.pool_size,
-            padding="same", name=f"{self.name}_pool",
+            pool_size=self.pool_size,
+            strides=self.pool_size,
+            padding="same",
+            name=f"{self.name}_pool",
         )
         super().build(input_shape)
 
@@ -642,10 +664,12 @@ class ResidualBlock2D(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            "out_channels": self.out_channels,
-            "kernel_size": self.kernel_size,
-            "pool_size": self.pool_size,
-            "first": self.first,
-        })
+        config.update(
+            {
+                "out_channels": self.out_channels,
+                "kernel_size": self.kernel_size,
+                "pool_size": self.pool_size,
+                "first": self.first,
+            }
+        )
         return config

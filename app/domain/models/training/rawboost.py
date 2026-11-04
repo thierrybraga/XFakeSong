@@ -31,8 +31,12 @@ from __future__ import annotations
 
 import tensorflow as tf
 
-__all__ = ["rawboost_tf", "lnl_convolutive_noise", "isd_additive_noise",
-           "ssi_additive_noise"]
+__all__ = [
+    "rawboost_tf",
+    "lnl_convolutive_noise",
+    "isd_additive_noise",
+    "ssi_additive_noise",
+]
 
 
 def _to_bt(x):
@@ -101,8 +105,9 @@ def isd_additive_noise(x_bt, p_impulse: float = 0.02, max_gain: float = 0.7):
     return x_bt + mask * impulses * local_amp * g
 
 
-def ssi_additive_noise(x_bt, snr_min: float = 10.0, snr_max: float = 40.0,
-                       max_taps: int = 16):
+def ssi_additive_noise(
+    x_bt, snr_min: float = 10.0, snr_max: float = 40.0, max_taps: int = 16
+):
     """Ruído estacionário colorido independente do sinal (SSI).
 
     Gera ruído branco, colore com um FIR aleatório e soma a um SNR sorteado

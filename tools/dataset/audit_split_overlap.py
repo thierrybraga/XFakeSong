@@ -104,8 +104,7 @@ def audit(dataset_path: Path) -> dict[str, Any]:
         report["known_speakers"] = {
             "unique_per_split": {name: len(s) for name, s in known_speakers.items()},
             "overlap": {
-                f"{a}_{b}": len(known_speakers[a] & known_speakers[b])
-                for a, b in pairs
+                f"{a}_{b}": len(known_speakers[a] & known_speakers[b]) for a, b in pairs
             },
         }
 
@@ -129,8 +128,13 @@ def audit(dataset_path: Path) -> dict[str, Any]:
     # Mesmo raciocinio para a cobertura de locutor: `speaker_known` todo falso
     # produz conjuntos vazios em todos os splits, interseccao zero e um
     # "sem sobreposicao" que nao mediu nada.
-    exigidas = ("audio_sha256", "sample_paths", "known_speakers",
-                "utterance_ids", "text_ids")
+    exigidas = (
+        "audio_sha256",
+        "sample_paths",
+        "known_speakers",
+        "utterance_ids",
+        "text_ids",
+    )
     failures = []
     for section in exigidas:
         if section not in report:
@@ -152,7 +156,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", required=True, type=Path)
     parser.add_argument(
-        "--out", type=Path, default=None,
+        "--out",
+        type=Path,
+        default=None,
         help="grava o relatorio JSON aqui (default: nao grava, so imprime)",
     )
     # DEFAULT INVERTIDO. Era `store_true` (opt-in): rodado como o README
@@ -160,7 +166,9 @@ def main() -> int:
     # JSON e saia com codigo 0 — em CI ou num script de pipeline o vazamento
     # passava como sucesso. Uma auditoria que nao reprova nao e guarda-corpo.
     parser.add_argument(
-        "--fail-on-overlap", action=argparse.BooleanOptionalAction, default=True,
+        "--fail-on-overlap",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help=(
             "retorna codigo de saida != 0 se qualquer sobreposicao for "
             "encontrada (padrao: ligado; use --no-fail-on-overlap para uso "
@@ -178,11 +186,16 @@ def main() -> int:
 
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+        args.out.write_text(
+            json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
         print(f"\nRelatorio salvo: {args.out}")
 
     if args.fail_on_overlap and not report["passed"]:
-        print(f"\nFALHA: sobreposicao entre splits detectada: {report['failures']}", file=sys.stderr)
+        print(
+            f"\nFALHA: sobreposicao entre splits detectada: {report['failures']}",
+            file=sys.stderr,
+        )
         return 1
     return 0
 

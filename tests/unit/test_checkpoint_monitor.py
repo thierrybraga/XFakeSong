@@ -7,6 +7,7 @@ publicado e, no retune com L2=3e-3, faria selecionar a época 1 -- um modelo
 desinformativo, porque ln(2)=0,693 é um piso que a entropia de um modelo
 confiantemente errado não bate.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -128,9 +129,9 @@ def test_logits_crus_usam_log_odds_e_nao_a_coluna_1():
     esperado = _eer(logits[:, 1] - logits[:, 0])
     so_col1 = _eer(logits[:, 1])
     assert esperado != so_col1, "o caso de teste nao separa os dois criterios"
-    assert logs["val_eer"] == pytest.approx(esperado, abs=1e-9), (
-        "o callback ordenou por logit[1] em vez da log-odds"
-    )
+    assert logs["val_eer"] == pytest.approx(
+        esperado, abs=1e-9
+    ), "o callback ordenou por logit[1] em vez da log-odds"
 
 
 def test_softmax_nao_muda_com_a_log_odds():
@@ -169,6 +170,7 @@ def test_uma_classe_so_nao_publica_metrica():
 
 def test_falha_interna_nao_derruba_o_treino():
     """Métrica auxiliar não pode matar um treino de horas."""
+
     class _Quebrado:
         stop_training = False
 
@@ -332,9 +334,9 @@ def test_validation_eer_entra_na_frente_dos_consumidores():
     # O método é `train`, não `train_model` — a primeira versão deste teste
     # inspecionava `train_model`, que não existe, e teria dado AttributeError
     # em vez de verificar coisa alguma.
-    assert not hasattr(mod.ModelTrainer, "train_model"), (
-        "surgiu um `train_model`: confirme qual método monta os callbacks"
-    )
+    assert not hasattr(
+        mod.ModelTrainer, "train_model"
+    ), "surgiu um `train_model`: confirme qual método monta os callbacks"
     fonte = inspect.getsource(mod.ModelTrainer.train)
     inicio = fonte.index("checkpoint_monitor")
     trecho = fonte[inicio : inicio + 1500]
@@ -416,9 +418,9 @@ def test_o_desfecho_da_restauracao_chega_ao_artefato():
     from benchmarks import runner as runner_mod
 
     fonte_runner = inspect.getsource(runner_mod._run_neural)
-    assert 'train_data.get("checkpoint_restore")' in fonte_runner, (
-        "o runner precisa LER o desfecho que o serviço grava"
-    )
-    assert '"checkpoint_restore": checkpoint_restore' in fonte_runner, (
-        "e precisa ESCREVÊ-LO no fit_strategy do metrics.json"
-    )
+    assert (
+        'train_data.get("checkpoint_restore")' in fonte_runner
+    ), "o runner precisa LER o desfecho que o serviço grava"
+    assert (
+        '"checkpoint_restore": checkpoint_restore' in fonte_runner
+    ), "e precisa ESCREVÊ-LO no fit_strategy do metrics.json"

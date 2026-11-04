@@ -157,7 +157,9 @@ def main() -> int:
             "app.domain.dataset_metadata.speaker_manifest)"
         ),
     )
-    parser.add_argument("--report", default="data/datasets/speaker_manifest_report.json")
+    parser.add_argument(
+        "--report", default="data/datasets/speaker_manifest_report.json"
+    )
     parser.add_argument(
         "--fkvoice-block-size",
         type=int,
@@ -185,7 +187,9 @@ def main() -> int:
     if not isinstance(manifest, dict):
         manifest = {}
 
-    fkvoice_report = _add_fkvoice_manifest(dataset_dir, manifest, args.fkvoice_block_size)
+    fkvoice_report = _add_fkvoice_manifest(
+        dataset_dir, manifest, args.fkvoice_block_size
+    )
     brspeech_report = _inspect_brspeech_columns(dataset_dir)
 
     # GUARDA DE REESCRITA. Este script é legado das fontes fkvoice/brspeech e
@@ -214,9 +218,9 @@ def main() -> int:
         "manifest_entries": len(manifest),
         "split_wavs": len(total_wavs),
         "split_identified": identified,
-        "split_identified_ratio": round(identified / len(total_wavs), 6)
-        if total_wavs
-        else 0.0,
+        "split_identified_ratio": (
+            round(identified / len(total_wavs), 6) if total_wavs else 0.0
+        ),
         "fkvoice": fkvoice_report,
         "brspeech": brspeech_report,
         "common_voice": {

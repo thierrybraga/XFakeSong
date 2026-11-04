@@ -1,6 +1,7 @@
 """
 Extrator de características de qualidade vocal.
 """
+
 import warnings
 from typing import Dict, List
 
@@ -24,9 +25,15 @@ from .components.utils import get_default_voice_quality_features
 class VoiceQualityFeatureExtractor(IFeatureExtractor):
     """Extrator de características de qualidade vocal."""
 
-    def __init__(self, sr: int = 22050, frame_length: int = 2048,
-                 hop_length: int = 512, window: str = 'hann',
-                 f0_min: float = 80.0, f0_max: float = 400.0):
+    def __init__(
+        self,
+        sr: int = 22050,
+        frame_length: int = 2048,
+        hop_length: int = 512,
+        window: str = "hann",
+        f0_min: float = 80.0,
+        f0_max: float = 400.0,
+    ):
         """Inicializa o extrator de qualidade vocal."""
         # Validação de parâmetros
         if sr <= 0:
@@ -40,21 +47,20 @@ class VoiceQualityFeatureExtractor(IFeatureExtractor):
         self.fmin = f0_min
         self.fmax = min(f0_max, sr // 4)
 
-    def extract(
-            self, audio_data: AudioData) -> ProcessingResult[AudioFeatures]:
+    def extract(self, audio_data: AudioData) -> ProcessingResult[AudioFeatures]:
         """Extrai características de qualidade vocal do áudio."""
         try:
             if audio_data.samples is None or len(audio_data.samples) == 0:
                 return ProcessingResult(
-                    status=ProcessingStatus.ERROR,
-                    errors=["Dados de áudio vazios"]
+                    status=ProcessingStatus.ERROR, errors=["Dados de áudio vazios"]
                 )
 
             samples = audio_data.samples
 
             if audio_data.sample_rate != self.sr:
                 samples = librosa.resample(
-                    samples, orig_sr=audio_data.sample_rate, target_sr=self.sr)
+                    samples, orig_sr=audio_data.sample_rate, target_sr=self.sr
+                )
 
             features_dict = self._compute_features(samples)
 
@@ -73,21 +79,17 @@ class VoiceQualityFeatureExtractor(IFeatureExtractor):
                 features=features_arrays,
                 feature_type=FeatureType.VOICE_QUALITY,
                 extraction_params=self.get_extraction_params(),
-                audio_metadata={'sample_rate': audio_data.sample_rate}
+                audio_metadata={"sample_rate": audio_data.sample_rate},
             )
 
-            return ProcessingResult.success(
-                data=audio_features
-            )
+            return ProcessingResult.success(data=audio_features)
 
         except Exception as e:
-            return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=[str(e)]
-            )
+            return ProcessingResult(status=ProcessingStatus.ERROR, errors=[str(e)])
 
     def extract_features(
-            self, audio_data: AudioData) -> ProcessingResult[AudioFeatures]:
+        self, audio_data: AudioData
+    ) -> ProcessingResult[AudioFeatures]:
         """Implementação da interface IFeatureExtractor."""
         return self.extract(audio_data)
 
@@ -105,8 +107,9 @@ class VoiceQualityFeatureExtractor(IFeatureExtractor):
         min_length = self.frame_length
         if len(y) < min_length:
             warnings.warn(
-                f"Sinal muito curto ({len(y)} samples), fazendo padding para {min_length}")
-            y = np.pad(y, (0, min_length - len(y)), mode='constant')
+                f"Sinal muito curto ({len(y)} samples), fazendo padding para {min_length}"
+            )
+            y = np.pad(y, (0, min_length - len(y)), mode="constant")
 
         # Normalizar sinal
         y_max = np.max(np.abs(y))
@@ -117,8 +120,14 @@ class VoiceQualityFeatureExtractor(IFeatureExtractor):
             features = {}
 
             # Extrair F0 para análises baseadas em pitch
-            f0 = librosa.yin(y, fmin=self.fmin, fmax=self.fmax, sr=self.sr,
-                             frame_length=self.frame_length, hop_length=self.hop_length)
+            f0 = librosa.yin(
+                y,
+                fmin=self.fmin,
+                fmax=self.fmax,
+                sr=self.sr,
+                frame_length=self.frame_length,
+                hop_length=self.hop_length,
+            )
 
             # === MEDIDAS DE PERTURBAÇÃO ===
             perturbation_features = extract_perturbation_features(
@@ -127,22 +136,19 @@ class VoiceQualityFeatureExtractor(IFeatureExtractor):
             features.update(perturbation_features)
 
             # === MEDIDAS DE RUÍDO ===
-            noise_features = extract_noise_features(
-                y, f0, self.sr
-            )
+            noise_features = extract_noise_features(y, f0, self.sr)
             features.update(noise_features)
 
             # === MEDIDAS ADICIONAIS DE QUALIDADE ===
-            quality_features = extract_additional_quality_features(
-                y, f0, self.sr
-            )
+            quality_features = extract_additional_quality_features(y, f0, self.sr)
             features.update(quality_features)
 
             return features
 
         except Exception as e:
             warnings.warn(
-                f"Erro na extração de características de qualidade vocal: {e}")
+                f"Erro na extração de características de qualidade vocal: {e}"
+            )
             return get_default_voice_quality_features()
 
     def get_feature_type(self) -> FeatureType:
@@ -156,10 +162,10 @@ class VoiceQualityFeatureExtractor(IFeatureExtractor):
     def get_extraction_params(self) -> Dict:
         """Retorna parâmetros de extração."""
         return {
-            'sr': self.sr,
-            'frame_length': self.frame_length,
-            'hop_length': self.hop_length,
-            'window': self.window,
-            'f0_min': self.f0_min,
-            'f0_max': self.f0_max
+            "sr": self.sr,
+            "frame_length": self.frame_length,
+            "hop_length": self.hop_length,
+            "window": self.window,
+            "f0_min": self.f0_min,
+            "f0_max": self.f0_max,
         }

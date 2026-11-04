@@ -37,7 +37,7 @@ def compute_fractal_dimension(y: np.ndarray) -> float:
         return np.nan
 
     # Ajuste linear em escala log-log
-    log_scales = np.log(scales[:len(counts)])
+    log_scales = np.log(scales[: len(counts)])
     log_counts = np.log(counts)
 
     slope = np.polyfit(log_scales, log_counts, 1)[0]
@@ -46,7 +46,8 @@ def compute_fractal_dimension(y: np.ndarray) -> float:
 
 
 def compute_fractal_dimension_optimized(
-        y: np.ndarray, cache: Optional[Dict] = None) -> float:
+    y: np.ndarray, cache: Optional[Dict] = None
+) -> float:
     """Versão otimizada da dimensão fractal com menos escalas."""
     N = len(y)
 
@@ -98,7 +99,7 @@ def compute_fractal_dimension_optimized(
         result = np.nan
     else:
         # Ajuste linear em escala log-log
-        log_scales = np.log(scales[:len(counts)])
+        log_scales = np.log(scales[: len(counts)])
         log_counts = np.log(np.maximum(counts, 1))  # Evitar log(0)
 
         result = -np.polyfit(log_scales, log_counts, 1)[0]

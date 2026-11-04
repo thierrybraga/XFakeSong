@@ -34,6 +34,7 @@ def _historico(val_loss):
 
 # ─────────────── custo antes de começar ───────────────
 
+
 def test_estimativa_reflete_o_custo_medido_da_arquitetura():
     """Reaproveita as horas de `benchmarks.planning`, não um chute."""
     caro = _estimativa_de_treino("RawGAT-ST", 100, 66452)
@@ -70,6 +71,7 @@ def test_separador_de_milhar_nao_corrompe_a_frase():
 
 # ─────────────── interrupção ───────────────
 
+
 def test_sinal_de_parada_e_reversivel():
     _PEDIDO_DE_PARADA.clear()
     assert not _PEDIDO_DE_PARADA.is_set()
@@ -104,15 +106,25 @@ def test_treino_respeita_o_pedido_de_parada():
 
 # ─────────────── sobreajuste ao vivo ───────────────
 
+
 def test_aviso_de_sobreajuste_so_aparece_quando_ha_estagnacao():
     melhorando = _train_status_html(
-        "AASIST", "GPU", 8, 100, _historico([.9, .8, .7, .6, .5, .4, .3, .2]), 120.0
+        "AASIST",
+        "GPU",
+        8,
+        100,
+        _historico([0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2]),
+        120.0,
     )
     assert "val_loss sem melhorar" not in melhorando
 
     estagnada = _train_status_html(
-        "AASIST", "GPU", 10, 100,
-        _historico([.9, .8, .7, .3, .4, .5, .6, .7, .8, .9]), 120.0,
+        "AASIST",
+        "GPU",
+        10,
+        100,
+        _historico([0.9, 0.8, 0.7, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]),
+        120.0,
     )
     assert "val_loss sem melhorar" in estagnada
     assert "sem melhorar há 6 épocas" in estagnada
@@ -121,7 +133,7 @@ def test_aviso_de_sobreajuste_so_aparece_quando_ha_estagnacao():
 def test_aviso_nao_alarma_no_inicio_do_treino():
     """Oscilação nas primeiras épocas é normal."""
     curto = _train_status_html(
-        "AASIST", "GPU", 4, 100, _historico([.3, .5, .6, .7]), 60.0
+        "AASIST", "GPU", 4, 100, _historico([0.3, 0.5, 0.6, 0.7]), 60.0
     )
     assert "val_loss sem melhorar" not in curto
 
@@ -129,16 +141,24 @@ def test_aviso_nao_alarma_no_inicio_do_treino():
 def test_aviso_informa_que_o_melhor_checkpoint_esta_salvo():
     """Sem isso, interromper parece perder o trabalho."""
     html = _train_status_html(
-        "AASIST", "GPU", 12, 100,
-        _historico([.9, .8, .2, .3, .4, .5, .6, .7, .8, .9, 1.0, 1.1]), 300.0,
+        "AASIST",
+        "GPU",
+        12,
+        100,
+        _historico([0.9, 0.8, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1]),
+        300.0,
     )
     assert "melhor checkpoint" in html
 
 
 def test_aviso_ausente_quando_o_treino_terminou():
     html = _train_status_html(
-        "AASIST", "GPU", 10, 10,
-        _historico([.9, .8, .2, .3, .4, .5, .6, .7, .8, .9]), 300.0,
+        "AASIST",
+        "GPU",
+        10,
+        10,
+        _historico([0.9, 0.8, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]),
+        300.0,
         phase="done",
     )
     assert "val_loss sem melhorar" not in html

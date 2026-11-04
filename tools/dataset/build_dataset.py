@@ -59,7 +59,9 @@ def _load_dataset_catalog():
     script precisa mostrar --help e orquestrar Docker mesmo quando o Python
     nativo ainda não tem as dependências ML instaladas.
     """
-    module_path = BASE_DIR / "app" / "domain" / "dataset_metadata" / "dataset_catalog.py"
+    module_path = (
+        BASE_DIR / "app" / "domain" / "dataset_metadata" / "dataset_catalog.py"
+    )
     spec = importlib.util.spec_from_file_location("xfake_dataset_catalog", module_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Falha ao carregar catálogo: {module_path}")
@@ -180,7 +182,9 @@ def print_status():
     logger.info(f"  FAKE  total : {fake_total:>5d}")
     logger.info(f"    BRSpeech spoof    : {brspeech_fake:>5d}  (meta: {half_target})")
     logger.info(f"    Fake Voices XTTS  : {xtts_fake:>5d}  (meta: {half_target})")
-    logger.info(f"  TOTAL       : {real_total + fake_total:>5d}  (meta: {target_per_class * 2})")
+    logger.info(
+        f"  TOTAL       : {real_total + fake_total:>5d}  (meta: {target_per_class * 2})"
+    )
     logger.info("=" * 60)
 
     return real_total, fake_total
@@ -203,19 +207,25 @@ def step_download(target_per_class: int, skip_real_cv: bool = False):
     #     max_samples em metade real + metade fake).
     brspeech_real = count_wavs(REAL_DIR, ["brspeech"])
     brspeech_fake = count_wavs(FAKE_DIR, ["brspeech"])
-    brspeech_needed = (
-        max(0, brspeech_real_goal - brspeech_real)
-        + max(0, brspeech_real_goal - brspeech_fake)
+    brspeech_needed = max(0, brspeech_real_goal - brspeech_real) + max(
+        0, brspeech_real_goal - brspeech_fake
     )
 
     if brspeech_needed > 0:
         run(
-            [sys.executable, str(TOOLS_DIR / "dataset" / "download_datasets.py"),
-             "--brspeech", "--max-samples", str(brspeech_real_goal * 2)],
+            [
+                sys.executable,
+                str(TOOLS_DIR / "dataset" / "download_datasets.py"),
+                "--brspeech",
+                "--max-samples",
+                str(brspeech_real_goal * 2),
+            ],
             f"BRSpeech-DF bonafide + spoof ({brspeech_real_goal} por classe)",
         )
     else:
-        logger.info(f"BRSpeech-DF ja tem {brspeech_real} real + {brspeech_fake} fake. Pulando.")
+        logger.info(
+            f"BRSpeech-DF ja tem {brspeech_real} real + {brspeech_fake} fake. Pulando."
+        )
 
     # --- Reforco real com quotas independentes; uma fonte nao pode consumir a
     # quota da outra por ter sido baixada primeiro.
@@ -225,15 +235,25 @@ def step_download(target_per_class: int, skip_real_cv: bool = False):
         mls_count = count_wavs(REAL_DIR, ["mlspt"])
         if mls_count < mls_goal:
             run(
-                [sys.executable, str(TOOLS_DIR / "dataset" / "download_datasets.py"),
-                 "--mls-portuguese", "--max-samples", str(mls_goal)],
+                [
+                    sys.executable,
+                    str(TOOLS_DIR / "dataset" / "download_datasets.py"),
+                    "--mls-portuguese",
+                    "--max-samples",
+                    str(mls_goal),
+                ],
                 f"MLS Portuguese (alvo contratual: {mls_goal})",
             )
         tts_count = count_wavs(REAL_DIR, ["ttsport"])
         if tts_count < tts_goal:
             run(
-                [sys.executable, str(TOOLS_DIR / "dataset" / "download_datasets.py"),
-                 "--tts-portuguese", "--max-samples", str(tts_goal)],
+                [
+                    sys.executable,
+                    str(TOOLS_DIR / "dataset" / "download_datasets.py"),
+                    "--tts-portuguese",
+                    "--max-samples",
+                    str(tts_goal),
+                ],
                 f"TTS-Portuguese (alvo contratual: {tts_goal})",
             )
 
@@ -243,8 +263,13 @@ def step_download(target_per_class: int, skip_real_cv: bool = False):
         # max_speakers * max_per_speaker ~= half
         max_speakers = max(10, half // 50)
         run(
-            [sys.executable, str(TOOLS_DIR / "dataset" / "download_datasets.py"),
-             "--fake-voices", "--max-speakers", str(max_speakers)],
+            [
+                sys.executable,
+                str(TOOLS_DIR / "dataset" / "download_datasets.py"),
+                "--fake-voices",
+                "--max-speakers",
+                str(max_speakers),
+            ],
             f"Fake Voices XTTS (meta: {half} fakes, {max_speakers} falantes)",
         )
     else:
@@ -369,7 +394,6 @@ def step_balance(
         )
     effective_target = target_per_class
 
-
     # Remover excesso de REAL
     # Valida a composicao mesmo quando a contagem total ja coincide com o alvo.
     if real_quotas is not None:
@@ -437,11 +461,15 @@ def step_preprocess(
 ):
     """Roda o pipeline de pre-processamento com os ratios corretos."""
     cmd = [
-        sys.executable, str(TOOLS_DIR / "dataset" / "preprocess_dataset.py"),
+        sys.executable,
+        str(TOOLS_DIR / "dataset" / "preprocess_dataset.py"),
         "--full",
-        "--train-ratio", str(train_ratio),
-        "--val-ratio",   str(val_ratio),
-        "--test-ratio",  str(test_ratio),
+        "--train-ratio",
+        str(train_ratio),
+        "--val-ratio",
+        str(val_ratio),
+        "--test-ratio",
+        str(test_ratio),
     ]
     if speaker_disjoint:
         cmd.append("--speaker-disjoint")
@@ -454,8 +482,13 @@ def step_preprocess(
     )
 
 
-def save_dataset_config(target_per_class: int, train_r: float, val_r: float, test_r: float,
-                        tier: str | None = None):
+def save_dataset_config(
+    target_per_class: int,
+    train_r: float,
+    val_r: float,
+    test_r: float,
+    tier: str | None = None,
+):
     """Salva dataset_config.json com a estrategia documentada."""
     real_total = count_wavs(REAL_DIR)
     fake_total = count_wavs(FAKE_DIR)
@@ -473,9 +506,7 @@ def save_dataset_config(target_per_class: int, train_r: float, val_r: float, tes
     ]
 
     tier_info = get_tier(tier) if tier else None
-    split_strategy = (
-        tier_info.split_strategy if tier_info else "stratified"
-    )
+    split_strategy = tier_info.split_strategy if tier_info else "stratified"
     speaker_aware = bool(tier_info.speaker_aware) if tier_info else False
 
     speakers_summary = {}
@@ -609,49 +640,66 @@ def main():
         )
     )
     parser.add_argument(
-        "--tier", choices=tier_choices(), default=None,
+        "--tier",
+        choices=tier_choices(),
+        default=None,
         help="Tier de dataset (test/small/medium/large) — define tamanho, fontes, "
-             "split e protocolo de falante. Veja docs/data/public-datasets.md.",
+        "split e protocolo de falante. Veja docs/data/public-datasets.md.",
     )
     parser.add_argument(
-        "--target", type=int, default=None,
+        "--target",
+        type=int,
+        default=None,
         help="Numero de amostras por classe (override; default do tier, ou 7500 sem tier)",
     )
     parser.add_argument(
-        "--train-ratio", type=float, default=0.70,
+        "--train-ratio",
+        type=float,
+        default=0.70,
         help="Proporcao de treino (default: 0.70)",
     )
     parser.add_argument(
-        "--val-ratio", type=float, default=0.15,
+        "--val-ratio",
+        type=float,
+        default=0.15,
         help="Proporcao de validacao (default: 0.15)",
     )
     parser.add_argument(
-        "--test-ratio", type=float, default=0.15,
+        "--test-ratio",
+        type=float,
+        default=0.15,
         help="Proporcao de teste (default: 0.15)",
     )
     parser.add_argument(
-        "--skip-download", action="store_true",
+        "--skip-download",
+        action="store_true",
         help="Pular downloads (usar apenas o que ja existe)",
     )
     parser.add_argument(
-        "--skip-real-cv", action="store_true",
+        "--skip-real-cv",
+        action="store_true",
         help="Pular reforco real publico (apenas BRSpeech + FakeVoices)",
     )
     parser.add_argument(
-        "--only-splits", action="store_true",
+        "--only-splits",
+        action="store_true",
         help="Apenas recriar os splits (skip download + balance)",
     )
     parser.add_argument(
-        "--delete-excess", action="store_true",
+        "--delete-excess",
+        action="store_true",
         help="Remove excedentes em vez de arquivar em data/datasets/overflow",
     )
     parser.add_argument(
-        "--status", action="store_true",
+        "--status",
+        action="store_true",
         help="Apenas mostrar status atual do dataset",
     )
 
     parser.add_argument(
-        "--seed", type=int, default=42,
+        "--seed",
+        type=int,
+        default=42,
         help="Semente da selecao dentro de cada fonte (default: 42)",
     )
     args = parser.parse_args()
@@ -659,11 +707,15 @@ def main():
     # Resolver tier → tamanho/fontes/split/falante (override manual via --target).
     tier = get_tier(args.tier) if args.tier else None
     if tier is not None:
-        target_per_class = int(args.target) if args.target is not None else tier.per_class
+        target_per_class = (
+            int(args.target) if args.target is not None else tier.per_class
+        )
         skip_real_cv = args.skip_real_cv or tier.skip_real_cv
         speaker_disjoint = tier.split_strategy == "speaker_disjoint"
         train_r, val_r, test_r = (
-            tier.split["train"], tier.split["val"], tier.split["test"],
+            tier.split["train"],
+            tier.split["val"],
+            tier.split["test"],
         )
     else:
         target_per_class = int(args.target) if args.target is not None else 7500
@@ -684,11 +736,15 @@ def main():
     logger.info("=" * 60)
     if tier is not None:
         logger.info(f"  Tier              : {tier.name} — {tier.purpose}")
-        logger.info(f"  Estrategia split  : {tier.split_strategy}"
-                    + (" (disjunto por falante)" if speaker_disjoint else ""))
+        logger.info(
+            f"  Estrategia split  : {tier.split_strategy}"
+            + (" (disjunto por falante)" if speaker_disjoint else "")
+        )
     logger.info(f"  Target por classe : {target_per_class}")
     logger.info(f"  Total esperado    : {target_per_class * 2}")
-    logger.info(f"  Split             : {int(train_r*100)}/{int(val_r*100)}/{int(test_r*100)}")
+    logger.info(
+        f"  Split             : {int(train_r*100)}/{int(val_r*100)}/{int(test_r*100)}"
+    )
     real_comp = (
         f"{target_per_class} BRSpeech-bonafide"
         if skip_real_cv
@@ -698,7 +754,9 @@ def main():
         )
     )
     logger.info(f"  Composicao real   : {real_comp}")
-    logger.info(f"  Composicao fake   : {target_per_class//2} BRSpeech-spoof + {target_per_class//2} Fake Voices XTTS")
+    logger.info(
+        f"  Composicao fake   : {target_per_class//2} BRSpeech-spoof + {target_per_class//2} Fake Voices XTTS"
+    )
 
     if args.status:
         print_status()
@@ -759,11 +817,15 @@ def main():
     logger.info("\n" + "=" * 60)
     logger.info("BUILD CONCLUIDO")
     logger.info("=" * 60)
-    logger.info(f"  Dataset: {real_total + fake_total} amostras ({real_total} real + {fake_total} fake)")
+    logger.info(
+        f"  Dataset: {real_total + fake_total} amostras ({real_total} real + {fake_total} fake)"
+    )
     logger.info("  Splits : data/datasets/splits/train/ | val/ | test/")
     logger.info("  Config : data/datasets/dataset_config.json")
     logger.info("\nProximo passo (Fase 2):")
-    logger.info("  python tools/training/train_advanced.py --model conformer --epochs 100")
+    logger.info(
+        "  python tools/training/train_advanced.py --model conformer --epochs 100"
+    )
     logger.info("  (ou use a interface Gradio: python main.py --gradio)")
 
 

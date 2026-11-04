@@ -236,7 +236,10 @@ def test_arquivo_de_versoes_fixa_o_essencial_e_nao_os_pacotes_cuda(perfil):
 )
 def test_dockerfile_usa_as_versoes_fixas_e_nao_deixa_cache(dockerfile, perfil):
     texto = (INFERENCE_API / dockerfile).read_text(encoding="utf-8")
-    assert f"PIP_CONSTRAINT=/app/{dr.arquivo_de_versoes(perfil).relative_to(ROOT).as_posix()}" in texto
+    assert (
+        f"PIP_CONSTRAINT=/app/{dr.arquivo_de_versoes(perfil).relative_to(ROOT).as_posix()}"
+        in texto
+    )
     assert f"inference-api/constraints-{perfil}.txt infrastructure/" in texto
     bloco = texto.split("RUN pip install", 1)[1].split("COPY ", 1)[0]
     assert "pip cache purge" in bloco
@@ -250,7 +253,9 @@ def test_ci_constroi_e_confere_as_duas_imagens_de_inferencia():
     job = workflow["jobs"]["imagem"]
     assert job["strategy"]["matrix"]["perfil"] == list(dr.PERFIS)
     comandos = [passo.get("run", "") for passo in job["steps"]]
-    assert any("docker_build.py inference-${{ matrix.perfil }} build" in c for c in comandos)
+    assert any(
+        "docker_build.py inference-${{ matrix.perfil }} build" in c for c in comandos
+    )
     assert any("docker_release.py check ${{ matrix.perfil }}" in c for c in comandos)
     # `on` vira True no YAML 1.1 do PyYAML.
     gatilhos = workflow[True]

@@ -54,6 +54,7 @@ logger = logging.getLogger(__name__)
 
 # ============================ CUSTOM LAYERS ============================
 
+
 @tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class MelSpectrogramLayer(layers.Layer):
     """Mel spectrogram extraction for CNN-Transformer input.
@@ -62,8 +63,9 @@ class MelSpectrogramLayer(layers.Layer):
     STFT params: 1024 FFT, 160 hop (10ms at 16kHz).
     """
 
-    def __init__(self, sample_rate=16000, n_fft=1024, hop_length=160,
-                 n_mels=128, **kwargs):
+    def __init__(
+        self, sample_rate=16000, n_fft=1024, hop_length=160, n_mels=128, **kwargs
+    ):
         super().__init__(**kwargs)
         self.sample_rate = sample_rate
         self.n_fft = n_fft
@@ -82,7 +84,7 @@ class MelSpectrogramLayer(layers.Layer):
             inputs,
             frame_length=self.n_fft,
             frame_step=self.hop_length,
-            fft_length=self.n_fft
+            fft_length=self.n_fft,
         )
         magnitude = tf.abs(stft)
         mel_weight = tf.signal.linear_to_mel_weight_matrix(
@@ -90,7 +92,7 @@ class MelSpectrogramLayer(layers.Layer):
             num_spectrogram_bins=self.n_fft // 2 + 1,
             sample_rate=self.sample_rate,
             lower_edge_hertz=0.0,
-            upper_edge_hertz=self.sample_rate / 2.0
+            upper_edge_hertz=self.sample_rate / 2.0,
         )
         mel_spec = tf.matmul(tf.square(magnitude), mel_weight)
         log_mel = tf.math.log(mel_spec + 1e-6)
@@ -98,12 +100,14 @@ class MelSpectrogramLayer(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'sample_rate': self.sample_rate,
-            'n_fft': self.n_fft,
-            'hop_length': self.hop_length,
-            'n_mels': self.n_mels,
-        })
+        config.update(
+            {
+                "sample_rate": self.sample_rate,
+                "n_fft": self.n_fft,
+                "hop_length": self.hop_length,
+                "n_mels": self.n_mels,
+            }
+        )
         return config
 
 
@@ -118,8 +122,15 @@ class CCTTokenizer(layers.Layer):
     Output: (batch, seq_len, channels) where seq_len = flattened spatial dims.
     """
 
-    def __init__(self, num_output_channels=None, kernel_size=3, stride=1,
-                 pooling_kernel_size=3, pooling_stride=2, **kwargs):
+    def __init__(
+        self,
+        num_output_channels=None,
+        kernel_size=3,
+        stride=1,
+        pooling_kernel_size=3,
+        pooling_stride=2,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         if num_output_channels is None:
             num_output_channels = [64, 128]
@@ -138,19 +149,22 @@ class CCTTokenizer(layers.Layer):
         for i, out_ch in enumerate(num_output_channels):
             self.conv_layers.append(
                 layers.Conv2D(
-                    out_ch, kernel_size, strides=stride,
-                    padding='same', use_bias=False,
-                    activation='relu',
-                    kernel_initializer='he_normal',
-                    name=f'conv_{i}'
+                    out_ch,
+                    kernel_size,
+                    strides=stride,
+                    padding="same",
+                    use_bias=False,
+                    activation="relu",
+                    kernel_initializer="he_normal",
+                    name=f"conv_{i}",
                 )
             )
             self.conv_layers.append(
                 layers.MaxPooling2D(
                     pool_size=pooling_kernel_size,
                     strides=pooling_stride,
-                    padding='same',
-                    name=f'pool_{i}'
+                    padding="same",
+                    name=f"pool_{i}",
                 )
             )
 
@@ -186,13 +200,15 @@ class CCTTokenizer(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'num_output_channels': self.num_output_channels,
-            'kernel_size': self.kernel_size,
-            'stride': self.stride,
-            'pooling_kernel_size': self.pooling_kernel_size,
-            'pooling_stride': self.pooling_stride,
-        })
+        config.update(
+            {
+                "num_output_channels": self.num_output_channels,
+                "kernel_size": self.kernel_size,
+                "stride": self.stride,
+                "pooling_kernel_size": self.pooling_kernel_size,
+                "pooling_stride": self.pooling_stride,
+            }
+        )
         return config
 
 
@@ -219,7 +235,7 @@ class StochasticDepth(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({'drop_prob': self.drop_prob})
+        config.update({"drop_prob": self.drop_prob})
         return config
 
 
@@ -234,8 +250,14 @@ class TransformerBlock(layers.Layer):
     FFN: Dense(proj_dim, GELU) -> Dropout -> Dense(proj_dim) -> Dropout
     """
 
-    def __init__(self, projection_dim, num_heads=2, dropout_rate=0.1,
-                 stochastic_depth_rate=0.0, **kwargs):
+    def __init__(
+        self,
+        projection_dim,
+        num_heads=2,
+        dropout_rate=0.1,
+        stochastic_depth_rate=0.0,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.projection_dim = projection_dim
         self.num_heads = num_heads
@@ -246,12 +268,12 @@ class TransformerBlock(layers.Layer):
         self.attn = layers.MultiHeadAttention(
             num_heads=num_heads,
             key_dim=projection_dim // num_heads,
-            dropout=dropout_rate
+            dropout=dropout_rate,
         )
         self.stochastic_depth1 = StochasticDepth(stochastic_depth_rate)
 
         self.norm2 = layers.LayerNormalization(epsilon=1e-5)
-        self.ffn_dense1 = layers.Dense(projection_dim, activation='gelu')
+        self.ffn_dense1 = layers.Dense(projection_dim, activation="gelu")
         self.ffn_dropout1 = layers.Dropout(dropout_rate)
         self.ffn_dense2 = layers.Dense(projection_dim)
         self.ffn_dropout2 = layers.Dropout(dropout_rate)
@@ -277,7 +299,9 @@ class TransformerBlock(layers.Layer):
 
     def build(self, input_shape):
         seq_len = input_shape[1] if input_shape[1] is not None else 2
-        feature_dim = input_shape[2] if input_shape[2] is not None else self.projection_dim
+        feature_dim = (
+            input_shape[2] if input_shape[2] is not None else self.projection_dim
+        )
         dummy_shape = [1, seq_len, feature_dim]
         dummy = tf.zeros(dummy_shape, dtype=self.compute_dtype)
         x1 = self.norm1(dummy)
@@ -298,12 +322,14 @@ class TransformerBlock(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'projection_dim': self.projection_dim,
-            'num_heads': self.num_heads,
-            'dropout_rate': self.dropout_rate,
-            'stochastic_depth_rate': self.stochastic_depth_rate,
-        })
+        config.update(
+            {
+                "projection_dim": self.projection_dim,
+                "num_heads": self.num_heads,
+                "dropout_rate": self.dropout_rate,
+                "stochastic_depth_rate": self.stochastic_depth_rate,
+            }
+        )
         return config
 
 
@@ -324,10 +350,10 @@ class PositionalEmbeddingLayer(layers.Layer):
         feature_dim = input_shape[2]
         if seq_len is not None:
             self.pos_emb = self.add_weight(
-                name='pos_emb',
+                name="pos_emb",
                 shape=(1, seq_len, feature_dim),
-                initializer='glorot_uniform',
-                trainable=True
+                initializer="glorot_uniform",
+                trainable=True,
             )
             self.static_seq_len = True
         else:
@@ -359,10 +385,7 @@ class SequencePooling(layers.Layer):
         attention_weights = tf.nn.softmax(self.attention_dense(inputs), axis=1)
         attention_weights = tf.cast(attention_weights, inputs.dtype)
         # (batch, seq, 1)^T @ (batch, seq, dim) -> (batch, 1, dim)
-        weighted = tf.matmul(
-            tf.transpose(attention_weights, perm=[0, 2, 1]),
-            inputs
-        )
+        weighted = tf.matmul(tf.transpose(attention_weights, perm=[0, 2, 1]), inputs)
         # (batch, dim)
         return tf.squeeze(weighted, axis=1)
 
@@ -378,6 +401,7 @@ class SequencePooling(layers.Layer):
 
 
 # ============================ MODEL BUILDERS ============================
+
 
 def _create_cct_model(
     input_shape: Tuple[int, ...],
@@ -400,7 +424,7 @@ def _create_cct_model(
     weight_decay: float = 1e-4,
     alpha: float = 1e-7,
     clipnorm: float = 1.0,
-    architecture: str = 'hybrid_cnn_transformer'
+    architecture: str = "hybrid_cnn_transformer",
 ) -> models.Model:
     """Create CCT model for audio deepfake detection.
 
@@ -416,47 +440,50 @@ def _create_cct_model(
     if conv_channels is None:
         conv_channels = [64, 128]
 
-    inputs = layers.Input(shape=input_shape, name='audio_input')
+    inputs = layers.Input(shape=input_shape, name="audio_input")
 
     # ---------- Front-end: audio -> spectrogram ----------
     if is_raw_audio(input_shape):
         audio = ensure_flat_input(inputs)
         # Mel spectrogram (128 bins per Kadam et al.)
         x = MelSpectrogramLayer(
-            sample_rate=16000, n_fft=1024, hop_length=160, n_mels=128,
-            name='mel_spectrogram'
+            sample_rate=16000,
+            n_fft=1024,
+            hop_length=160,
+            n_mels=128,
+            name="mel_spectrogram",
         )(audio)
         # Add channel dim: (batch, time, 128) -> (batch, time, 128, 1)
         # ExpandDimsLayer (camada registrada) no lugar do `layers.Lambda`:
         # Lambda com lambda Python não é recarregável em safe_mode (Keras 3).
         if x.shape[1] is not None:
-            x = layers.Reshape(
-                target_shape=(x.shape[1], 128, 1), name='add_channel'
-            )(x)
+            x = layers.Reshape(target_shape=(x.shape[1], 128, 1), name="add_channel")(x)
         else:
-            x = ExpandDimsLayer(axis=-1, name='add_channel')(x)
+            x = ExpandDimsLayer(axis=-1, name="add_channel")(x)
     else:
         x = inputs
         if len(input_shape) == 2:
             # (time, features) -> (time, features, 1)
-            x = layers.Reshape((*input_shape, 1), name='add_channel')(x)
+            x = layers.Reshape((*input_shape, 1), name="add_channel")(x)
         # Already 3D (time, features, channels) -> OK
 
     # ---------- CCT Tokenizer ----------
     # 2x Conv2D + MaxPool per Hassani et al.
     tokens = CCTTokenizer(
         num_output_channels=conv_channels,
-        kernel_size=3, stride=1,
-        pooling_kernel_size=3, pooling_stride=2,
-        name='cct_tokenizer'
+        kernel_size=3,
+        stride=1,
+        pooling_kernel_size=3,
+        pooling_stride=2,
+        name="cct_tokenizer",
     )(x)
 
     # ---------- Projection to transformer dim ----------
-    tokens = layers.Dense(projection_dim, name='token_projection')(tokens)
+    tokens = layers.Dense(projection_dim, name="token_projection")(tokens)
 
     # ---------- Positional embeddings ----------
     if use_positional_emb:
-        tokens = PositionalEmbeddingLayer(name='positional_embedding')(tokens)
+        tokens = PositionalEmbeddingLayer(name="positional_embedding")(tokens)
 
     # ---------- Transformer Encoder ----------
     # Stochastic depth: linear schedule from 0 to stochastic_depth_rate
@@ -468,28 +495,32 @@ def _create_cct_model(
             num_heads=num_heads,
             dropout_rate=dropout_rate,
             stochastic_depth_rate=dpr[i],
-            name=f'transformer_block_{i}'
+            name=f"transformer_block_{i}",
         )(tokens)
 
     # Final LayerNorm
-    tokens = layers.LayerNormalization(epsilon=1e-5, name='final_norm')(tokens)
+    tokens = layers.LayerNormalization(epsilon=1e-5, name="final_norm")(tokens)
 
     # ---------- Sequence Pooling ----------
-    representation = SequencePooling(name='sequence_pooling')(tokens)
+    representation = SequencePooling(name="sequence_pooling")(tokens)
 
     # ---------- Classification ----------
-    representation = layers.Dropout(dropout_rate, name='head_dropout')(representation)
+    representation = layers.Dropout(dropout_rate, name="head_dropout")(representation)
 
     # Cabeça PADRONIZADA: num_classes>=2 → softmax N-unidades (convenção única).
     # dtype='float32': sob mixed_float16, softmax+crossentropy em float16
     # satura/perde precisão e pode degradar o treino. Mesma correção já
     # aplicada em AASIST/RawGAT-ST.
     if num_classes == 1:
-        outputs = layers.Dense(1, activation='sigmoid', name='output', dtype='float32')(representation)
-        loss = 'binary_crossentropy'
+        outputs = layers.Dense(1, activation="sigmoid", name="output", dtype="float32")(
+            representation
+        )
+        loss = "binary_crossentropy"
     else:
-        outputs = layers.Dense(num_classes, activation='softmax', name='output', dtype='float32')(representation)
-        loss = 'sparse_categorical_crossentropy'
+        outputs = layers.Dense(
+            num_classes, activation="softmax", name="output", dtype="float32"
+        )(representation)
+        loss = "sparse_categorical_crossentropy"
 
     model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
 
@@ -497,6 +528,7 @@ def _create_cct_model(
     # CCT tem self-attention pesada — warmup é crítico para estabilidade.
     # P1: clipnorm=1.0 elimina o gap val→teste (0.97→0.76) por divergência tardia.
     from app.domain.models.training.optimization import create_warmup_cosine_optimizer
+
     optimizer = create_warmup_cosine_optimizer(
         initial_learning_rate=learning_rate,
         warmup_steps=warmup_steps,
@@ -506,7 +538,7 @@ def _create_cct_model(
         clipnorm=clipnorm,
     )
 
-    model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
+    model.compile(optimizer=optimizer, loss=loss, metrics=["accuracy"])
 
     logger.info(
         f"CCT model created: transformer_layers={transformer_layers}, heads={num_heads}, "
@@ -521,7 +553,7 @@ def _create_cct_model(
 def _create_cct_lite(
     input_shape: Tuple[int, ...],
     num_classes: int = 1,
-    architecture: str = 'hybrid_cnn_transformer_lite'
+    architecture: str = "hybrid_cnn_transformer_lite",
 ) -> models.Model:
     """Lightweight CCT variant.
 
@@ -537,17 +569,18 @@ def _create_cct_lite(
         dropout_rate=0.1,
         stochastic_depth_rate=0.0,
         use_positional_emb=True,
-        architecture=architecture
+        architecture=architecture,
     )
 
 
 # ============================ FACTORY ============================
 
+
 def create_model(
     input_shape: Tuple[int, ...],
     num_classes: int = 1,
-    architecture: str = 'hybrid_cnn_transformer',
-    **kwargs
+    architecture: str = "hybrid_cnn_transformer",
+    **kwargs,
 ) -> models.Model:
     """Factory function for CCT-based hybrid CNN-Transformer models.
 
@@ -555,23 +588,25 @@ def create_model(
         'hybrid_cnn_transformer': Full CCT (2x conv [64,128] + 2x Transformer)
         'hybrid_cnn_transformer_lite': Lightweight (2x conv [32,64] + 1x Transformer)
     """
-    if architecture == 'hybrid_cnn_transformer_lite':
+    if architecture == "hybrid_cnn_transformer_lite":
         return _create_cct_lite(input_shape, num_classes, architecture)
     else:
         return _create_cct_model(
             input_shape=input_shape,
             num_classes=num_classes,
             architecture=architecture,
-            **kwargs
+            **kwargs,
         )
 
 
 # Register custom layers
-tf.keras.utils.get_custom_objects().update({
-    'MelSpectrogramLayer': MelSpectrogramLayer,
-    'CCTTokenizer': CCTTokenizer,
-    'StochasticDepth': StochasticDepth,
-    'TransformerBlock': TransformerBlock,
-    'PositionalEmbeddingLayer': PositionalEmbeddingLayer,
-    'SequencePooling': SequencePooling,
-})
+tf.keras.utils.get_custom_objects().update(
+    {
+        "MelSpectrogramLayer": MelSpectrogramLayer,
+        "CCTTokenizer": CCTTokenizer,
+        "StochasticDepth": StochasticDepth,
+        "TransformerBlock": TransformerBlock,
+        "PositionalEmbeddingLayer": PositionalEmbeddingLayer,
+        "SequencePooling": SequencePooling,
+    }
+)

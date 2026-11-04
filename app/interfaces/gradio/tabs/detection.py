@@ -61,9 +61,20 @@ AUTO_MODEL = "__auto__"
 # Para nomear os artefatos `bench_*` antes de carregá-los. Os clássicos não estão no
 # registro das arquiteturas neurais.
 _ARQUITETURAS_COM_NOME = (
-    "AASIST", "RawGAT-ST", "RawNet2", "Conformer", "Hybrid CNN-Transformer",
-    "SpectrogramTransformer", "MultiscaleCNN", "SVM", "RandomForest",
-    "WavLM", "HuBERT", "Sonic Sleuth", "EfficientNet-LSTM", "Ensemble",
+    "AASIST",
+    "RawGAT-ST",
+    "RawNet2",
+    "Conformer",
+    "Hybrid CNN-Transformer",
+    "SpectrogramTransformer",
+    "MultiscaleCNN",
+    "SVM",
+    "RandomForest",
+    "WavLM",
+    "HuBERT",
+    "Sonic Sleuth",
+    "EfficientNet-LSTM",
+    "Ensemble",
 )
 
 
@@ -82,6 +93,7 @@ def get_detection_service():
                 # reiniciar. Antes criava um DetectionService() próprio lendo o dir
                 # default "models" (raiz, vazio).
                 from app.dependencies import get_detection_service as _shared
+
                 _detection_service_instance = _shared()
             except Exception as e:
                 logger.error(f"Failed to init detection service: {e}")
@@ -92,6 +104,7 @@ def get_detection_service():
 # Tentar importar serviços
 try:
     from app.domain.services.detection_service import DetectionService  # noqa: F401
+
     MODELS_AVAILABLE = True
 except ImportError as e:
     logger.warning(
@@ -115,8 +128,9 @@ def get_waveform_plot(y, sr):
         step = len(y) // max_points
         y_plot = y[::step]
         # waveshow recalcula seu próprio tempo — passamos hop_length compatível
-        librosa.display.waveshow(y_plot, sr=sr // step, alpha=0.85,
-                                 color=_PLOT_ACCENT, ax=ax)
+        librosa.display.waveshow(
+            y_plot, sr=sr // step, alpha=0.85, color=_PLOT_ACCENT, ax=ax
+        )
     else:
         librosa.display.waveshow(y, sr=sr, alpha=0.85, color=_PLOT_ACCENT, ax=ax)
     ax.set_xlabel("Tempo (s)")
@@ -138,22 +152,30 @@ def get_prosody_plot(y, sr):
 
     rms = librosa.feature.rms(y=y)[0]
     times = librosa.times_like(rms)
-    ax.plot(times, rms, label='Energia (RMS)', color=_PLOT_DANGER, alpha=0.7, linewidth=1.5)
+    ax.plot(
+        times, rms, label="Energia (RMS)", color=_PLOT_DANGER, alpha=0.7, linewidth=1.5
+    )
 
     # F0 via pyin é o gargalo — só roda em áudios curtos
     if duration_s <= _PROSODY_PYIN_MAX_DURATION_S:
         try:
             f0, _voiced_flag, _voiced_probs = librosa.pyin(
                 y,
-                fmin=librosa.note_to_hz('C2'),
-                fmax=librosa.note_to_hz('C7'),
+                fmin=librosa.note_to_hz("C2"),
+                fmax=librosa.note_to_hz("C7"),
             )
             times_f0 = librosa.times_like(f0)
             max_f0 = float(np.nanmax(f0)) if np.any(~np.isnan(f0)) else 0.0
             if max_f0 > 0:
                 f0_norm = f0 / max_f0
-                ax.plot(times_f0, f0_norm, label='Pitch (F0 Norm.)',
-                        color=_PLOT_ACCENT2, alpha=0.7, linewidth=1.5)
+                ax.plot(
+                    times_f0,
+                    f0_norm,
+                    label="Pitch (F0 Norm.)",
+                    color=_PLOT_ACCENT2,
+                    alpha=0.7,
+                    linewidth=1.5,
+                )
         except Exception as e:
             logger.warning(f"Erro ao calcular Pitch: {e}")
     else:
@@ -162,15 +184,19 @@ def get_prosody_plot(y, sr):
             f"{_PROSODY_PYIN_MAX_DURATION_S}s)"
         )
         ax.text(
-            0.02, 0.95,
+            0.02,
+            0.95,
             f"Pitch detection pulado (>{_PROSODY_PYIN_MAX_DURATION_S}s)",
             transform=ax.transAxes,
-            color=_PLOT_TEXT, fontsize=9, alpha=0.6,
-            verticalalignment='top',
+            color=_PLOT_TEXT,
+            fontsize=9,
+            alpha=0.6,
+            verticalalignment="top",
         )
 
-    ax.legend(facecolor=_PLOT_FACE, edgecolor=_PLOT_GRID,
-              labelcolor=_PLOT_TEXT, fontsize=9)
+    ax.legend(
+        facecolor=_PLOT_FACE, edgecolor=_PLOT_GRID, labelcolor=_PLOT_TEXT, fontsize=9
+    )
     ax.set_xlabel("Tempo (s)")
     safe_tight_layout(fig)
     return fig
@@ -183,9 +209,9 @@ def get_spectrogram_plot(y, sr):
     S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128)
     S_dB = librosa.power_to_db(S, ref=np.max)
     img = librosa.display.specshow(
-        S_dB, x_axis='time', y_axis='mel', sr=sr, fmax=8000,
-        ax=ax, cmap='magma')
-    cb = fig.colorbar(img, ax=ax, format='%+2.0f dB', pad=0.02)
+        S_dB, x_axis="time", y_axis="mel", sr=sr, fmax=8000, ax=ax, cmap="magma"
+    )
+    cb = fig.colorbar(img, ax=ax, format="%+2.0f dB", pad=0.02)
     cb.ax.tick_params(colors=_PLOT_TEXT, labelsize=8)
     cb.outline.set_edgecolor(_PLOT_GRID)
     safe_tight_layout(fig)
@@ -217,9 +243,9 @@ def _empty_analysis_result(
         payload["error_code"] = error_code
     return (
         render_error(error_msg, hint),
-        None,    # plot_waveform
-        None,    # plot_prosody
-        None,    # plot_spectrogram
+        None,  # plot_waveform
+        None,  # plot_prosody
+        None,  # plot_spectrogram
         json.dumps(payload, indent=2),
     )
 
@@ -239,7 +265,10 @@ def refresh_model_choices():
         service = get_detection_service() if MODELS_AVAILABLE else None
         if service:
             escolhas += sorted(
-                ((_nome_do_modelo(service, n), n) for n in service.get_available_models()),
+                (
+                    (_nome_do_modelo(service, n), n)
+                    for n in service.get_available_models()
+                ),
                 key=lambda par: par[0].lower(),
             )
     except Exception as exc:  # noqa: BLE001 - a tela abre mesmo sem o serviço
@@ -317,9 +346,7 @@ def analyze_audio(audio_path, model_name, segmented, gravado_no_microfone=False)
 
                 # Executar Detecção
                 result_proc = service.detect_from_file(
-                    audio_path,
-                    model_name=modelo_usado,
-                    segmented=bool(segmented)
+                    audio_path, model_name=modelo_usado, segmented=bool(segmented)
                 )
 
                 if result_proc.status.name == "SUCCESS":
@@ -351,18 +378,17 @@ def analyze_audio(audio_path, model_name, segmented, gravado_no_microfone=False)
                         "model": data.model_name,
                         "probabilities": data.probabilities,
                         "metadata": data.metadata,
-                        "features_used": data.features_used
+                        "features_used": data.features_used,
                     }
 
                     # Persistir Resultado (usando o serviço)
-                    filename = (
-                        Path(audio_path).name if audio_path else "unknown.wav"
-                    )
+                    filename = Path(audio_path).name if audio_path else "unknown.wav"
                     service.save_analysis_result(data, filename)
 
                 else:
                     erro = (
-                        result_proc.errors[0] if result_proc.errors
+                        result_proc.errors[0]
+                        if result_proc.errors
                         else "Erro na inferência"
                     )
                     details = {"error": erro}
@@ -378,7 +404,7 @@ def analyze_audio(audio_path, model_name, segmented, gravado_no_microfone=False)
         details["audio_info"] = {
             "duration": duracao_s,
             "sample_rate": sr,
-            "rms_mean": float(np.mean(librosa.feature.rms(y=y)))
+            "rms_mean": float(np.mean(librosa.feature.rms(y=y))),
         }
 
         return (
@@ -386,7 +412,7 @@ def analyze_audio(audio_path, model_name, segmented, gravado_no_microfone=False)
             fig_waveform,
             fig_prosody,
             fig_spectrogram,
-            json.dumps(details, indent=2)
+            json.dumps(details, indent=2),
         )
 
     except Exception as e:
@@ -447,8 +473,11 @@ def create_detection_tab():
                     )
 
                 analyze_btn = gr.Button(
-                    "Analisar áudio", variant="primary", size="lg",
-                    elem_classes="detect-primary-action")
+                    "Analisar áudio",
+                    variant="primary",
+                    size="lg",
+                    elem_classes="detect-primary-action",
+                )
 
             # Coluna de Saída (Direita/Baixo)
             with gr.Column(scale=1, min_width=320, elem_classes="detect-column"):
@@ -471,8 +500,7 @@ def create_detection_tab():
                 with gr.Column(min_width=320):
                     plot_spectrogram = gr.Plot(label="Espectrograma Mel")
                 with gr.Column(min_width=320):
-                    plot_prosody = gr.Plot(
-                        label="Análise prosódica (pitch e energia)")
+                    plot_prosody = gr.Plot(label="Análise prosódica (pitch e energia)")
 
         with gr.Accordion("Dados técnicos (JSON)", open=False):
             json_output = gr.JSON(label="Saída técnica")
@@ -499,17 +527,14 @@ def create_detection_tab():
 
         analyze_btn.click(
             handle_analysis,
-            inputs=[
-                audio_file,
-                audio_mic,
-                model_select,
-                segmented_chk],
+            inputs=[audio_file, audio_mic, model_select, segmented_chk],
             outputs=[
                 verdict_output,
                 plot_waveform,
                 plot_prosody,
                 plot_spectrogram,
-                json_output]
+                json_output,
+            ],
         )
 
     # ── 📦 Análise em Lote (sub-aba irmã, movida da antiga aba Forense) ──
@@ -535,7 +560,8 @@ def create_detection_tab():
         batch_btn = gr.Button("Analisar arquivos", variant="primary", size="lg")
 
         batch_summary = gr.Markdown(
-            value="*Os resultados aparecem aqui depois da análise.*")
+            value="*Os resultados aparecem aqui depois da análise.*"
+        )
 
         # Resultados só depois de haver resultado: gráficos vazios parecem erro, e o
         # relatório não tem o que exportar antes da análise.

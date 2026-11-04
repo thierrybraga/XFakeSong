@@ -111,8 +111,12 @@ def _plan(paired_only: bool) -> list[dict]:
 
     from collections import Counter
 
-    print(f"\nCETUC: {len(speakers)} locutores | Fake Voices: {len(fake_codes)} codigos")
-    print(f"pareados (presentes nas duas classes): {sum(s['has_fake'] for s in speakers)}")
+    print(
+        f"\nCETUC: {len(speakers)} locutores | Fake Voices: {len(fake_codes)} codigos"
+    )
+    print(
+        f"pareados (presentes nas duas classes): {sum(s['has_fake'] for s in speakers)}"
+    )
     print("\n=== PARTICAO OFICIAL (speaker-disjoint pelos autores) ===")
     total = Counter(s["split"] for s in speakers)
     paired = Counter(s["split"] for s in speakers if s["has_fake"])
@@ -190,9 +194,7 @@ def _download(selected: list[dict], per_speaker: int, prune: bool) -> None:
                     # entre a gravacao real e o clone sintetico.
                     transcript = None
                     try:
-                        txt = archive.extractfile(
-                            member.name[: -len(".wav")] + ".txt"
-                        )
+                        txt = archive.extractfile(member.name[: -len(".wav")] + ".txt")
                         if txt is not None:
                             transcript = (
                                 txt.read().decode("utf-8", errors="replace").strip()

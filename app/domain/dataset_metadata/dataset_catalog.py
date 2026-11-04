@@ -621,5 +621,3 @@ def dataset_reference_markdown() -> str:
             f"{info.license} | {info.benchmark_use} |"
         )
     return "\n".join(lines)
-
-

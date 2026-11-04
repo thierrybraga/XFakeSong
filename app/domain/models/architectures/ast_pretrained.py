@@ -70,7 +70,9 @@ def _load_state_dict(checkpoint: str) -> Tuple[Dict[str, np.ndarray], Any]:
 
 
 def _interpolate_position_embeddings(
-    pos: np.ndarray, src_grid: Tuple[int, int], dst_grid: Tuple[int, int],
+    pos: np.ndarray,
+    src_grid: Tuple[int, int],
+    dst_grid: Tuple[int, int],
 ) -> np.ndarray:
     """Reamostra o embedding posicional de patches entre grades 2-D.
 
@@ -124,8 +126,12 @@ def load_ast_pretrained_weights(
         ASTPretrainedUnavailable: se a config não for a do checkpoint ou se os
             pesos não puderem ser obtidos.
     """
-    cfg = {"embed_dim": embed_dim, "num_blocks": num_blocks,
-           "num_heads": num_heads, "ff_dim": ff_dim}
+    cfg = {
+        "embed_dim": embed_dim,
+        "num_blocks": num_blocks,
+        "num_heads": num_heads,
+        "ff_dim": ff_dim,
+    }
     if cfg != _SUPPORTED:
         raise ASTPretrainedUnavailable(
             f"pesos pré-treinados existem apenas para a configuração ViT-Base "
@@ -144,8 +150,9 @@ def load_ast_pretrained_weights(
 
     # ── Patch embedding: Conv2d(1, 768, k=16, s=10) ────────────────────────
     # PyTorch: (out, in, kh, kw) → Keras: (kh, kw, in, out)
-    conv_w = np.transpose(w("embeddings.patch_embeddings.projection.weight"),
-                          (2, 3, 1, 0))
+    conv_w = np.transpose(
+        w("embeddings.patch_embeddings.projection.weight"), (2, 3, 1, 0)
+    )
     conv_b = w("embeddings.patch_embeddings.projection.bias")
     _assign(model.get_layer("patch_embedding").conv, [conv_w, conv_b])
     transferred.append("patch_embedding")
@@ -157,9 +164,9 @@ def load_ast_pretrained_weights(
     transferred.append("class_token")
 
     # ── Embedding posicional (interpolado para a grade deste modelo) ───────
-    pos = w("embeddings.position_embeddings")[0]      # (2 + n_src, 768)
-    cls_pos = pos[:1]                                  # posição do CLS
-    patch_pos = pos[2:]                                # descarta a de destilação
+    pos = w("embeddings.position_embeddings")[0]  # (2 + n_src, 768)
+    cls_pos = pos[:1]  # posição do CLS
+    patch_pos = pos[2:]  # descarta a de destilação
 
     src_n = patch_pos.shape[0]
     src_f = hf_config.num_mel_bins  # 128
@@ -181,9 +188,7 @@ def load_ast_pretrained_weights(
             f"mas o modelo espera {expected}."
         )
     _assign(pos_layer, [new_pos.astype("float32")])
-    transferred.append(
-        f"position_embeddings({src_fp}x{src_tp}→{dst_fp}x{dst_tp})"
-    )
+    transferred.append(f"position_embeddings({src_fp}x{src_tp}→{dst_fp}x{dst_tp})")
 
     # ── Blocos Transformer ────────────────────────────────────────────────
     key_dim = embed_dim // num_heads
@@ -192,38 +197,46 @@ def load_ast_pretrained_weights(
         block = model.get_layer(f"ast_block_{i}")
 
         # Pre-LN: layernorm_before → antes da atenção; layernorm_after → antes do FFN
-        _assign(block.layernorm1, [w(p + "layernorm_before.weight"),
-                                   w(p + "layernorm_before.bias")])
-        _assign(block.layernorm2, [w(p + "layernorm_after.weight"),
-                                   w(p + "layernorm_after.bias")])
+        _assign(
+            block.layernorm1,
+            [w(p + "layernorm_before.weight"), w(p + "layernorm_before.bias")],
+        )
+        _assign(
+            block.layernorm2,
+            [w(p + "layernorm_after.weight"), w(p + "layernorm_after.bias")],
+        )
 
         # MultiHeadAttention do Keras: kernels (embed, heads, key_dim);
         # PyTorch guarda Linear como (out, in) → transpõe antes de fatiar.
         def _qkv(name: str, p: str = p):
-            kernel = w(p + f"attention.attention.{name}.weight").T   # (in, out)
+            kernel = w(p + f"attention.attention.{name}.weight").T  # (in, out)
             bias = w(p + f"attention.attention.{name}.bias")
-            return (kernel.reshape(embed_dim, num_heads, key_dim),
-                    bias.reshape(num_heads, key_dim))
+            return (
+                kernel.reshape(embed_dim, num_heads, key_dim),
+                bias.reshape(num_heads, key_dim),
+            )
 
         q_k, q_b = _qkv("query")
         k_k, k_b = _qkv("key")
         v_k, v_b = _qkv("value")
-        out_k = w(p + "attention.output.dense.weight").T             # (in, out)
+        out_k = w(p + "attention.output.dense.weight").T  # (in, out)
         out_k = out_k.reshape(num_heads, key_dim, embed_dim)
         out_b = w(p + "attention.output.dense.bias")
-        _assign(block.attention,
-                [q_k, q_b, k_k, k_b, v_k, v_b, out_k, out_b])
+        _assign(block.attention, [q_k, q_b, k_k, k_b, v_k, v_b, out_k, out_b])
 
         # FFN: Dense(ff_dim, gelu) → Dense(embed_dim)
-        _assign(block.ffn.layers[0], [w(p + "intermediate.dense.weight").T,
-                                      w(p + "intermediate.dense.bias")])
-        _assign(block.ffn.layers[-1], [w(p + "output.dense.weight").T,
-                                       w(p + "output.dense.bias")])
+        _assign(
+            block.ffn.layers[0],
+            [w(p + "intermediate.dense.weight").T, w(p + "intermediate.dense.bias")],
+        )
+        _assign(
+            block.ffn.layers[-1],
+            [w(p + "output.dense.weight").T, w(p + "output.dense.bias")],
+        )
         transferred.append(f"ast_block_{i}")
 
     # ── LayerNorm final ───────────────────────────────────────────────────
-    _assign(model.get_layer("final_norm"),
-            [w("layernorm.weight"), w("layernorm.bias")])
+    _assign(model.get_layer("final_norm"), [w("layernorm.weight"), w("layernorm.bias")])
     transferred.append("final_norm")
 
     info = {
@@ -236,6 +249,11 @@ def load_ast_pretrained_weights(
     logger.info(
         "AST: pesos pré-treinados carregados de '%s' — %d grupos de camadas, "
         "embedding posicional reamostrado %dx%d → %dx%d.",
-        checkpoint, len(transferred), src_fp, src_tp, dst_fp, dst_tp,
+        checkpoint,
+        len(transferred),
+        src_fp,
+        src_tp,
+        dst_fp,
+        dst_tp,
     )
     return info

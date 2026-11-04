@@ -32,8 +32,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
-def _run_one(architecture, dataset, epochs, snrs, seed, out_dir, overrides,
-             quick):
+def _run_one(architecture, dataset, epochs, snrs, seed, out_dir, overrides, quick):
     from benchmarks.config import BenchmarkConfig
     from benchmarks.runner import run_benchmark
 
@@ -69,8 +68,9 @@ def _row(label, arch_result):
         ),
     }
     for snr, metrics in sorted(rob.items(), key=lambda kv: -int(kv[0])):
-        row[f"acc_{snr}dB"] = round(float((metrics or {}).get("accuracy",
-                                    float("nan"))), 4)
+        row[f"acc_{snr}dB"] = round(
+            float((metrics or {}).get("accuracy", float("nan"))), 4
+        )
     return row
 
 
@@ -79,20 +79,31 @@ def main() -> int:
         description="Ablação futura de fine-tuning do WavLM (fora do TCC)"
     )
     p.add_argument("--dataset", help=".npz com X_train/y_train (raw audio)")
-    p.add_argument("--lrs", nargs="+", type=float,
-                   default=[1e-5, 3e-5, 1e-4],
-                   help="learning rates de fine-tuning a comparar")
+    p.add_argument(
+        "--lrs",
+        nargs="+",
+        type=float,
+        default=[1e-5, 3e-5, 1e-4],
+        help="learning rates de fine-tuning a comparar",
+    )
     p.add_argument("--epochs", type=int, default=30)
     # Inclui o 5 dB NAO VISTO, em paridade com o protocolo do benchmark.
     p.add_argument("--snr", nargs="+", type=int, default=[30, 20, 10, 5])
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--out", default="data/results/ablation_wavlm")
-    p.add_argument("--no-hubert", action="store_true",
-                   help="não roda o baseline HuBERT")
-    p.add_argument("--quick", action="store_true",
-                   help="preset sintético de verificação (1 época, sem áudio)")
-    p.add_argument("--allow-future-ssl", action="store_true",
-                   help="habilita explicitamente esta ablação fora do TCC")
+    p.add_argument(
+        "--no-hubert", action="store_true", help="não roda o baseline HuBERT"
+    )
+    p.add_argument(
+        "--quick",
+        action="store_true",
+        help="preset sintético de verificação (1 época, sem áudio)",
+    )
+    p.add_argument(
+        "--allow-future-ssl",
+        action="store_true",
+        help="habilita explicitamente esta ablação fora do TCC",
+    )
     args = p.parse_args()
 
     if not args.allow_future_ssl:
@@ -113,23 +124,35 @@ def main() -> int:
         label = f"WavLM lr={lr:g}"
         print(f"-> {label} (epochs={args.epochs})")
         res = _run_one(
-            "WavLM", args.dataset, args.epochs, args.snr, args.seed,
+            "WavLM",
+            args.dataset,
+            args.epochs,
+            args.snr,
+            args.seed,
             out_dir / f"wavlm_lr_{lr:g}",
-            overrides={"learning_rate": lr}, quick=args.quick,
+            overrides={"learning_rate": lr},
+            quick=args.quick,
         )
         rows.append(_row(label, res))
 
     if not args.no_hubert:
         print("-> HuBERT (baseline)")
         res = _run_one(
-            "HuBERT", args.dataset, args.epochs, args.snr, args.seed,
-            out_dir / "hubert_baseline", overrides=None, quick=args.quick,
+            "HuBERT",
+            args.dataset,
+            args.epochs,
+            args.snr,
+            args.seed,
+            out_dir / "hubert_baseline",
+            overrides=None,
+            quick=args.quick,
         )
         rows.append(_row("HuBERT baseline", res))
 
     # Persiste CSV + JSON
-    fields = sorted({k for r in rows for k in r.keys()},
-                    key=lambda k: (k != "config", k))
+    fields = sorted(
+        {k for r in rows for k in r.keys()}, key=lambda k: (k != "config", k)
+    )
     with (out_dir / "ablation_summary.csv").open(
         "w", encoding="utf-8", newline=""
     ) as f:

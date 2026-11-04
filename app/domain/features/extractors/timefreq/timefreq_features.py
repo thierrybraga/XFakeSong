@@ -27,8 +27,13 @@ class TimeFrequencyFeatureExtractor:
     Extrator de características de análise tempo-frequência.
     """
 
-    def __init__(self, sr: int = 22050, frame_length: int = 2048,
-                 hop_length: int = 512, n_fft: int = 2048):
+    def __init__(
+        self,
+        sr: int = 22050,
+        frame_length: int = 2048,
+        hop_length: int = 512,
+        n_fft: int = 2048,
+    ):
         """
         Inicializa o extrator de características tempo-frequência.
 
@@ -57,22 +62,26 @@ class TimeFrequencyFeatureExtractor:
 
         # === CARACTERÍSTICAS DO ESPECTROGRAMA ===
         spectrogram_features = extract_spectrogram_features(
-            y, self.sr, self.frame_length, self.hop_length)
+            y, self.sr, self.frame_length, self.hop_length
+        )
         features.update(spectrogram_features)
 
         # === CARACTERÍSTICAS DE FASE ===
         phase_features = extract_phase_features(
-            y, self.sr, self.frame_length, self.hop_length)
+            y, self.sr, self.frame_length, self.hop_length
+        )
         features.update(phase_features)
 
         # === TRANSFORMADA REASSIGNED ===
         reassigned_features = extract_reassigned_features(
-            y, self.sr, self.frame_length, self.hop_length)
+            y, self.sr, self.frame_length, self.hop_length
+        )
         features.update(reassigned_features)
 
         # === SYNCHROSQUEEZING ===
         synchro_features = extract_synchrosqueezing_features(
-            y, self.sr, self.frame_length, self.hop_length)
+            y, self.sr, self.frame_length, self.hop_length
+        )
         features.update(synchro_features)
 
         # === EMPIRICAL MODE DECOMPOSITION ===
@@ -89,8 +98,9 @@ class TimeFrequencyFeatureExtractor:
 
         return features
 
-    def _sifting_process(self, signal: np.ndarray,
-                         max_iterations: int = 10) -> Optional[np.ndarray]:
+    def _sifting_process(
+        self, signal: np.ndarray, max_iterations: int = 10
+    ) -> Optional[np.ndarray]:
         """Processo de peneiramento para EMD."""
         h = signal.copy()
 
@@ -106,12 +116,10 @@ class TimeFrequencyFeatureExtractor:
             try:
                 # Envelope superior
                 x = np.arange(len(h))
-                upper_envelope = np.interp(
-                    x, maxima_indices, h[maxima_indices])
+                upper_envelope = np.interp(x, maxima_indices, h[maxima_indices])
 
                 # Envelope inferior
-                lower_envelope = np.interp(
-                    x, minima_indices, h[minima_indices])
+                lower_envelope = np.interp(x, minima_indices, h[minima_indices])
 
                 # Média dos envelopes
                 mean_envelope = (upper_envelope + lower_envelope) / 2
@@ -120,7 +128,7 @@ class TimeFrequencyFeatureExtractor:
                 h_new = h - mean_envelope
 
                 # Critério de parada
-                if np.sum((h - h_new) ** 2) / np.sum(h ** 2) < 0.01:
+                if np.sum((h - h_new) ** 2) / np.sum(h**2) < 0.01:
                     break
 
                 h = h_new
@@ -140,7 +148,7 @@ def test_timefreq_features():
 
     # Sinal com frequência variável (chirp)
     f_start, f_end = 440, 1760
-    y_chirp = scipy.signal.chirp(t, f_start, duration, f_end, method='linear')
+    y_chirp = scipy.signal.chirp(t, f_start, duration, f_end, method="linear")
 
     # Adicionar componente harmônica
     y_harmonic = 0.5 * np.sin(2 * np.pi * 880 * t)
@@ -164,13 +172,17 @@ def test_timefreq_features():
 
     # Agrupar características por categoria
     categories = {
-        'Espectrograma': [k for k in features.keys() if 'spectral' in k or 'temporal' in k or 'timefreq' in k],
-        'Fase': [k for k in features.keys() if 'phase' in k],
-        'Reassigned': [k for k in features.keys() if 'reassigned' in k],
-        'Synchrosqueezing': [k for k in features.keys() if 'synchro' in k],
-        'EMD': [k for k in features.keys() if 'emd' in k],
-        'VMD': [k for k in features.keys() if 'vmd' in k],
-        'Instantâneas': [k for k in features.keys() if 'instantaneous' in k]
+        "Espectrograma": [
+            k
+            for k in features.keys()
+            if "spectral" in k or "temporal" in k or "timefreq" in k
+        ],
+        "Fase": [k for k in features.keys() if "phase" in k],
+        "Reassigned": [k for k in features.keys() if "reassigned" in k],
+        "Synchrosqueezing": [k for k in features.keys() if "synchro" in k],
+        "EMD": [k for k in features.keys() if "emd" in k],
+        "VMD": [k for k in features.keys() if "vmd" in k],
+        "Instantâneas": [k for k in features.keys() if "instantaneous" in k],
     }
 
     for category, feature_names in categories.items():

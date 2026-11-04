@@ -2,27 +2,24 @@ import librosa
 import numpy as np
 
 
-def compute_rms_energy(y: np.ndarray, frame_length: int,
-                       hop_length: int) -> np.ndarray:
+def compute_rms_energy(y: np.ndarray, frame_length: int, hop_length: int) -> np.ndarray:
     """Computa energia RMS por frame."""
-    return librosa.feature.rms(y=y, frame_length=frame_length,
-                               hop_length=hop_length)[0]
+    return librosa.feature.rms(y=y, frame_length=frame_length, hop_length=hop_length)[0]
 
 
 def compute_short_time_energy(
-        y: np.ndarray, frame_length: int, hop_length: int) -> np.ndarray:
+    y: np.ndarray, frame_length: int, hop_length: int
+) -> np.ndarray:
     """Computa energia de curto prazo."""
     # Dividir em frames
-    frames = librosa.util.frame(y, frame_length=frame_length,
-                                hop_length=hop_length)
+    frames = librosa.util.frame(y, frame_length=frame_length, hop_length=hop_length)
 
     # Calcular energia por frame
-    energy = np.sum(frames ** 2, axis=0)
+    energy = np.sum(frames**2, axis=0)
     return energy
 
 
-def compute_energy_entropy(
-        y: np.ndarray, frame_length: int, hop_length: int) -> float:
+def compute_energy_entropy(y: np.ndarray, frame_length: int, hop_length: int) -> float:
     """Computa entropia da energia."""
     # Calcular energia por frame
     energy = compute_short_time_energy(y, frame_length, hop_length)
@@ -41,8 +38,9 @@ def compute_energy_entropy(
     return float(entropy)
 
 
-def compute_teager_energy(y: np.ndarray, frame_length: int,
-                          hop_length: int) -> np.ndarray:
+def compute_teager_energy(
+    y: np.ndarray, frame_length: int, hop_length: int
+) -> np.ndarray:
     """Computa operador de energia de Teager-Kaiser."""
     if len(y) < 3:
         return np.array([0.0])
@@ -54,22 +52,21 @@ def compute_teager_energy(y: np.ndarray, frame_length: int,
         teager[i] = y[i] ** 2 - y[i - 1] * y[i + 1]
 
     # Dividir em frames
-    frames = librosa.util.frame(teager, frame_length=frame_length,
-                                hop_length=hop_length)
+    frames = librosa.util.frame(
+        teager, frame_length=frame_length, hop_length=hop_length
+    )
 
     # Média por frame
     return np.mean(frames, axis=0)
 
 
-def compute_log_energy(y: np.ndarray, frame_length: int,
-                       hop_length: int) -> np.ndarray:
+def compute_log_energy(y: np.ndarray, frame_length: int, hop_length: int) -> np.ndarray:
     """Calcula a energia logarítmica por frame."""
-    frames = librosa.util.frame(y, frame_length=frame_length,
-                                hop_length=hop_length)
+    frames = librosa.util.frame(y, frame_length=frame_length, hop_length=hop_length)
 
     log_energies = []
     for frame in frames.T:
-        energy = np.sum(frame ** 2)
+        energy = np.sum(frame**2)
         log_energy = np.log(energy + 1e-10)  # Evitar log(0)
         log_energies.append(log_energy)
 
@@ -77,7 +74,8 @@ def compute_log_energy(y: np.ndarray, frame_length: int,
 
 
 def compute_frame_energy_variance(
-        y: np.ndarray, frame_length: int, hop_length: int) -> float:
+    y: np.ndarray, frame_length: int, hop_length: int
+) -> float:
     """Calcula a variância da energia entre frames."""
     rms_energy = compute_rms_energy(y, frame_length, hop_length)
     return float(np.var(rms_energy))

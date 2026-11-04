@@ -204,7 +204,11 @@ def _detect_nvidia_via_lspci() -> List[str]:
             # Apenas controladores gráficos (evita ponte/áudio HDMI da GPU)
             is_gfx = any(
                 k in low
-                for k in ("vga compatible controller", "3d controller", "display controller")
+                for k in (
+                    "vga compatible controller",
+                    "3d controller",
+                    "display controller",
+                )
             )
             if is_gfx and (f"[{_NVIDIA_PCI_VENDOR}:" in low or "nvidia" in low):
                 # Texto após o primeiro ':' costuma ser a descrição da placa
@@ -472,6 +476,7 @@ def _probe_cudnn(tf) -> tuple[bool, Optional[str]]:
         # Enriquece com a comparação de versões quando for o mismatch conhecido.
         try:
             import importlib.metadata as _m
+
             runtime = _m.version("nvidia-cudnn-cu12")
             compiled = (tf.sysconfig.get_build_info() or {}).get("cudnn_version")
             detail = (
@@ -633,8 +638,7 @@ def setup_gpu(
         if not cudnn_ok:
             result["cudnn_error"] = cudnn_err
             logger.error(
-                "[GPU] cuDNN indisponível/incompatível — DNN ops falham na GPU. "
-                "%s",
+                "[GPU] cuDNN indisponível/incompatível — DNN ops falham na GPU. " "%s",
                 cudnn_err,
             )
             logger.error(

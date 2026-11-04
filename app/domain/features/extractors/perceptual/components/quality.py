@@ -1,6 +1,7 @@
 """
 Extração de características de qualidade perceptual (roughness, fluctuation, tonality).
 """
+
 from typing import Dict
 
 import librosa
@@ -9,8 +10,8 @@ import scipy.signal
 
 
 def extract_roughness_features(
-        y: np.ndarray, sr: int, frame_length: int,
-        hop_length: int) -> Dict[str, float]:
+    y: np.ndarray, sr: int, frame_length: int, hop_length: int
+) -> Dict[str, float]:
     """Extrai características de roughness (rugosidade)."""
     features = {}
 
@@ -43,8 +44,7 @@ def extract_roughness_features(
                     # Dissonância sensorial
                     x = 0.24 / (0.0207 * f1 + 18.96)
                     y_val = (3.5 * s1 * s2) / (s1 + s2)
-                    z = np.exp(-3.5 * x * freq_diff) - \
-                        np.exp(-5.75 * x * freq_diff)
+                    z = np.exp(-3.5 * x * freq_diff) - np.exp(-5.75 * x * freq_diff)
 
                     roughness_component = y_val * z
                     roughness_total += roughness_component
@@ -54,9 +54,9 @@ def extract_roughness_features(
     roughness_frames = np.array(roughness_frames)
 
     # Características de roughness
-    features['roughness_mean'] = np.mean(roughness_frames)
-    features['roughness_std'] = np.std(roughness_frames)
-    features['roughness_max'] = np.max(roughness_frames)
+    features["roughness_mean"] = np.mean(roughness_frames)
+    features["roughness_std"] = np.std(roughness_frames)
+    features["roughness_max"] = np.max(roughness_frames)
 
     return features
 
@@ -73,7 +73,8 @@ def extract_fluctuation_features(y: np.ndarray, sr: int) -> Dict:
     window_size = int(0.01 * sr)  # 10 ms
     if window_size > 0:
         envelope = scipy.signal.convolve(
-            envelope, np.ones(window_size) / window_size, mode='same')
+            envelope, np.ones(window_size) / window_size, mode="same"
+        )
 
     # Calcular modulações do envelope
     if len(envelope) > 1:
@@ -86,36 +87,34 @@ def extract_fluctuation_features(y: np.ndarray, sr: int) -> Dict:
         target_mod_freq = 4.0  # Hz
 
         # Encontrar energia próxima à frequência de modulação alvo
-        mod_freq_mask = (
-            envelope_freqs > 0.5) & (
-            envelope_freqs < 20)  # 0.5-20 Hz
+        mod_freq_mask = (envelope_freqs > 0.5) & (envelope_freqs < 20)  # 0.5-20 Hz
 
         if np.any(mod_freq_mask):
             mod_energies = envelope_magnitude[mod_freq_mask]
             mod_freqs_valid = envelope_freqs[mod_freq_mask]
 
             # Ponderação baseada na proximidade com 4 Hz
-            weights = np.exp(-0.5 *
-                             ((mod_freqs_valid - target_mod_freq) / 2) ** 2)
+            weights = np.exp(-0.5 * ((mod_freqs_valid - target_mod_freq) / 2) ** 2)
 
             fluctuation_strength = np.sum(mod_energies * weights)
-            features['fluctuation_strength'] = fluctuation_strength
+            features["fluctuation_strength"] = fluctuation_strength
 
             # Frequência de modulação dominante
             dominant_idx = np.argmax(mod_energies)
-            features['dominant_modulation_freq'] = mod_freqs_valid[dominant_idx]
+            features["dominant_modulation_freq"] = mod_freqs_valid[dominant_idx]
         else:
-            features['fluctuation_strength'] = 0
-            features['dominant_modulation_freq'] = 0
+            features["fluctuation_strength"] = 0
+            features["dominant_modulation_freq"] = 0
     else:
-        features['fluctuation_strength'] = 0
-        features['dominant_modulation_freq'] = 0
+        features["fluctuation_strength"] = 0
+        features["dominant_modulation_freq"] = 0
 
     return features
 
 
 def extract_tonality_features(
-        y: np.ndarray, sr: int, frame_length: int, hop_length: int) -> Dict:
+    y: np.ndarray, sr: int, frame_length: int, hop_length: int
+) -> Dict:
     """Extrai características de tonality."""
     features = {}
 
@@ -134,7 +133,7 @@ def extract_tonality_features(
             tonal_energy = np.sum(frame[peaks] ** 2)
 
             # Energia total
-            total_energy = np.sum(frame ** 2)
+            total_energy = np.sum(frame**2)
 
             # Tonality como razão entre energia tonal e total
             if total_energy > 0:
@@ -149,8 +148,8 @@ def extract_tonality_features(
     tonality_frames = np.array(tonality_frames)
 
     # Características de tonality
-    features['tonality_mean'] = np.mean(tonality_frames)
-    features['tonality_std'] = np.std(tonality_frames)
-    features['tonality_max'] = np.max(tonality_frames)
+    features["tonality_mean"] = np.mean(tonality_frames)
+    features["tonality_std"] = np.std(tonality_frames)
+    features["tonality_max"] = np.max(tonality_frames)
 
     return features

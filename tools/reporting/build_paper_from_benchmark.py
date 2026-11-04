@@ -96,9 +96,7 @@ def _validate_result(path: Path) -> list[str]:
             continue
         scores = result.get("scores_clean") or []
         if len(scores) != len(y_test):
-            errors.append(
-                f"{path}: {name} scores={len(scores)} e y_test={len(y_test)}"
-            )
+            errors.append(f"{path}: {name} scores={len(scores)} e y_test={len(y_test)}")
         robustness = result.get("robustness") or {}
         required_snrs = {"30", "20", "10"}
         available_snrs = set(robustness)
@@ -159,7 +157,8 @@ def main() -> int:
     if validation_errors:
         separator = chr(10) + "- "
         raise SystemExit(
-            "ERRO: artefatos de benchmark inválidos:" + separator
+            "ERRO: artefatos de benchmark inválidos:"
+            + separator
             + separator.join(validation_errors)
         )
 
@@ -213,7 +212,13 @@ def main() -> int:
 
     if args.compile:
         _run(
-            ["latexmk", "-pdf", "-interaction=nonstopmode", "-halt-on-error", "main.tex"],
+            [
+                "latexmk",
+                "-pdf",
+                "-interaction=nonstopmode",
+                "-halt-on-error",
+                "main.tex",
+            ],
             cwd=PAPER_DIR,
         )
 

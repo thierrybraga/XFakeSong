@@ -73,11 +73,7 @@ def build_input_contract(
     input_format = metadata.get("input_format", "tabular")
 
     # Heurística: modelos com input (N, 1) provavelmente recebem áudio raw
-    if (
-        model_input_shape
-        and len(model_input_shape) == 2
-        and model_input_shape[-1] == 1
-    ):
+    if model_input_shape and len(model_input_shape) == 2 and model_input_shape[-1] == 1:
         input_type = "audio"
         input_format = "raw"
     # Modelos com input (H, W) ou (H, W, C) provavelmente usam spectrogram
@@ -138,9 +134,7 @@ def build_input_contract(
                 if key in requirements:
                     contract[key] = requirements[key]
         except Exception as exc:
-            logger.debug(
-                "Contrato do registry não pôde ser incorporado: %s", exc
-            )
+            logger.debug("Contrato do registry não pôde ser incorporado: %s", exc)
 
     # Sprint 2.5: OOD threshold (energy-based). None se desabilitado/falhou.
     ood_t = ood_threshold

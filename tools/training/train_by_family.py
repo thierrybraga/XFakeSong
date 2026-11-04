@@ -86,9 +86,7 @@ def build_command(args: argparse.Namespace) -> list[str]:
     # Omitido, o run_models_sequential deriva o limite por arquitetura a partir
     # do custo estimado (benchmarks.planning.EXPECTED_TRAINING_HOURS).
     timeout_min = (
-        args.timeout_min
-        if args.timeout_min is not None
-        else cfg.get("timeout_min")
+        args.timeout_min if args.timeout_min is not None else cfg.get("timeout_min")
     )
     # Fallback com o 5 dB NAO VISTO, igual ao default de
     # run_models_sequential.py::--snr e ao BenchmarkConfig.snr_levels_db. Sem

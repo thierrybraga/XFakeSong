@@ -29,6 +29,7 @@ from app.core.exceptions import (
 
 # ── classes de exceção ────────────────────────────────────────────────────
 
+
 def test_app_error_defaults():
     e = AppError("boom")
     assert e.status_code == 500
@@ -87,6 +88,7 @@ def test_file_too_large_and_unsupported_format_messages():
 
 # ── _problem_detail (RFC 7807) ────────────────────────────────────────────
 
+
 def test_problem_detail_minimal():
     body = _problem_detail(404, "Not Found", "missing")
     assert body == {
@@ -99,15 +101,14 @@ def test_problem_detail_minimal():
 
 def test_problem_detail_with_code_extra_and_request_id(monkeypatch):
     monkeypatch.setattr(exc_mod, "get_request_id", lambda: "req-123")
-    body = _problem_detail(
-        400, "T", "d", error_code="E", extra={"field": "f"}
-    )
+    body = _problem_detail(400, "T", "d", error_code="E", extra={"field": "f"})
     assert body["error_code"] == "E"
     assert body["field"] == "f"
     assert body["request_id"] == "req-123"
 
 
 # ── handlers globais via FastAPI ──────────────────────────────────────────
+
 
 @pytest.fixture
 def client():

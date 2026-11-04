@@ -158,7 +158,9 @@ def stepper_html(current: int) -> str:
         ("3", "Ajustes"),
         ("4", "Treinar"),
     ]
-    html = f'<div class="wizard-stepper" role="group" aria-label="Etapa {current} de 4">'
+    html = (
+        f'<div class="wizard-stepper" role="group" aria-label="Etapa {current} de 4">'
+    )
     for index, (number, label) in enumerate(steps, start=1):
         if index < current:
             state = "done"

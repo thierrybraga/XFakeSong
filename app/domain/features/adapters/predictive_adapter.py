@@ -18,8 +18,7 @@ class PredictiveExtractorWrapper(IFeatureExtractor):
     def __init__(self):
         self.extractor = PredictiveFeatureExtractor(sr=22050)
 
-    def extract(
-            self, audio_data: AudioData) -> ProcessingResult[AudioFeatures]:
+    def extract(self, audio_data: AudioData) -> ProcessingResult[AudioFeatures]:
         try:
             features_dict = self.extractor.extract_features(audio_data.samples)
             # Normalizar features para array 1D
@@ -38,18 +37,14 @@ class PredictiveExtractorWrapper(IFeatureExtractor):
                 features={"predictive_features": features_array},
                 feature_type=FeatureType.ADVANCED,
                 extraction_params={"sr": 22050},
-                audio_metadata={"extractor": "predictive"}
+                audio_metadata={"extractor": "predictive"},
             )
 
             return ProcessingResult(
-                status=ProcessingStatus.SUCCESS,
-                data=audio_features
+                status=ProcessingStatus.SUCCESS, data=audio_features
             )
         except Exception as e:
-            return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=[str(e)]
-            )
+            return ProcessingResult(status=ProcessingStatus.ERROR, errors=[str(e)])
 
     def extract_features(
         self, audio_data: AudioData
@@ -60,10 +55,10 @@ class PredictiveExtractorWrapper(IFeatureExtractor):
         return FeatureType.ADVANCED
 
     def get_feature_names(self) -> List[str]:
-        return getattr(self.extractor, 'get_feature_names', lambda: ["lpc"])()
+        return getattr(self.extractor, "get_feature_names", lambda: ["lpc"])()
 
     def get_extraction_params(self) -> Dict[str, Any]:
         return {
-            "sr": getattr(self.extractor, 'sr', 22050),
-            "order": getattr(self.extractor, 'order', 12)
+            "sr": getattr(self.extractor, "sr", 22050),
+            "order": getattr(self.extractor, "order", 12),
         }

@@ -40,29 +40,35 @@ def test_auditoria_detecta_a_mesma_amostra_em_dois_splits(tmp_path, monkeypatch)
     from app.domain.services.dataset import preprocessing as pp
 
     # a MESMA semente gera o mesmo PCM: amostra duplicada entre treino e teste
-    _montar_splits(tmp_path, {
-        "train": {"real": [("a", 1)], "fake": [("b", 2)]},
-        "val": {"real": [("c", 3)], "fake": [("d", 4)]},
-        "test": {"real": [("e", 1)], "fake": [("f", 6)]},  # "e" == "a"
-    })
+    _montar_splits(
+        tmp_path,
+        {
+            "train": {"real": [("a", 1)], "fake": [("b", 2)]},
+            "val": {"real": [("c", 3)], "fake": [("d", 4)]},
+            "test": {"real": [("e", 1)], "fake": [("f", 6)]},  # "e" == "a"
+        },
+    )
 
     relatorio = pp.audit_splits(tmp_path)
 
     assert relatorio["available"] is True
     assert relatorio["content_sha256"]["overlap"]["train_test"] == 1
-    assert relatorio["passed"] is False, (
-        "a auditoria aceitou o mesmo audio em treino e teste"
-    )
+    assert (
+        relatorio["passed"] is False
+    ), "a auditoria aceitou o mesmo audio em treino e teste"
 
 
 def test_auditoria_aprova_particoes_realmente_disjuntas(tmp_path):
     from app.domain.services.dataset import preprocessing as pp
 
-    _montar_splits(tmp_path, {
-        "train": {"real": [("a", 1)], "fake": [("b", 2)]},
-        "val": {"real": [("c", 3)], "fake": [("d", 4)]},
-        "test": {"real": [("e", 5)], "fake": [("f", 6)]},
-    })
+    _montar_splits(
+        tmp_path,
+        {
+            "train": {"real": [("a", 1)], "fake": [("b", 2)]},
+            "val": {"real": [("c", 3)], "fake": [("d", 4)]},
+            "test": {"real": [("e", 5)], "fake": [("f", 6)]},
+        },
+    )
 
     relatorio = pp.audit_splits(tmp_path)
 
@@ -89,13 +95,13 @@ def test_interface_pede_disjuncao_por_falante_por_padrao():
 
     fonte = inspect.getsource(dataset_management)
 
-    assert "speaker_disjoint=bool(speaker_disjoint)" in fonte, (
-        "a interface voltou a criar splits sem passar speaker_disjoint"
-    )
+    assert (
+        "speaker_disjoint=bool(speaker_disjoint)" in fonte
+    ), "a interface voltou a criar splits sem passar speaker_disjoint"
     assert 'label="Separar por falante"' in fonte
     # o controle precisa vir LIGADO: o caminho de menor esforco tem de ser o
     # correto, nao o que vaza
-    trecho = fonte[fonte.index("pp_speaker_disjoint = gr.Checkbox"):][:200]
+    trecho = fonte[fonte.index("pp_speaker_disjoint = gr.Checkbox") :][:200]
     assert "value=True" in trecho, "o controle precisa vir marcado por padrao"
 
 

@@ -39,6 +39,7 @@ USO
     python benchmarks/run_rawgat_retune.py --plan-only
     python benchmarks/run_rawgat_retune.py --arm d --out data/results/rawgat_arm_d
 """
+
 from __future__ import annotations
 
 import argparse
@@ -88,27 +89,47 @@ def _plano(arm: str) -> dict:
         "descricao": cfg["descricao"],
         "overrides": cfg["overrides"],
         "publicado": PUBLICADO,
-        "efetivo": {k: efetivo[k] for k in sorted(
-            ("dropout_rate", "l2_reg_strength", "decay_steps", "learning_rate",
-             "global_clipnorm", "batch_size", "optimizer", "scheduler"))
-            if k in efetivo},
-        "referencia_publicada": {"accuracy": 0.8755, "eer": 0.1187,
-                                 "min_tdcf": 0.3149, "best_epoch": 17},
+        "efetivo": {
+            k: efetivo[k]
+            for k in sorted(
+                (
+                    "dropout_rate",
+                    "l2_reg_strength",
+                    "decay_steps",
+                    "learning_rate",
+                    "global_clipnorm",
+                    "batch_size",
+                    "optimizer",
+                    "scheduler",
+                )
+            )
+            if k in efetivo
+        },
+        "referencia_publicada": {
+            "accuracy": 0.8755,
+            "eer": 0.1187,
+            "min_tdcf": 0.3149,
+            "best_epoch": 17,
+        },
         "custo_estimado_h": 26.85,
     }
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--arm", choices=sorted(BRACOS))
     ap.add_argument("--plan-only", action="store_true")
     ap.add_argument("--dataset", default="data/datasets/benchmark_dataset_15k.npz")
     ap.add_argument("--out", default=None)
     ap.add_argument("--epochs", type=int, default=100)
-    ap.add_argument("--checkpoint-monitor", default="val_eer",
-                    choices=["val_eer", "val_loss"],
-                    help="métrica de seleção do checkpoint (padrão: val_eer)")
+    ap.add_argument(
+        "--checkpoint-monitor",
+        default="val_eer",
+        choices=["val_eer", "val_loss"],
+        help="métrica de seleção do checkpoint (padrão: val_eer)",
+    )
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
@@ -119,11 +140,15 @@ def main() -> int:
             for k, v in p["efetivo"].items():
                 marca = "  <-- alterado" if k in p["overrides"] else ""
                 print(f"   {k:<20} {v}{marca}")
-        print(f"\npublicado (referência): dropout {PUBLICADO['dropout_rate']}, "
-              f"L2 {PUBLICADO['l2_reg_strength']} -> acurácia 87,55%, EER 11,87%")
+        print(
+            f"\npublicado (referência): dropout {PUBLICADO['dropout_rate']}, "
+            f"L2 {PUBLICADO['l2_reg_strength']} -> acurácia 87,55%, EER 11,87%"
+        )
         print("\nPara executar um braço (~27 h em RTX 3060):")
-        print("  python benchmarks/run_rawgat_retune.py --arm d "
-              "--out data/results/rawgat_arm_d")
+        print(
+            "  python benchmarks/run_rawgat_retune.py --arm d "
+            "--out data/results/rawgat_arm_d"
+        )
         return 0
 
     if not args.arm:
@@ -133,7 +158,8 @@ def main() -> int:
     destino = Path(args.out or f"data/results/rawgat_retune_{args.arm}")
     destino.mkdir(parents=True, exist_ok=True)
     (destino / "retune_plan.json").write_text(
-        json.dumps(plano, indent=1, ensure_ascii=False), encoding="utf-8")
+        json.dumps(plano, indent=1, ensure_ascii=False), encoding="utf-8"
+    )
 
     from app.domain.models.architectures.registry import ArchitectureRegistry
     from benchmarks import planning
@@ -144,7 +170,8 @@ def main() -> int:
     # o plano do benchmark e os defaults do registry.
     planning.NEURAL_BENCHMARK_HPARAMS["rawgatst"].update(plano["overrides"])
     ArchitectureRegistry().get_architecture("RawGAT-ST").default_params.update(
-        plano["overrides"])
+        plano["overrides"]
+    )
 
     cfg = BenchmarkConfig()
     cfg.architectures = ["RawGAT-ST"]
@@ -162,12 +189,17 @@ def main() -> int:
     # é a métrica primária pela qual o protocolo avalia.
     cfg.checkpoint_monitor = str(args.checkpoint_monitor)
 
-    logger.info("braço %s (%s) — estimado em %.1f h",
-                args.arm, plano["descricao"], plano["custo_estimado_h"])
+    logger.info(
+        "braço %s (%s) — estimado em %.1f h",
+        args.arm,
+        plano["descricao"],
+        plano["custo_estimado_h"],
+    )
     resultado = run_benchmark(cfg)
     (destino / "retune_result.json").write_text(
         json.dumps(resultado, indent=1, ensure_ascii=False, default=str),
-        encoding="utf-8")
+        encoding="utf-8",
+    )
     logger.info("concluído: %s", destino / "retune_result.json")
     return 0
 

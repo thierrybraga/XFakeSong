@@ -23,10 +23,10 @@ logger = logging.getLogger(__name__)
 
 # Constantes alinhadas com o TCC (Secao 3.2)
 TARGET_SR = 16_000
-VAD_THRESHOLD_DB = -25.0      # theta_VAD
-MIN_SEGMENT_DURATION = 0.3    # D_min em segundos
-TARGET_LUFS = -23.0           # L_target (AGC)
-AGC_HEADROOM = 0.95           # margem de pico
+VAD_THRESHOLD_DB = -25.0  # theta_VAD
+MIN_SEGMENT_DURATION = 0.3  # D_min em segundos
+TARGET_LUFS = -23.0  # L_target (AGC)
+AGC_HEADROOM = 0.95  # margem de pico
 
 
 # ---------------------------------------------------------------------------
@@ -46,6 +46,7 @@ def _load_silero():
         return False
     try:
         import torch
+
         _silero_model, _silero_utils = torch.hub.load(
             repo_or_dir="snakers4/silero-vad",
             model="silero_vad",
@@ -56,7 +57,9 @@ def _load_silero():
         logger.info("Silero VAD carregado via torch.hub")
         return True
     except Exception as e:
-        logger.warning(f"Silero VAD indisponivel ({e}). Usando VAD por energia (fallback).")
+        logger.warning(
+            f"Silero VAD indisponivel ({e}). Usando VAD por energia (fallback)."
+        )
         _silero_failed = True
         return False
 
@@ -84,6 +87,7 @@ def apply_silero_vad(
     if _load_silero():
         try:
             import torch
+
             wav = torch.FloatTensor(audio)
 
             get_speech_timestamps = _silero_utils[0]
@@ -99,7 +103,9 @@ def apply_silero_vad(
             )
 
             if not timestamps:
-                logger.debug("Silero VAD: nenhum segmento de voz detectado. Retornando audio original.")
+                logger.debug(
+                    "Silero VAD: nenhum segmento de voz detectado. Retornando audio original."
+                )
                 return audio
 
             speech = collect_chunks(timestamps, wav)
@@ -133,8 +139,8 @@ def _energy_vad(
     energy_db = np.full(n_frames, -100.0)
     for m in range(n_frames):
         start = m * hop_length
-        frame = audio[start: start + frame_length]
-        rms_sq = np.mean(frame ** 2) + 1e-10
+        frame = audio[start : start + frame_length]
+        rms_sq = np.mean(frame**2) + 1e-10
         energy_db[m] = 10.0 * np.log10(rms_sq)
 
     # Mascara de voz (Eq. 7)
@@ -156,7 +162,9 @@ def _energy_vad(
         elif not is_voice and in_speech:
             if seg_frames >= min_frames:
                 start_sample = seg_start * hop_length
-                end_sample = min((seg_start + seg_frames) * hop_length + frame_length, len(audio))
+                end_sample = min(
+                    (seg_start + seg_frames) * hop_length + frame_length, len(audio)
+                )
                 speech_segments.append(audio[start_sample:end_sample])
             in_speech = False
             seg_frames = 0
@@ -254,7 +262,9 @@ def preprocess_audio(
     # 2. VAD (remover silencio)
     if apply_vad and len(audio) > 0:
         original_len = len(audio)
-        audio = apply_silero_vad(audio, sample_rate=sample_rate, threshold=vad_threshold)
+        audio = apply_silero_vad(
+            audio, sample_rate=sample_rate, threshold=vad_threshold
+        )
         meta["vad_applied"] = True
         meta["samples_removed_by_vad"] = max(0, original_len - len(audio))
 

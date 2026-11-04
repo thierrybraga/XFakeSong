@@ -10,6 +10,7 @@ Uso standalone:
 Uso via pytest (inclui mark smoke):
     pytest -m smoke tests/smoke/test_all_architectures.py
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,7 +32,10 @@ sys.path.insert(0, PROJECT_ROOT)
 import types  # noqa: E402
 
 for _fake_pkg in [
-    "app", "app.domain", "app.domain.models", "app.domain.models.architectures",
+    "app",
+    "app.domain",
+    "app.domain.models",
+    "app.domain.models.architectures",
 ]:
     if _fake_pkg not in sys.modules:
         _m = types.ModuleType(_fake_pkg)
@@ -73,24 +77,29 @@ def _contract_shapes(arch: str) -> list[tuple]:
 
 
 CANDIDATE_INPUTS: dict[str, list[tuple]] = {
-    "AASIST":                  [(RAW_AUDIO_LEN, 1), (RAW_AUDIO_LEN,)],
-    "RawGAT-ST":               [(SPEC_FRAMES, SPEC_MELS, 1), (RAW_AUDIO_LEN, 1), (RAW_AUDIO_LEN,)],
-    "RawNet2":                 [(RAW_AUDIO_LEN, 1), (RAW_AUDIO_LEN,)],
-    "WavLM":                   [(RAW_AUDIO_LEN, 1), (RAW_AUDIO_LEN,)],
-    "HuBERT":                  [(RAW_AUDIO_LEN, 1), (RAW_AUDIO_LEN,)],
-    "Sonic Sleuth":            [(SPEC_FRAMES, SPEC_MELS, 1), (SPEC_FRAMES, SPEC_MELS)],
-    "EfficientNet-LSTM":       [(SPEC_FRAMES, SPEC_MELS, 1), (SPEC_FRAMES, SPEC_MELS)],
-    "MultiscaleCNN":           [(SPEC_FRAMES, SPEC_MELS, 1), (SPEC_FRAMES, SPEC_MELS)],
-    "SpectrogramTransformer":  [(SPEC_FRAMES, SPEC_MELS, 1), (SPEC_FRAMES, SPEC_MELS)],
-    "Conformer":               [(SPEC_FRAMES, SPEC_MELS), (SPEC_FRAMES, SPEC_MELS, 1)],
-    "Hybrid CNN-Transformer":  [(SPEC_FRAMES, SPEC_MELS, 1), (SPEC_FRAMES, SPEC_MELS), (RAW_AUDIO_LEN, 1)],
-    "Ensemble":                [(SPEC_FRAMES, SPEC_MELS, 1), (SPEC_FRAMES, SPEC_MELS)],
+    "AASIST": [(RAW_AUDIO_LEN, 1), (RAW_AUDIO_LEN,)],
+    "RawGAT-ST": [(SPEC_FRAMES, SPEC_MELS, 1), (RAW_AUDIO_LEN, 1), (RAW_AUDIO_LEN,)],
+    "RawNet2": [(RAW_AUDIO_LEN, 1), (RAW_AUDIO_LEN,)],
+    "WavLM": [(RAW_AUDIO_LEN, 1), (RAW_AUDIO_LEN,)],
+    "HuBERT": [(RAW_AUDIO_LEN, 1), (RAW_AUDIO_LEN,)],
+    "Sonic Sleuth": [(SPEC_FRAMES, SPEC_MELS, 1), (SPEC_FRAMES, SPEC_MELS)],
+    "EfficientNet-LSTM": [(SPEC_FRAMES, SPEC_MELS, 1), (SPEC_FRAMES, SPEC_MELS)],
+    "MultiscaleCNN": [(SPEC_FRAMES, SPEC_MELS, 1), (SPEC_FRAMES, SPEC_MELS)],
+    "SpectrogramTransformer": [(SPEC_FRAMES, SPEC_MELS, 1), (SPEC_FRAMES, SPEC_MELS)],
+    "Conformer": [(SPEC_FRAMES, SPEC_MELS), (SPEC_FRAMES, SPEC_MELS, 1)],
+    "Hybrid CNN-Transformer": [
+        (SPEC_FRAMES, SPEC_MELS, 1),
+        (SPEC_FRAMES, SPEC_MELS),
+        (RAW_AUDIO_LEN, 1),
+    ],
+    "Ensemble": [(SPEC_FRAMES, SPEC_MELS, 1), (SPEC_FRAMES, SPEC_MELS)],
 }
 
 
 def _try_create(arch: str, input_shape: tuple) -> tuple[bool, str, object]:
     """Tenta criar um modelo. Returns (ok, message, model_or_None)."""
     import importlib
+
     factory_mod = importlib.import_module("app.domain.models.architectures.factory")
     create_model_by_name = factory_mod.create_model_by_name
 
@@ -99,7 +108,11 @@ def _try_create(arch: str, input_shape: tuple) -> tuple[bool, str, object]:
         x = np.zeros((1, *input_shape), dtype=np.float32)
         y = model(x, training=False)
         out_shape = tuple(y.shape) if hasattr(y, "shape") else None
-        return True, f"OK in={input_shape} out={out_shape} params={model.count_params():,}", model
+        return (
+            True,
+            f"OK in={input_shape} out={out_shape} params={model.count_params():,}",
+            model,
+        )
     except Exception as e:
         return False, f"FAIL in={input_shape}: {type(e).__name__}: {str(e)[:200]}", None
 
@@ -124,15 +137,28 @@ def _check_architecture(arch: str) -> dict:
             success = shape
             break
 
-    return {"arch": arch, "ok": success is not None, "winning_shape": success, "attempts": attempts}
+    return {
+        "arch": arch,
+        "ok": success is not None,
+        "winning_shape": success,
+        "attempts": attempts,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--models", default="", help="CSV de modelos a testar (vazio = todos)")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--models", default="", help="CSV de modelos a testar (vazio = todos)"
+    )
     args = parser.parse_args(argv)
 
-    targets = [m.strip() for m in args.models.split(",")] if args.models else list(CANDIDATE_INPUTS.keys())
+    targets = (
+        [m.strip() for m in args.models.split(",")]
+        if args.models
+        else list(CANDIDATE_INPUTS.keys())
+    )
 
     print("=" * 80)
     print("Smoke test — 14 arquiteturas SpeechChecker")

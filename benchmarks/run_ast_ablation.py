@@ -30,6 +30,7 @@ USO
     python benchmarks/run_ast_ablation.py --arm a --out data/results/ast_abl_a
     python benchmarks/run_ast_ablation.py --arm b --out data/results/ast_abl_b
 """
+
 from __future__ import annotations
 
 import argparse
@@ -56,8 +57,11 @@ BRACOS = {
         "hparams": {},
         # n_fft volta ao default derivado do salto (1024 p/ hop 480), como nas
         # demais redes espectrais; ver benchmark_frontend.resolve_n_fft.
-        "input_requirements": {"min_sequence_length": 100, "feature_dim": 80,
-                               "n_fft": None},
+        "input_requirements": {
+            "min_sequence_length": 100,
+            "feature_dim": 80,
+            "n_fft": None,
+        },
     },
 }
 
@@ -90,11 +94,15 @@ def _plano(arm: str) -> dict:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--arm", choices=sorted(BRACOS), help="braço da ablação")
-    ap.add_argument("--plan-only", action="store_true",
-                    help="valida e imprime o plano dos dois braços, sem treinar")
+    ap.add_argument(
+        "--plan-only",
+        action="store_true",
+        help="valida e imprime o plano dos dois braços, sem treinar",
+    )
     ap.add_argument("--dataset", default="data/datasets/benchmark_dataset_15k.npz")
     ap.add_argument("--out", default=None)
     ap.add_argument("--epochs", type=int, default=100)
@@ -109,12 +117,16 @@ def main() -> int:
             print(json.dumps(p["input_requirements"], indent=1, ensure_ascii=False))
             print(f"  pretrained = {p['hyperparameters'].get('pretrained')}")
             ref = p["referencia_publicada"]
-            print(f"  referência publicada: {ref['input_requirements'].get('min_sequence_length')}"
-                  f"x{ref['input_requirements'].get('feature_dim')}, "
-                  f"pretrained={ref['pretrained']}, acc={ref['accuracy']:.4f}")
+            print(
+                f"  referência publicada: {ref['input_requirements'].get('min_sequence_length')}"
+                f"x{ref['input_requirements'].get('feature_dim')}, "
+                f"pretrained={ref['pretrained']}, acc={ref['accuracy']:.4f}"
+            )
         print("\nPlano válido. Para executar um braço (~11 h em RTX 3060):")
-        print("  python benchmarks/run_ast_ablation.py --arm a "
-              "--out data/results/ast_abl_a")
+        print(
+            "  python benchmarks/run_ast_ablation.py --arm a "
+            "--out data/results/ast_abl_a"
+        )
         return 0
 
     if not args.arm:
@@ -124,7 +136,8 @@ def main() -> int:
     destino = Path(args.out or f"data/results/ast_ablation_{args.arm}")
     destino.mkdir(parents=True, exist_ok=True)
     (destino / "ablation_plan.json").write_text(
-        json.dumps(plano, indent=1, ensure_ascii=False), encoding="utf-8")
+        json.dumps(plano, indent=1, ensure_ascii=False), encoding="utf-8"
+    )
     logger.info("plano gravado em %s", destino / "ablation_plan.json")
 
     # A execução reusa o runner oficial (mesmo caminho de run_benchmark.py),
@@ -155,12 +168,14 @@ def main() -> int:
             else:
                 info.input_requirements[chave] = valor
 
-    logger.info("iniciando braço %s (%s) — isto leva horas",
-                args.arm, plano["descricao"])
+    logger.info(
+        "iniciando braço %s (%s) — isto leva horas", args.arm, plano["descricao"]
+    )
     resultado = run_benchmark(cfg)
     (destino / "ablation_result.json").write_text(
         json.dumps(resultado, indent=1, ensure_ascii=False, default=str),
-        encoding="utf-8")
+        encoding="utf-8",
+    )
     logger.info("concluído: %s", destino / "ablation_result.json")
     return 0
 

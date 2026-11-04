@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SecureTrainingConfig:
     """Configuração para treinamento seguro."""
+
     test_size: float = 0.2
     validation_size: float = 0.2
     random_state: int = 42
@@ -43,8 +44,9 @@ class SecureDataSplitter:
         self.config = config
         self.logger = logging.getLogger(__name__)
 
-    def split_data(self, X: np.ndarray, y: np.ndarray,
-                   metadata: Optional[Dict] = None) -> Tuple[np.ndarray, ...]:
+    def split_data(
+        self, X: np.ndarray, y: np.ndarray, metadata: Optional[Dict] = None
+    ) -> Tuple[np.ndarray, ...]:
         """Divide dados de forma segura.
 
         Args:
@@ -57,37 +59,35 @@ class SecureDataSplitter:
         """
         self.logger.info("Iniciando divisão segura dos dados")
 
-        if self.config.use_group_split and metadata and 'groups' in metadata:
-            return self._group_split(X, y, np.asarray(metadata['groups']))
-        if self.config.use_temporal_split and metadata and 'timestamps' in metadata:
-            return self._temporal_split(X, y, metadata['timestamps'])
+        if self.config.use_group_split and metadata and "groups" in metadata:
+            return self._group_split(X, y, np.asarray(metadata["groups"]))
+        if self.config.use_temporal_split and metadata and "timestamps" in metadata:
+            return self._temporal_split(X, y, metadata["timestamps"])
         else:
             return self._stratified_split(X, y)
 
-    def _group_split(self, X: np.ndarray, y: np.ndarray,
-                     groups: np.ndarray) -> Tuple[np.ndarray, ...]:
+    def _group_split(
+        self, X: np.ndarray, y: np.ndarray, groups: np.ndarray
+    ) -> Tuple[np.ndarray, ...]:
         """Split disjunto por grupo (fonte/gerador) via StratifiedGroupKFold."""
         from sklearn.model_selection import StratifiedGroupKFold
 
         idx = np.arange(len(y))
         n_groups = len(np.unique(groups))
-        n_splits = max(2, min(round(1.0 / max(self.config.test_size, 1e-6)),
-                              n_groups))
+        n_splits = max(2, min(round(1.0 / max(self.config.test_size, 1e-6)), n_groups))
         sgkf = StratifiedGroupKFold(
-            n_splits=n_splits, shuffle=True,
-            random_state=self.config.random_state)
+            n_splits=n_splits, shuffle=True, random_state=self.config.random_state
+        )
         trainval_idx, test_idx = next(sgkf.split(idx, y, groups))
 
         g_tv = groups[trainval_idx]
         rel_val = self.config.validation_size / (1 - self.config.test_size)
         if len(np.unique(g_tv)) >= 2:
-            inner = max(2, min(round(1.0 / max(rel_val, 1e-6)),
-                               len(np.unique(g_tv))))
+            inner = max(2, min(round(1.0 / max(rel_val, 1e-6)), len(np.unique(g_tv))))
             sgkf2 = StratifiedGroupKFold(
-                n_splits=inner, shuffle=True,
-                random_state=self.config.random_state)
-            tr_rel, val_rel = next(
-                sgkf2.split(trainval_idx, y[trainval_idx], g_tv))
+                n_splits=inner, shuffle=True, random_state=self.config.random_state
+            )
+            tr_rel, val_rel = next(sgkf2.split(trainval_idx, y[trainval_idx], g_tv))
             train_idx, val_idx = trainval_idx[tr_rel], trainval_idx[val_rel]
         else:
             rng = np.random.default_rng(self.config.random_state)
@@ -97,12 +97,20 @@ class SecureDataSplitter:
 
         self.logger.info(
             f"Divisão por grupo: Train={len(train_idx)}, Val={len(val_idx)}, "
-            f"Test={len(test_idx)} (grupos disjuntos)")
-        return (X[train_idx], X[val_idx], X[test_idx],
-                y[train_idx], y[val_idx], y[test_idx])
+            f"Test={len(test_idx)} (grupos disjuntos)"
+        )
+        return (
+            X[train_idx],
+            X[val_idx],
+            X[test_idx],
+            y[train_idx],
+            y[val_idx],
+            y[test_idx],
+        )
 
-    def _temporal_split(self, X: np.ndarray, y: np.ndarray,
-                        timestamps: np.ndarray) -> Tuple[np.ndarray, ...]:
+    def _temporal_split(
+        self, X: np.ndarray, y: np.ndarray, timestamps: np.ndarray
+    ) -> Tuple[np.ndarray, ...]:
         """Divisão temporal para dados sequenciais."""
         # Ordenar por timestamp
         sorted_indices = np.argsort(timestamps)
@@ -124,28 +132,34 @@ class SecureDataSplitter:
         y_test = y_sorted[test_split_idx:]
 
         self.logger.info(
-            f"Divisão temporal: Train={len(X_train)}, Val={len(X_val)}, Test={len(X_test)}")
+            f"Divisão temporal: Train={len(X_train)}, Val={len(X_val)}, Test={len(X_test)}"
+        )
         return X_train, X_val, X_test, y_train, y_val, y_test
 
-    def _stratified_split(self, X: np.ndarray,
-                          y: np.ndarray) -> Tuple[np.ndarray, ...]:
+    def _stratified_split(self, X: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, ...]:
         """Divisão estratificada para dados não-temporais."""
         # Primeira divisão: treino+val vs teste
         X_temp, X_test, y_temp, y_test = train_test_split(
-            X, y, test_size=self.config.test_size,
-            random_state=self.config.random_state, stratify=y
+            X,
+            y,
+            test_size=self.config.test_size,
+            random_state=self.config.random_state,
+            stratify=y,
         )
 
         # Segunda divisão: treino vs validação
-        val_size_adjusted = self.config.validation_size / \
-            (1 - self.config.test_size)
+        val_size_adjusted = self.config.validation_size / (1 - self.config.test_size)
         X_train, X_val, y_train, y_val = train_test_split(
-            X_temp, y_temp, test_size=val_size_adjusted,
-            random_state=self.config.random_state, stratify=y_temp
+            X_temp,
+            y_temp,
+            test_size=val_size_adjusted,
+            random_state=self.config.random_state,
+            stratify=y_temp,
         )
 
         self.logger.info(
-            f"Divisão estratificada: Train={len(X_train)}, Val={len(X_val)}, Test={len(X_test)}")
+            f"Divisão estratificada: Train={len(X_train)}, Val={len(X_val)}, Test={len(X_test)}"
+        )
         return X_train, X_val, X_test, y_train, y_val, y_test
 
 
@@ -167,8 +181,7 @@ class SecureFeatureScaler:
         elif config.scaler_type == "minmax":
             self.scaler = MinMaxScaler()
         else:
-            raise ValueError(
-                f"Tipo de scaler não suportado: {config.scaler_type}")
+            raise ValueError(f"Tipo de scaler não suportado: {config.scaler_type}")
 
     @staticmethod
     def _sanitize(X: np.ndarray, tag: str, logger) -> np.ndarray:
@@ -225,7 +238,8 @@ class SecureFeatureScaler:
         X_train_scaled = self._sanitize(X_train_scaled, "train_scaled", self.logger)
 
         self.logger.info(
-            f"Scaler ajustado. Média: {self.scaler.mean_[:5] if hasattr(self.scaler, 'mean_') else 'N/A'}")
+            f"Scaler ajustado. Média: {self.scaler.mean_[:5] if hasattr(self.scaler, 'mean_') else 'N/A'}"
+        )
         return X_train_scaled
 
     def transform_validation(self, X_val: np.ndarray) -> np.ndarray:
@@ -234,8 +248,7 @@ class SecureFeatureScaler:
         if self._skip_scaling:
             return self._sanitize(X_val, "val", self.logger)
         if self.scaler is None:
-            raise ValueError(
-                "Scaler deve ser ajustado primeiro com dados de treino")
+            raise ValueError("Scaler deve ser ajustado primeiro com dados de treino")
 
         self.logger.info("Transformando dados de validação")
         X_val = self._sanitize(X_val, "val", self.logger)
@@ -247,8 +260,7 @@ class SecureFeatureScaler:
         if self._skip_scaling:
             return self._sanitize(X_test, "test", self.logger)
         if self.scaler is None:
-            raise ValueError(
-                "Scaler deve ser ajustado primeiro com dados de treino")
+            raise ValueError("Scaler deve ser ajustado primeiro com dados de treino")
 
         self.logger.info("Transformando dados de teste")
         X_test = self._sanitize(X_test, "test", self.logger)
@@ -275,15 +287,16 @@ class DataLeakageValidator:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
 
-    def validate_data_splits(self, X_train: np.ndarray, X_val: np.ndarray,
-                             X_test: np.ndarray) -> Dict[str, Any]:
+    def validate_data_splits(
+        self, X_train: np.ndarray, X_val: np.ndarray, X_test: np.ndarray
+    ) -> Dict[str, Any]:
         """Valida se há sobreposição entre conjuntos de dados."""
         validation_results = {
             "no_overlap": True,
             "train_val_overlap": 0,
             "train_test_overlap": 0,
             "val_test_overlap": 0,
-            "warnings": []
+            "warnings": [],
         }
 
         # Verificar sobreposições (simplificado - em produção seria mais
@@ -292,29 +305,33 @@ class DataLeakageValidator:
             validation_results["train_val_overlap"] = 1
             validation_results["no_overlap"] = False
             validation_results["warnings"].append(
-                "Sobreposição detectada entre treino e validação")
+                "Sobreposição detectada entre treino e validação"
+            )
 
         if np.array_equal(X_train, X_test):
             validation_results["train_test_overlap"] = 1
             validation_results["no_overlap"] = False
             validation_results["warnings"].append(
-                "Sobreposição detectada entre treino e teste")
+                "Sobreposição detectada entre treino e teste"
+            )
 
         if np.array_equal(X_val, X_test):
             validation_results["val_test_overlap"] = 1
             validation_results["no_overlap"] = False
             validation_results["warnings"].append(
-                "Sobreposição detectada entre validação e teste")
+                "Sobreposição detectada entre validação e teste"
+            )
 
         return validation_results
 
-    def validate_scaler_usage(self, scaler: SecureFeatureScaler,
-                              X_train: np.ndarray, X_val: np.ndarray) -> Dict[str, Any]:
+    def validate_scaler_usage(
+        self, scaler: SecureFeatureScaler, X_train: np.ndarray, X_val: np.ndarray
+    ) -> Dict[str, Any]:
         """Valida se o scaler foi usado corretamente."""
         validation_results = {
             "scaler_fitted": scaler.scaler is not None,
             "proper_usage": True,
-            "warnings": []
+            "warnings": [],
         }
 
         if not validation_results["scaler_fitted"]:
@@ -322,8 +339,7 @@ class DataLeakageValidator:
             validation_results["warnings"].append("Scaler não foi ajustado")
 
         # Verificar se as estatísticas do scaler fazem sentido
-        if hasattr(scaler.scaler, 'mean_') and hasattr(
-                scaler.scaler, 'scale_'):
+        if hasattr(scaler.scaler, "mean_") and hasattr(scaler.scaler, "scale_"):
             train_mean = np.mean(X_train, axis=0)
             scaler_mean = scaler.scaler.mean_
 
@@ -346,8 +362,9 @@ class SecureTrainingPipeline:
         self.validator = DataLeakageValidator()
         self.logger = logging.getLogger(__name__)
 
-    def prepare_data(self, X: np.ndarray, y: np.ndarray,
-                     metadata: Optional[Dict] = None) -> ProcessingResult[Dict[str, np.ndarray]]:
+    def prepare_data(
+        self, X: np.ndarray, y: np.ndarray, metadata: Optional[Dict] = None
+    ) -> ProcessingResult[Dict[str, np.ndarray]]:
         """Prepara dados de forma segura para treinamento.
 
         Returns:
@@ -358,15 +375,18 @@ class SecureTrainingPipeline:
 
             # 1. Dividir dados
             X_train, X_val, X_test, y_train, y_val, y_test = self.splitter.split_data(
-                X, y, metadata)
+                X, y, metadata
+            )
 
             # 2. Validar divisão se habilitado
             if self.config.validate_no_leakage:
                 split_validation = self.validator.validate_data_splits(
-                    X_train, X_val, X_test)
+                    X_train, X_val, X_test
+                )
                 if not split_validation["no_overlap"]:
                     self.logger.warning(
-                        "Possível vazamento detectado na divisão dos dados")
+                        "Possível vazamento detectado na divisão dos dados"
+                    )
                     for warning in split_validation["warnings"]:
                         self.logger.warning(warning)
 
@@ -378,7 +398,8 @@ class SecureTrainingPipeline:
             # 4. Validar uso do scaler se habilitado (só faz sentido p/ tabular)
             if self.config.validate_no_leakage and self.scaler.scaler is not None:
                 scaler_validation = self.validator.validate_scaler_usage(
-                    self.scaler, X_train, X_val)
+                    self.scaler, X_train, X_val
+                )
                 if not scaler_validation["proper_usage"]:
                     self.logger.warning("Possível problema no uso do scaler")
                     for warning in scaler_validation["warnings"]:
@@ -396,7 +417,7 @@ class SecureTrainingPipeline:
                 "X_test": X_test_scaled,
                 "y_train": y_train,
                 "y_val": y_val,
-                "y_test": y_test
+                "y_test": y_test,
             }
 
             self.logger.info("Preparação dos dados concluída com sucesso")
@@ -407,15 +428,11 @@ class SecureTrainingPipeline:
 
         except Exception as e:
             self.logger.error(f"Erro na preparação dos dados: {str(e)}")
-            return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=[str(e)]
-            )
+            return ProcessingResult(status=ProcessingStatus.ERROR, errors=[str(e)])
 
     def get_scaler(self) -> SecureFeatureScaler:
         """Retorna o scaler para uso em predições futuras."""
         return self.scaler
 
+
 # Função de conveniência para uso rápido
-
-

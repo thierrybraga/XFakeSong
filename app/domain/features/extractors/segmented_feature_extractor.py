@@ -43,6 +43,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SegmentedExtractionConfig:
     """Configuração para extração segmentada."""
+
     segment_duration: float = 1.0
     overlap_ratio: float = 0.0
     target_sample_rate: int = 16000
@@ -81,66 +82,68 @@ class SegmentedFeatureExtractor:
 
         # Inicializar extratores baseados na configuração
         if self.config.extract_spectral:
-            self.extractors['spectral'] = SpectralFeatureExtractor(
+            self.extractors["spectral"] = SpectralFeatureExtractor(
                 sr=self.config.target_sample_rate
             )
 
         if self.config.extract_cepstral:
-            self.extractors['cepstral'] = CepstralFeatureExtractor(
+            self.extractors["cepstral"] = CepstralFeatureExtractor(
                 sr=self.config.target_sample_rate
             )
 
         if self.config.extract_temporal:
-            self.extractors['temporal'] = TemporalFeatureExtractor(
+            self.extractors["temporal"] = TemporalFeatureExtractor(
                 sr=self.config.target_sample_rate
             )
 
         if self.config.extract_prosodic:
-            self.extractors['prosodic'] = ProsodicFeatureExtractor(
+            self.extractors["prosodic"] = ProsodicFeatureExtractor(
                 sr=self.config.target_sample_rate
             )
 
         if self.config.extract_formant:
-            self.extractors['formant'] = FormantFeatureExtractor(
+            self.extractors["formant"] = FormantFeatureExtractor(
                 sr=self.config.target_sample_rate
             )
 
         if self.config.extract_voice_quality:
-            self.extractors['voice_quality'] = VoiceQualityFeatureExtractor(
+            self.extractors["voice_quality"] = VoiceQualityFeatureExtractor(
                 sr=self.config.target_sample_rate
             )
 
         if self.config.extract_perceptual:
-            self.extractors['perceptual'] = PerceptualFeatureExtractor(
+            self.extractors["perceptual"] = PerceptualFeatureExtractor(
                 sr=self.config.target_sample_rate
             )
 
         if self.config.extract_complexity:
-            self.extractors['complexity'] = ComplexityFeatureExtractor(
+            self.extractors["complexity"] = ComplexityFeatureExtractor(
                 sr=self.config.target_sample_rate
             )
 
         if self.config.extract_transform:
-            self.extractors['transform'] = TransformFeatureExtractor(
+            self.extractors["transform"] = TransformFeatureExtractor(
                 sr=self.config.target_sample_rate
             )
 
         if self.config.extract_timefreq:
-            self.extractors['timefreq'] = TimeFrequencyFeatureExtractor(
+            self.extractors["timefreq"] = TimeFrequencyFeatureExtractor(
                 sr=self.config.target_sample_rate
             )
 
         if self.config.extract_predictive:
-            self.extractors['predictive'] = PredictiveFeatureExtractor(
+            self.extractors["predictive"] = PredictiveFeatureExtractor(
                 sr=self.config.target_sample_rate
             )
 
         if self.config.extract_speech:
-            self.extractors['speech'] = SpeechFeatureExtractor(
+            self.extractors["speech"] = SpeechFeatureExtractor(
                 sr=self.config.target_sample_rate
             )
 
-    def extract(self, audio_data: AudioData) -> ProcessingResult[List[SegmentedFeatures]]:
+    def extract(
+        self, audio_data: AudioData
+    ) -> ProcessingResult[List[SegmentedFeatures]]:
         """Extrai características de um objeto AudioData."""
         try:
             y = audio_data.samples
@@ -151,7 +154,9 @@ class SegmentedFeatureExtractor:
 
             # Resample se necessário
             if sr != self.config.target_sample_rate:
-                y = librosa.resample(y, orig_sr=sr, target_sr=self.config.target_sample_rate)
+                y = librosa.resample(
+                    y, orig_sr=sr, target_sr=self.config.target_sample_rate
+                )
                 sr = self.config.target_sample_rate
 
             # Segmentar áudio
@@ -166,18 +171,19 @@ class SegmentedFeatureExtractor:
             return ProcessingResult(
                 status=ProcessingStatus.SUCCESS,
                 data=segmented_features,
-                metadata={"segments_count": len(segmented_features)}
+                metadata={"segments_count": len(segmented_features)},
             )
 
         except Exception as e:
             return ProcessingResult(
                 status=ProcessingStatus.ERROR,
                 data=[],
-                errors=[f"Erro na extração: {str(e)}"]
+                errors=[f"Erro na extração: {str(e)}"],
             )
 
     def extract_from_file(
-            self, file_path: str, label: int = None) -> ProcessingResult[List[SegmentedFeatures]]:
+        self, file_path: str, label: int = None
+    ) -> ProcessingResult[List[SegmentedFeatures]]:
         """Extrai características de um arquivo de áudio e opcionalmente exporta para CSV."""
         try:
             # Carregar áudio
@@ -193,22 +199,24 @@ class SegmentedFeatureExtractor:
                 segmented_features.append(features)
 
             # Exportar para CSV se configurado
-            if self.config.export_csv and hasattr(
-                    self.config, 'csv_config') and self.config.csv_config:
-                self._export_individual_csv(
-                    segmented_features, file_path, label)
+            if (
+                self.config.export_csv
+                and hasattr(self.config, "csv_config")
+                and self.config.csv_config
+            ):
+                self._export_individual_csv(segmented_features, file_path, label)
 
             return ProcessingResult(
                 status=ProcessingStatus.SUCCESS,
                 data=segmented_features,
-                metadata={"segments_count": len(segmented_features)}
+                metadata={"segments_count": len(segmented_features)},
             )
 
         except Exception as e:
             return ProcessingResult(
                 status=ProcessingStatus.ERROR,
                 data=[],
-                errors=[f"Erro na extração: {str(e)}"]
+                errors=[f"Erro na extração: {str(e)}"],
             )
 
     def _segment_audio(self, y: np.ndarray, sr: int) -> List[np.ndarray]:
@@ -221,7 +229,7 @@ class SegmentedFeatureExtractor:
         start = 0
 
         while start + segment_samples <= len(y):
-            segment = y[start:start + segment_samples]
+            segment = y[start : start + segment_samples]
 
             if self.config.normalize_segments:
                 segment = librosa.util.normalize(segment)
@@ -232,7 +240,8 @@ class SegmentedFeatureExtractor:
         return segments
 
     def _extract_segment_features(
-            self, segment: np.ndarray, sr: int, segment_idx: int) -> SegmentedFeatures:
+        self, segment: np.ndarray, sr: int, segment_idx: int
+    ) -> SegmentedFeatures:
         """Extrai características de um segmento específico."""
         all_features = []
         feature_names = []
@@ -245,62 +254,83 @@ class SegmentedFeatureExtractor:
             try:
                 # Verificar primeiro categorias especiais que usam
                 # extract_features
-                if category in ['speech', 'temporal', 'perceptual']:
+                if category in ["speech", "temporal", "perceptual"]:
                     logger.debug(
-                        f"DEBUG: Extraindo features de {category} para segmento {segment_idx}")
+                        f"DEBUG: Extraindo features de {category} para segmento {segment_idx}"
+                    )
                     logger.debug(f"DEBUG: Tamanho do segmento: {len(segment)}")
                     features = extractor.extract_features(segment)
                     logger.debug(
-                        f"DEBUG: Features {category} extraídas: {len(features) if features else 0}")
+                        f"DEBUG: Features {category} extraídas: {len(features) if features else 0}"
+                    )
                     if features:
                         logger.debug(
-                            f"DEBUG: Primeiras 5 features {category}: {list(features.keys())[:5]}")
-                elif category == 'cepstral':
+                            f"DEBUG: Primeiras 5 features {category}: {list(features.keys())[:5]}"
+                        )
+                elif category == "cepstral":
                     logger.debug(
-                        f"DEBUG: Extraindo features de cepstral para segmento {segment_idx}")
+                        f"DEBUG: Extraindo features de cepstral para segmento {segment_idx}"
+                    )
                     features = extractor.extract_features_internal(segment)
                     logger.debug(
-                        f"DEBUG: Features cepstral extraídas: {len(features) if features else 0}")
+                        f"DEBUG: Features cepstral extraídas: {len(features) if features else 0}"
+                    )
                     if features:
                         logger.debug(
-                            f"DEBUG: Primeiras 5 features cepstral: {list(features.keys())[:5]}")
-                elif hasattr(extractor, 'extract'):
+                            f"DEBUG: Primeiras 5 features cepstral: {list(features.keys())[:5]}"
+                        )
+                elif hasattr(extractor, "extract"):
                     # Verificar se o extrator precisa de metadados
-                    if category == 'transform':
+                    if category == "transform":
                         metadata = AudioData(
-                            samples=segment, sample_rate=sr, duration=len(segment) / sr)
+                            samples=segment, sample_rate=sr, duration=len(segment) / sr
+                        )
                         features = extractor.extract(segment, metadata)
-                    elif category in ['spectral', 'cepstral', 'prosodic', 'formant', 'voice_quality', 'perceptual', 'complexity']:
+                    elif category in [
+                        "spectral",
+                        "cepstral",
+                        "prosodic",
+                        "formant",
+                        "voice_quality",
+                        "perceptual",
+                        "complexity",
+                    ]:
                         # Estes extratores esperam AudioData
                         logger.debug(
-                            f"DEBUG: Extraindo features de {category} para segmento {segment_idx}")
+                            f"DEBUG: Extraindo features de {category} para segmento {segment_idx}"
+                        )
                         logger.debug(f"DEBUG: Tamanho do segmento: {len(segment)}")
                         audio_data = AudioData(
-                            samples=segment, sample_rate=sr, duration=len(segment) / sr)
+                            samples=segment, sample_rate=sr, duration=len(segment) / sr
+                        )
                         result = extractor.extract(audio_data)
                         if result.status == ProcessingStatus.SUCCESS:
                             features = result.data.features
                             logger.debug(
-                                f"DEBUG: Features {category} extraídas: {len(features) if features else 0}")
+                                f"DEBUG: Features {category} extraídas: {len(features) if features else 0}"
+                            )
                             if features:
                                 logger.debug(
-                                    f"DEBUG: Primeiras 5 features {category}: {list(features.keys())[:5]}")
+                                    f"DEBUG: Primeiras 5 features {category}: {list(features.keys())[:5]}"
+                                )
                         else:
                             logger.debug(
-                                f"Erro no extrator {category}: {result.errors}")
+                                f"Erro no extrator {category}: {result.errors}"
+                            )
                             features = {}
-                    elif category in ['temporal']:
+                    elif category in ["temporal"]:
                         features = extractor.extract(segment, sr)
                     else:
                         features = extractor.extract(segment)
                 else:
                     logger.debug(
-                        f"ERRO: Extrator {category} não tem método extract nem extract_features")
+                        f"ERRO: Extrator {category} não tem método extract nem extract_features"
+                    )
                     features = {}
 
                 # Se retornou ProcessingResult, extrair os dados
-                if hasattr(features, 'data') and hasattr(features, 'status'):
-                    if features.status.name in ['SUCCESS', 'PARTIAL_SUCCESS']:
+                if hasattr(features, "data") and hasattr(features, "status"):
+                    if features.status.name in ["SUCCESS", "PARTIAL_SUCCESS"]:
                         features = features.data
                     else:
                         continue
@@ -313,7 +343,8 @@ class SegmentedFeatureExtractor:
                                 values = values.flatten()
                             all_features.extend(values)
                             feature_names.extend(
-                                [f"{category}_{name}_{i}" for i in range(len(values))])
+                                [f"{category}_{name}_{i}" for i in range(len(values))]
+                            )
                         else:
                             all_features.append(float(values))
                             feature_names.append(f"{category}_{name}")
@@ -326,7 +357,8 @@ class SegmentedFeatureExtractor:
                             features = features.flatten()
                         all_features.extend(features)
                         feature_names.extend(
-                            [f"{category}_{i}" for i in range(len(features))])
+                            [f"{category}_{i}" for i in range(len(features))]
+                        )
                         category_features[category] = features
                     else:
                         all_features.append(float(features))
@@ -336,6 +368,7 @@ class SegmentedFeatureExtractor:
             except Exception as e:
                 logger.debug(f"Erro ao extrair features {category}: {e}")
                 import traceback
+
                 traceback.print_exc()
                 continue
 
@@ -345,25 +378,25 @@ class SegmentedFeatureExtractor:
             end_time=(segment_idx + 1) * self.config.segment_duration,
             combined_features=np.array(all_features),
             feature_names=feature_names,
-            spectral_features=category_features.get('spectral', {}),
-            cepstral_features=category_features.get('cepstral', {}),
-            temporal_features=category_features.get('temporal', {}),
-            prosodic_features=category_features.get('prosodic', {}),
-            formant_features=category_features.get('formant', {}),
-            perceptual_features=category_features.get('perceptual', {}),
-            speech_features=category_features.get('speech', {}),
+            spectral_features=category_features.get("spectral", {}),
+            cepstral_features=category_features.get("cepstral", {}),
+            temporal_features=category_features.get("temporal", {}),
+            prosodic_features=category_features.get("prosodic", {}),
+            formant_features=category_features.get("formant", {}),
+            perceptual_features=category_features.get("perceptual", {}),
+            speech_features=category_features.get("speech", {}),
             metadata={
-                'complexity_features': category_features.get('complexity', {}),
-                'transform_features': category_features.get('transform', {}),
-                'timefreq_features': category_features.get('timefreq', {}),
-                'predictive_features': category_features.get('predictive', {}),
-                'voice_quality_features': category_features.get('voice_quality', {})
-            }
+                "complexity_features": category_features.get("complexity", {}),
+                "transform_features": category_features.get("transform", {}),
+                "timefreq_features": category_features.get("timefreq", {}),
+                "predictive_features": category_features.get("predictive", {}),
+                "voice_quality_features": category_features.get("voice_quality", {}),
+            },
         )
 
-
     def _export_individual_csv(
-            self, features: List[SegmentedFeatures], file_path: str, label: int = None):
+        self, features: List[SegmentedFeatures], file_path: str, label: int = None
+    ):
         """Exporta features para CSV individual por arquivo de áudio."""
         try:
             from ..exporters.csv_feature_exporter import CSVFeatureExporter
@@ -379,17 +412,17 @@ class SegmentedFeatureExtractor:
 
             # Exportar features segmentadas por categoria
             result = csv_exporter.export_segmented_features_by_category(
-                features_list=features,
-                filename=filename,
-                label=label_str
+                features_list=features, filename=filename, label=label_str
             )
 
             if result.status == ProcessingStatus.SUCCESS:
                 logger.debug(
-                    f"✅ CSV exportado para {filename}: {len(result.data)} arquivos criados")
+                    f"✅ CSV exportado para {filename}: {len(result.data)} arquivos criados"
+                )
             else:
                 logger.debug(
-                    f"⚠️ Erro ao exportar CSV para {filename}: {result.errors}")
+                    f"⚠️ Erro ao exportar CSV para {filename}: {result.errors}"
+                )
 
         except Exception as e:
             logger.debug(f"⚠️ Erro na exportação individual de CSV: {e}")

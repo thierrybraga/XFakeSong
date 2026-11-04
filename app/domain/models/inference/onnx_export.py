@@ -42,6 +42,7 @@ def _check_tf2onnx() -> bool:
     """Verifica se tf2onnx está instalado."""
     try:
         import tf2onnx  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -51,6 +52,7 @@ def _check_onnxruntime() -> bool:
     """Verifica se onnxruntime está instalado."""
     try:
         import onnxruntime  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -100,9 +102,7 @@ def export_to_onnx(
         full_shape = (batch_dim,) + tuple(input_shape)
 
         # Cria input signature
-        input_signature = [
-            tf.TensorSpec(full_shape, tf.float32, name="input")
-        ]
+        input_signature = [tf.TensorSpec(full_shape, tf.float32, name="input")]
 
         model_proto, _ = tf2onnx.convert.from_keras(
             keras_model,
@@ -168,9 +168,7 @@ def quantize_int8(
                 model_output=str(output_path),
                 weight_type=QuantType.QInt8,
             )
-            logger.info(
-                f"Modelo quantizado para INT8 (dynamic): {output_path}"
-            )
+            logger.info(f"Modelo quantizado para INT8 (dynamic): {output_path}")
         else:
             # Quantização estática (precisa de calibration_data)
             try:
@@ -189,7 +187,7 @@ def quantize_int8(
                     def get_next(self):
                         if self.idx >= len(self.data):
                             return None
-                        batch = self.data[self.idx:self.idx + self.batch_size]
+                        batch = self.data[self.idx : self.idx + self.batch_size]
                         self.idx += self.batch_size
                         return {"input": batch.astype(np.float32)}
 
@@ -261,9 +259,11 @@ class OnnxInferenceSession:
 
         if providers is None:
             available = ort.get_available_providers()
-            providers = [p for p in (
-                'CUDAExecutionProvider', 'CPUExecutionProvider'
-            ) if p in available]
+            providers = [
+                p
+                for p in ("CUDAExecutionProvider", "CPUExecutionProvider")
+                if p in available
+            ]
 
         self.session = ort.InferenceSession(str(onnx_path), providers=providers)
         self.input_name = self.session.get_inputs()[0].name
@@ -294,7 +294,7 @@ class OnnxInferenceSession:
 
         outputs = []
         for i in range(0, len(features), batch_size):
-            batch = features[i:i + batch_size]
+            batch = features[i : i + batch_size]
             out = self.session.run([self.output_name], {self.input_name: batch})[0]
             outputs.append(out)
 

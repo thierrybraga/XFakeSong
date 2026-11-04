@@ -112,9 +112,8 @@ def test_a_porta_expoe_toda_definicao_dos_modulos_tematicos():
     ):
         for nome, valor in vars(modulo).items():
             if (
-                (inspect.isclass(valor) or inspect.isfunction(valor))
-                and valor.__module__ == modulo.__name__
-            ):
+                inspect.isclass(valor) or inspect.isfunction(valor)
+            ) and valor.__module__ == modulo.__name__:
                 assert nome not in definidos, f"{nome} definido em dois módulos"
                 definidos[nome] = valor
 

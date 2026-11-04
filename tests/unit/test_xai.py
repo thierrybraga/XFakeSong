@@ -39,7 +39,10 @@ class TestTabularContract:
         X = rng.normal(size=(40, 5))
         y = (X[:, 0] > 0).astype(int)
         pipe = Pipeline(
-            [("scaler", StandardScaler()), ("rf", RandomForestClassifier(n_estimators=5))]
+            [
+                ("scaler", StandardScaler()),
+                ("rf", RandomForestClassifier(n_estimators=5)),
+            ]
         ).fit(X, y)
 
         est = extract_sklearn_estimator(pipe)
@@ -58,7 +61,10 @@ class TestTabularContract:
         X = rng.normal(loc=10.0, scale=3.0, size=(60, 4))
         y = (X[:, 1] > 10).astype(int)
         pipe = Pipeline(
-            [("scaler", StandardScaler()), ("rf", RandomForestClassifier(n_estimators=5))]
+            [
+                ("scaler", StandardScaler()),
+                ("rf", RandomForestClassifier(n_estimators=5)),
+            ]
         ).fit(X, y)
 
         transform, est = split_sklearn_pipeline(pipe)

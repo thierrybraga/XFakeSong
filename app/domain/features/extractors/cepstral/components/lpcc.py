@@ -7,15 +7,15 @@ import numpy as np
 from .lpc_utils import compute_lpc, lpc_to_cepstral
 
 
-def extract_lpcc_features(y: np.ndarray, frame_length: int,
-                          hop_length: int, n_lpcc: int) -> Dict:
+def extract_lpcc_features(
+    y: np.ndarray, frame_length: int, hop_length: int, n_lpcc: int
+) -> Dict:
     """Extrai LPCC (Linear Predictive Cepstral Coefficients)."""
     features = {}
 
     try:
         # Dividir em frames
-        frames = librosa.util.frame(y, frame_length=frame_length,
-                                    hop_length=hop_length)
+        frames = librosa.util.frame(y, frame_length=frame_length, hop_length=hop_length)
 
         lpcc_coeffs = []
 
@@ -32,14 +32,14 @@ def extract_lpcc_features(y: np.ndarray, frame_length: int,
 
         lpcc_coeffs = np.array(lpcc_coeffs).T
 
-        features['lpcc'] = lpcc_coeffs
-        features['lpcc_delta'] = librosa.feature.delta(lpcc_coeffs)
-        features['lpcc_delta2'] = librosa.feature.delta(lpcc_coeffs, order=2)
+        features["lpcc"] = lpcc_coeffs
+        features["lpcc_delta"] = librosa.feature.delta(lpcc_coeffs)
+        features["lpcc_delta2"] = librosa.feature.delta(lpcc_coeffs, order=2)
 
     except Exception as e:
         warnings.warn(f"Erro na extração LPCC: {str(e)}")
-        features['lpcc'] = np.zeros((n_lpcc, 1))
-        features['lpcc_delta'] = np.zeros((n_lpcc, 1))
-        features['lpcc_delta2'] = np.zeros((n_lpcc, 1))
+        features["lpcc"] = np.zeros((n_lpcc, 1))
+        features["lpcc_delta"] = np.zeros((n_lpcc, 1))
+        features["lpcc_delta2"] = np.zeros((n_lpcc, 1))
 
     return features

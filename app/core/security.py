@@ -56,4 +56,3 @@ def setup_security(app: FastAPI):
 
     # 3. Rate Limiting
     app.state.limiter = limiter
-

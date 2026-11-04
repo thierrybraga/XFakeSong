@@ -67,11 +67,20 @@ def render_tuning_figure(study: Any):
     if values:
         xs = list(range(1, len(values) + 1))
         ax[0].plot(
-            xs, values, color=PLOT_DANGER, linestyle=":", marker=".",
-            ms=7, label="tentativa",
+            xs,
+            values,
+            color=PLOT_DANGER,
+            linestyle=":",
+            marker=".",
+            ms=7,
+            label="tentativa",
         )
         ax[0].plot(
-            xs, best_so_far, color=PLOT_ACCENT, marker="o", ms=4,
+            xs,
+            best_so_far,
+            color=PLOT_ACCENT,
+            marker="o",
+            ms=4,
             label="melhor acumulado",
         )
         if 1 <= len(xs) <= 20:
@@ -79,8 +88,13 @@ def render_tuning_figure(study: Any):
         ax[0].legend()
     else:
         ax[0].text(
-            0.5, 0.5, "Sem tentativas concluídas", ha="center", va="center",
-            transform=ax[0].transAxes, color=PLOT_TEXT_MUTED,
+            0.5,
+            0.5,
+            "Sem tentativas concluídas",
+            ha="center",
+            va="center",
+            transform=ax[0].transAxes,
+            color=PLOT_TEXT_MUTED,
         )
     ax[0].set_xlabel("Tentativa")
     ax[0].set_ylabel("Métrica objetivo")
@@ -105,10 +119,14 @@ def render_tuning_figure(study: Any):
         ax[1].set_xlabel("Importância relativa")
     else:
         ax[1].text(
-            0.5, 0.5,
+            0.5,
+            0.5,
             "Importância indisponível\n(requer Optuna e ≥2 tentativas concluídas)",
-            ha="center", va="center", transform=ax[1].transAxes,
-            color=PLOT_TEXT_MUTED, fontsize=9,
+            ha="center",
+            va="center",
+            transform=ax[1].transAxes,
+            color=PLOT_TEXT_MUTED,
+            fontsize=9,
         )
         ax[1].set_xticks([])
         ax[1].set_yticks([])

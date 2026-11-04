@@ -41,6 +41,7 @@ def _get_architecture_choices():
     """Carrega arquiteturas dinamicamente do registry + ML clássico."""
     try:
         from app.domain.models.architectures.registry import get_architecture_choices
+
         choices = get_architecture_choices()
         # Adicionar ML clássico
         choices.append(("SVM (classical ML)", "svm"))
@@ -79,21 +80,26 @@ def _profiles_to_table(profiles) -> list:
     """Converte lista de perfis para dados de tabela."""
     rows = []
     status_icons = {
-        "created": "🆕", "collecting": "📥", "training": "⏳",
-        "ready": "✅", "error": "❌",
+        "created": "🆕",
+        "collecting": "📥",
+        "training": "⏳",
+        "ready": "✅",
+        "error": "❌",
     }
     for p in profiles:
         icon = status_icons.get(p.status, "❓")
-        rows.append([
-            p.id,
-            p.name,
-            f"{icon} {p.status}",
-            p.num_samples,
-            _format_duration(p.total_duration_seconds),
-            p.architecture or "—",
-            p.telegram_id or "—",
-            p.email or "—",
-        ])
+        rows.append(
+            [
+                p.id,
+                p.name,
+                f"{icon} {p.status}",
+                p.num_samples,
+                _format_duration(p.total_duration_seconds),
+                p.architecture or "—",
+                p.telegram_id or "—",
+                p.email or "—",
+            ]
+        )
     return rows
 
 
@@ -156,12 +162,24 @@ def create_voice_profiles_tab():
                     with gr.Column(scale=2, min_width=320):
                         profiles_table = gr.Dataframe(
                             headers=[
-                                "ID", "Nome", "Status", "Amostras",
-                                "Duração", "Arquitetura", "Telegram", "E-mail",
+                                "ID",
+                                "Nome",
+                                "Status",
+                                "Amostras",
+                                "Duração",
+                                "Arquitetura",
+                                "Telegram",
+                                "E-mail",
                             ],
                             datatype=[
-                                "number", "str", "str", "number",
-                                "str", "str", "str", "str",
+                                "number",
+                                "str",
+                                "str",
+                                "number",
+                                "str",
+                                "str",
+                                "str",
+                                "str",
                             ],
                             interactive=False,
                             label="Perfis cadastrados",
@@ -183,7 +201,9 @@ def create_voice_profiles_tab():
                             confirm_delete_btn = gr.Button(
                                 "Sim, excluir", variant="stop"
                             )
-                            cancel_delete_btn = gr.Button("Cancelar", variant="secondary")
+                            cancel_delete_btn = gr.Button(
+                                "Cancelar", variant="secondary"
+                            )
                         delete_status = gr.Markdown("")
 
             # ============================================================ #
@@ -210,7 +230,9 @@ def create_voice_profiles_tab():
                             upload_status = gr.Markdown("")
 
                     with gr.Column(scale=2, min_width=320):
-                        dataset_info = gr.Markdown("*Selecione um perfil para ver as amostras.*")
+                        dataset_info = gr.Markdown(
+                            "*Selecione um perfil para ver as amostras.*"
+                        )
                         dataset_validation = gr.Markdown("")
                         samples_table = gr.Dataframe(
                             headers=["Arquivo", "Duração (s)", "Taxa (Hz)", "Tamanho"],
@@ -219,9 +241,7 @@ def create_voice_profiles_tab():
                             label="Amostras do perfil",
                         )
                         with gr.Row(elem_classes="action-row"):
-                            sample_to_remove = gr.Textbox(
-                                label="Arquivo a remover"
-                            )
+                            sample_to_remove = gr.Textbox(label="Arquivo a remover")
                             remove_sample_btn = gr.Button("Remover amostra")
                         remove_status = gr.Markdown("")
 
@@ -260,12 +280,11 @@ def create_voice_profiles_tab():
                             label="Taxa de aprendizado",
                             minimum=0.0001,
                             maximum=0.01,
-                            value=0.001, step=0.0001,
+                            value=0.001,
+                            step=0.0001,
                         )
                         train_validation_info = gr.Markdown("")
-                        train_btn = gr.Button(
-                            "Iniciar treinamento", variant="primary"
-                        )
+                        train_btn = gr.Button("Iniciar treinamento", variant="primary")
 
                     with gr.Column(scale=2, min_width=320):
                         train_log = gr.Textbox(
@@ -279,9 +298,7 @@ def create_voice_profiles_tab():
                             train_acc_plot = gr.Plot(label="Acurácia")
                         with gr.Row(elem_classes="responsive-grid plot-grid"):
                             train_cm_plot = gr.Plot(label="Matriz de confusão")
-                            train_metrics_json = gr.JSON(
-                                label="Métricas finais"
-                            )
+                            train_metrics_json = gr.JSON(label="Métricas finais")
 
             # ============================================================ #
             #  Sub-tab 4: Verificar Voz                                     #
@@ -298,9 +315,7 @@ def create_voice_profiles_tab():
                             label="Áudio para verificação",
                             type="filepath",
                         )
-                        verify_btn = gr.Button(
-                            "Verificar voz", variant="primary"
-                        )
+                        verify_btn = gr.Button("Verificar voz", variant="primary")
 
                     with gr.Column(scale=2, min_width=320):
                         verify_result = gr.Markdown(
@@ -317,7 +332,13 @@ def create_voice_profiles_tab():
 
         def handle_create_profile(name, telegram, phone, email, desc, arch):
             if not name or not name.strip():
-                return "❌ Nome é obrigatório.", gr.update(), gr.update(), gr.update(), gr.update()
+                return (
+                    "❌ Nome é obrigatório.",
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                )
             try:
                 svc = _get_service()
                 profile = svc.create_profile(
@@ -330,7 +351,9 @@ def create_voice_profiles_tab():
                 )
                 profiles = svc.list_profiles()
                 table_data = _profiles_to_table(profiles)
-                choices = [(f"{p.name} (ID: {p.id}) [{p.status}]", p.id) for p in profiles]
+                choices = [
+                    (f"{p.name} (ID: {p.id}) [{p.status}]", p.id) for p in profiles
+                ]
                 return (
                     f"✅ Perfil '{profile.name}' criado (ID: {profile.id})",
                     table_data,
@@ -339,14 +362,31 @@ def create_voice_profiles_tab():
                     gr.update(choices=choices),
                 )
             except Exception as e:
-                return f"❌ Erro: {e}", gr.update(), gr.update(), gr.update(), gr.update()
+                return (
+                    f"❌ Erro: {e}",
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                )
 
         create_btn.click(
             fn=handle_create_profile,
-            inputs=[profile_name, profile_telegram, profile_phone,
-                    profile_email, profile_desc, profile_arch],
-            outputs=[create_status, profiles_table, dataset_profile_dd,
-                     train_profile_dd, verify_profile_dd],
+            inputs=[
+                profile_name,
+                profile_telegram,
+                profile_phone,
+                profile_email,
+                profile_desc,
+                profile_arch,
+            ],
+            outputs=[
+                create_status,
+                profiles_table,
+                dataset_profile_dd,
+                train_profile_dd,
+                verify_profile_dd,
+            ],
         )
 
         @ui_safe("Falha ao atualizar a lista")
@@ -364,27 +404,43 @@ def create_voice_profiles_tab():
 
         refresh_btn.click(
             fn=handle_refresh,
-            outputs=[profiles_table, dataset_profile_dd,
-                     train_profile_dd, verify_profile_dd],
+            outputs=[
+                profiles_table,
+                dataset_profile_dd,
+                train_profile_dd,
+                verify_profile_dd,
+            ],
         )
         # Ao abrir a aba, a lista e os seletores de perfil já vêm preenchidos.
         voice_tab.select(
             fn=handle_refresh,
-            outputs=[profiles_table, dataset_profile_dd,
-                     train_profile_dd, verify_profile_dd],
+            outputs=[
+                profiles_table,
+                dataset_profile_dd,
+                train_profile_dd,
+                verify_profile_dd,
+            ],
             show_progress="hidden",
         )
 
         @ui_safe("Falha ao remover")
         def handle_delete(pid):
             if not pid:
-                return "❌ Informe o ID do perfil.", gr.update(), gr.update(), gr.update(), gr.update()
+                return (
+                    "❌ Informe o ID do perfil.",
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                )
             svc = _get_service()
             ok = svc.delete_profile(int(pid))
             if ok:
                 profiles = svc.list_profiles()
                 table_data = _profiles_to_table(profiles)
-                choices = [(f"{p.name} (ID: {p.id}) [{p.status}]", p.id) for p in profiles]
+                choices = [
+                    (f"{p.name} (ID: {p.id}) [{p.status}]", p.id) for p in profiles
+                ]
                 return (
                     f"✅ Perfil {int(pid)} removido.",
                     table_data,
@@ -392,7 +448,13 @@ def create_voice_profiles_tab():
                     gr.update(choices=choices),
                     gr.update(choices=choices),
                 )
-            return "❌ Perfil não encontrado.", gr.update(), gr.update(), gr.update(), gr.update()
+            return (
+                "❌ Perfil não encontrado.",
+                gr.update(),
+                gr.update(),
+                gr.update(),
+                gr.update(),
+            )
 
         delete_btn.click(
             fn=lambda: gr.update(visible=True),
@@ -407,8 +469,13 @@ def create_voice_profiles_tab():
         confirm_delete_btn.click(
             fn=handle_delete,
             inputs=[delete_id],
-            outputs=[delete_status, profiles_table, dataset_profile_dd,
-                     train_profile_dd, verify_profile_dd],
+            outputs=[
+                delete_status,
+                profiles_table,
+                dataset_profile_dd,
+                train_profile_dd,
+                verify_profile_dd,
+            ],
         ).then(
             fn=lambda: gr.update(visible=False),
             outputs=[confirm_delete_row],
@@ -426,7 +493,11 @@ def create_voice_profiles_tab():
             rows = []
             for f in info["files"]:
                 size_kb = f["size_bytes"] / 1024
-                size_str = f"{size_kb:.1f} KB" if size_kb < 1024 else f"{size_kb / 1024:.2f} MB"
+                size_str = (
+                    f"{size_kb:.1f} KB"
+                    if size_kb < 1024
+                    else f"{size_kb / 1024:.2f} MB"
+                )
                 rows.append([f["filename"], f["duration"], f["sample_rate"], size_str])
 
             md = (
@@ -458,9 +529,19 @@ def create_voice_profiles_tab():
         @ui_safe("Falha ao enviar as amostras")
         def handle_upload_samples(profile_id, files):
             if not profile_id:
-                return "❌ Selecione um perfil primeiro.", gr.update(), gr.update(), gr.update()
+                return (
+                    "❌ Selecione um perfil primeiro.",
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                )
             if not files:
-                return "❌ Nenhum arquivo selecionado.", gr.update(), gr.update(), gr.update()
+                return (
+                    "❌ Nenhum arquivo selecionado.",
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                )
 
             svc = _get_service()
             audio_data = []
@@ -480,7 +561,12 @@ def create_voice_profiles_tab():
                 # Recarregar dataset
                 md, val_md, rows = handle_load_dataset(profile_id)
                 return status, md, val_md, rows
-            return f"❌ {result.get('error', 'Erro')}", gr.update(), gr.update(), gr.update()
+            return (
+                f"❌ {result.get('error', 'Erro')}",
+                gr.update(),
+                gr.update(),
+                gr.update(),
+            )
 
         upload_btn.click(
             fn=handle_upload_samples,
@@ -585,33 +671,54 @@ def create_voice_profiles_tab():
                         loss_fig = Figure(figsize=(6, 4))
                         ax = loss_fig.add_subplot(111)
                         _style_ax(ax, loss_fig, "Perda por época")
-                        ax.plot(history.get('loss', []), label='Treino: perda',
-                                color='#3b82f6', linewidth=2)
-                        ax.plot(history.get('val_loss', []), label='Validação: perda',
-                                color='#ef4444', linewidth=2, linestyle='--')
-                        ax.set_xlabel('Época')
-                        ax.set_ylabel('Perda')
-                        ax.legend(facecolor=PLOT_FACE, edgecolor=PLOT_GRID,
-                                  labelcolor=PLOT_TEXT, fontsize=9)
+                        ax.plot(
+                            history.get("loss", []),
+                            label="Treino: perda",
+                            color="#3b82f6",
+                            linewidth=2,
+                        )
+                        ax.plot(
+                            history.get("val_loss", []),
+                            label="Validação: perda",
+                            color="#ef4444",
+                            linewidth=2,
+                            linestyle="--",
+                        )
+                        ax.set_xlabel("Época")
+                        ax.set_ylabel("Perda")
+                        ax.legend(
+                            facecolor=PLOT_FACE,
+                            edgecolor=PLOT_GRID,
+                            labelcolor=PLOT_TEXT,
+                            fontsize=9,
+                        )
                         loss_fig.tight_layout()
 
                         # Accuracy plot
                         acc_fig = Figure(figsize=(6, 4))
                         ax2 = acc_fig.add_subplot(111)
                         _style_ax(ax2, acc_fig, "Acurácia por época")
-                        ax2.plot(history.get('accuracy', []), label='Treino: acurácia',
-                                 color='#10b981', linewidth=2)
                         ax2.plot(
-                            history.get('val_accuracy', []),
-                            label='Validação: acurácia',
-                            color='#f59e0b',
+                            history.get("accuracy", []),
+                            label="Treino: acurácia",
+                            color="#10b981",
                             linewidth=2,
-                            linestyle='--',
                         )
-                        ax2.set_xlabel('Época')
-                        ax2.set_ylabel('Acurácia')
-                        ax2.legend(facecolor=PLOT_FACE, edgecolor=PLOT_GRID,
-                                   labelcolor=PLOT_TEXT, fontsize=9)
+                        ax2.plot(
+                            history.get("val_accuracy", []),
+                            label="Validação: acurácia",
+                            color="#f59e0b",
+                            linewidth=2,
+                            linestyle="--",
+                        )
+                        ax2.set_xlabel("Época")
+                        ax2.set_ylabel("Acurácia")
+                        ax2.legend(
+                            facecolor=PLOT_FACE,
+                            edgecolor=PLOT_GRID,
+                            labelcolor=PLOT_TEXT,
+                            fontsize=9,
+                        )
                         acc_fig.tight_layout()
 
                     # Confusion Matrix plot
@@ -622,9 +729,14 @@ def create_voice_profiles_tab():
                         cm_fig.patch.set_facecolor(PLOT_BG)
                         ax3.set_facecolor(PLOT_FACE)
                         cm_arr = np.array(cm)
-                        ax3.imshow(cm_arr, cmap='magma', interpolation='nearest')
-                        ax3.set_title("Matriz de confusão", color=PLOT_TEXT,
-                                      fontweight="600", fontsize=12, pad=10)
+                        ax3.imshow(cm_arr, cmap="magma", interpolation="nearest")
+                        ax3.set_title(
+                            "Matriz de confusão",
+                            color=PLOT_TEXT,
+                            fontweight="600",
+                            fontsize=12,
+                            pad=10,
+                        )
                         labels = ["Real", "Sintético"]
                         ax3.set_xticks([0, 1])
                         ax3.set_yticks([0, 1])
@@ -635,10 +747,21 @@ def create_voice_profiles_tab():
                         # Anotar valores
                         for i in range(2):
                             for j in range(2):
-                                color = PLOT_TEXT if cm_arr[i, j] < cm_arr.max() * 0.6 else PLOT_BG
-                                ax3.text(j, i, str(cm_arr[i, j]),
-                                         ha='center', va='center',
-                                         color=color, fontsize=16, fontweight='bold')
+                                color = (
+                                    PLOT_TEXT
+                                    if cm_arr[i, j] < cm_arr.max() * 0.6
+                                    else PLOT_BG
+                                )
+                                ax3.text(
+                                    j,
+                                    i,
+                                    str(cm_arr[i, j]),
+                                    ha="center",
+                                    va="center",
+                                    color=color,
+                                    fontsize=16,
+                                    fontweight="bold",
+                                )
                         for sp in ax3.spines.values():
                             sp.set_color(PLOT_GRID)
                         cm_fig.tight_layout()
@@ -648,13 +771,16 @@ def create_voice_profiles_tab():
 
                 # Métricas sem history (muito grande para JSON view)
                 display_metrics = {
-                    k: v for k, v in metrics.items()
+                    k: v
+                    for k, v in metrics.items()
                     if k not in ("history", "confusion_matrix")
                 }
 
                 yield "\n".join(log_lines), loss_fig, acc_fig, cm_fig, display_metrics
             else:
-                log_lines.append(f"\n❌ Erro: {result.get('error', 'Falha desconhecida')}")
+                log_lines.append(
+                    f"\n❌ Erro: {result.get('error', 'Falha desconhecida')}"
+                )
                 warnings = result.get("warnings", [])
                 for w in warnings:
                     log_lines.append(f"⚠️ {w}")
@@ -662,10 +788,14 @@ def create_voice_profiles_tab():
 
         train_btn.click(
             fn=handle_train,
-            inputs=[train_profile_dd, train_arch, train_epochs,
-                    train_batch, train_lr],
-            outputs=[train_log, train_loss_plot, train_acc_plot,
-                     train_cm_plot, train_metrics_json],
+            inputs=[train_profile_dd, train_arch, train_epochs, train_batch, train_lr],
+            outputs=[
+                train_log,
+                train_loss_plot,
+                train_acc_plot,
+                train_cm_plot,
+                train_metrics_json,
+            ],
         )
 
         # ── Verify handlers ──

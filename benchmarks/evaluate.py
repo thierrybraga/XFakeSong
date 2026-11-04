@@ -68,7 +68,9 @@ def _bootstrap_cis(
             chosen = rng.choice(
                 unique_clusters, size=len(unique_clusters), replace=True
             )
-            idx = np.concatenate([np.flatnonzero(clusters == group) for group in chosen])
+            idx = np.concatenate(
+                [np.flatnonzero(clusters == group) for group in chosen]
+            )
         yb, pb = y_true[idx], p_fake[idx]
         # `rb` é o score de ORDENAÇÃO da reamostra (EER/AUC); `pb` é a
         # probabilidade calibrada (decisão no limiar). Sem `ranking` os dois
@@ -79,9 +81,7 @@ def _bootstrap_cis(
         try:
             eers.append(float(mc.calculate_eer(yb, rb)[0]))
             aucs.append(float(roc_auc_score(yb, rb)))
-            accs.append(
-                float(accuracy_score(yb, (pb >= threshold).astype(int)))
-            )
+            accs.append(float(accuracy_score(yb, (pb >= threshold).astype(int))))
         except Exception:
             continue
     out: Dict[str, Any] = {}
@@ -98,12 +98,15 @@ def _bootstrap_cis(
     return out
 
 
-def evaluate_scores(y_true: np.ndarray, p_fake: np.ndarray,
-                    threshold: float = 0.5,
-                    n_bootstrap: int = 0,
-                    cluster_ids: np.ndarray | None = None,
-                    calibrated_threshold: float | None = None,
-                    ranking_scores: np.ndarray | None = None) -> Dict[str, Any]:
+def evaluate_scores(
+    y_true: np.ndarray,
+    p_fake: np.ndarray,
+    threshold: float = 0.5,
+    n_bootstrap: int = 0,
+    cluster_ids: np.ndarray | None = None,
+    calibrated_threshold: float | None = None,
+    ranking_scores: np.ndarray | None = None,
+) -> Dict[str, Any]:
     """Métricas de detecção a partir de y_true ∈ {0,1} e p_fake ∈ [0,1].
 
     ``ranking_scores`` separa as duas naturezas de métrica quando o modelo

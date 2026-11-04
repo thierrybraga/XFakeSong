@@ -53,36 +53,25 @@ def build_profile_model(
         # Construir modelo adaptado por tipo de arquitetura
         if display_name in ("AASIST", "RawGAT-ST"):
             # Modelos de atenção: usar self-attention layers
-            model = _build_attention_profile_model(
-                input_dim, dropout, arch_params
-            )
+            model = _build_attention_profile_model(input_dim, dropout, arch_params)
         elif display_name in ("Conformer", "SpectrogramTransformer"):
             # Transformer-based: usar transformer encoder leve
-            model = _build_transformer_profile_model(
-                input_dim, dropout, arch_params
-            )
+            model = _build_transformer_profile_model(input_dim, dropout, arch_params)
         elif display_name in ("RawNet2", "Sonic Sleuth"):
             # Conv-based: usar 1D convolutions sobre features
-            model = _build_conv1d_profile_model(
-                input_dim, dropout, arch_params
-            )
+            model = _build_conv1d_profile_model(input_dim, dropout, arch_params)
         elif display_name in ("EfficientNet-LSTM", "WavLM", "HuBERT"):
             # Recurrent: usar LSTM/GRU sobre features
-            model = _build_recurrent_profile_model(
-                input_dim, dropout, arch_params
-            )
+            model = _build_recurrent_profile_model(input_dim, dropout, arch_params)
         elif display_name in ("Ensemble", "MultiscaleCNN", "Hybrid CNN-Transformer"):
             # Multi-branch: usar arquitetura multi-head
-            model = _build_multihead_profile_model(
-                input_dim, dropout, arch_params
-            )
+            model = _build_multihead_profile_model(input_dim, dropout, arch_params)
         else:
             # Fallback genérico
             model = _build_mlp_profile_model(input_dim, dropout)
 
         logger.info(
-            f"Modelo '{display_name}' construído: "
-            f"{model.count_params()} parâmetros"
+            f"Modelo '{display_name}' construído: " f"{model.count_params()} parâmetros"
         )
         return model
 
@@ -93,24 +82,35 @@ def build_profile_model(
         )
         return _build_mlp_profile_model(input_dim, 0.3)
 
+
 def _build_mlp_profile_model(input_dim: int, dropout: float):
     """MLP compacto (fallback e baseline)."""
     import tensorflow as tf
-    model = tf.keras.Sequential([
-        tf.keras.layers.Input(shape=(input_dim,)),
-        tf.keras.layers.Dense(256, activation='relu',
-                              kernel_regularizer=tf.keras.regularizers.l2(1e-4)),
-        tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Dropout(dropout),
-        tf.keras.layers.Dense(128, activation='relu',
-                              kernel_regularizer=tf.keras.regularizers.l2(1e-4)),
-        tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Dropout(dropout),
-        tf.keras.layers.Dense(64, activation='relu'),
-        tf.keras.layers.Dropout(dropout * 0.7),
-        tf.keras.layers.Dense(1, activation='sigmoid'),
-    ])
+
+    model = tf.keras.Sequential(
+        [
+            tf.keras.layers.Input(shape=(input_dim,)),
+            tf.keras.layers.Dense(
+                256,
+                activation="relu",
+                kernel_regularizer=tf.keras.regularizers.l2(1e-4),
+            ),
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.Dropout(dropout),
+            tf.keras.layers.Dense(
+                128,
+                activation="relu",
+                kernel_regularizer=tf.keras.regularizers.l2(1e-4),
+            ),
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.Dropout(dropout),
+            tf.keras.layers.Dense(64, activation="relu"),
+            tf.keras.layers.Dropout(dropout * 0.7),
+            tf.keras.layers.Dense(1, activation="sigmoid"),
+        ]
+    )
     return model
+
 
 def _build_attention_profile_model(input_dim: int, dropout: float, params: dict):
     """Modelo com self-attention (inspirado em AASIST/RawGAT-ST)."""
@@ -118,34 +118,35 @@ def _build_attention_profile_model(input_dim: int, dropout: float, params: dict)
 
     inputs = tf.keras.layers.Input(shape=(input_dim,))
     # Reshape para sequência de pseudo-tokens
-    x = tf.keras.layers.Dense(256, activation='relu')(inputs)
+    x = tf.keras.layers.Dense(256, activation="relu")(inputs)
     x = tf.keras.layers.Reshape((16, 16))(x)
     # Multi-Head Attention
-    attn = tf.keras.layers.MultiHeadAttention(
-        num_heads=4, key_dim=16, dropout=dropout
-    )(x, x)
+    attn = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=16, dropout=dropout)(
+        x, x
+    )
     x = tf.keras.layers.Add()([x, attn])
     x = tf.keras.layers.LayerNormalization()(x)
     # Feed-forward
-    ff = tf.keras.layers.Dense(64, activation='relu')(x)
+    ff = tf.keras.layers.Dense(64, activation="relu")(x)
     ff = tf.keras.layers.Dense(16)(ff)
     x = tf.keras.layers.Add()([x, ff])
     x = tf.keras.layers.LayerNormalization()(x)
     # Pool & classify
     x = tf.keras.layers.GlobalAveragePooling1D()(x)
     x = tf.keras.layers.Dropout(dropout)(x)
-    x = tf.keras.layers.Dense(64, activation='relu')(x)
+    x = tf.keras.layers.Dense(64, activation="relu")(x)
     x = tf.keras.layers.Dropout(dropout * 0.5)(x)
-    outputs = tf.keras.layers.Dense(1, activation='sigmoid')(x)
+    outputs = tf.keras.layers.Dense(1, activation="sigmoid")(x)
 
     return tf.keras.Model(inputs, outputs, name="attention_profile")
+
 
 def _build_transformer_profile_model(input_dim: int, dropout: float, params: dict):
     """Modelo Transformer encoder leve (inspirado em Conformer/AST)."""
     import tensorflow as tf
 
     inputs = tf.keras.layers.Input(shape=(input_dim,))
-    x = tf.keras.layers.Dense(128, activation='relu')(inputs)
+    x = tf.keras.layers.Dense(128, activation="relu")(inputs)
     x = tf.keras.layers.Reshape((8, 16))(x)
 
     # 2 Transformer blocks
@@ -155,17 +156,18 @@ def _build_transformer_profile_model(input_dim: int, dropout: float, params: dic
         )(x, x)
         x = tf.keras.layers.Add()([x, attn])
         x = tf.keras.layers.LayerNormalization()(x)
-        ff = tf.keras.layers.Dense(32, activation='gelu')(x)
+        ff = tf.keras.layers.Dense(32, activation="gelu")(x)
         ff = tf.keras.layers.Dense(16)(ff)
         x = tf.keras.layers.Add()([x, ff])
         x = tf.keras.layers.LayerNormalization()(x)
 
     x = tf.keras.layers.GlobalAveragePooling1D()(x)
-    x = tf.keras.layers.Dense(64, activation='relu')(x)
+    x = tf.keras.layers.Dense(64, activation="relu")(x)
     x = tf.keras.layers.Dropout(dropout)(x)
-    outputs = tf.keras.layers.Dense(1, activation='sigmoid')(x)
+    outputs = tf.keras.layers.Dense(1, activation="sigmoid")(x)
 
     return tf.keras.Model(inputs, outputs, name="transformer_profile")
+
 
 def _build_conv1d_profile_model(input_dim: int, dropout: float, params: dict):
     """Modelo Conv1D (inspirado em RawNet2/Sonic Sleuth)."""
@@ -177,7 +179,10 @@ def _build_conv1d_profile_model(input_dim: int, dropout: float, params: dict):
     # Conv blocks
     for filters in [32, 64, 128]:
         x = tf.keras.layers.Conv1D(
-            filters, 3, padding='same', activation='relu',
+            filters,
+            3,
+            padding="same",
+            activation="relu",
             kernel_regularizer=tf.keras.regularizers.l2(1e-4),
         )(x)
         x = tf.keras.layers.BatchNormalization()(x)
@@ -185,12 +190,13 @@ def _build_conv1d_profile_model(input_dim: int, dropout: float, params: dict):
         x = tf.keras.layers.Dropout(dropout * 0.5)(x)
 
     x = tf.keras.layers.GlobalAveragePooling1D()(x)
-    x = tf.keras.layers.Dense(128, activation='relu')(x)
+    x = tf.keras.layers.Dense(128, activation="relu")(x)
     x = tf.keras.layers.Dropout(dropout)(x)
-    x = tf.keras.layers.Dense(64, activation='relu')(x)
-    outputs = tf.keras.layers.Dense(1, activation='sigmoid')(x)
+    x = tf.keras.layers.Dense(64, activation="relu")(x)
+    outputs = tf.keras.layers.Dense(1, activation="sigmoid")(x)
 
     return tf.keras.Model(inputs, outputs, name="conv1d_profile")
+
 
 def _build_recurrent_profile_model(input_dim: int, dropout: float, params: dict):
     """Modelo LSTM bidirecional (inspirado em EfficientNet-LSTM/WavLM/HuBERT)."""
@@ -203,14 +209,13 @@ def _build_recurrent_profile_model(input_dim: int, dropout: float, params: dict)
     x = tf.keras.layers.Bidirectional(
         tf.keras.layers.LSTM(64, return_sequences=True, dropout=dropout)
     )(x)
-    x = tf.keras.layers.Bidirectional(
-        tf.keras.layers.LSTM(32, dropout=dropout)
-    )(x)
-    x = tf.keras.layers.Dense(64, activation='relu')(x)
+    x = tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(32, dropout=dropout))(x)
+    x = tf.keras.layers.Dense(64, activation="relu")(x)
     x = tf.keras.layers.Dropout(dropout)(x)
-    outputs = tf.keras.layers.Dense(1, activation='sigmoid')(x)
+    outputs = tf.keras.layers.Dense(1, activation="sigmoid")(x)
 
     return tf.keras.Model(inputs, outputs, name="recurrent_profile")
+
 
 def _build_multihead_profile_model(input_dim: int, dropout: float, params: dict):
     """Modelo multi-branch (inspirado em Ensemble/MultiscaleCNN/Hybrid)."""
@@ -219,28 +224,28 @@ def _build_multihead_profile_model(input_dim: int, dropout: float, params: dict)
     inputs = tf.keras.layers.Input(shape=(input_dim,))
 
     # Branch 1: Dense
-    b1 = tf.keras.layers.Dense(128, activation='relu')(inputs)
+    b1 = tf.keras.layers.Dense(128, activation="relu")(inputs)
     b1 = tf.keras.layers.BatchNormalization()(b1)
     b1 = tf.keras.layers.Dropout(dropout)(b1)
-    b1 = tf.keras.layers.Dense(64, activation='relu')(b1)
+    b1 = tf.keras.layers.Dense(64, activation="relu")(b1)
 
     # Branch 2: Conv1D
     x2 = tf.keras.layers.Reshape((input_dim, 1))(inputs)
-    x2 = tf.keras.layers.Conv1D(32, 5, padding='same', activation='relu')(x2)
+    x2 = tf.keras.layers.Conv1D(32, 5, padding="same", activation="relu")(x2)
     x2 = tf.keras.layers.GlobalAveragePooling1D()(x2)
-    b2 = tf.keras.layers.Dense(64, activation='relu')(x2)
+    b2 = tf.keras.layers.Dense(64, activation="relu")(x2)
 
     # Branch 3: Feature selection via attention
-    attn_weights = tf.keras.layers.Dense(input_dim, activation='softmax')(inputs)
+    attn_weights = tf.keras.layers.Dense(input_dim, activation="softmax")(inputs)
     x3 = tf.keras.layers.Multiply()([inputs, attn_weights])
-    b3 = tf.keras.layers.Dense(64, activation='relu')(x3)
+    b3 = tf.keras.layers.Dense(64, activation="relu")(x3)
 
     # Fusion
     merged = tf.keras.layers.Concatenate()([b1, b2, b3])
-    x = tf.keras.layers.Dense(128, activation='relu')(merged)
+    x = tf.keras.layers.Dense(128, activation="relu")(merged)
     x = tf.keras.layers.Dropout(dropout)(x)
-    x = tf.keras.layers.Dense(64, activation='relu')(x)
+    x = tf.keras.layers.Dense(64, activation="relu")(x)
     x = tf.keras.layers.Dropout(dropout * 0.5)(x)
-    outputs = tf.keras.layers.Dense(1, activation='sigmoid')(x)
+    outputs = tf.keras.layers.Dense(1, activation="sigmoid")(x)
 
     return tf.keras.Model(inputs, outputs, name="multihead_profile")

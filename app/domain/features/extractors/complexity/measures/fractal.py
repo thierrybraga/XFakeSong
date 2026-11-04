@@ -11,12 +11,12 @@ from .components.hurst import compute_hurst_exponent, compute_hurst_exponent_opt
 
 # Re-exporting functions for backward compatibility
 __all__ = [
-    'compute_fractal_dimension',
-    'compute_fractal_dimension_optimized',
-    'compute_hurst_exponent',
-    'compute_hurst_exponent_optimized',
-    'compute_higuchi_fractal',
-    'compute_higuchi_fractal_optimized',
-    'compute_dfa_exponent',
-    'compute_dfa_exponent_optimized'
+    "compute_fractal_dimension",
+    "compute_fractal_dimension_optimized",
+    "compute_hurst_exponent",
+    "compute_hurst_exponent_optimized",
+    "compute_higuchi_fractal",
+    "compute_higuchi_fractal_optimized",
+    "compute_dfa_exponent",
+    "compute_dfa_exponent_optimized",
 ]

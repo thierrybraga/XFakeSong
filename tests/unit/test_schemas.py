@@ -3,6 +3,7 @@
 Verifica que os schemas geram JSON Schema válido sem erros de serialização
 para tipos Union/Optional (campo metadata, etc.).
 """
+
 from pydantic import TypeAdapter
 
 from app.interfaces.web.schemas.api_models import (

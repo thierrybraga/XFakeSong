@@ -24,6 +24,7 @@ def _safe_version(pkg: str) -> Optional[str]:
     """Retorna versão instalada de um pacote ou None."""
     try:
         from importlib.metadata import PackageNotFoundError, version
+
         try:
             return version(pkg)
         except PackageNotFoundError:
@@ -109,7 +110,10 @@ def check_versions(strict: bool = False) -> List[str]:
     logger.info(
         "Version check: gradio=%s, starlette=%s, fastapi=%s, jinja2=%s, "
         "huggingface_hub=%s",
-        gradio_v or "?", starlette_v or "?", fastapi_v or "?", jinja_v or "?",
+        gradio_v or "?",
+        starlette_v or "?",
+        fastapi_v or "?",
+        jinja_v or "?",
         hub_v or "?",
     )
 
@@ -118,8 +122,7 @@ def check_versions(strict: bool = False) -> List[str]:
             logger.error(msg)
         if strict:
             raise RuntimeError(
-                "Versões incompatíveis detectadas:\n  - "
-                + "\n  - ".join(issues)
+                "Versões incompatíveis detectadas:\n  - " + "\n  - ".join(issues)
             )
 
     return issues

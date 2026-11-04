@@ -138,7 +138,6 @@ def test_main_bootstrap_twice_from_another_cwd(tmp_path):
     assert inspect_database(storage / "app.db") == DatabaseState.COMPATIBLE
 
 
-
 def test_importar_a_composicao_nao_cria_o_engine():
     """O bootstrap define `DATABASE_URL` antes de o `engine` nascer.
 
@@ -221,6 +220,8 @@ def test_semeadura_cobre_o_registry_e_e_idempotente(monkeypatch):
     for linha in linhas:
         assert linha.variant_name == "default"
         # JSON não tem tupla: `patch_size=(16, 16)` volta como lista.
-        esperado = json.loads(json.dumps(registry[linha.architecture_name].default_params))
+        esperado = json.loads(
+            json.dumps(registry[linha.architecture_name].default_params)
+        )
         assert linha.parameters == esperado
     engine.dispose()

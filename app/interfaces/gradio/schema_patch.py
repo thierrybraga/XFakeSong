@@ -29,9 +29,14 @@ def sanitize_schema(schema: Any) -> Any:
         # Se o valor é True/False em certos campos conhecidos,
         # substitui por schema vazio de dict
         if isinstance(value, bool) and key in {
-            "metadata", "config", "details", "per_model",
-            "per_fold", "parameters", "training_metrics",
-            "additionalProperties"
+            "metadata",
+            "config",
+            "details",
+            "per_model",
+            "per_fold",
+            "parameters",
+            "training_metrics",
+            "additionalProperties",
         }:
             if value is True:
                 sanitized[key] = {"type": "object"}
@@ -59,9 +64,7 @@ def patch_gradio_schema_validator():
     try:
         from gradio_client import utils as gradio_utils
 
-        original_json_schema_to_python_type = (
-            gradio_utils.json_schema_to_python_type
-        )
+        original_json_schema_to_python_type = gradio_utils.json_schema_to_python_type
 
         def patched_json_schema_to_python_type(schema: Dict) -> type:
             """Wrapper que sanitiza schema antes de processar."""
@@ -97,11 +100,8 @@ if __name__ == "__main__":
     # Teste unitário simples
     test_schema = {
         "metadata": True,  # ← ERRADO
-        "config": False,   # ← ERRADO
-        "nested": {
-            "value": "ok",
-            "broken": True
-        }
+        "config": False,  # ← ERRADO
+        "nested": {"value": "ok", "broken": True},
     }
 
     cleaned = sanitize_schema(test_schema)

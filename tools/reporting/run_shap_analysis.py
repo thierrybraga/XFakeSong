@@ -132,27 +132,38 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--skip-shap", action="store_true")
     parser.add_argument("--skip-gradcam", action="store_true")
     parser.add_argument(
-        "--shap-explain", type=int, default=100,
+        "--shap-explain",
+        type=int,
+        default=100,
         help="Amostras de teste explicadas no Random Forest.",
     )
     parser.add_argument(
-        "--svm-explain", type=int, default=40,
+        "--svm-explain",
+        type=int,
+        default=40,
         help="Amostras explicadas no SVM (KernelExplainer é caro).",
     )
     parser.add_argument(
-        "--background", type=int, default=200,
+        "--background",
+        type=int,
+        default=200,
         help="Amostras de treino usadas como background do SHAP.",
     )
     parser.add_argument(
-        "--gradcam-samples", type=int, default=6,
+        "--gradcam-samples",
+        type=int,
+        default=6,
         help="Amostras de teste por arquitetura no Grad-CAM.",
     )
     parser.add_argument(
-        "--copy-to-tcc", action="store_true",
+        "--copy-to-tcc",
+        action="store_true",
         help="Copia as figuras geradas para data/results/paper/figures/.",
     )
     parser.add_argument(
-        "--max-samples", type=int, default=2000,
+        "--max-samples",
+        type=int,
+        default=2000,
         help="Subamostra estratificada (semente fixa) aplicada antes da "
         "extração de características, para custo tratável; 0 desativa.",
     )
@@ -198,7 +209,9 @@ def _subsample(data, max_samples: int, seed: int):
             setattr(sub, field, np.asarray(value)[idx])
     logger.info(
         "Subamostra estratificada: %d → %d amostras (semente %d)",
-        len(data.y), len(sub.y), seed,
+        len(data.y),
+        len(sub.y),
+        seed,
     )
     return sub, True
 
@@ -281,8 +294,11 @@ def run_shap(args: argparse.Namespace, data, out_dir: Path) -> list[str]:
             f"Vetor tabular com {X_test.shape[1]} features, sem nomenclatura "
             "correspondente em app/domain/xai/tabular.py"
         )
-    logger.info("vetor tabular: %d descritores (%s)", len(names),
-                "v2" if len(names) > 63 else "v1")
+    logger.info(
+        "vetor tabular: %d descritores (%s)",
+        len(names),
+        "v2" if len(names) > 63 else "v1",
+    )
 
     bg_idx = _balanced_indices(y_train, args.background, args.seed)
     generated: list[str] = []
@@ -296,7 +312,9 @@ def run_shap(args: argparse.Namespace, data, out_dir: Path) -> list[str]:
         logger.info("SHAP %s: artefato %s", model_key, used_path)
         transform, estimator = split_sklearn_pipeline(artifact)
 
-        n_explain = args.shap_explain if model_key == "random_forest" else args.svm_explain
+        n_explain = (
+            args.shap_explain if model_key == "random_forest" else args.svm_explain
+        )
         ex_idx = _balanced_indices(y_test, n_explain, args.seed + 1)
         X_explain = X_test[ex_idx]
 
@@ -318,15 +336,21 @@ def run_shap(args: argparse.Namespace, data, out_dir: Path) -> list[str]:
                 # grandeza mantém a explicação coerente com as métricas
                 # reportadas.
                 if hasattr(estimator, "decision_function"):
+
                     def score(X, _est=estimator, _tr=transform):
                         return np.asarray(_est.decision_function(_tr(X))).ravel()
-                    logger.info("SHAP %s: explicando a MARGEM "
-                                "(decision_function)", model_key)
+
+                    logger.info(
+                        "SHAP %s: explicando a MARGEM " "(decision_function)", model_key
+                    )
                 elif hasattr(estimator, "predict_proba"):
+
                     def score(X, _est=estimator, _tr=transform):
                         return _est.predict_proba(_tr(X))[:, 1]
-                    logger.info("SHAP %s: explicando a probabilidade calibrada",
-                                model_key)
+
+                    logger.info(
+                        "SHAP %s: explicando a probabilidade calibrada", model_key
+                    )
                 else:
                     raise AttributeError(
                         f"{type(estimator).__name__} não expõe "
@@ -334,7 +358,9 @@ def run_shap(args: argparse.Namespace, data, out_dir: Path) -> list[str]:
                     )
 
                 matrix = explain_with_kernel_shap(
-                    score, X_train[bg_idx], X_explain,
+                    score,
+                    X_train[bg_idx],
+                    X_explain,
                 )
         except Exception as exc:  # noqa: BLE001 - segue p/ os demais modelos
             logger.error("SHAP falhou para %s (%s): %s", model_key, used_path, exc)
@@ -364,9 +390,7 @@ def run_shap(args: argparse.Namespace, data, out_dir: Path) -> list[str]:
             writer = csv.writer(handle)
             writer.writerow(["feature", *mean_abs.keys()])
             for i, name in enumerate(names):
-                writer.writerow(
-                    [name, *(f"{mean_abs[m][i]:.6f}" for m in mean_abs)]
-                )
+                writer.writerow([name, *(f"{mean_abs[m][i]:.6f}" for m in mean_abs)])
         generated.append(csv_path.name)
     return generated
 
@@ -466,7 +490,8 @@ def run_gradcam(args: argparse.Namespace, data, out_dir: Path) -> list[str]:
             axes[row][0].imshow(spec_img, aspect="auto", origin="lower")
             axes[row][0].set_title(
                 f"{'spoof' if labels[row] else 'bonafide'} — $p_{{fake}}$="
-                f"{p_fake[row]:.2f}", fontsize=9,
+                f"{p_fake[row]:.2f}",
+                fontsize=9,
             )
             axes[row][1].imshow(spec_img, aspect="auto", origin="lower")
             axes[row][1].imshow(
@@ -487,7 +512,9 @@ def run_gradcam(args: argparse.Namespace, data, out_dir: Path) -> list[str]:
 
 
 def write_report(
-    args: argparse.Namespace, out_dir: Path, shap_files: list[str],
+    args: argparse.Namespace,
+    out_dir: Path,
+    shap_files: list[str],
     gradcam_files: list[str],
 ) -> None:
     lines = [

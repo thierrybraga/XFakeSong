@@ -1,4 +1,3 @@
-
 """RawGAT-ST Architecture Implementation"""
 
 from __future__ import annotations
@@ -140,10 +139,12 @@ def _build_paper_rawgat(
     # recusa desserializar Lambda de função Python em safe_mode (default),
     # o que quebrava o load do modelo salvo. Mesma computação exata.
     spectral = AxisMaxAbsLayer(
-        axis=2, name="rawgat_spectral_nodes",
+        axis=2,
+        name="rawgat_spectral_nodes",
     )(spectral_map)
     temporal = AxisMaxAbsLayer(
-        axis=1, name="rawgat_temporal_nodes",
+        axis=1,
+        name="rawgat_temporal_nodes",
     )(temporal_map)
     # A fusão multiplicativa e os logits de atenção são numericamente
     # sensíveis em float16. Mantemos somente o encoder 2D em mixed precision
@@ -158,12 +159,18 @@ def _build_paper_rawgat(
     # mesma formulação que o AASIST herda deste trabalho — não o GAT aditivo
     # de Velickovic que era usado aqui antes.
     spectral = RawGatGraphAttention(
-        out_features=64, temperature=GAT_TEMPERATURE, dropout_rate=dropout_rate,
-        name="rawgat_gat_spectral", dtype="float32",
+        out_features=64,
+        temperature=GAT_TEMPERATURE,
+        dropout_rate=dropout_rate,
+        name="rawgat_gat_spectral",
+        dtype="float32",
     )(spectral)
     temporal = RawGatGraphAttention(
-        out_features=64, temperature=GAT_TEMPERATURE, dropout_rate=dropout_rate,
-        name="rawgat_gat_temporal", dtype="float32",
+        out_features=64,
+        temperature=GAT_TEMPERATURE,
+        dropout_rate=dropout_rate,
+        name="rawgat_gat_temporal",
+        dtype="float32",
     )(temporal)
     # RATIOS DE POOLING (2026-08-20). Eram 0,81 / 0,64 / 0,64 — números sem
     # citação nem medição no repositório. A escala publicada da família é da
@@ -175,12 +182,12 @@ def _build_paper_rawgat(
     # neste repositório. São o âncora publicado mais próximo, e é assim que
     # devem ser declarados no TCC. Se a config oficial do RawGAT-ST for obtida,
     # confira contra ela antes de escrever "conforme o artigo".
-    spectral = RawGatGraphPool(
-        0.5, name="rawgat_pool_spectral", dtype="float32"
-    )(spectral)
-    temporal = RawGatGraphPool(
-        0.7, name="rawgat_pool_temporal", dtype="float32"
-    )(temporal)
+    spectral = RawGatGraphPool(0.5, name="rawgat_pool_spectral", dtype="float32")(
+        spectral
+    )
+    temporal = RawGatGraphPool(0.7, name="rawgat_pool_temporal", dtype="float32")(
+        temporal
+    )
     # Alinhamento dos dois grafos antes da fusão element-wise por TOP-K
     # pooling — a mesma primitiva de pooling de grafo usada pelo artigo.
     # Antes isto era `AdaptiveGraphResize`, uma projeção DENSA aprendível sobre
@@ -188,28 +195,30 @@ def _build_paper_rawgat(
     # não é uma operação de grafo (mistura nós arbitrariamente) e adicionava
     # parâmetros sem contrapartida na referência.
     spectral = RawGatGraphPool(
-        target_nodes=GRAPH_FUSION_NODES, name="rawgat_align_spectral",
+        target_nodes=GRAPH_FUSION_NODES,
+        name="rawgat_align_spectral",
         dtype="float32",
     )(spectral)
     temporal = RawGatGraphPool(
-        target_nodes=GRAPH_FUSION_NODES, name="rawgat_align_temporal",
+        target_nodes=GRAPH_FUSION_NODES,
+        name="rawgat_align_temporal",
         dtype="float32",
     )(temporal)
 
-    fused = layers.Multiply(
-        name="rawgat_graph_fusion", dtype="float32"
-    )([spectral, temporal])
+    fused = layers.Multiply(name="rawgat_graph_fusion", dtype="float32")(
+        [spectral, temporal]
+    )
     fused = RawGatGraphAttention(
-        out_features=32, temperature=GAT_FUSION_TEMPERATURE,
+        out_features=32,
+        temperature=GAT_FUSION_TEMPERATURE,
         dropout_rate=dropout_rate,
-        name="rawgat_gat_spectro_temporal", dtype="float32",
+        name="rawgat_gat_spectro_temporal",
+        dtype="float32",
     )(fused)
-    fused = RawGatGraphPool(
-        0.5, name="rawgat_pool_spectro_temporal", dtype="float32"
-    )(fused)
-    readout = RawGatGraphReadout(
-        name="rawgat_readout", dtype="float32"
-    )(fused)
+    fused = RawGatGraphPool(0.5, name="rawgat_pool_spectro_temporal", dtype="float32")(
+        fused
+    )
+    readout = RawGatGraphReadout(name="rawgat_readout", dtype="float32")(fused)
     readout = layers.Dropout(
         dropout_rate, name="rawgat_readout_dropout", dtype="float32"
     )(readout)
@@ -371,8 +380,8 @@ def create_model(
 
         # --- 1. SincNet front-end (filtros passa-banda aprendíveis) ---
         x = RawGatSincConv(
-            n_filters=70, kernel_size=129, sample_rate=16000,
-            name="rawgat_sinc")(x)
+            n_filters=70, kernel_size=129, sample_rate=16000, name="rawgat_sinc"
+        )(x)
         x = MagnitudeLayer(name="rawgat_sinc_abs")(x)
         x = layers.BatchNormalization(name="rawgat_sinc_bn")(x)
         x = layers.LeakyReLU(negative_slope=0.3, name="rawgat_sinc_lrelu")(x)
@@ -381,14 +390,17 @@ def create_model(
         # --- 2. Encoder residual (estilo RawNet2) ---
         x = RawGatResidualBlock1D(out_channels=64, kernel_size=3, name="rawgat_res1")(x)
         x = layers.MaxPooling1D(pool_size=3, name="rawgat_res_pool1")(x)
-        x = RawGatResidualBlock1D(out_channels=128, kernel_size=3, name="rawgat_res2")(x)
+        x = RawGatResidualBlock1D(out_channels=128, kernel_size=3, name="rawgat_res2")(
+            x
+        )
         x = layers.MaxPooling1D(pool_size=3, name="rawgat_res_pool2")(x)
         encoder_out = x  # (batch, T_reduced, 128)
 
         # --- 3. Dois grafos: espectral (canais como nós) e temporal (tempo) ---
-        spectral_nodes = layers.Permute(
-            (2, 1), name="rawgat_spectral_transpose")(encoder_out)  # (B, 128, T')
-        temporal_nodes = encoder_out                                # (B, T', 128)
+        spectral_nodes = layers.Permute((2, 1), name="rawgat_spectral_transpose")(
+            encoder_out
+        )  # (B, 128, T')
+        temporal_nodes = encoder_out  # (B, T', 128)
         # O GAT materializa atenção densa N x N. O default usa downsampling
         # moderado para não inviabilizar batch/GPU; a variante rawgat_st_paper
         # define stride=1 e remove esta aproximação.
@@ -403,37 +415,49 @@ def create_model(
 
         # --- 4. Graph Attention em cada grafo ---
         spectral_nodes = RawGatGATConv(
-            out_features=32, num_heads=attention_heads // 2 or 4,
-            dropout_rate=dropout_rate, concat_heads=True,
-            name="rawgat_gat_spectral")(spectral_nodes)
+            out_features=32,
+            num_heads=attention_heads // 2 or 4,
+            dropout_rate=dropout_rate,
+            concat_heads=True,
+            name="rawgat_gat_spectral",
+        )(spectral_nodes)
         temporal_nodes = RawGatGATConv(
-            out_features=32, num_heads=attention_heads // 2 or 4,
-            dropout_rate=dropout_rate, concat_heads=True,
-            name="rawgat_gat_temporal")(temporal_nodes)
+            out_features=32,
+            num_heads=attention_heads // 2 or 4,
+            dropout_rate=dropout_rate,
+            concat_heads=True,
+            name="rawgat_gat_temporal",
+        )(temporal_nodes)
 
         # --- 5. Graph pooling (top-k) ---
-        spectral_nodes = RawGatGraphPool(
-            ratio=0.5, name="rawgat_pool_spectral")(spectral_nodes)
-        temporal_nodes = RawGatGraphPool(
-            ratio=0.5, name="rawgat_pool_temporal")(temporal_nodes)
+        spectral_nodes = RawGatGraphPool(ratio=0.5, name="rawgat_pool_spectral")(
+            spectral_nodes
+        )
+        temporal_nodes = RawGatGraphPool(ratio=0.5, name="rawgat_pool_temporal")(
+            temporal_nodes
+        )
 
         # --- 6. Readout (max + atenção) por grafo → vetor (B, 2*F) ---
-        spec_readout = RawGatGraphReadout(
-            name="rawgat_readout_spectral")(spectral_nodes)
-        temp_readout = RawGatGraphReadout(
-            name="rawgat_readout_temporal")(temporal_nodes)
+        spec_readout = RawGatGraphReadout(name="rawgat_readout_spectral")(
+            spectral_nodes
+        )
+        temp_readout = RawGatGraphReadout(name="rawgat_readout_temporal")(
+            temporal_nodes
+        )
 
         # --- 7. Fusão espectro-temporal: multiplicação element-wise ---
         # (assinatura do RawGAT-ST). A variante *_fast concatena tambem os
         # readouts individuais para preservar a receita otimizada anterior.
         fused = layers.Multiply(name="rawgat_graph_fusion")(
-            [spec_readout, temp_readout])
+            [spec_readout, temp_readout]
+        )
         fusion_mode = str(fusion_mode).lower()
         if fusion_mode in {"multiply", "paper", "elementwise"}:
             x = fused
         elif fusion_mode in {"concat", "stable", "optimized"}:
             x = layers.Concatenate(name="rawgat_fusion_concat")(
-                [fused, spec_readout, temp_readout])
+                [fused, spec_readout, temp_readout]
+            )
         else:
             raise ValueError(
                 "fusion_mode deve ser 'multiply'/'paper' ou 'concat'/'stable'."
@@ -443,8 +467,8 @@ def create_model(
         x = layers.Dense(128, activation="relu", name="rawgat_fc")(x)
         x = layers.Dropout(dropout_rate, name="rawgat_fc_drop")(x)
         output_tensor = layers.Dense(
-            num_classes, activation="softmax", dtype="float32",
-            name="output_layer")(x)
+            num_classes, activation="softmax", dtype="float32", name="output_layer"
+        )(x)
 
         model = models.Model(inputs=input_tensor, outputs=output_tensor)
         # AJUSTE (retune): LR 1e-4->5e-5 e clipnorm 1.0->0.7 para conter a
@@ -480,8 +504,7 @@ def create_model(
 # ModelTrainer removido - usar a implementação principal em src.core.trainer
 
 
-def simple_audio_augmenter(X_train: np.ndarray,
-                           y_train: np.ndarray) -> tf.data.Dataset:
+def simple_audio_augmenter(X_train: np.ndarray, y_train: np.ndarray) -> tf.data.Dataset:
     """Augmentation RawBoost (Tak et al., 2022) para áudio bruto.
 
     Substitui o antigo placeholder de ruído gaussiano fixo (ver aasist.py).
@@ -497,9 +520,11 @@ def simple_audio_augmenter(X_train: np.ndarray,
         if rank == 2:
             a = tf.expand_dims(a, axis=-1)
         return a, label
+
     dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
     dataset = dataset.map(_augment, num_parallel_calls=tf.data.AUTOTUNE)
     return dataset
+
 
 # NOTA: Código de teste removido para evitar duplicação.
 # Use os testes centralizados em src/tests/ ou src/core/trainer.py para

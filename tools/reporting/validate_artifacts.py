@@ -80,7 +80,9 @@ def main() -> int:
     )
     parser.add_argument("--models-dir", default="data/models")
     parser.add_argument("--results-dir", default=None)
-    parser.add_argument("--strict", action="store_true", help="Return non-zero on warnings.")
+    parser.add_argument(
+        "--strict", action="store_true", help="Return non-zero on warnings."
+    )
     args = parser.parse_args()
 
     from benchmarks.config import ALL_TCC_ARCHITECTURES, SSL_DOCKER_ARCHITECTURES
@@ -89,9 +91,7 @@ def main() -> int:
 
     models_dir = _resolve(args.models_dir)
     results_dir = (
-        _resolve(args.results_dir)
-        if args.results_dir
-        else resolve_results_dir(ROOT)
+        _resolve(args.results_dir) if args.results_dir else resolve_results_dir(ROOT)
     )
     manifest = models_dir / "registry.json"
     benchmark_final = models_dir / "benchmark_final"
@@ -119,7 +119,11 @@ def main() -> int:
     if benchmark_final.is_dir():
         for ext in ("*.keras", "*.h5", "*.pkl", "*.pt"):
             for artifact in benchmark_final.glob(f"*/bench_{ext}"):
-                stem = artifact.stem[len("bench_") :] if artifact.stem.startswith("bench_") else artifact.stem
+                stem = (
+                    artifact.stem[len("bench_") :]
+                    if artifact.stem.startswith("bench_")
+                    else artifact.stem
+                )
                 found_compacts.add(_compact(stem))
 
     for arch in tcc_architectures:
@@ -129,7 +133,9 @@ def main() -> int:
                 f"{benchmark_final}/*/ corresponde a {sorted(_accepted_compacts(arch))}"
             )
 
-    result_files = sorted(results_dir.rglob("results.json")) if results_dir.exists() else []
+    result_files = (
+        sorted(results_dir.rglob("results.json")) if results_dir.exists() else []
+    )
     if result_files:
         ok.append(f"{len(result_files)} results.json file(s)")
     else:

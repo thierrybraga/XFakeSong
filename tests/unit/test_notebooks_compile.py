@@ -40,7 +40,8 @@ def test_expected_notebook_structure():
 
 
 @pytest.mark.parametrize(
-    "nb_path", _active_notebooks(),
+    "nb_path",
+    _active_notebooks(),
     ids=[p.relative_to(_NB).as_posix() for p in _active_notebooks()],
 )
 def test_notebook_code_cells_compile(nb_path):
@@ -69,7 +70,7 @@ def test_model_notebooks_have_resolved_input_contracts():
 def test_pipeline_notebook_documents_guarded_full_run_and_artifacts():
     text = _notebook_text(_NB / "pipeline" / "01_benchmark_tcc_full_pipeline.ipynb")
     assert "RUN_FULL_PIPELINE = False" in text
-    assert "benchmarks\" / \"run_tcc_pipeline.py" in text
+    assert 'benchmarks" / "run_tcc_pipeline.py' in text
     for artifact in (
         "dataset.md",
         "dataset_manifest.json",
@@ -123,8 +124,8 @@ def test_features_notebook_covers_runtime_and_classic_features():
     text = _notebook_text(_NB / "features" / "01_feature_extraction_study.ipynb")
     for term in (
         "prepare_audio_for_model",
-        "feature_frontend=\"lfcc\"",
-        "feature_frontend=\"logmel\"",
+        'feature_frontend="lfcc"',
+        'feature_frontend="logmel"',
         "librosa.feature.mfcc",
         "spectral_centroid",
         "spectral_bandwidth",
@@ -153,7 +154,9 @@ def test_features_notebook_covers_runtime_and_classic_features():
         "pipeline/03_inference.ipynb",
     ],
 )
-def test_lightweight_notebooks_execute_when_nbclient_is_available(rel_path, monkeypatch):
+def test_lightweight_notebooks_execute_when_nbclient_is_available(
+    rel_path, monkeypatch
+):
     nbformat = pytest.importorskip("nbformat")
     nbclient = pytest.importorskip("nbclient")
 

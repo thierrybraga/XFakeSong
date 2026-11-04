@@ -46,8 +46,10 @@ def _dataset(tmp: Path) -> Path:
     npz = tmp / "ds.npz"
     np.savez(
         npz,
-        X_train=X[:160], y_train=y[:160],
-        X_val=X[160:], y_val=y[160:],
+        X_train=X[:160],
+        y_train=y[:160],
+        X_val=X[160:],
+        y_val=y[160:],
     )
     return npz
 
@@ -78,9 +80,9 @@ def test_contract_calibration_belongs_to_the_saved_model():
         )
         assert result.status.name == "SUCCESS", result.errors
 
-        contract = json.loads(
-            (tmp / "t_config.json").read_text(encoding="utf-8")
-        )["input_contract"]
+        contract = json.loads((tmp / "t_config.json").read_text(encoding="utf-8"))[
+            "input_contract"
+        ]
         assert "eer_threshold" in contract, "contrato sem limiar operacional"
         assert contract.get("eer_value", 0.0) > 1e-6, (
             "EER degenerado (=0): o limiar nao e unico e a comparacao abaixo "
@@ -103,14 +105,11 @@ def test_contract_calibration_belongs_to_the_saved_model():
             dtype="float64",
         )
         scores = (
-            probs[:, 1] if probs.ndim > 1 and probs.shape[-1] > 1
-            else probs.ravel()
+            probs[:, 1] if probs.ndim > 1 and probs.shape[-1] > 1 else probs.ravel()
         )
         _eer, threshold = MetricsCalculator().calculate_eer(y_val, scores)
 
-        assert threshold == pytest.approx(
-            float(contract["eer_threshold"]), abs=1e-4
-        ), (
+        assert threshold == pytest.approx(float(contract["eer_threshold"]), abs=1e-4), (
             "o limiar do contrato nao corresponde aos pesos salvos: a "
             "calibracao voltou a ser feita ANTES da restauracao do melhor "
             "checkpoint (ver training_service.train_model)"
@@ -127,8 +126,9 @@ def test_contract_declares_whether_the_output_is_logits():
     assert model_emits_logits(aasist) is True
 
     # Sonic Sleuth fecha com ativação: já entrega probabilidades.
-    sonic = create_model_by_name("Sonic Sleuth", input_shape=(100, 80, 1),
-                                 num_classes=1)
+    sonic = create_model_by_name(
+        "Sonic Sleuth", input_shape=(100, 80, 1), num_classes=1
+    )
     assert model_emits_logits(sonic) is False
 
     # Estimadores sem `layers` (sklearn) devolvem None → mantém a heurística.

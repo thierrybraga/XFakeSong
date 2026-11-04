@@ -25,6 +25,7 @@ import gradio as gr
 
 from app.domain.services.interactive_training import (
     CLASSICAL_FEATURE_TYPES,
+    REAL_CLASS_PATTERN as _REAL_PATTERNS,
     ClassicalCompleted,
     ClassicalDatasetInsufficient,
     ClassicalExtractionProgress,
@@ -40,19 +41,10 @@ from app.domain.services.interactive_training import (
     SmokeTestFailed,
     TrainedModel,
     TrainingFailed,
-    save_trained_model,
-)
-from app.domain.services.interactive_training import (
-    REAL_CLASS_PATTERN as _REAL_PATTERNS,
-)
-from app.domain.services.interactive_training import (
     history_series as _history_series,
-)
-from app.domain.services.interactive_training import (
     normalize_true_labels as _normalize_true_labels,
-)
-from app.domain.services.interactive_training import (
     resolve_accuracy_history_keys as _resolve_accuracy_history_keys,
+    save_trained_model,
 )
 from app.interfaces.gradio.utils.components import ui_safe
 from app.interfaces.gradio.utils.notifications import (
@@ -70,14 +62,8 @@ from app.interfaces.gradio.utils.plotting import (
 )
 from app.interfaces.gradio.utils.training_wizard_presenter import (
     get_model_catalog as _get_model_catalog,
-)
-from app.interfaces.gradio.utils.training_wizard_presenter import (
     render_model_cards_html as _render_model_cards_html,
-)
-from app.interfaces.gradio.utils.training_wizard_presenter import (
     step_visibility as _step_visibility,
-)
-from app.interfaces.gradio.utils.training_wizard_presenter import (
     stepper_html as _stepper_html,
 )
 
@@ -662,7 +648,8 @@ def _train_status_html(
     # Critério: épocas decorridas desde o melhor val_loss. Só a partir de 5
     # épocas, para não alarmar com a oscilação normal do início.
     vloss_hist = [
-        v for v in (hist.get("val_loss") or [])
+        v
+        for v in (hist.get("val_loss") or [])
         if isinstance(v, (int, float)) and not math.isnan(v)
     ]
     aviso_overfit = ""
@@ -1204,10 +1191,12 @@ def _run_training(
             notify_from_actionable(CommonErrors.training_failed(str(ev.error)))
             yield (
                 _training_error_panel(ev.error),
-                f"❌ Erro no treino clássico:\n{ev.error}"
-                if ev.classical
-                else f"❌ Erro durante o treino:\n\n{ev.error}\n\n"
-                "(Stack trace completo nos logs do servidor.)",
+                (
+                    f"❌ Erro no treino clássico:\n{ev.error}"
+                    if ev.classical
+                    else f"❌ Erro durante o treino:\n\n{ev.error}\n\n"
+                    "(Stack trace completo nos logs do servidor.)"
+                ),
                 None,
             )
 
@@ -1334,9 +1323,7 @@ def create_training_wizard_tab():
                 info="Dá mais peso à classe com menos amostras. Recomendado.",
             )
 
-            estimativa_html = gr.HTML(
-                "", elem_classes="wizard-estimate"
-            )
+            estimativa_html = gr.HTML("", elem_classes="wizard-estimate")
 
             with gr.Row(elem_classes="action-row wizard-actions"):
                 back_s3_btn = gr.Button("← Voltar")
@@ -1498,14 +1485,11 @@ def create_training_wizard_tab():
             outputs=[cards_html],
         )
 
-
         @ui_safe("Falha ao interromper")
         def pedir_parada():
             """Sinaliza a interrupcao; o treino para no fim da epoca atual."""
             _PEDIDO_DE_PARADA.set()
-            return gr.update(
-                value="⏹ Interrompendo…", interactive=False
-            )
+            return gr.update(value="⏹ Interrompendo…", interactive=False)
 
         parar_btn.click(fn=pedir_parada, outputs=[parar_btn])
 

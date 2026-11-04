@@ -183,17 +183,21 @@ def export_score_distributions() -> Path:
         # classico, cujo score de ordenacao e uma margem centrada em zero.
         y_true, scores = load_p_fake(slug)
         ax.hist(
-            scores[y_true == 0], bins=bins, alpha=0.65,
-            label="bonafide", color="#27ae60",
+            scores[y_true == 0],
+            bins=bins,
+            alpha=0.65,
+            label="bonafide",
+            color="#27ae60",
         )
         ax.hist(
-            scores[y_true == 1], bins=bins, alpha=0.65,
-            label="spoof", color="#c0392b",
+            scores[y_true == 1],
+            bins=bins,
+            alpha=0.65,
+            label="spoof",
+            color="#c0392b",
         )
         extremes = float(np.mean((scores < 0.05) | (scores > 0.95))) * 100.0
-        ax.set_title(
-            f"{label}\n({extremes:.0f}% dos escores nos extremos)", fontsize=9
-        )
+        ax.set_title(f"{label}\n({extremes:.0f}% dos escores nos extremos)", fontsize=9)
         ax.set_xlabel("Pontuação $p_{fake}$")
         ax.set_yscale("log")
         ax.grid(True, linewidth=0.4, alpha=0.5)

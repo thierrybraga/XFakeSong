@@ -57,18 +57,20 @@ class RandomForestModel(BaseClassicalModel):
     Encapsula o modelo sklearn Random Forest para compatibilidade com o pipeline.
     """
 
-    def __init__(self,
-                 n_estimators: int = 100,
-                 max_depth: Optional[int] = None,
-                 min_samples_split: int = 2,
-                 min_samples_leaf: int = 1,
-                 max_features: str = 'sqrt',
-                 bootstrap: bool = True,
-                 random_state: int = 42,
-                 n_jobs: int = -1,
-                 calibrate: bool = False,
-                 calibration_cv=None,
-                 **kwargs):
+    def __init__(
+        self,
+        n_estimators: int = 100,
+        max_depth: Optional[int] = None,
+        min_samples_split: int = 2,
+        min_samples_leaf: int = 1,
+        max_features: str = "sqrt",
+        bootstrap: bool = True,
+        random_state: int = 42,
+        n_jobs: int = -1,
+        calibrate: bool = False,
+        calibration_cv=None,
+        **kwargs,
+    ):
         """
         Inicializa o modelo Random Forest.
         """
@@ -91,7 +93,8 @@ class RandomForestModel(BaseClassicalModel):
         self.pipeline = self._create_pipeline()
 
         logger.info(
-            f"Random Forest model initialized with {n_estimators} estimators, max_depth={max_depth}")
+            f"Random Forest model initialized with {n_estimators} estimators, max_depth={max_depth}"
+        )
 
     def _create_pipeline(self) -> Pipeline:
         clf = RandomForestClassifier(
@@ -103,38 +106,41 @@ class RandomForestModel(BaseClassicalModel):
             bootstrap=self.bootstrap,
             random_state=self.random_state,
             n_jobs=self.n_jobs,
-            **self.kwargs
+            **self.kwargs,
         )
-        clf = wrap_calibration(
-            clf, self.calibrate, cv=self.calibration_cv or 3
+        clf = wrap_calibration(clf, self.calibrate, cv=self.calibration_cv or 3)
+        return Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                ("rf", clf),
+            ]
         )
-        return Pipeline([
-            ('scaler', StandardScaler()),
-            ('rf', clf),
-        ])
 
     def get_feature_importance(
-            self, feature_names: Optional[List[str]] = None) -> Dict[str, float]:
+        self, feature_names: Optional[List[str]] = None
+    ) -> Dict[str, float]:
         """
         Retorna a importância das features.
         """
         if not self.is_fitted:
-            raise ValueError(
-                "Model must be fitted before getting feature importance")
+            raise ValueError("Model must be fitted before getting feature importance")
 
-        if getattr(self, 'feature_importances_', None) is None:
+        if getattr(self, "feature_importances_", None) is None:
             # Try to get from pipeline if not set (e.g. if loaded from pickle without proper state restoration)
             # `unwrap_calibrated`: sob calibração o passo 'rf' é o
             # CalibratedClassifierCV, não a floresta.
-            step = unwrap_calibrated(self.pipeline.named_steps['rf'])
-            if hasattr(step, 'feature_importances_'):
+            step = unwrap_calibrated(self.pipeline.named_steps["rf"])
+            if hasattr(step, "feature_importances_"):
                 self.feature_importances_ = step.feature_importances_
             else:
-                raise ValueError("Underlying Random Forest model does not provide feature importances")
+                raise ValueError(
+                    "Underlying Random Forest model does not provide feature importances"
+                )
 
         if feature_names is None:
-            feature_names = [f"feature_{i}" for i in range(
-                len(self.feature_importances_))]
+            feature_names = [
+                f"feature_{i}" for i in range(len(self.feature_importances_))
+            ]
 
         return dict(zip(feature_names, self.feature_importances_))
 
@@ -143,16 +149,18 @@ class RandomForestModel(BaseClassicalModel):
         Retorna os parâmetros do modelo.
         """
         params = super().get_params()
-        params.update({
-            'n_estimators': self.n_estimators,
-            'max_depth': self.max_depth,
-            'min_samples_split': self.min_samples_split,
-            'min_samples_leaf': self.min_samples_leaf,
-            'max_features': self.max_features,
-            'bootstrap': self.bootstrap,
-            'random_state': self.random_state,
-            'n_jobs': self.n_jobs
-        })
+        params.update(
+            {
+                "n_estimators": self.n_estimators,
+                "max_depth": self.max_depth,
+                "min_samples_split": self.min_samples_split,
+                "min_samples_leaf": self.min_samples_leaf,
+                "max_features": self.max_features,
+                "bootstrap": self.bootstrap,
+                "random_state": self.random_state,
+                "n_jobs": self.n_jobs,
+            }
+        )
         return params
 
 
@@ -163,12 +171,12 @@ def create_random_forest_model(
     max_depth: Optional[int] = None,
     min_samples_split: int = 2,
     min_samples_leaf: int = 1,
-    max_features: str = 'sqrt',
+    max_features: str = "sqrt",
     bootstrap: bool = True,
     random_state: int = 42,
     n_jobs: int = -1,
-    architecture: str = 'random_forest',
-    **kwargs
+    architecture: str = "random_forest",
+    **kwargs,
 ) -> RandomForestModel:
     """
     Cria um modelo Random Forest para detecção de deepfakes.
@@ -190,9 +198,7 @@ def create_random_forest_model(
         bootstrap=bootstrap,
         random_state=random_state,
         n_jobs=n_jobs,
-        **kwargs
+        **kwargs,
     )
 
     return model
-
-

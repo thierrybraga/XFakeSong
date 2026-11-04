@@ -19,8 +19,9 @@ from sklearn.pipeline import Pipeline
 logger = logging.getLogger(__name__)
 
 
-def wrap_calibration(classifier, calibrate: bool, cv: int = 3,
-                     method: str = "isotonic"):
+def wrap_calibration(
+    classifier, calibrate: bool, cv: int = 3, method: str = "isotonic"
+):
     """Envolve um classificador sklearn em `CalibratedClassifierCV` (opt-in).
 
     Calibra as probabilidades de saída (default isotônica) — útil sobretudo para
@@ -79,7 +80,7 @@ class BaseClassicalModel(ABC):
         self.classes_ = None
         self.feature_importances_ = None  # Only for models that support it
         # Default to True for consistency
-        self.probability = kwargs.get('probability', True)
+        self.probability = kwargs.get("probability", True)
 
     @abstractmethod
     def _create_pipeline(self) -> Pipeline:
@@ -89,11 +90,13 @@ class BaseClassicalModel(ABC):
         """
         pass
 
-    def fit(self, X: np.ndarray, y: np.ndarray, **kwargs) -> 'BaseClassicalModel':
+    def fit(self, X: np.ndarray, y: np.ndarray, **kwargs) -> "BaseClassicalModel":
         """
         Trains the model.
         """
-        logger.info(f"Training {self.name} model with {X.shape[0]} samples and {X.shape[1]} features")
+        logger.info(
+            f"Training {self.name} model with {X.shape[0]} samples and {X.shape[1]} features"
+        )
 
         if len(X.shape) != 2:
             raise ValueError(f"Expected 2D input, got shape {X.shape}")
@@ -106,7 +109,7 @@ class BaseClassicalModel(ABC):
 
         # Extract classes from the final estimator
         final_estimator = self.pipeline.steps[-1][1]
-        if hasattr(final_estimator, 'classes_'):
+        if hasattr(final_estimator, "classes_"):
             self.classes_ = final_estimator.classes_
 
         # Extract feature importances if available.
@@ -117,7 +120,7 @@ class BaseClassicalModel(ABC):
         # `get_feature_importance()`, o `export_rf_feature_importance.py` e o
         # módulo SHAP, que são o material de XAI do trabalho.
         inner_estimator = unwrap_calibrated(final_estimator)
-        if hasattr(inner_estimator, 'feature_importances_'):
+        if hasattr(inner_estimator, "feature_importances_"):
             self.feature_importances_ = inner_estimator.feature_importances_
 
         train_accuracy = self.pipeline.score(X, y)
@@ -142,12 +145,16 @@ class BaseClassicalModel(ABC):
 
         # Check if the underlying model supports probability
         final_estimator = self.pipeline.steps[-1][1]
-        if hasattr(final_estimator, 'predict_proba'):
-             return self.pipeline.predict_proba(X)
-        elif hasattr(final_estimator, 'probability') and not final_estimator.probability:
-             raise ValueError("Model was not trained with probability=True")
+        if hasattr(final_estimator, "predict_proba"):
+            return self.pipeline.predict_proba(X)
+        elif (
+            hasattr(final_estimator, "probability") and not final_estimator.probability
+        ):
+            raise ValueError("Model was not trained with probability=True")
         else:
-             raise ValueError(f"Model {self.name} does not support probability predictions")
+            raise ValueError(
+                f"Model {self.name} does not support probability predictions"
+            )
 
     def score(self, X: np.ndarray, y: np.ndarray) -> float:
         """
@@ -184,7 +191,7 @@ class BaseClassicalModel(ABC):
         logger.info(f"{self.name} model saved to {filepath}")
 
     @classmethod
-    def load(cls, filepath: str, model_class: type) -> 'BaseClassicalModel':
+    def load(cls, filepath: str, model_class: type) -> "BaseClassicalModel":
         """
         Loads a saved model.
         """
@@ -205,9 +212,9 @@ class BaseClassicalModel(ABC):
         instance.pipeline = pipeline
         instance.is_fitted = True
 
-        if hasattr(final_estimator, 'classes_'):
+        if hasattr(final_estimator, "classes_"):
             instance.classes_ = final_estimator.classes_
-        if hasattr(final_estimator, 'feature_importances_'):
+        if hasattr(final_estimator, "feature_importances_"):
             instance.feature_importances_ = final_estimator.feature_importances_
 
         logger.info(f"{instance.name} model loaded from {filepath}")

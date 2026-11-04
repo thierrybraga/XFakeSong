@@ -46,7 +46,7 @@ def test_awgn_realized_snr_matches_target_per_sample():
 
     X = np.random.default_rng(7).standard_normal((6, 4000)).astype("float32")
     noisy = BenchmarkData.add_awgn(X, snr_db=20, seed=11)
-    signal_power = np.mean(X ** 2, axis=1)
+    signal_power = np.mean(X**2, axis=1)
     noise_power = np.mean((noisy - X) ** 2, axis=1)
     measured = 10.0 * np.log10(signal_power / noise_power)
     assert np.allclose(measured, 20.0, atol=1e-3)
@@ -56,12 +56,8 @@ def test_mixed_awgn_is_balanced_and_reproducible():
     from benchmarks.data import BenchmarkData
 
     X = np.random.default_rng(3).standard_normal((10, 1000)).astype("float32")
-    noisy_a, assigned_a = BenchmarkData.add_awgn_mixed(
-        X, [30, 20, 10], seed=42
-    )
-    noisy_b, assigned_b = BenchmarkData.add_awgn_mixed(
-        X, [30, 20, 10], seed=42
-    )
+    noisy_a, assigned_a = BenchmarkData.add_awgn_mixed(X, [30, 20, 10], seed=42)
+    noisy_b, assigned_b = BenchmarkData.add_awgn_mixed(X, [30, 20, 10], seed=42)
     assert np.array_equal(assigned_a, assigned_b)
     assert np.array_equal(noisy_a, noisy_b)
     counts = np.unique(assigned_a, return_counts=True)[1]
@@ -102,6 +98,7 @@ def test_protocol_adds_noise_before_frontend(monkeypatch):
     assert prepared[7]["evaluation_domain"] == "waveform"
     assert prepared[7]["frontend_after_noise"] is True
     assert len(prepared[1]) == 2 * len(raw_splits[1])
+
 
 def test_benchmark_data_validation_rejects_bad_labels():
     from benchmarks.data import BenchmarkData
@@ -278,9 +275,9 @@ def test_accuracy_at_eer_separates_threshold_collapse_from_failure():
     rng = np.random.default_rng(0)
     p = np.concatenate([rng.uniform(0, 0.001, 50), rng.uniform(0.002, 0.01, 50)])
     m = evaluate_scores(y, p)
-    assert m["auc_roc"] > 0.99           # perfeitamente separável (ranking)
-    assert m["accuracy"] < 0.6           # colapsa no limiar fixo 0.5
-    assert m["accuracy_at_eer"] > 0.95   # recupera no limiar ótimo
+    assert m["auc_roc"] > 0.99  # perfeitamente separável (ranking)
+    assert m["accuracy"] < 0.6  # colapsa no limiar fixo 0.5
+    assert m["accuracy_at_eer"] > 0.95  # recupera no limiar ótimo
     # E quando há sobreposição genuína, os dois ficam baixos:
     p_bad = np.concatenate([rng.uniform(0.3, 0.7, 50), rng.uniform(0.3, 0.7, 50)])
     mb = evaluate_scores(y, p_bad)
@@ -305,22 +302,38 @@ def test_report_write_all_creates_artifacts():
 
     fake = {
         "config": {"snr_levels_db": [20]},
-        "environment": {"platform": "x", "python": "3.13", "tensorflow": "2.21",
-                        "gpu": False, "device": "CPU"},
-        "dataset": {"name": "synthetic", "n_total": 100, "n_test": 15,
-                    "input_shape": [8, 8], "balance_test": {"real": 7, "fake": 8},
-                    "y_test": [0, 1] * 7 + [0]},
+        "environment": {
+            "platform": "x",
+            "python": "3.13",
+            "tensorflow": "2.21",
+            "gpu": False,
+            "device": "CPU",
+        },
+        "dataset": {
+            "name": "synthetic",
+            "n_total": 100,
+            "n_test": 15,
+            "input_shape": [8, 8],
+            "balance_test": {"real": 7, "fake": 8},
+            "y_test": [0, 1] * 7 + [0],
+        },
         "architectures": {
             "MultiscaleCNN": {
-                "status": "ok", "type": "neural", "converged": True,
-                "clean": {"accuracy": 0.93, "precision": 0.9, "recall": 0.95,
-                          "f1": 0.92, "auc_roc": 0.98, "eer": 0.06,
-                          "min_tdcf": 0.12},
+                "status": "ok",
+                "type": "neural",
+                "converged": True,
+                "clean": {
+                    "accuracy": 0.93,
+                    "precision": 0.9,
+                    "recall": 0.95,
+                    "f1": 0.92,
+                    "auc_roc": 0.98,
+                    "eer": 0.06,
+                    "min_tdcf": 0.12,
+                },
                 "scores_clean": [0.2, 0.8] * 7 + [0.1],
-                "robustness": {"20": {"accuracy": 0.8, "eer": 0.2,
-                                      "auc_roc": 0.85}},
-                "efficiency": {"params": 1000, "size_mb": 4.4,
-                               "latency_ms": 12.3},
+                "robustness": {"20": {"accuracy": 0.8, "eer": 0.2, "auc_roc": 0.85}},
+                "efficiency": {"params": 1000, "size_mb": 4.4, "latency_ms": 12.3},
                 "history": {"val_binary_accuracy": [0.6, 0.8, 0.93]},
                 "epochs": 3,
             },
@@ -338,9 +351,7 @@ def test_report_write_all_creates_artifacts():
         for t in ("tab_resultados", "tab_eficiencia", "tab_robustez"):
             tex = (out / "tables" / f"{t}.tex").read_text(encoding="utf-8")
             assert "\\begin{table}" in tex and "MultiscaleCNN" in tex
-        resultados = (out / "tables" / "tab_resultados.tex").read_text(
-            encoding="utf-8"
-        )
+        resultados = (out / "tables" / "tab_resultados.tex").read_text(encoding="utf-8")
         # 10 colunas desde 2026-11-02: além do limiar fixo e do oráculo, a acurácia
         # no limiar de validação, que é a decisão do sistema implantado.
         assert "\\begin{tabular}{lccccccccc}" in resultados
@@ -579,8 +590,12 @@ def test_benchmark_relative_paths_are_anchored_to_project_root(monkeypatch, tmp_
 
     plan_benchmark(cfg, write=False)
 
-    assert Path(cfg.output_dir) == PROJECT_ROOT / "data" / "results" / "path_anchor_probe"
-    assert Path(cfg.models_dir) == PROJECT_ROOT / "data" / "models" / "path_anchor_probe"
+    assert (
+        Path(cfg.output_dir) == PROJECT_ROOT / "data" / "results" / "path_anchor_probe"
+    )
+    assert (
+        Path(cfg.models_dir) == PROJECT_ROOT / "data" / "models" / "path_anchor_probe"
+    )
 
 
 def test_full_tcc_preset_includes_all_architectures():
@@ -740,7 +755,10 @@ def test_benchmark_plan_is_written_before_training():
         assert plan["preset"] == "full_tcc"
         assert len(plan["architectures"]) == 9
         assert plan["architectures"]["AASIST"]["training_config"]["batch_size"] <= 8
-        assert plan["architectures"]["SVM"]["training_config"]["model_family"] == "classical"
+        assert (
+            plan["architectures"]["SVM"]["training_config"]["model_family"]
+            == "classical"
+        )
         assert (Path(td) / "benchmark_plan.json").exists()
         assert (Path(td) / "benchmark_plan.md").exists()
 
@@ -864,7 +882,10 @@ def test_conformer_benchmark_smoke_generates_model_results_and_figures(monkeypat
         # bench_svm.pkl do clean_benchmark_15k virou um artefato de smoke).
         model_artifact = Path(conformer["model_artifact"])
         assert model_artifact.exists()
-        assert model_artifact.parent == output_dir / "architectures" / "conformer" / "models"
+        assert (
+            model_artifact.parent
+            == output_dir / "architectures" / "conformer" / "models"
+        )
         shared = Path(conformer["model_artifact_shared_copy"])
         assert shared.exists() and shared.parent == models_dir
         assert conformer["model_artifact_fingerprint"]["integrity"] == "recorded_at_run"
@@ -898,7 +919,6 @@ def test_api_probe_uses_configured_openapi_path(monkeypatch):
     assert result["endpoints"][0]["path"] == "/api/openapi.json"
 
 
-
 def test_run_benchmark_quick_svm_integration(monkeypatch):
     """Smoke ponta-a-ponta com SVM (clássico, rápido): runner + relatório."""
     from benchmarks import BenchmarkConfig, run_benchmark
@@ -919,7 +939,8 @@ def test_run_benchmark_quick_svm_integration(monkeypatch):
             snr_levels_db=[20],
             output_dir=td,
             models_dir=str(models_dir),
-            synthetic_n=160, synthetic_shape=(8, 8),
+            synthetic_n=160,
+            synthetic_shape=(8, 8),
         )
         results = run_benchmark(cfg)
         svm = results["architectures"]["SVM"]

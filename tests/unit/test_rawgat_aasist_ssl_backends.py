@@ -6,12 +6,14 @@ variantes que plugam um backbone SSL na frente delas.
 Renomeado em 2026-08-17 (era `test_p2_rawgatst_sslaasist.py`): "P2" era a fase
 do backlog, não o assunto.
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
 # ───────────────── RawGAT-ST (paper-faithful, raw audio) ─────────────────
+
 
 def test_rawgatst_is_raw_audio_in_registry():
     from app.domain.models.architectures.registry import architecture_registry as reg
@@ -48,7 +50,8 @@ def test_rawgatst_builds_and_trains_no_nan():
     assert np.isfinite(h.history["loss"][0])
     assert all(
         bool(tf.reduce_all(tf.math.is_finite(w)))
-        for w in m.weights if "float" in str(w.dtype)
+        for w in m.weights
+        if "float" in str(w.dtype)
     )
 
 
@@ -77,6 +80,7 @@ def test_aasist_paper_topology_and_contract():
 
 # ───────────────── SSL → AASIST back-end ─────────────────
 
+
 @pytest.mark.parametrize("arch", ["wavlm", "wavlm_aasist"])
 def test_wavlm_backends_build_and_train(arch):
     import tensorflow as tf
@@ -91,7 +95,8 @@ def test_wavlm_backends_build_and_train(arch):
     assert np.isfinite(h.history["loss"][0])
     assert all(
         bool(tf.reduce_all(tf.math.is_finite(w)))
-        for w in m.weights if "float" in str(w.dtype)
+        for w in m.weights
+        if "float" in str(w.dtype)
     )
 
 
@@ -109,7 +114,8 @@ def test_hubert_backends_build_and_train(arch):
     assert np.isfinite(h.history["loss"][0])
     assert all(
         bool(tf.reduce_all(tf.math.is_finite(w)))
-        for w in m.weights if "float" in str(w.dtype)
+        for w in m.weights
+        if "float" in str(w.dtype)
     )
 
 

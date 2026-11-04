@@ -48,11 +48,7 @@ from benchmarks.config import (  # noqa: E402
 # que o entrypoint direto (run_benchmark.py) também consiga verificá-lo.
 from benchmarks.test_lock import (  # noqa: E402
     inspect_npz as _inspect_npz,
-)
-from benchmarks.test_lock import (  # noqa: E402
     sha256_file as _sha256_file,
-)
-from benchmarks.test_lock import (  # noqa: E402
     validate_test_lock as _validate_test_lock,
 )
 
@@ -91,7 +87,12 @@ from benchmarks.test_lock import (  # noqa: E402
 #: `aasist/run.log` e `rawnet2/run.log` registram `XLA=False`. A arquitetura de
 #: maior custo estimado do escopo oficial (73,4 h de GPU) rodou exatamente na
 #: condicao que este conjunto existe para evitar.
-_XLA_UNFRIENDLY_TRAINING_ARCHITECTURES = {"multiscalecnn", "aasist", "rawgatst", "rawnet2"}
+_XLA_UNFRIENDLY_TRAINING_ARCHITECTURES = {
+    "multiscalecnn",
+    "aasist",
+    "rawgatst",
+    "rawnet2",
+}
 
 #: Rótulo de protocolo por monitor de checkpoint. Existe para o
 #: `benchmark_protocol.json` declarar o critério REAL do run — ver o comentário
@@ -818,8 +819,8 @@ def main() -> int:
         type=float,
         default=None,
         help="sobrepoe o limite do oraculo fonte-rotulo (default: 0.55; "
-             "use para datasets com confundimento fonte-classe documentado, "
-             "ex.: 0.80 para um acervo cujo oraculo de fonte e 75%%)",
+        "use para datasets com confundimento fonte-classe documentado, "
+        "ex.: 0.80 para um acervo cujo oraculo de fonte e 75%%)",
     )
     parser.add_argument(
         "--min-samples",

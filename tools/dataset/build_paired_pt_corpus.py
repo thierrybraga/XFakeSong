@@ -367,9 +367,7 @@ def extract_window(audio: np.ndarray, samples: int) -> tuple[np.ndarray, int, in
     # Banda e DC ANTES do nivel -- ver a justificativa da ordem no docstring.
     # `renormalize_rms_dbfs=None` porque quem normaliza e a linha seguinte,
     # que ja aplica a politica do corpus e registra o ganho no manifesto.
-    window = apply_band_correction(
-        window[None, :], renormalize_rms_dbfs=None
-    )[0]
+    window = apply_band_correction(window[None, :], renormalize_rms_dbfs=None)[0]
     normalized, _ = _normalize_loudness(window)
     return normalized, original, start
 

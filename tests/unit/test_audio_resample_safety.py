@@ -50,8 +50,12 @@ def test_prepare_input_resamples_for_raw_model():
 
     model = rawnet2.create_model(input_shape=(48000, 1), num_classes=2)
     mi = ModelInfo(
-        name="rn2", architecture="rawnet2", model=model, scaler=None,
-        input_shape=(48000, 1), model_type="tensorflow",
+        name="rn2",
+        architecture="rawnet2",
+        model=model,
+        scaler=None,
+        input_shape=(48000, 1),
+        model_type="tensorflow",
         input_contract={"input_type": "raw_audio", "sample_rate": 16000},
     )
     fp = FeaturePreparer(AudioFeatureExtractionService())
@@ -71,12 +75,20 @@ def test_prepare_input_resamples_for_spectrogram_model():
 
     model = multiscale_cnn.create_model(input_shape=(375, 80, 1), num_classes=2)
     mi = ModelInfo(
-        name="msc", architecture="multiscale_cnn", model=model, scaler=None,
-        input_shape=(375, 80, 1), model_type="tensorflow",
+        name="msc",
+        architecture="multiscale_cnn",
+        model=model,
+        scaler=None,
+        input_shape=(375, 80, 1),
+        model_type="tensorflow",
         input_contract={
-            "input_type": "spectrogram", "sample_rate": 16000,
-            "n_fft": 512, "hop_length": 128, "n_mels": 80,
-            "feature_frontend": "lfcc", "n_lfcc": 80,
+            "input_type": "spectrogram",
+            "sample_rate": 16000,
+            "n_fft": 512,
+            "hop_length": 128,
+            "n_mels": 80,
+            "feature_frontend": "lfcc",
+            "n_lfcc": 80,
         },
     )
     fp = FeaturePreparer(AudioFeatureExtractionService())

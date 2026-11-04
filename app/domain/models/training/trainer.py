@@ -150,7 +150,7 @@ class ModelTrainer(IModelTrainer):
             # persiste no closure entre reinvocações do generator (repeat()).
             order = rng.permutation(n) if shuffle else np.arange(n)
             for start in range(0, n, batch_size):
-                idx = order[start:start + batch_size]
+                idx = order[start : start + batch_size]
                 yield X[idx], y[idx]
 
         n_batches = int(np.ceil(len(y) / max(1, batch_size)))
@@ -319,9 +319,7 @@ class ModelTrainer(IModelTrainer):
                 # ~2ª época e o Keras interrompia o treino ("ran out of data").
                 # repeat() + steps_per_epoch garante épocas completas sempre.
                 train_dataset = train_dataset.repeat()
-                steps_per_epoch = max(
-                    1, len(X_train) // self.config.batch_size
-                )
+                steps_per_epoch = max(1, len(X_train) // self.config.batch_size)
             else:
                 train_dataset, train_streaming = self._array_dataset(
                     X_train,
@@ -470,7 +468,6 @@ class ModelTrainer(IModelTrainer):
             self.logger.warning("Pipeline seguro não inicializado")
             return None
 
-
     def evaluate(
         self,
         model: tf.keras.Model,
@@ -498,12 +495,11 @@ class ModelTrainer(IModelTrainer):
             )
 
             # Predições para métricas detalhadas
-            y_pred = model.predict(
-                X_test, batch_size=self.config.batch_size, verbose=0
-            )
+            y_pred = model.predict(X_test, batch_size=self.config.batch_size, verbose=0)
             from app.domain.services.detection.predictor import (
                 normalize_logits_to_probs,
             )
+
             y_pred = normalize_logits_to_probs(y_pred)
             # Suporta saídas (N,1) sigmoid e (N,K) softmax
             y_pred_classes = (
@@ -692,8 +688,7 @@ class ModelTrainer(IModelTrainer):
             # seleciona por calibração, avalia por ordenação. Para runs novos
             # de anti-spoofing, `val_eer` alinha os dois — e exige que o
             # callback `ValidationEER` esteja ativo para publicar a métrica.
-            monitor = str(getattr(self.config, "checkpoint_monitor", "")
-                          or "val_loss")
+            monitor = str(getattr(self.config, "checkpoint_monitor", "") or "val_loss")
             modo = "min" if monitor in ("val_loss", "val_eer") else "max"
             callbacks.append(
                 ResumableModelCheckpoint(
@@ -842,9 +837,7 @@ class ModelTrainer(IModelTrainer):
             elif labels_one_hot:
                 chosen = tf.keras.losses.CategoricalCrossentropy(from_logits=True)
             else:
-                chosen = tf.keras.losses.SparseCategoricalCrossentropy(
-                    from_logits=True
-                )
+                chosen = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
             self.logger.info(
                 "Saída linear detectada (logits crus) — loss com from_logits=True."
             )
@@ -861,11 +854,14 @@ class ModelTrainer(IModelTrainer):
         # escolhas legítimas como focal loss customizada via string).
         compatible = {
             1: {"binary_crossentropy", "bce", "mse", "mae"},
-        }.get(out_units, (
-            {"categorical_crossentropy", "kl_divergence"}
-            if labels_one_hot
-            else {"sparse_categorical_crossentropy"}
-        ))
+        }.get(
+            out_units,
+            (
+                {"categorical_crossentropy", "kl_divergence"}
+                if labels_one_hot
+                else {"sparse_categorical_crossentropy"}
+            ),
+        )
         if configured in compatible:
             return configured
 

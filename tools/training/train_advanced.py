@@ -23,7 +23,9 @@ from datetime import datetime
 from pathlib import Path
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"  # Disable oneDNN to avoid MaxPool MKL memory bug
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = (
+    "0"  # Disable oneDNN to avoid MaxPool MKL memory bug
+)
 warnings.filterwarnings("ignore")
 
 import numpy as np
@@ -39,14 +41,14 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(BASE_DIR))
 
 SAMPLE_RATE = 16_000
-MAX_AUDIO_SAMPLES_CPU = 16_000   # 1s @ 16kHz — CPU training
+MAX_AUDIO_SAMPLES_CPU = 16_000  # 1s @ 16kHz — CPU training
 # 3s @ 16kHz — GPU training (raw-audio models). Casa com a janela canônica do
 # benchmark (48.000 = `benchmark_frontend.DEFAULT_SOURCE_SAMPLES` e o
 # `target_sequence_length` de RawNet2/AASIST/RawGAT-ST no registry). Estava em
 # 80.000 (5 s), então este caminho treinava numa janela que nenhum modelo do
 # benchmark vê — e custava ~67% mais memória de ativação por amostra.
 MAX_AUDIO_SAMPLES_GPU = 48_000
-MAX_AUDIO_SAMPLES     = MAX_AUDIO_SAMPLES_CPU   # updated in main() after GPU setup
+MAX_AUDIO_SAMPLES = MAX_AUDIO_SAMPLES_CPU  # updated in main() after GPU setup
 RESULTS_DIR = BASE_DIR / "data" / "results"
 
 # Arquiteturas que exigem GPU para convergir (raw-audio / heavy backbones)
@@ -54,11 +56,20 @@ RAW_AUDIO_ARCHS = {"efficientnet_lstm", "aasist", "rawnet2"}
 
 # Arquiteturas a treinar (nome -> modulo, variante)
 ARCHITECTURES = {
-    "efficientnet_lstm": ("app.domain.models.architectures.efficientnet_lstm", "efficientnet_lstm"),
-    "multiscale_cnn":    ("app.domain.models.architectures.multiscale_cnn",    "multiscale_cnn"),
-    "aasist":            ("app.domain.models.architectures.aasist",            "aasist"),
-    "rawnet2":           ("app.domain.models.architectures.rawnet2",           "rawnet2"),
-    "ensemble_adaptive": ("app.domain.models.architectures.ensemble",          "ensemble_adaptive"),
+    "efficientnet_lstm": (
+        "app.domain.models.architectures.efficientnet_lstm",
+        "efficientnet_lstm",
+    ),
+    "multiscale_cnn": (
+        "app.domain.models.architectures.multiscale_cnn",
+        "multiscale_cnn",
+    ),
+    "aasist": ("app.domain.models.architectures.aasist", "aasist"),
+    "rawnet2": ("app.domain.models.architectures.rawnet2", "rawnet2"),
+    "ensemble_adaptive": (
+        "app.domain.models.architectures.ensemble",
+        "ensemble_adaptive",
+    ),
 }
 
 # GPU state — set in main() via app.core.gpu
@@ -69,6 +80,7 @@ STRATEGY = None
 # ---------------------------------------------------------------------------
 # Carregamento de dados
 # ---------------------------------------------------------------------------
+
 
 def load_audio(path: Path, max_samples: int = None) -> np.ndarray:
     """Carrega WAV, aplica VAD+AGC e padeia/trunca para max_samples.
@@ -122,8 +134,9 @@ def load_split(split_dir: Path, max_per_class: int = None) -> tuple:
 
 def prepare_splits(splits_dir: Path, datasets_dir: Path) -> bool:
     """Cria splits se nao existirem."""
-    if (splits_dir / "train" / "real").exists() and \
-       len(list((splits_dir / "train" / "real").glob("*.wav"))) > 0:
+    if (splits_dir / "train" / "real").exists() and len(
+        list((splits_dir / "train" / "real").glob("*.wav"))
+    ) > 0:
         return True
 
     logger.info("Splits nao encontrados. Criando a partir de data/datasets/...")
@@ -140,9 +153,19 @@ def prepare_splits(splits_dir: Path, datasets_dir: Path) -> bool:
     logger.info(f"Dataset disponivel: {real_count} real + {fake_count} fake")
 
     import subprocess
+
     result = subprocess.run(
-        [sys.executable, str(BASE_DIR / "tools" / "dataset" / "preprocess_dataset.py"),
-         "--full", "--train-ratio", "0.70", "--val-ratio", "0.15", "--test-ratio", "0.15"],
+        [
+            sys.executable,
+            str(BASE_DIR / "tools" / "dataset" / "preprocess_dataset.py"),
+            "--full",
+            "--train-ratio",
+            "0.70",
+            "--val-ratio",
+            "0.15",
+            "--test-ratio",
+            "0.15",
+        ],
         cwd=str(BASE_DIR),
     )
     return result.returncode == 0
@@ -152,9 +175,11 @@ def prepare_splits(splits_dir: Path, datasets_dir: Path) -> bool:
 # Treinamento
 # ---------------------------------------------------------------------------
 
+
 def build_model(arch_name: str, input_shape: tuple, num_classes: int = 1):
     """Importa e cria modelo pela arquitetura."""
     import importlib
+
     module_path, variant = ARCHITECTURES[arch_name]
     mod = importlib.import_module(module_path)
     return mod.create_model(
@@ -167,6 +192,7 @@ def build_model(arch_name: str, input_shape: tuple, num_classes: int = 1):
 def get_callbacks(model_path: Path, patience: int = 10, lr_patience: int = 5):
     """Callbacks alinhados com TCC Secao 5.2."""
     import tensorflow as tf
+
     return [
         tf.keras.callbacks.EarlyStopping(
             monitor="val_loss",
@@ -216,8 +242,13 @@ def compute_metrics(model, X_test: np.ndarray, y_test: np.ndarray) -> dict:
         try:
             from scipy.interpolate import interp1d
             from scipy.optimize import brentq
-            fpr_fn = interp1d(thresholds[::-1], fpr[::-1], bounds_error=False, fill_value=(1, 0))
-            fnr_fn = interp1d(thresholds[::-1], fnr[::-1], bounds_error=False, fill_value=(0, 1))
+
+            fpr_fn = interp1d(
+                thresholds[::-1], fpr[::-1], bounds_error=False, fill_value=(1, 0)
+            )
+            fnr_fn = interp1d(
+                thresholds[::-1], fnr[::-1], bounds_error=False, fill_value=(0, 1)
+            )
             t_min, t_max = float(thresholds.min()), float(thresholds.max())
             tau = brentq(lambda t: float(fpr_fn(t)) - float(fnr_fn(t)), t_min, t_max)
             eer = float(fpr_fn(tau))
@@ -233,7 +264,9 @@ def compute_metrics(model, X_test: np.ndarray, y_test: np.ndarray) -> dict:
     }
 
 
-def measure_latency(model, n_samples: int = 30, audio_duration_s: float = 10.0) -> float:
+def measure_latency(
+    model, n_samples: int = 30, audio_duration_s: float = 10.0
+) -> float:
     """Mede latencia media de inferencia para audio de 10s (ms)."""
     # Use MAX_AUDIO_SAMPLES to match model's expected input shape
     dummy = np.random.randn(1, MAX_AUDIO_SAMPLES).astype(np.float32)
@@ -251,6 +284,7 @@ def measure_latency(model, n_samples: int = 30, audio_duration_s: float = 10.0) 
 def augment_batch(X: np.ndarray, sr: int = SAMPLE_RATE) -> np.ndarray:
     """Augmentation conforme TCC Sec 6.1: pitch ±2 semitones, time 0.9-1.1x."""
     import librosa
+
     out = []
     for audio in X:
         if np.random.rand() < 0.5:
@@ -270,9 +304,12 @@ def augment_batch(X: np.ndarray, sr: int = SAMPLE_RATE) -> np.ndarray:
 
 def train_model(
     arch_name: str,
-    X_train, y_train,
-    X_val, y_val,
-    X_test, y_test,
+    X_train,
+    y_train,
+    X_val,
+    y_val,
+    X_test,
+    y_test,
     epochs: int = 100,
     batch_size: int = 32,
     models_dir: Path = None,
@@ -297,7 +334,9 @@ def train_model(
     logger.info(f"  Train : {len(X_train)} | Val: {len(X_val)} | Test: {len(X_test)}")
     logger.info(f"  Epochs: {epochs} | Batch: {batch_size} | Patience: 10")
     if is_raw_audio and GPU_AVAILABLE:
-        logger.info(f"  Mixed precision: float16 | Audio: {MAX_AUDIO_SAMPLES/SAMPLE_RATE:.0f}s segments")
+        logger.info(
+            f"  Mixed precision: float16 | Audio: {MAX_AUDIO_SAMPLES/SAMPLE_RATE:.0f}s segments"
+        )
     logger.info(f"{'='*60}")
 
     input_shape = (X_train.shape[1],)
@@ -307,6 +346,7 @@ def train_model(
     from app.domain.models.training.hyperparameter_defaults import (
         get_recommended_hyperparameters,
     )
+
     hp = get_recommended_hyperparameters(arch_name.replace("_", "-").title())
     lr = hp.get("learning_rate", 0.001)
     l2 = hp.get("l2_reg_strength", 0.0001)
@@ -346,14 +386,17 @@ def train_model(
         if shuffle:
             ds = ds.shuffle(len(X), seed=42)
         if augment:
+
             def augment_map(xb, yb):
                 augmented = tf.numpy_function(
                     lambda x: augment_batch(x).astype(np.float32),
-                    [xb], tf.float32,
+                    [xb],
+                    tf.float32,
                 )
                 # Restore static shape so model layers can use shape info
                 augmented = tf.ensure_shape(augmented, [None, n_samples])
                 return augmented, yb
+
             ds = ds.batch(batch_size).map(
                 augment_map,
                 num_parallel_calls=tf.data.AUTOTUNE,
@@ -363,7 +406,7 @@ def train_model(
         return ds.prefetch(tf.data.AUTOTUNE)
 
     train_ds = make_dataset(X_train, y_train, augment=True, shuffle=True)
-    val_ds   = make_dataset(X_val,   y_val,   augment=False)
+    val_ds = make_dataset(X_val, y_val, augment=False)
 
     t_start = time.time()
     history = model.fit(
@@ -385,11 +428,11 @@ def train_model(
 
     # Metricas no conjunto de teste
     test_metrics = compute_metrics(model, X_test, y_test)
-    latency_ms   = measure_latency(model)
-    params       = model.count_params()
+    latency_ms = measure_latency(model)
+    params = model.count_params()
 
     best_val_acc = max(history.history.get("val_accuracy", [0])) * 100
-    epochs_run   = len(history.history.get("val_loss", []))
+    epochs_run = len(history.history.get("val_loss", []))
 
     result = {
         "architecture": arch_name,
@@ -409,8 +452,11 @@ def train_model(
         "test_auc_roc": test_metrics["auc_roc"],
         "latency_10s_ms": latency_ms,
         "hyperparams": {
-            "lr": lr, "l2": l2, "batch_size": batch_size,
-            "patience": 10, "lr_patience": 5,
+            "lr": lr,
+            "l2": l2,
+            "batch_size": batch_size,
+            "patience": 10,
+            "lr_patience": 5,
         },
         "model_path": str(model_path),
         "timestamp": datetime.now().isoformat(),
@@ -431,9 +477,12 @@ def train_model(
 # Tabela 3 do TCC
 # ---------------------------------------------------------------------------
 
+
 def print_table3(results: dict):
     logger.info("\n" + "=" * 75)
-    logger.info("TABELA 3 — Desempenho das Arquiteturas Implementadas (RESULTADOS REAIS)")
+    logger.info(
+        "TABELA 3 — Desempenho das Arquiteturas Implementadas (RESULTADOS REAIS)"
+    )
     logger.info("=" * 75)
     logger.info(
         f"  {'Arquitetura':<22} {'Acuracia':>10} {'EER':>8} {'AUC-ROC':>9} {'Latencia':>12}"
@@ -456,29 +505,38 @@ def print_table3(results: dict):
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Pipeline legado de debug; não usar em benchmark acadêmico"
     )
     parser.add_argument(
-        "--model", type=str, default=None,
+        "--model",
+        type=str,
+        default=None,
         choices=list(ARCHITECTURES.keys()),
         help="Arquitetura especifica (default: todas em sequencia)",
     )
     parser.add_argument(
-        "--epochs", type=int, default=100,
+        "--epochs",
+        type=int,
+        default=100,
         help="Epocas maximas (default: 100, early stopping patience=10)",
     )
     parser.add_argument(
-        "--batch-size", type=int, default=32,
+        "--batch-size",
+        type=int,
+        default=32,
         help="Batch size (default: 32)",
     )
     parser.add_argument(
-        "--quick", action="store_true",
+        "--quick",
+        action="store_true",
         help="Modo rapido: 20 epocas, sem augmentation (debug)",
     )
     parser.add_argument(
-        "--force-cpu", action="store_true",
+        "--force-cpu",
+        action="store_true",
         help=(
             "Treine modelos raw-audio mesmo sem GPU. "
             "NAO e recomendado — eles nao convergem em CPU. "
@@ -486,12 +544,14 @@ def main():
         ),
     )
     parser.add_argument(
-        "--output", type=str,
+        "--output",
+        type=str,
         default=str(RESULTS_DIR / "training_metrics.json"),
         help="Arquivo de saida JSON com metricas",
     )
     parser.add_argument(
-        "--allow-legacy", action="store_true",
+        "--allow-legacy",
+        action="store_true",
         help="Confirma uso somente para debug; resultados não são publicáveis.",
     )
     args = parser.parse_args()
@@ -510,7 +570,8 @@ def main():
     if is_gpu_available():
         gpus = tf.config.list_physical_devices("GPU")
         STRATEGY = (
-            tf.distribute.MirroredStrategy() if len(gpus) > 1
+            tf.distribute.MirroredStrategy()
+            if len(gpus) > 1
             else tf.distribute.OneDeviceStrategy("/GPU:0")
         )
         MAX_AUDIO_SAMPLES = MAX_AUDIO_SAMPLES_GPU
@@ -538,7 +599,7 @@ def main():
     models_dir = RESULTS_DIR / "models"
     models_dir.mkdir(exist_ok=True)
 
-    splits_dir   = BASE_DIR / "data" / "datasets" / "splits"
+    splits_dir = BASE_DIR / "data" / "datasets" / "splits"
     datasets_dir = BASE_DIR / "data" / "datasets"
 
     # Garantir splits existem
@@ -570,9 +631,9 @@ def main():
     logger.info("  [train]...")
     X_train, y_train = load_split(splits_dir / "train")
     logger.info("  [val]...")
-    X_val,   y_val   = load_split(splits_dir / "val")
+    X_val, y_val = load_split(splits_dir / "val")
     logger.info("  [test]...")
-    X_test,  y_test  = load_split(splits_dir / "test")
+    X_test, y_test = load_split(splits_dir / "test")
 
     if len(X_train) == 0:
         logger.error("Falha ao carregar dados de treino.")
@@ -605,14 +666,19 @@ def main():
     # Treinar cada arquitetura
     for arch_name in archs_to_run:
         if arch_name in all_results and "error" not in all_results[arch_name]:
-            logger.info(f"\nPulando {arch_name} (ja treinado). Use --model {arch_name} para re-treinar.")
+            logger.info(
+                f"\nPulando {arch_name} (ja treinado). Use --model {arch_name} para re-treinar."
+            )
             continue
 
         result = train_model(
             arch_name=arch_name,
-            X_train=X_train, y_train=y_train,
-            X_val=X_val,     y_val=y_val,
-            X_test=X_test,   y_test=y_test,
+            X_train=X_train,
+            y_train=y_train,
+            X_val=X_val,
+            y_val=y_val,
+            X_test=X_test,
+            y_test=y_test,
             epochs=args.epochs,
             batch_size=args.batch_size,
             models_dir=models_dir,

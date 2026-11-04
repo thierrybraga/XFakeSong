@@ -6,6 +6,7 @@ otimiza diretamente.
 
 Renomeado em 2026-08-17 (era `test_p3_metrics_ocsoftmax.py`).
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -13,8 +14,10 @@ import pytest
 
 # ───────────────────────── min t-DCF ─────────────────────────
 
+
 def _metrics():
     from app.domain.models.training import metrics as M
+
     cls = next(c for c in dir(M) if "Metric" in c or "Calc" in c)
     return getattr(M, cls)()
 
@@ -48,6 +51,7 @@ def test_all_metrics_includes_eer_and_tdcf():
 
 # ───────────────────────── OC-Softmax ─────────────────────────
 
+
 def test_ocsoftmax_layer_shape_and_range():
     import tensorflow as tf
 
@@ -78,6 +82,7 @@ def test_ocsoftmax_loss_finite_and_grad():
 
 # ───────────────────────── refinos de arquitetura ─────────────────────────
 
+
 def test_aasist_has_six_residual_blocks():
     """O default 'aasist' (paper-faithful, _build_paper_aasist) usa o encoder
     2D estilo RawNet2 com 6 blocos residuais (canais 32,32,64,64,64,64) via
@@ -93,7 +98,9 @@ def test_aasist_has_six_residual_blocks():
     from app.domain.models.architectures import aasist
     from app.domain.models.architectures.aasist_layers import AasistResidualBlock2D
 
-    m = aasist.create_model(input_shape=(48000, 1), num_classes=2, architecture="aasist")
+    m = aasist.create_model(
+        input_shape=(48000, 1), num_classes=2, architecture="aasist"
+    )
     n = sum(1 for lyr in m.layers if isinstance(lyr, AasistResidualBlock2D))
     assert n == 6  # paridade com o paper (RawNet2 encoder)
 
@@ -145,6 +152,7 @@ def test_audio_normalization_preserves_raw_waveform_variance():
 
 
 # ───────────────────────── calibração opt-in ─────────────────────────
+
 
 @pytest.mark.parametrize("calibrate", [False, True])
 def test_rf_calibrate_flag_fit_proba(calibrate):

@@ -72,7 +72,9 @@ class SWACallback(tf.keras.callbacks.Callback):
     def on_train_begin(self, logs=None):
         # Tenta extrair total de épocas dos params
         try:
-            self._total_epochs = int(self.params.get('epochs', 0)) if self.params else None
+            self._total_epochs = (
+                int(self.params.get("epochs", 0)) if self.params else None
+            )
         except Exception:
             self._total_epochs = None
         resolved = self._resolve_start_epoch(self._total_epochs)
@@ -154,9 +156,9 @@ class SWACallback(tf.keras.callbacks.Callback):
                 # batch_size compatível
                 batch_size = 32
                 for i in range(0, len(X_sub), batch_size):
-                    batch = X_sub[i:i + batch_size]
+                    batch = X_sub[i : i + batch_size]
                     self.model(batch, training=True)
-            elif hasattr(data, 'take'):
+            elif hasattr(data, "take"):
                 # tf.data.Dataset
                 for batch in data.take(30):  # ~30 batches
                     if isinstance(batch, tuple):

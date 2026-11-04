@@ -59,6 +59,7 @@ def _analisar_estabilidade(historico: Dict[str, List[float]], orcamento: int):
 
     return analyze_training_stability(historico, epochs_budget=orcamento)
 
+
 #: Uma linha de fim de época do `ModelTrainer`. `val_loss`/`val_accuracy` vêm
 #: DEPOIS de `loss`/`accuracy`, e o `(?<![_a-z])` impede que ` loss=` case com
 #: o sufixo de `val_loss=`.
@@ -143,8 +144,7 @@ def _divergencia_da_cauda(
             if not math.isclose(a, b, rel_tol=_TOL_CAUDA, abs_tol=1e-9):
                 epoca = len(recuperado[chave]) - n + i + 1
                 return (
-                    f"'{chave}' diverge na época {epoca}: artefato={a!r} "
-                    f"log={b!r}"
+                    f"'{chave}' diverge na época {epoca}: artefato={a!r} " f"log={b!r}"
                 )
     return None
 
@@ -182,9 +182,7 @@ def _corrigir_tolerancia_declarada(arch: Dict[str, Any]) -> bool:
     rec = arch.get("history_recovery")
     if not isinstance(rec, dict) or "verification" not in rec:
         return False
-    correta = (
-        f"a série gravada é sufixo exato da reconstruída (rel_tol={_TOL_CAUDA:g})"
-    )
+    correta = f"a série gravada é sufixo exato da reconstruída (rel_tol={_TOL_CAUDA:g})"
     if rec["verification"] == correta:
         return False
     rec["verification"] = correta
@@ -262,8 +260,9 @@ def recuperar(run_dir: Path, *, write: bool) -> int:
                 arch["history"], orcamento
             )
             arch["history_recovery"] = {
-                "source": str(log.relative_to(ROOT)) if log.is_relative_to(ROOT)
-                else str(log),
+                "source": (
+                    str(log.relative_to(ROOT)) if log.is_relative_to(ROOT) else str(log)
+                ),
                 "script": "tools/reporting/recover_truncated_history.py",
                 "epochs_before": gravadas,
                 "epochs_after": completo,

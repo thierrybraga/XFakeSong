@@ -24,6 +24,7 @@ Uso:
         --dataset data/datasets/brspeech_eval.npz \\
         --out data/results/cross_generator
 """
+
 from __future__ import annotations
 
 import argparse
@@ -53,8 +54,9 @@ def _carrega_contrato(pasta: Path) -> tuple[Path, dict] | None:
     contrato.setdefault("input_shape", cfg.get("input_shape"))
 
     for padrao in ("*.keras", "*.pkl", "*.pt"):
-        alvos = [p for p in sorted(pasta.glob(padrao))
-                 if not p.name.endswith("_config.json")]
+        alvos = [
+            p for p in sorted(pasta.glob(padrao)) if not p.name.endswith("_config.json")
+        ]
         if alvos:
             return alvos[0], contrato
     return None
@@ -74,11 +76,13 @@ def _prepara(X: np.ndarray, contrato: dict) -> np.ndarray:
     alvo = int(contrato.get("target_sequence_length") or 48000)
 
     if frontend == bf.FRONTEND_RAW:
-        return bf.raw_audio_batch(X, target_len=alvo, crop_strategy='center')
+        return bf.raw_audio_batch(X, target_len=alvo, crop_strategy="center")
     if frontend == bf.FRONTEND_LOGMEL:
         forma = contrato.get("input_shape") or [100, 80]
         return bf.log_mel_batch(
-            X, time_steps=int(forma[0]), feature_dim=int(forma[1]),
+            X,
+            time_steps=int(forma[0]),
+            feature_dim=int(forma[1]),
             n_fft=contrato.get("n_fft"),
         )
     if frontend == bf.FRONTEND_TABULAR_V2:
@@ -123,18 +127,30 @@ def _pontua(modelo_path: Path, X: np.ndarray, contrato: dict) -> np.ndarray:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--dataset", required=True,
-                    help="NPZ externo com X_test/y_test em forma de onda")
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--dataset",
+        required=True,
+        help="NPZ externo com X_test/y_test em forma de onda",
+    )
     ap.add_argument("--artifacts-dir", default="data/models/benchmark_final")
     ap.add_argument("--out", default="data/results/cross_generator")
-    ap.add_argument("--band-correction-hz", type=float, default=7500.0,
-                    help="0 desliga; o default aplica a MESMA correção do "
-                         "corpus próprio, sem a qual a medida carrega o "
-                         "artefato de formato do corpus externo")
-    ap.add_argument("--models", nargs="+", default=None,
-                    help="subconjunto de pastas de artefato a avaliar")
+    ap.add_argument(
+        "--band-correction-hz",
+        type=float,
+        default=7500.0,
+        help="0 desliga; o default aplica a MESMA correção do "
+        "corpus próprio, sem a qual a medida carrega o "
+        "artefato de formato do corpus externo",
+    )
+    ap.add_argument(
+        "--models",
+        nargs="+",
+        default=None,
+        help="subconjunto de pastas de artefato a avaliar",
+    )
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
@@ -143,8 +159,12 @@ def main() -> int:
     d = np.load(args.dataset, allow_pickle=True)
     X = np.asarray(d["X_test"] if "X_test" in d.files else d["X"])
     y = np.asarray(d["y_test"] if "y_test" in d.files else d["y"]).ravel()
-    logger.info("corpus externo: %d amostras (%d bonafide, %d spoof)",
-                len(y), int((y == 0).sum()), int((y == 1).sum()))
+    logger.info(
+        "corpus externo: %d amostras (%d bonafide, %d spoof)",
+        len(y),
+        int((y == 0).sum()),
+        int((y == 1).sum()),
+    )
 
     if args.band_correction_hz and args.band_correction_hz > 0:
         from app.domain.features.benchmark_frontend import apply_band_correction
@@ -178,8 +198,13 @@ def main() -> int:
                 "modelo": modelo_path.name,
                 "metricas": m,
             }
-            logger.info("  %-24s acc=%.4f  EER=%.4f  AUC=%.4f",
-                        pasta.name, m["accuracy"], m["eer"], m["auc_roc"])
+            logger.info(
+                "  %-24s acc=%.4f  EER=%.4f  AUC=%.4f",
+                pasta.name,
+                m["accuracy"],
+                m["eer"],
+                m["auc_roc"],
+            )
         except Exception as exc:  # noqa: BLE001
             # Registra o MOTIVO. Um `status: error` mudo já custou caro neste
             # projeto (estudo de sementes do Conformer, 2026-08-18).
@@ -195,7 +220,9 @@ def main() -> int:
                 "n": int(len(y)),
                 "resultados": resultados,
             },
-            indent=1, ensure_ascii=False, default=str,
+            indent=1,
+            ensure_ascii=False,
+            default=str,
         ),
         encoding="utf-8",
     )

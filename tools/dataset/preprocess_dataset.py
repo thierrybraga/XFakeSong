@@ -47,34 +47,56 @@ logger = logging.getLogger("DatasetPreprocessor")
 # Main
 # ---------------------------------------------------------------------------
 def main():
-    parser = argparse.ArgumentParser(description="Pre-processamento de dataset de audio")
+    parser = argparse.ArgumentParser(
+        description="Pre-processamento de dataset de audio"
+    )
     parser.add_argument("--validate", action="store_true", help="Validar integridade")
-    parser.add_argument("--normalize", action="store_true", help="Normalizar todos os WAVs")
-    parser.add_argument("--force-normalize", action="store_true",
-                        help="Re-normaliza tudo, ignorando o cache (.normalized_manifest.json)")
-    parser.add_argument("--remove-duplicates", action="store_true", help="Remover duplicatas")
+    parser.add_argument(
+        "--normalize", action="store_true", help="Normalizar todos os WAVs"
+    )
+    parser.add_argument(
+        "--force-normalize",
+        action="store_true",
+        help="Re-normaliza tudo, ignorando o cache (.normalized_manifest.json)",
+    )
+    parser.add_argument(
+        "--remove-duplicates", action="store_true", help="Remover duplicatas"
+    )
     parser.add_argument(
         "--audit-near-duplicates",
         action="store_true",
         help="Auditar quase-duplicatas por fingerprint log-Mel",
     )
-    parser.add_argument("--create-splits", action="store_true", help="Criar splits train/val/test")
-    parser.add_argument("--create-zip", action="store_true", help="Criar ZIP para upload na UI")
-    parser.add_argument("--full", action="store_true", help="Executar pipeline completo")
     parser.add_argument(
-        "--train-ratio", type=float, default=0.70,
+        "--create-splits", action="store_true", help="Criar splits train/val/test"
+    )
+    parser.add_argument(
+        "--create-zip", action="store_true", help="Criar ZIP para upload na UI"
+    )
+    parser.add_argument(
+        "--full", action="store_true", help="Executar pipeline completo"
+    )
+    parser.add_argument(
+        "--train-ratio",
+        type=float,
+        default=0.70,
         help="Proporção de treino (default: 0.70)",
     )
     parser.add_argument(
-        "--val-ratio", type=float, default=0.15,
+        "--val-ratio",
+        type=float,
+        default=0.15,
         help="Proporção de validação (default: 0.15)",
     )
     parser.add_argument(
-        "--test-ratio", type=float, default=0.15,
+        "--test-ratio",
+        type=float,
+        default=0.15,
         help="Proporção de teste (default: 0.15)",
     )
     parser.add_argument(
-        "--speaker-disjoint", action="store_true",
+        "--speaker-disjoint",
+        action="store_true",
         help=(
             "Split disjunto por falante (usuários não vistos). Com cobertura "
             "parcial de speaker_id (ex.: uma fonte pareada sem metadados de "
@@ -103,8 +125,17 @@ def main():
         handlers=[logging.StreamHandler(sys.stdout)],
     )
 
-    if not any([args.validate, args.normalize, args.remove_duplicates,
-                args.audit_near_duplicates, args.create_splits, args.create_zip, args.full]):
+    if not any(
+        [
+            args.validate,
+            args.normalize,
+            args.remove_duplicates,
+            args.audit_near_duplicates,
+            args.create_splits,
+            args.create_zip,
+            args.full,
+        ]
+    ):
         parser.print_help()
         return
 
@@ -142,7 +173,10 @@ def main():
 
     if source_quotas and args.expected_per_class:
         for class_name in ("real", "fake"):
-            if sum(source_quotas.get(class_name, {}).values()) != args.expected_per_class:
+            if (
+                sum(source_quotas.get(class_name, {}).values())
+                != args.expected_per_class
+            ):
                 parser.error(
                     f"quotas de {class_name} devem somar "
                     f"--expected-per-class={args.expected_per_class}"

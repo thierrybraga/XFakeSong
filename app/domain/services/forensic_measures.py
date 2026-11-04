@@ -18,8 +18,14 @@ logger = logging.getLogger(__name__)
 
 # Eixos do radar de explicabilidade, na ordem em que `radar_axes` os mede.
 RADAR_AXES = (
-    "Spectral", "Cepstral", "Temporal", "Prosodic",
-    "Phase", "Formant", "HNR", "Jitter/Shimmer",
+    "Spectral",
+    "Cepstral",
+    "Temporal",
+    "Prosodic",
+    "Phase",
+    "Formant",
+    "HNR",
+    "Jitter/Shimmer",
 )
 
 # Normalização POR EIXO, contra a faixa plausível de cada grandeza. As oito
@@ -29,14 +35,14 @@ RADAR_AXES = (
 # MFCC ficava sempre em 1,0 e os demais colapsavam para perto de zero: o
 # gráfico tinha a mesma forma para qualquer áudio.
 RADAR_RANGES = (
-    1.0,    # centroide espectral (CV)
-    60.0,   # desvio de MFCC (unidades cepstrais)
-    0.15,   # desvio de ZCR
-    2.0,    # RMS (CV)
+    1.0,  # centroide espectral (CV)
+    60.0,  # desvio de MFCC (unidades cepstrais)
+    0.15,  # desvio de ZCR
+    2.0,  # RMS (CV)
     np.pi,  # descontinuidade de fase (rad)
-    0.5,    # estabilidade de formante (CV)
-    1.0,    # NHR (0 = harmônico, 1 = ruído)
-    0.02,   # RAP (2% já é jitter severo)
+    0.5,  # estabilidade de formante (CV)
+    1.0,  # NHR (0 = harmônico, 1 = ruído)
+    0.02,  # RAP (2% já é jitter severo)
 )
 
 
@@ -87,14 +93,15 @@ class ThresholdSweep:
     best_threshold: float
 
 
-def linear_cepstrum(y: np.ndarray, n_filters: int = 64,
-                    n_coeffs: int = 20) -> np.ndarray:
+def linear_cepstrum(
+    y: np.ndarray, n_filters: int = 64, n_coeffs: int = 20
+) -> np.ndarray:
     """LFCC: banco de filtros LINEAR (faixas uniformes) + DCT, por quadro."""
     import librosa
     from scipy.fft import dct
 
     S_linear = np.abs(librosa.stft(y, n_fft=2048, hop_length=512))
-    S_power = S_linear ** 2
+    S_power = S_linear**2
     n_fft_bins = S_power.shape[0]
     filterbank = np.zeros((n_filters, n_fft_bins))
     bin_width = n_fft_bins // n_filters
@@ -104,7 +111,7 @@ def linear_cepstrum(y: np.ndarray, n_filters: int = 64,
         filterbank[i, start:end] = 1.0
     lfcc_spec = filterbank @ S_power
     lfcc_spec = librosa.power_to_db(lfcc_spec + 1e-10, ref=np.max)
-    return dct(lfcc_spec, type=2, axis=0, norm='ortho')[:n_coeffs, :]
+    return dct(lfcc_spec, type=2, axis=0, norm="ortho")[:n_coeffs, :]
 
 
 def formant_tracks(
@@ -120,11 +127,11 @@ def formant_tracks(
     hop = int(0.010 * sr)  # 10ms hop
     lpc_order = 2 + int(sr / 1000)
 
-    tracks = {f'F{i+1}': [] for i in range(4)}
+    tracks = {f"F{i+1}": [] for i in range(4)}
     times = []
 
     for start in range(0, len(y) - frame_len, hop):
-        frame = y[start:start + frame_len]
+        frame = y[start : start + frame_len]
         frame = frame * np.hamming(len(frame))
 
         # LPC via autocorrelation
@@ -138,13 +145,13 @@ def formant_tracks(
 
             for i in range(4):
                 if i < len(freqs):
-                    tracks[f'F{i+1}'].append(freqs[i])
+                    tracks[f"F{i+1}"].append(freqs[i])
                 else:
-                    tracks[f'F{i+1}'].append(np.nan)
+                    tracks[f"F{i+1}"].append(np.nan)
             times.append((start + frame_len / 2) / sr)
         except Exception:
             for i in range(4):
-                tracks[f'F{i+1}'].append(np.nan)
+                tracks[f"F{i+1}"].append(np.nan)
             times.append((start + frame_len / 2) / sr)
 
     return times, tracks
@@ -162,16 +169,16 @@ def hnr_contour(y: np.ndarray, sr: int) -> Tuple[np.ndarray, np.ndarray]:
     times = []
 
     for start in range(0, len(y) - frame_len, hop):
-        frame = y[start:start + frame_len]
+        frame = y[start : start + frame_len]
         # Autocorrelation-based HNR
         try:
-            autocorr = np.correlate(frame, frame, mode='full')
-            autocorr = autocorr[len(autocorr) // 2:]
+            autocorr = np.correlate(frame, frame, mode="full")
+            autocorr = autocorr[len(autocorr) // 2 :]
             if autocorr[0] > 0:
                 autocorr = autocorr / autocorr[0]
                 # Find first peak after lag 0
                 min_lag = int(sr / 500)  # 500 Hz max
-                max_lag = int(sr / 50)   # 50 Hz min
+                max_lag = int(sr / 50)  # 50 Hz min
                 max_lag = min(max_lag, len(autocorr) - 1)
                 if min_lag < max_lag:
                     peak = np.max(autocorr[min_lag:max_lag])
@@ -195,9 +202,8 @@ def _pyin(y: np.ndarray, sr: int):
     import librosa
 
     f0, voiced_flag, voiced_probs = librosa.pyin(
-        y, fmin=librosa.note_to_hz('C2'),
-        fmax=librosa.note_to_hz('C7'),
-        sr=sr)
+        y, fmin=librosa.note_to_hz("C2"), fmax=librosa.note_to_hz("C7"), sr=sr
+    )
     return f0, voiced_probs, librosa.times_like(f0, sr=sr)
 
 
@@ -234,7 +240,7 @@ def jitter_shimmer(y: np.ndarray, sr: int) -> Optional[JitterShimmer]:
     return JitterShimmer(
         jitter_times=times_voiced[1:],
         jitter=jitter_local,
-        shimmer_times=times_voiced[1:len(shimmer_local) + 1],
+        shimmer_times=times_voiced[1 : len(shimmer_local) + 1],
         shimmer=shimmer_local,
     )
 
@@ -254,8 +260,7 @@ def pitch_analysis(y: np.ndarray, sr: int) -> PitchAnalysis:
     if len(f0_voiced) > 10:
         # Compute vibrato rate via short-term F0 fluctuation
         f0_interp = np.interp(times, times[voiced_mask], f0_voiced)
-        f0_detrended = f0_interp - np.convolve(
-            f0_interp, np.ones(20) / 20, mode='same')
+        f0_detrended = f0_interp - np.convolve(f0_interp, np.ones(20) / 20, mode="same")
         vibrato_extent = np.std(f0_detrended)
 
     return PitchAnalysis(
@@ -283,6 +288,7 @@ def det_curve(
     try:
         from scipy.interpolate import interp1d
         from scipy.optimize import brentq
+
         eer_fn = interp1d(fpr, fnr)
         eer = brentq(lambda x: eer_fn(x) - x, 0.001, 0.999)
     except Exception:
@@ -333,7 +339,7 @@ def formant_stability(y: np.ndarray, sr: int) -> float:
         tamanho, salto = 1024, 512
         primeiros: list[float] = []
         for inicio in range(0, max(len(y) - tamanho, 0), salto):
-            quadro = y[inicio:inicio + tamanho]
+            quadro = y[inicio : inicio + tamanho]
             if np.max(np.abs(quadro)) < 1e-4:  # quadro em silêncio
                 continue
             coef = librosa.lpc(quadro * np.hanning(len(quadro)), order=ordem)
@@ -421,9 +427,9 @@ def batch_report(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     if not results:
         return {"total": 0, "summary": "Sem resultados"}
 
-    n_fake = sum(1 for r in results if r.get('is_fake', False))
+    n_fake = sum(1 for r in results if r.get("is_fake", False))
     n_real = len(results) - n_fake
-    confidences = [r.get('confidence', 0) for r in results]
+    confidences = [r.get("confidence", 0) for r in results]
 
     return {
         "total_analyzed": len(results),
@@ -435,18 +441,18 @@ def batch_report(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         "confidence_min": float(np.min(confidences)),
         "confidence_max": float(np.max(confidences)),
         "high_confidence_fakes": sum(
-            1 for r in results if r.get('is_fake') and r.get('confidence', 0) > 0.8
+            1 for r in results if r.get("is_fake") and r.get("confidence", 0) > 0.8
         ),
         "low_confidence_detections": sum(
-            1 for r in results if 0.4 < r.get('confidence', 0) < 0.6
+            1 for r in results if 0.4 < r.get("confidence", 0) < 0.6
         ),
         "per_file": [
             {
-                "filename": r.get('filename', 'unknown'),
-                "is_fake": r.get('is_fake', False),
-                "confidence": r.get('confidence', 0),
-                "model": r.get('model_name', 'unknown')
+                "filename": r.get("filename", "unknown"),
+                "is_fake": r.get("is_fake", False),
+                "confidence": r.get("confidence", 0),
+                "model": r.get("model_name", "unknown"),
             }
             for r in results
-        ]
+        ],
     }

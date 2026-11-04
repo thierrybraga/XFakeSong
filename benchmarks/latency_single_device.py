@@ -27,6 +27,7 @@ USO
 ---
     python benchmarks/latency_single_device.py --out data/results/paper/consolidated/latencia_cpu.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -92,6 +93,7 @@ def _cronometra(fn, entrada) -> dict:
 
 def _mede_sklearn(pasta: str, forma) -> dict:
     import joblib
+
     obj = joblib.load(next((BASE / pasta).glob("*.pkl")))
     modelo = obj.get("model", obj) if isinstance(obj, dict) else obj
     x = np.random.randn(1, *forma).astype("float64")
@@ -106,9 +108,16 @@ def _registra_camadas() -> None:
     carregar um `.keras` não importa nada por conta própria.
     """
     import app.domain.models.architectures.layers  # noqa: F401
-    for mod in ("conformer", "rawnet2", "aasist", "rawgat_st",
-                "spectrogram_transformer", "hybrid_cnn_transformer",
-                "multiscale_cnn"):
+
+    for mod in (
+        "conformer",
+        "rawnet2",
+        "aasist",
+        "rawgat_st",
+        "spectrogram_transformer",
+        "hybrid_cnn_transformer",
+        "multiscale_cnn",
+    ):
         try:
             __import__(f"app.domain.models.architectures.{mod}")
         except Exception as exc:  # noqa: BLE001
@@ -117,8 +126,10 @@ def _registra_camadas() -> None:
 
 def _mede_keras(pasta: str, forma) -> dict:
     import tensorflow as tf
+
     tf.config.set_visible_devices([], "GPU")  # força CPU
     from tensorflow import keras
+
     _registra_camadas()
     caminho = next((BASE / pasta).glob("*.keras"))
     modelo = keras.models.load_model(caminho, compile=False, safe_mode=False)
@@ -129,28 +140,40 @@ def _mede_keras(pasta: str, forma) -> dict:
 
 def _mede_torch(pasta: str, forma) -> dict:
     import torch
+
     torch.set_num_threads(max(1, (torch.get_num_threads() or 4) // 2))
-    ckpt = torch.load(next((BASE / pasta).glob("*.pt")), map_location="cpu",
-                      weights_only=False)
+    ckpt = torch.load(
+        next((BASE / pasta).glob("*.pt")), map_location="cpu", weights_only=False
+    )
     from transformers import AutoModel
+
     sub = "wavlm_backbone" if "wavlm" in pasta else "hubert_backbone"
     # O backbone congelado não é copiado para benchmark_final/: vive no run
     # consolidado. Aceita as duas localizações para o script não depender de
     # qual delas existe na máquina.
     candidatos = [
         BASE / pasta / sub,
-        RAIZ / "data" / "results" / "clean_benchmark_15k" / pasta /
-        "architectures" / pasta / "models" / sub,
+        RAIZ
+        / "data"
+        / "results"
+        / "clean_benchmark_15k"
+        / pasta
+        / "architectures"
+        / pasta
+        / "models"
+        / sub,
     ]
     origem = next((c for c in candidatos if (c / "config.json").exists()), None)
     if origem is None:
         raise FileNotFoundError(
             f"backbone {sub} não encontrado em: "
-            + " | ".join(str(c) for c in candidatos))
+            + " | ".join(str(c) for c in candidatos)
+        )
     backbone = AutoModel.from_pretrained(str(origem)).eval()
     estado = ckpt.get("classifier_state_dict") if isinstance(ckpt, dict) else None
     cfg = (ckpt.get("embedding_config") or {}) if isinstance(ckpt, dict) else {}
     from app.domain.models.inference.ssl_head import build_ssl_classifier
+
     cabeca = build_ssl_classifier(cfg, 0.0).eval()
     if estado:
         cabeca.load_state_dict(estado)
@@ -160,45 +183,61 @@ def _mede_torch(pasta: str, forma) -> dict:
     def passo(e):
         saida = backbone(e, output_hidden_states=True)
         from app.domain.models.inference.ssl_head import pool_hidden_states
+
         return cabeca(pool_hidden_states(saida, cfg))
 
     return _cronometra(passo, x)
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--out", default="data/results/paper/consolidated/latencia_cpu.json")
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--out", default="data/results/paper/consolidated/latencia_cpu.json"
+    )
     ap.add_argument("--only", nargs="*", help="mede apenas estes rótulos")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     import platform
+
     resultados, falhas = {}, {}
     for rotulo, pasta, runtime, forma in MODELOS:
         if args.only and rotulo not in args.only:
             continue
         try:
-            fn = {"sklearn": _mede_sklearn, "keras": _mede_keras,
-                  "torch": _mede_torch}[runtime]
+            fn = {"sklearn": _mede_sklearn, "keras": _mede_keras, "torch": _mede_torch}[
+                runtime
+            ]
             r = fn(pasta, forma)
-            r.update({"runtime": runtime, "device": "cpu", "batch_size": 1,
-                      "component": "model_forward_only",
-                      "input_shape": list(forma)})
+            r.update(
+                {
+                    "runtime": runtime,
+                    "device": "cpu",
+                    "batch_size": 1,
+                    "component": "model_forward_only",
+                    "input_shape": list(forma),
+                }
+            )
             resultados[rotulo] = r
-            logger.info("%-18s %8.2f ms (p95 %.2f)", rotulo, r["median_ms"],
-                        r["p95_ms"])
+            logger.info(
+                "%-18s %8.2f ms (p95 %.2f)", rotulo, r["median_ms"], r["p95_ms"]
+            )
         except Exception as exc:  # noqa: BLE001
             falhas[rotulo] = f"{type(exc).__name__}: {exc}"
             logger.warning("%-18s FALHOU: %s", rotulo, exc)
 
     saida = {
         "protocolo": {
-            "device": "cpu", "batch_size": 1, "warmup_runs": WARMUP,
-            "measured_runs": RUNS, "component": "model_forward_only",
+            "device": "cpu",
+            "batch_size": 1,
+            "warmup_runs": WARMUP,
+            "measured_runs": RUNS,
+            "component": "model_forward_only",
             "cross_runtime_comparable": True,
             "nota": "Todos os 11 modelos no MESMO dispositivo (CPU). Substitui "
-                    "as latências publicadas, medidas em 3 runtimes distintos.",
+            "as latências publicadas, medidas em 3 runtimes distintos.",
             "cpu": platform.processor() or platform.machine(),
         },
         "resultados": resultados,
@@ -206,10 +245,12 @@ def main() -> int:
     }
     destino = Path(args.out)
     destino.parent.mkdir(parents=True, exist_ok=True)
-    destino.write_text(json.dumps(saida, indent=1, ensure_ascii=False),
-                       encoding="utf-8", newline="\n")
-    logger.info("\ngravado: %s  (%d ok, %d falhas)", destino, len(resultados),
-                len(falhas))
+    destino.write_text(
+        json.dumps(saida, indent=1, ensure_ascii=False), encoding="utf-8", newline="\n"
+    )
+    logger.info(
+        "\ngravado: %s  (%d ok, %d falhas)", destino, len(resultados), len(falhas)
+    )
     return 0 if not falhas else 1
 
 

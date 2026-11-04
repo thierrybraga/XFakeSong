@@ -27,6 +27,7 @@ Uso:
     python tools/dataset/prepare_brspeech_eval.py --per-generator 300
     python tools/dataset/prepare_brspeech_eval.py --plan
 """
+
 from __future__ import annotations
 
 import argparse
@@ -70,11 +71,18 @@ def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--per-generator", type=int, default=300,
-                    help="amostras spoof por sintetizador (e o mesmo total de "
-                         "bonafide, para manter 1:1)")
-    ap.add_argument("--plan", action="store_true",
-                    help="inspeciona o dataset e imprime a composicao, sem baixar tudo")
+    ap.add_argument(
+        "--per-generator",
+        type=int,
+        default=300,
+        help="amostras spoof por sintetizador (e o mesmo total de "
+        "bonafide, para manter 1:1)",
+    )
+    ap.add_argument(
+        "--plan",
+        action="store_true",
+        help="inspeciona o dataset e imprime a composicao, sem baixar tudo",
+    )
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--out", default=str(DESTINO))
     args = ap.parse_args()
@@ -149,8 +157,7 @@ def main() -> int:
     X = np.concatenate([np.array(bonafide)[idx_b], np.array(spoof)[:n]])
     y = np.concatenate([np.zeros(n, dtype="int64"), np.ones(n, dtype="int64")])
     geradores = np.array(
-        ["bonafide"] * n
-        + [g for g, v in por_gerador.items() for _ in v][:n]
+        ["bonafide"] * n + [g for g, v in por_gerador.items() for _ in v][:n]
     )
 
     from app.domain.features.benchmark_frontend import apply_band_correction
@@ -176,8 +183,7 @@ def main() -> int:
             ensure_ascii=False,
         ),
     )
-    logger.info("\n%d amostras (%d bonafide, %d spoof) -> %s",
-                len(y), n, n, destino)
+    logger.info("\n%d amostras (%d bonafide, %d spoof) -> %s", len(y), n, n, destino)
     for g, v in sorted(por_gerador.items()):
         logger.info("   %-28s %d", g, len(v))
     return 0

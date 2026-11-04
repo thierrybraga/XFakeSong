@@ -14,14 +14,14 @@ class OptimizerFactory:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self._optimizers = {
-            'adam': self._create_adam,
-            'adamw': self._create_adamw,
-            'sgd': self._create_sgd,
-            'rmsprop': self._create_rmsprop,
-            'adagrad': self._create_adagrad,
-            'adadelta': self._create_adadelta,
-            'adamax': self._create_adamax,
-            'nadam': self._create_nadam
+            "adam": self._create_adam,
+            "adamw": self._create_adamw,
+            "sgd": self._create_sgd,
+            "rmsprop": self._create_rmsprop,
+            "adagrad": self._create_adagrad,
+            "adadelta": self._create_adadelta,
+            "adamax": self._create_adamax,
+            "nadam": self._create_nadam,
         }
 
     def create_optimizer(
@@ -30,7 +30,7 @@ class OptimizerFactory:
         learning_rate: float = 0.001,
         global_clipnorm: float = 1.0,
         use_loss_scaling: bool = True,
-        **kwargs
+        **kwargs,
     ) -> tf.keras.optimizers.Optimizer:
         """Cria otimizador com gradient clipping e, opcionalmente, loss scaling.
 
@@ -49,12 +49,14 @@ class OptimizerFactory:
 
         if optimizer_name not in self._optimizers:
             self.logger.warning(
-                f"Otimizador '{optimizer_name}' não encontrado. Usando Adam.")
-            optimizer_name = 'adam'
+                f"Otimizador '{optimizer_name}' não encontrado. Usando Adam."
+            )
+            optimizer_name = "adam"
 
         try:
             optimizer = self._optimizers[optimizer_name](
-                learning_rate, global_clipnorm=global_clipnorm, **kwargs)
+                learning_rate, global_clipnorm=global_clipnorm, **kwargs
+            )
 
             # BUG FIX: mixed_float16 sem LossScaleOptimizer causa NaN na loss.
             # Com a política global ativa, gradientes float16 são tão pequenos
@@ -66,20 +68,24 @@ class OptimizerFactory:
                     policy = tf.keras.mixed_precision.global_policy()
                     if policy.name == "mixed_float16":
                         optimizer = tf.keras.mixed_precision.LossScaleOptimizer(
-                            optimizer)
+                            optimizer
+                        )
                         self.logger.info(
-                            "LossScaleOptimizer habilitado (mixed_float16 ativo)")
+                            "LossScaleOptimizer habilitado (mixed_float16 ativo)"
+                        )
                 except Exception as e:
                     self.logger.debug(f"LossScaleOptimizer skip: {e}")
 
             self.logger.info(
                 f"Otimizador '{optimizer_name}' criado com "
-                f"lr={learning_rate}, clipnorm={global_clipnorm}")
+                f"lr={learning_rate}, clipnorm={global_clipnorm}"
+            )
             return optimizer
         except Exception as e:
             self.logger.error(f"Erro ao criar otimizador: {str(e)}")
             return tf.keras.optimizers.Adam(
-                learning_rate=learning_rate, global_clipnorm=global_clipnorm)
+                learning_rate=learning_rate, global_clipnorm=global_clipnorm
+            )
 
     def _create_adam(
         self,
@@ -89,7 +95,7 @@ class OptimizerFactory:
         epsilon: float = 1e-7,
         amsgrad: bool = False,
         global_clipnorm: float = 1.0,
-        **kwargs
+        **kwargs,
     ) -> tf.keras.optimizers.Adam:
         """Cria otimizador Adam."""
         return tf.keras.optimizers.Adam(
@@ -110,7 +116,7 @@ class OptimizerFactory:
         epsilon: float = 1e-7,
         amsgrad: bool = False,
         global_clipnorm: float = 1.0,
-        **kwargs
+        **kwargs,
     ) -> tf.keras.optimizers.AdamW:
         """Cria otimizador AdamW."""
         return tf.keras.optimizers.AdamW(
@@ -129,7 +135,7 @@ class OptimizerFactory:
         momentum: float = 0.0,
         nesterov: bool = False,
         global_clipnorm: float = 1.0,
-        **kwargs
+        **kwargs,
     ) -> tf.keras.optimizers.SGD:
         """Cria otimizador SGD."""
         return tf.keras.optimizers.SGD(
@@ -147,7 +153,7 @@ class OptimizerFactory:
         epsilon: float = 1e-7,
         centered: bool = False,
         global_clipnorm: float = 1.0,
-        **kwargs
+        **kwargs,
     ) -> tf.keras.optimizers.RMSprop:
         """Cria otimizador RMSprop."""
         return tf.keras.optimizers.RMSprop(
@@ -165,7 +171,7 @@ class OptimizerFactory:
         initial_accumulator_value: float = 0.1,
         epsilon: float = 1e-7,
         global_clipnorm: float = 1.0,
-        **kwargs
+        **kwargs,
     ) -> tf.keras.optimizers.Adagrad:
         """Cria otimizador Adagrad."""
         return tf.keras.optimizers.Adagrad(
@@ -181,7 +187,7 @@ class OptimizerFactory:
         rho: float = 0.95,
         epsilon: float = 1e-7,
         global_clipnorm: float = 1.0,
-        **kwargs
+        **kwargs,
     ) -> tf.keras.optimizers.Adadelta:
         """Cria otimizador Adadelta."""
         return tf.keras.optimizers.Adadelta(
@@ -198,7 +204,7 @@ class OptimizerFactory:
         beta_2: float = 0.999,
         epsilon: float = 1e-7,
         global_clipnorm: float = 1.0,
-        **kwargs
+        **kwargs,
     ) -> tf.keras.optimizers.Adamax:
         """Cria otimizador Adamax."""
         return tf.keras.optimizers.Adamax(
@@ -215,14 +221,11 @@ class OptimizerFactory:
         beta_1: float = 0.9,
         beta_2: float = 0.999,
         epsilon: float = 1e-7,
-        **kwargs
+        **kwargs,
     ) -> tf.keras.optimizers.Nadam:
         """Cria otimizador Nadam."""
         return tf.keras.optimizers.Nadam(
-            learning_rate=learning_rate,
-            beta_1=beta_1,
-            beta_2=beta_2,
-            epsilon=epsilon
+            learning_rate=learning_rate, beta_1=beta_1, beta_2=beta_2, epsilon=epsilon
         )
 
 
@@ -301,10 +304,10 @@ class WarmupCosineDecaySchedule(tf.keras.optimizers.schedules.LearningRateSchedu
 
     def get_config(self):
         return {
-            'initial_learning_rate': float(self.initial_learning_rate),
-            'warmup_steps': int(self.warmup_steps),
-            'decay_steps': int(self.decay_steps),
-            'alpha': float(self.alpha),
+            "initial_learning_rate": float(self.initial_learning_rate),
+            "warmup_steps": int(self.warmup_steps),
+            "decay_steps": int(self.decay_steps),
+            "alpha": float(self.alpha),
         }
 
 

@@ -86,7 +86,9 @@ def _load_keras_model(path: Path):
 
 
 def _predict_keras(model, X: np.ndarray, batch_size: int) -> np.ndarray:
-    pred = model.predict(np.asarray(X, dtype="float32"), batch_size=batch_size, verbose=0)
+    pred = model.predict(
+        np.asarray(X, dtype="float32"), batch_size=batch_size, verbose=0
+    )
     pred = np.asarray(pred, dtype="float64")
     if pred.ndim > 1 and pred.shape[-1] > 1:
         return pred[:, 1]
@@ -162,7 +164,9 @@ def _evaluate_loaded_model(
         def predict_p_fake(X: np.ndarray, _modelo=model) -> np.ndarray:
             X2 = np.asarray(X).reshape(len(X), -1)
             proba = _modelo.predict_proba(X2)
-            return proba[:, 1] if proba.ndim > 1 and proba.shape[1] > 1 else proba.ravel()
+            return (
+                proba[:, 1] if proba.ndim > 1 and proba.shape[1] > 1 else proba.ravel()
+            )
 
         def predict_fn(xb: np.ndarray, _modelo=model):
             return _modelo.predict_proba(np.asarray(xb).reshape(len(xb), -1))
@@ -234,7 +238,9 @@ def _evaluate_loaded_model(
             else None
         ),
         "model_artifact": str(artifact),
-        "training_artifacts_dir": str(Path(cfg.output_dir) / "architectures" / _slug(arch)),
+        "training_artifacts_dir": str(
+            Path(cfg.output_dir) / "architectures" / _slug(arch)
+        ),
         "epochs": epochs,
         "wall_time_s": round(time.time() - started, 1),
     }
@@ -377,7 +383,9 @@ def main() -> int:
     args.out.mkdir(parents=True, exist_ok=True)
 
     results = generate(args)
-    ok = sum(1 for item in results["architectures"].values() if item.get("status") == "ok")
+    ok = sum(
+        1 for item in results["architectures"].values() if item.get("status") == "ok"
+    )
     pending = [
         name
         for name, item in results["architectures"].items()

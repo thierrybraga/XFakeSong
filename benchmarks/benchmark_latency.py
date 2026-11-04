@@ -47,6 +47,7 @@ N_MELS = 80
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_input(input_type: str, duration_s: float) -> np.ndarray:
     """Gera input sintético (batch=1) para o tipo de entrada da arquitetura."""
     n_samples = int(duration_s * SAMPLE_RATE)
@@ -57,13 +58,20 @@ def _make_input(input_type: str, duration_s: float) -> np.ndarray:
 
     # spectrogram — log-mel
     import tensorflow as tf
+
     audio_t = tf.constant(audio[np.newaxis])
     n_freq = N_FFT // 2 + 1
     mel_w = tf.signal.linear_to_mel_weight_matrix(
         N_MELS, n_freq, SAMPLE_RATE, 0.0, SAMPLE_RATE / 2
     )
-    stft = tf.signal.stft(audio_t, N_FFT, HOP, fft_length=N_FFT,
-                          window_fn=tf.signal.hann_window, pad_end=True)
+    stft = tf.signal.stft(
+        audio_t,
+        N_FFT,
+        HOP,
+        fft_length=N_FFT,
+        window_fn=tf.signal.hann_window,
+        pad_end=True,
+    )
     mel = tf.math.log(tf.abs(tf.tensordot(tf.abs(stft), mel_w, axes=1)) + 1e-6)
     return tf.expand_dims(mel, axis=-1).numpy()  # (1, T, N_MELS, 1)
 
@@ -75,7 +83,9 @@ def _count_params(model) -> int:
         return 0
 
 
-def _benchmark(model, dummy_input: np.ndarray, n_runs: int = 30, warmup: int = 5) -> dict:
+def _benchmark(
+    model, dummy_input: np.ndarray, n_runs: int = 30, warmup: int = 5
+) -> dict:
     """Executa benchmark de latência, retorna estatísticas em ms."""
     for _ in range(warmup):
         try:
@@ -98,13 +108,13 @@ def _benchmark(model, dummy_input: np.ndarray, n_runs: int = 30, warmup: int = 5
 
     arr = np.array(latencies)
     return {
-        "mean_ms":   round(float(np.mean(arr)), 1),
-        "std_ms":    round(float(np.std(arr)), 1),
-        "min_ms":    round(float(np.min(arr)), 1),
-        "p50_ms":    round(float(np.percentile(arr, 50)), 1),
-        "p95_ms":    round(float(np.percentile(arr, 95)), 1),
+        "mean_ms": round(float(np.mean(arr)), 1),
+        "std_ms": round(float(np.std(arr)), 1),
+        "min_ms": round(float(np.min(arr)), 1),
+        "p50_ms": round(float(np.percentile(arr, 50)), 1),
+        "p95_ms": round(float(np.percentile(arr, 95)), 1),
         "throughput": round(1000.0 / float(np.mean(arr)), 2),
-        "n_runs":    len(latencies),
+        "n_runs": len(latencies),
     }
 
 
@@ -112,17 +122,35 @@ def _benchmark(model, dummy_input: np.ndarray, n_runs: int = 30, warmup: int = 5
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--model", type=str, default=None,
-                        help="Arquitetura específica (default: todas)")
-    parser.add_argument("--duration", type=float, default=10.0,
-                        help="Duração do áudio de teste em segundos (default: 10.0)")
-    parser.add_argument("--n-runs", type=int, default=30,
-                        help="Número de medições por modelo (default: 30)")
-    parser.add_argument("--output", type=str, default=None,
-                        help="Salvar resultados em JSON (ex: data/results/latency.json)")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Arquitetura específica (default: todas)",
+    )
+    parser.add_argument(
+        "--duration",
+        type=float,
+        default=10.0,
+        help="Duração do áudio de teste em segundos (default: 10.0)",
+    )
+    parser.add_argument(
+        "--n-runs",
+        type=int,
+        default=30,
+        help="Número de medições por modelo (default: 30)",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="Salvar resultados em JSON (ex: data/results/latency.json)",
+    )
     args = parser.parse_args()
 
     from app.domain.models.architectures.factory import (
@@ -152,14 +180,20 @@ def main() -> None:
         logger.info(f"--- {arch_name} ---")
         try:
             spec = architecture_factory_registry.get_architecture_info(arch_name)
-            input_type = spec.input_requirements.get("input_type", "spectrogram") if spec else "spectrogram"
+            input_type = (
+                spec.input_requirements.get("input_type", "spectrogram")
+                if spec
+                else "spectrogram"
+            )
 
             dummy = _make_input(input_type, args.duration)
             input_shape = tuple(dummy.shape[1:])
 
-            model = create_model_by_name(arch_name, input_shape=input_shape, num_classes=2)
+            model = create_model_by_name(
+                arch_name, input_shape=input_shape, num_classes=2
+            )
             params = _count_params(model)
-            mem_mb = round(params * 4 / (1024 ** 2), 1)
+            mem_mb = round(params * 4 / (1024**2), 1)
 
             logger.info(f"  input_type : {input_type}")
             logger.info(f"  input_shape: {input_shape}")
@@ -189,7 +223,9 @@ def main() -> None:
 
     # ── Tabela resumo ────────────────────────────────────────────────
     logger.info("=" * 75)
-    logger.info(f"  {'Arquitetura':<28} {'Parâmetros':>12} {'Mem(MB)':>9} {'Lat(ms)':>10} {'Throughput':>12}")
+    logger.info(
+        f"  {'Arquitetura':<28} {'Parâmetros':>12} {'Mem(MB)':>9} {'Lat(ms)':>10} {'Throughput':>12}"
+    )
     logger.info("  " + "-" * 72)
     for arch, info in all_results.items():
         if "error" in info and "benchmark" not in info:
@@ -197,7 +233,9 @@ def main() -> None:
             continue
         bench = info.get("benchmark", {})
         if "error" in bench:
-            logger.info(f"  {arch:<28} {info.get('params', 0):>12,} {info.get('memory_mb', 0):>8.1f}  {'FALHOU':>10}")
+            logger.info(
+                f"  {arch:<28} {info.get('params', 0):>12,} {info.get('memory_mb', 0):>8.1f}  {'FALHOU':>10}"
+            )
         else:
             logger.info(
                 f"  {arch:<28} {info.get('params', 0):>12,} {info.get('memory_mb', 0):>8.1f}"

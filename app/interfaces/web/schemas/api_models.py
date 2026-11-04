@@ -12,6 +12,7 @@ from app import __version__
 
 # ── System ─────────────────────────────────────────────────────────────
 
+
 class SystemStatus(BaseModel):
     status: str
     message: str
@@ -21,6 +22,7 @@ class SystemStatus(BaseModel):
 
 class HealthCheckResponse(BaseModel):
     """Resposta detalhada do health check."""
+
     status: str
     database: str = "unknown"
     models_loaded: int = 0
@@ -45,6 +47,7 @@ class PredictionResult(BaseModel):
     `probabilities` traz P(fake) e P(real) como saem do modelo, a comparar com
     `classification_threshold`, e não com 0.5.
     """
+
     is_fake: bool
     confidence: float = Field(..., ge=0.0, le=1.0)
     probabilities: Dict[str, float]
@@ -79,10 +82,14 @@ class PredictionResult(BaseModel):
 
 # ── Multi-Model Fusion (Sprint 4.4 — API.5) ───────────────────────────
 
+
 class MultiModelDetectionRequest(BaseModel):
     """Configuração para inferência via fusão de múltiplos modelos."""
+
     model_names: List[str] = Field(
-        ..., min_length=2, max_length=10,
+        ...,
+        min_length=2,
+        max_length=10,
         description="Nomes dos modelos a fundir (≥2)",
     )
     fusion: str = Field(
@@ -102,14 +109,13 @@ class MultiModelDetectionRequest(BaseModel):
     def validate_fusion(cls, v: str) -> str:
         valid = {"weighted_avg", "soft_voting", "majority_vote", "max_conf"}
         if v not in valid:
-            raise ValueError(
-                f"fusion deve ser um de {sorted(valid)}, got '{v}'"
-            )
+            raise ValueError(f"fusion deve ser um de {sorted(valid)}, got '{v}'")
         return v
 
 
 class MultiModelPredictionResult(BaseModel):
     """Resultado de fusão multi-model."""
+
     is_fake: bool
     confidence: float = Field(..., ge=0.0, le=1.0)
     probabilities: Dict[str, float]
@@ -120,16 +126,22 @@ class MultiModelPredictionResult(BaseModel):
     per_model: List[Dict[str, Any]]
     metadata: Dict[str, Any] = Field(default={}, description="Metadata adicional")
 
-    model_config = ConfigDict(json_schema_extra={"metadata": {"type": "object", "additionalProperties": True}})
+    model_config = ConfigDict(
+        json_schema_extra={"metadata": {"type": "object", "additionalProperties": True}}
+    )
 
 
 # ── Uncertainty (Sprint 5.4 — API.6) ──────────────────────────────────
 
+
 class UncertaintyRequest(BaseModel):
     """Parâmetros para predição com MC Dropout."""
+
     model_name: Optional[str] = None
     n_samples: int = Field(
-        20, ge=5, le=200,
+        20,
+        ge=5,
+        le=200,
         description="Número de forward passes MC (típico: 10-50)",
     )
     normalize: bool = True
@@ -137,17 +149,14 @@ class UncertaintyRequest(BaseModel):
 
 class UncertaintyResult(BaseModel):
     """Predição com quantificação de incerteza (MC Dropout)."""
+
     is_fake: bool
     confidence: float = Field(..., ge=0.0, le=1.0)
     epistemic_uncertainty: float = Field(
         ..., description="Variância da classe predita entre MC samples"
     )
-    predictive_entropy: float = Field(
-        ..., description="Entropia da distribuição média"
-    )
-    is_uncertain: bool = Field(
-        ..., description="Flag para decisão 'abstenha-se'"
-    )
+    predictive_entropy: float = Field(..., description="Entropia da distribuição média")
+    is_uncertain: bool = Field(..., description="Flag para decisão 'abstenha-se'")
     n_mc_samples: int
     temperature_applied: Optional[float] = None
     classification_threshold: Optional[float] = None
@@ -158,8 +167,10 @@ class UncertaintyResult(BaseModel):
 
 # ── Cross Validation (Sprint 4.1 — API.7) ──────────────────────────────
 
+
 class CrossValidationRequest(BaseModel):
     """Configuração para K-fold cross validation."""
+
     architecture: str
     dataset_path: str = Field(..., min_length=1, max_length=500)
     config: Dict[str, Any] = Field(
@@ -177,6 +188,7 @@ class CrossValidationRequest(BaseModel):
 
 class CrossValidationResult(BaseModel):
     """Resultado agregado de K-fold CV."""
+
     architecture: str
     n_folds: int
     n_successful: int
@@ -189,10 +201,14 @@ class CrossValidationResult(BaseModel):
 
 # ── ONNX Export (Sprint 3.4 — API.7) ───────────────────────────────────
 
+
 class OnnxExportRequest(BaseModel):
     """Configuração para exportar um modelo carregado para ONNX."""
+
     model_name: str = Field(
-        ..., min_length=1, max_length=200,
+        ...,
+        min_length=1,
+        max_length=200,
         description="Nome de um modelo já carregado (ver /detection/models)",
     )
     quantize_int8: bool = Field(
@@ -200,7 +216,9 @@ class OnnxExportRequest(BaseModel):
         description="Se True, gera também uma versão INT8 (dynamic quantization)",
     )
     opset: int = Field(
-        13, ge=9, le=20,
+        13,
+        ge=9,
+        le=20,
         description="Versão do ONNX opset (13 = compatível com onnxruntime 1.7+)",
     )
     dynamic_batch: bool = Field(
@@ -210,6 +228,7 @@ class OnnxExportRequest(BaseModel):
 
 class OnnxExportResponse(BaseModel):
     """Resposta do export ONNX."""
+
     success: bool
     onnx_path: Optional[str] = None
     onnx_int8_path: Optional[str] = None
@@ -220,8 +239,10 @@ class OnnxExportResponse(BaseModel):
 
 # ── System version (API.10) ────────────────────────────────────────────
 
+
 class SystemVersionResponse(BaseModel):
     """Informações de versão / build."""
+
     version: str
     python_version: str
     tensorflow_version: Optional[str] = None
@@ -247,18 +268,30 @@ class FeatureExtractionResult(BaseModel):
 
 # ── Training ───────────────────────────────────────────────────────────
 
+
 def _get_valid_architectures() -> set:
     """Carrega arquiteturas válidas dinamicamente do registry + ML clássico."""
     try:
         from app.domain.models.architectures.registry import get_valid_snake_names
+
         return get_valid_snake_names() | {"svm", "random_forest"}
     except Exception:
         # Fallback estático caso o registry não esteja disponível
         return {
-            "aasist", "conformer", "efficientnet_lstm", "ensemble",
-            "hubert", "multiscale_cnn", "rawgat_st", "rawnet2",
-            "sonic_sleuth", "spectrogram_transformer", "svm",
-            "random_forest", "wavlm", "hybrid_cnn_transformer",
+            "aasist",
+            "conformer",
+            "efficientnet_lstm",
+            "ensemble",
+            "hubert",
+            "multiscale_cnn",
+            "rawgat_st",
+            "rawnet2",
+            "sonic_sleuth",
+            "spectrogram_transformer",
+            "svm",
+            "random_forest",
+            "wavlm",
+            "hybrid_cnn_transformer",
         }
 
 
@@ -289,7 +322,7 @@ def _validate_architecture_name(v: Optional[str]) -> Optional[str]:
 def _validate_email_format(v: Optional[str]) -> Optional[str]:
     """Compartilhado por ProfileCreate/ProfileUpdate (`field_validator("email")`)."""
     if v is not None and v.strip():
-        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
         if not re.match(pattern, v.strip()):
             raise ValueError("Formato de email inválido")
     return v
@@ -298,9 +331,7 @@ def _validate_email_format(v: Optional[str]) -> Optional[str]:
 class TrainingRequest(BaseModel):
     architecture: str
     dataset_path: str = Field(..., min_length=1, max_length=500)
-    model_name: str = Field(
-        ..., min_length=1, max_length=200, pattern=r'^[\w\-. ]+$'
-    )
+    model_name: str = Field(..., min_length=1, max_length=200, pattern=r"^[\w\-. ]+$")
     parameters: Dict[str, Any] = {}
     epochs: int = Field(10, ge=1, le=500)
     batch_size: int = Field(32, ge=1, le=512)
@@ -322,6 +353,7 @@ class TrainingResponse(BaseModel):
 
 # ── History ────────────────────────────────────────────────────────────
 
+
 class HistoryItem(BaseModel):
     id: int
     filename: str
@@ -333,6 +365,7 @@ class HistoryItem(BaseModel):
 
 class HistoryListResponse(BaseModel):
     """Resposta paginada do histórico."""
+
     items: List[HistoryItem]
     total: int
     limit: int
@@ -367,6 +400,7 @@ class DatasetMetadata(BaseModel):
 
 # ── Voice Profiles ─────────────────────────────────────────────────────
 
+
 class ProfileCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     telegram_id: Optional[str] = Field(None, max_length=100)
@@ -389,11 +423,9 @@ class ProfileCreate(BaseModel):
     @classmethod
     def validate_phone(cls, v):
         if v is not None and v.strip():
-            cleaned = re.sub(r'[\s\-\(\)]', '', v)
-            if not re.match(r'^\+?\d{8,15}$', cleaned):
-                raise ValueError(
-                    "Formato de telefone inválido. Use: +55 11 99999-9999"
-                )
+            cleaned = re.sub(r"[\s\-\(\)]", "", v)
+            if not re.match(r"^\+?\d{8,15}$", cleaned):
+                raise ValueError("Formato de telefone inválido. Use: +55 11 99999-9999")
         return v
 
 
@@ -457,4 +489,3 @@ class ProfileDetectionResult(BaseModel):
 
 
 # ── Error Response (RFC 7807) ──────────────────────────────────────────
-

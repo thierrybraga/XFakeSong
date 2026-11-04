@@ -26,8 +26,7 @@ def sample_audio_file(tmp_path):
     with open(file_path, "wb") as f:
         # Minimal header to look like a file, but service only checks ext
         f.write(
-            b"RIFF" + b"\x00" * 32 + b"WAVEfmt " +
-            b"\x00" * 16 + b"data" + b"\x00" * 10
+            b"RIFF" + b"\x00" * 32 + b"WAVEfmt " + b"\x00" * 16 + b"data" + b"\x00" * 10
         )
     return str(file_path)
 
@@ -45,14 +44,14 @@ def test_validate_file_invalid_extension(upload_service, tmp_path):
     assert result.status != ProcessingStatus.SUCCESS
     # Check for error message
     assert result.errors
-    assert "formato" in result.errors[0].lower() or \
-           "not supported" in result.errors[0].lower()
+    assert (
+        "formato" in result.errors[0].lower()
+        or "not supported" in result.errors[0].lower()
+    )
 
 
 def test_upload_success(upload_service, sample_audio_file):
-    result = upload_service.upload_file(
-        sample_audio_file, DatasetType.TRAINING
-    )
+    result = upload_service.upload_file(sample_audio_file, DatasetType.TRAINING)
 
     assert result.status == ProcessingStatus.SUCCESS
     assert result.data is not None
@@ -69,6 +68,7 @@ def test_create_dataset_no_servico(upload_service):
     assert metadata.dataset_type == DatasetType.TRAINING
 
     # Check if directory was created
-    expected_path = upload_service.upload_directory / \
-        DatasetType.TRAINING.value / "my_dataset"
+    expected_path = (
+        upload_service.upload_directory / DatasetType.TRAINING.value / "my_dataset"
+    )
     assert expected_path.exists()

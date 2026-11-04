@@ -39,10 +39,18 @@ _CHAVES_DE_TREINO = (
 )
 
 
-@pytest.mark.parametrize("arquitetura", [
-    "AASIST", "Conformer", "RawNet2", "RawGAT-ST", "MultiscaleCNN",
-    "Hybrid CNN-Transformer", "SpectrogramTransformer",
-])
+@pytest.mark.parametrize(
+    "arquitetura",
+    [
+        "AASIST",
+        "Conformer",
+        "RawNet2",
+        "RawGAT-ST",
+        "MultiscaleCNN",
+        "Hybrid CNN-Transformer",
+        "SpectrogramTransformer",
+    ],
+)
 def test_ui_propoe_a_configuracao_do_pipeline(arquitetura):
     plano = NEURAL_BENCHMARK_HPARAMS[_compact(arquitetura)]
     ui = get_interface_hyperparameters(arquitetura, None)
@@ -59,9 +67,9 @@ def test_ui_propoe_a_configuracao_do_pipeline(arquitetura):
 def test_plano_vence_a_linha_semeada_do_banco():
     """`architecture_configs` é semeado pela app, não escrito pelo usuário."""
     semeado = {
-        "learning_rate": 5e-05,   # o plano usa 1e-05
-        "pretrained": False,      # o plano parte dos pesos AudioSet
-        "patch_size": [16, 16],   # estrutura: o plano NÃO define
+        "learning_rate": 5e-05,  # o plano usa 1e-05
+        "pretrained": False,  # o plano parte dos pesos AudioSet
+        "patch_size": [16, 16],  # estrutura: o plano NÃO define
         "embed_dim": 768,
     }
     ui = get_interface_hyperparameters("SpectrogramTransformer", semeado)
@@ -78,8 +86,13 @@ def test_plano_vence_a_linha_semeada_do_banco():
 
 def test_escopo_estendido_nao_quebra_sem_entrada_no_plano():
     """Sonic Sleuth, EfficientNet-LSTM, Ensemble, WavLM e HuBERT."""
-    for arquitetura in ("Sonic Sleuth", "EfficientNet-LSTM", "Ensemble",
-                        "WavLM", "HuBERT"):
+    for arquitetura in (
+        "Sonic Sleuth",
+        "EfficientNet-LSTM",
+        "Ensemble",
+        "WavLM",
+        "HuBERT",
+    ):
         ui = get_interface_hyperparameters(arquitetura, None)
         assert ui["batch_size"] > 0
         assert ui["epochs"] > 0
@@ -95,6 +108,6 @@ def test_arquiteturas_deixam_de_ter_defaults_identicos():
         )
         for arq in ("AASIST", "Conformer", "RawNet2", "SpectrogramTransformer")
     }
-    assert len(set(vistos.values())) > 1, (
-        f"todas as arquiteturas ainda propõem a mesma configuracao: {vistos}"
-    )
+    assert (
+        len(set(vistos.values())) > 1
+    ), f"todas as arquiteturas ainda propõem a mesma configuracao: {vistos}"

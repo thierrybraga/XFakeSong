@@ -19,6 +19,7 @@ Exclusões deliberadas:
 Pula automaticamente quando o TensorFlow não está instalado (mesmo padrão dos
 testes de execução de notebook).
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -72,9 +73,7 @@ def test_architecture_builds_and_forwards(architecture):
 
     # num_classes=1 -> sigmoid de 1 unidade = p(fake) (convenção do projeto,
     # idêntica à célula de inspeção dos notebooks de modelo).
-    model = create_model_by_name(
-        architecture, input_shape=input_shape, num_classes=1
-    )
+    model = create_model_by_name(architecture, input_shape=input_shape, num_classes=1)
 
     y = model(prepared.X[:1], training=False)
     out = tuple(int(d) for d in y.shape)
@@ -93,8 +92,12 @@ def test_architecture_builds_and_forwards(architecture):
 # (SharedSTFTLayer et al. em app/domain/models/architectures/ensemble.py),
 # então prepare_for_architecture roteia por _to_raw_audio, não _to_spectrogram.
 SPECTROGRAM_ARCHS = [
-    "Sonic Sleuth", "Conformer", "Hybrid CNN-Transformer",
-    "SpectrogramTransformer", "EfficientNet-LSTM", "MultiscaleCNN",
+    "Sonic Sleuth",
+    "Conformer",
+    "Hybrid CNN-Transformer",
+    "SpectrogramTransformer",
+    "EfficientNet-LSTM",
+    "MultiscaleCNN",
 ]
 
 
@@ -219,17 +222,19 @@ def test_default_variant_does_not_warn(architecture, caplog):
 
     info = get_architecture_info(architecture)
     # Pré-condição: estas arquiteturas realmente não listam "default".
-    assert "default" not in info.supported_variants, (
-        f"{architecture}: teste obsoleto — 'default' agora está nos variants"
-    )
+    assert (
+        "default" not in info.supported_variants
+    ), f"{architecture}: teste obsoleto — 'default' agora está nos variants"
 
     data = BenchmarkData.synthetic(n=8, shape=(64, 40), seed=7)
     prepared = data.prepare_for_architecture(architecture)
-    with caplog.at_level(logging.WARNING,
-                         logger="app.domain.models.architectures.factory"):
+    with caplog.at_level(
+        logging.WARNING, logger="app.domain.models.architectures.factory"
+    ):
         create_model_by_name(
             architecture, input_shape=tuple(prepared.X.shape[1:]), num_classes=1
         )
-    offending = [r.getMessage() for r in caplog.records
-                 if "not supported" in r.getMessage()]
+    offending = [
+        r.getMessage() for r in caplog.records if "not supported" in r.getMessage()
+    ]
     assert not offending, f"{architecture}: avisos espúrios de variant: {offending}"

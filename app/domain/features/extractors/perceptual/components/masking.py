@@ -1,6 +1,7 @@
 """
 Extração de características de mascaramento auditivo.
 """
+
 from typing import Dict
 
 import librosa
@@ -10,7 +11,8 @@ import numpy as np
 
 
 def extract_masking_features(
-        y: np.ndarray, sr: int, frame_length: int, hop_length: int) -> Dict:
+    y: np.ndarray, sr: int, frame_length: int, hop_length: int
+) -> Dict:
     """Extrai características de mascaramento auditivo (versão otimizada)."""
     features = {}
 
@@ -18,7 +20,7 @@ def extract_masking_features(
         # Calcular espectrograma
         stft = librosa.stft(y, n_fft=frame_length, hop_length=hop_length)
         magnitude = np.abs(stft)
-        power = magnitude ** 2
+        power = magnitude**2
 
         # Frequências dos bins
         freqs = librosa.fft_frequencies(sr=sr, n_fft=frame_length)
@@ -30,8 +32,7 @@ def extract_masking_features(
         # Calcular características simplificadas de mascaramento
         # Usar apenas algumas amostras para evitar travamento
         n_samples = min(10, power.shape[1])  # Máximo 10 frames
-        sample_indices = np.linspace(
-            0, power.shape[1] - 1, n_samples, dtype=int)
+        sample_indices = np.linspace(0, power.shape[1] - 1, n_samples, dtype=int)
 
         masking_values = []
 
@@ -62,19 +63,19 @@ def extract_masking_features(
 
         # Características de mascaramento
         if len(masking_values) > 0:
-            features['masking_threshold_mean'] = np.mean(masking_values)
-            features['masking_threshold_std'] = np.std(masking_values)
-            features['masking_threshold_max'] = np.max(masking_values)
+            features["masking_threshold_mean"] = np.mean(masking_values)
+            features["masking_threshold_std"] = np.std(masking_values)
+            features["masking_threshold_max"] = np.max(masking_values)
         else:
-            features['masking_threshold_mean'] = 0.0
-            features['masking_threshold_std'] = 0.0
-            features['masking_threshold_max'] = 0.0
+            features["masking_threshold_mean"] = 0.0
+            features["masking_threshold_std"] = 0.0
+            features["masking_threshold_max"] = 0.0
 
     except Exception as e:
         print(f"Erro no masking: {str(e)}")
-        features['masking_threshold_mean'] = 0.0
-        features['masking_threshold_std'] = 0.0
-        features['masking_threshold_max'] = 0.0
+        features["masking_threshold_mean"] = 0.0
+        features["masking_threshold_std"] = 0.0
+        features["masking_threshold_max"] = 0.0
 
     # Centroide espectral perceptual (considerando mascaramento)
     try:
@@ -90,14 +91,13 @@ def extract_masking_features(
                     perceptual_centroids.append(centroid)
 
         if perceptual_centroids:
-            features['perceptual_centroid_mean'] = np.mean(
-                perceptual_centroids)
-            features['perceptual_centroid_std'] = np.std(perceptual_centroids)
+            features["perceptual_centroid_mean"] = np.mean(perceptual_centroids)
+            features["perceptual_centroid_std"] = np.std(perceptual_centroids)
         else:
-            features['perceptual_centroid_mean'] = 0
-            features['perceptual_centroid_std'] = 0
+            features["perceptual_centroid_mean"] = 0
+            features["perceptual_centroid_std"] = 0
     except BaseException:
-        features['perceptual_centroid_mean'] = 0
-        features['perceptual_centroid_std'] = 0
+        features["perceptual_centroid_mean"] = 0
+        features["perceptual_centroid_std"] = 0
 
     return features

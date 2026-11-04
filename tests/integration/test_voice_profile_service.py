@@ -44,8 +44,9 @@ def _voz(f0: float, segundos: float, semente: int) -> bytes:
     onda = sum(np.sin(k * fase) / k for k in range(1, 6))
     onda += 0.01 * np.random.default_rng(semente).standard_normal(len(t))
     buffer = io.BytesIO()
-    soundfile.write(buffer, (0.3 * onda / np.abs(onda).max()).astype("float32"), sr,
-                    format="WAV")
+    soundfile.write(
+        buffer, (0.3 * onda / np.abs(onda).max()).astype("float32"), sr, format="WAV"
+    )
     return buffer.getvalue()
 
 
@@ -63,7 +64,9 @@ def test_perfil_completo_com_svm(servico):
     assert servico.remove_audio_sample(perfil.id, "frase_3.wav")
     info = servico.get_dataset_info(perfil.id)
     assert [f["filename"] for f in info["files"]] == [
-        "frase_0.wav", "frase_1.wav", "frase_2.wav",
+        "frase_0.wav",
+        "frase_1.wav",
+        "frase_2.wav",
     ]
 
     validacao = servico.validate_dataset_for_training(perfil.id)
@@ -77,8 +80,16 @@ def test_perfil_completo_com_svm(servico):
     assert resultado["success"], resultado
     metricas = resultado["metrics"]
     assert set(metricas) == {
-        "accuracy", "val_accuracy", "precision", "recall", "f1_score", "eer",
-        "confusion_matrix", "loss", "val_loss", "epochs_trained",
+        "accuracy",
+        "val_accuracy",
+        "precision",
+        "recall",
+        "f1_score",
+        "eer",
+        "confusion_matrix",
+        "loss",
+        "val_loss",
+        "epochs_trained",
     }
     assert any("Extraindo features" in m for m in mensagens)
     assert any("SVM" in m for m in mensagens)

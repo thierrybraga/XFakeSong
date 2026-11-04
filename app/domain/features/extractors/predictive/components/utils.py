@@ -14,7 +14,7 @@ def frame_signal(y: np.ndarray, frame_length: int, hop_length: int) -> list:
     frames = []
 
     for i in range(0, len(y) - frame_length + 1, hop_length):
-        frame = y[i:i + frame_length]
+        frame = y[i : i + frame_length]
 
         # Aplicar janela
         window = scipy.signal.windows.hann(len(frame))
@@ -25,26 +25,25 @@ def frame_signal(y: np.ndarray, frame_length: int, hop_length: int) -> list:
     return frames
 
 
-def compute_lpc(frame: np.ndarray,
-                order: int) -> Tuple[Optional[np.ndarray], float]:
+def compute_lpc(frame: np.ndarray, order: int) -> Tuple[Optional[np.ndarray], float]:
     """Calcula coeficientes LPC usando autocorrelação."""
     try:
         # Calcular autocorrelação
-        autocorr = np.correlate(frame, frame, mode='full')
-        autocorr = autocorr[len(autocorr) // 2:]
+        autocorr = np.correlate(frame, frame, mode="full")
+        autocorr = autocorr[len(autocorr) // 2 :]
 
         if len(autocorr) <= order:
             return None, 0
 
         # Resolver equações de Yule-Walker
         R = scipy.linalg.toeplitz(autocorr[:order])
-        r = autocorr[1:order + 1]
+        r = autocorr[1 : order + 1]
 
         # Resolver sistema linear
         lpc_coeffs = scipy.linalg.solve(R, r)
 
         # Calcular ganho
-        gain = autocorr[0] - np.dot(lpc_coeffs, autocorr[1:order + 1])
+        gain = autocorr[0] - np.dot(lpc_coeffs, autocorr[1 : order + 1])
 
         return lpc_coeffs, gain
 
@@ -106,7 +105,7 @@ def lpc_to_lsf(lpc_coeffs: np.ndarray, sr: int) -> Optional[np.ndarray]:
             # Preencher ou truncar conforme necessário
             if len(lsf_hz) < order:
                 # Preencher com valores interpolados
-                lsf_hz = np.pad(lsf_hz, (0, order - len(lsf_hz)), mode='edge')
+                lsf_hz = np.pad(lsf_hz, (0, order - len(lsf_hz)), mode="edge")
             else:
                 # Truncar
                 lsf_hz = lsf_hz[:order]
@@ -118,12 +117,13 @@ def lpc_to_lsf(lpc_coeffs: np.ndarray, sr: int) -> Optional[np.ndarray]:
 
 
 def compute_reflection_coefficients(
-        frame: np.ndarray, order: int) -> Optional[np.ndarray]:
+    frame: np.ndarray, order: int
+) -> Optional[np.ndarray]:
     """Calcula coeficientes de reflexão usando algoritmo de Levinson-Durbin."""
     try:
         # Calcular autocorrelação
-        autocorr = np.correlate(frame, frame, mode='full')
-        autocorr = autocorr[len(autocorr) // 2:]
+        autocorr = np.correlate(frame, frame, mode="full")
+        autocorr = autocorr[len(autocorr) // 2 :]
 
         if len(autocorr) <= order or autocorr[0] == 0:
             return None
@@ -165,7 +165,8 @@ def compute_reflection_coefficients(
 
 
 def compute_prediction_error(
-        frame: np.ndarray, order: int) -> Tuple[Optional[np.ndarray], float]:
+    frame: np.ndarray, order: int
+) -> Tuple[Optional[np.ndarray], float]:
     """Calcula erro de predição."""
     try:
         # Calcular coeficientes LPC
@@ -197,8 +198,7 @@ def compute_prediction_error(
         return None, 0
 
 
-def check_stability(
-        lpc_coeffs: np.ndarray) -> Tuple[bool, Optional[np.ndarray]]:
+def check_stability(lpc_coeffs: np.ndarray) -> Tuple[bool, Optional[np.ndarray]]:
     """Verifica estabilidade do filtro LPC através dos polos."""
     try:
         # Construir polinômio característico
@@ -222,8 +222,7 @@ def check_stability(
         return False, None
 
 
-def lpc_to_frequency_response(
-        lpc_coeffs: np.ndarray, sr: int) -> Optional[np.ndarray]:
+def lpc_to_frequency_response(lpc_coeffs: np.ndarray, sr: int) -> Optional[np.ndarray]:
     """Calcula resposta em frequência do filtro LPC."""
     try:
         # Construir função de transferência

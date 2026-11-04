@@ -10,8 +10,8 @@ from .utils import compute_reflection_coefficients, frame_signal
 
 
 def extract_reflection_features(
-        y: np.ndarray, frame_length: int, hop_length: int,
-        lpc_order: int) -> Dict:
+    y: np.ndarray, frame_length: int, hop_length: int, lpc_order: int
+) -> Dict:
     """Extrai características dos coeficientes de reflexão."""
     features = {}
 
@@ -24,8 +24,7 @@ def extract_reflection_features(
         if len(frame) > lpc_order + 1:
             # Calcular coeficientes de reflexão usando algoritmo de
             # Levinson-Durbin
-            reflection_coeffs = compute_reflection_coefficients(
-                frame, lpc_order)
+            reflection_coeffs = compute_reflection_coefficients(frame, lpc_order)
 
             if reflection_coeffs is not None:
                 all_reflection_coeffs.append(reflection_coeffs)
@@ -38,33 +37,36 @@ def extract_reflection_features(
         # Estatísticas dos coeficientes individuais
         for i in range(min(lpc_order, all_reflection_coeffs.shape[1])):
             refl_values = all_reflection_coeffs[:, i]
-            features[f'reflection_coeff_{i + 1}_mean'] = np.mean(refl_values)
-            features[f'reflection_coeff_{i + 1}_std'] = np.std(refl_values)
+            features[f"reflection_coeff_{i + 1}_mean"] = np.mean(refl_values)
+            features[f"reflection_coeff_{i + 1}_std"] = np.std(refl_values)
 
         # Estatísticas globais
-        features['reflection_coeffs_mean'] = np.mean(all_reflection_coeffs)
-        features['reflection_coeffs_std'] = np.std(all_reflection_coeffs)
-        features['reflection_coeffs_range'] = np.max(
-            all_reflection_coeffs) - np.min(all_reflection_coeffs)
+        features["reflection_coeffs_mean"] = np.mean(all_reflection_coeffs)
+        features["reflection_coeffs_std"] = np.std(all_reflection_coeffs)
+        features["reflection_coeffs_range"] = np.max(all_reflection_coeffs) - np.min(
+            all_reflection_coeffs
+        )
 
         # Estabilidade (coeficientes de reflexão devem estar em [-1, 1])
         stability_violations = np.sum(np.abs(all_reflection_coeffs) >= 1.0)
         total_coeffs = all_reflection_coeffs.size
-        features['reflection_stability_ratio'] = 1 - \
-            (stability_violations / total_coeffs)
+        features["reflection_stability_ratio"] = 1 - (
+            stability_violations / total_coeffs
+        )
 
         # Variação temporal
         if len(all_reflection_coeffs) > 1:
             refl_variation = np.diff(all_reflection_coeffs, axis=0)
-            features['reflection_temporal_variation'] = np.mean(
-                np.std(refl_variation, axis=0))
+            features["reflection_temporal_variation"] = np.mean(
+                np.std(refl_variation, axis=0)
+            )
 
     return features
 
 
 def extract_parcor_features(
-        y: np.ndarray, frame_length: int, hop_length: int,
-        lpc_order: int) -> Dict:
+    y: np.ndarray, frame_length: int, hop_length: int, lpc_order: int
+) -> Dict:
     """Extrai características dos coeficientes PARCOR (Partial Correlation)."""
     features = {}
 
@@ -92,17 +94,17 @@ def extract_parcor_features(
         # Estatísticas dos coeficientes individuais
         for i in range(min(lpc_order, all_parcor_coeffs.shape[1])):
             parcor_values = all_parcor_coeffs[:, i]
-            features[f'parcor_coeff_{i + 1}_mean'] = np.mean(parcor_values)
-            features[f'parcor_coeff_{i + 1}_std'] = np.std(parcor_values)
+            features[f"parcor_coeff_{i + 1}_mean"] = np.mean(parcor_values)
+            features[f"parcor_coeff_{i + 1}_std"] = np.std(parcor_values)
 
         # Estatísticas globais
-        features['parcor_coeffs_mean'] = np.mean(all_parcor_coeffs)
-        features['parcor_coeffs_std'] = np.std(all_parcor_coeffs)
+        features["parcor_coeffs_mean"] = np.mean(all_parcor_coeffs)
+        features["parcor_coeffs_std"] = np.std(all_parcor_coeffs)
 
         # Correlação parcial dominante
         parcor_magnitudes = np.abs(all_parcor_coeffs)
-        features['parcor_max_magnitude'] = np.max(parcor_magnitudes)
-        features['parcor_mean_magnitude'] = np.mean(parcor_magnitudes)
+        features["parcor_max_magnitude"] = np.max(parcor_magnitudes)
+        features["parcor_mean_magnitude"] = np.mean(parcor_magnitudes)
 
         # Ordem efetiva (último coeficiente significativo)
         effective_orders = []
@@ -120,7 +122,7 @@ def extract_parcor_features(
             effective_orders.append(effective_order)
 
         if effective_orders:
-            features['parcor_effective_order_mean'] = np.mean(effective_orders)
-            features['parcor_effective_order_std'] = np.std(effective_orders)
+            features["parcor_effective_order_mean"] = np.mean(effective_orders)
+            features["parcor_effective_order_std"] = np.std(effective_orders)
 
     return features

@@ -22,13 +22,13 @@ DEFAULT_FEATURE_CONFIG = {
     "sr_target": 16000,
     "feature_set": "full",  # full | compact
     "features": [
-        "mfcc_stats",       # 13 * 4 = 52
-        "delta_mfcc",       # 13 * 2 = 26
-        "spectral_stats",   # 6 * 2 = 12  (centroid, bandwidth, rolloff, flatness, zcr, rms)
-        "spectral_contrast", # 7 * 2 = 14
-        "f0_stats",         # 4
-        "chroma_stats",     # 12 * 2 = 24
-        "tonnetz_stats",    # 6 * 2 = 12
+        "mfcc_stats",  # 13 * 4 = 52
+        "delta_mfcc",  # 13 * 2 = 26
+        "spectral_stats",  # 6 * 2 = 12  (centroid, bandwidth, rolloff, flatness, zcr, rms)
+        "spectral_contrast",  # 7 * 2 = 14
+        "f0_stats",  # 4
+        "chroma_stats",  # 12 * 2 = 24
+        "tonnetz_stats",  # 6 * 2 = 12
     ],
     "total_dim": 144,
 }
@@ -64,8 +64,14 @@ def extract_profile_features(y: np.ndarray, sr: int) -> Optional[np.ndarray]:
         zcr = librosa.feature.zero_crossing_rate(y)
         rms = librosa.feature.rms(y=y)
 
-        for feat in [spectral_centroid, spectral_bandwidth, spectral_rolloff,
-                     spectral_flatness, zcr, rms]:
+        for feat in [
+            spectral_centroid,
+            spectral_bandwidth,
+            spectral_rolloff,
+            spectral_flatness,
+            zcr,
+            rms,
+        ]:
             features.extend([np.mean(feat), np.std(feat)])
 
         # Spectral contrast (7 bands x 2 stats = 14)
@@ -74,17 +80,19 @@ def extract_profile_features(y: np.ndarray, sr: int) -> Optional[np.ndarray]:
 
         # F0 / Pitch (4 features)
         f0, voiced_flag, voiced_probs = librosa.pyin(
-            y, fmin=librosa.note_to_hz('C2'),
-            fmax=librosa.note_to_hz('C7'), sr=sr
+            y, fmin=librosa.note_to_hz("C2"), fmax=librosa.note_to_hz("C7"), sr=sr
         )
         f0_valid = f0[~np.isnan(f0)] if f0 is not None else np.array([0])
         if len(f0_valid) == 0:
             f0_valid = np.array([0])
-        features.extend([
-            np.mean(f0_valid), np.std(f0_valid),
-            np.max(f0_valid) - np.min(f0_valid),
-            np.mean(voiced_probs) if voiced_probs is not None else 0.0,
-        ])
+        features.extend(
+            [
+                np.mean(f0_valid),
+                np.std(f0_valid),
+                np.max(f0_valid) - np.min(f0_valid),
+                np.mean(voiced_probs) if voiced_probs is not None else 0.0,
+            ]
+        )
 
         # Chroma (12 x 2 stats = 24)
         chroma = librosa.feature.chroma_stft(y=y, sr=sr)
@@ -126,8 +134,7 @@ def generate_synthetic_fakes(
 
     fake_features = []
     audio_files = sorted(
-        f for f in samples_dir.iterdir()
-        if f.suffix.lower() in AUDIO_EXTENSIONS
+        f for f in samples_dir.iterdir() if f.suffix.lower() in AUDIO_EXTENSIONS
     )
 
     for audio_file in audio_files:
@@ -174,7 +181,7 @@ def generate_synthetic_fakes(
                 nyquist = sr / 2
                 cutoff = 3500 / nyquist  # Corta acima de 3.5kHz
                 if 0 < cutoff < 1:
-                    b, a = signal.butter(4, cutoff, btype='low')
+                    b, a = signal.butter(4, cutoff, btype="low")
                     y_lp = signal.filtfilt(b, a, y).astype(np.float32)
                     perturbations.append(y_lp)
             except Exception:

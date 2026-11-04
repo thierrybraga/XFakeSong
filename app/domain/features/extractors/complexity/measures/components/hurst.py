@@ -22,7 +22,7 @@ def compute_hurst_exponent(y: np.ndarray) -> float:
         rs_segment = []
 
         for i in range(n_segments):
-            segment = y[i * scale:(i + 1) * scale]
+            segment = y[i * scale : (i + 1) * scale]
 
             # Calcular média
             mean_segment = np.mean(segment)
@@ -51,7 +51,7 @@ def compute_hurst_exponent(y: np.ndarray) -> float:
     if np.sum(valid_indices) < 3:
         return np.nan
 
-    valid_scales = scales[:len(rs_values)][valid_indices]
+    valid_scales = scales[: len(rs_values)][valid_indices]
     valid_rs = np.array(rs_values)[valid_indices]
 
     # Ajuste linear em escala log-log
@@ -64,7 +64,8 @@ def compute_hurst_exponent(y: np.ndarray) -> float:
 
 
 def compute_hurst_exponent_optimized(
-        y: np.ndarray, cache: Optional[Dict] = None) -> float:
+    y: np.ndarray, cache: Optional[Dict] = None
+) -> float:
     """Versão otimizada do expoente de Hurst com menos escalas."""
     N = len(y)
 
@@ -122,7 +123,7 @@ def compute_hurst_exponent_optimized(
     if np.sum(valid_indices) < 3:
         result = np.nan
     else:
-        valid_scales = scales[:len(rs_values)][valid_indices]
+        valid_scales = scales[: len(rs_values)][valid_indices]
         valid_rs = np.array(rs_values)[valid_indices]
 
         # Ajuste linear em escala log-log

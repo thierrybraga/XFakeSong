@@ -31,7 +31,9 @@ def dataset(tmp_path):
         for classe, onda in (("real", real), ("fake", fake)):
             pasta = tmp_path / "ds" / classe
             pasta.mkdir(parents=True, exist_ok=True)
-            soundfile.write(str(pasta / f"{classe}_{i}.wav"), onda.astype("float32"), 16000)
+            soundfile.write(
+                str(pasta / f"{classe}_{i}.wav"), onda.astype("float32"), 16000
+            )
     return tmp_path / "ds"
 
 

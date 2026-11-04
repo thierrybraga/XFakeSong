@@ -84,9 +84,7 @@ def info_callout(text: str, variant: str = "info") -> gr.HTML:
         ``gr.HTML`` com a classe ``.xf-callout .xf-callout-<variant>``.
     """
     variant = variant if variant in {"info", "success", "warning", "accent"} else "info"
-    return gr.HTML(
-        f'<div class="xf-callout xf-callout-{variant}">{text}</div>'
-    )
+    return gr.HTML(f'<div class="xf-callout xf-callout-{variant}">{text}</div>')
 
 
 def ui_safe(mensagem: str = "Falha ao processar a solicitação"):
@@ -116,6 +114,7 @@ def ui_safe(mensagem: str = "Falha ao processar a solicitação"):
     enough output values") — foi assim que validar, treinar e salvar do
     assistente de treino quebraram.
     """
+
     def decorador(funcao):
         def _converter(exc: Exception):
             logger.exception("%s: %s", funcao.__qualname__, exc)

@@ -43,22 +43,24 @@ def prepare_training_split(
     X_fake = np.array(fake_features)
 
     X = np.vstack([X_real, X_fake])
-    y = np.concatenate([
-        np.zeros(len(X_real)),
-        np.ones(len(X_fake)),
-    ])
+    y = np.concatenate(
+        [
+            np.zeros(len(X_real)),
+            np.ones(len(X_fake)),
+        ]
+    )
 
     # Stratified split (mantém proporção real:fake em train/val)
     from sklearn.model_selection import StratifiedShuffleSplit
-    splitter = StratifiedShuffleSplit(
-        n_splits=1, test_size=0.2, random_state=42
-    )
+
+    splitter = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
     train_idx, val_idx = next(splitter.split(X, y))
     X_train, X_val = X[train_idx], X[val_idx]
     y_train, y_val = y[train_idx], y[val_idx]
 
     # Calcular class weights para balanceamento
     from sklearn.utils.class_weight import compute_class_weight
+
     class_weights_arr = compute_class_weight(
         "balanced", classes=np.array([0, 1]), y=y_train
     )
@@ -66,6 +68,7 @@ def prepare_training_split(
 
     # Normalização
     from sklearn.preprocessing import StandardScaler
+
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_val = scaler.transform(X_val)
@@ -106,21 +109,21 @@ def train_keras_profile_model(
 
         model.compile(
             optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
-            loss='binary_crossentropy',
+            loss="binary_crossentropy",
             metrics=[
-                'accuracy',
-                tf.keras.metrics.Precision(name='precision'),
-                tf.keras.metrics.Recall(name='recall'),
-                tf.keras.metrics.AUC(name='auc'),
+                "accuracy",
+                tf.keras.metrics.Precision(name="precision"),
+                tf.keras.metrics.Recall(name="recall"),
+                tf.keras.metrics.AUC(name="auc"),
             ],
         )
 
         callbacks = [
             tf.keras.callbacks.EarlyStopping(
-                monitor='val_loss', patience=8, restore_best_weights=True
+                monitor="val_loss", patience=8, restore_best_weights=True
             ),
             tf.keras.callbacks.ReduceLROnPlateau(
-                monitor='val_loss', factor=0.5, patience=4, min_lr=1e-6
+                monitor="val_loss", factor=0.5, patience=4, min_lr=1e-6
             ),
         ]
 
@@ -128,11 +131,11 @@ def train_keras_profile_model(
         class ProgressCallback(tf.keras.callbacks.Callback):
             def on_epoch_end(self, epoch, logs=None):
                 if progress_callback and logs:
-                    acc = logs.get('accuracy', 0)
-                    val_acc = logs.get('val_accuracy', 0)
-                    loss = logs.get('loss', 0)
-                    precision = logs.get('val_precision', 0)
-                    recall = logs.get('val_recall', 0)
+                    acc = logs.get("accuracy", 0)
+                    val_acc = logs.get("val_accuracy", 0)
+                    loss = logs.get("loss", 0)
+                    precision = logs.get("val_precision", 0)
+                    recall = logs.get("val_recall", 0)
                     progress_callback(
                         f"Época {epoch + 1}/{epochs} — "
                         f"loss: {loss:.4f}, acc: {acc:.4f}, "
@@ -143,7 +146,8 @@ def train_keras_profile_model(
         callbacks.append(ProgressCallback())
 
         history = model.fit(
-            X_train, y_train,
+            X_train,
+            y_train,
             validation_data=(X_val, y_val),
             epochs=epochs,
             batch_size=batch_size,
@@ -182,7 +186,7 @@ def train_keras_profile_model(
             "architecture": architecture,
             "model_type": "dl",
             "input_dim": input_dim,
-            "epochs_trained": len(history.history['loss']),
+            "epochs_trained": len(history.history["loss"]),
             "model_params": model.count_params(),
             "created_at": datetime.now().isoformat(),
         }
@@ -191,20 +195,19 @@ def train_keras_profile_model(
 
         # Métricas finais
         final_metrics = {
-            "accuracy": float(history.history['accuracy'][-1]),
-            "val_accuracy": float(history.history['val_accuracy'][-1]),
-            "loss": float(history.history['loss'][-1]),
-            "val_loss": float(history.history['val_loss'][-1]),
+            "accuracy": float(history.history["accuracy"][-1]),
+            "val_accuracy": float(history.history["val_accuracy"][-1]),
+            "loss": float(history.history["loss"][-1]),
+            "val_loss": float(history.history["val_loss"][-1]),
             "precision": round(precision_val, 4),
             "recall": round(recall_val, 4),
             "f1_score": round(f1_val, 4),
             "eer": round(eer, 4),
             "confusion_matrix": cm.tolist(),
-            "epochs_trained": len(history.history['loss']),
+            "epochs_trained": len(history.history["loss"]),
             "model_params": model.count_params(),
             "history": {
-                k: [float(v) for v in vals]
-                for k, vals in history.history.items()
+                k: [float(v) for v in vals] for k, vals in history.history.items()
             },
         }
 
@@ -240,26 +243,31 @@ def train_classical_profile_model(
 
         if architecture == "svm":
             from sklearn.svm import SVC
+
             model = SVC(
-                kernel='rbf',
+                kernel="rbf",
                 C=1.0,
-                gamma='scale',
-                class_weight='balanced',
+                gamma="scale",
+                class_weight="balanced",
                 probability=True,
                 random_state=42,
             )
         elif architecture == "random_forest":
             from sklearn.ensemble import RandomForestClassifier
+
             model = RandomForestClassifier(
                 n_estimators=200,
                 max_depth=10,
                 min_samples_split=5,
-                class_weight='balanced',
+                class_weight="balanced",
                 random_state=42,
                 n_jobs=-1,
             )
         else:
-            return {"success": False, "error": f"Arquitetura ML '{architecture}' desconhecida"}
+            return {
+                "success": False,
+                "error": f"Arquitetura ML '{architecture}' desconhecida",
+            }
 
         model.fit(X_train, y_train)
 
@@ -319,6 +327,7 @@ def compute_eer(y_true: np.ndarray, y_scores: np.ndarray) -> float:
     """Calcula Equal Error Rate (EER)."""
     try:
         from sklearn.metrics import roc_curve
+
         fpr, tpr, thresholds = roc_curve(y_true, y_scores)
         fnr = 1 - tpr
         # Encontrar ponto onde FPR ≈ FNR

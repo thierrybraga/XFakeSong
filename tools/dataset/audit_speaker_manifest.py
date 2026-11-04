@@ -131,11 +131,11 @@ def main() -> int:
                 "files": counts["files"],
                 "identified": counts["identified"],
                 "missing": counts["missing"],
-                "identified_ratio": round(
-                    counts["identified"] / counts["files"], 6
-                )
-                if counts["files"]
-                else 0.0,
+                "identified_ratio": (
+                    round(counts["identified"] / counts["files"], 6)
+                    if counts["files"]
+                    else 0.0
+                ),
                 "distinct_speakers": len(speakers_by_prefix[prefix]),
             }
             for prefix, counts in sorted(by_prefix.items())
@@ -146,7 +146,9 @@ def main() -> int:
     if not out_path.is_absolute():
         out_path = ROOT / out_path
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    out_path.write_text(
+        json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
 
     print(json.dumps(report, indent=2, ensure_ascii=False))
     if identified_ratio < args.min_identified_ratio:

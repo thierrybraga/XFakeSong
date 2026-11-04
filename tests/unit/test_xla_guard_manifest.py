@@ -57,20 +57,28 @@ def test_guarda_xla_casa_com_os_nomes_do_manifesto(runner):
         chave = runner._compact(nome)
         if chave not in runner._XLA_UNFRIENDLY_TRAINING_ARCHITECTURES:
             falhas.append(f"{nome!r} -> {chave!r} não está no conjunto ({motivo})")
-    assert not falhas, (
-        "a guarda de XLA não alcança arquiteturas que dependem dela:\n  "
-        + "\n  ".join(falhas)
+    assert (
+        not falhas
+    ), "a guarda de XLA não alcança arquiteturas que dependem dela:\n  " + "\n  ".join(
+        falhas
     )
 
 
 def test_guarda_nao_desliga_xla_para_quem_nao_precisa(runner):
     """Desligar o auto-JIT onde não é preciso custa desempenho de graça."""
-    for nome in ("Conformer", "Hybrid CNN-Transformer", "SpectrogramTransformer",
-                 "SVM", "RandomForest", "WavLM Original", "HuBERT Original"):
+    for nome in (
+        "Conformer",
+        "Hybrid CNN-Transformer",
+        "SpectrogramTransformer",
+        "SVM",
+        "RandomForest",
+        "WavLM Original",
+        "HuBERT Original",
+    ):
         chave = runner._compact(nome)
-        assert chave not in runner._XLA_UNFRIENDLY_TRAINING_ARCHITECTURES, (
-            f"{nome!r} não precisa da mitigação de XLA, mas casou com o conjunto"
-        )
+        assert (
+            chave not in runner._XLA_UNFRIENDLY_TRAINING_ARCHITECTURES
+        ), f"{nome!r} não precisa da mitigação de XLA, mas casou com o conjunto"
 
 
 def test_todo_nome_do_conjunto_existe_no_manifesto(runner):
@@ -87,9 +95,9 @@ def test_todo_nome_do_conjunto_existe_no_manifesto(runner):
         for item in OFFICIAL_TCC_MODEL_MANIFEST
     }
     orfas = runner._XLA_UNFRIENDLY_TRAINING_ARCHITECTURES - conhecidos
-    assert not orfas, (
-        f"chaves sem arquitetura correspondente no manifesto oficial: {sorted(orfas)}"
-    )
+    assert (
+        not orfas
+    ), f"chaves sem arquitetura correspondente no manifesto oficial: {sorted(orfas)}"
 
 
 def test_a_derivacao_usada_e_a_compacta_nao_a_com_underscore(runner):
@@ -102,5 +110,7 @@ def test_a_derivacao_usada_e_a_compacta_nao_a_com_underscore(runner):
     """
     assert runner._slug("RawGAT-ST") == "rawgat_st"
     assert runner._compact("RawGAT-ST") == "rawgatst"
-    assert runner._slug("RawGAT-ST") not in runner._XLA_UNFRIENDLY_TRAINING_ARCHITECTURES
+    assert (
+        runner._slug("RawGAT-ST") not in runner._XLA_UNFRIENDLY_TRAINING_ARCHITECTURES
+    )
     assert runner._compact("RawGAT-ST") in runner._XLA_UNFRIENDLY_TRAINING_ARCHITECTURES

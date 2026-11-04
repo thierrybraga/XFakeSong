@@ -20,7 +20,15 @@ class STFTLayer(layers.Layer):
     """
     Compute Short-Time Fourier Transform (STFT) of audio signals.
     """
-    def __init__(self, frame_length=2048, frame_step=512, fft_length=2048, add_channel_dim=True, **kwargs):
+
+    def __init__(
+        self,
+        frame_length=2048,
+        frame_step=512,
+        fft_length=2048,
+        add_channel_dim=True,
+        **kwargs,
+    ):
         super(STFTLayer, self).__init__(**kwargs)
         self.frame_length = frame_length
         self.frame_step = frame_step
@@ -47,7 +55,7 @@ class STFTLayer(layers.Layer):
             entrada_fp32,
             frame_length=self.frame_length,
             frame_step=self.frame_step,
-            fft_length=self.fft_length
+            fft_length=self.fft_length,
         )
 
         # Calculate magnitude
@@ -61,12 +69,14 @@ class STFTLayer(layers.Layer):
 
     def get_config(self):
         config = super(STFTLayer, self).get_config()
-        config.update({
-            'frame_length': self.frame_length,
-            'frame_step': self.frame_step,
-            'fft_length': self.fft_length,
-            'add_channel_dim': self.add_channel_dim
-        })
+        config.update(
+            {
+                "frame_length": self.frame_length,
+                "frame_step": self.frame_step,
+                "fft_length": self.fft_length,
+                "add_channel_dim": self.add_channel_dim,
+            }
+        )
         return config
 
 
@@ -128,13 +138,15 @@ class LogMelFromMagnitudeLayer(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            "num_mel_bins": self.num_mel_bins,
-            "num_spectrogram_bins": self.num_spectrogram_bins,
-            "sample_rate": self.sample_rate,
-            "lower_edge_hertz": self.lower_edge_hertz,
-            "upper_edge_hertz": self.upper_edge_hertz,
-        })
+        config.update(
+            {
+                "num_mel_bins": self.num_mel_bins,
+                "num_spectrogram_bins": self.num_spectrogram_bins,
+                "sample_rate": self.sample_rate,
+                "lower_edge_hertz": self.lower_edge_hertz,
+                "upper_edge_hertz": self.upper_edge_hertz,
+            }
+        )
         return config
 
 
@@ -216,15 +228,17 @@ class LogMelSpectrogramLayer(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            "sample_rate": self.sample_rate,
-            "n_fft": self.n_fft,
-            "hop_length": self.hop_length,
-            "n_mels": self.n_mels,
-            "lower_edge_hertz": self.lower_edge_hertz,
-            "upper_edge_hertz": self.upper_edge_hertz,
-            "pad_end": self.pad_end,
-        })
+        config.update(
+            {
+                "sample_rate": self.sample_rate,
+                "n_fft": self.n_fft,
+                "hop_length": self.hop_length,
+                "n_mels": self.n_mels,
+                "lower_edge_hertz": self.lower_edge_hertz,
+                "upper_edge_hertz": self.upper_edge_hertz,
+                "pad_end": self.pad_end,
+            }
+        )
         return config
 
 
@@ -262,10 +276,12 @@ class ASTInputNormalization(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            "target_std": self.target_std,
-            "epsilon": self.epsilon,
-        })
+        config.update(
+            {
+                "target_std": self.target_std,
+                "epsilon": self.epsilon,
+            }
+        )
         return config
 
 
@@ -301,6 +317,7 @@ class ImageNetRangeScalingLayer(layers.Layer):
 # ensemble.py — e a versão do Sonic Sleuth dependia de `tf...numpy()` dentro do
 # `build()`, com um fallback SILENCIOSO para um filterbank diferente quando o
 # tensor não era eager. Estas funções são a fonte única, em numpy puro.
+
 
 def linear_triangular_filterbank(
     n_fft: int, sample_rate: int, n_filters: int
@@ -339,7 +356,10 @@ def dct_matrix(n_filters: int, n_coeffs: int) -> np.ndarray:
 
 
 def cqt_triangular_filterbank(
-    n_fft: int, sample_rate: int, n_bins: int, bins_per_octave: int,
+    n_fft: int,
+    sample_rate: int,
+    n_bins: int,
+    bins_per_octave: int,
     fmin: float = 32.70,
 ) -> np.ndarray:
     """Aproximação do CQT por filtros triangulares log-espaçados sobre a STFT."""
@@ -397,10 +417,9 @@ class SafeEfficientNetInputLayer(layers.Layer):
 
     def get_config(self):
         config = super(SafeEfficientNetInputLayer, self).get_config()
-        config.update({
-            'target_height': self.target_height,
-            'target_width': self.target_width
-        })
+        config.update(
+            {"target_height": self.target_height, "target_width": self.target_width}
+        )
         return config
 
 
@@ -423,8 +442,8 @@ class AudioFeatureNormalization(SafeInstanceNormalization):
     def __init__(self, axis=-1, **kwargs):
         # `epsilon` é tratado pela superclasse; descartado aqui por compat com
         # configs antigas que o serializavam.
-        if 'epsilon' in kwargs:
-            kwargs.pop('epsilon')
+        if "epsilon" in kwargs:
+            kwargs.pop("epsilon")
 
         super().__init__(axis=axis, **kwargs)
         logger.debug(
@@ -496,7 +515,7 @@ class PreEmphasisLayer(layers.Layer):
 
     def get_config(self):
         config = super(PreEmphasisLayer, self).get_config()
-        config.update({'coeff': self.coeff})
+        config.update({"coeff": self.coeff})
         return config
 
 
@@ -527,13 +546,17 @@ class DeltaFeatureLayer(layers.Layer):
         for _ in range(self.order):
             prev = x
             # Pad edges by replicating boundary frames
-            padded = tf.pad(prev, [[0, 0], [self.width, self.width], [0, 0]], mode='REFLECT')
+            padded = tf.pad(
+                prev, [[0, 0], [self.width, self.width], [0, 0]], mode="REFLECT"
+            )
             # Weighted sum of differences
             denominator = 2.0 * sum(n * n for n in range(1, self.width + 1))
             delta = tf.zeros_like(prev)
             for n in range(1, self.width + 1):
-                delta += n * (padded[:, self.width + n:self.width + n + tf.shape(prev)[1], :]
-                              - padded[:, self.width - n:self.width - n + tf.shape(prev)[1], :])
+                delta += n * (
+                    padded[:, self.width + n : self.width + n + tf.shape(prev)[1], :]
+                    - padded[:, self.width - n : self.width - n + tf.shape(prev)[1], :]
+                )
             delta = delta / denominator
             channels.append(delta)
             x = delta
@@ -543,8 +566,10 @@ class DeltaFeatureLayer(layers.Layer):
 
     def get_config(self):
         config = super(DeltaFeatureLayer, self).get_config()
-        config.update({
-            'order': self.order,
-            'width': self.width,
-        })
+        config.update(
+            {
+                "order": self.order,
+                "width": self.width,
+            }
+        )
         return config

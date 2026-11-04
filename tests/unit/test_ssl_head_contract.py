@@ -96,11 +96,18 @@ def test_protocol_swaps_static_copy_for_dynamic_augmenter():
     from benchmarks.protocol import _prepare_protocol_splits
 
     rng = np.random.default_rng(0)
+
     def _split(n):
         return (rng.standard_normal((n, 16000)) * 0.1).astype("float32")
 
-    raw = (_split(8), np.array([0, 1] * 4), _split(4),
-           np.array([0, 1] * 2), _split(4), np.array([0, 1] * 2))
+    raw = (
+        _split(8),
+        np.array([0, 1] * 4),
+        _split(4),
+        np.array([0, 1] * 2),
+        _split(4),
+        np.array([0, 1] * 2),
+    )
     cfg = BenchmarkConfig(
         bootstrap_ci_samples=0, architecture_specific_augmentation=True
     )

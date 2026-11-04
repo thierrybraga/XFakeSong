@@ -56,7 +56,9 @@ def test_strict_raises(monkeypatch):
 def _avisos_de_datasets(monkeypatch, caplog, versao: str) -> list[str]:
     from app.domain.services.dataset import download
 
-    monkeypatch.setitem(sys.modules, "datasets", types.SimpleNamespace(__version__=versao))
+    monkeypatch.setitem(
+        sys.modules, "datasets", types.SimpleNamespace(__version__=versao)
+    )
     with caplog.at_level(logging.WARNING, logger=download.logger.name):
         download.warn_if_datasets_incompatible()
     return [r.getMessage() for r in caplog.records]

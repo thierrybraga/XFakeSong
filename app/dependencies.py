@@ -29,8 +29,11 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from app.core.bootstrap import BootstrapReport, OperationalPaths
-from app.core.bootstrap import bootstrap_application as bootstrap_infrastructure
+from app.core.bootstrap import (
+    BootstrapReport,
+    OperationalPaths,
+    bootstrap_application as bootstrap_infrastructure,
+)
 from app.core.config.env import env_flag
 from app.domain.models.architectures.registry import architecture_registry
 

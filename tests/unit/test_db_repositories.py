@@ -128,7 +128,9 @@ def test_job_de_treino_criado_lido_e_atualizado(session_factory):
     )
     assert criado.status == "pending"
 
-    atualizado = repo.update("job-1", status="completed", progress=100, metrics={"a": 1})
+    atualizado = repo.update(
+        "job-1", status="completed", progress=100, metrics={"a": 1}
+    )
     assert (atualizado.status, atualizado.progress) == ("completed", 100)
     assert repo.get("job-1").metrics == {"a": 1}
     assert repo.update("inexistente", status="failed") is None

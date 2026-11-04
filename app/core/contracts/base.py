@@ -14,12 +14,13 @@ from enum import Enum
 from typing import Any, Dict, Generic, List, Optional, TypeVar
 
 # Type variables para generics
-T = TypeVar('T')
-R = TypeVar('R')
+T = TypeVar("T")
+R = TypeVar("R")
 
 
 class ProcessingStatus(Enum):
     """Status de processamento padronizado."""
+
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     SUCCESS = "success"
@@ -31,6 +32,7 @@ class ProcessingStatus(Enum):
 
 class DatasetType(Enum):
     """Tipos de datasets suportados."""
+
     TRAINING = "training"
     VALIDATION = "validation"
     TEST = "test"
@@ -40,6 +42,7 @@ class DatasetType(Enum):
 @dataclass
 class ProcessingResult(Generic[T]):
     """Resultado padronizado de processamento."""
+
     status: ProcessingStatus
     data: Optional[T] = None
     metadata: Dict[str, Any] = None
@@ -60,26 +63,33 @@ class ProcessingResult(Generic[T]):
         return self.status == ProcessingStatus.SUCCESS
 
     @classmethod
-    def success(cls, data: T = None, metadata: Dict[str, Any] = None,
-                execution_time: float = None) -> 'ProcessingResult[T]':
+    def success(
+        cls,
+        data: T = None,
+        metadata: Dict[str, Any] = None,
+        execution_time: float = None,
+    ) -> "ProcessingResult[T]":
         """Create a successful processing result."""
         return cls(
             status=ProcessingStatus.SUCCESS,
             data=data,
             metadata=metadata or {},
-            execution_time=execution_time
+            execution_time=execution_time,
         )
 
     @classmethod
-    def error(cls, error_message: str,
-              metadata: Dict[str, Any] = None,
-              execution_time: float = None) -> 'ProcessingResult[T]':
+    def error(
+        cls,
+        error_message: str,
+        metadata: Dict[str, Any] = None,
+        execution_time: float = None,
+    ) -> "ProcessingResult[T]":
         """Create an error processing result."""
         return cls(
             status=ProcessingStatus.ERROR,
             errors=[error_message],
             metadata=metadata or {},
-            execution_time=execution_time
+            execution_time=execution_time,
         )
 
 

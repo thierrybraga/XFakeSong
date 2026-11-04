@@ -9,8 +9,7 @@ def compute_spectral_centroid(spectrum: np.ndarray) -> np.ndarray:
     for frame in range(spectrum.shape[1]):
         spectrum_frame = spectrum[:, frame]
         if np.sum(spectrum_frame) > 0:
-            centroid = np.sum(freq_indices * spectrum_frame) / \
-                np.sum(spectrum_frame)
+            centroid = np.sum(freq_indices * spectrum_frame) / np.sum(spectrum_frame)
         else:
             centroid = 0.0
         centroids.append(centroid)
@@ -18,8 +17,9 @@ def compute_spectral_centroid(spectrum: np.ndarray) -> np.ndarray:
     return np.array(centroids)
 
 
-def compute_spectral_rolloff(spectrum: np.ndarray,
-                             rolloff_percent: float = 0.85) -> np.ndarray:
+def compute_spectral_rolloff(
+    spectrum: np.ndarray, rolloff_percent: float = 0.85
+) -> np.ndarray:
     """Computa rolloff espectral."""
     rolloffs = []
 
@@ -49,12 +49,11 @@ def compute_spectral_flux(spectrum: np.ndarray) -> np.ndarray:
     if spectrum.shape[1] < 2:
         return np.array([0.0])
 
-    flux = np.sum(np.diff(spectrum, axis=1)**2, axis=0)
+    flux = np.sum(np.diff(spectrum, axis=1) ** 2, axis=0)
     return np.concatenate([[0.0], flux])
 
 
-def compute_octave_energy(cqt_mag: np.ndarray,
-                          bins_per_octave: int) -> np.ndarray:
+def compute_octave_energy(cqt_mag: np.ndarray, bins_per_octave: int) -> np.ndarray:
     """Computa energia por oitava no CQT."""
     octave_energies = []
 

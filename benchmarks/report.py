@@ -19,6 +19,7 @@ logger = logging.getLogger("benchmark")
 
 # ───────────────────────── formatação (pt-BR) ─────────────────────────
 
+
 def _write_json_atomic(path: Path, texto: str) -> None:
     """Escreve texto em `path` de forma atômica (tmp + os.replace)."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -68,9 +69,7 @@ def _pct_with_uncertainty(block: Dict[str, Any], metric: str, d: int = 2) -> str
     base = f"{value * 100:.{d}f}".replace(".", ",")
     std = block.get(f"{metric}_seed_std")
     if std is not None and np.isfinite(std):
-        return (
-            f"{base}\\,$\\pm$\\,{f'{std * 100:.{d}f}'.replace('.', ',')}" + r"\%"
-        )
+        return f"{base}\\,$\\pm$\\,{f'{std * 100:.{d}f}'.replace('.', ',')}" + r"\%"
 
     lo = block.get(f"{metric}_ci95_low")
     hi = block.get(f"{metric}_ci95_high")
@@ -142,13 +141,16 @@ _THRESHOLD_NOTE = (
 
 
 def _conv(flag) -> str:
-    return (r"\textcolor{successgreen}{Sim}" if flag
-            else r"\textcolor{dangerred}{Não}")
+    return r"\textcolor{successgreen}{Sim}" if flag else r"\textcolor{dangerred}{Não}"
 
 
 def _train_budget_label(r: Dict[str, Any]) -> str:
     if r.get("type") == "classical":
-        fit = r.get("fit_strategy") or (r.get("training_config") or {}).get("fit_strategy") or {}
+        fit = (
+            r.get("fit_strategy")
+            or (r.get("training_config") or {}).get("fit_strategy")
+            or {}
+        )
         if fit.get("kind") == "grid_search_cv_then_refit":
             n_fits = fit.get("n_fits")
             cv = fit.get("cv")
@@ -165,6 +167,7 @@ def _train_budget_label(r: Dict[str, Any]) -> str:
 
 # ───────────────────────── tabelas LaTeX ─────────────────────────
 
+
 def _ok_items(results) -> List:
     arch = results["architectures"]
     return [(name, r) for name, r in arch.items() if r.get("status") == "ok"]
@@ -178,8 +181,10 @@ def _table_resultados(results) -> str:
     rows = []
     for name, r in results["architectures"].items():
         if r.get("status") != "ok":
-            rows.append(f"{name} & \\multicolumn{{9}}{{c}}{{"
-                        f"\\textit{{falhou: {r.get('error','?')[:40]}}}}} \\\\")
+            rows.append(
+                f"{name} & \\multicolumn{{9}}{{c}}{{"
+                f"\\textit{{falhou: {r.get('error','?')[:40]}}}}} \\\\"
+            )
             continue
         c, e = r["clean"], r["efficiency"]
         rows.append(
@@ -250,9 +255,7 @@ def _unseen_snr_levels(results) -> set:
     trained = {int(v) for v in (cfg.get("train_aug_snr_db") or [])}
     if not trained:
         return set()
-    return {
-        int(s) for s in (cfg.get("snr_levels_db") or []) if int(s) not in trained
-    }
+    return {int(s) for s in (cfg.get("snr_levels_db") or []) if int(s) not in trained}
 
 
 def _table_robustez(results) -> str:
@@ -381,18 +384,20 @@ def _apply_style() -> None:
         return
     import matplotlib as mpl
 
-    mpl.rcParams.update({
-        "savefig.dpi": FIG_DPI,
-        "savefig.bbox": "tight",
-        "font.size": 10,
-        "axes.titlesize": 12,
-        "axes.labelsize": 10,
-        "legend.fontsize": 8,
-        "xtick.labelsize": 9,
-        "ytick.labelsize": 9,
-        "axes.axisbelow": True,  # grid atrás dos dados
-        "lines.antialiased": True,
-    })
+    mpl.rcParams.update(
+        {
+            "savefig.dpi": FIG_DPI,
+            "savefig.bbox": "tight",
+            "font.size": 10,
+            "axes.titlesize": 12,
+            "axes.labelsize": 10,
+            "legend.fontsize": 8,
+            "xtick.labelsize": 9,
+            "ytick.labelsize": 9,
+            "axes.axisbelow": True,  # grid atrás dos dados
+            "lines.antialiased": True,
+        }
+    )
     _STYLE_APPLIED = True
 
 
@@ -411,8 +416,13 @@ def _save_fig(fig, path: Path) -> None:
 
 def _legend_outside(ax, **kwargs) -> None:
     """Legenda à direita, fora da área de plotagem (não cobre os dados)."""
-    ax.legend(loc="center left", bbox_to_anchor=(1.01, 0.5), fontsize=7,
-              borderaxespad=0.0, **kwargs)
+    ax.legend(
+        loc="center left",
+        bbox_to_anchor=(1.01, 0.5),
+        fontsize=7,
+        borderaxespad=0.0,
+        **kwargs,
+    )
 
 
 def _fig_roc(results, out: Path) -> None:
@@ -429,6 +439,7 @@ def _fig_roc(results, out: Path) -> None:
             "limpos das arquiteturas.",
         )
         return
+
     # Ordena por AUC desc → legenda legível (melhores no topo; NaN ao fim).
     def _auc_key(item):
         a = item[1]["clean"].get("auc_roc")
@@ -445,8 +456,14 @@ def _fig_roc(results, out: Path) -> None:
             continue
         fpr, tpr, _ = roc_curve(y, s)
         auc = r["clean"].get("auc_roc")
-        ax.plot(fpr, tpr, lw=1.6, color=st["color"], linestyle=st["linestyle"],
-                label=f"{name} (AUC={_num(auc).replace(chr(92),'')})")
+        ax.plot(
+            fpr,
+            tpr,
+            lw=1.6,
+            color=st["color"],
+            linestyle=st["linestyle"],
+            label=f"{name} (AUC={_num(auc).replace(chr(92),'')})",
+        )
         curves.append((fpr, tpr, st))
         plotted += 1
     if plotted == 0:
@@ -527,13 +544,20 @@ def _fig_det(results, out: Path) -> None:
         x = norm.ppf(np.clip(fpr, ticks[0], ticks[-1]))
         yv = norm.ppf(np.clip(fnr, ticks[0], ticks[-1]))
         eer = r["clean"].get("eer")
-        ax.plot(x, yv, lw=1.6, color=st["color"], linestyle=st["linestyle"],
-                label=f"{name} (EER={_pct(eer).replace(chr(92), '')})")
+        ax.plot(
+            x,
+            yv,
+            lw=1.6,
+            color=st["color"],
+            linestyle=st["linestyle"],
+            label=f"{name} (EER={_pct(eer).replace(chr(92), '')})",
+        )
         plotted += 1
     if plotted == 0:
         plt.close(fig)
         _write_placeholder_figure(
-            out / "det.png", "Curvas DET",
+            out / "det.png",
+            "Curvas DET",
             "Nenhum vetor de scores compatível com y_test.",
         )
         return
@@ -577,13 +601,23 @@ def _fig_robustez(results, out: Path) -> None:
     lowest = 100.0
     for (name, r), st in zip(conv, styles):
         ys = [r["clean"].get("accuracy", np.nan)]
-        ys += [(r.get("robustness") or {}).get(str(s), {}).get("accuracy", np.nan)
-               for s in snrs]
+        ys += [
+            (r.get("robustness") or {}).get(str(s), {}).get("accuracy", np.nan)
+            for s in snrs
+        ]
         values = np.asarray(ys, dtype=float)
         if not np.isfinite(values).any():
             continue
-        ax.plot(xs, values * 100, lw=1.8, color=st["color"],
-                linestyle=st["linestyle"], marker=st["marker"], ms=5, label=name)
+        ax.plot(
+            xs,
+            values * 100,
+            lw=1.8,
+            color=st["color"],
+            linestyle=st["linestyle"],
+            marker=st["marker"],
+            ms=5,
+            label=name,
+        )
         lowest = min(lowest, float(np.nanmin(values)) * 100)
         plotted += 1
     if plotted == 0:
@@ -610,8 +644,11 @@ def _fig_robustez(results, out: Path) -> None:
 def _fig_eficiencia(results, out: Path) -> None:
     import matplotlib.pyplot as plt
 
-    items = [(n, r) for n, r in _ok_items(results)
-             if r["efficiency"].get("latency_ms") is not None]
+    items = [
+        (n, r)
+        for n, r in _ok_items(results)
+        if r["efficiency"].get("latency_ms") is not None
+    ]
     if not items:
         _write_placeholder_figure(
             out / "eficiencia.png",
@@ -632,15 +669,26 @@ def _fig_eficiencia(results, out: Path) -> None:
         converged = bool(r.get("converged"))
         color = "#10b981" if converged else "#ef4444"
         marker = "o" if converged else "X"
-        ax.scatter(lat, acc, s=90, color=color, marker=marker,
-                   edgecolor="#1e293b", zorder=3,
-                   label=("convergiu" if converged else "não convergiu")
-                   if not seen_conv[converged] else None)
+        ax.scatter(
+            lat,
+            acc,
+            s=90,
+            color=color,
+            marker=marker,
+            edgecolor="#1e293b",
+            zorder=3,
+            label=(
+                ("convergiu" if converged else "não convergiu")
+                if not seen_conv[converged]
+                else None
+            ),
+        )
         seen_conv[converged] = True
         # Offset alternado p/ reduzir sobreposição de rótulos.
         dy = 6 if i % 2 == 0 else -10
-        ax.annotate(name, (lat, acc), fontsize=7, xytext=(5, dy),
-                    textcoords="offset points")
+        ax.annotate(
+            name, (lat, acc), fontsize=7, xytext=(5, dy), textcoords="offset points"
+        )
         plotted += 1
     if plotted == 0:
         plt.close(fig)
@@ -725,9 +773,16 @@ def _fig_convergencia(results, out: Path) -> None:
         va = _val_accuracy(h)
         if not va:
             continue
-        ax.plot(range(1, len(va) + 1), [v * 100 for v in va],
-                marker=st["marker"], ms=3, lw=1.6, color=st["color"],
-                linestyle=st["linestyle"], label=name)
+        ax.plot(
+            range(1, len(va) + 1),
+            [v * 100 for v in va],
+            marker=st["marker"],
+            ms=3,
+            lw=1.6,
+            color=st["color"],
+            linestyle=st["linestyle"],
+            label=name,
+        )
         lowest = min(lowest, min(v * 100 for v in va))
         plotted += 1
     if plotted == 0:
@@ -801,7 +856,7 @@ def _fig_confusion_matrices(results, out: Path) -> None:
                     fontweight="bold",
                 )
 
-    for ax in axes[len(items):]:
+    for ax in axes[len(items) :]:
         ax.axis("off")
 
     fig.suptitle("Matrizes de confusão no conjunto de teste limpo", y=1.02)
@@ -847,7 +902,9 @@ def _fig_score_distributions(results, out: Path) -> None:
         box.set_facecolor("#60a5fa" if idx % 2 == 0 else "#f97316")
         box.set_alpha(0.65)
     ax.axhline(0.5, color="#334155", linestyle="--", linewidth=1)
-    ax.set_xticks([p for p, _ in labels], [n for _, n in labels], rotation=20, ha="right")
+    ax.set_xticks(
+        [p for p, _ in labels], [n for _, n in labels], rotation=20, ha="right"
+    )
     ax.set_ylabel("p(fake)")
     ax.set_title("Distribuição dos scores por classe real")
     ax.grid(axis="y", alpha=0.25)
@@ -873,8 +930,7 @@ def _fig_single_confusion(name: str, y_true, scores, out: Path) -> None:
         _write_placeholder_figure(
             out / "confusion_matrix.png",
             f"Matriz de confusão — {name}",
-            "Dados insuficientes para gerar a matriz de confusão desta "
-            "arquitetura.",
+            "Dados insuficientes para gerar a matriz de confusão desta " "arquitetura.",
         )
         return
     cm = confusion_matrix(y, (s >= 0.5).astype(int), labels=[0, 1])
@@ -924,12 +980,12 @@ def _fig_single_roc(name: str, y_true, scores, out: Path) -> None:
     fpr, tpr, _ = roc_curve(y, s)
     fig, ax = plt.subplots(figsize=(5.0, 4.2))
     from sklearn.metrics import roc_auc_score
+
     try:
         auc = roc_auc_score(y, s)
     except Exception:  # noqa: BLE001
         auc = None
-    ax.plot(fpr, tpr, lw=1.8,
-            label=f"ROC (AUC={_num(auc).replace(chr(92), '')})")
+    ax.plot(fpr, tpr, lw=1.8, label=f"ROC (AUC={_num(auc).replace(chr(92), '')})")
     ax.plot([0, 1], [0, 1], "--", color="#94a3b8", lw=1)
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
@@ -1037,11 +1093,25 @@ def _fig_single_convergence(name: str, history: Dict[str, Any], out: Path) -> No
 
 # ───────────────────────── CSV / Markdown ─────────────────────────
 
+
 def _write_csv(results, path: Path) -> None:
     snrs = results["config"]["snr_levels_db"]
-    cols = ["arquitetura", "status", "tipo", "convergiu", "accuracy",
-            "precision", "recall", "f1", "auc_roc", "eer", "min_tdcf",
-            "params", "size_mb", "latency_ms"]
+    cols = [
+        "arquitetura",
+        "status",
+        "tipo",
+        "convergiu",
+        "accuracy",
+        "precision",
+        "recall",
+        "f1",
+        "auc_roc",
+        "eer",
+        "min_tdcf",
+        "params",
+        "size_mb",
+        "latency_ms",
+    ]
     for s in snrs:
         cols += [f"acc_snr{s}", f"eer_snr{s}"]
     with open(path, "w", newline="", encoding="utf-8") as f:
@@ -1049,15 +1119,43 @@ def _write_csv(results, path: Path) -> None:
         w.writerow(cols)
         for name, r in results["architectures"].items():
             if r.get("status") != "ok":
-                w.writerow([name, r.get("status"), "", "", "", "", "", "", "",
-                            "", "", "", "", ""] + [""] * (2 * len(snrs)))
+                w.writerow(
+                    [
+                        name,
+                        r.get("status"),
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                    ]
+                    + [""] * (2 * len(snrs))
+                )
                 continue
             c, e = r["clean"], r["efficiency"]
-            row = [name, "ok", r.get("type"), r.get("converged"),
-                   c.get("accuracy"), c.get("precision"), c.get("recall"),
-                   c.get("f1"), c.get("auc_roc"), c.get("eer"),
-                   c.get("min_tdcf"), e.get("params"), e.get("size_mb"),
-                   e.get("latency_ms")]
+            row = [
+                name,
+                "ok",
+                r.get("type"),
+                r.get("converged"),
+                c.get("accuracy"),
+                c.get("precision"),
+                c.get("recall"),
+                c.get("f1"),
+                c.get("auc_roc"),
+                c.get("eer"),
+                c.get("min_tdcf"),
+                e.get("params"),
+                e.get("size_mb"),
+                e.get("latency_ms"),
+            ]
             for s in snrs:
                 rob = r["robustness"].get(str(s), {})
                 row += [rob.get("accuracy"), rob.get("eer")]
@@ -1078,10 +1176,17 @@ def _write_predictions_csv(results, path: Path) -> None:
     y = np.asarray(results["dataset"].get("y_test", []), dtype=int)
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow([
-            "architecture", "sample_index", "y_true", "p_fake",
-            "ranking_score", "y_pred", "correct",
-        ])
+        w.writerow(
+            [
+                "architecture",
+                "sample_index",
+                "y_true",
+                "p_fake",
+                "ranking_score",
+                "y_pred",
+                "correct",
+            ]
+        )
         if y.size == 0:
             return
         for name, r in results["architectures"].items():
@@ -1096,18 +1201,22 @@ def _write_predictions_csv(results, path: Path) -> None:
                 ranking = None
             pred = (scores >= 0.5).astype(int)
             for idx, (yt, score, yp) in enumerate(zip(y, scores, pred)):
-                w.writerow([
-                    name,
-                    idx,
-                    int(yt),
-                    round(float(score), 6),
-                    "" if ranking is None else round(float(ranking[idx]), 6),
-                    int(yp),
-                    bool(int(yt) == int(yp)),
-                ])
+                w.writerow(
+                    [
+                        name,
+                        idx,
+                        int(yt),
+                        round(float(score), 6),
+                        "" if ranking is None else round(float(ranking[idx]), 6),
+                        int(yp),
+                        bool(int(yt) == int(yp)),
+                    ]
+                )
 
 
-def _write_arch_predictions_csv(name: str, r: Dict[str, Any], y_true, path: Path) -> None:
+def _write_arch_predictions_csv(
+    name: str, r: Dict[str, Any], y_true, path: Path
+) -> None:
     """Predições limpas por amostra.
 
     A coluna `ranking_score` existe desde 2026-08-09 para os modelos que
@@ -1131,17 +1240,21 @@ def _write_arch_predictions_csv(name: str, r: Dict[str, Any], y_true, path: Path
             return
         pred = (scores >= 0.5).astype(int)
         for idx, (yt, score, yp) in enumerate(zip(y, scores, pred)):
-            w.writerow([
-                idx,
-                int(yt),
-                round(float(score), 6),
-                "" if ranking is None else round(float(ranking[idx]), 6),
-                int(yp),
-                bool(int(yt) == int(yp)),
-            ])
+            w.writerow(
+                [
+                    idx,
+                    int(yt),
+                    round(float(score), 6),
+                    "" if ranking is None else round(float(ranking[idx]), 6),
+                    int(yp),
+                    bool(int(yt) == int(yp)),
+                ]
+            )
 
 
-def _write_arch_predictions_noisy_csv(name: str, r: Dict[str, Any], y_true, path: Path) -> None:
+def _write_arch_predictions_noisy_csv(
+    name: str, r: Dict[str, Any], y_true, path: Path
+) -> None:
     """Predições por amostra sob AWGN, uma linha por (snr, amostra) — mesmo
     sample_index de predictions_clean.csv, para permitir cruzamento com
     metadados de proveniência (falante/fonte) por condição de ruído."""
@@ -1155,47 +1268,66 @@ def _write_arch_predictions_noisy_csv(name: str, r: Dict[str, Any], y_true, path
                 continue
             pred = (scores >= 0.5).astype(int)
             for idx, (yt, score, yp) in enumerate(zip(y, scores, pred)):
-                w.writerow([
-                    snr,
-                    idx,
-                    int(yt),
-                    round(float(score), 6),
-                    int(yp),
-                    bool(int(yt) == int(yp)),
-                ])
+                w.writerow(
+                    [
+                        snr,
+                        idx,
+                        int(yt),
+                        round(float(score), 6),
+                        int(yp),
+                        bool(int(yt) == int(yp)),
+                    ]
+                )
 
 
 def _write_arch_robustness_csv(r: Dict[str, Any], path: Path) -> None:
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["condition", "accuracy", "precision", "recall", "f1", "auc_roc", "eer", "min_tdcf"])
+        w.writerow(
+            [
+                "condition",
+                "accuracy",
+                "precision",
+                "recall",
+                "f1",
+                "auc_roc",
+                "eer",
+                "min_tdcf",
+            ]
+        )
         clean = r.get("clean") or {}
-        w.writerow([
-            "clean",
-            clean.get("accuracy"),
-            clean.get("precision"),
-            clean.get("recall"),
-            clean.get("f1"),
-            clean.get("auc_roc"),
-            clean.get("eer"),
-            clean.get("min_tdcf"),
-        ])
+        w.writerow(
+            [
+                "clean",
+                clean.get("accuracy"),
+                clean.get("precision"),
+                clean.get("recall"),
+                clean.get("f1"),
+                clean.get("auc_roc"),
+                clean.get("eer"),
+                clean.get("min_tdcf"),
+            ]
+        )
         for snr, metrics in (r.get("robustness") or {}).items():
-            w.writerow([
-                f"snr_{snr}db",
-                metrics.get("accuracy"),
-                metrics.get("precision"),
-                metrics.get("recall"),
-                metrics.get("f1"),
-                metrics.get("auc_roc"),
-                metrics.get("eer"),
-                metrics.get("min_tdcf"),
-            ])
+            w.writerow(
+                [
+                    f"snr_{snr}db",
+                    metrics.get("accuracy"),
+                    metrics.get("precision"),
+                    metrics.get("recall"),
+                    metrics.get("f1"),
+                    metrics.get("auc_roc"),
+                    metrics.get("eer"),
+                    metrics.get("min_tdcf"),
+                ]
+            )
 
 
 def _write_arch_summary(name: str, r: Dict[str, Any], path: Path) -> None:
     if r.get("status") != "ok":
-        path.write_text(f"# {name}\n\nStatus: erro\n\n{r.get('error', '')}\n", encoding="utf-8")
+        path.write_text(
+            f"# {name}\n\nStatus: erro\n\n{r.get('error', '')}\n", encoding="utf-8"
+        )
         return
     clean = r.get("clean") or {}
     eff = r.get("efficiency") or {}
@@ -1270,8 +1402,9 @@ def _write_summary(results, path: Path) -> None:
     ]
     for name, r in results["architectures"].items():
         if r.get("status") != "ok":
-            lines.append(f"| {name} | ❌ {r.get('error','erro')[:30]} | | | | "
-                         "| | | |")
+            lines.append(
+                f"| {name} | ❌ {r.get('error','erro')[:30]} | | | | " "| | | |"
+            )
             continue
         c, e = r["clean"], r["efficiency"]
         conv = "✅" if r.get("converged") else "⚠️"
@@ -1285,8 +1418,10 @@ def _write_summary(results, path: Path) -> None:
         api = results["api"]
         lines += ["", f"## API ({api.get('status','?')})"]
         for ep in api.get("endpoints", []):
-            lines.append(f"- `{ep.get('method')} {ep.get('path')}` → "
-                         f"{ep.get('status_code')} ({ep.get('latency_ms')} ms)")
+            lines.append(
+                f"- `{ep.get('method')} {ep.get('path')}` → "
+                f"{ep.get('status_code')} ({ep.get('latency_ms')} ms)"
+            )
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -1302,7 +1437,9 @@ def _provenance_lines(env: Dict[str, Any]) -> List[str]:
     lines: List[str] = []
     git = env.get("git") or {}
     if git.get("available"):
-        dirty = " (árvore SUJA: há alterações não commitadas)" if git.get("dirty") else ""
+        dirty = (
+            " (árvore SUJA: há alterações não commitadas)" if git.get("dirty") else ""
+        )
         lines.append(f"- Commit: `{git.get('commit_short')}`{dirty}")
         if git.get("branch"):
             lines.append(f"- Branch: `{git.get('branch')}`")
@@ -1340,7 +1477,9 @@ def _split_audit_lines(ds: Dict[str, Any]) -> List[str]:
     lines: List[str] = []
     overlap = ds.get("split_overlap_audit") or {}
     if overlap:
-        status = "sem sobreposição" if overlap.get("passed") else "SOBREPOSIÇÃO DETECTADA"
+        status = (
+            "sem sobreposição" if overlap.get("passed") else "SOBREPOSIÇÃO DETECTADA"
+        )
         lines.append(f"- Auditoria treino/val/teste: `{status}`")
     shortcut = ds.get("source_shortcut_audit") or {}
     if shortcut.get("available"):
@@ -1422,9 +1561,7 @@ def _write_tcc_report(results: Dict[str, Any], path: Path) -> None:
     ]
     for name, r in results.get("architectures", {}).items():
         if r.get("status") != "ok":
-            lines.append(
-                f"| {name} | erro |  |  |  |  |  |  |  |  |"
-            )
+            lines.append(f"| {name} | erro |  |  |  |  |  |  |  |  |")
             continue
         clean = r.get("clean") or {}
         eff = r.get("efficiency") or {}
@@ -1485,7 +1622,12 @@ def _write_tcc_report(results: Dict[str, Any], path: Path) -> None:
             "Hiperparâmetros/configuração de treino:",
             "",
             "```json",
-            json.dumps(r.get("training_config") or {}, indent=2, ensure_ascii=False, default=str),
+            json.dumps(
+                r.get("training_config") or {},
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            ),
             "```",
             "",
         ]
@@ -1538,6 +1680,7 @@ def _write_tcc_report(results: Dict[str, Any], path: Path) -> None:
 
 # ───────────────────────── orquestração ─────────────────────────
 
+
 def write_all(results: Dict[str, Any], output_dir: str) -> None:
     """Grava todos os artefatos do benchmark em `output_dir`."""
     out = Path(output_dir)
@@ -1564,11 +1707,14 @@ def write_all(results: Dict[str, Any], output_dir: str) -> None:
     _write_per_architecture(results, out)
 
     (out / "tables" / "tab_resultados.tex").write_text(
-        _table_resultados(results), encoding="utf-8")
+        _table_resultados(results), encoding="utf-8"
+    )
     (out / "tables" / "tab_eficiencia.tex").write_text(
-        _table_eficiencia(results), encoding="utf-8")
+        _table_eficiencia(results), encoding="utf-8"
+    )
     (out / "tables" / "tab_robustez.tex").write_text(
-        _table_robustez(results), encoding="utf-8")
+        _table_robustez(results), encoding="utf-8"
+    )
 
     for fig_fn in (
         _fig_roc,

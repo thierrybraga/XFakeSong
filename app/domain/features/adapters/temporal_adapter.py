@@ -46,19 +46,15 @@ class TemporalExtractorWrapper(IFeatureExtractor):
             audio_features = AudioFeatures(
                 features=normalized_features,
                 feature_type=FeatureType.TEMPORAL,
-                extraction_params={'sample_rate': audio_data.sample_rate},
-                audio_metadata={'sample_rate': audio_data.sample_rate}
+                extraction_params={"sample_rate": audio_data.sample_rate},
+                audio_metadata={"sample_rate": audio_data.sample_rate},
             )
 
             return ProcessingResult(
-                status=ProcessingStatus.SUCCESS,
-                data=audio_features
+                status=ProcessingStatus.SUCCESS, data=audio_features
             )
         except Exception as e:
-            return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=[str(e)]
-            )
+            return ProcessingResult(status=ProcessingStatus.ERROR, errors=[str(e)])
 
     def extract_features(self, audio_data: AudioData) -> ProcessingResult:
         return self.extract(audio_data)
@@ -68,15 +64,23 @@ class TemporalExtractorWrapper(IFeatureExtractor):
 
     def get_feature_names(self) -> List[str]:
         return [
-            'energy', 'rms_energy', 'zero_crossing_rate', 'autocorr_max',
-            'temporal_centroid', 'temporal_rolloff', 'temporal_flux',
-            'envelope_mean', 'envelope_std', 'envelope_max', 'envelope_min'
+            "energy",
+            "rms_energy",
+            "zero_crossing_rate",
+            "autocorr_max",
+            "temporal_centroid",
+            "temporal_rolloff",
+            "temporal_flux",
+            "envelope_mean",
+            "envelope_std",
+            "envelope_max",
+            "envelope_min",
         ]
 
     def get_extraction_params(self) -> Dict[str, Any]:
         return {
-            'sr': self.extractor.sr,
-            'frame_length': self.extractor.frame_length,
-            'hop_length': self.extractor.hop_length,
-            'window': self.extractor.window
+            "sr": self.extractor.sr,
+            "frame_length": self.extractor.frame_length,
+            "hop_length": self.extractor.hop_length,
+            "window": self.extractor.window,
         }

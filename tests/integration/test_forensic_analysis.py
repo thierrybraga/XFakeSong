@@ -130,7 +130,7 @@ def test_formantes_saem_em_quatro_trilhas(analise):
 def test_linha_do_tempo_usa_a_pontuacao_centrada_no_limiar_do_modelo(analise, audio):
     seg, salto = SR, SR // 2
     inicios = range(0, len(audio) - seg, salto)
-    brutos = [_p_fake(audio[i:i + seg]) for i in inicios]
+    brutos = [_p_fake(audio[i : i + seg]) for i in inicios]
     esperado = [fake_score(p, LIMIAR) for p in brutos]
     tempos = [(i + seg / 2) / SR for i in inicios]
     assert min(brutos) < LIMIAR, "a fixture precisa ter trecho com veredito real"
@@ -149,7 +149,7 @@ def test_mapa_de_anomalias_pinta_a_pontuacao_e_nao_a_confianca(analise, audio):
 
     seg, salto = SR, SR // 2
     esperado = [
-        fake_score(_p_fake(audio[i:i + seg]), LIMIAR)
+        fake_score(_p_fake(audio[i : i + seg]), LIMIAR)
         for i in range(0, len(audio) - seg, salto)
     ]
     faixas = analise[11].axes[0].patches
@@ -205,8 +205,14 @@ def test_segmentos_sem_resposta_devolvem_series_vazias_e_limiar_neutro():
 def test_radar_tem_oito_eixos_medidos_e_normalizados(analise):
     ax = analise[10].axes[0]
     assert [t.get_text() for t in ax.get_xticklabels()] == [
-        "Spectral", "Cepstral", "Temporal", "Prosodic",
-        "Phase", "Formant", "HNR", "Jitter/Shimmer",
+        "Spectral",
+        "Cepstral",
+        "Temporal",
+        "Prosodic",
+        "Phase",
+        "Formant",
+        "HNR",
+        "Jitter/Shimmer",
     ]
     valores = np.asarray(ax.lines[0].get_ydata(), dtype=float)[:8]
     assert np.all((valores >= 0) & (valores <= 1))
@@ -234,7 +240,13 @@ def test_lote_resume_e_exporta_csv(wav, tmp_path, monkeypatch):
     pizza, histograma, tabela, resumo = fa.run_batch_analysis(
         [str(wav), str(baixa), str(tmp_path / "nao_existe.wav")]
     )
-    assert list(tabela.columns) == ["Arquivo", "Resultado", "Confiança", "Modelo", "Duração"]
+    assert list(tabela.columns) == [
+        "Arquivo",
+        "Resultado",
+        "Confiança",
+        "Modelo",
+        "Duração",
+    ]
     assert tabela["Arquivo"].tolist() == ["voz.wav", "baixa.wav", "nao_existe.wav"]
     assert tabela["Resultado"].tolist() == ["FAKE", "REAL", "REAL"]
     assert tabela["Modelo"].tolist()[2].startswith("error: ")

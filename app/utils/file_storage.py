@@ -48,9 +48,7 @@ def break_hardlinks_in_tree(
     return detached
 
 
-def link_or_copy_file(
-    source: Union[str, Path], destination: Union[str, Path]
-) -> str:
+def link_or_copy_file(source: Union[str, Path], destination: Union[str, Path]) -> str:
     """Publica um hardlink quando possível, com cópia segura como fallback."""
     src = Path(source)
     dst = Path(destination)
@@ -78,9 +76,7 @@ def link_or_copy_file(
         temporary.unlink(missing_ok=True)
 
 
-def copy_file_atomic(
-    source: Union[str, Path], destination: Union[str, Path]
-) -> None:
+def copy_file_atomic(source: Union[str, Path], destination: Union[str, Path]) -> None:
     """Copia para um arquivo INDEPENDENTE do original (nunca hardlink).
 
     Para backups: um hardlink compartilharia o inode, e qualquer escrita

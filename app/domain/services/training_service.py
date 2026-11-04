@@ -587,8 +587,7 @@ class TrainingService(ITrainingService):
                                 "restored": bool(restored),
                                 "monitor": checkpoint_monitor,
                                 "weights_evaluated": (
-                                    "best_checkpoint" if restored
-                                    else "last_epoch"
+                                    "best_checkpoint" if restored else "last_epoch"
                                 ),
                                 "checkpoint_path": str(checkpoint_file),
                             }

@@ -54,8 +54,8 @@ class RelativePositionalEncoding(layers.Layer):
         pe = np.zeros((self.max_len, self.d_model), dtype=np.float32)
         position = np.arange(0, self.max_len, dtype=np.float32)[:, np.newaxis]
         div_term = np.exp(
-            np.arange(0, self.d_model, 2, dtype=np.float32) *
-            -(math.log(10000.0) / self.d_model)
+            np.arange(0, self.d_model, 2, dtype=np.float32)
+            * -(math.log(10000.0) / self.d_model)
         )
 
         pe[:, 0::2] = np.sin(position * div_term)
@@ -99,10 +99,7 @@ class RelativePositionalEncoding(layers.Layer):
 
     def get_config(self):
         config = super(RelativePositionalEncoding, self).get_config()
-        config.update({
-            'd_model': self.d_model,
-            'max_len': self.max_len
-        })
+        config.update({"d_model": self.d_model, "max_len": self.max_len})
         return config
 
 
@@ -136,31 +133,52 @@ class RelativeMultiHeadAttention(layers.Layer):
     def build(self, input_shape):
         # Linear projections for Q, K, V, O
         self.W_q = self.add_weight(
-            name="W_q", shape=(self.d_model, self.d_model),
-            initializer="glorot_uniform", trainable=True)
+            name="W_q",
+            shape=(self.d_model, self.d_model),
+            initializer="glorot_uniform",
+            trainable=True,
+        )
         self.W_k = self.add_weight(
-            name="W_k", shape=(self.d_model, self.d_model),
-            initializer="glorot_uniform", trainable=True)
+            name="W_k",
+            shape=(self.d_model, self.d_model),
+            initializer="glorot_uniform",
+            trainable=True,
+        )
         self.W_v = self.add_weight(
-            name="W_v", shape=(self.d_model, self.d_model),
-            initializer="glorot_uniform", trainable=True)
+            name="W_v",
+            shape=(self.d_model, self.d_model),
+            initializer="glorot_uniform",
+            trainable=True,
+        )
         self.W_o = self.add_weight(
-            name="W_o", shape=(self.d_model, self.d_model),
-            initializer="glorot_uniform", trainable=True)
+            name="W_o",
+            shape=(self.d_model, self.d_model),
+            initializer="glorot_uniform",
+            trainable=True,
+        )
 
         # Projection for positional encoding
         self.W_pos = self.add_weight(
-            name="W_pos", shape=(self.d_model, self.d_model),
-            initializer="glorot_uniform", trainable=True)
+            name="W_pos",
+            shape=(self.d_model, self.d_model),
+            initializer="glorot_uniform",
+            trainable=True,
+        )
 
         # Global content bias (u) and position bias (v) per head
         # Shape: (num_heads, d_k)
         self.u_bias = self.add_weight(
-            name="u_bias", shape=(self.num_heads, self.d_k),
-            initializer="zeros", trainable=True)
+            name="u_bias",
+            shape=(self.num_heads, self.d_k),
+            initializer="zeros",
+            trainable=True,
+        )
         self.v_bias = self.add_weight(
-            name="v_bias", shape=(self.num_heads, self.d_k),
-            initializer="zeros", trainable=True)
+            name="v_bias",
+            shape=(self.num_heads, self.d_k),
+            initializer="zeros",
+            trainable=True,
+        )
 
         self.dropout = layers.Dropout(self.dropout_rate)
 
@@ -206,31 +224,37 @@ class RelativeMultiHeadAttention(layers.Layer):
         seq_len = tf.shape(inputs)[1]
 
         # Linear projections
-        Q = tf.matmul(inputs, self.W_q)   # (batch, seq_len, d_model)
+        Q = tf.matmul(inputs, self.W_q)  # (batch, seq_len, d_model)
         K = tf.matmul(inputs, self.W_k)
         V = tf.matmul(inputs, self.W_v)
         pos_enc = tf.cast(pos_enc, inputs.dtype)
         P = tf.matmul(pos_enc, self.W_pos)  # (1, seq_len, d_model)
 
         # Reshape to (batch, seq_len, num_heads, d_k) then transpose to (batch, heads, seq_len, d_k)
-        Q = tf.transpose(tf.reshape(Q, (batch_size, seq_len, self.num_heads, self.d_k)), [0, 2, 1, 3])
-        K = tf.transpose(tf.reshape(K, (batch_size, seq_len, self.num_heads, self.d_k)), [0, 2, 1, 3])
-        V = tf.transpose(tf.reshape(V, (batch_size, seq_len, self.num_heads, self.d_k)), [0, 2, 1, 3])
+        Q = tf.transpose(
+            tf.reshape(Q, (batch_size, seq_len, self.num_heads, self.d_k)), [0, 2, 1, 3]
+        )
+        K = tf.transpose(
+            tf.reshape(K, (batch_size, seq_len, self.num_heads, self.d_k)), [0, 2, 1, 3]
+        )
+        V = tf.transpose(
+            tf.reshape(V, (batch_size, seq_len, self.num_heads, self.d_k)), [0, 2, 1, 3]
+        )
 
         # Position encoding: (1, seq_len, num_heads, d_k) -> (1, heads, seq_len, d_k)
-        P = tf.transpose(tf.reshape(P, (1, seq_len, self.num_heads, self.d_k)), [0, 2, 1, 3])
+        P = tf.transpose(
+            tf.reshape(P, (1, seq_len, self.num_heads, self.d_k)), [0, 2, 1, 3]
+        )
 
         # Content-to-content: (Q + u) @ K^T
         # u_bias: (heads, d_k) -> (1, heads, 1, d_k)
         content_score = tf.matmul(
-            Q + self.u_bias[tf.newaxis, :, tf.newaxis, :],
-            tf.transpose(K, [0, 1, 3, 2])
+            Q + self.u_bias[tf.newaxis, :, tf.newaxis, :], tf.transpose(K, [0, 1, 3, 2])
         )  # (batch, heads, seq_len, seq_len)
 
         # Content-to-position: (Q + v) @ P^T
         pos_score = tf.matmul(
-            Q + self.v_bias[tf.newaxis, :, tf.newaxis, :],
-            tf.transpose(P, [0, 1, 3, 2])
+            Q + self.v_bias[tf.newaxis, :, tf.newaxis, :], tf.transpose(P, [0, 1, 3, 2])
         )  # (batch, heads, seq_len, seq_len)
 
         # Apply relative shift to position scores
@@ -257,11 +281,13 @@ class RelativeMultiHeadAttention(layers.Layer):
 
     def get_config(self):
         config = super(RelativeMultiHeadAttention, self).get_config()
-        config.update({
-            'd_model': self.d_model,
-            'num_heads': self.num_heads,
-            'dropout_rate': self.dropout_rate
-        })
+        config.update(
+            {
+                "d_model": self.d_model,
+                "num_heads": self.num_heads,
+                "dropout_rate": self.dropout_rate,
+            }
+        )
         return config
 
 
@@ -286,13 +312,24 @@ class ConvSubsampling(layers.Layer):
 
     def build(self, input_shape):
         import math
+
         # Two Conv2D layers with stride 2 for 4x subsampling
         self.conv1 = layers.Conv2D(
-            filters=self.d_model, kernel_size=(3, 3), strides=(2, 2),
-            padding='same', activation='relu', name=self.name + "_conv1")
+            filters=self.d_model,
+            kernel_size=(3, 3),
+            strides=(2, 2),
+            padding="same",
+            activation="relu",
+            name=self.name + "_conv1",
+        )
         self.conv2 = layers.Conv2D(
-            filters=self.d_model, kernel_size=(3, 3), strides=(2, 2),
-            padding='same', activation='relu', name=self.name + "_conv2")
+            filters=self.d_model,
+            kernel_size=(3, 3),
+            strides=(2, 2),
+            padding="same",
+            activation="relu",
+            name=self.name + "_conv2",
+        )
 
         # Linear projection to d_model after flattening freq * channels
         self.linear = layers.Dense(self.d_model, name=self.name + "_linear")
@@ -319,8 +356,8 @@ class ConvSubsampling(layers.Layer):
         x = tf.expand_dims(inputs, axis=-1)
 
         # Conv2D subsampling: each reduces by 2x
-        x = self.conv1(x)   # (batch, time//2, freq//2, d_model)
-        x = self.conv2(x)   # (batch, time//4, freq//4, d_model)
+        x = self.conv1(x)  # (batch, time//2, freq//2, d_model)
+        x = self.conv2(x)  # (batch, time//4, freq//4, d_model)
 
         # Flatten freq and channel dims using static shape where possible
         static = x.shape.as_list()  # [None, None, freq//4, d_model]
@@ -340,6 +377,7 @@ class ConvSubsampling(layers.Layer):
 
     def compute_output_shape(self, input_shape):
         import math
+
         batch = input_shape[0]
         time = input_shape[1] if len(input_shape) > 1 else None
         if time is not None:
@@ -350,10 +388,12 @@ class ConvSubsampling(layers.Layer):
 
     def get_config(self):
         config = super(ConvSubsampling, self).get_config()
-        config.update({
-            'd_model': self.d_model,
-            'dropout_rate': self.dropout_rate,
-        })
+        config.update(
+            {
+                "d_model": self.d_model,
+                "dropout_rate": self.dropout_rate,
+            }
+        )
         return config
 
 
@@ -379,18 +419,21 @@ class ConvolutionModule(layers.Layer):
 
         # Pointwise convolution 1 (expansion to 2×channels for GLU)
         self.pointwise_conv1 = layers.Conv1D(
-            filters=2 * channels, kernel_size=1, padding='same')
+            filters=2 * channels, kernel_size=1, padding="same"
+        )
 
         # Depthwise convolution
         self.depthwise_conv = layers.DepthwiseConv1D(
-            kernel_size=kernel_size, padding='same')
+            kernel_size=kernel_size, padding="same"
+        )
 
         # Batch normalization (BEFORE Swish, per paper)
         self.batch_norm = layers.BatchNormalization()
 
         # Pointwise convolution 2 (projection back to channels)
         self.pointwise_conv2 = layers.Conv1D(
-            filters=channels, kernel_size=1, padding='same')
+            filters=channels, kernel_size=1, padding="same"
+        )
 
         # Dropout
         self.dropout = layers.Dropout(dropout_rate)
@@ -404,8 +447,10 @@ class ConvolutionModule(layers.Layer):
         x = x1 * tf.nn.sigmoid(x2)
 
         x = self.depthwise_conv(x)
-        x = self.batch_norm(x, training=training)  # BatchNorm BEFORE Swish (paper order)
-        x = tf.nn.swish(x)                         # Swish AFTER BatchNorm
+        x = self.batch_norm(
+            x, training=training
+        )  # BatchNorm BEFORE Swish (paper order)
+        x = tf.nn.swish(x)  # Swish AFTER BatchNorm
         x = self.pointwise_conv2(x)
         x = self.dropout(x, training=training)
 
@@ -413,11 +458,13 @@ class ConvolutionModule(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'channels': self.channels,
-            'kernel_size': self.kernel_size,
-            'dropout_rate': self.dropout_rate
-        })
+        config.update(
+            {
+                "channels": self.channels,
+                "kernel_size": self.kernel_size,
+                "dropout_rate": self.dropout_rate,
+            }
+        )
         return config
 
 
@@ -454,11 +501,13 @@ class FeedForwardModule(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'd_model': self.d_model,
-            'd_ff': self.d_ff,
-            'dropout_rate': self.dropout_rate
-        })
+        config.update(
+            {
+                "d_model": self.d_model,
+                "d_ff": self.d_ff,
+                "dropout_rate": self.dropout_rate,
+            }
+        )
         return config
 
 
@@ -480,7 +529,8 @@ class MultiHeadSelfAttentionModule(layers.Layer):
 
         self.layer_norm = layers.LayerNormalization(epsilon=1e-6)
         self.rel_attention = RelativeMultiHeadAttention(
-            d_model=d_model, num_heads=num_heads, dropout_rate=dropout_rate)
+            d_model=d_model, num_heads=num_heads, dropout_rate=dropout_rate
+        )
         self.dropout = layers.Dropout(dropout_rate)
 
     def call(self, inputs, pos_enc, training=None):
@@ -500,11 +550,13 @@ class MultiHeadSelfAttentionModule(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'd_model': self.d_model,
-            'num_heads': self.num_heads,
-            'dropout_rate': self.dropout_rate
-        })
+        config.update(
+            {
+                "d_model": self.d_model,
+                "num_heads": self.num_heads,
+                "dropout_rate": self.dropout_rate,
+            }
+        )
         return config
 
 
@@ -522,30 +574,46 @@ class ConformerBlock(layers.Layer):
     Reference: Gulati et al., Section 2.5, Figure 1
     """
 
-    def __init__(self, d_model, d_ff, num_heads,
-                 conv_kernel_size=31, dropout_rate=0.1,
-                 ff_dropout_rate=None, attn_dropout_rate=None,
-                 conv_dropout_rate=None, **kwargs):
+    def __init__(
+        self,
+        d_model,
+        d_ff,
+        num_heads,
+        conv_kernel_size=31,
+        dropout_rate=0.1,
+        ff_dropout_rate=None,
+        attn_dropout_rate=None,
+        conv_dropout_rate=None,
+        **kwargs,
+    ):
         super(ConformerBlock, self).__init__(**kwargs)
         self.d_model = d_model
         self.d_ff = d_ff
         self.num_heads = num_heads
         self.conv_kernel_size = conv_kernel_size
         self.dropout_rate = dropout_rate
-        self.ff_dropout_rate = ff_dropout_rate if ff_dropout_rate is not None else dropout_rate
-        self.attn_dropout_rate = attn_dropout_rate if attn_dropout_rate is not None else dropout_rate
-        self.conv_dropout_rate = conv_dropout_rate if conv_dropout_rate is not None else dropout_rate
+        self.ff_dropout_rate = (
+            ff_dropout_rate if ff_dropout_rate is not None else dropout_rate
+        )
+        self.attn_dropout_rate = (
+            attn_dropout_rate if attn_dropout_rate is not None else dropout_rate
+        )
+        self.conv_dropout_rate = (
+            conv_dropout_rate if conv_dropout_rate is not None else dropout_rate
+        )
 
         # First feed-forward module (half-step residual)
         self.ff_module1 = FeedForwardModule(d_model, d_ff, self.ff_dropout_rate)
 
         # Multi-head self-attention with relative positional encoding
         self.mhsa_module = MultiHeadSelfAttentionModule(
-            d_model, num_heads, self.attn_dropout_rate)
+            d_model, num_heads, self.attn_dropout_rate
+        )
 
         # Convolution module
         self.conv_module = ConvolutionModule(
-            d_model, conv_kernel_size, self.conv_dropout_rate)
+            d_model, conv_kernel_size, self.conv_dropout_rate
+        )
 
         # Second feed-forward module (half-step residual)
         self.ff_module2 = FeedForwardModule(d_model, d_ff, self.ff_dropout_rate)
@@ -582,16 +650,18 @@ class ConformerBlock(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'd_model': self.d_model,
-            'd_ff': self.d_ff,
-            'num_heads': self.num_heads,
-            'conv_kernel_size': self.conv_kernel_size,
-            'dropout_rate': self.dropout_rate,
-            'ff_dropout_rate': self.ff_dropout_rate,
-            'attn_dropout_rate': self.attn_dropout_rate,
-            'conv_dropout_rate': self.conv_dropout_rate
-        })
+        config.update(
+            {
+                "d_model": self.d_model,
+                "d_ff": self.d_ff,
+                "num_heads": self.num_heads,
+                "conv_kernel_size": self.conv_kernel_size,
+                "dropout_rate": self.dropout_rate,
+                "ff_dropout_rate": self.ff_dropout_rate,
+                "attn_dropout_rate": self.attn_dropout_rate,
+                "conv_dropout_rate": self.conv_dropout_rate,
+            }
+        )
         return config
 
 
@@ -607,10 +677,19 @@ class ConformerEncoder(layers.Layer):
     Reference: Gulati et al., Figure 1
     """
 
-    def __init__(self, d_model, d_ff, num_heads, num_blocks,
-                 conv_kernel_size=31, dropout_rate=0.1,
-                 ff_dropout_rate=None, attn_dropout_rate=None,
-                 conv_dropout_rate=None, **kwargs):
+    def __init__(
+        self,
+        d_model,
+        d_ff,
+        num_heads,
+        num_blocks,
+        conv_kernel_size=31,
+        dropout_rate=0.1,
+        ff_dropout_rate=None,
+        attn_dropout_rate=None,
+        conv_dropout_rate=None,
+        **kwargs,
+    ):
         super(ConformerEncoder, self).__init__(**kwargs)
         self.d_model = d_model
         self.d_ff = d_ff
@@ -630,7 +709,8 @@ class ConformerEncoder(layers.Layer):
 
         # Relative positional encoding
         self.pos_encoding = RelativePositionalEncoding(
-            self.d_model, max_len=5000, name="rel_pos_enc")
+            self.d_model, max_len=5000, name="rel_pos_enc"
+        )
 
         # Stacked Conformer blocks
         self.conformer_blocks = [
@@ -643,7 +723,7 @@ class ConformerEncoder(layers.Layer):
                 ff_dropout_rate=self.ff_dropout_rate,
                 attn_dropout_rate=self.attn_dropout_rate,
                 conv_dropout_rate=self.conv_dropout_rate,
-                name=f'conformer_block_{i}'
+                name=f"conformer_block_{i}",
             )
             for i in range(self.num_blocks)
         ]
@@ -672,28 +752,42 @@ class ConformerEncoder(layers.Layer):
 
     def get_config(self):
         config = super(ConformerEncoder, self).get_config()
-        config.update({
-            'd_model': self.d_model,
-            'd_ff': self.d_ff,
-            'num_heads': self.num_heads,
-            'num_blocks': self.num_blocks,
-            'conv_kernel_size': self.conv_kernel_size,
-            'dropout_rate': self.dropout_rate,
-            'ff_dropout_rate': self.ff_dropout_rate,
-            'attn_dropout_rate': self.attn_dropout_rate,
-            'conv_dropout_rate': self.conv_dropout_rate
-        })
+        config.update(
+            {
+                "d_model": self.d_model,
+                "d_ff": self.d_ff,
+                "num_heads": self.num_heads,
+                "num_blocks": self.num_blocks,
+                "conv_kernel_size": self.conv_kernel_size,
+                "dropout_rate": self.dropout_rate,
+                "ff_dropout_rate": self.ff_dropout_rate,
+                "attn_dropout_rate": self.attn_dropout_rate,
+                "conv_dropout_rate": self.conv_dropout_rate,
+            }
+        )
         return config
 
 
-def create_conformer_model(input_shape, num_classes=2, d_model=256, d_ff=1024,
-                           num_heads=4, num_blocks=16, conv_kernel_size=31,
-                           dropout_rate=0.1, ff_dropout_rate=None,
-                           attn_dropout_rate=None, conv_dropout_rate=None,
-                           learning_rate=1e-4, weight_decay=1e-4,
-                           warmup_steps=1500, decay_steps=50000,
-                           alpha=1e-7, label_smoothing=0.05,
-                           clipnorm=1.0):
+def create_conformer_model(
+    input_shape,
+    num_classes=2,
+    d_model=256,
+    d_ff=1024,
+    num_heads=4,
+    num_blocks=16,
+    conv_kernel_size=31,
+    dropout_rate=0.1,
+    ff_dropout_rate=None,
+    attn_dropout_rate=None,
+    conv_dropout_rate=None,
+    learning_rate=1e-4,
+    weight_decay=1e-4,
+    warmup_steps=1500,
+    decay_steps=50000,
+    alpha=1e-7,
+    label_smoothing=0.05,
+    clipnorm=1.0,
+):
     """Create a paper-faithful Conformer model for audio classification.
 
     Pipeline:
@@ -728,7 +822,8 @@ def create_conformer_model(input_shape, num_classes=2, d_model=256, d_ff=1024,
     if num_classes < 2:
         logger.info(
             "Conformer: num_classes=%s promovido para 2 (a CE categórica com "
-            "1 classe degeneraria a loss para 0).", num_classes
+            "1 classe degeneraria a loss para 0).",
+            num_classes,
         )
         num_classes = 2
 
@@ -748,8 +843,12 @@ def create_conformer_model(input_shape, num_classes=2, d_model=256, d_ff=1024,
         # não é reconstruível pelo carregador safe_mode do Keras 3 — o modelo
         # treinava e salvava, mas falhava no load. Mesmos parâmetros de STFT.
         x = LogMelSpectrogramLayer(
-            sample_rate=16000, n_fft=512, hop_length=128, n_mels=80,
-            pad_end=True, name="log_mel_spectrogram",
+            sample_rate=16000,
+            n_fft=512,
+            hop_length=128,
+            n_mels=80,
+            pad_end=True,
+            name="log_mel_spectrogram",
         )(raw)
         # x shape: (batch, ~T/128, 80)
 
@@ -774,7 +873,7 @@ def create_conformer_model(input_shape, num_classes=2, d_model=256, d_ff=1024,
         ff_dropout_rate=ff_dropout_rate,
         attn_dropout_rate=attn_dropout_rate,
         conv_dropout_rate=conv_dropout_rate,
-        name='conformer_encoder'
+        name="conformer_encoder",
     )(x)
 
     # Global average pooling over time
@@ -782,9 +881,10 @@ def create_conformer_model(input_shape, num_classes=2, d_model=256, d_ff=1024,
 
     # Classification head
     outputs, _ = create_classification_head(
-        x, num_classes, dropout_rate=dropout_rate, hidden_dims=[d_model // 2])
+        x, num_classes, dropout_rate=dropout_rate, hidden_dims=[d_model // 2]
+    )
 
-    model = tf.keras.Model(inputs=inputs, outputs=outputs, name='conformer')
+    model = tf.keras.Model(inputs=inputs, outputs=outputs, name="conformer")
 
     # Label smoothing cross-entropy. Classe registrada (não uma closure local):
     # uma função definida dentro do builder não é resolvível por
@@ -795,6 +895,7 @@ def create_conformer_model(input_shape, num_classes=2, d_model=256, d_ff=1024,
 
     # Warmup + cosine decay learning rate schedule with AdamW optimizer
     from app.domain.models.training.optimization import WarmupCosineDecaySchedule
+
     lr_schedule = WarmupCosineDecaySchedule(
         initial_learning_rate=learning_rate,
         warmup_steps=warmup_steps,
@@ -810,11 +911,16 @@ def create_conformer_model(input_shape, num_classes=2, d_model=256, d_ff=1024,
         **optimizer_kwargs,
     )
 
-    model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
+    model.compile(optimizer=optimizer, loss=loss, metrics=["accuracy"])
     logger.info(
         "Conformer-M criado: blocks=%d, d_model=%d, d_ff=%d, heads=%d, "
         "kernel=%d, P_drop=%.3f, params=%d",
-        num_blocks, d_model, d_ff, num_heads, conv_kernel_size, dropout_rate,
+        num_blocks,
+        d_model,
+        d_ff,
+        num_heads,
+        conv_kernel_size,
+        dropout_rate,
         model.count_params(),
     )
     return model
@@ -855,18 +961,22 @@ def _merge_variant_params(defaults, overrides):
 # (compatibilidade de checkpoints/config) e resolve para a mesma topologia.
 _CONFORMER_M_PARAMS = {
     "d_model": 256,
-    "d_ff": 1024,          # 4 × d_model (paper)
-    "num_heads": 4,        # paper Conformer-M
-    "num_blocks": 16,      # paper Conformer-M
+    "d_ff": 1024,  # 4 × d_model (paper)
+    "num_heads": 4,  # paper Conformer-M
+    "num_blocks": 16,  # paper Conformer-M
     "conv_kernel_size": 31,  # paper §2.3
-    "dropout_rate": 0.1,   # P_drop do paper (uniforme no encoder)
+    "dropout_rate": 0.1,  # P_drop do paper (uniforme no encoder)
 }
 
 _CONFORMER_ALIASES = {"default", "conformer", "conformer_lite", "conformer_m"}
 
 
-def create_model(input_shape: Tuple[int, ...], num_classes: int,
-                 architecture: str = 'conformer', **kwargs) -> tf.keras.Model:
+def create_model(
+    input_shape: Tuple[int, ...],
+    num_classes: int,
+    architecture: str = "conformer",
+    **kwargs,
+) -> tf.keras.Model:
     """Factory function to create the Conformer model.
 
     Configuração única (Conformer-M, Gulati et al., Interspeech 2020):
@@ -893,7 +1003,7 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int,
             f"Use uma destas: {sorted(_CONFORMER_ALIASES)} "
             "(todas resolvem para a mesma configuração Conformer-M)."
         )
-    if architecture == 'conformer_lite':
+    if architecture == "conformer_lite":
         logger.warning(
             "Conformer: 'conformer_lite' é apenas um ALIAS legado — a "
             "configuração é única (Conformer-M, 16 blocos). Use 'conformer'."
@@ -909,13 +1019,15 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int,
 
 
 # Register custom layers for model loading
-tf.keras.utils.get_custom_objects().update({
-    'RelativePositionalEncoding': RelativePositionalEncoding,
-    'RelativeMultiHeadAttention': RelativeMultiHeadAttention,
-    'ConvSubsampling': ConvSubsampling,
-    'ConvolutionModule': ConvolutionModule,
-    'FeedForwardModule': FeedForwardModule,
-    'MultiHeadSelfAttentionModule': MultiHeadSelfAttentionModule,
-    'ConformerBlock': ConformerBlock,
-    'ConformerEncoder': ConformerEncoder
-})
+tf.keras.utils.get_custom_objects().update(
+    {
+        "RelativePositionalEncoding": RelativePositionalEncoding,
+        "RelativeMultiHeadAttention": RelativeMultiHeadAttention,
+        "ConvSubsampling": ConvSubsampling,
+        "ConvolutionModule": ConvolutionModule,
+        "FeedForwardModule": FeedForwardModule,
+        "MultiHeadSelfAttentionModule": MultiHeadSelfAttentionModule,
+        "ConformerBlock": ConformerBlock,
+        "ConformerEncoder": ConformerEncoder,
+    }
+)

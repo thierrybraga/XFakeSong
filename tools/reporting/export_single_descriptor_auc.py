@@ -57,9 +57,7 @@ def descriptors(X: np.ndarray) -> dict[str, np.ndarray]:
         # Invariante a escala: é o que sobra depois da normalização de RMS.
         "crest_db": peak_db - rms_db,
         "band_6k_7k_rel_db": _relative_band_db(power, freqs, 6000, 7000),
-        "zcr": np.mean(
-            np.signbit(flat[:, 1:]) != np.signbit(flat[:, :-1]), axis=1
-        ),
+        "zcr": np.mean(np.signbit(flat[:, 1:]) != np.signbit(flat[:, :-1]), axis=1),
         # Banda onde apareceria a assinatura de reamostragem 24 -> 16 kHz.
         "band_7k_8k_rel_db": _relative_band_db(power, freqs, 7000, 8000),
         "spectral_centroid_hz": (power * freqs).sum(axis=1) / total,
@@ -75,9 +73,7 @@ def main() -> int:
         type=Path,
         default=ROOT / "data/datasets/benchmark_dataset_15k.npz",
     )
-    parser.add_argument(
-        "--split", default="test", choices=["train", "val", "test"]
-    )
+    parser.add_argument("--split", default="test", choices=["train", "val", "test"])
     parser.add_argument(
         "--out",
         type=Path,

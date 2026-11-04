@@ -5,18 +5,18 @@ from app.core.db.models.base import BaseModel
 
 
 class AnalysisResult(BaseModel):
-    __tablename__ = 'analysis_results'
+    __tablename__ = "analysis_results"
 
     filename: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     is_fake: Mapped[bool] = mapped_column(Boolean, nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
-    model_name: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    model_name: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, index=True
+    )
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     sample_rate: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    __table_args__ = (
-        Index('ix_analysis_created_at', 'created_at'),
-    )
+    __table_args__ = (Index("ix_analysis_created_at", "created_at"),)
 
     # Armazenar detalhes complexos como JSON
     # No SQLite, JSON é armazenado como TEXT, mas SQLAlchemy abstrai isso

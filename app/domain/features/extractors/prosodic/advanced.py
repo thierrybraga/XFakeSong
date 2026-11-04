@@ -32,7 +32,7 @@ def compute_ppq(y: np.ndarray, f0: np.ndarray, sr: int) -> float:
     perturbations = []
     for i in range(2, len(periods) - 2):
         # PPQ usa média de 5 períodos consecutivos
-        local_mean = np.mean(periods[i - 2:i + 3])
+        local_mean = np.mean(periods[i - 2 : i + 3])
         if local_mean > 0:
             perturbation = abs(periods[i] - local_mean) / local_mean
             perturbations.append(perturbation)
@@ -40,8 +40,9 @@ def compute_ppq(y: np.ndarray, f0: np.ndarray, sr: int) -> float:
     return np.mean(perturbations) if perturbations else 0.0
 
 
-def compute_apq(y: np.ndarray, f0: np.ndarray,
-                frame_length: int, hop_length: int) -> float:
+def compute_apq(
+    y: np.ndarray, f0: np.ndarray, frame_length: int, hop_length: int
+) -> float:
     """Calcula Amplitude Perturbation Quotient (APQ)."""
     amplitudes = extract_peak_amplitudes(y, f0, frame_length, hop_length)
 
@@ -51,7 +52,7 @@ def compute_apq(y: np.ndarray, f0: np.ndarray,
     perturbations = []
     for i in range(5, len(amplitudes) - 5):
         # APQ usa média de 11 amplitudes consecutivas
-        local_mean = np.mean(amplitudes[i - 5:i + 6])
+        local_mean = np.mean(amplitudes[i - 5 : i + 6])
         if local_mean > 0:
             perturbation = abs(amplitudes[i] - local_mean) / local_mean
             perturbations.append(perturbation)
@@ -73,8 +74,9 @@ def compute_vf0(f0: np.ndarray) -> float:
         return 0.0
 
 
-def compute_shdb(y: np.ndarray, f0: np.ndarray,
-                 frame_length: int, hop_length: int) -> float:
+def compute_shdb(
+    y: np.ndarray, f0: np.ndarray, frame_length: int, hop_length: int
+) -> float:
     """Calcula Shimmer in dB (ShdB)."""
     amplitudes = extract_peak_amplitudes(y, f0, frame_length, hop_length)
 
@@ -90,8 +92,9 @@ def compute_shdb(y: np.ndarray, f0: np.ndarray,
     return np.mean(differences)
 
 
-def compute_nhr(y: np.ndarray, f0: np.ndarray, sr: int,
-                frame_length: int, hop_length: int) -> float:
+def compute_nhr(
+    y: np.ndarray, f0: np.ndarray, sr: int, frame_length: int, hop_length: int
+) -> float:
     """Calcula Noise-to-Harmonics Ratio (NHR)."""
     # Implementação simplificada baseada na relação entre
     # energia harmônica e energia de ruído
@@ -107,7 +110,7 @@ def compute_nhr(y: np.ndarray, f0: np.ndarray, sr: int,
     valid_f0 = f0[~np.isnan(f0) & (f0 > 0)]
 
     if len(valid_f0) == 0:
-        return float('inf')
+        return float("inf")
 
     mean_f0 = np.mean(valid_f0)
 
@@ -127,7 +130,7 @@ def compute_nhr(y: np.ndarray, f0: np.ndarray, sr: int,
             harmonic_energy += np.mean(magnitude[start_bin:end_bin, :] ** 2)
 
     # Energia total
-    total_energy = np.mean(magnitude ** 2)
+    total_energy = np.mean(magnitude**2)
 
     # Energia de ruído (aproximação)
     noise_energy = total_energy - harmonic_energy
@@ -135,7 +138,7 @@ def compute_nhr(y: np.ndarray, f0: np.ndarray, sr: int,
     if harmonic_energy > 0:
         return noise_energy / harmonic_energy
     else:
-        return float('inf')
+        return float("inf")
 
 
 def compute_vti(y: np.ndarray, frame_length: int, hop_length: int) -> float:
@@ -157,8 +160,7 @@ def compute_vti(y: np.ndarray, frame_length: int, hop_length: int) -> float:
     return vti
 
 
-def compute_spi(y: np.ndarray, sr: int, frame_length: int,
-                hop_length: int) -> float:
+def compute_spi(y: np.ndarray, sr: int, frame_length: int, hop_length: int) -> float:
     """Calcula Soft Phonation Index (SPI)."""
     # Implementação simplificada baseada na relação entre
     # energia de baixa e alta frequência
@@ -182,7 +184,7 @@ def compute_spi(y: np.ndarray, sr: int, frame_length: int,
     if high_freq_energy > 0:
         spi = 10 * np.log10(low_freq_energy / high_freq_energy)
     else:
-        spi = float('inf')
+        spi = float("inf")
 
     return spi
 
@@ -209,7 +211,7 @@ def compute_dfa(y: np.ndarray) -> float:
         segment_fluctuations = []
 
         for i in range(n_segments):
-            segment = y_integrated[i * scale:(i + 1) * scale]
+            segment = y_integrated[i * scale : (i + 1) * scale]
 
             # Ajustar tendência linear
             x = np.arange(len(segment))
@@ -218,7 +220,7 @@ def compute_dfa(y: np.ndarray) -> float:
 
             # Calcular flutuação
             detrended = segment - trend
-            fluctuation = np.sqrt(np.mean(detrended ** 2))
+            fluctuation = np.sqrt(np.mean(detrended**2))
             segment_fluctuations.append(fluctuation)
 
         if segment_fluctuations:
@@ -226,7 +228,7 @@ def compute_dfa(y: np.ndarray) -> float:
 
     # Ajuste linear em escala log-log para obter expoente DFA
     if len(fluctuations) >= 3:
-        valid_scales = scales[:len(fluctuations)]
+        valid_scales = scales[: len(fluctuations)]
         valid_fluctuations = np.array(fluctuations)
 
         # Remover valores inválidos

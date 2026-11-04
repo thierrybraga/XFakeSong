@@ -37,7 +37,7 @@ def compute_spectral_kurtosis(S: np.ndarray, freqs: np.ndarray) -> np.ndarray:
         if variance > 0:
             # Quarto momento central normalizado
             fourth_moment = np.sum(prob_dist * (freqs - mean_freq) ** 4)
-            kurtosis = fourth_moment / (variance ** 2) - 3
+            kurtosis = fourth_moment / (variance**2) - 3
         else:
             kurtosis = 0
 
@@ -60,7 +60,7 @@ def compute_spectral_skewness(S: np.ndarray, freqs: np.ndarray) -> np.ndarray:
         if variance > 0:
             # Terceiro momento central normalizado
             third_moment = np.sum(prob_dist * (freqs - mean_freq) ** 3)
-            skewness = third_moment / (variance ** 1.5)
+            skewness = third_moment / (variance**1.5)
         else:
             skewness = 0
 
@@ -69,8 +69,9 @@ def compute_spectral_skewness(S: np.ndarray, freqs: np.ndarray) -> np.ndarray:
     return np.array(skewness_values)
 
 
-def compute_spectral_spread(S: np.ndarray, freqs: np.ndarray,
-                            centroid: np.ndarray) -> np.ndarray:
+def compute_spectral_spread(
+    S: np.ndarray, freqs: np.ndarray, centroid: np.ndarray
+) -> np.ndarray:
     """Computa o espalhamento espectral (variância)."""
     spread_values = []
     for i, frame in enumerate(S.T):

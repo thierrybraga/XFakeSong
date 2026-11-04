@@ -27,6 +27,7 @@ def _create_error_tab(name: str, error_msg: str) -> Callable[[], None]:
     O placeholder renderiza um aviso amigável para o usuário sem
     quebrar a aplicação inteira.
     """
+
     def _tab() -> None:
         with gr.Tab(f"⚠️ {name} (erro)"):
             gr.Markdown(
@@ -35,6 +36,7 @@ def _create_error_tab(name: str, error_msg: str) -> Callable[[], None]:
                 f"Esta aba foi desabilitada para preservar o resto da interface. "
                 f"Verifique os logs do servidor para mais detalhes."
             )
+
     return _tab
 
 

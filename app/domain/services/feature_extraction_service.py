@@ -62,7 +62,7 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
         self.validator = FeatureExtractionValidator(
             self.loader.modular_enabled,
             self.loader.extractor_cache,
-            self.loader.extractor_specs
+            self.loader.extractor_specs,
         )
 
         # Validar pipeline
@@ -85,8 +85,9 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
     def plugin_manager(self):
         return self.loader.plugin_manager
 
-    def extract_features(self, audio_data: AudioData,
-                         config: ExtractionConfig) -> ProcessingResult:
+    def extract_features(
+        self, audio_data: AudioData, config: ExtractionConfig
+    ) -> ProcessingResult:
         """Extrair características de um arquivo de áudio"""
         return self.core.extract_features(audio_data, config)
 
@@ -119,27 +120,21 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
 
             warnings = (
                 [f"Tipos ignorados (não reconhecidos): {', '.join(invalid_types)}"]
-                if invalid_types else []
+                if invalid_types
+                else []
             )
 
             if result.status == ProcessingStatus.SUCCESS:
                 return ProcessingResult(
                     status=ProcessingStatus.SUCCESS,
-                    data={
-                        "features": (
-                            result.data.features if result.data else None
-                        )
-                    },
+                    data={"features": (result.data.features if result.data else None)},
                     warnings=warnings,
                 )
             else:
                 return result
 
         except Exception as e:
-            return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=[str(e)]
-            )
+            return ProcessingResult(status=ProcessingStatus.ERROR, errors=[str(e)])
 
     def extract_batch(
         self, audio_list: List[AudioData], feature_types: List[str]
@@ -154,23 +149,16 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
                 else:
                     return result
 
-            return ProcessingResult(
-                status=ProcessingStatus.SUCCESS,
-                data=results
-            )
+            return ProcessingResult(status=ProcessingStatus.SUCCESS, data=results)
 
         except Exception as e:
-            return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=[str(e)]
-            )
+            return ProcessingResult(status=ProcessingStatus.ERROR, errors=[str(e)])
 
     def get_available_extractors(self) -> List[str]:
         """Retorna extratores disponíveis."""
         return self.loader.get_available_extractors()
 
-    def get_extractor_info(
-            self, extractor_name: str) -> Optional[Dict[str, Any]]:
+    def get_extractor_info(self, extractor_name: str) -> Optional[Dict[str, Any]]:
         """Retorna informações detalhadas sobre um extrator."""
         return self.loader.get_extractor_info(extractor_name)
 
@@ -181,7 +169,7 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
         self.validator = FeatureExtractionValidator(
             self.loader.modular_enabled,
             self.loader.extractor_cache,
-            self.loader.extractor_specs
+            self.loader.extractor_specs,
         )
         self.validator.validate()
 
@@ -189,8 +177,9 @@ class AudioFeatureExtractionService(IFeatureExtractionService):
         """Retornar tipos de características disponíveis"""
         return self.loader.get_available_features()
 
-    def register_extractor(self, feature_type: FeatureType,
-                           extractor: IFeatureExtractor) -> None:
+    def register_extractor(
+        self, feature_type: FeatureType, extractor: IFeatureExtractor
+    ) -> None:
         """Registrar um novo extrator de características"""
         self.loader.register_extractor(feature_type, extractor)
 

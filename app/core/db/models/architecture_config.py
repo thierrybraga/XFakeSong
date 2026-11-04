@@ -5,7 +5,7 @@ from app.core.db.models.base import BaseModel
 
 
 class ArchitectureConfig(BaseModel):
-    __tablename__ = 'architecture_configs'
+    __tablename__ = "architecture_configs"
 
     architecture_name: Mapped[str] = mapped_column(
         String(100), nullable=False, index=True

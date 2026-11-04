@@ -15,7 +15,7 @@ import numpy as np
 
 from app.utils.file_utils import ensure_directory
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 def get_file_size(file_path: Union[str, Path]) -> int:
@@ -64,26 +64,26 @@ def parse_timestamp(timestamp_str: str) -> datetime:
 
 def timing_decorator(func: Callable[..., T]) -> Callable[..., T]:
     """Decorator para medir tempo de execução."""
+
     @wraps(func)
     def wrapper(*args, **kwargs) -> T:
         start_time = time.time()
         try:
             result = func(*args, **kwargs)
             execution_time = time.time() - start_time
-            logging.debug(
-                f"{func.__name__} executado em {execution_time:.3f}s")
+            logging.debug(f"{func.__name__} executado em {execution_time:.3f}s")
             return result
         except Exception as e:
             execution_time = time.time() - start_time
-            logging.error(
-                f"{func.__name__} falhou após {execution_time:.3f}s: {e}")
+            logging.error(f"{func.__name__} falhou após {execution_time:.3f}s: {e}")
             raise
+
     return wrapper
 
 
-def retry_decorator(max_attempts: int = 3,
-                    delay: float = 1.0, backoff: float = 2.0):
+def retry_decorator(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0):
     """Decorator para retry automático com backoff exponencial."""
+
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
         def wrapper(*args, **kwargs) -> T:
@@ -97,15 +97,19 @@ def retry_decorator(max_attempts: int = 3,
                     last_exception = e
                     if attempt < max_attempts - 1:
                         logging.warning(
-                            f"Tentativa {attempt + 1} falhou para {func.__name__}: {e}. Tentando novamente em {current_delay}s")
+                            f"Tentativa {attempt + 1} falhou para {func.__name__}: {e}. Tentando novamente em {current_delay}s"
+                        )
                         time.sleep(current_delay)
                         current_delay *= backoff
                     else:
                         logging.error(
-                            f"Todas as {max_attempts} tentativas falharam para {func.__name__}")
+                            f"Todas as {max_attempts} tentativas falharam para {func.__name__}"
+                        )
 
             raise last_exception
+
         return wrapper
+
     return decorator
 
 
@@ -113,7 +117,7 @@ def load_json(file_path: Union[str, Path], default: Any = None) -> Any:
     """Carrega arquivo JSON com tratamento de erro."""
     file_path = Path(file_path)
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError) as e:
         if default is not None:
@@ -127,7 +131,7 @@ def save_json(data: Any, file_path: Union[str, Path], indent: int = 2) -> bool:
     ensure_directory(file_path.parent)
 
     try:
-        with open(file_path, 'w', encoding='utf-8') as f:
+        with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=indent, ensure_ascii=False, default=str)
         return True
     except Exception as e:
@@ -135,14 +139,12 @@ def save_json(data: Any, file_path: Union[str, Path], indent: int = 2) -> bool:
         return False
 
 
-def deep_merge_dicts(dict1: Dict[str, Any],
-                     dict2: Dict[str, Any]) -> Dict[str, Any]:
+def deep_merge_dicts(dict1: Dict[str, Any], dict2: Dict[str, Any]) -> Dict[str, Any]:
     """Faz merge profundo de dois dicionários."""
     result = dict1.copy()
 
     for key, value in dict2.items():
-        if key in result and isinstance(
-                result[key], dict) and isinstance(value, dict):
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
             result[key] = deep_merge_dicts(result[key], value)
         else:
             result[key] = value
@@ -150,8 +152,9 @@ def deep_merge_dicts(dict1: Dict[str, Any],
     return result
 
 
-def flatten_dict(d: Dict[str, Any], parent_key: str = '',
-                 sep: str = '.') -> Dict[str, Any]:
+def flatten_dict(
+    d: Dict[str, Any], parent_key: str = "", sep: str = "."
+) -> Dict[str, Any]:
     """Achata dicionário aninhado."""
     items = []
     for k, v in d.items():
@@ -165,26 +168,26 @@ def flatten_dict(d: Dict[str, Any], parent_key: str = '',
 
 def chunk_list(lst: List[T], chunk_size: int) -> List[List[T]]:
     """Divide lista em chunks de tamanho específico."""
-    return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
+    return [lst[i : i + chunk_size] for i in range(0, len(lst), chunk_size)]
 
 
-def normalize_array(arr: np.ndarray, method: str = 'minmax') -> np.ndarray:
+def normalize_array(arr: np.ndarray, method: str = "minmax") -> np.ndarray:
     """Normaliza array numpy."""
-    if method == 'minmax':
+    if method == "minmax":
         min_val = np.min(arr)
         max_val = np.max(arr)
         if max_val - min_val == 0:
             return np.zeros_like(arr)
         return (arr - min_val) / (max_val - min_val)
 
-    elif method == 'zscore':
+    elif method == "zscore":
         mean_val = np.mean(arr)
         std_val = np.std(arr)
         if std_val == 0:
             return np.zeros_like(arr)
         return (arr - mean_val) / std_val
 
-    elif method == 'robust':
+    elif method == "robust":
         median_val = np.median(arr)
         mad = np.median(np.abs(arr - median_val))
         if mad == 0:
@@ -204,7 +207,7 @@ def validate_audio_file(file_path: Union[str, Path]) -> bool:
         return False
 
     # Verifica extensão
-    valid_extensions = {'.wav', '.mp3', '.flac', '.m4a', '.aac', '.ogg'}
+    valid_extensions = {".wav", ".mp3", ".flac", ".m4a", ".aac", ".ogg"}
     if file_path.suffix.lower() not in valid_extensions:
         return False
 
@@ -215,15 +218,17 @@ def validate_audio_file(file_path: Union[str, Path]) -> bool:
     return True
 
 
-def create_unique_id(prefix: str = '', length: int = 8) -> str:
+def create_unique_id(prefix: str = "", length: int = 8) -> str:
     """Cria ID único."""
     import uuid
-    unique_part = str(uuid.uuid4()).replace('-', '')[:length]
+
+    unique_part = str(uuid.uuid4()).replace("-", "")[:length]
     return f"{prefix}_{unique_part}" if prefix else unique_part
 
 
-def setup_logging(name: str, level: str = 'INFO',
-                  format_str: Optional[str] = None) -> logging.Logger:
+def setup_logging(
+    name: str, level: str = "INFO", format_str: Optional[str] = None
+) -> logging.Logger:
     """Configura logger padronizado."""
     logger = logging.getLogger(name)
     logger.setLevel(getattr(logging, level.upper()))
@@ -231,7 +236,7 @@ def setup_logging(name: str, level: str = 'INFO',
     if not logger.handlers:
         handler = logging.StreamHandler()
         if format_str is None:
-            format_str = '%(asctime)s | %(levelname)s | %(name)s:%(funcName)s:%(lineno)d | %(message)s'
+            format_str = "%(asctime)s | %(levelname)s | %(name)s:%(funcName)s:%(lineno)d | %(message)s"
 
         formatter = logging.Formatter(format_str)
         handler.setFormatter(formatter)
@@ -268,13 +273,13 @@ class ProgressTracker:
             eta = 0
 
         return {
-            'current': self.current,
-            'total': self.total,
-            'percentage': percentage,
-            'elapsed': elapsed,
-            'eta': eta,
-            'rate': rate,
-            'description': self.description
+            "current": self.current,
+            "total": self.total,
+            "percentage": percentage,
+            "elapsed": elapsed,
+            "eta": eta,
+            "rate": rate,
+            "description": self.description,
         }
 
     def __str__(self) -> str:

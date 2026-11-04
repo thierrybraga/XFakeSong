@@ -85,13 +85,13 @@ def _split_counts(splits_dir: Path) -> dict[str, dict[str, int]]:
     return counts
 
 
-def _load_wav(path: Path, sample_rate: int, samples: int) -> tuple[np.ndarray, int, int]:
+def _load_wav(
+    path: Path, sample_rate: int, samples: int
+) -> tuple[np.ndarray, int, int]:
     """Decode audio with the same center-crop/tile policy as runtime."""
     import librosa
 
-    y, _ = librosa.load(
-        str(path), sr=sample_rate, mono=True, res_type="soxr_hq"
-    )
+    y, _ = librosa.load(str(path), sr=sample_rate, mono=True, res_type="soxr_hq")
     y = np.asarray(y, dtype="float32")
     if not np.all(np.isfinite(y)):
         y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
@@ -100,7 +100,7 @@ def _load_wav(path: Path, sample_rate: int, samples: int) -> tuple[np.ndarray, i
         raise ValueError(f"Audio vazio: {path}")
     if original_samples >= samples:
         start = (original_samples - samples) // 2
-        return y[start:start + samples].astype("float32"), original_samples, start
+        return y[start : start + samples].astype("float32"), original_samples, start
     repeats = int(math.ceil(samples / original_samples))
     return (
         np.tile(y, repeats)[:samples].astype("float32"),
@@ -287,8 +287,7 @@ def export_npz_from_splits(
             "fake": int(np.sum(source_labels == 1)),
         }
     source_oracle_correct = sum(
-        max(counts["real"], counts["fake"])
-        for counts in source_class_counts.values()
+        max(counts["real"], counts["fake"]) for counts in source_class_counts.values()
     )
     source_oracle_accuracy = source_oracle_correct / max(len(labels), 1)
     meta["source_class_audit"] = {
@@ -329,15 +328,17 @@ def export_npz_from_splits(
     )
     arrays["cluster_ids"] = np.asarray(
         [
-            metadata_id_for_path(path, "text_id")
-            if item.get("text_known")
-            else (
-                metadata_id_for_path(path, "utterance_id")
-                if item.get("utterance_known")
+            (
+                metadata_id_for_path(path, "text_id")
+                if item.get("text_known")
                 else (
-                    metadata_id_for_path(path, "speaker_id")
-                    if item.get("speaker_known")
-                    else f"sample:{Path(path).name}"
+                    metadata_id_for_path(path, "utterance_id")
+                    if item.get("utterance_known")
+                    else (
+                        metadata_id_for_path(path, "speaker_id")
+                        if item.get("speaker_known")
+                        else f"sample:{Path(path).name}"
+                    )
                 )
             )
             for path, item in zip(all_paths, sample_meta)
@@ -350,7 +351,9 @@ def export_npz_from_splits(
     return out_npz
 
 
-def create_synthetic_audio_npz(out_npz: Path, n_per_class: int, sample_rate: int) -> Path:
+def create_synthetic_audio_npz(
+    out_npz: Path, n_per_class: int, sample_rate: int
+) -> Path:
     out_npz.parent.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(42)
     duration = 1.0
@@ -360,7 +363,9 @@ def create_synthetic_audio_npz(out_npz: Path, n_per_class: int, sample_rate: int
     X, y = [], []
     for idx in range(n_per_class):
         freq = 220 + (idx % 5) * 20
-        X.append(0.6 * np.sin(2 * np.pi * freq * t) + 0.02 * rng.standard_normal(samples))
+        X.append(
+            0.6 * np.sin(2 * np.pi * freq * t) + 0.02 * rng.standard_normal(samples)
+        )
         y.append(0)
         fake_freq = 440 + (idx % 7) * 25
         carrier = np.sin(2 * np.pi * fake_freq * t)
@@ -379,15 +384,19 @@ def create_synthetic_audio_npz(out_npz: Path, n_per_class: int, sample_rate: int
     arrays = {
         "X_train": X[:n_train],
         "y_train": y[:n_train],
-        "X_val": X[n_train:n_train + n_val],
-        "y_val": y[n_train:n_train + n_val],
-        "X_test": X[n_train + n_val:],
-        "y_test": y[n_train + n_val:],
-        "metadata_json": np.asarray(json.dumps({
-            "source": "synthetic_audio_smoke",
-            "sample_rate": sample_rate,
-            "format": "raw_audio",
-        })),
+        "X_val": X[n_train : n_train + n_val],
+        "y_val": y[n_train : n_train + n_val],
+        "X_test": X[n_train + n_val :],
+        "y_test": y[n_train + n_val :],
+        "metadata_json": np.asarray(
+            json.dumps(
+                {
+                    "source": "synthetic_audio_smoke",
+                    "sample_rate": sample_rate,
+                    "format": "raw_audio",
+                }
+            )
+        ),
     }
     np.savez_compressed(out_npz, **arrays)
     LOGGER.info("NPZ sintético exportado: %s", out_npz)
@@ -598,18 +607,28 @@ def main() -> int:
         description="Executa download, treino, inferência e relatório do TCC.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--smoke", action="store_true", help="usa áudio sintético e não baixa datasets")
+    parser.add_argument(
+        "--smoke", action="store_true", help="usa áudio sintético e não baixa datasets"
+    )
     parser.add_argument(
         "--tcc-full-dataset",
         action="store_true",
         help="preset canonico do TCC: tier medium, 7.500 real + 7.500 fake, full benchmark e API",
     )
     parser.add_argument(
-        "--tier", choices=["test", "small", "medium", "large"], default=None,
+        "--tier",
+        choices=["test", "small", "medium", "large"],
+        default=None,
         help="tier de dataset (test/small/medium/large) repassado ao build_dataset",
     )
-    parser.add_argument("--download", action="store_true", help="executa tools/dataset/build_dataset.py antes do treino")
-    parser.add_argument("--skip-download", action="store_true", help="usa datasets/splits já existentes")
+    parser.add_argument(
+        "--download",
+        action="store_true",
+        help="executa tools/dataset/build_dataset.py antes do treino",
+    )
+    parser.add_argument(
+        "--skip-download", action="store_true", help="usa datasets/splits já existentes"
+    )
     parser.add_argument(
         "--skip-preprocess",
         action="store_true",
@@ -617,24 +636,43 @@ def main() -> int:
     )
     parser.add_argument("--target-per-class", type=int, default=7500)
     parser.add_argument("--skip-real-cv", action="store_true")
-    parser.add_argument("--full-benchmark", action="store_true", help="usa preset completo do benchmark")
-    parser.add_argument("--model", default=None, help="executa benchmark de uma única arquitetura")
+    parser.add_argument(
+        "--full-benchmark", action="store_true", help="usa preset completo do benchmark"
+    )
+    parser.add_argument(
+        "--model", default=None, help="executa benchmark de uma única arquitetura"
+    )
     parser.add_argument("--archs", nargs="+", default=None)
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--device-profile", choices=["auto", "cpu", "gpu"], default="auto")
+    parser.add_argument(
+        "--device-profile", choices=["auto", "cpu", "gpu"], default="auto"
+    )
     parser.add_argument("--no-optimize-hparams", action="store_true")
     # P0 — repasse dos protocolos anti-vazamento ao benchmark.
-    parser.add_argument("--group-split", action="store_true",
-                        help="split disjunto por fonte/gerador (anti-vazamento)")
-    parser.add_argument("--cross-generator", metavar="GERADOR", default=None,
-                        help="segura este gerador fora do treino e testa nele "
-                             "(ex.: fkvoice)")
-    parser.add_argument("--speaker-split", action="store_true",
-                        help="tier large: split disjunto por falante (usuários não vistos)")
-    parser.add_argument("--unseen-speaker", metavar="FALANTE", default=None,
-                        help="tier large: segura este falante fora do treino e "
-                             "testa nele (protocolo de usuário não visto)")
+    parser.add_argument(
+        "--group-split",
+        action="store_true",
+        help="split disjunto por fonte/gerador (anti-vazamento)",
+    )
+    parser.add_argument(
+        "--cross-generator",
+        metavar="GERADOR",
+        default=None,
+        help="segura este gerador fora do treino e testa nele " "(ex.: fkvoice)",
+    )
+    parser.add_argument(
+        "--speaker-split",
+        action="store_true",
+        help="tier large: split disjunto por falante (usuários não vistos)",
+    )
+    parser.add_argument(
+        "--unseen-speaker",
+        metavar="FALANTE",
+        default=None,
+        help="tier large: segura este falante fora do treino e "
+        "testa nele (protocolo de usuário não visto)",
+    )
     parser.add_argument("--skip-benchmark-preflight", action="store_true")
     parser.add_argument("--latency-runs", type=int, default=30)
     parser.add_argument("--seed", type=int, default=42)
@@ -665,7 +703,9 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.model and args.archs:
-        parser.error("Use --model para um único modelo ou --archs para vários, não ambos.")
+        parser.error(
+            "Use --model para um único modelo ou --archs para vários, não ambos."
+        )
 
     if args.tcc_full_dataset:
         args.tier = args.tier or "medium"
@@ -687,10 +727,20 @@ def main() -> int:
                 args.speaker_split = True
 
     if not args.smoke and not args.download and not args.skip_download:
-        parser.error("Use --download para baixar/preparar ou --skip-download para usar splits existentes.")
+        parser.error(
+            "Use --download para baixar/preparar ou --skip-download para usar splits existentes."
+        )
 
-    output_dir = Path(args.out) if args.out else (
-        BASE_DIR / "data" / "results" / "tcc_pipeline" / time.strftime("%Y%m%d_%H%M%S")
+    output_dir = (
+        Path(args.out)
+        if args.out
+        else (
+            BASE_DIR
+            / "data"
+            / "results"
+            / "tcc_pipeline"
+            / time.strftime("%Y%m%d_%H%M%S")
+        )
     )
     if not output_dir.is_absolute():
         output_dir = BASE_DIR / output_dir
@@ -745,7 +795,9 @@ def main() -> int:
                 )
 
         counts = _split_counts(SPLITS_DIR)
-        if not all(counts[s]["real"] and counts[s]["fake"] for s in ("train", "val", "test")):
+        if not all(
+            counts[s]["real"] and counts[s]["fake"] for s in ("train", "val", "test")
+        ):
             raise RuntimeError(
                 "Splits incompletos em data/datasets/splits. "
                 "Execute com --download ou remova --skip-preprocess."

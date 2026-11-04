@@ -138,8 +138,6 @@ def _nome_do_modelo(nome: str | None) -> str | None:
     try:
         from app.interfaces.gradio.tabs.detection import (
             _nome_do_modelo as nome_da_detecao,
-        )
-        from app.interfaces.gradio.tabs.detection import (
             get_detection_service,
         )
 
@@ -169,9 +167,11 @@ def _recent_analyses(limit: int = 5) -> list:
                 [
                     f"{icon} {label}",
                     r.filename or "unknown",
-                    f"{r.confidence * 100:.1f}%".replace(".", ",")
-                    if r.confidence is not None
-                    else "—",
+                    (
+                        f"{r.confidence * 100:.1f}%".replace(".", ",")
+                        if r.confidence is not None
+                        else "—"
+                    ),
                     _nome_do_modelo(r.model_name) or "—",
                     ago,
                 ]
@@ -398,8 +398,7 @@ def create_dashboard_tab(abas_principais=None):
         # ─────────────── GPU Diagnóstico (acionável) ───────────────
         # Abre automaticamente quando há mismatch (hardware NVIDIA presente
         # mas TF não está vendo). Caso happy path (TF OK) fica fechado.
-        from app.core.gpu import get_diagnosis_html
-        from app.core.gpu import get_setup_result as _gpu_get
+        from app.core.gpu import get_diagnosis_html, get_setup_result as _gpu_get
 
         try:
             _gpu_diag = (_gpu_get() or {}).get("diagnosis") or {}

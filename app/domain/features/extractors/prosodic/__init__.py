@@ -8,6 +8,4 @@ Módulos para extração de características relacionadas à prosódia e qualida
 
 from .prosodic_features import ProsodicFeatureExtractor
 
-__all__ = [
-    "ProsodicFeatureExtractor"
-]
+__all__ = ["ProsodicFeatureExtractor"]

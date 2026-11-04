@@ -18,29 +18,29 @@ class AudioAugmenter:
         self.logger = logging.getLogger(__name__)
 
         # Parâmetros de augmentation
-        self.noise_factor = config.get('noise_factor', 0.1)
+        self.noise_factor = config.get("noise_factor", 0.1)
         # Faixa de SNR (dB) para o ruído aditivo calibrado. O ruído de treino
         # passa a ser parametrizado por SNR alvo (potência do sinal / SNR), a
         # MESMA definição usada na avaliação de robustez (benchmarks/data.py
         # add_awgn). Antes, _add_noise usava stddev fixo (noise_factor), não
         # calibrado por SNR e descasado dos SNRs de teste (10/20/30 dB) —
         # origem do colapso de robustez. Faixa default cobre 10/20/30 dB.
-        snr_range = config.get('snr_range_db', (5.0, 40.0))
+        snr_range = config.get("snr_range_db", (5.0, 40.0))
         self.snr_min_db = float(min(snr_range))
         self.snr_max_db = float(max(snr_range))
-        self.time_stretch_factor = config.get('time_stretch_factor', 0.1)
-        self.pitch_shift_steps = config.get('pitch_shift_steps', 2)
-        self.volume_factor = config.get('volume_factor', 0.2)
-        self.time_shift_factor = config.get('time_shift_factor', 0.1)
-        self.frequency_mask_factor = config.get('frequency_mask_factor', 0.1)
-        self.time_mask_factor = config.get('time_mask_factor', 0.1)
+        self.time_stretch_factor = config.get("time_stretch_factor", 0.1)
+        self.pitch_shift_steps = config.get("pitch_shift_steps", 2)
+        self.volume_factor = config.get("volume_factor", 0.2)
+        self.time_shift_factor = config.get("time_shift_factor", 0.1)
+        self.frequency_mask_factor = config.get("frequency_mask_factor", 0.1)
+        self.time_mask_factor = config.get("time_mask_factor", 0.1)
 
     def create_augmented_dataset(
         self,
         X: np.ndarray,
         y: np.ndarray,
         batch_size: int,
-        augmentation_factor: float = 2.0
+        augmentation_factor: float = 2.0,
     ) -> tf.data.Dataset:
         """Cria dataset com data augmentation."""
         try:
@@ -61,17 +61,16 @@ class AudioAugmenter:
 
             for technique in techniques:
                 # Selecionar amostras aleatórias para esta técnica
-                indices = np.random.choice(
-                    len(X), samples_per_technique, replace=True)
+                indices = np.random.choice(len(X), samples_per_technique, replace=True)
                 X_subset = X[indices]
                 y_subset = y[indices]
 
                 # Aplicar técnica de augmentation
                 augmented_dataset = tf.data.Dataset.from_tensor_slices(
-                    (X_subset, y_subset))
+                    (X_subset, y_subset)
+                )
                 augmented_dataset = augmented_dataset.map(
-                    technique,
-                    num_parallel_calls=tf.data.AUTOTUNE
+                    technique, num_parallel_calls=tf.data.AUTOTUNE
                 )
                 augmented_datasets.append(augmented_dataset)
 
@@ -86,7 +85,8 @@ class AudioAugmenter:
             combined_dataset = combined_dataset.prefetch(tf.data.AUTOTUNE)
 
             self.logger.info(
-                f"Dataset aumentado criado com fator {augmentation_factor}")
+                f"Dataset aumentado criado com fator {augmentation_factor}"
+            )
             return combined_dataset
 
         except Exception as e:
@@ -118,8 +118,9 @@ class AudioAugmenter:
             ]
         return common + [self._frequency_mask, self._time_mask]
 
-    def _add_noise(self, audio_features: tf.Tensor,
-                   label: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+    def _add_noise(
+        self, audio_features: tf.Tensor, label: tf.Tensor
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
         """Adiciona ruído gaussiano calibrado a um SNR alvo (AWGN).
 
         Amostra um SNR alvo ~ U(snr_min_db, snr_max_db) e deriva o desvio-padrão
@@ -135,27 +136,28 @@ class AudioAugmenter:
         snr_lin = tf.pow(10.0, snr_db / 10.0)
         sig_power = tf.reduce_mean(tf.square(x))
         noise_std = tf.sqrt(sig_power / tf.maximum(snr_lin, 1e-12))
-        noise = tf.random.normal(
-            shape=tf.shape(x), mean=0.0, stddev=1.0, dtype=tf.float32
-        ) * noise_std
+        noise = (
+            tf.random.normal(shape=tf.shape(x), mean=0.0, stddev=1.0, dtype=tf.float32)
+            * noise_std
+        )
         return x + noise, label
 
-    def _time_shift(self, audio_features: tf.Tensor,
-                    label: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+    def _time_shift(
+        self, audio_features: tf.Tensor, label: tf.Tensor
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
         """Aplica deslocamento temporal."""
         # Para features 2D (tempo, frequência)
         if len(audio_features.shape) == 2:
             # Usa ops TF para compatibilidade com graph mode / tf.data.map
             max_shift = tf.maximum(
                 tf.cast(
-                    tf.cast(tf.shape(audio_features)[0], tf.float32) *
-                    self.time_shift_factor,
-                    tf.int32
+                    tf.cast(tf.shape(audio_features)[0], tf.float32)
+                    * self.time_shift_factor,
+                    tf.int32,
                 ),
-                1
+                1,
             )
-            shift_amount = tf.random.uniform(
-                [], -max_shift, max_shift, dtype=tf.int32)
+            shift_amount = tf.random.uniform([], -max_shift, max_shift, dtype=tf.int32)
 
             # Aplicar deslocamento circular
             augmented_features = tf.roll(audio_features, shift_amount, axis=0)
@@ -164,28 +166,27 @@ class AudioAugmenter:
 
         return augmented_features, label
 
-    def _volume_change(self, audio_features: tf.Tensor,
-                       label: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+    def _volume_change(
+        self, audio_features: tf.Tensor, label: tf.Tensor
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
         """Altera o volume (amplitude)."""
         volume_factor = tf.random.uniform(
-            [],
-            1.0 - self.volume_factor,
-            1.0 + self.volume_factor,
-            dtype=tf.float32
+            [], 1.0 - self.volume_factor, 1.0 + self.volume_factor, dtype=tf.float32
         )
         augmented_features = audio_features * volume_factor
         return augmented_features, label
 
-    def _frequency_mask(self, audio_features: tf.Tensor,
-                        label: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+    def _frequency_mask(
+        self, audio_features: tf.Tensor, label: tf.Tensor
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
         """Aplica máscara de frequência (SpecAugment)."""
         # Para features 2D (tempo, frequência)
         if len(audio_features.shape) == 2:
             freq_dim = tf.shape(audio_features)[1]
             time_dim = tf.shape(audio_features)[0]
             mask_size = tf.cast(
-                tf.cast(freq_dim, tf.float32) * self.frequency_mask_factor,
-                tf.int32)
+                tf.cast(freq_dim, tf.float32) * self.frequency_mask_factor, tf.int32
+            )
             # Garante range válido inclusive para tensores estreitos (freq_dim <= 1).
             mask_size = tf.where(
                 freq_dim > 1,
@@ -202,9 +203,7 @@ class AudioAugmenter:
 
             # Aplicar máscara (opera na dimensão de frequência transposta)
             mask = tf.tensor_scatter_nd_update(
-                tf.transpose(mask),
-                tf.expand_dims(indices, 1),
-                updates
+                tf.transpose(mask), tf.expand_dims(indices, 1), updates
             )
             mask = tf.transpose(mask)
 
@@ -214,16 +213,17 @@ class AudioAugmenter:
 
         return augmented_features, label
 
-    def _time_mask(self, audio_features: tf.Tensor,
-                   label: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+    def _time_mask(
+        self, audio_features: tf.Tensor, label: tf.Tensor
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
         """Aplica máscara temporal (SpecAugment)."""
         # Para features 2D (tempo, frequência)
         if len(audio_features.shape) == 2:
             time_dim = tf.shape(audio_features)[0]
             freq_dim = tf.shape(audio_features)[1]
             mask_size = tf.cast(
-                tf.cast(time_dim, tf.float32) * self.time_mask_factor,
-                tf.int32)
+                tf.cast(time_dim, tf.float32) * self.time_mask_factor, tf.int32
+            )
             # Garante range válido inclusive para tensores curtos (time_dim <= 1).
             mask_size = tf.where(
                 time_dim > 1,
@@ -240,9 +240,7 @@ class AudioAugmenter:
 
             # Aplicar máscara
             mask = tf.tensor_scatter_nd_update(
-                mask,
-                tf.expand_dims(indices, 1),
-                updates
+                mask, tf.expand_dims(indices, 1), updates
             )
 
             augmented_features = audio_features * mask
@@ -309,9 +307,9 @@ class AudioAugmenter:
 
         return dataset.map(_mixup_batch, num_parallel_calls=tf.data.AUTOTUNE)
 
-
-    def _rawboost(self, audio_features: tf.Tensor,
-                  label: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+    def _rawboost(
+        self, audio_features: tf.Tensor, label: tf.Tensor
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
         """RawBoost augmentation for anti-spoofing (Tak et al., 2022).
 
         Applies multi-domain noise: convolutive + impulsive + stationary.
@@ -332,8 +330,7 @@ class AudioAugmenter:
     def _waveform_view(audio_features: tf.Tensor):
         waveform = tf.cast(audio_features, tf.float32)
         restore_channel = (
-            audio_features.shape.rank == 2
-            and audio_features.shape[-1] == 1
+            audio_features.shape.rank == 2 and audio_features.shape[-1] == 1
         )
         if restore_channel:
             waveform = tf.squeeze(waveform, axis=-1)
@@ -345,8 +342,9 @@ class AudioAugmenter:
             return tf.expand_dims(waveform, axis=-1)
         return waveform
 
-    def _codec_simulation(self, audio_features: tf.Tensor,
-                          label: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+    def _codec_simulation(
+        self, audio_features: tf.Tensor, label: tf.Tensor
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
         """Codec differentiable: band-limit, decimation and mu-law quantization."""
         waveform, restore_channel = self._waveform_view(audio_features)
         framed = waveform[tf.newaxis, :, tf.newaxis]
@@ -359,7 +357,7 @@ class AudioAugmenter:
                 padding="SAME",
             )
             reconstructed = tf.repeat(reduced, repeats=factor, axis=1)
-            return reconstructed[:, :tf.shape(waveform)[0], 0][0]
+            return reconstructed[:, : tf.shape(waveform)[0], 0][0]
 
         reconstructed = tf.switch_case(
             tf.random.uniform([], 0, 3, dtype=tf.int32),
@@ -381,9 +379,7 @@ class AudioAugmenter:
             * tf.math.log1p(mu * tf.abs(normalized))
             / tf.math.log1p(mu)
         )
-        quantized = (
-            tf.round((companded + 1.0) * mu / 2.0) * 2.0 / mu - 1.0
-        )
+        quantized = tf.round((companded + 1.0) * mu / 2.0) * 2.0 / mu - 1.0
         decoded = (
             tf.sign(quantized)
             * tf.math.expm1(tf.abs(quantized) * tf.math.log1p(mu))
@@ -392,8 +388,9 @@ class AudioAugmenter:
         decoded = tf.where(tf.math.is_finite(decoded), decoded, waveform)
         return self._restore_waveform(decoded, restore_channel), label
 
-    def _room_impulse_response(self, audio_features: tf.Tensor,
-                               label: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+    def _room_impulse_response(
+        self, audio_features: tf.Tensor, label: tf.Tensor
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
         """Convolução com RIR sintética causal de decaimento aleatório."""
         waveform, restore_channel = self._waveform_view(audio_features)
         taps = 257
@@ -429,4 +426,3 @@ class AudioAugmenter:
             / tf.math.log1p(drive)
         ) * peak
         return self._restore_waveform(compressed, restore_channel), label
-

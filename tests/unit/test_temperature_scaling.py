@@ -66,9 +66,7 @@ def test_teto_da_probabilidade_cortada_nao_existe_mais():
     assert p[0] > 0.99
     assert p[1] > p[0]
 
-    cortado = 1.0 / (
-        1.0 + np.exp(-logits_from_probabilities(np.array([1.0]))[0] / 4.2)
-    )
+    cortado = 1.0 / (1.0 + np.exp(-logits_from_probabilities(np.array([1.0]))[0] / 4.2))
     assert cortado == pytest.approx(0.97891, abs=1e-5)
 
 
@@ -166,7 +164,9 @@ def test_sem_acesso_a_camada_final_devolve_none():
     import tensorflow as tf
 
     assert logit_output_model(object()) is None
-    assert logit_output_model(_modelo(tf.keras.layers.Dense(2, activation="relu"))) is None
+    assert (
+        logit_output_model(_modelo(tf.keras.layers.Dense(2, activation="relu"))) is None
+    )
 
 
 # ───────────────────────── caminho da inferência ─────────────────────────

@@ -52,7 +52,8 @@ def compute_higuchi_fractal(y: np.ndarray, k_max: int = 10) -> float:
 
 
 def compute_higuchi_fractal_optimized(
-        y: np.ndarray, k_max: int = 6, cache: Optional[Dict] = None) -> float:
+    y: np.ndarray, k_max: int = 6, cache: Optional[Dict] = None
+) -> float:
     """Versão otimizada da dimensão fractal de Higuchi com menos k."""
     N = len(y)
 

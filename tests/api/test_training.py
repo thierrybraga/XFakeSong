@@ -5,6 +5,7 @@ SUJEITO: contrato HTTP. `/training/architectures` e
 por isso os dois testes existem e por isso os nomes precisam dizer qual é qual.
 """
 
+
 def test_list_architectures_no_endpoint_de_treino(client):
     response = client.get("/api/v1/training/architectures")
     assert response.status_code == 200
@@ -19,7 +20,7 @@ def test_start_training(client, api_key_headers):
         "architecture": "aasist",
         "dataset_path": "/tmp/dataset_v1",
         "epochs": 10,
-        "batch_size": 32
+        "batch_size": 32,
     }
     response = client.post(
         "/api/v1/training/start", json=payload, headers=api_key_headers
@@ -35,7 +36,7 @@ def test_check_training_status(client, api_key_headers):
     payload = {
         "model_name": "new_model",
         "architecture": "AASIST",
-        "dataset_path": "/tmp/dataset_v1"
+        "dataset_path": "/tmp/dataset_v1",
     }
     start_response = client.post(
         "/api/v1/training/start", json=payload, headers=api_key_headers

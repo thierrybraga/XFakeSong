@@ -4,8 +4,7 @@ import numpy as np
 from scipy.stats import entropy
 
 
-def compute_permutation_entropy(
-        y: np.ndarray, order: int = 3, delay: int = 1) -> float:
+def compute_permutation_entropy(y: np.ndarray, order: int = 3, delay: int = 1) -> float:
     """Calcula a entropia de permutação."""
     N = len(y)
     permutations = {}
@@ -33,8 +32,8 @@ def compute_permutation_entropy(
 
 
 def compute_permutation_entropy_optimized(
-        y: np.ndarray, order: int = 3, delay: int = 1,
-        cache: Optional[Dict] = None) -> float:
+    y: np.ndarray, order: int = 3, delay: int = 1, cache: Optional[Dict] = None
+) -> float:
     """Versão otimizada da entropia de permutação."""
     N = len(y)
 
@@ -55,7 +54,7 @@ def compute_permutation_entropy_optimized(
     # Implementação vetorizada
     patterns = np.zeros((N - delay * (order - 1), order))
     for j in range(order):
-        patterns[:, j] = y[j * delay:N - delay * (order - 1) + j * delay]
+        patterns[:, j] = y[j * delay : N - delay * (order - 1) + j * delay]
 
     # Obter permutações usando argsort
     sorted_indices = np.argsort(patterns, axis=1)

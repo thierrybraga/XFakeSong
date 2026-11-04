@@ -31,8 +31,16 @@ def _family_args(family: str) -> Namespace:
     teste ja com o default real.
     """
     args = build_parser().parse_args(
-        ["--family", family, "--seeds", "42", "43",
-         "--test-lock", "sealed.json", "--plan-only"]
+        [
+            "--family",
+            family,
+            "--seeds",
+            "42",
+            "43",
+            "--test-lock",
+            "sealed.json",
+            "--plan-only",
+        ]
     )
     return args
 
@@ -48,7 +56,8 @@ def test_official_and_extended_scopes_are_disjoint_and_complete():
     # XLS-R, nao WavLM/HuBERT base. As entradas `Original` ja sao a
     # configuracao documentada. Ver benchmarks/config.py.
     assert set(MODEL_FAMILIES["ssl-pretrained"]) == {
-        "WavLM Original", "HuBERT Original"
+        "WavLM Original",
+        "HuBERT Original",
     }
 
 
@@ -61,7 +70,7 @@ def test_family_wrapper_uses_canonical_dataset_and_protocol_controls():
     assert "WavLM Original" in joined and "HuBERT Original" in joined
     assert "--academic-protocol" in cmd
     assert cmd[cmd.index("--scope") + 1] == "official"
-    assert cmd[cmd.index("--seeds") + 1:cmd.index("--test-lock")] == ["42", "43"]
+    assert cmd[cmd.index("--seeds") + 1 : cmd.index("--test-lock")] == ["42", "43"]
 
 
 def test_todas_as_familias_treinam_com_o_protocolo_corrigido():
@@ -82,8 +91,14 @@ def test_todas_as_familias_treinam_com_o_protocolo_corrigido():
 def test_ablacao_pode_desligar_o_protocolo_corrigido():
     """O default e o corrigido, mas uma ablacao precisa conseguir desligar."""
     args = build_parser().parse_args(
-        ["--family", "ssl-pretrained", "--band-correction-hz", "0",
-         "--checkpoint-monitor", "val_loss"]
+        [
+            "--family",
+            "ssl-pretrained",
+            "--band-correction-hz",
+            "0",
+            "--checkpoint-monitor",
+            "val_loss",
+        ]
     )
     cmd = [str(v) for v in build_command(args)]
     assert float(cmd[cmd.index("--band-correction-hz") + 1]) == 0.0

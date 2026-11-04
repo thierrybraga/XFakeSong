@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 class ExtractorComplexity(Enum):
     """Níveis de complexidade computacional."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -34,6 +35,7 @@ class ExtractorComplexity(Enum):
 @dataclass
 class ExtractorSpec:
     """Especificação de um extrator de features."""
+
     name: str
     feature_type: FeatureType
     complexity: ExtractorComplexity
@@ -67,9 +69,7 @@ class FeatureExtractorRegistry:
             spec: Especificação do extrator
         """
         if spec.name in self._extractors:
-            logger.warning(
-                f"Extrator '{spec.name}' já registrado. Sobrescrevendo."
-            )
+            logger.warning(f"Extrator '{spec.name}' já registrado. Sobrescrevendo.")
 
         self._extractors[spec.name] = spec
 
@@ -113,7 +113,7 @@ class FeatureExtractorRegistry:
     def list_extractors(
         self,
         feature_type: Optional[FeatureType] = None,
-        complexity: Optional[ExtractorComplexity] = None
+        complexity: Optional[ExtractorComplexity] = None,
     ) -> List[str]:
         """Lista extratores disponíveis.
 
@@ -128,13 +128,15 @@ class FeatureExtractorRegistry:
 
         if feature_type:
             extractors = [
-                name for name in extractors
+                name
+                for name in extractors
                 if name in self._type_index.get(feature_type, [])
             ]
 
         if complexity:
             extractors = [
-                name for name in extractors
+                name
+                for name in extractors
                 if name in self._complexity_index.get(complexity, [])
             ]
 
@@ -152,7 +154,6 @@ class FeatureExtractorRegistry:
         if name not in self._extractors:
             raise ValueError(f"Extrator '{name}' não encontrado")
         return self._extractors[name]
-
 
     def is_registered(self, name: str) -> bool:
         """Verifica se um extrator está registrado.
@@ -300,38 +301,44 @@ def register_default_extractors():
     # ))
 
     # Novos extratores implementados
-    extractor_registry.register(ExtractorSpec(
-        name="spectral_advanced",
-        feature_type=FeatureType.SPECTRAL,
-        complexity=ExtractorComplexity.HIGH,
-        description="Advanced Spectral Features (flux, decrease, crest, "
-                    "irregularity, roughness, inharmonicity)",
-        extractor_class=SpectralFeatureExtractor,
-        default_params={"sr": 22050, "frame_length": 2048, "hop_length": 512},
-        input_requirements={"sample_rate": 22050}
-    ))
+    extractor_registry.register(
+        ExtractorSpec(
+            name="spectral_advanced",
+            feature_type=FeatureType.SPECTRAL,
+            complexity=ExtractorComplexity.HIGH,
+            description="Advanced Spectral Features (flux, decrease, crest, "
+            "irregularity, roughness, inharmonicity)",
+            extractor_class=SpectralFeatureExtractor,
+            default_params={"sr": 22050, "frame_length": 2048, "hop_length": 512},
+            input_requirements={"sample_rate": 22050},
+        )
+    )
 
-    extractor_registry.register(ExtractorSpec(
-        name="cepstral_advanced",
-        feature_type=FeatureType.CEPSTRAL,
-        complexity=ExtractorComplexity.HIGH,
-        description="Advanced Cepstral Features (MFCC, Delta-MFCC, "
-                    "Delta-Delta-MFCC, PLP, LPCC)",
-        extractor_class=CepstralFeatureExtractor,
-        default_params={"sr": 22050, "n_mfcc": 13, "n_mels": 128},
-        input_requirements={"sample_rate": 22050}
-    ))
+    extractor_registry.register(
+        ExtractorSpec(
+            name="cepstral_advanced",
+            feature_type=FeatureType.CEPSTRAL,
+            complexity=ExtractorComplexity.HIGH,
+            description="Advanced Cepstral Features (MFCC, Delta-MFCC, "
+            "Delta-Delta-MFCC, PLP, LPCC)",
+            extractor_class=CepstralFeatureExtractor,
+            default_params={"sr": 22050, "n_mfcc": 13, "n_mels": 128},
+            input_requirements={"sample_rate": 22050},
+        )
+    )
 
-    extractor_registry.register(ExtractorSpec(
-        name="prosodic_advanced",
-        feature_type=FeatureType.PROSODIC,
-        complexity=ExtractorComplexity.HIGH,
-        description="Advanced Prosodic Features (F0, jitter, shimmer, "
-                    "HNR, voicing)",
-        extractor_class=ProsodicFeatureExtractor,
-        default_params={"sr": 22050, "f0_min": 80.0, "f0_max": 400.0},
-        input_requirements={"sample_rate": 22050}
-    ))
+    extractor_registry.register(
+        ExtractorSpec(
+            name="prosodic_advanced",
+            feature_type=FeatureType.PROSODIC,
+            complexity=ExtractorComplexity.HIGH,
+            description="Advanced Prosodic Features (F0, jitter, shimmer, "
+            "HNR, voicing)",
+            extractor_class=ProsodicFeatureExtractor,
+            default_params={"sr": 22050, "f0_min": 80.0, "f0_max": 400.0},
+            input_requirements={"sample_rate": 22050},
+        )
+    )
 
     # extractor_registry.register(ExtractorSpec(
     #     name="formant_advanced",
@@ -355,9 +362,7 @@ def register_default_extractors():
     #     input_requirements={"sample_rate": 22050}
     # ))
 
-    logger.info(
-        f"Registrados {len(extractor_registry._extractors)} extratores padrão"
-    )
+    logger.info(f"Registrados {len(extractor_registry._extractors)} extratores padrão")
 
 
 # Funções de conveniência
@@ -376,7 +381,7 @@ def get_extractor(name: str, **params) -> IFeatureExtractor:
 
 def list_extractors(
     feature_type: Optional[FeatureType] = None,
-    complexity: Optional[ExtractorComplexity] = None
+    complexity: Optional[ExtractorComplexity] = None,
 ) -> List[str]:
     """Função de conveniência para listar extratores.
 
@@ -410,7 +415,7 @@ def get_extractor_info(name: str) -> Dict[str, Any]:
         "output_shape": spec.output_shape,
         "dependencies": spec.dependencies,
         "version": spec.version,
-        "author": spec.author
+        "author": spec.author,
     }
 
 

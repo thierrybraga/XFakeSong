@@ -215,23 +215,18 @@ class TrainingJobService:
         """
         try:
             self._update_job(
-                job_id,
-                status="running",
-                message="Training started...",
-                progress=5
+                job_id, status="running", message="Training started...", progress=5
             )
 
             config = {
                 "model_name": model_name,
                 "parameters": parameters,
                 "epochs": epochs,
-                "batch_size": batch_size
+                "batch_size": batch_size,
             }
 
             result = service.train_model(
-                architecture=architecture,
-                dataset_path=dataset_path,
-                config=config
+                architecture=architecture, dataset_path=dataset_path, config=config
             )
 
             if result.status == ProcessingStatus.SUCCESS:
@@ -244,14 +239,14 @@ class TrainingJobService:
                     status="completed",
                     message="Training completed successfully.",
                     progress=100,
-                    metrics=metrics
+                    metrics=metrics,
                 )
             else:
                 self._update_job(
                     job_id,
                     status="failed",
                     message=f"Training failed: {'; '.join(result.errors)}",
-                    progress=100
+                    progress=100,
                 )
         except Exception as e:
             logger.error(f"Error in background training task: {e}")
@@ -259,7 +254,7 @@ class TrainingJobService:
                 job_id,
                 status="failed",
                 message=f"Internal error: {str(e)}",
-                progress=100
+                progress=100,
             )
 
     def run_cross_validation(
@@ -295,7 +290,8 @@ class TrainingJobService:
                 agg = data.get("aggregated", {})
                 metrics = {
                     f"{k}_{stat}": v
-                    for k, sub in agg.items() for stat, v in sub.items()
+                    for k, sub in agg.items()
+                    for stat, v in sub.items()
                 }
                 self._update_job(
                     job_id,

@@ -495,17 +495,21 @@ class DetectionService(IDetectionService):
                     "fake": float(
                         prediction_result.data.get(
                             "p_fake",
-                            prediction_result.data["confidence"]
-                            if prediction_result.data["is_deepfake"]
-                            else 1.0 - prediction_result.data["confidence"],
+                            (
+                                prediction_result.data["confidence"]
+                                if prediction_result.data["is_deepfake"]
+                                else 1.0 - prediction_result.data["confidence"]
+                            ),
                         )
                     ),
                     "real": float(
                         prediction_result.data.get(
                             "p_real",
-                            1.0 - prediction_result.data["confidence"]
-                            if prediction_result.data["is_deepfake"]
-                            else prediction_result.data["confidence"],
+                            (
+                                1.0 - prediction_result.data["confidence"]
+                                if prediction_result.data["is_deepfake"]
+                                else prediction_result.data["confidence"]
+                            ),
                         )
                     ),
                 },

@@ -54,10 +54,19 @@ def validate_dataset():
     logger.info("VALIDACAO DO DATASET")
     logger.info("=" * 60)
 
-    issues = {"corrupted": [], "too_short": [], "too_long": [], "silent": [],
-              "wrong_sr": [], "stereo": [], "nan_inf": []}
-    stats = {"real": {"count": 0, "total_duration": 0.0, "durations": []},
-             "fake": {"count": 0, "total_duration": 0.0, "durations": []}}
+    issues = {
+        "corrupted": [],
+        "too_short": [],
+        "too_long": [],
+        "silent": [],
+        "wrong_sr": [],
+        "stereo": [],
+        "nan_inf": [],
+    }
+    stats = {
+        "real": {"count": 0, "total_duration": 0.0, "durations": []},
+        "fake": {"count": 0, "total_duration": 0.0, "durations": []},
+    }
 
     for label, directory in [("real", REAL_DIR), ("fake", FAKE_DIR)]:
         wav_files = sorted(directory.glob("*.wav"))
@@ -119,7 +128,9 @@ def validate_dataset():
             logger.info(f"    Arquivos validos : {s['count']}")
             logger.info(f"    Duracao total    : {s['total_duration']/3600:.1f}h")
             logger.info(f"    Duracao media    : {np.mean(s['durations']):.1f}s")
-            logger.info(f"    Duracao min/max  : {np.min(s['durations']):.1f}s / {np.max(s['durations']):.1f}s")
+            logger.info(
+                f"    Duracao min/max  : {np.min(s['durations']):.1f}s / {np.max(s['durations']):.1f}s"
+            )
         else:
             logger.warning(f"\n  [{label.upper()}] Nenhum arquivo valido encontrado!")
 
@@ -129,7 +140,9 @@ def validate_dataset():
         if issues["corrupted"]:
             logger.warning(f"    Corrompidos    : {len(issues['corrupted'])}")
         if issues["nan_inf"]:
-            logger.warning(f"    NaN/Inf (graves): {len(issues['nan_inf'])} — REMOVA antes de treinar!")
+            logger.warning(
+                f"    NaN/Inf (graves): {len(issues['nan_inf'])} — REMOVA antes de treinar!"
+            )
         if issues["too_short"]:
             logger.warning(f"    Muito curtos   : {len(issues['too_short'])}")
         if issues["too_long"]:
@@ -210,13 +223,17 @@ def normalize_all(force: bool = False):
             output_path = output_dir / wav_path.name
             if not force:
                 try:
-                    if output_path.exists() and manifest.get(rel) == _file_sig(wav_path):
+                    if output_path.exists() and manifest.get(rel) == _file_sig(
+                        wav_path
+                    ):
                         skipped += 1
                         continue  # ja normalizado e inalterado
                 except OSError:
                     pass
             try:
-                y, sr = librosa.load(str(wav_path), sr=TARGET_SR, mono=True, res_type=RESAMPLE_TYPE)
+                y, sr = librosa.load(
+                    str(wav_path), sr=TARGET_SR, mono=True, res_type=RESAMPLE_TYPE
+                )
 
                 # BUG FIX: sanitizar NaN/Inf ANTES de qualquer cálculo numérico.
                 # Sem isso: np.max(np.abs(NaN))=NaN → y/NaN=NaN → arquivo salvo
@@ -247,7 +264,9 @@ def normalize_all(force: bool = False):
 
                 # Validação final antes de gravar (defesa em profundidade)
                 if not np.all(np.isfinite(y)):
-                    logger.warning(f"  Rejeitando (NaN pós-processamento): {wav_path.name}")
+                    logger.warning(
+                        f"  Rejeitando (NaN pós-processamento): {wav_path.name}"
+                    )
                     removed += 1
                     continue
 
@@ -256,7 +275,9 @@ def normalize_all(force: bool = False):
                 manifest[rel] = _file_sig(wav_path)
 
             except Exception as e:
-                logger.warning(f"  Rejeitando arquivo corrompido: {wav_path.name} ({e})")
+                logger.warning(
+                    f"  Rejeitando arquivo corrompido: {wav_path.name} ({e})"
+                )
                 removed += 1
 
     _save_norm_manifest(manifest)
@@ -299,9 +320,7 @@ def remove_duplicates():
                         "Conflito de rotulo: audio PCM identico em "
                         f"{previous_label}/{previous_name} e {label}/{wav_path.name}"
                     )
-                logger.info(
-                    "  Duplicata PCM: %s == %s", wav_path.name, previous_name
-                )
+                logger.info("  Duplicata PCM: %s == %s", wav_path.name, previous_name)
                 wav_path.unlink()
                 removed += 1
             else:
@@ -345,7 +364,8 @@ def audit_near_duplicates(
     records = [
         (label, path)
         for label, directory in (
-            ("real", PROCESSED_REAL_DIR), ("fake", PROCESSED_FAKE_DIR)
+            ("real", PROCESSED_REAL_DIR),
+            ("fake", PROCESSED_FAKE_DIR),
         )
         for path in sorted(directory.glob("*.wav"))
     ]
@@ -481,7 +501,11 @@ def _speaker_disjoint_indices(files, labels, groups, val_ratio, test_ratio):
 
 
 def _content_aware_class_allocation(
-    unknown_idx, labels, content_groups, need: dict[str, tuple[int, int]], seed: int = 42
+    unknown_idx,
+    labels,
+    content_groups,
+    need: dict[str, tuple[int, int]],
+    seed: int = 42,
 ):
     """Aloca a fatia sem falante conhecido a train/val/test respeitando
     `content_groups` (texto/enunciado) como unidade indivisivel - nunca
@@ -519,7 +543,9 @@ def _content_aware_class_allocation(
     rng = np.random.default_rng(seed)
     rng.shuffle(group_keys)
 
-    remaining = {name: [need[name][0], need[name][1]] for name in ("train", "val", "test")}
+    remaining = {
+        name: [need[name][0], need[name][1]] for name in ("train", "val", "test")
+    }
     assigned: dict[str, list[int]] = {"train": [], "val": [], "test": []}
 
     for key in group_keys:
@@ -620,7 +646,10 @@ def _speaker_disjoint_partial_indices(
             "necessario=%d; fake disponivel=%d, necessario=%d) - grupos de "
             "conteudo sao indivisiveis, entao as proporcoes finais podem "
             "divergir levemente do alvo 70/15/15",
-            real_pool_n, need_real_total, fake_pool_n, need_fake_total,
+            real_pool_n,
+            need_real_total,
+            fake_pool_n,
+            need_fake_total,
         )
 
     unknown_train, unknown_val, unknown_test = _content_aware_class_allocation(
@@ -652,8 +681,10 @@ def create_splits(
     estratificado por classe.
     """
     logger.info("=" * 60)
-    logger.info("CRIANDO SPLITS TRAIN/VAL/TEST"
-                + (" (disjunto por falante)" if speaker_disjoint else ""))
+    logger.info(
+        "CRIANDO SPLITS TRAIN/VAL/TEST"
+        + (" (disjunto por falante)" if speaker_disjoint else "")
+    )
     logger.info("=" * 60)
 
     # Coletar todos os arquivos
@@ -705,7 +736,9 @@ def create_splits(
             json.dumps(source_quotas, sort_keys=True),
         )
 
-    logger.info(f"Total: {len(files)} ({sum(labels == 0)} real + {sum(labels == 1)} fake)")
+    logger.info(
+        f"Total: {len(files)} ({sum(labels == 0)} real + {sum(labels == 1)} fake)"
+    )
 
     real_count = int(sum(labels == 0))
     fake_count = int(sum(labels == 1))
@@ -785,10 +818,16 @@ def create_splits(
                 "usando split hibrido (disjunto por falante na fatia "
                 "conhecida + rebalanceamento por classe na fatia sem "
                 "identidade)",
-                n_identified, len(files),
+                n_identified,
+                len(files),
             )
             train_idx, val_idx, test_idx = _speaker_disjoint_partial_indices(
-                files, labels, groups, val_ratio, test_ratio, identified_mask,
+                files,
+                labels,
+                groups,
+                val_ratio,
+                test_ratio,
+                identified_mask,
                 content_groups=content_groups,
             )
             strategy = "speaker_disjoint_partial"
@@ -803,18 +842,22 @@ def create_splits(
         )
 
     for split_name, indices in (
-        ("train", train_idx), ("val", val_idx), ("test", test_idx)
+        ("train", train_idx),
+        ("val", val_idx),
+        ("test", test_idx),
     ):
         if set(np.unique(labels[indices]).tolist()) != {0, 1}:
-            raise ValueError(
-                f"{strategy} produced a single-class {split_name} split"
-            )
+            raise ValueError(f"{strategy} produced a single-class {split_name} split")
 
     # Trava defensiva: garante amostra unica por split, independente da
     # estrategia usada acima. Nao confia em "correto por construcao" -
     # qualquer regressao futura no split (nesta funcao ou numa estrategia
     # nova) e pega aqui antes de copiar um WAV para mais de um split.
-    train_set, val_set, test_set = set(train_idx.tolist()), set(val_idx.tolist()), set(test_idx.tolist())
+    train_set, val_set, test_set = (
+        set(train_idx.tolist()),
+        set(val_idx.tolist()),
+        set(test_idx.tolist()),
+    )
     overlaps = {
         "train_val": sorted(train_set & val_set),
         "train_test": sorted(train_set & test_set),
@@ -825,7 +868,9 @@ def create_splits(
             f"{strategy}: amostra(s) repetida(s) entre splits (indices): {overlaps}"
         )
     all_idx = train_set | val_set | test_set
-    if len(all_idx) != len(files) or len(train_set) + len(val_set) + len(test_set) != len(files):
+    if len(all_idx) != len(files) or len(train_set) + len(val_set) + len(
+        test_set
+    ) != len(files):
         raise RuntimeError(
             f"{strategy}: particao nao cobre exatamente todos os arquivos "
             f"(esperado={len(files)}, coberto={len(all_idx)}, "
@@ -833,7 +878,11 @@ def create_splits(
         )
 
     # Criar diretórios e copiar
-    for split_name, indices in [("train", train_idx), ("val", val_idx), ("test", test_idx)]:
+    for split_name, indices in [
+        ("train", train_idx),
+        ("val", val_idx),
+        ("test", test_idx),
+    ]:
         split_real = SPLITS_DIR / split_name / "real"
         split_fake = SPLITS_DIR / split_name / "fake"
         split_real.mkdir(parents=True, exist_ok=True)
@@ -855,7 +904,9 @@ def create_splits(
 
         real_count = len(list(split_real.glob("*.wav")))
         fake_count = len(list(split_fake.glob("*.wav")))
-        logger.info(f"  {split_name}: {real_count} real + {fake_count} fake = {real_count + fake_count}")
+        logger.info(
+            f"  {split_name}: {real_count} real + {fake_count} fake = {real_count + fake_count}"
+        )
 
     # Salvar metadata
     metadata = {
@@ -911,17 +962,30 @@ def create_splits(
                 source_oracle_accuracy * 100.0,
             )
 
-
     # Estatistica de falantes / usuarios nao vistos (quando ha grupos). O
     # vazamento so e medido entre falantes IDENTIFICADOS (chave com ":") -
     # amostras sem identidade caem no rotulo de fonte (fallback) e aparecem
     # em varios splits por desenho (rebalanceamento de classe), o que nao
     # constitui vazamento de falante.
     if groups is not None:
-        identified_groups = groups[identified_mask] if identified_mask is not None else groups
-        g_train = set(groups[train_idx][identified_mask[train_idx]].tolist()) if identified_mask is not None else set(groups[train_idx].tolist())
-        g_val = set(groups[val_idx][identified_mask[val_idx]].tolist()) if identified_mask is not None else set(groups[val_idx].tolist())
-        g_test = set(groups[test_idx][identified_mask[test_idx]].tolist()) if identified_mask is not None else set(groups[test_idx].tolist())
+        identified_groups = (
+            groups[identified_mask] if identified_mask is not None else groups
+        )
+        g_train = (
+            set(groups[train_idx][identified_mask[train_idx]].tolist())
+            if identified_mask is not None
+            else set(groups[train_idx].tolist())
+        )
+        g_val = (
+            set(groups[val_idx][identified_mask[val_idx]].tolist())
+            if identified_mask is not None
+            else set(groups[val_idx].tolist())
+        )
+        g_test = (
+            set(groups[test_idx][identified_mask[test_idx]].tolist())
+            if identified_mask is not None
+            else set(groups[test_idx].tolist())
+        )
         unseen = g_test - g_train - g_val
         metadata["speakers"] = {
             "total": int(len(set(groups.tolist()))),
@@ -936,8 +1000,10 @@ def create_splits(
         }
         logger.info(
             "  Falantes identificados: %d total · teste %d (não vistos: %d · vazamento train∩test: %d)",
-            metadata["speakers"]["identified"], len(g_test),
-            len(unseen), len(g_train & g_test),
+            metadata["speakers"]["identified"],
+            len(g_test),
+            len(unseen),
+            len(g_train & g_test),
         )
 
     with open(SPLITS_DIR / "splits_metadata.json", "w") as f:
@@ -971,7 +1037,9 @@ def create_training_zip(output_name: str = "dataset_pt_deepfake.zip"):
 
     size_mb = output_path.stat().st_size / (1024 * 1024)
     logger.info(f"ZIP criado: {output_path} ({size_mb:.1f} MB)")
-    logger.info(f"Estrutura: real/ ({len(real_files)} arquivos) + fake/ ({len(fake_files)} arquivos)")
+    logger.info(
+        f"Estrutura: real/ ({len(real_files)} arquivos) + fake/ ({len(fake_files)} arquivos)"
+    )
     return output_path
 
 

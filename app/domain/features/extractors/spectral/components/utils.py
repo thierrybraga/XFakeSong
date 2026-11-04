@@ -1,6 +1,7 @@
 """
 Funções utilitárias para extração de características espectrais.
 """
+
 from typing import Any, Dict
 
 import numpy as np
@@ -36,25 +37,25 @@ def get_default_spectral_features() -> Dict[str, Any]:
         Dicionário com valores padrão
     """
     return {
-        'spectral_centroid': np.array([0.0]),
-        'spectral_rolloff_85': np.array([0.0]),
-        'spectral_rolloff_95': np.array([0.0]),
-        'spectral_bandwidth': np.array([0.0]),
-        'spectral_flatness': np.array([0.0]),
-        'spectral_slope': np.array([0.0]),
-        'spectral_kurtosis': np.array([0.0]),
-        'spectral_skewness': np.array([0.0]),
-        'spectral_spread': np.array([0.0]),
-        'spectral_entropy': np.array([0.0]),
-        'spectral_contrast': np.zeros((7, 1)),
-        'high_freq_content': np.array([0.0]),
-        'low_freq_ratio': 0.0,
-        'mid_freq_ratio': 0.0,
-        'high_freq_ratio': 0.0,
-        'spectral_flux': np.array([0.0]),
-        'spectral_decrease': np.array([0.0]),
-        'spectral_crest': np.array([0.0]),
-        'spectral_irregularity': np.array([0.0]),
-        'spectral_roughness': np.array([0.0]),
-        'spectral_inharmonicity': np.array([0.0])
+        "spectral_centroid": np.array([0.0]),
+        "spectral_rolloff_85": np.array([0.0]),
+        "spectral_rolloff_95": np.array([0.0]),
+        "spectral_bandwidth": np.array([0.0]),
+        "spectral_flatness": np.array([0.0]),
+        "spectral_slope": np.array([0.0]),
+        "spectral_kurtosis": np.array([0.0]),
+        "spectral_skewness": np.array([0.0]),
+        "spectral_spread": np.array([0.0]),
+        "spectral_entropy": np.array([0.0]),
+        "spectral_contrast": np.zeros((7, 1)),
+        "high_freq_content": np.array([0.0]),
+        "low_freq_ratio": 0.0,
+        "mid_freq_ratio": 0.0,
+        "high_freq_ratio": 0.0,
+        "spectral_flux": np.array([0.0]),
+        "spectral_decrease": np.array([0.0]),
+        "spectral_crest": np.array([0.0]),
+        "spectral_irregularity": np.array([0.0]),
+        "spectral_roughness": np.array([0.0]),
+        "spectral_inharmonicity": np.array([0.0]),
     }

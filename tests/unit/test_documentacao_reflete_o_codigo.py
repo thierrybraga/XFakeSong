@@ -53,8 +53,7 @@ def test_docs_nao_anunciam_o_rawnet2_de_locutor_como_o_do_escopo_oficial():
     from benchmarks.config import OFFICIAL_TCC_MODEL_MANIFEST
 
     entrada = next(
-        i for i in OFFICIAL_TCC_MODEL_MANIFEST
-        if i.get("benchmark_name") == "RawNet2"
+        i for i in OFFICIAL_TCC_MODEL_MANIFEST if i.get("benchmark_name") == "RawNet2"
     )
     variante = str(entrada.get("variant", "")).lower()
     texto = _texto(ARQUITETURAS)
@@ -96,21 +95,23 @@ def test_doc_nao_descreve_o_banco_sinc_como_aprendivel():
         "manifesto declaram banco FIXO"
     )
     texto = _texto(ARQUITETURAS)
-    assert "banco de filtros passa-banda aprendível" not in texto, (
-        "a doc ainda descreve o banco sinc como aprendível"
-    )
+    assert (
+        "banco de filtros passa-banda aprendível" not in texto
+    ), "a doc ainda descreve o banco sinc como aprendível"
 
 
 def test_doc_do_benchmark_declara_o_monitor_de_selecao_real():
     """`val_eer` é o critério do compose — a doc não pode anunciar `val_loss`."""
-    compose = (ROOT / "infrastructure" / "docker" / "compose" / "benchmark.nvidia.yml").read_text(
-        encoding="utf-8"
-    )
+    compose = (
+        ROOT / "infrastructure" / "docker" / "compose" / "benchmark.nvidia.yml"
+    ).read_text(encoding="utf-8")
     if "val_eer" not in compose:
         pytest.skip("compose não declara checkpoint-monitor; nada a checar")
 
     texto = _texto(BENCHMARK)
-    assert "seleção uniforme: melhor checkpoint pela menor val_loss limpa" not in texto, (
+    assert (
+        "seleção uniforme: melhor checkpoint pela menor val_loss limpa" not in texto
+    ), (
         "benchmark.md ainda afirma seleção por val_loss enquanto o compose "
         "roda com --checkpoint-monitor val_eer"
     )
@@ -130,9 +131,9 @@ def test_guia_aponta_as_camadas_para_os_modulos_que_existem():
 def test_guia_registra_a_separacao_de_camadas():
     """A separação é a mudança estrutural mais recente; precisa estar no guia."""
     texto = _texto(GUIA)
-    assert "Camadas PRÓPRIAS de cada arquitetura" in texto, (
-        "o CLAUDE.md não distingue camadas próprias das compartilhadas"
-    )
+    assert (
+        "Camadas PRÓPRIAS de cada arquitetura" in texto
+    ), "o CLAUDE.md não distingue camadas próprias das compartilhadas"
 
 
 def test_limitacoes_declaradas_batem_com_o_compose():
@@ -142,13 +143,13 @@ def test_limitacoes_declaradas_batem_com_o_compose():
     limitação é o mínimo; escondê-la faria o TCC ordenar modelos separados por
     ruído amostral.
     """
-    compose = (ROOT / "infrastructure" / "docker" / "compose" / "benchmark.nvidia.yml").read_text(
-        encoding="utf-8"
-    )
+    compose = (
+        ROOT / "infrastructure" / "docker" / "compose" / "benchmark.nvidia.yml"
+    ).read_text(encoding="utf-8")
     uma_semente = "--seeds" not in compose
     if not uma_semente:
         pytest.skip("compose passa --seeds; a limitação não se aplica")
     texto = _texto(GUIA)
-    assert "Uma semente por arquitetura" in texto, (
-        "o compose roda com uma semente e o guia não declara a limitação"
-    )
+    assert (
+        "Uma semente por arquitetura" in texto
+    ), "o compose roda com uma semente e o guia não declara a limitação"

@@ -87,9 +87,9 @@ def test_all_expected_routes_registered(client):
         if (method, path) not in registered:
             missing.append(f"{method} {path}")
 
-    assert not missing, (
-        f"Rotas faltando: {missing}\nRegistradas: {sorted(registered)[:10]}..."
-    )
+    assert (
+        not missing
+    ), f"Rotas faltando: {missing}\nRegistradas: {sorted(registered)[:10]}..."
 
 
 def test_openapi_schema_is_valid(client):
@@ -143,7 +143,9 @@ def test_system_health_ok(client, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    ("banco", "modelos"), [(True, []), (False, ["bench_svm"])], ids=["sem_modelos", "sem_banco"]
+    ("banco", "modelos"),
+    [(True, []), (False, ["bench_svm"])],
+    ids=["sem_modelos", "sem_banco"],
 )
 def test_system_health_falha_com_503(client, monkeypatch, banco, modelos):
     """O HEALTHCHECK usa `curl -f`: com 200, o container pareceria saudável."""

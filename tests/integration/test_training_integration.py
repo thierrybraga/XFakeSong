@@ -26,11 +26,7 @@ def mock_dataset(tmp_path):
     y_val = np.random.randint(0, 2, 5)
 
     file_path = tmp_path / "train_data.npz"
-    np.savez(
-        file_path,
-        X_train=X_train, y_train=y_train,
-        X_val=X_val, y_val=y_val
-    )
+    np.savez(file_path, X_train=X_train, y_train=y_train, X_val=X_val, y_val=y_val)
     return str(file_path)
 
 
@@ -41,15 +37,15 @@ def training_service(tmp_path):
 
 def test_training_flow_success(training_service, mock_dataset):
     # Mock architecture info
-    with patch(
+    with (
+        patch(
             "app.domain.services.training_service.get_architecture_info"
-    ) as mock_get_info, \
-            patch(
-                "app.domain.services.training_service.importlib.import_module"
-            ) as mock_import, \
-            patch(
-                "app.domain.services.training_service.ModelTrainer"
-            ) as MockTrainer:
+        ) as mock_get_info,
+        patch(
+            "app.domain.services.training_service.importlib.import_module"
+        ) as mock_import,
+        patch("app.domain.services.training_service.ModelTrainer") as MockTrainer,
+    ):
 
         mock_info = ArchitectureInfo(
             name="TEST_ARCH",
@@ -58,7 +54,7 @@ def test_training_flow_success(training_service, mock_dataset):
             input_requirements={},
             default_params={},
             module_path="app.architectures.test",
-            function_name="create_model"
+            function_name="create_model",
         )
         mock_get_info.return_value = mock_info
 
@@ -74,24 +70,20 @@ def test_training_flow_success(training_service, mock_dataset):
         # Mock Trainer
         mock_trainer_instance = MockTrainer.return_value
         mock_trainer_instance.train.return_value = ProcessingResult(
-            status=ProcessingStatus.SUCCESS,
-            data={"accuracy": 0.9}
+            status=ProcessingStatus.SUCCESS, data={"accuracy": 0.9}
         )
         mock_trainer_instance.save_model.return_value = ProcessingResult(
-            status=ProcessingStatus.SUCCESS,
-            data="path/to/model"
+            status=ProcessingStatus.SUCCESS, data="path/to/model"
         )
 
         config = {
             "model_name": "test_model_v1",
             "epochs": 1,
             "batch_size": 2,
-            "parameters": {}
+            "parameters": {},
         }
 
-        result = training_service.train_model(
-            "TEST_ARCH", mock_dataset, config
-        )
+        result = training_service.train_model("TEST_ARCH", mock_dataset, config)
 
         assert result.status == ProcessingStatus.SUCCESS
         assert result.data is not None
@@ -114,11 +106,12 @@ def test_training_service_accepts_common_architecture_alias(tmp_path):
     dataset = tmp_path / "spectrogram_transformer_alias.npz"
     np.savez(dataset, X_train=X_train, y_train=y_train, X_val=X_val, y_val=y_val)
 
-    with patch(
-        "app.domain.services.training_service.importlib.import_module"
-    ) as mock_import, patch(
-        "app.domain.services.training_service.ModelTrainer"
-    ) as MockTrainer:
+    with (
+        patch(
+            "app.domain.services.training_service.importlib.import_module"
+        ) as mock_import,
+        patch("app.domain.services.training_service.ModelTrainer") as MockTrainer,
+    ):
         mock_module = MagicMock()
         mock_model = MagicMock()
         mock_module.create_model.return_value = mock_model
@@ -153,9 +146,7 @@ def test_training_flow_invalid_architecture(training_service, mock_dataset):
     ) as mock_get_info:
         mock_get_info.return_value = None
 
-        result = training_service.train_model(
-            "INVALID_ARCH", mock_dataset, {}
-        )
+        result = training_service.train_model("INVALID_ARCH", mock_dataset, {})
 
         assert result.status == ProcessingStatus.ERROR
         assert "não encontrada" in result.errors[0]
@@ -167,9 +158,7 @@ def test_training_flow_dataset_not_found(training_service):
     ) as mock_get_info:
         mock_get_info.return_value = MagicMock()
 
-        result = training_service.train_model(
-            "TEST_ARCH", "non_existent.npz", {}
-        )
+        result = training_service.train_model("TEST_ARCH", "non_existent.npz", {})
 
         assert result.status == ProcessingStatus.ERROR
         assert "não encontrado" in result.errors[0]

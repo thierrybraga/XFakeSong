@@ -113,7 +113,11 @@ def _benchmark_one(
                 )
             else:
                 r = _run_neural(
-                    arch, cfg, splits, tmp, models_dir,
+                    arch,
+                    cfg,
+                    splits,
+                    tmp,
+                    models_dir,
                     training_seed=train_seed,
                 )
             predict_p_fake: Callable = r["predict_p_fake"]
@@ -187,9 +191,7 @@ def _benchmark_one(
             # placeholder; sem este passo, a inferência nunca ativaria o
             # multicrop que o benchmark usou para medir.
             for _caminho in (r.get("config_path"), r.get("run_config_path")):
-                _stamp_eval_crop_strategy(
-                    _caminho, r.get("input_contract"), protocol
-                )
+                _stamp_eval_crop_strategy(_caminho, r.get("input_contract"), protocol)
 
             n_boot = int(getattr(cfg, "bootstrap_ci_samples", 0) or 0)
             pf_clean = predict_eval(Xte, raw_Xte)

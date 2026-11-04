@@ -75,46 +75,83 @@ RESULTS_BENCHMARK = ROOT / "data" / "results" / "benchmark"
 
 # arch dir -> (feature_frontend, display architecture, model_type)
 ARCH_SPECS: dict[str, dict[str, str]] = {
-    "aasist": {"frontend": "benchmark_raw_v1", "architecture": "AASIST",
-               "model_type": "tensorflow"},
-    "rawgat_st": {"frontend": "benchmark_raw_v1", "architecture": "RawGAT-ST",
-                  "model_type": "tensorflow"},
-    "rawnet2": {"frontend": "benchmark_raw_v1", "architecture": "RawNet2",
-                "model_type": "tensorflow"},
-    "conformer": {"frontend": "benchmark_logmel_v1", "architecture": "Conformer",
-                  "model_type": "tensorflow"},
-    "res2net": {"frontend": "benchmark_logmel_v1",
-                "architecture": "MultiscaleCNN", "model_type": "tensorflow"},
-    "cct": {"frontend": "benchmark_logmel_v1",
-            "architecture": "Hybrid CNN-Transformer",
-            "model_type": "tensorflow"},
-    "ast": {"frontend": "benchmark_logmel_v1",
-            "architecture": "SpectrogramTransformer",
-            "model_type": "tensorflow"},
+    "aasist": {
+        "frontend": "benchmark_raw_v1",
+        "architecture": "AASIST",
+        "model_type": "tensorflow",
+    },
+    "rawgat_st": {
+        "frontend": "benchmark_raw_v1",
+        "architecture": "RawGAT-ST",
+        "model_type": "tensorflow",
+    },
+    "rawnet2": {
+        "frontend": "benchmark_raw_v1",
+        "architecture": "RawNet2",
+        "model_type": "tensorflow",
+    },
+    "conformer": {
+        "frontend": "benchmark_logmel_v1",
+        "architecture": "Conformer",
+        "model_type": "tensorflow",
+    },
+    "res2net": {
+        "frontend": "benchmark_logmel_v1",
+        "architecture": "MultiscaleCNN",
+        "model_type": "tensorflow",
+    },
+    "cct": {
+        "frontend": "benchmark_logmel_v1",
+        "architecture": "Hybrid CNN-Transformer",
+        "model_type": "tensorflow",
+    },
+    "ast": {
+        "frontend": "benchmark_logmel_v1",
+        "architecture": "SpectrogramTransformer",
+        "model_type": "tensorflow",
+    },
     # v2 (183 colunas), nao v1 (63). Os artefatos promovidos declaram
     # `benchmark_tabular_v2` (confira data/models/benchmark_final/svm/
     # bench_svm_config.json). Com o v1 aqui, rodar este reparo gravava um
     # contrato pedindo 63 descritores para um modelo de 183: a guarda de
     # `feature_preparer` recusa o vetor e SVM/RandomForest param de inferir.
-    "svm": {"frontend": "benchmark_tabular_v2", "architecture": "SVM",
-            "model_type": "sklearn"},
-    "random_forest": {"frontend": "benchmark_tabular_v2",
-                      "architecture": "Random Forest",
-                      "model_type": "sklearn"},
+    "svm": {
+        "frontend": "benchmark_tabular_v2",
+        "architecture": "SVM",
+        "model_type": "sklearn",
+    },
+    "random_forest": {
+        "frontend": "benchmark_tabular_v2",
+        "architecture": "Random Forest",
+        "model_type": "sklearn",
+    },
     # Escopo estendido (2026-07-28). Faltavam aqui, então nunca recebiam
     # `feature_frontend` e iam para produção com o front-end errado.
-    "sonic_sleuth": {"frontend": "benchmark_logmel_v1",
-                     "architecture": "Sonic Sleuth",
-                     "model_type": "tensorflow"},
-    "efficientnet_lstm": {"frontend": "benchmark_logmel_v1",
-                          "architecture": "EfficientNet-LSTM",
-                          "model_type": "tensorflow"},
-    "ensemble": {"frontend": "benchmark_raw_v1", "architecture": "Ensemble",
-                 "model_type": "tensorflow"},
-    "wavlm": {"frontend": "benchmark_raw_v1", "architecture": "WavLM",
-              "model_type": "tensorflow"},
-    "hubert": {"frontend": "benchmark_raw_v1", "architecture": "HuBERT",
-               "model_type": "tensorflow"},
+    "sonic_sleuth": {
+        "frontend": "benchmark_logmel_v1",
+        "architecture": "Sonic Sleuth",
+        "model_type": "tensorflow",
+    },
+    "efficientnet_lstm": {
+        "frontend": "benchmark_logmel_v1",
+        "architecture": "EfficientNet-LSTM",
+        "model_type": "tensorflow",
+    },
+    "ensemble": {
+        "frontend": "benchmark_raw_v1",
+        "architecture": "Ensemble",
+        "model_type": "tensorflow",
+    },
+    "wavlm": {
+        "frontend": "benchmark_raw_v1",
+        "architecture": "WavLM",
+        "model_type": "tensorflow",
+    },
+    "hubert": {
+        "frontend": "benchmark_raw_v1",
+        "architecture": "HuBERT",
+        "model_type": "tensorflow",
+    },
     # SSL originais (PyTorch): o runner dedicado grava calibração própria
     # (limiar de EER sob ruído) nos artefatos .pt/metrics.json — não são
     # regenerados aqui para não sobrescrever a calibração sob ruído.
@@ -208,9 +245,9 @@ def stamp_band_correction(
         if (models_dir / f"bench_{slug}{sufixo}").exists()
     ]
     results_path = results_dir / slug / "results.json"
-    faltando = [
-        str(p) for p in (sidecar_path, results_path) if not p.exists()
-    ] + ([] if modelos else [f"bench_{slug}.(pkl|keras)"])
+    faltando = [str(p) for p in (sidecar_path, results_path) if not p.exists()] + (
+        [] if modelos else [f"bench_{slug}.(pkl|keras)"]
+    )
     if faltando:
         logger.warning("%s: ausente(s): %s — pulado", slug, ", ".join(faltando))
         return False
@@ -232,7 +269,10 @@ def stamp_band_correction(
     if esperado != atual:
         logger.error(
             "%s: %s não é o artefato desse run (sha256 %s, run registrou %s)",
-            slug, modelos[0].name, atual[:12], str(esperado)[:12],
+            slug,
+            modelos[0].name,
+            atual[:12],
+            str(esperado)[:12],
         )
         return False
     banda = band_correction_from_results(results, arquitetura)
@@ -255,9 +295,7 @@ def stamp_band_correction(
         "stamped_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
     sidecar["provenance"] = proveniencia
-    logger.info(
-        "%s: band_correction %s (sha256 do artefato confere)", slug, banda
-    )
+    logger.info("%s: band_correction %s (sha256 do artefato confere)", slug, banda)
     if dry_run:
         return True
 
@@ -270,9 +308,14 @@ def stamp_band_correction(
     return True
 
 
-def build_contract(arch_key: str, spec: dict, metrics: dict,
-                   eer: float | None, threshold: float | None,
-                   temperature: float = 1.0) -> dict:
+def build_contract(
+    arch_key: str,
+    spec: dict,
+    metrics: dict,
+    eer: float | None,
+    threshold: float | None,
+    temperature: float = 1.0,
+) -> dict:
     frontend = spec["frontend"]
     input_shape = metrics.get("input_shape")
     if not input_shape:
@@ -304,25 +347,36 @@ def build_contract(arch_key: str, spec: dict, metrics: dict,
         "scaler_applied": False,
     }
     if frontend == "benchmark_raw_v1":
-        contract.update({
-            "type": "audio", "format": "raw", "input_type": "raw_audio",
-            "target_sequence_length": int(input_shape[0]),
-        })
+        contract.update(
+            {
+                "type": "audio",
+                "format": "raw",
+                "input_type": "raw_audio",
+                "target_sequence_length": int(input_shape[0]),
+            }
+        )
     elif frontend == "benchmark_logmel_v1":
-        contract.update({
-            "type": "features", "format": "spectrogram",
-            "input_type": "spectrogram",
-            "time_steps": int(input_shape[0]),
-            "feature_dim": int(input_shape[1]),
-        })
+        contract.update(
+            {
+                "type": "features",
+                "format": "spectrogram",
+                "input_type": "spectrogram",
+                "time_steps": int(input_shape[0]),
+                "feature_dim": int(input_shape[1]),
+            }
+        )
     else:  # tabular
-        contract.update({
-            "type": "features", "format": "tabular", "input_type": "tabular",
-            "feature_dim": int(input_shape[0]),
-            # O artefato clássico é um Pipeline sklearn com o scaler DENTRO;
-            # nenhum scaler externo deve ser aplicado pela inferência.
-            "normalization": "pipeline_interno",
-        })
+        contract.update(
+            {
+                "type": "features",
+                "format": "tabular",
+                "input_type": "tabular",
+                "feature_dim": int(input_shape[0]),
+                # O artefato clássico é um Pipeline sklearn com o scaler DENTRO;
+                # nenhum scaler externo deve ser aplicado pela inferência.
+                "normalization": "pipeline_interno",
+            }
+        )
     if threshold is not None:
         contract["eer_threshold"] = round(float(threshold), 6)
     if eer is not None:
@@ -425,9 +479,7 @@ def rebuild(arch_key: str, dry_run: bool = False) -> bool:
         "provenance": {
             "source": str(metrics_path.relative_to(ROOT)).replace("\\", "/"),
             "rebuilt_by": "tools/reporting/rebuild_inference_contracts.py",
-            "rebuilt_at": datetime.now(timezone.utc).isoformat(
-                timespec="seconds"
-            ),
+            "rebuilt_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "note": (
                 "Sidecar regenerado do run real do benchmark; o anterior "
                 "continha contrato de run de fumaça (ver *.stale.bak)."
@@ -438,10 +490,12 @@ def rebuild(arch_key: str, dry_run: bool = False) -> bool:
     config_path = model_path.parent / f"{model_path.stem}_config.json"
     logger.info(
         "%s: %s  eer=%.4f thr=%.4f frontend=%s shape=%s",
-        arch_key, config_path.name,
+        arch_key,
+        config_path.name,
         eer if eer is not None else float("nan"),
         threshold if threshold is not None else float("nan"),
-        contract["feature_frontend"], contract["input_shape"],
+        contract["feature_frontend"],
+        contract["input_shape"],
     )
     if dry_run:
         return True
@@ -460,7 +514,9 @@ def rebuild(arch_key: str, dry_run: bool = False) -> bool:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--archs", nargs="+", choices=sorted(ARCH_SPECS),
+        "--archs",
+        nargs="+",
+        choices=sorted(ARCH_SPECS),
         default=sorted(ARCH_SPECS),
     )
     parser.add_argument("--dry-run", action="store_true")
@@ -483,14 +539,20 @@ def main(argv: list[str] | None = None) -> int:
             if stamp_band_correction(slug, dry_run=args.dry_run)
         )
         logger.info(
-            "%d/%d sidecars %s", done, len(args.stamp_band_correction),
+            "%d/%d sidecars %s",
+            done,
+            len(args.stamp_band_correction),
             "conferidos (dry-run)" if args.dry_run else "com a política de banda",
         )
         return 0 if done == len(args.stamp_band_correction) else 1
 
     done = sum(1 for arch in args.archs if rebuild(arch, dry_run=args.dry_run))
-    logger.info("%d/%d sidecars %s", done, len(args.archs),
-                "validados (dry-run)" if args.dry_run else "regenerados")
+    logger.info(
+        "%d/%d sidecars %s",
+        done,
+        len(args.archs),
+        "validados (dry-run)" if args.dry_run else "regenerados",
+    )
     return 0 if done == len(args.archs) else 1
 
 

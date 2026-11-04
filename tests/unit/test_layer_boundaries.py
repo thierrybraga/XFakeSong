@@ -94,10 +94,9 @@ def _violacoes(camada: str, proibidos: tuple[str, ...]) -> list[str]:
 )
 def test_camada_nao_importa_o_que_esta_acima_dela(camada, proibidos):
     violacoes = _violacoes(camada, proibidos)
-    assert not violacoes, (
-        f"`{camada}` não pode importar {', '.join(proibidos)}:\n"
-        + "\n".join(violacoes)
-    )
+    assert (
+        not violacoes
+    ), f"`{camada}` não pode importar {', '.join(proibidos)}:\n" + "\n".join(violacoes)
 
 
 def test_varredura_resolve_imports_relativos_tardios_e_dinamicos():

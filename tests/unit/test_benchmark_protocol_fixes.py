@@ -34,6 +34,7 @@ from benchmarks.report import (
 
 # ─────────────────────── 1. multicrop simétrico ───────────────────────
 
+
 def test_multicrop_is_uniform_across_raw_audio_architectures():
     """A decisão não pode depender do NOME da arquitetura.
 
@@ -46,15 +47,12 @@ def test_multicrop_is_uniform_across_raw_audio_architectures():
     from benchmarks import runner
 
     source = inspect.getsource(runner._benchmark_one)
-    decision = [
-        line for line in source.splitlines() if "use_multicrop =" in line
-    ]
+    decision = [line for line in source.splitlines() if "use_multicrop =" in line]
     assert decision, "linha de decisão do multicrop não encontrada"
     joined = " ".join(decision)
     for arch_name in ("aasist", "rawgatst"):
         assert arch_name not in joined, (
-            "o multicrop voltou a depender do nome da arquitetura: "
-            f"{joined.strip()}"
+            "o multicrop voltou a depender do nome da arquitetura: " f"{joined.strip()}"
         )
     assert 'input_type") == "raw_audio"' in joined
 
@@ -70,6 +68,7 @@ def test_protocol_does_not_claim_multicrop_before_deciding():
 
 
 # ─────────────────── 2. temperatura na escala do score ───────────────────
+
 
 def test_calibrated_threshold_and_scores_share_the_same_scale():
     """T é aplicada na avaliação, como no limiar derivado em validação."""
@@ -102,6 +101,7 @@ def test_temperature_scaling_is_monotonic_so_eer_is_preserved():
 
 
 # ─────────── 3 e 4. tabelas: seleção e política de limiar ───────────
+
 
 def _results_fixture(converged_second: bool = False) -> dict:
     def block(acc, eer):
@@ -174,13 +174,14 @@ def test_results_table_shows_the_decision_of_the_deployed_system():
 
 
 def test_bootstrap_unit_reaches_the_caption():
-    """"IC 95% bootstrap" sozinho não distingue cluster de amostra."""
+    """ "IC 95% bootstrap" sozinho não distingue cluster de amostra."""
     results = _results_fixture()
     assert _bootstrap_unit(results) == "cluster"
     assert "CLUSTERS" in _table_resultados(results)
 
 
 # ──────────────── 5 e 6. proveniência no relatório ────────────────
+
 
 def test_provenance_lines_carry_commit_and_checkpoints():
     lines = _provenance_lines(
@@ -226,6 +227,7 @@ def test_scores_seed_is_recorded_when_repeating():
 
 # ──────── SNR não visto: casada vs. generalização ────────
 
+
 def test_default_protocol_includes_an_unseen_snr_level():
     """Sem um nível fora do treino, robustez e memorização se confundem."""
     cfg = BenchmarkConfig()
@@ -270,6 +272,7 @@ def test_unseen_levels_fall_back_to_config_for_old_results():
 
 
 # ──────────── 7. selo do teste nos DOIS entrypoints ────────────
+
 
 def test_direct_entrypoint_can_verify_the_test_lock():
     """O selo era conferido só pelo orquestrador sequencial.
@@ -336,6 +339,7 @@ def test_shared_test_lock_rejects_a_mutated_dataset(tmp_path):
 
 
 # ──────────── 8. disjunção de sementes verificada ────────────
+
 
 def test_train_and_eval_noise_seeds_cannot_collide_silently():
     """A colisão precisa ser medida nas sementes que o RNG REALMENTE recebe."""
@@ -428,13 +432,14 @@ def test_protocol_records_the_disjointness_check():
 
 # ──────────── 9. override explícito de early stopping ────────────
 
+
 def test_explicit_early_stopping_override_survives_the_plan():
     cfg = BenchmarkConfig(architectures=["AASIST"], fixed_epoch_budget=False)
     cfg.training_overrides = {"AASIST": {"early_stopping": False}}
     params = _merge_effective_hparams(cfg, "AASIST", {"resolved_profile": "cpu"})
-    assert params["early_stopping"] is False, (
-        "--no-early-stopping era descartado quando fixed_epoch_budget=False"
-    )
+    assert (
+        params["early_stopping"] is False
+    ), "--no-early-stopping era descartado quando fixed_epoch_budget=False"
 
     # sem override, o orçamento fixo continua mandando
     cfg.training_overrides = {}
@@ -443,6 +448,7 @@ def test_explicit_early_stopping_override_survives_the_plan():
 
 
 # ──── paridade treino↔producao: o modelo do benchmark E o de producao ────
+
 
 def test_every_benchmark_input_type_maps_to_a_frontend():
     """Sem `feature_frontend` no contrato, a inferencia usa OUTRO front-end."""
@@ -453,8 +459,11 @@ def test_every_benchmark_input_type_maps_to_a_frontend():
 
     # tipos que `prepare_input_for_architecture` realmente produz
     for input_type in (
-        "raw_audio", "spectrogram", "tabular",
-        "tabular_audio_features", "tabular_flattened",
+        "raw_audio",
+        "spectrogram",
+        "tabular",
+        "tabular_audio_features",
+        "tabular_flattened",
     ):
         assert frontend_for_input_type(input_type) in BENCHMARK_FRONTENDS
 
@@ -528,13 +537,18 @@ def test_contrato_classico_declara_a_correcao_de_banda(tmp_path):
     }
 
     contrato = _classical_input_contract(
-        "SVM", tmp_path, "bench_svm", 183,
+        "SVM",
+        tmp_path,
+        "bench_svm",
+        183,
         {
             "original_shape": [48000],
             "input_type": "tabular_audio_features",
             "band_correction": politica,
         },
-        predict, Xv, yv,
+        predict,
+        Xv,
+        yv,
     )
     assert contrato["band_correction"] == politica
     gravado = _json.loads(
@@ -544,26 +558,36 @@ def test_contrato_classico_declara_a_correcao_de_banda(tmp_path):
 
     # Run sem correção: o campo não existe, para a inferência não aplicar nada.
     sem = _classical_input_contract(
-        "SVM", tmp_path, "bench_svm", 183,
+        "SVM",
+        tmp_path,
+        "bench_svm",
+        183,
         {
             "original_shape": [48000],
             "input_type": "tabular_audio_features",
             "band_correction": None,
         },
-        predict, Xv, yv,
+        predict,
+        Xv,
+        yv,
     )
     assert "band_correction" not in sem
 
     # NPZ de features prontas: sem front-end declarado a inferência não prepara o
     # áudio, então a política não teria a quem se aplicar. Igual às neurais.
     achatado = _classical_input_contract(
-        "SVM", tmp_path, "bench_svm", 40,
+        "SVM",
+        tmp_path,
+        "bench_svm",
+        40,
         {
             "original_shape": [40],
             "input_type": "tabular_flattened",
             "band_correction": politica,
         },
-        predict, Xv, yv,
+        predict,
+        Xv,
+        yv,
     )
     assert achatado["feature_frontend"] is None
     assert "band_correction" not in achatado
@@ -588,7 +612,14 @@ def test_classical_models_get_a_contract_with_validation_threshold(tmp_path):
         "input_type": "tabular_audio_features",
     }
     contract = _classical_input_contract(
-        "SVM", tmp_path, "bench_svm", 63, protocolo, predict, Xv, yv,
+        "SVM",
+        tmp_path,
+        "bench_svm",
+        63,
+        protocolo,
+        predict,
+        Xv,
+        yv,
     )
     # O front-end sai da LARGURA, não do input_type: os dois vetores tabulares
     # compartilham o mesmo input_type, e declarar v2 sobre 63 colunas mandaria
@@ -605,22 +636,41 @@ def test_classical_models_get_a_contract_with_validation_threshold(tmp_path):
     assert gravado["input_contract"]["feature_frontend"] == "benchmark_tabular_v1"
 
     v2 = _classical_input_contract(
-        "SVM", tmp_path, "bench_svm", 183, protocolo, predict, Xv, yv,
+        "SVM",
+        tmp_path,
+        "bench_svm",
+        183,
+        protocolo,
+        predict,
+        Xv,
+        yv,
     )
     assert v2["feature_frontend"] == "benchmark_tabular_v2"
 
     # Largura desconhecida com o front-end declarado: erro AQUI, não em produção.
     with pytest.raises(RuntimeError, match="vetor tabular com 64 colunas"):
         _classical_input_contract(
-            "SVM", tmp_path, "bench_svm", 64, protocolo, predict, Xv, yv,
+            "SVM",
+            tmp_path,
+            "bench_svm",
+            64,
+            protocolo,
+            predict,
+            Xv,
+            yv,
         )
 
     # NPZ que já trazia features: o front-end do benchmark não rodou, então o
     # contrato não pode alegar paridade com ele.
     sem_frontend = _classical_input_contract(
-        "SVM", tmp_path, "bench_svm", 64,
+        "SVM",
+        tmp_path,
+        "bench_svm",
+        64,
         {"original_shape": [64], "input_type": "tabular_flattened"},
-        predict, Xv, yv,
+        predict,
+        Xv,
+        yv,
     )
     assert sem_frontend["feature_frontend"] is None
     assert "sem paridade" in sem_frontend["feature_frontend_reason"]
@@ -630,7 +680,11 @@ def test_contract_rebuilder_covers_every_promoted_architecture():
     from tools.reporting.rebuild_inference_contracts import ARCH_SPECS
 
     for esperado in (
-        "sonic_sleuth", "efficientnet_lstm", "ensemble", "wavlm", "hubert",
+        "sonic_sleuth",
+        "efficientnet_lstm",
+        "ensemble",
+        "wavlm",
+        "hubert",
     ):
         assert esperado in ARCH_SPECS, f"{esperado} iria para producao sem frontend"
 
@@ -638,8 +692,11 @@ def test_contract_rebuilder_covers_every_promoted_architecture():
 def test_contract_rebuilder_preserves_calibrated_temperature():
     from tools.reporting.rebuild_inference_contracts import build_contract
 
-    spec = {"frontend": "benchmark_raw_v1", "architecture": "AASIST",
-            "model_type": "tensorflow"}
+    spec = {
+        "frontend": "benchmark_raw_v1",
+        "architecture": "AASIST",
+        "model_type": "tensorflow",
+    }
     c = build_contract("aasist", spec, {"input_shape": [48000, 1]}, 0.04, 0.79, 1.83)
     assert c["temperature"] == 1.83, "regenerar o sidecar descartava a calibracao"
     # e a janela de fallback precisa ser a canonica
@@ -648,8 +705,11 @@ def test_contract_rebuilder_preserves_calibrated_temperature():
 
 
 _BANDA_DO_RUN = {
-    "cutoff_hz": 7500.0, "taps": 255, "remove_dc": True,
-    "renormalize_rms_dbfs": -26.0, "origem": "runner",
+    "cutoff_hz": 7500.0,
+    "taps": 255,
+    "remove_dc": True,
+    "renormalize_rms_dbfs": -26.0,
+    "origem": "runner",
 }
 
 
@@ -665,21 +725,33 @@ def _artefato_promovido(tmp_path, *, sha_do_run=None):
     modelo = models / "bench_svm.pkl"
     modelo.write_bytes(b"artefato do run")
     sidecar = models / "bench_svm_config.json"
-    sidecar.write_text(json.dumps({
-        "architecture": "SVM",
-        "input_contract": {
-            "feature_frontend": "benchmark_tabular_v2",
-            "eer_threshold": 0.047,
-            "threshold_source": "validation_eer",
-        },
-    }), encoding="utf-8")
+    sidecar.write_text(
+        json.dumps(
+            {
+                "architecture": "SVM",
+                "input_contract": {
+                    "feature_frontend": "benchmark_tabular_v2",
+                    "eer_threshold": 0.047,
+                    "threshold_source": "validation_eer",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     sha = sha_do_run or hashlib.sha256(modelo.read_bytes()).hexdigest()
-    (resultados / "svm" / "results.json").write_text(json.dumps({
-        "architectures": {"SVM": {
-            "model_artifact_fingerprint": {"sha256": sha},
-            "input_preparation": {"band_correction": _BANDA_DO_RUN},
-        }},
-    }), encoding="utf-8")
+    (resultados / "svm" / "results.json").write_text(
+        json.dumps(
+            {
+                "architectures": {
+                    "SVM": {
+                        "model_artifact_fingerprint": {"sha256": sha},
+                        "input_preparation": {"band_correction": _BANDA_DO_RUN},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     return models, resultados, sidecar
 
 
@@ -726,9 +798,7 @@ def test_carimbo_de_banda_recusa_artefato_de_outro_run(tmp_path):
     models, resultados, sidecar = _artefato_promovido(tmp_path, sha_do_run="0" * 64)
     antes = sidecar.read_text(encoding="utf-8")
 
-    assert not stamp_band_correction(
-        "svm", models_dir=models, results_dir=resultados
-    )
+    assert not stamp_band_correction("svm", models_dir=models, results_dir=resultados)
     assert sidecar.read_text(encoding="utf-8") == antes
 
 
@@ -738,14 +808,19 @@ def test_politica_de_banda_casa_o_nome_da_arquitetura_sem_espaco():
         band_correction_from_results,
     )
 
-    results = {"architectures": {"RandomForest": {
-        "input_preparation": {"band_correction": _BANDA_DO_RUN},
-    }}}
+    results = {
+        "architectures": {
+            "RandomForest": {
+                "input_preparation": {"band_correction": _BANDA_DO_RUN},
+            }
+        }
+    }
     assert band_correction_from_results(results, "Random Forest") == _BANDA_DO_RUN
     assert band_correction_from_results(results, "SVM") is None
 
 
 # ──────── timeout por modelo: o default fixo matava todo treino ────────
+
 
 def test_timeout_covers_the_estimated_cost_of_every_architecture():
     """O default anterior era 60 min FIXO — menor que QUALQUER neural.
@@ -802,12 +877,12 @@ def test_sequential_runner_derives_the_timeout_when_not_given():
     from benchmarks.run_models_sequential import _timeout_for
 
     auto = argparse.Namespace(timeout_min=None, device_profile="gpu", epochs=100)
-    assert _timeout_for(auto, "RawGAT-ST") > _timeout_for(auto, "Sonic Sleuth"), (
-        "o timeout precisa variar por arquitetura"
-    )
-    assert _timeout_for(auto, "RawGAT-ST") > 24 * 60, (
-        "RawGAT-ST leva ~54 h de GPU: um limite de 24 h o mataria"
-    )
+    assert _timeout_for(auto, "RawGAT-ST") > _timeout_for(
+        auto, "Sonic Sleuth"
+    ), "o timeout precisa variar por arquitetura"
+    assert (
+        _timeout_for(auto, "RawGAT-ST") > 24 * 60
+    ), "RawGAT-ST leva ~54 h de GPU: um limite de 24 h o mataria"
 
     # o valor explicito do usuario continua vencendo
     manual = argparse.Namespace(timeout_min=15.0, device_profile="gpu", epochs=100)
@@ -833,9 +908,9 @@ def test_execution_order_runs_the_cheap_architectures_first():
     args = argparse.Namespace(order="cost", device_profile="gpu", epochs=100)
     ordenado = _order_models(args, list(DOCKER_TRAINING_ARCHITECTURES))
 
-    assert sorted(ordenado) == sorted(DOCKER_TRAINING_ARCHITECTURES), (
-        "reordenar nao pode adicionar nem perder arquitetura"
-    )
+    assert sorted(ordenado) == sorted(
+        DOCKER_TRAINING_ARCHITECTURES
+    ), "reordenar nao pode adicionar nem perder arquitetura"
     custos = [_expected_cost_min(args, m) for m in ordenado]
     assert custos == sorted(custos), "a execucao precisa ir do mais barato ao mais caro"
     assert ordenado[-1] == "RawGAT-ST", "o mais caro (~54 h) roda por ultimo"
@@ -866,9 +941,9 @@ def test_clean_pipeline_does_not_pin_a_fixed_timeout_or_wipe_the_paper():
     )
     source = modulo.read_text(encoding="utf-8")
 
-    assert 'parser.add_argument("--timeout-min", type=float, default=None)' in source, (
-        "sem default fixo o timeout e derivado por arquitetura"
-    )
+    assert (
+        'parser.add_argument("--timeout-min", type=float, default=None)' in source
+    ), "sem default fixo o timeout e derivado por arquitetura"
     assert 'CLEAN_PRESERVE = {"paper"}' in source
     assert "preserve=CLEAN_PRESERVE" in source
     assert "SMOKE_EPOCHS = 2" in source, "smoke com 100 epocas nao e smoke"

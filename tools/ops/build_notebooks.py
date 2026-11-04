@@ -150,6 +150,7 @@ else:
 
 # ───────────────────────── helpers de célula ─────────────────────────
 
+
 def _src_lines(text: str) -> list:
     """Texto → lista de linhas (com \\n, exceto a última) p/ nbformat."""
     text = textwrap.dedent(text).strip("\n")
@@ -208,27 +209,78 @@ def write_nb(rel_path: str, cells: list) -> None:
 # importável, avisando se divergir). Se mudar um contrato no registry, rode o
 # gerador num ambiente com TF: o aviso aponta a linha a atualizar.
 MODELS = [
-    (1, "rawnet2", "RawNet2", "raw_audio", "Forma de onda (SincNet)",
-     "Processa PCM 1D via Sinc-Convolutions; baseline end-to-end."),
-    (2, "aasist", "AASIST", "raw_audio", "Forma de onda + grafo",
-     "Graph attention espectro-temporal; SOTA em datasets controlados."),
-    (3, "rawgat_st", "RawGAT-ST", "raw_audio", "Forma de onda + grafo duplo",
-     "SincConv + grafos espectral/temporal com fusão."),
-    (4, "conformer", "Conformer", "spectrogram", "Espectrograma (conv+atenção)",
-     "Convolução + self-attention para contexto local e global."),
-    (5, "hybrid_cnn_transformer", "Hybrid CNN-Transformer", "spectrogram",
-     "Espectrograma (CCT)",
-     "Alias técnico do CCT; tokenização convolucional + Transformer."),
-    (6, "spectrogram_transformer", "SpectrogramTransformer", "spectrogram",
-     "Espectrograma (AST)",
-     "Audio Spectrogram Transformer: patches do espectrograma."),
-    (7, "multiscale_cnn", "MultiscaleCNN", "spectrogram",
-     "Espectrograma (Res2Net)",
-     "Convoluções multi-escala (Res2Net); baseline neural principal."),
-    (8, "svm", "SVM", "tabular", "Clássico (tabular)",
-     "Baseline leve sobre features acústicas agregadas; ideal em CPU."),
-    (9, "random_forest", "RandomForest", "tabular", "Clássico (tabular)",
-     "Comitê de árvores sobre features agregadas; rápido e robusto."),
+    (
+        1,
+        "rawnet2",
+        "RawNet2",
+        "raw_audio",
+        "Forma de onda (SincNet)",
+        "Processa PCM 1D via Sinc-Convolutions; baseline end-to-end.",
+    ),
+    (
+        2,
+        "aasist",
+        "AASIST",
+        "raw_audio",
+        "Forma de onda + grafo",
+        "Graph attention espectro-temporal; SOTA em datasets controlados.",
+    ),
+    (
+        3,
+        "rawgat_st",
+        "RawGAT-ST",
+        "raw_audio",
+        "Forma de onda + grafo duplo",
+        "SincConv + grafos espectral/temporal com fusão.",
+    ),
+    (
+        4,
+        "conformer",
+        "Conformer",
+        "spectrogram",
+        "Espectrograma (conv+atenção)",
+        "Convolução + self-attention para contexto local e global.",
+    ),
+    (
+        5,
+        "hybrid_cnn_transformer",
+        "Hybrid CNN-Transformer",
+        "spectrogram",
+        "Espectrograma (CCT)",
+        "Alias técnico do CCT; tokenização convolucional + Transformer.",
+    ),
+    (
+        6,
+        "spectrogram_transformer",
+        "SpectrogramTransformer",
+        "spectrogram",
+        "Espectrograma (AST)",
+        "Audio Spectrogram Transformer: patches do espectrograma.",
+    ),
+    (
+        7,
+        "multiscale_cnn",
+        "MultiscaleCNN",
+        "spectrogram",
+        "Espectrograma (Res2Net)",
+        "Convoluções multi-escala (Res2Net); baseline neural principal.",
+    ),
+    (
+        8,
+        "svm",
+        "SVM",
+        "tabular",
+        "Clássico (tabular)",
+        "Baseline leve sobre features acústicas agregadas; ideal em CPU.",
+    ),
+    (
+        9,
+        "random_forest",
+        "RandomForest",
+        "tabular",
+        "Clássico (tabular)",
+        "Comitê de árvores sobre features agregadas; rápido e robusto.",
+    ),
 ]
 CLASSICAL = {"SVM", "RandomForest"}
 # Modelos SSL completos ficam fora do recorte quantitativo do artigo; portanto
@@ -261,8 +313,10 @@ def _input_type(display_name: str, declared: str) -> str:
         if info:
             actual = info.input_requirements.get("input_type")
             if actual and actual != declared:
-                print(f"  AVISO: input_type de {display_name} divergiu: "
-                      f"catálogo={declared!r} ≠ registry={actual!r} — atualize MODELS.")
+                print(
+                    f"  AVISO: input_type de {display_name} divergiu: "
+                    f"catálogo={declared!r} ≠ registry={actual!r} — atualize MODELS."
+                )
             return actual or declared
     except Exception:
         pass  # TF ausente → usa o valor (determinístico) do catálogo.
@@ -271,14 +325,17 @@ def _input_type(display_name: str, declared: str) -> str:
 
 # ───────────────────────── 00_index ─────────────────────────
 
+
 def build_index():
     # TOC com links relativos (clicáveis no Jupyter e no HTML renderizado).
     model_links = "\n".join(
         f"   - [{num:02d} · {name}](models/{num:02d}_{slug}.ipynb)"
         for num, slug, name, _itype, _family, _why in MODELS
     )
-    write_nb("00_index.ipynb", [
-        md("""
+    write_nb(
+        "00_index.ipynb",
+        [
+            md("""
         # SpeechChecker — Índice dos Notebooks
 
         Estudos organizados em três blocos:
@@ -289,7 +346,7 @@ def build_index():
 
         **Ordem sugerida:** features → pipeline → models.
         """),
-        md(f"""
+            md(f"""
         ## Sumário (links clicáveis)
 
         1. [Estudo de features](features/01_feature_extraction_study.ipynb)
@@ -301,7 +358,7 @@ def build_index():
         3. Modelos
         {model_links}
         """),
-        md("""
+            md("""
         ## Como rodar
 
         ### Google Colab (recomendado para treinar com GPU)
@@ -331,23 +388,27 @@ def build_index():
         acompanha o recorte do artigo: nove modelos documentados e
         materializados.
         """),
-        code(BOOTSTRAP),
-        md("## Ambiente (versões — reprodutibilidade)"),
-        code(SESSION_INFO),
-        md("## Notebooks disponíveis"),
-        code("""
+            code(BOOTSTRAP),
+            md("## Ambiente (versões — reprodutibilidade)"),
+            code(SESSION_INFO),
+            md("## Notebooks disponíveis"),
+            code("""
         # Lista todos os notebooks do projeto.
         for path in sorted((ROOT / "docs" / "notebooks").rglob("*.ipynb")):
             print(path.relative_to(ROOT))
         """),
-    ])
+        ],
+    )
 
 
 # ───────────────────────── features ─────────────────────────
 
+
 def build_features():
-    write_nb("features/01_feature_extraction_study.ipynb", [
-        md("""
+    write_nb(
+        "features/01_feature_extraction_study.ipynb",
+        [
+            md("""
         # Estudo de Extração de Features
 
         Demonstra o **front-end real** usado pelo sistema na inferência
@@ -363,9 +424,9 @@ def build_features():
         Configuração: `sample_rate=16 kHz`, `n_fft=512`, `hop_length=128`,
         `n_mels = n_lfcc = 80`.
         """),
-        code(BOOTSTRAP),
-        md("## 1. Gerar um sinal sintético de 1 segundo"),
-        code("""
+            code(BOOTSTRAP),
+            md("## 1. Gerar um sinal sintético de 1 segundo"),
+            code("""
         import numpy as np
 
         rng = np.random.default_rng(0)
@@ -376,8 +437,8 @@ def build_features():
                + 0.05 * rng.standard_normal(16000)).astype("float32")
         print("waveform:", wav.shape, wav.dtype)
         """),
-        md("## 2. Extrair os três front-ends reais"),
-        code("""
+            md("## 2. Extrair os três front-ends reais"),
+            code("""
         from app.domain.services.detection.audio_preprocessing import (
             prepare_audio_for_model,
         )
@@ -398,8 +459,8 @@ def build_features():
         print("log-mel:", np.asarray(logmel).shape)
         print("raw    :", np.asarray(raw).shape)
         """),
-        md("## 3. Features clássicas para estudo"),
-        code("""
+            md("## 3. Features clássicas para estudo"),
+            code("""
         import librosa
         import pandas as pd
 
@@ -419,8 +480,8 @@ def build_features():
         }])
         feature_summary
         """),
-        md("## 4. Visualizar"),
-        code("""
+            md("## 4. Visualizar"),
+            code("""
         import matplotlib.pyplot as plt
 
         fig, ax = plt.subplots(2, 3, figsize=(13, 6.2))
@@ -444,7 +505,7 @@ def build_features():
         fig.tight_layout()
         plt.show()
         """),
-        md("""
+            md("""
         ## Leituras
 
         - `docs/architecture/audio-features.md` — features e extratores.
@@ -452,10 +513,12 @@ def build_features():
           treino↔inferência (o mesmo front-end usado aqui é reproduzido na
           detecção).
         """),
-    ])
+        ],
+    )
 
 
 # ───────────────────────── models/* ─────────────────────────
+
 
 def build_models():
     for num, slug, name, declared_itype, family, why in MODELS:
@@ -510,17 +573,20 @@ def build_models():
         # Backbones SSL completos ficam fora do recorte quantitativo do artigo.
         ssl_setup = (
             [md("## Backbone SSL real (`transformers`, opcional)"), code(SSL_DEPS_CELL)]
-            if slug in SSL_SLUGS else []
+            if slug in SSL_SLUGS
+            else []
         )
-        write_nb(f"models/{num:02d}_{slug}.ipynb", [
-            md(f"""
+        write_nb(
+            f"models/{num:02d}_{slug}.ipynb",
+            [
+                md(f"""
             # Estudo do modelo: {name}
 
             - **Família:** {family}
             - **Tipo de entrada (registry):** `{itype}`
             - **Por quê:** {why}
             """),
-            md("""
+                md("""
             ## Objetivos
 
             1. Mostrar o **contrato de entrada** que o benchmark prepara para esta
@@ -532,11 +598,11 @@ def build_models():
             Para treino com o seu próprio dataset, use
             `docs/notebooks/pipeline/02_training_model.ipynb`.
             """),
-            code(BOOTSTRAP),
-            *ssl_setup,
-            md("## Reprodutibilidade (semente numpy + TensorFlow)"),
-            code(SEED_ALL),
-            code(f"""
+                code(BOOTSTRAP),
+                *ssl_setup,
+                md("## Reprodutibilidade (semente numpy + TensorFlow)"),
+                code(SEED_ALL),
+                code(f"""
             ARCHITECTURE = {name!r}
 
             from benchmarks.data import BenchmarkData
@@ -548,11 +614,11 @@ def build_models():
             print("Shape preparado :", prepared.X.shape)
             print("Metadados       :", prepared.metadata)
             """),
-            md("## Inspeção do modelo"),
-            code(inspect),
-            md("## Treino + avaliação em dados sintéticos"),
-            code(EVAL_CELL),
-            md("""
+                md("## Inspeção do modelo"),
+                code(inspect),
+                md("## Treino + avaliação em dados sintéticos"),
+                code(EVAL_CELL),
+                md("""
             ## Como ler este notebook
 
             - `docs/models/architectures.md` — descrição de todas as arquiteturas.
@@ -562,7 +628,7 @@ def build_models():
             No relatório, compare sempre: acurácia, EER, AUC-ROC, min-tDCF,
             latência, tamanho do modelo, matriz de confusão e distribuição de scores.
             """),
-            md(f"""
+                md(f"""
             ## Hiperparâmetros e análise esperada
 
             - **Treino rápido:** use `epochs=2` apenas para validar fluxo.
@@ -574,7 +640,7 @@ def build_models():
               `confusion_matrix.png`, `roc.png`, `score_distribution.png` e,
               quando houver histórico, `convergence.png`.
             """),
-            code(f"""
+                code(f"""
             import json
 
             metrics_path = ROOT / "data" / "results" / {TCC_RESULTS!r} / "architectures" / {slug!r} / "metrics.json"
@@ -585,23 +651,27 @@ def build_models():
                 print("Sem métricas salvas ainda:", metrics_path)
                 print("Rode o benchmark completo ou ajuste o caminho de results.")
             """),
-        ])
+            ],
+        )
 
 
 # ───────────────────────── pipeline/* ─────────────────────────
 
+
 def build_pipeline():
     # 01 — benchmark
-    write_nb("pipeline/01_benchmark_tcc_full_pipeline.ipynb", [
-        md("""
+    write_nb(
+        "pipeline/01_benchmark_tcc_full_pipeline.ipynb",
+        [
+            md("""
         # Pipeline de Benchmark do TCC
 
         Roda o sistema de benchmark e documenta o automador completo do TCC:
         download/preparação do dataset, split estratificado, treino, inferência,
         tabelas LaTeX, figuras PNG, `dataset.md` e `tcc_report.md`.
         """),
-        code(BOOTSTRAP),
-        md("""
+            code(BOOTSTRAP),
+            md("""
         ## Tiers de dataset
 
         O dataset é montado por **tier** (`tools/dataset/build_dataset.py --tier ...`),
@@ -617,7 +687,7 @@ def build_pipeline():
         O pipeline aceita `--tier` e, no `large`, `--speaker-split` /
         `--unseen-speaker` para o protocolo de falante não visto.
         """),
-        md("""
+            md("""
         ## 1. Benchmark rápido (sintético) — valida o harness em segundos
 
         Treina algumas arquiteturas em **dados sintéticos** e gera as MESMAS
@@ -626,7 +696,7 @@ def build_pipeline():
         esperada) — servem só para validar o harness de ponta a ponta. Seed fixo
         (`42`, default do benchmark). Resultados reais: Seção 2.
         """),
-        code("""
+            code("""
         import pandas as pd
 
         try:
@@ -658,8 +728,8 @@ def build_pipeline():
         df = df[[c for c in cols if c in df.columns]].sort_values("eer")
         display(df.round(4))
         """),
-        md("### Figuras agregadas geradas pelo benchmark"),
-        code("""
+            md("### Figuras agregadas geradas pelo benchmark"),
+            code("""
         # Exibe inline as figuras que o benchmark gravou em disco.
         figs = OUT / "figures"
         for name in ["roc.png", "score_distributions.png", "confusion_matrices.png",
@@ -671,7 +741,7 @@ def build_pipeline():
             elif fp.exists():
                 print("figura:", fp)
         """),
-        md("""
+            md("""
         ## 2. Fluxo histórico de 20k (não reproduz o artigo)
 
         > ⚠️ **Pesado — requer GPU e tempo.** Baixa/prepara ~20k amostras (10k
@@ -687,7 +757,7 @@ def build_pipeline():
         (estes dois primeiros, `dataset.md`/`dataset_manifest.json`, só saem aqui —
         a Seção 1 não baixa dataset).
         """),
-        code("""
+            code("""
         import subprocess
 
         RUN_FULL_PIPELINE = False
@@ -708,7 +778,7 @@ def build_pipeline():
         else:
             print("Execução completa desativada. Defina RUN_FULL_PIPELINE = True para rodar.")
         """),
-        md("""
+            md("""
         Comando equivalente no terminal:
 
         ```bash
@@ -726,8 +796,8 @@ def build_pipeline():
 
         Veja `docs/evaluation/benchmark.md` para o mapeamento saída → tabela/figura do TCC.
         """),
-        md("## 3. Validar e ler artefatos do relatório"),
-        code("""
+            md("## 3. Validar e ler artefatos do relatório"),
+            code("""
         import pandas as pd
 
         try:
@@ -753,11 +823,14 @@ def build_pipeline():
         if (report_dir / "results.csv").exists():
             display(pd.read_csv(report_dir / "results.csv"))
         """),
-    ])
+        ],
+    )
 
     # 02 — treino
-    write_nb("pipeline/02_training_model.ipynb", [
-        md("""
+    write_nb(
+        "pipeline/02_training_model.ipynb",
+        [
+            md("""
         # Treino de um Modelo (pipeline real)
 
         Treina pelo `TrainingService` — o MESMO caminho usado pela API e pelo
@@ -765,11 +838,11 @@ def build_pipeline():
         como artefato de inferência (sem estado do otimizador) com o
         `input_contract` que garante paridade treino↔inferência.
         """),
-        code(BOOTSTRAP),
-        md("## Reprodutibilidade (semente numpy + TensorFlow)"),
-        code(SEED_ALL),
-        md("## 1. Dataset sintético `.npz` (espectrograma pequeno)"),
-        code("""
+            code(BOOTSTRAP),
+            md("## Reprodutibilidade (semente numpy + TensorFlow)"),
+            code(SEED_ALL),
+            md("## 1. Dataset sintético `.npz` (espectrograma pequeno)"),
+            code("""
         import tempfile
         import numpy as np
 
@@ -784,8 +857,8 @@ def build_pipeline():
         np.savez(npz, X_train=X, y_train=y)
         print("dataset:", npz)
         """),
-        md("## 2. Treinar via TrainingService"),
-        code("""
+            md("## 2. Treinar via TrainingService"),
+            code("""
         from app.core.contracts.base import ProcessingStatus
         from app.domain.services.training_service import TrainingService
 
@@ -801,7 +874,7 @@ def build_pipeline():
         print("acurácia:", round(md_.accuracy, 4))
         print("artefatos:", sorted(p.name for p in models_dir.glob("nb_demo*")))
         """),
-        md("""
+            md("""
         ## Notas
 
         - O `.keras` é salvo **sem o estado do otimizador** (~3× menor, load mais
@@ -809,7 +882,7 @@ def build_pipeline():
         - O `nb_demo_config.json` carrega o `input_contract` (temperatura/EER/OOD
           calibrados) lido na inferência. Ver `docs/notebooks/pipeline/03_inference.ipynb`.
         """),
-        md("""
+            md("""
         ## 3. Treinar com um dataset REAL (download) — opcional
 
         Baixa um dataset real do HuggingFace, monta o `.npz` e treina pelo MESMO
@@ -821,7 +894,7 @@ def build_pipeline():
         > ou veja `docs/data/public-datasets.md`. **FLEURS** (real, PT-BR) é público e leve;
         > fontes *fake* como WaveFake são grandes (dezenas de GB).
         """),
-        code("""
+            code("""
         import subprocess
 
         DOWNLOAD_REAL = False          # → True para baixar + treinar com dados reais
@@ -848,7 +921,7 @@ def build_pipeline():
             print("DOWNLOAD_REAL=False — usando o dataset sintético da Seção 1.")
             print("Defina DOWNLOAD_REAL=True para baixar dados reais (ver docs/12).")
         """),
-        md("""
+            md("""
         Com o `.npz` real em mãos, treine **qualquer arquitetura** repetindo a
         Seção 2 com `dataset_path=str(REAL_NPZ)`. Para baixar uma fonte específica
         direto (sem o pipeline completo):
@@ -859,7 +932,7 @@ def build_pipeline():
         python tools/dataset/download_datasets.py --brspeech --max-samples 600   # real+fake (pode pedir token)
         ```
         """),
-        md("""
+            md("""
         ## Usar o modelo treinado no sistema principal
 
         Treinar salva o par **`nb_demo.keras` + `nb_demo_config.json`** em
@@ -878,22 +951,25 @@ def build_pipeline():
         TrainingService().train_model(...)
         ```
         """),
-    ])
+        ],
+    )
 
     # 03 — inferência
-    write_nb("pipeline/03_inference.ipynb", [
-        md("""
+    write_nb(
+        "pipeline/03_inference.ipynb",
+        [
+            md("""
         # Inferência (ModelLoader + Predictor)
 
         Treina um modelo minúsculo, salva, recarrega pelo `ModelLoader` e prevê
         com o `Predictor` — o caminho real de detecção, incluindo a leitura do
         `input_contract` (temperatura/EER) e o fallback ONNX→TF.
         """),
-        code(BOOTSTRAP),
-        md("## Reprodutibilidade (semente numpy + TensorFlow)"),
-        code(SEED_ALL),
-        md("## 1. Treinar + salvar um modelo de demonstração"),
-        code("""
+            code(BOOTSTRAP),
+            md("## Reprodutibilidade (semente numpy + TensorFlow)"),
+            code(SEED_ALL),
+            md("## 1. Treinar + salvar um modelo de demonstração"),
+            code("""
         import tempfile
         import numpy as np
         from app.core.contracts.base import ProcessingStatus
@@ -916,8 +992,8 @@ def build_pipeline():
         assert res.status == ProcessingStatus.SUCCESS, res.errors
         print("treinado e salvo em", models_dir)
         """),
-        md("## 2. Carregar e prever"),
-        code("""
+            md("## 2. Carregar e prever"),
+            code("""
         from app.domain.services.detection.model_loader import ModelLoader
         from app.domain.services.detection.predictor import Predictor
 
@@ -932,7 +1008,7 @@ def build_pipeline():
         out = Predictor().predict(mi, sample)
         print("resultado:", out.data)
         """),
-        md("""
+            md("""
         ## Notas
 
         - `ModelLoader` lê o `input_contract` do `_config.json` (temperatura/EER/OOD)
@@ -940,7 +1016,7 @@ def build_pipeline():
         - Se houver um `nb_infer.onnx` ao lado e `onnxruntime` instalado, a
           inferência usa ONNX (mais rápida em CPU) com fallback para o TF.
         """),
-        md("""
+            md("""
         ## 3. Inferência pelo PIPELINE DO SISTEMA (`DetectionService`)
 
         `ModelLoader` + `Predictor` acima são os internos. O
@@ -949,7 +1025,7 @@ def build_pipeline():
         `input_contract` e prevê. É a prova de que um modelo treinado nos notebooks
         roda, sem adaptação, no sistema principal.
         """),
-        code("""
+            code("""
         from app.core.contracts.audio import AudioData
         from app.domain.services.detection_service import DetectionService
 
@@ -969,7 +1045,7 @@ def build_pipeline():
         print("is_fake:", out.data.is_fake,
               "| confiança:", round(float(out.data.confidence), 4))
         """),
-        md("""
+            md("""
         ## Onde salvar para o app principal carregar o seu modelo
 
         O par **`<nome>.keras` + `<nome>_config.json`** é auto-suficiente: o
@@ -988,11 +1064,14 @@ def build_pipeline():
         > serviço cai no contrato do registry (ainda funciona, mas sem a
         > temperatura/EER calibrados do seu treino).
         """),
-    ])
+        ],
+    )
 
     # 04 — benchmark completo: todas as arquiteturas
-    write_nb("pipeline/04_all_architectures_full_benchmark.ipynb", [
-        md("""
+    write_nb(
+        "pipeline/04_all_architectures_full_benchmark.ipynb",
+        [
+            md("""
         # Benchmark Completo: todas as arquiteturas
 
         Notebook operacional para executar o ciclo completo do TCC em Colab,
@@ -1007,9 +1086,9 @@ def build_pipeline():
         A execução completa é pesada e fica desligada por padrão. Primeiro rode o
         smoke test, verifique GPU/storage, depois altere `RUN_FULL_BENCHMARK=True`.
         """),
-        code(BOOTSTRAP),
-        md("## 1. Ambiente, storage e GPU"),
-        code("""
+            code(BOOTSTRAP),
+            md("## 1. Ambiente, storage e GPU"),
+            code("""
         import json
         import os
         import shutil
@@ -1061,7 +1140,7 @@ def build_pipeline():
         except Exception as exc:
             print("TensorFlow/GPU indisponível:", exc)
         """),
-        md(textwrap.dedent('''\
+            md(textwrap.dedent("""\
         ## 2. Arquiteturas e hiperparâmetros do experimento
 
         As 9 arquiteturas do artigo rodam **do menos para o mais custoso de treinar** —
@@ -1084,8 +1163,8 @@ def build_pipeline():
 
         > A ordem é a mesma de `benchmarks/config.py::ALL_TCC_ARCHITECTURES`, fonte
         > única consumida também por `run_models_sequential.py`.
-        ''')),
-        code("""
+        """)),
+            code("""
         # Ordem por custo crescente de treino (espelha benchmarks/config.py::
         # ALL_TCC_ARCHITECTURES). Mantenha sincronizada com aquela fonte.
         ALL_ARCHITECTURES = [
@@ -1123,14 +1202,14 @@ def build_pipeline():
         print("Épocas/batch:", EPOCHS, BATCH_SIZE)
         print("Workers CPU :", WORKERS)
         """),
-        md("""
+            md("""
         ## 3. Smoke test opcional (desativado por padrão)
 
         Roda um benchmark mínimo com SVM e RandomForest. Ele valida o contrato do
         pipeline, geração de CSV/JSON/PNG e persistência dos modelos antes de
         iniciar o treino completo.
         """),
-        code("""
+            code("""
         RUN_SMOKE_TEST = False
         SMOKE_OUT = RESULTS_DIR / "smoke_all_architectures_contract"
         SMOKE_NPZ = DATASETS_DIR / "smoke_all_architectures_contract.npz"
@@ -1153,7 +1232,7 @@ def build_pipeline():
         else:
             print("Smoke test desativado.")
         """),
-        md("""
+            md("""
         ## 4. Download + treino completo + inferência + relatório
 
         **Fluxo histórico por tiers; não reproduz o artigo.** O comando usa
@@ -1165,7 +1244,7 @@ def build_pipeline():
         Em Colab Pro, use GPU antes de ativar esta célula. Em CPU, rode apenas
         baselines clássicos ou reduza `ALL_ARCHITECTURES`.
         """),
-        code("""
+            code("""
         RUN_FULL_BENCHMARK = False
 
         full_cmd = [
@@ -1193,8 +1272,8 @@ def build_pipeline():
         else:
             print("Execução completa desativada. Revise GPU/storage e defina RUN_FULL_BENCHMARK=True.")
         """),
-        md("## 5. Auditoria dos artefatos gerados"),
-        code("""
+            md("## 5. Auditoria dos artefatos gerados"),
+            code("""
         import pandas as pd
 
         try:
@@ -1267,8 +1346,8 @@ def build_pipeline():
             df = pd.read_csv(REPORT_DIR / "results.csv")
             display(df)
         """),
-        md("## 6. Exibir gráficos principais"),
-        code("""
+            md("## 6. Exibir gráficos principais"),
+            code("""
         try:
             from IPython.display import Image, display
         except Exception:
@@ -1293,13 +1372,13 @@ def build_pipeline():
             else:
                 print("não encontrado:", path)
         """),
-        md("""
+            md("""
         ## 7. Exportar pacote para apresentação/TCC
 
         O diretório `OUTPUT_DIR` já contém os `.md`, `.csv`, `.json` e `.png`.
         Ative o zip se precisar transportar os resultados.
         """),
-        code("""
+            code("""
         CREATE_RESULTS_ZIP = False
 
         if CREATE_RESULTS_ZIP and OUTPUT_DIR.exists():
@@ -1309,7 +1388,7 @@ def build_pipeline():
             print("Zip desativado. Resultados em:", OUTPUT_DIR)
             print("Modelos salvos em:", MODELS_DIR)
         """),
-        md("""
+            md("""
         ## 8. Usar no Gradio para demonstração
 
         O benchmark salva os modelos em `MODELS_DIR`, apontado por
@@ -1323,7 +1402,8 @@ def build_pipeline():
         variáveis `XFAKE_STORAGE_DIR=/data`, `XFAKE_MODELS_DIR=/data/models`.
         A interface Gradio carregará os modelos salvos para inferência.
         """),
-    ])
+        ],
+    )
 
 
 def main() -> int:

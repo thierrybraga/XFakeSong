@@ -191,13 +191,15 @@ def _load_dataset(path: str, seed: int, band_correction_hz: float | None = None)
         )
         logger.info(
             "[protocolo] correção de banda aplicada às três partições "
-            "(passa-baixas %.0f Hz)", float(band_correction_hz)
+            "(passa-baixas %.0f Hz)",
+            float(band_correction_hz),
         )
     metadata = dict(data.metadata or {"source": str(p), "npz_path": str(p)})
     metadata["split_source"] = (
         "predefined_npz" if data.predefined_split_indices else "stratified_seed"
     )
     from benchmarks.split_audit import _audit_split_provenance
+
     metadata["provenance_overlap_audit"] = _audit_split_provenance(data)
     original_shape = list(np.asarray(data.X).shape[1:])
     # AJUSTE 2026-08-06: sem os cluster_ids do teste, `evaluate_scores` cai no
@@ -304,8 +306,11 @@ def _write_model_card(path: Path, payload: dict[str, Any]) -> None:
 
 
 def _evaluate_scores(
-    y_true: np.ndarray, p_fake: np.ndarray, threshold: float = 0.5,
-    n_bootstrap: int = 1000, cluster_ids: np.ndarray | None = None,
+    y_true: np.ndarray,
+    p_fake: np.ndarray,
+    threshold: float = 0.5,
+    n_bootstrap: int = 1000,
+    cluster_ids: np.ndarray | None = None,
     calibrated_threshold: float | None = None,
 ) -> dict[str, float]:
     """Delegado ao evaluate_scores canônico do benchmark.
@@ -320,19 +325,26 @@ def _evaluate_scores(
     from benchmarks.evaluate import evaluate_scores
 
     return evaluate_scores(
-        y_true, p_fake, threshold=threshold, n_bootstrap=n_bootstrap,
-        cluster_ids=cluster_ids, calibrated_threshold=calibrated_threshold,
+        y_true,
+        p_fake,
+        threshold=threshold,
+        n_bootstrap=n_bootstrap,
+        cluster_ids=cluster_ids,
+        calibrated_threshold=calibrated_threshold,
     )
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--band-correction-hz", type=float, default=None,
+        "--band-correction-hz",
+        type=float,
+        default=None,
         help="passa-baixas (Hz) aplicado as duas classes antes de qualquer "
-             "frontend. Use 7500 para acompanhar os demais modelos "
-             "do escopo; omitir deixa este runner com o atalho de "
-             "reamostragem que os outros nove nao tem.")
+        "frontend. Use 7500 para acompanhar os demais modelos "
+        "do escopo; omitir deixa este runner com o atalho de "
+        "reamostragem que os outros nove nao tem.",
+    )
     parser.add_argument(
         "--dataset",
         default="data/datasets/benchmark_dataset_15k.npz",
@@ -554,15 +566,13 @@ def main() -> int:
     # duas gravariam sob a mesma chave em `architectures` e a segunda
     # sobrescreveria a primeira na consolidação.
     if args.backend == "aasist":
-        base = arch_meta["display"].split()[0]          # "WavLM" / "HuBERT"
+        base = arch_meta["display"].split()[0]  # "WavLM" / "HuBERT"
         arch_meta = {
             **arch_meta,
             "display": f"{base} AASIST",
             "compact": f"{base.lower()}_aasist",
             "artifact": f"bench_{base.lower()}_aasist.pt",
-            "default_out": (
-                f"data/results/benchmark_{base.lower()}_aasist_gpu_100e"
-            ),
+            "default_out": (f"data/results/benchmark_{base.lower()}_aasist_gpu_100e"),
         }
     if args.model_name is None:
         args.model_name = arch_meta["default_model"]
@@ -591,6 +601,7 @@ def main() -> int:
     from transformers import HubertModel, WavLMModel
 
     from benchmarks.report import write_all
+
     BackboneModel = WavLMModel if args.architecture == "wavlm" else HubertModel
 
     out = Path(args.out)
@@ -606,12 +617,14 @@ def main() -> int:
 
     logger.info("Carregando dataset: %s", args.dataset)
     data, splits = _load_dataset(
-        args.dataset, args.seed,
+        args.dataset,
+        args.seed,
         band_correction_hz=getattr(args, "band_correction_hz", None),
     )
     from benchmarks.common import _file_fingerprint
     from benchmarks.provenance import _architecture_provenance
     from benchmarks.split_audit import _audit_split_overlap
+
     split_overlap_audit = _audit_split_overlap(splits, fail_on_overlap=True)
     split_fingerprints = split_overlap_audit["split_fingerprints"]
     X_train, y_train, X_val, y_val, X_test, y_test = splits
@@ -710,18 +723,12 @@ def main() -> int:
                 with torch.amp.autocast(
                     "cuda", enabled=(device.type == "cuda"), dtype=torch.float16
                 ):
-                    outp = backbone(
-                        xb, output_hidden_states=need_hidden_states
-                    )
+                    outp = backbone(xb, output_hidden_states=need_hidden_states)
                     pooled = pool_hidden_states(outp, embedding_config)
                 chunks.append(pooled.detach().float().cpu().numpy())
                 if step == 1 or step % 50 == 0 or step == n_batches:
-                    logger.info(
-                        "Embeddings %s: %d/%d batches", label, step, n_batches
-                    )
-        logger.info(
-            "Embeddings %s concluidos em %.1fs", label, time.time() - started
-        )
+                    logger.info("Embeddings %s: %d/%d batches", label, step, n_batches)
+        logger.info("Embeddings %s concluidos em %.1fs", label, time.time() - started)
         return np.concatenate(chunks, axis=0).astype("float32")
 
     def _prepare_waves(X: np.ndarray) -> np.ndarray:
@@ -767,7 +774,8 @@ def main() -> int:
             # troceamento): o que muda é só o que se guarda — embedding no
             # caminho MLP, forma de onda preparada no fim-a-fim.
             noisy_embedding_chunks.append(
-                _prepare_waves(noisy_chunk) if end_to_end
+                _prepare_waves(noisy_chunk)
+                if end_to_end
                 else embed(noisy_chunk, f"train_awgn_{start}_{stop}")
             )
         Z_train_noisy = np.concatenate(noisy_embedding_chunks, axis=0)
@@ -775,12 +783,13 @@ def main() -> int:
         y_train_fit = np.tile(y_train, 2)
         values, counts = np.unique(assigned, return_counts=True)
         assigned_snr_counts = {
-            str(int(value)): int(count)
-            for value, count in zip(values, counts)
+            str(int(value)): int(count) for value, count in zip(values, counts)
         }
         logger.info(
             "Treino aumentado no waveform: %d -> %d amostras (SNRs %s; %s)",
-            len(y_train), len(y_train_fit), args.train_aug_snr,
+            len(y_train),
+            len(y_train_fit),
+            args.train_aug_snr,
             assigned_snr_counts,
         )
 
@@ -826,11 +835,13 @@ def main() -> int:
         )
         logger.info(
             "Otimizador discriminativo: backbone lr=%.2e | back-end lr=%.2e",
-            args.backbone_lr, args.learning_rate,
+            args.backbone_lr,
+            args.learning_rate,
         )
     else:
         optimizer = torch.optim.AdamW(
-            net.parameters(), lr=args.learning_rate,
+            net.parameters(),
+            lr=args.learning_rate,
             weight_decay=args.weight_decay,
         )
 
@@ -852,8 +863,10 @@ def main() -> int:
         total_loss = 0.0
         correct = 0
         n = len(Z)
-        bs = max(1, int(args.feature_batch_size) if end_to_end
-                 else int(args.train_batch_size))
+        bs = max(
+            1,
+            int(args.feature_batch_size) if end_to_end else int(args.train_batch_size),
+        )
         yt_all = torch.from_numpy(y.astype("int64"))
         for start in range(0, n, bs):
             stop = min(start + bs, n)
@@ -901,7 +914,9 @@ def main() -> int:
             start_epoch = int(saved["epoch"]) + 1
             logger.info(
                 "Retomando da epoca %d (melhor val_loss=%.4f na epoca %d)",
-                start_epoch, best_val_loss, best_epoch,
+                start_epoch,
+                best_val_loss,
+                best_epoch,
             )
         except Exception as exc:  # noqa: BLE001
             # Estado corrompido não pode virar treino silenciosamente errado.
@@ -933,9 +948,11 @@ def main() -> int:
         (
             "fim-a-fim: backbone + grafo"
             if end_to_end and not args.freeze_backbone
-            else "grafo sobre backbone congelado"
-            if end_to_end
-            else "cabeca sobre embeddings em cache"
+            else (
+                "grafo sobre backbone congelado"
+                if end_to_end
+                else "cabeca sobre embeddings em cache"
+            )
         ),
         args.epochs,
     )
@@ -970,7 +987,10 @@ def main() -> int:
             if end_to_end and (step == 1 or step % 200 == 0):
                 logger.info(
                     "  epoca %d: lote %d/%d loss=%.4f",
-                    epoch, step, len(train_loader), losses[-1],
+                    epoch,
+                    step,
+                    len(train_loader),
+                    losses[-1],
                 )
 
         val_loss, val_acc = _evaluate(Z_val_monitor, y_val_monitor)
@@ -1037,8 +1057,10 @@ def main() -> int:
 
     def predict_scores_from_embeddings(Z: np.ndarray) -> np.ndarray:
         net.eval()
-        bs = max(1, int(args.feature_batch_size) if end_to_end
-                 else int(args.train_batch_size))
+        bs = max(
+            1,
+            int(args.feature_batch_size) if end_to_end else int(args.train_batch_size),
+        )
         loader = DataLoader(
             TensorDataset(torch.from_numpy(Z.astype("float32"))),
             batch_size=bs,
@@ -1047,13 +1069,9 @@ def main() -> int:
         scores = []
         with torch.no_grad():
             for (xb,) in loader:
-                with torch.amp.autocast(
-                    "cuda", enabled=use_amp, dtype=torch.float16
-                ):
+                with torch.amp.autocast("cuda", enabled=use_amp, dtype=torch.float16):
                     logits = _forward(xb.to(device, non_blocking=True))
-                scores.append(
-                    torch.softmax(logits.float(), dim=1)[:, 1].cpu().numpy()
-                )
+                scores.append(torch.softmax(logits.float(), dim=1)[:, 1].cpu().numpy())
         return _finite_scores(np.concatenate(scores))
 
     # A comparação principal usa o limiar comum de 0,5. A calibração em
@@ -1097,8 +1115,11 @@ def main() -> int:
 
     scores_clean = predict_scores_from_embeddings(Z_test)
     clean = _evaluate_scores(
-        y_test, scores_clean, threshold=decision_threshold,
-        cluster_ids=test_cluster_ids, calibrated_threshold=calibrated_threshold,
+        y_test,
+        scores_clean,
+        threshold=decision_threshold,
+        cluster_ids=test_cluster_ids,
+        calibrated_threshold=calibrated_threshold,
     )
 
     # PARIDADE 2026-08-09: até aqui o runner SSL não emitia `grouped_clean`
@@ -1123,9 +1144,7 @@ def main() -> int:
     scores_robustness: dict[str, list[float]] = {}
     for snr in args.snr:
         noisy = _add_awgn_raw(X_test, snr, seed=args.seed + 20000 + int(snr))
-        Z_noisy = (
-            _prepare_waves(noisy) if end_to_end else embed(noisy, f"snr_{snr}")
-        )
+        Z_noisy = _prepare_waves(noisy) if end_to_end else embed(noisy, f"snr_{snr}")
         scores_noisy = predict_scores_from_embeddings(Z_noisy)
         scores_robustness[str(snr)] = scores_noisy.tolist()
         robustness[str(snr)] = _evaluate_scores(
@@ -1249,7 +1268,9 @@ def main() -> int:
         "noise_protocol": {
             "evaluation_domain": "waveform",
             "frontend_after_noise": True,
-            "training_augmentation_domain": "waveform" if args.train_augmentation else "disabled",
+            "training_augmentation_domain": (
+                "waveform" if args.train_augmentation else "disabled"
+            ),
             "train_noise_copies": 1 if args.train_augmentation else 0,
             "waveform_noise_batch_size": args.waveform_noise_batch_size,
             "assigned_snr_counts": assigned_snr_counts,
@@ -1281,9 +1302,7 @@ def main() -> int:
                     # backbone + soma de camadas + grafo, num só forward.
                     _ = net(x_latency)
                     return
-                outp = backbone(
-                    x_latency, output_hidden_states=need_hidden_states
-                )
+                outp = backbone(x_latency, output_hidden_states=need_hidden_states)
                 _ = classifier(pool_hidden_states(outp, embedding_config))
 
         for _ in range(2):
@@ -1543,9 +1562,11 @@ def main() -> int:
                     "kind": (
                         "end_to_end_finetune_ssl_then_graph_backend"
                         if end_to_end and not args.freeze_backbone
-                        else "frozen_backbone_sequence_then_graph_backend"
-                        if end_to_end
-                        else "frozen_backbone_embedding_then_classifier_fit"
+                        else (
+                            "frozen_backbone_sequence_then_graph_backend"
+                            if end_to_end
+                            else "frozen_backbone_embedding_then_classifier_fit"
+                        )
                     ),
                     "backbone": args.model_name,
                     # Derivado da contagem de parâmetros com requires_grad, não
@@ -1601,15 +1622,23 @@ def main() -> int:
 
     write_all(_json_safe(results), str(out))
     logger.info("Benchmark %s finalizado em: %s", arch_meta["display"], out)
-    print(json.dumps(_json_safe({
-        "output_dir": str(out),
-        "model_artifact": str(artifact),
-        "accuracy": clean.get("accuracy"),
-        "auc_roc": clean.get("auc_roc"),
-        "eer": clean.get("eer"),
-        "latency_ms": latency_ms,
-        "fallback_used": False,
-    }), indent=2, ensure_ascii=False))
+    print(
+        json.dumps(
+            _json_safe(
+                {
+                    "output_dir": str(out),
+                    "model_artifact": str(artifact),
+                    "accuracy": clean.get("accuracy"),
+                    "auc_roc": clean.get("auc_roc"),
+                    "eer": clean.get("eer"),
+                    "latency_ms": latency_ms,
+                    "fallback_used": False,
+                }
+            ),
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
     return 0
 
 

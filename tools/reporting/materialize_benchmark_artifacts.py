@@ -104,15 +104,21 @@ def _results_files(results_dir: Path) -> dict[str, Any]:
     for model_dir in sorted(p for p in results_dir.iterdir() if p.is_dir()):
         figures = sorted(model_dir.glob("figures/*.png"))
         payload[model_dir.name] = {
-            "results_json": _rel(model_dir / "results.json")
-            if (model_dir / "results.json").exists()
-            else None,
-            "summary_md": _rel(model_dir / "summary.md")
-            if (model_dir / "summary.md").exists()
-            else None,
-            "run_log": _rel(model_dir / "run.log")
-            if (model_dir / "run.log").exists()
-            else None,
+            "results_json": (
+                _rel(model_dir / "results.json")
+                if (model_dir / "results.json").exists()
+                else None
+            ),
+            "summary_md": (
+                _rel(model_dir / "summary.md")
+                if (model_dir / "summary.md").exists()
+                else None
+            ),
+            "run_log": (
+                _rel(model_dir / "run.log")
+                if (model_dir / "run.log").exists()
+                else None
+            ),
             "figures": [_rel(path) for path in figures],
             "figure_count": len(figures),
         }
@@ -179,7 +185,8 @@ def main() -> int:
     models_dir = ROOT / args.models_dir
     payload = materialize(results_dir=results_dir, models_dir=models_dir)
     ok_models = [
-        item for item in payload["models"]
+        item
+        for item in payload["models"]
         if item.get("status") == "ok" and item.get("artifact")
     ]
     print(f"Modelos OK materializados: {len(ok_models)}")

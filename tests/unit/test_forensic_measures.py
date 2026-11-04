@@ -103,10 +103,17 @@ def test_radar_mede_oito_eixos_normalizados():
 def test_resumo_do_lote():
     assert fm.batch_report([]) == {"total": 0, "summary": "Sem resultados"}
 
-    resumo = fm.batch_report([
-        {"filename": "a.wav", "is_fake": True, "confidence": 0.9, "model_name": "m"},
-        {"filename": "b.wav", "is_fake": False, "confidence": 0.5},
-    ])
+    resumo = fm.batch_report(
+        [
+            {
+                "filename": "a.wav",
+                "is_fake": True,
+                "confidence": 0.9,
+                "model_name": "m",
+            },
+            {"filename": "b.wav", "is_fake": False, "confidence": 0.5},
+        ]
+    )
     assert resumo["total_analyzed"] == 2 and resumo["fake_percentage"] == 50.0
     assert resumo["high_confidence_fakes"] == 1
     assert resumo["low_confidence_detections"] == 1

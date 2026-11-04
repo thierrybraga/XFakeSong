@@ -139,6 +139,7 @@ def test_academic_lock_is_mandatory(tmp_path) -> None:
             tmp_path / "missing.test-lock.json",
         )
 
+
 def test_confusion_matrix_uses_official_decision_threshold() -> None:
     row = {
         "slug": "model",

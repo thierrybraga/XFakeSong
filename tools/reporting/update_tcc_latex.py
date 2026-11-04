@@ -23,10 +23,11 @@ from benchmarks.config import (  # noqa: E402
     OFFICIAL_TCC_RESULT_ORDER,
 )
 
-SUMMARY = ROOT / "data" / "results" / "paper" / "consolidated" / "benchmark_summary.json"
+SUMMARY = (
+    ROOT / "data" / "results" / "paper" / "consolidated" / "benchmark_summary.json"
+)
 BLIND_HOLDOUT = (
-    ROOT / "data" / "results" / "paper" / "consolidated" /
-    "p18_avaliacao_cega.json"
+    ROOT / "data" / "results" / "paper" / "consolidated" / "p18_avaliacao_cega.json"
 )
 OUTPUT = ROOT / "data" / "results" / "paper" / "tabelas_benchmark.tex"
 FIGURES_DIR = "figures"
@@ -43,7 +44,6 @@ KEY_ALIAS = {
     "WavLM": "WavLM Original",
     "HuBERT": "HuBERT Original",
 }
-
 
 
 def pct(value: float | None) -> str:
@@ -120,11 +120,12 @@ def model_rows(data: list[dict]) -> list[dict]:
     if missing:
         print(f"AVISO: modelos ausentes no summary: {missing}", file=sys.stderr)
     if skipped:
-        print(f"AVISO: modelos fora do recorte do artigo ignorados: {skipped}",
-              file=sys.stderr)
+        print(
+            f"AVISO: modelos fora do recorte do artigo ignorados: {skipped}",
+            file=sys.stderr,
+        )
 
     return [by_key[key] for key in MODEL_ORDER if key in by_key]
-
 
 
 def academic_protocol_issues(rows: list[dict]) -> list[str]:
@@ -136,7 +137,9 @@ def academic_protocol_issues(rows: list[dict]) -> list[str]:
         dataset = row.get("dataset") or {}
         noise = row.get("noise_protocol") or {}
         if dataset.get("n_total") != 15000:
-            issues.append(f"{key}: dataset n_total={dataset.get('n_total')}, esperado 15000")
+            issues.append(
+                f"{key}: dataset n_total={dataset.get('n_total')}, esperado 15000"
+            )
         overlap = dataset.get("split_overlap_audit") or {}
         if overlap.get("passed") is not True:
             issues.append(f"{key}: auditoria de duplicatas ausente ou reprovada")
@@ -150,6 +153,8 @@ def academic_protocol_issues(rows: list[dict]) -> list[str]:
         if key not in {"SVM", "RandomForest"} and row.get("epochs") != 100:
             issues.append(f"{key}: épocas executadas={row.get('epochs')}, esperado 100")
     return issues
+
+
 def tdcf_value(row: dict) -> float | None:
     """min t-DCF sob qualquer um dos aliases históricos da chave.
 
@@ -676,28 +681,45 @@ entre sementes.}}
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description=(
-            "Gera tabelas_benchmark.tex com o manifesto oficial do artigo."
-        )
+        description=("Gera tabelas_benchmark.tex com o manifesto oficial do artigo.")
     )
-    parser.add_argument("--summary", default=str(SUMMARY),
-                        help="benchmark_summary.json consolidado")
-    parser.add_argument("--output", default=str(OUTPUT),
-                        help="arquivo .tex de saída")
-    parser.add_argument("--blind-holdout", default=str(BLIND_HOLDOUT),
-                        help="avaliação fresca dos classificadores clássicos")
-    parser.add_argument("--figures-dir", default=FIGURES_DIR,
-                        help="diretório das figuras visto pelo main.tex")
-    parser.add_argument("--allow-incomplete", action="store_true",
-                        help="permite gerar fragmento com menos de 11 modelos")
-    parser.add_argument("--allow-legacy", action="store_true",
-                        help="ignora validações do protocolo acadêmico")
-    parser.add_argument("--source", default=None,
-                        help="aceito por compatibilidade; não é reescrito")
-    parser.add_argument("--in-place", action="store_true",
-                        help="desativado: este script não altera main.tex")
-    parser.add_argument("--full-rewrite", action="store_true",
-                        help="desativado: modo legado removido por segurança")
+    parser.add_argument(
+        "--summary", default=str(SUMMARY), help="benchmark_summary.json consolidado"
+    )
+    parser.add_argument("--output", default=str(OUTPUT), help="arquivo .tex de saída")
+    parser.add_argument(
+        "--blind-holdout",
+        default=str(BLIND_HOLDOUT),
+        help="avaliação fresca dos classificadores clássicos",
+    )
+    parser.add_argument(
+        "--figures-dir",
+        default=FIGURES_DIR,
+        help="diretório das figuras visto pelo main.tex",
+    )
+    parser.add_argument(
+        "--allow-incomplete",
+        action="store_true",
+        help="permite gerar fragmento com menos de 11 modelos",
+    )
+    parser.add_argument(
+        "--allow-legacy",
+        action="store_true",
+        help="ignora validações do protocolo acadêmico",
+    )
+    parser.add_argument(
+        "--source", default=None, help="aceito por compatibilidade; não é reescrito"
+    )
+    parser.add_argument(
+        "--in-place",
+        action="store_true",
+        help="desativado: este script não altera main.tex",
+    )
+    parser.add_argument(
+        "--full-rewrite",
+        action="store_true",
+        help="desativado: modo legado removido por segurança",
+    )
     args = parser.parse_args()
 
     if args.full_rewrite or args.in_place:

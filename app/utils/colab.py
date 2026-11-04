@@ -7,19 +7,18 @@ logger = logging.getLogger(__name__)
 
 def is_colab() -> bool:
     """Verifica se o código está rodando no Google Colab."""
-    return 'google.colab' in sys.modules
+    return "google.colab" in sys.modules
 
 
-def mount_drive(mount_path: str = '/content/drive'):
+def mount_drive(mount_path: str = "/content/drive"):
     """Monta o Google Drive se estiver no Colab."""
     if is_colab():
         from google.colab import drive
+
         if not os.path.exists(mount_path):
             drive.mount(mount_path)
             logger.info(f"Google Drive montado em {mount_path}")
         else:
             logger.info("Google Drive já está montado.")
     else:
-        logger.warning(
-            "Não está rodando no Colab. Ignorando montagem do Drive."
-        )
+        logger.warning("Não está rodando no Colab. Ignorando montagem do Drive.")

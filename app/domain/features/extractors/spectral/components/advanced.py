@@ -1,6 +1,7 @@
 """
 Extração de características espectrais avançadas.
 """
+
 import numpy as np
 import scipy.signal
 
@@ -147,8 +148,7 @@ def compute_spectral_roughness(S: np.ndarray, freqs: np.ndarray) -> np.ndarray:
 
                     # Modelo simplificado de rugosidade
                     if freq_diff > 0:
-                        rough_component = amp_product * \
-                            np.exp(-freq_diff / 100)
+                        rough_component = amp_product * np.exp(-freq_diff / 100)
                         rough_val += rough_component
 
         roughness.append(rough_val)
@@ -156,8 +156,7 @@ def compute_spectral_roughness(S: np.ndarray, freqs: np.ndarray) -> np.ndarray:
     return np.array(roughness)
 
 
-def compute_spectral_inharmonicity(
-        S: np.ndarray, freqs: np.ndarray) -> np.ndarray:
+def compute_spectral_inharmonicity(S: np.ndarray, freqs: np.ndarray) -> np.ndarray:
     """
     Computa a inarmonicidade espectral.
 
@@ -194,8 +193,10 @@ def compute_spectral_inharmonicity(
                         nearest_harmonic = round(harmonic_ratio)
 
                         if nearest_harmonic > 0:
-                            deviation = abs(
-                                harmonic_ratio - nearest_harmonic) / nearest_harmonic
+                            deviation = (
+                                abs(harmonic_ratio - nearest_harmonic)
+                                / nearest_harmonic
+                            )
                             inharm_sum += deviation * amp
                             total_energy += amp
 

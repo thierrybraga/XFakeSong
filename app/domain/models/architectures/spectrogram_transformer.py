@@ -56,14 +56,13 @@ class SafeSpectrogramReshapeLayer(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({'input_shape_tuple': self.input_shape_tuple})
+        config.update({"input_shape_tuple": self.input_shape_tuple})
         return config
 
 
 def create_safe_spectrogram_layer(input_shape):
     """Creates a SafeSpectrogramReshapeLayer."""
-    return SafeSpectrogramReshapeLayer(
-        input_shape, name='safe_spectrogram_reshape')
+    return SafeSpectrogramReshapeLayer(input_shape, name="safe_spectrogram_reshape")
 
 
 @tf.keras.utils.register_keras_serializable(package="XFakeSong")
@@ -76,10 +75,10 @@ class ClassTokenLayer(layers.Layer):
 
     def build(self, input_shape):
         self.class_token = self.add_weight(
-            name='class_token',
+            name="class_token",
             shape=(1, 1, self.embed_dim),
-            initializer='random_normal',
-            trainable=True
+            initializer="random_normal",
+            trainable=True,
         )
         super().build(input_shape)
 
@@ -90,7 +89,7 @@ class ClassTokenLayer(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({'embed_dim': self.embed_dim})
+        config.update({"embed_dim": self.embed_dim})
         return config
 
 
@@ -101,7 +100,13 @@ class PatchEmbedding(layers.Layer):
     Supports overlapping patches as per the AST paper.
     """
 
-    def __init__(self, patch_size: Tuple[int, int], embed_dim: int, stride: Optional[Tuple[int, int]] = None, **kwargs):
+    def __init__(
+        self,
+        patch_size: Tuple[int, int],
+        embed_dim: int,
+        stride: Optional[Tuple[int, int]] = None,
+        **kwargs,
+    ):
         super(PatchEmbedding, self).__init__(**kwargs)
         self.patch_size = patch_size
         self.embed_dim = embed_dim
@@ -112,8 +117,8 @@ class PatchEmbedding(layers.Layer):
             filters=embed_dim,
             kernel_size=patch_size,
             strides=self.stride,
-            padding='valid',
-            name='patch_conv'
+            padding="valid",
+            name="patch_conv",
         )
 
     def build(self, input_shape):
@@ -141,11 +146,13 @@ class PatchEmbedding(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'patch_size': self.patch_size,
-            'embed_dim': self.embed_dim,
-            'stride': self.stride
-        })
+        config.update(
+            {
+                "patch_size": self.patch_size,
+                "embed_dim": self.embed_dim,
+                "stride": self.stride,
+            }
+        )
         return config
 
 
@@ -164,10 +171,10 @@ class PositionalEncoding(layers.Layer):
         # camada (build/trainable_weights) e são uma fonte conhecida de
         # inconsistência de serialização no Keras 3.
         self.pos_embedding = self.add_weight(
-            name='pos_embedding',
+            name="pos_embedding",
             shape=(1, self.max_patches, self.embed_dim),
-            initializer='random_normal',
-            trainable=True
+            initializer="random_normal",
+            trainable=True,
         )
         super().build(input_shape)
 
@@ -184,10 +191,7 @@ class PositionalEncoding(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'max_patches': self.max_patches,
-            'embed_dim': self.embed_dim
-        })
+        config.update({"max_patches": self.max_patches, "embed_dim": self.embed_dim})
         return config
 
 
@@ -206,30 +210,37 @@ class SpectrogramTransformerBlock(layers.Layer):
                  sem alterar sua saída; novos builds usam 'pre'.
     """
 
-    def __init__(self, embed_dim: int, num_heads: int, ff_dim: int,
-                 dropout_rate: float = 0.1, norm_style: str = 'post', **kwargs):
+    def __init__(
+        self,
+        embed_dim: int,
+        num_heads: int,
+        ff_dim: int,
+        dropout_rate: float = 0.1,
+        norm_style: str = "post",
+        **kwargs,
+    ):
         super(SpectrogramTransformerBlock, self).__init__(**kwargs)
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.ff_dim = ff_dim
         self.dropout_rate = dropout_rate
-        if norm_style not in ('pre', 'post'):
+        if norm_style not in ("pre", "post"):
             raise ValueError(f"norm_style inválido: {norm_style!r}")
         self.norm_style = norm_style
 
         # Multi-head self-attention
         self.attention = layers.MultiHeadAttention(
-            num_heads=num_heads,
-            key_dim=embed_dim // num_heads,
-            dropout=dropout_rate
+            num_heads=num_heads, key_dim=embed_dim // num_heads, dropout=dropout_rate
         )
 
         # Feed-forward network
-        self.ffn = tf.keras.Sequential([
-            layers.Dense(ff_dim, activation='gelu'),
-            layers.Dropout(dropout_rate),
-            layers.Dense(embed_dim)
-        ])
+        self.ffn = tf.keras.Sequential(
+            [
+                layers.Dense(ff_dim, activation="gelu"),
+                layers.Dropout(dropout_rate),
+                layers.Dense(embed_dim),
+            ]
+        )
 
         # Layer normalization
         self.layernorm1 = layers.LayerNormalization(epsilon=1e-6)
@@ -252,11 +263,10 @@ class SpectrogramTransformerBlock(layers.Layer):
         return input_shape
 
     def call(self, inputs, training=None):
-        if self.norm_style == 'pre':
+        if self.norm_style == "pre":
             # Pre-LN (ViT/AST): x = x + Attn(LN(x)); x = x + FFN(LN(x))
             attn_input = self.layernorm1(inputs)
-            attn_output = self.attention(
-                attn_input, attn_input, training=training)
+            attn_output = self.attention(attn_input, attn_input, training=training)
             attn_output = self.dropout1(attn_output, training=training)
             out1 = inputs + tf.cast(attn_output, inputs.dtype)
 
@@ -280,13 +290,15 @@ class SpectrogramTransformerBlock(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'embed_dim': self.embed_dim,
-            'num_heads': self.num_heads,
-            'ff_dim': self.ff_dim,
-            'dropout_rate': self.dropout_rate,
-            'norm_style': self.norm_style
-        })
+        config.update(
+            {
+                "embed_dim": self.embed_dim,
+                "num_heads": self.num_heads,
+                "ff_dim": self.ff_dim,
+                "dropout_rate": self.dropout_rate,
+                "norm_style": self.norm_style,
+            }
+        )
         return config
 
 
@@ -299,7 +311,7 @@ class SpectralAttentionPooling(layers.Layer):
         self.embed_dim = embed_dim
 
         # Attention mechanism for pooling
-        self.attention_weights = layers.Dense(1, activation='tanh')
+        self.attention_weights = layers.Dense(1, activation="tanh")
 
     def build(self, input_shape):
         self.attention_weights.build(input_shape)
@@ -312,8 +324,7 @@ class SpectralAttentionPooling(layers.Layer):
         # inputs shape: (batch, num_patches, embed_dim)
 
         # Calculate attention scores
-        attention_scores = self.attention_weights(
-            inputs)  # (batch, num_patches, 1)
+        attention_scores = self.attention_weights(inputs)  # (batch, num_patches, 1)
         attention_weights = tf.nn.softmax(attention_scores, axis=1)
 
         # Apply attention weights
@@ -323,7 +334,7 @@ class SpectralAttentionPooling(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({'embed_dim': self.embed_dim})
+        config.update({"embed_dim": self.embed_dim})
         return config
 
 
@@ -354,7 +365,7 @@ def create_spectrogram_transformer_model(
     alpha: float = 1e-7,
     clipnorm: float = 1.0,
     pretrained: bool = False,
-    architecture: str = 'spectrogram_transformer'
+    architecture: str = "spectrogram_transformer",
 ) -> models.Model:
     """
     Create Audio Spectrogram Transformer (AST) model for audio deepfake detection.
@@ -384,7 +395,8 @@ def create_spectrogram_transformer_model(
         Compiled Keras model
     """
     logger.info(
-        f"Creating AST model with input_shape={input_shape}, num_classes={num_classes}")
+        f"Creating AST model with input_shape={input_shape}, num_classes={num_classes}"
+    )
     # `pretrained=True` transfere os pesos do AST refinado em AudioSet (ver
     # ast_pretrained.py). O caminho TF do `transformers` é inviável com Keras 3,
     # mas o checkpoint PyTorch é legível sem tocar em TF — lemos o state_dict e
@@ -393,7 +405,7 @@ def create_spectrogram_transformer_model(
     # "pré-treinado" um modelo treinado do zero.
 
     # Input layer
-    inputs = layers.Input(shape=input_shape, name='ast_input')
+    inputs = layers.Input(shape=input_shape, name="ast_input")
 
     # Preprocessing based on input type
     if is_raw_audio(input_shape):
@@ -406,10 +418,13 @@ def create_spectrogram_transformer_model(
         # redimensionava para 128×128 — três desvios simultâneos do artigo,
         # incluindo a distorção da razão tempo×frequência pelo resize.
         x = LogMelSpectrogramLayer(
-            sample_rate=16000, n_fft=400, hop_length=160, n_mels=128,
-            name='log_mel_frontend',
+            sample_rate=16000,
+            n_fft=400,
+            hop_length=160,
+            n_mels=128,
+            name="log_mel_frontend",
         )(input_tensor)
-        x = ExpandDimsLayer(axis=-1, name='add_channel')(x)
+        x = ExpandDimsLayer(axis=-1, name="add_channel")(x)
         # `LogMelSpectrogramLayer.compute_output_shape` devolve o nº de quadros
         # de forma estática, então a grade de patches abaixo é calculável.
         processed_height = x.shape[1]
@@ -422,7 +437,7 @@ def create_spectrogram_transformer_model(
 
     # Normalização de entrada do AST (média 0, desvio 0,5 — §2.1 do artigo),
     # calculada por amostra para não vazar estatística entre partições.
-    x = ASTInputNormalization(name='ast_input_norm')(x)
+    x = ASTInputNormalization(name="ast_input_norm")(x)
 
     # Patches DIRETO no espectrograma, como no paper AST (Gong et al., 2021:
     # patches 16×16 com stride 10 sobre o espectrograma, SEM conv stem).
@@ -455,16 +470,17 @@ def create_spectrogram_transformer_model(
 
     logger.info(
         f"Using {num_patches} patches ({num_patches_h}x{num_patches_w}) "
-        f"patch={patch_size} stride={stride} (direto no espectrograma, sem stem)")
+        f"patch={patch_size} stride={stride} (direto no espectrograma, sem stem)"
+    )
 
     # Patch embedding (with overlap) on stem output
-    x = PatchEmbedding(patch_size, embed_dim, stride=stride, name='patch_embedding')(x)
+    x = PatchEmbedding(patch_size, embed_dim, stride=stride, name="patch_embedding")(x)
 
     # Add class token (Standard ViT/AST)
-    x = ClassTokenLayer(embed_dim, name='class_token_layer')(x)
+    x = ClassTokenLayer(embed_dim, name="class_token_layer")(x)
 
     # Positional encoding (learned)
-    x = PositionalEncoding(num_patches + 1, embed_dim, name='pos_encoding')(x)
+    x = PositionalEncoding(num_patches + 1, embed_dim, name="pos_encoding")(x)
 
     # Transformer blocks (Standard ViT-Base, pre-LN como no paper).
     for i in range(num_blocks):
@@ -473,12 +489,12 @@ def create_spectrogram_transformer_model(
             num_heads=num_heads,
             ff_dim=ff_dim,
             dropout_rate=dropout_rate,
-            norm_style='pre',
-            name=f'ast_block_{i}'
+            norm_style="pre",
+            name=f"ast_block_{i}",
         )(x)
 
     # Final LayerNorm before head (obrigatório com pre-LN)
-    x = layers.LayerNormalization(epsilon=1e-6, name='final_norm')(x)
+    x = layers.LayerNormalization(epsilon=1e-6, name="final_norm")(x)
 
     # Extract class token for classification (Standard ViT/AST)
     class_token_output = x[:, 0, :]
@@ -487,29 +503,26 @@ def create_spectrogram_transformer_model(
     # A cabeça anterior (2 blocos Dense 1024/256 com skips lineares, ~1M
     # params extras) não existe no paper e só ampliava o sobreajuste
     # (gap val→teste) sem ganho de representação.
-    x = layers.Dropout(dropout_rate, name='ast_head_dropout')(class_token_output)
+    x = layers.Dropout(dropout_rate, name="ast_head_dropout")(class_token_output)
 
     # Output layer
     # dtype='float32': sob mixed_float16, softmax+crossentropy em float16
     # satura/perde precisão e pode colapsar o treino (rede "morta" após a
     # 1a epoca). Mesma correção já aplicada em AASIST/RawGAT-ST.
     if num_classes == 1:
-        outputs = layers.Dense(1, activation='sigmoid', name='output', dtype='float32')(x)
-        loss = 'binary_crossentropy'
+        outputs = layers.Dense(1, activation="sigmoid", name="output", dtype="float32")(
+            x
+        )
+        loss = "binary_crossentropy"
     else:
         outputs = layers.Dense(
-            num_classes,
-            activation='softmax',
-            name='output',
-            dtype='float32')(x)
-        loss = 'sparse_categorical_crossentropy'
+            num_classes, activation="softmax", name="output", dtype="float32"
+        )(x)
+        loss = "sparse_categorical_crossentropy"
 
     # Create model. `architecture` nomeia o modelo (antes o parâmetro era
     # declarado e ignorado, e a variante lite saía com o mesmo nome da completa).
-    model = models.Model(
-        inputs=inputs,
-        outputs=outputs,
-        name=architecture)
+    model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
 
     if pretrained:
         # Transferência dos pesos AudioSet. Qualquer falha PROPAGA — a flag
@@ -534,6 +547,7 @@ def create_spectrogram_transformer_model(
     # P1 — clipnorm=1.0 + warmup maior estabilizam a atenção e evitam o colapso
     # val→0.5 visto no benchmark (treino divergia após o pico do warmup).
     from app.domain.models.training.optimization import create_warmup_cosine_optimizer
+
     optimizer = create_warmup_cosine_optimizer(
         initial_learning_rate=learning_rate,
         warmup_steps=warmup_steps,
@@ -543,21 +557,22 @@ def create_spectrogram_transformer_model(
         clipnorm=clipnorm,
     )
 
-    model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
+    model.compile(optimizer=optimizer, loss=loss, metrics=["accuracy"])
 
     logger.info(
         f"Spectrogram Transformer model created successfully with {model.count_params()} parameters "
         f"(WarmupCosineDecay: lr={learning_rate}, warmup={warmup_steps}, "
         f"decay={decay_steps}, weight_decay={weight_decay}, alpha={alpha}, "
-        f"clipnorm={clipnorm})")
+        f"clipnorm={clipnorm})"
+    )
     return model
 
 
 def create_lightweight_spectrogram_transformer(
     input_shape: Tuple[int, ...],
     num_classes: int,
-    architecture: str = 'spectrogram_transformer_lite',
-    **kwargs
+    architecture: str = "spectrogram_transformer_lite",
+    **kwargs,
 ) -> models.Model:
     """
     Create a lightweight version of Spectrogram Transformer for faster inference.
@@ -572,10 +587,10 @@ def create_lightweight_spectrogram_transformer(
     """
     params = {
         "patch_size": (16, 16),  # Larger patches
-        "embed_dim": 128,        # Smaller embedding
-        "num_blocks": 4,         # Fewer blocks
-        "num_heads": 4,          # Fewer heads
-        "ff_dim": 256,           # Smaller FF dimension
+        "embed_dim": 128,  # Smaller embedding
+        "num_blocks": 4,  # Fewer blocks
+        "num_heads": 4,  # Fewer heads
+        "ff_dim": 256,  # Smaller FF dimension
         "dropout_rate": 0.1,
     }
     # Config da variante PREVALECE — ver nota em create_small_spectrogram_transformer.
@@ -584,7 +599,7 @@ def create_lightweight_spectrogram_transformer(
         input_shape=input_shape,
         num_classes=num_classes,
         architecture=architecture,
-        **params
+        **params,
     )
 
 
@@ -608,8 +623,8 @@ _AST_SMALL_PARAMS = {
 def create_small_spectrogram_transformer(
     input_shape: Tuple[int, ...],
     num_classes: int,
-    architecture: str = 'spectrogram_transformer_small',
-    **kwargs
+    architecture: str = "spectrogram_transformer_small",
+    **kwargs,
 ) -> models.Model:
     """AST na escala ViT-Small, para treino do zero (sem pesos pré-treinados).
 
@@ -624,13 +639,16 @@ def create_small_spectrogram_transformer(
         input_shape=input_shape,
         num_classes=num_classes,
         architecture=architecture,
-        **params
+        **params,
     )
 
 
-def create_model(input_shape: Tuple[int, ...], num_classes: int,
-                 architecture: str = 'spectrogram_transformer',
-                 **kwargs) -> models.Model:
+def create_model(
+    input_shape: Tuple[int, ...],
+    num_classes: int,
+    architecture: str = "spectrogram_transformer",
+    **kwargs,
+) -> models.Model:
     """
     Factory function to create Spectrogram Transformer models (for compatibility with existing code).
 
@@ -643,18 +661,21 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int,
         Compiled Keras model
     """
     # Alias "default" -> AST topologicamente alinhado ao artigo, treinado do zero.
-    if architecture == 'default':
-        architecture = 'spectrogram_transformer'
+    if architecture == "default":
+        architecture = "spectrogram_transformer"
 
-    if architecture == 'spectrogram_transformer':
+    if architecture == "spectrogram_transformer":
         return create_spectrogram_transformer_model(
-            input_shape, num_classes, architecture=architecture, **kwargs)
-    elif architecture == 'spectrogram_transformer_small':
+            input_shape, num_classes, architecture=architecture, **kwargs
+        )
+    elif architecture == "spectrogram_transformer_small":
         return create_small_spectrogram_transformer(
-            input_shape, num_classes, architecture=architecture, **kwargs)
-    elif architecture == 'spectrogram_transformer_lite':
+            input_shape, num_classes, architecture=architecture, **kwargs
+        )
+    elif architecture == "spectrogram_transformer_lite":
         return create_lightweight_spectrogram_transformer(
-            input_shape, num_classes, architecture=architecture, **kwargs)
+            input_shape, num_classes, architecture=architecture, **kwargs
+        )
     else:
         raise ValueError(
             f"Unsupported architecture: {architecture}. Use "
@@ -665,13 +686,15 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int,
 
 
 # Register custom layers and functions for model loading
-tf.keras.utils.get_custom_objects().update({
-    'PatchEmbedding': PatchEmbedding,
-    'ClassTokenLayer': ClassTokenLayer,
-    'PositionalEncoding': PositionalEncoding,
-    'SpectrogramTransformerBlock': SpectrogramTransformerBlock,
-    'SpectralAttentionPooling': SpectralAttentionPooling,
-    'ResizeLayer': ResizeLayer,
-    'SafeSpectrogramReshapeLayer': SafeSpectrogramReshapeLayer,
-    'STFTLayer': STFTLayer
-})
+tf.keras.utils.get_custom_objects().update(
+    {
+        "PatchEmbedding": PatchEmbedding,
+        "ClassTokenLayer": ClassTokenLayer,
+        "PositionalEncoding": PositionalEncoding,
+        "SpectrogramTransformerBlock": SpectrogramTransformerBlock,
+        "SpectralAttentionPooling": SpectralAttentionPooling,
+        "ResizeLayer": ResizeLayer,
+        "SafeSpectrogramReshapeLayer": SafeSpectrogramReshapeLayer,
+        "STFTLayer": STFTLayer,
+    }
+)

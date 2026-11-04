@@ -126,7 +126,6 @@ class CommonErrors:
     Reusar evita reinventar mensagens em vários lugares do código.
     """
 
-
     @staticmethod
     def port_in_use(port: int = LOCAL_PORT) -> ActionableError:
         return ActionableError(
@@ -138,7 +137,6 @@ class CommonErrors:
             ),
             error_code="PORT_IN_USE",
         )
-
 
     @staticmethod
     def training_failed(reason: str) -> ActionableError:

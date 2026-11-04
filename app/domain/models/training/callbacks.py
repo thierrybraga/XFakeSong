@@ -174,14 +174,17 @@ class PersistentEpochHistory(tf.keras.callbacks.Callback):
         except (OSError, ValueError, KeyError, TypeError):
             _save_logger.warning(
                 "[HIST] histórico persistido ilegível em %s — a série desta "
-                "execução começa do zero", self.path
+                "execução começa do zero",
+                self.path,
             )
             self._records = {}
             return
         if self._records:
             _save_logger.warning(
                 "[HIST] %s: %d épocas anteriores recuperadas de %s",
-                self.label, len(self._records), self.path.name,
+                self.label,
+                len(self._records),
+                self.path.name,
             )
 
     def on_epoch_end(self, epoch, logs=None):
@@ -513,7 +516,10 @@ class EpochProgressLogger(tf.keras.callbacks.Callback):
             return
         now = time.time()
         current_batch = int(batch) + 1
-        if current_batch < steps and now - self._last_batch_log_at < self.batch_log_interval_s:
+        if (
+            current_batch < steps
+            and now - self._last_batch_log_at < self.batch_log_interval_s
+        ):
             return
         self._last_batch_log_at = now
         elapsed = now - self._started_at
@@ -538,9 +544,7 @@ class EpochProgressLogger(tf.keras.callbacks.Callback):
         current = int(epoch) + 1
         self._epochs_this_run += 1
         should_log = (
-            current == 1
-            or (total and current == total)
-            or current % self.interval == 0
+            current == 1 or (total and current == total) or current % self.interval == 0
         )
         if not should_log:
             return

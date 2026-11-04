@@ -6,7 +6,6 @@ decorators, merge/flatten/chunk, normalização de array, validação de áudio,
 IDs únicos e o ProgressTracker.
 """
 
-
 import numpy as np
 import pytest
 
@@ -33,6 +32,7 @@ from app.utils.helpers import (
 
 # ── filesystem ────────────────────────────────────────────────────────────
 
+
 def test_ensure_directory_creates_and_is_idempotent(tmp_path):
     target = tmp_path / "a" / "b" / "c"
     out = ensure_directory(target)
@@ -49,7 +49,7 @@ def test_get_file_size(tmp_path):
 
 def test_format_file_size_bytes_and_tb():
     assert format_file_size(512) == "512.0 B"
-    assert format_file_size(1024 ** 4) == "1.0 TB"
+    assert format_file_size(1024**4) == "1.0 TB"
 
 
 def test_format_duration_minutes_and_hours():
@@ -58,6 +58,7 @@ def test_format_duration_minutes_and_hours():
 
 
 # ── timestamps ────────────────────────────────────────────────────────────
+
 
 def test_timestamp_aware_roundtrip():
     aware = get_timestamp(timezone_aware=True)
@@ -71,6 +72,7 @@ def test_timestamp_naive_roundtrip():
 
 
 # ── decorators ────────────────────────────────────────────────────────────
+
 
 def test_timing_decorator_returns_and_reraises():
     @timing_decorator
@@ -114,6 +116,7 @@ def test_retry_decorator_exhausts_and_raises_last(monkeypatch):
 
 # ── JSON ──────────────────────────────────────────────────────────────────
 
+
 def test_save_and_load_json_roundtrip_creates_parent(tmp_path):
     p = tmp_path / "sub" / "data.json"
     assert save_json({"a": 1, "b": [1, 2]}, p) is True
@@ -137,6 +140,7 @@ def test_load_json_invalid_with_default(tmp_path):
 
 # ── dict helpers ──────────────────────────────────────────────────────────
 
+
 def test_deep_merge_dicts_nested_without_mutation():
     a = {"x": {"a": 1, "b": 2}, "y": 1}
     b = {"x": {"b": 3, "c": 4}, "z": 9}
@@ -158,6 +162,7 @@ def test_chunk_list_even_uneven_empty():
 
 
 # ── normalize_array ───────────────────────────────────────────────────────
+
 
 def test_normalize_array_minmax():
     out = normalize_array(np.array([0.0, 1, 2, 3, 4]), "minmax")
@@ -187,6 +192,7 @@ def test_normalize_array_unknown_method_raises():
 
 # ── validação de áudio ────────────────────────────────────────────────────
 
+
 def test_validate_audio_file_cases(tmp_path):
     good = tmp_path / "a.wav"
     good.write_bytes(b"RIFF....data")
@@ -205,6 +211,7 @@ def test_validate_audio_file_cases(tmp_path):
 
 # ── IDs únicos ────────────────────────────────────────────────────────────
 
+
 def test_create_unique_id_prefix_length_uniqueness():
     plain = create_unique_id()
     assert len(plain) == 8
@@ -217,6 +224,7 @@ def test_create_unique_id_prefix_length_uniqueness():
 
 
 # ── ProgressTracker ───────────────────────────────────────────────────────
+
 
 def test_progress_tracker_update_clamp_and_str():
     pt = ProgressTracker(total=4, description="treino")

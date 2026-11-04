@@ -25,16 +25,26 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 PROFILES = {
-    "inference-cpu": ("infrastructure/docker/compose/inference.cpu.yml", "inference-api"),
-    "inference-nvidia": ("infrastructure/docker/compose/inference.nvidia.yml", "inference-api"),
+    "inference-cpu": (
+        "infrastructure/docker/compose/inference.cpu.yml",
+        "inference-api",
+    ),
+    "inference-nvidia": (
+        "infrastructure/docker/compose/inference.nvidia.yml",
+        "inference-api",
+    ),
     "train-cpu": ("infrastructure/docker/compose/train.cpu.yml", None),
     "train-nvidia": ("infrastructure/docker/compose/train.nvidia.yml", None),
-    "benchmark-nvidia": ("infrastructure/docker/compose/benchmark.nvidia.yml", "benchmark"),
+    "benchmark-nvidia": (
+        "infrastructure/docker/compose/benchmark.nvidia.yml",
+        "benchmark",
+    ),
 }
 
 
-def _compose_cmd(compose_file: str, action: str, service: str | None,
-                 extra: list[str]) -> list[str]:
+def _compose_cmd(
+    compose_file: str, action: str, service: str | None, extra: list[str]
+) -> list[str]:
     cmd = ["docker", "compose", "-f", compose_file]
     # Compose resolve o `.env` relativo ao diretório do compose file
     # (infrastructure/docker/compose/), não ao CWD. Apontar explicitamente para o `.env` da
@@ -46,12 +56,14 @@ def _compose_cmd(compose_file: str, action: str, service: str | None,
     if action == "config":
         return [*cmd, "config", "--quiet"]
     if action == "build":
-        return [*cmd, "build", *( [service] if service else [] ), *extra]
+        return [*cmd, "build", *([service] if service else []), *extra]
     if action == "up":
-        return [*cmd, "up", "--build", *( [service] if service else [] ), *extra]
+        return [*cmd, "up", "--build", *([service] if service else []), *extra]
     if action == "run":
         if not service:
-            raise SystemExit("Use --service with action=run for multi-service profiles.")
+            raise SystemExit(
+                "Use --service with action=run for multi-service profiles."
+            )
         return [*cmd, "run", "--rm", service, *extra]
     raise SystemExit(f"Unsupported action: {action}")
 
@@ -64,8 +76,11 @@ def main() -> int:
     parser.add_argument("profile", choices=sorted(PROFILES))
     parser.add_argument("action", choices=["config", "build", "up", "run"])
     parser.add_argument("--service", help="Override compose service.")
-    parser.add_argument("extra", nargs=argparse.REMAINDER,
-                        help="Arguments appended after the compose action.")
+    parser.add_argument(
+        "extra",
+        nargs=argparse.REMAINDER,
+        help="Arguments appended after the compose action.",
+    )
     args = parser.parse_args()
 
     compose_file, default_service = PROFILES[args.profile]
@@ -77,4 +92,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -36,17 +36,16 @@ class FormantExtractorWrapper(IFeatureExtractor):
                 features=normalized_features,
                 feature_type=FeatureType.FORMANT,
                 extraction_params=self.get_extraction_params(),
-                audio_metadata={"extractor": "formant"}
+                audio_metadata={"extractor": "formant"},
             )
 
             return ProcessingResult(
-                status=ProcessingStatus.SUCCESS,
-                data=audio_features
+                status=ProcessingStatus.SUCCESS, data=audio_features
             )
         except Exception as e:
             return ProcessingResult(
                 status=ProcessingStatus.ERROR,
-                errors=[f"Erro na extração de formantes: {str(e)}"]
+                errors=[f"Erro na extração de formantes: {str(e)}"],
             )
 
     def extract_features(self, audio_data: AudioData) -> ProcessingResult:
@@ -63,5 +62,5 @@ class FormantExtractorWrapper(IFeatureExtractor):
             "sr": self.extractor.sr,
             "n_formants": self.extractor.n_formants,
             "frame_length": self.extractor.frame_length,
-            "hop_length": self.extractor.hop_length
+            "hop_length": self.extractor.hop_length,
         }

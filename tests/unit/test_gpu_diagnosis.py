@@ -50,9 +50,7 @@ def test_diag_driver_missing_on_bare_linux(patch_env):
     d = gpu._diagnose_gpu_situation([], 0, pci_present=True)
     assert d["diagnosis"] == "driver_missing"
     assert d["severity"] == "warning"
-    assert any(
-        ("nvidia-driver" in h) or ("ubuntu-drivers" in h) for h in d["hints"]
-    )
+    assert any(("nvidia-driver" in h) or ("ubuntu-drivers" in h) for h in d["hints"])
 
 
 def test_diag_pci_present_on_wsl_is_not_driver_missing(patch_env):

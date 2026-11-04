@@ -17,12 +17,14 @@ logger = logging.getLogger(__name__)
 #: construtor do modelo. Fonte única compartilhada por ``registry.create_model``
 #: e por ``factory.ArchitectureFactoryRegistry`` (que antes mantinha sua própria
 #: cópia da lista).
-_TRAINING_ONLY_PARAM_KEYS = frozenset({
-    "patience",
-    "lr_patience",
-    "gradient_clip",
-    "augmentation_strength",
-})
+_TRAINING_ONLY_PARAM_KEYS = frozenset(
+    {
+        "patience",
+        "lr_patience",
+        "gradient_clip",
+        "augmentation_strength",
+    }
+)
 
 # NOTA sobre ``crop_strategy`` (contrato de entrada de áudio bruto):
 # AASIST e RawGAT-ST usam "train_random_eval_multicrop" (crop aleatório no
@@ -306,7 +308,7 @@ class ArchitectureRegistry:
                 function_name="create_model",
                 description="Audio Spectrogram Transformer (AST) - ViT-Base with overlapping patches for audio deepfake detection",
                 supported_variants=[
-                    "spectrogram_transformer",        # ViT-Base do paper AST
+                    "spectrogram_transformer",  # ViT-Base do paper AST
                     "spectrogram_transformer_small",  # ViT-Small p/ treino do zero
                     "spectrogram_transformer_lite",
                 ],
@@ -514,8 +516,8 @@ class ArchitectureRegistry:
                     "'rawnet2_antispoofing'."
                 ),
                 supported_variants=[
-                    "rawnet2",                # Improved RawNet (Jung 2020, SV)
-                    "rawnet2_antispoofing",   # baseline ASVspoof 2021
+                    "rawnet2",  # Improved RawNet (Jung 2020, SV)
+                    "rawnet2_antispoofing",  # baseline ASVspoof 2021
                     "rawnet2_lite",
                 ],
                 default_params={
@@ -706,7 +708,6 @@ class ArchitectureRegistry:
             return cls._DISPLAY_TO_SNAKE[name]
         # Já é snake_case ou desconhecido
         return name.lower().replace("-", "_").replace(" ", "_")
-
 
     @classmethod
     def normalize_architecture_name(cls, name: str) -> str:
@@ -929,7 +930,9 @@ class ArchitectureRegistry:
             if min_len and input_shape[0] < min_len:
                 return False
             expected_feature_dim = requirements.get("feature_dim")
-            if expected_feature_dim and int(input_shape[1]) != int(expected_feature_dim):
+            if expected_feature_dim and int(input_shape[1]) != int(
+                expected_feature_dim
+            ):
                 return False
             if len(input_shape) == 3 and input_shape[2] != 1:
                 return False

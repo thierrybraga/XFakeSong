@@ -68,9 +68,7 @@ def _roda(curva, **kwargs):
     cb = _guarda(**kwargs)
     for i, ponto in enumerate(curva):
         treino, val = ponto if isinstance(ponto, tuple) else (ponto, ponto)
-        cb.on_epoch_end(
-            i, {"accuracy": treino, "val_accuracy": val, "val_loss": 0.5}
-        )
+        cb.on_epoch_end(i, {"accuracy": treino, "val_accuracy": val, "val_loss": 0.5})
         if cb.triggered:
             break
     return cb
@@ -274,9 +272,7 @@ def test_historico_regrava_mesma_epoca_sem_duplicar(tmp_path):
     cb.on_epoch_end(5, {"loss": 1.0})
     cb.on_epoch_end(5, {"loss": 0.5})
 
-    linhas = [
-        ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()
-    ]
+    linhas = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
     assert len(linhas) == 1
     assert json.loads(linhas[0])["loss"] == pytest.approx(0.5)
 

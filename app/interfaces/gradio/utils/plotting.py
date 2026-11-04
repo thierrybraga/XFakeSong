@@ -64,7 +64,10 @@ _PLOT_DANGER = PLOT_DANGER
 # Estilização de plots
 # =====================================================================
 
-def style_ax(ax, fig: Figure, title: str = "", xlabel: str = "", ylabel: str = "") -> None:
+
+def style_ax(
+    ax, fig: Figure, title: str = "", xlabel: str = "", ylabel: str = ""
+) -> None:
     """Aplica estilo dark consistente a um par (ax, fig).
 
     Args:
@@ -100,6 +103,7 @@ _style_ax = style_ax
 # =====================================================================
 # Gestão de memória (FE.2: leak fix)
 # =====================================================================
+
 
 def new_figure(nrows: int = 1, ncols: int = 1, *, figsize: tuple = (10, 4)):
     """Cria ``(fig, ax)`` FORA do registro global do pyplot.

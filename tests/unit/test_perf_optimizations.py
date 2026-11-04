@@ -6,11 +6,13 @@ O contrato é que nenhum deles mude a predição — é isso que os testes trava
 Renomeado em 2026-08-17 (era `test_tier1_perf.py`): "Tier-1" era a etiqueta de
 um plano de otimização já encerrado.
 """
+
 from __future__ import annotations
 
 import numpy as np
 
 # ───────────────────────── #2: save sem otimizador ─────────────────────────
+
 
 def test_save_model_excludes_optimizer(tmp_path):
     import tensorflow as tf
@@ -20,12 +22,14 @@ def test_save_model_excludes_optimizer(tmp_path):
     from app.domain.models.training.trainer import ModelTrainer
 
     # Modelo com parâmetros suficientes p/ o estado do Adam pesar no arquivo.
-    m = tf.keras.Sequential([
-        tf.keras.layers.Input((16,)),
-        tf.keras.layers.Dense(512, activation="relu"),
-        tf.keras.layers.Dense(512, activation="relu"),
-        tf.keras.layers.Dense(1, activation="sigmoid"),
-    ])
+    m = tf.keras.Sequential(
+        [
+            tf.keras.layers.Input((16,)),
+            tf.keras.layers.Dense(512, activation="relu"),
+            tf.keras.layers.Dense(512, activation="relu"),
+            tf.keras.layers.Dense(1, activation="sigmoid"),
+        ]
+    )
     m.compile(optimizer="adam", loss="binary_crossentropy")
     m.fit(np.random.rand(64, 16), np.random.randint(0, 2, 64), epochs=1, verbose=0)
 
@@ -55,18 +59,25 @@ def test_save_model_excludes_optimizer(tmp_path):
 
 # ───────────────────────── #1: caminho ONNX no Predictor ─────────────────────
 
+
 def _tiny_model_info():
     import tensorflow as tf
 
     from app.domain.services.detection.model_loader import ModelInfo
 
-    m = tf.keras.Sequential([
-        tf.keras.layers.Input((4,)),
-        tf.keras.layers.Dense(2, activation="softmax"),
-    ])
+    m = tf.keras.Sequential(
+        [
+            tf.keras.layers.Input((4,)),
+            tf.keras.layers.Dense(2, activation="softmax"),
+        ]
+    )
     return ModelInfo(
-        name="t", architecture="X", model=m, scaler=None,
-        input_shape=(4,), model_type="tensorflow",
+        name="t",
+        architecture="X",
+        model=m,
+        scaler=None,
+        input_shape=(4,),
+        model_type="tensorflow",
     )
 
 
@@ -92,7 +103,7 @@ def test_predictor_prefers_onnx_session_when_present():
     r = Predictor().predict_batch(mi, [np.zeros(4, dtype="float32")])
     assert r.status == ProcessingStatus.SUCCESS
     assert mi.onnx_session.calls == 1  # usou o ONNX
-    assert r.data[0]["p_fake"] > 0.8   # veio do ONNX (0.9), não do TF aleatório
+    assert r.data[0]["p_fake"] > 0.8  # veio do ONNX (0.9), não do TF aleatório
 
 
 def test_predictor_falls_back_to_tf_on_onnx_error():

@@ -36,17 +36,16 @@ class VoiceQualityExtractorWrapper(IFeatureExtractor):
                 features=normalized_features,
                 feature_type=FeatureType.VOICE_QUALITY,
                 extraction_params=self.get_extraction_params(),
-                audio_metadata={"extractor": "voice_quality"}
+                audio_metadata={"extractor": "voice_quality"},
             )
 
             return ProcessingResult(
-                status=ProcessingStatus.SUCCESS,
-                data=audio_features
+                status=ProcessingStatus.SUCCESS, data=audio_features
             )
         except Exception as e:
             return ProcessingResult(
                 status=ProcessingStatus.ERROR,
-                errors=[f"Erro na extração de qualidade vocal: {str(e)}"]
+                errors=[f"Erro na extração de qualidade vocal: {str(e)}"],
             )
 
     def extract_features(self, audio_data: AudioData) -> ProcessingResult:
@@ -62,5 +61,5 @@ class VoiceQualityExtractorWrapper(IFeatureExtractor):
         return {
             "sr": self.extractor.sr,
             "frame_length": self.extractor.frame_length,
-            "hop_length": self.extractor.hop_length
+            "hop_length": self.extractor.hop_length,
         }

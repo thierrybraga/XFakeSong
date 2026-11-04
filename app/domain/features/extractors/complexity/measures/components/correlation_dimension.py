@@ -3,15 +3,14 @@ from typing import Dict, Optional
 import numpy as np
 
 
-def compute_correlation_dimension(
-        y: np.ndarray, embedding_dim: int = 5) -> float:
+def compute_correlation_dimension(y: np.ndarray, embedding_dim: int = 5) -> float:
     """Calcula a dimensão de correlação."""
     # Embedding
     N = len(y)
     embedded = np.zeros((N - embedding_dim + 1, embedding_dim))
 
     for i in range(N - embedding_dim + 1):
-        embedded[i] = y[i:i + embedding_dim]
+        embedded[i] = y[i : i + embedding_dim]
 
     # Calcular distâncias
     distances = []
@@ -45,8 +44,8 @@ def compute_correlation_dimension(
 
 
 def compute_correlation_dimension_optimized(
-        y: np.ndarray, embedding_dim: int = 3,
-        cache: Optional[Dict] = None) -> float:
+    y: np.ndarray, embedding_dim: int = 3, cache: Optional[Dict] = None
+) -> float:
     """Versão otimizada da dimensão de correlação com amostragem."""
     N = len(y)
 
@@ -69,7 +68,7 @@ def compute_correlation_dimension_optimized(
     embedded = np.zeros((N - embedding_dim + 1, embedding_dim))
 
     for i in range(N - embedding_dim + 1):
-        embedded[i] = y[i:i + embedding_dim]
+        embedded[i] = y[i : i + embedding_dim]
 
     # Amostragem de pontos para reduzir complexidade
     max_points = 500
@@ -78,10 +77,10 @@ def compute_correlation_dimension_optimized(
         embedded = embedded[indices]
 
     # Calcular distâncias usando broadcasting otimizado
-    distances = np.linalg.norm(
-        embedded[:, None, :] - embedded[None, :, :], axis=2)
-    distances = distances[np.triu_indices_from(
-        distances, k=1)]  # Apenas triangular superior
+    distances = np.linalg.norm(embedded[:, None, :] - embedded[None, :, :], axis=2)
+    distances = distances[
+        np.triu_indices_from(distances, k=1)
+    ]  # Apenas triangular superior
 
     # Calcular dimensão de correlação com menos pontos
     std_dist = np.std(distances)

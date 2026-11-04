@@ -23,6 +23,7 @@ from ...utils.file_utils import (
 @dataclass
 class UploadResult:
     """Resultado do processo de upload"""
+
     file_path: str
     file_hash: str
     file_size: int
@@ -35,7 +36,7 @@ class UploadResult:
 class AudioUploadService(IUploadService):
     """Serviço para upload e validação de arquivos de áudio"""
 
-    SUPPORTED_FORMATS = {'.wav', '.mp3', '.flac', '.m4a', '.ogg'}
+    SUPPORTED_FORMATS = {".wav", ".mp3", ".flac", ".m4a", ".ogg"}
     MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
     MIN_DURATION = 1.0  # 1 segundo
     MAX_DURATION = 300.0  # 5 minutos
@@ -44,8 +45,9 @@ class AudioUploadService(IUploadService):
         self.upload_directory = Path(upload_directory)
         ensure_directory(str(self.upload_directory))
 
-    def upload_file(self, file_path: str,
-                    dataset_type: DatasetType) -> ProcessingResult:
+    def upload_file(
+        self, file_path: str, dataset_type: DatasetType
+    ) -> ProcessingResult:
         """Upload e validação de arquivo de áudio"""
         try:
             # Validar arquivo
@@ -60,22 +62,19 @@ class AudioUploadService(IUploadService):
                 status=ProcessingStatus.SUCCESS,
                 data=upload_result,
                 metadata={
-                    "message": (
-                        f"Arquivo {Path(file_path).name} enviado com sucesso"
-                    )
-                }
+                    "message": (f"Arquivo {Path(file_path).name} enviado com sucesso")
+                },
             )
 
         except Exception as e:
             return ProcessingResult(
                 status=ProcessingStatus.ERROR,
                 errors=[str(e)],
-                metadata={"message": f"Erro no upload: {str(e)}"}
+                metadata={"message": f"Erro no upload: {str(e)}"},
             )
 
     def create_dataset(
-            self, name: str, dataset_type: DatasetType,
-            description: Optional[str] = None
+        self, name: str, dataset_type: DatasetType, description: Optional[str] = None
     ) -> ProcessingResult[DatasetMetadata]:
         """Criar novo dataset"""
         try:
@@ -97,22 +96,18 @@ class AudioUploadService(IUploadService):
                 total_size=0,
                 total_duration=0.0,
                 created_at=None,
-                file_paths=[]
+                file_paths=[],
             )
 
             return ProcessingResult(
                 status=ProcessingStatus.SUCCESS,
                 data=metadata,
-                metadata={"message": f"Dataset {name} criado com sucesso"}
+                metadata={"message": f"Dataset {name} criado com sucesso"},
             )
         except Exception as e:
-            return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=[str(e)]
-            )
+            return ProcessingResult(status=ProcessingStatus.ERROR, errors=[str(e)])
 
-    def delete_dataset(self, name: str,
-                       dataset_type: DatasetType) -> ProcessingResult:
+    def delete_dataset(self, name: str, dataset_type: DatasetType) -> ProcessingResult:
         """Excluir dataset existente"""
         try:
             validated_name = validate_path_segment(name, label="nome do dataset")
@@ -123,20 +118,17 @@ class AudioUploadService(IUploadService):
             if not dataset_dir.is_dir():
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
-                    errors=[f"Dataset não encontrado: {name}"]
+                    errors=[f"Dataset não encontrado: {name}"],
                 )
 
             shutil.rmtree(dataset_dir)
 
             return ProcessingResult(
                 status=ProcessingStatus.SUCCESS,
-                metadata={"message": f"Dataset {name} excluído com sucesso"}
+                metadata={"message": f"Dataset {name} excluído com sucesso"},
             )
         except Exception as e:
-            return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                errors=[str(e)]
-            )
+            return ProcessingResult(status=ProcessingStatus.ERROR, errors=[str(e)])
 
     def _validate_file(self, file_path: str) -> ProcessingResult:
         """Validar arquivo de áudio"""
@@ -146,14 +138,14 @@ class AudioUploadService(IUploadService):
         if not file_path.exists():
             return ProcessingResult(
                 status=ProcessingStatus.ERROR,
-                errors=[f"Arquivo não encontrado: {file_path}"]
+                errors=[f"Arquivo não encontrado: {file_path}"],
             )
 
         # Verificar extensão
         if file_path.suffix.lower() not in self.SUPPORTED_FORMATS:
             return ProcessingResult(
                 status=ProcessingStatus.ERROR,
-                errors=[f"Formato não suportado: {file_path.suffix}"]
+                errors=[f"Formato não suportado: {file_path.suffix}"],
             )
 
         # Verificar tamanho
@@ -161,21 +153,17 @@ class AudioUploadService(IUploadService):
         if file_size > self.MAX_FILE_SIZE:
             return ProcessingResult(
                 status=ProcessingStatus.ERROR,
-                errors=[
-                    f"Arquivo muito grande: "
-                    f"{file_size / 1024 / 1024:.1f}MB"
-                ]
+                errors=[f"Arquivo muito grande: " f"{file_size / 1024 / 1024:.1f}MB"],
             )
 
         # Validação adicional de áudio seria feita aqui
         # (usando librosa ou similar)
 
-        return ProcessingResult(
-            status=ProcessingStatus.SUCCESS
-        )
+        return ProcessingResult(status=ProcessingStatus.SUCCESS)
 
-    def _process_upload(self, file_path: str,
-                        dataset_type: DatasetType) -> UploadResult:
+    def _process_upload(
+        self, file_path: str, dataset_type: DatasetType
+    ) -> UploadResult:
         """Processar upload do arquivo"""
         source_path = Path(file_path)
 
@@ -197,11 +185,10 @@ class AudioUploadService(IUploadService):
         return UploadResult(
             file_path=str(destination_path),
             file_hash=file_hash,
-            file_size=destination_path.stat().st_size
+            file_size=destination_path.stat().st_size,
         )
 
-    def validate_upload(
-            self, file_path: Union[str, Path]) -> ProcessingResult[bool]:
+    def validate_upload(self, file_path: Union[str, Path]) -> ProcessingResult[bool]:
         """Valida arquivo para upload"""
         try:
             file_path = Path(file_path)
@@ -211,7 +198,7 @@ class AudioUploadService(IUploadService):
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
                     data=False,
-                    errors=["Arquivo não encontrado"]
+                    errors=["Arquivo não encontrado"],
                 )
 
             # Verificar extensão
@@ -219,7 +206,7 @@ class AudioUploadService(IUploadService):
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
                     data=False,
-                    errors=[f"Formato não suportado: {file_path.suffix}"]
+                    errors=[f"Formato não suportado: {file_path.suffix}"],
                 )
 
             # Verificar tamanho
@@ -227,18 +214,16 @@ class AudioUploadService(IUploadService):
                 return ProcessingResult(
                     status=ProcessingStatus.ERROR,
                     data=False,
-                    errors=["Arquivo muito grande"]
+                    errors=["Arquivo muito grande"],
                 )
 
             return ProcessingResult(
                 status=ProcessingStatus.SUCCESS,
                 data=True,
-                metadata={"message": "Arquivo válido para upload"}
+                metadata={"message": "Arquivo válido para upload"},
             )
 
         except Exception as e:
             return ProcessingResult(
-                status=ProcessingStatus.ERROR,
-                data=False,
-                errors=[str(e)]
+                status=ProcessingStatus.ERROR, data=False, errors=[str(e)]
             )

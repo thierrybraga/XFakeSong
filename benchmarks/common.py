@@ -50,6 +50,7 @@ from app.utils.file_storage import copy_file_atomic  # noqa: E402
 # Modelos clássicos (sklearn) — não passam pelo TrainingService (Keras).
 CLASSICAL_ARCH_SLUGS = {"svm", "randomforest"}
 
+
 def _slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "model"
 

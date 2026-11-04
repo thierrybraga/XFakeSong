@@ -259,9 +259,7 @@ class FeaturePreparer:
                     )
                     from app.utils.silero_vad import apply_agc
 
-                    samples = apply_agc(
-                        samples, target_lufs=BAND_CORRECTION_RMS_DBFS
-                    )
+                    samples = apply_agc(samples, target_lufs=BAND_CORRECTION_RMS_DBFS)
 
                 shape = tuple(model_info.input_shape or ())
                 features = prepare_single(

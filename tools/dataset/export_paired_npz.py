@@ -319,9 +319,11 @@ def export(
         # numeros de pares usados.
         "size_policy": {
             "max_pairs": dict(max_pairs),
-            "total_samples": sum(max_pairs.values()) * 2 if all(
-                max_pairs.get(s) for s in SPLITS
-            ) else None,
+            "total_samples": (
+                sum(max_pairs.values()) * 2
+                if all(max_pairs.get(s) for s in SPLITS)
+                else None
+            ),
             "subsampled": bool(any(max_pairs.get(s) for s in SPLITS)),
             "pair_selection": "uniform_por_locutor_e_frase_rodizio",
         },

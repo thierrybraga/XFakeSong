@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 # Res2Net core block: Bottle2neck (Gao et al., 2021)
 # ---------------------------------------------------------------------------
 
+
 @tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class Bottle2neck(layers.Layer):
     """Res2Net Bottle2neck block — paper-faithful implementation.
@@ -62,10 +63,19 @@ class Bottle2neck(layers.Layer):
         expansion: Channel expansion factor (4 for bottleneck)
         stype: 'normal' for standard block, 'stage' for first block of each stage
     """
+
     expansion = 4
 
-    def __init__(self, planes, base_width=26, scale=4, stride=1,
-                 stype='normal', use_se=True, **kwargs):
+    def __init__(
+        self,
+        planes,
+        base_width=26,
+        scale=4,
+        stride=1,
+        stype="normal",
+        use_se=True,
+        **kwargs,
+    ):
         super(Bottle2neck, self).__init__(**kwargs)
         self.planes = planes
         self.base_width = base_width
@@ -79,41 +89,48 @@ class Bottle2neck(layers.Layer):
         self.width = width
 
         # 1×1 conv: reduce to width * scale channels
-        self.conv1 = layers.Conv2D(
-            width * scale, (1, 1), use_bias=False, name='conv1'
-        )
-        self.bn1 = layers.BatchNormalization(name='bn1')
+        self.conv1 = layers.Conv2D(width * scale, (1, 1), use_bias=False, name="conv1")
+        self.bn1 = layers.BatchNormalization(name="bn1")
 
         # s-1 parallel 3×3 convolutions (group 0 is identity/pool)
         self.nums = scale - 1
         self.convs = []
         self.bns_inner = []
         for i in range(self.nums):
-            self.convs.append(layers.Conv2D(
-                width, (3, 3), strides=(stride, stride),
-                padding='same', use_bias=False, name=f'conv_scale_{i}'
-            ))
-            self.bns_inner.append(layers.BatchNormalization(name=f'bn_scale_{i}'))
+            self.convs.append(
+                layers.Conv2D(
+                    width,
+                    (3, 3),
+                    strides=(stride, stride),
+                    padding="same",
+                    use_bias=False,
+                    name=f"conv_scale_{i}",
+                )
+            )
+            self.bns_inner.append(layers.BatchNormalization(name=f"bn_scale_{i}"))
 
         # 1×1 conv: expand to planes * expansion
         self.conv3 = layers.Conv2D(
-            planes * self.expansion, (1, 1), use_bias=False, name='conv3'
+            planes * self.expansion, (1, 1), use_bias=False, name="conv3"
         )
-        self.bn3 = layers.BatchNormalization(name='bn3')
+        self.bn3 = layers.BatchNormalization(name="bn3")
 
         # SE-block is an optional optimized variant. Default True at layer
         # level preserves backwards compatibility with old saved models that
         # were serialized before `use_se` existed.
         self.se_block = (
-            SqueezeExcitationBlock2D(reduction=16, name='se_block')
-            if self.use_se else None
+            SqueezeExcitationBlock2D(reduction=16, name="se_block")
+            if self.use_se
+            else None
         )
 
         # Average pool for the pass-through group at stage transitions
-        if stype == 'stage':
+        if stype == "stage":
             self.pool = layers.AveragePooling2D(
-                pool_size=(stride, stride), strides=(stride, stride),
-                padding='same', name='stage_pool'
+                pool_size=(stride, stride),
+                strides=(stride, stride),
+                padding="same",
+                name="stage_pool",
             )
 
         # Downsample for residual connection if needed
@@ -127,10 +144,13 @@ class Bottle2neck(layers.Layer):
         # Create downsample if dimensions don't match
         if in_channels != out_channels or self.stride != 1:
             self.downsample = layers.Conv2D(
-                out_channels, (1, 1), strides=(self.stride, self.stride),
-                use_bias=False, name='downsample_conv'
+                out_channels,
+                (1, 1),
+                strides=(self.stride, self.stride),
+                use_bias=False,
+                name="downsample_conv",
             )
-            self.downsample_bn = layers.BatchNormalization(name='downsample_bn')
+            self.downsample_bn = layers.BatchNormalization(name="downsample_bn")
 
     def call(self, inputs, training=None):
         identity = inputs
@@ -148,7 +168,7 @@ class Bottle2neck(layers.Layer):
         sp_outputs = []
         sp = None
         for i in range(self.nums):
-            if i == 0 or self.stype == 'stage':
+            if i == 0 or self.stype == "stage":
                 sp = spx[i]
             else:
                 # y_i = K_i(x_i + y_{i-1}) — the core Res2Net formula
@@ -159,7 +179,7 @@ class Bottle2neck(layers.Layer):
             sp_outputs.append(sp)
 
         # Last group: identity (normal) or avg pool (stage transition)
-        if self.stype == 'stage':
+        if self.stype == "stage":
             sp_outputs.append(self.pool(spx[self.nums]))
         else:
             sp_outputs.append(spx[self.nums])
@@ -188,20 +208,23 @@ class Bottle2neck(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'planes': self.planes,
-            'base_width': self.base_width,
-            'scale': self.scale,
-            'stride': self.stride,
-            'stype': self.stype,
-            'use_se': self.use_se,
-        })
+        config.update(
+            {
+                "planes": self.planes,
+                "base_width": self.base_width,
+                "scale": self.scale,
+                "stride": self.stride,
+                "stype": self.stype,
+                "use_se": self.use_se,
+            }
+        )
         return config
 
 
 # ---------------------------------------------------------------------------
 # Safe input handling (kept for compatibility)
 # ---------------------------------------------------------------------------
+
 
 @tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class SafeInputReshapeLayer(layers.Layer):
@@ -226,7 +249,7 @@ class SafeInputReshapeLayer(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({'input_shape_tuple': self.input_shape_tuple})
+        config.update({"input_shape_tuple": self.input_shape_tuple})
         return config
 
 
@@ -234,8 +257,17 @@ class SafeInputReshapeLayer(layers.Layer):
 # Res2Net model builder
 # ---------------------------------------------------------------------------
 
-def _make_res2net_layer(x, planes, num_blocks, stride=1, base_width=26,
-                        scale=4, layer_name='layer', use_se=False):
+
+def _make_res2net_layer(
+    x,
+    planes,
+    num_blocks,
+    stride=1,
+    base_width=26,
+    scale=4,
+    layer_name="layer",
+    use_se=False,
+):
     """Build one stage of Res2Net with multiple Bottle2neck blocks.
 
     Args:
@@ -249,25 +281,41 @@ def _make_res2net_layer(x, planes, num_blocks, stride=1, base_width=26,
     """
     # First block may downsample (stride=2) and is 'stage' type
     x = Bottle2neck(
-        planes, base_width=base_width, scale=scale, use_se=use_se,
-        stride=stride, stype='stage',
-        name=f'{layer_name}_block_0'
+        planes,
+        base_width=base_width,
+        scale=scale,
+        use_se=use_se,
+        stride=stride,
+        stype="stage",
+        name=f"{layer_name}_block_0",
     )(x)
 
     # Remaining blocks are 'normal' type
     for i in range(1, num_blocks):
         x = Bottle2neck(
-            planes, base_width=base_width, scale=scale, use_se=use_se,
-            stride=1, stype='normal',
-            name=f'{layer_name}_block_{i}'
+            planes,
+            base_width=base_width,
+            scale=scale,
+            use_se=use_se,
+            stride=1,
+            stype="normal",
+            name=f"{layer_name}_block_{i}",
         )(x)
     return x
 
 
-def _create_res2net_model(input_shape, num_classes=1, base_width=26, scale=4,
-                          layer_config=None, dropout_rate=0.2, use_se=False,
-                          learning_rate=1e-3, weight_decay=1e-2,
-                          architecture='multiscale_cnn'):
+def _create_res2net_model(
+    input_shape,
+    num_classes=1,
+    base_width=26,
+    scale=4,
+    layer_config=None,
+    dropout_rate=0.2,
+    use_se=False,
+    learning_rate=1e-3,
+    weight_decay=1e-2,
+    architecture="multiscale_cnn",
+):
     """Create Res2Net model (paper-faithful).
 
     Res2Net-50 configuration per Gao et al., 2021:
@@ -299,13 +347,13 @@ def _create_res2net_model(input_shape, num_classes=1, base_width=26, scale=4,
     if layer_config is None:
         layer_config = [3, 4, 6, 3]  # Res2Net-50
 
-    inputs = layers.Input(shape=input_shape, name='res2net_input')
+    inputs = layers.Input(shape=input_shape, name="res2net_input")
 
     # ---- Front-end: handle raw audio ----
     if is_raw_audio(input_shape):
         audio = ensure_flat_input(inputs)
         # STFT -> magnitude spectrogram (batch, time, freq, 1)
-        x = STFTLayer(name='stft_layer', add_channel_dim=False)(audio)
+        x = STFTLayer(name="stft_layer", add_channel_dim=False)(audio)
         # Log-mel: mel filterbank + log scaling. LogMelFromMagnitudeLayer
         # (não layers.Lambda com closure local) — closures locais não são
         # localizáveis pelo desserializador do Keras 3 em safe_mode.
@@ -315,55 +363,88 @@ def _create_res2net_model(input_shape, num_classes=1, base_width=26, scale=4,
             sample_rate=16000,
             lower_edge_hertz=0.0,
             upper_edge_hertz=8000.0,
-            name='log_mel',
+            name="log_mel",
         )(x)
-        x = ResizeLayer(target_height=128, target_width=128, name='resize_layer')(x)
+        x = ResizeLayer(target_height=128, target_width=128, name="resize_layer")(x)
     else:
-        x = SafeInputReshapeLayer(input_shape, name='safe_input_reshape')(inputs)
+        x = SafeInputReshapeLayer(input_shape, name="safe_input_reshape")(inputs)
 
     # ---- Res2Net stem (Conv1) ----
     # Paper: 7×7 Conv, stride 2, 64 filters → BN → ReLU → MaxPool(3×3, stride 2)
-    x = layers.Conv2D(64, (7, 7), strides=(2, 2), padding='same',
-                       use_bias=False, name='conv1')(x)
-    x = layers.BatchNormalization(name='bn1')(x)
-    x = layers.ReLU(name='relu1')(x)
-    x = layers.MaxPooling2D((3, 3), strides=(2, 2), padding='same', name='maxpool1')(x)
+    x = layers.Conv2D(
+        64, (7, 7), strides=(2, 2), padding="same", use_bias=False, name="conv1"
+    )(x)
+    x = layers.BatchNormalization(name="bn1")(x)
+    x = layers.ReLU(name="relu1")(x)
+    x = layers.MaxPooling2D((3, 3), strides=(2, 2), padding="same", name="maxpool1")(x)
 
     # ---- Res2Net stages ----
     # Layer1: planes=64, no downsampling (stride=1)
-    x = _make_res2net_layer(x, planes=64, num_blocks=layer_config[0],
-                            stride=1, base_width=base_width, scale=scale,
-                            layer_name='layer1', use_se=use_se)
+    x = _make_res2net_layer(
+        x,
+        planes=64,
+        num_blocks=layer_config[0],
+        stride=1,
+        base_width=base_width,
+        scale=scale,
+        layer_name="layer1",
+        use_se=use_se,
+    )
 
     # Layer2: planes=128, downsampling (stride=2)
-    x = _make_res2net_layer(x, planes=128, num_blocks=layer_config[1],
-                            stride=2, base_width=base_width, scale=scale,
-                            layer_name='layer2', use_se=use_se)
+    x = _make_res2net_layer(
+        x,
+        planes=128,
+        num_blocks=layer_config[1],
+        stride=2,
+        base_width=base_width,
+        scale=scale,
+        layer_name="layer2",
+        use_se=use_se,
+    )
 
     # Layer3: planes=256, downsampling (stride=2)
-    x = _make_res2net_layer(x, planes=256, num_blocks=layer_config[2],
-                            stride=2, base_width=base_width, scale=scale,
-                            layer_name='layer3', use_se=use_se)
+    x = _make_res2net_layer(
+        x,
+        planes=256,
+        num_blocks=layer_config[2],
+        stride=2,
+        base_width=base_width,
+        scale=scale,
+        layer_name="layer3",
+        use_se=use_se,
+    )
 
     # Layer4: planes=512, downsampling (stride=2)
-    x = _make_res2net_layer(x, planes=512, num_blocks=layer_config[3],
-                            stride=2, base_width=base_width, scale=scale,
-                            layer_name='layer4', use_se=use_se)
+    x = _make_res2net_layer(
+        x,
+        planes=512,
+        num_blocks=layer_config[3],
+        stride=2,
+        base_width=base_width,
+        scale=scale,
+        layer_name="layer4",
+        use_se=use_se,
+    )
 
     # ---- Classification head ----
     # Paper: GlobalAvgPool → FC(num_classes)
-    x = layers.GlobalAveragePooling2D(name='global_avg_pool')(x)
-    x = layers.Dropout(dropout_rate, name='classifier_dropout')(x)
+    x = layers.GlobalAveragePooling2D(name="global_avg_pool")(x)
+    x = layers.Dropout(dropout_rate, name="classifier_dropout")(x)
 
     # dtype='float32': sob mixed_float16, softmax+crossentropy em float16
     # satura/perde precisão e pode colapsar o treino (rede "morta" após a
     # 1a epoca). Mesma correção já aplicada em AASIST/RawGAT-ST.
     if num_classes == 1:
-        outputs = layers.Dense(1, activation='sigmoid', name='output', dtype='float32')(x)
-        loss = 'binary_crossentropy'
+        outputs = layers.Dense(1, activation="sigmoid", name="output", dtype="float32")(
+            x
+        )
+        loss = "binary_crossentropy"
     else:
-        outputs = layers.Dense(num_classes, activation='softmax', name='output', dtype='float32')(x)
-        loss = 'sparse_categorical_crossentropy'
+        outputs = layers.Dense(
+            num_classes, activation="softmax", name="output", dtype="float32"
+        )(x)
+        loss = "sparse_categorical_crossentropy"
 
     model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
 
@@ -379,7 +460,7 @@ def _create_res2net_model(input_shape, num_classes=1, base_width=26, scale=4,
             clipnorm=1.0,
         ),
         loss=loss,
-        metrics=['accuracy']
+        metrics=["accuracy"],
     )
 
     logger.info(
@@ -390,7 +471,9 @@ def _create_res2net_model(input_shape, num_classes=1, base_width=26, scale=4,
     return model
 
 
-def _create_res2net_lite(input_shape, num_classes=1, architecture='multiscale_cnn_lite'):
+def _create_res2net_lite(
+    input_shape, num_classes=1, architecture="multiscale_cnn_lite"
+):
     """Lightweight Res2Net variant with fewer blocks and smaller scale.
 
     Uses Res2Net-26w4s-like configuration for faster training/inference.
@@ -403,7 +486,7 @@ def _create_res2net_lite(input_shape, num_classes=1, architecture='multiscale_cn
         layer_config=[2, 2, 2, 2],  # Res2Net-18 equivalent
         dropout_rate=0.15,
         use_se=False,
-        architecture=architecture
+        architecture=architecture,
     )
 
 
@@ -411,8 +494,13 @@ def _create_res2net_lite(input_shape, num_classes=1, architecture='multiscale_cn
 # Factory function
 # ---------------------------------------------------------------------------
 
-def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
-                 architecture: str = 'multiscale_cnn', **kwargs) -> models.Model:
+
+def create_model(
+    input_shape: Tuple[int, ...],
+    num_classes: int = 1,
+    architecture: str = "multiscale_cnn",
+    **kwargs,
+) -> models.Model:
     """Factory function to create Res2Net-based multi-scale CNN models.
 
     Variants:
@@ -428,36 +516,38 @@ def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
         num_classes: Number of output classes
         architecture: Architecture variant name
     """
-    if architecture == 'default':
-        architecture = 'multiscale_cnn'
+    if architecture == "default":
+        architecture = "multiscale_cnn"
 
-    if architecture == 'multiscale_cnn_lite':
+    if architecture == "multiscale_cnn_lite":
         return _create_res2net_lite(input_shape, num_classes, architecture)
-    elif architecture in {'multiscale_cnn_se', 'multiscale_cnn_optimized'}:
-        kwargs.setdefault('scale', 8)
-        kwargs.setdefault('use_se', True)
+    elif architecture in {"multiscale_cnn_se", "multiscale_cnn_optimized"}:
+        kwargs.setdefault("scale", 8)
+        kwargs.setdefault("use_se", True)
         return _create_res2net_model(
             input_shape=input_shape,
             num_classes=num_classes,
             architecture=architecture,
-            **kwargs
+            **kwargs,
         )
     else:
         return _create_res2net_model(
             input_shape=input_shape,
             num_classes=num_classes,
             architecture=architecture,
-            **kwargs
+            **kwargs,
         )
 
 
 # Register custom layers for model save/load compatibility.
 # `preprocess` (= audio_utils.preprocess_legacy) com chave QUALIFICADA — ver
 # nota em rawnet2.py sobre a colisão da chave global 'preprocess'.
-tf.keras.utils.get_custom_objects().update({
-    'Bottle2neck': Bottle2neck,
-    'SafeInputReshapeLayer': SafeInputReshapeLayer,
-    'SqueezeExciteBlock': SqueezeExciteBlock,
-    'SqueezeExcitationBlock2D': SqueezeExcitationBlock2D,
-    'XFakeSong>preprocess_legacy': preprocess,
-})
+tf.keras.utils.get_custom_objects().update(
+    {
+        "Bottle2neck": Bottle2neck,
+        "SafeInputReshapeLayer": SafeInputReshapeLayer,
+        "SqueezeExciteBlock": SqueezeExciteBlock,
+        "SqueezeExcitationBlock2D": SqueezeExcitationBlock2D,
+        "XFakeSong>preprocess_legacy": preprocess,
+    }
+)

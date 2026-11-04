@@ -53,9 +53,11 @@ from app.utils.file_utils import (
 
 logger = logging.getLogger(__name__)
 
+
 def _default_voice_profiles_dir() -> Path:
     """Resolve storage after application settings/environment are initialized."""
     return OperationalPaths.resolve().data / "voice_profiles"
+
 
 # Duração máxima de áudio aceita (guard contra arquivos muito longos)
 MAX_AUDIO_DURATION = 300.0  # 5 minutos
@@ -69,8 +71,10 @@ RECOMMENDED_DURATION = 60.0
 # Arquiteturas ML clássicas (não usam registry de DL)
 CLASSICAL_ML_ARCHITECTURES = {"svm", "random_forest"}
 
+
 class ProfileStatus(str, enum.Enum):
     """Status possíveis de um perfil de voz."""
+
     CREATED = "created"
     COLLECTING = "collecting"
     TRAINING = "training"
@@ -167,7 +171,14 @@ class VoiceProfileService:
 
     def update_profile(self, profile_id: int, **kwargs) -> Optional[VoiceProfile]:
         """Atualiza dados do perfil (nome, telegram_id, phone, email, description)."""
-        allowed_fields = {"name", "telegram_id", "phone", "email", "description", "architecture"}
+        allowed_fields = {
+            "name",
+            "telegram_id",
+            "phone",
+            "email",
+            "description",
+            "architecture",
+        }
         with self._get_db() as db:
             try:
                 profile = db.query(VoiceProfile).filter_by(id=profile_id).first()
@@ -247,7 +258,8 @@ class VoiceProfileService:
                         # Calcular duração com timeout guard
                         try:
                             y, sr = librosa.load(
-                                str(dest_path), sr=None,
+                                str(dest_path),
+                                sr=None,
                                 duration=MAX_AUDIO_DURATION,
                             )
                             duration = len(y) / sr
@@ -262,7 +274,8 @@ class VoiceProfileService:
 
                 # Atualizar contagens no perfil
                 profile.num_samples = sum(
-                    1 for f in samples_dir.iterdir()
+                    1
+                    for f in samples_dir.iterdir()
                     if f.suffix.lower() in AUDIO_EXTENSIONS
                 )
                 profile.total_duration_seconds += total_new_duration
@@ -284,7 +297,6 @@ class VoiceProfileService:
                 db.rollback()
                 logger.error(f"Erro ao adicionar amostras ao perfil {profile_id}: {e}")
                 return {"success": False, "error": str(e)}
-
 
     def remove_audio_sample(self, profile_id: int, filename: str) -> bool:
         """Remove uma amostra do dataset do perfil."""
@@ -314,7 +326,8 @@ class VoiceProfileService:
                     if duration is None:
                         try:
                             y, sr = librosa.load(
-                                str(file_path), sr=None,
+                                str(file_path),
+                                sr=None,
                                 duration=MAX_AUDIO_DURATION,
                             )
                             duration = len(y) / sr
@@ -358,7 +371,8 @@ class VoiceProfileService:
                 else:
                     try:
                         y, sr = librosa.load(
-                            str(fpath), sr=None,
+                            str(fpath),
+                            sr=None,
                             duration=MAX_AUDIO_DURATION,
                         )
                         duration = len(y) / sr
@@ -371,12 +385,14 @@ class VoiceProfileService:
                         duration = 0.0
                         sr = 0
 
-                files.append({
-                    "filename": fpath.name,
-                    "size_bytes": fpath.stat().st_size,
-                    "duration": round(duration, 2),
-                    "sample_rate": sr,
-                })
+                files.append(
+                    {
+                        "filename": fpath.name,
+                        "size_bytes": fpath.stat().st_size,
+                        "duration": round(duration, 2),
+                        "sample_rate": sr,
+                    }
+                )
                 total_duration += duration
 
         if cache_updated:
@@ -532,18 +548,28 @@ class VoiceProfileService:
                 model_dir = self._model_dir(profile_id)
                 if arch in CLASSICAL_ML_ARCHITECTURES:
                     metrics = train_classical_profile_model(
-                        conjunto.X_train, conjunto.y_train,
-                        conjunto.X_val, conjunto.y_val,
-                        arch, conjunto.class_weight,
-                        model_dir, progress_callback,
+                        conjunto.X_train,
+                        conjunto.y_train,
+                        conjunto.X_val,
+                        conjunto.y_val,
+                        arch,
+                        conjunto.class_weight,
+                        model_dir,
+                        progress_callback,
                     )
                 else:
                     metrics = train_keras_profile_model(
-                        conjunto.X_train, conjunto.y_train,
-                        conjunto.X_val, conjunto.y_val,
-                        arch, epochs, batch_size, learning_rate,
+                        conjunto.X_train,
+                        conjunto.y_train,
+                        conjunto.X_val,
+                        conjunto.y_val,
+                        arch,
+                        epochs,
+                        batch_size,
+                        learning_rate,
                         conjunto.class_weight,
-                        model_dir, progress_callback,
+                        model_dir,
+                        progress_callback,
                     )
 
                 if not metrics.get("success", False):
@@ -569,8 +595,7 @@ class VoiceProfileService:
                     "num_fake_samples": conjunto.n_fake,
                     "feature_dim": conjunto.X_train.shape[1],
                     "class_weights": {
-                        str(k): round(v, 4)
-                        for k, v in conjunto.class_weight.items()
+                        str(k): round(v, 4) for k, v in conjunto.class_weight.items()
                     },
                     "stratified_split": True,
                     "train_size": len(conjunto.X_train),
@@ -591,9 +616,7 @@ class VoiceProfileService:
                     exc_info=True,
                 )
                 try:
-                    profile = (
-                        db.query(VoiceProfile).filter_by(id=profile_id).first()
-                    )
+                    profile = db.query(VoiceProfile).filter_by(id=profile_id).first()
                     if profile:
                         profile.status = ProfileStatus.ERROR.value
                         db.commit()
@@ -621,9 +644,7 @@ class VoiceProfileService:
     #  Inferência com Modelo do Perfil                                     #
     # ------------------------------------------------------------------ #
 
-    def detect_with_profile(
-        self, profile_id: int, audio_path: str
-    ) -> Dict[str, Any]:
+    def detect_with_profile(self, profile_id: int, audio_path: str) -> Dict[str, Any]:
         """Verifica se um áudio é da pessoa do perfil ou não."""
         with self._get_db() as db:
             try:
@@ -631,7 +652,10 @@ class VoiceProfileService:
                 if not profile:
                     return {"success": False, "error": "Perfil não encontrado"}
 
-                if profile.status != ProfileStatus.READY.value or not profile.model_path:
+                if (
+                    profile.status != ProfileStatus.READY.value
+                    or not profile.model_path
+                ):
                     return {
                         "success": False,
                         "error": "Modelo do perfil ainda não foi treinado ou não está pronto.",
@@ -641,7 +665,10 @@ class VoiceProfileService:
                 scaler_path = Path(profile.scaler_path) if profile.scaler_path else None
 
                 if not model_path.exists():
-                    return {"success": False, "error": "Arquivo do modelo não encontrado."}
+                    return {
+                        "success": False,
+                        "error": "Arquivo do modelo não encontrado.",
+                    }
 
                 # Detectar tipo de modelo
                 arch = profile.architecture or "sonic_sleuth"
@@ -651,16 +678,20 @@ class VoiceProfileService:
                     model = joblib.load(str(model_path))
                 else:
                     import tensorflow as tf
+
                     model = tf.keras.models.load_model(str(model_path))
 
                 scaler = (
                     joblib.load(str(scaler_path))
-                    if scaler_path and scaler_path.exists() else None
+                    if scaler_path and scaler_path.exists()
+                    else None
                 )
 
                 # Extrair features do áudio
                 y, sr = librosa.load(
-                    audio_path, sr=16000, mono=True,
+                    audio_path,
+                    sr=16000,
+                    mono=True,
                     duration=MAX_AUDIO_DURATION,
                 )
                 features = extract_profile_features(y, sr)
@@ -692,20 +723,27 @@ class VoiceProfileService:
                     "profile_id": profile_id,
                     "details": {
                         "model_architecture": profile.architecture,
-                        "model_type": "classical_ml" if is_classical else "deep_learning",
-                        "num_training_samples": profile.training_config.get(
-                            "num_real_samples", 0
-                        ) if profile.training_config else 0,
+                        "model_type": (
+                            "classical_ml" if is_classical else "deep_learning"
+                        ),
+                        "num_training_samples": (
+                            profile.training_config.get("num_real_samples", 0)
+                            if profile.training_config
+                            else 0
+                        ),
                         "feature_dim": len(features),
                         "training_metrics": {
-                            k: v for k, v in (profile.training_metrics or {}).items()
+                            k: v
+                            for k, v in (profile.training_metrics or {}).items()
                             if k in ("f1_score", "eer", "precision", "recall")
                         },
                     },
                 }
 
             except Exception as e:
-                logger.error(f"Erro na detecção com perfil {profile_id}: {e}", exc_info=True)
+                logger.error(
+                    f"Erro na detecção com perfil {profile_id}: {e}", exc_info=True
+                )
                 return {"success": False, "error": str(e)}
 
     # ------------------------------------------------------------------ #

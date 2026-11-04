@@ -235,9 +235,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         atomic_write_text(
             args.report, json.dumps(relatorio, indent=2, ensure_ascii=False) + "\n"
         )
-    recusados = [
-        nome for nome, r in relatorio.items() if r.get("changed_verdicts")
-    ]
+    recusados = [nome for nome, r in relatorio.items() if r.get("changed_verdicts")]
     if not args.apply:
         logger.info("Simulação: nenhum sidecar foi alterado. Use --apply para gravar.")
     return 1 if recusados else 0

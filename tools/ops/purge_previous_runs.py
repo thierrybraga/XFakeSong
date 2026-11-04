@@ -74,7 +74,9 @@ def _purge(conn: sqlite3.Connection, keep_dataset: str | None) -> None:
     if doomed:
         marks = ",".join("?" * len(doomed))
         for table in RUN_TABLES[:-1]:
-            conn.execute(f"delete from {table} where experiment_id in ({marks})", doomed)
+            conn.execute(
+                f"delete from {table} where experiment_id in ({marks})", doomed
+            )
         conn.execute(f"delete from experiment_runs where id in ({marks})", doomed)
 
 

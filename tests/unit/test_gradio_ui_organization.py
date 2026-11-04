@@ -258,7 +258,10 @@ def test_nome_do_modelo_na_tela():
     assert _nome_do_modelo(servico, "meu_modelo") == "meu_modelo (AASIST)"
     assert _nome_do_modelo(servico, "desconhecido") == "desconhecido"
     # Modelos carregam sob demanda: o nome não pode depender de já estar na memória.
-    assert _nome_do_modelo(servico, "bench_hybrid_cnn_transformer") == "Hybrid CNN-Transformer"
+    assert (
+        _nome_do_modelo(servico, "bench_hybrid_cnn_transformer")
+        == "Hybrid CNN-Transformer"
+    )
     assert _nome_do_modelo(servico, "bench_randomforest") == "RandomForest"
     assert _nome_do_modelo(servico, "bench_rawgat_st") == "RawGAT-ST"
 

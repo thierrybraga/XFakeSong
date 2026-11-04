@@ -40,7 +40,7 @@ def is_raw_audio(input_shape):
     if len(input_shape) == 2:
         return input_shape[-1] == 1
     if len(input_shape) == 3:
-        return input_shape[-1] == 1 and input_shape[1] == 1 # Very specific case
+        return input_shape[-1] == 1 and input_shape[1] == 1  # Very specific case
     return False
 
 
@@ -62,7 +62,9 @@ def ensure_flat_input(x):
     return x
 
 
-def apply_gru_block(x, units, return_sequences=True, go_backwards=False, dropout_rate=0.0, name=None):
+def apply_gru_block(
+    x, units, return_sequences=True, go_backwards=False, dropout_rate=0.0, name=None
+):
     """
     Apply GRU block compatible with both CPU and GPU.
     Standard GRU automatically uses the cuDNN kernel when conditions are met
@@ -73,7 +75,7 @@ def apply_gru_block(x, units, return_sequences=True, go_backwards=False, dropout
         return_sequences=return_sequences,
         go_backwards=go_backwards,
         dropout=dropout_rate,
-        name=name
+        name=name,
     )(x)
 
 
@@ -109,11 +111,14 @@ def flatten_features_for_gru(x, name=None):
     """
     shape_before_gru = x.shape
     # If shape is fully defined
-    if shape_before_gru[1] is not None and shape_before_gru[2] is not None and shape_before_gru[3] is not None:
-         x = layers.Reshape(
-            (shape_before_gru[1],
-             shape_before_gru[2] *
-             shape_before_gru[3]), name=name)(x)
+    if (
+        shape_before_gru[1] is not None
+        and shape_before_gru[2] is not None
+        and shape_before_gru[3] is not None
+    ):
+        x = layers.Reshape(
+            (shape_before_gru[1], shape_before_gru[2] * shape_before_gru[3]), name=name
+        )(x)
     else:
         # Forma dinâmica: camada registrada (não Lambda) para que o modelo
         # salvo volte a carregar em safe_mode.
@@ -133,18 +138,17 @@ def apply_reshape_for_cnn(tensor, target_shape):
     shape = tensor.shape
 
     if len(shape) == 3:
-        return layers.Reshape(
-            (target_shape[0], target_shape[1], 1))(tensor)
+        return layers.Reshape((target_shape[0], target_shape[1], 1))(tensor)
     elif len(shape) == 4:
         if shape[-1] != 1:
             logger.warning(
-                f"Input tensor shape {shape} for CNN expects last dim to be 1. Slicing to 1 channel.")
+                f"Input tensor shape {shape} for CNN expects last dim to be 1. Slicing to 1 channel."
+            )
             return SliceLayer(slice_idx=0)(tensor)
         return tensor
     else:
         # Fallback: assume 3D if not 4D
-        return layers.Reshape(
-            (target_shape[0], target_shape[1], 1))(tensor)
+        return layers.Reshape((target_shape[0], target_shape[1], 1))(tensor)
 
 
 @tf.keras.utils.register_keras_serializable(package="XFakeSong")
@@ -158,7 +162,7 @@ class ExpandDimsLayer(layers.Layer):
 
     def get_config(self):
         config = super(ExpandDimsLayer, self).get_config()
-        config.update({'axis': self.axis})
+        config.update({"axis": self.axis})
         return config
 
 
@@ -174,10 +178,9 @@ class ResizeLayer(layers.Layer):
 
     def get_config(self):
         config = super(ResizeLayer, self).get_config()
-        config.update({
-            'target_height': self.target_height,
-            'target_width': self.target_width
-        })
+        config.update(
+            {"target_height": self.target_height, "target_width": self.target_width}
+        )
         return config
 
 
@@ -195,7 +198,7 @@ class TimeResizeLayer(layers.Layer):
         self.target_length = int(target_length)
 
     def call(self, inputs):
-        z4 = tf.expand_dims(inputs, axis=1)               # (B, 1, T, C)
+        z4 = tf.expand_dims(inputs, axis=1)  # (B, 1, T, C)
         z4 = tf.image.resize(z4, [1, self.target_length])  # (B, 1, T_fix, C)
         return tf.cast(tf.squeeze(z4, axis=1), self.compute_dtype)
 
@@ -247,7 +250,7 @@ class RepeatChannelLayer(layers.Layer):
 
     def get_config(self):
         config = super(RepeatChannelLayer, self).get_config()
-        config.update({'repeats': self.repeats, 'axis': self.axis})
+        config.update({"repeats": self.repeats, "axis": self.axis})
         return config
 
 
@@ -259,9 +262,9 @@ class SliceLayer(layers.Layer):
         self.slice_idx = slice_idx
 
     def call(self, inputs):
-        return inputs[..., :self.slice_idx + 1]
+        return inputs[..., : self.slice_idx + 1]
 
     def get_config(self):
         config = super(SliceLayer, self).get_config()
-        config.update({'slice_idx': self.slice_idx})
+        config.update({"slice_idx": self.slice_idx})
         return config

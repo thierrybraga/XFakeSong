@@ -17,6 +17,7 @@ Keras interrompia o treino ("ran out of data").
 P1.3 — as 7 técnicas de augmentation eram aplicadas a QUALQUER entrada
 (SpecAugment em waveform, RawBoost em espectrograma — domínio errado).
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -81,16 +82,16 @@ def test_trainer_preserves_precompiled_loss_and_optimizer():
 
     assert res.status.value == "success", res.errors
     # Otimizador da arquitetura preservado (não substituído por Adam@1e-3)
-    assert isinstance(model.optimizer, tf.keras.optimizers.AdamW), (
-        f"otimizador da arquitetura foi descartado: {type(model.optimizer)}"
-    )
-    assert float(model.optimizer.learning_rate) == pytest.approx(3e-4), (
-        "LR da arquitetura foi sobrescrito sem pedido explícito"
-    )
+    assert isinstance(
+        model.optimizer, tf.keras.optimizers.AdamW
+    ), f"otimizador da arquitetura foi descartado: {type(model.optimizer)}"
+    assert float(model.optimizer.learning_rate) == pytest.approx(
+        3e-4
+    ), "LR da arquitetura foi sobrescrito sem pedido explícito"
     # Loss da arquitetura preservada (objeto from_logits, não a string do Keras)
-    assert not isinstance(model.loss, str), (
-        f"loss da arquitetura foi clobberada pela string: {model.loss!r}"
-    )
+    assert not isinstance(
+        model.loss, str
+    ), f"loss da arquitetura foi clobberada pela string: {model.loss!r}"
     assert getattr(model.loss, "from_logits", None) is True
 
 
@@ -137,8 +138,7 @@ def test_training_with_augmentation_completes_all_epochs():
     completar TODAS as épocas — antes o iterator finito esgotava na ~2ª e o
     Keras interrompia ("ran out of data")."""
     model = _tiny_model(units=1, activation="sigmoid")
-    model.compile(optimizer="adam", loss="binary_crossentropy",
-                  metrics=["accuracy"])
+    model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
 
     X, y = _tiny_data(n=64)
     trainer = ModelTrainer(
@@ -149,17 +149,17 @@ def test_training_with_augmentation_completes_all_epochs():
     assert res.status.value == "success", res.errors
     history = (res.data or {}).get("history") or {}
     epochs_run = len(history.get("loss", []))
-    assert epochs_run == 4, (
-        f"treino truncado: {epochs_run}/4 épocas (iterator esgotado?)"
-    )
+    assert (
+        epochs_run == 4
+    ), f"treino truncado: {epochs_run}/4 épocas (iterator esgotado?)"
 
 
 @pytest.mark.parametrize(
     "shape, expects_rawboost, expects_specaug",
     [
-        ((32, 16000), True, False),      # raw (N, T)
-        ((32, 16000, 1), True, False),   # raw (N, T, 1)
-        ((32, 100, 80), False, True),    # espectrograma (N, T, F)
+        ((32, 16000), True, False),  # raw (N, T)
+        ((32, 16000, 1), True, False),  # raw (N, T, 1)
+        ((32, 100, 80), False, True),  # espectrograma (N, T, F)
     ],
 )
 def test_augmentation_selects_techniques_by_domain(

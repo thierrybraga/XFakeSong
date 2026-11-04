@@ -26,7 +26,9 @@ class ResultsMenu(BaseMenu):
     def _run_summaries(self) -> List[Path]:
         root = self.context.results_dir
         return sorted(
-            p for p in root.rglob("run_summary.json") if len(p.relative_to(root).parts) <= 3
+            p
+            for p in root.rglob("run_summary.json")
+            if len(p.relative_to(root).parts) <= 3
         )
 
     def show(self):

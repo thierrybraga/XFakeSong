@@ -83,9 +83,7 @@ def main() -> int:
         "--artifact",
         default="data/models/benchmark_final/randomforest/bench_randomforest.pkl",
     )
-    parser.add_argument(
-        "--dataset", default="data/datasets/benchmark_dataset_15k.npz"
-    )
+    parser.add_argument("--dataset", default="data/datasets/benchmark_dataset_15k.npz")
     parser.add_argument(
         "--out-figure", default="data/results/paper/figures/rf_feature_importance.png"
     )

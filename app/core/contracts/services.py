@@ -20,6 +20,7 @@ from .base import DatasetType, ProcessingResult
 @dataclass
 class DatasetMetadata:
     """Metadados de dataset."""
+
     name: str
     dataset_type: DatasetType
     description: str = ""
@@ -47,6 +48,7 @@ class DatasetMetadata:
 @dataclass
 class ModelMetadata:
     """Metadados de modelo."""
+
     name: str
     architecture: str
     version: str
@@ -72,14 +74,14 @@ class IUploadService(ABC):
     """Interface para serviço de upload."""
 
     @abstractmethod
-    def upload_file(self, file_path: Union[str, Path],
-                    destination: str = None) -> ProcessingResult[str]:
+    def upload_file(
+        self, file_path: Union[str, Path], destination: str = None
+    ) -> ProcessingResult[str]:
         """Faz upload de arquivo."""
         pass
 
     @abstractmethod
-    def validate_upload(
-            self, file_path: Union[str, Path]) -> ProcessingResult[bool]:
+    def validate_upload(self, file_path: Union[str, Path]) -> ProcessingResult[bool]:
         """Valida arquivo para upload."""
         pass
 
@@ -88,14 +90,16 @@ class IFeatureExtractionService(ABC):
     """Interface para serviço de extração de características."""
 
     @abstractmethod
-    def extract_single(self, audio_data: AudioData,
-                       feature_types: List[str]) -> ProcessingResult[Dict[str, AudioFeatures]]:
+    def extract_single(
+        self, audio_data: AudioData, feature_types: List[str]
+    ) -> ProcessingResult[Dict[str, AudioFeatures]]:
         """Extrai características de um áudio."""
         pass
 
     @abstractmethod
-    def extract_batch(self, audio_list: List[AudioData], feature_types: List[str]
-                      ) -> ProcessingResult[List[Dict[str, AudioFeatures]]]:
+    def extract_batch(
+        self, audio_list: List[AudioData], feature_types: List[str]
+    ) -> ProcessingResult[List[Dict[str, AudioFeatures]]]:
         """Extrai características em lote."""
         pass
 
@@ -109,8 +113,9 @@ class ITrainingService(ABC):
     """Interface para serviço de treinamento."""
 
     @abstractmethod
-    def train_model(self, architecture: str, dataset_path: str,
-                    config: Dict[str, Any]) -> ProcessingResult[ModelMetadata]:
+    def train_model(
+        self, architecture: str, dataset_path: str, config: Dict[str, Any]
+    ) -> ProcessingResult[ModelMetadata]:
         """Treina novo modelo."""
         pass
 
@@ -119,20 +124,23 @@ class IDetectionService(ABC):
     """Interface para serviço de detecção."""
 
     @abstractmethod
-    def detect_single(self, audio_data: AudioData,
-                      model_name: str = None) -> ProcessingResult[DeepfakeDetectionResult]:
+    def detect_single(
+        self, audio_data: AudioData, model_name: str = None
+    ) -> ProcessingResult[DeepfakeDetectionResult]:
         """Detecta deepfake em áudio único."""
         pass
 
     @abstractmethod
-    def detect_batch(self, audio_list: List[AudioData],
-                     model_name: str = None) -> ProcessingResult[List[DeepfakeDetectionResult]]:
+    def detect_batch(
+        self, audio_list: List[AudioData], model_name: str = None
+    ) -> ProcessingResult[List[DeepfakeDetectionResult]]:
         """Detecta deepfake em lote."""
         pass
 
     @abstractmethod
     def detect_from_file(
-            self, file_path: Union[str, Path], model_name: str = None) -> ProcessingResult[DeepfakeDetectionResult]:
+        self, file_path: Union[str, Path], model_name: str = None
+    ) -> ProcessingResult[DeepfakeDetectionResult]:
         """Detecta deepfake de arquivo."""
         pass
 

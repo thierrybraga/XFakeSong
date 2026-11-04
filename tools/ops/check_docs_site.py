@@ -54,9 +54,7 @@ def excluded_markdown(config: Path) -> list[str]:
     if not config.exists():
         return []
     content = config.read_text(encoding="utf-8")
-    match = re.search(
-        r"(?ms)^exclude_docs:\s*\|\s*\n((?:^[ \t]+.*\n?)*)", content
-    )
+    match = re.search(r"(?ms)^exclude_docs:\s*\|\s*\n((?:^[ \t]+.*\n?)*)", content)
     if not match:
         return []
     return [
@@ -78,7 +76,10 @@ def expected_doc_page(source: Path, docs_root: Path, site_root: Path) -> Path:
 def is_excluded(relative: str, patterns: list[str]) -> bool:
     return any(
         fnmatch.fnmatchcase(relative, pattern)
-        or ("/" not in pattern and fnmatch.fnmatchcase(PurePosixPath(relative).name, pattern))
+        or (
+            "/" not in pattern
+            and fnmatch.fnmatchcase(PurePosixPath(relative).name, pattern)
+        )
         for pattern in patterns
     )
 
@@ -162,10 +163,14 @@ def check_site(site_root: Path) -> list[str]:
             try:
                 target.relative_to(site_root)
             except ValueError:
-                errors.append(f"{source.relative_to(site_root)}: link fora do site: {href}")
+                errors.append(
+                    f"{source.relative_to(site_root)}: link fora do site: {href}"
+                )
                 continue
             if not target.is_file():
-                errors.append(f"{source.relative_to(site_root)}: destino ausente: {href}")
+                errors.append(
+                    f"{source.relative_to(site_root)}: destino ausente: {href}"
+                )
                 continue
             if fragment and target.suffix.lower() == ".html":
                 target_index = indexes.get(target)
@@ -182,7 +187,9 @@ def check_site(site_root: Path) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("site", nargs="?", type=Path, default=Path("infrastructure/site"))
+    parser.add_argument(
+        "site", nargs="?", type=Path, default=Path("infrastructure/site")
+    )
     args = parser.parse_args()
     if not args.site.is_dir():
         print(f"Diretório gerado não encontrado: {args.site}", file=sys.stderr)

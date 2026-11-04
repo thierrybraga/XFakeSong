@@ -14,6 +14,7 @@ def update_device_settings(device_name):
     try:
         # Importação tardia para evitar ciclo
         from app.interfaces.gradio.tabs.detection import get_detection_service
+
         ds = get_detection_service()
         if ds:
             ds.set_device(device_name)
@@ -149,92 +150,101 @@ def create_optimization_tab():
                     # Transformer / Spectrogram
                     opt_d_model = gr.Number(label="Dimensão do modelo", visible=False)
                     opt_num_heads = gr.Number(label="Número de cabeças", visible=False)
-                    opt_num_blocks = gr.Number(
-                        label="Número de blocos", visible=False)
+                    opt_num_blocks = gr.Number(label="Número de blocos", visible=False)
                     opt_patch = gr.Textbox(
-                        label="Tamanho do patch (altura × largura)", visible=False)
-                    opt_ff_dim = gr.Number(
-                        label="Dimensão feed-forward", visible=False)
+                        label="Tamanho do patch (altura × largura)", visible=False
+                    )
+                    opt_ff_dim = gr.Number(label="Dimensão feed-forward", visible=False)
 
                     # Multiscale
                     opt_filters = gr.Textbox(
-                        label="Filtros (separados por vírgula)", visible=False)
+                        label="Filtros (separados por vírgula)", visible=False
+                    )
                     opt_kernel_sizes = gr.Textbox(
                         label="Tamanhos de kernel (separados por vírgula)",
                         visible=False,
                     )
 
                     # Conformer
-                    opt_att_heads = gr.Number(
-                        label="Cabeças de atenção", visible=False)
+                    opt_att_heads = gr.Number(label="Cabeças de atenção", visible=False)
                     opt_hid_dim = gr.Number(label="Dimensão oculta", visible=False)
                     opt_n_layers = gr.Number(label="Número de camadas", visible=False)
                     opt_conv_kernel = gr.Textbox(
-                        label="Tamanho do kernel convolucional", visible=False)
+                        label="Tamanho do kernel convolucional", visible=False
+                    )
 
                     # AASIST / RawGAT
                     opt_hid_base = gr.Number(
-                        label="Dimensão oculta (base)", visible=False)
+                        label="Dimensão oculta (base)", visible=False
+                    )
                     opt_n_layers_base = gr.Number(
-                        label="Número de camadas (base)", visible=False)
+                        label="Número de camadas (base)", visible=False
+                    )
 
                     # Hybrid
-                    opt_base_filters = gr.Number(
-                        label="Filtros base", visible=False)
-                    opt_res_blocks = gr.Number(
-                        label="Blocos residuais", visible=False)
+                    opt_base_filters = gr.Number(label="Filtros base", visible=False)
+                    opt_res_blocks = gr.Number(label="Blocos residuais", visible=False)
                     opt_trans_layers = gr.Number(
-                        label="Camadas Transformer", visible=False)
+                        label="Camadas Transformer", visible=False
+                    )
                     opt_att_heads_h = gr.Number(
-                        label="Cabeças de atenção (híbrido)", visible=False)
+                        label="Cabeças de atenção (híbrido)", visible=False
+                    )
 
                     # RawNet2
                     opt_conv_filters_raw = gr.Textbox(
-                        label="Filtros convolucionais (áudio bruto)", visible=False)
+                        label="Filtros convolucionais (áudio bruto)", visible=False
+                    )
                     opt_gru_units = gr.Number(label="Unidades GRU", visible=False)
-                    opt_dense_units = gr.Number(
-                        label="Unidades densas", visible=False)
+                    opt_dense_units = gr.Number(label="Unidades densas", visible=False)
 
-                opt_save_btn = gr.Button(
-                    "Salvar como padrão", variant="primary")
+                opt_save_btn = gr.Button("Salvar como padrão", variant="primary")
 
             with gr.Column(scale=1):
                 opt_json = gr.JSON(label="Configuração atual (JSON)")
 
         # Inputs list for optimize_default
         inputs_list = [
-            opt_arch, opt_batch, opt_epochs, opt_lr, opt_dropout, opt_l2,
-            opt_val, opt_d_model, opt_num_heads, opt_num_blocks, opt_patch,
-            opt_ff_dim, opt_filters, opt_kernel_sizes,
-            opt_att_heads, opt_hid_dim, opt_n_layers, opt_conv_kernel,
-            opt_hid_base, opt_n_layers_base,
-            opt_base_filters, opt_res_blocks, opt_trans_layers,
-            opt_att_heads_h, opt_conv_filters_raw, opt_gru_units,
-            opt_dense_units
+            opt_arch,
+            opt_batch,
+            opt_epochs,
+            opt_lr,
+            opt_dropout,
+            opt_l2,
+            opt_val,
+            opt_d_model,
+            opt_num_heads,
+            opt_num_blocks,
+            opt_patch,
+            opt_ff_dim,
+            opt_filters,
+            opt_kernel_sizes,
+            opt_att_heads,
+            opt_hid_dim,
+            opt_n_layers,
+            opt_conv_kernel,
+            opt_hid_base,
+            opt_n_layers_base,
+            opt_base_filters,
+            opt_res_blocks,
+            opt_trans_layers,
+            opt_att_heads_h,
+            opt_conv_filters_raw,
+            opt_gru_units,
+            opt_dense_units,
         ]
 
         # Outputs list (JSON + updates for all inputs)
         outputs_list = [opt_json] + inputs_list[1:]
 
         # Event: Save/Update
-        opt_save_btn.click(
-            optimize_default,
-            inputs=inputs_list,
-            outputs=outputs_list
-        )
+        opt_save_btn.click(optimize_default, inputs=inputs_list, outputs=outputs_list)
 
         # Event: Change Architecture (load defaults)
-        opt_arch.change(
-            load_defaults,
-            inputs=[opt_arch],
-            outputs=outputs_list
-        )
-
+        opt_arch.change(load_defaults, inputs=[opt_arch], outputs=outputs_list)
 
         # --- Busca Automática de Hiperparâmetros (Optuna) ---
-        with gr.Accordion(
-            "Busca automática de hiperparâmetros (Optuna)", open=False
-        ):
+        with gr.Accordion("Busca automática de hiperparâmetros (Optuna)", open=False):
             gr.Markdown(
                 "Busca Bayesiana (Optuna/TPE) que **treina vários modelos** e "
                 "mostra a **convergência** das tentativas e a **importância** de cada "
@@ -304,18 +314,14 @@ def create_optimization_tab():
                             choices=devices,
                             label="Dispositivo",
                             value=default_dev,
-                            interactive=True
+                            interactive=True,
                         )
-                        apply_dev_btn = gr.Button(
-                            "Aplicar", variant="secondary"
-                        )
+                        apply_dev_btn = gr.Button("Aplicar", variant="secondary")
 
-                    dev_status = gr.Textbox(
-                        label="Status", value="", interactive=False
-                    )
+                    dev_status = gr.Textbox(label="Status", value="", interactive=False)
 
                     apply_dev_btn.click(
                         update_device_settings,
                         inputs=[device_dropdown],
-                        outputs=[dev_status]
+                        outputs=[dev_status],
                     )

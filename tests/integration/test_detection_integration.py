@@ -26,8 +26,8 @@ def integration_models_dir(tmp_path):
     # AASIST usually takes (None, 80) or similar
     input_layer = tf.keras.layers.Input(shape=(None, 80))
     x = tf.keras.layers.GlobalAveragePooling1D()(input_layer)
-    x = tf.keras.layers.Dense(10, activation='relu')(x)
-    output_layer = tf.keras.layers.Dense(1, activation='sigmoid')(x)
+    x = tf.keras.layers.Dense(10, activation="relu")(x)
+    output_layer = tf.keras.layers.Dense(1, activation="sigmoid")(x)
     model = tf.keras.Model(inputs=input_layer, outputs=output_layer)
 
     model_path = models_dir / "test_model_AASIST.h5"
@@ -38,9 +38,9 @@ def integration_models_dir(tmp_path):
     config = {
         "architecture": "AASIST",
         "input_shape": [None, 80],
-        "model_type": "tensorflow"
+        "model_type": "tensorflow",
     }
-    with open(config_path, 'w') as f:
+    with open(config_path, "w") as f:
         json.dump(config, f)
 
     return models_dir
@@ -69,7 +69,7 @@ def test_detection_service_integration_flow(integration_models_dir):
         samples=np.random.rand(64600).astype(np.float32),
         sample_rate=16000,
         metadata={"source": "dummy.wav"},
-        duration=4.0
+        duration=4.0,
     )
 
     # For integration test, we might hit FeaturePreparer wanting to extract
@@ -84,9 +84,7 @@ def test_detection_service_integration_flow(integration_models_dir):
 
     # Check result
     if result.status != ProcessingStatus.SUCCESS:
-        raise AssertionError(
-            f"Integration test failed with errors: {result.errors}"
-        )
+        raise AssertionError(f"Integration test failed with errors: {result.errors}")
 
     assert result.status == ProcessingStatus.SUCCESS
     assert result.data.model_name == "test_model_AASIST"

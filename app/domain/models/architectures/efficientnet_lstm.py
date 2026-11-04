@@ -49,6 +49,7 @@ logger = logging.getLogger(__name__)
 
 # ============================ CUSTOM LAYERS ============================
 
+
 @tf.keras.utils.register_keras_serializable(package="XFakeSong")
 class MelSpectrogramFrontEnd(layers.Layer):
     """Mel spectrogram extraction matching CNN-LSTM paper parameters.
@@ -62,8 +63,9 @@ class MelSpectrogramFrontEnd(layers.Layer):
     - Frequency range: 0 to Nyquist (sample_rate / 2)
     """
 
-    def __init__(self, sample_rate=16000, n_fft=512, hop_length=160,
-                 n_mels=128, **kwargs):
+    def __init__(
+        self, sample_rate=16000, n_fft=512, hop_length=160, n_mels=128, **kwargs
+    ):
         super(MelSpectrogramFrontEnd, self).__init__(**kwargs)
         self.sample_rate = sample_rate
         self.n_fft = n_fft
@@ -83,7 +85,7 @@ class MelSpectrogramFrontEnd(layers.Layer):
             frame_length=self.n_fft,
             frame_step=self.hop_length,
             fft_length=self.n_fft,
-            window_fn=lambda size, dtype: tf.cast(window, dtype)
+            window_fn=lambda size, dtype: tf.cast(window, dtype),
         )
         # Power spectrum
         power = tf.square(tf.abs(stft))
@@ -94,7 +96,7 @@ class MelSpectrogramFrontEnd(layers.Layer):
             num_spectrogram_bins=self.n_fft // 2 + 1,
             sample_rate=self.sample_rate,
             lower_edge_hertz=0.0,
-            upper_edge_hertz=self.sample_rate / 2.0
+            upper_edge_hertz=self.sample_rate / 2.0,
         )
         mel_spec = tf.matmul(power, mel_weight)
 
@@ -104,12 +106,14 @@ class MelSpectrogramFrontEnd(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            'sample_rate': self.sample_rate,
-            'n_fft': self.n_fft,
-            'hop_length': self.hop_length,
-            'n_mels': self.n_mels,
-        })
+        config.update(
+            {
+                "sample_rate": self.sample_rate,
+                "n_fft": self.n_fft,
+                "hop_length": self.hop_length,
+                "n_mels": self.n_mels,
+            }
+        )
         return config
 
 
@@ -136,13 +140,14 @@ class TemporalPoolingLayer(layers.Layer):
 
 # ============================ MODEL BUILDERS ============================
 
+
 def _create_efficientnet_lstm_model(
     input_shape: Tuple[int, ...],
     num_classes: int = 1,
     lstm_units: int = 256,
     dropout_rate: float = 0.3,
     pretrained: bool = True,
-    architecture: str = 'efficientnet_lstm'
+    architecture: str = "efficientnet_lstm",
 ) -> models.Model:
     """Create EfficientNet-LSTM model based on literature.
 
@@ -155,7 +160,7 @@ def _create_efficientnet_lstm_model(
     6. Attention mechanism
     7. Dense(256) -> Dropout(0.3) -> classification
     """
-    inputs = layers.Input(shape=input_shape, name='audio_input')
+    inputs = layers.Input(shape=input_shape, name="audio_input")
 
     # ---------- Front-end: audio -> spectrogram ----------
     if is_raw_audio(input_shape):
@@ -163,24 +168,27 @@ def _create_efficientnet_lstm_model(
 
         # Mel spectrogram (512 FFT, 160 hop, 128 mels, 0-Nyquist)
         x = MelSpectrogramFrontEnd(
-            sample_rate=16000, n_fft=512, hop_length=160, n_mels=128,
-            name='mel_spectrogram'
+            sample_rate=16000,
+            n_fft=512,
+            hop_length=160,
+            n_mels=128,
+            name="mel_spectrogram",
         )(audio)
         # (batch, time_frames, 128) -> 3 channels via delta features (static + delta + delta-delta)
-        x = DeltaFeatureLayer(order=2, width=2, name='delta_features')(x)
+        x = DeltaFeatureLayer(order=2, width=2, name="delta_features")(x)
         # Resize to EfficientNet input
-        x = ResizeLayer(target_height=224, target_width=224, name='resize')(x)
+        x = ResizeLayer(target_height=224, target_width=224, name="resize")(x)
     else:
         # 2D spectrogram input
         x = inputs
         if len(input_shape) == 2:
             # (batch, time, freq) -> 3 channels via delta features
-            x = DeltaFeatureLayer(order=2, width=2, name='delta_features')(x)
-            x = ResizeLayer(target_height=224, target_width=224, name='resize')(x)
+            x = DeltaFeatureLayer(order=2, width=2, name="delta_features")(x)
+            x = ResizeLayer(target_height=224, target_width=224, name="resize")(x)
         elif len(input_shape) == 3:
-            x = ResizeLayer(target_height=224, target_width=224, name='resize')(x)
+            x = ResizeLayer(target_height=224, target_width=224, name="resize")(x)
             if input_shape[-1] != 3:
-                x = layers.Conv2D(3, (1, 1), name='channel_proj')(x)
+                x = layers.Conv2D(3, (1, 1), name="channel_proj")(x)
 
     # ---------- EfficientNet-B0 feature extraction ----------
     # Per arXiv:2407.01777: EfficientNet-B0 as backbone on spectrograms.
@@ -195,23 +203,17 @@ def _create_efficientnet_lstm_model(
     # de zero e deixava os pesos ImageNet praticamente inertes — o transfer
     # learning existia no papel, não no sinal.
     if pretrained:
-        x = ImageNetRangeScalingLayer(name='imagenet_range_scaling')(x)
+        x = ImageNetRangeScalingLayer(name="imagenet_range_scaling")(x)
     _weights = "imagenet" if pretrained else None
     try:
         efficientnet = EfficientNetB0(
-            weights=_weights,
-            include_top=False,
-            input_shape=(224, 224, 3)
+            weights=_weights, include_top=False, input_shape=(224, 224, 3)
         )
     except Exception as e:
-        logger.warning(
-            f"Pesos ImageNet indisponíveis ({e}); EfficientNet-B0 do zero."
-        )
+        logger.warning(f"Pesos ImageNet indisponíveis ({e}); EfficientNet-B0 do zero.")
         _weights = None
         efficientnet = EfficientNetB0(
-            weights=None,
-            include_top=False,
-            input_shape=(224, 224, 3)
+            weights=None, include_top=False, input_shape=(224, 224, 3)
         )
     if _weights == "imagenet":
         # Congela o backbone e fine-tuna só o bloco final (block7 + top_conv),
@@ -225,7 +227,7 @@ def _create_efficientnet_lstm_model(
     # ---------- Temporal sequence extraction ----------
     # Pool frequency axis to preserve temporal structure
     # (batch, 7, 7, 1280) -> (batch, 7, 1280) temporal sequence
-    temporal_features = TemporalPoolingLayer(name='temporal_pool')(feature_maps)
+    temporal_features = TemporalPoolingLayer(name="temporal_pool")(feature_maps)
 
     # ---------- Bidirectional LSTM ----------
     # CORREÇÃO: antes o dropout das BiLSTM só existia no caminho CPU (o
@@ -235,32 +237,32 @@ def _create_efficientnet_lstm_model(
     # `Dropout` externas, idênticas em qualquer device, e as LSTM permanecem
     # elegíveis ao kernel cuDNN em ambos.
     lstm_out = layers.Bidirectional(
-        layers.LSTM(lstm_units, return_sequences=True),
-        name='bilstm_1'
+        layers.LSTM(lstm_units, return_sequences=True), name="bilstm_1"
     )(temporal_features)
-    lstm_out = layers.Dropout(dropout_rate, name='bilstm_1_drop')(lstm_out)
+    lstm_out = layers.Dropout(dropout_rate, name="bilstm_1_drop")(lstm_out)
     lstm_out = layers.Bidirectional(
-        layers.LSTM(lstm_units // 2, return_sequences=True),
-        name='bilstm_2'
+        layers.LSTM(lstm_units // 2, return_sequences=True), name="bilstm_2"
     )(lstm_out)
-    lstm_out = layers.Dropout(dropout_rate, name='bilstm_2_drop')(lstm_out)
+    lstm_out = layers.Dropout(dropout_rate, name="bilstm_2_drop")(lstm_out)
 
     # ---------- Attention ----------
-    attended, _ = AttentionLayer(
-        return_attention=True, name='attention'
-    )(lstm_out)
+    attended, _ = AttentionLayer(return_attention=True, name="attention")(lstm_out)
 
     # ---------- Classification head ----------
     # Dense(256) -> Dropout(0.3) -> output
     # Cast to float32 explicitly so mixed-precision (float16 compute) does not
     # affect the final sigmoid output (required by Keras mixed_precision policy).
-    x_head = layers.Dense(256, activation='relu', name='fc1')(attended)
-    x_head = layers.Dropout(dropout_rate, name='fc1_drop')(x_head)
+    x_head = layers.Dense(256, activation="relu", name="fc1")(attended)
+    x_head = layers.Dropout(dropout_rate, name="fc1_drop")(x_head)
     if num_classes == 1:
-        outputs = layers.Dense(1, activation='sigmoid', dtype='float32', name='output')(x_head)
+        outputs = layers.Dense(1, activation="sigmoid", dtype="float32", name="output")(
+            x_head
+        )
         loss = tf.keras.losses.BinaryCrossentropy()
     else:
-        outputs = layers.Dense(num_classes, activation='softmax', dtype='float32', name='output')(x_head)
+        outputs = layers.Dense(
+            num_classes, activation="softmax", dtype="float32", name="output"
+        )(x_head)
         loss = tf.keras.losses.SparseCategoricalCrossentropy()
 
     model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
@@ -269,84 +271,84 @@ def _create_efficientnet_lstm_model(
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
         loss=loss,
-        metrics=['accuracy']
+        metrics=["accuracy"],
     )
 
-    logger.info(f"EfficientNet-LSTM model created: lstm_units={lstm_units}, params={model.count_params()}")
+    logger.info(
+        f"EfficientNet-LSTM model created: lstm_units={lstm_units}, params={model.count_params()}"
+    )
     return model
 
 
 def _create_efficientnet_lstm_lite(
     input_shape: Tuple[int, ...],
     num_classes: int = 1,
-    architecture: str = 'efficientnet_lstm_lite',
+    architecture: str = "efficientnet_lstm_lite",
     pretrained: bool = True,
 ) -> models.Model:
     """Lightweight EfficientNet-LSTM variant.
 
     Smaller EfficientNet input (112x112), single LSTM layer, fewer units.
     """
-    inputs = layers.Input(shape=input_shape, name='audio_input')
+    inputs = layers.Input(shape=input_shape, name="audio_input")
 
     if is_raw_audio(input_shape):
         audio = ensure_flat_input(inputs)
         x = MelSpectrogramFrontEnd(
-            sample_rate=16000, n_fft=512, hop_length=160, n_mels=40,
-            name='mel_spectrogram'
+            sample_rate=16000,
+            n_fft=512,
+            hop_length=160,
+            n_mels=40,
+            name="mel_spectrogram",
         )(audio)
-        x = ExpandDimsLayer(axis=-1, name='expand_dims')(x)
-        x = ResizeLayer(target_height=112, target_width=112, name='resize')(x)
-        x = RepeatChannelLayer(repeats=3, axis=-1, name='repeat_channels')(x)
+        x = ExpandDimsLayer(axis=-1, name="expand_dims")(x)
+        x = ResizeLayer(target_height=112, target_width=112, name="resize")(x)
+        x = RepeatChannelLayer(repeats=3, axis=-1, name="repeat_channels")(x)
     else:
         x = inputs
         if len(input_shape) == 2:
-            x = ExpandDimsLayer(axis=-1, name='expand_dims')(x)
-            x = ResizeLayer(target_height=112, target_width=112, name='resize')(x)
-            x = RepeatChannelLayer(repeats=3, axis=-1, name='repeat_channels')(x)
+            x = ExpandDimsLayer(axis=-1, name="expand_dims")(x)
+            x = ResizeLayer(target_height=112, target_width=112, name="resize")(x)
+            x = RepeatChannelLayer(repeats=3, axis=-1, name="repeat_channels")(x)
         elif len(input_shape) == 3:
-            x = ResizeLayer(target_height=112, target_width=112, name='resize')(x)
+            x = ResizeLayer(target_height=112, target_width=112, name="resize")(x)
             if input_shape[-1] != 3:
-                x = layers.Conv2D(3, (1, 1), name='channel_proj')(x)
+                x = layers.Conv2D(3, (1, 1), name="channel_proj")(x)
 
     # A variante lite ignorava `pretrained` e forçava weights=None — treinava
     # sempre do zero, ao contrário da variante completa. Agora honra o flag
     # (com o mesmo fallback gracioso quando os pesos não estão disponíveis).
     if pretrained:
-        x = ImageNetRangeScalingLayer(name='imagenet_range_scaling')(x)
+        x = ImageNetRangeScalingLayer(name="imagenet_range_scaling")(x)
     try:
         efficientnet = EfficientNetB0(
             weights="imagenet" if pretrained else None,
             include_top=False,
-            input_shape=(112, 112, 3)
+            input_shape=(112, 112, 3),
         )
     except Exception as e:
-        logger.warning(
-            f"Pesos ImageNet indisponíveis ({e}); EfficientNet-B0 do zero."
-        )
+        logger.warning(f"Pesos ImageNet indisponíveis ({e}); EfficientNet-B0 do zero.")
         efficientnet = EfficientNetB0(
-            weights=None,
-            include_top=False,
-            input_shape=(112, 112, 3)
+            weights=None, include_top=False, input_shape=(112, 112, 3)
         )
     feature_maps = efficientnet(x)
 
-    temporal_features = TemporalPoolingLayer(name='temporal_pool')(feature_maps)
+    temporal_features = TemporalPoolingLayer(name="temporal_pool")(feature_maps)
 
     # Single LSTM layer, 64 units
-    lstm_out = layers.LSTM(64, return_sequences=False, dropout=0.2,
-                           name='lstm')(temporal_features)
+    lstm_out = layers.LSTM(64, return_sequences=False, dropout=0.2, name="lstm")(
+        temporal_features
+    )
 
     outputs, loss = create_classification_head(
-        lstm_out, num_classes,
-        dropout_rate=0.2,
-        hidden_dims=[128]
+        lstm_out, num_classes, dropout_rate=0.2, hidden_dims=[128]
     )
 
     model = models.Model(inputs=inputs, outputs=outputs, name=architecture)
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
         loss=loss,
-        metrics=['accuracy']
+        metrics=["accuracy"],
     )
 
     logger.info(f"EfficientNet-LSTM Lite created: params={model.count_params()}")
@@ -355,44 +357,53 @@ def _create_efficientnet_lstm_lite(
 
 # ============================ FACTORY ============================
 
-def create_model(input_shape: Tuple[int, ...], num_classes: int = 1,
-                 architecture: str = 'efficientnet_lstm', **kwargs) -> models.Model:
+
+def create_model(
+    input_shape: Tuple[int, ...],
+    num_classes: int = 1,
+    architecture: str = "efficientnet_lstm",
+    **kwargs,
+) -> models.Model:
     """Factory function for EfficientNet-LSTM variants.
 
     Variants:
         'efficientnet_lstm': Full model (EfficientNet-B0 + BiLSTM[256,128] + Attention + Delta features)
         'efficientnet_lstm_lite': Lightweight (smaller input + single LSTM(64))
     """
-    if architecture == 'efficientnet_lstm_lite':
+    if architecture == "efficientnet_lstm_lite":
         return _create_efficientnet_lstm_lite(
-            input_shape, num_classes, architecture,
-            pretrained=kwargs.get('pretrained', True),
+            input_shape,
+            num_classes,
+            architecture,
+            pretrained=kwargs.get("pretrained", True),
         )
     else:
         return _create_efficientnet_lstm_model(
             input_shape=input_shape,
             num_classes=num_classes,
-            lstm_units=kwargs.get('lstm_units', 256),
-            dropout_rate=kwargs.get('dropout_rate', 0.3),
-            pretrained=kwargs.get('pretrained', True),
-            architecture=architecture
+            lstm_units=kwargs.get("lstm_units", 256),
+            dropout_rate=kwargs.get("dropout_rate", 0.3),
+            pretrained=kwargs.get("pretrained", True),
+            architecture=architecture,
         )
 
 
 # Register custom layers
-tf.keras.utils.get_custom_objects().update({
-    'MelSpectrogramFrontEnd': MelSpectrogramFrontEnd,
-    'XFakeSong>MelSpectrogramFrontEnd': MelSpectrogramFrontEnd,
-    'TemporalPoolingLayer': TemporalPoolingLayer,
-    'XFakeSong>TemporalPoolingLayer': TemporalPoolingLayer,
-    'AttentionLayer': AttentionLayer,
-    'XFakeSong>AttentionLayer': AttentionLayer,
-    'ExpandDimsLayer': ExpandDimsLayer,
-    'XFakeSong>ExpandDimsLayer': ExpandDimsLayer,
-    'ResizeLayer': ResizeLayer,
-    'XFakeSong>ResizeLayer': ResizeLayer,
-    'RepeatChannelLayer': RepeatChannelLayer,
-    'XFakeSong>RepeatChannelLayer': RepeatChannelLayer,
-    'DeltaFeatureLayer': DeltaFeatureLayer,
-    'XFakeSong>DeltaFeatureLayer': DeltaFeatureLayer,
-})
+tf.keras.utils.get_custom_objects().update(
+    {
+        "MelSpectrogramFrontEnd": MelSpectrogramFrontEnd,
+        "XFakeSong>MelSpectrogramFrontEnd": MelSpectrogramFrontEnd,
+        "TemporalPoolingLayer": TemporalPoolingLayer,
+        "XFakeSong>TemporalPoolingLayer": TemporalPoolingLayer,
+        "AttentionLayer": AttentionLayer,
+        "XFakeSong>AttentionLayer": AttentionLayer,
+        "ExpandDimsLayer": ExpandDimsLayer,
+        "XFakeSong>ExpandDimsLayer": ExpandDimsLayer,
+        "ResizeLayer": ResizeLayer,
+        "XFakeSong>ResizeLayer": ResizeLayer,
+        "RepeatChannelLayer": RepeatChannelLayer,
+        "XFakeSong>RepeatChannelLayer": RepeatChannelLayer,
+        "DeltaFeatureLayer": DeltaFeatureLayer,
+        "XFakeSong>DeltaFeatureLayer": DeltaFeatureLayer,
+    }
+)

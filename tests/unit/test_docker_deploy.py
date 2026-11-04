@@ -148,7 +148,10 @@ AMBIENTES = ROOT / "infrastructure" / "docker" / "environments"
 
 @pytest.mark.parametrize(
     "dockerfile",
-    sorted(p.relative_to(AMBIENTES).as_posix() for p in AMBIENTES.glob("*/Dockerfile.nvidia")),
+    sorted(
+        p.relative_to(AMBIENTES).as_posix()
+        for p in AMBIENTES.glob("*/Dockerfile.nvidia")
+    ),
 )
 def test_imagem_nvidia_publica_as_bibliotecas_cuda_do_tensorflow(dockerfile):
     """Sem isto o TensorFlow roda em CPU sem nenhum erro, como ocorria no ssl-transformers."""
@@ -159,7 +162,11 @@ def test_imagem_nvidia_publica_as_bibliotecas_cuda_do_tensorflow(dockerfile):
 
 @pytest.mark.parametrize(
     "dockerfile",
-    sorted(p.relative_to(AMBIENTES).as_posix() for p in AMBIENTES.glob("*/Dockerfile.*") if p.suffix != ".dockerignore"),
+    sorted(
+        p.relative_to(AMBIENTES).as_posix()
+        for p in AMBIENTES.glob("*/Dockerfile.*")
+        if p.suffix != ".dockerignore"
+    ),
 )
 def test_imagem_nao_guarda_o_cache_do_pip(dockerfile):
     """O cache chegava a 6,4 GB por imagem, sem uso em execução."""
@@ -167,7 +174,11 @@ def test_imagem_nao_guarda_o_cache_do_pip(dockerfile):
     assert "pip cache purge" in texto or "PIP_NO_CACHE_DIR=1" in texto
 
 
-CREDENCIAIS = ("SPEECHCHECKER_API_KEY", "XFAKE_GRADIO_USERNAME", "XFAKE_GRADIO_PASSWORD")
+CREDENCIAIS = (
+    "SPEECHCHECKER_API_KEY",
+    "XFAKE_GRADIO_USERNAME",
+    "XFAKE_GRADIO_PASSWORD",
+)
 
 
 def test_perfis_leem_as_mesmas_credenciais_sem_senha_de_reserva():
@@ -190,7 +201,9 @@ def test_perfis_leem_as_mesmas_credenciais_sem_senha_de_reserva():
     "dockerfile",
     [
         ROOT / "Dockerfile",
-        *sorted(p for p in AMBIENTES.glob("*/Dockerfile.*") if p.suffix != ".dockerignore"),
+        *sorted(
+            p for p in AMBIENTES.glob("*/Dockerfile.*") if p.suffix != ".dockerignore"
+        ),
     ],
     ids=lambda p: p.relative_to(ROOT).as_posix(),
 )
@@ -229,7 +242,10 @@ def test_limpeza_nao_alcanca_outros_projetos_da_maquina(script):
     comandos = re.findall(r"docker image prune[^\n]*", texto)
     assert comandos
     for comando in comandos:
-        assert "label=org.opencontainers.image.title=speechchecker-inference-api" in comando
+        assert (
+            "label=org.opencontainers.image.title=speechchecker-inference-api"
+            in comando
+        )
 
 
 @pytest.mark.parametrize(

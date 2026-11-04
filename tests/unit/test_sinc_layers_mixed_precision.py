@@ -85,8 +85,7 @@ def test_sinc_por_arquitetura_tem_banco_fixo():
     ):
         camada(entrada)
         cortes = [
-            w for w in camada.weights
-            if "low_hz" in w.name or "band_hz" in w.name
+            w for w in camada.weights if "low_hz" in w.name or "band_hz" in w.name
         ]
         assert cortes, f"{nome}: sem pesos de frequência de corte"
         assert not any(w.trainable for w in cortes), (
@@ -104,9 +103,9 @@ def test_camadas_por_arquitetura_nao_compartilham_classe():
     benchmark.
     """
     classes = (AasistSincConv, RawGatSincConv, RawNet2SincConv, SincConvLayer)
-    assert len({id(c) for c in classes}) == len(classes), (
-        "duas arquiteturas voltaram a compartilhar a mesma classe sinc"
-    )
+    assert len({id(c) for c in classes}) == len(
+        classes
+    ), "duas arquiteturas voltaram a compartilhar a mesma classe sinc"
     modulos = {c.__module__ for c in (AasistSincConv, RawGatSincConv, RawNet2SincConv)}
     assert len(modulos) == 3, f"esperado um módulo por arquitetura, veio {modulos}"
 

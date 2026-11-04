@@ -13,8 +13,7 @@ def apply_bark_scale(S: np.ndarray, sr: int, frame_length: int) -> np.ndarray:
     freqs = librosa.fft_frequencies(sr=sr, n_fft=frame_length)
 
     # Converter para escala Bark
-    bark_freqs = 13 * np.arctan(0.00076 * freqs) + \
-        3.5 * np.arctan((freqs / 7500)**2)
+    bark_freqs = 13 * np.arctan(0.00076 * freqs) + 3.5 * np.arctan((freqs / 7500) ** 2)
 
     # Criar banco de filtros Bark
     n_bark_bands = 24
@@ -24,18 +23,15 @@ def apply_bark_scale(S: np.ndarray, sr: int, frame_length: int) -> np.ndarray:
 
     for i in range(n_bark_bands):
         left = bark_edges[i]
-        center = bark_edges[i + 1] if i + \
-            1 < len(bark_edges) else bark_edges[i]
+        center = bark_edges[i + 1] if i + 1 < len(bark_edges) else bark_edges[i]
         right = bark_edges[i + 1] if i + 1 < len(bark_edges) else center
 
         # Filtro triangular
         for j, bark_freq in enumerate(bark_freqs):
             if left <= bark_freq <= center:
-                bark_filters[i, j] = (bark_freq - left) / \
-                    (center - left + 1e-10)
+                bark_filters[i, j] = (bark_freq - left) / (center - left + 1e-10)
             elif center < bark_freq <= right:
-                bark_filters[i, j] = (right - bark_freq) / \
-                    (right - center + 1e-10)
+                bark_filters[i, j] = (right - bark_freq) / (right - center + 1e-10)
 
     # Aplicar filtros
     bark_spectrum = np.dot(bark_filters, S)
@@ -69,7 +65,7 @@ def apply_rasta_filter(spectrum: np.ndarray) -> np.ndarray:
         if len(signal) > 4:
             # Filtro diferencial simples
             filtered = np.diff(signal, n=1)
-            filtered = np.pad(filtered, (1, 0), mode='constant')
+            filtered = np.pad(filtered, (1, 0), mode="constant")
 
             # Suavização
             if len(filtered) > 3:
@@ -82,16 +78,15 @@ def apply_rasta_filter(spectrum: np.ndarray) -> np.ndarray:
     return filtered_spectrum
 
 
-def extract_plp_features(y: np.ndarray, sr: int,
-                         frame_length: int, hop_length: int,
-                         n_plp: int) -> Dict:
+def extract_plp_features(
+    y: np.ndarray, sr: int, frame_length: int, hop_length: int, n_plp: int
+) -> Dict:
     """Extrai características PLP (Perceptual Linear Prediction)."""
     features = {}
 
     try:
         # Calcular espectrograma
-        S = np.abs(librosa.stft(y, n_fft=frame_length,
-                                hop_length=hop_length))
+        S = np.abs(librosa.stft(y, n_fft=frame_length, hop_length=hop_length))
 
         # Aplicar escala Bark
         bark_spectrum = apply_bark_scale(S, sr, frame_length)
@@ -110,7 +105,7 @@ def extract_plp_features(y: np.ndarray, sr: int,
         for frame in range(autocorr.shape[1]):
             try:
                 # Usar apenas parte positiva da autocorrelação
-                r = autocorr[:n_plp + 1, frame]
+                r = autocorr[: n_plp + 1, frame]
 
                 # Resolver equações de Yule-Walker
                 if len(r) > 1 and np.any(r):
@@ -126,43 +121,41 @@ def extract_plp_features(y: np.ndarray, sr: int,
         # Converter para coeficientes cepstrais
         plp_cepstral = lpc_to_cepstral(plp_coeffs, n_plp)
 
-        features['plp'] = plp_cepstral
-        features['plp_delta'] = librosa.feature.delta(plp_cepstral)
-        features['plp_delta2'] = librosa.feature.delta(plp_cepstral, order=2)
+        features["plp"] = plp_cepstral
+        features["plp_delta"] = librosa.feature.delta(plp_cepstral)
+        features["plp_delta2"] = librosa.feature.delta(plp_cepstral, order=2)
 
     except Exception as e:
         warnings.warn(f"Erro na extração PLP: {str(e)}")
-        features['plp'] = np.zeros((n_plp, 1))
-        features['plp_delta'] = np.zeros((n_plp, 1))
-        features['plp_delta2'] = np.zeros((n_plp, 1))
+        features["plp"] = np.zeros((n_plp, 1))
+        features["plp_delta"] = np.zeros((n_plp, 1))
+        features["plp_delta2"] = np.zeros((n_plp, 1))
 
     return features
 
 
 def extract_rasta_plp_features(
-        y: np.ndarray, sr: int, frame_length: int, hop_length: int,
-        n_plp: int) -> Dict:
+    y: np.ndarray, sr: int, frame_length: int, hop_length: int, n_plp: int
+) -> Dict:
     """Extrai características RASTA-PLP."""
     features = {}
 
     try:
         # Primeiro extrair PLP normal
-        plp_features = extract_plp_features(
-            y, sr, frame_length, hop_length, n_plp)
-        plp_spectrum = plp_features['plp']
+        plp_features = extract_plp_features(y, sr, frame_length, hop_length, n_plp)
+        plp_spectrum = plp_features["plp"]
 
         # Aplicar filtro RASTA
         rasta_spectrum = apply_rasta_filter(plp_spectrum)
 
-        features['rasta_plp'] = rasta_spectrum
-        features['rasta_plp_delta'] = librosa.feature.delta(rasta_spectrum)
-        features['rasta_plp_delta2'] = librosa.feature.delta(
-            rasta_spectrum, order=2)
+        features["rasta_plp"] = rasta_spectrum
+        features["rasta_plp_delta"] = librosa.feature.delta(rasta_spectrum)
+        features["rasta_plp_delta2"] = librosa.feature.delta(rasta_spectrum, order=2)
 
     except Exception as e:
         warnings.warn(f"Erro na extração RASTA-PLP: {str(e)}")
-        features['rasta_plp'] = np.zeros((n_plp, 1))
-        features['rasta_plp_delta'] = np.zeros((n_plp, 1))
-        features['rasta_plp_delta2'] = np.zeros((n_plp, 1))
+        features["rasta_plp"] = np.zeros((n_plp, 1))
+        features["rasta_plp_delta"] = np.zeros((n_plp, 1))
+        features["rasta_plp_delta2"] = np.zeros((n_plp, 1))
 
     return features

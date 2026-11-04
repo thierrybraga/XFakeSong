@@ -165,9 +165,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     database = (
-        args.database
-        if args.database.is_absolute()
-        else PROJECT_ROOT / args.database
+        args.database if args.database.is_absolute() else PROJECT_ROOT / args.database
     )
     migrate(database, args.apply)
     return 0
