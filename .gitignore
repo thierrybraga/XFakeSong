@@ -171,11 +171,11 @@ cython_debug/
 !/tools/**
 /tools/**/__pycache__/
 
-# Permite apenas o catálogo e o marcador da pasta de modelos.
+# Só o marcador da pasta de modelos é versionado. O registry.json é gerado pela
+# promoção dos artefatos e guarda caminhos absolutos da máquina que o gerou.
 !/data/models/
 /data/models/*
 !/data/models/.gitkeep
-!/data/models/registry.json
 
 # Resultados de execução são locais; a fonte do artigo é versionada.
 !/data/results/
