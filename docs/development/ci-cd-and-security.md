@@ -35,7 +35,10 @@ Workflows auxiliares:
 - **`static.yml`** — publica a documentação (MkDocs) no GitHub Pages a cada push
   na `main`.
 - **`dependabot.yml`** — PRs semanais de atualização de dependências `pip` e
-  `github-actions`.
+  `github-actions`. A versão 5 do `transformers` fica de fora até as imagens serem
+  validadas com ela. A CI não constrói as imagens de treino, então
+  `tests/unit/test_docker_deploy.py` confere se cada `requirements*.txt` instalado por uma
+  imagem bate com o `PIP_CONSTRAINT` dela. Um PR que suba um pino só de um lado reprova.
 
 Para reproduzir todos os gates localmente (instalação maior, com todos os extras):
 

@@ -21,4 +21,7 @@
 # ele apenas LÊ pesos e nunca treina, então o wheel CPU basta — e evita que os
 # wheels nvidia do torch cu124 (que fixa nvidia-cudnn-cu12==9.1.0.70) briguem
 # com os que o TensorFlow exige (9.3+).
-transformers==5.22.1
+#
+# A versão precisa ser a do constraints.txt da raiz: o Dockerfile instala com
+# PIP_CONSTRAINT, e um pino diferente aqui faz o pip recusar o build.
+transformers==4.45.2

@@ -151,6 +151,11 @@ no Git, e `app/__init__.py` declara a versão `1.1.0`.
 
 ### Corrigido
 
+- **Build das imagens de treino Keras:** o PR 48 do Dependabot fixou `transformers==5.22.1` em
+  `tensorflow-keras/requirements.txt`, mas a imagem instala com `constraints.txt`, que fixa
+  4.45.2. O pip recusaria o próximo build de `tensorflow-keras:cpu` e `:nvidia`. O pino voltou
+  para 4.45.2, um teste confere cada imagem contra o próprio constraint, e o Dependabot não
+  propõe mais a versão 5. As imagens já construídas não foram afetadas.
 - **Detectar e API:** a análise por arquivo perdia o limiar calibrado e o indicador de
   fora do padrão, e a tela afirmava "limiar fixo 0,5" para um modelo com corte de 0,94.
 - **Painel e Histórico:** tempos negativos (`-9545s atrás`) e datas em UTC mostradas como

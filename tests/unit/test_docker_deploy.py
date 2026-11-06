@@ -295,3 +295,84 @@ def test_guias_nao_mandam_rodar_compose_sem_arquivo(guia):
     """Não há compose na raiz: estes comandos falham com `no configuration file`."""
     texto = (ROOT / guia).read_text(encoding="utf-8")
     assert not re.search(r"docker compose (up|build|down|logs|ps)\b", texto)
+
+
+# ───────────── pinos de versão contra o constraints da imagem ─────────────
+
+AMBIENTES = ROOT / "infrastructure" / "docker" / "environments"
+DOCKERFILES_COM_CONSTRAINT = sorted(
+    p
+    for p in AMBIENTES.glob("*/Dockerfile.*")
+    if not p.name.endswith(".dockerignore")
+    and "PIP_CONSTRAINT=" in p.read_text(encoding="utf-8")
+)
+
+
+def _nome_pep503(nome: str) -> str:
+    return re.sub(r"[-_.]+", "-", nome).lower()
+
+
+def _pinos(arquivo: Path) -> dict[str, str]:
+    """Pinos `nome==versão` do arquivo, seguindo `-r` como o pip (relativo ao arquivo)."""
+    pinos: dict[str, str] = {}
+    for linha in arquivo.read_text(encoding="utf-8").splitlines():
+        linha = linha.split("#", 1)[0].strip()
+        if linha.startswith(("-r ", "--requirement ")):
+            pinos.update(_pinos(arquivo.parent / linha.split(maxsplit=1)[1]))
+            continue
+        casado = re.match(
+            r"^([A-Za-z0-9][A-Za-z0-9._-]*)(?:\[[^\]]*\])?\s*==\s*([^\s;,]+)", linha
+        )
+        if casado:
+            pinos[_nome_pep503(casado.group(1))] = casado.group(2)
+    return pinos
+
+
+def _requisitos_da_imagem(dockerfile: Path) -> list[Path]:
+    """Os requirements*.txt que o Dockerfile copia, do próprio ambiente e da raiz."""
+    texto = dockerfile.read_text(encoding="utf-8")
+    do_ambiente = [
+        p
+        for p in dockerfile.parent.glob("requirements*.txt")
+        if p.relative_to(ROOT).as_posix() in texto
+    ]
+    # Na raiz, o nome aparece sozinho: `COPY requirements-base.txt ./`. Exigir que não
+    # venha depois de `/` evita confundir com o requirements.txt de um ambiente.
+    da_raiz = [
+        p
+        for p in ROOT.glob("requirements*.txt")
+        if re.search(rf"(?<![\w/-]){re.escape(p.name)}\b", texto)
+    ]
+    return sorted(do_ambiente + da_raiz)
+
+
+def test_ha_dockerfiles_com_constraint_para_conferir():
+    assert len(DOCKERFILES_COM_CONSTRAINT) >= 8
+
+
+@pytest.mark.parametrize(
+    "dockerfile",
+    DOCKERFILES_COM_CONSTRAINT,
+    ids=lambda p: f"{p.parent.name}/{p.name}",
+)
+def test_pinos_da_imagem_batem_com_o_constraint(dockerfile):
+    """Um pino diferente do PIP_CONSTRAINT faz o pip recusar o build (ResolutionImpossible).
+
+    Foi o que o Dependabot fez ao subir só `tensorflow-keras/requirements.txt` para
+    transformers 5: a CI ficou verde, porque não constrói as imagens de treino.
+    """
+    texto = dockerfile.read_text(encoding="utf-8")
+    caminho = re.search(r"PIP_CONSTRAINT=(\S+)", texto).group(1)
+    constraint = ROOT / caminho.removeprefix("/app/")
+    assert constraint.is_file(), f"{dockerfile}: {caminho} não existe no repositório"
+    fixados = _pinos(constraint)
+    requisitos = _requisitos_da_imagem(dockerfile)
+    assert requisitos, f"{dockerfile} não instala nenhum requirements*.txt conhecido"
+    divergentes = [
+        f"{req.relative_to(ROOT).as_posix()}: {nome}=={versao} "
+        f"(constraint: {fixados[nome]})"
+        for req in requisitos
+        for nome, versao in _pinos(req).items()
+        if nome in fixados and fixados[nome] != versao
+    ]
+    assert not divergentes, "\n".join(divergentes)

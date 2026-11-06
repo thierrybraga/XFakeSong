@@ -9,6 +9,11 @@ updates:
     groups:
       python-dependencies:
         patterns: ["*"]
+    ignore:
+      # transformers 5 exige validar as imagens: o constraints.txt fixa 4.45.2, e um
+      # pino diferente em um só ambiente quebra o build daquela imagem.
+      - dependency-name: "transformers"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "deps"
 
@@ -30,6 +35,11 @@ updates:
     groups:
       python-dependencies:
         patterns: ["*"]
+    ignore:
+      # transformers 5 exige validar as imagens: o constraints.txt fixa 4.45.2, e um
+      # pino diferente em um só ambiente quebra o build daquela imagem.
+      - dependency-name: "transformers"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "deps"
 
@@ -50,6 +60,11 @@ updates:
     groups:
       python-dependencies:
         patterns: ["*"]
+    ignore:
+      # transformers 5 exige validar as imagens: o constraints.txt fixa 4.45.2, e um
+      # pino diferente em um só ambiente quebra o build daquela imagem.
+      - dependency-name: "transformers"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "deps"
 
@@ -60,6 +75,11 @@ updates:
     groups:
       python-dependencies:
         patterns: ["*"]
+    ignore:
+      # transformers 5 exige validar as imagens: o constraints.txt fixa 4.45.2, e um
+      # pino diferente em um só ambiente quebra o build daquela imagem.
+      - dependency-name: "transformers"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "deps"
 
