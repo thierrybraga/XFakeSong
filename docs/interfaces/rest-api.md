@@ -283,6 +283,25 @@ Autenticação acima, aqui a chave é exigida em todas as 9 rotas.
 | POST | `/{id}/train` | sim | treina modelo do perfil |
 | POST | `/{id}/detect` | sim | verifica se áudio pertence ao perfil |
 
+## Benchmark (`/api/v1/benchmark`)
+
+É a mesma fonte da aba **📊 Benchmark** (`app/domain/services/benchmark/`). As leituras
+devolvem só métricas agregadas, receitas e estado; nada por amostra do teste. Iniciar,
+retomar e parar exigem a chave e passam pelas mesmas pré-condições da aba:
+`XFAKE_ENABLE_BENCHMARK_RUN=1`, GPU, NPZ e selo do teste, disco e nenhum run em
+andamento. Aqui a chave substitui o login do Gradio.
+
+| Método | Path | API Key | Descrição |
+|---|---|---:|---|
+| GET | `/protocol` | não | as 11 entradas, receitas, custo, flags do artigo e o artigo |
+| GET | `/models` | não | modelos instalados com calibração e métricas de validação e teste |
+| GET | `/runs` | não | runs encontrados em `data/results` |
+| GET | `/runs/{run_id}` | não | métricas agregadas de um run (`run_id` pode ter `/`, ex.: `archive/.../clean_benchmark_15k`) |
+| GET | `/run/status` | não | estado do run em andamento: modelo, época, ETA, cauda do log |
+| POST | `/run` | sim | inicia o run do artigo; corpo `{"confirm_duration": true}`; 409 com a lista do que falta |
+| POST | `/run/resume` | sim | retoma um run iniciado pela aba ou pela API; corpo `{"run_name": "tcc_reproducao_..."}` |
+| POST | `/run/stop` | sim | para o run e toda a árvore de processos |
+
 ## Validação Local
 
 ```bash

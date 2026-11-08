@@ -658,6 +658,23 @@ def _merge_effective_hparams(
     return params
 
 
+def article_training_config(arch: str, device_profile: str = "gpu") -> Dict[str, Any]:
+    """`training_config` que o benchmark do artigo usa para `arch`.
+
+    É o mesmo dicionário que `build_benchmark_plan` grava em
+    `benchmark_plan.json`, com os controles do protocolo (orçamento fixo, melhor
+    checkpoint, limiar 0,5) e o limite de lote do dispositivo, mas SEM sondar a
+    GPU: o plano real cai em silêncio para CPU quando o TensorFlow não a vê, e
+    uma tela que descreve o artigo precisa mostrar a configuração de GPU dele.
+
+    Levanta `ValueError` para arquiteturas fora do plano (as SSL originais rodam
+    pelo runner PyTorch dedicado, com receita própria).
+    """
+    return _merge_effective_hparams(
+        BenchmarkConfig(), arch, {"resolved_profile": device_profile}
+    )
+
+
 def effective_hyperparameters(arch: str) -> Dict[str, Any]:
     """Hiperparâmetros do PIPELINE para uma arquitetura, sem levantar erro.
 

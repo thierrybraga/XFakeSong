@@ -8,6 +8,36 @@ no Git, e `app/__init__.py` declara a versão `1.1.0`.
 
 ## [Não lançado]
 
+### Aba Benchmark
+
+- **Nova aba principal 📊 Benchmark**, entre Treinar e Datasets, com cinco sub-abas:
+  - **Artigo**: título, resumo e PDF, protocolo, limitações, tabela de resultados e comparações pareadas;
+  - **Modelos**: calibração, métricas de validação e de teste, convergência e plano × treino;
+  - **Hiperparâmetros**: as 11 entradas no perfil de GPU, com custo estimado e medido;
+  - **Resultados**: qualquer run, com tabela, EER com IC 95%, EER por ruído e figuras;
+  - **Executar o TCC**.
+- **Atalhos** "Testar na detecção" e "Treinar esta arquitetura" levam o modelo ou a
+  arquitetura escolhida para as abas Detectar e Treinar.
+- **Métricas de teste dos modelos instalados** vêm do run cujo sha256 do artefato bate com
+  o arquivo. O `registry.json` de 14/08 descreve outros artefatos e não é mais usado
+  quando o sha256 não confere.
+- **Reprodução do artigo pela aba ou por `POST /api/v1/benchmark/run`.** Só inicia com:
+  - GPU;
+  - `XFAKE_ENABLE_BENCHMARK_RUN=1`;
+  - login do Gradio (na API, a chave);
+  - NPZ e selo do teste conferidos;
+  - disco livre;
+  - nenhum outro run.
+
+  Cada run vai para `data/results/tcc_reproducao_<data>`, com os modelos em pasta
+  própria, então os modelos da detecção não são sobrescritos. Parar mata a árvore de
+  processos, e consolidar grava dentro do run, nunca em `data/results/paper`.
+- **Comando do artigo corrigido** no CLAUDE.md e em `experimental-study.md`. O do
+  CLAUDE.md usava `--experiment-scope`, que `run_models_sequential.py` recusa; o de
+  `experimental-study.md` rodava sem `--band-correction-hz 7500` e
+  `--checkpoint-monitor val_eer`, ou seja, o protocolo antigo. A fonte única das flags
+  é `app/domain/services/benchmark/runner.py::ARTICLE_FLAGS`.
+
 ### Deploy em Docker
 
 - **Segredos fora da imagem CPU:** `Dockerfile.cpu.dockerignore` substituía o `.dockerignore`

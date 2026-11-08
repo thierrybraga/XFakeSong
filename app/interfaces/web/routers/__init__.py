@@ -10,6 +10,7 @@ Cada router define seu próprio prefix em `/api/v1/<area>/`.
 """
 
 from app.interfaces.web.routers import (
+    benchmark,
     datasets,
     detection,
     features,
@@ -20,6 +21,7 @@ from app.interfaces.web.routers import (
 )
 
 # Aliases convenientes para uso em FastAPI app.include_router()
+benchmark_router = benchmark.router
 datasets_router = datasets.router
 detection_router = detection.router
 features_router = features.router
@@ -36,9 +38,12 @@ ALL_ROUTERS = [
     history_router,
     datasets_router,
     voice_profiles_router,
+    benchmark_router,
 ]
 
 __all__ = [
+    "benchmark",
+    "benchmark_router",
     "datasets",
     "datasets_router",
     "detection",

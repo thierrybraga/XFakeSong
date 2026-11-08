@@ -98,6 +98,7 @@ _CUSTOM_CSS = _load_custom_css()
 # wizard substituiu o workflow original. O arquivo training.py permanece em
 # disco caso algum teste/script o use, mas a UI principal só expõe o wizard.
 from app.interfaces.gradio.tabs import (  # noqa: E402
+    create_benchmark_tab,
     create_dashboard_tab,
     create_dataset_management_tab,
     create_detection_tab,
@@ -392,13 +393,14 @@ def create_interface() -> "gr.Blocks":
 
                 create_voice_profiles_tab()
 
+                arch_select = None
                 with gr.Tab("🎓 Treinar", id="tab_train"):
                     training_enabled = os.getenv(
                         "ENABLE_TRAINING", "true"
                     ).strip().lower() not in {"0", "false", "no", "off"}
                     if training_enabled:
                         with gr.Tabs():
-                            create_training_wizard_tab()
+                            arch_select = create_training_wizard_tab()
                             create_optimization_tab()
                     else:
                         gr.Markdown(
@@ -407,6 +409,10 @@ def create_interface() -> "gr.Blocks":
                             "Use a aba **Detectar** para inferência com os modelos "
                             "já treinados."
                         )
+
+                # Os atalhos "testar na detecção" e "treinar esta arquitetura"
+                # escrevem nos seletores das duas abas acima.
+                create_benchmark_tab(main_tabs, model_select, arch_select)
 
                 create_dataset_management_tab()
 

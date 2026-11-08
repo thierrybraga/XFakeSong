@@ -123,6 +123,7 @@ ou web) nem de frameworks de UI. Bibliotecas externas entram via wrapper em
 | Motor de benchmark | `benchmarks/` (`runner.py`, `protocol.py`, `fit_neural.py`, `fit_classical.py`, `evaluate.py`, `planning.py`, `report.py`) |
 | Diagnostico de estabilidade de treino (pos-hoc) | `benchmarks/stability.py` (`analyze_training_stability`) |
 | Testes pareados (McNemar, bootstrap, Holm) | `benchmarks/significance.py` |
+| Aba 📊 Benchmark / API `/api/v1/benchmark` (catalogo, runs, artigo, reproducao do artigo com travas) | `app/domain/services/benchmark/` (`catalog.py`, `results.py`, `article.py`, `runner.py::ARTICLE_FLAGS`); interface em `gradio/tabs/benchmark.py` |
 
 ---
 
@@ -213,13 +214,19 @@ make train-cpu        # perfil classical/CPU (Docker)
 # Sequencial, um modelo por vez (timeout, --resume, log por modelo):
 # Reprodução do artigo: subamostra CETUC–Fake Voices/XTTS-v2 de 15 mil
 # (ver docs/evaluation/canonical-study-and-legacy-inventory.md).
+# As flags vivem em app/domain/services/benchmark/runner.py::ARTICLE_FLAGS, a
+# fonte que a aba 📊 Benchmark e a API usam. Este orquestrador aceita --scope,
+# nao --experiment-scope (que e do run_benchmark.py e aqui aborta o argparse).
 python benchmarks/run_models_sequential.py \
   --dataset data/datasets/benchmark_dataset_15k.npz \
   --test-lock data/datasets/benchmark_dataset_15k.npz.test-lock.json \
-  --experiment-scope official --epochs 100 --seed 42 --snr 30 20 10 5 \
+  --scope official --epochs 100 --batch-size 32 --seed 42 \
+  --device-profile gpu --latency-runs 30 --snr 30 20 10 5 \
   --train-aug-snr 30 20 10 --train-noise-copies 1 \
-  --band-correction-hz 7500 --device-profile gpu \
-  --out data/results/<run-novo> --resume
+  --band-correction-hz 7500 --checkpoint-monitor val_eer \
+  --out data/results/<run-novo>
+# --resume so numa pasta do MESMO run: numa pasta existente com outro codigo o
+# fingerprint diverge, os modelos vao para _superseded/ e sao retreinados.
 
 # O corpus pai de 40.980 amostras é uma fonte para reconstrução/auditoria,
 # não a entrada do artigo. Gerar o recorte de 15 mil a partir do corpus validado:

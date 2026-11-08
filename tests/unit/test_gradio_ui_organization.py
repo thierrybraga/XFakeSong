@@ -118,6 +118,7 @@ def test_navegacao_segue_a_ordem_de_uso(config):
         "🔬 Investigar",
         "🎤 Perfis de voz",
         "🎓 Treinar",
+        "📊 Benchmark",
         "🗂️ Datasets",
     ]
 

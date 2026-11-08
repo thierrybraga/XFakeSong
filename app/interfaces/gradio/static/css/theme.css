@@ -398,6 +398,30 @@ footer {
 }
 .verdict-fake .verdict-title { color: var(--xf-danger-text) !important; }
 .verdict-real .verdict-title { color: var(--xf-success) !important; }
+
+/* ===== Aba Benchmark ===== */
+.bench-article h3 { margin: 0 0 2px; font-size: 1.15rem; color: var(--xf-text); }
+.bench-author { margin: 0 0 8px; color: var(--xf-text-muted); font-size: 0.9rem; }
+.bench-abstract { margin: 0 0 8px; color: var(--xf-text); font-size: 0.92rem; line-height: 1.55; text-align: justify; }
+.bench-keywords { margin: 0; color: var(--xf-text-muted); font-size: 0.86rem; }
+.bench-warn { margin: 6px 0 0; color: var(--xf-warning); font-size: 0.88rem; font-weight: 600; }
+.bench-ready { margin: 6px 0 0; color: var(--xf-success); font-size: 0.9rem; font-weight: 600; }
+.bench-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin: 10px 0; }
+.bench-card { border: 1px solid var(--xf-border); border-radius: 10px; padding: 10px 12px; background: var(--xf-surface); }
+.bench-card h4, .bench-card h5 { margin: 0 0 6px; color: var(--xf-text); }
+.bench-card ul { margin: 0 0 0 1.1rem; padding: 0; font-size: 0.88rem; color: var(--xf-text); }
+.bench-dl { margin: 0; display: grid; gap: 3px; font-size: 0.86rem; }
+.bench-dl div { display: grid; grid-template-columns: minmax(120px, 42%) 1fr; gap: 8px; }
+.bench-dl dt { color: var(--xf-text-muted); }
+.bench-dl dd { margin: 0; color: var(--xf-text); font-variant-numeric: tabular-nums; word-break: break-word; }
+.bench-detail h4 { margin: 4px 0 0; color: var(--xf-text); }
+.bench-tag { font-size: 0.75rem; padding: 1px 8px; border-radius: 999px; background: var(--xf-primary); color: #fff; vertical-align: middle; }
+.bench-preflight ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 0.9rem; }
+.bench-preflight li.ok span { color: var(--xf-success); }
+.bench-preflight li.fail span { color: var(--xf-danger-text); }
+.bench-status { font-size: 0.9rem; color: var(--xf-text); }
+.bench-status progress { width: 100%; height: 10px; }
+.bench-current { margin: 4px 0; }
 .verdict-conf { margin: 2px 0 0; color: var(--xf-text-muted); font-size: 0.92rem; }
 .verdict-conf strong { color: var(--xf-text); font-variant-numeric: tabular-nums; }
 .verdict-meter-label {

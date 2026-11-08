@@ -31,6 +31,7 @@ _BUILDERS = (
     "create_dataset_management_tab",
     "create_features_tab",
     "create_history_tab",
+    "create_benchmark_tab",
 )
 
 

@@ -553,8 +553,14 @@ Execução para reproduzir o protocolo descrito no artigo (a proveniência dos
 resultados existentes deve ser reconciliada antes de uma nova campanha):
 
 ```bash
-python benchmarks/run_models_sequential.py --dataset data/datasets/benchmark_dataset_15k.npz --test-lock data/datasets/benchmark_dataset_15k.npz.test-lock.json --epochs 100 --seed 42 --snr 30 20 10 5 --train-aug-snr 30 20 10 --device-profile gpu --out data/results/<run> --resume
+python benchmarks/run_models_sequential.py --dataset data/datasets/benchmark_dataset_15k.npz --test-lock data/datasets/benchmark_dataset_15k.npz.test-lock.json --scope official --epochs 100 --batch-size 32 --seed 42 --device-profile gpu --latency-runs 30 --snr 30 20 10 5 --train-aug-snr 30 20 10 --train-noise-copies 1 --band-correction-hz 7500 --checkpoint-monitor val_eer --out data/results/<run>
 ```
+
+As flags são as de `app/domain/services/benchmark/runner.py::ARTICLE_FLAGS`, as
+mesmas que a aba **📊 Benchmark** usa para iniciar o run. Sem
+`--band-correction-hz 7500` e `--checkpoint-monitor val_eer`, o comando roda o
+protocolo antigo: o atalho de reamostragem fica intacto e a época é eleita pela
+perda.
 
 ```bash
 python benchmarks/run_benchmark.py \

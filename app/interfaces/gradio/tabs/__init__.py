@@ -28,7 +28,9 @@ def _create_error_tab(name: str, error_msg: str) -> Callable[[], None]:
     quebrar a aplicação inteira.
     """
 
-    def _tab() -> None:
+    def _tab(*_args, **_kwargs) -> None:
+        # Aceita os argumentos da aba real (ex.: os atalhos da Benchmark), para
+        # que a falha de uma aba não vire TypeError na montagem.
         with gr.Tab(f"⚠️ {name} (erro)"):
             gr.Markdown(
                 f"### Falha ao carregar a aba **{name}**\n\n"
@@ -98,8 +100,15 @@ except Exception as e:
     logger.error(f"Falha ao carregar tab Dataset Management: {e}", exc_info=True)
     create_dataset_management_tab = _create_error_tab("Dataset Management", str(e))
 
+try:
+    from .benchmark import create_benchmark_tab
+except Exception as e:  # noqa: BLE001
+    logger.error(f"Falha ao carregar tab Benchmark: {e}", exc_info=True)
+    create_benchmark_tab = _create_error_tab("Benchmark", str(e))
+
 
 __all__ = [
+    "create_benchmark_tab",
     "create_dashboard_tab",
     "create_dataset_management_tab",
     "create_detection_tab",

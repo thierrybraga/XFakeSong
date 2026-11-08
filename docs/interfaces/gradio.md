@@ -337,6 +337,45 @@ Em deploy público ou apresentação, mantenha `ENABLE_TRAINING=false`. Para
 treinamento real, prefira WSL2/Linux com GPU, Docker GPU ou Hugging Face GPU
 Space com Storage.
 
+## Aba Benchmark
+
+Objetivo: ver o estudo do TCC (modelos, hiperparâmetros, calibração e resultados) e
+reproduzir o artigo. O código fica em `tabs/benchmark.py`; as leituras e o lançador, em
+`app/domain/services/benchmark/`.
+
+| Sub-aba | O que mostra |
+|---|---|
+| Artigo | título, resumo e PDF de `data/results/paper`; protocolo; limitações; tabela de resultados do artigo; comparações pareadas |
+| Modelos | cada modelo instalado: calibração que a detecção aplica, EER de validação e de teste, convergência, plano × treino |
+| Hiperparâmetros | a receita de cada uma das 11 entradas no perfil de GPU, com o custo estimado e o medido |
+| Resultados | qualquer run em `data/results`: tabela, EER com IC 95%, EER por condição de ruído, figuras do relatório |
+| Executar o TCC | pré-condições, comando exato, iniciar, parar, retomar e consolidar |
+
+**Atalhos.** Em Modelos, **🎯 Testar na detecção** abre Detectar → Um áudio com o modelo
+escolhido. **🎓 Treinar esta arquitetura** abre o assistente com a arquitetura escolhida.
+WavLM e HuBERT Original treinam pelo runner PyTorch e não têm esse atalho.
+
+**Métricas de teste dos modelos instalados.** Vêm do run cujo
+`model_artifact_fingerprint` bate com o sha256 do arquivo. O `registry.json` da
+promoção pode descrever outro artefato e só vale quando o sha256 também bate.
+
+**Executar o TCC.** O botão só habilita com:
+
+- GPU visível ao TensorFlow;
+- `XFAKE_ENABLE_BENCHMARK_RUN=1` no `.env`;
+- login do Gradio ativo;
+- NPZ e selo do teste conferidos;
+- 20 GB livres;
+- nenhum run em andamento;
+- a confirmação de que o run leva cerca de 58 h de GPU.
+
+Cada run grava em `data/results/tcc_reproducao_<data>`, e os modelos ficam em
+`data/models/tcc_reproducao_<data>`. Nem os modelos da detecção nem o run vigente
+são tocados. **Consolidar** grava em `<run>/consolidated`, nunca em
+`data/results/paper`. Sem GPU (Windows nativo), a aba mostra o equivalente pelo
+compose de benchmark, com a mesma pasta isolada (`docker compose ... run --rm -e
+MODELS_DIR=...`). Esse run também é acompanhado pela aba, pela pasta.
+
 ## Aba Datasets
 
 Objetivo: ver, baixar e preparar os dados.
@@ -381,7 +420,8 @@ scripts. Esta aba serve para verificar se os dados estão visíveis para a aplic
 |---|---|---|
 | Testar um áudio | Detectar | `benchmarks/robustness_test.py` |
 | Treinar um modelo | Treinar | `tools/training/train_by_family.py` |
-| Rodar benchmark completo | Não recomendado pela UI | `benchmarks/run_models_sequential.py` |
+| Reproduzir o artigo | Benchmark → Executar o TCC (com GPU e as travas) | `benchmarks/run_models_sequential.py` com `ARTICLE_FLAGS` |
+| Ver resultados e calibração | Benchmark | `tools/reporting/consolidate_results.py` |
 | Auditar todos os modelos | Painel | `tools/reporting/validate_artifacts.py` |
 | Gerar resultados do TCC | Scripts | [Benchmark e Resultados](../evaluation/benchmark.md) |
 

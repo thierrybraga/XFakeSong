@@ -1592,3 +1592,6 @@ def create_training_wizard_tab():
             outputs=[eval_section, save_section],
             show_progress="hidden",
         )
+
+    # A aba Benchmark escolhe a arquitetura por aqui ("treinar esta arquitetura").
+    return arch_select
