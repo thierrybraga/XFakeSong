@@ -1,3 +1,3 @@
 # Perfil de documentação: pode ser instalado sem as dependências de ML.
-mkdocs>=1.6,<2.0
-mkdocs-material>=9.5,<10.0
+mkdocs>=1.6.1,<2.0
+mkdocs-material>=9.8.1,<10.0
